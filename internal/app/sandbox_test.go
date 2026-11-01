@@ -24,7 +24,7 @@ func openSandboxWith(t *testing.T, l loaded, runtimeDefault string, args ...stri
 	if err := fs.Parse(args); err != nil {
 		t.Fatal(err)
 	}
-	s, closeIt, err := openSandbox(t.Context(), Options{}, l, f, slog.New(slog.DiscardHandler))
+	s, closeIt, err := openSandbox(t.Context(), Options{}, l, f, slog.New(slog.DiscardHandler), nil)
 	if err == nil {
 		t.Cleanup(closeIt)
 	}
@@ -78,7 +78,7 @@ func TestRuncNeedsTheInsecureDevelopmentRuntime(t *testing.T) {
 		if err := fs.Parse(args); err != nil {
 			t.Fatal(err)
 		}
-		s, closeIt, err := openSandbox(t.Context(), Options{}, loaded{}, f, slog.New(slog.DiscardHandler))
+		s, closeIt, err := openSandbox(t.Context(), Options{}, loaded{}, f, slog.New(slog.DiscardHandler), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -111,11 +111,11 @@ func TestTheSpecsSandboxBecomesFlags(t *testing.T) {
 		}
 		return path
 	}
-	l, err := loadFiles(t.Context(), Options{}, []string{write("  sandbox:\n    kind: docker\n    docker: {runtime: runc, insecure_development_runtime: true, image: alpine:3.20, connectors_image: node:22-alpine, warm: 2, max: 8}\n")}, credref.Resolver{})
+	l, err := loadFiles(t.Context(), Options{}, []string{write("  sandbox:\n    kind: docker\n    docker: {runtime: runc, insecure_development_runtime: true, image: alpine:3.20, connectors_image: node:22-alpine, host: \"tcp://sandbox:2376\", tls_dir: /etc/humagen/docker-tls, warm: 2, max: 8}\n")}, credref.Resolver{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"-sandbox=docker", "-sandbox-runtime=runc", "-sandbox-insecure-development-runtime=true", "-sandbox-image=alpine:3.20", "-sandbox-connectors-image=node:22-alpine"} {
+	for _, want := range []string{"-sandbox=docker", "-sandbox-runtime=runc", "-sandbox-insecure-development-runtime=true", "-sandbox-image=alpine:3.20", "-sandbox-connectors-image=node:22-alpine", "-sandbox-host=tcp://sandbox:2376", "-sandbox-tls-dir=/etc/humagen/docker-tls"} {
 		if !slices.Contains(l.args, want) {
 			t.Errorf("args %v lack %s", l.args, want)
 		}
@@ -125,13 +125,38 @@ func TestTheSpecsSandboxBecomesFlags(t *testing.T) {
 		t.Fatalf("unisolated: args %v, %v", l.args, err)
 	}
 	for name, body := range map[string]string{
-		"a bad runtime":   "  sandbox:\n    kind: docker\n    docker: {runtime: \"run c\"}\n",
-		"warm over max":   "  sandbox:\n    kind: docker\n    docker: {warm: 9, max: 2}\n",
-		"an unknown kind": "  sandbox: {kind: chroot}\n",
-		"an unknown key":  "  sandbox:\n    kind: docker\n    docker: {network: host}\n",
+		"a bad runtime":    "  sandbox:\n    kind: docker\n    docker: {runtime: \"run c\"}\n",
+		"warm over max":    "  sandbox:\n    kind: docker\n    docker: {warm: 9, max: 2}\n",
+		"an unknown kind":  "  sandbox: {kind: chroot}\n",
+		"an unknown key":   "  sandbox:\n    kind: docker\n    docker: {network: host}\n",
+		"plain tcp":        "  sandbox:\n    kind: docker\n    docker: {host: \"tcp://sandbox:2375\"}\n",
+		"tls without host": "  sandbox:\n    kind: docker\n    docker: {tls_dir: /etc/tls}\n",
+		"a bad scheme":     "  sandbox:\n    kind: docker\n    docker: {host: \"http://sandbox\"}\n",
+		"a relative tls":   "  sandbox:\n    kind: docker\n    docker: {host: \"tcp://sandbox:2376\", tls_dir: tls}\n",
 	} {
 		if _, err := loadFiles(t.Context(), Options{}, []string{write(body)}, credref.Resolver{}); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+}
+
+// A remote daemon is named at start, and one playscape refuses (plain TCP)
+// fails every lease rather than falling back to the local daemon.
+func TestARemoteDockerSandbox(t *testing.T) {
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil { //nolint:gosec // a stand-in CLI
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	s, err := openSandboxWith(t, loaded{}, "", "-sandbox-host=ssh://sandbox")
+	if err != nil || s.String() != "docker/runsc on ssh://sandbox" {
+		t.Fatalf("remote sandbox = %s, %v", s, err)
+	}
+	s, err = openSandboxWith(t, loaded{}, "", "-sandbox-host=tcp://sandbox:2375")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Leaser.Lease(context.Background(), isolation.Request{Run: "r"}); err == nil || !strings.Contains(err.Error(), "TLSDir") {
+		t.Fatalf("plain tcp lease = %v", err)
 	}
 }

@@ -3,6 +3,7 @@ package policy
 import (
 	"errors"
 	"math"
+	"strings"
 	"testing"
 	"time"
 )
@@ -152,15 +153,22 @@ func TestValidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, mut := range map[string]func(*Policy){
-		"no limits":           func(p *Policy) { p.MaxRuns = 0 },
-		"a negative limit":    func(p *Policy) { p.MaxConcurrent = -1 },
-		"no period":           func(p *Policy) { p.Period = "" },
-		"an unknown scope":    func(p *Policy) { p.Scope.Kind = "galaxy" },
-		"a named tenant":      func(p *Policy) { p.Scope.Name = "acme" },
-		"a nameless project":  func(p *Policy) { p.Scope = Scope{Kind: Project} },
-		"a warning over 100":  func(p *Policy) { p.WarnAt = 150 },
-		"approval, not built": func(p *Policy) { p.Action = Approve },
-		"an unknown action":   func(p *Policy) { p.Action = "shrug" },
+		"no limits":                           func(p *Policy) { p.MaxRuns = 0 },
+		"a negative limit":                    func(p *Policy) { p.MaxConcurrent = -1 },
+		"no period":                           func(p *Policy) { p.Period = "" },
+		"an unknown scope":                    func(p *Policy) { p.Scope.Kind = "galaxy" },
+		"a named tenant":                      func(p *Policy) { p.Scope.Name = "acme" },
+		"a nameless project":                  func(p *Policy) { p.Scope = Scope{Kind: Project} },
+		"a warning over 100":                  func(p *Policy) { p.WarnAt = 150 },
+		"approval at no spend or token limit": func(p *Policy) { p.Action = Approve },
+		"approval with no grant":              func(p *Policy) { p.Action = Approve; p.SpendLimit = 10 },
+		"approval granting tokens it has no limit of": func(p *Policy) {
+			p.Action = Approve
+			p.SpendLimit, p.MaxGrant, p.MaxGrantTokens = 10, 5, 100
+		},
+		"a grant without approval": func(p *Policy) { p.SpendLimit, p.MaxGrant = 10, 5 },
+		"a negative grant":         func(p *Policy) { p.Action = Approve; p.SpendLimit, p.MaxGrant = 10, -5 },
+		"an unknown action":        func(p *Policy) { p.Action = "shrug" },
 	} {
 		p := ok
 		mut(&p)
@@ -191,14 +199,14 @@ func TestStoreKeepsNarrowerPoliciesWithinTheTenants(t *testing.T) {
 	if _, err := s.Put("acme", pol(lead, func(p *Policy) { p.MaxLease = 5000 }), "ada", t0); err != nil {
 		t.Fatal(err)
 	}
-	got := s.For("acme", []string{"Launch"}, "lead", "")
+	got := forRun(t, s, "acme", []string{"Launch"}, "lead", "")
 	if len(got) != 3 || got[0].Scope != lead || got[1].Scope != launch || got[2].Scope != tenantScope {
 		t.Fatalf("most specific first: %+v", got)
 	}
-	if len(s.For("acme", nil, "helper", "")) != 1 {
+	if len(forRun(t, s, "acme", nil, "helper", "")) != 1 {
 		t.Fatal("a run in no project, by an agent with no policy, should fall under the tenant's alone")
 	}
-	if len(s.For("globex", []string{"Launch"}, "lead", "")) != 0 || len(s.List("globex")) != 0 {
+	if len(forRun(t, s, "globex", []string{"Launch"}, "lead", "")) != 0 || len(list(t, s, "globex")) != 0 {
 		t.Fatal("another tenant falls under these policies")
 	}
 }
@@ -222,7 +230,7 @@ func TestStoreVersionsAndRemembers(t *testing.T) {
 		t.Fatalf("version after a delete = %d, want 3", third.Version)
 	}
 
-	h := s.History("acme")
+	h := history(t, s, "acme")
 	if len(h) != 4 || h[0].After.MaxRuns != 7 || h[1].After != nil || h[1].Before.MaxRuns != 5 || h[3].Before != nil {
 		t.Fatalf("history = %+v", h)
 	}
@@ -232,15 +240,15 @@ func TestStoreVersionsAndRemembers(t *testing.T) {
 
 	// What was the limit at a moment in the past.
 	for when, want := range map[time.Duration]int{30 * time.Minute: 10, 90 * time.Minute: 5, 4 * time.Hour: 7} {
-		got, ok := s.At("acme", launch, t0.Add(when))
+		got, ok := policyAt(t, s, "acme", launch, t0.Add(when))
 		if !ok || got.MaxRuns != want {
 			t.Errorf("at +%s: %d (found %v), want %d", when, got.MaxRuns, ok, want)
 		}
 	}
-	if _, ok := s.At("acme", launch, t0.Add(150*time.Minute)); ok {
+	if _, ok := policyAt(t, s, "acme", launch, t0.Add(150*time.Minute)); ok {
 		t.Error("a policy was reported for a time when it had been deleted")
 	}
-	if _, ok := s.At("acme", launch, t0.Add(-time.Hour)); ok {
+	if _, ok := policyAt(t, s, "acme", launch, t0.Add(-time.Hour)); ok {
 		t.Error("a policy was reported before it existed")
 	}
 }
@@ -265,18 +273,18 @@ func TestAClientIsAScopeThatCanOnlyTighten(t *testing.T) {
 	if _, err := s.Put("acme", pol(lead, func(p *Policy) { p.MaxConcurrent = 1 }), "ada", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	got := s.For("acme", nil, "lead", "docs-app")
+	got := forRun(t, s, "acme", nil, "lead", "docs-app")
 	if len(got) != 3 || got[0].Scope != lead || got[1].Scope != docs || got[2].Scope != tenantScope {
 		t.Fatalf("most specific first: %+v", got)
 	}
 	// A run no client raised falls under no client's policy.
-	if got := s.For("acme", nil, "helper", ""); len(got) != 1 || got[0].Scope != tenantScope {
+	if got := forRun(t, s, "acme", nil, "helper", ""); len(got) != 1 || got[0].Scope != tenantScope {
 		t.Fatalf("a run with no client: %+v", got)
 	}
-	if got := s.For("acme", nil, "helper", "ops-app"); len(got) != 1 {
+	if got := forRun(t, s, "acme", nil, "helper", "ops-app"); len(got) != 1 {
 		t.Fatalf("another client's run fell under docs-app's policy: %+v", got)
 	}
-	if list := s.List("acme"); list[len(list)-1].Scope != docs {
+	if list := list(t, s, "acme"); list[len(list)-1].Scope != docs {
 		t.Fatalf("clients sort last: %+v", list)
 	}
 }
@@ -300,7 +308,7 @@ func TestForReturnsTheChainNearestFirst(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got := s.For("acme", []string{"Renewals", "Globex", "Field", ""}, "lead", "docs-app")
+	got := forRun(t, s, "acme", []string{"Renewals", "Globex", "Field", ""}, "lead", "docs-app")
 	want := []Scope{lead, docs, renewals, field, tenantScope}
 	if len(got) != len(want) {
 		t.Fatalf("For = %+v, want %v", got, want)
@@ -360,7 +368,7 @@ func TestExceededJudgesSpendAndTokensOnly(t *testing.T) {
 		"a denial outranks":    {[]Applied{{pol(lead, spend(1000)), Usage{Spend: 900}}, {pol(tenantScope, spend(500)), Usage{Spend: 500}}}, Deny, LimitSpend},
 		"unpriced is not cost": {[]Applied{{pol(tenantScope, spend(1000)), Usage{UnpricedCalls: 50, Tokens: 1 << 30}}}, Allow, ""},
 	} {
-		got := Exceeded(tc.applied)
+		got := Exceeded(tc.applied, nil)
 		if got.Verdict != tc.want || got.Limit != tc.limit {
 			t.Errorf("%s: %s on %q, want %s on %q (%s)", name, got.Verdict, got.Limit, tc.want, tc.limit, got.Reason)
 		}
@@ -377,7 +385,7 @@ func TestThresholdsDoNotOverflow(t *testing.T) {
 	if got := Percent(huge/10*9, huge); got != 89 && got != 90 {
 		t.Fatalf("Percent = %d", got)
 	}
-	d := Exceeded([]Applied{{pol(tenantScope, func(p *Policy) { p.SpendLimit = huge }), Usage{Spend: huge / 10 * 9}}})
+	d := Exceeded([]Applied{{pol(tenantScope, func(p *Policy) { p.SpendLimit = huge }), Usage{Spend: huge / 10 * 9}}}, nil)
 	if d.Verdict != Warn {
 		t.Fatalf("90%% of a huge limit = %s", d.Verdict)
 	}
@@ -391,5 +399,55 @@ func TestThresholdsDoNotOverflow(t *testing.T) {
 				t.Fatalf("Reaches(%d, %d, 80) != %v", used, max, want)
 			}
 		}
+	}
+}
+
+// A policy whose action is approve holds a run at its spend or token limit
+// rather than stopping it, and only with the most one approval grants.
+func TestApprovalIsAcceptedAtASpendOrTokenLimitWithItsGrant(t *testing.T) {
+	for name, mut := range map[string]func(*Policy){
+		"spend":  func(p *Policy) { p.SpendLimit, p.MaxGrant = 10_000_000, 5_000_000 },
+		"tokens": func(p *Policy) { p.MaxTokens, p.MaxGrantTokens = 1000, 500 },
+		"both": func(p *Policy) {
+			p.SpendLimit, p.MaxGrant, p.MaxTokens, p.MaxGrantTokens = 10_000_000, 5_000_000, 1000, 500
+		},
+	} {
+		p := pol(tenantScope, func(p *Policy) { p.Action = Approve })
+		mut(&p)
+		if err := p.Validate(); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	parent := pol(tenantScope, func(p *Policy) { p.Action = Approve; p.SpendLimit, p.MaxGrant = 10_000_000, 1_000_000 })
+	child := pol(launch, func(p *Policy) { p.Action = Approve; p.SpendLimit, p.MaxGrant = 5_000_000, 2_000_000 })
+	if err := child.Within(parent); !errors.Is(err, ErrInvalid) {
+		t.Errorf("a project granting more per approval than the workspace: %v", err)
+	}
+}
+
+// At the limit, an approve policy asks for a person and a block policy
+// stops: a block anywhere outranks a hold. What people granted the run raises
+// its scope's limit for it, and the run is held again once it reaches that.
+func TestExceededHoldsARunAtAnApprovePolicysLimitUntilItsGrantRunsOut(t *testing.T) {
+	approve := pol(launch, func(p *Policy) { p.Action = Approve; p.SpendLimit, p.MaxGrant = 10, 5 })
+	block := pol(tenantScope, func(p *Policy) { p.SpendLimit = 100 })
+	at := []Applied{{approve, Usage{Spend: 10}}, {block, Usage{Spend: 10}}}
+
+	if d := Exceeded(at, nil); d.Verdict != NeedsApproval || d.Policy.Scope != launch || d.Limit != LimitSpend {
+		t.Fatalf("at the approve limit = %+v, want needs_approval on the project's spend", d)
+	}
+	if d := Exceeded(at, map[Scope]Grant{launch: {Spend: 5}}); d.Verdict == NeedsApproval || d.Verdict == Deny {
+		t.Fatalf("with $5 granted = %+v, want the run to go on", d)
+	}
+	spent := []Applied{{approve, Usage{Spend: 15}}, {block, Usage{Spend: 15}}}
+	if d := Exceeded(spent, map[Scope]Grant{launch: {Spend: 5}}); d.Verdict != NeedsApproval || !strings.Contains(d.Reason, "granted") {
+		t.Fatalf("once the grant is spent = %+v, want it held again, saying so", d)
+	}
+	if d := Exceeded(spent, map[Scope]Grant{tenantScope: {Spend: 50}}); d.Verdict != NeedsApproval {
+		t.Fatalf("a grant in another scope = %+v, want it not to count here", d)
+	}
+	over := []Applied{{approve, Usage{Spend: 100}}, {block, Usage{Spend: 100}}}
+	if d := Exceeded(over, map[Scope]Grant{launch: {Spend: 1000}}); d.Verdict != Deny || d.Policy.Scope != tenantScope {
+		t.Fatalf("at a block limit = %+v, want it stopped by the workspace's policy", d)
 	}
 }

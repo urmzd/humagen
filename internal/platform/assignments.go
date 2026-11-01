@@ -32,22 +32,28 @@ func (p *Platform) SeesAssignment(who auth.Principal, a operations.Assignment) b
 	seer := p.Seer(who)
 	return seer.Project(a.Project) && seer.Place(Place{Project: a.Project, Thread: a.Thread}) && seer.Agent(a.Agent)
 }
-func (p *Platform) Assignments(who auth.Principal, limit int, agentFilter ...string) []operations.Assignment {
+func (p *Platform) Assignments(who auth.Principal, limit int, agentFilter ...string) ([]operations.Assignment, error) {
 	seer := p.Seer(who)
 	agent := ""
 	if len(agentFilter) > 0 {
 		agent = agentFilter[0]
 	}
-	out := p.Operations.Assignments(who.Tenant, limit, func(a operations.Assignment) bool {
+	out, err := p.Operations.Assignments(who.Tenant, limit, func(a operations.Assignment) bool {
 		return (agent == "" || a.Agent == agent) && seer.Project(a.Project) && seer.Place(Place{Project: a.Project, Thread: a.Thread}) && seer.Agent(a.Agent)
 	})
+	if err != nil {
+		return nil, err
+	}
 	for i, a := range out {
 		out[i] = p.shownAssignment(who, a)
 	}
-	return out
+	return out, nil
 }
 func (p *Platform) Assignment(who auth.Principal, id string) (operations.Assignment, error) {
-	a, ok := p.Operations.Assignment(who.Tenant, id)
+	a, ok, err := p.Operations.Assignment(who.Tenant, id)
+	if err != nil {
+		return operations.Assignment{}, err
+	}
 	if !ok || !p.SeesAssignment(who, a) {
 		return operations.Assignment{}, operations.ErrNotFound
 	}
@@ -83,7 +89,10 @@ func (p *Platform) SetAssignment(ctx context.Context, who auth.Principal, a oper
 	if err := p.Available(who.Tenant, a.Project, a.Agent); err != nil {
 		return operations.Assignment{}, err
 	}
-	old, exists := p.Operations.Assignment(who.Tenant, a.ID)
+	old, exists, err := p.Operations.Assignment(who.Tenant, a.ID)
+	if err != nil {
+		return operations.Assignment{}, err
+	}
 	if err := p.prepareSourceAssignment(ctx, who, &a, old, exists); err != nil {
 		return operations.Assignment{}, err
 	}
@@ -178,7 +187,10 @@ func (p *Platform) RunAssignment(ctx context.Context, who auth.Principal, id str
 	if err != nil {
 		return runs.Run{}, err
 	}
-	raw, _ := p.Operations.Assignment(who.Tenant, id)
+	raw, _, err := p.Operations.Assignment(who.Tenant, id)
+	if err != nil {
+		return runs.Run{}, err
+	}
 	a = raw
 	if a.Owner != who.Subject && !who.Can(auth.ProjectsGovern) {
 		return runs.Run{}, ErrForbidden
@@ -218,7 +230,10 @@ func (p *Platform) RunAssignment(ctx context.Context, who auth.Principal, id str
 		}
 		manualTagID := "assignment-" + assignmentSchedule(who.Tenant, id) + "-" + strconv.Itoa(a.Version-1)
 		if a.Cron != "" && a.RunID != runtime.RunID(who.Tenant, manualTagID) {
-			invocation, ok := p.Operations.Invocation(who.Tenant, a.ID)
+			invocation, ok, err := p.Operations.Invocation(who.Tenant, a.ID)
+			if err != nil {
+				return runs.Run{}, err
+			}
 			if !ok {
 				if err := p.Operations.BlockAssignment(who.Tenant, a.ID, "This older clock reservation has no exact invocation record. Its owner must review it before starting new work.", p.now()); err != nil {
 					return runs.Run{}, err
@@ -261,7 +276,10 @@ func (p *Platform) admitAssignment(tag event.Envelope) error {
 	if id == "" {
 		return nil
 	}
-	a, ok := p.Operations.Assignment(tag.Tenant, id)
+	a, ok, err := p.Operations.Assignment(tag.Tenant, id)
+	if err != nil {
+		return err
+	}
 	if !ok {
 		return operations.ErrNotFound
 	}
@@ -313,41 +331,60 @@ func (p *Platform) admitAssignment(tag event.Envelope) error {
 func (p *Platform) settleOperations(ctx context.Context) {
 	// Reservations survive a crash; only a ledger-backed terminal run changes
 	// them. The bounded store caps this recovery scan.
-	for _, tenant := range p.Operations.Tenants() {
-		p.reconcileOperationAttention(tenant)
-		p.pollSourceAssignments(ctx, tenant)
-		if notices, err := p.Operations.Due(tenant, p.now()); err != nil {
-			p.log.Error("platform: operation deadlines could not be kept", "error", err)
-		} else {
-			for _, n := range notices {
-				if n.Kind == "assignment" {
-					if a, ok := p.Operations.Assignment(tenant, n.ID); ok && a.Schedule != "" {
-						if err := p.Schedules.SetPaused(tenant, a.Schedule, true); err != nil {
-							p.log.Error("platform: assignment attention schedule pause could not be kept", "error", err)
-						}
+	err := p.Operations.EachTenant(func(tenant string) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		p.settleTenantOperations(ctx, tenant)
+		return nil
+	})
+	if err != nil && ctx.Err() == nil {
+		p.log.Error("platform: operation tenants could not be read", "error", err)
+	}
+}
+
+func (p *Platform) settleTenantOperations(ctx context.Context, tenant string) {
+	p.reconcileOperationAttention(tenant)
+	p.pollSourceAssignments(ctx, tenant)
+	if notices, err := p.Operations.Due(tenant, p.now()); err != nil {
+		p.log.Error("platform: operation deadlines could not be kept", "error", err)
+	} else {
+		for _, n := range notices {
+			if n.Kind == "assignment" {
+				a, ok, err := p.Operations.Assignment(tenant, n.ID)
+				if err != nil {
+					p.log.Error("platform: assignment could not be read", "error", err)
+				}
+				if ok && a.Schedule != "" {
+					if err := p.Schedules.SetPaused(tenant, a.Schedule, true); err != nil {
+						p.log.Error("platform: assignment attention schedule pause could not be kept", "error", err)
 					}
 				}
-				p.operationEscalation(tenant, n.Kind, n.ID, n.Project, n.Thread, n.Run, n.Agent, n.Owner, n.Reason)
 			}
+			p.operationEscalation(tenant, n.Kind, n.ID, n.Project, n.Thread, n.Run, n.Agent, n.Owner, n.Reason)
 		}
-		after := ""
-		if v, ok := p.assignmentSettlementCursor.Load(tenant); ok {
-			after = v.(string)
+	}
+	after := ""
+	if v, ok := p.assignmentSettlementCursor.Load(tenant); ok {
+		after = v.(string)
+	}
+	pending, next, err := p.Operations.AssignmentPage(tenant, after, operations.MaxResults, func(a operations.Assignment) bool {
+		return a.State == operations.InProgress || (a.State == operations.NeedsPerson && a.DeadlineMissed && a.RunID != "")
+	})
+	if err != nil {
+		p.log.Error("platform: assignments could not be read", "error", err)
+		return
+	}
+	p.assignmentSettlementCursor.Store(tenant, next)
+	for _, a := range pending {
+		run, err := p.Runs.Get(tenant, a.RunID)
+		if errors.Is(err, runs.ErrNotFound) {
+			p.recoverAssignmentInvocation(ctx, tenant, a)
+			continue
 		}
-		pending, next := p.Operations.AssignmentPage(tenant, after, operations.MaxResults, func(a operations.Assignment) bool {
-			return a.State == operations.InProgress || (a.State == operations.NeedsPerson && a.DeadlineMissed && a.RunID != "")
-		})
-		p.assignmentSettlementCursor.Store(tenant, next)
-		for _, a := range pending {
-			run, err := p.Runs.Get(tenant, a.RunID)
-			if errors.Is(err, runs.ErrNotFound) {
-				p.recoverAssignmentInvocation(ctx, tenant, a)
-				continue
-			}
-			if err == nil && run.Status.Terminal() {
-				if err := p.Operations.Settle(tenant, run.ID, run.Status == runs.Completed, p.now()); err != nil {
-					p.log.Error("platform: assignment recovery failed", "error", err)
-				}
+		if err == nil && run.Status.Terminal() {
+			if err := p.Operations.Settle(tenant, run.ID, run.Status == runs.Completed, p.now()); err != nil {
+				p.log.Error("platform: assignment recovery failed", "error", err)
 			}
 		}
 	}

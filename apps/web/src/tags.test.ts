@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { insertTag, matching, type TagOption, tagAt, tagOptions } from "./tags.ts";
+import {
+  insertTag,
+  matching,
+  mentionsIn,
+  type TagOption,
+  tagAt,
+  tagOptions,
+  withMention,
+  withoutMention,
+} from "./tags.ts";
 
 const words = { experts: (t: string) => (t ? `Experts on ${t}` : "Every expert") };
 
@@ -175,4 +184,33 @@ test("retired routing never appears even with cached expert kinds and topics", (
     options.map((o) => o.token),
     [],
   );
+});
+
+test("a draft's agents are its mentions: once each, in order, starting a word, outside code", () => {
+  const agents = ["lead", "helper", "writer"];
+  assert.deepEqual(mentionsIn("@lead and (@helper) then @lead again", agents), ["lead", "helper"]);
+  assert.deepEqual(mentionsIn("mail ada@lead.com about `@writer` and @nobody", agents), []);
+  assert.deepEqual(mentionsIn("@leader is not @lead-ish", agents), []);
+  assert.deepEqual(mentionsIn("", agents), []);
+});
+
+test("a picked agent is mentioned at the caret as the @ completion writes it, and only once", () => {
+  assert.deepEqual(withMention("", 0, "lead"), { text: "@lead ", caret: 6 });
+  assert.deepEqual(withMention("ask about launch", 3, "lead"), {
+    text: "ask @lead about launch",
+    caret: 10,
+  });
+  assert.deepEqual(withMention("plan it", 7, "helper"), { text: "plan it @helper ", caret: 16 });
+  assert.deepEqual(withMention("@lead plan", 10, "lead"), { text: "@lead plan", caret: 10 });
+  // As many as are picked: no cap.
+  let draft = "";
+  for (const n of ["a1", "a2", "a3", "a4", "a5", "a6", "a7"])
+    draft = withMention(draft, draft.length, n).text;
+  assert.deepEqual(mentionsIn(draft, ["a1", "a2", "a3", "a4", "a5", "a6", "a7"]).length, 7);
+});
+
+test("taking a mention out removes its words and the space after, and nothing else", () => {
+  assert.equal(withoutMention("@lead @helper plan it", "lead"), "@helper plan it");
+  assert.equal(withoutMention("ask @helper now and @helper later", "helper"), "ask now and later");
+  assert.equal(withoutMention("@leader stays", "lead"), "@leader stays");
 });

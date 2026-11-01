@@ -52,14 +52,14 @@ func TestCredentialsSurviveARestart(t *testing.T) {
 			t.Fatal(err)
 		}
 		again := open(t, st, reopened)
-		got := again.List("acme", "ada")
+		got := list(t, again, "acme", "ada")
 		if len(got) != 2 || got[0].Provider != "drive" || got[0].Kind != credentials.Value || got[1].Ref != "op://Ada/issues/token" {
 			t.Fatalf("after a restart ada holds %+v", got)
 		}
-		if v, ok := again.Value("acme", "ada", "drive"); !ok || v != token {
+		if v, ok, _ := again.Value("acme", "ada", "drive"); !ok || v != token {
 			t.Fatalf("the stored value came back as %q, %v", v, ok)
 		}
-		if c, ok := again.Get("acme", "okta|00u/bo", "issues"); !ok || c.Ref != "keychain:issues/bo" {
+		if c, ok, _ := again.Get("acme", "okta|00u/bo", "issues"); !ok || c.Ref != "keychain:issues/bo" {
 			t.Fatalf("a subject with a slash in it lost its credential: %+v, %v", c, ok)
 		}
 	})
@@ -72,14 +72,14 @@ func TestAValueIsNeverShown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, _ := json.Marshal(s.List("acme", "ada"))
+	raw, _ := json.Marshal(list(t, s, "acme", "ada"))
 	in := credentials.Input{Value: token}
 	for _, shown := range []string{string(raw), fmt.Sprintf("%v %+v %#v %s", c, c, c, c), fmt.Sprintf("%v %+v %#v %s", in, in, in, in)} {
 		if strings.Contains(shown, token) {
 			t.Fatalf("a value was shown: %s", shown)
 		}
 	}
-	if _, ok := s.Value("acme", "ada", "issues"); ok {
+	if _, ok, _ := s.Value("acme", "ada", "issues"); ok {
 		t.Fatal("a provider with no credential gave a value")
 	}
 }
@@ -99,7 +99,7 @@ func TestAValueIsKeptWhereClientSecretsAreAndApartFromThem(t *testing.T) {
 	if err := secrets.Drop("acme", "ada"); err != nil {
 		t.Fatal(err)
 	}
-	if v, ok := s.Value("acme", "ada", "drive"); !ok || v != token {
+	if v, ok, _ := s.Value("acme", "ada", "drive"); !ok || v != token {
 		t.Fatal("dropping a client named like a person dropped the person's value")
 	}
 }
@@ -117,7 +117,7 @@ func TestAValueNoLongerHeldIsForgotten(t *testing.T) {
 	if v, _ := secrets.Get("acme", "person/ada", "drive"); v != "" {
 		t.Fatal("a value replaced by a reference is still held")
 	}
-	if _, ok := s.Value("acme", "ada", "drive"); ok {
+	if _, ok, _ := s.Value("acme", "ada", "drive"); ok {
 		t.Fatal("a reference gave a value")
 	}
 	if _, err := s.Put("acme", "ada", "drive", credentials.Input{Value: token}, at); err != nil {
@@ -141,10 +141,10 @@ func TestCredentialsArePerPersonAndPerWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, who := range [][2]string{{"acme", "bo"}, {"globex", "ada"}} {
-		if _, ok := s.Get(who[0], who[1], "drive"); ok {
+		if _, ok, _ := s.Get(who[0], who[1], "drive"); ok {
 			t.Errorf("%s in %s holds ada's credential", who[1], who[0])
 		}
-		if _, ok := s.Value(who[0], who[1], "drive"); ok {
+		if _, ok, _ := s.Value(who[0], who[1], "drive"); ok {
 			t.Errorf("%s in %s reads ada's value", who[1], who[0])
 		}
 		if err := s.Delete(who[0], who[1], "drive"); !errors.Is(err, credentials.ErrNotFound) {
@@ -175,7 +175,7 @@ func TestOnlyACredentialOfAValidFormIsKept(t *testing.T) {
 			t.Errorf("%s: %v, want ErrInvalid", name, err)
 		}
 	}
-	if got := s.List("acme", "ada"); len(got) != 0 {
+	if got := list(t, s, "acme", "ada"); len(got) != 0 {
 		t.Fatalf("a refused credential was kept: %+v", got)
 	}
 	// A secret pasted where a reference belongs is not said back.
@@ -215,19 +215,19 @@ func TestAFailedWriteChangesNothing(t *testing.T) {
 	if _, err := s.Put("acme", "ada", "drive", credentials.Input{Value: "second"}, at); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("a failed write = %v", err)
 	}
-	if v, _ := s.Value("acme", "ada", "drive"); v != "first" {
+	if v, _, _ := s.Value("acme", "ada", "drive"); v != "first" {
 		t.Fatalf("a failed write left the value %q", v)
 	}
 	if _, err := s.Put("acme", "ada", "drive", credentials.Input{Ref: "env:HUMAGEN_X"}, at); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("a failed write = %v", err)
 	}
-	if c, _ := s.Get("acme", "ada", "drive"); c.Kind != credentials.Value {
+	if c, _, _ := s.Get("acme", "ada", "drive"); c.Kind != credentials.Value {
 		t.Fatalf("a failed write changed the record: %+v", c)
 	}
 	if err := s.Delete("acme", "ada", "drive"); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("a failed delete = %v", err)
 	}
-	if v, _ := s.Value("acme", "ada", "drive"); v != "first" {
+	if v, _, _ := s.Value("acme", "ada", "drive"); v != "first" {
 		t.Fatal("a failed delete dropped the value")
 	}
 }
@@ -243,7 +243,7 @@ func TestLastAgentUseIsDurableAndNeverChangesCredentialRevision(t *testing.T) {
 			t.Fatal(err)
 		}
 		s = open(t, st, nil)
-		held, ok := s.Get("acme", "ada", "issues")
+		held, ok, _ := s.Get("acme", "ada", "issues")
 		if !ok || !held.UpdatedAt.Equal(at) || !held.LastUsedAt.Equal(at.Add(time.Hour)) {
 			t.Fatalf("access metadata: %+v", held)
 		}
@@ -251,4 +251,13 @@ func TestLastAgentUseIsDurableAndNeverChangesCredentialRevision(t *testing.T) {
 			t.Fatal("another person's access recorded")
 		}
 	})
+}
+
+func list(t *testing.T, s *credentials.Store, tenant, subject string) []credentials.Credential {
+	t.Helper()
+	got, err := s.List(tenant, subject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
 }

@@ -28,6 +28,14 @@
 // name (through WithTaken) or a reserved word gets a suffix: dana-2. Once a
 // person has a name their handle does not change, so a tag keeps meaning the
 // same person.
+//
+// # Storage
+//
+// The directory reads and writes the database per request (pkg/state, per
+// request): it holds nothing in memory, so any number of processes on one
+// database agree, and it does not need pkg/state's single-writer lock. A
+// handle is claimed by creating its index record in the same write as the
+// person, so two processes never give one handle to two people.
 package people
 
 import (
@@ -184,14 +192,17 @@ func rolesOf(roles []string) ([]string, error) {
 	return slices.Compact(out), nil
 }
 
-// fold takes the accents off letters, so "Zoë Núñez" makes zoe-nunez.
-var fold = transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
+// fold takes the accents off letters, so "Zoë Núñez" makes zoe-nunez. A
+// chain keeps state while it runs, so each use makes its own.
+func fold() transform.Transformer {
+	return transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
+}
 
 // slug is text as a handle: lower case, accents folded, every run of anything
 // else one dash, at most MaxHandle characters. It is empty when nothing is
 // left.
 func slug(s string) string {
-	if folded, _, err := transform.String(fold, s); err == nil {
+	if folded, _, err := transform.String(fold(), s); err == nil {
 		s = folded
 	}
 	var b strings.Builder

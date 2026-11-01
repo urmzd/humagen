@@ -13,7 +13,7 @@ import (
 
 func TestProjectPinsAreIndependentBoundedAndPrivate(t *testing.T) {
 	s := NewStore()
-	if got := s.Get("acme", "ada").PinnedProjects; got == nil || len(got) != 0 {
+	if got := get(t, s, "acme", "ada").PinnedProjects; got == nil || len(got) != 0 {
 		t.Fatalf("default project pins = %#v", got)
 	}
 	if _, err := s.SetPinned("acme", "ada", []string{"t1"}); err != nil {
@@ -24,7 +24,7 @@ func TestProjectPinsAreIndependentBoundedAndPrivate(t *testing.T) {
 		t.Fatalf("pin project = %+v, %v", got, err)
 	}
 	got.PinnedProjects[0] = "Changed"
-	if got := s.Get("acme", "ada").PinnedProjects; got[0] != "Launch" {
+	if got := get(t, s, "acme", "ada").PinnedProjects; got[0] != "Launch" {
 		t.Fatalf("caller mutated stored project pins: %v", got)
 	}
 	for _, names := range [][]string{{""}, {"bad/path"}, {"<b>"}, make([]string, MaxPinned+1)} {
@@ -39,7 +39,7 @@ func TestProjectPinsAreIndependentBoundedAndPrivate(t *testing.T) {
 	if err != nil || !slices.Equal(got.PinnedProjects, []string{"Launch", "~"}) {
 		t.Fatalf("another preference dropped project pins: %+v, %v", got, err)
 	}
-	if len(s.Get("acme", "bo").PinnedProjects) != 0 || len(s.Get("other", "ada").PinnedProjects) != 0 {
+	if len(get(t, s, "acme", "bo").PinnedProjects) != 0 || len(get(t, s, "other", "ada").PinnedProjects) != 0 {
 		t.Fatal("project pins escaped their person or tenant")
 	}
 }
@@ -61,10 +61,10 @@ func TestProjectPinsSurviveRestartAndOlderPreferences(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := again.Get("acme", "ada").PinnedProjects; !slices.Equal(got, []string{"Launch", "~"}) {
+		if got := get(t, again, "acme", "ada").PinnedProjects; !slices.Equal(got, []string{"Launch", "~"}) {
 			t.Fatalf("after restart = %v", got)
 		}
-		if got := again.Get("acme", "bo"); got.PinnedProjects == nil || len(got.PinnedProjects) != 0 || !slices.Equal(got.Pinned, []string{"t1"}) {
+		if got := get(t, again, "acme", "bo"); got.PinnedProjects == nil || len(got.PinnedProjects) != 0 || !slices.Equal(got.Pinned, []string{"t1"}) {
 			t.Fatalf("older preferences = %+v", got)
 		}
 	})

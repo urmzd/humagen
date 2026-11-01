@@ -70,7 +70,7 @@ func TestVerifiedSuggestionsDeduplicateDecisionsAndReplay(t *testing.T) {
 		if _, err := replay.Get("other", first.ID); !errors.Is(err, ErrNotFound) {
 			t.Fatal("cross-tenant suggestion visible")
 		}
-		if rows := replay.List("tenant", "", "", 1, func(Suggestion) bool { return false }); len(rows) != 0 {
+		if rows, err := replay.List("tenant", "", "", 1, func(Suggestion) bool { return false }); err != nil || len(rows) != 0 {
 			t.Fatal("hidden suggestion counted")
 		}
 	})
@@ -94,19 +94,31 @@ func TestAutomaticRelationTracksLatestVerifiedAttributes(t *testing.T) {
 }
 
 func TestSuggestionCapacityFailsClosedAndVisibilityPrecedesLimit(t *testing.T) {
-	s := NewSuggestions()
-	s.by["tenant"] = map[string]Suggestion{}
-	for i := 0; i < MaxSuggestions; i++ {
-		id := fmt.Sprintf("old-%d", i)
-		s.by["tenant"][id] = Suggestion{ID: id, Project: "Hidden", State: "suggested"}
+	st := state.NewMemory()
+	s, _ := OpenSuggestions(st)
+	kept := state.NewTable[Suggestion](st, suggestionsNamespace)
+	for i := 0; i < 1500; i++ {
+		id := fmt.Sprintf("link-old-%04d", i)
+		if err := kept.Put("tenant", id, Suggestion{ID: id, Project: "Hidden", State: "suggested"}); err != nil {
+			t.Fatal(err)
+		}
 	}
-	s.by["tenant"]["old-9999"] = Suggestion{ID: "visible", Project: "Visible", State: "suggested"}
-	rows := s.List("tenant", "", "suggested", 1, func(row Suggestion) bool { return row.Project == "Visible" })
-	if len(rows) != 1 || rows[0].ID != "visible" {
-		t.Fatal("hidden records consumed visible limit")
+	if err := kept.Put("tenant", "link-zz-visible", Suggestion{ID: "link-zz-visible", Project: "Visible", State: "suggested"}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.List("tenant", "", "suggested", 1, func(row Suggestion) bool { return row.Project == "Visible" })
+	if err != nil || len(rows) != 1 || rows[0].ID != "link-zz-visible" {
+		t.Fatal("hidden records consumed visible limit", rows, err)
+	}
+	// The count is what caps the tenant: it is at the bound.
+	if err := state.NewTable[int](st, suggestionsNamespace).Put("tenant", suggestionCount, MaxSuggestions); err != nil {
+		t.Fatal(err)
 	}
 	resource := Resource{Provider: "github", ID: "new/repo", Attributes: map[string][]string{"repository": {"new/repo"}}}
 	if _, err := s.Observe("tenant", "app", "", resource, []Match{{Project: "Visible", Mode: Suggest, Rules: []string{}}}, time.Now()); !errors.Is(err, ErrLimit) {
 		t.Fatal("capacity accepted another relation", err)
+	}
+	if _, err := s.Attach("tenant", "docs", resource, "Visible", "", time.Now()); !errors.Is(err, ErrLimit) {
+		t.Fatal("capacity accepted another attachment", err)
 	}
 }

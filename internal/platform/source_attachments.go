@@ -27,9 +27,12 @@ func (p *Platform) SourceAttachmentsAs(who auth.Principal, name string) ([]Knowl
 	if _, err := p.SourceAs(who, name); err != nil {
 		return nil, err
 	}
-	rows := p.SourceSuggestions.List(who.Tenant, "", "linked", 200, func(row sourcelinks.Suggestion) bool {
+	rows, err := p.SourceSuggestions.List(who.Tenant, "", "linked", 200, func(row sourcelinks.Suggestion) bool {
 		return row.Knowledge == name && p.sourceSuggestionVisible(who, row) && p.automaticSourceLinkActive(who.Tenant, row)
 	})
+	if err != nil {
+		return nil, err
+	}
 	out := []KnowledgeAttachment{}
 	for _, row := range rows {
 		target := KnowledgeAttachment{name, row.Project, row.Channel}
@@ -105,9 +108,15 @@ func (p *Platform) knowledgeAtPlace(tenant, project, channel string) []projects.
 		out = append(out, projects.KnowledgeSource{Name: name, From: from})
 	}
 	linked := func(pr, ch string) {
-		for _, row := range p.SourceSuggestions.List(tenant, "", "linked", 200, func(row sourcelinks.Suggestion) bool {
+		rows, err := p.SourceSuggestions.List(tenant, "", "linked", 200, func(row sourcelinks.Suggestion) bool {
 			return row.Knowledge != "" && projects.NameOf(row.Project) == pr && row.Channel == ch && p.SourceMayPublishIn(tenant, row.Knowledge, row.Project)
-		}) {
+		})
+		if err != nil {
+			// Fail closed: an attachment that cannot be read grounds nothing.
+			p.log.Warn("platform: attached sources could not be read", "tenant", tenant, "project", pr, "error", err)
+			return
+		}
+		for _, row := range rows {
 			if p.automaticSourceLinkActive(tenant, row) {
 				add(row.Knowledge, pr)
 			}

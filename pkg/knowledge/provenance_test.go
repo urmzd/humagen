@@ -44,8 +44,9 @@ func TestEvidenceWritesBeforeUseAndSurvivesRestart(t *testing.T) {
 		if kept.Provider != "drive" {
 			t.Fatal("query-time provider authority lost across restart", kept.Provider)
 		}
-		proofs := replay.ForRun("tenant", "run")
-		if len(proofs) != 1 || proofs[0].Provider != "drive" || len(replay.ForRun("other", "run")) != 0 {
+		proofs, _ := replay.ForRun("tenant", "run")
+		others, _ := replay.ForRun("other", "run")
+		if len(proofs) != 1 || proofs[0].Provider != "drive" || len(others) != 0 {
 			t.Fatal("exact-run query authority lost its tenant binding", proofs)
 		}
 		proofs[0].Provider = "manual"
@@ -133,14 +134,14 @@ func TestSourceRunReferencesFilterHiddenBeforeBound(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	refs := s.RunReferences("tenant", "docs", 1, func(id string, _ CitationEvidence) bool { return id == "z-visible" })
+	refs, _ := s.RunReferences("tenant", "docs", 1, func(id string, _ CitationEvidence) bool { return id == "z-visible" })
 	if len(refs) != 1 || refs[0] != "z-visible" {
 		t.Fatal("hidden references consumed public bound", refs)
 	}
-	if len(s.RunReferences("other", "docs", 50, func(string, CitationEvidence) bool { return true })) != 0 {
+	if refs, _ := s.RunReferences("other", "docs", 50, func(string, CitationEvidence) bool { return true }); len(refs) != 0 {
 		t.Fatal("cross tenant relationships exposed")
 	}
-	if len(s.RunReferences("tenant", "docs", 50, nil)) != 0 {
+	if refs, _ := s.RunReferences("tenant", "docs", 50, nil); len(refs) != 0 {
 		t.Fatal("missing visibility accepted")
 	}
 }

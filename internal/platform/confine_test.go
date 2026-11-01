@@ -122,7 +122,7 @@ func TestAPrivateThreadsHousekeepingStaysInIt(t *testing.T) {
 		}
 	}
 	for _, owner := range []string{"lead", "project:Field"} {
-		for _, n := range p.Memory.List(tenant, owner) {
+		for _, n := range notesOf(t, p.Memory, tenant, owner) {
 			if strings.Contains(n.Text, "secret") {
 				t.Fatalf("a private thread proposed a note for %s: %+v", owner, n)
 			}

@@ -101,7 +101,7 @@ func (p *Platform) afterTurn(ctx context.Context, run runs.Run) {
 	}
 	// A person's opt-in to remember how they work creates private proposals,
 	// never shared project memory. Review is still required.
-	if cfg.MemoryAgent != "" && run.Actor.User != "" && !run.Actor.Bot && p.privateThread(run.Tenant, run.Thread) && p.Prefs.Get(run.Tenant, run.Actor.User).Personal.Remember {
+	if cfg.MemoryAgent != "" && run.Actor.User != "" && !run.Actor.Bot && p.privateThread(run.Tenant, run.Thread) && p.PreferencesOf(run.Tenant, run.Actor.User).Personal.Remember {
 		p.startHook(ctx, run, cfg.MemoryAgent, hookMemory, memory.PersonalOwner(run.Actor.User), fmt.Sprintf(memoryPrompt, run.Agent, clip(run.Text, 4000), run.Agent, clip(run.Answer, 4000)))
 	}
 	// What is said in a private thread is its participants' alone: nothing

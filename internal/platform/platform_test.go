@@ -269,18 +269,18 @@ func TestARunThatExhaustsItsRetriesEnds(t *testing.T) {
 		got, _ := p.Runs.Get(tenant, r.ID)
 		// A run reads failed before its ending is dealt with, so its alert
 		// is waited for as well.
-		if got.Status == runs.Failed && len(p.Alerts.Alerts(tenant)) > 0 {
+		if got.Status == runs.Failed && len(kept(p.Alerts.Alerts(tenant))) > 0 {
 			if got.Error == "" {
 				t.Fatal("a failed run carries no error")
 			}
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("run is %q after its retries, with alerts %+v: it would look alive forever", got.Status, p.Alerts.Alerts(tenant))
+			t.Fatalf("run is %q after its retries, with alerts %+v: it would look alive forever", got.Status, kept(p.Alerts.Alerts(tenant)))
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	raised := p.Alerts.Alerts(tenant)
+	raised := kept(p.Alerts.Alerts(tenant))
 	if len(raised) != 1 || raised[0].RunID != r.ID {
 		t.Fatalf("alerts = %+v, want exactly one for the run", raised)
 	}
@@ -334,7 +334,7 @@ func TestHousekeepingTitlesAndRemembers(t *testing.T) {
 		for _, th := range p.Runs.Threads(tenant, 0) {
 			named = named || (th.ID == first.Thread && th.Named && th.Title != "Plan the launch")
 		}
-		notes := p.Memory.List(tenant, "lead")
+		notes := notesOf(t, p.Memory, tenant, "lead")
 		if named && len(notes) > 0 {
 			// What the memory agent wrote is a proposal, not yet a memory.
 			if notes[0].Source != "consolidated" || notes[0].Status != "pending" || len(notes) > 3 {
@@ -349,7 +349,7 @@ func TestHousekeepingTitlesAndRemembers(t *testing.T) {
 	}
 	// The housekeeping agent itself gets no title and no memory: a system run
 	// must not start more system runs.
-	if got := p.Memory.List(tenant, "scribe"); len(got) != 0 {
+	if got := notesOf(t, p.Memory, tenant, "scribe"); len(got) != 0 {
 		t.Fatalf("the memory agent was given memory of its own housekeeping: %v", got)
 	}
 	system := 0
@@ -374,7 +374,7 @@ func TestHousekeepingTitlesAndRemembers(t *testing.T) {
 		t.Fatalf("an unapproved proposal reached the agent: %q", got)
 	}
 	var ids []string
-	for _, n := range p.Memory.List(tenant, "lead") {
+	for _, n := range notesOf(t, p.Memory, tenant, "lead") {
 		ids = append(ids, n.ID)
 	}
 	if n, err := p.Memory.Approve(tenant, "lead", ids); err != nil || n == 0 {
@@ -454,12 +454,12 @@ func TestConcurrentRunsNeverExceedALimit(t *testing.T) {
 		}
 	}
 	scope := policy.Scope{Kind: policy.Tenant}
-	if got := p.Usage.Usage(tenant, scope, policy.PeriodStart(policy.Day, time.Now())); got.Runs != limit {
+	if got := usageOf(p, tenant, scope, policy.PeriodStart(policy.Day, time.Now())); got.Runs != limit {
 		t.Fatalf("the ledger counted %d runs, want %d", got.Runs, limit)
 	}
 	// One alert for the limit, however many runs it refused.
 	budget := 0
-	for _, a := range p.Alerts.Alerts(tenant) {
+	for _, a := range kept(p.Alerts.Alerts(tenant)) {
 		if a.Kind == "budget" && a.Severity == "critical" {
 			budget++
 		}
@@ -472,7 +472,7 @@ func TestConcurrentRunsNeverExceedALimit(t *testing.T) {
 	// reads are not one step, so compare once they agree or the runs are done.
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		live, replayed := p.Usage.Usage(tenant, scope, time.Time{}), usage.Rebuild(p.Usage.Entries()).Usage(tenant, scope, time.Time{})
+		live, replayed := usageOf(p, tenant, scope, time.Time{}), ledgerUsage(usage.Rebuild(entriesOf(p, tenant)), tenant, scope, time.Time{})
 		if reflect.DeepEqual(live, replayed) {
 			break
 		}
@@ -497,7 +497,7 @@ func TestAConcurrencyLimitFreesUp(t *testing.T) {
 	}
 	await(t, p, first.ID, runs.Completed)
 	deadline := time.Now().Add(5 * time.Second)
-	for p.Usage.Usage(tenant, scope, time.Time{}).Concurrent != 0 {
+	for usageOf(p, tenant, scope, time.Time{}).Concurrent != 0 {
 		if time.Now().After(deadline) {
 			t.Fatal("a finished run still holds its place")
 		}
@@ -513,7 +513,10 @@ func TestAConcurrencyLimitFreesUp(t *testing.T) {
 }
 
 func TestSchedules(t *testing.T) {
-	var s platform.Schedules
+	s, err := platform.OpenSchedules(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	every := cron.Schedule{Name: "nightly", Expression: "0 2 * * *", Agent: "lead", Text: "report", Tenant: tenant}
 	if err := s.Add(every, platform.About{}); err != nil {
 		t.Fatal(err)
@@ -526,7 +529,7 @@ func TestSchedules(t *testing.T) {
 	if err := s.Add(bad, platform.About{}); err == nil {
 		t.Fatal("an invalid expression was stored")
 	}
-	if got := s.List("globex"); len(got) != 0 {
+	if got, err := s.List("globex"); err != nil || len(got) != 0 {
 		t.Fatalf("other tenant listed %d schedules", len(got))
 	}
 	if err := s.Remove("globex", "nightly"); !errors.Is(err, platform.ErrScheduleNotFound) {
@@ -535,14 +538,17 @@ func TestSchedules(t *testing.T) {
 	if err := s.Remove(tenant, "nightly"); err != nil {
 		t.Fatal(err)
 	}
-	if got := s.List(tenant); len(got) != 0 {
+	if got, err := s.List(tenant); err != nil || len(got) != 0 {
 		t.Fatalf("still listed: %v", got)
 	}
 }
 
 func TestReplacingAScheduleKeepsItsPlaceAndStartsAfresh(t *testing.T) {
 	ctx := context.Background()
-	var s platform.Schedules
+	s, err := platform.OpenSchedules(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	daily := cron.Schedule{Name: "nightly", Expression: "0 2 * * *", Agent: "lead", Text: "report", Tenant: tenant, Context: map[string]string{"created_by": "ada"}}
 	if err := s.Add(daily, platform.About{Description: "The nightly report"}); err != nil {
 		t.Fatal(err)
@@ -565,8 +571,8 @@ func TestReplacingAScheduleKeepsItsPlaceAndStartsAfresh(t *testing.T) {
 	if err := s.Replace(other, platform.About{}); !errors.Is(err, platform.ErrScheduleNotFound) {
 		t.Fatalf("another tenant's schedule: %v", err)
 	}
-	if got, _, _ := s.Get(tenant, "nightly"); got.Expression != "0 2 * * *" || s.About("nightly").Description != "The nightly report" {
-		t.Fatalf("a refused edit changed the schedule: %+v %+v", got, s.About("nightly"))
+	if got, _ := s.Entry(tenant, "nightly"); got.Expression != "0 2 * * *" || got.About.Description != "The nightly report" {
+		t.Fatalf("a refused edit changed the schedule: %+v", got)
 	}
 
 	minutely := daily
@@ -578,7 +584,7 @@ func TestReplacingAScheduleKeepsItsPlaceAndStartsAfresh(t *testing.T) {
 	if got.Expression != "* * * * *" || got.Text != "status" || !paused || got.Context["created_by"] != "ada" {
 		t.Fatalf("after the edit: %+v, paused %v", got, paused)
 	}
-	if a := s.About("nightly"); a.UpdatedBy != "bob" || a.Description != "" {
+	if a, _ := s.About(tenant, "nightly"); a.UpdatedBy != "bob" || a.Description != "" {
 		t.Fatalf("about = %+v", a)
 	}
 

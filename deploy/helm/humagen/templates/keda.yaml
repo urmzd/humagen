@@ -1,0 +1,41 @@
+{{- /* A KEDA ScaledObject for the worker Deployment, scaled on the runs in
+the Postgres queue (fiber_run_queue, anchor's pgqueue mapping). KEDA reads
+the connection string from the existingSecret through a
+TriggerAuthentication. Needs KEDA's CRDs in the cluster. */}}
+{{- $w := .Values.worker | default dict -}}
+{{- $k := $w.keda | default dict -}}
+{{- if and $w.enabled $k.enabled }}
+{{- $secret := required "worker.keda.enabled needs existingSecret: KEDA reads the Postgres connection string from it" .Values.existingSecret -}}
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ include "humagen.workerFullname" . }}
+  labels:
+    {{- include "humagen.workerLabels" . | nindent 4 }}
+spec:
+  secretTargetRef:
+    - parameter: connection
+      name: {{ $secret }}
+      key: {{ $k.connectionSecretKey | default "HUMAGEN_POSTGRES_URL" }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "humagen.workerFullname" . }}
+  labels:
+    {{- include "humagen.workerLabels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ include "humagen.workerFullname" . }}
+  minReplicaCount: {{ int $k.minReplicaCount }}
+  maxReplicaCount: {{ int $k.maxReplicaCount }}
+  pollingInterval: {{ int $k.pollingInterval }}
+  cooldownPeriod: {{ int $k.cooldownPeriod }}
+  triggers:
+    - type: postgresql
+      metadata:
+        targetQueryValue: {{ $k.targetQueryValue | toString | quote }}
+        query: {{ $k.query | quote }}
+      authenticationRef:
+        name: {{ include "humagen.workerFullname" . }}
+{{- end }}

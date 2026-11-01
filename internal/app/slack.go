@@ -13,9 +13,11 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/urmzd/humagen/pkg/credref"
+	"github.com/urmzd/humagen/pkg/leader"
 	"github.com/urmzd/humagen/pkg/spec"
 
 	"github.com/urmzd/humagen/internal/legacy"
@@ -286,6 +288,38 @@ func (s *slackApp) env(ctx context.Context, url, publicURL string, lookup func(s
 		}
 	}
 	return append(env, legacy.Prefix+"OLD_NAMES_COPIED=1"), nil
+}
+
+// slackLeaseKey names the lease a Slack app's one Socket Mode connection is
+// held under: one per workspace and Slack team.
+func (s *slackApp) leaseKey() string { return "slack-app:" + s.tenant + ":" + s.choice.Team }
+
+// slackLeaseDelay is how much longer a process waits for the next Slack
+// app's lease for each one it already runs, so apps spread across replicas.
+const slackLeaseDelay = 2 * leader.DefaultInterval
+
+// runLeased runs a Slack app only while this process holds its lease, so a
+// deployment of any number of replicas holds one Socket Mode connection per
+// app, and another replica takes the app over when the holder stops. held
+// counts the apps this process runs. An error from run means the app cannot
+// start here at all (see run): it ends the campaign and is returned.
+func runLeased(ctx context.Context, lease leader.Elector, held *atomic.Int32, log *slog.Logger, key string, run func(context.Context) error) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var failed error
+	err := lease.Campaign(ctx, func(ctx context.Context) {
+		held.Add(1)
+		defer held.Add(-1)
+		log.Info("slack app lease held", "lease", key)
+		if err := run(ctx); err != nil {
+			failed = err
+			cancel()
+		}
+	})
+	if failed != nil {
+		return failed
+	}
+	return err
 }
 
 // run keeps the Slack app running until ctx ends, restarting it with a

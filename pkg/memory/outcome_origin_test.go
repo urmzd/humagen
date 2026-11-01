@@ -28,7 +28,7 @@ func TestReviewedOriginIsAtomicPrivateAndNeverInferredOrCopied(t *testing.T) {
 		if _, err := s.RememberDecision("tenant", owner, "Keep Tuesday", "ada", at, "private-origin"); !errors.Is(err, statetest.ErrInjected) {
 			t.Fatal(err)
 		}
-		if len(s.ReviewedOrigins("tenant", []string{"private-origin", "different-run"})) != 0 {
+		if len(memory.OriginsOf(t, s, "tenant", []string{"private-origin", "different-run"})) != 0 {
 			t.Fatal("failed origin became visible")
 		}
 		fault.Fail(nil)
@@ -39,7 +39,7 @@ func TestReviewedOriginIsAtomicPrivateAndNeverInferredOrCopied(t *testing.T) {
 		if _, err := s.RememberDecision("tenant", owner, legacy.Text, "ada", at, "private-origin"); err != nil {
 			t.Fatal(err)
 		}
-		if len(s.ReviewedOrigins("tenant", []string{"private-origin"})) != 0 {
+		if len(memory.OriginsOf(t, s, "tenant", []string{"private-origin"})) != 0 {
 			t.Fatal("legacy memory origin inferred on retry")
 		}
 		n, err := s.RememberDecision("tenant", owner, "Keep Tuesday", "ada", at, "private-origin")
@@ -60,17 +60,17 @@ func TestReviewedOriginIsAtomicPrivateAndNeverInferredOrCopied(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		origins := replay.ReviewedOrigins("tenant", []string{"private-origin", "different-run"})
+		origins := memory.OriginsOf(t, replay, "tenant", []string{"private-origin", "different-run"})
 		if len(origins) != 1 || origins[0].Run != "private-origin" || origins[0].Owner != owner || origins[0].Note.ID != n.ID {
 			t.Fatalf("origin lost, rewritten or copied: %+v", origins)
 		}
-		if len(replay.ReviewedOrigins("other", []string{"private-origin"})) != 0 {
+		if len(memory.OriginsOf(t, replay, "other", []string{"private-origin"})) != 0 {
 			t.Fatal("cross-tenant origin")
 		}
 		if err := replay.Remove("tenant", owner, n.ID); err != nil {
 			t.Fatal(err)
 		}
-		if len(replay.ReviewedOrigins("tenant", []string{"private-origin", "different-run"})) != 0 {
+		if len(memory.OriginsOf(t, replay, "tenant", []string{"private-origin", "different-run"})) != 0 {
 			t.Fatal("deleted memory retained dependency")
 		}
 	})

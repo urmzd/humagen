@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // keyHome keeps where an agent lives: a:<agent>.
@@ -58,7 +60,15 @@ func (s *Store) SetHome(tenantName, agent, project string, w Writer, at time.Tim
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tx := s.begin(tenantName)
+	return state.Retry(func() error { return s.setHome(tenantName, agent, project, w, at, inUse) })
+}
+
+// setHome is one attempt at SetHome.
+func (s *Store) setHome(tenantName, agent, project string, w Writer, at time.Time, inUse func(before, after *Tree) []string) error {
+	tx, err := s.begin(tenantName)
+	if err != nil {
+		return err
+	}
 	old, had := tx.t.homes[agent]
 	if had {
 		if owner := tx.t.projects[old.Project].PersonalOwner; owner != "" && owner != w.By {
@@ -82,6 +92,9 @@ func (s *Store) SetHome(tenantName, agent, project string, w Writer, at time.Tim
 	}
 	if had && old.Project != Root && tx.t.projects[old.Project].Kind == Company && !w.Govern {
 		return fmt.Errorf("%w: an agent leaves a company project only with projects:govern", ErrForbidden)
+	}
+	if !had && len(tx.t.homes) >= MaxHomes {
+		return fmt.Errorf("%w: at most %d agents live in projects in one workspace", ErrLimit, MaxHomes)
 	}
 	before := build(tx.t.projects, homeNames(tx.t.homes))
 	{
@@ -163,18 +176,11 @@ func plural(n int, word string) string {
 	return fmt.Sprintf("%d %ss", n, word)
 }
 
-// Tenants lists the workspaces that have written anything, by name.
-func (s *Store) Tenants() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make([]string, 0, len(s.tenants))
-	for name, t := range s.tenants {
-		if t.stored() {
-			out = append(out, name)
-		}
-	}
-	slices.Sort(out)
-	return out
+// EachTenant calls fn for every workspace that has written anything, by
+// name in order, a page of the directory at a time. A workspace whose first
+// write failed may be among them, and reads as one that wrote nothing.
+func (s *Store) EachTenant(fn func(tenant string) error) error {
+	return s.dir.Each(fn)
 }
 
 // EnsureRoot writes a tenant's root if it has not been written: the root as
@@ -183,12 +189,17 @@ func (s *Store) Tenants() []string {
 func (s *Store) EnsureRoot(tenantName, by string, at time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tx := s.begin(tenantName)
-	if _, ok := tx.t.projects[Root]; ok {
-		return nil
-	}
-	tx.root(by, at)
-	return tx.commit()
+	return state.Retry(func() error {
+		tx, err := s.begin(tenantName)
+		if err != nil {
+			return err
+		}
+		if _, ok := tx.t.projects[Root]; ok {
+			return nil
+		}
+		tx.root(by, at)
+		return tx.commit()
+	})
 }
 
 // EnsureCompanyHomes records missing legacy homes in one transaction. Existing
@@ -200,7 +211,15 @@ func (s *Store) EnsureCompanyHomes(tenantName string, agents []string, at time.T
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tx := s.begin(tenantName)
+	return state.Retry(func() error { return s.ensureCompanyHomes(tenantName, agents, at) })
+}
+
+// ensureCompanyHomes is one attempt at EnsureCompanyHomes.
+func (s *Store) ensureCompanyHomes(tenantName string, agents []string, at time.Time) error {
+	tx, err := s.begin(tenantName)
+	if err != nil {
+		return err
+	}
 	changed := false
 	for _, agent := range agents {
 		if !ValidAgent(agent) {
@@ -208,6 +227,9 @@ func (s *Store) EnsureCompanyHomes(tenantName string, agents []string, at time.T
 		}
 		if _, exists := tx.t.homes[agent]; exists {
 			continue
+		}
+		if len(tx.t.homes) >= MaxHomes {
+			return fmt.Errorf("%w: at most %d agents live in projects in one workspace", ErrLimit, MaxHomes)
 		}
 		h := home{Agent: agent, Project: Root, By: "platform", At: at}
 		tx.t.homes[agent] = h

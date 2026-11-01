@@ -519,6 +519,26 @@ paths:
             text/plain:
               schema: {type: string}
 
+  /readyz:
+    get:
+      operationId: getReadiness
+      tags: [health]
+      summary: Readiness probe
+      description: Whether this process should be sent traffic. It is ready once it has finished starting, while its database and event bus answer, and until it starts draining to stop. A failed check is named, never explained; the reason is in the server's log.
+      x-permission: public
+      security: []
+      responses:
+        "200":
+          description: Ready.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Readiness"}
+        "503":
+          description: Starting, draining, or a check failed.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Readiness"}
+
   /branding/logo:
     get:
       operationId: getDeploymentLogo
@@ -1753,6 +1773,94 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/catalog:
+    get:
+      operationId: getCatalog
+      tags: [knowledge]
+      summary: Browse or search the catalog of connected systems
+      description: |
+        The connectors you see (your own, and the published ones of projects
+        you see) and their entries: tables, columns and descriptions, never
+        data (RFC 0005). With q, entries are ranked against it, hybrid when
+        the deployment has an embedder; without it, listed by connector and
+        path. Seeing an entry never grants reading the object.
+      x-permission: knowledge:read
+      parameters:
+        - {name: q, in: query, description: "Words to rank entries by. Left out, entries are listed.", schema: {type: string, maxLength: 1000}}
+        - {name: limit, in: query, description: "At most this many entries, and at most 50. Zero is 50 when listing and 10 when searching.", schema: {type: integer, minimum: 0, maximum: 50}}
+      responses:
+        "200":
+          description: The connectors you see and their entries.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CatalogPage"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/catalog/connectors/{name}/publish:
+    post:
+      operationId: publishConnector
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      tags: [knowledge]
+      summary: Publish a connector's entries to its project's members
+      description: Only the connector's owner publishes. Who published and when are recorded.
+      x-permission: knowledge:write
+      responses:
+        "200":
+          description: The connector, published.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CatalogConnector"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: withdrawConnector
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      tags: [knowledge]
+      summary: Withdraw a connector's published entries
+      description: Hides them from everyone but the owner at once. The owner withdraws, and so may whoever governs the workspace. Who withdrew and when are recorded.
+      x-permission: knowledge:write
+      responses:
+        "200":
+          description: The connector, withdrawn.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CatalogConnector"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/catalog/connectors/{name}/crawl:
+    post:
+      operationId: crawlConnector
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      tags: [knowledge]
+      summary: Crawl a connector now
+      description: Lists the connected system again and replaces the connector's entries whole. Only its owner asks. A crawl that fails keeps the entries before it.
+      x-permission: knowledge:write
+      responses:
+        "200":
+          description: The connector after the crawl.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CatalogConnector"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+        "502":
+          description: The connected system could not be listed.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
   /api/join:
     get:
       operationId: previewJoin
@@ -2365,7 +2473,8 @@ paths:
         The message is posted as the caller, or as the person `act_as` names
         through a client that maps them; no field names an author, and a
         credential acting for nobody is refused (403). What the message
-        starts follows the tag rules: the agents it tags answer, at most 3,
+        starts follows the tag rules: every agent it tags answers, each
+        bounded by budgets and admission like any run,
         and a `$skill` with no agent tagged asks the agents; tagging only
         people or experts notifies them; posted only, nothing answers. A
         message a person posts as themselves, as the console does, that tags
@@ -7470,6 +7579,22 @@ components:
         components:
           type: array
           items: {$ref: "#/components/schemas/HealthComponent"}
+    Readiness:
+      type: object
+      required: [status, checks]
+      properties:
+        status:
+          type: string
+          enum: [ready, starting, draining, unavailable]
+        checks:
+          type: array
+          items: {$ref: "#/components/schemas/ReadinessCheck"}
+    ReadinessCheck:
+      type: object
+      required: [name, ok]
+      properties:
+        name: {type: string}
+        ok: {type: boolean}
     HealthComponent:
       type: object
       required: [id, name, group, status, latency_ms, history]
@@ -8688,7 +8813,7 @@ components:
         ceilings: {$ref: "#/components/schemas/RunCeilings"}
         preferences: {$ref: "#/components/schemas/RunPreferences"}
     RunCeilings:
-      description: A list left out narrows nothing at its level; an empty list allows nothing. Tool servers are default deny.
+      description: A list left out narrows nothing at its level; an empty list allows nothing. Tool servers and egress are default deny.
       type: object
       properties:
         tools:
@@ -8704,6 +8829,10 @@ components:
           type: integer
         tool_servers:
           description: Hosts a person's own tool servers may be on, at most 64.
+          type: array
+          items: {type: string}
+        egress:
+          description: "Hosts a run's sandbox may reach through the egress gate, on ports 80 and 443, at most 64: an exact name or `*.domain` for its subdomains."
           type: array
           items: {type: string}
     RunPreferences:
@@ -9495,8 +9624,9 @@ components:
           type: string
         text: {type: string, maxLength: 8000}
         mentions:
+          description: Its tags, each once. Agents are not counted against a cap and are bounded by the text's length; at most 10 are people, experts, roles and skills, which each take a lookup of their own.
           type: array
-          maxItems: 10
+          maxItems: 4000
           items: {$ref: "#/components/schemas/ThreadMention"}
         answers: {$ref: "#/components/schemas/ThreadAnswerRef"}
         via:
@@ -9815,9 +9945,8 @@ components:
         thread: {$ref: "#/components/schemas/Thread"}
         message: {$ref: "#/components/schemas/ThreadMessage"}
         runs:
-          description: The runs it started, at most 3.
+          description: The runs it started, one for each agent it tags that answers, or at most 3 of the thread's selected agents.
           type: array
-          maxItems: 3
           items: {$ref: "#/components/schemas/Run"}
         notified:
           description: Who it was sent to, people and experts by handle and the experts a role names as `role:<name>`.
@@ -11402,6 +11531,20 @@ components:
         acts_for_person:
           description: The call runs with the credential of the person the run acts for, a tool that acts as them. Anyone who may approve it may approve or deny it as asked, but only that person may approve it with edited `arguments`; anyone else's edit is 403, so a surface offers nobody else an edit.
           type: boolean
+    InboxQuestionBudget:
+      description: The limit a run is held at, where the scope stood, and what approving grants. Money is micro-USD.
+      type: object
+      required: [scope_kind, limit, period, version, used, max, grant]
+      properties:
+        scope_kind: {type: string}
+        scope_name: {type: string}
+        limit: {type: string, enum: [spend, tokens]}
+        period: {type: string}
+        version: {type: integer}
+        used: {type: integer, format: int64}
+        max: {type: integer, format: int64}
+        granted: {type: integer, format: int64}
+        grant: {type: integer, format: int64}
     InboxQuestionPart:
       description: A question a run is parked on.
       type: object
@@ -11410,8 +11553,10 @@ components:
         run: {type: string}
         id: {type: string}
         kind:
+          description: approval, choice or reply, or `budget` for a run held at a limit, answered `approve` (grant it `budget.grant` more) or `deny` (stop it), by `billing:write` only.
           type: string
-          enum: [approval, choice, reply]
+          enum: [approval, choice, reply, budget]
+        budget: {$ref: "#/components/schemas/InboxQuestionBudget"}
         agent: {type: string}
         prompt: {type: string}
         options:
@@ -12197,6 +12342,80 @@ components:
         excluded: {type: boolean}
         added_by: {type: string}
         added_at: {type: string, format: date-time}
+    CatalogColumn:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string}
+        type: {type: string}
+        mode: {type: string}
+        description: {type: string}
+        fields:
+          type: array
+          items: {$ref: "#/components/schemas/CatalogColumn"}
+    CatalogStats:
+      type: object
+      properties:
+        rows: {type: integer, format: int64}
+        bytes: {type: integer, format: int64}
+        modified: {type: string, format: date-time}
+    CatalogEntry:
+      type: object
+      description: One object in a connected system. Metadata only, never data.
+      required: [system, kind, path, connector, seen_at]
+      properties:
+        system: {type: string, examples: [bigquery]}
+        kind: {type: string, examples: [table]}
+        path: {type: string, examples: [analytics.billing.churn_monthly]}
+        title: {type: string}
+        description: {type: string}
+        schema:
+          type: array
+          items: {$ref: "#/components/schemas/CatalogColumn"}
+        stats: {$ref: "#/components/schemas/CatalogStats"}
+        connector: {type: string}
+        seen_at: {type: string, format: date-time}
+    CatalogMark:
+      type: object
+      required: [by, at]
+      properties:
+        by: {type: string}
+        at: {type: string, format: date-time}
+    CatalogConnector:
+      type: object
+      required: [name, system, entries, generation]
+      properties:
+        name: {type: string}
+        system: {type: string}
+        owner: {description: The person whose credential it uses., type: string}
+        project: {description: Whose members see its entries while it is published. Empty is the workspace., type: string}
+        published: {$ref: "#/components/schemas/CatalogMark"}
+        withdrawn: {$ref: "#/components/schemas/CatalogMark"}
+        crawled_at: {type: string, format: date-time}
+        entries: {type: integer, minimum: 0}
+        generation: {type: integer, minimum: 0}
+    CatalogConnectorView:
+      allOf:
+        - {$ref: "#/components/schemas/CatalogConnector"}
+        - type: object
+          required: [capabilities, mine]
+          properties:
+            capabilities:
+              type: array
+              items: {type: string, enum: [catalog, live]}
+            mine: {description: "You own it, so you may publish, withdraw and crawl it.", type: boolean}
+            last_error: {description: "The last crawl's failure, shown to the owner only.", type: string}
+    CatalogPage:
+      type: object
+      required: [connectors, entries]
+      properties:
+        connectors:
+          type: array
+          items: {$ref: "#/components/schemas/CatalogConnectorView"}
+        entries:
+          type: array
+          maxItems: 50
+          items: {$ref: "#/components/schemas/CatalogEntry"}
     KnowledgeHit:
       type: object
       required: [source, document_id, title, index, text, score]
@@ -12219,7 +12438,12 @@ components:
       type: string
       enum: [day, month]
     PolicyAction:
-      description: What happens at a limit. Only `block` is acted on today.
+      description: |
+        What happens at a limit. `block` refuses a run at admission and stops
+        one in flight. `approve` refuses at admission too, and holds a run in
+        flight that reaches the spend or token limit for a person with
+        `billing:write`, who grants it `max_grant` (or `max_grant_tokens`)
+        more or stops it.
       type: string
       enum: [block, approve]
     PolicyLimit:
@@ -12276,6 +12500,14 @@ components:
         action:
           description: Defaults to `block`.
           $ref: "#/components/schemas/PolicyAction"
+        max_grant:
+          description: With `approve` and `spend_limit`, what one approval grants a held run, in micro-USD.
+          type: integer
+          format: int64
+        max_grant_tokens:
+          description: With `approve` and `max_tokens`, what one approval grants a held run, in tokens.
+          type: integer
+          format: int64
     Policy:
       description: The limits for one scope, at one version.
       type: object
@@ -12293,6 +12525,14 @@ components:
         max_clients_per_surface: {type: integer}
         warn_at: {type: integer}
         action: {$ref: "#/components/schemas/PolicyAction"}
+        max_grant:
+          description: With `approve`, what one approval grants a run held at `spend_limit`, in micro-USD. Set exactly when the action is `approve` and there is a spend limit.
+          type: integer
+          format: int64
+        max_grant_tokens:
+          description: With `approve`, what one approval grants a run held at `max_tokens`. Set exactly when the action is `approve` and there is a token limit.
+          type: integer
+          format: int64
         authority:
           description: Who set it. Absent is an admin, with `billing:write`. `owner` is a tighten-only limit a project's owner set on a project below one they own, never looser than the limits over it.
           type: string
@@ -12382,11 +12622,13 @@ components:
       properties:
         kind:
           description: |
-            `halted` is a run in flight stopped at a limit. `spent` (one model
+            `halted` is a run in flight stopped at a limit, `held` one held
+            there for a person, and `granted` what a person let a held run
+            use beyond the limit (`grant`, by `by`). `spent` (one model
             call) and `settled` (a run's own total at its end) are the ledger's
             record of spend and are not listed as notices.
           type: string
-          enum: [admitted, ended, warned, refused, spent, settled, halted]
+          enum: [admitted, ended, warned, refused, spent, settled, halted, held, granted]
         tenant: {type: string}
         project: {type: string}
         within:
@@ -12413,6 +12655,15 @@ components:
           description: What makes a `spent` or `settled` entry count once.
           type: string
         spend: {$ref: "#/components/schemas/UsageSpend"}
+        grant:
+          description: For a `granted` entry, what the run may use beyond the limit of `scope`.
+          type: object
+          properties:
+            spend: {type: integer, format: int64}
+            tokens: {type: integer, format: int64}
+        by:
+          description: For a `granted` entry, who granted it.
+          type: string
     UsageSpend:
       description: What some model calls used. `micros` is US dollars only.
       type: object
@@ -12812,15 +13063,18 @@ components:
     Question:
       description: |
         What a run is waiting on a person for: to approve a tool call, to
-        choose one of `options`, or to reply. `asked_of` is a routing hint and
-        admits nobody. `default` is what applies when it expires.
+        choose one of `options`, to reply, or, for a `hold`, whether the run
+        may go on at all, a question the platform asked rather than the agent
+        (`hold` says which). `asked_of` is a routing hint and admits nobody.
+        `default` is what applies when it expires.
       type: object
       required: [id, kind, prompt]
       properties:
         id: {type: string}
         kind:
           type: string
-          enum: [approval, choice, reply, delegation]
+          enum: [approval, choice, reply, delegation, hold]
+        hold: {$ref: "#/components/schemas/QuestionHold"}
         approvers:
           description: When set on an approval, only these people and `role:<name>` holders may answer it, in place of the agent's own approvers.
           type: array
@@ -12839,6 +13093,19 @@ components:
         default: {$ref: "#/components/schemas/Answer"}
         at: {type: string, format: date-time}
         child_run_id: {type: string}
+    QuestionHold:
+      description: |
+        The platform's hold a `hold` question asks about. `topic` is what the
+        run is held on (`budget`); `data` is its detail, for `budget` the
+        limit reached and what approving grants.
+      type: object
+      required: [id]
+      properties:
+        id: {type: string}
+        topic: {type: string}
+        data:
+          type: object
+          additionalProperties: true
     Answer:
       description: An answer to a question, or its default when nobody answered in time (`expired`).
       type: object

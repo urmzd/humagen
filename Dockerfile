@@ -66,7 +66,9 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 # operator has a shell. Nothing else is installed: stdio MCP servers that
 # need node or python must come from an image built on this one.
 FROM alpine:3.22
-RUN apk add --no-cache ca-certificates tzdata \
+# docker-cli drives a sandbox host's daemon (sandbox.docker.host). The image
+# has no daemon and no socket.
+RUN apk add --no-cache ca-certificates tzdata docker-cli \
  && addgroup -S -g 10001 humagen \
  && adduser -S -D -H -u 10001 -G humagen -h /var/lib/warp humagen \
  && mkdir -p /var/lib/warp /etc/warp \

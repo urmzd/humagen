@@ -1,5 +1,123 @@
 # Changelog
 
+## 0.67.0 (2026-11-01)
+
+### Features
+
+- **clients**: seat clients on every replica and lease Socket Mode Slack apps (#178) ([45a6f14](https://github.com/urmzd/humagen/commit/45a6f14e04b522bef3308faa0c59ff9c43e00355))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.66.0...v0.67.0)
+
+
+## 0.66.0 (2026-11-01)
+
+### Features
+
+- **notice**: watch notices reach every replica through Postgres NOTIFY (#177) ([bde73fe](https://github.com/urmzd/humagen/commit/bde73fe1a72dc79be3917641175fab60ee3c3aed))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.65.0...v0.66.0)
+
+
+## 0.65.0 (2026-11-01)
+
+### Features
+
+- **state**: drop the single-writer lock and allow replicas (RFC 0004, change 9, step 3) (#175) ([3b41a42](https://github.com/urmzd/humagen/commit/3b41a4238007e56975fd1087551e2fd4fba4234d))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.64.0...v0.65.0)
+
+
+## 0.64.0 (2026-11-01)
+
+### Features
+
+- **stores**: every store reads and writes per request (RFC 0004, change 9) (#176) ([86f42c5](https://github.com/urmzd/humagen/commit/86f42c549d18dfb7dd3eeaac697af75255576cc4))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.63.0...v0.64.0)
+
+
+## 0.63.0 (2026-10-31)
+
+### Features
+
+- production-ready deploy: /readyz, graceful drain, gcs blobs, chart scaling (#161) ([b23f659](https://github.com/urmzd/humagen/commit/b23f65988f5983fc2c74ceb20aaae8bcb6733506))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.62.0...v0.63.0)
+
+
+## 0.59.0 (2026-10-31)
+
+### Features
+
+- agents are @mentions, and every agent a message tags answers (#160) ([b50d50a](https://github.com/urmzd/humagen/commit/b50d50a962d0eae4a2676a1955cd33c9a2f11456))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.58.0...v0.59.0)
+
+
+## 0.58.0 (2026-10-31)
+
+### Features
+
+- **limits**: ask a person to approve a run at a limit (#157) ([8dd9ddd](https://github.com/urmzd/humagen/commit/8dd9ddd6fc43626bdcc7fc0a0046d6f319f40189))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.57.0...v0.58.0)
+
+
+## 0.57.0 (2026-10-31)
+
+### Features
+
+- **catalog**: connectors in the spec, catalog tools and routes (RFC 0005, change 2, 3/3) (#156) ([89b09a3](https://github.com/urmzd/humagen/commit/89b09a34746b4789ad73c12784578f970674b136))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.56.0...v0.57.0)
+
+
+## 0.56.0 (2026-10-31)
+
+### Features
+
+- **fiber**: let a host park a run on a question of its own (#153) ([76764d6](https://github.com/urmzd/humagen/commit/76764d625438b201cc1d0a5e0eab40894df8f13d))
+- **sandbox**: drive a Docker daemon on a sandbox host (#150) ([4ea7208](https://github.com/urmzd/humagen/commit/4ea72080538bee08bfc2091852fff0a98b8051b2))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.55.0...v0.56.0)
+
+
+## 0.54.0 (2026-10-31)
+
+### Features
+
+- **catalog**: tenant-scoped catalog store with hybrid search (#154) ([12df401](https://github.com/urmzd/humagen/commit/12df4014cb047edde78ea0f5929b5280e4f535ad))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.53.0...v0.54.0)
+
+
+## 0.52.0 (2026-10-31)
+
+### Features
+
+- **sandbox**: egress gate so a run's tools reach allowed hosts (#151) ([f19ec7f](https://github.com/urmzd/humagen/commit/f19ec7fe2b6bd1111b95dfad706e530efe49d04d))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.51.1...v0.52.0)
+
+
+## 0.51.1 (2026-10-31)
+
+### Bug Fixes
+
+- feedback prompt capture, configured-runtime compaction budget, held-call docs (#149) ([ece3f25](https://github.com/urmzd/humagen/commit/ece3f257d99641342def7d8ffa04c1c642c7badf))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.51.0...v0.51.1)
+
+
+## 0.50.0 (2026-10-31)
+
+### Features
+
+- **console**: list, add and remove a person's own tool servers (#148) ([f012088](https://github.com/urmzd/humagen/commit/f012088b5ac335893b7f198647923445be8a5a11))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.49.0...v0.50.0)
+
+
 ## 0.49.0 (2026-10-30)
 
 ### Features

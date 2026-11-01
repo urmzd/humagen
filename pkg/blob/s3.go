@@ -11,11 +11,13 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
+	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
@@ -62,6 +64,20 @@ type S3 struct {
 // metaSHA256 is the user metadata key the hash is kept under. S3 returns it
 // lower case whatever case it was sent in.
 const metaSHA256 = "sha256"
+
+// storedHash is the hash an object was put with. Google Cloud Storage's
+// S3-compatible API takes x-amz-meta-sha256 but may answer with
+// x-goog-meta-sha256, which the SDK does not read as metadata, so the raw
+// response is looked at too.
+func storedHash(meta map[string]string, md middleware.Metadata) string {
+	if h := meta[metaSHA256]; h != "" {
+		return h
+	}
+	if raw, ok := awsmiddleware.GetRawResponse(md).(*smithyhttp.Response); ok {
+		return raw.Header.Get("X-Goog-Meta-" + metaSHA256)
+	}
+	return ""
+}
 
 // NewS3 returns a store for a bucket. It does not contact the bucket: a wrong
 // setting shows on the first call.
@@ -177,7 +193,7 @@ func (s *S3) Get(ctx context.Context, tenant, key string) (io.ReadCloser, Info, 
 		return nil, Info{}, fmt.Errorf("blob: s3: %w", err)
 	}
 	hash := sum(b)
-	if want := out.Metadata[metaSHA256]; want != "" && want != hash {
+	if want := storedHash(out.Metadata, out.ResultMetadata); want != "" && want != hash {
 		return nil, Info{}, fmt.Errorf("blob: s3: %s does not match the hash it was stored with", key)
 	}
 	return io.NopCloser(bytes.NewReader(b)), Info{Key: key, Size: int64(len(b)), SHA256: hash, At: aws.ToTime(out.LastModified)}, nil
@@ -192,7 +208,7 @@ func (s *S3) Stat(ctx context.Context, tenant, key string) (Info, error) {
 	if err != nil {
 		return Info{}, s.fail(key, err)
 	}
-	info := Info{Key: key, Size: aws.ToInt64(out.ContentLength), SHA256: out.Metadata[metaSHA256], At: aws.ToTime(out.LastModified)}
+	info := Info{Key: key, Size: aws.ToInt64(out.ContentLength), SHA256: storedHash(out.Metadata, out.ResultMetadata), At: aws.ToTime(out.LastModified)}
 	if info.SHA256 == "" {
 		// Put there by something other than this store: hash what is there.
 		// Everything comes from the one read, so an overwrite between the

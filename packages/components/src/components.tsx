@@ -70,7 +70,16 @@ export interface TurnCapabilities {
 }
 
 /** Fallback preview when a tool supplies none: scalar args as fields, never a JSON dump. */
-function previewFields(approval: Approval): Field[] {
+function previewFields(approval: Approval, copy: Copy = defaultCopy): Field[] {
+  if (approval.budget) {
+    const b = approval.budget;
+    return [
+      { label: copy.budgetHold.limit, value: `${b.max} (${b.scope})` },
+      { label: copy.budgetHold.used, value: b.used },
+      ...(b.granted ? [{ label: copy.budgetHold.granted, value: b.granted }] : []),
+      { label: copy.budgetHold.grants, value: b.grant },
+    ];
+  }
   if (approval.preview) return approval.preview;
   return Object.entries(approval.args ?? {})
     .filter(([, v]) => ["string", "number", "boolean"].includes(typeof v))
@@ -97,7 +106,12 @@ export function ApprovalCard({
   viewer?: string;
 } & WithCopy) {
   const { decision } = approval;
-  const fields = previewFields(approval);
+  const fields = previewFields(approval, copy);
+  // A run held at a limit is granted more or stopped, not approved or cancelled.
+  const approveLabel = approval.budget
+    ? copy.budgetHold.grant(approval.budget.grant)
+    : (approval.approveLabel ?? copy.approve);
+  const denyLabel = approval.budget ? copy.budgetHold.stop : copy.cancel;
   const payload = { turnId, target: approval.id };
   const allowed = viewer === undefined || canDecide(approval, viewer);
 
@@ -140,16 +154,19 @@ export function ApprovalCard({
         {fields.length > 0 && <Fields items={fields} />}
         <Actions blockId={`approval:${approval.id}:r${approval.revision ?? 0}`}>
           <Button
-            label={approval.approveLabel ?? copy.approve}
+            label={approveLabel}
             style={approval.destructive ? "danger" : "primary"}
             action={{ id: ActionId.approve, payload }}
-            accessibilityLabel={`${approval.approveLabel ?? copy.approve}: ${approval.summary}`}
+            // A budget question's summary is long: its buttons say enough alone.
+            accessibilityLabel={
+              approval.budget ? undefined : `${approveLabel}: ${approval.summary}`
+            }
             confirm={approval.destructive ? copy.confirmDestructive : undefined}
           />
           {approval.editable && !approval.actsForPerson && (
             <Button label={copy.edit} action={{ id: ActionId.edit, payload }} />
           )}
-          <Button label={copy.ask} action={{ id: ActionId.ask, payload }} />
+          {!approval.budget && <Button label={copy.ask} action={{ id: ActionId.ask, payload }} />}
           {approval.rememberable && (
             <Button
               label={copy.alwaysAllow(approval.tool)}
@@ -157,9 +174,9 @@ export function ApprovalCard({
             />
           )}
           <Button
-            label={copy.cancel}
+            label={denyLabel}
             action={{ id: ActionId.deny, payload }}
-            accessibilityLabel={`${copy.cancel}: ${approval.summary}`}
+            accessibilityLabel={approval.budget ? undefined : `${denyLabel}: ${approval.summary}`}
           />
         </Actions>
         {meta.length > 0 && <Context items={meta} />}
@@ -182,8 +199,9 @@ export function ApprovalCard({
   }
 
   // Declined, timed out, or cancelled: keep the preview struck through, then the outcome.
-  const outcome =
-    decision.kind === "denied"
+  const outcome = approval.budget
+    ? copy.budgetHold.stopped
+    : decision.kind === "denied"
       ? copy.rejected
       : decision.kind === "expired"
         ? copy.timedOut
@@ -194,7 +212,13 @@ export function ApprovalCard({
       {decision.kind === "denied" && (
         <Context
           items={[
-            withReason(copy.rejectedBy(decision.by, timeToken(decision.at)), decision.reason),
+            withReason(
+              (approval.budget ? copy.budgetHold.stoppedBy : copy.rejectedBy)(
+                decision.by,
+                timeToken(decision.at),
+              ),
+              decision.reason,
+            ),
           ]}
         />
       )}
@@ -533,12 +557,17 @@ function taskDecision(turn: Turn, interruptId: string | undefined, copy: Copy) {
   ];
   return {
     approve: {
-      label: approval.approveLabel ?? copy.approve,
+      label: approval.budget
+        ? copy.budgetHold.grant(approval.budget.grant)
+        : (approval.approveLabel ?? copy.approve),
       action: { id: ActionId.approve, payload },
       style: approval.destructive ? ("danger" as const) : ("primary" as const),
       confirm: approval.destructive ? copy.confirmDestructive : undefined,
     },
-    decline: { label: copy.decline, action: { id: ActionId.deny, payload } },
+    decline: {
+      label: approval.budget ? copy.budgetHold.stop : copy.decline,
+      action: { id: ActionId.deny, payload },
+    },
     menu,
   };
 }

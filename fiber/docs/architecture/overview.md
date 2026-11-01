@@ -538,8 +538,9 @@ host shows the question and answers it, and the run resumes with the answer.
 | `approval` | A call to a tool the definition lists in `approval.ask`, or any tool the host's catalog wrapped with a saige marker (`types.MarkedTool`) | `approve` (optionally with edited arguments) or `deny` (optionally with a note the model is shown) |
 | `choice` | The built-in `ask_person` tool with `options` | One of the options |
 | `reply` | `ask_person` without `options` | Free text |
+| `hold` | The host, through `Runtime.Hold`, not the agent (see [Holding a run for the host](#holding-a-run-for-the-host)) | `approve`, and the run goes on, or `deny`, and it is stopped |
 
-Both are saige's own vocabulary. An approval is saige's marker: saige stops
+The first three are saige's own vocabulary. An approval is saige's marker: saige stops
 at the call and asks. `ask_person` is a tool the agent calls when its
 definition grants it; its result is the answer. A definition may name the person or role it
 wants an answer from (`asked_of`, a hint for routing, never an
@@ -551,6 +552,29 @@ for an approval the tool, the call id, the arguments and the tool's schema,
 `run.parked.v1` (`Parked.Question`), and `App.Status` reports a parked
 run as `parked` with `Run.Question`, read from the run's records
 (`Runtime.PendingQuestion`).
+
+### Holding a run for the host
+
+A host can ask that a run wait for a person without the agent asking
+anything: a run that reached a spending limit, say. `Runtime.Hold` records a
+`turn.Hold` (the host's id, a topic, a prompt, optional approvers, opaque
+data and a wait) on the run in the ledger as the write-once record
+`event:fiber.hold.<id>#0`, once it has checked that the run is the caller's
+tenant's and has not ended (`ErrNotHeld` otherwise). Nothing is published:
+the turn reads the run's holds from the ledger (`turn.WithHolds`) every time
+the model sends a message with tool calls, so a hold made while the run is
+queued, parked, between attempts or mid-turn is found at its next batch.
+
+That batch parks on a question of kind `hold` carrying the hold
+(`Question.Hold`), and nothing in it runs. From there it is a question like
+any other: announced once, answered through `Answer`, expired at its deadline
+and stopped by `Stop`. An approval continues the turn, which runs the batch,
+and the hold is not asked again. A denial, or nobody answering in time (a
+hold's default is a denial), ends the run `stopped` with the answer's note as
+the reason, and the batch never runs. Who may answer is the hold's
+`approvers` when it names any, else whoever the host lets answer. A turn that
+answers without another tool call is never held: its last model call was
+already made.
 
 ### Ending the turn at the question
 
@@ -870,10 +894,11 @@ governs one agent delegating to another.
 
 Verified against the code, and honest.
 
-- **The Postgres bus serializes publishes.** fiber's own `bus.Postgres`
-  takes one advisory lock per schema per publish, so the append id is commit
-  order and readers never skip a late commit. Throughput is one short
-  transaction per event.
+- **The Postgres bus serializes publishes per tenant.** fiber's own
+  `bus.Postgres` takes one advisory lock per tenant per publish, so a
+  tenant's position (`tseq`) is commit order and readers never skip a late
+  commit. Throughput is one short transaction per event for each tenant;
+  different tenants do not wait on each other.
   The run queue fiber builds on Postgres has no `DeltaLog`, so anchor's
   per-run delta journal is not written; the bus carries every event.
 - **playscape's queue is at-most-once** in beta. Durability comes from anchor.
@@ -883,10 +908,12 @@ Verified against the code, and honest.
   not translated into events yet.
 - **anchor v1 workflow bodies are single-goroutine.** Parallelism belongs
   inside a playscape task, not in a forked workflow.
-- **The bus is at-least-once with no consumer groups.** Subjects, filters, and
-  cursors cover real-time consumers. If durable competing consumers with
-  independent offsets become a requirement, the honest answer is NATS JetStream
-  behind the `Bus` interface rather than growing a broker here.
+- **The bus is at-least-once.** Subjects, filters, and cursors cover
+  real-time consumers. A consumer that must act once per deployment reads
+  through a consumer group (`Bus.Consume`): a lease and a committed cursor per
+  (group, tenant), so one member at a time reads a tenant's events and the
+  next resumes from the cursor. After a crash the events since the last commit
+  are delivered again, and nothing older than the bus's retention is.
 - **Definitions are saige's.** fiber refuses the definition fields it cannot
   honor (dials, skills, memory, guardrails, compaction, harness tools, MCP allow
   lists) rather than ignoring them. See [events.md](events.md#7-definitions).

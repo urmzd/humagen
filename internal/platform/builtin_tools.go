@@ -253,12 +253,19 @@ func (p *Platform) alertsReport(tenant, own string) (string, error) {
 		home, homed := tree.Home(name)
 		return name == "" || !homed || open(home)
 	}
-	for _, r := range p.Alerts.Rules(tenant) {
+	rules, err := p.Alerts.Rules(tenant)
+	if err != nil {
+		return "", err
+	}
+	for _, r := range rules {
 		if open(r.Project) && agentOpen(r.Agent) {
 			out.Rules = append(out.Rules, rule{r.Name, string(r.Kind), string(r.Severity), r.Description, r.Agent, r.Project, r.Paused})
 		}
 	}
-	all := p.Alerts.Alerts(tenant)
+	all, err := p.Alerts.Alerts(tenant)
+	if err != nil {
+		return "", err
+	}
 	for i := len(all) - 1; i >= 0 && len(out.Open) < 50; i-- {
 		a := all[i]
 		if !a.Open() || !open(a.Project) || !agentOpen(a.Agent) {

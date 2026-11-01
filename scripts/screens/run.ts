@@ -155,9 +155,24 @@ async function twoAgents(page: Page): Promise<void> {
 }
 
 /**
+ * The + menu's agents are mentions in the box, never chips beside the
+ * project, and nothing chooses how they are routed.
+ */
+async function mentioned(page: Page, text: string): Promise<void> {
+  await page.waitForFunction(
+    (expected) =>
+      document.querySelector<HTMLTextAreaElement>('form[aria-label="Message"] textarea')?.value ===
+      expected,
+    text,
+  );
+  assert.equal(await page.getByRole("button", { name: /^Remove (helper|lead)$/ }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: /^(Each Decides|All of Them)$/ }).count(), 0);
+}
+
+/**
  * The chat's states, each a page and what a person does on it: completion
- * open after @ and after $, the + menu with two agents checked, the chips
- * with Each Decides and All of Them, a private conversation answered, its Share
+ * open after @ and after $, the + menu with two agents checked, the box
+ * with their mentions, a private conversation answered, its Share
  * dialog, a shared conversation, and answers its selected agents were
  * routed to.
  */
@@ -218,6 +233,48 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
           assert.equal(sizing.icon, 16, "Message action glyphs share one size");
         }
         await agent.getByRole("button", { name: "Reply", exact: true }).focus();
+      },
+    },
+    {
+      // The Not helpful flow: the rating, then a prompt with quick reasons
+      // (FEEDBACK_REASONS) and an optional comment, left open for capture.
+      name: "conversation-feedback-reasons",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        const agent = page.getByRole("article", { name: "helper message", exact: true }).first();
+        // An earlier message shows its actions once tapped or hovered (theme.css).
+        await agent.click({ position: { x: 4, y: 4 } });
+        const rating = agent.getByRole("group", { name: "Rate this answer" });
+        const down = rating.getByRole("button", { name: "Not helpful", exact: true });
+        await down.waitFor();
+        // The rating is stored, so an earlier viewport left it selected:
+        // take it back first so the click asks again.
+        if ((await down.getAttribute("aria-pressed")) === "true") {
+          await down.click();
+          await page.waitForFunction(
+            (el) => el?.getAttribute("aria-pressed") === "false",
+            await down.elementHandle(),
+          );
+        }
+        await down.click();
+        const prompt = page.getByRole("dialog", { name: "What went wrong?", exact: true });
+        await prompt.waitFor();
+        const reasons = prompt.locator("button[aria-pressed]");
+        assert.deepEqual(await reasons.allTextContents(), [
+          "Wrong",
+          "Incomplete",
+          "Too slow",
+          "Other",
+        ]);
+        const incomplete = prompt.getByRole("button", { name: "Incomplete", exact: true });
+        await incomplete.click();
+        assert.equal(await incomplete.getAttribute("aria-pressed"), "true");
+        await prompt.getByRole("textbox").fill("It skipped the owner for each step.");
+        const box = await prompt.boundingBox();
+        assert.ok(
+          box && box.x >= 0 && box.x + box.width <= (page.viewportSize()?.width ?? 0),
+          "The feedback prompt must stay in the viewport",
+        );
       },
     },
     {
@@ -583,7 +640,7 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
         await twoAgents(page);
         await page.keyboard.press("Escape");
         await page.keyboard.press("Escape");
-        await page.getByRole("button", { name: "All of Them" }).waitFor();
+        await mentioned(page, "@helper @lead ");
       },
     },
     {
@@ -714,13 +771,13 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
     ),
 
     {
-      name: "chat-chips",
+      name: "chat-mentions",
       path: "/",
       act: async (page) => {
         await twoAgents(page);
         await page.keyboard.press("Escape");
         await page.keyboard.press("Escape");
-        await page.getByRole("button", { name: "All of Them" }).click();
+        await mentioned(page, "@helper @lead ");
       },
     },
     { name: "chat-private", path: `/conversations/${ids.privateChat}` },

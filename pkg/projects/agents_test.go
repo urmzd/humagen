@@ -306,7 +306,7 @@ func TestSettingAgentsIsVersionedAndRecorded(t *testing.T) {
 	if root.Agents.Default != "lead" || root.Version != 2 {
 		t.Fatalf("root = %+v", root)
 	}
-	h, _ := s.History("acme", projects.Root, 1, 0)
+	h, _, _ := s.History("acme", projects.Root, 1, 0)
 	if h[0].What != projects.AgentsChanged || h[0].Before.Agents.Default != projects.OpenDefault || h[0].After.Agents.Default != "lead" {
 		t.Fatalf("the change recorded = %+v", h[0])
 	}
@@ -373,11 +373,11 @@ func TestHomingInAndOut(t *testing.T) {
 	if home, _ := tree.Home("helper"); home != "Field" || !tree.IsAvailable("Initech", "helper") || len(tree.Homes("Globex")) != 0 {
 		t.Fatalf("after a move: home %q, homes in Globex %v", home, tree.Homes("Globex"))
 	}
-	h, _ := s.History("acme", "Globex", 0, 0)
+	h, _, _ := s.History("acme", "Globex", 0, 0)
 	if h[0].What != projects.HomeChanged || h[0].Agent != "helper" || h[0].Note != projects.LeftNote {
 		t.Fatalf("the old home's change = %+v", h[0])
 	}
-	h, _ = s.History("acme", "Field", 0, 0)
+	h, _, _ = s.History("acme", "Field", 0, 0)
 	if h[0].What != projects.HomeChanged || h[0].Note != projects.LivesHereNote {
 		t.Fatalf("the new home's change = %+v", h[0])
 	}
@@ -388,11 +388,11 @@ func TestHomingInAndOut(t *testing.T) {
 		t.Fatal("a platform agent again is not available where * is")
 	}
 	// Doing nothing writes nothing.
-	n, _ := s.History("acme", "Field", 0, 0)
+	n, _, _ := s.History("acme", "Field", 0, 0)
 	if err := s.DropHome("acme", "helper", admin, t0, nil); err != nil {
 		t.Fatal(err)
 	}
-	if again, _ := s.History("acme", "Field", 0, 0); len(again) != len(n) {
+	if again, _, _ := s.History("acme", "Field", 0, 0); len(again) != len(n) {
 		t.Fatal("dropping no home recorded a change")
 	}
 	for _, c := range []struct {

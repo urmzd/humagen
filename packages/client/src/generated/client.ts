@@ -28,6 +28,8 @@ import type {
   BringBackThreadResultBody,
   CallPolicy,
   CallPolicyInput,
+  CatalogConnector,
+  CatalogPage,
   ChannelInput,
   ChannelUpdate,
   ChannelView,
@@ -155,6 +157,7 @@ import type {
   PutClientCapabilitiesBodyPart2,
   QueryJournalResponse,
   QuestionAnswer,
+  Readiness,
   RememberOutcomeDecisionBody,
   Resolution,
   ReviseAgentBody,
@@ -891,6 +894,21 @@ export class ApiClient {
   async getHealthRaw(options?: RequestOptions): Promise<ApiResponse<string>> {
     const path = "/healthz";
     return this.rawRequest<string>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Whether this process should be sent traffic. It is ready once it has finished starting, while its database and event bus answer, and until it starts draining to stop. A failed check is named, never explained; the reason is in the server's log. */
+  async getReadiness(options?: RequestOptions): Promise<Readiness> {
+    const path = "/readyz";
+    return this.request<Readiness>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getReadinessRaw(options?: RequestOptions): Promise<ApiResponse<Readiness>> {
+    const path = "/readyz";
+    return this.rawRequest<Readiness>("GET", path, {
       ...options,
     });
   }
@@ -1964,6 +1982,87 @@ owner is no agent's, and answers 404.
     });
   }
 
+  /** The connectors you see (your own, and the published ones of projects
+you see) and their entries: tables, columns and descriptions, never
+data (RFC 0005). With q, entries are ranked against it, hybrid when
+the deployment has an embedder; without it, listed by connector and
+path. Seeing an entry never grants reading the object.
+ */
+  async getCatalog(q?: string, limit?: number, options?: RequestOptions): Promise<CatalogPage> {
+    let path = "/api/catalog";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<CatalogPage>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getCatalogRaw(q?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<CatalogPage>> {
+    let path = "/api/catalog";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<CatalogPage>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Only the connector's owner publishes. Who published and when are recorded. */
+  async publishConnector(name: string, options?: RequestOptions): Promise<CatalogConnector> {
+    let path = "/api/catalog/connectors/{name}/publish";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<CatalogConnector>("POST", path, {
+      ...options,
+    });
+  }
+
+  async publishConnectorRaw(name: string, options?: RequestOptions): Promise<ApiResponse<CatalogConnector>> {
+    let path = "/api/catalog/connectors/{name}/publish";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<CatalogConnector>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** Hides them from everyone but the owner at once. The owner withdraws, and so may whoever governs the workspace. Who withdrew and when are recorded. */
+  async withdrawConnector(name: string, options?: RequestOptions): Promise<CatalogConnector> {
+    let path = "/api/catalog/connectors/{name}/publish";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<CatalogConnector>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async withdrawConnectorRaw(name: string, options?: RequestOptions): Promise<ApiResponse<CatalogConnector>> {
+    let path = "/api/catalog/connectors/{name}/publish";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<CatalogConnector>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Lists the connected system again and replaces the connector's entries whole. Only its owner asks. A crawl that fails keeps the entries before it. */
+  async crawlConnector(name: string, options?: RequestOptions): Promise<CatalogConnector> {
+    let path = "/api/catalog/connectors/{name}/crawl";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<CatalogConnector>("POST", path, {
+      ...options,
+    });
+  }
+
+  async crawlConnectorRaw(name: string, options?: RequestOptions): Promise<ApiResponse<CatalogConnector>> {
+    let path = "/api/catalog/connectors/{name}/crawl";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<CatalogConnector>("POST", path, {
+      ...options,
+    });
+  }
+
   /** Each agent available in the project that takes untagged messages
 (its spec is not `tagged_only`) is asked, all at once, whether it
 should be involved. Each that says yes would answer, side by side;
@@ -2453,7 +2552,8 @@ that issued it.
   /** The message is posted as the caller, or as the person `act_as` names
 through a client that maps them; no field names an author, and a
 credential acting for nobody is refused (403). What the message
-starts follows the tag rules: the agents it tags answer, at most 3,
+starts follows the tag rules: every agent it tags answers, each
+bounded by budgets and admission like any run,
 and a `$skill` with no agent tagged asks the agents; tagging only
 people or experts notifies them; posted only, nothing answers. A
 message a person posts as themselves, as the console does, that tags

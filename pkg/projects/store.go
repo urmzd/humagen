@@ -3,7 +3,9 @@ package projects
 import (
 	"cmp"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"slices"
 	"strconv"
@@ -41,6 +43,16 @@ func (s stored) project() Project {
 	p.FileOwns = s.Owns
 	return p
 }
+
+// keyHead is the tenant's head: a record every write moves, at the version
+// it read, in the same state.Write as the change. Two writes that read one
+// version cannot both land, so a write checks the tree as it is when it
+// lands, and a read whose head did not move while it read saw one write's
+// tree, never half of two.
+const keyHead = "head"
+
+// head is what the head record holds. Its version is what matters.
+var head = json.RawMessage(`{}`)
 
 // tenant is one tenant's records, as they are written. A write builds a new
 // one from a copy, so a failed write leaves the old one as it was.
@@ -84,24 +96,47 @@ func (t *tenant) lookup(name string) (Project, bool) {
 	return Project{}, false
 }
 
-// Store keeps every tenant's tree. It is in memory, and built with Open it
-// writes every change through a state.Store and reads them back when it is
-// built again. It is one process's: it reads the store once and then trusts
-// its memory.
+// snapshot is a tenant's records as they were at one version of its head,
+// and the Tree they make. It is never changed.
+type snapshot struct {
+	version int64
+	t       *tenant
+	tree    *Tree
+}
+
+// Store keeps every tenant's tree in a state.Store, and reads and writes it
+// per request: the database is the truth, and two processes on one database
+// agree. Each read looks up the tenant's head and, when it moved since this
+// process last read the tenant, reads the tenant's records again, a capped
+// collection; each write checks the tree as it read it and lands only if the
+// head has not moved since, reading again and checking again when it has. It
+// does not need the database's lock.
 type Store struct {
-	// mu serializes writes, which check the tree and change it in one step.
-	// Hold takes it to read, so a project cannot be deleted while a caller
-	// files something under it.
-	mu      sync.RWMutex
-	tenants map[string]*tenant
-	// trees is each tenant's current Tree, replaced on every write and read
-	// without the lock.
-	trees sync.Map
+	// mu serializes this process's writes, so they rarely conflict with each
+	// other, and Hold takes it to read, so a project this process holds is
+	// not deleted by this process meanwhile. Another process is fenced by
+	// the head instead (Hold).
+	mu sync.RWMutex
+	// cache is each tenant's last snapshot this process read or wrote, by
+	// tenant. A read uses it only while the head is at its version, so
+	// dropping it changes no answer.
+	cache sync.Map
 	caps  Caps
 	kept  *state.Table[json.RawMessage]
+	// dir is the directory of the tenants that have written anything.
+	dir *state.Tenants
 	// filed is what the store asks before it forgets a deleted name. Nil
 	// forgets none.
 	filed func(tenant string) func(name string) bool
+}
+
+// MaxHomes bounds how many agents live in projects in one workspace.
+const MaxHomes = 2000
+
+// most is the most records a tenant can hold: every bound it is written
+// within, with room for its head and its history key.
+func (s *Store) most() int {
+	return s.caps.Projects + 1 + MaxHistory + MaxTombstones + (s.caps.Projects+1)*MaxChannels + MaxHomes + 2
 }
 
 // Option configures a Store.
@@ -122,51 +157,155 @@ func WithCaps(c Caps) Option {
 // WithFiled tells the store what is still filed under a name, so a tombstone
 // is forgotten to make room only when reusing its name would adopt nothing:
 // filed(tenant) returns whether one name of that tenant, ignoring case, still
-// has conversations or files under it. It is called with the store's lock
-// held, so it must not call the store. Without it no tombstone is forgotten,
-// and a delete past MaxTombstones is refused.
+// has conversations or files under it. It is called while a write is being
+// checked, perhaps more than once for one write, so it must not call the
+// store. Without it no tombstone is forgotten, and a delete past
+// MaxTombstones is refused.
 func WithFiled(filed func(tenant string) func(name string) bool) Option {
 	return func(s *Store) { s.filed = filed }
 }
 
 // NewStore returns an empty store in memory.
 func NewStore(opts ...Option) *Store {
-	s := &Store{tenants: map[string]*tenant{}, caps: DefaultCaps()}
-	for _, o := range opts {
-		o(s)
+	s, err := Open(nil, opts...)
+	if err != nil {
+		// A new memory store has nothing to read that could fail.
+		panic(err)
 	}
 	return s
 }
 
-// Open returns a store that keeps its records in st, holding what st already
-// has. A nil st is NewStore. It refuses records that do not make a tree: a
-// project whose parent is missing, a cycle, or an agent living in a project
-// that is not there.
+// Open returns a store that keeps its records in st. A nil st keeps them in
+// memory. It reads no tenant's records: each is read when it is asked for, and
+// a tenant whose records do not make a tree (a project whose parent is
+// missing, a cycle, or an agent living in a project that is not there) fails
+// the reads and writes that name it, with ErrInvalid.
 func Open(st state.Store, opts ...Option) (*Store, error) {
-	s := NewStore(opts...)
-	s.kept = state.NewTable[json.RawMessage](st, namespace)
-	err := s.kept.Load(func(tenantName, key string, raw json.RawMessage) error {
-		t, ok := s.tenants[tenantName]
-		if !ok {
-			t = newTenant()
-			s.tenants[tenantName] = t
-		}
-		return t.load(key, raw)
-	})
-	if err != nil {
-		return nil, fmt.Errorf("projects: load: %w", err)
+	if st == nil {
+		st = state.NewMemory()
 	}
-	for name, t := range s.tenants {
+	s := &Store{caps: DefaultCaps()}
+	for _, o := range opts {
+		o(s)
+	}
+	s.kept = state.NewTable[json.RawMessage](st, namespace)
+	dir, err := state.OpenTenants(st, namespace)
+	if err != nil {
+		return nil, fmt.Errorf("projects: open the tenant directory: %w", err)
+	}
+	s.dir = dir
+	return s, nil
+}
+
+// read returns a tenant's snapshot as it is now: the one this process holds
+// when the head has not moved, or the tenant's records read again.
+func (s *Store) read(tenantName string) (*snapshot, error) {
+	var out *snapshot
+	err := state.Retry(func() error {
+		version, err := s.headVersion(tenantName)
+		if err != nil {
+			return err
+		}
+		if v, ok := s.cache.Load(tenantName); ok && v.(*snapshot).version == version {
+			out = v.(*snapshot)
+			return nil
+		}
+		items, err := s.kept.All(tenantName, "", s.most())
+		if err != nil {
+			return fmt.Errorf("projects: read %q: %w", tenantName, err)
+		}
+		t := newTenant()
+		for _, it := range items {
+			if it.Key == keyHead {
+				continue
+			}
+			if err := t.load(it.Key, it.Value); err != nil {
+				return fmt.Errorf("projects: read %q: %w", tenantName, err)
+			}
+		}
+		// The records were read a page at a time: they are one version's
+		// only if no write landed while they were read.
+		again, err := s.headVersion(tenantName)
+		if err != nil {
+			return err
+		}
+		if again != version {
+			return state.ErrConflict
+		}
 		slices.SortFunc(t.history, func(a, b Change) int { return cmp.Compare(a.Seq, b.Seq) })
 		if err := t.check(); err != nil {
-			return nil, fmt.Errorf("projects: load %q: %w", name, err)
+			return fmt.Errorf("projects: read %q: %w", tenantName, err)
 		}
-		s.trees.Store(name, t.tree())
+		out = s.remember(tenantName, version, t)
+		return nil
+	})
+	return out, err
+}
+
+// headVersion is the version of a tenant's head, state.Missing before its
+// first write.
+func (s *Store) headVersion(tenantName string) (int64, error) {
+	h, err := s.kept.Lookup(tenantName, keyHead)
+	switch {
+	case errors.Is(err, state.ErrNotFound):
+		return state.Missing, nil
+	case err != nil:
+		return 0, fmt.Errorf("projects: read %q: %w", tenantName, err)
 	}
-	if err := s.ensureHistorySecrets(); err != nil {
-		return nil, err
-	}
-	return s, nil
+	return h.Version, nil
+}
+
+// remember keeps a tenant's records at a version of its head as this
+// process's snapshot of it.
+func (s *Store) remember(tenantName string, version int64, t *tenant) *snapshot {
+	tree := t.tree()
+	tree.version = version
+	snap := &snapshot{version: version, t: t, tree: tree}
+	s.cache.Store(tenantName, snap)
+	return snap
+}
+
+// retry runs one attempt at a write until it lands or fails for a reason
+// other than another write landing first.
+func retry[T any](try func() (T, error)) (T, error) {
+	var out T
+	err := state.Retry(func() error {
+		v, err := try()
+		if err != nil {
+			return err
+		}
+		out = v
+		return nil
+	})
+	return out, err
+}
+
+// fence moves a tenant's head from the version a caller read, so a write
+// that read the tenant before it cannot land and checks again. When another
+// write landed first, still is asked of the tenant as it is now, and the
+// fence is tried again.
+func (s *Store) fence(tenantName string, version int64, still func(*snapshot) error) error {
+	first := true
+	return state.Retry(func() error {
+		if !first {
+			snap, err := s.read(tenantName)
+			if err != nil {
+				return err
+			}
+			if err := still(snap); err != nil {
+				return err
+			}
+			version = snap.version
+		}
+		first = false
+		b := s.kept.Batch()
+		if version == state.Missing {
+			b.Create(tenantName, keyHead, head)
+		} else {
+			b.PutAt(tenantName, keyHead, head, version)
+		}
+		return b.Commit()
+	})
 }
 
 func (t *tenant) load(key string, raw json.RawMessage) error {
@@ -305,21 +444,45 @@ func (t *tenant) check() error {
 }
 
 // Tree returns a tenant's tree. A tenant that has written nothing has the
-// root alone.
+// root alone. When the tenant cannot be read it returns a tree whose root
+// nobody is a member of and that enables no agent, so a reader is refused
+// rather than shown a tree that may not be the tenant's; Read reports why.
 func (s *Store) Tree(tenantName string) *Tree {
-	if v, ok := s.trees.Load(tenantName); ok {
-		return v.(*Tree)
+	tree, err := s.Read(tenantName)
+	if err != nil {
+		slog.Warn("projects: a tenant's tree could not be read; it reads as closed", "tenant", tenantName, "error", err)
+		return closed
 	}
-	return bare
+	return tree
 }
 
-// bare is the tree of a tenant that has written nothing. A Tree is never
-// changed, so one serves them all.
-var bare = build(nil, nil)
+// Read returns a tenant's tree as it is now, or why it cannot be read.
+func (s *Store) Read(tenantName string) (*Tree, error) {
+	snap, err := s.read(tenantName)
+	if err != nil {
+		return nil, err
+	}
+	return snap.tree, nil
+}
+
+// closed is the tree Tree returns for a tenant it cannot read: a root with
+// no members and no agents. Its version matches no head, so a snapshot of it
+// guards nothing.
+var closed = func() *Tree {
+	root := virtualRoot()
+	root.Members, root.Agents = []Entry{}, Agents{Enable: []string{}}
+	t := build(map[string]Project{Root: root}, nil)
+	t.version = 0
+	return t
+}()
 
 // Get returns a project by its exact name. The root is "".
 func (s *Store) Get(tenantName, name string) (Project, error) {
-	p, ok := s.Tree(tenantName).Get(name)
+	tree, err := s.Read(tenantName)
+	if err != nil {
+		return Project{}, err
+	}
+	p, ok := tree.Get(name)
 	if !ok {
 		return Project{}, fmt.Errorf("%w: %q", ErrNotFound, name)
 	}
@@ -331,44 +494,67 @@ func (s *Store) List(tenantName string) []Project { return s.Tree(tenantName).Pr
 
 // Stored reports whether a tenant has written anything: a project, its root,
 // a change or a tombstone.
-func (s *Store) Stored(tenantName string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	t, ok := s.tenants[tenantName]
-	return ok && t.stored()
+func (s *Store) Stored(tenantName string) (bool, error) {
+	snap, err := s.read(tenantName)
+	if err != nil {
+		return false, err
+	}
+	return snap.t.stored(), nil
 }
 
 // Hold runs fn while the project exists, and keeps it from being deleted until
 // fn returns. A caller filing something under a project (a schedule, an alert
 // rule, a policy) does it in fn, so a delete that checks for such things
-// cannot miss it. fn may read Tree and Get, which take no lock, and must call
-// nothing else on this store: a write waiting for the lock would wait for fn.
+// cannot miss it. fn may read Tree and Get, and must call nothing else on
+// this store: a write waiting for the lock would wait for fn.
+//
+// In this process a delete waits for fn. Another process's delete is fenced
+// instead: once fn returns, Hold moves the tenant's head, so a delete that
+// read the tenant before fn's filing landed cannot land and checks again.
+// When such a delete landed first, Hold reports ErrNotFound, and what fn
+// filed is under a deleted name, as anything filed under a name before its
+// delete is.
 func (s *Store) Hold(tenantName, name string, fn func() error) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if !s.Tree(tenantName).Has(name) {
+	snap, err := s.read(tenantName)
+	if err != nil {
+		return err
+	}
+	if !snap.tree.Has(name) {
 		return fmt.Errorf("%w: %q", ErrNotFound, name)
 	}
-	return fn()
-}
-
-// write is one change to a tenant: the batch to write and the tenant as it
-// is after it.
-type write struct {
-	s     *Store
-	name  string
-	t     *tenant
-	batch *state.Batch[json.RawMessage]
-	err   error
-}
-
-// begin starts a change to a tenant. The caller holds the lock.
-func (s *Store) begin(tenantName string) *write {
-	t, ok := s.tenants[tenantName]
-	if !ok {
-		t = newTenant()
+	if err := fn(); err != nil {
+		return err
 	}
-	return &write{s: s, name: tenantName, t: t.copy(), batch: s.kept.Batch()}
+	return s.fence(tenantName, snap.version, func(now *snapshot) error {
+		if !now.tree.Has(name) {
+			return fmt.Errorf("%w: %q was deleted while something was filed under it", ErrNotFound, name)
+		}
+		return nil
+	})
+}
+
+// write is one change to a tenant: the batch to write, the tenant as it is
+// after it, and the version of the head it was read at.
+type write struct {
+	s       *Store
+	name    string
+	t       *tenant
+	batch   *state.Batch[json.RawMessage]
+	version int64
+	err     error
+}
+
+// begin starts a change to a tenant, from the tenant as it is now. The
+// caller holds the lock, and runs begin through commit again when commit
+// reports state.ErrConflict.
+func (s *Store) begin(tenantName string) (*write, error) {
+	snap, err := s.read(tenantName)
+	if err != nil {
+		return nil, err
+	}
+	return &write{s: s, name: tenantName, t: snap.t.copy(), batch: s.kept.Batch(), version: snap.version}, nil
 }
 
 func (w *write) put(key string, v any) {
@@ -473,17 +659,29 @@ func (w *write) root(by string, at time.Time) {
 	w.record(Change{At: at, By: by, Project: Root, What: Created, After: ptr(r)})
 }
 
-// commit writes the change and, only once it is written, makes it the
-// tenant's.
+// commit writes the change with the head moved from the version it was read
+// at, so it lands only if no other write landed since, and reports
+// state.ErrConflict when one did.
 func (w *write) commit() error {
 	if w.err != nil {
 		return w.err
 	}
+	if err := w.s.dir.Mark(w.name); err != nil {
+		return fmt.Errorf("projects: write: %w", err)
+	}
+	if w.version == state.Missing {
+		w.batch.Create(w.name, keyHead, head)
+	} else {
+		w.batch.PutAt(w.name, keyHead, head, w.version)
+	}
 	if err := w.batch.Commit(); err != nil {
 		return fmt.Errorf("projects: write: %w", err)
 	}
-	w.s.tenants[w.name] = w.t
-	w.s.trees.Store(w.name, w.t.tree())
+	next := w.version + 1
+	if w.version == state.Missing {
+		next = 1
+	}
+	w.s.remember(w.name, next, w.t)
 	return nil
 }
 
@@ -557,14 +755,18 @@ func (s *Store) Create(tenantName string, p Project, w Writer, at time.Time) (Pr
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.create(tenantName, p, w, at, w.By, true)
+	return retry(func() (Project, error) { return s.create(tenantName, p, w, at, w.By, true) })
 }
 
 // create is Create, and Upsert's way in for a new project. creator owns a
 // project that lists no members. checked holds its agents to the tree; the
-// platform file is checked as a whole instead. The caller holds the lock.
+// platform file is checked as a whole instead. The caller holds the lock
+// and retries a conflict.
 func (s *Store) create(tenantName string, p Project, w Writer, at time.Time, creator string, checked bool, channels ...Channel) (Project, error) {
-	tx := s.begin(tenantName)
+	tx, err := s.begin(tenantName)
+	if err != nil {
+		return Project{}, err
+	}
 	tree := tx.t.tree()
 	if p.Members == nil {
 		p.Members = DefaultMembers(tree.Like(p.Kind), creator)
@@ -667,7 +869,15 @@ func (s *Store) SetAgents(tenantName, name string, version int, a Agents, w Writ
 func (s *Store) update(tenantName, name string, version int, w Writer, at time.Time, what string, fn func(*Project) error) (Project, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tx := s.begin(tenantName)
+	return retry(func() (Project, error) { return s.updateOnce(tenantName, name, version, w, at, what, fn) })
+}
+
+// updateOnce is one attempt at update. fn may be called once per attempt.
+func (s *Store) updateOnce(tenantName, name string, version int, w Writer, at time.Time, what string, fn func(*Project) error) (Project, error) {
+	tx, err := s.begin(tenantName)
+	if err != nil {
+		return Project{}, err
+	}
 	cur, ok := current(tx.t, name)
 	if !ok {
 		return Project{}, fmt.Errorf("%w: %q", ErrNotFound, name)
@@ -823,7 +1033,15 @@ func sameField(a, b Project, field string) bool {
 func (s *Store) Delete(tenantName, name string, w Writer, at time.Time, inUse func(Project) []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tx := s.begin(tenantName)
+	return state.Retry(func() error { return s.deleteOnce(tenantName, name, w, at, inUse) })
+}
+
+// deleteOnce is one attempt at Delete.
+func (s *Store) deleteOnce(tenantName, name string, w Writer, at time.Time, inUse func(Project) []string) error {
+	tx, err := s.begin(tenantName)
+	if err != nil {
+		return err
+	}
 	if name == Root {
 		return fmt.Errorf("%w: the workspace cannot be deleted", ErrInvalid)
 	}
@@ -864,15 +1082,16 @@ func (s *Store) Delete(tenantName, name string, w Writer, at time.Time, inUse fu
 	return tx.commit()
 }
 
-// Tombstone returns the record of a deleted name, ignoring case.
+// Tombstone returns the record of a deleted name, ignoring case. A tenant
+// that cannot be read reads as remembering none, so nothing is granted
+// through one.
 func (s *Store) Tombstone(tenantName, name string) (Tombstone, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	t, ok := s.tenants[tenantName]
-	if !ok {
+	snap, err := s.read(tenantName)
+	if err != nil {
+		slog.Warn("projects: a tenant's deleted names could not be read", "tenant", tenantName, "error", err)
 		return Tombstone{}, false
 	}
-	x, ok := t.tombs[strings.ToLower(name)]
+	x, ok := snap.t.tombs[strings.ToLower(name)]
 	return x, ok
 }
 
@@ -899,7 +1118,15 @@ func (s *Store) Upsert(tenantName string, p Project, owns []string, by string, a
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tx := s.begin(tenantName)
+	return retry(func() (Project, error) { return s.upsert(tenantName, p, owns, by, at) })
+}
+
+// upsert is one attempt at Upsert, with owns sorted and checked.
+func (s *Store) upsert(tenantName string, p Project, owns []string, by string, at time.Time) (Project, error) {
+	tx, err := s.begin(tenantName)
+	if err != nil {
+		return Project{}, err
+	}
 	cur, ok := current(tx.t, p.Name)
 	if ok && cur.PersonalOwner != "" {
 		return Project{}, fmt.Errorf("%w: the platform file cannot manage a personal project", ErrInvalid)
@@ -975,7 +1202,17 @@ func (s *Store) Upsert(tenantName string, p Project, owns []string, by string, a
 func (s *Store) Release(tenantName, name, by string, at time.Time) (Project, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tx := s.begin(tenantName)
+	return retry(func() (Project, error) {
+		tx, err := s.begin(tenantName)
+		if err != nil {
+			return Project{}, err
+		}
+		return s.release(tx, name, by, at)
+	})
+}
+
+// release is one attempt at Release.
+func (s *Store) release(tx *write, name, by string, at time.Time) (Project, error) {
 	cur, ok := current(tx.t, name)
 	if !ok {
 		return Project{}, fmt.Errorf("%w: %q", ErrNotFound, name)
@@ -996,10 +1233,21 @@ func (s *Store) Release(tenantName, name, by string, at time.Time) (Project, err
 // refused (ErrExists) once the tenant has written anything, so running it
 // again changes nothing, and refused whole (ErrLimit) when the two together
 // pass the cap.
+//
+// Two processes importing one tenant at once write it once: the one whose
+// write lands second reads the tenant again and is refused with ErrExists.
 func (s *Store) Import(tenantName string, ps, kept []Project, by string, at time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tx := s.begin(tenantName)
+	return state.Retry(func() error { return s.importOnce(tenantName, ps, kept, by, at) })
+}
+
+// importOnce is one attempt at Import.
+func (s *Store) importOnce(tenantName string, ps, kept []Project, by string, at time.Time) error {
+	tx, err := s.begin(tenantName)
+	if err != nil {
+		return err
+	}
 	if tx.t.stored() {
 		return fmt.Errorf("%w: %q already has projects", ErrExists, tenantName)
 	}
@@ -1038,29 +1286,28 @@ func (s *Store) Import(tenantName string, ps, kept []Project, by string, at time
 // not zero. next is what to pass as before for the page after this one, or 0
 // when there is none. A deleted project's changes stay as long as the
 // tenant's history keeps them.
-func (s *Store) History(tenantName, name string, limit int, before int64) (changes []Change, next int64) {
+func (s *Store) History(tenantName, name string, limit int, before int64) (changes []Change, next int64, err error) {
 	if limit <= 0 {
 		limit = DefaultPage
 	}
 	limit = min(limit, MaxPage)
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	changes = []Change{}
-	t, ok := s.tenants[tenantName]
-	if !ok {
-		return changes, 0
+	snap, err := s.read(tenantName)
+	if err != nil {
+		return nil, 0, err
 	}
+	changes = []Change{}
+	t := snap.t
 	for i := len(t.history) - 1; i >= 0; i-- {
 		c := t.history[i]
 		if c.Project != name || (before > 0 && c.Seq >= before) {
 			continue
 		}
 		if len(changes) == limit {
-			return changes, changes[len(changes)-1].Seq
+			return changes, changes[len(changes)-1].Seq, nil
 		}
 		changes = append(changes, c)
 	}
-	return changes, 0
+	return changes, 0, nil
 }
 
 // legacyText is text kept before it was bounded: control characters other
@@ -1081,11 +1328,10 @@ func legacyText(s string, limit int) string {
 
 // RecentHistory returns the tenant's bounded retained history for an audit
 // adapter. The platform must confine each change before exposing it.
-func (s *Store) RecentHistory(tenant string) []Change {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if t := s.tenants[tenant]; t != nil {
-		return slices.Clone(t.history)
+func (s *Store) RecentHistory(tenant string) ([]Change, error) {
+	snap, err := s.read(tenant)
+	if err != nil {
+		return nil, err
 	}
-	return []Change{}
+	return slices.Clone(snap.t.history), nil
 }

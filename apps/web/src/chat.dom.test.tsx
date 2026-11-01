@@ -181,7 +181,7 @@ test("Home's chat bar starts a private conversation in the picked project and op
 });
 
 const chat = defaultCopy.chat;
-/** The names on the chips row, in order. */
+/** What the bar's row under the box shows, in order: where the conversation is filed, never an agent. */
 const chips = () =>
   (screen.queryByRole("list", { name: chat.selected })?.querySelectorAll("li") ?? []).length === 0
     ? []
@@ -189,18 +189,17 @@ const chips = () =>
         (li) => li.textContent ?? "",
       );
 
-test("a link or suggestion selects the agent without submitting, and suggestions remain while typing", async () => {
+test("a link or suggestion @mentions the agent without submitting, and suggestions remain while typing", async () => {
   openChat(workspace("lead"), { startAgent: "helper", startAsk: "Help with the launch." });
-  await waitFor(() => assert.equal(box().value, "Help with the launch."));
-  assert.deepEqual(chips(), ["helper"]);
-  assert.ok(screen.getByPlaceholderText(chat.placeholderOne("helper")));
+  await waitFor(() => assert.equal(box().value, "@helper Help with the launch."));
+  assert.deepEqual(chips(), [], "no agent shows where the project is");
   close();
   const writer = [...agents, agent("humagen-writer", "Writes reports.")];
   openChat(workspace("lead"), { agents: writer });
   const suggestions = await screen.findByRole("list", { name: chat.suggestions });
   fireEvent.click(within(suggestions).getByRole("button", { name: /Write a report/ }));
-  await waitFor(() => assert.equal(box().value, "Write a one-page report on "));
-  assert.deepEqual(chips(), ["humagen-writer"]);
+  await waitFor(() => assert.equal(box().value, "@humagen-writer Write a one-page report on "));
+  assert.deepEqual(chips(), []);
   assert.equal(screen.getByRole("list", { name: chat.suggestions }) === suggestions, true);
   fireEvent.change(box(), { target: { value: "Write a one-page report on launch notes" } });
   assert.equal(
@@ -216,7 +215,7 @@ test("a link or suggestion selects the agent without submitting, and suggestions
   assert.ok(screen.getByRole("list", { name: chat.suggestions }));
 });
 
-test("+ opens a menu where agents are checked with Space and the project with its channel is picked; the chips row routes Each Decides or All of Them", async () => {
+test("+ opens a menu where agents are @mentioned in the box and the project with its channel is picked; the message routes by its mentions alone", async () => {
   openChat(workspace("lead"), {
     projects: [{ ...globex, access: { role: "owner", from: "", via: "*" } }] as never,
   });
@@ -282,7 +281,17 @@ test("+ opens a menu where agents are checked with Space and the project with it
   assert.equal(document.activeElement, helperRow);
   fireEvent.click(lead);
   fireEvent.click(helperRow);
+  assert.equal(
+    box().value,
+    "@lead @helper ",
+    "each pick is mentioned as the @ completion writes it",
+  );
   assert.equal(lead.getAttribute("aria-checked"), "true");
+  assert.equal(
+    screen.queryByRole("dialog", { name: chat.menu }) !== null,
+    true,
+    "the menu stays open",
+  );
   assert.ok(
     !within(menu).queryByRole("checkbox", { name: /globex-helper/ }),
     "an agent homed elsewhere is not offered at the workspace",
@@ -298,17 +307,8 @@ test("+ opens a menu where agents are checked with Space and the project with it
   // Enter closes it.
   fireEvent.keyDown(within(menu).getByRole("checkbox", { name: /^lead/ }), { key: "Enter" });
   assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
-  assert.deepEqual(chips().slice(0, 2), ["lead", "helper"]);
-
-  // Two agents: the routing is chosen with text on the chips row.
-  const all = screen.getByRole("button", { name: chat.all });
-  assert.equal(
-    screen.getByRole("button", { name: chat.join }).getAttribute("aria-pressed"),
-    "true",
-  );
-  fireEvent.click(all);
-  assert.equal(all.getAttribute("aria-pressed"), "true");
-  assert.ok(screen.getByPlaceholderText(chat.placeholderAll(2)));
+  assert.deepEqual(chips(), [], "agents never show where the project is");
+  assert.equal(screen.queryByRole("group", { name: /routed/i }), null, "no routing toggle");
 
   // The project, then one of its channels, general first.
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
@@ -331,29 +331,28 @@ test("+ opens a menu where agents are checked with Space and the project with it
   assert.equal(document.activeElement, box(), "closing gives the box its focus back");
   assert.ok(chips().includes("Globex / #deals"), JSON.stringify(chips()));
 
-  // A chip is removed with its x.
-  fireEvent.click(screen.getByRole("button", { name: chat.removeAgent("helper") }));
-  assert.equal(
-    screen.queryByRole("button", { name: chat.all }),
-    null,
-    "one agent has nothing to route between",
-  );
+  // Deleting a mention's words takes the agent off: the menu reads the box.
+  fireEvent.change(box(), { target: { value: "@lead " } });
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
   const again = await screen.findByRole("dialog", { name: chat.menu });
   fireEvent.click(within(again).getByRole("button", { name: /^Agents\b/ }));
-  fireEvent.click(within(again).getByRole("checkbox", { name: /^helper/ }));
+  const helperAgain = within(again).getByRole("checkbox", { name: /^helper/ });
+  assert.equal(helperAgain.getAttribute("aria-checked"), "false");
+  fireEvent.click(helperAgain);
+  // Picking a mentioned agent again takes its mention out.
+  fireEvent.click(within(again).getByRole("checkbox", { name: /^lead/ }));
+  assert.equal(box().value, "@helper ");
+  fireEvent.click(within(again).getByRole("checkbox", { name: /^lead/ }));
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
 
-  fireEvent.change(box(), { target: { value: "Plan the renewal" } });
+  fireEvent.change(box(), { target: { value: `${box().value}Plan the renewal` } });
   fireEvent.keyDown(box(), { key: "Enter" });
   await waitFor(() => assert.deepEqual(opened, ["started"]));
   assert.deepEqual(net?.seen.find((s) => s.method === "POST")?.body, {
     visibility: "private",
     project: "Globex",
     channel: "deals",
-    text: "Plan the renewal",
-    agents: ["lead", "helper"],
-    mode: "all",
+    text: "@helper @lead Plan the renewal",
   });
 });
 
@@ -838,19 +837,20 @@ test("completion and the + menu open toward the side of the chat bar with room, 
   }
 });
 
-test("a link's agent that lives in a project opens that project; one that can't answer where it goes is taken off, and the page says so", async () => {
-  // globex-helper lives in Globex: its link opens Globex, and keeps it.
+test("a link's agent that lives in a project opens that project; a mention of one that can't answer where it goes is said in words", async () => {
+  // globex-helper lives in Globex: its link opens Globex, and mentions it.
   openChat(workspace("lead"), { startAgent: "globex-helper" });
   await waitFor(() => assert.ok(net?.seen.some((s) => s.path === "/api/projects/Globex/agents")));
-  await waitFor(() => assert.deepEqual(chips(), ["globex-helper", "Globex"]));
+  await waitFor(() => assert.deepEqual(chips(), ["Globex"]));
+  assert.equal(box().value, "@globex-helper ");
   openChatClose();
-  // Here only lead may answer, so helper is taken off, in words.
+  // Here only lead may answer, so the page says helper can't; the words stay the person's.
   openChat(
     { ...workspace("lead"), available: { all: false, names: ["lead"] } },
     { startAgent: "helper" },
   );
-  await waitFor(() => assert.deepEqual(chips(), []));
-  assert.ok(screen.getByText(defaultCopy.chat.notHere(["helper"])));
+  assert.ok(await screen.findByText(defaultCopy.chat.notHere(["helper"])));
+  assert.equal(box().value, "@helper ");
 });
 
 function openChatClose() {
@@ -895,7 +895,7 @@ test("all starter suggestions stay in one centered row that scrolls past its wid
   );
 });
 
-test("a suggestion adds its agent as the + menu would: All of Them gives way past three, and a full selection says so", async () => {
+test("a suggestion @mentions its agent, and the + menu mentions as many agents as are picked", async () => {
   const builtin = [
     agent("a1"),
     agent("a2"),
@@ -908,44 +908,30 @@ test("a suggestion adds its agent as the + menu would: All of Them gives way pas
     { ...workspace(), available: { all: true, names: [] } },
     { agents: builtin, startAgent: "a1" },
   );
-  await waitFor(() => assert.deepEqual(chips(), ["a1"]));
+  await waitFor(() => assert.equal(box().value, "@a1 "));
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
   const menu = await screen.findByRole("dialog", { name: chat.menu });
   fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
-  for (const n of ["a2", "a3"])
+  for (const n of ["a2", "a3", "a4", "a5", "humagen-writer"])
     fireEvent.click(await within(menu).findByRole("checkbox", { name: new RegExp(`^${n}`) }));
-  fireEvent.keyDown(menu, { key: "Escape" });
-  fireEvent.keyDown(menu, { key: "Escape" });
-  fireEvent.click(screen.getByRole("button", { name: chat.all }));
-  fireEvent.click(
-    within(await screen.findByRole("list", { name: chat.suggestions })).getByRole("button", {
-      name: /Write a report/,
-    }),
-  );
-  await waitFor(() => assert.deepEqual(chips().slice(0, 4), ["a1", "a2", "a3", "humagen-writer"]));
+  assert.equal(box().value, "@a1 @a2 @a3 @a4 @a5 @humagen-writer ", "no cap on mentions");
   assert.equal(
-    screen.getByRole("button", { name: chat.join }).getAttribute("aria-pressed"),
-    "true",
+    within(menu)
+      .getAllByRole("checkbox")
+      .filter((c) => c.getAttribute("aria-checked") === "true").length,
+    6,
   );
-  // Five selected, a suggestion for another agent is refused in words.
-  fireEvent.click(screen.getByRole("button", { name: chat.removeAgent("humagen-writer") }));
-  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
-  const full = await screen.findByRole("dialog", { name: chat.menu });
-  fireEvent.click(within(full).getByRole("button", { name: /^Agents\b/ }));
-  for (const n of ["a4", "a5"])
-    fireEvent.click(await within(full).findByRole("checkbox", { name: new RegExp(`^${n}`) }));
-  fireEvent.keyDown(full, { key: "Escape" });
-  fireEvent.keyDown(full, { key: "Escape" });
-  assert.deepEqual(chips().slice(0, 5), ["a1", "a2", "a3", "a4", "a5"]);
-  // The suggestions come back once the box is empty again.
+  fireEvent.keyDown(menu, { key: "Escape" });
+  fireEvent.keyDown(menu, { key: "Escape" });
+  assert.deepEqual(chips(), []);
+  // A suggestion fills the box with its words, its agent mentioned first.
   fireEvent.change(box(), { target: { value: "" } });
   fireEvent.click(
     within(await screen.findByRole("list", { name: chat.suggestions })).getByRole("button", {
       name: /Write a report/,
     }),
   );
-  assert.ok(await screen.findByText(chat.maxAgents(5)));
-  assert.ok(!chips().includes("humagen-writer"));
+  await waitFor(() => assert.equal(box().value, "@humagen-writer Write a one-page report on "));
 });
 
 test("Home's first message says what it did in the conversation it opens", async () => {
@@ -1047,19 +1033,12 @@ test("a conversation of runs has the + menu: its agents are saved on its thread 
   );
   fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
   fireEvent.click(await within(menu).findByRole("checkbox", { name: /^helper/ }));
-  await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "PUT")));
-  assert.deepEqual(net?.seen.find((s) => s.method === "PUT")?.body, {
-    version: 0,
-    title: "",
-    visibility: "shared",
-    default: "",
-    agents: ["helper"],
-    mode: "join",
-  });
+  // The pick is a mention in the box; nothing is saved on the thread.
+  assert.equal(box().value, "@helper ");
+  assert.ok(!net?.seen.some((s) => s.method === "PUT"));
   fireEvent.keyDown(menu, { key: "Escape" });
   fireEvent.keyDown(menu, { key: "Escape" });
-  await waitFor(() => assert.ok(chips().includes("helper"), JSON.stringify(chips())));
-  assert.ok(screen.getByPlaceholderText(chat.placeholderOne("helper")));
+  assert.ok(!chips().includes("helper"), JSON.stringify(chips()));
   // Its project shows as a chip that can't be removed.
   assert.equal(
     screen.queryByRole("button", { name: /^Remove (Acme|Workspace|Projectless)/ }),
@@ -1167,14 +1146,14 @@ test("the composer opens discovery in its picker and preserves the draft and att
   fireEvent.click(within(menu).getByRole("button", { name: c.choose }));
   await waitFor(() => {
     assert.ok(net?.seen.some((request) => request.path === "/api/projects/Globex/agents"));
-    assert.ok(chips().includes("globex-helper"), JSON.stringify(chips()));
     assert.ok(
       chips().some((chip) => chip.includes("Globex")),
       JSON.stringify(chips()),
     );
   });
   assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
-  assert.equal(box().value, "Keep my detailed request.");
+  // The match is mentioned where the cursor was, after the words kept.
+  assert.equal(box().value, "Keep my detailed request. @globex-helper ");
   assert.ok(within(screen.getByRole("list", { name: "Attached files" })).getByText("evidence.txt"));
   assert.equal(document.activeElement, box());
   assert.ok(
@@ -1186,13 +1165,13 @@ test("the composer opens discovery in its picker and preserves the draft and att
   await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ab"]));
   const started = net?.seen.find(
     (request) => request.method === "POST" && request.path === "/api/threads",
-  )?.body as { project: string; channel: string; agents: string[]; text: string };
+  )?.body as { project: string; channel: string; agents?: string[]; text: string };
   assert.equal(started.project, "Globex");
   assert.equal(started.channel, "general");
-  assert.deepEqual(started.agents, ["globex-helper"]);
+  assert.equal(started.agents, undefined, "the mention routes it, as any tag does");
   assert.equal(
     started.text,
-    "Keep my detailed request.\n\nAttached file: evidence.txt\n```\nRenewal evidence\n```",
+    "Keep my detailed request. @globex-helper\n\nAttached file: evidence.txt\n```\nRenewal evidence\n```",
   );
 });
 
@@ -1220,8 +1199,8 @@ test("discovery seeds an empty composer only after an explicit match choice", as
   await within(menu).findByText("Globex renewal");
   assert.equal(box().value, "", "search alone does not change the draft");
   fireEvent.click(within(menu).getByRole("button", { name: c.choose }));
-  await waitFor(() => assert.equal(box().value, "Plan a customer renewal"));
-  assert.ok(chips().includes("globex-helper"), JSON.stringify(chips()));
+  await waitFor(() => assert.equal(box().value, "@globex-helper Plan a customer renewal"));
+  assert.ok(!chips().includes("globex-helper"), JSON.stringify(chips()));
   assert.ok(!net?.seen.some((request) => request.method === "POST"));
 });
 
@@ -1267,7 +1246,7 @@ test("a starter suggestion keeps the selected project and waits for explicit sub
   openChat(workspace("lead"), { startIn: "Globex", projects: [globex] as never, agents: builtin });
   const list = await screen.findByRole("list", { name: chat.suggestions });
   fireEvent.click(within(list).getByRole("button", { name: /Write a report/ }));
-  await waitFor(() => assert.equal(box().value, "Write a one-page report on "));
+  await waitFor(() => assert.equal(box().value, "@humagen-writer Write a one-page report on "));
   assert.ok(screen.getByRole("button", { name: "Select project: Globex" }));
   assert.ok(!net?.seen.some((request) => request.method === "POST"));
 });

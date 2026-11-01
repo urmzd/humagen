@@ -16,6 +16,7 @@ import (
 
 	"github.com/urmzd/humagen/pkg/auth/mockidp"
 	"github.com/urmzd/humagen/pkg/blob"
+	"github.com/urmzd/humagen/pkg/credref"
 )
 
 // serve is what a server runs, behind a proxy or in a pod, so it keeps a
@@ -170,16 +171,41 @@ func TestStorageFlags(t *testing.T) {
 	if _, ok := s.(*blob.S3); !ok {
 		t.Fatalf("-storage=s3 = %T", s)
 	}
+	if s, err = open(nil, "-storage=gcs", "-gcs-bucket=humagen", "-gcs-endpoint=http://127.0.0.1:4443", "-gcs-prefix=prod"); err != nil {
+		t.Fatal(err)
+	} else if _, ok := s.(*blob.GCS); !ok {
+		t.Fatalf("-storage=gcs = %T", s)
+	}
 	for name, c := range map[string]struct {
 		env  map[string]string
 		args []string
 	}{
 		"no bucket":          {nil, []string{"-storage=s3"}},
+		"no gcs bucket":      {nil, []string{"-storage=gcs", "-gcs-endpoint=http://127.0.0.1:4443"}},
 		"half a credential":  {map[string]string{s3AccessEnv: "k"}, []string{"-storage=s3", "-s3-bucket=humagen"}},
 		"an unknown storage": {nil, []string{"-storage=tape"}},
 	} {
 		if _, err := open(c.env, c.args...); err == nil {
 			t.Errorf("%s: no error", name)
+		}
+	}
+}
+
+// A System document's gcs blobs become serve's storage flags.
+func TestTheSpecsGCSBlobsBecomeFlags(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
+	body := "api_version: humagen/v1\nkind: System\nmetadata: {name: humagen}\nspec:\n  blobs:\n    kind: gcs\n    gcs: {bucket: humagen-files, prefix: prod, endpoint: \"http://127.0.0.1:4443\"}\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	l, err := loadFiles(t.Context(), Options{}, []string{path}, credref.Resolver{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := " " + strings.Join(l.args, " ") + " "
+	for _, want := range []string{"-storage=gcs", "-gcs-bucket=humagen-files", "-gcs-prefix=prod", "-gcs-endpoint=http://127.0.0.1:4443"} {
+		if !strings.Contains(args, " "+want+" ") {
+			t.Errorf("args %v lack %s", l.args, want)
 		}
 	}
 }

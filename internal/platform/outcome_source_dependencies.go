@@ -56,7 +56,11 @@ func (reader outcomeSourceDependencies) ReadSourceDependencies(ctx context.Conte
 		if err := ctx.Err(); err != nil {
 			return out, err
 		}
-		for _, skill := range p.SkillLibrary.List(who.Tenant, scope) {
+		listed, err := p.SkillLibrary.List(who.Tenant, scope)
+		if err != nil {
+			return out, err
+		}
+		for _, skill := range listed {
 			if !allowed[skill.OriginRun] || !ordinary.RunID(skill.OriginRun) {
 				continue
 			}
@@ -73,7 +77,11 @@ func (reader outcomeSourceDependencies) ReadSourceDependencies(ctx context.Conte
 			break
 		}
 	}
-	for _, origin := range p.Memory.ReviewedOrigins(who.Tenant, ids, owners) {
+	origins, err := p.Memory.ReviewedOrigins(who.Tenant, ids, owners)
+	if err != nil {
+		return out, err
+	}
+	for _, origin := range origins {
 		if err := ctx.Err(); err != nil {
 			return out, err
 		}

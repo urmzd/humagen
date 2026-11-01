@@ -67,10 +67,11 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-038 | Screens open ready to read, filter once, and keep message actions quiet at rest | Implemented in #112; web, core and Slack tests pass; phone and desktop screens pass |
 | DES-039 | Changing screens never blanks or jumps; chrome is glass on one app frame | Implemented: `transition.ts`, delayed skeletons, frame and chrome glass; web tests and Console screens pass; navigation CLS measured 0 at no added latency |
 | DES-040 | The console works on a phone and installs as an app: touch targets, the keyboard, safe areas, a modal drawer, an Inspector sheet, an offline screen and a prompt for new versions | Implemented: `styles.css`, `viewport.ts`, `pwa.ts`, `sw.ts`; web and Go tests pass; Console screens pass at 320, 375, 390, 430 and 844x390 with 44px touch targets and 16px fields; iOS keyboard and install need a real device |
-| DES-041 | On a phone the console fills the installed app's screen, the drawer button floats instead of taking a row, and Home keeps the chat bar in reach of a thumb | Implemented: `viewport.ts`, `styles.css`, `HomePage.tsx`; web tests pass; Console screens pass at 320x568, 390x844 and 844x390; the iOS height needs a real device |
-| DES-042 | The brand's colors edge the page round its corners and glow round the chat bar, turning while a reply is in flight | Implemented: `styles.css`, `Composer.tsx`; web tests pass; screens pass light and dark at 1280x800 and 390x844 |
-| DES-043 | A conversation has a wave down its left edge to scan and scrub through its turns, and the keyboard opens and closes cleanly on a phone | Implemented: `TurnRail.tsx`, `Thread.tsx`, `Chat.tsx`, `Room.tsx`, `viewport.ts`; web tests pass (`wave.dom.test.tsx`, `pwa.test.ts`); screens pass at 390x844 and 1280x800; the keyboard on iOS needs a real device |
-| DES-044 | A phone reads like a native chat app: quiet message actions, a one-line chat bar and header, Chat and Work at the top of Home, a swipe from the edge for the drawer, and the installed app opening on Chat | Implemented: `theme.css`, `styles.css`, `Composer.tsx`, `ConversationShell.tsx`, `ModeSwitch.tsx`, `Sidebar.tsx`, `manifest.webmanifest`; web tests pass; screens pass at 390x844 and 1280x800 |
+| DES-041 | Agents a message goes to are its @mentions, never chips beside the project; a message has no cap on mentioned agents | Implemented: `mentionsIn`, `withMention`, `withoutMention` in `tags.ts`, `mentionPicks` in `Plus.tsx`; `pkg/threads.Decide` runs every tagged agent; web, tags and platform tests pass; `chat-mentions`, `channel-plus` and `workspace-find-help-selection` screens pass |
+| DES-042 | On a phone the console fills the installed app's screen, the drawer button floats instead of taking a row, and Home keeps the chat bar in reach of a thumb | Implemented: `viewport.ts`, `styles.css`, `HomePage.tsx`; web tests pass; Console screens pass at 320x568, 390x844 and 844x390; the iOS height needs a real device |
+| DES-043 | The brand's colors edge the page round its corners and glow round the chat bar, turning while a reply is in flight | Implemented: `styles.css`, `Composer.tsx`; web tests pass; screens pass light and dark at 1280x800 and 390x844 |
+| DES-044 | A conversation has a wave down its left edge to scan and scrub through its turns, and the keyboard opens and closes cleanly on a phone | Implemented: `TurnRail.tsx`, `Thread.tsx`, `Chat.tsx`, `Room.tsx`, `viewport.ts`; web tests pass (`wave.dom.test.tsx`, `pwa.test.ts`); screens pass at 390x844 and 1280x800; the keyboard on iOS needs a real device |
+| DES-045 | A phone reads like a native chat app: quiet message actions, a one-line chat bar and header, Chat and Work at the top of Home, a swipe from the edge for the drawer, and the installed app opening on Chat | Implemented: `theme.css`, `styles.css`, `Composer.tsx`, `ConversationShell.tsx`, `ModeSwitch.tsx`, `Sidebar.tsx`, `manifest.webmanifest`; web tests pass; screens pass at 390x844 and 1280x800 |
 
 ### DES-001: Working integrations
 
@@ -275,6 +276,9 @@ sit under Technical Details; standalone alert bodies remain visible. Titles,
 metadata and About links wrap with separate spacing for each section. Render
 regressions cover the failing layout and native `inbox-alert-recovery` states
 capture collapsed and expanded diagnostics on phone and desktop.
+The native `conversation-feedback-reasons` state captures the turn footer's
+Not helpful prompt with its quick reasons (`FEEDBACK_REASONS`), a picked reason
+and a comment on phone and desktop, and fails if the prompt leaves the viewport.
 
 
 ### DES-010: Top-level notifications
@@ -365,8 +369,8 @@ Existing conversations retain their fixed placement and Share review.
 
 Starter suggestions wrap with consistent marks and touch targets. They stay
 visible while the person edits a draft and change context only when the project
-changes. No action is hidden at phone widths. A suggestion fills an editable draft and adds its agent
-while retaining the project; sending remains explicit. DOM regressions cover
+changes. No action is hidden at phone widths. A suggestion fills an editable draft with its agent
+@mentioned first while retaining the project (DES-041); sending remains explicit. DOM regressions cover
 Personal selection, preserved drafts and project-aware starters. The
 `home-project-picker` screen exercises the complete selection flow and checks
 all three suggestion buttons fit within the phone viewport.
@@ -791,8 +795,9 @@ approval, disabled early approval, restoration, refusal and the combined menu.
 
 ### DES-036: The composer holds the pick; the first message goes first
 
-- An agent or project picked from the plus menu shows inside the prompt bar,
-  not under it, so the bar keeps its height. Only the disclaimer is below it.
+- A project picked from the plus menu shows inside the prompt bar, not under
+  it, so the bar keeps its height. Only the disclaimer is below it. An agent
+  picked there is a mention in the box (DES-041).
 - Starter suggestions are centered. When they overflow, they scroll sideways
   with fades and chevrons at the ends.
 - A new conversation's first message posts before anything queued behind it.
@@ -993,7 +998,42 @@ Needs a real device: Safari's keyboard (the visual viewport inset), Add to
 Home Screen on iOS, the standalone status bar, and the install prompt on
 Android.
 
-### DES-041: A phone, closer to a native app
+### DES-041: Agents are mentioned, not chips
+
+- The plus menu, a starter suggestion, Find Help's choice and an agent link
+  (`?agent=`) write `@name ` into the box, at the cursor or at the start of
+  an empty draft, as `@` completion writes it. Nothing about agents shows in
+  the row under the box: only where the conversation is filed.
+- The draft is the one place a message's agents are kept. The plus menu
+  checks the agents the draft mentions; deleting a mention's words takes the
+  agent off, and picking a mentioned agent again takes its mention out.
+- A message is sent as its text. Its mentions route it by the platform's tag
+  rule: every agent it tags answers, with no per-message cap. Budgets,
+  admission and room limits still bound what the runs spend. Agent tags are
+  resolved in one bounded read of the tenant's agents, so they hold no
+  place and only the text's length bounds them; people, experts, roles and
+  skills, which each need a lookup, hold at most 10 places
+  (`threads.MaxMentions`). There is no Each Decides or All of Them toggle in the composer.
+- An untagged follow-up runs nothing. A thread's saved `agents` and `mode`
+  from before keep routing its untagged messages; the console no longer
+  changes them.
+- In the box a mention is the plain `@name` text the completion writes; in a
+  posted message it renders as `MentionLink` with the agent's hue (DES-035).
+- Acceptance: picking two agents from the plus menu leaves `@helper @lead `
+  in the box and no chip or routing control; sending it posts the text alone,
+  and each mentioned agent answers.
+
+Evidence: `cd apps/web && pnpm test` (`tags.test.ts` for the helpers;
+`chat.dom.test.tsx` and `room.dom.test.tsx` for each entry point, removal by
+editing the words, and the posted body); `go test -race ./pkg/threads
+./internal/platform ./internal/httpapi`
+(`TestEveryAgentAMessageTagsAnswers`,
+`TestEveryAgentAConsoleMessageTagsAnswers`,
+`TestABudgetStillRefusesTagsPastItsLimit`); `make screens` with
+`chat-mentions` (was `chat-chips`), `channel-plus`, `chat-plus`,
+`home-project-picker` and `workspace-find-help-selection`.
+
+### DES-042: A phone, closer to a native app
 
 Owner request: improve the console on a phone, after a screenshot of the
 installed app on an iPhone showed an empty strip under the composer.
@@ -1027,7 +1067,7 @@ handover to the keyboard (`pwa.test.ts`). `make screens` passes with
 
 Needs a real device: the installed app's height on an iPhone.
 
-### DES-042: The brand's glow
+### DES-043: The brand's glow
 
 Owner request: the colored streak along the top had rough ends at the
 rounded corners; carry it round, and into the chat bar, so the system reads
@@ -1048,7 +1088,7 @@ Rules:
   writes. While a reply is in flight the sweep turns round the bar, by
   transform only; reduced motion stills it. Nothing waiting on a person moves.
 
-### DES-043: The conversation's wave, and the keyboard
+### DES-044: The conversation's wave, and the keyboard
 
 Owner request: a sound-wave strip down the left of a conversation, with
 previews of what was said, to scan through it on the web and on a phone; and
@@ -1077,7 +1117,7 @@ Rules:
   right on it and the disclaimer is hidden; it returns when the keyboard
   closes.
 
-### DES-044: A phone that reads like a native chat app
+### DES-045: A phone that reads like a native chat app
 
 Owner request: carry out the design follow-ups (quiet message actions, a
 one-line chat bar, a one-line header, Chat and Work, a swipe for the drawer),
@@ -1094,9 +1134,8 @@ Rules:
   the pane and its messages read in a centered column (`Thread`'s `column`).
   On a phone the rail stays in the 16px gutter at the screen's edge.
 - On a phone the chat bar is one line: +, the project picker as its folder,
-  the field and Dictate or Send. Agents picked for a message show on a line
-  under it only while there are some. A conversation's fixed project is in
-  its header's menu.
+  the field and Dictate or Send. Agents are @mentions in the field
+  (DES-041). A conversation's fixed project is in its header's menu.
 - On a phone a conversation's header is one line: its title and its Share
   and menu controls. Its project, who is in it and Context are in the menu.
 - On a phone Home's top center has Chat and Work, on glass beside the drawer

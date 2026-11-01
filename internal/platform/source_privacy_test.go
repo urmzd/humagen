@@ -69,7 +69,8 @@ func TestPublicExternalSourceViewsWithholdRetainedVariantInventory(t *testing.T)
 		t.Fatal("manual saved views were removed", local, err)
 	}
 	found := false
-	for _, source := range f.p.SourcesAs(f.who) {
+	sources, _ := f.p.SourcesAs(f.who)
+	for _, source := range sources {
 		if source.Name == "external" {
 			found = true
 			if len(source.Variants) != 0 || len(source.Lifecycle.Resources) != 1 || source.Lifecycle.Resources[0] != "selected" {

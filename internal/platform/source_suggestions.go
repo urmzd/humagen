@@ -36,18 +36,21 @@ type SourceSuggestionView struct {
 	Active bool `json:"active"`
 }
 
-func (p *Platform) SourceSuggestionsAs(who auth.Principal, client, source, status string, limit int) []SourceSuggestionView {
+func (p *Platform) SourceSuggestionsAs(who auth.Principal, client, source, status string, limit int) ([]SourceSuggestionView, error) {
 	if !who.Can(auth.ClientsRead) {
-		return []SourceSuggestionView{}
+		return []SourceSuggestionView{}, nil
 	}
-	rows := p.SourceSuggestions.List(who.Tenant, client, status, limit, func(row sourcelinks.Suggestion) bool {
+	rows, err := p.SourceSuggestions.List(who.Tenant, client, status, limit, func(row sourcelinks.Suggestion) bool {
 		return (source == "" || row.Knowledge == source) && p.sourceSuggestionVisible(who, row)
 	})
+	if err != nil {
+		return nil, err
+	}
 	out := []SourceSuggestionView{}
 	for _, row := range rows {
 		out = append(out, SourceSuggestionView{row, row.State == "linked" && p.automaticSourceLinkActive(who.Tenant, row)})
 	}
-	return out
+	return out, nil
 }
 func (p *Platform) SourceSuggestionAs(who auth.Principal, id string) (sourcelinks.Suggestion, error) {
 	row, err := p.SourceSuggestions.Get(who.Tenant, id)
@@ -171,9 +174,14 @@ func (p *Platform) automaticSourceLinkActive(tenant string, row sourcelinks.Sugg
 	return len(matches) == 1 && matches[0].Mode == sourcelinks.Auto && matches[0].Project == row.Project && matches[0].Channel == row.Channel
 }
 func (p *Platform) linkedClientResource(c clients.Client, resource sourcelinks.Resource) (project, channel string, ok bool) {
-	rows := p.SourceSuggestions.List(c.Tenant, c.ID, "linked", 200, func(row sourcelinks.Suggestion) bool {
+	rows, err := p.SourceSuggestions.List(c.Tenant, c.ID, "linked", 200, func(row sourcelinks.Suggestion) bool {
 		return row.Knowledge == "" && row.Resource.Provider == resource.Provider && row.Resource.ID == resource.ID
 	})
+	if err != nil {
+		// Unread links file nothing: the resource is not linked.
+		p.log.Warn("platform: linked resources could not be read", "tenant", c.Tenant, "client", c.ID, "error", err)
+		return "", "", false
+	}
 	destinations := map[[2]string]bool{}
 	for _, row := range rows {
 		row.Resource = resource

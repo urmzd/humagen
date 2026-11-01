@@ -18,6 +18,7 @@ import (
 	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/catalog"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/alerts"
@@ -68,7 +69,10 @@ type hidden struct {
 	run, thread, message, artifact, agentNote, projectNote, doc   string
 	memoryProposal                                                string
 	personalNote                                                  string
-	handle, alert, channel, announcement, provider                string
+	// connector is a catalog connector of the hidden project, owned by the
+	// workspace's machine and published to that project.
+	connector                                      string
+	handle, alert, channel, announcement, provider string
 	// open is, in a sweep inside the workspace, a Slack client the outsider
 	// may read, with the hidden channel bound to it: its bindings must not
 	// show that binding. It names the hidden agent too.
@@ -184,6 +188,13 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		t.Fatal(err)
 	}
 	h.librarySkill = skill.ID
+	h.connector = "canary-" + marker
+	if _, err := f.p.CatalogStore.Declare("acme", catalog.Connector{Name: h.connector, System: "bigquery", Owner: "svc-acme", Project: h.project}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.p.CatalogStore.Publish("acme", h.connector, "svc-acme", time.Now()); err != nil {
+		t.Fatal(err)
+	}
 
 	must("PUT", "/api/agents/"+h.agent+"/call-policy", `{"callers":"anyone","approval":"never"}`, http.StatusOK)
 
@@ -410,7 +421,7 @@ func hidePrivate(t *testing.T, f *fixture, owner string) hidden {
 		if time.Now().After(deadline) {
 			t.Fatalf("the private run raised no alert (%q) or no message about it (%q)", h.alert, h.message)
 		}
-		for _, a := range f.p.Alerts.Alerts("acme") {
+		for _, a := range kept(f.p.Alerts.Alerts("acme")) {
 			if a.RunID == h.run {
 				h.alert = a.ID
 			}
@@ -536,6 +547,8 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.project, true
 		case prefix("/api/schedules/"):
 			return h.schedule, true
+		case prefix("/api/catalog/connectors/"):
+			return h.connector, true
 		case prefix("/api/alert-rules/"):
 			return h.rule, true
 		case prefix("/api/knowledge/"):
@@ -946,7 +959,7 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 		if !strings.Contains(th, `"visibility":"private"`) || strings.Contains(th, "svc-nonmember") {
 			t.Errorf("after the sweep the private thread is %s", th)
 		}
-		for _, a := range f.p.Alerts.Alerts("acme") {
+		for _, a := range kept(f.p.Alerts.Alerts("acme")) {
 			if a.ID == h.alert && !a.Open() {
 				t.Errorf("after the sweep the hidden alert was acknowledged by %s", a.AckedBy)
 			}
@@ -1127,7 +1140,7 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 			}
 		}
 	}
-	for _, a := range f.p.Alerts.Alerts("acme") {
+	for _, a := range kept(f.p.Alerts.Alerts("acme")) {
 		if a.ID == h.alert && !a.Open() {
 			t.Errorf("after the sweep the hidden alert was acknowledged by %s", a.AckedBy)
 		}
@@ -1316,4 +1329,12 @@ func seedHiddenSetup(t *testing.T, f *fixture) string {
 		t.Fatalf("hidden setup=%+v,%v", saved, err)
 	}
 	return saved.Name
+}
+
+// kept is what a store read, for a test whose store cannot fail to read.
+func kept[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return v
 }

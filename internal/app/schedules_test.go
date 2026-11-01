@@ -46,7 +46,7 @@ func TestTheFilesSchedulesAreTheFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	about := p.Schedules.About("field-recap")
+	about := aboutOf(t, p, "field-recap")
 	if sc.Context[runs.MetaProject] != "Field" || sc.Context[platform.MetaDeliver] != platform.DeliverProject || about.Managed != platform.ManagedFile || about.CreatedAt.IsZero() {
 		t.Fatalf("the file's schedule = %+v, %+v", sc, about)
 	}
@@ -55,7 +55,7 @@ func TestTheFilesSchedulesAreTheFiles(t *testing.T) {
 	}
 
 	applyAll(t, p, tenant, fileWithRecap("What changed in Field this week?"))
-	if again := p.Schedules.About("field-recap"); !again.UpdatedAt.IsZero() {
+	if again := aboutOf(t, p, "field-recap"); !again.UpdatedAt.IsZero() {
 		t.Fatalf("an unchanged file wrote the schedule again: %+v", again)
 	}
 	edit := sc
@@ -78,7 +78,7 @@ func TestTheFilesSchedulesAreTheFiles(t *testing.T) {
 	w := fileWithRecap("")
 	w.Projects[0].Schedules = nil
 	applyAll(t, p, tenant, w)
-	if left := p.Schedules.About("field-recap"); left.Managed != "" {
+	if left := aboutOf(t, p, "field-recap"); left.Managed != "" {
 		t.Fatalf("a schedule that left the file = %+v", left)
 	}
 	if err := p.Schedules.Remove(tenant, "field-recap"); err != nil {
@@ -95,7 +95,7 @@ func TestTheFileTakesOverAConsoleSchedule(t *testing.T) {
 		t.Fatal(err)
 	}
 	applyAll(t, p, "acme", fileWithRecap("What changed?"))
-	if sc, _, _ := p.Schedules.Get("acme", "field-recap"); sc.Agent != "humagen-analyst" || p.Schedules.About("field-recap").Managed != platform.ManagedFile {
+	if sc, _, _ := p.Schedules.Get("acme", "field-recap"); sc.Agent != "humagen-analyst" || aboutOf(t, p, "field-recap").Managed != platform.ManagedFile {
 		t.Fatalf("the console's schedule was not taken over: %+v", sc)
 	}
 	if err := applyProjects(p, "globex", fileWithRecap("x")); err != nil {
@@ -120,4 +120,13 @@ func TestAFileScheduleNeedsItsAgentAvailable(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "workspace.projects[0].schedules[0].agent") || !errors.Is(err, platform.ErrNotAvailable) {
 		t.Fatalf("an agent Field does not have = %v", err)
 	}
+}
+
+func aboutOf(t *testing.T, p *platform.Platform, name string) platform.About {
+	t.Helper()
+	about, err := p.Schedules.About("acme", name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return about
 }

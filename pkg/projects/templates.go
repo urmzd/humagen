@@ -88,5 +88,5 @@ func (s *Store) CreateTemplate(tenantName string, pr Project, template Template,
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.create(tenantName, pr, w, at, w.By, true, template.Channels...)
+	return retry(func() (Project, error) { return s.create(tenantName, pr, w, at, w.By, true, template.Channels...) })
 }

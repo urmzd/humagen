@@ -123,7 +123,7 @@ func TestPersonalSourceResultsCannotBeCopiedByForkOrBringBack(t *testing.T) {
 	if err := p.Runs.Record(id, wire.NewEvent(wire.Raise{ID: "private-turn", Tenant: tenant, Agent: "private-reader", Origin: "api", Text: "private request", At: time.Now(), Context: map[string]string{runs.MetaProject: "Field", runs.MetaThread: fork.ID}}), rev.Rev); err != nil {
 		t.Fatal(err)
 	}
-	if _, ended := p.Runs.End(id, runs.Completed, "private result", "", time.Now()); !ended {
+	if _, ended := p.Runs.End(tenant, id, runs.Completed, "private result", "", time.Now()); !ended {
 		t.Fatal("test result not completed")
 	}
 	if _, err := p.ForkThread(t.Context(), admin, fork.ID, platform.ForkInput{Through: id}); !errors.Is(err, threads.ErrInvalid) {
@@ -185,7 +185,7 @@ func TestDynamicallyPrivateResultsCannotBeCopiedByForkOrBringBack(t *testing.T) 
 	if err := p.MarkPrivateContext(tenant, id); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := p.Runs.End(id, runs.Completed, "private result", "", time.Now()); !ok {
+	if _, ok := p.Runs.End(tenant, id, runs.Completed, "private result", "", time.Now()); !ok {
 		t.Fatal("not completed")
 	}
 	r, _ := p.Runs.Get(tenant, id)

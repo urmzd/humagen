@@ -28,9 +28,6 @@ func TestUsageRetainsHumanAssistanceAfterResumeAndRestart(t *testing.T) {
 		end(t, x, "acme", "asked", time.Second, event.TypeParked, wire.Lifecycle{Question: &event.Question{}})
 		end(t, x, "acme", "asked", 2*time.Second, event.TypeResumed, wire.Lifecycle{})
 		end(t, x, "acme", "asked", 3*time.Second, event.TypeCompleted, wire.Lifecycle{})
-		if err := x.Flush(); err != nil {
-			t.Fatal(err)
-		}
 		x, err = Open(st)
 		if err != nil {
 			t.Fatal(err)
@@ -66,9 +63,6 @@ func TestCalledWorkHumanQuestionCountsForItsParentAfterRestart(t *testing.T) {
 		end(t, x, "acme", childID, 2*time.Second, event.TypeParked, wire.Lifecycle{Question: &event.Question{}})
 		end(t, x, "acme", childID, 3*time.Second, event.TypeCompleted, wire.Lifecycle{})
 		end(t, x, "acme", id, 4*time.Second, event.TypeCompleted, wire.Lifecycle{})
-		if err := x.Flush(); err != nil {
-			t.Fatal(err)
-		}
 		x, err = Open(st)
 		if err != nil {
 			t.Fatal(err)
@@ -89,11 +83,11 @@ func TestFailedAssistanceFlushNeverFabricatesCompletedAloneAfterRecovery(t *test
 	st := statetest.NewFaulty(state.NewMemory())
 	x, _ := Open(st)
 	record(t, x, "acme", "recover", "writer", "api", 0, nil)
-	end(t, x, "acme", "recover", time.Second, event.TypeParked, wire.Lifecycle{Question: &event.Question{}})
 	st.Fail(errors.New("write unavailable"))
-	if x.Flush() == nil {
-		t.Fatal("fault not exercised")
+	if r, _ := end(t, x, "acme", "recover", time.Second, event.TypeParked, wire.Lifecycle{Question: &event.Question{}}); r.ID != "" {
+		t.Fatal("a question that could not be written was folded")
 	}
+	st.Fail(nil)
 	x, err := Open(st)
 	if err != nil {
 		t.Fatal(err)

@@ -1,118 +1,213 @@
 package people
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/urmzd/humagen/pkg/state"
 )
 
-// namespace is where every tenant's people are kept, one record each, by
-// subject.
+// namespace is where every tenant's people are kept. Within a tenant:
+//
+//	<subject>      a person, by subject
+//	\x1fh:<handle>  the same person, by handle: what ByHandle reads and
+//	               List pages, and what makes a handle one person's
+//	\x1fcount       how many people the tenant has recorded
+//
+// A subject holds no control character, so the index and the count, which
+// start with one (the unit separator), are never a person's key. Every
+// change to a person writes their record and their handle's together, at
+// the versions read, and a new person moves the count too.
 const namespace = "people"
 
-// tenant is one workspace's people.
-type tenant struct {
-	by      map[string]Person // by subject
-	handles map[string]string // handle to subject
-}
+const (
+	index = "\x1f"
+	byKey = index + "h:"
+	count = index + "count"
+	// indexed marks, in the tenant "", that every tenant's people have
+	// their handles and their count, which a release before them did not
+	// keep.
+	indexed = "indexed:v1"
+)
 
-func newTenant() *tenant {
-	return &tenant{by: map[string]Person{}, handles: map[string]string{}}
-}
+func handleKey(handle string) string { return byKey + handle }
 
-// Store keeps every workspace's directory. It is in memory, and built with
-// Open it writes every change through a state.Store and reads them back when
-// it is built again. It is one process's: it reads the store once and then
-// trusts its memory.
+// Store keeps every workspace's directory.
 type Store struct {
-	mu      sync.RWMutex
-	tenants map[string]*tenant
-	kept    *state.Table[Person]
-	taken   func(tenant, handle string) bool
+	st    state.Store
+	taken func(tenant, handle string) bool
 }
 
 // Option configures a Store.
 type Option func(*Store)
 
 // WithTaken counts more handles as taken in a workspace, such as its agents'
-// names, so no person is given one. fn runs under the store's lock and must
-// not call the store.
+// names, so no person is given one. fn must not call the store.
 func WithTaken(fn func(tenant, handle string) bool) Option {
 	return func(s *Store) { s.taken = fn }
 }
 
-// NewStore returns an empty directory in memory.
+// NewStore returns an empty directory in this process's memory.
 func NewStore(opts ...Option) *Store {
-	s := &Store{tenants: map[string]*tenant{}}
-	for _, o := range opts {
-		o(s)
-	}
+	s, _ := Open(nil, opts...)
 	return s
 }
 
-// Open returns a directory that keeps its records in st, holding what st
-// already has. A nil st is NewStore. It refuses a record that is not a
+// Open returns a directory on st, which may be shared with other processes.
+// A nil st keeps it in this process's memory.
+//
+// People kept by a release before handles were indexed are indexed the
+// first time any process opens the directory; a process that opens it at
+// the same time finds them indexed. Indexing refuses a record that is not a
 // person, and two people with one handle.
 func Open(st state.Store, opts ...Option) (*Store, error) {
-	s := NewStore(opts...)
-	s.kept = state.NewTable[Person](st, namespace)
-	err := s.kept.Load(func(tenantName, key string, p Person) error {
-		t := s.tenant(tenantName)
-		switch {
-		case p.Subject != key || !validSubject(p.Subject):
-			return fmt.Errorf("%w: a person is kept under %q", ErrInvalid, key)
-		case !ValidHandle(p.Handle):
-			return fmt.Errorf("%w: %q is not a handle", ErrInvalid, p.Handle)
-		}
-		if other, dup := t.handles[p.Handle]; dup {
-			return fmt.Errorf("%w: %q and %q both go by %s", ErrInvalid, other, p.Subject, p.Handle)
-		}
-		if p.Roles == nil {
-			p.Roles = []string{}
-		}
-		t.by[p.Subject] = p
-		t.handles[p.Handle] = p.Subject
-		return nil
-	})
-	if err != nil {
+	if st == nil {
+		st = state.NewMemory()
+	}
+	s := &Store{st: st}
+	for _, o := range opts {
+		o(s)
+	}
+	if err := s.index(); err != nil {
 		return nil, fmt.Errorf("people: load: %w", err)
 	}
 	return s, nil
 }
 
-// tenant returns a workspace's people, adding it. The caller holds the
-// write lock, or is Open.
-func (s *Store) tenant(name string) *tenant {
-	t, ok := s.tenants[name]
-	if !ok {
-		t = newTenant()
-		s.tenants[name] = t
+func ctx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), state.Timeout)
+}
+
+// checked is a stored person, refused unless it is one, kept under key.
+func checked(key string, raw []byte) (Person, error) {
+	var p Person
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return Person{}, fmt.Errorf("%w: %q: %w", ErrInvalid, key, err)
 	}
-	return t
+	switch {
+	case p.Subject != key || !validSubject(p.Subject):
+		return Person{}, fmt.Errorf("%w: a person is kept under %q", ErrInvalid, key)
+	case !ValidHandle(p.Handle):
+		return Person{}, fmt.Errorf("%w: %q is not a handle", ErrInvalid, p.Handle)
+	}
+	if p.Roles == nil {
+		p.Roles = []string{}
+	}
+	return p, nil
+}
+
+// index writes each tenant's handles and count, from its people, once. A
+// tenant is indexed in one write that creates every record, so a process
+// that indexes it at the same time, or after, conflicts and leaves it as it
+// is: a tenant written by a process that has opened the directory is
+// indexed already.
+func (s *Store) index() error {
+	c, cancel := ctx()
+	defer cancel()
+	if _, err := s.st.Lookup(c, namespace, "", indexed); err == nil {
+		return nil
+	} else if !errors.Is(err, state.ErrNotFound) {
+		return err
+	}
+	recs, err := s.st.Load(c, namespace)
+	if err != nil {
+		return err
+	}
+	type pending struct {
+		ops     []state.Op
+		handles map[string]string
+	}
+	byTenant := map[string]*pending{}
+	var order []string
+	for _, r := range recs {
+		if r.Tenant == "" || strings.HasPrefix(r.Key, index) {
+			continue
+		}
+		p, err := checked(r.Key, r.Value)
+		if err != nil {
+			return err
+		}
+		t := byTenant[r.Tenant]
+		if t == nil {
+			t = &pending{handles: map[string]string{}}
+			byTenant[r.Tenant] = t
+			order = append(order, r.Tenant)
+		}
+		if other, dup := t.handles[p.Handle]; dup {
+			return fmt.Errorf("%w: %q and %q both go by %s", ErrInvalid, other, p.Subject, p.Handle)
+		}
+		t.handles[p.Handle] = p.Subject
+		t.ops = append(t.ops, state.Create(r.Tenant, handleKey(p.Handle), r.Value))
+	}
+	for _, tenant := range order {
+		t := byTenant[tenant]
+		raw, _ := json.Marshal(len(t.handles))
+		ops := append(t.ops, state.Create(tenant, count, raw))
+		if err := s.st.Write(c, namespace, ops...); err != nil && !errors.Is(err, state.ErrConflict) {
+			return err
+		}
+	}
+	return s.st.Write(c, namespace, state.Put("", indexed, []byte("true")))
+}
+
+// lookup reads one record into v, and its version: 0 when there is none.
+func (s *Store) lookup(c context.Context, tenant, key string, v any) (int64, error) {
+	r, err := s.st.Lookup(c, namespace, tenant, key)
+	if errors.Is(err, state.ErrNotFound) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	if err := json.Unmarshal(r.Value, v); err != nil {
+		return 0, fmt.Errorf("people: %q: %w", key, err)
+	}
+	return r.Version, nil
+}
+
+// put is an op that writes v under key at version: created when version is
+// 0.
+func put(tenant, key string, v any, version int64) state.Op {
+	raw, _ := json.Marshal(v)
+	if version == 0 {
+		return state.Create(tenant, key, raw)
+	}
+	return state.PutAt(tenant, key, raw, version)
 }
 
 // isTaken reports whether a handle is unavailable to the person self.
-func (s *Store) isTaken(t *tenant, tenantName, handle, self string) bool {
+func (s *Store) isTaken(c context.Context, tenantName, handle, self string) (bool, error) {
 	if IsReserved(handle) {
-		return true
+		return true, nil
 	}
-	if who, ok := t.handles[handle]; ok && who != self {
-		return true
+	var who Person
+	version, err := s.lookup(c, tenantName, handleKey(handle), &who)
+	if err != nil {
+		return false, err
 	}
-	return s.taken != nil && s.taken(tenantName, handle)
+	if version != 0 && who.Subject != self {
+		return true, nil
+	}
+	return s.taken != nil && s.taken(tenantName, handle), nil
 }
 
-// handleFor is the first free handle a name or subject makes.
-func (s *Store) handleFor(t *tenant, tenantName, name, subject string) string {
+// handleFor is the first free handle a name or subject makes. Two processes
+// may both find one free; the write that claims it decides.
+func (s *Store) handleFor(c context.Context, tenantName, name, subject string) (string, error) {
 	base := baseHandle(name, subject)
 	for n := 1; ; n++ {
-		if h := candidate(base, n); !s.isTaken(t, tenantName, h, subject) {
-			return h
+		h := candidate(base, n)
+		taken, err := s.isTaken(c, tenantName, h, subject)
+		if err != nil {
+			return "", err
+		}
+		if !taken {
+			return h, nil
 		}
 	}
 }
@@ -134,52 +229,118 @@ func (s *Store) Seen(tenantName string, at Sighting, when time.Time) (Person, er
 	if err != nil {
 		return Person{}, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	t := s.tenant(tenantName)
-	cur, known := t.by[at.Subject]
-	if !known {
-		if len(t.by) >= MaxPeople {
-			return Person{}, fmt.Errorf("%w: a workspace lists at most %d people", ErrLimit, MaxPeople)
+	var out Person
+	err = state.Retry(func() error {
+		c, cancel := ctx()
+		defer cancel()
+		var cur Person
+		version, err := s.lookup(c, tenantName, at.Subject, &cur)
+		if err != nil {
+			return err
 		}
-		p := Person{
-			Subject: at.Subject, Name: name, Handle: s.handleFor(t, tenantName, name, at.Subject),
-			Roles: roles, Sources: []string{at.Source}, CreatedAt: when,
+		if version == 0 {
+			p, err := s.add(c, tenantName, at, name, roles, when)
+			out = p
+			return err
 		}
-		if p.Roles == nil {
-			p.Roles = []string{}
+		next := cur.clone()
+		if next.Roles == nil {
+			next.Roles = []string{}
 		}
+		if name != "" && name != cur.Name {
+			// A handle made from the subject, before any name was known, is
+			// made again from the first name.
+			if cur.Name == "" {
+				if next.Handle, err = s.handleFor(c, tenantName, name, at.Subject); err != nil {
+					return err
+				}
+			}
+			next.Name = name
+		}
+		if roles != nil && (at.Source == SignIn || (at.Source == Policy && !slices.Contains(cur.Sources, SignIn))) {
+			next.Roles = roles
+		}
+		if !slices.Contains(next.Sources, at.Source) {
+			next.Sources = append(next.Sources, at.Source)
+			slices.Sort(next.Sources)
+		}
+		changed := next.Name != cur.Name || next.Handle != cur.Handle || !slices.Equal(next.Roles, cur.Roles) || !slices.Equal(next.Sources, cur.Sources)
 		if at.Source == SignIn {
-			p.SeenAt = when
+			if !changed && when.Sub(cur.SeenAt) < Quiet {
+				out = cur.clone()
+				return nil
+			}
+			next.SeenAt = when
+		} else if !changed {
+			out = cur.clone()
+			return nil
 		}
-		return p.clone(), s.put(tenantName, t, Person{}, p)
-	}
-	next := cur.clone()
-	if name != "" && name != cur.Name {
-		// A handle made from the subject, before any name was known, is made
-		// again from the first name.
-		if cur.Name == "" {
-			next.Handle = s.handleFor(t, tenantName, name, at.Subject)
+		var byHandle Person
+		hv, err := s.lookup(c, tenantName, handleKey(cur.Handle), &byHandle)
+		if err != nil {
+			return err
 		}
-		next.Name = name
+		ops := []state.Op{put(tenantName, at.Subject, next, version)}
+		switch {
+		case next.Handle != cur.Handle:
+			if hv != 0 {
+				ops = append(ops, state.DeleteAt(tenantName, handleKey(cur.Handle), hv))
+			}
+			ops = append(ops, put(tenantName, handleKey(next.Handle), next, 0))
+		default:
+			ops = append(ops, put(tenantName, handleKey(next.Handle), next, hv))
+		}
+		if err := s.st.Write(c, namespace, ops...); err != nil {
+			return writeErr(err)
+		}
+		out = next.clone()
+		return nil
+	})
+	return out, err
+}
+
+// writeErr keeps a conflict a conflict, so Retry reads again, and says what
+// any other failure was.
+func writeErr(err error) error {
+	if errors.Is(err, state.ErrConflict) {
+		return err
 	}
-	if roles != nil && (at.Source == SignIn || (at.Source == Policy && !slices.Contains(cur.Sources, SignIn))) {
-		next.Roles = roles
+	return fmt.Errorf("people: write: %w", err)
+}
+
+// add records someone new: their record, their handle and the tenant's
+// count, in one write.
+func (s *Store) add(c context.Context, tenantName string, at Sighting, name string, roles []string, when time.Time) (Person, error) {
+	var n int
+	cv, err := s.lookup(c, tenantName, count, &n)
+	if err != nil {
+		return Person{}, err
 	}
-	if !slices.Contains(next.Sources, at.Source) {
-		next.Sources = append(next.Sources, at.Source)
-		slices.Sort(next.Sources)
+	if n >= MaxPeople {
+		return Person{}, fmt.Errorf("%w: a workspace lists at most %d people", ErrLimit, MaxPeople)
 	}
-	changed := next.Name != cur.Name || next.Handle != cur.Handle || !slices.Equal(next.Roles, cur.Roles) || !slices.Equal(next.Sources, cur.Sources)
+	handle, err := s.handleFor(c, tenantName, name, at.Subject)
+	if err != nil {
+		return Person{}, err
+	}
+	p := Person{
+		Subject: at.Subject, Name: name, Handle: handle,
+		Roles: roles, Sources: []string{at.Source}, CreatedAt: when,
+	}
+	if p.Roles == nil {
+		p.Roles = []string{}
+	}
 	if at.Source == SignIn {
-		if !changed && when.Sub(cur.SeenAt) < Quiet {
-			return cur.clone(), nil
-		}
-		next.SeenAt = when
-	} else if !changed {
-		return cur.clone(), nil
+		p.SeenAt = when
 	}
-	return next.clone(), s.put(tenantName, t, cur, next)
+	err = s.st.Write(c, namespace,
+		put(tenantName, at.Subject, p, 0),
+		put(tenantName, handleKey(handle), p, 0),
+		put(tenantName, count, n+1, cv))
+	if err != nil {
+		return Person{}, writeErr(err)
+	}
+	return p.clone(), nil
 }
 
 // Ensure records that a person exists, seen at source, with nothing else
@@ -189,43 +350,43 @@ func (s *Store) Ensure(tenantName, subject, source string, when time.Time) (Pers
 	return s.Seen(tenantName, Sighting{Subject: subject, Source: source}, when)
 }
 
-// put writes a person, and only once it is written makes them the
-// workspace's. old is who they were, zero for someone new.
-func (s *Store) put(tenantName string, t *tenant, old, p Person) error {
-	if err := s.kept.Put(tenantName, p.Subject, p); err != nil {
-		return fmt.Errorf("people: write: %w", err)
-	}
-	if old.Handle != "" && old.Handle != p.Handle {
-		delete(t.handles, old.Handle)
-	}
-	t.by[p.Subject] = p
-	t.handles[p.Handle] = p.Subject
-	return nil
-}
-
 // Get returns a person by subject.
 func (s *Store) Get(tenantName, subject string) (Person, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if t, ok := s.tenants[tenantName]; ok {
-		if p, ok := t.by[subject]; ok {
-			return p.clone(), nil
-		}
+	if !validSubject(subject) {
+		return Person{}, fmt.Errorf("%w: %q", ErrNotFound, subject)
 	}
-	return Person{}, fmt.Errorf("%w: %q", ErrNotFound, subject)
+	c, cancel := ctx()
+	defer cancel()
+	r, err := s.st.Lookup(c, namespace, tenantName, subject)
+	if errors.Is(err, state.ErrNotFound) {
+		return Person{}, fmt.Errorf("%w: %q", ErrNotFound, subject)
+	}
+	if err != nil {
+		return Person{}, fmt.Errorf("people: read: %w", err)
+	}
+	return checked(subject, r.Value)
 }
 
 // ByHandle returns the person who goes by a handle, ignoring case.
 func (s *Store) ByHandle(tenantName, handle string) (Person, error) {
 	handle = strings.ToLower(handle)
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if t, ok := s.tenants[tenantName]; ok {
-		if who, ok := t.handles[handle]; ok {
-			return t.by[who].clone(), nil
-		}
+	if !ValidHandle(handle) {
+		return Person{}, fmt.Errorf("%w: nobody goes by @%s", ErrNotFound, handle)
 	}
-	return Person{}, fmt.Errorf("%w: nobody goes by @%s", ErrNotFound, handle)
+	c, cancel := ctx()
+	defer cancel()
+	var p Person
+	version, err := s.lookup(c, tenantName, handleKey(handle), &p)
+	if err != nil {
+		return Person{}, fmt.Errorf("people: read: %w", err)
+	}
+	if version == 0 {
+		return Person{}, fmt.Errorf("%w: nobody goes by @%s", ErrNotFound, handle)
+	}
+	if p.Roles == nil {
+		p.Roles = []string{}
+	}
+	return p, nil
 }
 
 // Query is one page of the directory.
@@ -242,7 +403,8 @@ type Query struct {
 
 // List returns a page of a workspace's people, by handle, and the cursor of
 // the page after it, "" when there is none. A cursor that is not one is
-// ErrInvalid.
+// ErrInvalid. A search reads the workspace's handles a page at a time, at
+// most MaxPeople of them.
 func (s *Store) List(tenantName string, q Query) ([]Person, string, error) {
 	if q.Before != "" && !ValidHandle(q.Before) {
 		return nil, "", fmt.Errorf("%w: that is not a cursor this list gave", ErrInvalid)
@@ -255,39 +417,55 @@ func (s *Store) List(tenantName string, q Query) ([]Person, string, error) {
 		limit = MaxPage
 	}
 	needle := strings.ToLower(strings.TrimSpace(q.Q))
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	c, cancel := ctx()
+	defer cancel()
 	page := []Person{}
-	t, ok := s.tenants[tenantName]
-	if !ok {
-		return page, "", nil
+	after := ""
+	if q.Before != "" {
+		after = handleKey(q.Before)
 	}
-	handles := make([]string, 0, len(t.handles))
-	for h := range t.handles {
-		if h > q.Before {
-			handles = append(handles, h)
+	for read := 0; read <= MaxPeople; {
+		// One more than the page is read, to know whether another follows.
+		n := limit + 1 - len(page)
+		if needle != "" {
+			n = state.MaxList
 		}
-	}
-	sort.Strings(handles)
-	for _, h := range handles {
-		p := t.by[t.handles[h]]
-		if needle != "" && !strings.Contains(strings.ToLower(p.Name), needle) && !strings.Contains(p.Handle, needle) {
-			continue
+		recs, next, err := s.st.List(c, namespace, tenantName, state.Query{Prefix: byKey, After: after, Limit: n})
+		if err != nil {
+			return nil, "", fmt.Errorf("people: read: %w", err)
 		}
-		if len(page) == limit {
-			return page, page[len(page)-1].Handle, nil
+		read += len(recs)
+		for _, r := range recs {
+			var p Person
+			if err := json.Unmarshal(r.Value, &p); err != nil {
+				return nil, "", fmt.Errorf("people: %q: %w", r.Key, err)
+			}
+			if needle != "" && !strings.Contains(strings.ToLower(p.Name), needle) && !strings.Contains(p.Handle, needle) {
+				continue
+			}
+			if len(page) == limit {
+				return page, page[len(page)-1].Handle, nil
+			}
+			if p.Roles == nil {
+				p.Roles = []string{}
+			}
+			page = append(page, p)
 		}
-		page = append(page, p.clone())
+		if next == "" {
+			break
+		}
+		after = next
 	}
 	return page, "", nil
 }
 
-// Len is how many people a workspace has recorded.
+// Len is how many people a workspace has recorded: 0 when it cannot be read.
 func (s *Store) Len(tenantName string) int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if t, ok := s.tenants[tenantName]; ok {
-		return len(t.by)
+	c, cancel := ctx()
+	defer cancel()
+	var n int
+	if _, err := s.lookup(c, tenantName, count, &n); err != nil {
+		return 0
 	}
-	return 0
+	return n
 }

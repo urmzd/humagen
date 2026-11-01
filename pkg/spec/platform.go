@@ -31,8 +31,10 @@ type PlatformSpec struct {
 	Models        []Model       `json:"models,omitempty"`
 	ModelPolicies []ModelPolicy `json:"model_policies,omitempty"`
 	Tools         []Tool        `json:"tools,omitempty"`
-	Agents        []Agent       `json:"agents,omitempty"`
-	Surfaces      Surfaces      `json:"surfaces,omitzero"`
+	// Connectors are the systems the catalog lists (RFC 0005).
+	Connectors []Connector `json:"connectors,omitempty"`
+	Agents     []Agent     `json:"agents,omitempty"`
+	Surfaces   Surfaces    `json:"surfaces,omitzero"`
 	// Branding is the workspace's look and name in the console, over the
 	// deployment's.
 	Branding Branding `json:"branding,omitzero"`
@@ -416,6 +418,55 @@ type ToolShared struct {
 func (t *Tool) UnmarshalJSON(b []byte) error { return unmarshalSlot(b, &t.Slot, &t.ToolShared) }
 func (t Tool) MarshalJSON() ([]byte, error)  { return marshalSlot(t.Slot, t.ToolShared) }
 
+// Connector is one system the catalog lists, and agents query in place.
+type Connector struct {
+	Slot
+	ConnectorShared
+}
+
+// ConnectorShared is what every connector kind has.
+type ConnectorShared struct {
+	Name string `json:"name"`
+	// Owner is the person whose credential the connector uses. They see
+	// its catalog entries and may query it.
+	Owner string `json:"owner"`
+	// Project is whose members see its entries once the owner publishes
+	// them. Left out, the workspace.
+	Project string `json:"project,omitempty"`
+	// Refresh is how often it is crawled, such as 24h (the default). At
+	// least 1h.
+	Refresh string `json:"refresh,omitempty"`
+}
+
+func (c *Connector) UnmarshalJSON(b []byte) error {
+	return unmarshalSlot(b, &c.Slot, &c.ConnectorShared)
+}
+func (c Connector) MarshalJSON() ([]byte, error) { return marshalSlot(c.Slot, c.ConnectorShared) }
+
+// BigQueryConnector is the bigquery connector kind's block. Every query is
+// a single SELECT, dry-run first, and refused when it would read more than
+// max_bytes_billed.
+type BigQueryConnector struct {
+	// Project is the project listed and billed for queries.
+	Project string `json:"project"`
+	// Datasets limits the catalog and every query to these. Left out,
+	// every dataset the credential lists.
+	Datasets []string `json:"datasets,omitempty"`
+	Location string   `json:"location,omitempty"`
+	// Credential is a service account key in JSON. Left out, Application
+	// Default Credentials: the VM's service account on GCE.
+	Credential *Ref `json:"credential,omitempty"`
+	// MaxBytesBilled caps one query; 1 GiB when left out.
+	MaxBytesBilled int64 `json:"max_bytes_billed,omitempty"`
+	// MaxRows caps one answer's rows; 200 when left out, at most 10000.
+	MaxRows int `json:"max_rows,omitempty"`
+	// Timeout bounds one query, such as 60s (the default), at most 10m.
+	Timeout string `json:"timeout,omitempty"`
+}
+
+// MinRefresh is the shortest crawl cadence a connector may ask for.
+const MinRefresh = time.Hour
+
 // MCP is the mcp tool kind's block.
 type MCP struct {
 	Transport string   `json:"transport"`
@@ -611,6 +662,9 @@ type GitHub struct {
 
 var providerName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
+// connectorName is pkg/catalog's rule for a connector's name.
+var connectorName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+
 func (p Platform) check(kinds Kinds) error {
 	where := fmt.Sprintf("platform %q", p.Metadata.Name)
 	if !identifier.MatchString(p.Metadata.Name) {
@@ -679,6 +733,23 @@ func (p Platform) check(kinds Kinds) error {
 			if err := checkScope(b); err != nil {
 				return fmt.Errorf("%s: tools[%d] %q: %w", where, i, t.Name, err)
 			}
+		}
+	}
+	for i, c := range sp.Connectors {
+		if !connectorName.MatchString(c.Name) || seen["c/"+c.Name] {
+			return fmt.Errorf("%s: connectors[%d]: a unique name of lower case letters, digits and dashes", where, i)
+		}
+		seen["c/"+c.Name] = true
+		if c.Kind == "" || c.Owner == "" {
+			return fmt.Errorf("%s: connectors[%d] %q: kind and owner are required", where, i, c.Name)
+		}
+		if c.Refresh != "" {
+			if d, err := time.ParseDuration(c.Refresh); err != nil || d < MinRefresh {
+				return fmt.Errorf("%s: connectors[%d] %q: refresh is a duration of at least %s", where, i, c.Name, MinRefresh)
+			}
+		}
+		if err := kinds.check(SlotConnectors, c.Slot); err != nil {
+			return fmt.Errorf("%s: connectors[%d] %q: %w", where, i, c.Name, err)
 		}
 	}
 	for i, a := range sp.Agents {

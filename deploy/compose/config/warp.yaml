@@ -50,11 +50,11 @@ spec:
     #               before the sandbox; the shell is refused. What this stack
     #               ships.
     #   docker      an instance per run, on runsc (gVisor), or runc only
-    #               with insecure_development_runtime. The image
-    #               has no Docker CLI and the container no Docker socket, so
-    #               here every file tool and stdio server would refuse. Mounting
-    #               /var/run/docker.sock gives humagen root on this host: use
-    #               docker only on a host that exists to run sandboxes.
+    #               with insecure_development_runtime. The container has
+    #               no Docker socket, so here every file tool and stdio
+    #               server would refuse. Mounting /var/run/docker.sock gives
+    #               humagen root on this host: instead set host and tls_dir
+    #               to drive a daemon on a separate sandbox host over TLS.
     #   local       host processes in this container, not isolated; development only.
     kind: unisolated
 ---

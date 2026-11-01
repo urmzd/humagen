@@ -56,8 +56,8 @@ func TestRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(again.List("acme"), s.List("acme")) || len(again.List("acme")) != 1 {
-			t.Fatalf("sources after restart = %+v, want %+v", again.List("acme"), s.List("acme"))
+		if !reflect.DeepEqual(sources(t, again, "acme"), sources(t, s, "acme")) || len(sources(t, again, "acme")) != 1 {
+			t.Fatalf("sources after restart = %+v, want %+v", sources(t, again, "acme"), sources(t, s, "acme"))
 		}
 		gotDocs, _ := again.Documents("acme", "handbook")
 		wantDocs, _ := s.Documents("acme", "handbook")
@@ -84,7 +84,7 @@ func TestRestart(t *testing.T) {
 		if docs, _ := third.Documents("acme", "handbook"); len(docs) != 3 || docs[0].ID != late.ID {
 			t.Fatalf("documents after a second restart = %+v", docs)
 		}
-		if len(again.List("globex")) != 0 {
+		if len(sources(t, again, "globex")) != 0 {
 			t.Fatal("another tenant sees the sources")
 		}
 	})
@@ -110,7 +110,7 @@ func TestFailedWriteChangesNothing(t *testing.T) {
 	if err := s.Delete("acme", "handbook"); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("Delete = %v", err)
 	}
-	src := s.List("acme")
+	src := sources(t, s, "acme")
 	if len(src) != 1 || src[0].Documents != 1 || src[0].Excluded != 0 {
 		t.Fatalf("after failed writes = %+v", src)
 	}

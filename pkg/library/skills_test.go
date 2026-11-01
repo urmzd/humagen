@@ -40,11 +40,14 @@ func TestSkillRevisionsPublishExactTestedContentAndSurviveReplay(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		published, ok := s.Published("acme", scope, first.Name)
-		if !ok || published.Version != 1 || published.Instructions != "Use three sentences" {
+		published, ok, err := s.Published("acme", scope, first.Name)
+		if err != nil || !ok || published.Version != 1 || published.Instructions != "Use three sentences" {
 			t.Fatalf("draft changed live revision: %+v", published)
 		}
-		if len(s.List("other", scope)) != 0 || len(s.List("acme", Scope{Kind: "personal", Subject: "bob"})) != 0 {
+		if other, err := s.List("other", scope); err != nil || len(other) != 0 {
+			t.Fatal("cross-tenant skill", err)
+		}
+		if bob, err := s.List("acme", Scope{Kind: "personal", Subject: "bob"}); err != nil || len(bob) != 0 {
 			t.Fatal("cross-scope skill")
 		}
 		if _, err := s.Draft("acme", "ada", scope, definition, 1, nil, time.Now()); !errors.Is(err, ErrConflict) {

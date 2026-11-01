@@ -134,7 +134,7 @@ func TestExpertRules(t *testing.T) {
 	if p.Version != 2 {
 		t.Fatalf("version = %d", p.Version)
 	}
-	if h, _ := s.History("acme", "Field", 1, 0); h[0].What != projects.ExpertsChanged || len(h[0].After.Experts) != 2 {
+	if h, _, _ := s.History("acme", "Field", 1, 0); h[0].What != projects.ExpertsChanged || len(h[0].After.Experts) != 2 {
 		t.Fatalf("the change = %+v", h[0])
 	}
 	if same := setExperts(t, s, "Field", ada, expert("okta|ana", "billing"), expert("role:security", "security")); same.Version != 2 {

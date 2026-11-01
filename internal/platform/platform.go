@@ -58,6 +58,7 @@ import (
 	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/callpolicy"
+	"github.com/urmzd/humagen/pkg/catalog"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/contextflags"
 	"github.com/urmzd/humagen/pkg/credentials"
@@ -70,6 +71,7 @@ import (
 	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/leader"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/notifications"
@@ -181,6 +183,9 @@ type Config struct {
 	// Embedder gives knowledge passages vectors for hybrid search, filled in
 	// the background while Run runs. Nil keeps search lexical.
 	Embedder knowledge.Embedder
+	// Connectors are the catalog connectors the Platform documents declare.
+	// The store's connectors become exactly these at start.
+	Connectors []CatalogConnector
 	// Bus carries every run's events. Nil means in memory, for one process.
 	Bus bus.Bus
 	// Limits bounds every tree of calls.
@@ -188,6 +193,15 @@ type Config struct {
 	// Concurrency is how many runs execute at once. Zero means
 	// defaultConcurrency.
 	Concurrency int
+	// Role is which parts of the platform this process runs: all of them
+	// (the default), the API only, or the turns only. A role other than all
+	// shares the run queue with other processes, so it needs Backends'
+	// ledger and queue.
+	Role ProcessRole
+	// Leader elects the one process that runs the work done once per
+	// deployment (Process). Nil leads always, which is right for one
+	// process.
+	Leader leader.Elector
 	// StopGrace is how long a run asked to stop is given to wrap up before
 	// its turn is cancelled. Zero means the runtime's default, ten seconds.
 	StopGrace time.Duration
@@ -246,22 +260,27 @@ type Platform struct {
 
 	cfg                    Config
 	log                    *slog.Logger
+	role                   ProcessRole
+	lead                   leadership
 	now                    func() time.Time
 	grounding              sourceGrounding
 	sourceDependencyMu     sync.RWMutex
 	sourceDependencyReader SourceDependencyReader
 
 	// Agents keeps agent definitions. Read them through Catalog.
-	Agents      wire.AgentStore
-	Runs        *runs.Index
-	Schedules   *Schedules
-	Journal     *journal.Journal
-	Alerts      *alerts.Engine
-	Knowledge   *knowledge.Store
-	SourceLinks *sourcelinks.Store
-	Evals       *evals.Store
-	Feedback    *feedback.Store
-	Prefs       *prefs.Store
+	Agents    wire.AgentStore
+	Runs      *runs.Index
+	Schedules *Schedules
+	Journal   *journal.Journal
+	Alerts    *alerts.Engine
+	Knowledge *knowledge.Store
+	// CatalogStore is the catalog: what exists in connected systems.
+	CatalogStore *catalog.Store
+	catalog      catalogState
+	SourceLinks  *sourcelinks.Store
+	Evals        *evals.Store
+	Feedback     *feedback.Store
+	Prefs        *prefs.Store
 	// PersonContexts is what each person brings to the runs that act for
 	// them: their run settings, tool servers and memory volume.
 	PersonContexts       *personctx.Store
@@ -341,6 +360,8 @@ type Platform struct {
 	asked  func(ctx context.Context, tenant, runID string) (runtime.StopRecord, bool, error)
 	ledger Ledger
 	queue  dqueue.Queue
+	// drain stops claims and new turns while work in flight finishes.
+	drain *drain
 
 	settings settings
 
@@ -350,6 +371,9 @@ type Platform struct {
 	secrets  clients.Secrets
 	// clientsMu serializes creating, updating and deleting clients.
 	clientsMu sync.Mutex
+	// clientSync is what this replica last read of the clients' change
+	// count (client_sync.go).
+	clientSync clientSyncState
 	// admitting holds runs between admission and their record, by run id.
 	admitting         sync.Map
 	publicationGuards []ConversationPublicationGuard
@@ -371,6 +395,11 @@ type Platform struct {
 	// halting holds runs being stopped at a limit, by run id, so a run is
 	// asked once however many of its calls cross it.
 	halting sync.Map
+	// holding holds the runs held at a limit for approval, by run id and
+	// hold id, so a run is held once per hold however many calls cross it.
+	holding sync.Map
+	// grants are budget grants being answered, until the ledger has them.
+	grants pendingGrants
 
 	// wakers are the timers that wake parked runs at their questions'
 	// deadlines, stopped with the platform.
@@ -430,11 +459,18 @@ func New(cfg Config) (*Platform, error) {
 	if err := cfg.Backends.check(); err != nil {
 		return nil, err
 	}
+	role, err := ParseProcessRole(string(cfg.Role))
+	if err != nil {
+		return nil, err
+	}
+	if err := checkRole(role, cfg.Backends); err != nil {
+		return nil, err
+	}
 	if err := credentials.CheckStarts(cfg.CredentialRefs); err != nil {
 		return nil, fmt.Errorf("platform: CredentialRefs: %w", err)
 	}
 	p := &Platform{
-		cfg: cfg, log: log, now: now,
+		cfg: cfg, log: log, now: now, role: role,
 		Agents: cfg.Backends.Agents,
 		Blobs:  cfg.Blobs,
 		broker: cfg.Bus,
@@ -448,6 +484,8 @@ func New(cfg Config) (*Platform, error) {
 	if p.ledger == nil {
 		p.ledger, p.queue = ledger.NewMemory(), dqueue.NewMemory()
 	}
+	p.drain = newDrain()
+	p.queue = p.drain.wrap(p.queue)
 	dir := cfg.Workspace
 	if dir == "" {
 		dir = defaultWorkspace()
@@ -460,6 +498,9 @@ func New(cfg Config) (*Platform, error) {
 	p.closers = append(p.closers, files.Close)
 	// Every store is in memory, reading back what Backends.State holds.
 	if err := p.openStores(cfg); err != nil {
+		return nil, err
+	}
+	if err := p.declareConnectors(cfg.Connectors); err != nil {
 		return nil, err
 	}
 	if cfg.SourceDependencies == nil {
@@ -519,6 +560,7 @@ func New(cfg Config) (*Platform, error) {
 			}
 		}
 	}
+	p.primeClientSync()
 	p.restore()
 
 	// Delivery follows the channel: a run's events go to the sink of its
@@ -641,6 +683,9 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	if err != nil {
 		return runs.Run{}, err
 	}
+	if err := p.refuseWhileDraining(edge); err != nil {
+		return runs.Run{}, err
+	}
 	if _, err := call.InputOf(tag); err != nil {
 		return runs.Run{}, err
 	}
@@ -686,6 +731,9 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	p.watch(tag.Tenant)
 	// The run id is RunID(tenant, event id): Humagen raises one event per
 	// agent, so the event id already names the subscriber.
+	// A run a held run calls may still be claimed while this process
+	// drains, so the caller can finish.
+	p.drain.called(edge.Parent, runID)
 	acc, err := p.rt.AcceptOwn(ctx, tag, agent)
 	if err != nil {
 		// It never started, so it holds no place.
@@ -701,7 +749,7 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	p.recordContextUse(tag, project)
 	// Who asked, by every name they go by now: a mapping removed later does
 	// not let them approve their own calls.
-	p.Runs.PinRequesters(acc.RunID, p.resolveRequester(tag.Tenant, tag, client))
+	p.Runs.PinRequesters(tag.Tenant, acc.RunID, p.resolveRequester(tag.Tenant, tag, client))
 	return p.Runs.Get(tag.Tenant, acc.RunID)
 }
 
@@ -798,7 +846,7 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	p.calls.Lock()
 	defer p.calls.Unlock()
 
-	parent, err := p.callerOf(tenant, runID)
+	parent, err := p.runRecordOf(tenant, runID)
 	if err != nil {
 		return runs.Run{}, err
 	}
@@ -887,16 +935,17 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	if err != nil {
 		return runs.Run{}, err
 	}
-	p.Runs.Called(runID, req.Lease)
+	p.Runs.Called(tenant, runID, req.Lease)
 	return child, nil
 }
 
-// callerOf is the record of a run making a call. A run starts before its
-// record is written (Invoke accepts it, then records it, holding the
-// admission lock throughout), so a call it makes at once can come before its
-// record: one still being admitted is waited for, rather than refused as a
-// run that does not exist.
-func (p *Platform) callerOf(tenant, runID string) (runs.Run, error) {
+// runRecordOf is the record of a run acting from inside its own turn: making a
+// call, or using its files. A run starts before its record is written
+// (Invoke accepts it, then records it, holding the admission lock
+// throughout), so what it does at once can come before its record: one still
+// being admitted is waited for, rather than refused as a run that does not
+// exist.
+func (p *Platform) runRecordOf(tenant, runID string) (runs.Run, error) {
 	if _, admitting := p.admitting.Load(runID); admitting {
 		p.admission.Lock()
 		defer p.admission.Unlock()
@@ -916,10 +965,6 @@ func reserved(origin string) bool {
 // reconcileEvery is how often open runs are checked against the ledger.
 const reconcileEvery = 2 * time.Second
 
-// flushEvery is how often what the journal, the run index and the usage
-// ledger write behind is written: what a crash can lose.
-const flushEvery = 250 * time.Millisecond
-
 // reconcile closes runs the ledger says are over but whose events never said so.
 //
 // The ledger is the authority on whether a run has ended. The usual way to
@@ -930,8 +975,8 @@ func (p *Platform) reconcile(ctx context.Context) {
 	p.reconcileOperationReminders(ctx)
 	p.settleOperations(ctx)
 	p.syncAssignmentSchedules()
-	for _, id := range p.Runs.Active() {
-		p.settleFromLedger(ctx, id)
+	for _, run := range p.Runs.Unfinished() {
+		p.settleFromLedger(ctx, run.Tenant, run.ID)
 	}
 }
 
@@ -939,7 +984,7 @@ func (p *Platform) reconcile(ctx context.Context) {
 // runtime recorded, and reports whether the ledger says it is over. A run
 // whose final event has not been observed yet ends here, and the event, when
 // it arrives, changes nothing: it says the same thing.
-func (p *Platform) settleFromLedger(ctx context.Context, id string) bool {
+func (p *Platform) settleFromLedger(ctx context.Context, tenant, id string) bool {
 	rec, err := p.ledger.GetRun(ctx, id)
 	if err != nil {
 		return false
@@ -964,7 +1009,7 @@ func (p *Platform) settleFromLedger(ctx context.Context, id string) bool {
 			// A stopped run succeeds in the ledger: it ended and did not
 			// fail. Its output says it was stopped, and what it had said.
 			if out.Stopped != nil {
-				if run, ended := p.over(func() (runs.Run, bool) { return p.Runs.Stop(id, out.Text, out.Stopped.Reason, at) }); ended {
+				if run, ended := p.over(func() (runs.Run, bool) { return p.Runs.Stop(tenant, id, out.Text, out.Stopped.Reason, at) }); ended {
 					p.log.Info("platform: run ended stopped in the ledger before its final event was seen", "run", id)
 					p.ended(ctx, run)
 				}
@@ -972,7 +1017,7 @@ func (p *Platform) settleFromLedger(ctx context.Context, id string) bool {
 			}
 		}
 	}
-	if run, ended := p.over(func() (runs.Run, bool) { return p.Runs.End(id, status, answer, rec.Error, at) }); ended {
+	if run, ended := p.over(func() (runs.Run, bool) { return p.Runs.End(tenant, id, status, answer, rec.Error, at) }); ended {
 		p.log.Info("platform: run ended in the ledger before its final event was seen", "run", id, "status", status)
 		p.ended(ctx, run)
 	}
@@ -989,7 +1034,9 @@ func (p *Platform) observe(ctx context.Context, e event.Envelope) {
 		// published. The run's own events say what came of it.
 		return
 	}
-	p.Journal.Append(e, p.originOf(e.Tenant, e.Run))
+	if err := p.Journal.Append(e, p.originOf(e.Tenant, e.Run)); err != nil {
+		p.log.Error("platform: event could not be kept in the journal", "tenant", e.Tenant, "run", e.Run, "seq", e.Seq, "error", err)
+	}
 	if event.HasPrefix(e.Type, "run.usage") {
 		p.observeUsage(ctx, e)
 		return
@@ -1141,6 +1188,7 @@ func (p *Platform) Run(ctx context.Context) error {
 	defer cancel()
 	defer p.stopWakers()
 	p.Knowledge.UseEmbedder(ctx, p.cfg.Embedder, p.log)
+	p.CatalogStore.UseEmbedder(ctx, p.cfg.Embedder, p.log)
 
 	var wg sync.WaitGroup
 	errc := make(chan error, 8)
@@ -1163,7 +1211,7 @@ func (p *Platform) Run(ctx context.Context) error {
 	}
 	p.watching.begin(func(tenant string) {
 		sub := p.RunSubscription(tenant, "", 0)
-		observed, err := p.broker.Subscribe(ctx, sub)
+		observed, err := p.broker.Consume(ctx, ObserverGroup, sub)
 		if err != nil {
 			if ctx.Err() == nil {
 				select {
@@ -1177,33 +1225,24 @@ func (p *Platform) Run(ctx context.Context) error {
 		loop("observer "+tenant, func() error { return p.observeTenant(ctx, sub, observed) })
 		loop("egress "+tenant, func() error { return p.deliver.Run(ctx, tenant) })
 	})
-	loop("state flush", func() error {
-		tick := time.NewTicker(flushEvery)
-		defer tick.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-tick.C:
-				p.flush()
+	// A change to the inbox or the threads made on another process reaches
+	// this process's watchers, and this process's reach theirs.
+	if r := p.cfg.Backends.Notices; r != nil {
+		report := func(what string) func(error) {
+			return func(err error) {
+				p.log.Warn("platform: notices could not reach other processes", "store", what, "err", err)
 			}
 		}
-	})
-	loop("email notifications", func() error { return p.runEmailNotifications(ctx) })
+		loop("inbox notices", func() error { return p.Inbox.Relay(ctx, r, report("inbox")) })
+		loop("threads notices", func() error { return p.Threads.Relay(ctx, r, report("threads")) })
+	}
+	// A process's own share: what it holds in memory or on its own disk.
+	// Pending connector renders are this process's egress (fed by the
+	// per-tenant loops above), and sandboxes are directories on this host.
 	loop("connector flush", func() error { return p.flushConnections(ctx) })
-	loop("source refresh", func() error { return p.refreshSources(ctx) })
-	loop("inbox retention", func() error {
-		tick := time.NewTicker(retainEvery)
-		defer tick.Stop()
-		for {
-			p.retainInbox(ctx)
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-tick.C:
-			}
-		}
-	})
+	// Every replica seats every client; a change made on another reaches
+	// this one's seats.
+	loop("client sync", func() error { return p.syncClientsLoop(ctx) })
 	loop("sandbox sweep", func() error {
 		tick := time.NewTicker(time.Hour)
 		defer tick.Stop()
@@ -1216,29 +1255,19 @@ func (p *Platform) Run(ctx context.Context) error {
 			}
 		}
 	})
-	loop("worker", func() error {
-		opts := []worker.Option{
-			worker.WithRegistry(p.rt.Registry()),
-			worker.WithConcurrency(p.slots()),
-			worker.WithLogger(p.log),
-		}
-		if p.cfg.Backoff != nil {
-			opts = append(opts, worker.WithBackoff(p.cfg.Backoff))
-		}
-		return worker.New(p.ledger, p.queue, opts...).Run(ctx)
-	})
-	loop("reconciler", func() error {
-		tick := time.NewTicker(reconcileEvery)
-		defer tick.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-tick.C:
-				p.reconcile(ctx)
+	if p.role.Executes() {
+		loop("worker", func() error {
+			opts := []worker.Option{
+				worker.WithRegistry(p.rt.Registry()),
+				worker.WithConcurrency(p.slots()),
+				worker.WithLogger(p.log),
 			}
-		}
-	})
+			if p.cfg.Backoff != nil {
+				opts = append(opts, worker.WithBackoff(p.cfg.Backoff))
+			}
+			return worker.New(p.ledger, p.queue, opts...).Run(ctx)
+		})
+	}
 
 	// Ingress adapters publish into one queue, read in order by one loop.
 	tags := make(chan event.Envelope)
@@ -1250,7 +1279,45 @@ func (p *Platform) Run(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
+	// The work done once per deployment runs on the elected leader only,
+	// and moves to another process when this one stops leading.
+	singletons := map[string]func(context.Context) error{
+		"email notifications": p.runEmailNotifications,
+		"source refresh":      p.refreshSources,
+		"catalog crawl":       p.crawlCatalog,
+		"inbox retention": func(ctx context.Context) error {
+			tick := time.NewTicker(retainEvery)
+			defer tick.Stop()
+			for {
+				p.retainInbox(ctx)
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-tick.C:
+				}
+			}
+		},
+		"reconciler": func(ctx context.Context) error {
+			tick := time.NewTicker(reconcileEvery)
+			defer tick.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-tick.C:
+					p.reconcile(ctx)
+				}
+			}
+		},
+	}
 	for _, t := range p.sinks.Triggers() {
+		// The clock fires schedules: once per deployment. Every other
+		// trigger is a webhook surface, which must accept on every process
+		// a load balancer may send a delivery to.
+		if t.Name() == cron.Name {
+			singletons["trigger "+t.Name()] = func(ctx context.Context) error { return t.Ingest(ctx, publish) }
+			continue
+		}
 		loop("trigger "+t.Name(), func() error { return t.Ingest(ctx, publish) })
 	}
 	loop("tags", func() error {
@@ -1263,14 +1330,20 @@ func (p *Platform) Run(ctx context.Context) error {
 			}
 		}
 	})
+	loop("leadership", func() error {
+		return p.campaign(ctx, singletons, func(name string, err error) {
+			select {
+			case errc <- fmt.Errorf("platform: %s: %w", name, err):
+			default:
+			}
+			cancel()
+		})
+	})
 
 	<-ctx.Done()
 	// No tenant starts being watched once the loops are winding down.
 	p.watching.end()
 	wg.Wait()
-	// What changed last is written once every loop has stopped, so nothing
-	// the observer folded in while the platform stopped is left unwritten.
-	p.flush()
 	close(errc)
 	return <-errc
 }
@@ -1305,20 +1378,64 @@ func (p *Platform) ingest(ctx context.Context, tag event.Envelope) {
 	}
 }
 
+// ObserverGroup is the bus consumer group the platform folds each tenant's
+// run events through, so with more than one replica each event is folded by
+// one of them.
+const ObserverGroup = "observer"
+
+// observeCommitEvery is how often the observer commits its cursor while
+// events keep arriving. What it folded since the last commit is folded again
+// by a replica that takes over after a crash.
+const observeCommitEvery = 250 * time.Millisecond
+
 // observeTenant folds one tenant's run events into the platform until ctx is
-// done. A subscriber the bus cut off for falling behind rejoins: the journal
-// has a gap, which is logged, and the platform keeps running.
-func (p *Platform) observeTenant(ctx context.Context, sub bus.Subscription, observed bus.Stream) error {
-	defer func() { _ = observed.Close() }()
+// done. It reads through the consumer group ObserverGroup: while another
+// replica holds the tenant it waits, and after falling behind or losing the
+// lease it rejoins and resumes from the committed cursor.
+func (p *Platform) observeTenant(ctx context.Context, sub bus.Subscription, observed bus.GroupStream) error {
+	var handled, committed uint64
+	last := time.Now()
+	commit := func(ctx context.Context) {
+		if handled <= committed {
+			return
+		}
+		if err := observed.Commit(ctx, handled); err == nil {
+			committed = handled
+		} else if ctx.Err() == nil && !errors.Is(err, bus.ErrLeaseLost) {
+			p.log.Warn("platform: observer cursor not committed", "tenant", sub.Tenant, "error", err)
+		}
+		last = time.Now()
+	}
+	rejoin := func() error {
+		final, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		commit(final)
+		cancel()
+		_ = observed.Close()
+		handled, committed = 0, 0
+		var err error
+		observed, err = p.broker.Consume(ctx, ObserverGroup, sub)
+		return err
+	}
+	defer func() {
+		final, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		commit(final)
+		cancel()
+		_ = observed.Close()
+	}()
 	for {
-		e, err := observed.Recv(ctx)
+		d, err := observed.Recv(ctx)
 		switch {
 		case ctx.Err() != nil:
 			return nil
 		case errors.Is(err, bus.ErrSlowConsumer):
-			p.log.Warn("platform: observer fell behind and missed events", "tenant", sub.Tenant)
-			_ = observed.Close()
-			if observed, err = p.broker.Subscribe(ctx, sub); err != nil {
+			p.log.Warn("platform: observer fell behind, resuming from its cursor", "tenant", sub.Tenant)
+			if err := rejoin(); err != nil {
+				return err
+			}
+			continue
+		case errors.Is(err, bus.ErrLeaseLost):
+			p.log.Info("platform: another replica took over observing", "tenant", sub.Tenant)
+			if err := rejoin(); err != nil {
 				return err
 			}
 			continue
@@ -1327,7 +1444,11 @@ func (p *Platform) observeTenant(ctx context.Context, sub bus.Subscription, obse
 		case err != nil:
 			return err
 		}
-		p.observe(ctx, e)
+		p.observe(ctx, d.Event)
+		handled = d.Pos
+		if time.Since(last) >= observeCommitEvery {
+			commit(ctx)
+		}
 	}
 }
 

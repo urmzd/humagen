@@ -187,3 +187,71 @@ test("whoever answered is shown by name, on the run and in the inbox, never by s
   const closed = part("reply", { action: "closed", by: "system", by_name: "system", at }).parts[0];
   assert.equal(closed?.type === "reply" && closed.resolution?.by, "");
 });
+
+// A run the platform held at a limit: the hold on the run's stream and the
+// budget part in the inbox are one approval card, which grants or stops.
+const budgetHold = {
+  id: "q-b",
+  kind: "hold",
+  agent: "lead",
+  prompt: "lead is held: the workspace has reached its limit of spend a day. Grant this run $0.01 more, or stop it.",
+  hold: {
+    id: "budget.abc.0",
+    topic: "budget",
+    data: { scope: { kind: "tenant" }, limit: "spend", period: "day", version: 1, used: 9000, max: 5000, grant: 10000 },
+  },
+};
+
+test("a budget hold reads as one grant-or-stop card on the run and in the inbox", () => {
+  const card = interruptOf(budgetHold);
+  assert.ok(card?.type === "approval");
+  assert.deepEqual(card.budget, { scope: "the workspace", limit: "spend", used: "$0.00", max: "$0.00", grant: "$0.01" });
+  assert.equal(card.tool, "");
+
+  const mail = fromServer({
+    id: "m-b",
+    kind: "approval",
+    subject: "lead is held at the spend limit of the workspace",
+    from: { kind: "system", name: "Limits" },
+    at,
+    updated_at: at,
+    severity: "warning",
+    state: "open",
+    unread: true,
+    source: { run: "r1" },
+    parts: [
+      {
+        id: "p1",
+        type: "approval",
+        state: "open",
+        actions: ["approve", "deny"],
+        question: {
+          run: "r1",
+          id: "q-b",
+          kind: "budget",
+          prompt: budgetHold.prompt,
+          default: "deny",
+          budget: { scope_kind: "tenant", limit: "spend", period: "day", version: 1, used: 9000, max: 5000, grant: 10000 },
+        },
+      },
+    ],
+  });
+  const part = mail.parts[0];
+  assert.ok(part?.type === "approval");
+  assert.deepEqual(part.approval, card);
+
+  const tokens = interruptOf({
+    ...budgetHold,
+    hold: { ...budgetHold.hold, data: { scope: { kind: "project", name: "Launch" }, limit: "tokens", used: 1200, max: 1000, granted: 500, grant: 500 } },
+  });
+  assert.ok(tokens?.type === "approval");
+  assert.deepEqual(tokens.budget, {
+    scope: "project Launch",
+    limit: "tokens",
+    used: "1,200 tokens",
+    max: "1,000 tokens",
+    grant: "500 tokens",
+    granted: "500 tokens",
+  });
+  assert.equal(interruptOf({ ...budgetHold, hold: { id: "h", topic: "other" } }), null, "a hold of another topic is no card");
+});

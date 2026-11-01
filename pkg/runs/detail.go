@@ -35,24 +35,24 @@ func (o Outcome) Validate() error {
 }
 
 func (x *Index) observeDetail(e event.Envelope) Run {
-	x.mu.Lock()
-	defer x.mu.Unlock()
-	r, ok := x.runs[e.Run]
-	if !ok || r.Tenant != e.Tenant || r.Status.Terminal() {
+	if e.Type != event.TypeAction {
 		return Run{}
 	}
-	switch e.Type {
-	case event.TypeAction:
-		action, ok := e.Data.(event.Action)
-		if !ok || action.Name != "record_outcome" || action.Error != "" || len(action.Data) > 30000 {
-			return Run{}
-		}
-		var outcome Outcome
-		if json.Unmarshal(action.Data, &outcome) != nil || outcome.Validate() != nil {
-			return Run{}
+	action, ok := e.Data.(event.Action)
+	if !ok || action.Name != "record_outcome" || action.Error != "" || len(action.Data) > 30000 {
+		return Run{}
+	}
+	var outcome Outcome
+	if json.Unmarshal(action.Data, &outcome) != nil || outcome.Validate() != nil {
+		return Run{}
+	}
+	out, _ := x.update("outcome", e.Tenant, e.Run, func(t *txn, r *Run) (Run, bool) {
+		if r.Status.Terminal() {
+			return Run{}, false
 		}
 		r.Outcome = &outcome
-	}
-	x.touch(r.ID)
-	return *r
+		t.touch(r)
+		return *r, true
+	})
+	return out
 }

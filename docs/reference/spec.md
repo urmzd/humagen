@@ -60,6 +60,9 @@ spec:
     public_url: http://localhost:8080
     webhook_addr: ""        # a second listener that serves only signed webhooks
     console: {enabled: true, dir: auto}      # auto finds a built apps/web
+    drain_grace: 25s        # after SIGTERM, how long runs in flight may finish before they are handed back
+    shutdown_timeout: 10s   # then how long open requests and event streams may take to end
+    role: all               # all | api | worker: which parts this process runs (Process roles)
 
   auth:                     # slot: dev | tailscale | oidc | mock
     kind: oidc
@@ -79,18 +82,34 @@ spec:
   bus:                      # slot: memory | postgres. Leave it out and it
     kind: postgres          # follows the stores: postgres on Postgres stores
 
-  blobs:                    # slot: disk | memory | s3. Published files and
+  blobs:                    # slot: disk | memory | s3 | gcs. Published files and
                             # memory's content. With memory, memory's content
                             # is kept with the stores instead
     kind: s3
     s3:
       bucket: humagen-files
       region: us-east-1
-      endpoint: ""          # set for MinIO or R2
+      endpoint: ""          # MinIO: http://127.0.0.1:9000 with path_style; R2: https://ACCOUNT.r2.cloudflarestorage.com, region auto
       prefix: ""
       path_style: false
       access_key: {ref: env:HUMAGEN_S3_ACCESS_KEY_ID}       # both left out: the AWS chain
       secret_key: {ref: env:HUMAGEN_S3_SECRET_ACCESS_KEY}
+    # Google Cloud Storage, keyless: Application Default Credentials, which are
+    # Workload Identity on GKE, GOOGLE_APPLICATION_CREDENTIALS, or gcloud's.
+    # kind: gcs
+    # gcs:
+    #   bucket: humagen-files
+    #   prefix: ""
+    #   endpoint: ""        # an emulator's URL, such as http://127.0.0.1:4443, reached without credentials
+    # Google Cloud Storage through its S3-compatible API, with an HMAC key:
+    # kind: s3
+    # s3:
+    #   bucket: humagen-files
+    #   endpoint: https://storage.googleapis.com
+    #   region: auto
+    #   path_style: true
+    #   access_key: {ref: env:HUMAGEN_S3_ACCESS_KEY_ID}     # the HMAC key's access ID
+    #   secret_key: {ref: env:HUMAGEN_S3_SECRET_ACCESS_KEY} # and its secret
 
   knowledge:
     embedder:               # slot: none | hashing | openai | vertex. Left out: none, lexical search only
@@ -116,8 +135,18 @@ spec:
       image: python:3.13-alpine           # the shell and the file tools; needs sh and sleep
       connectors_image: node:22-alpine    # stdio MCP servers; empty is image
       work_root: ""         # empty is humagen/sandbox in the user cache directory
+      host: ""              # a sandbox host's daemon: tcp://, ssh:// or unix://. Empty is the local daemon
+      tls_dir: ""           # with a tcp:// host: ca.pem, cert.pem and key.pem
       warm: 1               # instances kept started ahead of runs, per shape
       max: 64               # every instance at once
+
+  egress:                   # slot: none | gate. How an instance reaches the network
+    kind: gate              # none, the default: no network at all
+    gate:
+      listen: 10.0.9.2:3128 # where the gate listens; empty is 127.0.0.1:3128
+      address: 10.0.9.2:3128   # the gate as an instance reaches it; empty is listen
+      network: humagen-egress  # docker: the --internal network instances join
+      allow_non_public: false  # true lets an allowed host resolve to a private address
 
   rooms:                    # a conversation with many readers (RFC 0004); each default is far above an ordinary one
     coalesce_above: 200     # readers on one server above which each is sent at once only what involves them, the rest as a page
@@ -211,16 +240,58 @@ run tools. **Giving Humagen the Docker socket is root on that host**:
 whoever can start containers through it can mount the host's filesystem. So
 the `docker` driver is for a host that exists to run sandboxes, not a shared
 server or a Kubernetes node; the chart and the compose stack set
-`unisolated` explicitly for that reason. A remote or Kubernetes driver,
-which starts instances somewhere Humagen holds no root, is the production
-target and is not built yet. Until the egress gate lands, an instance has no network at all,
-so a stdio MCP server that calls an API cannot reach it under `docker`.
+`unisolated` explicitly for that reason.
+
+`host` points the `docker` sandbox at a daemon on a sandbox host instead,
+so Humagen holds no Docker socket on its own machine: whoever takes over
+Humagen gets the sandbox host, not the one with the database. A `tcp://`
+host needs `tls_dir`, the directory with the daemon's certificate authority
+(`ca.pem`) and Humagen's client certificate (`cert.pem`, `key.pem`); a
+daemon on plain TCP is refused, because it is root for anyone who reaches
+the port. With a host, a run's work directory is a volume on the sandbox
+host, `work_root` is unused, and host directories cannot be mounted. The
+sandbox host needs Docker with `runsc` registered and nothing else worth
+taking. An instance has no network at all unless the
+`egress` slot is `gate` ([Egress](#egress)).
 
 Flags override the block: `-sandbox`, `-sandbox-runtime`,
 `-sandbox-insecure-development-runtime`, `-sandbox-image`,
-`-sandbox-connectors-image` and `-sandbox-work-root`. A binary can register
+`-sandbox-connectors-image`, `-sandbox-work-root`, `-sandbox-host` and
+`-sandbox-tls-dir`. A binary can register
 another kind with `humagen.WithKind(humagen.Sandbox, name, factory)`, whose
 factory returns an `isolation.Leaser` (`fiber/pkg/isolation`).
+
+### Egress
+
+`egress` decides how a sandbox instance reaches the network. Left out, it is
+`none`: an instance has a loopback interface and nothing else, so a tool that
+calls an API cannot reach it.
+
+`gate` runs playscape's egress gate in the server: an HTTP forward proxy that
+is every instance's only way out. Each run's instance is granted the hosts its
+`ceilings.egress` allows ([Run settings](#run-settings)), default deny, and
+every command in it, the shell and stdio MCP servers alike, gets `HTTP_PROXY`
+and `HTTPS_PROXY` with that grant's token. A request for any other host gets
+`403` before anything is dialed. HTTPS goes through as a `CONNECT` tunnel, so
+the gate sees the host and port, never the content. The grant ends when the
+run's instance is destroyed. Addresses that are loopback, private or
+link-local are refused whatever name led to them, unless
+`allow_non_public` is set.
+
+Every decision, allowed or denied, is written to the workspace's audit log as
+`sandbox.egress` on resource `egress_host`, with the run, its agent and
+conversation, the method, host and port, and why a request was refused. A
+denied request is a failed record.
+
+| Sandbox | What forces the gate |
+|---------|----------------------|
+| `docker` | The instance joins `network`, which must be created with `--internal` (`docker network create --internal humagen-egress`), so it has no route out. The gate must be reachable on that network at `address`: run the server in a container attached to it, and give the server's IP address on it, since gVisor cannot always resolve names there. A network that is not internal is refused |
+| `local` | Nothing: the processes are the server's own, and only the proxy variables send them to the gate. `listen` and `address` on loopback are enough |
+| `unisolated` | Nothing runs in an instance, so the gate is not started and the server says so |
+
+Credential injection, where the sandbox holds a placeholder and the gate
+swaps in the real value for an allowed host, is playscape's and not wired
+here yet.
 
 ### Knowledge search
 
@@ -244,6 +315,41 @@ lexically. If the embedder fails, writes still succeed and search is lexical.
 Search sees exactly the documents it would without vectors: the same sources,
 exclusions, variants and access checks.
 
+### Catalog connectors
+
+`connectors` in a Platform document are the systems the catalog lists
+([RFC 0005](../rfcs/0005-federated-retrieval-and-catalog.md)): tables,
+columns and their descriptions, never data. Each is crawled on its `refresh`
+cadence (24h when left out), and a crawl replaces its entries whole, so a
+dropped table disappears and a failed crawl keeps the entries before it.
+Entries are searched like knowledge, with `knowledge.embedder` when one is set.
+
+| Field | Meaning |
+|-------|---------|
+| `owner` | The person whose credential the connector uses. Required. They see its entries, may publish them, and may query it |
+| `project` | Whose members see its entries while the owner publishes them (`POST /api/catalog/connectors/{name}/publish`). Left out, the workspace |
+| `refresh` | How often it is crawled, at least `1h` |
+
+| Kind | Block | Credentials |
+|------|-------|-------------|
+| `bigquery` | `project` (required), `datasets`, `location`, `max_bytes_billed` (1 GiB), `max_rows` (200, at most 10000), `timeout` (60s, at most 10m) | `credential`, a reference to a service account key in JSON; left out, Application Default Credentials: the VM's service account on GCE |
+
+Two tools use the catalog, granted to an agent by name like any tool:
+
+- `catalog_search` finds entries: a published connector's when everyone the
+  answer reaches reads its project, and the owner's own only in the owner's
+  private conversation.
+- `catalog_query` runs one SQL `SELECT` with the connector's credential, so
+  only for its owner, in their own private conversation. BigQuery dry-runs it
+  first and refuses it before it runs when it is not a single `SELECT`, reads a
+  dataset outside `datasets`, or would read more than `max_bytes_billed`. The
+  query that runs carries the same cap as BigQuery's maximum bytes billed.
+
+The credential needs `roles/bigquery.metadataViewer` (or `dataViewer`) on the
+datasets to crawl them, `roles/bigquery.dataViewer` to read them, and
+`roles/bigquery.jobUser` on `project` to run queries. Give it no write role:
+the dry run's statement check is the first guard, the credential the last.
+
 ### Rooms
 
 `rooms` protects the server from a conversation with a great many readers
@@ -264,6 +370,70 @@ message past them is refused in the message's `refused`. Only a run a person
 or a surface started counts: a call between agents is its root's work, and a
 schedule's or an eval's run is asked by nobody. With `stores.kind: postgres`
 the counts are shared by every replica.
+
+### Stopping and readiness
+
+`GET /healthz` says the process is alive. `GET /readyz` says it should be
+sent traffic: 200 once it has finished starting, while its database (with
+`stores.kind: postgres`) answers, and until it starts to stop; 503 with the
+reason (`starting`, `draining` or `unavailable`, and which check failed)
+otherwise. Point a load balancer's or Kubernetes' readiness probe at
+`/readyz` and its liveness probe at `/healthz`.
+
+On SIGTERM (or the first Ctrl-C) the server drains:
+
+1. `/readyz` answers 503 `draining`, so traffic moves to another replica.
+2. A new turn is refused with 503 and `Retry-After`. The worker claims no
+   new run, except one that a run it holds called, so a turn waiting on its
+   subagent can still finish.
+3. Runs in flight go on for up to `server.drain_grace`.
+4. Open requests and event streams get `server.shutdown_timeout` to end.
+5. Whatever is still running is handed back to the queue without being
+   charged a failure. With Postgres stores, another replica resumes it where
+   it stopped; with memory stores it is lost with the process.
+
+A second signal skips the wait. Give a container longer than
+`drain_grace` plus `shutdown_timeout` to stop (Kubernetes'
+`terminationGracePeriodSeconds`), or it is killed mid-drain. Flags
+`-drain-grace` and `-shutdown-timeout` win over the file.
+
+### Process roles
+
+`server.role` (or `-role`) says which parts of the platform a process runs,
+so the API and the execution of turns scale on their own (RFC 0004, "A
+million people in one room").
+
+| Role | Runs | Listens |
+|------|------|---------|
+| `all` (the default) | the API and the turns, in one process | `server.addr`, and `webhook_addr` when set |
+| `api` | the API, sign-in, the event stream and webhooks; it admits runs onto the queue and executes none | as `all` |
+| `worker` | the turns on the run queue (anchor's worker) and what they need: models, tools, the sandbox | nothing |
+
+`humagen worker` is `humagen serve` with the `worker` role, whatever the
+file's `server.role` says; a different `-role` on its command line is
+refused. `api` and `worker` hand runs to each other through the run ledger
+and queue, so both need `stores.kind: postgres`, and a split role on memory
+stores is refused at start.
+
+```bash
+humagen serve -f humagen.yaml -role api     # behind the load balancer
+humagen worker -f humagen.yaml              # as many as the queue needs
+```
+
+Whatever its role, every process on one database campaigns for leadership,
+and only the leader runs the work done once per deployment: the reconciler,
+schedules, inbox retention, email notices, knowledge source refresh and
+catalog crawls. The leader holds a session advisory lock on a connection of
+its own; when that connection ends, the lock goes with it and another process
+takes over within about ten seconds: it waits out the old leader's last check, so two terms never overlap while the old leader can still reach the database. On memory stores the one process
+always leads. Each process logs its role at start (`msg=process role=...`)
+and logs `platform: leading` when it becomes the leader.
+
+Today every store but feedback is still loaded into memory at start and the
+stores' lock admits one process per database
+([limits at scale](../architecture/overview.md#limits-at-scale)), so a
+deployment runs one process, with `role: all`, until the stores read the
+database per request. The roles and the election are in place for that step.
 
 ## Platform
 
@@ -291,7 +461,7 @@ spec:
     project_kinds: [{name: partner, title: Partner, like: account}]          # the workspace's own kinds
     agent_posts: review     # what agents scheduled in the workspace itself post waits for its owners
     run:                    # every run's settings: ceilings bound it, preferences choose within them
-      ceilings: {models: ["anthropic/*", "gemini/*"], call_depth: 2, tool_servers: [mcp.acme.example]}
+      ceilings: {models: ["anthropic/*", "gemini/*"], call_depth: 2, tool_servers: [mcp.acme.example], egress: [api.github.com, "*.pypi.org"]}
       preferences: {model: anthropic/claude-sonnet-4-5}
     projects:               # merged into the tree at every start, parents first
       - {name: Launch, description: Everything for the Q4 launch}
@@ -361,6 +531,19 @@ spec:
             input_schema: {type: object, properties: {q: {type: string}}}
             schema_hash: 21877437383c4aa0e8fc28bbe3abc1d801bac704010bcdd62a93e30dafd20ab6
             class: read
+
+  connectors:               # each a slot: bigquery. What the catalog lists, and agents query in place
+    - name: warehouse
+      kind: bigquery
+      owner: ana@acme.example   # whose credential it is: they see its entries and may query it
+      project: Field        # whose members see its entries once the owner publishes them
+      refresh: 24h          # how often it is crawled, at least 1h
+      bigquery:
+        project: acme-analytics
+        datasets: [billing, web]   # the catalog and every query keep to these
+        max_bytes_billed: 1073741824   # one query reads at most this; refused before it runs otherwise
+        max_rows: 200
+        # credential: {ref: env:BQ_KEY}   # a service account key; left out, the VM's service account
 
   agents:
     - spec:
@@ -672,6 +855,7 @@ below may do, and what it prefers. A person adds their own level through
 | `ceilings.models` | ceiling | narrows nothing | at most 64 `provider/model`, or `provider/*` for all of a provider's. The run's model and fallbacks outside it are dropped, and a run with none left is refused |
 | `ceilings.call_depth` | ceiling | the deployment's depth | 0 to 16: how deep a run's calls to other agents may go. 0 calls none. It never deepens the deployment's own limit |
 | `ceilings.tool_servers` | ceiling | none | at most 64 hosts, in lower case, a person's own tool servers may be on. Default deny: only `workspace.run` opens it, and a project or a person only narrows it |
+| `ceilings.egress` | ceiling | none | at most 64 hosts, in lower case, a run's sandbox may reach through the egress gate, on ports 80 and 443: an exact name, or `*.domain` for its subdomains (not the domain itself). Default deny: only `workspace.run` opens it, and a project or a person only narrows it. It takes effect only with the `egress` slot set to `gate` ([Egress](#egress)) |
 | `preferences.model` | preference | the agent's model | `provider/model`, or `policy/<name>` for one of the workspace's model policies, used in place of the agent's own. One the ceilings do not allow is passed over |
 | `preferences.compaction_tokens` | preference | never compacts | 1,024 to 2,000,000: the input size, in tokens, past which a run's history is summarized before its next model call |
 
@@ -961,7 +1145,7 @@ when a run uses it, so there is nothing to read or pass when deploying:
 
 | Slot | Built in | A registered kind returns |
 |------|----------|---------------------------|
-| `system.blobs` | disk, memory, s3 | a `blob.Store` |
+| `system.blobs` | disk, memory, s3, gcs | a `blob.Store` |
 | `system.bus` | memory, postgres | a `bus.Bus` |
 | `system.extensions[]` | none | something with `Run(ctx) error`, run beside the server |
 | `platform.models[]` | anthropic, openai, google | a `native.ProviderFunc` |

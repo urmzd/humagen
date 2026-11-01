@@ -74,7 +74,11 @@ func (p *Platform) RollupProject(who auth.Principal, name string) (ProjectRollup
 	// Resolve passive source chains before entering the run index read lock:
 	// legacy source records can require an index lookup of their own.
 	inheritedAccess := map[string]bool{}
-	for _, th := range p.Threads.Records(who.Tenant, func(th threads.Thread) bool { return th.Fork != nil }) {
+	forks, err := p.Threads.Records(who.Tenant, func(th threads.Thread) bool { return th.Fork != nil })
+	if err != nil {
+		return ProjectRollup{}, err
+	}
+	for _, th := range forks {
 		inheritedAccess[th.ID] = seer.Place(Place{Project: th.Project, Thread: th.ID})
 	}
 	if who.Can(auth.RunsRead) {
@@ -106,7 +110,10 @@ func (p *Platform) RollupProject(who auth.Principal, name string) (ProjectRollup
 			pr.Parent = ""
 		}
 		c := counts[child]
-		unread := p.Inbox.CountProject(who.Tenant, child, p.inboxQuery(tree, who, inbox.Query{}))
+		unread, err := p.Inbox.CountProject(who.Tenant, child, p.inboxQuery(tree, who, inbox.Query{}))
+		if err != nil {
+			p.log.Warn("platform: a project's unread count could not be read", "tenant", who.Tenant, "project", child, "error", err)
+		}
 		if child != name {
 			if len(out.Projects) < MaxRollupProjects {
 				out.Projects = append(out.Projects, ProjectRollupRow{Name: child, Title: cmp.Or(pr.Title, child), Parent: pr.Parent, Conversations: c.Threads, Active: c.Active, Unread: unread.Unread + unread.Updates, Needs: unread.Open, Runs30Days: monthly[child]})
@@ -114,7 +121,11 @@ func (p *Platform) RollupProject(who auth.Principal, name string) (ProjectRollup
 				out.MoreProjects = true
 			}
 		}
-		for _, note := range p.Memory.List(who.Tenant, memory.ProjectOwner(child)) {
+		notes, err := p.Memory.List(who.Tenant, memory.ProjectOwner(child))
+		if err != nil {
+			return ProjectRollup{}, err
+		}
+		for _, note := range notes {
 			if note.Status != memory.Approved || !note.ExpiresAt.IsZero() && !note.ExpiresAt.After(now) || note.Kind != memory.Decision && note.Kind != memory.Risk {
 				continue
 			}

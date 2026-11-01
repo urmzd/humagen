@@ -70,7 +70,7 @@ func TestSourceSelectionSnapshotAndRefreshSettingsSurviveRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if due := s.RefreshDue(now.Add(2*time.Minute), 200); len(due) != 1 {
+		if due, _ := s.RefreshDue(now.Add(2*time.Minute), 200); len(due) != 1 {
 			t.Fatal("scheduled copy not due", due)
 		}
 		if _, err := s.Configure("tenant", "source", frozen, now); err != nil {
@@ -81,7 +81,7 @@ func TestSourceSelectionSnapshotAndRefreshSettingsSurviveRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 		copy, _ := replay.Get("tenant", "source")
-		if !copy.Lifecycle.Snapshot || copy.HardStale(now.Add(48*time.Hour)) || len(replay.RefreshDue(now.Add(48*time.Hour), 200)) != 0 {
+		if !copy.Lifecycle.Snapshot || copy.HardStale(now.Add(48*time.Hour)) || len(must(replay.RefreshDue(now.Add(48*time.Hour), 200))) != 0 {
 			t.Fatal("snapshot expired or scheduled itself")
 		}
 		id, _ = replay.BeginSync("tenant", "source", now.Add(time.Hour))
@@ -91,4 +91,11 @@ func TestSourceSelectionSnapshotAndRefreshSettingsSurviveRestart(t *testing.T) {
 			t.Fatal("failed replacement discarded frozen lastgood")
 		}
 	})
+}
+
+func must[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return v
 }

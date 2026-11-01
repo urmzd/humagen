@@ -59,7 +59,7 @@ func (p *Platform) AsksIn(ctx context.Context, who auth.Principal, turns []Threa
 // askOf is the question a run waits on, as who stands to it. ok is false for
 // a question no person answers, such as a delegation.
 func (p *Platform) askOf(ctx context.Context, who auth.Principal, run runs.Run, q event.Question, s *shower) (Ask, bool) {
-	if _, _, ok := questionParts(q.Kind); !ok || q.ID == "" {
+	if _, _, ok := questionParts(partKind(q)); !ok || q.ID == "" {
 		return Ask{}, false
 	}
 	// The message as it was raised decides who may answer, as answering
@@ -91,10 +91,10 @@ func (p *Platform) askOf(ctx context.Context, who auth.Principal, run runs.Run, 
 	// An answer as plain as a surface offers: an approval as it was asked,
 	// a choice of its first option, or words.
 	a := QuestionAnswer{Action: ActReply, Text: "?"}
-	switch q.Kind {
-	case event.QuestionApproval:
+	switch {
+	case q.Kind == event.QuestionApproval, isBudget(q):
 		a = QuestionAnswer{Action: ActApprove}
-	case event.QuestionChoice:
+	case q.Kind == event.QuestionChoice:
 		a = QuestionAnswer{Action: ActChoose, Choice: firstOf(q.Options)}
 	}
 	ask.Yours = p.checkAnswer(ctx, who, readerOf(who), m, *m.Parts[i].Question, a, false) == nil

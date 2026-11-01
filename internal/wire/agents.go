@@ -114,7 +114,11 @@ func (a *Agents) Create(ctx context.Context, tenant string, spec AgentSpec, by s
 		return Revision{}, err
 	}
 	if len(all) > 0 {
-		if _, retired := a.src.Retired(tenant, spec.Name); !retired {
+		_, retired, err := a.src.Retired(tenant, spec.Name)
+		if err != nil {
+			return Revision{}, err
+		}
+		if !retired {
 			return Revision{}, fmt.Errorf("%w: agent %q is already at revision %d", ErrExists, spec.Name, len(all))
 		}
 		if err := a.src.Revive(ctx, tenant, spec.Name); err != nil {

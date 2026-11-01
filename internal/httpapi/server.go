@@ -28,6 +28,7 @@ import (
 	"github.com/urmzd/humagen/internal/branding"
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/ready"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
@@ -70,12 +71,15 @@ type Server struct {
 	WebDir string
 	// Branding is the deployment's and each workspace's. Nil is Humagen's.
 	Branding *branding.Set
+	// Ready answers /readyz. Nil is ready whenever the server answers.
+	Ready *ready.Gate
 }
 
 // Handler returns the server's routes.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok\n")) })
+	mux.HandleFunc("GET /readyz", s.readyz)
 	// A client's own secret authorizes these routes, not a browser role. The
 	// request goes to the client whose secret verifies it, and takes its
 	// tenant from that client.
@@ -166,6 +170,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/memory/files/restore", s.authed(auth.RunsWrite, s.restoreMemory))
 	mux.HandleFunc("POST /api/memory/files/proposals/{id}", s.authed(auth.RunsWrite, s.decideMemoryProposal))
 	mux.HandleFunc("GET /api/memory/search", s.authed(auth.RunsRead, s.searchMemory))
+	mux.HandleFunc("GET /api/catalog", s.authed(auth.KnowledgeRead, s.getCatalog))
+	mux.HandleFunc("POST /api/catalog/connectors/{name}/publish", s.authed(auth.KnowledgeWrite, s.publishConnector))
+	mux.HandleFunc("DELETE /api/catalog/connectors/{name}/publish", s.authed(auth.KnowledgeWrite, s.withdrawConnector))
+	mux.HandleFunc("POST /api/catalog/connectors/{name}/crawl", s.authed(auth.KnowledgeWrite, s.crawlConnector))
 	mux.HandleFunc("GET /api/runs", s.authed(auth.RunsRead, s.listRuns))
 	mux.HandleFunc("POST /api/runs", s.authed(auth.RunsWrite, s.createRun))
 	mux.HandleFunc("GET /api/threads", s.authed(auth.RunsRead, s.listThreads))
@@ -494,7 +502,12 @@ func (s *Server) listMemory(w http.ResponseWriter, r *http.Request, who auth.Pri
 	if !found {
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"notes": s.viewNotesAs(who, s.P.Memory.List(who.Tenant, owner))})
+	notes, err := s.P.Memory.List(who.Tenant, owner)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, map[string]any{"notes": s.viewNotesAs(who, notes)})
 }
 
 // noteView is a note and what the person who wrote it is called. The note
@@ -570,7 +583,12 @@ func (s *Server) pendingMemory(w http.ResponseWriter, _ *http.Request, who auth.
 	}
 	out := []proposal{}
 	seer := s.P.Seer(who)
-	for _, p := range s.P.Memory.Pending(who.Tenant) {
+	pending, err := s.P.Memory.Pending(who.Tenant)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	for _, p := range pending {
 		if !seer.MemoryOwner(p.Agent) {
 			continue
 		}
@@ -1225,6 +1243,11 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, memory.ErrSensitive):
 		fail(w, http.StatusBadRequest, "that note carries personal data, such as an email address or a card number, so it was not stored")
+	case errors.Is(err, platform.ErrDraining):
+		// Another replica takes the turn: the load balancer stops sending
+		// here once the readiness probe fails.
+		w.Header().Set("Retry-After", "1")
+		fail(w, http.StatusServiceUnavailable, err.Error())
 	case errors.Is(err, platform.ErrStopUnavailable):
 		// The run was marked as asked, so it starts nothing more, but the
 		// work in flight was not interrupted.
@@ -1271,6 +1294,25 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 		return false
 	}
 	return true
+}
+
+// readyz is the readiness probe: 200 when this process should be sent
+// traffic, 503 while it starts, drains or cannot reach what it needs.
+func (s *Server) readyz(w http.ResponseWriter, r *http.Request) {
+	if s.Ready == nil {
+		ok(w, http.StatusOK, ready.Report{Status: ready.Ready, Checks: []ready.Result{}})
+		return
+	}
+	report, isReady := s.Ready.Check(r.Context())
+	if report.Checks == nil {
+		report.Checks = []ready.Result{}
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	if !isReady {
+		ok(w, http.StatusServiceUnavailable, report)
+		return
+	}
+	ok(w, http.StatusOK, report)
 }
 
 func ok(w http.ResponseWriter, status int, v any) {

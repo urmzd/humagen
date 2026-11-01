@@ -34,6 +34,9 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if cfg.System.Spec.Server.Role != "all" {
+		t.Fatalf("server.role = %q", cfg.System.Spec.Server.Role)
+	}
 	if cfg.System.Spec.Stores.Kind != "postgres" || len(cfg.Platforms) != 1 || len(cfg.Platforms[0].Spec.Models) != 3 {
 		t.Fatalf("config = %+v", cfg)
 	}
@@ -46,6 +49,9 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	}
 	if sb, err := Block[DockerSandbox](cfg.System.Spec.Sandbox); err != nil || cfg.System.Spec.Sandbox.Kind != "docker" || sb.Runtime != RuntimeGVisor || sb.Image != DefaultSandboxImage || sb.Max != 64 {
 		t.Fatalf("the example's sandbox = %+v %+v %v", cfg.System.Spec.Sandbox, sb, err)
+	}
+	if g, err := Block[EgressGate](cfg.System.Spec.Egress); err != nil || cfg.System.Spec.Egress.Kind != "gate" || g.Network != "humagen-egress" || g.Address != "10.0.9.2:3128" || g.Listen != "10.0.9.2:3128" {
+		t.Fatalf("the example's egress = %+v %+v %v", cfg.System.Spec.Egress, g, err)
 	}
 	if r, err := cfg.System.Spec.Rooms.Config(); err != nil || r.CoalesceAbove != 200 || r.TailInterval != 3*time.Second || r.RoomRunsPerMinute != 600 || r.PersonRuns != 25 {
 		t.Fatalf("rooms = %+v %v", r, err)
@@ -63,7 +69,7 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	if f := w.Projects[1]; len(w.Knowledge) != 1 || len(f.Knowledge) != 1 || f.Knowledge[0] != "field-playbook" {
 		t.Fatalf("the example's knowledge = %v %v", w.Knowledge, f.Knowledge)
 	}
-	if f := w.Projects[1]; w.Run == nil || f.Run == nil || w.Run.Ceilings.Depth(5) != 2 || len(w.Run.Ceilings.ToolServers) != 1 ||
+	if f := w.Projects[1]; w.Run == nil || f.Run == nil || w.Run.Ceilings.Depth(5) != 2 || len(w.Run.Ceilings.ToolServers) != 1 || !w.Run.Ceilings.AllowsEgress("api.github.com") ||
 		w.Run.Preferences.Model != "anthropic/claude-sonnet-4-5" || f.Run.Ceilings.Depth(5) != 1 || len(f.Run.Ceilings.Tools) != 3 || f.Run.Preferences.CompactionTokens != 120000 {
 		t.Fatalf("the example's run settings = %+v %+v", w.Run, f.Run)
 	}
@@ -76,7 +82,7 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 func TestNoFileIsAWorkingDefault(t *testing.T) {
 	var s System
 	s.Defaults()
-	if s.Spec.Auth.Kind != "dev" || s.Spec.Server.Addr != "127.0.0.1:8080" || s.Spec.Stores.Kind != "memory" || s.Tenant() != "default" || s.Spec.Knowledge.Embedder.Kind != "none" {
+	if s.Spec.Auth.Kind != "dev" || s.Spec.Server.Addr != "127.0.0.1:8080" || s.Spec.Stores.Kind != "memory" || s.Tenant() != "default" || s.Spec.Knowledge.Embedder.Kind != "none" || s.Spec.Egress.Kind != "none" {
 		t.Fatalf("defaults = %+v", s)
 	}
 }
@@ -91,6 +97,7 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 		"a block for another kind": {sys + "  blobs: {kind: disk, s3: {bucket: b}}\n", `unknown field "s3"`},
 		"a field in a block":       {sys + "  blobs: {kind: s3, s3: {bucket: b, bukket: c}}\n", `unknown field "bukket"`},
 		"no url":                   {sys + "  stores: {kind: postgres}\n", "url is required"},
+		"a gcs bucket missing":     {sys + "  blobs: {kind: gcs, gcs: {prefix: p}}\n", "bucket is required"},
 		"half the s3 keys":         {sys + "  blobs: {kind: s3, s3: {bucket: b, access_key: {ref: env:A}}}\n", "go together"},
 		"an old version":           {"api_version: humagen/v0\nkind: System\n", "api_version"},
 		"an unknown document":      {"api_version: humagen/v1\nkind: Cluster\n", "kind is System or Platform"},
@@ -109,12 +116,24 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 		"a person reference that is nobody's own":      {sys + "  person_refs: {default: ['op://People/']}\n", "person_refs.default"},
 		"two workspaces' people in one place": {sys + "  person_refs: {default: ['op://People/{subject}/'], globex: ['op://People/{subject}/']}\n",
 			"could name one reference for two people"},
-		"an inbox kept less than a week":    {plat + "  workspace: {inbox_retention: 6d}\n", "workspace.inbox_retention: \"6d\" is less than the least retention, 7d"},
-		"a call depth past the hop limit":   {sys + "  execution: {max_depth: 8}\n", "execution.max_depth: 8"},
-		"an inbox kept for no time":         {plat + "  workspace: {inbox_retention: forever}\n", "workspace.inbox_retention: \"forever\" is whole days"},
-		"a vertex embedder with no project": {sys + "  knowledge: {embedder: {kind: vertex, vertex: {location: us-central1}}}\n", "vertex needs project"},
-		"an openai embedder with no width":  {sys + "  knowledge: {embedder: {kind: openai, openai: {model: m}}}\n", "openai needs model and dimensions"},
-		"an embedder key as a value":        {sys + "  knowledge: {embedder: {kind: openai, openai: {model: m, dimensions: 8, key: {ref: sk-123}}}}\n", "use env:NAME"},
+		"an inbox kept less than a week":                  {plat + "  workspace: {inbox_retention: 6d}\n", "workspace.inbox_retention: \"6d\" is less than the least retention, 7d"},
+		"a call depth past the hop limit":                 {sys + "  execution: {max_depth: 8}\n", "execution.max_depth: 8"},
+		"an inbox kept for no time":                       {plat + "  workspace: {inbox_retention: forever}\n", "workspace.inbox_retention: \"forever\" is whole days"},
+		"a vertex embedder with no project":               {sys + "  knowledge: {embedder: {kind: vertex, vertex: {location: us-central1}}}\n", "vertex needs project"},
+		"an openai embedder with no width":                {sys + "  knowledge: {embedder: {kind: openai, openai: {model: m}}}\n", "openai needs model and dimensions"},
+		"an egress gate on every address with no address": {sys + "  egress: {kind: gate, gate: {listen: ':3128'}}\n", "address must say which one"},
+		"an egress address with no port":                  {sys + "  egress: {kind: gate, gate: {address: 10.0.9.2}}\n", `address "10.0.9.2" is not host:port`},
+		"an egress network that is no name":               {sys + "  egress: {kind: gate, gate: {network: 'a b'}}\n", "is not a Docker network's name"},
+		"an egress host with a port":                      {plat + "  workspace: {run: {ceilings: {egress: ['api.github.com:443']}}}\n", "egress"},
+		"an embedder key as a value":                      {sys + "  knowledge: {embedder: {kind: openai, openai: {model: m, dimensions: 8, key: {ref: sk-123}}}}\n", "use env:NAME"},
+		"a connector with no owner":                       {plat + "  connectors: [{name: wh, kind: bigquery, bigquery: {project: p}}]\n", "kind and owner are required"},
+		"a connector with a bad name":                     {plat + "  connectors: [{name: Big WH, kind: bigquery, owner: ana, bigquery: {project: p}}]\n", "lower case letters"},
+		"two connectors of one name": {plat + "  connectors: [{name: wh, kind: bigquery, owner: ana, bigquery: {project: p}}, {name: wh, kind: bigquery, owner: ana, bigquery: {project: p}}]\n",
+			"a unique name"},
+		"a connector crawled too often": {plat + "  connectors: [{name: wh, kind: bigquery, owner: ana, refresh: 5m, bigquery: {project: p}}]\n", "at least 1h0m0s"},
+		"bigquery with no project":      {plat + "  connectors: [{name: wh, kind: bigquery, owner: ana, bigquery: {datasets: [a]}}]\n", "project is required"},
+		"bigquery with a bad timeout":   {plat + "  connectors: [{name: wh, kind: bigquery, owner: ana, bigquery: {project: p, timeout: soon}}]\n", "timeout is a duration"},
+		"a bigquery key as a value":     {plat + "  connectors: [{name: wh, kind: bigquery, owner: ana, bigquery: {project: p, credential: {ref: '{\"type\": 1}'}}}]\n", "use env:NAME"},
 	} {
 		path := filepath.Join(t.TempDir(), "humagen.yaml")
 		writeFile(t, path, tc.body)
@@ -127,20 +146,32 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 
 func TestAKindIsOneTheBinaryHas(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "humagen.yaml")
-	writeFile(t, path, "api_version: humagen/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n")
+	writeFile(t, path, "api_version: humagen/v1\nkind: System\nspec:\n  blobs: {kind: azure, azure: {container: b}}\n")
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load cannot know the binary's kinds, so it lets one through: %v", err)
 	}
-	if err := cfg.Check(Kinds{}); err == nil || !strings.Contains(err.Error(), "disk, memory, s3") {
+	if err := cfg.Check(Kinds{}); err == nil || !strings.Contains(err.Error(), "disk, gcs, memory, s3") {
 		t.Fatalf("an unregistered kind: %v", err)
 	}
-	if err := cfg.Check(Kinds{SlotBlobs: {"gcs"}}); err != nil {
+	if err := cfg.Check(Kinds{SlotBlobs: {"azure"}}); err != nil {
 		t.Fatalf("a registered kind: %v", err)
 	}
-	var blk struct{ Bucket string }
-	if err := cfg.System.Spec.Blobs.Decode(&blk); err != nil || blk.Bucket != "b" {
+	var blk struct{ Container string }
+	if err := cfg.System.Spec.Blobs.Decode(&blk); err != nil || blk.Container != "b" {
 		t.Fatalf("its block: %+v %v", blk, err)
+	}
+}
+
+func TestAnEgressIsOneTheBinaryHas(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
+	writeFile(t, path, "api_version: humagen/v1\nkind: System\nspec:\n  egress: {kind: squid}\n")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Check(Kinds{}); err == nil || !strings.Contains(err.Error(), "none, gate") {
+		t.Fatalf("an unknown egress: %v", err)
 	}
 }
 
@@ -156,6 +187,35 @@ func TestAnEmbedderIsOneTheBinaryHas(t *testing.T) {
 	}
 	if err := cfg.Check(Kinds{SlotEmbedder: {"pinecone"}}); err != nil {
 		t.Fatalf("a registered embedder: %v", err)
+	}
+}
+
+func TestTheReferenceConnectorLoads(t *testing.T) {
+	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "reference", "spec.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks := regexp.MustCompile("(?s)```yaml\n(.*?)```").FindAllStringSubmatch(string(doc), -1)
+	var all []string
+	for _, b := range blocks {
+		all = append(all, b[1])
+	}
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
+	writeFile(t, path, strings.Join(all, "---\n"))
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs := cfg.Platforms[0].Spec.Connectors
+	if len(cs) != 1 || cs[0].Kind != "bigquery" || cs[0].Owner == "" || cs[0].Refresh != "24h" {
+		t.Fatalf("connectors = %+v", cs)
+	}
+	b, err := Block[BigQueryConnector](cs[0].Slot)
+	if err != nil || b.Project != "acme-analytics" || len(b.Datasets) != 2 || b.MaxRows != 200 || b.Credential.Set() {
+		t.Fatalf("bigquery = %+v, %v", b, err)
+	}
+	if err := cfg.Check(Kinds{}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -302,6 +362,31 @@ func TestABusTheStoresCannotCarryIsRefused(t *testing.T) {
 	}
 }
 
+// A split role hands turns over through the run queue, so it needs the
+// stores on Postgres; all runs anywhere.
+func TestAServerRoleIsCheckedAgainstTheStores(t *testing.T) {
+	sys := "api_version: humagen/v1\nkind: System\nspec:\n"
+	pgStores := "  stores: {kind: postgres, postgres: {url: {ref: env:HUMAGEN_POSTGRES_URL}}}\n"
+	for body, want := range map[string]string{
+		sys + "  server: {role: scheduler}\n":         "not all, api or worker",
+		sys + "  server: {role: worker}\n":            "set stores.kind: postgres",
+		sys + "  server: {role: api}\n":               "set stores.kind: postgres",
+		sys + "  server: {role: all}\n":               "",
+		sys + pgStores + "  server: {role: worker}\n": "",
+		sys + pgStores + "  server: {role: api}\n":    "",
+	} {
+		path := filepath.Join(t.TempDir(), "humagen.yaml")
+		writeFile(t, path, body)
+		cfg, err := Load(path)
+		if err == nil {
+			err = cfg.Check(Kinds{})
+		}
+		if want == "" && err != nil || want != "" && (err == nil || !strings.Contains(err.Error(), want)) {
+			t.Errorf("%q: err = %v, want %q", body, err, want)
+		}
+	}
+}
+
 // A policy goes only with an .agent.md file, and never says what wakes the
 // agent.
 func TestAnAgentPolicyNeedsAnAgentMdFile(t *testing.T) {
@@ -319,6 +404,44 @@ func TestAnAgentPolicyNeedsAnAgentMdFile(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s= %v, want %q", body, err, want)
 		}
+	}
+}
+
+// The reference's other blobs, written in comments as alternatives to its s3
+// on AWS (native gcs, and GCS through s3 with an HMAC key), load once
+// uncommented, so they cannot drift either.
+func TestTheReferenceAlternativeBlobsLoad(t *testing.T) {
+	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "reference", "spec.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := regexp.MustCompile(`(?m)^    # kind: (?:gcs|s3)\n(?:^    #  .*\n|^    # \w+:.*\n)+`).FindAllString(string(doc), -1)
+	if len(found) != 2 {
+		t.Fatalf("docs/reference/spec.md has %d alternative blobs, want gcs and s3 on GCS", len(found))
+	}
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
+	load := func(m string) Config {
+		t.Helper()
+		block := regexp.MustCompile(`(?m)^    # `).ReplaceAllString(m, "    ")
+		writeFile(t, path, "api_version: humagen/v1\nkind: System\nspec:\n  blobs:\n"+block)
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatalf("%v in\n%s", err, block)
+		}
+		if err := cfg.Check(Kinds{}); err != nil {
+			t.Fatal(err)
+		}
+		return cfg
+	}
+	cfg := load(found[0])
+	g, err := Block[GCS](cfg.System.Spec.Blobs)
+	if err != nil || cfg.System.Spec.Blobs.Kind != "gcs" || g.Bucket != "humagen-files" {
+		t.Fatalf("gcs = %+v, %v", g, err)
+	}
+	cfg = load(found[1])
+	s, err := Block[S3](cfg.System.Spec.Blobs)
+	if err != nil || s.Endpoint != "https://storage.googleapis.com" || s.Region != "auto" || !s.PathStyle || !s.AccessKey.Set() || !s.SecretKey.Set() {
+		t.Fatalf("s3 on GCS = %+v, %v", s, err)
 	}
 }
 

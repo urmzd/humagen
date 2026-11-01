@@ -71,25 +71,43 @@ type clientView struct {
 // in a project they may not read is left out, as everything in that project
 // is, and so is every agent it names that lives in one. The client reads as
 // one with no home of its own and without those agents.
-func (s *Server) view(seer *platform.Seer, tenant string, c clients.Client) clientView {
+func (s *Server) view(seer *platform.Seer, tenant string, c clients.Client) (clientView, error) {
 	v := clientView{Client: seer.Client(c)}
-	for _, pol := range s.P.Policies.For(tenant, nil, "", c.ID) {
+	pols, err := s.P.Policies.For(tenant, nil, "", c.ID)
+	if err != nil {
+		return clientView{}, err
+	}
+	for _, pol := range pols {
 		if pol.Scope.Kind == policy.Client {
 			v.Limits = &pol
 		}
 	}
-	return v
+	return v, nil
 }
 
 func (s *Server) listClients(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	// The store returns one tenant's clients and never more than its ceiling.
-	all := s.P.Clients.List(who.Tenant)
+	all, err := s.P.Clients.List(who.Tenant)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
 	out := make([]clientView, 0, len(all))
 	seer := s.P.Seer(who)
 	for _, c := range all {
-		out = append(out, s.view(seer, who.Tenant, c))
+		v, err := s.view(seer, who.Tenant, c)
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
+		out = append(out, v)
 	}
-	ok(w, http.StatusOK, map[string]any{"clients": out, "caps": s.P.ClientCaps(who.Tenant)})
+	caps, err := s.P.ClientCaps(who.Tenant)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, map[string]any{"clients": out, "caps": caps})
 }
 
 func (s *Server) getClient(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -98,7 +116,12 @@ func (s *Server) getClient(w http.ResponseWriter, r *http.Request, who auth.Prin
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, s.view(s.P.Seer(who), who.Tenant, c))
+	v, err := s.view(s.P.Seer(who), who.Tenant, c)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, v)
 }
 
 // clientBindings lists the Slack channels a client is bound to, and the
@@ -141,7 +164,12 @@ func (s *Server) createClient(w http.ResponseWriter, r *http.Request, who auth.P
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, s.view(s.P.Seer(who), who.Tenant, c))
+	v, err := s.view(s.P.Seer(who), who.Tenant, c)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusCreated, v)
 }
 
 // updateClient replaces a client's record. A caller is not shown a home in
@@ -176,7 +204,12 @@ func (s *Server) updateClient(w http.ResponseWriter, r *http.Request, who auth.P
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, s.view(seer, who.Tenant, c))
+	v, err := s.view(seer, who.Tenant, c)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, v)
 }
 
 func (s *Server) deleteClient(w http.ResponseWriter, r *http.Request, who auth.Principal) {

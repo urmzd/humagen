@@ -1069,8 +1069,7 @@ body {
  * On a phone the chat bar is one line, a pill: +, the project picker as its
  * folder alone (its name is in its label and its sheet), the field, and
  * Dictate or Send. A conversation's fixed project is left out here; it is in
- * the header's menu. Agents picked for the message show on a line under the
- * field, with the picker, only while there are some.
+ * the header's menu. Agents are @mentions in the field.
  */
 @media (max-width: 47.99rem) {
   .humagen-composer {

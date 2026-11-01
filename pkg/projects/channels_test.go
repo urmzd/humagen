@@ -229,7 +229,7 @@ func TestChannelChangesAreRecorded(t *testing.T) {
 	if _, err := s.UpdateChannel("acme", "Field", "renewals", 1, ada, t0.Add(time.Minute), func(c *projects.Channel) error { c.Title = "Renewal work"; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	h, _ := s.History("acme", "Field", 0, 0)
+	h, _, _ := s.History("acme", "Field", 0, 0)
 	if len(h) != 3 || h[0].What != projects.ChannelChanged || h[0].Channel == nil || h[0].Channel.Before.Title != "Renewals" || h[0].Channel.After.Title != "Renewal work" {
 		t.Fatalf("history = %+v", h)
 	}

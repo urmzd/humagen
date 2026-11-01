@@ -54,7 +54,7 @@ func TestReviewingAnActiveDeadlineKeepsTheSameNativeRun(t *testing.T) {
 		c.release("worker")
 		await(t, p, run.ID, runs.Completed)
 		within(t, "native deadline assignment settled", func() bool {
-			a, _ := p.Operations.Assignment(tenant, assignment.ID)
+			a, _, _ := p.Operations.Assignment(tenant, assignment.ID)
 			return a.State == operations.Result && a.RunID == run.ID
 		})
 	})

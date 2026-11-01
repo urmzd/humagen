@@ -14,7 +14,12 @@ import (
 
 func (p *Platform) recoverAssignmentInvocation(ctx context.Context, tenant string, a operations.Assignment) {
 	var tag event.Envelope
-	if invocation, ok := p.Operations.Invocation(tenant, a.ID); ok {
+	invocation, ok, err := p.Operations.Invocation(tenant, a.ID)
+	if err != nil {
+		p.log.Error("platform: assignment invocation could not be read", "error", err)
+		return
+	}
+	if ok {
 		if wire.Meta(invocation)[metaAssignment] != a.ID || runs.ProjectOf(invocation) != a.Project || invocation.Agent != a.Agent || runtime.RunID(tenant, invocation.ID) != a.RunID {
 			p.blockUnknownAssignment(tenant, a.ID, "The reserved invocation does not match its assignment. Its owner must review it.")
 			return

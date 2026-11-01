@@ -35,12 +35,12 @@ sandboxing and access control.
 | `pkg/event/legacy` | Reads JSON written before the union (bus rows, journal entries, old run inputs, old kind selectors) and maps each old kind to its type. Raw JSON only; imports none of the removed packages. |
 | `pkg/address` | Channel URIs: `github://urmzd/fiber/issues/42`, `slack://T01/C02?thread=...`. Leaf. |
 | `pkg/signature` | HMAC verification for inbound webhooks (Slack v0, GitHub sha256). Leaf. Security boundary. |
-| `pkg/bus` | The channel bus: `Bus` carries `event.Envelope`; `Subscription{Tenant, Channels, Types, Run, From}` is default deny. Hop limit (`DefaultMaxHops`), run sequences, retention. `Memory` and Postgres (`fiber_events`, `fiber_event_runs`); `bustest` conformance suite. |
+| `pkg/bus` | The channel bus: `Bus` carries `event.Envelope`; `Subscription{Tenant, Channels, Types, Run, From}` is default deny. Hop limit (`DefaultMaxHops`), run sequences, retention, and consumer groups (`Consume`: a lease and a cursor per group and tenant). `Memory` and Postgres (`fiber_events`, `fiber_event_runs`, `fiber_event_tenants`, `fiber_consumers`); `bustest` conformance suite. |
 | `pkg/connector` | `Trigger` (`Ingest(ctx, publish)`) / `Sink` / `Actor` faces, derived by `RolesOf`, `Subscriber` for a sink that names its channels and types, plus the registry of sinks. |
 | `pkg/definition` | Agents as saige `.agent.md` definitions plus a fiber `Policy` sidecar. The insert-only `Source` (`Memory` and `Postgres`, `definitiontest`), the `Resolver` that pins a version tree (`Pin`: name, version, saige digest, sub-agent versions, policy hash) and `Verify`s it on replay (fail closed), fiber's validation, MCP grants, and the converter for stored agents from before the union (see the upgrade section of `docs/architecture/events.md`). |
 | `pkg/membership` | Which agents are members of which channel prefixes, per tenant, with a `Rule` (type prefixes, addressed only by default). Default deny. `Memory` and `Postgres`, `membershiptest`. |
-| `pkg/dispatch` | Wakes agents: listens to a tenant's ingress events and calls `Runtime.Accept` for each member whose rule matches. Drops self-wakes and events at the hop limit; maps `slack.session.stopped.v1` to stop requests. |
-| `pkg/egress` | Delivery to sinks. Each sink subscribes to its own scheme's channels (or the channels it names, `connector.Subscriber`) with run types; opt-in types only when named; control channels never. Ordered per `(run, channel, target)`, skipping events older than its max age. |
+| `pkg/dispatch` | Wakes agents: listens to a tenant's ingress events and calls `Runtime.Accept` for each member whose rule matches. Reads through the consumer group `dispatch`. Drops self-wakes and events at the hop limit; maps `slack.session.stopped.v1` to stop requests for the runs in `Runs` (`fiber_dispatch_runs` on Postgres). |
+| `pkg/egress` | Delivery to sinks. Each sink subscribes to its own scheme's channels (or the channels it names, `connector.Subscriber`) with run types; opt-in types only when named; control channels never. Reads through the consumer group `egress` and commits a tenant's cursor once its sinks accepted. Ordered per `(run, channel, target)`, skipping events older than its max age. |
 | `pkg/turn` | The one Runtime seam: `Runtime.Turn(ctx, Pinned, Input, emit)` emits catalog bodies and returns a `Result`. `Func` adapts a function; stop and compact signals travel on the context. Imports no saige. |
 | `pkg/turn/native` | The default `turn.Runtime`, on saige: builds an agent from a pinned definition, renders the trigger through the catalog, translates deltas into bodies, extracts citations, counts usage, parks on questions. A granted tool it cannot resolve is dropped and announced to the model by name (`WithStrictTools` refuses instead). `ResolveTools` resolves grants without building a model client. With `pkg/definition`, the only package that imports saige directly. |
 | `pkg/turn/sandbox` | `Sandboxed(inner, plane)`: any `turn.Runtime` inside playscape, as a task under the pinned policy (spawn and workspace areas). |
@@ -161,7 +161,11 @@ Run from the repository root.
   `event:fiber.answer.<id>#0`, written by `Runtime.Answer`, by a stop, or by
   an expiry, and whichever was first is the answer. The body never reads the
   clock or a request to decide; it reads that record. An attempt runs at most
-  one turn: the attempt that asked parks, and the answer wakes the next.
+  one turn: the attempt that asked parks, and the answer wakes the next. A
+  host's hold (`Runtime.Hold`) is a write-once record the turn reads at its
+  next batch of tool calls, and parks a question of kind `hold` the same way;
+  the body stops a run whose hold was not approved, from the resolution
+  record alone.
 - **An approval is a second pair of eyes.** `Runtime.Answer` refuses an
   approval from the requester, or from the credential that raised the run,
   unless the pinned Policy sets `self_approval`, and admits only the Policy's

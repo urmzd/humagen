@@ -10,7 +10,11 @@ var (
 	toolPool  = []string{"file_read", "file_write", "mcp:github", "mcp:jira", "publish"}
 	modelPool = []string{"anthropic/a", "anthropic/b", "openai/c", "anthropic/*", "openai/*"}
 	hostPool  = []string{"mcp.example.com", "tools.example.org", "x.test"}
-	prefPool  = []string{"", "anthropic/a", "anthropic/b", "openai/c", "google/d", "policy/fast"}
+	// egressPool mixes exact hosts and wildcards; egressProbes are hosts
+	// a sandbox might ask for.
+	egressPool   = []string{"*.example.com", "api.example.com", "*.api.example.com", "pypi.org", "*.pypi.org"}
+	egressProbes = []string{"api.example.com", "v2.api.example.com", "example.com", "www.example.com", "pypi.org", "files.pypi.org", "x.test"}
+	prefPool     = []string{"", "anthropic/a", "anthropic/b", "openai/c", "google/d", "policy/fast"}
 )
 
 func pick(r *rand.Rand, pool []string) []string {
@@ -37,6 +41,7 @@ func randomLayer(r *rand.Rand) Layer {
 	l.Ceilings.Tools = pick(r, toolPool)
 	l.Ceilings.Models = pick(r, modelPool)
 	l.Ceilings.ToolServers = pick(r, hostPool)
+	l.Ceilings.Egress = pick(r, egressPool)
 	if r.IntN(2) == 0 {
 		d := r.IntN(5)
 		l.Ceilings.CallDepth = &d
@@ -78,6 +83,11 @@ func within(a, b Ceilings) bool {
 			return false
 		}
 	}
+	for _, h := range egressProbes {
+		if b.Egress != nil && a.AllowsEgress(h) && !b.AllowsEgress(h) {
+			return false
+		}
+	}
 	return a.Depth(100) <= b.Depth(100)
 }
 
@@ -92,8 +102,8 @@ func TestALevelOnlyTightens(t *testing.T) {
 		at := 1 + r.IntN(len(chain))
 		longer := slices.Insert(slices.Clone(chain), at, extra)
 		after := Resolve(longer[0], longer[1:]...)
-		if after.Ceilings.ToolServers == nil {
-			t.Fatal("resolved tool servers left out, which would read as no narrowing")
+		if after.Ceilings.ToolServers == nil || after.Ceilings.Egress == nil {
+			t.Fatal("resolved tool servers or egress left out, which would read as no narrowing")
 		}
 		if !within(after.Ceilings, before.Ceilings) {
 			t.Fatalf("adding %+v at %d widened %+v to %+v", extra, at, before.Ceilings, after.Ceilings)
@@ -196,6 +206,44 @@ func TestExamples(t *testing.T) {
 	}
 }
 
+// Egress is default deny, and two levels allow exactly the hosts both do,
+// wildcards included.
+func TestEgressIsDefaultDenyAndIntersects(t *testing.T) {
+	if Resolve(Layer{}).Ceilings.AllowsEgress("api.example.com") || len(Resolve(Layer{}).Ceilings.EgressHosts()) != 0 {
+		t.Fatal("egress open with nothing listed")
+	}
+	if Resolve(Layer{}, Layer{Ceilings: Ceilings{Egress: []string{"api.example.com"}}}).Ceilings.AllowsEgress("api.example.com") {
+		t.Fatal("a level below opened egress")
+	}
+	if (Ceilings{}).EgressHosts() == nil {
+		t.Fatal("a ceiling no level set reads as no hosts, never nil")
+	}
+	got := Resolve(
+		Layer{Ceilings: Ceilings{Egress: []string{"*.example.com", "pypi.org"}}},
+		Layer{Ceilings: Ceilings{Egress: []string{"api.example.com", "*.pypi.org", "x.test"}}},
+	).Ceilings
+	if !slices.Equal(got.Egress, []string{"api.example.com"}) {
+		t.Fatalf("egress = %q", got.Egress)
+	}
+	if got.AllowsEgress("www.example.com") || got.AllowsEgress("pypi.org") || !got.AllowsEgress("API.example.com") {
+		t.Fatalf("egress %q allows the wrong hosts", got.Egress)
+	}
+	// Every probe is allowed by the intersection exactly when both allow it.
+	r := rand.New(rand.NewPCG(5, 6))
+	for range 2000 {
+		a, b := Ceilings{Egress: pick(r, egressPool)}, Ceilings{Egress: pick(r, egressPool)}
+		if a.Egress == nil || b.Egress == nil {
+			continue
+		}
+		both := Tighten(a, b)
+		for _, h := range egressProbes {
+			if both.AllowsEgress(h) != (a.AllowsEgress(h) && b.AllowsEgress(h)) {
+				t.Fatalf("%q and %q gave %q, which is wrong for %s", a.Egress, b.Egress, both.Egress, h)
+			}
+		}
+	}
+}
+
 func TestCheck(t *testing.T) {
 	neg, deep := -1, MaxCallDepth+1
 	for name, c := range map[string]struct {
@@ -209,6 +257,12 @@ func TestCheck(t *testing.T) {
 		"twice":            {Layer{Ceilings: Ceilings{Tools: []string{"a", "a"}}}, false},
 		"host with scheme": {Layer{Ceilings: Ceilings{ToolServers: []string{"https://x"}}}, false},
 		"host upper":       {Layer{Ceilings: Ceilings{ToolServers: []string{"X.test"}}}, false},
+		"egress":           {Layer{Ceilings: Ceilings{Egress: []string{"api.github.com", "*.pypi.org"}}}, true},
+		"egress port":      {Layer{Ceilings: Ceilings{Egress: []string{"api.github.com:443"}}}, false},
+		"egress url":       {Layer{Ceilings: Ceilings{Egress: []string{"https://api.github.com"}}}, false},
+		"egress upper":     {Layer{Ceilings: Ceilings{Egress: []string{"API.github.com"}}}, false},
+		"egress any":       {Layer{Ceilings: Ceilings{Egress: []string{"*"}}}, false},
+		"egress deep wild": {Layer{Ceilings: Ceilings{Egress: []string{"*.*.example.com"}}}, false},
 		"negative depth":   {Layer{Ceilings: Ceilings{CallDepth: &neg}}, false},
 		"deep":             {Layer{Ceilings: Ceilings{CallDepth: &deep}}, false},
 		"tiny compaction":  {Layer{Preferences: Preferences{CompactionTokens: 10}}, false},

@@ -7,6 +7,16 @@ export interface Health {
   components: HealthComponent[];
 }
 
+export interface Readiness {
+  status: "ready" | "starting" | "draining" | "unavailable";
+  checks: ReadinessCheck[];
+}
+
+export interface ReadinessCheck {
+  name: string;
+  ok: boolean;
+}
+
 export interface HealthComponent {
   id: string;
   name: string;
@@ -706,7 +716,7 @@ export interface RunSettings {
   preferences?: RunPreferences;
 }
 
-/** A list left out narrows nothing at its level; an empty list allows nothing. Tool servers are default deny. */
+/** A list left out narrows nothing at its level; an empty list allows nothing. Tool servers and egress are default deny. */
 export interface RunCeilings {
   /** Tool names an agent's tools may keep, at most 64. */
   tools?: string[];
@@ -716,6 +726,8 @@ export interface RunCeilings {
   call_depth?: number;
   /** Hosts a person's own tool servers may be on, at most 64. */
   tool_servers?: string[];
+  /** Hosts a run's sandbox may reach through the egress gate, on ports 80 and 443, at most 64: an exact name or `*.domain` for its subdomains. */
+  egress?: string[];
 }
 
 export interface RunPreferences {
@@ -1226,6 +1238,7 @@ export interface ThreadMessage {
   /** What they are called, their name in the directory or else their handle. Never an address. */
   name: string;
   text: string;
+  /** Its tags, each once. Agents are not counted against a cap and are bounded by the text's length; at most 10 are people, experts, roles and skills, which each take a lookup of their own. */
   mentions: ThreadMention[];
   answers?: ThreadAnswerRef;
   /** `console`, or the id of the client it came through. */
@@ -1461,7 +1474,7 @@ export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "routed" 
 export interface ThreadPosted {
   thread: Thread;
   message: ThreadMessage;
-  /** The runs it started, at most 3. */
+  /** The runs it started, one for each agent it tags that answers, or at most 3 of the thread's selected agents. */
   runs: Run[];
   /** Who it was sent to, people and experts by handle and the experts a role names as `role:<name>`. */
   notified: string[];
@@ -2504,11 +2517,26 @@ export interface InboxQuestionTool {
   acts_for_person?: boolean;
 }
 
+/** The limit a run is held at, where the scope stood, and what approving grants. Money is micro-USD. */
+export interface InboxQuestionBudget {
+  scope_kind: string;
+  scope_name?: string;
+  limit: "spend" | "tokens";
+  period: string;
+  version: number;
+  used: number;
+  max: number;
+  granted?: number;
+  grant: number;
+}
+
 /** A question a run is parked on. */
 export interface InboxQuestionPart {
   run: string;
   id: string;
-  kind: "approval" | "choice" | "reply";
+  /** approval, choice or reply, or `budget` for a run held at a limit, answered `approve` (grant it `budget.grant` more) or `deny` (stop it), by `billing:write` only. */
+  kind: "approval" | "choice" | "reply" | "budget";
+  budget?: InboxQuestionBudget;
   agent?: string;
   prompt: string;
   options?: string[];
@@ -3085,6 +3113,59 @@ export interface KnowledgeDocument {
   added_at: string;
 }
 
+export interface CatalogColumn {
+  name: string;
+  type?: string;
+  mode?: string;
+  description?: string;
+  fields?: CatalogColumn[];
+}
+
+export interface CatalogStats {
+  rows?: number;
+  bytes?: number;
+  modified?: string;
+}
+
+/** One object in a connected system. Metadata only, never data. */
+export interface CatalogEntry {
+  system: string;
+  kind: string;
+  path: string;
+  title?: string;
+  description?: string;
+  schema?: CatalogColumn[];
+  stats?: CatalogStats;
+  connector: string;
+  seen_at: string;
+}
+
+export interface CatalogMark {
+  by: string;
+  at: string;
+}
+
+export interface CatalogConnector {
+  name: string;
+  system: string;
+  /** The person whose credential it uses. */
+  owner?: string;
+  /** Whose members see its entries while it is published. Empty is the workspace. */
+  project?: string;
+  published?: CatalogMark;
+  withdrawn?: CatalogMark;
+  crawled_at?: string;
+  entries: number;
+  generation: number;
+}
+
+export type CatalogConnectorView = CatalogConnector & { capabilities: ("catalog" | "live")[]; mine: boolean; last_error?: string };
+
+export interface CatalogPage {
+  connectors: CatalogConnectorView[];
+  entries: CatalogEntry[];
+}
+
 export interface KnowledgeHit {
   copy_at?: string;
   refresh_failed?: boolean;
@@ -3102,7 +3183,12 @@ export type PolicyScopeKind = "tenant" | "project" | "agent" | "client";
 
 export type PolicyPeriod = "day" | "month";
 
-/** What happens at a limit. Only `block` is acted on today. */
+/** What happens at a limit. `block` refuses a run at admission and stops
+one in flight. `approve` refuses at admission too, and holds a run in
+flight that reaches the spend or token limit for a person with
+`billing:write`, who grants it `max_grant` (or `max_grant_tokens`)
+more or stops it.
+ */
 export type PolicyAction = "block" | "approve";
 
 export type PolicyLimit = "runs" | "concurrent" | "spend" | "lease" | "tokens";
@@ -3143,6 +3229,10 @@ what a spend limit cannot see.
   /** The percentage of a limit at which a warning is raised. Defaults to 80. */
   warn_at?: number;
   action?: PolicyAction;
+  /** With `approve` and `spend_limit`, what one approval grants a held run, in micro-USD. */
+  max_grant?: number;
+  /** With `approve` and `max_tokens`, what one approval grants a held run, in tokens. */
+  max_grant_tokens?: number;
 }
 
 /** The limits for one scope, at one version. */
@@ -3159,6 +3249,10 @@ export interface Policy {
   max_clients_per_surface?: number;
   warn_at?: number;
   action: PolicyAction;
+  /** With `approve`, what one approval grants a run held at `spend_limit`, in micro-USD. Set exactly when the action is `approve` and there is a spend limit. */
+  max_grant?: number;
+  /** With `approve`, what one approval grants a run held at `max_tokens`. Set exactly when the action is `approve` and there is a token limit. */
+  max_grant_tokens?: number;
   /** Who set it. Absent is an admin, with `billing:write`. `owner` is a tighten-only limit a project's owner set on a project below one they own, never looser than the limits over it. */
   authority?: "admin" | "owner";
   version: number;
@@ -3228,11 +3322,13 @@ export interface ScopeUsage {
 
 /** One line of the usage ledger. */
 export interface UsageEntry {
-  /** `halted` is a run in flight stopped at a limit. `spent` (one model
+  /** `halted` is a run in flight stopped at a limit, `held` one held
+there for a person, and `granted` what a person let a held run
+use beyond the limit (`grant`, by `by`). `spent` (one model
 call) and `settled` (a run's own total at its end) are the ledger's
 record of spend and are not listed as notices.
  */
-  kind: "admitted" | "ended" | "warned" | "refused" | "spent" | "settled" | "halted";
+  kind: "admitted" | "ended" | "warned" | "refused" | "spent" | "settled" | "halted" | "held" | "granted";
   tenant: string;
   project?: string;
   /** The run's project's ancestors, nearest first and the workspace left out. The entry counts toward each of them too. Entries from before the tree have none. */
@@ -3251,6 +3347,10 @@ record of spend and are not listed as notices.
   /** What makes a `spent` or `settled` entry count once. */
   key?: string;
   spend?: UsageSpend;
+  /** For a `granted` entry, what the run may use beyond the limit of `scope`. */
+  grant?: UsageEntryGrant;
+  /** For a `granted` entry, who granted it. */
+  by?: string;
 }
 
 /** What some model calls used. `micros` is US dollars only. */
@@ -3516,12 +3616,15 @@ export interface QuestionTool {
 }
 
 /** What a run is waiting on a person for: to approve a tool call, to
-choose one of `options`, or to reply. `asked_of` is a routing hint and
-admits nobody. `default` is what applies when it expires.
+choose one of `options`, to reply, or, for a `hold`, whether the run
+may go on at all, a question the platform asked rather than the agent
+(`hold` says which). `asked_of` is a routing hint and admits nobody.
+`default` is what applies when it expires.
  */
 export interface Question {
   id: string;
-  kind: "approval" | "choice" | "reply" | "delegation";
+  kind: "approval" | "choice" | "reply" | "delegation" | "hold";
+  hold?: QuestionHold;
   /** When set on an approval, only these people and `role:<name>` holders may answer it, in place of the agent's own approvers. */
   approvers?: string[];
   /** With `approvers`, lets the person whose request raised the call approve it. */
@@ -3535,6 +3638,16 @@ export interface Question {
   default?: Answer;
   at?: string;
   child_run_id?: string;
+}
+
+/** The platform's hold a `hold` question asks about. `topic` is what the
+run is held on (`budget`); `data` is its detail, for `budget` the
+limit reached and what approving grants.
+ */
+export interface QuestionHold {
+  id: string;
+  topic?: string;
+  data?: Record<string, unknown>;
 }
 
 /** An answer to a question, or its default when nobody answered in time (`expired`). */
@@ -4083,6 +4196,11 @@ export interface KnowledgeLifecycleAttemptsItem {
   finished_at?: string;
   status: "importing" | "indexing" | "syncing" | "succeeded" | "failed";
   cause?: string;
+}
+
+export interface UsageEntryGrant {
+  spend?: number;
+  tokens?: number;
 }
 
 export interface ClientInputCredentials {

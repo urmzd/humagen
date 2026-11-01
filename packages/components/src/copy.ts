@@ -1565,6 +1565,17 @@ export const defaultCopy = {
   repliedBy: (by: string, text: string, time: string) => `${by} answered "${text}" · ${time}`,
   declinedBy: (by: string, time: string) => `Declined by ${by} · ${time}`,
   approvalNeeded: (summary: string) => `Approval needed: ${summary}`,
+  /** A run the platform held at a limit, for a person to grant it more or stop it. */
+  budgetHold: {
+    grant: (amount: string) => `Grant ${amount}`,
+    stop: "Stop Run",
+    limit: "Limit",
+    used: "Used",
+    granted: "Granted already",
+    grants: "Grants",
+    stopped: "Stopped at its limit.",
+    stoppedBy: (by: string, time: string) => `Stopped by ${by} · ${time}`,
+  },
   inputNeeded: (question: string) => `Input needed: ${question}`,
   planWorking: "Working",
   planDone: (seconds: number) => `Worked for ${seconds}s`,
@@ -2048,29 +2059,14 @@ export const defaultCopy = {
       noSkills: "No skills are available in this project.",
       noSkillMatch: "No skill matches.",
     },
-    /** The chips row, as a list. */
+    /** Where the conversation is filed, in the composer's bar, as a list. */
     selected: "Selected for this conversation",
-    removeAgent: (agent: string) => `Remove ${agent}`,
     removeProject: (where: string) => `Remove ${where}`,
-    /** How an untagged message goes to two agents or more. */
-    routing: "How messages are routed",
-    join: "Each Decides",
-    joinHint: "Each of them decides whether to take a message. Each that does answers.",
-    all: "All of Them",
-    allHint: "Each of them answers every message, side by side.",
-    allMax: (n: number) =>
-      `At most ${n} agents answer side by side. Select fewer to use All of Them.`,
-    /** Under the agents once as many are checked as a conversation takes. */
-    maxAgents: (n: number) => `A conversation can have at most ${n} agents.`,
-    /** Agents taken off the conversation because they can't answer in the project picked. */
+    /** Agents a draft mentions that can't answer in the project picked. Their mentions stay. */
     notHere: (agents: string[]) =>
-      `${agents.join(", ")} can't answer in this project, so ${agents.length === 1 ? "it was" : "they were"} taken off. Pick another project, or another agent.`,
-    /** The chat bar's prompt with nothing selected, with one agent, and with several. */
+      `${agents.join(", ")} can't answer in this project. Pick another project, or mention another agent.`,
+    /** The chat bar's prompt. */
     placeholder: "Message, or @ an agent",
-    placeholderOne: (agent: string) => `Message ${agent}`,
-    placeholderJoin: (_n: number) => "Message, and each agent that decides to answers",
-    placeholderAll: (n: number) =>
-      n === 2 ? "Message, and both agents answer" : `Message, and all ${n} agents answer`,
     /** Under an answer that went to an agent because it was selected, not tagged. */
     routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,
     routed: (agent: string) => `Routed to ${agent}`,

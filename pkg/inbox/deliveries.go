@@ -3,6 +3,7 @@ package inbox
 import (
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -79,51 +80,70 @@ func (m *Message) delivered(c Change) bool {
 	return true
 }
 
-// deliver applies a receipt and its reverse lookup, as replay does.
-func (t *tenant) deliver(m *Message, c Change) bool {
+// deliver applies a receipt and its reverse lookup.
+func (x *tx) deliver(m *Message, c Change) (bool, error) {
 	was, had := m.Deliveries[c.By]
 	if !m.delivered(c) {
-		return false
+		return false, nil
 	}
-	if had && t.byPost[postKey(c.By, was)] == m {
-		delete(t.byPost, postKey(c.By, was))
-	}
-	t.byPost[postKey(c.By, *c.Delivery)] = m
-	return true
-}
-
-// rebuildPosts restores the lookups from kept receipts in delivery order.
-// Clients may reuse a receipt, so message creation order cannot decide it.
-func (t *tenant) rebuildPosts() {
-	t.byPost = map[string]*Message{}
-	for _, m := range t.messages {
-		m.Deliveries = nil
-	}
-	for _, c := range t.log {
-		if c.What == Delivered {
-			if m := t.byID[c.Message]; m != nil {
-				t.deliver(m, c)
-			}
+	if had {
+		if err := x.unpost(c.By, was, m.ID); err != nil {
+			return false, err
 		}
 	}
+	ref := postRef(c.By, *c.Delivery)
+	var p postRec
+	if _, err := x.get(ref, &p); err != nil {
+		return false, err
+	}
+	p.IDs = append(slices.DeleteFunc(p.IDs, func(id string) bool { return id == m.ID }), m.ID)
+	if len(p.IDs) > MaxDeliveries {
+		p.IDs = p.IDs[len(p.IDs)-MaxDeliveries:]
+	}
+	x.put(ref, p)
+	return true, nil
+}
+
+// unpost takes a message out of the messages recorded at a client's post.
+// The post then finds the one recorded there before it, if any is.
+func (x *tx) unpost(client string, d Delivery, id string) error {
+	ref := postRef(client, d)
+	var p postRec
+	if ok, err := x.get(ref, &p); err != nil || !ok {
+		return err
+	}
+	n := len(p.IDs)
+	if p.IDs = slices.DeleteFunc(p.IDs, func(have string) bool { return have == id }); len(p.IDs) == n {
+		return nil
+	}
+	if len(p.IDs) == 0 {
+		x.del(ref)
+		return nil
+	}
+	x.put(ref, p)
+	return nil
 }
 
 // Deliver records where a client posted a message. allow is asked about the
-// message first, under the store's lock: a message it refuses is not found,
-// as one that does not exist.
+// message first, as it is read for the change: a message it refuses is not
+// found, as one that does not exist.
 func (s *Store) Deliver(tenantName, id, client string, d Delivery, allow func(Message) bool) error {
 	if !deliveryField(client) || !deliveryField(d.Channel) || !deliveryField(d.TS) {
 		return fmt.Errorf("%w: a delivery names a client, a channel and a post, each 1 to %d characters with no spaces", ErrInvalid, maxDeliveryField)
 	}
-	s.mu.Lock()
-	m := s.of(tenantName).byID[id]
-	visible := m != nil && (allow == nil || allow(m.clone()))
-	s.mu.Unlock()
-	if !visible {
-		return fmt.Errorf("%w: message %q", ErrNotFound, id)
-	}
 	d.At = d.At.UTC()
-	_, _, err := s.do(Change{Tenant: tenantName, Message: id, What: Delivered, By: client, At: d.At, Delivery: &d})
+	c := Change{Tenant: tenantName, Message: id, What: Delivered, By: client, At: d.At, Delivery: &d}
+	_, _, err := s.change(tenantName, func(x *tx) (Message, bool, error) {
+		m, err := x.message(id)
+		if err != nil {
+			return Message{}, false, err
+		}
+		if m == nil || (allow != nil && !allow(m.clone())) {
+			return Message{}, false, fmt.Errorf("%w: message %q", ErrNotFound, id)
+		}
+		_, _, err = x.apply(c)
+		return Message{}, false, err
+	})
 	return err
 }
 
@@ -132,10 +152,13 @@ func (s *Store) Deliver(tenantName, id, client string, d Delivery, allow func(Me
 // platform's own use: who may read it is the caller's to decide. A message
 // whose receipt moved to another post is no longer found at the old one.
 func (s *Store) ByDelivery(tenantName, client string, at Delivery) (Message, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	m := s.of(tenantName).byPost[postKey(client, at)]
-	if m == nil {
+	x := newTx(s.st, tenantName)
+	var p postRec
+	if ok, err := x.get(postRef(client, at), &p); err != nil || !ok || len(p.IDs) == 0 {
+		return Message{}, false
+	}
+	m, err := x.message(p.IDs[len(p.IDs)-1])
+	if err != nil || m == nil {
 		return Message{}, false
 	}
 	return m.clone(), true
