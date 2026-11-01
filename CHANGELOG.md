@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.68.0 (2026-11-01)
+
+### Features
+
+- **console**: a phone that reads like a native chat app, the brand's glow, and a conversation wave (#179) ([995e628](https://github.com/urmzd/humagen/commit/995e628a3d8a60e9b698a7a474790cc6700b25a6))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.67.0...v0.68.0)
+
+
 ## 0.67.0 (2026-11-01)
 
 ### Features
