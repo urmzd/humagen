@@ -24,7 +24,12 @@ func (s *Server) preferenceRoutes(mux *http.ServeMux) {
 }
 
 func (s *Server) getPreferences(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	ok(w, http.StatusOK, s.P.Prefs.Get(who.Tenant, who.Subject))
+	got, err := s.P.Prefs.Get(who.Tenant, who.Subject)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, got)
 }
 
 func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -85,7 +90,12 @@ func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request, who auth
 			s.problem(w, err)
 			return
 		}
-		previous := s.P.Prefs.Get(who.Tenant, who.Subject).PinnedProjects
+		current, err := s.P.Prefs.Get(who.Tenant, who.Subject)
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
+		previous := current.PinnedProjects
 		for _, name := range pinnedProjects {
 			// A saved shortcut that became unreadable must not prevent
 			// pinning another project or removing an unrelated shortcut.

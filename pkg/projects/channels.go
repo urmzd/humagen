@@ -3,6 +3,7 @@ package projects
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"slices"
 	"strings"
@@ -225,14 +226,13 @@ func (t *tenant) checkBinding(c Channel) error {
 
 // Bindings returns the Slack channels a client is bound to, by Slack
 // channel, at most MaxBindings.
-func (s *Store) Bindings(tenantName, client string) []Binding {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := []Binding{}
-	t, ok := s.tenants[tenantName]
-	if !ok {
-		return out
+func (s *Store) Bindings(tenantName, client string) ([]Binding, error) {
+	snap, err := s.read(tenantName)
+	if err != nil {
+		return nil, err
 	}
+	out := []Binding{}
+	t := snap.t
 	for _, c := range t.channels {
 		if c.Slack != nil && c.Slack.Client == client {
 			out = append(out, Binding{Direction: c.Slack.Direction.Effective(), SlackChannel: c.Slack.Channel, Project: c.Project, Channel: c.Name, BoundAt: boundAt(c, c, c.UpdatedAt)})
@@ -242,18 +242,22 @@ func (s *Store) Bindings(tenantName, client string) []Binding {
 	if len(out) > MaxBindings {
 		out = out[:MaxBindings]
 	}
-	return out
+	return out, nil
 }
 
 // BoundTo returns the channel a client's Slack channel is bound to, if any.
+// A tenant that cannot be read binds none, so nothing is delivered through a
+// binding it may no longer have.
 func (s *Store) BoundTo(tenantName, client, slackChannel string) (Channel, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	t, ok := s.tenants[tenantName]
-	if !ok || client == "" || slackChannel == "" {
+	if client == "" || slackChannel == "" {
 		return Channel{}, false
 	}
-	for _, c := range t.channels {
+	snap, err := s.read(tenantName)
+	if err != nil {
+		slog.Warn("projects: a tenant's channel bindings could not be read", "tenant", tenantName, "error", err)
+		return Channel{}, false
+	}
+	for _, c := range snap.t.channels {
 		if c.Slack != nil && c.Slack.Client == client && c.Slack.Channel == slackChannel {
 			return cloneChannel(c), true
 		}
@@ -364,30 +368,26 @@ func governs(p Project, w Writer) error {
 // Channels returns a project's channels, general first and then the others by
 // name, archived ones included.
 func (s *Store) Channels(tenantName, project string) ([]Channel, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if !s.Tree(tenantName).Has(project) {
+	snap, err := s.read(tenantName)
+	if err != nil {
+		return nil, err
+	}
+	if !snap.tree.Has(project) {
 		return nil, fmt.Errorf("%w: %q", ErrNotFound, project)
 	}
-	t, ok := s.tenants[tenantName]
-	if !ok {
-		return []Channel{virtualGeneral(project)}, nil
-	}
-	return t.channelsOf(project), nil
+	return snap.t.channelsOf(project), nil
 }
 
 // Channel returns one of a project's channels. General is always there.
 func (s *Store) Channel(tenantName, project, name string) (Channel, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if !s.Tree(tenantName).Has(project) {
+	snap, err := s.read(tenantName)
+	if err != nil {
+		return Channel{}, err
+	}
+	if !snap.tree.Has(project) {
 		return Channel{}, fmt.Errorf("%w: %q", ErrNotFound, project)
 	}
-	t, ok := s.tenants[tenantName]
-	if !ok {
-		t = newTenant()
-	}
-	c, ok := t.channel(project, name)
+	c, ok := snap.t.channel(project, name)
 	if !ok {
 		return Channel{}, fmt.Errorf("%w: #%s in %s", ErrNotFound, name, display(project))
 	}
@@ -406,13 +406,16 @@ func (s *Store) CreateChannel(tenantName string, c Channel, w Writer, at time.Ti
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.createChannel(tenantName, c, w, at)
+	return retry(func() (Channel, error) { return s.createChannel(tenantName, c, w, at) })
 }
 
 // createChannel is CreateChannel, and UpsertChannel's way in for a new
-// channel. The caller holds the lock and has validated c.
+// channel. The caller holds the lock, retries a conflict and has validated c.
 func (s *Store) createChannel(tenantName string, c Channel, w Writer, at time.Time) (Channel, error) {
-	tx := s.begin(tenantName)
+	tx, err := s.begin(tenantName)
+	if err != nil {
+		return Channel{}, err
+	}
 	p, ok := current(tx.t, c.Project)
 	if !ok {
 		return Channel{}, fmt.Errorf("%w: %q", ErrNotFound, c.Project)
@@ -449,7 +452,15 @@ func (s *Store) createChannel(tenantName string, c Channel, w Writer, at time.Ti
 func (s *Store) UpdateChannel(tenantName, project, name string, version int, w Writer, at time.Time, fn func(*Channel) error) (Channel, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tx := s.begin(tenantName)
+	return retry(func() (Channel, error) { return s.updateChannel(tenantName, project, name, version, w, at, fn) })
+}
+
+// updateChannel is one attempt at UpdateChannel.
+func (s *Store) updateChannel(tenantName, project, name string, version int, w Writer, at time.Time, fn func(*Channel) error) (Channel, error) {
+	tx, err := s.begin(tenantName)
+	if err != nil {
+		return Channel{}, err
+	}
 	p, ok := current(tx.t, project)
 	if !ok {
 		return Channel{}, fmt.Errorf("%w: %q", ErrNotFound, project)
@@ -499,7 +510,15 @@ func (s *Store) UpdateChannel(tenantName, project, name string, version int, w W
 func (s *Store) ArchiveChannel(tenantName, project, name string, w Writer, at time.Time) (Channel, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tx := s.begin(tenantName)
+	return retry(func() (Channel, error) { return s.archiveChannel(tenantName, project, name, w, at) })
+}
+
+// archiveChannel is one attempt at ArchiveChannel.
+func (s *Store) archiveChannel(tenantName, project, name string, w Writer, at time.Time) (Channel, error) {
+	tx, err := s.begin(tenantName)
+	if err != nil {
+		return Channel{}, err
+	}
 	p, ok := current(tx.t, project)
 	if !ok {
 		return Channel{}, fmt.Errorf("%w: %q", ErrNotFound, project)
@@ -536,7 +555,15 @@ func (s *Store) UpsertChannel(tenantName string, c Channel, by string, at time.T
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tx := s.begin(tenantName)
+	return retry(func() (Channel, error) { return s.upsertChannel(tenantName, c, by, at) })
+}
+
+// upsertChannel is one attempt at UpsertChannel, with c validated.
+func (s *Store) upsertChannel(tenantName string, c Channel, by string, at time.Time) (Channel, error) {
+	tx, err := s.begin(tenantName)
+	if err != nil {
+		return Channel{}, err
+	}
 	if _, ok := current(tx.t, c.Project); !ok {
 		return Channel{}, fmt.Errorf("%w: %q", ErrNotFound, c.Project)
 	}
@@ -557,7 +584,15 @@ func (s *Store) UpsertChannel(tenantName string, c Channel, by string, at time.T
 func (s *Store) ReleaseChannel(tenantName, project, name, by string, at time.Time) (Channel, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tx := s.begin(tenantName)
+	return retry(func() (Channel, error) { return s.releaseChannel(tenantName, project, name, by, at) })
+}
+
+// releaseChannel is one attempt at ReleaseChannel.
+func (s *Store) releaseChannel(tenantName, project, name, by string, at time.Time) (Channel, error) {
+	tx, err := s.begin(tenantName)
+	if err != nil {
+		return Channel{}, err
+	}
 	cur, ok := tx.t.channel(project, name)
 	if !ok {
 		return Channel{}, fmt.Errorf("%w: #%s in %s", ErrNotFound, name, display(project))

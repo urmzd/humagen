@@ -18,6 +18,11 @@
 // conflicts, All reads a capped collection, and Tenants is the directory a
 // background loop pages instead of reading a namespace across tenants.
 //
+// Table carries the pieces such a store is made of: Update changes one record
+// by compare-and-set, Retry runs a change over several records again when it
+// conflicts, All reads a capped collection, and Tenants is the directory a
+// background loop pages instead of reading a namespace across tenants.
+//
 // # Shard keys
 //
 // The tenant is the shard key of every record, and every key is laid out so

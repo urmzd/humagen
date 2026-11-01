@@ -6,7 +6,9 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,7 +16,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/urmzd/humagen/internal/textindex"
 	"github.com/urmzd/humagen/pkg/state"
 
 	"github.com/urmzd/humagen/internal/legacy"
@@ -24,17 +25,64 @@ import (
 // message and its thread's record are one state.Write.
 const namespace = "threads"
 
-// Key prefixes within the namespace: "t:<thread>" a thread's record and
-// "m:<thread>:<seq>" its messages. A thread's id holds no ":".
+// Keys within the namespace, all in the thread's tenant. A thread's id holds
+// no ":".
+//
+//   - "t:<thread>" a thread's record, which is also the head of its messages:
+//     how many were posted (head), so a post numbers its message from it.
+//   - "m:<thread>:<seq>" its messages, appended and never moved.
+//   - "p:<thread>:<seq>" where it was moved from and to.
+//   - "u:<inverted updated nanos>:<thread>" the activity index: newest
+//     first, moved in the write that moves the record's UpdatedAt.
+//   - "s:<client>:<channel>:<ts>" the thread a surface's thread is.
+//   - "x:<thread>:<surface id>" the message a surface's id was posted as.
+//   - "w:<word>:<thread>" that a message of the thread says the word.
+//   - "c:counts" how many threads the tenant and each project hold.
 const (
 	keyThread    = "t:"
 	keyMessage   = "m:"
 	keyPlacement = "p:"
+	keyActivity  = "u:"
+	keySurface   = "s:"
+	keyPosted    = "x:"
+	keyWord      = "w:"
+	keyCounts    = "c:counts"
 )
+
+// converted marks, in the tenant "", that the records kept before the
+// layout above have their head, their indexes and their counts.
+const converted = "converted:v2"
+
+// layout is the layout of a thread's record that holds its head.
+const layout = 2
 
 func threadKey(id string) string { return keyThread + id }
 
 func messageKey(id string, n int) string { return keyMessage + id + ":" + state.Seq(int64(n)) }
+
+func messagePrefix(id string) string { return keyMessage + id + ":" }
+
+func surfaceKey(sf Surface) string {
+	return keySurface + sf.Client + ":" + sf.Channel + ":" + sf.TS
+}
+
+func postedKey(id, surfaceID string) string { return keyPosted + id + ":" + surfaceID }
+
+// stamp is a time as nanoseconds, within what an int64 holds.
+func stamp(at time.Time) int64 {
+	switch {
+	case at.Before(time.Unix(0, 0)):
+		return 0
+	case at.After(time.Unix(0, math.MaxInt64)):
+		return math.MaxInt64
+	}
+	return at.UnixNano()
+}
+
+// activityKey sorts the most recently active first, and the id breaks ties.
+func activityKey(nanos int64, id string) string {
+	return keyActivity + state.Seq(math.MaxInt64-max(nanos, 0)) + ":" + id
+}
 
 // Notice says something happened in a thread: a message was posted or
 // settled, or its record changed. It carries no content: a reader fetches
@@ -46,39 +94,77 @@ type Notice struct {
 	At      time.Time `json:"at"`
 }
 
-type thread struct {
-	rec  Thread
-	msgs []Message
-	// surfaces finds a message by its surface id.
-	surfaces map[string]int
+// head is a thread's record as it is kept: the record, with how many
+// messages were posted to it and the start of the first.
+type head struct {
+	Thread
+	Layout int `json:"layout,omitempty"`
+	// Head is how many messages were posted, and so the number of the
+	// latest. A purge sets it to none.
+	Head int `json:"head,omitempty"`
+	// First is the start of the first message, at most MaxTitle characters.
+	First string `json:"first,omitempty"`
 }
 
-type tenant struct {
-	search  textindex.Index
-	threads map[string]*thread
-	// inProject counts the threads of each project, "" the root.
-	inProject map[string]int
-	// surfaces finds a thread by its surface, built from the records.
-	surfaces map[string]string
-	watchers map[int]chan Notice
+// counts is how many threads a tenant holds records of, and each project,
+// "" the root.
+type counts struct {
+	Total    int            `json:"total"`
+	Projects map[string]int `json:"projects"`
+}
+
+// activity is an entry of the activity index: where the thread is, so a list
+// of one project's threads reads no other record.
+type activity struct {
+	Project string `json:"project"`
+	Channel string `json:"channel"`
+}
+
+// Store keeps every tenant's threads. It reads and writes per request: each
+// read is one record or one bounded page of a tenant's keys, and each change
+// is written at the version it read, read again and retried when another
+// process changed the same record first. It holds no record in memory, so
+// any number of processes on one database agree.
+//
+// What it holds in memory is who is watching: a notice reaches the watchers
+// of the process that made the change.
+type Store struct {
+	kept *state.Table[json.RawMessage]
+
+	mu       sync.Mutex
+	watchers map[string]map[int]chan Notice
 	nextW    int
 }
 
-func newTenant() *tenant {
-	return &tenant{threads: map[string]*thread{}, inProject: map[string]int{}, surfaces: map[string]string{}, watchers: map[int]chan Notice{}}
-}
-
-// hold adds a thread to a tenant's records, with its surface found.
-func (t *tenant) hold(th *thread) {
-	t.threads[th.rec.ID] = th
-	t.inProject[th.rec.Project]++
-	if th.rec.Surface != nil {
-		t.surfaces[th.rec.Surface.key()] = th.rec.ID
+// NewStore returns an empty store in memory.
+func NewStore() *Store {
+	s, err := Open(nil)
+	if err != nil {
+		// An empty memory store has nothing to convert and cannot fail.
+		panic(err)
 	}
+	return s
 }
 
-func (t *tenant) tell(n Notice) {
-	for _, ch := range t.watchers {
+// Open returns a store that keeps its threads in st. A nil st keeps them in
+// memory. The first time any process opens st, the records an earlier
+// release kept are given their head, their indexes and their counts; one that
+// is not a thread's is refused (ErrInvalid).
+func Open(st state.Store) (*Store, error) {
+	if st == nil {
+		st = state.NewMemory()
+	}
+	s := &Store{kept: state.NewTable[json.RawMessage](st, namespace), watchers: map[string]map[int]chan Notice{}}
+	if err := s.convert(st); err != nil {
+		return nil, fmt.Errorf("threads: load: %w", err)
+	}
+	return s, nil
+}
+
+func (s *Store) tell(tenant string, n Notice) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, ch := range s.watchers[tenant] {
 		// A watcher that is not keeping up misses a notice and never blocks
 		// a post. It refetches on the next one.
 		select {
@@ -88,208 +174,223 @@ func (t *tenant) tell(n Notice) {
 	}
 }
 
-// Store keeps every tenant's threads. It is in memory, and built with Open it
-// writes every change through a state.Store and reads them back when it is
-// built again. It is one process's: it reads the store once and then trusts
-// its memory. A write that cannot be kept changes nothing.
-type Store struct {
-	mu      sync.RWMutex
-	tenants map[string]*tenant
-	kept    *state.Table[json.RawMessage]
-}
-
-// NewStore returns an empty store in memory.
-func NewStore() *Store { return &Store{tenants: map[string]*tenant{}} }
-
-// loaded is a message read back, before it joins its thread.
-type loaded struct {
-	tenant, thread string
-	n              int
-	m              Message
-}
-
-// Open returns a store that keeps its threads in st, holding what st already
-// has. A nil st is NewStore. It refuses records that do not make threads: a
-// message of a thread that is not there, a gap in a thread's messages, or a
-// record kept under another key.
-func Open(st state.Store) (*Store, error) {
-	s := NewStore()
-	s.kept = state.NewTable[json.RawMessage](st, namespace)
-	var msgs []loaded
-	var moves []loadedPlacement
-	err := s.kept.Load(func(tenantName, key string, raw json.RawMessage) error {
-		switch {
-		case strings.HasPrefix(key, keyThread):
-			var rec Thread
-			if err := json.Unmarshal(raw, &rec); err != nil {
-				return fmt.Errorf("thread %q: %w", key, err)
-			}
-			rec.Default = legacy.Default(rec.Default)
-			if rec.Mode == modeBestFit {
-				rec.Mode = ModeJoin
-			}
-			if threadKey(rec.ID) != key {
-				return fmt.Errorf("%w: the thread %q is kept under %q", ErrInvalid, rec.ID, key)
-			}
-			if err := rec.validate(); err != nil {
-				return fmt.Errorf("thread %q: %w", key, err)
-			}
-			tn := s.of(tenantName)
-			if rec.Surface != nil && tn.surfaces[rec.Surface.key()] != "" {
-				return fmt.Errorf("%w: %q and %q are one surface's thread", ErrInvalid, tn.surfaces[rec.Surface.key()], rec.ID)
-			}
-			tn.hold(&thread{rec: rec, surfaces: map[string]int{}})
-		case strings.HasPrefix(key, keyPlacement):
-			var change PlacementChange
-			if err := json.Unmarshal(raw, &change); err != nil {
-				return err
-			}
-			if key != placementKey(change.Thread, change.Version) || !ValidID(change.Thread) || change.Version < 1 || change.Version > MaxMoves {
-				return fmt.Errorf("%w: invalid placement history", ErrInvalid)
-			}
-			moves = append(moves, loadedPlacement{tenantName, change})
-		case strings.HasPrefix(key, keyMessage):
-			var m Message
-			if err := json.Unmarshal(raw, &m); err != nil {
-				return fmt.Errorf("message %q: %w", key, err)
-			}
-			id, seq, ok := strings.Cut(strings.TrimPrefix(key, keyMessage), ":")
-			n, err := strconv.Atoi(seq)
-			if !ok || err != nil || n < 1 || messageKey(id, n) != key || m.Thread != id || m.ID != MessageID(n) {
-				return fmt.Errorf("%w: the message %q of %q is kept under %q", ErrInvalid, m.ID, m.Thread, key)
-			}
-			if err := m.validate(); err != nil {
-				return fmt.Errorf("message %q: %w", key, err)
-			}
-			msgs = append(msgs, loaded{tenant: tenantName, thread: id, n: n, m: m})
-		default:
-			return fmt.Errorf("%w: nothing is kept under %q", ErrInvalid, key)
+// Watch reports what happens in a tenant's threads, through this process,
+// until cancel is called.
+func (s *Store) Watch(tenantName string) (<-chan Notice, func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.watchers[tenantName] == nil {
+		s.watchers[tenantName] = map[int]chan Notice{}
+	}
+	ch := make(chan Notice, 32)
+	id := s.nextW
+	s.nextW++
+	s.watchers[tenantName][id] = ch
+	return ch, func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		delete(s.watchers[tenantName], id)
+		if len(s.watchers[tenantName]) == 0 {
+			delete(s.watchers, tenantName)
 		}
+	}
+}
+
+// writeErr wraps a failed write, keeping state.ErrConflict matchable so a
+// change is retried.
+func writeErr(err error) error {
+	if err == nil {
 		return nil
-	})
+	}
+	return fmt.Errorf("threads: write: %w", err)
+}
+
+func readErr(err error) error { return fmt.Errorf("threads: read: %w", err) }
+
+// decodeHead reads a thread's record, as an earlier release may have written
+// it.
+func decodeHead(raw []byte) (head, error) {
+	var h head
+	if err := json.Unmarshal(raw, &h); err != nil {
+		return head{}, err
+	}
+	h.Default = legacy.Default(h.Default)
+	if h.Mode == modeBestFit {
+		h.Mode = ModeJoin
+	}
+	return h, nil
+}
+
+// lookup reads a thread's record and its version. A thread that is not
+// there is ErrNotFound.
+func (s *Store) lookup(tenantName, id string) (head, int64, error) {
+	if !ValidID(id) {
+		return head{}, 0, fmt.Errorf("%w: thread %q", ErrNotFound, id)
+	}
+	it, err := s.kept.Lookup(tenantName, threadKey(id))
+	if errors.Is(err, state.ErrNotFound) {
+		return head{}, 0, fmt.Errorf("%w: thread %q", ErrNotFound, id)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("threads: load: %w", err)
+		return head{}, 0, readErr(err)
 	}
-	histories := map[string]map[int]PlacementChange{}
-	for _, move := range moves {
-		th := s.of(move.tenant).threads[move.change.Thread]
-		if th == nil || move.change.Version > th.rec.Moves {
-			return nil, fmt.Errorf("%w: orphan placement history", ErrInvalid)
-		}
-		key := move.tenant + "\x00" + move.change.Thread
-		if histories[key] == nil {
-			histories[key] = map[int]PlacementChange{}
-		}
-		histories[key][move.change.Version] = move.change
+	h, err := decodeHead(it.Value)
+	if err != nil {
+		return head{}, 0, readErr(fmt.Errorf("%q: %w", it.Key, err))
 	}
-	for tenantName, tn := range s.tenants {
-		for id, th := range tn.threads {
-			history := histories[tenantName+"\x00"+id]
-			if th.rec.Moves < 0 || th.rec.Moves > MaxMoves || len(history) != th.rec.Moves {
-				return nil, fmt.Errorf("%w: incomplete placement history", ErrInvalid)
-			}
-			var last PlacementChange
-			for n := 1; n <= th.rec.Moves; n++ {
-				next, ok := history[n]
-				if !ok || n > 1 && (next.FromProject != last.Project || next.FromChannel != last.Channel) {
-					return nil, fmt.Errorf("%w: broken placement chain", ErrInvalid)
-				}
-				last = next
-			}
-			if th.rec.Moves > 0 && (last.Project != th.rec.Project || last.Channel != th.rec.Channel) {
-				return nil, fmt.Errorf("%w: placement does not match history", ErrInvalid)
-			}
-		}
-	}
-
-	// A message's key sorts after its thread's others, so each thread's
-	// messages come in order; a gap is a lost message, and is refused.
-	for _, l := range msgs {
-		th := s.of(l.tenant).threads[l.thread]
-		switch {
-		case th == nil:
-			return nil, fmt.Errorf("threads: load: %w: the message %s belongs to %q, which is missing", ErrInvalid, l.m.ID, l.thread)
-		case l.n != len(th.msgs)+1:
-			return nil, fmt.Errorf("threads: load: %w: %q has no message %d before %s", ErrInvalid, l.thread, len(th.msgs)+1, l.m.ID)
-		case strings.HasPrefix(l.m.Prev, "m-") && th.message(l.m.Prev) < 0:
-			return nil, fmt.Errorf("threads: load: %w: %s of %q follows %s, which is not before it", ErrInvalid, l.m.ID, l.thread, l.m.Prev)
-		}
-		th.add(l.m)
-		s.of(l.tenant).search.Put(l.m.Thread+"\x00"+l.m.ID, l.m.Text)
-	}
-	return s, nil
+	return h, it.Version, nil
 }
 
-// add appends a message to a thread in memory.
-func (th *thread) add(m Message) {
-	th.msgs = append(th.msgs, m)
-	if m.SurfaceID != "" {
-		th.surfaces[m.SurfaceID] = len(th.msgs) - 1
-	}
-}
-
-// of returns a tenant's records, making them on first use. The caller holds
-// the write lock, or is Open.
-func (s *Store) of(name string) *tenant {
-	t, ok := s.tenants[name]
-	if !ok {
-		t = newTenant()
-		s.tenants[name] = t
-	}
-	return t
-}
-
-// find returns a thread for reading. The caller holds the lock.
-func (s *Store) find(tenantName, id string) (*thread, error) {
-	if t, ok := s.tenants[tenantName]; ok {
-		if th, ok := t.threads[id]; ok {
-			return th, nil
-		}
-	}
-	return nil, fmt.Errorf("%w: thread %q", ErrNotFound, id)
-}
-
-// writable returns a thread a write may change. Who may change it is the
+// writable reads a thread a write may change. Who may change it is the
 // platform's to decide.
-func (s *Store) writable(tenantName, id string) (*thread, error) {
-	th, err := s.find(tenantName, id)
+func (s *Store) writable(tenantName, id string) (head, int64, error) {
+	h, v, err := s.lookup(tenantName, id)
 	if err != nil {
-		return nil, err
+		return head{}, 0, err
 	}
-	if th.rec.Archive != nil && th.rec.Archive.Deleted != nil {
-		return nil, fmt.Errorf("%w: thread %q", ErrNotFound, id)
+	if h.Archive != nil && h.Archive.Deleted != nil {
+		return head{}, 0, fmt.Errorf("%w: thread %q", ErrNotFound, id)
 	}
-	return th, nil
+	return h, v, nil
 }
 
-// batch collects one write.
-type batch struct {
-	b   *state.Batch[json.RawMessage]
+// readCounts reads a tenant's counts and their version, 0 when there are
+// none yet.
+func (s *Store) readCounts(tenantName string) (counts, int64, error) {
+	it, err := s.kept.Lookup(tenantName, keyCounts)
+	if errors.Is(err, state.ErrNotFound) {
+		return counts{Projects: map[string]int{}}, 0, nil
+	}
+	if err != nil {
+		return counts{}, 0, readErr(err)
+	}
+	var c counts
+	if err := json.Unmarshal(it.Value, &c); err != nil {
+		return counts{}, 0, readErr(err)
+	}
+	if c.Projects == nil {
+		c.Projects = map[string]int{}
+	}
+	return c, it.Version, nil
+}
+
+// message reads one of a thread's messages and its version.
+func (s *Store) message(tenantName, id string, n int) (Message, int64, error) {
+	it, err := s.kept.Lookup(tenantName, messageKey(id, n))
+	if errors.Is(err, state.ErrNotFound) {
+		return Message{}, 0, fmt.Errorf("%w: message %s of %q", ErrNotFound, MessageID(n), id)
+	}
+	if err != nil {
+		return Message{}, 0, readErr(err)
+	}
+	var m Message
+	if err := json.Unmarshal(it.Value, &m); err != nil {
+		return Message{}, 0, readErr(fmt.Errorf("%q: %w", it.Key, err))
+	}
+	return m, it.Version, nil
+}
+
+// seqOf is the number of a message id that is at most head, or 0.
+func seqOf(mid string, head int) int {
+	n, err := strconv.Atoi(strings.TrimPrefix(mid, "m-"))
+	if err != nil || !strings.HasPrefix(mid, "m-") || n < 1 || n > head || MessageID(n) != mid {
+		return 0
+	}
+	return n
+}
+
+// write collects one state.Write. The thread's record goes first, so every
+// write that touches a thread's other keys waits on its record.
+type write struct {
+	ops []func(b *state.Batch[json.RawMessage])
 	err error
 }
 
-func (s *Store) batch() *batch { return &batch{b: s.kept.Batch()} }
+func (s *Store) write() *write { return &write{} }
 
-func (b *batch) put(tenantName, key string, v any) {
-	if b.err != nil {
-		return
+func (w *write) raw(key string, v any) json.RawMessage {
+	if w.err != nil {
+		return nil
 	}
 	raw, err := json.Marshal(v)
 	if err != nil {
-		b.err = fmt.Errorf("threads: %q: %w", key, err)
-		return
+		w.err = fmt.Errorf("threads: %q: %w", key, err)
+		return nil
 	}
-	b.b.Put(tenantName, key, raw)
+	return raw
 }
 
-func (b *batch) commit() error {
-	if b.err != nil {
-		return b.err
+// put writes v whatever is there.
+func (w *write) put(tenantName, key string, v any) {
+	if raw := w.raw(key, v); raw != nil {
+		w.ops = append(w.ops, func(b *state.Batch[json.RawMessage]) { b.Put(tenantName, key, raw) })
 	}
-	if err := b.b.Commit(); err != nil {
-		return fmt.Errorf("threads: write: %w", err)
+}
+
+// at writes v at version, or creates it with version 0.
+func (w *write) at(tenantName, key string, v any, version int64) {
+	raw := w.raw(key, v)
+	switch {
+	case raw == nil:
+	case version == 0:
+		w.ops = append(w.ops, func(b *state.Batch[json.RawMessage]) { b.Create(tenantName, key, raw) })
+	default:
+		w.ops = append(w.ops, func(b *state.Batch[json.RawMessage]) { b.PutAt(tenantName, key, raw, version) })
 	}
-	return nil
+}
+
+func (w *write) del(tenantName, key string) {
+	w.ops = append(w.ops, func(b *state.Batch[json.RawMessage]) { b.Delete(tenantName, key) })
+}
+
+// then adds another write's changes after this one's.
+func (w *write) then(other *write) {
+	if w.err == nil {
+		w.err = other.err
+	}
+	w.ops = append(w.ops, other.ops...)
+}
+
+func (w *write) commit(s *Store) error {
+	if w.err != nil {
+		return w.err
+	}
+	b := s.kept.Batch()
+	for _, op := range w.ops {
+		op(b)
+	}
+	return writeErr(b.Commit())
+}
+
+// moved writes the activity entry of a record that moved from was to now.
+func (w *write) moved(tenantName string, was *head, now head) {
+	if was != nil && stamp(was.UpdatedAt) == stamp(now.UpdatedAt) && was.Project == now.Project && was.Channel == now.Channel {
+		return
+	}
+	if was != nil && stamp(was.UpdatedAt) != stamp(now.UpdatedAt) {
+		w.del(tenantName, activityKey(stamp(was.UpdatedAt), now.ID))
+	}
+	w.put(tenantName, activityKey(stamp(now.UpdatedAt), now.ID), activity{Project: now.Project, Channel: now.Channel})
+}
+
+// said writes that a thread's message says each of its words.
+func (w *write) said(tenantName, id, text string) {
+	for _, word := range words(text) {
+		w.put(tenantName, wordKey(word, id), struct{}{})
+	}
+}
+
+// settled returns v as a read would: through what is kept.
+func settled[T any](v T) T {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return v
+	}
+	var out T
+	if json.Unmarshal(raw, &out) != nil {
+		return v
+	}
+	return out
 }
 
 // newID makes a new thread's id.
@@ -302,24 +403,16 @@ func newID() string {
 // opening checks a new thread's record and fills in what the store sets: its
 // id, version and times, and the person who starts it as its owner. A
 // workspace holds at most MaxThreads, and a project MaxProjectThreads
-// (ErrLimit). The caller holds the lock.
-func (s *Store) opening(tenantName string, t Thread, at time.Time) (Thread, error) {
+// (ErrLimit).
+func opening(t Thread, c counts, at time.Time) (Thread, error) {
 	t = t.clone()
-	if t.Surface != nil && s.of(tenantName).surfaces[t.Surface.key()] != "" {
-		return Thread{}, fmt.Errorf("%w: that surface's thread is %q", ErrExists, s.of(tenantName).surfaces[t.Surface.key()])
-	}
-	tn := s.of(tenantName)
-	have := tn.threads
 	if t.ID == "" {
-		for t.ID = newID(); have[t.ID] != nil; t.ID = newID() {
-		}
-	} else if have[t.ID] != nil {
-		return Thread{}, fmt.Errorf("%w: thread %q", ErrExists, t.ID)
+		t.ID = newID()
 	}
-	if len(have) >= MaxThreads {
+	if c.Total >= MaxThreads {
 		return Thread{}, fmt.Errorf("%w: a workspace holds at most %d threads", ErrLimit, MaxThreads)
 	}
-	if tn.inProject[t.Project] >= MaxProjectThreads {
+	if c.Projects[t.Project] >= MaxProjectThreads {
 		return Thread{}, fmt.Errorf("%w: a project holds at most %d threads", ErrLimit, MaxProjectThreads)
 	}
 	for i := range t.Participants {
@@ -346,6 +439,70 @@ func (s *Store) opening(tenantName string, t Thread, at time.Time) (Thread, erro
 	return t, nil
 }
 
+// open writes a new thread, and its first message when m is not nil, in one
+// write with its counts, its surface and its activity.
+func (s *Store) open(tenantName string, in Thread, m *Message, at time.Time) (Thread, Message, error) {
+	var t Thread
+	var first Message
+	err := state.Retry(func() error {
+		c, cv, err := s.readCounts(tenantName)
+		if err != nil {
+			return err
+		}
+		if in.Surface != nil {
+			if it, err := s.kept.Lookup(tenantName, surfaceKey(*in.Surface)); err == nil {
+				var id string
+				_ = json.Unmarshal(it.Value, &id)
+				return fmt.Errorf("%w: that surface's thread is %q", ErrExists, id)
+			} else if !errors.Is(err, state.ErrNotFound) {
+				return readErr(err)
+			}
+		}
+		if t, err = opening(in, c, at); err != nil {
+			return err
+		}
+		if in.ID != "" {
+			if _, _, err := s.lookup(tenantName, t.ID); err == nil {
+				return fmt.Errorf("%w: thread %q", ErrExists, t.ID)
+			} else if !errors.Is(err, ErrNotFound) {
+				return err
+			}
+		}
+		h := head{Thread: t, Layout: layout}
+		if m != nil {
+			first = m.clone()
+			first.ID, first.Thread = MessageID(1), t.ID
+			h.Head, h.First = 1, clipText(first.Text, MaxTitle)
+		}
+		c.Total++
+		c.Projects[t.Project]++
+		w := s.write()
+		w.at(tenantName, keyCounts, c, cv)
+		w.at(tenantName, threadKey(t.ID), h, 0)
+		w.moved(tenantName, nil, h)
+		if t.Surface != nil {
+			w.at(tenantName, surfaceKey(*t.Surface), t.ID, 0)
+		}
+		if m != nil {
+			w.at(tenantName, messageKey(t.ID, 1), first, 0)
+			if first.SurfaceID != "" {
+				w.put(tenantName, postedKey(t.ID, first.SurfaceID), 1)
+			}
+			w.said(tenantName, t.ID, first.Text)
+		}
+		return w.commit(s)
+	})
+	if err != nil {
+		return Thread{}, Message{}, err
+	}
+	n := Notice{ID: t.ID, At: at}
+	if m != nil {
+		n.Message = first.ID
+	}
+	s.tell(tenantName, n)
+	return settled(t), settled(first), nil
+}
+
 // Create writes a thread's record with no messages: the record of a
 // conversation from before threads, the first time anything about it changes,
 // or a thread to post into later. A thread with no id is given a new one. The
@@ -353,21 +510,74 @@ func (s *Store) opening(tenantName string, t Thread, at time.Time) (Thread, erro
 // conversation from before threads may name nobody: one no person asked in,
 // changed first by someone who may not own it.
 func (s *Store) Create(tenantName string, t Thread, at time.Time) (Thread, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	t, err := s.opening(tenantName, t, at)
-	if err != nil {
-		return Thread{}, err
+	th, _, err := s.open(tenantName, t, nil, at)
+	return th, err
+}
+
+// edit reads a thread a write may change, lets fn change its record, and
+// writes it at the version it read, with the activity entry it moves to and
+// the writes fn adds, which go after the record. fn returning
+// state.ErrUnchanged writes nothing and returns the record as it is. When
+// another writer changed the thread first, it reads it again and calls fn
+// again, so fn keeps nothing from a call that did not write.
+func (s *Store) edit(tenantName, id string, fn func(h *head, w *write) error) (head, error) {
+	var out head
+	err := state.Retry(func() error {
+		cur, v, err := s.writable(tenantName, id)
+		if err != nil {
+			return err
+		}
+		next := cur
+		next.Thread = cur.clone()
+		extra := s.write()
+		if err := fn(&next, extra); errors.Is(err, state.ErrUnchanged) {
+			out = cur
+			return nil
+		} else if err != nil {
+			return err
+		}
+		next.movedBy = ""
+		w := s.write()
+		w.at(tenantName, threadKey(id), next, v)
+		w.moved(tenantName, &cur, next)
+		w.then(extra)
+		if err := w.commit(s); err != nil {
+			return err
+		}
+		out = settled(next)
+		return nil
+	})
+	return out, err
+}
+
+// place records a move of a thread's record from cur to next, when it moves:
+// one more entry of its history, and the counts of the projects it leaves
+// and joins, refusing a project that holds MaxProjectThreads (ErrLimit).
+func (s *Store) place(tenantName string, cur Thread, next *head, w *write, at time.Time) error {
+	if next.Project == cur.Project && next.Channel == cur.Channel {
+		return nil
 	}
-	b := s.batch()
-	b.put(tenantName, threadKey(t.ID), t)
-	if err := b.commit(); err != nil {
-		return Thread{}, err
+	if cur.Moves >= MaxMoves {
+		return fmt.Errorf("%w: conversation placement history is full", ErrLimit)
 	}
-	tn := s.of(tenantName)
-	tn.hold(&thread{rec: t, surfaces: map[string]int{}})
-	tn.tell(Notice{ID: t.ID, At: at})
-	return t.clone(), nil
+	if next.Project != cur.Project {
+		c, cv, err := s.readCounts(tenantName)
+		if err != nil {
+			return err
+		}
+		if c.Projects[next.Project] >= MaxProjectThreads {
+			return fmt.Errorf("%w: a project holds at most %d threads", ErrLimit, MaxProjectThreads)
+		}
+		c.Projects[cur.Project]--
+		if c.Projects[cur.Project] <= 0 {
+			delete(c.Projects, cur.Project)
+		}
+		c.Projects[next.Project]++
+		w.at(tenantName, keyCounts, c, cv)
+	}
+	next.Moves = cur.Moves + 1
+	w.at(tenantName, placementKey(next.ID, next.Moves), PlacementChange{By: next.movedBy, Thread: next.ID, Version: next.Moves, FromProject: cur.Project, FromChannel: cur.Channel, Project: next.Project, Channel: next.Channel, At: at}, 0)
+	return nil
 }
 
 // Claim makes by the owner of a thread nobody started, the record of a
@@ -377,31 +587,32 @@ func (s *Store) Claim(tenantName, id, by string, at time.Time) (Thread, error) {
 	if strings.TrimSpace(by) == "" {
 		return Thread{}, fmt.Errorf("%w: a thread is started by someone", ErrInvalid)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	th, err := s.writable(tenantName, id)
+	changed := false
+	h, err := s.edit(tenantName, id, func(next *head, _ *write) error {
+		if next.CreatedBy != "" {
+			changed = false
+			return state.ErrUnchanged
+		}
+		next.CreatedBy, changed = by, true
+		if i := slices.IndexFunc(next.Participants, func(p Participant) bool { return p.Kind == Person && p.Name == by }); i >= 0 {
+			next.Participants[i].Owner, next.Participants[i].AddedBy = true, ""
+		} else {
+			next.Participants = append([]Participant{{Kind: Person, Name: by, Owner: true, At: at}}, next.Participants...)
+		}
+		if len(next.Participants) > MaxHeld {
+			return fmt.Errorf("%w: a thread holds at most %d participants", ErrInvalid, MaxHeld)
+		}
+		next.Version, next.UpdatedAt = next.Version+1, at
+		next.Default = legacy.Default(next.Default)
+		return next.validate()
+	})
 	if err != nil {
 		return Thread{}, err
 	}
-	if th.rec.CreatedBy != "" {
-		return th.rec.clone(), nil
+	if changed {
+		s.tell(tenantName, Notice{ID: id, At: at})
 	}
-	next := th.rec.clone()
-	next.CreatedBy = by
-	if i := slices.IndexFunc(next.Participants, func(p Participant) bool { return p.Kind == Person && p.Name == by }); i >= 0 {
-		next.Participants[i].Owner, next.Participants[i].AddedBy = true, ""
-	} else {
-		next.Participants = append([]Participant{{Kind: Person, Name: by, Owner: true, At: at}}, next.Participants...)
-	}
-	if len(next.Participants) > MaxHeld {
-		return Thread{}, fmt.Errorf("%w: a thread holds at most %d participants", ErrInvalid, MaxHeld)
-	}
-	next.Version, next.UpdatedAt = th.rec.Version+1, at
-	next.Default = legacy.Default(next.Default)
-	if err := next.validate(); err != nil {
-		return Thread{}, err
-	}
-	return s.rewrite(tenantName, th, next, at)
+	return h.Thread, nil
 }
 
 // Start writes a new thread and its first message in one write. The person
@@ -423,26 +634,7 @@ func (s *Store) Start(tenantName string, t Thread, m Message, at time.Time) (Thr
 	if m.Prev != "" && !validRun.MatchString(m.Prev) {
 		return Thread{}, Message{}, fmt.Errorf("%w: a new thread's first message follows no message", ErrInvalid)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	t, err = s.opening(tenantName, t, at)
-	if err != nil {
-		return Thread{}, Message{}, err
-	}
-	m.ID, m.Thread = MessageID(1), t.ID
-	b := s.batch()
-	b.put(tenantName, threadKey(t.ID), t)
-	b.put(tenantName, messageKey(t.ID, 1), m)
-	if err := b.commit(); err != nil {
-		return Thread{}, Message{}, err
-	}
-	th := &thread{rec: t, surfaces: map[string]int{}}
-	th.add(m)
-	tn := s.of(tenantName)
-	tn.hold(th)
-	tn.search.Put(m.Thread+"\x00"+m.ID, m.Text)
-	tn.tell(Notice{ID: t.ID, Message: m.ID, At: at})
-	return t.clone(), m.clone(), nil
+	return s.open(tenantName, t, &m, at)
 }
 
 // posting checks a message as it is posted and fills in what is left out.
@@ -458,66 +650,84 @@ func posting(m Message, at time.Time) (Message, error) {
 
 // Post adds a person's message to a thread, and reports whether it is new.
 //
-// A message with no Prev follows the thread's latest message, chosen under
-// the store's lock, so messages posted at once form one line rather than
-// branches. A Prev that names a message must name one of this thread; one
-// that names a run is the platform's to have checked. A message whose
-// SurfaceID the thread already holds is not posted again: the first is
-// returned. A thread holds at most MaxMessages (ErrFull). The poster joins
-// the thread, while there is room, and the thread's version is unchanged.
+// A message with no Prev follows the thread's latest message, read from the
+// thread's record in the write that appends it, so messages posted at once,
+// through any process, form one line rather than branches, each with its own
+// number. A Prev that names a message must name one of this thread; one that
+// names a run is the platform's to have checked. A message whose SurfaceID
+// the thread already holds is not posted again: the first is returned. A
+// thread holds at most MaxMessages (ErrFull). The poster joins the thread,
+// while there is room, and the thread's version is unchanged.
 func (s *Store) Post(tenantName, id string, m Message, at time.Time) (Message, bool, error) {
 	m, err := posting(m, at)
 	if err != nil {
 		return Message{}, false, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	th, err := s.writable(tenantName, id)
+	var out Message
+	created := false
+	err = state.Retry(func() error {
+		cur, v, err := s.writable(tenantName, id)
+		if err != nil {
+			return err
+		}
+		if cur.ReadOnly {
+			return fmt.Errorf("%w: an archive accepts no messages", ErrInvalid)
+		}
+		if m.SurfaceID != "" {
+			if it, err := s.kept.Lookup(tenantName, postedKey(id, m.SurfaceID)); err == nil {
+				var n int
+				if err := json.Unmarshal(it.Value, &n); err != nil {
+					return readErr(err)
+				}
+				out, _, err = s.message(tenantName, id, n)
+				created = false
+				return err
+			} else if !errors.Is(err, state.ErrNotFound) {
+				return readErr(err)
+			}
+		}
+		if cur.Head >= MaxMessages {
+			return fmt.Errorf("%w: it holds %d messages", ErrFull, MaxMessages)
+		}
+		next := m.clone()
+		switch {
+		case next.Prev == "" && cur.Head > 0:
+			next.Prev = MessageID(cur.Head)
+		case strings.HasPrefix(next.Prev, "m-") && seqOf(next.Prev, cur.Head) == 0:
+			return fmt.Errorf("%w: %q has no message %s", ErrInvalid, id, next.Prev)
+		}
+		n := cur.Head + 1
+		next.ID, next.Thread = MessageID(n), id
+		rec := cur
+		rec.Thread = cur.clone()
+		rec.UpdatedAt, rec.Head = at, n
+		if n == 1 {
+			rec.First = clipText(next.Text, MaxTitle)
+		}
+		if !rec.has(Person, next.By) && len(rec.Participants) < MaxHeld {
+			rec.Participants = append(rec.Participants, Participant{Kind: Person, Name: next.By, At: at})
+		}
+		w := s.write()
+		w.at(tenantName, threadKey(id), rec, v)
+		w.moved(tenantName, &cur, rec)
+		w.at(tenantName, messageKey(id, n), next, 0)
+		if next.SurfaceID != "" {
+			w.at(tenantName, postedKey(id, next.SurfaceID), n, 0)
+		}
+		w.said(tenantName, id, next.Text)
+		if err := w.commit(s); err != nil {
+			return err
+		}
+		out, created = next, true
+		return nil
+	})
 	if err != nil {
 		return Message{}, false, err
 	}
-	if th.rec.ReadOnly {
-		return Message{}, false, fmt.Errorf("%w: an archive accepts no messages", ErrInvalid)
+	if created {
+		s.tell(tenantName, Notice{ID: id, Message: out.ID, At: at})
 	}
-	if i, ok := th.surfaces[m.SurfaceID]; ok && m.SurfaceID != "" {
-		return th.msgs[i].clone(), false, nil
-	}
-	if len(th.msgs) >= MaxMessages {
-		return Message{}, false, fmt.Errorf("%w: it holds %d messages", ErrFull, MaxMessages)
-	}
-	switch {
-	case m.Prev == "" && len(th.msgs) > 0:
-		m.Prev = th.msgs[len(th.msgs)-1].ID
-	case strings.HasPrefix(m.Prev, "m-") && th.message(m.Prev) < 0:
-		return Message{}, false, fmt.Errorf("%w: %q has no message %s", ErrInvalid, id, m.Prev)
-	}
-	n := len(th.msgs) + 1
-	m.ID, m.Thread = MessageID(n), id
-	rec := th.rec.clone()
-	rec.UpdatedAt = at
-	if !rec.has(Person, m.By) && len(rec.Participants) < MaxHeld {
-		rec.Participants = append(rec.Participants, Participant{Kind: Person, Name: m.By, At: at})
-	}
-	b := s.batch()
-	b.put(tenantName, messageKey(id, n), m)
-	b.put(tenantName, threadKey(id), rec)
-	if err := b.commit(); err != nil {
-		return Message{}, false, err
-	}
-	th.rec = rec
-	th.add(m)
-	s.tenants[tenantName].search.Put(m.Thread+"\x00"+m.ID, m.Text)
-	s.tenants[tenantName].tell(Notice{ID: id, Message: m.ID, At: at})
-	return m.clone(), true, nil
-}
-
-// message returns the place of a message in the thread, or -1.
-func (th *thread) message(mid string) int {
-	n, err := strconv.Atoi(strings.TrimPrefix(mid, "m-"))
-	if err != nil || !strings.HasPrefix(mid, "m-") || n < 1 || n > len(th.msgs) || MessageID(n) != mid {
-		return -1
-	}
-	return n - 1
+	return settled(out), created, nil
 }
 
 // Settle records what a message's tags came to: the run each agent's tag
@@ -525,82 +735,83 @@ func (th *thread) message(mid string) int {
 // cannot change: mentions must name the same kinds and names, in the same
 // order, as the message holds.
 func (s *Store) Settle(tenantName, id, mid string, mentions []Mention) (Message, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	th, err := s.writable(tenantName, id)
+	var out Message
+	changed := false
+	err := state.Retry(func() error {
+		cur, _, err := s.writable(tenantName, id)
+		if err != nil {
+			return err
+		}
+		n := seqOf(mid, cur.Head)
+		if n == 0 {
+			return fmt.Errorf("%w: message %s of %q", ErrNotFound, mid, id)
+		}
+		was, v, err := s.message(tenantName, id, n)
+		if err != nil {
+			return err
+		}
+		m := was.clone()
+		if !slices.EqualFunc(m.Mentions, mentions, func(a, b Mention) bool { return a.Kind == b.Kind && a.Name == b.Name }) {
+			return fmt.Errorf("%w: settling a message keeps its tags", ErrInvalid)
+		}
+		m.Mentions = cloneMentions(mentions)
+		if err := m.validate(); err != nil {
+			return err
+		}
+		if slices.Equal(m.Mentions, was.Mentions) {
+			out, changed = m, false
+			return nil
+		}
+		w := s.write()
+		w.at(tenantName, messageKey(id, n), m, v)
+		if err := w.commit(s); err != nil {
+			return err
+		}
+		out, changed = m, true
+		return nil
+	})
 	if err != nil {
 		return Message{}, err
 	}
-	i := th.message(mid)
-	if i < 0 {
-		return Message{}, fmt.Errorf("%w: message %s of %q", ErrNotFound, mid, id)
+	if changed {
+		s.tell(tenantName, Notice{ID: id, Message: mid, At: out.At})
 	}
-	m := th.msgs[i].clone()
-	if !slices.EqualFunc(m.Mentions, mentions, func(a, b Mention) bool { return a.Kind == b.Kind && a.Name == b.Name }) {
-		return Message{}, fmt.Errorf("%w: settling a message keeps its tags", ErrInvalid)
-	}
-	m.Mentions = cloneMentions(mentions)
-	if err := m.validate(); err != nil {
-		return Message{}, err
-	}
-	if slices.Equal(m.Mentions, th.msgs[i].Mentions) {
-		return m, nil
-	}
-	b := s.batch()
-	b.put(tenantName, messageKey(id, i+1), m)
-	if err := b.commit(); err != nil {
-		return Message{}, err
-	}
-	th.msgs[i] = m
-	s.tenants[tenantName].tell(Notice{ID: id, Message: mid, At: m.At})
-	return m.clone(), nil
+	return settled(out), nil
 }
 
 // Join adds people or agents who take part by acting in the thread: an agent
 // that answered, a person who replied. Those already there are skipped, and
 // those that do not fit are left out. The thread's version is unchanged.
 func (s *Store) Join(tenantName, id string, ps []Participant, at time.Time) (Thread, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	th, err := s.writable(tenantName, id)
-	if err != nil {
-		return Thread{}, err
-	}
-	rec := th.rec.clone()
 	for _, p := range ps {
 		p.Owner, p.At = false, at
 		if err := p.validate(); err != nil {
 			return Thread{}, err
 		}
-		if !rec.has(p.Kind, p.Name) && len(rec.Participants) < MaxHeld {
-			rec.Participants = append(rec.Participants, p)
+	}
+	changed := false
+	h, err := s.edit(tenantName, id, func(next *head, _ *write) error {
+		before := len(next.Participants)
+		for _, p := range ps {
+			p.Owner, p.At = false, at
+			if !next.has(p.Kind, p.Name) && len(next.Participants) < MaxHeld {
+				next.Participants = append(next.Participants, p)
+			}
 		}
-	}
-	if len(rec.Participants) == len(th.rec.Participants) {
-		return rec, nil
-	}
-	rec.UpdatedAt = at
-	return s.rewrite(tenantName, th, rec, at)
-}
-
-// rewrite writes a thread's new record. The caller holds the lock.
-func (s *Store) rewrite(tenantName string, th *thread, rec Thread, at time.Time) (Thread, error) {
-	b := s.batch()
-	if rec.Project != th.rec.Project || rec.Channel != th.rec.Channel {
-		if th.rec.Moves >= MaxMoves {
-			return Thread{}, fmt.Errorf("%w: conversation placement history is full", ErrLimit)
+		if len(next.Participants) == before {
+			changed = false
+			return state.ErrUnchanged
 		}
-		rec.Moves = th.rec.Moves + 1
-		b.put(tenantName, placementKey(rec.ID, rec.Moves), PlacementChange{By: rec.movedBy, Thread: rec.ID, Version: rec.Moves, FromProject: th.rec.Project, FromChannel: th.rec.Channel, Project: rec.Project, Channel: rec.Channel, At: at})
-	}
-	rec.movedBy = ""
-	b.put(tenantName, threadKey(rec.ID), rec)
-	if err := b.commit(); err != nil {
+		next.UpdatedAt, changed = at, true
+		return nil
+	})
+	if err != nil {
 		return Thread{}, err
 	}
-	th.rec = rec
-	s.tenants[tenantName].tell(Notice{ID: rec.ID, At: at})
-	return rec.clone(), nil
+	if changed {
+		s.tell(tenantName, Notice{ID: id, At: at})
+	}
+	return h.Thread, nil
 }
 
 // Update changes a thread's title, visibility, default or routing. fn edits a copy;
@@ -620,53 +831,52 @@ func (s *Store) UpdateMoving(tenantName, id string, version int, at time.Time, f
 }
 
 func (s *Store) update(tenantName, id string, version int, at time.Time, fn func(*Thread) error, moving bool) (Thread, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	th, err := s.writable(tenantName, id)
+	changed := false
+	h, err := s.edit(tenantName, id, func(next *head, w *write) error {
+		cur := next.clone()
+		if version != cur.Version {
+			return fmt.Errorf("%w: %q is at version %d, not %d", ErrVersion, id, cur.Version, version)
+		}
+		if err := fn(&next.Thread); err != nil {
+			return err
+		}
+		moves := next.Project != cur.Project || next.Channel != cur.Channel
+		switch {
+		case next.ReadOnly != cur.ReadOnly:
+			return fmt.Errorf("%w: archive status is immutable", ErrInvalid)
+		case !sameArchive(next.Archive, cur.Archive):
+			return fmt.Errorf("%w: archive and deletion are changed on their own", ErrInvalid)
+		case next.Moves != cur.Moves:
+			return fmt.Errorf("%w: placement history is server managed", ErrInvalid)
+		case next.ID != cur.ID || !sameSurface(next.Surface, cur.Surface) || next.Announcement != cur.Announcement || !sameFork(next.Fork, cur.Fork):
+			return fmt.Errorf("%w: a thread stays where it was started", ErrInvalid)
+		case moves && (!moving || cur.Visibility != Private || next.Visibility != Private || cur.Surface != nil || cur.Announcement != ""):
+			return fmt.Errorf("%w: a thread stays where it was started; a private conversation moves, and Share moves one as it shares it", ErrInvalid)
+		case !slices.Equal(next.Participants, cur.Participants):
+			return fmt.Errorf("%w: participants are changed on their own", ErrInvalid)
+		}
+		next.Version, next.CreatedBy, next.CreatedAt, next.UpdatedAt = cur.Version, cur.CreatedBy, cur.CreatedAt, cur.UpdatedAt
+		next.Default = legacy.Default(next.Default)
+		if err := next.validate(); err != nil {
+			return err
+		}
+		if !moves && next.Title == cur.Title && next.Visibility == cur.Visibility && next.Default == cur.Default && slices.Equal(next.Agents, cur.Agents) && next.Mode == cur.Mode {
+			changed = false
+			return state.ErrUnchanged
+		}
+		if err := s.place(tenantName, cur, next, w, at); err != nil {
+			return err
+		}
+		next.Version, next.UpdatedAt, changed = cur.Version+1, at, true
+		return nil
+	})
 	if err != nil {
 		return Thread{}, err
 	}
-	cur := th.rec
-	if version != cur.Version {
-		return Thread{}, fmt.Errorf("%w: %q is at version %d, not %d", ErrVersion, id, cur.Version, version)
+	if changed {
+		s.tell(tenantName, Notice{ID: id, At: at})
 	}
-	next := cur.clone()
-	if err := fn(&next); err != nil {
-		return Thread{}, err
-	}
-	moves := next.Project != cur.Project || next.Channel != cur.Channel
-	tn := s.of(tenantName)
-	switch {
-	case next.ReadOnly != cur.ReadOnly:
-		return Thread{}, fmt.Errorf("%w: archive status is immutable", ErrInvalid)
-	case !sameArchive(next.Archive, cur.Archive):
-		return Thread{}, fmt.Errorf("%w: archive and deletion are changed on their own", ErrInvalid)
-	case next.Moves != cur.Moves:
-		return Thread{}, fmt.Errorf("%w: placement history is server managed", ErrInvalid)
-	case next.ID != cur.ID || !sameSurface(next.Surface, cur.Surface) || next.Announcement != cur.Announcement || !sameFork(next.Fork, cur.Fork):
-		return Thread{}, fmt.Errorf("%w: a thread stays where it was started", ErrInvalid)
-	case moves && (!moving || cur.Visibility != Private || next.Visibility != Private || cur.Surface != nil || cur.Announcement != ""):
-		return Thread{}, fmt.Errorf("%w: a thread stays where it was started; a private conversation moves, and Share moves one as it shares it", ErrInvalid)
-	case next.Project != cur.Project && tn.inProject[next.Project] >= MaxProjectThreads:
-		return Thread{}, fmt.Errorf("%w: a project holds at most %d threads", ErrLimit, MaxProjectThreads)
-	case !slices.Equal(next.Participants, cur.Participants):
-		return Thread{}, fmt.Errorf("%w: participants are changed on their own", ErrInvalid)
-	}
-	next.Version, next.CreatedBy, next.CreatedAt, next.UpdatedAt = cur.Version, cur.CreatedBy, cur.CreatedAt, cur.UpdatedAt
-	next.Default = legacy.Default(next.Default)
-	if err := next.validate(); err != nil {
-		return Thread{}, err
-	}
-	if !moves && next.Title == cur.Title && next.Visibility == cur.Visibility && next.Default == cur.Default && slices.Equal(next.Agents, cur.Agents) && next.Mode == cur.Mode {
-		return cur.clone(), nil
-	}
-	next.Version, next.UpdatedAt = cur.Version+1, at
-	stored, err := s.rewrite(tenantName, th, next, at)
-	if err == nil && next.Project != cur.Project {
-		tn.inProject[cur.Project]--
-		tn.inProject[next.Project]++
-	}
-	return stored, err
+	return h.Thread, nil
 }
 
 // Participants adds and removes people and agents. add and remove hold at
@@ -682,62 +892,71 @@ func (s *Store) Participants(tenantName, id string, version int, add []Participa
 	if len(add)+len(remove) > MaxParticipants {
 		return Thread{}, fmt.Errorf("%w: at most %d people and agents are added or removed at once", ErrInvalid, MaxParticipants)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	th, err := s.writable(tenantName, id)
+	changed := false
+	h, err := s.edit(tenantName, id, func(next *head, _ *write) error {
+		before := slices.Clone(next.Participants)
+		if version != next.Version {
+			return fmt.Errorf("%w: %q is at version %d, not %d", ErrVersion, id, next.Version, version)
+		}
+		var err error
+		for _, name := range remove {
+			next.Participants = slices.DeleteFunc(next.Participants, func(p Participant) bool {
+				if p.Name == name && p.Owner {
+					err = fmt.Errorf("%w: the person who started a thread stays in it", ErrInvalid)
+				}
+				return p.Name == name && !p.Owner
+			})
+		}
+		if err != nil {
+			return err
+		}
+		for _, p := range add {
+			p.Owner, p.AddedBy, p.At = false, by, at
+			if err := p.validate(); err != nil {
+				return err
+			}
+			if !next.has(p.Kind, p.Name) {
+				next.Participants = append(next.Participants, p)
+			}
+		}
+		// People who post and agents who answer join past MaxParticipants, so a
+		// change is refused only when it grows what the writer counts past it.
+		shown := shownOf(next.Participants, counted)
+		switch {
+		case shown > MaxParticipants && shown > shownOf(before, counted):
+			return fmt.Errorf("%w: a thread has at most %d participants", ErrInvalid, MaxParticipants)
+		case len(next.Participants) > MaxHeld:
+			return fmt.Errorf("%w: a thread holds at most %d participants", ErrInvalid, MaxHeld)
+		}
+		if slices.Equal(next.Participants, before) {
+			changed = false
+			return state.ErrUnchanged
+		}
+		next.Version, next.UpdatedAt, changed = next.Version+1, at, true
+		return nil
+	})
 	if err != nil {
 		return Thread{}, err
 	}
-	if version != th.rec.Version {
-		return Thread{}, fmt.Errorf("%w: %q is at version %d, not %d", ErrVersion, id, th.rec.Version, version)
+	if changed {
+		s.tell(tenantName, Notice{ID: id, At: at})
 	}
-	next := th.rec.clone()
-	for _, name := range remove {
-		next.Participants = slices.DeleteFunc(next.Participants, func(p Participant) bool {
-			if p.Name == name && p.Owner {
-				err = fmt.Errorf("%w: the person who started a thread stays in it", ErrInvalid)
-			}
-			return p.Name == name && !p.Owner
-		})
+	return h.Thread, nil
+}
+
+// shownOf counts the participants counted reports true for, every one when
+// it is nil.
+func shownOf(ps []Participant, counted func(Participant) bool) int {
+	if counted == nil {
+		return len(ps)
 	}
-	if err != nil {
-		return Thread{}, err
-	}
-	for _, p := range add {
-		p.Owner, p.AddedBy, p.At = false, by, at
-		if err := p.validate(); err != nil {
-			return Thread{}, err
-		}
-		if !next.has(p.Kind, p.Name) {
-			next.Participants = append(next.Participants, p)
+	n := 0
+	for _, p := range ps {
+		if counted(p) {
+			n++
 		}
 	}
-	shownOf := func(ps []Participant) int {
-		if counted == nil {
-			return len(ps)
-		}
-		n := 0
-		for _, p := range ps {
-			if counted(p) {
-				n++
-			}
-		}
-		return n
-	}
-	// People who post and agents who answer join past MaxParticipants, so a
-	// change is refused only when it grows what the writer counts past it.
-	shown := shownOf(next.Participants)
-	switch {
-	case shown > MaxParticipants && shown > shownOf(th.rec.Participants):
-		return Thread{}, fmt.Errorf("%w: a thread has at most %d participants", ErrInvalid, MaxParticipants)
-	case len(next.Participants) > MaxHeld:
-		return Thread{}, fmt.Errorf("%w: a thread holds at most %d participants", ErrInvalid, MaxHeld)
-	}
-	if slices.Equal(next.Participants, th.rec.Participants) {
-		return next, nil
-	}
-	next.Version, next.UpdatedAt = th.rec.Version+1, at
-	return s.rewrite(tenantName, th, next, at)
+	return n
 }
 
 // Share makes a thread shared in a project's channel and adds people to
@@ -752,129 +971,141 @@ func (s *Store) Share(tenantName, id string, version int, project, channel, def 
 	if len(add) > MaxParticipants {
 		return Thread{}, fmt.Errorf("%w: at most %d people are added at once", ErrInvalid, MaxParticipants)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	th, err := s.writable(tenantName, id)
-	if err != nil {
-		return Thread{}, err
-	}
-	cur := th.rec
-	if version != cur.Version {
-		return Thread{}, fmt.Errorf("%w: %q is at version %d, not %d", ErrVersion, id, cur.Version, version)
-	}
-	next := cur.clone()
-	moves := project != cur.Project || channel != cur.Channel
-	if (moves || cur.Visibility != Shared) && (cur.Surface != nil || cur.Announcement != "") {
-		return Thread{}, fmt.Errorf("%w: a thread on a surface stays where and as it was started", ErrInvalid)
-	}
-	tn := s.of(tenantName)
-	if project != cur.Project && tn.inProject[project] >= MaxProjectThreads {
-		return Thread{}, fmt.Errorf("%w: a project holds at most %d threads", ErrLimit, MaxProjectThreads)
-	}
-	next.Project, next.Channel, next.Visibility = project, channel, Shared
-	if moves {
-		next.Default, next.Agents, next.Mode = def, slices.Clone(agents), mode
-	}
-	for _, p := range add {
-		p.Owner, p.AddedBy, p.At = false, by, at
-		if err := p.validate(); err != nil {
-			return Thread{}, err
+	changed := false
+	h, err := s.edit(tenantName, id, func(next *head, w *write) error {
+		cur := next.clone()
+		if version != cur.Version {
+			return fmt.Errorf("%w: %q is at version %d, not %d", ErrVersion, id, cur.Version, version)
 		}
-		if !next.has(p.Kind, p.Name) {
-			next.Participants = append(next.Participants, p)
+		moves := project != cur.Project || channel != cur.Channel
+		if (moves || cur.Visibility != Shared) && (cur.Surface != nil || cur.Announcement != "") {
+			return fmt.Errorf("%w: a thread on a surface stays where and as it was started", ErrInvalid)
 		}
-	}
-	shownOf := func(ps []Participant) int {
-		n := 0
-		for _, p := range ps {
-			if counted == nil || counted(p) {
-				n++
+		next.Project, next.Channel, next.Visibility = project, channel, Shared
+		if moves {
+			next.Default, next.Agents, next.Mode = def, slices.Clone(agents), mode
+		}
+		for _, p := range add {
+			p.Owner, p.AddedBy, p.At = false, by, at
+			if err := p.validate(); err != nil {
+				return err
+			}
+			if !next.has(p.Kind, p.Name) {
+				next.Participants = append(next.Participants, p)
 			}
 		}
-		return n
-	}
-	shown := shownOf(next.Participants)
-	switch {
-	case shown > MaxParticipants && shown > shownOf(cur.Participants):
-		return Thread{}, fmt.Errorf("%w: a thread has at most %d participants", ErrInvalid, MaxParticipants)
-	case len(next.Participants) > MaxHeld:
-		return Thread{}, fmt.Errorf("%w: a thread holds at most %d participants", ErrInvalid, MaxHeld)
-	}
-	next.Default = legacy.Default(next.Default)
-	if err := next.validate(); err != nil {
-		return Thread{}, err
-	}
-	if !moves && next.Visibility == cur.Visibility && slices.Equal(next.Participants, cur.Participants) {
-		return cur.clone(), nil
-	}
-	next.Version, next.UpdatedAt = cur.Version+1, at
-	next.movedBy = by
-	stored, err := s.rewrite(tenantName, th, next, at)
+		shown := shownOf(next.Participants, counted)
+		switch {
+		case shown > MaxParticipants && shown > shownOf(cur.Participants, counted):
+			return fmt.Errorf("%w: a thread has at most %d participants", ErrInvalid, MaxParticipants)
+		case len(next.Participants) > MaxHeld:
+			return fmt.Errorf("%w: a thread holds at most %d participants", ErrInvalid, MaxHeld)
+		}
+		next.Default = legacy.Default(next.Default)
+		if err := next.validate(); err != nil {
+			return err
+		}
+		if !moves && next.Visibility == cur.Visibility && slices.Equal(next.Participants, cur.Participants) {
+			changed = false
+			return state.ErrUnchanged
+		}
+		next.movedBy = by
+		if err := s.place(tenantName, cur, next, w, at); err != nil {
+			return err
+		}
+		next.Version, next.UpdatedAt, changed = cur.Version+1, at, true
+		return nil
+	})
 	if err != nil {
 		return Thread{}, err
 	}
-	if project != cur.Project {
-		tn.inProject[cur.Project]--
-		tn.inProject[project]++
+	if changed {
+		s.tell(tenantName, Notice{ID: id, At: at})
 	}
-	return stored, nil
+	return h.Thread, nil
 }
 
 func sameSurface(a, b *Surface) bool { return a == nil && b == nil || a != nil && b != nil && *a == *b }
 
-// BySurface returns the thread a surface's thread is, if one was started.
-func (s *Store) BySurface(tenantName string, sf Surface) (Thread, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	tn, ok := s.tenants[tenantName]
-	if !ok {
-		return Thread{}, false
+// BySurface returns the thread a surface's thread is, and false when none
+// was started.
+func (s *Store) BySurface(tenantName string, sf Surface) (Thread, bool, error) {
+	it, err := s.kept.Lookup(tenantName, surfaceKey(sf))
+	if errors.Is(err, state.ErrNotFound) {
+		return Thread{}, false, nil
 	}
-	th := tn.threads[tn.surfaces[sf.key()]]
-	if th == nil {
-		return Thread{}, false
+	if err != nil {
+		return Thread{}, false, readErr(err)
 	}
-	return th.rec.clone(), true
+	var id string
+	if err := json.Unmarshal(it.Value, &id); err != nil {
+		return Thread{}, false, readErr(err)
+	}
+	h, _, err := s.lookup(tenantName, id)
+	if errors.Is(err, ErrNotFound) {
+		return Thread{}, false, nil
+	}
+	if err != nil {
+		return Thread{}, false, err
+	}
+	return h.Thread, true, nil
 }
 
 // Get returns a thread's record.
 func (s *Store) Get(tenantName, id string) (Thread, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	th, err := s.find(tenantName, id)
+	h, _, err := s.lookup(tenantName, id)
 	if err != nil {
 		return Thread{}, err
 	}
-	return th.rec.clone(), nil
+	return h.Thread, nil
 }
 
 // Message returns one of a thread's messages.
 func (s *Store) Message(tenantName, id, mid string) (Message, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	th, err := s.find(tenantName, id)
+	h, _, err := s.lookup(tenantName, id)
 	if err != nil {
 		return Message{}, err
 	}
-	i := th.message(mid)
-	if i < 0 {
+	n := seqOf(mid, h.Head)
+	if n == 0 {
 		return Message{}, fmt.Errorf("%w: message %s of %q", ErrNotFound, mid, id)
 	}
-	return th.msgs[i].clone(), nil
+	m, _, err := s.message(tenantName, id, n)
+	return m, err
 }
 
 // Last returns a thread's latest message, ErrNotFound when it has none.
 func (s *Store) Last(tenantName, id string) (Message, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	th, err := s.find(tenantName, id)
+	h, _, err := s.lookup(tenantName, id)
 	if err != nil {
 		return Message{}, err
 	}
-	if len(th.msgs) == 0 {
+	if h.Head == 0 {
 		return Message{}, fmt.Errorf("%w: %q has no messages", ErrNotFound, id)
 	}
-	return th.msgs[len(th.msgs)-1].clone(), nil
+	m, _, err := s.message(tenantName, id, h.Head)
+	return m, err
+}
+
+// page reads one page of a thread's messages after the nth, at most limit.
+func (s *Store) page(tenantName, id string, after, limit int) ([]Message, bool, error) {
+	q := state.Query{Prefix: messagePrefix(id), Limit: limit}
+	if after > 0 {
+		q.After = messageKey(id, after)
+	}
+	items, next, err := s.kept.List(tenantName, q)
+	if err != nil {
+		return nil, false, readErr(err)
+	}
+	out := make([]Message, 0, len(items))
+	for _, it := range items {
+		var m Message
+		if err := json.Unmarshal(it.Value, &m); err != nil {
+			return nil, false, readErr(fmt.Errorf("%q: %w", it.Key, err))
+		}
+		out = append(out, m)
+	}
+	return out, next != "", nil
 }
 
 // Messages returns a thread's messages in order, after the message after (""
@@ -884,46 +1115,55 @@ func (s *Store) Messages(tenantName, id, after string, limit int) (msgs []Messag
 	if limit <= 0 || limit > MaxPage {
 		limit = MaxPage
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	th, err := s.find(tenantName, id)
+	h, _, err := s.lookup(tenantName, id)
 	if err != nil {
 		return nil, "", err
 	}
 	from := 0
 	if after != "" {
-		i := th.message(after)
-		if i < 0 {
+		if from = seqOf(after, h.Head); from == 0 {
 			return nil, "", fmt.Errorf("%w: %q", ErrCursor, after)
 		}
-		from = i + 1
 	}
-	end := min(from+limit, len(th.msgs))
-	msgs = make([]Message, 0, end-from)
-	for _, m := range th.msgs[from:end] {
-		msgs = append(msgs, m.clone())
+	msgs, more, err := s.page(tenantName, id, from, limit)
+	if err != nil {
+		return nil, "", err
 	}
-	if end < len(th.msgs) {
-		next = th.msgs[end-1].ID
+	if more && len(msgs) > 0 {
+		next = msgs[len(msgs)-1].ID
 	}
 	return msgs, next, nil
 }
 
 // Path returns the messages from the start of a thread down to one, oldest
 // first: the one branch it sits on. The first may follow a run, of a
-// conversation from before threads.
+// conversation from before threads. It reads the thread's messages up to
+// that one, at most MaxMessages.
 func (s *Store) Path(tenantName, id, mid string) ([]Message, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	th, err := s.find(tenantName, id)
+	h, _, err := s.lookup(tenantName, id)
 	if err != nil {
 		return nil, err
 	}
+	end := seqOf(mid, h.Head)
+	if end == 0 {
+		return nil, fmt.Errorf("%w: message %s of %q", ErrNotFound, mid, id)
+	}
+	msgs := make([]Message, 0, end)
+	for len(msgs) < end {
+		page, more, err := s.page(tenantName, id, len(msgs), min(end-len(msgs), state.MaxList))
+		if err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, page...)
+		if !more || len(page) == 0 {
+			break
+		}
+	}
 	var out []Message
-	for i := th.message(mid); i >= 0; i = th.message(th.msgs[i].Prev) {
-		out = append(out, th.msgs[i].clone())
+	for i := end - 1; i >= 0 && i < len(msgs); i = seqOf(msgs[i].Prev, len(msgs)) - 1 {
+		out = append(out, msgs[i])
 		// A message only ever follows an earlier one, so this ends.
-		if len(out) > len(th.msgs) {
+		if len(out) > len(msgs) {
 			break
 		}
 	}
@@ -946,8 +1186,8 @@ type Query struct {
 	Before string
 }
 
-func encodeCursor(t Thread) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(strconv.FormatInt(t.UpdatedAt.UnixNano(), 10) + ":" + t.ID))
+func encodeCursor(nanos int64, id string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(strconv.FormatInt(nanos, 10) + ":" + id))
 }
 
 func decodeCursor(c string) (int64, string, error) {
@@ -957,54 +1197,74 @@ func decodeCursor(c string) (int64, string, error) {
 	}
 	stamp, id, ok := strings.Cut(string(raw), ":")
 	at, err := strconv.ParseInt(stamp, 10, 64)
-	if !ok || id == "" || err != nil {
+	if !ok || id == "" || err != nil || strings.Contains(id, ":") {
 		return 0, "", ErrCursor
 	}
 	return at, id, nil
 }
 
+// fromActivity reads the time and the thread of an activity entry's key.
+func fromActivity(key string) (int64, string, bool) {
+	inv, id, ok := strings.Cut(strings.TrimPrefix(key, keyActivity), ":")
+	n, err := strconv.ParseInt(inv, 10, 64)
+	if !ok || err != nil {
+		return 0, "", false
+	}
+	return math.MaxInt64 - n, id, true
+}
+
 // List returns one page of a project's threads, most recently active first,
 // with the id breaking ties, and the cursor for the page after it ("" when
-// there is nothing older).
+// there is nothing older). It pages the tenant's activity index, which holds
+// one entry a thread, so it reads at most MaxThreads entries.
 func (s *Store) List(tenantName string, q Query) ([]Thread, string, error) {
 	limit := q.Limit
 	if limit <= 0 {
 		limit = DefaultPage
 	}
 	limit = min(limit, MaxPage)
-	var afterAt int64
-	var afterID string
+	after := ""
 	if q.Before != "" {
-		var err error
-		if afterAt, afterID, err = decodeCursor(q.Before); err != nil {
+		at, id, err := decodeCursor(q.Before)
+		if err != nil {
 			return nil, "", err
 		}
+		after = activityKey(at, id)
 	}
-	s.mu.RLock()
-	var all []Thread
-	if t, ok := s.tenants[tenantName]; ok {
-		for _, th := range t.threads {
-			if th.rec.Project == q.Project && (q.Channel == "" || th.rec.Channel == q.Channel) {
-				all = append(all, th.rec.clone())
-			}
-		}
-	}
-	s.mu.RUnlock()
-	slices.SortFunc(all, func(a, b Thread) int {
-		return cmp.Or(b.UpdatedAt.Compare(a.UpdatedAt), strings.Compare(a.ID, b.ID))
-	})
 	page := []Thread{}
-	for _, t := range all {
-		if q.Before != "" {
-			at := t.UpdatedAt.UnixNano()
-			if at > afterAt || (at == afterAt && t.ID <= afterID) {
+	lastAt, lastID := int64(0), ""
+	for read := 0; read < MaxThreads; {
+		items, next, err := s.kept.List(tenantName, state.Query{Prefix: keyActivity, After: after, Limit: state.MaxList})
+		if err != nil {
+			return nil, "", readErr(err)
+		}
+		read += len(items)
+		for _, it := range items {
+			var a activity
+			if err := json.Unmarshal(it.Value, &a); err != nil {
+				return nil, "", readErr(err)
+			}
+			at, id, ok := fromActivity(it.Key)
+			if !ok || a.Project != q.Project || (q.Channel != "" && a.Channel != q.Channel) {
 				continue
 			}
+			if len(page) == limit {
+				return page, encodeCursor(lastAt, lastID), nil
+			}
+			h, _, err := s.lookup(tenantName, id)
+			if errors.Is(err, ErrNotFound) {
+				continue
+			}
+			if err != nil {
+				return nil, "", err
+			}
+			page = append(page, h.Thread)
+			lastAt, lastID = at, id
 		}
-		if len(page) == limit {
-			return page, encodeCursor(page[len(page)-1]), nil
+		if next == "" {
+			break
 		}
-		page = append(page, t)
+		after = next
 	}
 	return page, "", nil
 }
@@ -1019,50 +1279,55 @@ type Summary struct {
 	First string `json:"first,omitempty"`
 }
 
-// Summaries returns, in no order, the threads a tenant has a record of that
-// keep, called under the lock with each record as it stands, holds; only
-// those are copied. Elsewhere is the ids of the rest. It is what a list of
-// conversations merges with the run index's: a record says where its
-// conversation is, so one kept elsewhere is left out of the list too.
-func (s *Store) Summaries(tenantName string, keep func(Thread) bool) (out []Summary, elsewhere map[string]bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out, elsewhere = []Summary{}, map[string]bool{}
-	t, ok := s.tenants[tenantName]
-	if !ok {
-		return out, elsewhere
+// heads reads every record of a tenant's threads, which hold at most
+// MaxThreads.
+func (s *Store) heads(tenantName string, fn func(h head)) error {
+	items, err := s.kept.All(tenantName, keyThread, MaxThreads)
+	if err != nil {
+		return readErr(err)
 	}
-	for id, th := range t.threads {
-		if !keep(th.rec) {
-			elsewhere[id] = true
-			continue
+	for _, it := range items {
+		h, err := decodeHead(it.Value)
+		if err != nil {
+			return readErr(fmt.Errorf("%q: %w", it.Key, err))
 		}
-		sum := Summary{Thread: th.rec.clone(), Messages: len(th.msgs)}
-		if len(th.msgs) > 0 {
-			sum.First = clipText(th.msgs[0].Text, MaxTitle)
-		}
-		out = append(out, sum)
+		fn(h)
 	}
-	return out, elsewhere
+	return nil
 }
 
-// Records returns the records of a tenant's threads that keep, called under
-// the lock with each record as it stands, holds, in no order. Only those are
-// copied.
-func (s *Store) Records(tenantName string, keep func(Thread) bool) []Thread {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := []Thread{}
-	t, ok := s.tenants[tenantName]
-	if !ok {
-		return out
-	}
-	for _, th := range t.threads {
-		if keep(th.rec) {
-			out = append(out, th.rec.clone())
+// Summaries returns, in no order, the threads a tenant has a record of that
+// keep holds. Elsewhere is the ids of the rest. It is what a list of
+// conversations merges with the run index's: a record says where its
+// conversation is, so one kept elsewhere is left out of the list too.
+func (s *Store) Summaries(tenantName string, keep func(Thread) bool) (out []Summary, elsewhere map[string]bool, err error) {
+	out, elsewhere = []Summary{}, map[string]bool{}
+	err = s.heads(tenantName, func(h head) {
+		if !keep(h.Thread) {
+			elsewhere[h.ID] = true
+			return
 		}
+		out = append(out, Summary{Thread: h.Thread, Messages: h.Head, First: h.First})
+	})
+	if err != nil {
+		return nil, nil, err
 	}
-	return out
+	return out, elsewhere, nil
+}
+
+// Records returns the records of a tenant's threads that keep holds, in no
+// order.
+func (s *Store) Records(tenantName string, keep func(Thread) bool) ([]Thread, error) {
+	out := []Thread{}
+	err := s.heads(tenantName, func(h head) {
+		if keep(h.Thread) {
+			out = append(out, h.Thread)
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // clipText is the start of a text, at most n characters.
@@ -1071,20 +1336,4 @@ func clipText(text string, n int) string {
 		return text
 	}
 	return string([]rune(text)[:n])
-}
-
-// Watch reports what happens in a tenant's threads until cancel is called.
-func (s *Store) Watch(tenantName string) (<-chan Notice, func()) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	t := s.of(tenantName)
-	ch := make(chan Notice, 32)
-	id := t.nextW
-	t.nextW++
-	t.watchers[id] = ch
-	return ch, func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		delete(t.watchers, id)
-	}
 }

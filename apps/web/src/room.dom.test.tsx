@@ -20,6 +20,7 @@ import { globex, tree } from "./projects.fixtures.ts";
 import { ChannelPage, ChannelsTab, postedLine, ThreadRoom } from "./Room.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { ShareDialog } from "./Share.tsx";
+import { useThreadSelection } from "./selection.ts";
 
 const words = defaultCopy.threads;
 const at = "2026-10-01T09:00:00Z";
@@ -2026,7 +2027,7 @@ test("completed work requires destination review, and an unseen run refusal stay
   assert.ok(dialog.isConnected, "the dialog stays open");
 });
 
-test("agents checked in a conversation's + menu are saved on the thread, and an answer they were routed to says so", async () => {
+test("an agent picked in a conversation's + menu is @mentioned in the box, never saved on the thread, and an answer an earlier selection routed still says so", async () => {
   const restore = stubEventSource();
   try {
     const routedRun = {
@@ -2080,15 +2081,23 @@ test("agents checked in a conversation's + menu are saved on the thread, and an 
     const menu = await screen.findByRole("dialog", { name: defaultCopy.chat.menu });
     fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
     fireEvent.click(await within(menu).findByRole("checkbox", { name: /^helper/ }));
-    await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "PUT")));
-    assert.deepEqual(net?.seen.find((s) => s.method === "PUT")?.body, {
-      version: 1,
-      title: "",
-      visibility: "private",
-      default: "",
-      agents: ["helper"],
-      mode: "join",
-    });
+    const box = document.getElementById("composer-input") as HTMLTextAreaElement;
+    assert.equal(box.value, "@helper ");
+    assert.equal(
+      within(menu)
+        .getByRole("checkbox", { name: /^helper/ })
+        .getAttribute("aria-checked"),
+      "true",
+    );
+    // Deleting the words takes the agent off.
+    fireEvent.change(box, { target: { value: "" } });
+    assert.equal(
+      within(menu)
+        .getByRole("checkbox", { name: /^helper/ })
+        .getAttribute("aria-checked"),
+      "false",
+    );
+    assert.ok(!net?.seen.some((s) => s.method === "PUT"), "nothing is saved on the thread");
     cleanup();
 
     // Read back, the selection is the thread's, for everyone in it; a run its message did not tag was routed.
@@ -2120,11 +2129,8 @@ test("agents checked in a conversation's + menu are saved on the thread, and an 
       />,
     );
     const row = await screen.findByRole("list", { name: defaultCopy.chat.selected });
-    assert.ok(within(row).getByText("helper") && within(row).getByText("lead"));
-    assert.equal(
-      within(row).getByRole("button", { name: defaultCopy.chat.all }).getAttribute("aria-pressed"),
-      "true",
-    );
+    assert.ok(!within(row).queryByText("helper") && !within(row).queryByText("lead"));
+    assert.equal(within(row).queryAllByRole("button", { pressed: true }).length, 0);
     assert.ok(screen.getByText(defaultCopy.chat.routedAll("helper")));
     // The project of a conversation is not removed from its chip.
     assert.equal(within(row).queryByRole("button", { name: /^Remove Globex/ }), null);
@@ -2193,60 +2199,56 @@ test("someone added to a private conversation is not offered Share: its starter,
   assert.ok(await screen.findByRole("button", { name: words.share }));
 });
 
-test("two quick changes in a conversation's + menu are saved one after the other, the second from the version the first answered", async () => {
-  const lead = {
-    spec: { ...helper.spec, name: "lead", description: "Coordinates" },
-    rev: 1,
-  } as unknown as Revision;
+/** A conversation's + selection, changed by two buttons, as the room's + menu changes it. */
+function Mover({ th }: { th: ThreadPage["thread"] }) {
+  const [problem, setProblem] = useState<string | null>(null);
+  const { selection, select } = useThreadSelection(th.id, th, {
+    saved: () => {},
+    reread: () => {},
+    problem: setProblem,
+  });
+  return (
+    <>
+      <p>{problem}</p>
+      <button type="button" onClick={() => select({ ...selection, channel: "deals" })}>
+        Deals
+      </button>
+      <button type="button" onClick={() => select({ ...selection, channel: "ops" })}>
+        Ops
+      </button>
+    </>
+  );
+}
+
+test("two quick moves of a conversation are saved one after the other, the second from the version the first answered, keeping the agents it selected before", async () => {
   let release: (() => void) | undefined;
   const puts: unknown[] = [];
+  const th = { ...mine.thread, agents: ["helper"], mode: "all" as const };
   net = stubFetch({
-    "GET /api/threads/th-00000000000000aa": () => mine,
-    "GET /api/projects/Globex/agents": () => ({
-      version: 1,
-      available: { all: true, names: [] },
-      homes: [],
-      default_resolved: null,
-    }),
-    "GET /api/projects/Globex/channels": () => ({ channels: [] }),
     "PUT /api/threads/th-00000000000000aa": (body) => {
       puts.push(body);
-      const b = body as { version: number; agents: string[] };
-      const answer = { ...mine.thread, agents: b.agents, mode: "join", version: b.version + 1 };
+      const b = body as { version: number; channel: string };
+      const answer = { ...th, channel: b.channel, version: b.version + 1 };
       // The first save is slow, so the second change is made while it is in flight.
       return puts.length === 1
         ? new Promise((resolve) => (release = () => resolve(answer)))
         : answer;
     },
   });
-  render(
-    <ThreadRoom
-      id={mine.thread.id}
-      me="ana"
-      initial={mine}
-      tick={0}
-      agents={[helper, lead]}
-      projects={tree}
-      root={null}
-      workspaceName="Acme"
-      canRun
-      onOpenChannel={() => {}}
-      onChanged={() => {}}
-    />,
-  );
-  fireEvent.click(await screen.findByRole("button", { name: defaultCopy.chat.plus }));
-  const menu = await screen.findByRole("dialog", { name: defaultCopy.chat.menu });
-  fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
-  fireEvent.click(await within(menu).findByRole("checkbox", { name: /^helper/ }));
-  fireEvent.click(within(menu).getByRole("checkbox", { name: /^lead/ }));
+  render(<Mover th={th} />);
+  fireEvent.click(screen.getByRole("button", { name: "Deals" }));
+  fireEvent.click(screen.getByRole("button", { name: "Ops" }));
   await waitFor(() => assert.equal(puts.length, 1));
   release?.();
   await waitFor(() => assert.equal(puts.length, 2));
   assert.deepEqual(
-    puts.map((p) => [(p as { version: number }).version, (p as { agents: string[] }).agents]),
+    puts.map((p) => {
+      const b = p as { version: number; channel: string; agents: string[]; mode?: string };
+      return [b.version, b.channel, b.agents, b.mode];
+    }),
     [
-      [1, ["helper"]],
-      [2, ["helper", "lead"]],
+      [1, "deals", ["helper"], "all"],
+      [2, "ops", ["helper"], "all"],
     ],
   );
 });
@@ -2294,67 +2296,45 @@ test("in a conversation an agent has run in, the arrow keys skip the project, wh
   );
 });
 
-test("All of Them is offered for three agents at most, and a conversation checks five at most, as the platform takes them", async () => {
+test("the + menu checks the agents a draft mentions and mentions any number of them", async () => {
   const names = ["a1", "a2", "a3", "a4", "a5", "a6"];
-  let sel: Selection = {
-    agents: ["a1", "a2", "a3"],
-    mode: "all",
-    project: "Globex",
-    channel: "general",
-  };
+  const picks: [string, boolean][] = [];
   const { rerender } = render(
     <PlusMenu
       agents={names.map((name) => ({ name }))}
-      selection={sel}
-      onChange={(n) => (sel = n)}
+      mentioned={["a1", "a2", "a3", "a4", "a5"]}
+      onMention={(name) => picks.push([name, true])}
+      selection={{ project: "Globex", channel: "general" }}
+      onChange={() => {}}
       onAttach={() => {}}
       onClose={() => {}}
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: /^Agents\b/ }));
-  // A fourth agent turns All of Them back to Each Decides.
-  fireEvent.click(screen.getByRole("checkbox", { name: /^a4/ }));
-  assert.deepEqual(sel, {
-    agents: ["a1", "a2", "a3", "a4"],
-    mode: "join",
-    project: "Globex",
-    channel: "general",
-  });
-  sel = { ...sel, agents: ["a1", "a2", "a3", "a4", "a5"] };
+  const sixth = screen.getByRole("checkbox", { name: /^a6/ });
+  assert.equal(sixth.getAttribute("aria-disabled"), null, "a sixth is offered");
+  fireEvent.click(sixth);
+  assert.deepEqual(picks, [["a6", true]]);
   rerender(
     <PlusMenu
       agents={names.map((name) => ({ name }))}
-      selection={sel}
-      onChange={(n) => (sel = n)}
+      mentioned={names}
+      onMention={() => {}}
+      selection={{ project: "Globex", channel: "general" }}
+      onChange={() => {}}
       onAttach={() => {}}
       onClose={() => {}}
     />,
   );
-  const before = sel;
-  fireEvent.click(screen.getByRole("checkbox", { name: /^a6/ }));
-  assert.equal(sel, before, "a sixth is not checked");
-  assert.ok(screen.getByText(defaultCopy.chat.maxAgents(5)));
+  assert.equal(
+    screen.getAllByRole("checkbox").filter((c) => c.getAttribute("aria-checked") === "true").length,
+    6,
+  );
   cleanup();
   render(
-    <SelectionChips selection={{ ...sel, agents: ["a1", "a2", "a3", "a4"] }} onChange={() => {}} />,
+    <SelectionChips selection={{ project: "Globex", channel: "general" }} onChange={() => {}} />,
   );
-  const all = screen.getByRole("button", { name: defaultCopy.chat.all });
-  assert.equal(all.getAttribute("aria-disabled"), "true");
-  // Why is said to a screen reader at once, and in words on the page once it is pressed.
-  const why = document.getElementById(all.getAttribute("aria-describedby") ?? "");
-  assert.equal(why?.textContent, defaultCopy.chat.allMax(3));
-  assert.match(why?.className ?? "", /sr-only/);
-  fireEvent.click(all);
-  assert.doesNotMatch(
-    document.getElementById(all.getAttribute("aria-describedby") ?? "")?.className ?? "",
-    /sr-only/,
-  );
-  cleanup();
-  render(<SelectionChips selection={{ ...sel, agents: ["a1", "a2", "a3"] }} onChange={() => {}} />);
-  assert.equal(
-    screen.getByRole("button", { name: defaultCopy.chat.all }).getAttribute("aria-disabled"),
-    null,
-  );
+  assert.equal(screen.queryByRole("button", { name: /Each Decides|All of Them/ }), null);
 });
 
 test("a shared conversation's project remains locked in the + menu with its explanation", async () => {
@@ -2622,20 +2602,13 @@ test("Share preserves the selected channel and invalidates consent after a stale
   assert.ok(!within(dialog).queryByText(/stays in its channel$/));
 });
 
-test("a change to the + selection someone else beat says so in words and reads the conversation again", async () => {
+test("a move someone else beat says so in words and reads the conversation again", async () => {
   let reads = 0;
   net = stubFetch({
     "GET /api/threads/th-00000000000000aa": () => {
       reads++;
-      return { ...mine, thread: { ...mine.thread, version: 3, agents: ["helper"] } };
+      return { ...mine, thread: { ...mine.thread, version: 3 } };
     },
-    "GET /api/projects/Globex/agents": () => ({
-      version: 1,
-      available: { all: true, names: [] },
-      homes: [],
-      default_resolved: null,
-    }),
-    "GET /api/projects/Globex/channels": () => ({ channels: [] }),
     "PUT /api/threads/th-00000000000000aa": () =>
       new Response(
         JSON.stringify({
@@ -2645,30 +2618,11 @@ test("a change to the + selection someone else beat says so in words and reads t
         { status: 409 },
       ),
   });
-  render(
-    <ThreadRoom
-      id={mine.thread.id}
-      me="ana"
-      initial={mine}
-      tick={0}
-      agents={[helper]}
-      projects={tree}
-      root={null}
-      workspaceName="Acme"
-      canRun
-      onOpenChannel={() => {}}
-      onChanged={() => {}}
-    />,
-  );
-  await waitFor(() => assert.ok(reads >= 1));
-  const before = reads;
-  fireEvent.click(await screen.findByRole("button", { name: defaultCopy.chat.plus }));
-  const menu = await screen.findByRole("dialog", { name: defaultCopy.chat.menu });
-  fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
-  fireEvent.click(await within(menu).findByRole("checkbox", { name: /^helper/ }));
+  render(<Mover th={mine.thread} />);
+  fireEvent.click(screen.getByRole("button", { name: "Deals" }));
   assert.ok(await screen.findByText(words.changedMeanwhile));
   assert.ok(!screen.queryByText(/version 3/));
-  await waitFor(() => assert.ok(reads > before, "the conversation is read again"));
+  await waitFor(() => assert.ok(reads >= 1, "the conversation is read again"));
 });
 
 test("an answer routed to the one agent a message went to says only where it went", async () => {
@@ -2733,7 +2687,7 @@ test("the + menu returns focus to its category when leaving Agents and Projects"
   net = stubFetch({
     "GET /api/projects/Globex/channels": () => ({ channels: [] }),
   });
-  const sel: Selection = { agents: [], mode: "join", project: "Globex", channel: "general" };
+  const sel: Selection = { project: "Globex", channel: "general" };
   render(
     <PlusMenu
       agents={[{ name: "helper" }, { name: "lead" }]}

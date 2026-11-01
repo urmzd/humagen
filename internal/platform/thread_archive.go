@@ -82,9 +82,12 @@ func (p *Platform) DeletionQueue(who auth.Principal) ([]Deletion, error) {
 		return nil, fmt.Errorf("%w: the deletion queue is for admins", ErrForbidden)
 	}
 	now := p.now()
-	recs, _ := p.Threads.Summaries(who.Tenant, func(th threads.Thread) bool {
+	recs, _, err := p.Threads.Summaries(who.Tenant, func(th threads.Thread) bool {
 		return th.Archive != nil && th.Archive.Deleted == nil
 	})
+	if err != nil {
+		return nil, err
+	}
 	slices.SortFunc(recs, func(x, y threads.Summary) int {
 		if x.Archive.Due(now) != y.Archive.Due(now) {
 			if x.Archive.Due(now) {

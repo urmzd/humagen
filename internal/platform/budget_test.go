@@ -26,7 +26,10 @@ var billing = auth.Principal{Tenant: tenant, Subject: "ana", Kind: auth.User, Ro
 
 // waitsUntil answers its first n calls at once and each later one only once
 // ready says so, as a real model's seconds-long call gives the platform time
-// to judge the call before it.
+// to judge the call before it. It waits as long as await does: the platform
+// judges a call from the run's events, a moment behind the run, and on a
+// loaded machine that moment has outlasted a shorter wait, which let the run
+// go past the call it was to be held at and end without a hold.
 type waitsUntil struct {
 	saigetypes.Provider
 	n     int
@@ -40,7 +43,7 @@ func (g *waitsUntil) Stream(ctx context.Context, req saigetypes.Request) (<-chan
 	g.calls++
 	n := g.calls
 	g.mu.Unlock()
-	for deadline := time.Now().Add(10 * time.Second); n > g.n && !g.ready() && time.Now().Before(deadline); {
+	for deadline := time.Now().Add(30 * time.Second); n > g.n && !g.ready() && time.Now().Before(deadline) && ctx.Err() == nil; {
 		time.Sleep(5 * time.Millisecond)
 	}
 	return g.Provider.Stream(ctx, req)
@@ -62,7 +65,7 @@ func approving(t *testing.T) *platform.Platform {
 				return script(spends(say("Done."), 10, 1))
 			}
 			return priced{Provider: &waitsUntil{n: 2, ready: func() bool {
-				for _, e := range p.Usage.Notices(tenant, 0) {
+				for _, e := range noticesOf(p, tenant, 0) {
 					if e.Kind == usage.Held {
 						return true
 					}
@@ -146,7 +149,7 @@ func TestARunHeldAtASpendLimitGoesOnWhenBillingGrantsIt(t *testing.T) {
 		t.Fatalf("the run answered %q", done.Answer)
 	}
 	var grants []usage.Entry
-	for _, e := range p.Usage.Notices(tenant, 0) {
+	for _, e := range noticesOf(p, tenant, 0) {
 		if e.Kind == usage.Granted && e.RunID == r.ID {
 			grants = append(grants, e)
 		}
@@ -155,7 +158,7 @@ func TestARunHeldAtASpendLimitGoesOnWhenBillingGrantsIt(t *testing.T) {
 		grants[0].Scope == nil || grants[0].Scope.Kind != policy.Tenant {
 		t.Fatalf("grants = %+v, want one of 10,000 by ana under version 1", grants)
 	}
-	if g := p.Usage.Granted(tenant, r.ID, policy.Scope{Kind: policy.Tenant}, policy.PeriodStart(policy.Day, time.Now())); g.Spend != 10_000 {
+	if g := grantedOf(p, tenant, r.ID, policy.Scope{Kind: policy.Tenant}, policy.PeriodStart(policy.Day, time.Now())); g.Spend != 10_000 {
 		t.Errorf("the ledger holds %+v granted to the run", g)
 	}
 }
@@ -178,7 +181,7 @@ func TestAHeldRunIsStoppedWhenBillingDeclinesOrThePolicyNoLongerGrants(t *testin
 		if stopped.Cause != "Over budget this month" {
 			t.Fatalf("the run was stopped for %q", stopped.Cause)
 		}
-		for _, e := range p.Usage.Notices(tenant, 0) {
+		for _, e := range noticesOf(p, tenant, 0) {
 			if e.Kind == usage.Granted {
 				t.Fatalf("a declined hold granted %+v", e)
 			}

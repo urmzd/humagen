@@ -1,15 +1,19 @@
 // Package library keeps bounded immutable skill revisions. Published revisions
 // are resolved by the platform into its existing pinned skill composition.
+//
+// It reads and writes the database per request (pkg/state, per request): it
+// holds nothing in memory, so any number of processes on one database agree,
+// and it does not need pkg/state's single-writer lock.
 package library
 
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -109,59 +113,124 @@ func clone(r Revision) Revision {
 	return r
 }
 
+// skillsNamespace is where skill revisions are kept. The tenant is the shard
+// key; within it:
+//
+//	<scope>/<name>   every revision of one skill, oldest first
+//	#id:<id>         the key of the skill with that id
+//	#scope:<scope>   how many skills a scope holds
+//	#scopes          how many scopes the tenant holds
+//
+// A scope's key starts with its kind, so no skill's key starts with "#".
+const skillsNamespace = "library.skills"
+
+func skillKey(scope Scope, name string) string { return scope.Key() + "/" + name }
+func idKey(id string) string                   { return "#id:" + id }
+func scopeCountKey(scope Scope) string         { return "#scope:" + scope.Key() }
+
+const scopesKey = "#scopes"
+
+// Store keeps skill revisions. It reads and writes the database per request.
 type Store struct {
-	mu   sync.RWMutex
-	rows map[string]map[string]map[string][]Revision
-	kept *state.Table[[]Revision]
+	kv   kv
+	rows *state.Table[[]Revision]
 }
 
+// Open returns a store on st, which may be shared with other processes. A nil
+// st keeps skills in this process's memory.
+//
+// Skills kept by a release before the index and counter records are counted
+// and indexed the first time any process opens the store; a process that
+// opens it at the same time writes the same records.
 func Open(st state.Store) (*Store, error) {
-	s := &Store{rows: map[string]map[string]map[string][]Revision{}, kept: state.NewTable[[]Revision](st, "library.skills")}
-	err := s.kept.Load(func(tenant, key string, revisions []Revision) error {
-		if len(revisions) == 0 || len(revisions) > MaxVersions {
-			return ErrInvalid
-		}
-		first := revisions[0]
-		if key != first.Scope.Key()+"/"+first.Name || !first.Scope.Valid() {
-			return ErrInvalid
-		}
-		for i, r := range revisions {
-			if r.ID == "" {
-				revisions[i].ID = ID(r.Scope, r.Name)
-			} else if r.ID != ID(r.Scope, r.Name) {
-				return ErrInvalid
-			}
-			if !r.Valid() || r.Scope != first.Scope || r.Name != first.Name || r.Version != i+1 || r.By == "" || r.At.IsZero() || len(r.Tests) > 10 {
-				return ErrInvalid
-			}
-		}
-		group, err := s.group(tenant, first.Scope)
-		if err != nil {
-			return err
-		}
-		if len(group) >= MaxSkills {
-			return ErrInvalid
-		}
-		group[first.Name] = revisions
-		return nil
-	})
-	return s, err
-}
-func (s *Store) group(tenant string, scope Scope) (map[string][]Revision, error) {
-	if s.rows[tenant] == nil {
-		s.rows[tenant] = map[string]map[string][]Revision{}
+	if st == nil {
+		st = state.NewMemory()
 	}
-	key := scope.Key()
-	if s.rows[tenant][key] == nil {
-		if len(s.rows[tenant]) >= MaxScopes {
+	s := &Store{kv: kv{st: st, namespace: skillsNamespace}, rows: state.NewTable[[]Revision](st, skillsNamespace)}
+	if err := s.kv.convertOnce(s.convert); err != nil {
+		return nil, fmt.Errorf("library: convert skills: %w", err)
+	}
+	return s, nil
+}
+
+// checkRows validates a skill's revisions as read, giving each its id.
+func checkRows(key string, revisions []Revision) ([]Revision, error) {
+	if len(revisions) == 0 || len(revisions) > MaxVersions {
+		return nil, ErrInvalid
+	}
+	first := revisions[0]
+	if key != skillKey(first.Scope, first.Name) || !first.Scope.Valid() {
+		return nil, ErrInvalid
+	}
+	for i, r := range revisions {
+		if r.ID == "" {
+			revisions[i].ID = ID(r.Scope, r.Name)
+		} else if r.ID != ID(r.Scope, r.Name) {
 			return nil, ErrInvalid
 		}
-		s.rows[tenant][key] = map[string][]Revision{}
+		if !r.Valid() || r.Scope != first.Scope || r.Name != first.Name || r.Version != i+1 || r.By == "" || r.At.IsZero() || len(r.Tests) > 10 {
+			return nil, ErrInvalid
+		}
 	}
-	return s.rows[tenant][key], nil
+	return revisions, nil
 }
-func (s *Store) put(tenant string, scope Scope, name string, rows []Revision) error {
-	return s.kept.Put(tenant, scope.Key()+"/"+name, rows)
+
+func (s *Store) convert(recs []state.Record) error {
+	var list []state.Op
+	tenant := ""
+	scopes := map[string]int{}
+	flush := func() {
+		if tenant == "" {
+			return
+		}
+		o := &ops{}
+		for key, n := range scopes {
+			o.put(tenant, "#scope:"+key, n, 0)
+		}
+		o.put(tenant, scopesKey, len(scopes), 0)
+		list = append(list, o.list...)
+		scopes = map[string]int{}
+	}
+	for _, r := range recs {
+		if r.Tenant != tenant {
+			flush()
+			tenant = r.Tenant
+		}
+		if len(r.Key) > 0 && r.Key[0] == '#' {
+			continue
+		}
+		var revisions []Revision
+		if err := json.Unmarshal(r.Value, &revisions); err != nil {
+			return fmt.Errorf("%q/%q: %w", r.Tenant, r.Key, err)
+		}
+		revisions, err := checkRows(r.Key, revisions)
+		if err != nil {
+			return fmt.Errorf("%q/%q: %w", r.Tenant, r.Key, err)
+		}
+		first := revisions[0]
+		scopes[first.Scope.Key()]++
+		o := &ops{}
+		o.put(r.Tenant, idKey(first.ID), r.Key, 0)
+		list = append(list, o.list...)
+	}
+	flush()
+	return s.kv.createAll(list)
+}
+
+// read returns a skill's revisions and their version, none when it has no
+// record.
+func (s *Store) read(tenant string, scope Scope, name string) ([]Revision, int64, error) {
+	key := skillKey(scope, name)
+	var rows []Revision
+	ver, err := s.kv.lookupMaybe(tenant, key, &rows)
+	if err != nil || ver == 0 {
+		return nil, 0, err
+	}
+	rows, err = checkRows(key, rows)
+	if err != nil {
+		return nil, 0, fmt.Errorf("library: %q/%q: %w", tenant, key, err)
+	}
+	return rows, ver, nil
 }
 
 // Draft appends an immutable revision; expected is the latest version read.
@@ -174,34 +243,99 @@ func (s *Store) Draft(tenant, by string, scope Scope, d Definition, expected int
 	if tenant == "" || by == "" || !scope.Valid() || !d.Valid() || at.IsZero() || len(trustedOrigin) > 1 || len(trustedOrigin) == 1 && len(trustedOrigin[0]) > 128 {
 		return Revision{}, ErrInvalid
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	group, err := s.group(tenant, scope)
-	if err != nil {
-		return Revision{}, err
-	}
-	previous := group[d.Name]
-	if len(previous) != expected {
-		return Revision{}, ErrConflict
-	}
-	if len(previous) >= MaxVersions || len(previous) == 0 && len(group) >= MaxSkills {
-		return Revision{}, ErrInvalid
-	}
 	if d.Tools == nil {
 		d.Tools = []string{}
 	}
-	r := clone(Revision{OriginRun: outcomeOrigin(previous, from, trustedOrigin), ID: ID(scope, d.Name), Definition: d, Scope: scope, Version: len(previous) + 1, By: by, At: at, Tests: []string{}, From: from})
-	next := append(slices.Clone(previous), r)
-	if err := s.put(tenant, scope, d.Name, next); err != nil {
+	var out Revision
+	err = state.Retry(func() error {
+		previous, ver, err := s.read(tenant, scope, d.Name)
+		if err != nil {
+			return err
+		}
+		if len(previous) != expected {
+			return ErrConflict
+		}
+		if len(previous) >= MaxVersions {
+			return ErrInvalid
+		}
+		r := clone(Revision{OriginRun: outcomeOrigin(previous, from, trustedOrigin), ID: ID(scope, d.Name), Definition: d, Scope: scope, Version: len(previous) + 1, By: by, At: at, Tests: []string{}, From: from})
+		next := append(slices.Clone(previous), r)
+		o := &ops{}
+		o.put(tenant, skillKey(scope, d.Name), next, ver)
+		if ver == 0 {
+			// A new skill is counted in its scope, and a new scope in the
+			// tenant, in the same write.
+			var count int
+			cv, err := s.kv.lookupMaybe(tenant, scopeCountKey(scope), &count)
+			if err != nil {
+				return err
+			}
+			if count >= MaxSkills {
+				return ErrInvalid
+			}
+			if cv == 0 {
+				var scopes int
+				sv, err := s.kv.lookupMaybe(tenant, scopesKey, &scopes)
+				if err != nil {
+					return err
+				}
+				if scopes >= MaxScopes {
+					return ErrInvalid
+				}
+				o.put(tenant, scopesKey, scopes+1, sv)
+			}
+			o.put(tenant, scopeCountKey(scope), count+1, cv)
+			o.set(tenant, idKey(r.ID), skillKey(scope, d.Name))
+		}
+		if err := o.commit(s.kv); err != nil {
+			return err
+		}
+		out = r
+		return nil
+	})
+	if err != nil {
 		return Revision{}, err
 	}
-	group[d.Name] = next
-	return clone(r), nil
+	return clone(out), nil
 }
+
+// change rewrites one revision of a skill by compare-and-set. fn returns
+// state.ErrUnchanged to write nothing.
+func (s *Store) change(tenant string, scope Scope, name string, version int, fn func(r *Revision) error) (Revision, error) {
+	var out Revision
+	err := state.Retry(func() error {
+		rows, ver, err := s.read(tenant, scope, name)
+		if err != nil {
+			return err
+		}
+		if version < 1 || version > len(rows) {
+			return ErrNotFound
+		}
+		r := clone(rows[version-1])
+		if err := fn(&r); errors.Is(err, state.ErrUnchanged) {
+			out = r
+			return nil
+		} else if err != nil {
+			return err
+		}
+		next := slices.Clone(rows)
+		next[version-1] = r
+		o := &ops{}
+		o.put(tenant, skillKey(scope, name), next, ver)
+		if err := o.commit(s.kv); err != nil {
+			return err
+		}
+		out = r
+		return nil
+	})
+	return out, err
+}
+
 func (s *Store) Get(tenant string, scope Scope, name string, version int) (Revision, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	rows := s.rows[tenant][scope.Key()][name]
+	rows, _, err := s.read(tenant, scope, name)
+	if err != nil {
+		return Revision{}, err
+	}
 	if version == 0 {
 		version = len(rows)
 	}
@@ -210,35 +344,74 @@ func (s *Store) Get(tenant string, scope Scope, name string, version int) (Revis
 	}
 	return clone(rows[version-1]), nil
 }
-func (s *Store) List(tenant string, scope Scope) []Revision {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+
+// List returns the latest revision of every skill in a scope, by name.
+func (s *Store) List(tenant string, scope Scope) ([]Revision, error) {
+	items, err := s.rows.All(tenant, scope.Key()+"/", MaxSkills)
+	if err != nil {
+		return nil, err
+	}
 	out := []Revision{}
-	for _, rows := range s.rows[tenant][scope.Key()] {
+	for _, it := range items {
+		rows, err := checkRows(it.Key, it.Value)
+		if err != nil {
+			return nil, fmt.Errorf("library: %q/%q: %w", tenant, it.Key, err)
+		}
 		out = append(out, clone(rows[len(rows)-1]))
 	}
 	slices.SortFunc(out, func(a, b Revision) int { return strings.Compare(a.Name, b.Name) })
-	return out
+	return out, nil
 }
-func (s *Store) History(tenant string, scope Scope, name string) []Revision {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := []Revision{}
-	for _, r := range s.rows[tenant][scope.Key()][name] {
-		out = append(out, clone(r))
+
+// ListPublished returns the latest published revision of every skill in a
+// scope that has one, by name, in one bounded read.
+func (s *Store) ListPublished(tenant string, scope Scope) ([]Revision, error) {
+	items, err := s.rows.All(tenant, scope.Key()+"/", MaxSkills)
+	if err != nil {
+		return nil, err
 	}
-	return out
-}
-func (s *Store) Published(tenant string, scope Scope, name string) (Revision, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	rows := s.rows[tenant][scope.Key()][name]
-	for i := len(rows) - 1; i >= 0; i-- {
-		if !rows[i].PublishedAt.IsZero() {
-			return clone(rows[i]), true
+	out := []Revision{}
+	for _, it := range items {
+		rows, err := checkRows(it.Key, it.Value)
+		if err != nil {
+			return nil, fmt.Errorf("library: %q/%q: %w", tenant, it.Key, err)
+		}
+		for i := len(rows) - 1; i >= 0; i-- {
+			if !rows[i].PublishedAt.IsZero() {
+				out = append(out, clone(rows[i]))
+				break
+			}
 		}
 	}
-	return Revision{}, false
+	slices.SortFunc(out, func(a, b Revision) int { return strings.Compare(a.Name, b.Name) })
+	return out, nil
+}
+
+func (s *Store) History(tenant string, scope Scope, name string) ([]Revision, error) {
+	rows, _, err := s.read(tenant, scope, name)
+	if err != nil {
+		return nil, err
+	}
+	out := []Revision{}
+	for _, r := range rows {
+		out = append(out, clone(r))
+	}
+	return out, nil
+}
+
+// Published returns the latest published revision of a skill, and whether
+// it has one.
+func (s *Store) Published(tenant string, scope Scope, name string) (Revision, bool, error) {
+	rows, _, err := s.read(tenant, scope, name)
+	if err != nil {
+		return Revision{}, false, err
+	}
+	for i := len(rows) - 1; i >= 0; i-- {
+		if !rows[i].PublishedAt.IsZero() {
+			return clone(rows[i]), true, nil
+		}
+	}
+	return Revision{}, false, nil
 }
 
 // Tested records the durable run reference, never a client-supplied success flag.
@@ -246,51 +419,35 @@ func (s *Store) Tested(tenant string, scope Scope, name string, version int, run
 	if run == "" || len(run) > 128 {
 		return ErrInvalid
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	rows := s.rows[tenant][scope.Key()][name]
-	if version < 1 || version > len(rows) {
-		return ErrNotFound
-	}
-	r := clone(rows[version-1])
-	if slices.Contains(r.Tests, run) {
+	_, err := s.change(tenant, scope, name, version, func(r *Revision) error {
+		if slices.Contains(r.Tests, run) {
+			return state.ErrUnchanged
+		}
+		if len(r.Tests) >= 10 {
+			return ErrInvalid
+		}
+		r.Tests = append(r.Tests, run)
 		return nil
-	}
-	if len(r.Tests) >= 10 {
-		return ErrInvalid
-	}
-	r.Tests = append(r.Tests, run)
-	next := slices.Clone(rows)
-	next[version-1] = r
-	if err := s.put(tenant, scope, name, next); err != nil {
-		return err
-	}
-	s.rows[tenant][scope.Key()][name] = next
-	return nil
+	})
+	return err
 }
+
 func (s *Store) Publish(tenant, by string, scope Scope, name string, version int, at time.Time) (Revision, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	rows := s.rows[tenant][scope.Key()][name]
-	if version < 1 || version > len(rows) {
-		return Revision{}, ErrNotFound
-	}
-	r := clone(rows[version-1])
-	if !r.PublishedAt.IsZero() {
-		return r, nil
-	}
-	// The platform checks that a recorded test actually completed successfully.
-	if len(r.Tests) == 0 || by == "" || at.IsZero() {
-		return Revision{}, fmt.Errorf("%w: test the revision before publishing", ErrConflict)
-	}
-	r.PublishedAt = at
-	r.PublishedBy = by
-	next := slices.Clone(rows)
-	next[version-1] = r
-	if err := s.put(tenant, scope, name, next); err != nil {
+	r, err := s.change(tenant, scope, name, version, func(r *Revision) error {
+		if !r.PublishedAt.IsZero() {
+			return state.ErrUnchanged
+		}
+		// The platform checks that a recorded test actually completed successfully.
+		if len(r.Tests) == 0 || by == "" || at.IsZero() {
+			return fmt.Errorf("%w: test the revision before publishing", ErrConflict)
+		}
+		r.PublishedAt = at
+		r.PublishedBy = by
+		return nil
+	})
+	if err != nil {
 		return Revision{}, err
 	}
-	s.rows[tenant][scope.Key()][name] = next
 	return clone(r), nil
 }
 
@@ -299,15 +456,30 @@ func ID(scope Scope, name string) string {
 	sum := sha256.Sum256([]byte(scope.Key() + "/" + name))
 	return fmt.Sprintf("sk-%x", sum[:20])
 }
+
+// Find returns the latest revision of the skill with an id.
 func (s *Store) Find(tenant, id string) (Revision, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	for _, group := range s.rows[tenant] {
-		for _, rows := range group {
-			if rows[len(rows)-1].ID == id {
-				return clone(rows[len(rows)-1]), nil
-			}
-		}
+	if id == "" {
+		return Revision{}, ErrNotFound
+	}
+	var key string
+	if _, err := s.kv.lookup(tenant, idKey(id), &key); errors.Is(err, state.ErrNotFound) {
+		return Revision{}, ErrNotFound
+	} else if err != nil {
+		return Revision{}, err
+	}
+	var rows []Revision
+	if _, err := s.kv.lookup(tenant, key, &rows); errors.Is(err, state.ErrNotFound) {
+		return Revision{}, ErrNotFound
+	} else if err != nil {
+		return Revision{}, err
+	}
+	rows, err := checkRows(key, rows)
+	if err != nil {
+		return Revision{}, fmt.Errorf("library: %q/%q: %w", tenant, key, err)
+	}
+	if last := rows[len(rows)-1]; last.ID == id {
+		return clone(last), nil
 	}
 	return Revision{}, ErrNotFound
 }

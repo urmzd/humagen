@@ -51,7 +51,7 @@ func TestNoMatchIsEmptyNotAnError(t *testing.T) {
 
 func TestTenantsAreIsolated(t *testing.T) {
 	s := seeded(t)
-	if got := s.List("globex"); len(got) != 0 {
+	if got := sources(t, s, "globex"); len(got) != 0 {
 		t.Fatalf("other tenant listed %v", got)
 	}
 	if hits, _ := s.Search("globex", nil, "release", 0, ""); len(hits) != 0 {
@@ -91,7 +91,7 @@ func TestRemoveADocument(t *testing.T) {
 	if hits, _ := s.Search("acme", nil, "release workflow", 0, ""); len(hits) != 0 {
 		t.Fatalf("a removed document still matches: %v", hits)
 	}
-	if got := s.List("acme")[0]; got.Documents != 1 {
+	if got := sources(t, s, "acme")[0]; got.Documents != 1 {
 		t.Fatalf("counts are stale: %+v", got)
 	}
 }
@@ -156,7 +156,7 @@ func TestExcludeAndVariants(t *testing.T) {
 	if hits("") != 0 {
 		t.Fatal("an excluded document still matches")
 	}
-	if got := s.List("acme")[0]; got.Documents != 2 || got.Excluded != 1 {
+	if got := sources(t, s, "acme")[0]; got.Documents != 2 || got.Excluded != 1 {
 		t.Fatalf("counts = %+v", got)
 	}
 	// The saved view is unaffected by what is excluded now, and a view saved
@@ -194,9 +194,18 @@ func TestExcludeAndVariants(t *testing.T) {
 	}
 	// Removing a document removes it from every view.
 	_ = s.Remove("acme", "handbook", releases, now)
-	for _, v := range s.List("acme")[0].Variants {
+	for _, v := range sources(t, s, "acme")[0].Variants {
 		if len(v.Excluded) != 0 {
 			t.Fatalf("variant %s still names a removed document", v.Name)
 		}
 	}
+}
+
+func sources(t *testing.T, s *Store, tenant string) []Source {
+	t.Helper()
+	out, err := s.List(tenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
 }

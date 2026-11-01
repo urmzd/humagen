@@ -90,16 +90,16 @@ func (p *Platform) extraSourceDependencies(ctx context.Context, who auth.Princip
 // ordinarySourceDependencyRuns removes governance as an extra-store copy
 // authority. It uses the same principal's own current roles, never fabricated
 // groups, and requires an actual human for personal-origin graph projections.
-func (p *Platform) ordinarySourceDependencyRuns(who auth.Principal, name string) []string {
+func (p *Platform) ordinarySourceDependencyRuns(who auth.Principal, name string) ([]string, error) {
 	if who.Kind != auth.User || !who.Can(auth.RunsRead) || !who.Can(auth.KnowledgeRead) {
-		return []string{}
+		return []string{}, nil
 	}
 	ordinary := p.Seer(who)
 	ordinary.govern = false
 	ordinary.roles = ordinary.own
 	src, err := p.Knowledge.Get(who.Tenant, name)
 	if err != nil || (src.Lifecycle != nil && src.Lifecycle.Project != "" && !ordinary.Place(Place{Project: src.Lifecycle.Project})) {
-		return []string{}
+		return []string{}, nil
 	}
 	return p.SourceEvidence.RunReferences(who.Tenant, name, 200, func(id string, proof knowledge.CitationEvidence) bool {
 		run, err := p.Runs.Get(who.Tenant, id)

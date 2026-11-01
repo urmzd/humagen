@@ -61,7 +61,7 @@ func TestFortyRacersSettingOneHomeKeepOne(t *testing.T) {
 		// Every project but the one it lives in now sees it leave as often as arrive.
 		arrived, left := 0, 0
 		for _, p := range homes {
-			h, _ := s.History("acme", p, projects.MaxPage, 0)
+			h, _, _ := s.History("acme", p, projects.MaxPage, 0)
 			for _, c := range h {
 				switch {
 				case c.What == projects.HomeChanged && c.Note == projects.LivesHereNote:
@@ -142,7 +142,7 @@ func TestAFailedAgentsOrHomeWriteChangesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := s.Tree("acme")
-	history, _ := s.History("acme", "Field", 0, 0)
+	history, _, _ := s.History("acme", "Field", 0, 0)
 	f.Fail(statetest.ErrInjected)
 	if _, err := s.SetAgents("acme", "Field", 1, projects.Agents{Enable: []string{"lead"}}, ada, t0); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("SetAgents = %v", err)
@@ -165,7 +165,7 @@ func TestAFailedAgentsOrHomeWriteChangesNothing(t *testing.T) {
 	if _, homed := s.Tree("acme").Home("helper"); homed {
 		t.Fatal("a failed home was kept")
 	}
-	if h, _ := s.History("acme", "Field", 0, 0); !reflect.DeepEqual(h, history) {
+	if h, _, _ := s.History("acme", "Field", 0, 0); !reflect.DeepEqual(h, history) {
 		t.Fatalf("a failed write recorded a change: %+v", h)
 	}
 	f.Fail(nil)
@@ -178,7 +178,7 @@ func TestAFailedAgentsOrHomeWriteChangesNothing(t *testing.T) {
 	}
 }
 
-func TestOpenRefusesAHomeThatIsNoProject(t *testing.T) {
+func TestReadRefusesAHomeThatIsNoProject(t *testing.T) {
 	put := func(t *testing.T, st state.Store, key string, v any) {
 		t.Helper()
 		raw, _ := json.Marshal(v)
@@ -206,8 +206,15 @@ func TestOpenRefusesAHomeThatIsNoProject(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			st := state.NewMemory()
 			write(t, st)
-			if _, err := projects.Open(st); !errors.Is(err, projects.ErrInvalid) {
-				t.Fatalf("Open = %v, want ErrInvalid", err)
+			s, err := projects.Open(st)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.Read("acme"); !errors.Is(err, projects.ErrInvalid) {
+				t.Fatalf("Read = %v, want ErrInvalid", err)
+			}
+			if _, err := s.Create("acme", projects.Project{Name: "New", Kind: projects.Team}, projects.Writer{By: "ada", Govern: true}, t0); !errors.Is(err, projects.ErrInvalid) {
+				t.Fatalf("a write = %v, want ErrInvalid", err)
 			}
 		})
 	}
@@ -236,10 +243,14 @@ func TestEnsureRootWritesTheRootOnce(t *testing.T) {
 	if root.Version != 1 || root.CreatedBy != "migration" || root.Agents.Default != projects.OpenDefault {
 		t.Fatalf("the root = %+v", root)
 	}
-	if h, _ := s.History("acme", projects.Root, 0, 0); len(h) != 1 {
+	if h, _, _ := s.History("acme", projects.Root, 0, 0); len(h) != 1 {
 		t.Fatalf("history = %+v", h)
 	}
-	if got := s.Tenants(); len(got) != 1 || got[0] != "acme" {
+	var got []string
+	if err := s.EachTenant(func(t string) error { got = append(got, t); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "acme" {
 		t.Fatalf("tenants = %v", got)
 	}
 }

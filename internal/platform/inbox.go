@@ -334,7 +334,7 @@ func (p *Platform) inboxReader(tree *projects.Tree, who auth.Principal) inbox.Re
 	r := readerOf(who)
 	r.ProjectOf = p.inboxProject(who.Tenant)
 	reader := ReaderOf(who)
-	muted := p.Prefs.Get(who.Tenant, who.Subject).Muted
+	muted := p.PreferencesOf(who.Tenant, who.Subject).Muted
 	for _, name := range tree.Memberships(reader) {
 		if name == projects.Root || !slices.Contains(muted, name) {
 			r.Projects = append(r.Projects, name)
@@ -373,7 +373,7 @@ func (p *Platform) InboxPage(who auth.Principal, q inbox.Query) ([]inbox.Message
 // InboxCount returns how many messages are open for a person, how many of
 // those they have not read, and how many announcements they have not read.
 // Announcements count only in Updates, so they never grow the badge.
-func (p *Platform) InboxCount(who auth.Principal) inbox.Counts {
+func (p *Platform) InboxCount(who auth.Principal) (inbox.Counts, error) {
 	return p.Inbox.Count(who.Tenant, p.inboxQuery(p.Projects.Tree(who.Tenant), who, inbox.Query{}))
 }
 
@@ -957,7 +957,10 @@ func (p *Platform) decideMemory(tenant string, part inbox.MemoryPart, r Resoluti
 // raiseLimit saves new numbers for the policy a budget part is about.
 func (p *Platform) raiseLimit(who auth.Principal, part inbox.BudgetPart, to inbox.Limits) (policy.Policy, error) {
 	scope := policy.Scope{Kind: policy.Kind(part.ScopeKind), Name: part.ScopeName}
-	all := p.Policies.List(who.Tenant)
+	all, err := p.Policies.List(who.Tenant)
+	if err != nil {
+		return policy.Policy{}, err
+	}
 	i := slices.IndexFunc(all, func(x policy.Policy) bool { return x.Scope == scope })
 	if i < 0 {
 		return policy.Policy{}, fmt.Errorf("%w: %s has no limits any more", ErrAction, scope)
@@ -999,7 +1002,13 @@ func (p *Platform) RemoveMemory(tenant, owner, id string) error {
 // syncMemory closes messages whose proposals have all been dealt with elsewhere.
 func (p *Platform) syncMemory(tenant, owner string) {
 	var pending []string
-	for _, n := range p.Memory.List(tenant, owner) {
+	notes, err := p.Memory.List(tenant, owner)
+	if err != nil {
+		// Without the notes nothing is known to be dealt with.
+		p.log.Error("platform: memory could not be read", "tenant", tenant, "owner", owner, "error", err)
+		return
+	}
+	for _, n := range notes {
 		if n.Status == memory.Pending {
 			pending = append(pending, n.ID)
 		}

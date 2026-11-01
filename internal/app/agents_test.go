@@ -55,7 +55,7 @@ func TestTheFilesAgentsAndHomesLand(t *testing.T) {
 	if root.Agents.Default != projects.OpenDefault || !slices.Contains(root.FileOwns, projects.FieldAgents) {
 		t.Fatalf("the root = %+v", root)
 	}
-	if h, _ := p.Projects.History("acme", "Globex", 0, 0); len(h) != 2 {
+	if h, _, _ := p.Projects.History("acme", "Globex", 0, 0); len(h) != 2 {
 		t.Fatalf("a second start wrote Globex again: %+v", h)
 	}
 	field := mustGet(t, p, "acme", "Field")

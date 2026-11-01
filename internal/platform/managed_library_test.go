@@ -88,7 +88,7 @@ func TestMemoryFoldersRespectNativePermissionsExactPersonalOwnershipAndManagemen
 	if err != nil || !rows[0].CanWrite || !rows[0].CanChat || rows[0].CanPromote {
 		t.Fatal("personal capabilities were not confined")
 	}
-	preferences := p.Prefs.Get(tenant, who.Subject).Personal
+	preferences := p.PreferencesOf(tenant, who.Subject).Personal
 	preferences.Remember = true
 	if _, err := p.Prefs.SetPersonal(tenant, who.Subject, preferences); err != nil {
 		t.Fatal(err)

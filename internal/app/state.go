@@ -8,10 +8,13 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/ready"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/leader"
 )
 
 // postgresURLEnv names the database everything is kept in with
@@ -34,39 +37,50 @@ func addStateFlags(fs *flag.FlagSet, getenv func(string) string) stateFlags {
 	}
 }
 
-// openState returns the backends the flags name and a function that lets
-// them go, to be called once the platform has stopped. The zero Backends
-// with no error means memory.
-func openState(ctx context.Context, f stateFlags, getenv func(string) string, log *slog.Logger, providerNames ...string) (platform.Backends, func(), error) {
+// openState returns the backends the flags name, a function that lets them
+// go, to be called once the platform has stopped, and the readiness checks
+// of the connections they hold. The zero Backends with no error means
+// memory, which has nothing to check.
+func openState(ctx context.Context, f stateFlags, getenv func(string) string, log *slog.Logger, providerNames ...string) (platform.Backends, func(), []ready.Check, error) {
+	b, release, pool, err := openStateBackends(ctx, f, getenv, log, providerNames...)
+	if err != nil || pool == nil {
+		return b, release, nil, err
+	}
+	// The stores, the run queue and the bus share the one pool, so a ping
+	// answers for all of them.
+	return b, release, []ready.Check{{Name: "database", Probe: pool.Ping}}, nil
+}
+
+func openStateBackends(ctx context.Context, f stateFlags, getenv func(string) string, log *slog.Logger, providerNames ...string) (platform.Backends, func(), *pgxpool.Pool, error) {
 	switch strings.TrimSpace(*f.kind) {
 	case "", "memory":
 		log.Warn("state is kept in memory and lost on exit; set " + postgresURLEnv + " to keep it")
-		return platform.Backends{}, func() {}, nil
+		return platform.Backends{}, func() {}, nil, nil
 	case "postgres":
 	default:
-		return platform.Backends{}, nil, fmt.Errorf("state: -state=%q is not memory or postgres", *f.kind)
+		return platform.Backends{}, nil, nil, fmt.Errorf("state: -state=%q is not memory or postgres", *f.kind)
 	}
 	url := strings.TrimSpace(getenv(postgresURLEnv))
 	if url == "" {
-		return platform.Backends{}, nil, fmt.Errorf("state: -state=postgres needs $%s", postgresURLEnv)
+		return platform.Backends{}, nil, nil, fmt.Errorf("state: -state=postgres needs $%s", postgresURLEnv)
 	}
 	cfg, err := pgxpool.ParseConfig(url)
 	if err != nil {
 		// The error could quote the URL, password and all.
-		return platform.Backends{}, nil, fmt.Errorf("state: $%s is not a Postgres URL", postgresURLEnv)
+		return platform.Backends{}, nil, nil, fmt.Errorf("state: $%s is not a Postgres URL", postgresURLEnv)
 	}
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
-		return platform.Backends{}, nil, fmt.Errorf("state: postgres: %w", err)
+		return platform.Backends{}, nil, nil, fmt.Errorf("state: postgres: %w", err)
 	}
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		return platform.Backends{}, nil, fmt.Errorf("state: postgres: %w", err)
+		return platform.Backends{}, nil, nil, fmt.Errorf("state: postgres: %w", err)
 	}
 	b, release, err := platform.OpenPostgres(ctx, pool, providerNames...)
 	if err != nil {
 		pool.Close()
-		return platform.Backends{}, nil, fmt.Errorf("state: postgres: %w", err)
+		return platform.Backends{}, nil, nil, fmt.Errorf("state: postgres: %w", err)
 	}
 	log.Info("state is kept in postgres", "host", cfg.ConnConfig.Host, "database", cfg.ConnConfig.Database)
 	return b, func() {
@@ -74,7 +88,22 @@ func openState(ctx context.Context, f stateFlags, getenv func(string) string, lo
 			log.Warn("state: postgres: release", "error", err)
 		}
 		pool.Close()
-	}, nil
+	}, pool, nil
+}
+
+// openLeader returns the elector for the work done once per deployment: on
+// the stores' Postgres, a lock every process on that schema campaigns for;
+// in memory, nil, which always leads, since memory is one process.
+func openLeader(f stateFlags, getenv func(string) string, log *slog.Logger) (leader.Elector, error) {
+	if strings.TrimSpace(*f.kind) != "postgres" {
+		return nil, nil
+	}
+	cfg, err := pgx.ParseConfig(strings.TrimSpace(getenv(postgresURLEnv)))
+	if err != nil {
+		// The error could quote the URL, password and all.
+		return nil, fmt.Errorf("leader: $%s is not a Postgres URL", postgresURLEnv)
+	}
+	return leader.NewPostgres(cfg, leader.WithLogger(log))
 }
 
 // registerSpec puts an agent spec from a file in the registry: a new agent,

@@ -157,6 +157,7 @@ import type {
   PutClientCapabilitiesBodyPart2,
   QueryJournalResponse,
   QuestionAnswer,
+  Readiness,
   RememberOutcomeDecisionBody,
   Resolution,
   ReviseAgentBody,
@@ -893,6 +894,21 @@ export class ApiClient {
   async getHealthRaw(options?: RequestOptions): Promise<ApiResponse<string>> {
     const path = "/healthz";
     return this.rawRequest<string>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Whether this process should be sent traffic. It is ready once it has finished starting, while its database and event bus answer, and until it starts draining to stop. A failed check is named, never explained; the reason is in the server's log. */
+  async getReadiness(options?: RequestOptions): Promise<Readiness> {
+    const path = "/readyz";
+    return this.request<Readiness>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getReadinessRaw(options?: RequestOptions): Promise<ApiResponse<Readiness>> {
+    const path = "/readyz";
+    return this.rawRequest<Readiness>("GET", path, {
       ...options,
     });
   }
@@ -2536,7 +2552,8 @@ that issued it.
   /** The message is posted as the caller, or as the person `act_as` names
 through a client that maps them; no field names an author, and a
 credential acting for nobody is refused (403). What the message
-starts follows the tag rules: the agents it tags answer, at most 3,
+starts follows the tag rules: every agent it tags answers, each
+bounded by budgets and admission like any run,
 and a `$skill` with no agent tagged asks the agents; tagging only
 people or experts notifies them; posted only, nothing answers. A
 message a person posts as themselves, as the console does, that tags

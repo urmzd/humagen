@@ -1,3 +1,8 @@
+{{- /* With tailscale sign-in the Tailscale proxy container is the only way
+in: no Service reaches humagen's loopback listener. The webhooks listener, if
+on, keeps its Service port. */}}
+{{- $tailscale := ((.Values.tailscale | default dict).proxy | default dict).enabled | default false -}}
+{{- if or (not $tailscale) .Values.webhooks.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -13,13 +18,16 @@ spec:
   selector:
     {{- include "humagen.selectorLabels" . | nindent 4 }}
   ports:
+    {{- if not $tailscale }}
     - name: http
       port: {{ .Values.service.port }}
       targetPort: http
       protocol: TCP
+    {{- end }}
     {{- if .Values.webhooks.enabled }}
     - name: webhooks
       port: {{ .Values.webhooks.port }}
       targetPort: webhooks
       protocol: TCP
     {{- end }}
+{{- end }}

@@ -163,7 +163,7 @@ func (p *Platform) Bindings(tenant, client string) ([]projects.Binding, error) {
 	if _, err := p.Clients.Get(tenant, client); err != nil {
 		return nil, err
 	}
-	return p.Projects.Bindings(tenant, client), nil
+	return p.Projects.Bindings(tenant, client)
 }
 
 // ArchiveChannel archives a channel: it and its threads stay, and it takes

@@ -560,7 +560,7 @@ func TestProjects(t *testing.T) {
 	if res, _ := f.do(t, nil, "DELETE", "/api/projects/Launch", acme, ""); res.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete = %d", res.StatusCode)
 	}
-	if got := f.p.Memory.List("acme", "project:Launch"); len(got) != 0 {
+	if got := notesOf(t, f.p.Memory, "acme", "project:Launch"); len(got) != 0 {
 		t.Fatalf("the project's memory outlived it: %v", got)
 	}
 	if res, _ := f.do(t, nil, "GET", "/api/threads/"+one["id"].(string), acme, ""); res.StatusCode != http.StatusOK {

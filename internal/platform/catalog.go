@@ -83,16 +83,20 @@ func (p *Platform) declareConnectors(declared []CatalogConnector) error {
 		}
 		p.catalog.declared[[2]string{c.Tenant, c.Name}] = c
 	}
-	for _, tenant := range p.CatalogStore.Tenants() {
-		for _, c := range p.CatalogStore.Connectors(tenant) {
+	return p.CatalogStore.EachTenant(func(tenant string) error {
+		cs, err := p.CatalogStore.Connectors(tenant)
+		if err != nil {
+			return fmt.Errorf("platform: connectors of %s: %w", tenant, err)
+		}
+		for _, c := range cs {
 			if _, ok := p.catalog.declared[[2]string{tenant, c.Name}]; !ok {
-				if err := p.CatalogStore.Remove(tenant, c.Name); err != nil {
+				if err := p.CatalogStore.Remove(tenant, c.Name); err != nil && !errors.Is(err, catalog.ErrNotFound) {
 					return fmt.Errorf("platform: remove connector %s/%s: %w", tenant, c.Name, err)
 				}
 			}
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 func (p *Platform) declaredConnector(tenant, name string) (CatalogConnector, bool) {
@@ -198,18 +202,22 @@ type CatalogPage struct {
 
 // visibleConnectors is the connectors a person sees: their own, and the
 // published ones of projects they see.
-func (p *Platform) visibleConnectors(who auth.Principal) []catalog.Connector {
+func (p *Platform) visibleConnectors(who auth.Principal) ([]catalog.Connector, error) {
 	if who.Kind != auth.User || !who.Can(auth.KnowledgeRead) {
-		return nil
+		return nil, nil
+	}
+	cs, err := p.CatalogStore.Connectors(who.Tenant)
+	if err != nil {
+		return nil, err
 	}
 	seer := p.Seer(who)
 	var out []catalog.Connector
-	for _, c := range p.CatalogStore.Connectors(who.Tenant) {
+	for _, c := range cs {
 		if c.VisibleTo(who.Subject, seer.Project) {
 			out = append(out, c)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // CatalogAs is the catalog as who reads it: the connectors they see, and
@@ -217,7 +225,11 @@ func (p *Platform) visibleConnectors(who auth.Principal) []catalog.Connector {
 func (p *Platform) CatalogAs(who auth.Principal, q string, limit int) (CatalogPage, error) {
 	page := CatalogPage{Connectors: []CatalogConnectorView{}, Entries: []catalog.Entry{}}
 	var names []string
-	for _, c := range p.visibleConnectors(who) {
+	visible, err := p.visibleConnectors(who)
+	if err != nil {
+		return CatalogPage{}, err
+	}
+	for _, c := range visible {
 		names = append(names, c.Name)
 		view := CatalogConnectorView{Connector: c, Capabilities: []string{}, Mine: c.Owner == who.Subject}
 		if d, ok := p.declaredConnector(who.Tenant, c.Name); ok {
@@ -236,7 +248,11 @@ func (p *Platform) CatalogAs(who auth.Principal, q string, limit int) (CatalogPa
 		page.Connectors = append(page.Connectors, view)
 	}
 	if strings.TrimSpace(q) == "" {
-		page.Entries = p.CatalogStore.List(who.Tenant, names, limit)
+		entries, err := p.CatalogStore.List(who.Tenant, names, limit)
+		if err != nil {
+			return CatalogPage{}, err
+		}
+		page.Entries = entries
 		return page, nil
 	}
 	hits, err := p.CatalogStore.Search(who.Tenant, names, q, limit)
@@ -301,19 +317,23 @@ func (p *Platform) CrawlConnector(ctx context.Context, who auth.Principal, name 
 // catalogConnectorsFor is the connectors whose entries catalog_search may
 // show a run: published ones whose project everyone its answer reaches
 // reads, and, in the owner's own private conversation, the owner's.
-func (p *Platform) catalogConnectorsFor(req runtime.Request) []string {
+func (p *Platform) catalogConnectorsFor(req runtime.Request) ([]string, error) {
 	open := p.openFor(req.Tenant, p.ownProject(req.Tenant, req.RunID))
 	_, person, err := p.ownPrivateConversation(req)
 	if err != nil {
 		person = ""
 	}
+	cs, err := p.CatalogStore.Connectors(req.Tenant)
+	if err != nil {
+		return nil, err
+	}
 	var out []string
-	for _, c := range p.CatalogStore.Connectors(req.Tenant) {
+	for _, c := range cs {
 		if (person != "" && c.Owner == person) || (c.Published != nil && open(c.Project)) {
 			out = append(out, c.Name)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // catalogTools are catalog_search and catalog_query. Like every tool, an
@@ -335,7 +355,11 @@ func (p *Platform) catalogTools(req runtime.Request) map[string]saigetypes.Tool 
 				}
 				limit = n
 			}
-			hits, err := p.CatalogStore.Search(req.Tenant, p.catalogConnectorsFor(req), arg(args, "query"), limit)
+			names, err := p.catalogConnectorsFor(req)
+			if err != nil {
+				return "", err
+			}
+			hits, err := p.CatalogStore.Search(req.Tenant, names, arg(args, "query"), limit)
 			if err != nil {
 				return "", err
 			}

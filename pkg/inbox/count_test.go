@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,20 +15,24 @@ import (
 	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
-// scan is Count as it was before it kept counters: every message the reader
-// may see, read one by one.
-func scan(s *Store, tenantName string, q Query) Counts {
+// scanned is Count as it was before it kept counters: every message the
+// reader may see, read one by one.
+func scanned(s *Store, tenantName string, q Query) Counts {
 	q.State, q.Kind, q.Kinds, q.Projects, q.Shared, q.Alert, q.Agent, q.Unread = Open, "", nil, nil, false, "", "", false
 	f := q.filter()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	t := s.of(tenantName)
+	msgs, _ := s.Snapshot(tenantName)
+	x := newTx(s.st, tenantName)
 	var c Counts
-	for _, m := range t.messages {
-		if !t.match(m, f) {
+	for i := range msgs {
+		m := &msgs[i]
+		k, err := x.markOf(m.ID, q.Reader)
+		if err != nil {
+			panic(err)
+		}
+		if !match(m, k, f) {
 			continue
 		}
-		unread := !t.read[m.ID][q.Reader]
+		unread := !k.Read
 		switch {
 		case m.Broadcast:
 			if unread {
@@ -39,6 +44,15 @@ func scan(s *Store, tenantName string, q Query) Counts {
 				c.Unread++
 			}
 		}
+	}
+	return c
+}
+
+// count is Count, for a store that writes nowhere that fails.
+func count(s *Store, tenantName string, q Query) Counts {
+	c, err := s.Count(tenantName, q)
+	if err != nil {
+		panic(err)
 	}
 	return c
 }
@@ -219,7 +233,7 @@ func (w *world) check(s *Store, step int) {
 	w.t.Helper()
 	for range 4 {
 		q := w.reader()
-		if got, want := s.Count(acme, q), scan(s, acme, q); got != want {
+		if got, want := count(s, acme, q), scanned(s, acme, q); got != want {
 			w.t.Fatalf("step %d: %s counts %+v, a scan %+v", step, q.Reader, got, want)
 		}
 	}
@@ -270,19 +284,33 @@ func TestCountsAgreeWithAScan(t *testing.T) {
 				}
 				for range 40 {
 					q := w.reader()
-					live, rebuilt, scanned := w.s.Count(acme, q), again.Count(acme, q), scan(again, acme, q)
-					if live != rebuilt || rebuilt != scanned {
-						t.Fatalf("%s counts %+v live, %+v rebuilt, a scan %+v", q.Reader, live, rebuilt, scanned)
+					live, rebuilt, all := count(w.s, acme, q), count(again, acme, q), scanned(again, acme, q)
+					if live != rebuilt || rebuilt != all {
+						t.Fatalf("%s counts %+v live, %+v rebuilt, a scan %+v", q.Reader, live, rebuilt, all)
 					}
 				}
 				sameInbox(t, again, w.s)
-				// What the store keeps is the record and the cut, nothing more.
+				// Nothing is kept of a dropped message.
 				recs, err := st.Load(t.Context(), "inbox")
 				if err != nil {
 					t.Fatal(err)
 				}
-				if changes := len(w.s.Changes(acme)); len(recs) > changes+1 || len(recs) < changes {
-					t.Fatalf("the store keeps %d records for %d changes", len(recs), changes)
+				for _, r := range recs {
+					if r.Tenant != acme || len(r.Key) < 2 {
+						continue
+					}
+					switch r.Key[:2] {
+					case "g:":
+						t.Fatalf("retention left %s to clean", r.Key)
+					case "c:", "u:", "z:", "e:", "l:":
+						id := "m-" + strings.TrimLeft(strings.Split(r.Key, ":")[1], "0")
+						if r.Key[:2] == "e:" || r.Key[:2] == "l:" {
+							id = idOfKey(r.Key)
+						}
+						if _, ok := w.s.ByID(acme, id); !ok {
+							t.Fatalf("%s is kept of %s, which was dropped", r.Key, id)
+						}
+					}
 				}
 				// No id is issued twice, the dropped ones' included.
 				w.s = again
@@ -312,38 +340,25 @@ func sameInbox(t *testing.T, got, want *Store) {
 	if !reflect.DeepEqual(got.Changes(acme), want.Changes(acme)) {
 		t.Fatalf("record = %+v, want %+v", got.Changes(acme), want.Changes(acme))
 	}
-	got.mu.Lock()
-	defer got.mu.Unlock()
-	want.mu.Lock()
-	defer want.mu.Unlock()
-	if g, w := tallied(got.of(acme)), tallied(want.of(acme)); !reflect.DeepEqual(g, w) {
+	if g, w := tallied(t, got), tallied(t, want); !reflect.DeepEqual(g, w) {
 		t.Fatalf("counters = %v, want %v", g, w)
 	}
 }
 
 // tallied is a tenant's counters, as plain values.
-func tallied(t *tenant) map[string]any {
-	buckets := map[string]string{}
-	for sig, b := range t.tally.buckets {
-		buckets[sig] = fmt.Sprint(b.open, b.out)
-	}
-	in := map[string]string{}
-	for id, b := range t.tally.in {
-		in[id] = b.sig
-	}
-	snoozed := []string{}
-	for id := range t.tally.snoozed {
-		snoozed = append(snoozed, id)
-	}
-	slices.Sort(snoozed)
-	asleep := map[string][]string{}
-	for sig, g := range t.tally.asleep {
-		for id := range g.msgs {
-			asleep[sig] = append(asleep[sig], id)
+func tallied(t *testing.T, s *Store) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for _, prefix := range []string{"b:", "o:", "z:", "y:", "p:", "n"} {
+		recs, err := listAll(s.st, acme, prefix, maxBuckets)
+		if err != nil {
+			t.Fatal(err)
 		}
-		slices.Sort(asleep[sig])
+		for _, r := range recs {
+			out[r.Key] = string(r.Value)
+		}
 	}
-	return map[string]any{"buckets": buckets, "in": in, "snoozed": snoozed, "asleep": asleep, "snoozedBy": fmt.Sprint(t.tally.snoozedBy)}
+	return out
 }
 
 // A count asks who may see a bucket once for all of it, so what it asks
@@ -368,7 +383,7 @@ func TestACountAsksOnceForMessagesAlike(t *testing.T) {
 	q := readerIn("ada", "Field")
 	q.Now = t0.Add(2 * time.Hour)
 	q.Sees = func(Message) bool { asked++; return true }
-	if c := s.Count(acme, q); c != (Counts{Open: 70, Unread: 70, Updates: 50}) || asked != 3 {
+	if c := count(s, acme, q); c != (Counts{Open: 70, Unread: 70, Updates: 50}) || asked != 3 {
 		t.Fatalf("counts %+v, asking %d times", c, asked)
 	}
 }
@@ -380,7 +395,7 @@ func TestOperationCountsUseTheExactContractScope(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	count := s.Count("t", Query{Reader: "reader", Sees: func(m Message) bool {
+	got := count(s, "t", Query{Reader: "reader", Sees: func(m Message) bool {
 		for _, part := range m.Parts {
 			if part.Operation != nil {
 				return part.Operation.ID == "public"
@@ -388,7 +403,16 @@ func TestOperationCountsUseTheExactContractScope(t *testing.T) {
 		}
 		return false
 	}})
-	if count.Open != 1 || count.Unread != 1 {
-		t.Fatalf("count merged hidden contract scope: %+v", count)
+	if got.Open != 1 || got.Unread != 1 {
+		t.Fatalf("count merged hidden contract scope: %+v", got)
 	}
+}
+
+// countProject is CountProject, for a store that writes nowhere that fails.
+func countProject(s *Store, tenantName, project string, q Query) Counts {
+	c, err := s.CountProject(tenantName, project, q)
+	if err != nil {
+		panic(err)
+	}
+	return c
 }

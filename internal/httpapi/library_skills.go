@@ -32,7 +32,11 @@ func (s *Server) listLibrarySkills(w http.ResponseWriter, r *http.Request, who a
 		s.problem(w, err)
 		return
 	}
-	rows := s.P.SkillLibrary.List(who.Tenant, scope)
+	rows, err := s.P.SkillLibrary.List(who.Tenant, scope)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
 	for i := range rows {
 		rows[i] = s.P.LibraryView(who, rows[i])
 		rows[i].Files = nil // Package content is loaded only after opening a skill.
@@ -66,7 +70,11 @@ func (s *Server) getLibrarySkill(w http.ResponseWriter, r *http.Request, who aut
 		s.problem(w, err)
 		return
 	}
-	rows := s.P.SkillLibrary.History(who.Tenant, row.Scope, row.Name)
+	rows, err := s.P.SkillLibrary.History(who.Tenant, row.Scope, row.Name)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
 	for i := range rows {
 		rows[i] = s.P.LibraryView(who, rows[i])
 	}

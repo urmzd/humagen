@@ -3,6 +3,7 @@ package knowledge
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -33,18 +34,25 @@ func indexed(t *testing.T, s *Store, model string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		s.mu.RLock()
 		done := true
-		for _, sources := range s.tenants {
-			for _, src := range sources {
+		err := s.dir.Each(func(tenant string) error {
+			srcs, _, err := s.sources(tenant)
+			for _, meta := range srcs {
+				src, err := s.current(tenant, meta.Name)
+				if err != nil {
+					return err
+				}
 				for _, p := range src.passages {
 					if p.vec == nil || p.model != model {
 						done = false
 					}
 				}
 			}
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
-		s.mu.RUnlock()
 		if done {
 			return
 		}
@@ -203,13 +211,14 @@ func TestRemoveDeletesVectors(t *testing.T) {
 		}
 	}
 	vectors := 0
-	if err := state.NewTable[stored](st, "knowledge").Load(func(_, _ string, r stored) error {
-		if r.Vectors != nil {
+	recs, err := st.Load(context.Background(), "knowledge")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range recs {
+		if strings.HasPrefix(r.Key, "vec/") {
 			vectors++
 		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
 	}
 	if vectors != 0 {
 		t.Fatalf("%d vector records left", vectors)

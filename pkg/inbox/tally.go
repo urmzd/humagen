@@ -1,66 +1,37 @@
 package inbox
 
 import (
+	"encoding/json"
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// tally is what Count reads, kept as changes apply and so rebuilt whenever
-// they are replayed: the messages open for everyone, in buckets of messages
-// that every reader is shown alike, with how many of each bucket each reader
-// has set aside. A count adds up buckets, never reading a message that is
+// What Count reads is kept as changes apply, in the same write as the change:
+// the messages open for everyone, in buckets of messages that every reader
+// is shown alike ("b:"), with how many of each bucket each reader has set
+// aside ("o:"). A count adds up buckets, never reading a message that is
 // settled, and asks who may see a bucket once, of a message that stands for
 // all of it.
 //
 // What opens again by itself, with time and no change, is kept apart: the
-// messages snoozed for everyone, in groups alike as buckets are, and each
-// reader's own snoozes of broadcasts. A count reads those one by one, and
-// asks who may see a group once.
-type tally struct {
-	buckets map[string]*bucket
-	// in is the bucket each message open for everyone counts in, by id.
-	in map[string]*bucket
-	// snoozed are the messages snoozed for everyone, by id, and asleep the
-	// same messages in groups alike in what decides who reads them, by
-	// signature. A broadcast is never one: each reader snoozes their own
-	// copy.
-	snoozed map[string]*Message
-	asleep  map[string]*group
-	// snoozedBy are, for each reader, the open broadcasts they snoozed for
-	// themselves, until when: subject -> message id -> until.
-	snoozedBy map[string]map[string]time.Time
+// messages snoozed for everyone ("z:"), each with what decides who reads
+// it, and each reader's own snoozes of broadcasts ("y:"). A count reads
+// those one by one, and asks who may see a group alike once.
+
+func unmarshal(it item, v any) error {
+	if err := json.Unmarshal(it.raw, v); err != nil {
+		return fmt.Errorf("inbox: %q: %w", it.key, err)
+	}
+	return nil
 }
 
-func newTally() tally {
-	return tally{buckets: map[string]*bucket{}, in: map[string]*bucket{}, snoozed: map[string]*Message{}, asleep: map[string]*group{}, snoozedBy: map[string]map[string]time.Time{}}
-}
-
-// group is the messages snoozed for everyone alike in what decides who reads
-// them, as a bucket's are.
-type group struct {
-	rep  Message
-	msgs map[string]*Message
-}
-
-// bucket is the open messages alike in everything that decides who reads
-// them: their kind, whether they are a broadcast, whom they are addressed
-// to, and what they are about (Source's run, project, thread and agent).
-type bucket struct {
-	sig string
-	// rep holds those fields, and only those, for the predicates a count
-	// asks.
-	rep Message
-	// open is how many messages are in the bucket.
-	open int
-	// out is, for each reader, how many of them the reader has set aside:
-	// read, or for a broadcast read or hidden for themselves.
-	out map[string]int
-}
-
-// signature names the bucket a message counts in. Each field is written
-// with its length, so no two lists of fields read alike.
+// signature names the bucket a message counts in: its kind, whether it is a
+// broadcast, whom it is addressed to, and what it is about (Source's run,
+// project, thread and agent, and the scopes of its parts). Each field is
+// written with its length, so no two lists of fields read alike.
 func signature(m *Message) string {
 	var b strings.Builder
 	field := func(s string) {
@@ -119,184 +90,240 @@ func representative(m *Message) Message {
 	}
 }
 
-// isOut reports whether a reader has set a message aside: read it, or hid
-// or snoozed their own copy of a broadcast.
-func (t *tenant) isOut(m *Message, subject string) bool {
-	if t.read[m.ID][subject] {
-		return true
-	}
-	_, hid := t.hidden[m.ID][subject]
-	return m.Broadcast && hid
+func keptRep(m *Message) keptMessage {
+	r := representative(m)
+	return keep(&r)
 }
 
-// eachMarker calls fn once for every reader who has marked a message: read
-// it, unread it, or hid or snoozed their own copy.
-func (t *tenant) eachMarker(m *Message, fn func(subject string)) {
-	for s := range t.read[m.ID] {
-		fn(s)
+// isOut reports whether a reader has set a message aside: read it, or hid
+// or snoozed their own copy of a broadcast.
+func isOut(m *Message, k mark) bool {
+	return k.Read || (m.Broadcast && k.Hide != nil)
+}
+
+// out moves one reader's count of what they set aside in a bucket.
+func (x *tx) out(subject, sig string, by int) error {
+	var o outRec
+	if _, err := x.get(outKey(subject, sig), &o); err != nil {
+		return err
 	}
-	for s := range t.hidden[m.ID] {
-		if _, also := t.read[m.ID][s]; !also {
-			fn(s)
-		}
+	if o.N += by; o.N == 0 {
+		x.del(outKey(subject, sig))
+		return nil
 	}
+	x.put(outKey(subject, sig), o)
+	return nil
+}
+
+// ownSnooze records a reader's own snooze of an open broadcast, or forgets
+// it with a zero until.
+func (x *tx) ownSnooze(subject, id, sig string, until time.Time) {
+	if until.IsZero() {
+		x.del(ownSnoozeKey(subject, id))
+		return
+	}
+	x.put(ownSnoozeKey(subject, id), ownSnooze{Until: until, Sig: sig})
 }
 
 // join counts a message as it now stands: in its bucket when it is open for
 // everyone, among the snoozed when it is snoozed, and nowhere once settled.
-func (t *tenant) join(m *Message) {
+func (x *tx) join(m *Message) error {
 	switch m.State {
 	case Open:
 		sig := signature(m)
-		b := t.tally.buckets[sig]
-		if b == nil {
-			b = &bucket{sig: sig, rep: representative(m), out: map[string]int{}}
-			t.tally.buckets[sig] = b
+		var b bucketRec
+		if ok, err := x.get(bucketKey(sig), &b); err != nil {
+			return err
+		} else if !ok {
+			b = bucketRec{Sig: sig, Rep: keptRep(m)}
 		}
-		b.open++
-		t.tally.in[m.ID] = b
-		t.eachMarker(m, func(s string) {
-			if t.isOut(m, s) {
-				b.out[s]++
+		b.Open++
+		x.put(bucketKey(sig), b)
+		marks, err := x.marks(m.ID)
+		if err != nil {
+			return err
+		}
+		for _, k := range marks {
+			if isOut(m, k) {
+				if err := x.out(k.Subject, sig, 1); err != nil {
+					return err
+				}
 			}
-		})
-		for s, h := range t.hidden[m.ID] {
-			if m.Broadcast && h.state == Snoozed {
-				t.snoozeFor(s, m.ID, h.until)
+			if m.Broadcast && k.Hide != nil && k.Hide.State == Snoozed {
+				x.ownSnooze(k.Subject, m.ID, sig, k.Hide.Until)
 			}
 		}
 	case Snoozed:
-		t.tally.snoozed[m.ID] = m
-		sig := signature(m)
-		g := t.tally.asleep[sig]
-		if g == nil {
-			g = &group{rep: representative(m), msgs: map[string]*Message{}}
-			t.tally.asleep[sig] = g
-		}
-		g.msgs[m.ID] = m
+		x.put(sleepKey(m.ID), sleepRec{Until: m.SnoozedUntil, Sig: signature(m), Rep: keptRep(m)})
 	}
+	return nil
 }
 
 // leave takes a message out of every count, before its state changes.
-func (t *tenant) leave(m *Message) {
-	if _, ok := t.tally.snoozed[m.ID]; ok {
-		delete(t.tally.snoozed, m.ID)
+func (x *tx) leave(m *Message) error {
+	switch m.State {
+	case Snoozed:
+		x.del(sleepKey(m.ID))
+	case Open:
 		sig := signature(m)
-		if g := t.tally.asleep[sig]; g != nil {
-			if delete(g.msgs, m.ID); len(g.msgs) == 0 {
-				delete(t.tally.asleep, sig)
+		var b bucketRec
+		if ok, err := x.get(bucketKey(sig), &b); err != nil {
+			return err
+		} else if ok {
+			if b.Open--; b.Open <= 0 {
+				x.del(bucketKey(sig))
+			} else {
+				x.put(bucketKey(sig), b)
+			}
+		}
+		marks, err := x.marks(m.ID)
+		if err != nil {
+			return err
+		}
+		for _, k := range marks {
+			if isOut(m, k) {
+				if err := x.out(k.Subject, sig, -1); err != nil {
+					return err
+				}
+			}
+			if k.Hide != nil {
+				x.ownSnooze(k.Subject, m.ID, sig, time.Time{})
 			}
 		}
 	}
-	b := t.tally.in[m.ID]
-	if b == nil {
-		return
-	}
-	delete(t.tally.in, m.ID)
-	t.eachMarker(m, func(s string) {
-		if t.isOut(m, s) {
-			b.setAside(s, -1)
-		}
-	})
-	if b.open--; b.open == 0 {
-		delete(t.tally.buckets, b.sig)
-	}
-	for s := range t.hidden[m.ID] {
-		t.snoozeFor(s, m.ID, time.Time{})
-	}
+	return nil
 }
 
 // remark brings the count up to date after one reader's own mark on a
 // message changed: wasOut is whether the message was set aside for them
 // before.
-func (t *tenant) remark(m *Message, subject string, wasOut bool) {
-	b := t.tally.in[m.ID]
-	if b == nil {
-		return
+func (x *tx) remark(m *Message, k mark, wasOut bool) error {
+	if m.State != Open {
+		return nil
 	}
-	switch now := t.isOut(m, subject); {
+	sig := signature(m)
+	switch now := isOut(m, k); {
 	case now && !wasOut:
-		b.setAside(subject, 1)
+		if err := x.out(k.Subject, sig, 1); err != nil {
+			return err
+		}
 	case !now && wasOut:
-		b.setAside(subject, -1)
+		if err := x.out(k.Subject, sig, -1); err != nil {
+			return err
+		}
 	}
 	until := time.Time{}
-	if h, ok := t.hidden[m.ID][subject]; ok && m.Broadcast && h.state == Snoozed {
-		until = h.until
+	if m.Broadcast && k.Hide != nil && k.Hide.State == Snoozed {
+		until = k.Hide.Until
 	}
-	t.snoozeFor(subject, m.ID, until)
-}
-
-func (b *bucket) setAside(subject string, by int) {
-	if b.out[subject] += by; b.out[subject] == 0 {
-		delete(b.out, subject)
-	}
-}
-
-// snoozeFor records a reader's own snooze of an open broadcast, or forgets it
-// with a zero until.
-func (t *tenant) snoozeFor(subject, id string, until time.Time) {
-	if until.IsZero() {
-		if mine := t.tally.snoozedBy[subject]; mine != nil {
-			delete(mine, id)
-			if len(mine) == 0 {
-				delete(t.tally.snoozedBy, subject)
-			}
-		}
-		return
-	}
-	if t.tally.snoozedBy[subject] == nil {
-		t.tally.snoozedBy[subject] = map[string]time.Time{}
-	}
-	t.tally.snoozedBy[subject][id] = until
+	x.ownSnooze(k.Subject, m.ID, sig, until)
+	return nil
 }
 
 // count adds up what is open for a reader: each bucket they are shown, less
-// what they set aside in it, and what a snooze has let out since.
-func (t *tenant) count(f filter) Counts {
+// what they set aside in it, and what a snooze has let out since. It reads
+// the buckets, the reader's own counts, and with a time the messages
+// snoozed for everyone and the reader's own snoozes.
+func (x *tx) count(f filter) (Counts, error) {
 	var c Counts
-	for _, b := range t.tally.buckets {
-		if !f.admits(&b.rep) {
+	items, err := x.list("b:", maxBuckets)
+	if err != nil {
+		return c, err
+	}
+	buckets := make(map[string]*bucketRec, len(items))
+	admitted := make(map[string]bool, len(items))
+	for _, it := range items {
+		var b bucketRec
+		if err := unmarshal(it, &b); err != nil {
+			return c, err
+		}
+		buckets[it.key[len("b:"):]] = &b
+	}
+	outs, err := x.list(outPrefix(f.Reader), maxBuckets)
+	if err != nil {
+		return c, err
+	}
+	out := make(map[string]int, len(outs))
+	for _, it := range outs {
+		var o outRec
+		if err := unmarshal(it, &o); err != nil {
+			return c, err
+		}
+		out[it.key[len(outPrefix(f.Reader)):]] = o.N
+	}
+	for h, b := range buckets {
+		rep := b.Rep.message("")
+		if admitted[h] = f.admits(rep); !admitted[h] {
 			continue
 		}
-		unread := b.open - b.out[f.Reader]
-		if b.rep.Broadcast {
+		unread := b.Open - out[h]
+		if rep.Broadcast {
 			c.Updates += unread
 			continue
 		}
-		c.Open += b.open
+		c.Open += b.Open
 		c.Unread += unread
 	}
 	if f.Now.IsZero() {
-		return c
+		return c, nil
 	}
-	for _, g := range t.tally.asleep {
-		asked, admitted := false, false
-		for _, m := range g.msgs {
-			if f.Now.Before(m.SnoozedUntil) {
-				continue
-			}
-			if !asked {
-				asked, admitted = true, f.admits(&g.rep)
-			}
-			if !admitted {
-				break
-			}
-			c.Open++
-			if !t.read[m.ID][f.Reader] {
-				c.Unread++
-			}
+	sleeping, err := x.list("z:", maxSnoozed)
+	if err != nil {
+		return c, err
+	}
+	asked := map[string]bool{}
+	for _, it := range sleeping {
+		var z sleepRec
+		if err := unmarshal(it, &z); err != nil {
+			return c, err
 		}
-	}
-	for id, until := range t.tally.snoozedBy[f.Reader] {
-		if f.Now.Before(until) || t.read[id][f.Reader] {
+		if f.Now.Before(z.Until) {
 			continue
 		}
-		if b := t.tally.in[id]; b != nil && f.admits(&b.rep) {
+		h := hash(z.Sig)
+		ok, seen := asked[h]
+		if !seen {
+			ok = f.admits(z.Rep.message(""))
+			asked[h] = ok
+		}
+		if !ok {
+			continue
+		}
+		id := idOfKey(it.key)
+		c.Open++
+		k, err := x.markOf(id, f.Reader)
+		if err != nil {
+			return c, err
+		}
+		if !k.Read {
+			c.Unread++
+		}
+	}
+	mine, err := x.list(ownSnoozePrefix(f.Reader), maxBuckets)
+	if err != nil {
+		return c, err
+	}
+	for _, it := range mine {
+		var y ownSnooze
+		if err := unmarshal(it, &y); err != nil {
+			return c, err
+		}
+		if f.Now.Before(y.Until) {
+			continue
+		}
+		h := hash(y.Sig)
+		if buckets[h] == nil || !admitted[h] {
+			continue
+		}
+		k, err := x.markOf(idOfKey(it.key), f.Reader)
+		if err != nil {
+			return c, err
+		}
+		if !k.Read {
 			c.Updates++
 		}
 	}
-	return c
+	return c, nil
 }
 
 // scopeParts retains only the independent configuration scopes needed by read

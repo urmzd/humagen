@@ -62,8 +62,8 @@ func TestChannelsAndExpertsSurviveARestart(t *testing.T) {
 		if who, from := again.Tree("acme").ExpertsFor("Field", "billing"); from != "Field" || !reflect.DeepEqual(who, []string{"okta|ana"}) {
 			t.Fatalf("experts after restart = %v from %q", who, from)
 		}
-		h1, _ := s.History("acme", "Field", 0, 0)
-		h2, _ := again.History("acme", "Field", 0, 0)
+		h1, _, _ := s.History("acme", "Field", 0, 0)
+		h2, _, _ := again.History("acme", "Field", 0, 0)
 		if !reflect.DeepEqual(h1, h2) {
 			t.Fatalf("history after restart = %+v, want %+v", h2, h1)
 		}
@@ -110,7 +110,7 @@ func TestAFailedChannelOrExpertWriteChangesNothing(t *testing.T) {
 	if p, _ := s.Get("acme", "Field"); len(p.Experts) != 0 || p.Version != 1 {
 		t.Fatalf("a failed write changed the experts: %+v", p)
 	}
-	if h, _ := s.History("acme", "Field", 0, 0); len(h) != 2 {
+	if h, _, _ := s.History("acme", "Field", 0, 0); len(h) != 2 {
 		t.Fatalf("a failed write recorded a change: %+v", h)
 	}
 	f.Fail(nil)
@@ -123,7 +123,7 @@ func TestAFailedChannelOrExpertWriteChangesNothing(t *testing.T) {
 	}
 }
 
-func TestOpenRefusesChannelsThatAreNotAProjects(t *testing.T) {
+func TestReadRefusesChannelsThatAreNotAProjects(t *testing.T) {
 	put := func(st state.Store, key string, v any) {
 		t.Helper()
 		raw, _ := json.Marshal(v)
@@ -154,8 +154,15 @@ func TestOpenRefusesChannelsThatAreNotAProjects(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			st := state.NewMemory()
 			c.write(st)
-			if _, err := projects.Open(st); !errors.Is(err, projects.ErrInvalid) {
-				t.Fatalf("OpenDefault = %v, want ErrInvalid", err)
+			s, err := projects.Open(st)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.Read("acme"); !errors.Is(err, projects.ErrInvalid) {
+				t.Fatalf("Read = %v, want ErrInvalid", err)
+			}
+			if _, err := s.Create("acme", projects.Project{Name: "New", Kind: projects.Team}, projects.Writer{By: "ada", Govern: true}, t0); !errors.Is(err, projects.ErrInvalid) {
+				t.Fatalf("a write = %v, want ErrInvalid", err)
 			}
 		})
 	}

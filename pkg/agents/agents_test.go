@@ -67,7 +67,7 @@ func TestRestartKeepsEverything(t *testing.T) {
 		if _, err := again.Latest(ctx, "acme", "gone"); !errors.Is(err, definition.ErrRetired) {
 			t.Fatalf("latest of a retired name after restart = %v", err)
 		}
-		if r, ok := again.Retired("acme", "gone"); !ok || r.By != "ada" {
+		if r, ok, err := again.Retired("acme", "gone"); err != nil || !ok || r.By != "ada" {
 			t.Fatalf("retirement after restart = %+v, %v", r, ok)
 		}
 	})

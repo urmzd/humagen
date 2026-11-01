@@ -177,7 +177,12 @@ func (p *Platform) PublishSkill(who auth.Principal, id string, version int) (lib
 // project chain. A personal skill is considered only for the effective actor.
 func (p *Platform) librarySkill(tenant, project, person, name string) (pinnedSkill, bool) {
 	if person != "" {
-		if r, ok := p.SkillLibrary.Published(tenant, library.Scope{Kind: "personal", Subject: person}, name); ok {
+		r, ok, err := p.SkillLibrary.Published(tenant, library.Scope{Kind: "personal", Subject: person}, name)
+		if err != nil {
+			p.log.Warn("platform: skill library could not be read", "tenant", tenant, "skill", name, "error", err)
+			return pinnedSkill{}, false
+		}
+		if ok {
 			return pinRevision(r), true
 		}
 	}
@@ -191,7 +196,12 @@ func (p *Platform) librarySkill(tenant, project, person, name string) (pinnedSki
 		if pr.IsRoot() {
 			scope = library.Scope{Kind: "workspace"}
 		}
-		if r, ok := p.SkillLibrary.Published(tenant, scope, name); ok {
+		r, ok, err := p.SkillLibrary.Published(tenant, scope, name)
+		if err != nil {
+			p.log.Warn("platform: skill library could not be read", "tenant", tenant, "skill", name, "error", err)
+			return pinnedSkill{}, false
+		}
+		if ok {
 			return pinRevision(r), true
 		}
 	}
@@ -248,10 +258,12 @@ func (p *Platform) AvailableSkills(tenant, project, person string) []projects.Sk
 		}
 	}
 	if person != "" {
-		for _, r := range p.SkillLibrary.List(tenant, library.Scope{Kind: "personal", Subject: person}) {
-			if _, ok := p.SkillLibrary.Published(tenant, r.Scope, r.Name); ok {
-				add(r.Name)
-			}
+		published, err := p.SkillLibrary.ListPublished(tenant, library.Scope{Kind: "personal", Subject: person})
+		if err != nil {
+			p.log.Warn("platform: skill library could not be read", "tenant", tenant, "error", err)
+		}
+		for _, r := range published {
+			add(r.Name)
 		}
 	}
 	for _, pr := range p.Projects.Tree(tenant).Chain(project) {
@@ -262,10 +274,12 @@ func (p *Platform) AvailableSkills(tenant, project, person string) []projects.Sk
 		if pr.IsRoot() {
 			scope = library.Scope{Kind: "workspace"}
 		}
-		for _, r := range p.SkillLibrary.List(tenant, scope) {
-			if _, ok := p.SkillLibrary.Published(tenant, scope, r.Name); ok {
-				add(r.Name)
-			}
+		published, err := p.SkillLibrary.ListPublished(tenant, scope)
+		if err != nil {
+			p.log.Warn("platform: skill library could not be read", "tenant", tenant, "error", err)
+		}
+		for _, r := range published {
+			add(r.Name)
 		}
 	}
 	out := []projects.SkillRef{}

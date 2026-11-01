@@ -62,7 +62,7 @@ func (p *Platform) MemoryFolders(ctx context.Context, who auth.Principal, q stri
 		}
 		seen[folder.ID] = true
 		folder.CanPromote = who.Can(auth.ProjectsWrite)
-		for _, note := range p.Memory.List(who.Tenant, owner) {
+		for _, note := range p.notesOf(who.Tenant, owner) {
 			if note.Status == memory.Pending {
 				folder.Pending++
 			} else if note.ExpiresAt.IsZero() || note.ExpiresAt.After(p.now()) {
@@ -153,7 +153,7 @@ func (p *Platform) memoryManagement(ctx context.Context, who auth.Principal, fol
 	if folder.Scope == "workspace" {
 		return "manual"
 	}
-	if folder.Scope == "personal" && !p.Prefs.Get(who.Tenant, who.Subject).Personal.Remember {
+	if folder.Scope == "personal" && !p.PreferencesOf(who.Tenant, who.Subject).Personal.Remember {
 		return "opt_in_required"
 	}
 	cfg := p.Settings(who.Tenant)

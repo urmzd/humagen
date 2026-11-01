@@ -11,6 +11,13 @@
 // Who sees an entry is the connector's rule (Connector.VisibleTo): its owner
 // by default, and the members of its project once the owner publishes it.
 // Seeing an entry never grants reading the object it names.
+//
+// It reads and writes the database per request (pkg/state, per request): a
+// connector's record is the version every change to it and its entries is
+// made at, so any number of processes on one database agree, and it does
+// not need pkg/state's single-writer lock. Search reads the selected
+// connectors' entries, each connector capped at MaxEntries; a process may
+// keep what it read, by the version of the connector it read it at.
 package catalog
 
 import (
@@ -129,27 +136,37 @@ type Hit struct {
 	Score float64 `json:"score"`
 }
 
-// record is one stored document: a connector, an entry, or an entry's
-// vector.
+// record is one stored document: a connector, an entry, an entry's vector,
+// or the stamp every new connector moves.
 type record struct {
 	Connector *Connector    `json:"connector,omitempty"`
 	Entry     *Entry        `json:"entry,omitempty"`
 	Vector    *vectorRecord `json:"vector,omitempty"`
+	Stamp     int64         `json:"stamp,omitempty"`
 }
+
+// namespace is where the catalog is kept. The tenant is the shard key;
+// within it:
+//
+//	c/<connector>          a connector
+//	e/<connector>/<path>   an entry its last kept crawl listed
+//	v/<connector>/<path>   that entry's vector
+//	h                      a stamp every new connector moves, so two
+//	                       processes adding connectors at once cannot both
+//	                       count under MaxConnectors
+//
+// A change to a connector's entries or vectors is written at the version of
+// its connector record, and moves it.
+const (
+	namespace = "catalog"
+	headKey   = "h"
+)
 
 func connectorKey(name string) string    { return "c/" + name }
-func entryKey(name, path string) string  { return "e/" + name + "/" + path }
-func vectorKey(name, path string) string { return "v/" + name + "/" + path }
-
-// splitKey reads a connector name and a path out of an entry or vector key.
-func splitKey(key, kind string) (string, string, bool) {
-	rest, ok := strings.CutPrefix(key, kind+"/")
-	if !ok {
-		return "", "", false
-	}
-	name, path, ok := strings.Cut(rest, "/")
-	return name, path, ok && name != "" && path != ""
-}
+func entryPrefix(name string) string     { return "e/" + name + "/" }
+func vectorPrefix(name string) string    { return "v/" + name + "/" }
+func entryKey(name, path string) string  { return entryPrefix(name) + path }
+func vectorKey(name, path string) string { return vectorPrefix(name) + path }
 
 type entry struct {
 	Entry
@@ -159,70 +176,64 @@ type entry struct {
 	model string
 }
 
-type connector struct {
-	Connector
-	entries []*entry
-}
-
-// Store is the catalog: connectors and their entries per tenant, in memory,
-// written through to a state.Store.
+// Store is the catalog: connectors and their entries per tenant, read and
+// written per request on a state.Store.
 type Store struct {
-	mu      sync.RWMutex
-	kept    *state.Table[record]
-	tenants map[string]map[string]*connector
-	dense   *denseIndex
+	kept *state.Table[record]
+	dir  *state.Tenants
+	read *readCache
+	mu   sync.RWMutex // guards dense
+	// dense is the embedder; nil is lexical only.
+	dense *denseIndex
 }
 
-// NewStore returns an empty store in memory.
-func NewStore() *Store { return &Store{tenants: map[string]map[string]*connector{}} }
-
-// Open returns a store that keeps its records in st, holding what st
-// already has. A nil st is NewStore.
-func Open(st state.Store) (*Store, error) {
-	s := NewStore()
-	s.kept = state.NewTable[record](st, "catalog")
-	entries := map[[2]string][]*Entry{}
-	vectors := map[[3]string]*vectorRecord{}
-	err := s.kept.Load(func(tenant, key string, r record) error {
-		switch {
-		case r.Connector != nil:
-			if key != connectorKey(r.Connector.Name) {
-				return fmt.Errorf("%w: connector record %q", ErrInvalid, key)
-			}
-			if s.tenants[tenant] == nil {
-				s.tenants[tenant] = map[string]*connector{}
-			}
-			s.tenants[tenant][r.Connector.Name] = &connector{Connector: *r.Connector}
-		case r.Entry != nil:
-			if name, _, ok := splitKey(key, "e"); ok {
-				e := *r.Entry
-				entries[[2]string{tenant, name}] = append(entries[[2]string{tenant, name}], &e)
-			}
-		case r.Vector != nil:
-			if name, path, ok := splitKey(key, "v"); ok {
-				vectors[[3]string{tenant, name, path}] = r.Vector
-			}
-		}
-		return nil
-	})
+// NewStore returns a store in this process's memory.
+func NewStore() *Store {
+	s, err := Open(nil)
 	if err != nil {
-		return nil, fmt.Errorf("catalog: load: %w", err)
+		panic(err) // a store in memory cannot fail to open
 	}
-	for k, es := range entries {
-		c := s.tenants[k[0]][k[1]]
-		if c == nil {
-			continue
-		}
-		for _, e := range es {
-			in := indexed(*e)
-			if v := vectors[[3]string{k[0], k[1], e.Path}]; v != nil && v.Generation == c.Generation {
-				in.vec, in.model = v.decode()
-			}
-			c.entries = append(c.entries, in)
-		}
-		slices.SortFunc(c.entries, func(a, b *entry) int { return strings.Compare(a.Path, b.Path) })
+	return s
+}
+
+// Open returns a store on st, which may be shared with other processes. A
+// nil st keeps the catalog in this process's memory.
+func Open(st state.Store) (*Store, error) {
+	if st == nil {
+		st = state.NewMemory()
 	}
-	return s, nil
+	dir, err := state.OpenTenants(st, namespace)
+	if err != nil {
+		return nil, fmt.Errorf("catalog: tenants: %w", err)
+	}
+	return &Store{kept: state.NewTable[record](st, namespace), dir: dir, read: newReadCache()}, nil
+}
+
+// connector reads one connector and the version of its record.
+func (s *Store) connector(tenant, name string) (Connector, int64, error) {
+	it, err := s.kept.Lookup(tenant, connectorKey(name))
+	if errors.Is(err, state.ErrNotFound) || err == nil && it.Value.Connector == nil {
+		return Connector{}, 0, fmt.Errorf("%w: connector %q", ErrNotFound, name)
+	}
+	if err != nil {
+		return Connector{}, 0, err
+	}
+	return *it.Value.Connector, it.Version, nil
+}
+
+// keys reads the keys of a connector's entries and vectors.
+func (s *Store) keys(tenant, name string) ([]string, error) {
+	var out []string
+	for _, prefix := range []string{entryPrefix(name), vectorPrefix(name)} {
+		items, err := s.kept.All(tenant, prefix, MaxEntries)
+		if err != nil {
+			return nil, err
+		}
+		for _, it := range items {
+			out = append(out, it.Key)
+		}
+	}
+	return out, nil
 }
 
 // indexed is an entry with its terms counted.
@@ -270,101 +281,129 @@ func (s *Store) Declare(tenant string, c Connector) (Connector, error) {
 	if !ValidName(c.Name) || c.System == "" {
 		return Connector{}, fmt.Errorf("%w: a connector needs a name of lower case letters, digits and dashes, and a system", ErrInvalid)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	have := s.tenants[tenant][c.Name]
-	if have == nil && len(s.tenants[tenant]) >= MaxConnectors {
-		return Connector{}, fmt.Errorf("%w: at most %d connectors", ErrInvalid, MaxConnectors)
-	}
-	next := Connector{Name: c.Name, System: c.System, Owner: c.Owner, Project: c.Project}
-	b := s.kept.Batch()
-	var entries []*entry
-	if have != nil {
-		next.Published, next.Withdrawn = have.Published, have.Withdrawn
-		next.CrawledAt, next.Entries, next.Generation = have.CrawledAt, have.Entries, have.Generation
-		entries = have.entries
-		if have.System != c.System || have.Owner != c.Owner {
-			for _, e := range have.entries {
-				b.Delete(tenant, entryKey(c.Name, e.Path))
-				b.Delete(tenant, vectorKey(c.Name, e.Path))
-			}
-			next.Published, next.CrawledAt, next.Entries, entries = nil, nil, 0, nil
-			next.Generation++
-		}
-		if have.Project != c.Project {
-			next.Published = nil // published to one audience is not published to another
-		}
-		if have.Connector == next {
-			return next, nil
-		}
-	}
-	b.Put(tenant, connectorKey(c.Name), record{Connector: &next})
-	if err := b.Commit(); err != nil {
+	if err := s.dir.Mark(tenant); err != nil {
 		return Connector{}, err
 	}
-	if s.tenants[tenant] == nil {
-		s.tenants[tenant] = map[string]*connector{}
+	var out Connector
+	err := state.Retry(func() error {
+		have, version, err := s.connector(tenant, c.Name)
+		exists := err == nil
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return err
+		}
+		next := Connector{Name: c.Name, System: c.System, Owner: c.Owner, Project: c.Project}
+		b := s.kept.Batch()
+		if exists {
+			next.Published, next.Withdrawn = have.Published, have.Withdrawn
+			next.CrawledAt, next.Entries, next.Generation = have.CrawledAt, have.Entries, have.Generation
+			if have.System != c.System || have.Owner != c.Owner {
+				keys, err := s.keys(tenant, c.Name)
+				if err != nil {
+					return err
+				}
+				for _, k := range keys {
+					b.Delete(tenant, k)
+				}
+				next.Published, next.CrawledAt, next.Entries = nil, nil, 0
+				next.Generation++
+			}
+			if have.Project != c.Project {
+				next.Published = nil // published to one audience is not published to another
+			}
+			if have == next {
+				out = next
+				return nil
+			}
+			b.PutAt(tenant, connectorKey(c.Name), record{Connector: &next}, version)
+		} else {
+			have, head, err := s.connectors(tenant)
+			if err != nil {
+				return err
+			}
+			if len(have) >= MaxConnectors {
+				return fmt.Errorf("%w: at most %d connectors", ErrInvalid, MaxConnectors)
+			}
+			b.Create(tenant, connectorKey(c.Name), record{Connector: &next})
+			bump(b, tenant, head)
+		}
+		if err := b.Commit(); err != nil {
+			return err
+		}
+		out = next
+		return nil
+	})
+	if err != nil {
+		return Connector{}, err
 	}
-	s.tenants[tenant][c.Name] = &connector{Connector: next, entries: entries}
-	return next, nil
+	return out, nil
+}
+
+// bump moves the head stamp read at version, 0 when there is none.
+func bump(b *state.Batch[record], tenant string, version int64) {
+	if version == 0 {
+		b.Create(tenant, headKey, record{Stamp: 1})
+		return
+	}
+	b.PutAt(tenant, headKey, record{Stamp: version + 1}, version)
 }
 
 // Remove deletes a connector and its entries.
 func (s *Store) Remove(tenant, name string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	c, ok := s.tenants[tenant][name]
-	if !ok {
-		return fmt.Errorf("%w: connector %q", ErrNotFound, name)
-	}
-	b := s.kept.Batch()
-	for _, e := range c.entries {
-		b.Delete(tenant, entryKey(name, e.Path))
-		b.Delete(tenant, vectorKey(name, e.Path))
-	}
-	b.Delete(tenant, connectorKey(name))
-	if err := b.Commit(); err != nil {
-		return err
-	}
-	delete(s.tenants[tenant], name)
-	return nil
+	return state.Retry(func() error {
+		_, version, err := s.connector(tenant, name)
+		if err != nil {
+			return err
+		}
+		keys, err := s.keys(tenant, name)
+		if err != nil {
+			return err
+		}
+		b := s.kept.Batch()
+		for _, k := range keys {
+			b.Delete(tenant, k)
+		}
+		b.DeleteAt(tenant, connectorKey(name), version)
+		return b.Commit()
+	})
 }
 
 // Connector returns one connector.
 func (s *Store) Connector(tenant, name string) (Connector, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	c, ok := s.tenants[tenant][name]
-	if !ok {
-		return Connector{}, fmt.Errorf("%w: connector %q", ErrNotFound, name)
-	}
-	return c.Connector, nil
+	c, _, err := s.connector(tenant, name)
+	return c, err
 }
 
-// Tenants returns every tenant that has a connector.
-func (s *Store) Tenants() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make([]string, 0, len(s.tenants))
-	for t, cs := range s.tenants {
-		if len(cs) > 0 {
-			out = append(out, t)
-		}
-	}
-	slices.Sort(out)
-	return out
-}
+// EachTenant calls fn for every tenant that has had a connector, a page of
+// the directory at a time. A tenant whose connectors are all removed reads
+// as one with none.
+func (s *Store) EachTenant(fn func(tenant string) error) error { return s.dir.Each(fn) }
 
 // Connectors returns a tenant's connectors by name.
-func (s *Store) Connectors(tenant string) []Connector {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make([]Connector, 0, len(s.tenants[tenant]))
-	for _, c := range s.tenants[tenant] {
-		out = append(out, c.Connector)
+func (s *Store) Connectors(tenant string) ([]Connector, error) {
+	out, _, err := s.connectors(tenant)
+	return out, err
+}
+
+// connectors reads a tenant's connectors by name, and the version of its
+// head stamp.
+// The stamp is read first: a connector added after it moves it, so a count
+// made under it is written only if nothing was added since.
+func (s *Store) connectors(tenant string) ([]Connector, int64, error) {
+	head, err := s.kept.Lookup(tenant, headKey)
+	if err != nil && !errors.Is(err, state.ErrNotFound) {
+		return nil, 0, err
 	}
-	slices.SortFunc(out, func(a, b Connector) int { return strings.Compare(a.Name, b.Name) })
-	return out
+	items, err := s.kept.All(tenant, "c/", MaxConnectors)
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]Connector, 0, len(items))
+	for _, it := range items {
+		if it.Value.Connector != nil {
+			out = append(out, *it.Value.Connector)
+		}
+	}
+	return out, head.Version, nil
 }
 
 // Replace keeps a crawl: the connector's entries become exactly these, in
@@ -392,39 +431,53 @@ func (s *Store) Replace(tenant, name string, crawled []Entry, at time.Time) (Con
 	}
 	slices.SortFunc(next, func(a, b *entry) int { return strings.Compare(a.Path, b.Path) })
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	c, ok := s.tenants[tenant][name]
-	if !ok {
-		return Connector{}, fmt.Errorf("%w: connector %q", ErrNotFound, name)
-	}
-	updated := c.Connector
-	updated.CrawledAt, updated.Entries = &at, len(next)
-	updated.Generation++
-	b := s.kept.Batch()
-	for _, e := range c.entries {
-		b.Delete(tenant, entryKey(name, e.Path))
-		b.Delete(tenant, vectorKey(name, e.Path))
-	}
-	// An entry whose text did not change keeps its vector, under the new
-	// generation, so a recrawl does not embed the catalog again.
-	before := make(map[string]*entry, len(c.entries))
-	for _, e := range c.entries {
-		before[e.Path] = e
-	}
-	for _, e := range next {
-		b.Put(tenant, entryKey(name, e.Path), record{Entry: &e.Entry})
-		if old := before[e.Path]; old != nil && old.vec != nil && Text(old.Entry) == Text(e.Entry) {
-			e.vec, e.model = old.vec, old.model
-			b.Put(tenant, vectorKey(name, e.Path), record{Vector: &vectorRecord{Model: old.model, Generation: updated.Generation, Data: encode(old.vec)}})
+	var updated Connector
+	err := state.Retry(func() error {
+		c, version, err := s.connector(tenant, name)
+		if err != nil {
+			return err
 		}
-	}
-	b.Put(tenant, connectorKey(name), record{Connector: &updated})
-	if err := b.Commit(); err != nil {
+		before, err := s.entries(tenant, name, c, version)
+		if err != nil {
+			return err
+		}
+		updated = c
+		updated.CrawledAt, updated.Entries = &at, len(next)
+		updated.Generation++
+		b := s.kept.Batch()
+		listed := make(map[string]bool, len(next))
+		for _, e := range next {
+			listed[e.Path] = true
+		}
+		was := make(map[string]*entry, len(before))
+		for _, e := range before {
+			was[e.Path] = e
+			if !listed[e.Path] {
+				b.Delete(tenant, entryKey(name, e.Path))
+			}
+		}
+		// An entry whose text did not change keeps its vector, under the new
+		// generation, so a recrawl does not embed the catalog again.
+		for _, e := range next {
+			b.Put(tenant, entryKey(name, e.Path), record{Entry: &e.Entry})
+			if old := was[e.Path]; old != nil && old.vec != nil && Text(old.Entry) == Text(e.Entry) {
+				b.Put(tenant, vectorKey(name, e.Path), record{Vector: &vectorRecord{Model: old.model, Generation: updated.Generation, Data: encode(old.vec)}})
+			} else if old != nil {
+				b.Delete(tenant, vectorKey(name, e.Path))
+			}
+		}
+		for _, e := range before {
+			if !listed[e.Path] {
+				b.Delete(tenant, vectorKey(name, e.Path))
+			}
+		}
+		b.PutAt(tenant, connectorKey(name), record{Connector: &updated}, version)
+		return b.Commit()
+	})
+	if err != nil {
 		return Connector{}, err
 	}
-	c.Connector, c.entries = updated, next
-	s.dense.nudge()
+	s.nudge()
 	return updated, nil
 }
 
@@ -494,50 +547,61 @@ func (s *Store) Withdraw(tenant, name, by string, at time.Time) (Connector, erro
 }
 
 func (s *Store) mark(tenant, name string, change func(*Connector)) (Connector, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	c, ok := s.tenants[tenant][name]
-	if !ok {
-		return Connector{}, fmt.Errorf("%w: connector %q", ErrNotFound, name)
-	}
-	updated := c.Connector
-	change(&updated)
-	if updated == c.Connector {
-		return updated, nil
-	}
-	if err := s.kept.Put(tenant, connectorKey(name), record{Connector: &updated}); err != nil {
+	var out Connector
+	_, err := s.kept.Update(tenant, connectorKey(name), func(r record, ok bool) (record, error) {
+		if !ok || r.Connector == nil {
+			return r, fmt.Errorf("%w: connector %q", ErrNotFound, name)
+		}
+		updated := *r.Connector
+		change(&updated)
+		out = updated
+		if updated == *r.Connector {
+			return r, state.ErrUnchanged
+		}
+		return record{Connector: &updated}, nil
+	})
+	if err != nil {
 		return Connector{}, err
 	}
-	c.Connector = updated
-	return updated, nil
+	return out, nil
 }
 
 // List returns the entries of the named connectors, ordered by connector
 // and path, at most limit of them (1 to MaxEntries). An empty selection
 // lists nothing.
-func (s *Store) List(tenant string, connectors []string, limit int) []Entry {
+func (s *Store) List(tenant string, connectors []string, limit int) ([]Entry, error) {
 	if limit <= 0 || limit > MaxEntries {
 		limit = MaxHits
 	}
 	names := slices.Clone(connectors)
 	slices.Sort(names)
 	names = slices.Compact(names)
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	out := []Entry{}
 	for _, n := range names {
-		c, ok := s.tenants[tenant][n]
-		if !ok {
+		if !ValidName(n) {
 			continue
 		}
-		for _, e := range c.entries {
-			if len(out) == limit {
-				return out
+		after := ""
+		for len(out) < limit {
+			page, next, err := s.kept.List(tenant, state.Query{Prefix: entryPrefix(n), After: after, Limit: limit - len(out)})
+			if err != nil {
+				return nil, err
 			}
-			out = append(out, e.Entry)
+			for _, it := range page {
+				if it.Value.Entry != nil {
+					out = append(out, *it.Value.Entry)
+				}
+			}
+			if next == "" {
+				break
+			}
+			after = next
+		}
+		if len(out) == limit {
+			break
 		}
 	}
-	return out
+	return out, nil
 }
 
 // tokens lowercases text and splits it into words of letters and digits,

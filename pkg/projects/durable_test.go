@@ -47,8 +47,8 @@ func TestRestart(t *testing.T) {
 		if news.Managed != projects.ManagedFile || !reflect.DeepEqual(news.FileOwns, []string{projects.FieldKind}) {
 			t.Fatalf("what the file owns did not survive: %+v", news)
 		}
-		h1, _ := s.History("acme", "Field", 0, 0)
-		h2, _ := again.History("acme", "Field", 0, 0)
+		h1, _, _ := s.History("acme", "Field", 0, 0)
+		h2, _, _ := again.History("acme", "Field", 0, 0)
 		if !reflect.DeepEqual(h1, h2) || len(h2) != 2 {
 			t.Fatalf("history after restart = %+v, want %+v", h2, h1)
 		}
@@ -64,10 +64,10 @@ func TestRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		h, _ := third.History("acme", "Later", 0, 0)
+		h, _, _ := third.History("acme", "Later", 0, 0)
 		all := 0
 		for _, name := range []string{"", "Field", "Globex", "Launch", "News", "Later"} {
-			c, _ := third.History("acme", name, 0, 0)
+			c, _, _ := third.History("acme", name, 0, 0)
 			all += len(c)
 		}
 		if len(h) != 1 || h[0].Seq != int64(all) {
@@ -106,7 +106,7 @@ func TestTheHistoryRingIsPrunedInTheSameWrite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		page, _ := again.History("acme", "Field", 1, 0)
+		page, _, _ := again.History("acme", "Field", 1, 0)
 		if page[0].After.Version != projects.MaxHistory+6 {
 			t.Fatalf("the newest change after restart = %+v", page[0])
 		}
@@ -138,13 +138,13 @@ func TestFailedWriteChangesNothing(t *testing.T) {
 	if err := s.Import("globex", []projects.Project{{Name: "A"}}, nil, "migration", t0); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("Import = %v", err)
 	}
-	if s.Tree("acme") != before || !reflect.DeepEqual(s.List("acme"), before.Projects()) || s.Stored("globex") {
+	if s.Tree("acme") != before || !reflect.DeepEqual(s.List("acme"), before.Projects()) || stored(s, "globex") {
 		t.Fatal("a failed write changed the tree")
 	}
 	if _, ok := s.Tombstone("acme", "Launch"); ok {
 		t.Fatal("a failed delete left a tombstone")
 	}
-	if h, _ := s.History("acme", "Field", 0, 0); len(h) != 1 {
+	if h, _, _ := s.History("acme", "Field", 0, 0); len(h) != 1 {
 		t.Fatalf("a failed write recorded a change: %+v", h)
 	}
 	f.Fail(nil)
@@ -161,7 +161,7 @@ func TestFailedWriteChangesNothing(t *testing.T) {
 	}
 }
 
-func TestOpenRefusesATreeThatIsNotOne(t *testing.T) {
+func TestReadRefusesATreeThatIsNotOne(t *testing.T) {
 	put := func(st state.Store, tenant, key string, v any) {
 		t.Helper()
 		raw, _ := json.Marshal(v)
@@ -195,8 +195,15 @@ func TestOpenRefusesATreeThatIsNotOne(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			st := state.NewMemory()
 			c.write(st)
-			if _, err := projects.Open(st); !errors.Is(err, projects.ErrInvalid) {
-				t.Fatalf("OpenDefault = %v, want ErrInvalid", err)
+			s, err := projects.Open(st)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.Read("acme"); !errors.Is(err, projects.ErrInvalid) {
+				t.Fatalf("Read = %v, want ErrInvalid", err)
+			}
+			if _, err := s.Create("acme", projects.Project{Name: "New", Kind: projects.Team}, projects.Writer{By: "ada", Govern: true}, t0); !errors.Is(err, projects.ErrInvalid) {
+				t.Fatalf("a write = %v, want ErrInvalid", err)
 			}
 		})
 	}

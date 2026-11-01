@@ -61,7 +61,7 @@ func TestHelperReceivesConstructedMessagesAndReturnsOneResultToItsCaller(t *test
 		}
 	}
 	matchedCall := false
-	for _, e := range p.Journal.Events(tenant, []string{lead.ID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{lead.ID})) {
 		matchedCall = matchedCall || (e.Type == event.TypeAction && strings.Contains(wire.JSONOf(e), `"tool_call_id":"helper-call"`))
 	}
 	if !matchedCall {
@@ -122,7 +122,7 @@ func TestInvalidHelperResultFailsWithoutPublishingAnAnswer(t *testing.T) {
 	if !strings.Contains(helper.Error, "summary exceeds 2 words") {
 		t.Fatalf("helper error = %q", helper.Error)
 	}
-	for _, e := range p.Journal.Events(tenant, []string{helper.ID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{helper.ID})) {
 		if e.Type == event.TypeText || e.Type == event.TypeCompleted {
 			t.Fatalf("invalid answer published as %s", e.Type)
 		}

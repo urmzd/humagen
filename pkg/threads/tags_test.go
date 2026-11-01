@@ -397,3 +397,58 @@ func TestARefusedSkillKeepsNoRoomForAuto(t *testing.T) {
 		t.Fatalf("nine tags and an unknown skill = %v", err)
 	}
 }
+
+// rostered is a counting Resolver that is also a Roster: it reads its
+// agents in one read, and holds every one when complete.
+type rostered struct {
+	counting
+	reads    int
+	complete bool
+}
+
+func (r *rostered) Agents() (map[string]bool, bool) {
+	r.reads++
+	return r.directory.agents, r.complete
+}
+
+// With a roster, agents take no lookup and hold no place: a message tags
+// any number of them for one read, and the places bound only other tags.
+func TestARosterLetsAMessageTagAnyNumberOfAgents(t *testing.T) {
+	agents := map[string]bool{}
+	var text strings.Builder
+	for i := range 15 {
+		name := fmt.Sprintf("agent-%d", i)
+		agents[name] = true
+		fmt.Fprintf(&text, "@%s ", name)
+	}
+	r := &rostered{counting: counting{directory: directory{agents: agents, people: acme.people}}, complete: true}
+	got, err := threads.Parse(text.String()+"@dana and @agent-3 again", r)
+	if err != nil || len(got) != 16 {
+		t.Fatalf("fifteen agents and a person = %d tags, %v", len(got), err)
+	}
+	if r.reads != 1 || r.agents != 0 || r.people != 1 {
+		t.Fatalf("roster read %d times, %d agent lookups, %d person lookups", r.reads, r.agents, r.people)
+	}
+	// People still hold the places: ten of them and fifteen agents is fine, eleven is not.
+	var people strings.Builder
+	for i := range threads.MaxMentions {
+		fmt.Fprintf(&people, "@p%d ", i)
+	}
+	if got, err := threads.Parse(text.String()+people.String(), r); err != nil || len(got) != 15+threads.MaxMentions {
+		t.Fatalf("fifteen agents and ten people = %d, %v", len(got), err)
+	}
+	if _, err := threads.Parse(text.String()+people.String()+"@p99", r); !errors.Is(err, threads.ErrInvalid) {
+		t.Fatalf("eleven people = %v, want ErrInvalid", err)
+	}
+}
+
+// A roster whose read stopped at its bound answers what it read; a name it
+// did not reach is looked up, and holds a place.
+func TestAnIncompleteRosterLooksUpWhatItDidNotRead(t *testing.T) {
+	r := &rostered{counting: counting{directory: directory{agents: map[string]bool{"lead": true}}}}
+	r.directory.agents = map[string]bool{"lead": true}
+	got, err := threads.Parse("@lead @LEAD @other", r)
+	if err != nil || len(got) != 2 || got[0] != agent("lead") || r.agents != 1 {
+		t.Fatalf("Parse = %+v, %v; %d agent lookups", got, err, r.agents)
+	}
+}

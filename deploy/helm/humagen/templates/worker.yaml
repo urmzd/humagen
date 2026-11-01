@@ -1,0 +1,124 @@
+{{- /* Optional worker pods: `humagen worker` claims and runs turns from the
+shared Postgres queue and serves no API. Needs a humagen release that has the
+worker command. */}}
+{{- $w := .Values.worker | default dict -}}
+{{- if $w.enabled }}
+{{- if ne (include "humagen.storesKind" .) "postgres" }}
+{{- fail "worker.enabled needs system.spec.stores.kind=postgres: workers share the run queue and the stores with the server through Postgres" }}
+{{- end }}
+{{- if has (include "humagen.blobsKind" .) (list "disk" "memory") }}
+{{- fail "worker.enabled needs shared blobs (system.spec.blobs.kind s3 or gcs): a worker's disk is not the server's" }}
+{{- end }}
+{{- $fullname := include "humagen.fullname" . -}}
+{{- $drainArgs := include "humagen.drainArgs" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "humagen.workerFullname" . }}
+  labels:
+    {{- include "humagen.workerLabels" . | nindent 4 }}
+spec:
+  {{- if not (($w.keda | default dict).enabled) }}
+  replicas: {{ int ($w.replicas | default 1) }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "humagen.workerSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "humagen.workerLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "humagen.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountToken }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      # Covers the drain, as for the server.
+      terminationGracePeriodSeconds: {{ int .Values.terminationGracePeriodSeconds }}
+      containers:
+        - name: worker
+          image: {{ include "humagen.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - worker
+            - -f=/etc/warp/humagen.yaml
+            {{- $drainArgs | nindent 12 }}
+            {{- range ($w.extraArgs | default list) }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            - name: HOME
+              value: /var/lib/warp
+            - name: XDG_CACHE_HOME
+              value: /var/lib/warp/cache
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.existingSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ . }}
+          {{- end }}
+          {{- range $name := list "startupProbe" "livenessProbe" "readinessProbe" }}
+          {{- with (index $w $name) }}
+          {{ $name }}:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml ($w.resources | default dict) | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/warp
+            - name: tmp
+              mountPath: /tmp
+            - name: config
+              mountPath: /etc/warp
+              readOnly: true
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        # Scratch: blobs are in the bucket and the stores in Postgres.
+        - name: data
+          {{- with .Values.persistence.scratchSizeLimit }}
+          emptyDir:
+            sizeLimit: {{ . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: {{ $fullname }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with ($w.nodeSelector | default .Values.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with ($w.affinity | default .Values.affinity) }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with ($w.tolerations | default .Values.tolerations) }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -137,7 +137,7 @@ func TestWhatAThreadTeachesAProjectAlwaysNeedsHumanReview(t *testing.T) {
 		t.Helper()
 		for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
 			var out []string
-			for _, n := range f.p.Memory.List("acme", memory.ProjectOwner(project)) {
+			for _, n := range notesOf(t, f.p.Memory, "acme", memory.ProjectOwner(project)) {
 				out = append(out, string(n.Status))
 			}
 			if len(out) > 0 {

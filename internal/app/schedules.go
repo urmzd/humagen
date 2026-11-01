@@ -43,8 +43,12 @@ func applySchedules(p *platform.Platform, tenant string, w spec.Workspace) error
 			declared[d.Name] = true
 		}
 	}
-	for _, sc := range p.Schedules.List(tenant) {
-		if !declared[sc.Name] && p.Schedules.About(sc.Name).Managed != "" {
+	scheds, err := p.Schedules.List(tenant)
+	if err != nil {
+		return fmt.Errorf("platform %q: schedules: %w", tenant, err)
+	}
+	for _, sc := range scheds {
+		if !declared[sc.Name] && sc.About.Managed != "" {
 			if err := p.Schedules.Release(tenant, sc.Name); err != nil {
 				return fmt.Errorf("platform %q: schedule %q left the file: %w", tenant, sc.Name, err)
 			}

@@ -387,7 +387,19 @@ export function workspaceScreens(call: Call): Screen[] {
                 0,
               );
             }
-            assert.equal(await composer.inputValue(), draft);
+            // A chosen match is mentioned after the draft, which is kept.
+            if (choose)
+              await page.waitForFunction(
+                (kept) =>
+                  document
+                    .querySelector<HTMLTextAreaElement>('form[aria-label="Message"] textarea')
+                    ?.value.startsWith(`${kept} @`),
+                draft,
+              );
+            const value = await composer.inputValue();
+            if (choose)
+              assert.ok(value.startsWith(`${draft} @`) && / @[a-z0-9-]+ $/.test(value), value);
+            else assert.equal(value, draft);
             assert.equal(posts, 0, "Discovery must not submit the current conversation");
           } finally {
             page.off("request", requested);

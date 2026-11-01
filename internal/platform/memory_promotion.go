@@ -55,7 +55,11 @@ func (p *Platform) PromoteMemory(who auth.Principal, in MemoryPromotion) (memory
 		return memory.Note{}, memory.ErrNotFound
 	}
 	var selected *memory.Note
-	for _, note := range p.Memory.List(who.Tenant, owner) {
+	held, err := p.Memory.List(who.Tenant, owner)
+	if err != nil {
+		return memory.Note{}, err
+	}
+	for _, note := range held {
 		if note.ID == in.ID {
 			n := note
 			selected = &n
@@ -76,7 +80,11 @@ func (p *Platform) PromoteMemory(who auth.Principal, in MemoryPromotion) (memory
 	if target.PersonalOwner != "" || memory.ProjectOwner(destination) == owner {
 		return memory.Note{}, memory.ErrInvalid
 	}
-	for _, note := range p.Memory.List(who.Tenant, memory.ProjectOwner(destination)) {
+	there, err := p.Memory.List(who.Tenant, memory.ProjectOwner(destination))
+	if err != nil {
+		return memory.Note{}, err
+	}
+	for _, note := range there {
 		if strings.EqualFold(note.Text, selected.Text) {
 			return memory.Note{}, memory.ErrInvalid
 		}

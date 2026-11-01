@@ -86,20 +86,20 @@ func TestARunsMemoryIsInstalledAndItsChangesKept(t *testing.T) {
 	if committed != 1 || proposed != 1 {
 		t.Fatalf("finished = %+v", done)
 	}
-	if got := p.Memory.PromptAt(tenant, memory.PersonalOwner("ada"), "Notes", time.Now()); !strings.Contains(got, "Ada works from Toronto.") {
+	if got := promptAtOf(t, p.Memory, tenant, memory.PersonalOwner("ada"), "Notes", time.Now()); !strings.Contains(got, "Ada works from Toronto.") {
 		t.Fatalf("the person's own memory did not keep the run's note: %q", got)
 	}
-	if got := p.Memory.Prompt(tenant, "lead"); strings.Contains(got, "noon") {
+	if got := promptOf(t, p.Memory, tenant, "lead"); strings.Contains(got, "noon") {
 		t.Fatal("a run's write to the agent's memory skipped approval")
 	}
-	pending := p.Memory.Pending(tenant)
+	pending := pendingOf(t, p.Memory, tenant)
 	if len(pending) != 1 || pending[0].Agent != "lead" || pending[0].Note.Text != "Deploys happen at noon." || pending[0].Note.By != run.ID {
 		t.Fatalf("pending = %+v", pending)
 	}
 	if n, err := p.ApproveMemory(tenant, "lead", []string{pending[0].Note.ID}); n != 1 || err != nil {
 		t.Fatalf("approve = %d, %v", n, err)
 	}
-	if got := p.Memory.Prompt(tenant, "lead"); !strings.Contains(got, "noon") {
+	if got := promptOf(t, p.Memory, tenant, "lead"); !strings.Contains(got, "noon") {
 		t.Fatalf("an approved proposal is not sent: %q", got)
 	}
 

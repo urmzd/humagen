@@ -28,15 +28,7 @@ import { type HomeAnnouncement, HomePage } from "./HomePage.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
-import {
-  emptySelection,
-  MAX_SELECTED,
-  PlusMenu,
-  placeholderFor,
-  type Selection,
-  SelectionChips,
-  withAgent,
-} from "./Plus.tsx";
+import { emptySelection, mentionPicks, PlusMenu, type Selection, SelectionChips } from "./Plus.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { ThreadRoom, topicsOf } from "./Room.tsx";
 import { useRunStop } from "./RunStop.tsx";
@@ -44,6 +36,7 @@ import { useRunTurn } from "./Runs.tsx";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { Scroller } from "./Scroller.tsx";
 import { useThreadSelection } from "./selection.ts";
+import { mentionsIn } from "./tags.ts";
 import { readFromStart } from "./turns.ts";
 import {
   AgentMark,
@@ -424,13 +417,15 @@ export function Chat({
     problem: (why) => setProblem(why),
   });
   const [chosen, setChosen] = useState<Record<string, string>>({});
+  // An agent a link named is mentioned at the start of the draft, ahead of what it asks.
   const [seed, setSeed] = useState<ComposerSeed | undefined>(() =>
-    startAsk ? { text: startAsk } : undefined,
+    startAgent || startAsk
+      ? { text: `${startAgent ? `@${startAgent} ` : ""}${startAsk ?? ""}` }
+      : undefined,
   );
-  // What the + menu selected for a new conversation: an agent a link named, and where it lives.
+  // Where the + menu files a new conversation.
   const [selection, setSelection] = useState<Selection>(() => ({
     ...emptySelection,
-    agents: startAgent ? [startAgent] : [],
     project: startIn ?? personalProject ?? null,
     channel: startChannel || "general",
   }));
@@ -597,9 +592,6 @@ export function Chat({
             channel: selection.channel,
             text: m.text,
             visibility: startChannel ? "shared" : "private",
-            ...(selection.agents.length > 0
-              ? { agents: selection.agents, mode: selection.mode }
-              : {}),
           })
           .then((p) => {
             onThread(p.thread.id);
@@ -740,10 +732,8 @@ export function Chat({
           !threadId
             ? startChannel
               ? words.startThread
-              : placeholderFor(selection)
-            : runs.selection.agents.length > 0
-              ? placeholderFor(runs.selection)
-              : words.message
+              : defaultCopy.chat.placeholder
+            : words.message
         }
         queue={queue}
         autoFocus={!threadId}
@@ -763,12 +753,12 @@ export function Chat({
                   setSelection((sel) => ({ ...sel, project: named }));
                   return;
                 }
-                const dropped = selection.agents.filter((a) => !names.has(a));
+                // A mention of an agent that cannot answer here says so; its words stay the person's.
+                const dropped = mentionsIn(
+                  draft,
+                  agents.map((a) => a.spec.name),
+                ).filter((a) => !names.has(a));
                 if (dropped.length > 0) setProblem(defaultCopy.chat.notHere(dropped));
-                setSelection((sel) => {
-                  const kept = sel.agents.filter((a) => names.has(a));
-                  return kept.length === sel.agents.length ? sel : { ...sel, agents: kept };
-                });
               }
         }
         plus={
@@ -780,6 +770,7 @@ export function Chat({
                   <PlusMenu
                     onLeave={leave}
                     agents={available}
+                    {...mentionPicks(draft, available, setSeed)}
                     skills={skills}
                     skillsFailed={skillsFailed}
                     onSkill={(name) => {
@@ -811,6 +802,7 @@ export function Chat({
                   <PlusMenu
                     onLeave={leave}
                     agents={available}
+                    {...mentionPicks(draft, available, setSeed)}
                     skills={skills}
                     skillsFailed={skillsFailed}
                     onSkill={(name) => {
@@ -832,14 +824,13 @@ export function Chat({
                           onSearch={findHelp}
                           canChoose={canRun}
                           onChoose={(match, description) => {
-                            select({
-                              ...selection,
-                              project: match.project,
-                              channel: "general",
-                              agents: [match.agent],
-                              mode: "join",
-                            });
-                            if (!draft.trim()) setSeed({ text: description });
+                            select({ ...selection, project: match.project, channel: "general" });
+                            // The match is mentioned: ahead of what was described, or where the cursor was.
+                            setSeed(
+                              draft.trim()
+                                ? { mention: match.agent }
+                                : { text: `@${match.agent} ${description}` },
+                            );
                             close();
                           }}
                         />
@@ -943,8 +934,8 @@ export function Chat({
       >
         {composer}
         {/*
-          Suggestions stay with the chat bar while the person writes. A pick writes its words and adds its agent to
-          the conversation, as a chip, not an @mention.
+          Suggestions stay with the chat bar while the person writes. A pick writes its words with its agent
+          @mentioned at the start, the one way a message names who answers it.
         */}
         {canRun && starters.length > 0 && (
           // Centered under the bar; past its width the row scrolls, with chevrons.
@@ -956,13 +947,7 @@ export function Chat({
               <li key={`${st.agent}:${st.label}`} className="shrink-0">
                 <button
                   type="button"
-                  onClick={() => {
-                    // The same rule as the + menu: a full selection says so, and All of Them gives way past three.
-                    const next = withAgent(selection, st.agent);
-                    if (!next) return setProblem(defaultCopy.chat.maxAgents(MAX_SELECTED));
-                    setSelection(next);
-                    setSeed({ text: st.text });
-                  }}
+                  onClick={() => setSeed({ text: `@${st.agent} ${st.text}` })}
                   className="inline-flex min-h-10 pointer-coarse:min-h-11 max-w-[calc(100vw-2rem)] items-center gap-2 whitespace-nowrap rounded-aui border border-aui-border px-3 py-2 text-left text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
                 >
                   <AgentMark name={st.agent} size={14} />

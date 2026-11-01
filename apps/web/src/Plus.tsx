@@ -12,63 +12,53 @@ import {
   type KeyboardEvent,
   type ReactNode,
   useEffect,
-  useId,
   useLayoutEffect,
   useRef,
   useState,
 } from "react";
 import { coworking, type ProjectKindSpec, type ProjectView } from "./api.ts";
+import type { ComposerSeed } from "./Composer.tsx";
 import { ProjectChoices } from "./ProjectPicker.tsx";
 import { above, titleOf } from "./projects.ts";
+import { mentionsIn } from "./tags.ts";
 import { AgentMark, SearchField, SearchIcon } from "./ui.tsx";
 
 const words = defaultCopy.chat;
 
-/** How a message no one is tagged in goes to the agents selected: each that decides to join, or every one. */
-export type Mode = "join" | "all";
-
 /**
- * What a conversation is set to, from the + menu: the agents an untagged
- * message goes to and how, and where the conversation lives. `project`
- * null is not chosen yet; "" is the workspace.
+ * Where a conversation the + menu sets up lives: `project` null is not
+ * chosen yet, "" is the workspace. Its agents are not kept here: they are
+ * the agents its draft mentions (`mentionsIn`), so the words are the one
+ * place they are kept.
  */
 export interface Selection {
-  agents: string[];
-  mode: Mode;
   project: string | null;
   channel: string;
 }
 
-/** The most agents a conversation selects, and the most that answer one message side by side (pkg/threads). */
-export const MAX_SELECTED = 5;
-export const MAX_ALL = 3;
-
-/**
- * The selection with one more agent, as the platform takes it: at most
- * MAX_SELECTED, and All of Them for MAX_ALL at most, past which each
- * decides whether to join. Null when the selection is full.
- */
-export function withAgent(s: Selection, name: string): Selection | null {
-  if (s.agents.includes(name)) return s;
-  if (s.agents.length >= MAX_SELECTED) return null;
-  const agents = [...s.agents, name];
-  return { ...s, agents, mode: s.mode === "all" && agents.length > MAX_ALL ? "join" : s.mode };
-}
-
 export const emptySelection: Selection = {
-  agents: [],
-  mode: "join",
   project: null,
   channel: "general",
 };
 
-/** The chat bar's prompt for a selection: how to bring an agent in, or who answers. */
-export function placeholderFor(s: Pick<Selection, "agents" | "mode">): string {
-  if (s.agents.length === 0) return words.placeholder;
-  if (s.agents.length === 1) return words.placeholderOne(s.agents[0] ?? "");
-  return s.mode === "all"
-    ? words.placeholderAll(s.agents.length)
-    : words.placeholderJoin(s.agents.length);
+/**
+ * The + menu's agents, read from the draft: the agents it mentions are the
+ * ones picked, a pick mentions one at the cursor, and picking a mentioned
+ * one takes its mention out.
+ */
+export function mentionPicks(
+  draft: string,
+  available: { name: string }[] | null,
+  seed: (next: ComposerSeed) => void,
+): { mentioned: string[]; onMention: (name: string) => void } {
+  const mentioned = mentionsIn(
+    draft,
+    (available ?? []).map((a) => a.name),
+  );
+  return {
+    mentioned,
+    onMention: (name) => seed({ mention: name, remove: mentioned.includes(name) }),
+  };
 }
 
 /** Every item the arrow keys move between inside the active pane. */
@@ -84,6 +74,8 @@ type ReturnFocus = "agents" | "projects" | "skills" | "finder" | "selected-proje
 /** The composer groups choices by intent; channels belong to a chosen project. */
 export function PlusMenu({
   agents,
+  mentioned = [],
+  onMention,
   selection,
   onChange,
   onAttach,
@@ -102,6 +94,10 @@ export function PlusMenu({
 }: {
   /** The agents that may answer where the conversation lives. Null while they load. */
   agents: Choice[] | null;
+  /** The agents the draft mentions, each shown as picked. */
+  mentioned?: string[];
+  /** Mentions an agent in the draft, or takes its mention out when it is mentioned. */
+  onMention?: (name: string) => void;
   selection: Selection;
   onChange: (next: Selection) => void;
   onAttach: () => void;
@@ -253,13 +249,6 @@ export function PlusMenu({
       return;
     onChange({ ...selection, project: channelProject, channel: name });
     if (close) onClose();
-  };
-  const full = selection.agents.length >= MAX_SELECTED;
-  const toggle = (name: string) => {
-    if (selection.agents.includes(name))
-      return onChange({ ...selection, agents: selection.agents.filter((agent) => agent !== name) });
-    const next = withAgent(selection, name);
-    if (next) onChange(next);
   };
   const matches = (choice: Choice, query: string) =>
     !query ||
@@ -438,9 +427,9 @@ export function PlusMenu({
             >
               <BotIcon size={16} className="text-aui-muted" />
               <span className="min-w-0 flex-1">{words.agents}</span>
-              {selection.agents.length > 0 && (
+              {mentioned.length > 0 && (
                 <span className="truncate text-aui-xs text-aui-muted">
-                  {c.selected(selection.agents.length)}
+                  {c.selected(mentioned.length)}
                 </span>
               )}
               <ChevronRightIcon size={16} className="text-aui-muted" />
@@ -512,17 +501,16 @@ export function PlusMenu({
             ) : (
               <div role="group" aria-label={words.agents} className="flex flex-col">
                 {shownAgents.map((agent) => {
-                  const checked = selection.agents.includes(agent.name);
+                  const checked = mentioned.includes(agent.name);
                   return (
                     <button
                       key={agent.name}
                       type="button"
                       role="checkbox"
                       aria-checked={checked}
-                      aria-disabled={(!checked && full) || undefined}
                       data-plus-item="agent"
                       className={row}
-                      onClick={() => toggle(agent.name)}
+                      onClick={() => onMention?.(agent.name)}
                     >
                       <AgentMark name={agent.name} size={16} />
                       <span className="min-w-0 flex-1">
@@ -542,11 +530,6 @@ export function PlusMenu({
                     </button>
                   );
                 })}
-                {full && (
-                  <p className="px-2.5 py-1 text-aui-xs text-aui-muted">
-                    {words.maxAgents(MAX_SELECTED)}
-                  </p>
-                )}
               </div>
             )}
             {finder && !projectFixed && (
@@ -710,10 +693,10 @@ const remove =
   "inline-flex size-6 shrink-0 items-center justify-center rounded-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
 
 /**
- * What the + menu selected, as text controls in the composer's bar: each
- * agent with its color, the project with its path (and channel when not
- * general), each removable. With two agents or more, a text control says
- * how an untagged message is routed: Each Decides or All of Them.
+ * Where the conversation is filed, as a text control in the composer's bar:
+ * the project with its path (and channel when not general), or the control
+ * a host passes to change it. The agents a message goes to are its
+ * mentions, in its words, never here.
  */
 export function SelectionChips({
   selection,
@@ -733,10 +716,7 @@ export function SelectionChips({
   /** The project can't be removed, as when an agent has run in the conversation. */
   projectFixed?: boolean;
 }) {
-  const { agents, mode, project, channel } = selection;
-  const why = useId();
-  // Why All of Them is not offered, said in words once it is pressed.
-  const [explained, setExplained] = useState(false);
+  const { project, channel } = selection;
   const p = project ? projects?.find((x) => x.name === project) : undefined;
   const where =
     project === null
@@ -751,77 +731,30 @@ export function SelectionChips({
   const path = p ? above(p) : [];
   const label =
     where === null ? null : channel && channel !== "general" ? `${where} / #${channel}` : where;
-  if (agents.length === 0 && label === null) return null;
+  if (label === null) return null;
   return (
     <ul aria-label={words.selected} className="flex min-w-0 flex-wrap items-center gap-1">
-      {agents.map((a) => (
-        <li key={a} className={chip}>
-          <AgentMark name={a} size={14} />
-          <span className="truncate">{a}</span>
-          <button
-            type="button"
-            className={remove}
-            aria-label={words.removeAgent(a)}
-            onClick={() => onChange({ ...selection, agents: agents.filter((x) => x !== a) })}
-          >
-            <XIcon size={12} />
-          </button>
-        </li>
-      ))}
-      {label !== null && (
-        <li
-          className={projectControl ? "min-w-0 max-w-full" : chip}
-          title={path.length > 0 ? [...path, where].join(" › ") : undefined}
-        >
-          {projectControl ?? (
-            <>
-              <ProjectIcon size={13} className="shrink-0 text-aui-muted" />
-              <span className="truncate">{label}</span>
-              {!projectFixed && (
-                <button
-                  type="button"
-                  className={remove}
-                  aria-label={words.removeProject(label)}
-                  onClick={() => onChange({ ...selection, project: null, channel: "general" })}
-                >
-                  <XIcon size={12} />
-                </button>
-              )}
-            </>
-          )}
-        </li>
-      )}
-      {agents.length >= 2 && (
-        <li className="inline-flex flex-wrap items-center" role="group" aria-label={words.routing}>
-          {(["join", "all"] as const).map((m) => {
-            // Past three agents, All of Them is not offered, and says why when pressed.
-            const off = m === "all" && agents.length > MAX_ALL;
-            return (
+      <li
+        className={projectControl ? "min-w-0 max-w-full" : chip}
+        title={path.length > 0 ? [...path, where].join(" › ") : undefined}
+      >
+        {projectControl ?? (
+          <>
+            <ProjectIcon size={13} className="shrink-0 text-aui-muted" />
+            <span className="truncate">{label}</span>
+            {!projectFixed && (
               <button
-                key={m}
                 type="button"
-                aria-pressed={mode === m}
-                aria-disabled={off || undefined}
-                aria-describedby={off ? why : undefined}
-                title={m === "join" ? words.joinHint : off ? words.allMax(MAX_ALL) : words.allHint}
-                onClick={() => (off ? setExplained(true) : onChange({ ...selection, mode: m }))}
-                className="min-h-6 rounded-aui px-1.5 py-1 text-aui-xs text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:text-aui-fg aria-pressed:underline aria-disabled:opacity-50"
+                className={remove}
+                aria-label={words.removeProject(label)}
+                onClick={() => onChange({ ...selection, project: null, channel: "general" })}
               >
-                {m === "join" ? words.join : words.all}
+                <XIcon size={12} />
               </button>
-            );
-          })}
-          {agents.length > MAX_ALL && (
-            <span
-              id={why}
-              role="status"
-              className={explained ? "px-1.5 text-aui-xs text-aui-muted" : "sr-only"}
-            >
-              {words.allMax(MAX_ALL)}
-            </span>
-          )}
-        </li>
-      )}
+            )}
+          </>
+        )}
+      </li>
     </ul>
   );
 }

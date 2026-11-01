@@ -33,8 +33,7 @@ import (
 // content, so they are kept beside the files and not in them: counting a use
 // does not write a version.
 
-// originMemory marks the changes this package writes, so it does not read
-// back its own writes when the drive reports them.
+// originMemory marks the changes this package writes.
 const originMemory = "memory"
 
 // notesDir holds an owner's notes in its tree.
@@ -200,18 +199,10 @@ func ctxTimeout() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), state.Timeout)
 }
 
-// load reads an owner's notes from its tree: the head's notes are approved,
-// the open proposals' are pending. The caller holds the lock.
-func (s *Store) load(ctx context.Context, tenant, owner string) error {
-	tree, err := TreeOf(owner)
-	if err != nil {
-		return err
-	}
-	k := key(tenant, owner)
-	head, err := s.drive.Head(ctx, tenant, drive.System, tree)
-	if err != nil {
-		return err
-	}
+// notesOf reads an owner's notes from its tree: the head's notes are
+// approved, the open proposals' are pending. It returns, too, the drive
+// proposal each pending note is.
+func (s *Store) notesOf(ctx context.Context, tenant string, head drive.Version, open []drive.Proposal) ([]Note, map[string]string, error) {
 	var notes []Note
 	for _, e := range head.Entries {
 		id, ok := noteID(e.Path)
@@ -220,38 +211,41 @@ func (s *Store) load(ctx context.Context, tenant, owner string) error {
 		}
 		b, err := s.drive.Content(ctx, tenant, e.Hash)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 		if n, ok := parse(id, b, head); ok {
 			n.Status = Approved
 			notes = append(notes, n)
 		}
 	}
-	proposals, err := s.drive.Proposals(tenant, drive.System, tree)
-	if err != nil {
-		return err
-	}
+	open = slices.Clone(open)
+	slices.SortFunc(open, func(a, b drive.Proposal) int {
+		if c := a.At.Compare(b.At); c != 0 {
+			return c
+		}
+		return strings.Compare(a.ID, b.ID)
+	})
 	props := map[string]string{}
-	for _, p := range proposals {
+	for _, p := range open {
 		for _, c := range p.Changes {
 			id, ok := noteID(c.Path)
-			if !ok || c.Delete || slices.ContainsFunc(notes, func(n Note) bool { return n.ID == id && n.Status == Pending }) {
+			if !ok || c.Delete || props[id] != "" {
+				continue
+			}
+			// A proposal to change an approved note shows as the approved
+			// note, which stays in use until it is decided.
+			if slices.ContainsFunc(notes, func(x Note) bool { return x.ID == id }) {
 				continue
 			}
 			b, err := s.drive.Content(ctx, tenant, c.Hash)
 			if err != nil {
-				return err
+				return nil, nil, err
 			}
 			n, ok := parse(id, b, drive.Version{By: p.By, At: p.At})
 			if !ok {
 				continue
 			}
 			n.Status = Pending
-			// A proposal to change an approved note shows as the pending
-			// note; the approved one stays in use until it is decided.
-			if i := slices.IndexFunc(notes, func(x Note) bool { return x.ID == id }); i >= 0 {
-				continue
-			}
 			props[id] = p.ID
 			notes = append(notes, n)
 		}
@@ -270,77 +264,33 @@ func (s *Store) load(ctx context.Context, tenant, owner string) error {
 		}
 		return strings.Compare(a.ID, b.ID)
 	})
-	for i, n := range notes {
-		if u, ok := s.usage[k][n.ID]; ok {
-			notes[i].Uses, notes[i].LastUsedAt = u.Uses, u.LastUsedAt
-		}
-		s.next = max(s.next, n.seq)
-	}
-	s.props[k] = props
-	if len(notes) == 0 {
-		delete(s.by, k)
-		return nil
-	}
-	s.by[k] = notes
-	return nil
+	return notes, props, nil
 }
 
-// watch reads an owner's notes again when something other than this package
-// changed its tree: a run's end, a restore, an approval through the files
-// API.
-func (s *Store) watch(e drive.Event) {
-	if e.Origin == originMemory {
-		return
+// plan is the change that makes an owner's tree hold want, from old as it
+// holds now: approved notes committed to the head, pending ones proposed,
+// and what is gone deleted or discarded. It returns, too, the ids of the
+// notes want no longer holds.
+func plan(old []Note, props map[string]string, want []Note) (drive.EditInput, []string) {
+	before := map[string]Note{}
+	for _, n := range old {
+		before[n.ID] = n
 	}
-	owner, ok := OwnerOf(e.Tree)
-	if !ok {
-		return
+	after := map[string]Note{}
+	for _, n := range want {
+		after[n.ID] = n
 	}
-	ctx, cancel := ctxTimeout()
-	defer cancel()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	_ = s.load(ctx, e.Tenant, owner)
-}
-
-// write makes an owner's tree hold notes: approved notes at the head,
-// pending ones as proposals. The caller holds the lock. What fails part way
-// is read back from the tree, so the notes in memory are always the tree's.
-func (s *Store) write(tenant, owner string, notes []Note) error {
-	tree, err := TreeOf(owner)
-	if err != nil {
-		return err
-	}
-	ctx, cancel := ctxTimeout()
-	defer cancel()
-	k := key(tenant, owner)
-	old := map[string]Note{}
-	for _, n := range s.by[k] {
-		old[n.ID] = n
-	}
-	want := map[string]Note{}
-	for _, n := range notes {
-		want[n.ID] = n
-	}
-	props := s.props[k]
-	var changes []drive.Change
-	var resolves []string
-	type proposal struct {
-		id   string
-		note Note
-	}
-	var propose []proposal
-	var discard []string
-	for _, n := range notes {
-		o, had := old[n.ID]
+	in := drive.EditInput{By: originMemory, Origin: originMemory}
+	for _, n := range want {
+		o, had := before[n.ID]
 		switch n.Status {
 		case Approved:
 			if had && o.Status == Approved && string(render(o)) == string(render(n)) {
 				continue
 			}
-			changes = append(changes, drive.Change{Path: NotePath(n.ID), Data: render(n)})
+			in.Changes = append(in.Changes, drive.Change{Path: NotePath(n.ID), Data: render(n)})
 			if had && o.Status == Pending && props[n.ID] != "" {
-				resolves = append(resolves, props[n.ID])
+				in.Resolves = append(in.Resolves, props[n.ID])
 			}
 		case Pending:
 			if had && o.Status == Pending && string(render(o)) == string(render(n)) {
@@ -350,70 +300,21 @@ func (s *Store) write(tenant, owner string, notes []Note) error {
 			if id == "" {
 				id = n.ID
 			}
-			propose = append(propose, proposal{id: id, note: n})
+			in.Propose = append(in.Propose, drive.ProposeInput{ID: id, Base: drive.Head, Changes: []drive.Change{{Path: NotePath(n.ID), Data: render(n)}}, By: n.By, At: n.At, Origin: originMemory, Message: "memory note"})
 		}
 	}
-	for _, o := range s.by[k] {
-		n, kept := want[o.ID]
+	var removed []string
+	for _, o := range old {
+		n, kept := after[o.ID]
+		if !kept {
+			removed = append(removed, o.ID)
+		}
 		switch {
 		case o.Status == Approved && (!kept || n.Status != Approved):
-			changes = append(changes, drive.Change{Path: NotePath(o.ID), Delete: true})
+			in.Changes = append(in.Changes, drive.Change{Path: NotePath(o.ID), Delete: true})
 		case o.Status == Pending && !kept && props[o.ID] != "":
-			discard = append(discard, props[o.ID])
+			in.Discard = append(in.Discard, props[o.ID])
 		}
 	}
-	failed := func(err error) error {
-		_ = s.load(ctx, tenant, owner)
-		return err
-	}
-	wrote := false
-	if len(changes) > 0 || len(resolves) > 0 {
-		if len(changes) == 0 {
-			// A proposal whose note is already what it proposes is closed.
-			// It is discarded as this package's own change, so the drive does
-			// not report it back while the lock is held.
-			for _, id := range resolves {
-				if err := s.drive.Discard(ctx, tenant, drive.System, tree, id, originMemory); err != nil {
-					return failed(err)
-				}
-			}
-		} else if _, err := s.drive.Commit(ctx, tenant, drive.System, tree, drive.CommitInput{Base: drive.Head, Changes: changes, Resolves: resolves, By: originMemory, Origin: originMemory}); err != nil {
-			if wrote {
-				return failed(err)
-			}
-			return err
-		}
-		wrote = true
-	}
-	for _, p := range propose {
-		if _, err := s.drive.Propose(ctx, tenant, drive.System, tree, drive.ProposeInput{ID: p.id, Base: drive.Head, Changes: []drive.Change{{Path: NotePath(p.note.ID), Data: render(p.note)}}, By: p.note.By, At: p.note.At, Origin: originMemory, Message: "memory note"}); err != nil {
-			if wrote {
-				return failed(err)
-			}
-			return err
-		}
-		wrote = true
-	}
-	for _, id := range discard {
-		if err := s.drive.Discard(ctx, tenant, drive.System, tree, id, originMemory); err != nil && !errors.Is(err, drive.ErrNotFound) {
-			if wrote {
-				return failed(err)
-			}
-			return err
-		}
-		wrote = true
-	}
-	next := map[string]string{}
-	for _, n := range notes {
-		if n.Status != Pending {
-			continue
-		}
-		if id := props[n.ID]; id != "" {
-			next[n.ID] = id
-		} else {
-			next[n.ID] = n.ID
-		}
-	}
-	s.props[k] = next
-	return nil
+	return in, removed
 }

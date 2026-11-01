@@ -22,10 +22,10 @@ func TestOneSurfaceIsOneThread(t *testing.T) {
 	if _, _, err := s.Start("acme", in, msg("dana", "again"), t0); !errors.Is(err, threads.ErrExists) {
 		t.Fatalf("starting a surface's thread twice = %v", err)
 	}
-	if got, ok := s.BySurface("acme", slackThread); !ok || got.ID != th.ID || *got.Surface != slackThread {
+	if got, ok, _ := s.BySurface("acme", slackThread); !ok || got.ID != th.ID || *got.Surface != slackThread {
 		t.Fatalf("by its surface = %+v, %v", got, ok)
 	}
-	if _, ok := s.BySurface("globex", slackThread); ok {
+	if _, ok, _ := s.BySurface("globex", slackThread); ok {
 		t.Fatal("another workspace finds acme's thread by its surface")
 	}
 	if _, err := s.Update("acme", th.ID, th.Version, t0, func(t *threads.Thread) error {
@@ -55,7 +55,7 @@ func TestASurfacesThreadIsFoundAfterARestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got, ok := again.BySurface("acme", slackThread); !ok || got.ID != th.ID {
+		if got, ok, _ := again.BySurface("acme", slackThread); !ok || got.ID != th.ID {
 			t.Fatalf("after a restart = %+v, %v", got, ok)
 		}
 	})
@@ -87,7 +87,7 @@ func TestAThreadStartedFromAnAnnouncementKeepsIt(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got, ok := again.BySurface("acme", slackThread); !ok || got.Announcement != "m-7" {
+		if got, ok, _ := again.BySurface("acme", slackThread); !ok || got.Announcement != "m-7" {
 			t.Fatalf("after a restart = %+v, %v", got, ok)
 		}
 		for name, bad := range map[string]func(*threads.Thread){

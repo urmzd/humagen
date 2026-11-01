@@ -199,14 +199,14 @@ func TestStoreKeepsNarrowerPoliciesWithinTheTenants(t *testing.T) {
 	if _, err := s.Put("acme", pol(lead, func(p *Policy) { p.MaxLease = 5000 }), "ada", t0); err != nil {
 		t.Fatal(err)
 	}
-	got := s.For("acme", []string{"Launch"}, "lead", "")
+	got := forRun(t, s, "acme", []string{"Launch"}, "lead", "")
 	if len(got) != 3 || got[0].Scope != lead || got[1].Scope != launch || got[2].Scope != tenantScope {
 		t.Fatalf("most specific first: %+v", got)
 	}
-	if len(s.For("acme", nil, "helper", "")) != 1 {
+	if len(forRun(t, s, "acme", nil, "helper", "")) != 1 {
 		t.Fatal("a run in no project, by an agent with no policy, should fall under the tenant's alone")
 	}
-	if len(s.For("globex", []string{"Launch"}, "lead", "")) != 0 || len(s.List("globex")) != 0 {
+	if len(forRun(t, s, "globex", []string{"Launch"}, "lead", "")) != 0 || len(list(t, s, "globex")) != 0 {
 		t.Fatal("another tenant falls under these policies")
 	}
 }
@@ -230,7 +230,7 @@ func TestStoreVersionsAndRemembers(t *testing.T) {
 		t.Fatalf("version after a delete = %d, want 3", third.Version)
 	}
 
-	h := s.History("acme")
+	h := history(t, s, "acme")
 	if len(h) != 4 || h[0].After.MaxRuns != 7 || h[1].After != nil || h[1].Before.MaxRuns != 5 || h[3].Before != nil {
 		t.Fatalf("history = %+v", h)
 	}
@@ -240,15 +240,15 @@ func TestStoreVersionsAndRemembers(t *testing.T) {
 
 	// What was the limit at a moment in the past.
 	for when, want := range map[time.Duration]int{30 * time.Minute: 10, 90 * time.Minute: 5, 4 * time.Hour: 7} {
-		got, ok := s.At("acme", launch, t0.Add(when))
+		got, ok := policyAt(t, s, "acme", launch, t0.Add(when))
 		if !ok || got.MaxRuns != want {
 			t.Errorf("at +%s: %d (found %v), want %d", when, got.MaxRuns, ok, want)
 		}
 	}
-	if _, ok := s.At("acme", launch, t0.Add(150*time.Minute)); ok {
+	if _, ok := policyAt(t, s, "acme", launch, t0.Add(150*time.Minute)); ok {
 		t.Error("a policy was reported for a time when it had been deleted")
 	}
-	if _, ok := s.At("acme", launch, t0.Add(-time.Hour)); ok {
+	if _, ok := policyAt(t, s, "acme", launch, t0.Add(-time.Hour)); ok {
 		t.Error("a policy was reported before it existed")
 	}
 }
@@ -273,18 +273,18 @@ func TestAClientIsAScopeThatCanOnlyTighten(t *testing.T) {
 	if _, err := s.Put("acme", pol(lead, func(p *Policy) { p.MaxConcurrent = 1 }), "ada", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	got := s.For("acme", nil, "lead", "docs-app")
+	got := forRun(t, s, "acme", nil, "lead", "docs-app")
 	if len(got) != 3 || got[0].Scope != lead || got[1].Scope != docs || got[2].Scope != tenantScope {
 		t.Fatalf("most specific first: %+v", got)
 	}
 	// A run no client raised falls under no client's policy.
-	if got := s.For("acme", nil, "helper", ""); len(got) != 1 || got[0].Scope != tenantScope {
+	if got := forRun(t, s, "acme", nil, "helper", ""); len(got) != 1 || got[0].Scope != tenantScope {
 		t.Fatalf("a run with no client: %+v", got)
 	}
-	if got := s.For("acme", nil, "helper", "ops-app"); len(got) != 1 {
+	if got := forRun(t, s, "acme", nil, "helper", "ops-app"); len(got) != 1 {
 		t.Fatalf("another client's run fell under docs-app's policy: %+v", got)
 	}
-	if list := s.List("acme"); list[len(list)-1].Scope != docs {
+	if list := list(t, s, "acme"); list[len(list)-1].Scope != docs {
 		t.Fatalf("clients sort last: %+v", list)
 	}
 }
@@ -308,7 +308,7 @@ func TestForReturnsTheChainNearestFirst(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got := s.For("acme", []string{"Renewals", "Globex", "Field", ""}, "lead", "docs-app")
+	got := forRun(t, s, "acme", []string{"Renewals", "Globex", "Field", ""}, "lead", "docs-app")
 	want := []Scope{lead, docs, renewals, field, tenantScope}
 	if len(got) != len(want) {
 		t.Fatalf("For = %+v, want %v", got, want)

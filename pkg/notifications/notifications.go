@@ -1,5 +1,12 @@
 // Package notifications keeps an opaque native-console delivery projection of
 // the inbox. It never stores a subject line, body, project name or principal.
+//
+// It reads and writes the database per request (pkg/state, per request): it
+// reads one person's records for each change and writes them at the
+// versions it read, retrying when another process moved them, so any number
+// of processes on one database agree, and it does not need pkg/state's
+// single-writer lock. Background retention pages the tenants from a
+// state.Tenants directory.
 package notifications
 
 import (
@@ -8,9 +15,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/urmzd/humagen/pkg/prefs"
@@ -55,76 +62,158 @@ type Delivery struct {
 	At       time.Time
 	Messages []string
 }
+
+// Store keeps one namespace of delivery state. It holds nothing in memory
+// but the tenant directory's cache, which may be dropped at any time.
 type Store struct {
 	namespace string
-	mu        sync.Mutex
 	st        state.Store
-	rows      map[[2]string]map[string]Entry
-	cursors   map[[2]string]string
+	tenants   *state.Tenants
 }
 
 func key(subject, message string) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(subject)) + "/" + base64.RawURLEncoding.EncodeToString([]byte(message))
+	return prefix(subject) + base64.RawURLEncoding.EncodeToString([]byte(message))
+}
+
+// prefix is what every key of one person's records starts with: their own
+// rows and their meta record, which holds the cursor.
+func prefix(subject string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(subject)) + "/"
 }
 func valid(subject string, c Candidate) bool {
 	return subject != "" && len(subject) <= 512 && c.Message != "" && len(c.Message) <= 256 && len(c.Kind) <= 64 && !c.Stamp.IsZero() && !strings.ContainsRune(subject+c.Message+c.Kind, 0)
 }
+
+// Open returns the native-console store on st, which may be shared with
+// other processes. A nil st keeps it in this process's memory.
 func Open(st state.Store) (*Store, error) { return open(st, namespace) }
 
 // OpenEmail keeps independent delivery and acknowledgment state for email.
 func OpenEmail(st state.Store) (*Store, error) { return open(st, emailNamespace) }
 
 func open(st state.Store, space string) (*Store, error) {
-	s := &Store{namespace: space, st: st, rows: map[[2]string]map[string]Entry{}, cursors: map[[2]string]string{}}
 	if st == nil {
-		return s, nil
+		st = state.NewMemory()
 	}
-	records, err := st.Load(context.Background(), space)
+	tenants, err := state.OpenTenants(st, space)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("notifications: tenants: %w", err)
 	}
-	for _, record := range records {
-		var r Record
-		if err := json.Unmarshal(record.Value, &r); err != nil {
-			return nil, err
+	return &Store{namespace: space, st: st, tenants: tenants}, nil
+}
+
+func ctx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), state.Timeout)
+}
+
+// row is one stored entry and the version it was read at.
+type row struct {
+	Entry
+	version int64
+}
+
+// person is one person's records as read: their rows by message, and their
+// meta record's cursor and version, zero when they have none.
+type person struct {
+	rows    map[string]row
+	cursor  string
+	version int64
+}
+
+// read reads one person's records, a page at a time. A person holds at most
+// MaxEntries rows and one meta record, and a read past that is ErrCapacity.
+func (s *Store) read(tenant, subject string) (person, error) {
+	out := person{rows: map[string]row{}}
+	pre := prefix(subject)
+	after := ""
+	count := 0
+	for {
+		c, cancel := ctx()
+		recs, next, err := s.st.List(c, s.namespace, tenant, state.Query{Prefix: pre, After: after, Limit: state.MaxList})
+		cancel()
+		if err != nil {
+			return person{}, err
 		}
-		owner := [2]string{record.Tenant, r.Subject}
-		if r.Meta {
-			if record.Key != key(r.Subject, "") || r.Subject == "" || len(r.Cursor) > 1024 {
-				return nil, ErrInvalid
+		for _, record := range recs {
+			count++
+			if count > MaxEntries+1 {
+				return person{}, ErrCapacity
 			}
-			s.cursors[owner] = r.Cursor
-			continue
+			var r Record
+			if err := json.Unmarshal(record.Value, &r); err != nil {
+				return person{}, err
+			}
+			if r.Subject != subject {
+				return person{}, ErrInvalid
+			}
+			if r.Meta {
+				if record.Key != key(subject, "") || len(r.Cursor) > 1024 {
+					return person{}, ErrInvalid
+				}
+				out.cursor, out.version = r.Cursor, record.Version
+				continue
+			}
+			if !valid(r.Subject, r.Candidate) || record.Key != key(r.Subject, r.Message) || r.Mode != prefs.Immediate && r.Mode != prefs.Digest && r.Mode != prefs.Off || r.PolicyMode != "" && r.PolicyMode != prefs.Immediate && r.PolicyMode != prefs.Digest && r.PolicyMode != prefs.Off {
+				return person{}, ErrInvalid
+			}
+			out.rows[r.Message] = row{Entry: r.Entry, version: record.Version}
 		}
-		if !valid(r.Subject, r.Candidate) || record.Key != key(r.Subject, r.Message) || r.Mode != prefs.Immediate && r.Mode != prefs.Digest && r.Mode != prefs.Off || r.PolicyMode != "" && r.PolicyMode != prefs.Immediate && r.PolicyMode != prefs.Digest && r.PolicyMode != prefs.Off {
-			return nil, ErrInvalid
+		if next == "" {
+			return out, nil
 		}
-		if s.rows[owner] == nil {
-			s.rows[owner] = map[string]Entry{}
-		}
-		if len(s.rows[owner]) >= MaxEntries {
-			return nil, ErrCapacity
-		}
-		s.rows[owner][r.Message] = r.Entry
+		after = next
 	}
-	return s, nil
 }
-func (s *Store) Cursor(tenant, subject string) string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.cursors[[2]string{tenant, subject}]
+
+// Cursor is a person's backfill cursor, "" when they have none.
+func (s *Store) Cursor(tenant, subject string) (string, error) {
+	c, cancel := ctx()
+	defer cancel()
+	record, err := s.st.Lookup(c, s.namespace, tenant, key(subject, ""))
+	if errors.Is(err, state.ErrNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	var r Record
+	if err := json.Unmarshal(record.Value, &r); err != nil {
+		return "", err
+	}
+	return r.Cursor, nil
 }
-func (s *Store) write(ops []state.Op) error {
-	if s.st == nil || len(ops) == 0 {
+
+// write applies ops to one tenant, marking it in the directory first. A
+// conditional op whose record moved returns state.ErrConflict.
+func (s *Store) write(tenant string, ops []state.Op) error {
+	if len(ops) == 0 {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+	if err := s.tenants.Mark(tenant); err != nil {
+		return err
+	}
+	c, cancel := ctx()
 	defer cancel()
-	return s.st.Write(ctx, s.namespace, ops...)
+	return s.st.Write(c, s.namespace, ops...)
 }
-func entryOp(tenant string, e Entry) state.Op {
+
+// entryOp writes an entry at the version it was read: created when version
+// is zero.
+func entryOp(tenant string, e Entry, version int64) state.Op {
 	raw, _ := json.Marshal(Record{Entry: e})
-	return state.Put(tenant, key(e.Subject, e.Message), raw)
+	if version == 0 {
+		return state.Create(tenant, key(e.Subject, e.Message), raw)
+	}
+	return state.PutAt(tenant, key(e.Subject, e.Message), raw, version)
+}
+
+// metaOp writes a person's cursor at the version it was read.
+func metaOp(tenant, subject, cursor string, version int64) state.Op {
+	raw, _ := json.Marshal(Record{Entry: Entry{Subject: subject}, Meta: true, Cursor: cursor})
+	if version == 0 {
+		return state.Create(tenant, key(subject, ""), raw)
+	}
+	return state.PutAt(tenant, key(subject, ""), raw, version)
 }
 
 // QuietUntil returns the local end of the current quiet period. It uses the
@@ -180,25 +269,50 @@ func (s *Store) Reconcile(tenant, subject, cursor string, candidates []Candidate
 	if tenant == "" || subject == "" || len(subject) > 512 || len(cursor) > 1024 || len(candidates) > 500 || lookup == nil || now.IsZero() {
 		return nil, ErrInvalid
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	owner := [2]string{tenant, subject}
-	before := s.rows[owner]
+	for _, candidate := range candidates {
+		if !valid(subject, candidate) {
+			return nil, ErrInvalid
+		}
+	}
+	var out []Delivery
+	err := state.Retry(func() error {
+		read, err := s.read(tenant, subject)
+		if err != nil {
+			return err
+		}
+		deliveries, ops := s.reconcile(tenant, subject, cursor, read, candidates, p, now, cut, lookup)
+		if ops == nil {
+			return ErrCapacity
+		}
+		if err := s.write(tenant, ops); err != nil {
+			return err
+		}
+		out = deliveries
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// reconcile works out one Reconcile from what it read: the deliveries, and
+// the ops that record them. Nil ops is a person past MaxEntries.
+func (s *Store) reconcile(tenant, subject, cursor string, read person, candidates []Candidate, p prefs.Personal, now, cut time.Time, lookup func(string) (Candidate, bool)) ([]Delivery, []state.Op) {
+	before := read.rows
 	rows := make(map[string]Entry, len(before))
 	for id, e := range before {
-		rows[id] = e
+		rows[id] = e.Entry
 	}
 	ops := []state.Op{}
 	for id, e := range rows {
 		if e.Stamp.Before(cut) {
 			delete(rows, id)
-			ops = append(ops, state.Delete(tenant, key(subject, id)))
+			ops = append(ops, state.DeleteAt(tenant, key(subject, id), before[id].version))
 		}
 	}
+	grew := false
 	for _, candidate := range candidates {
-		if !valid(subject, candidate) {
-			return nil, ErrInvalid
-		}
 		if candidate.Stamp.Before(cut) {
 			continue
 		}
@@ -209,8 +323,13 @@ func (s *Store) Reconcile(tenant, subject, cursor string, candidates []Candidate
 		if !configured {
 			continue
 		}
-		if _, ok := rows[candidate.Message]; !ok && len(rows) >= MaxEntries {
-			return nil, ErrCapacity
+		if _, ok := rows[candidate.Message]; !ok {
+			if len(rows) >= MaxEntries {
+				return nil, nil
+			}
+			if _, kept := before[candidate.Message]; !kept {
+				grew = true
+			}
 		}
 		e := Entry{Candidate: candidate, Subject: subject, Mode: mode, Due: due(p, candidate.Kind, now), Suppressed: mode == prefs.Off}
 		if s.namespace == emailNamespace {
@@ -302,97 +421,86 @@ func (s *Store) Reconcile(tenant, subject, cursor string, candidates []Candidate
 		deliveries = deliveries[:MaxDeliveries]
 	}
 	for id, e := range rows {
-		if old, ok := before[id]; !ok || old != e {
-			ops = append(ops, entryOp(tenant, e))
+		if old, ok := before[id]; !ok || old.Entry != e {
+			ops = append(ops, entryOp(tenant, e, old.version))
 		}
 	}
-	if s.cursors[owner] != cursor {
-		raw, _ := json.Marshal(Record{Entry: Entry{Subject: subject}, Meta: true, Cursor: cursor})
-		ops = append(ops, state.Put(tenant, key(subject, ""), raw))
+	// A Reconcile that adds rows writes the meta record at the version it
+	// read too, so two that grow one person's rows at once conflict and the
+	// cap holds.
+	if read.cursor != cursor || grew {
+		ops = append(ops, metaOp(tenant, subject, cursor, read.version))
 	}
-	if err := s.write(ops); err != nil {
-		return nil, err
-	}
-	if len(rows) > 0 || cursor != "" {
-		s.rows[owner] = rows
-		s.cursors[owner] = cursor
-	}
-	return deliveries, nil
-}
-func (s *Store) Ack(tenant, subject, id string, visible func(string) bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	owner := [2]string{tenant, subject}
-	changed := []Entry{}
-	for _, e := range s.rows[owner] {
-		if e.Delivery == id && !e.Suppressed && visible(e.Message) {
-			e.Acknowledged = true
-			changed = append(changed, e)
-		}
-	}
-	if len(changed) == 0 {
-		return ErrNotFound
-	}
-	ops := make([]state.Op, 0, len(changed))
-	for _, e := range changed {
-		ops = append(ops, entryOp(tenant, e))
-	}
-	if err := s.write(ops); err != nil {
-		return err
-	}
-	for _, e := range changed {
-		s.rows[owner][e.Message] = e
-	}
-	return nil
+	return deliveries, ops
 }
 
-func (s *Store) Tenants() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := []string{}
-	for owner := range s.rows {
-		if !slices.Contains(out, owner[0]) {
-			out = append(out, owner[0])
+// Ack marks every entry of one of a person's deliveries acknowledged.
+func (s *Store) Ack(tenant, subject, id string, visible func(string) bool) error {
+	return state.Retry(func() error {
+		read, err := s.read(tenant, subject)
+		if err != nil {
+			return err
 		}
-	}
-	slices.Sort(out)
-	return out
+		ops := []state.Op{}
+		for _, r := range read.rows {
+			if r.Delivery == id && !r.Suppressed && visible(r.Message) {
+				e := r.Entry
+				e.Acknowledged = true
+				ops = append(ops, entryOp(tenant, e, r.version))
+			}
+		}
+		if len(ops) == 0 {
+			return ErrNotFound
+		}
+		return s.write(tenant, ops)
+	})
+}
+
+// EachTenant calls fn for every tenant the store has written for, a page at
+// a time, from the tenant directory.
+func (s *Store) EachTenant(fn func(tenant string) error) error {
+	return s.tenants.Each(fn)
 }
 
 // Retain applies the same cutoff as the workspace inbox, using bounded writes.
 func (s *Store) Retain(tenant string, cut time.Time) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if tenant == "" {
+		return nil
+	}
+	after := ""
 	for {
-		type removed struct {
-			owner   [2]string
-			message string
-		}
-		drop := []removed{}
-		ops := []state.Op{}
-	outer:
-		for owner, rows := range s.rows {
-			if owner[0] != tenant {
-				continue
+		var next string
+		err := state.Retry(func() error {
+			c, cancel := ctx()
+			recs, n, err := s.st.List(c, s.namespace, tenant, state.Query{After: after, Limit: state.MaxList})
+			cancel()
+			if err != nil {
+				return err
 			}
-			for id, e := range rows {
-				if e.Stamp.Before(cut) {
-					drop = append(drop, removed{owner, id})
-					ops = append(ops, state.Delete(tenant, key(owner[1], id)))
-					if len(drop) == 5000 {
-						break outer
-					}
+			next = n
+			ops := []state.Op{}
+			for _, record := range recs {
+				var r Record
+				if err := json.Unmarshal(record.Value, &r); err != nil {
+					return err
+				}
+				if !r.Meta && r.Stamp.Before(cut) {
+					ops = append(ops, state.DeleteAt(tenant, record.Key, record.Version))
 				}
 			}
-		}
-		if len(drop) == 0 {
-			return nil
-		}
-		if err := s.write(ops); err != nil {
+			if len(ops) == 0 {
+				return nil
+			}
+			c, cancel = ctx()
+			defer cancel()
+			return s.st.Write(c, s.namespace, ops...)
+		})
+		if err != nil {
 			return err
 		}
-		for _, row := range drop {
-			delete(s.rows[row.owner], row.message)
+		if next == "" {
+			return nil
 		}
+		after = next
 	}
 }

@@ -6,8 +6,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
-
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/inbox"
@@ -117,11 +115,19 @@ func (p *Platform) MoveProject(_ context.Context, who auth.Principal, name strin
 		}
 		if !who.Can(auth.BillingWrite) {
 			for _, a := range left {
-				if p.hasProjectLimit(who.Tenant, a) {
+				limited, err := p.hasProjectLimit(who.Tenant, a)
+				if err != nil {
+					return err
+				}
+				if limited {
 					return fmt.Errorf("%w: %s has a limit, and leaving it needs billing:write, so a move never escapes a limit", projects.ErrForbidden, a)
 				}
 			}
-			for _, limited := range p.ownerLimited(who.Tenant, before.Subtree(name)) {
+			owned, err := p.ownerLimited(who.Tenant, before.Subtree(name))
+			if err != nil {
+				return err
+			}
+			for _, limited := range owned {
 				lp, _ := before.Get(limited)
 				if before.Resolve(lp.Parent, reader).Role != projects.Owner {
 					above, _ := before.Get(lp.Parent)
@@ -130,7 +136,11 @@ func (p *Platform) MoveProject(_ context.Context, who auth.Principal, name strin
 				}
 			}
 		}
-		if lost := p.lostByMove(who.Tenant, before, after, before.Subtree(name)); len(lost) > 0 {
+		lost, err := p.lostByMove(who.Tenant, before, after, before.Subtree(name))
+		if err != nil {
+			return err
+		}
+		if len(lost) > 0 {
 			under := parent
 			if under == projects.Root {
 				under = "the workspace"
@@ -152,7 +162,7 @@ const maxLostThreads = 5
 // whose own default would answer nothing, as a default that stopped being
 // available is refused rather than passed over. The tree's own defaults and
 // homes are the projects store's to check (projects.Store.Move).
-func (p *Platform) lostByMove(tenant string, before, after *projects.Tree, names []string) []string {
+func (p *Platform) lostByMove(tenant string, before, after *projects.Tree, names []string) ([]string, error) {
 	moved := make(map[string]bool, len(names))
 	for _, n := range names {
 		moved[n] = true
@@ -161,14 +171,19 @@ func (p *Platform) lostByMove(tenant string, before, after *projects.Tree, names
 		return agent != "" && agent != Open && before.IsAvailable(project, agent) && !after.IsAvailable(project, agent)
 	}
 	var out []string
-	scheds := p.Schedules.List(tenant)
-	slices.SortFunc(scheds, func(a, b cron.Schedule) int { return strings.Compare(a.Name, b.Name) })
+	scheds, err := p.Schedules.List(tenant)
+	if err != nil {
+		out = append(out, "the schedules, which could not be read, might be refused")
+	}
 	for _, sc := range scheds {
 		if at := sc.Context[runs.MetaProject]; moved[at] && lost(at, sc.Agent) {
 			out = append(out, fmt.Sprintf("the schedule %s, which runs %s in %s, would be refused every time", sc.Name, sc.Agent, at))
 		}
 	}
-	ths := p.Threads.Records(tenant, func(th threads.Thread) bool { return moved[th.Project] && lost(th.Project, th.Default) })
+	ths, err := p.Threads.Records(tenant, func(th threads.Thread) bool { return moved[th.Project] && lost(th.Project, th.Default) })
+	if err != nil {
+		return nil, err
+	}
 	slices.SortFunc(ths, func(a, b threads.Thread) int { return strings.Compare(a.ID, b.ID) })
 	for i, th := range ths {
 		if i == maxLostThreads {
@@ -181,7 +196,7 @@ func (p *Platform) lostByMove(tenant string, before, after *projects.Tree, names
 		}
 		out = append(out, fmt.Sprintf("the default of the thread %s in %s, %s, would not be available", name, th.Project, th.Default))
 	}
-	return out
+	return out, nil
 }
 
 // keepsAllowLists refuses a move that would let an agent run in the moved
@@ -206,21 +221,29 @@ func (p *Platform) keepsAllowLists(before *projects.Tree, reader projects.Reader
 }
 
 // hasProjectLimit reports whether a project has a limit of its own.
-func (p *Platform) hasProjectLimit(tenant, name string) bool {
-	return slices.ContainsFunc(p.Policies.For(tenant, []string{name}, "", ""), func(pol policy.Policy) bool {
+func (p *Platform) hasProjectLimit(tenant, name string) (bool, error) {
+	pols, err := p.Policies.For(tenant, []string{name}, "", "")
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(pols, func(pol policy.Policy) bool {
 		return pol.Scope == policy.Scope{Kind: policy.Project, Name: name}
-	})
+	}), nil
 }
 
 // ownerLimited is the projects among names that hold a limit an owner set.
-func (p *Platform) ownerLimited(tenant string, names []string) []string {
+func (p *Platform) ownerLimited(tenant string, names []string) ([]string, error) {
+	pols, err := p.Policies.For(tenant, names, "", "")
+	if err != nil {
+		return nil, err
+	}
 	var out []string
-	for _, pol := range p.Policies.For(tenant, names, "", "") {
+	for _, pol := range pols {
 		if pol.Scope.Kind == policy.Project && pol.ByOwner() {
 			out = append(out, pol.Scope.Name)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // SetProjectLimit sets a tighten-only limit on a project, as an owner of a

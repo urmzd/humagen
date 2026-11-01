@@ -1,9 +1,25 @@
 {{- include "humagen.keepOldNames" . -}}
 {{- $fullname := include "humagen.fullname" . -}}
-{{- $loopback := ((.Values.development | default dict).loopback) | default false -}}
-{{- if and $loopback .Values.ingress.enabled }}
+{{- $dev := ((.Values.development | default dict).loopback) | default false -}}
+{{- $loopback := eq (include "humagen.loopback" .) "true" -}}
+{{- $tailscale := ((.Values.tailscale | default dict).proxy | default dict).enabled | default false -}}
+{{- if and $dev .Values.ingress.enabled }}
 {{- fail "development.loopback listens on the pod's loopback only, for kubectl port-forward; it cannot sit behind an Ingress" }}
 {{- end }}
+{{- if and $tailscale .Values.ingress.enabled }}
+{{- fail "tailscale sign-in is reached only through the Tailscale proxy container in the pod; an Ingress would bypass it" }}
+{{- end }}
+{{- $hpa := .Values.autoscaling | default dict -}}
+{{- $many := or (gt (int .Values.replicaCount) 1) (and $hpa.enabled (gt (int $hpa.maxReplicas) 1)) -}}
+{{- if $many }}
+{{- if ne (include "humagen.storesKind" .) "postgres" }}
+{{- fail "more than one server replica needs system.spec.stores.kind=postgres: replicas share the stores, the run queue and the bus through Postgres" }}
+{{- end }}
+{{- if has (include "humagen.blobsKind" .) (list "disk" "memory") }}
+{{- fail "more than one server replica needs shared blobs (system.spec.blobs.kind s3 or gcs): each pod's disk is its own" }}
+{{- end }}
+{{- end }}
+{{- $drainArgs := include "humagen.drainArgs" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -11,10 +27,12 @@ metadata:
   labels:
     {{- include "humagen.labels" . | nindent 4 }}
 spec:
+  {{- if not $hpa.enabled }}
   replicas: {{ .Values.replicaCount }}
+  {{- end }}
   # The stores read and write the database per request and take no lock, so
   # pods are replaced one at a time. None is added before one is taken away:
-  # the workspace volume is ReadWriteOnce.
+  # with disk blobs the workspace volume is ReadWriteOnce.
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -44,8 +62,9 @@ spec:
       automountServiceAccountToken: {{ .Values.serviceAccount.automountToken }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      # Long enough for runs in flight to settle on SIGTERM.
-      terminationGracePeriodSeconds: 30
+      # Covers the preStop sleep, the drain and the HTTP shutdown; the chart
+      # refuses a value that does not.
+      terminationGracePeriodSeconds: {{ int .Values.terminationGracePeriodSeconds }}
       containers:
         # The old name for a release the warp chart installed, so patches
         # and `kubectl logs -c` keep working (humagen.containerName).
@@ -58,12 +77,16 @@ spec:
             - serve
             - -f=/etc/warp/humagen.yaml
             {{- if $loopback }}
-            # Development: only kubectl port-forward reaches the pod's loopback.
+            # Only kubectl port-forward (development) or the Tailscale proxy
+            # container (tailscale) reaches the pod's loopback.
             - -addr=127.0.0.1:8080
             {{- else }}
             - -addr=0.0.0.0:8080
             {{- end }}
             - -web=/usr/share/warp/web
+            # On SIGTERM: stop taking work, let turns in flight finish, then
+            # release their leases and shut the listener down.
+            {{- $drainArgs | nindent 12 }}
             {{- if .Values.webhooks.enabled }}
             - -webhook-addr=0.0.0.0:{{ .Values.webhooks.port }}
             {{- end }}
@@ -85,22 +108,34 @@ spec:
             - secretRef:
                 name: {{ . }}
           {{- end }}
+          {{- if or (not $tailscale) .Values.webhooks.enabled }}
           ports:
+            {{- if not $tailscale }}
             - name: http
               containerPort: 8080
               protocol: TCP
+            {{- end }}
             {{- if .Values.webhooks.enabled }}
             - name: webhooks
               containerPort: {{ .Values.webhooks.port }}
               protocol: TCP
             {{- end }}
+          {{- end }}
+          {{- with (.Values.shutdown | default dict).preStopSleepSeconds }}
+          # Give the Service and the load balancer time to stop sending new
+          # requests before the drain starts.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: {{ int . }}
+          {{- end }}
           {{- range $name, $probe := dict "startupProbe" .Values.startupProbe "livenessProbe" .Values.livenessProbe "readinessProbe" .Values.readinessProbe }}
           {{- with $probe }}
           {{ $name }}:
             {{- if $loopback }}
             {{- /* The kubelet cannot reach the pod's loopback, so the check runs inside it. */}}
             exec:
-              command: [wget, -qO-, "http://127.0.0.1:8080/healthz"]
+              command: [wget, -qO-, {{ printf "http://127.0.0.1:8080%s" (dig "httpGet" "path" "/healthz" .) | quote }}]
             {{- toYaml (omit . "httpGet" "tcpSocket" "grpc" "exec") | nindent 12 }}
             {{- else }}
             {{- toYaml . | nindent 12 }}
@@ -123,13 +158,25 @@ spec:
             {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+        {{- if $tailscale }}
+        {{- include "humagen.tailscaleProxy" . | nindent 8 }}
+        {{- end }}
       volumes:
         - name: data
-          {{- if .Values.persistence.enabled }}
+          {{- if and .Values.persistence.enabled .Values.persistence.existingClaim }}
           persistentVolumeClaim:
-            claimName: {{ .Values.persistence.existingClaim | default $fullname }}
+            claimName: {{ .Values.persistence.existingClaim }}
+          {{- else if and .Values.persistence.enabled (eq (include "humagen.blobsKind" .) "disk") }}
+          persistentVolumeClaim:
+            claimName: {{ $fullname }}
+          {{- else }}
+          # Scratch: published files are in the bucket, not on this volume.
+          {{- with .Values.persistence.scratchSizeLimit }}
+          emptyDir:
+            sizeLimit: {{ . }}
           {{- else }}
           emptyDir: {}
+          {{- end }}
           {{- end }}
         - name: tmp
           emptyDir: {}
@@ -137,6 +184,13 @@ spec:
         - name: config
           configMap:
             name: {{ $fullname }}
+        {{- if $tailscale }}
+        - name: tailscale-proxy
+          configMap:
+            name: {{ $fullname }}-tailscale-proxy
+        - name: tailscale-state
+          emptyDir: {}
+        {{- end }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

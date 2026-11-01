@@ -3,11 +3,17 @@
 // A source is a named collection in one tenant. A document added to it is cut
 // into passages, and Search ranks passages against a query with BM25.
 //
-// The store is in memory. Search is lexical unless an embedder is given with
-// UseEmbedder; then each passage also gets a vector, computed in the
-// background, and the two rankings are fused (vectors.go). Built with Open, it
-// writes every change through a state.Store, passages and vectors included,
-// and reads them back when it is built again.
+// Search is lexical unless an embedder is given with UseEmbedder; then each
+// passage also gets a vector, computed in the background, and the two
+// rankings are fused (vectors.go).
+//
+// It reads and writes the database per request (pkg/state, per request): a
+// source's record is the version every change to it and its documents is
+// made at, so any number of processes on one database agree, and it does not
+// need pkg/state's single-writer lock. Search reads the selected sources'
+// passages, each source capped at MaxImportDocuments documents and
+// MaxImportBytes; a process may keep what it read, by the version of the
+// source it read it at.
 package knowledge
 
 import (
@@ -117,28 +123,30 @@ type passage struct {
 	model string
 }
 
+// source is one source as read at one version of its record, with its
+// documents and passages. A source read for search is shared and never
+// changed.
 type source struct {
 	Source
 	docs     []*Document
 	passages []*passage
-	// seqs is each document's place in docs as it was written, by id.
+	// seqs is each document's number, by id.
 	seqs map[string]int64
 }
 
-// Store holds every tenant's sources. Every method is confined to one tenant.
+// Store holds every tenant's sources, read and written per request on a
+// state.Store. Every method is confined to one tenant.
 type Store struct {
-	mu       sync.RWMutex
-	tenants  map[string]map[string]*source
-	versions map[string]map[string]uint64
-	seq      int64
-	// kept is where sources and documents are written. Nil keeps them only
-	// in memory.
 	kept *state.Table[stored]
+	dir  *state.Tenants
+	read *readCache
+	mu   sync.RWMutex // guards dense
 	// dense is the embedder and its background indexer; nil is lexical only.
 	dense *denseIndex
 }
 
-// stored is one record: a source, a document, or a document's passages. A
+// stored is one record: a source, a document, a document's passages or
+// vectors, a name's content clock, or the stamp every new source moves. A
 // document's passages are written once, when it is added, and its record
 // again whenever it changes.
 type stored struct {
@@ -147,130 +155,99 @@ type stored struct {
 	Vectors  *vectorRecord `json:"vectors,omitempty"`
 	Document *Document     `json:"document,omitempty"`
 	Passages []string      `json:"passages,omitempty"`
+	Stamp    int64         `json:"stamp,omitempty"`
 }
+
+// namespace is where sources are kept. The tenant is the shard key; within
+// it:
+//
+//	source/<name>          a source
+//	doc/<name>/<seq>       a document, numbered in the order it was added
+//	text/<name>/<seq>      its passages
+//	vec/<name>/<seq>       their vectors
+//	version/<name>         the name's content clock, kept after a delete
+//	head                   a stamp every new source moves, so two processes
+//	                       creating sources at once cannot both count under
+//	                       the bounds
+//
+// A change to a source's documents, passages or vectors is written at the
+// version of its source record, and moves it.
+const (
+	namespace = "knowledge"
+	headKey   = "head"
+	// MaxSources bounds one tenant's sources.
+	MaxSources = 200
+	// AttemptLease is how long a refresh attempt may run. One older than
+	// this, never finished, was cut short by the process running it ending.
+	AttemptLease = 15 * time.Minute
+)
 
 func sourceKey(name string) string { return "source/" + name }
+func docPrefix(name string) string { return "doc/" + name + "/" }
 func docKey(name string, seq int64) string {
-	return "doc/" + name + "/" + state.Seq(seq)
+	return docPrefix(name) + state.Seq(seq)
 }
+func textPrefix(name string) string { return "text/" + name + "/" }
 func textKey(name string, seq int64) string {
-	return "text/" + name + "/" + state.Seq(seq)
+	return textPrefix(name) + state.Seq(seq)
 }
 
-// NewStore returns an empty store in memory.
+// seqOf reads a document's number out of its key.
+func seqOf(key string) (int64, bool) {
+	i := strings.LastIndexByte(key, '/')
+	if i < 0 {
+		return 0, false
+	}
+	n, err := strconv.ParseInt(key[i+1:], 10, 64)
+	return n, err == nil
+}
+
+// NewStore returns a store in this process's memory.
 func NewStore() *Store {
-	return &Store{tenants: map[string]map[string]*source{}, versions: map[string]map[string]uint64{}}
+	s, err := Open(nil)
+	if err != nil {
+		panic(err) // a store in memory cannot fail to open
+	}
+	return s
 }
 
-// Open returns a store that keeps its sources in st, holding what st already
-// has. A nil st is NewStore.
+// Open returns a store on st, which may be shared with other processes. A nil
+// st keeps sources in this process's memory.
+//
+// A refresh attempt that has run longer than AttemptLease without finishing
+// was cut short when the process running it ended: Open marks it failed, so
+// its last good copy is kept and an explicit retry is allowed, without
+// inventing successful work. An attempt younger than that may belong to
+// another process, and is left alone.
 func Open(st state.Store) (*Store, error) {
-	s := NewStore()
-	s.kept = state.NewTable[stored](st, "knowledge")
-	type doc struct {
-		d        *Document
-		passages []string
-		vectors  *vectorRecord
+	if st == nil {
+		st = state.NewMemory()
 	}
-	docs := map[[2]string]map[int64]*doc{} // (tenant, source) -> seq -> doc
-	at := func(tenant, key, kind string) (string, int64, bool) {
-		rest, ok := strings.CutPrefix(key, kind+"/")
-		if !ok {
-			return "", 0, false
-		}
-		i := strings.LastIndexByte(rest, '/')
-		if i < 0 {
-			return "", 0, false
-		}
-		n, err := strconv.ParseInt(rest[i+1:], 10, 64)
+	dir, err := state.OpenTenants(st, namespace)
+	if err != nil {
+		return nil, fmt.Errorf("knowledge: tenants: %w", err)
+	}
+	s := &Store{kept: state.NewTable[stored](st, namespace), dir: dir, read: newReadCache()}
+	at := time.Now().UTC()
+	err = dir.Each(func(tenant string) error {
+		srcs, _, err := s.sources(tenant)
 		if err != nil {
-			return "", 0, false
+			return err
 		}
-		return rest[:i], n, true
-	}
-	of := func(tenant, name string, seq int64) *doc {
-		k := [2]string{tenant, name}
-		if docs[k] == nil {
-			docs[k] = map[int64]*doc{}
-		}
-		if docs[k][seq] == nil {
-			docs[k][seq] = &doc{}
-		}
-		return docs[k][seq]
-	}
-	err := s.kept.Load(func(tenant, key string, r stored) error {
-		switch {
-		case r.Clock != nil:
-			if !ValidName(r.Clock.Name) || key != clockKey(r.Clock.Name) {
-				return ErrInvalid
+		for _, src := range srcs {
+			if src.Lifecycle == nil {
+				continue
 			}
-			s.rememberVersion(tenant, r.Clock.Name, r.Clock.Value)
-		case r.Source != nil:
-			if s.tenants[tenant] == nil {
-				s.tenants[tenant] = map[string]*source{}
-			}
-			src := &source{Source: *r.Source, seqs: map[string]int64{}}
-			if src.Variants == nil {
-				src.Variants = []Variant{}
-			}
-			s.tenants[tenant][src.Name] = src
-			s.rememberVersion(tenant, src.Name, src.ContentVersion)
-		case r.Document != nil:
-			if name, seq, ok := at(tenant, key, "doc"); ok {
-				d := *r.Document
-				of(tenant, name, seq).d = &d
-				s.seq = max(s.seq, seq)
-			}
-		case r.Passages != nil:
-			if name, seq, ok := at(tenant, key, "text"); ok {
-				of(tenant, name, seq).passages = r.Passages
-			}
-		case r.Vectors != nil:
-			if name, seq, ok := at(tenant, key, "vec"); ok {
-				of(tenant, name, seq).vectors = r.Vectors
+			if id := stale(src.Lifecycle, at); id != "" {
+				if _, err := s.FailSync(tenant, src.Name, id, Interrupted, at); err != nil && !errors.Is(err, ErrInvalid) && !errors.Is(err, ErrNotFound) {
+					return err
+				}
 			}
 		}
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("knowledge: load: %w", err)
-	}
-	for k, bySeq := range docs {
-		src := s.tenants[k[0]][k[1]]
-		if src == nil {
-			continue
-		}
-		seqs := make([]int64, 0, len(bySeq))
-		for seq := range bySeq {
-			seqs = append(seqs, seq)
-		}
-		slices.Sort(seqs)
-		for _, seq := range seqs {
-			d := bySeq[seq]
-			if d.d == nil {
-				continue
-			}
-			src.docs = append(src.docs, d.d)
-			src.seqs[d.d.ID] = seq
-			ps := passagesOf(d.d, d.passages)
-			d.vectors.attach(ps)
-			src.passages = append(src.passages, ps...)
-		}
-		src.Documents, src.Passages = len(src.docs), len(src.passages)
-		src.recount()
-	}
-	// An attempt that outlived this process did not complete. Keep its last good
-	// copy and permit an explicit retry, without inventing successful work.
-	for tenant, sources := range s.tenants {
-		for name, src := range sources {
-			if src.Lifecycle != nil {
-				if id := active(src.Lifecycle); id != "" {
-					if _, err := s.FailSync(tenant, name, id, Interrupted, time.Now().UTC()); err != nil {
-						return nil, fmt.Errorf("knowledge: recover attempt: %w", err)
-					}
-				}
-			}
-		}
+		return nil, fmt.Errorf("knowledge: recover attempts: %w", err)
 	}
 	return s, nil
 }
@@ -290,12 +267,170 @@ func passagesOf(doc *Document, texts []string) []*passage {
 	return out
 }
 
-func (s *Store) get(tenant, name string) (*source, error) {
-	src, ok := s.tenants[tenant][name]
-	if !ok {
-		return nil, fmt.Errorf("%w: source %q", ErrNotFound, name)
+// meta reads one source's record and its version.
+func (s *Store) meta(tenant, name string) (Source, int64, error) {
+	it, err := s.kept.Lookup(tenant, sourceKey(name))
+	if errors.Is(err, state.ErrNotFound) || err == nil && it.Value.Source == nil {
+		return Source{}, 0, fmt.Errorf("%w: source %q", ErrNotFound, name)
 	}
-	return src, nil
+	if err != nil {
+		return Source{}, 0, err
+	}
+	src := *it.Value.Source
+	if src.Variants == nil {
+		src.Variants = []Variant{}
+	}
+	return src, it.Version, nil
+}
+
+// sources reads a tenant's sources by name, and the version of its head
+// stamp, read first: a source created after it moves it.
+func (s *Store) sources(tenant string) ([]Source, int64, error) {
+	head, err := s.kept.Lookup(tenant, headKey)
+	if err != nil && !errors.Is(err, state.ErrNotFound) {
+		return nil, 0, err
+	}
+	items, err := s.kept.All(tenant, "source/", MaxSources)
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]Source, 0, len(items))
+	for _, it := range items {
+		if it.Value.Source == nil {
+			continue
+		}
+		src := *it.Value.Source
+		if src.Variants == nil {
+			src.Variants = []Variant{}
+		}
+		out = append(out, src)
+	}
+	return out, head.Version, nil
+}
+
+// clock reads a name's content clock and its version, 0 when it has none.
+func (s *Store) clock(tenant, name string) (contentClock, int64, error) {
+	it, err := s.kept.Lookup(tenant, clockKey(name))
+	if errors.Is(err, state.ErrNotFound) {
+		return contentClock{Name: name}, 0, nil
+	}
+	if err != nil {
+		return contentClock{}, 0, err
+	}
+	if it.Value.Clock == nil {
+		return contentClock{Name: name}, it.Version, nil
+	}
+	return *it.Value.Clock, it.Version, nil
+}
+
+// docRow is one document as stored, with its number and version.
+type docRow struct {
+	seq     int64
+	doc     Document
+	version int64
+}
+
+// docs reads a source's documents in the order they were added.
+func (s *Store) docs(tenant, name string) ([]docRow, error) {
+	items, err := s.kept.All(tenant, docPrefix(name), MaxImportDocuments)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]docRow, 0, len(items))
+	for _, it := range items {
+		seq, ok := seqOf(it.Key)
+		if !ok || it.Value.Document == nil {
+			continue
+		}
+		out = append(out, docRow{seq, *it.Value.Document, it.Version})
+	}
+	return out, nil
+}
+
+// nextSeq is the number the next document of a name is given: past every
+// number its clock or its documents have used.
+func nextSeq(clk contentClock, docs []docRow) int64 {
+	n := clk.Seq
+	for _, d := range docs {
+		n = max(n, d.seq)
+	}
+	return n + 1
+}
+
+// putClock writes a name's clock at the version it was read at.
+func putClock(b *state.Batch[stored], tenant string, clk contentClock, version int64) {
+	if version == 0 {
+		b.Create(tenant, clockKey(clk.Name), stored{Clock: &clk})
+		return
+	}
+	b.PutAt(tenant, clockKey(clk.Name), stored{Clock: &clk}, version)
+}
+
+// load reads a source with its documents, passages and vectors as of one
+// version of its record, from this process's cache when it has it there. A
+// read that the source moved under returns state.ErrConflict.
+func (s *Store) load(tenant, name string) (*source, int64, error) {
+	meta, version, err := s.meta(tenant, name)
+	if err != nil {
+		return nil, 0, err
+	}
+	if src, ok := s.read.get(tenant, name, version, meta.ContentVersion); ok {
+		return src, version, nil
+	}
+	docs, err := s.docs(tenant, name)
+	if err != nil {
+		return nil, 0, err
+	}
+	texts, err := s.kept.All(tenant, textPrefix(name), MaxImportDocuments)
+	if err != nil {
+		return nil, 0, err
+	}
+	vecs, err := s.kept.All(tenant, vecPrefix(name), MaxImportDocuments)
+	if err != nil {
+		return nil, 0, err
+	}
+	if _, again, err := s.meta(tenant, name); err != nil {
+		return nil, 0, err
+	} else if again != version {
+		return nil, 0, state.ErrConflict
+	}
+	bySeq := map[int64][]string{}
+	for _, it := range texts {
+		if seq, ok := seqOf(it.Key); ok {
+			bySeq[seq] = it.Value.Passages
+		}
+	}
+	vecBySeq := map[int64]*vectorRecord{}
+	for _, it := range vecs {
+		if seq, ok := seqOf(it.Key); ok {
+			vecBySeq[seq] = it.Value.Vectors
+		}
+	}
+	src := &source{Source: meta, seqs: map[string]int64{}}
+	size := 0
+	for _, d := range docs {
+		doc := d.doc
+		src.docs = append(src.docs, &doc)
+		src.seqs[doc.ID] = d.seq
+		ps := passagesOf(&doc, bySeq[d.seq])
+		vecBySeq[d.seq].attach(ps)
+		src.passages = append(src.passages, ps...)
+		size += doc.Bytes
+	}
+	s.read.put(tenant, name, version, meta.ContentVersion, src, size)
+	return src, version, nil
+}
+
+// current loads a source, reading again while writers move it.
+func (s *Store) current(tenant, name string) (*source, error) {
+	for range state.MaxTries {
+		src, _, err := s.load(tenant, name)
+		if errors.Is(err, state.ErrConflict) {
+			continue
+		}
+		return src, err
+	}
+	return nil, state.ErrBusy
 }
 
 // Create adds an empty source.
@@ -323,29 +458,62 @@ func (s *Store) CreateWithConfig(tenant, name, description, by string, at time.T
 	if !validName.MatchString(name) {
 		return Source{}, fmt.Errorf("%w: a source name is lowercase letters, digits and dashes", ErrInvalid)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if len(s.tenants[tenant]) >= 200 {
-		return Source{}, fmt.Errorf("%w: at most 200 sources", ErrInvalid)
+	if err := s.dir.Mark(tenant); err != nil {
+		return Source{}, err
 	}
-	if _, ok := s.tenants[tenant][name]; ok {
-		return Source{}, fmt.Errorf("%w: %q", ErrExists, name)
+	var out Source
+	err := state.Retry(func() error {
+		all, head, err := s.sources(tenant)
+		if err != nil {
+			return err
+		}
+		if len(all) >= MaxSources {
+			return fmt.Errorf("%w: at most %d sources", ErrInvalid, MaxSources)
+		}
+		if slices.ContainsFunc(all, func(x Source) bool { return x.Name == name }) {
+			return fmt.Errorf("%w: %q", ErrExists, name)
+		}
+		clk, clkAt, err := s.clock(tenant, name)
+		if err != nil {
+			return err
+		}
+		b := s.kept.Batch()
+		if clkAt == 0 {
+			// Every name a tenant has used keeps a clock, and the clocks are
+			// what MaxSourceNames bounds.
+			clocks, err := s.kept.All(tenant, "version/", MaxSourceNames)
+			if errors.Is(err, state.ErrTooMany) || err == nil && len(clocks) >= MaxSourceNames {
+				return fmt.Errorf("%w: source name history capacity reached", ErrInvalid)
+			}
+			if err != nil {
+				return err
+			}
+			putClock(b, tenant, clk, 0)
+		}
+		src := Source{Name: name, Description: description, Variants: []Variant{}, CreatedBy: by, UpdatedAt: at}
+		src.Lifecycle = configured
+		src.ContentVersion = clk.Value
+		b.Create(tenant, sourceKey(name), stored{Source: &src})
+		bumpHead(b, tenant, head)
+		if err := b.Commit(); err != nil {
+			return err
+		}
+		out = src
+		return nil
+	})
+	if err != nil {
+		return Source{}, writeErr(err)
 	}
-	if _, known := s.versions[tenant][name]; !known && len(s.versions[tenant]) >= MaxSourceNames {
-		return Source{}, fmt.Errorf("%w: source name history capacity reached", ErrInvalid)
+	return cloneSource(out), nil
+}
+
+// bumpHead moves the head stamp read at version, 0 when there is none.
+func bumpHead(b *state.Batch[stored], tenant string, version int64) {
+	if version == 0 {
+		b.Create(tenant, headKey, stored{Stamp: 1})
+		return
 	}
-	src := &source{Source: Source{Name: name, Description: description, Variants: []Variant{}, CreatedBy: by, UpdatedAt: at}, seqs: map[string]int64{}}
-	src.Lifecycle = configured
-	src.ContentVersion = s.versions[tenant][name]
-	if err := s.kept.Put(tenant, sourceKey(name), stored{Source: &src.Source}); err != nil {
-		return Source{}, fmt.Errorf("knowledge: write: %w", err)
-	}
-	if s.tenants[tenant] == nil {
-		s.tenants[tenant] = map[string]*source{}
-	}
-	s.tenants[tenant][name] = src
-	s.rememberVersion(tenant, name, src.ContentVersion)
-	return cloneSource(src.Source), nil
+	b.PutAt(tenant, headKey, stored{Stamp: version + 1}, version)
 }
 
 // Delete removes a source and everything in it.
@@ -356,46 +524,57 @@ func (s *Store) DeleteForScope(tenant, name string, expected *SourceConfig) erro
 	return s.deleteWithScope(tenant, name, expected, true)
 }
 func (s *Store) deleteWithScope(tenant, name string, expected *SourceConfig, guard bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	src, err := s.get(tenant, name)
-	if err != nil {
+	return writeErr(state.Retry(func() error {
+		src, at, err := s.meta(tenant, name)
+		if err != nil {
+			return err
+		}
+		if guard && !sameConfiguration(src, expected) {
+			return ErrNotFound
+		}
+		clk, clkAt, err := s.clock(tenant, name)
+		if err != nil {
+			return err
+		}
+		version, err := nextVersion(src, clk)
+		if err != nil {
+			return err
+		}
+		docs, err := s.docs(tenant, name)
+		if err != nil {
+			return err
+		}
+		b := s.kept.Batch()
+		for _, d := range docs {
+			b.Delete(tenant, docKey(name, d.seq))
+			b.Delete(tenant, textKey(name, d.seq))
+			b.Delete(tenant, vecKey(name, d.seq))
+		}
+		b.DeleteAt(tenant, sourceKey(name), at)
+		putClock(b, tenant, contentClock{Name: name, Value: version, Seq: nextSeq(clk, docs) - 1}, clkAt)
+		return b.Commit()
+	}))
+}
+
+// writeErr marks an error from the state store as a failed write, leaving
+// the store's own errors as they are.
+func writeErr(err error) error {
+	if err == nil || errors.Is(err, ErrInvalid) || errors.Is(err, ErrNotFound) || errors.Is(err, ErrExists) {
 		return err
 	}
-	if guard && !sameConfiguration(src.Source, expected) {
-		return ErrNotFound
-	}
-	version, versionErr := s.nextVersion(tenant, name)
-	if versionErr != nil {
-		return versionErr
-	}
-	b := s.kept.Batch()
-	b.Delete(tenant, sourceKey(name))
-	for _, seq := range src.seqs {
-		b.Delete(tenant, docKey(name, seq))
-		b.Delete(tenant, textKey(name, seq))
-		b.Delete(tenant, vecKey(name, seq))
-	}
-	b.Put(tenant, clockKey(name), stored{Clock: &contentClock{Name: name, Value: version}})
-	if err := b.Commit(); err != nil {
-		return fmt.Errorf("knowledge: write: %w", err)
-	}
-	s.rememberVersion(tenant, name, version)
-	delete(s.tenants[tenant], name)
-	return nil
+	return fmt.Errorf("knowledge: write: %w", err)
 }
 
 // List returns a tenant's sources by name.
-func (s *Store) List(tenant string) []Source {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make([]Source, 0, len(s.tenants[tenant]))
-	for _, src := range s.tenants[tenant] {
-		view := cloneSource(src.Source)
-		out = append(out, view)
+func (s *Store) List(tenant string) ([]Source, error) {
+	srcs, _, err := s.sources(tenant)
+	if err != nil {
+		return nil, err
 	}
-	slices.SortFunc(out, func(a, b Source) int { return strings.Compare(a.Name, b.Name) })
-	return out
+	for i := range srcs {
+		srcs[i] = cloneSource(srcs[i])
+	}
+	return srcs, nil
 }
 
 // Documents returns a source's documents, newest first.
@@ -408,23 +587,35 @@ func (s *Store) DocumentsForScope(tenant, name string, expected *SourceConfig) (
 	return s.documents(tenant, name, expected, true)
 }
 func (s *Store) documents(tenant, name string, expected *SourceConfig, guard bool) ([]Document, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	src, err := s.get(tenant, name)
-	if err != nil {
-		return nil, err
+	for range state.MaxTries {
+		src, at, err := s.meta(tenant, name)
+		if err != nil {
+			return nil, err
+		}
+		if guard && !sameConfiguration(src, expected) {
+			return nil, ErrNotFound
+		}
+		if guard && src.RequiresUpstreamRead() {
+			return nil, ErrUpstreamRead
+		}
+		docs, err := s.docs(tenant, name)
+		if err != nil {
+			return nil, err
+		}
+		// The documents are the source's at the version its scope was
+		// checked at, or they are read again.
+		if _, again, err := s.meta(tenant, name); err != nil {
+			return nil, err
+		} else if again != at {
+			continue
+		}
+		out := make([]Document, 0, len(docs))
+		for _, d := range slices.Backward(docs) {
+			out = append(out, d.doc)
+		}
+		return out, nil
 	}
-	if guard && !sameConfiguration(src.Source, expected) {
-		return nil, ErrNotFound
-	}
-	if guard && src.RequiresUpstreamRead() {
-		return nil, ErrUpstreamRead
-	}
-	out := make([]Document, 0, len(src.docs))
-	for _, d := range slices.Backward(src.docs) {
-		out = append(out, *d)
-	}
-	return out, nil
+	return nil, state.ErrBusy
 }
 
 // Add cuts a document into passages and stores it.
@@ -434,8 +625,9 @@ func (s *Store) Add(tenant, name, title, uri, text, by string, at time.Time) (Do
 
 // AddForScope inserts only while the source retains the exact expected public
 // configuration. A nil expectation requires a legacy manual workspace source.
-// The guard and insertion hold one lock, so a concurrent Configure cannot
-// broaden the audience or replace the source authority between them.
+// The guard and insertion are one write at the version of the source read,
+// so a concurrent Configure cannot broaden the audience or replace the source
+// authority between them.
 func (s *Store) AddForScope(tenant, name, title, uri, text, by string, at time.Time, expected *SourceConfig) (Document, error) {
 	return s.add(tenant, name, title, uri, text, by, at, expected, true)
 }
@@ -453,62 +645,65 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 		return Document{}, err
 	}
 	doc := &Document{ID: hex.EncodeToString(id), Title: title, URI: uri, Bytes: len(text), AddedBy: by, AddedAt: at}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	src, err := s.get(tenant, name)
-	if err != nil {
-		return Document{}, err
-	}
-	totalBytes := doc.Bytes
-	for _, prior := range src.docs {
-		totalBytes += prior.Bytes
-	}
-	if len(src.docs) >= MaxImportDocuments || totalBytes > MaxImportBytes {
-		return Document{}, fmt.Errorf("%w: source document or byte limit reached", ErrInvalid)
-	}
-
-	if guard {
-		if expected == nil {
-			if src.Lifecycle != nil {
-				return Document{}, fmt.Errorf("%w: the source configuration changed; review its audience again", ErrExists)
-			}
-		} else if src.Lifecycle == nil || !src.Lifecycle.Equal(*expected) || src.Lifecycle.Mode != Indexed || src.Lifecycle.Provider != "manual" {
-			return Document{}, fmt.Errorf("%w: the source configuration changed; review its audience again", ErrExists)
-		}
-	}
 	texts := split(text)
-	added := passagesOf(doc, texts)
-	doc.Passages = len(added)
-	seq := s.seq + 1
-	meta := cloneSource(src.Source)
-	if meta.Lifecycle != nil && meta.Lifecycle.Provider == "manual" && meta.Lifecycle.Mode == Indexed {
-		stamp := at
-		meta.Lifecycle.Status = Available
-		meta.Lifecycle.LastGoodAt = &stamp
-		meta.Lifecycle.Cause = ""
+	doc.Passages = len(texts)
+
+	err := state.Retry(func() error {
+		src, srcAt, err := s.meta(tenant, name)
+		if err != nil {
+			return err
+		}
+		docs, err := s.docs(tenant, name)
+		if err != nil {
+			return err
+		}
+		totalBytes := doc.Bytes
+		passages := doc.Passages
+		for _, prior := range docs {
+			totalBytes += prior.doc.Bytes
+			passages += prior.doc.Passages
+		}
+		if len(docs) >= MaxImportDocuments || totalBytes > MaxImportBytes {
+			return fmt.Errorf("%w: source document or byte limit reached", ErrInvalid)
+		}
+		if guard {
+			if expected == nil {
+				if src.Lifecycle != nil {
+					return fmt.Errorf("%w: the source configuration changed; review its audience again", ErrExists)
+				}
+			} else if src.Lifecycle == nil || !src.Lifecycle.Equal(*expected) || src.Lifecycle.Mode != Indexed || src.Lifecycle.Provider != "manual" {
+				return fmt.Errorf("%w: the source configuration changed; review its audience again", ErrExists)
+			}
+		}
+		clk, clkAt, err := s.clock(tenant, name)
+		if err != nil {
+			return err
+		}
+		seq := nextSeq(clk, docs)
+		meta := cloneSource(src)
+		if meta.Lifecycle != nil && meta.Lifecycle.Provider == "manual" && meta.Lifecycle.Mode == Indexed {
+			stamp := at
+			meta.Lifecycle.Status = Available
+			meta.Lifecycle.LastGoodAt = &stamp
+			meta.Lifecycle.Cause = ""
+		}
+		version, err := nextVersion(src, clk)
+		if err != nil {
+			return err
+		}
+		meta.ContentVersion = version
+		meta.Documents, meta.Passages, meta.UpdatedAt = len(docs)+1, passages, at
+		b := s.kept.Batch()
+		b.Put(tenant, textKey(name, seq), stored{Passages: texts})
+		b.Create(tenant, docKey(name, seq), stored{Document: doc})
+		b.PutAt(tenant, sourceKey(name), stored{Source: &meta}, srcAt)
+		putClock(b, tenant, contentClock{Name: name, Value: version, Seq: seq}, clkAt)
+		return b.Commit()
+	})
+	if err != nil {
+		return Document{}, writeErr(err)
 	}
-	version, versionErr := s.nextVersion(tenant, name)
-	if versionErr != nil {
-		return Document{}, versionErr
-	}
-	meta.ContentVersion = version
-	meta.Documents, meta.Passages, meta.UpdatedAt = len(src.docs)+1, len(src.passages)+len(added), at
-	b := s.kept.Batch()
-	b.Put(tenant, textKey(name, seq), stored{Passages: texts})
-	b.Put(tenant, docKey(name, seq), stored{Document: doc})
-	b.Put(tenant, sourceKey(name), stored{Source: &meta})
-	b.Put(tenant, clockKey(name), stored{Clock: &contentClock{Name: name, Value: meta.ContentVersion}})
-	if err := b.Commit(); err != nil {
-		return Document{}, fmt.Errorf("knowledge: write: %w", err)
-	}
-	s.rememberVersion(tenant, name, meta.ContentVersion)
-	s.seq = seq
-	src.seqs[doc.ID] = seq
-	src.passages = append(src.passages, added...)
-	src.docs = append(src.docs, doc)
-	src.Source = meta
-	s.dense.nudge() // under the write lock, which UseEmbedder takes to set it
+	s.nudge()
 	return *doc, nil
 }
 
@@ -522,54 +717,55 @@ func (s *Store) RemoveForScope(tenant, name, id string, at time.Time, expected *
 	return s.removeWithScope(tenant, name, id, at, expected, true)
 }
 func (s *Store) removeWithScope(tenant, name, id string, at time.Time, expected *SourceConfig, guard bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	src, err := s.get(tenant, name)
-	if err != nil {
-		return err
-	}
-	if guard && !sameConfiguration(src.Source, expected) {
-		return ErrNotFound
-	}
-	i := slices.IndexFunc(src.docs, func(d *Document) bool { return d.ID == id })
-	if i < 0 {
-		return fmt.Errorf("%w: document %q", ErrNotFound, id)
-	}
-	docs := slices.Delete(slices.Clone(src.docs), i, i+1)
-	passages := slices.DeleteFunc(slices.Clone(src.passages), func(p *passage) bool { return p.doc.ID == id })
-	variants := slices.Clone(src.Variants)
-	for i := range variants {
-		variants[i].Excluded = slices.DeleteFunc(slices.Clone(variants[i].Excluded), func(x string) bool { return x == id })
-	}
-	next := *src
-	next.docs, next.passages, next.Variants = docs, passages, variants
-	next.Documents, next.Passages, next.UpdatedAt = len(docs), len(passages), at
-	version, versionErr := s.nextVersion(tenant, name)
-	if versionErr != nil {
-		return versionErr
-	}
-	next.ContentVersion = version
-	next.recount()
-	seq := src.seqs[id]
-	b := s.kept.Batch()
-	b.Delete(tenant, docKey(name, seq))
-	b.Delete(tenant, textKey(name, seq))
-	b.Delete(tenant, vecKey(name, seq))
-	b.Put(tenant, sourceKey(name), stored{Source: &next.Source})
-	b.Put(tenant, clockKey(name), stored{Clock: &contentClock{Name: name, Value: next.ContentVersion}})
-	if err := b.Commit(); err != nil {
-		return fmt.Errorf("knowledge: write: %w", err)
-	}
-	s.rememberVersion(tenant, name, next.ContentVersion)
-	delete(next.seqs, id)
-	*src = next
-	return nil
+	return writeErr(state.Retry(func() error {
+		src, srcAt, err := s.meta(tenant, name)
+		if err != nil {
+			return err
+		}
+		if guard && !sameConfiguration(src, expected) {
+			return ErrNotFound
+		}
+		docs, err := s.docs(tenant, name)
+		if err != nil {
+			return err
+		}
+		i := slices.IndexFunc(docs, func(d docRow) bool { return d.doc.ID == id })
+		if i < 0 {
+			return fmt.Errorf("%w: document %q", ErrNotFound, id)
+		}
+		gone := docs[i]
+		docs = slices.Delete(docs, i, i+1)
+		next := cloneSource(src)
+		for i := range next.Variants {
+			next.Variants[i].Excluded = slices.DeleteFunc(next.Variants[i].Excluded, func(x string) bool { return x == id })
+		}
+		recount(&next, docs)
+		next.UpdatedAt = at
+		clk, clkAt, err := s.clock(tenant, name)
+		if err != nil {
+			return err
+		}
+		version, err := nextVersion(src, clk)
+		if err != nil {
+			return err
+		}
+		next.ContentVersion = version
+		b := s.kept.Batch()
+		b.DeleteAt(tenant, docKey(name, gone.seq), gone.version)
+		b.Delete(tenant, textKey(name, gone.seq))
+		b.Delete(tenant, vecKey(name, gone.seq))
+		b.PutAt(tenant, sourceKey(name), stored{Source: &next}, srcAt)
+		putClock(b, tenant, contentClock{Name: name, Value: version, Seq: max(clk.Seq, nextSeq(clk, docs)-1, gone.seq)}, clkAt)
+		return b.Commit()
+	}))
 }
 
-func (src *source) recount() {
-	src.Excluded = 0
-	for _, d := range src.docs {
-		if d.Excluded {
+// recount sets a source's counts from its documents.
+func recount(src *Source, docs []docRow) {
+	src.Documents, src.Passages, src.Excluded = len(docs), 0, 0
+	for _, d := range docs {
+		src.Passages += d.doc.Passages
+		if d.doc.Excluded {
 			src.Excluded++
 		}
 	}
@@ -586,51 +782,59 @@ func (s *Store) SetExcludedForScope(tenant, name, id string, excluded bool, at t
 	return s.setExcludedWithScope(tenant, name, id, excluded, at, expected, true)
 }
 func (s *Store) setExcludedWithScope(tenant, name, id string, excluded bool, at time.Time, expected *SourceConfig, guard bool) (Document, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	src, err := s.get(tenant, name)
+	var out Document
+	err := state.Retry(func() error {
+		src, srcAt, err := s.meta(tenant, name)
+		if err != nil {
+			return err
+		}
+		if guard && !sameConfiguration(src, expected) {
+			return ErrNotFound
+		}
+		if guard && src.RequiresUpstreamRead() {
+			return ErrUpstreamRead
+		}
+		docs, err := s.docs(tenant, name)
+		if err != nil {
+			return err
+		}
+		i := slices.IndexFunc(docs, func(d docRow) bool { return d.doc.ID == id })
+		if i < 0 {
+			return fmt.Errorf("%w: document %q", ErrNotFound, id)
+		}
+		row := docs[i]
+		changed := row.doc.Excluded != excluded
+		docs[i].doc.Excluded = excluded
+		meta := cloneSource(src)
+		meta.UpdatedAt = at
+		recount(&meta, docs)
+		clk, clkAt, err := s.clock(tenant, name)
+		if err != nil {
+			return err
+		}
+		if changed {
+			version, err := nextVersion(src, clk)
+			if err != nil {
+				return err
+			}
+			meta.ContentVersion = version
+		}
+		clk.Value = max(clk.Value, meta.ContentVersion)
+		doc := docs[i].doc
+		b := s.kept.Batch()
+		b.PutAt(tenant, docKey(name, row.seq), stored{Document: &doc}, row.version)
+		b.PutAt(tenant, sourceKey(name), stored{Source: &meta}, srcAt)
+		putClock(b, tenant, clk, clkAt)
+		if err := b.Commit(); err != nil {
+			return err
+		}
+		out = doc
+		return nil
+	})
 	if err != nil {
-		return Document{}, err
+		return Document{}, writeErr(err)
 	}
-	if guard && !sameConfiguration(src.Source, expected) {
-		return Document{}, ErrNotFound
-	}
-	if guard && src.RequiresUpstreamRead() {
-		return Document{}, ErrUpstreamRead
-	}
-	i := slices.IndexFunc(src.docs, func(d *Document) bool { return d.ID == id })
-	if i < 0 {
-		return Document{}, fmt.Errorf("%w: document %q", ErrNotFound, id)
-	}
-	doc := *src.docs[i]
-	doc.Excluded = excluded
-	meta := src.Source
-	meta.UpdatedAt = at
-	meta.Excluded = src.Excluded
-	if doc.Excluded != src.docs[i].Excluded {
-		version, versionErr := s.nextVersion(tenant, name)
-		if versionErr != nil {
-			return Document{}, versionErr
-		}
-		meta.ContentVersion = version
-		if excluded {
-			meta.Excluded++
-		} else {
-			meta.Excluded--
-		}
-	}
-	b := s.kept.Batch()
-	b.Put(tenant, docKey(name, src.seqs[id]), stored{Document: &doc})
-	b.Put(tenant, sourceKey(name), stored{Source: &meta})
-	b.Put(tenant, clockKey(name), stored{Clock: &contentClock{Name: name, Value: meta.ContentVersion}})
-	if err := b.Commit(); err != nil {
-		return Document{}, fmt.Errorf("knowledge: write: %w", err)
-	}
-	s.rememberVersion(tenant, name, meta.ContentVersion)
-	src.docs[i].Excluded = excluded
-	src.Source = meta
-	src.recount()
-	return *src.docs[i], nil
+	return out, nil
 }
 
 // SaveVariant records the documents currently left out as a named view. Saving
@@ -647,41 +851,51 @@ func (s *Store) saveVariantWithScope(tenant, name, variant string, at time.Time,
 	if !validName.MatchString(variant) {
 		return Variant{}, fmt.Errorf("%w: a variant name is lowercase letters, digits and dashes", ErrInvalid)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	src, err := s.get(tenant, name)
-	if err != nil {
-		return Variant{}, err
-	}
-	if guard && !sameConfiguration(src.Source, expected) {
-		return Variant{}, ErrNotFound
-	}
-	if guard && src.RequiresUpstreamRead() {
-		return Variant{}, ErrUpstreamRead
-	}
-	v := Variant{Name: variant, Excluded: []string{}}
-	for _, d := range src.docs {
-		if d.Excluded {
-			v.Excluded = append(v.Excluded, d.ID)
+	var out Variant
+	err := state.Retry(func() error {
+		src, srcAt, err := s.meta(tenant, name)
+		if err != nil {
+			return err
 		}
+		if guard && !sameConfiguration(src, expected) {
+			return ErrNotFound
+		}
+		if guard && src.RequiresUpstreamRead() {
+			return ErrUpstreamRead
+		}
+		docs, err := s.docs(tenant, name)
+		if err != nil {
+			return err
+		}
+		v := Variant{Name: variant, Excluded: []string{}}
+		for _, d := range docs {
+			if d.doc.Excluded {
+				v.Excluded = append(v.Excluded, d.doc.ID)
+			}
+		}
+		i := slices.IndexFunc(src.Variants, func(x Variant) bool { return x.Name == variant })
+		meta := cloneSource(src)
+		switch {
+		case i >= 0:
+			meta.Variants[i] = v
+		case len(src.Variants) >= MaxVariants:
+			return fmt.Errorf("%w: a source keeps at most %d variants", ErrInvalid, MaxVariants)
+		default:
+			meta.Variants = append(meta.Variants, v)
+		}
+		meta.UpdatedAt = at
+		b := s.kept.Batch()
+		b.PutAt(tenant, sourceKey(name), stored{Source: &meta}, srcAt)
+		if err := b.Commit(); err != nil {
+			return err
+		}
+		out = v
+		return nil
+	})
+	if err != nil {
+		return Variant{}, writeErr(err)
 	}
-	i := slices.IndexFunc(src.Variants, func(x Variant) bool { return x.Name == variant })
-	variants := slices.Clone(src.Variants)
-	switch {
-	case i >= 0:
-		variants[i] = v
-	case len(src.Variants) >= MaxVariants:
-		return Variant{}, fmt.Errorf("%w: a source keeps at most %d variants", ErrInvalid, MaxVariants)
-	default:
-		variants = append(variants, v)
-	}
-	meta := src.Source
-	meta.Variants, meta.UpdatedAt = variants, at
-	if err := s.kept.Put(tenant, sourceKey(name), stored{Source: &meta}); err != nil {
-		return Variant{}, fmt.Errorf("knowledge: write: %w", err)
-	}
-	src.Variants, src.UpdatedAt = variants, at
-	return v, nil
+	return out, nil
 }
 
 // DeleteVariant removes a saved view. The documents are untouched.
@@ -694,26 +908,42 @@ func (s *Store) DeleteVariantForScope(tenant, name, variant string, expected *So
 	return s.deleteVariantWithScope(tenant, name, variant, expected, true)
 }
 func (s *Store) deleteVariantWithScope(tenant, name, variant string, expected *SourceConfig, guard bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	src, err := s.get(tenant, name)
+	_, err := s.update(tenant, name, func(src *Source) error {
+		if guard && !sameConfiguration(*src, expected) {
+			return ErrNotFound
+		}
+		i := slices.IndexFunc(src.Variants, func(x Variant) bool { return x.Name == variant })
+		if i < 0 {
+			return fmt.Errorf("%w: variant %q", ErrNotFound, variant)
+		}
+		src.Variants = slices.Delete(src.Variants, i, i+1)
+		return nil
+	})
+	return writeErr(err)
+}
+
+// update changes one source's record at the version read, reading again
+// when another writer moved it.
+func (s *Store) update(tenant, name string, change func(*Source) error) (Source, error) {
+	var out Source
+	_, err := s.kept.Update(tenant, sourceKey(name), func(r stored, ok bool) (stored, error) {
+		if !ok || r.Source == nil {
+			return r, fmt.Errorf("%w: source %q", ErrNotFound, name)
+		}
+		next := cloneSource(*r.Source)
+		if next.Variants == nil {
+			next.Variants = []Variant{}
+		}
+		if err := change(&next); err != nil {
+			return r, err
+		}
+		out = next
+		return stored{Source: &next}, nil
+	})
 	if err != nil {
-		return err
+		return Source{}, err
 	}
-	if guard && !sameConfiguration(src.Source, expected) {
-		return ErrNotFound
-	}
-	i := slices.IndexFunc(src.Variants, func(x Variant) bool { return x.Name == variant })
-	if i < 0 {
-		return fmt.Errorf("%w: variant %q", ErrNotFound, variant)
-	}
-	meta := src.Source
-	meta.Variants = slices.Delete(slices.Clone(src.Variants), i, i+1)
-	if err := s.kept.Put(tenant, sourceKey(name), stored{Source: &meta}); err != nil {
-		return fmt.Errorf("knowledge: write: %w", err)
-	}
-	src.Variants = meta.Variants
-	return nil
+	return cloneSource(out), nil
 }
 
 // Search ranks passages in the named sources against a query. No names means
@@ -727,7 +957,7 @@ func (s *Store) Search(tenant string, names []string, query string, limit int, v
 	return s.search(tenant, names, query, limit, variant, nil, false)
 }
 
-// SearchForScopes checks every authorized source snapshot under the read lock.
+// SearchForScopes checks every authorized source snapshot it searches.
 // An empty selection searches nothing, never the entire tenant.
 func (s *Store) SearchForScopes(tenant string, names []string, query string, limit int, variant string, expected map[string]*SourceConfig) ([]Hit, error) {
 	if len(names) == 0 {
@@ -748,22 +978,22 @@ func (s *Store) search(tenant string, names []string, query string, limit int, v
 	if limit <= 0 || limit > 50 {
 		limit = 8
 	}
-	// Embedded before the lock: it may call a model. Nil is lexical only.
-	s.mu.RLock()
-	d := s.dense
-	s.mu.RUnlock()
-	qv, model := d.query(query)
+	// Embedded first: it may call a model. Nil is lexical only.
+	qv, model := s.embedder().query(query)
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	var in []*source
-	if len(names) == 0 {
-		for _, src := range s.tenants[tenant] {
-			in = append(in, src)
+	named := len(names)
+	if named == 0 {
+		srcs, _, err := s.sources(tenant)
+		if err != nil {
+			return nil, err
+		}
+		for _, src := range srcs {
+			names = append(names, src.Name)
 		}
 	}
+	var in []*source
 	for _, n := range names {
-		src, err := s.get(tenant, n)
+		src, err := s.current(tenant, n)
 		if err != nil {
 			return nil, err
 		}
@@ -785,7 +1015,7 @@ func (s *Store) search(tenant string, names []string, query string, limit int, v
 	if variant != "" {
 		// The source must be named. Guessing it from "the tenant happens to
 		// have one source" would change meaning when a second is added.
-		if len(names) != 1 {
+		if named != 1 {
 			return nil, fmt.Errorf("%w: a variant belongs to one source", ErrInvalid)
 		}
 		i := slices.IndexFunc(in[0].Variants, func(x Variant) bool { return x.Name == variant })
@@ -863,6 +1093,61 @@ func (s *Store) search(tenant string, names []string, query string, limit int, v
 		hits = append(hits, hitOf(c.src, c.p, c.score))
 	}
 	return hits, nil
+}
+
+// readCache keeps the sources this process read, by name, the version of
+// the source's record and its content version. Every change to a source's
+// documents, passages or vectors moves the record's version, and a source
+// deleted and created again starts its versions over at a greater content
+// version (the name's clock outlives it), so a source here is what the
+// database holds at both, and dropping one changes no answer.
+type readCache struct {
+	mu    sync.Mutex
+	by    map[[2]string]cachedSource
+	bytes int
+}
+
+type cachedSource struct {
+	version, content uint64
+	src              *source
+	bytes            int
+}
+
+// maxCacheBytes bounds how much document text a process keeps.
+const maxCacheBytes = 256 << 20
+
+func newReadCache() *readCache { return &readCache{by: map[[2]string]cachedSource{}} }
+
+func (r *readCache) get(tenant, name string, version int64, content uint64) (*source, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, ok := r.by[[2]string{tenant, name}]
+	if !ok || c.version != uint64(version) || c.content != content {
+		return nil, false
+	}
+	return c.src, true
+}
+
+func (r *readCache) put(tenant, name string, version int64, content uint64, src *source, bytes int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	k := [2]string{tenant, name}
+	if old, ok := r.by[k]; ok {
+		r.bytes -= old.bytes
+		delete(r.by, k)
+	}
+	for other, c := range r.by {
+		if r.bytes+bytes <= maxCacheBytes {
+			break
+		}
+		r.bytes -= c.bytes
+		delete(r.by, other)
+	}
+	if bytes > maxCacheBytes {
+		return
+	}
+	r.by[k] = cachedSource{uint64(version), content, src, bytes}
+	r.bytes += bytes
 }
 
 // hitOf is a passage as a search result.

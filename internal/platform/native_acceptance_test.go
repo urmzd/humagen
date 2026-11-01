@@ -7,6 +7,7 @@ import (
 	"io"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
@@ -76,6 +77,8 @@ func TestNativeAgentOfficeRevisionAcceptance(t *testing.T) {
 				agenttest.ToolCallResponse("publish2", platform.ToolPublish, map[string]any{"path": name}), say("Done."),
 			}}, tools: map[string][]string{"writer": platform.FileTools()}}
 			p := stage(t, c, platform.Config{})
+			// A loaded machine records a run after its first tool call has begun.
+			p.DelayRecord(30 * time.Millisecond)
 			run, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "native-acceptance-" + tc.ext, Agent: "writer", Text: "Create a launch file with pending status, then change status to approved and publish both versions."})
 			if err != nil {
 				t.Fatal(err)
@@ -97,6 +100,7 @@ func TestNativeAgentOfficeRevisionAcceptance(t *testing.T) {
 			})
 			before, _, err := p.Artifacts.Page(tenant, artifacts.Query{Thread: run.Thread})
 			if err != nil || len(before) != 1 || before[0].Version != 1 {
+				logEvents(t, p, run.ID)
 				t.Fatalf("first publication: %+v, %v", before, err)
 			}
 			_, originalBytes, err := p.OpenArtifact(t.Context(), admin, before[0].ID)

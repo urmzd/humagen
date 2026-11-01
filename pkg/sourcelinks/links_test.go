@@ -33,17 +33,17 @@ func TestRulesReplayAndAmbiguousMatchesAlwaysSuggest(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(s.List("tenant"), replay.List("tenant")) {
+		if !reflect.DeepEqual(list(t, s, "tenant"), list(t, replay, "tenant")) {
 			t.Fatal("rules changed across restart")
 		}
-		copied := s.List("tenant")
+		copied := list(t, s, "tenant")
 		if err := s.RestoreDisabled("tenant", "Fork", "operation1", copied); err != nil {
 			t.Fatal(err)
 		}
 		if err := s.RestoreDisabled("tenant", "Fork", "operation1", copied); err != nil {
 			t.Fatal(err)
 		}
-		rows := s.List("tenant")
+		rows := list(t, s, "tenant")
 		if len(rows) != 4 {
 			t.Fatal("copy not idempotent", rows)
 		}
@@ -96,4 +96,13 @@ func TestRuleSnapshotsRejectConcurrentAudienceChanges(t *testing.T) {
 			t.Fatal("stale mutation changed retained audience")
 		}
 	})
+}
+
+func list(t *testing.T, s *Store, tenant string) []Rule {
+	t.Helper()
+	rules, err := s.List(tenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rules
 }

@@ -62,7 +62,7 @@ func TestCronAssignmentRecoversExactReservedInvocationAfterRestart(t *testing.T)
 		if _, err := p.Invoke(t.Context(), tag); !errors.Is(err, statetest.ErrInjected) {
 			t.Fatalf("expected acceptance failure after reservation: %v", err)
 		}
-		reserved, _ := p.Operations.Assignment(tenant, a.ID)
+		reserved, _, _ := p.Operations.Assignment(tenant, a.ID)
 		if reserved.State != operations.InProgress {
 			t.Fatalf("reservation was not kept: %+v", reserved)
 		}
@@ -88,17 +88,17 @@ func TestCronAssignmentRecoversExactReservedInvocationAfterRestart(t *testing.T)
 			t.Fatalf("recovery changed exact occurrence: %+v", got)
 		}
 		sourceAwait(t, func() bool {
-			a, _ := p2.Operations.Assignment(tenant, a.ID)
+			a, _, _ := p2.Operations.Assignment(tenant, a.ID)
 			return a.State == operations.Watching && a.RunID == got.ID
 		})
-		settled, _ := p2.Operations.Assignment(tenant, a.ID)
+		settled, _, _ := p2.Operations.Assignment(tenant, a.ID)
 		if _, err := p2.Operations.Reserve(tenant, a.ID, "legacy-clock-reservation", settled.Version, time.Now()); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := p2.RunAssignment(t.Context(), who, a.ID); !errors.Is(err, operations.ErrConflict) {
 			t.Fatalf("legacy occurrence was guessed: %v", err)
 		}
-		legacy, _ := p2.Operations.Assignment(tenant, a.ID)
+		legacy, _, _ := p2.Operations.Assignment(tenant, a.ID)
 		if legacy.State != operations.Blocked || legacy.RunID != "legacy-clock-reservation" {
 			t.Fatalf("uncertain legacy occurrence did not remain for explicit review: %+v", legacy)
 		}

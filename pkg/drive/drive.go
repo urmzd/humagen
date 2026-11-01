@@ -25,10 +25,20 @@
 //
 // # Reads
 //
-// Heads and open proposals are held in memory, read back when the store is
-// opened. Versions and content are read when asked for and kept in a bounded
-// cache, so the platform and the leases it installs files into fetch a
-// project's memory once, not once per run.
+// The store reads and writes the database per request (pkg/state, per
+// request): it holds no head and no proposal in memory, so any number of
+// processes on one database agree, and it does not need pkg/state's
+// single-writer lock. Every change to a tree writes the tree's head at the
+// version it read, together with the new version and the proposals it adds
+// or closes, so two processes committing to one tree from the same head
+// cannot both win: the loser reads the new head and applies its change
+// again, or reports a conflict when a path it changed moved.
+//
+// What never changes once written is kept in a bounded cache: a version of
+// one generation of a tree, content by hash, and the search index built from
+// a version. A tree dropped and written again is a new generation, so
+// dropping the cache never changes an answer. The platform and the leases it
+// installs files into fetch a project's memory once, not once per run.
 //
 // Content is deduplicated within a tenant and not across tenants, for the
 // reason fiber's blob store gives: a fast Put must not tell one tenant that

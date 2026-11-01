@@ -22,6 +22,14 @@
 // environment, under which name. Values are written through SecretInput, kept
 // in a Secrets store beside the records, and have no field on anything this
 // package returns.
+//
+// # Storage
+//
+// The store reads and writes the database per request (pkg/state, per
+// request): it holds no record in memory but the clients the environment
+// configures, which every process makes again from its own configuration, so
+// any number of processes on one database agree, and it does not need
+// pkg/state's single-writer lock.
 package clients
 
 import (

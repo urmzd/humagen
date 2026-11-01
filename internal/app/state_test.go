@@ -31,19 +31,19 @@ func TestStateFlags(t *testing.T) {
 	if f := parse(map[string]string{postgresURLEnv: "postgres://x"}); *f.kind != "postgres" {
 		t.Fatalf("with a URL the default is %q", *f.kind)
 	}
-	b, release, err := openState(t.Context(), parse(nil), envOf(nil), quiet)
-	if err != nil || b.State != nil || b.Agents != nil || b.Ledger != nil {
-		t.Fatalf("memory = %+v, %v", b, err)
+	b, release, checks, err := openState(t.Context(), parse(nil), envOf(nil), quiet)
+	if err != nil || b.State != nil || b.Agents != nil || b.Ledger != nil || len(checks) != 0 {
+		t.Fatalf("memory = %+v, %d checks, %v", b, len(checks), err)
 	}
 	release()
-	if _, _, err := openState(t.Context(), parse(nil, "-state=postgres"), envOf(nil), quiet); err == nil || !strings.Contains(err.Error(), postgresURLEnv) {
+	if _, _, _, err := openState(t.Context(), parse(nil, "-state=postgres"), envOf(nil), quiet); err == nil || !strings.Contains(err.Error(), postgresURLEnv) {
 		t.Fatalf("postgres with no URL = %v", err)
 	}
-	if _, _, err := openState(t.Context(), parse(nil, "-state=disk"), envOf(nil), quiet); err == nil {
+	if _, _, _, err := openState(t.Context(), parse(nil, "-state=disk"), envOf(nil), quiet); err == nil {
 		t.Fatal("an unknown kind was accepted")
 	}
 	secret := "postgres://humagen:hunter2@[::1:bad"
-	_, _, err = openState(t.Context(), parse(map[string]string{postgresURLEnv: secret}), envOf(map[string]string{postgresURLEnv: secret}), quiet)
+	_, _, _, err = openState(t.Context(), parse(map[string]string{postgresURLEnv: secret}), envOf(map[string]string{postgresURLEnv: secret}), quiet)
 	if err == nil || strings.Contains(err.Error(), "hunter2") {
 		t.Fatalf("a malformed URL = %v", err)
 	}

@@ -33,6 +33,13 @@ type fakeS3 struct {
 	unsigned int
 	// afterHead, when set, runs after a HEAD is answered, with the lock held.
 	afterHead func(key string)
+	// gcs answers as Google Cloud Storage's S3-compatible API does: it
+	// refuses the SDK's optional checksums and streaming signatures, wants
+	// the request signed for region auto, returns user metadata as
+	// x-goog-meta-*, and refuses to delete a missing object.
+	gcs bool
+	// gets counts object GETs.
+	gets int
 }
 
 type fakeObject struct {
@@ -62,6 +69,9 @@ func (f *fakeS3) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	key := strings.TrimPrefix(rest, "/")
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.gcs && !f.interoperable(w, r) {
+		return
+	}
 	switch {
 	case key == "" && r.Method == http.MethodGet && r.URL.Query().Get("list-type") == "2":
 		f.list(w, r)
@@ -100,21 +110,53 @@ func (f *fakeS3) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.Set("Content-Type", "application/octet-stream")
 		h.Set("Last-Modified", o.at.Format(http.TimeFormat))
 		h.Set("ETag", `"etag"`)
+		metaHeader := "x-amz-meta-"
+		if f.gcs {
+			metaHeader = "x-goog-meta-"
+		}
 		for k, v := range o.meta {
-			h.Set("x-amz-meta-"+k, v)
+			h.Set(metaHeader+k, v)
 		}
 		w.WriteHeader(http.StatusOK)
 		if r.Method == http.MethodGet {
+			f.gets++
 			_, _ = w.Write(o.body)
 		} else if f.afterHead != nil {
 			f.afterHead(key)
 		}
 	case r.Method == http.MethodDelete:
+		if _, ok := f.objs[key]; !ok && f.gcs {
+			f.fail(w, http.StatusNotFound, "NoSuchKey")
+			return
+		}
 		delete(f.objs, key)
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		f.fail(w, http.StatusMethodNotAllowed, "MethodNotAllowed")
 	}
+}
+
+// interoperable refuses, as GCS does, what its S3-compatible API does not
+// take, and fails the test, since the store should never send it.
+func (f *fakeS3) interoperable(w http.ResponseWriter, r *http.Request) bool {
+	var bad []string
+	if !strings.Contains(r.Header.Get("Authorization"), "/auto/s3/aws4_request") {
+		bad = append(bad, "a signature for a region other than auto")
+	}
+	if strings.HasPrefix(r.Header.Get("X-Amz-Content-Sha256"), "STREAMING-") {
+		bad = append(bad, "a streaming signature")
+	}
+	for name := range r.Header {
+		if n := strings.ToLower(name); strings.HasPrefix(n, "x-amz-checksum-") || n == "x-amz-sdk-checksum-algorithm" || n == "x-amz-trailer" {
+			bad = append(bad, name)
+		}
+	}
+	if len(bad) == 0 {
+		return true
+	}
+	f.t.Errorf("%s %s sent what GCS refuses: %v", r.Method, r.URL.Path, bad)
+	f.fail(w, http.StatusBadRequest, "InvalidArgument")
+	return false
 }
 
 func (f *fakeS3) list(w http.ResponseWriter, r *http.Request) {
@@ -182,6 +224,57 @@ func TestS3(t *testing.T) {
 		})
 		return openFake(t, srv, "humagen")
 	})
+}
+
+// The s3 kind configured for Google Cloud Storage's S3-compatible API: its
+// endpoint, an HMAC key and region auto.
+func openFakeGCSInterop(t *testing.T, srv *httptest.Server, prefix string) *blob.S3 {
+	t.Helper()
+	s, err := blob.NewS3(context.Background(), blob.S3Config{
+		Bucket: "files", Region: "auto", Endpoint: srv.URL, PathStyle: true, Prefix: prefix,
+		AccessKey: "GOOG1EHMACACCESSID", SecretKey: "hmac-secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func TestS3AgainstGCSInteroperability(t *testing.T) {
+	blobtest.Run(t, func(t *testing.T) blob.Store {
+		f, srv := newFakeS3(t)
+		f.gcs = true
+		return openFakeGCSInterop(t, srv, "humagen")
+	})
+}
+
+// GCS answers with x-goog-meta-sha256. The store reads the hash from it, so
+// Stat does not read the object back and Get still checks the bytes.
+func TestS3ReadsTheHashGCSReturns(t *testing.T) {
+	f, srv := newFakeS3(t)
+	f.gcs = true
+	s := openFakeGCSInterop(t, srv, "")
+	ctx := context.Background()
+	put, err := s.Put(ctx, "acme", "k", strings.NewReader("the real bytes"), 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := s.Stat(ctx, "acme", "k")
+	if err != nil || info.SHA256 != put.SHA256 {
+		t.Fatalf("stat = %+v, %v", info, err)
+	}
+	f.mu.Lock()
+	gets := f.gets
+	o := f.objs["acme/k"]
+	o.body = []byte("something else")
+	f.objs["acme/k"] = o
+	f.mu.Unlock()
+	if gets != 0 {
+		t.Fatalf("stat read the object back %d times", gets)
+	}
+	if _, _, err := s.Get(ctx, "acme", "k"); err == nil || errors.Is(err, blob.ErrNotFound) {
+		t.Fatalf("a changed object = %v", err)
+	}
 }
 
 func TestS3KeysAreUnderThePrefixAndTenant(t *testing.T) {

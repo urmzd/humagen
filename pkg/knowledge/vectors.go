@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"log/slog"
 	"math"
 	"slices"
@@ -61,6 +63,15 @@ func (s *Store) UseEmbedder(ctx context.Context, e Embedder, log *slog.Logger) {
 	d.nudge()
 }
 
+func (s *Store) embedder() *denseIndex {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.dense
+}
+
+// nudge asks this process's indexer, if any, to look for new passages.
+func (s *Store) nudge() { s.embedder().nudge() }
+
 // nudge asks the indexer to look for passages without vectors. It never
 // blocks: one pending nudge covers any number of writes.
 func (d *denseIndex) nudge() {
@@ -99,93 +110,107 @@ func (s *Store) index(ctx context.Context, d *denseIndex) {
 		case <-d.wake:
 		case <-tick.C:
 		}
-		s.sweep(ctx, d)
+		if err := s.sweep(ctx, d); err != nil && ctx.Err() == nil {
+			// Left for the next sweep; search stays lexical for these passages.
+			d.log.Warn("knowledge: passages not embedded; will retry", "model", d.model, "err", err)
+		}
 	}
 }
 
-// job is one document whose passages need vectors.
-type job struct {
-	tenant, name string
-	seq          int64
-	doc          *Document
-	texts        []string
-}
+// errStop ends a sweep early without an error to report.
+var errStop = errors.New("knowledge: sweep stopped")
 
 // sweep embeds every document with a passage that lacks a vector from d's
-// model. The texts are read under the read lock, embedded with no lock held,
-// and kept only if the document is still the same one when they come back.
-func (s *Store) sweep(ctx context.Context, d *denseIndex) {
-	var jobs []job
-	s.mu.RLock()
-	for tenant, sources := range s.tenants {
-		for name, src := range sources {
-			pending := map[*Document][]string{}
-			for _, p := range src.passages {
-				if p.vec == nil || p.model != d.model {
-					pending[p.doc] = nil
-				}
+// model, tenant by tenant through the directory and source by source. The
+// texts are embedded with nothing held, and kept only if the document still
+// has the same text when they come back. Two processes sweeping at once may
+// both embed a document; the vectors either keeps are the same.
+func (s *Store) sweep(ctx context.Context, d *denseIndex) error {
+	err := s.dir.Each(func(tenant string) error {
+		srcs, _, err := s.sources(tenant)
+		if err != nil {
+			return err
+		}
+		for _, meta := range srcs {
+			src, err := s.current(tenant, meta.Name)
+			if errors.Is(err, ErrNotFound) {
+				continue
 			}
-			for doc := range pending {
+			if err != nil {
+				return err
+			}
+			for _, doc := range src.docs {
 				var texts []string
+				pending := false
 				for _, p := range src.passages {
 					if p.doc == doc {
 						texts = append(texts, p.text)
+						pending = pending || p.vec == nil || p.model != d.model
 					}
 				}
-				jobs = append(jobs, job{tenant: tenant, name: name, seq: src.seqs[doc.ID], doc: doc, texts: texts})
+				if !pending || len(texts) == 0 {
+					continue
+				}
+				if ctx.Err() != nil {
+					return errStop
+				}
+				bctx, cancel := context.WithTimeout(ctx, batchTimeout)
+				vectors, err := d.embedder.Embed(bctx, texts)
+				cancel()
+				if err == nil && len(vectors) != len(texts) {
+					err = dense.ErrEmbedding
+				}
+				if err != nil {
+					return fmt.Errorf("source %s: %w", meta.Name, err)
+				}
+				if err := s.keepVectors(tenant, meta.Name, src.seqs[doc.ID], texts, d.model, vectors); err != nil {
+					return err
+				}
 			}
 		}
+		return nil
+	})
+	if errors.Is(err, errStop) {
+		return nil
 	}
-	s.mu.RUnlock()
-
-	for _, j := range jobs {
-		if ctx.Err() != nil {
-			return
-		}
-		bctx, cancel := context.WithTimeout(ctx, batchTimeout)
-		vectors, err := d.embedder.Embed(bctx, j.texts)
-		cancel()
-		if err == nil && len(vectors) != len(j.texts) {
-			err = dense.ErrEmbedding
-		}
-		if err != nil {
-			// Left for the next sweep; search stays lexical for these passages.
-			d.log.Warn("knowledge: passages not embedded; will retry", "model", d.model, "source", j.name, "err", err)
-			return
-		}
-		s.keepVectors(j, d.model, vectors)
-	}
+	return err
 }
 
-// keepVectors writes a document's vectors and attaches them, unless the
-// document changed or left while they were computed.
-func (s *Store) keepVectors(j job, model string, vectors [][]float32) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	src, ok := s.tenants[j.tenant][j.name]
-	if !ok || src.seqs[j.doc.ID] != j.seq {
-		return
-	}
-	var ps []*passage
-	for _, p := range src.passages {
-		if p.doc == j.doc {
-			ps = append(ps, p)
-		}
-	}
-	if len(ps) != len(vectors) {
-		return
-	}
+// keepVectors writes a document's vectors at the version of its source,
+// unless its text changed or it left while they were computed.
+func (s *Store) keepVectors(tenant, name string, seq int64, texts []string, model string, vectors [][]float32) error {
 	rec := &vectorRecord{Model: model, Data: make([]string, len(vectors))}
 	for i, v := range vectors {
 		rec.Data[i] = encodeVector(v)
 	}
-	if err := s.kept.Put(j.tenant, vecKey(j.name, j.seq), stored{Vectors: rec}); err != nil {
-		return
-	}
-	rec.attach(ps)
+	return state.Retry(func() error {
+		src, srcAt, err := s.meta(tenant, name)
+		if errors.Is(err, ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		have, err := s.kept.Lookup(tenant, textKey(name, seq))
+		if errors.Is(err, state.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if !slices.Equal(have.Value.Passages, texts) {
+			return nil
+		}
+		b := s.kept.Batch()
+		b.Put(tenant, vecKey(name, seq), stored{Vectors: rec})
+		b.PutAt(tenant, sourceKey(name), stored{Source: &src}, srcAt)
+		return b.Commit()
+	})
 }
 
-func vecKey(name string, seq int64) string { return "vec/" + name + "/" + state.Seq(seq) }
+func vecPrefix(name string) string { return "vec/" + name + "/" }
+
+func vecKey(name string, seq int64) string { return vecPrefix(name) + state.Seq(seq) }
 
 // vectorRecord is one document's passage vectors, in passage order, each a
 // little-endian float32 array in base64. Model says which space they are in.

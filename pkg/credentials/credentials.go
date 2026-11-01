@@ -24,11 +24,11 @@
 package credentials
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
-	"sync"
 	"time"
 	"unicode"
 
@@ -150,52 +150,123 @@ func owner(subject string) string { return "person/" + subject }
 // Store keeps people's credentials. Every read and write names a tenant and
 // a subject, and one person's credentials are never another's.
 //
-// Built with Open, it writes every record through a state.Store and reads
-// them back when it is built again. A write that fails changes nothing it
-// reports.
+// It reads and writes the database per request (pkg/state, per request): it
+// holds no record in memory, so any number of processes on one database
+// agree, and it does not need pkg/state's single-writer lock. A write that
+// fails changes nothing it reports.
 type Store struct {
-	mu      sync.RWMutex
-	by      map[[2]string]map[string]Credential
+	st      state.Store
 	kept    *state.Table[Credential]
 	secrets Secrets
 }
 
-// New returns an empty store in memory that keeps values in secrets. With a
-// nil secrets it keeps references only.
+// namespace is where records are kept. Within a tenant:
+//
+//	<subject>/<provider>  a person's credential for a provider
+//	<subject>/#           how many credentials the person holds
+//
+// A provider's name holds no slash and no "#", so neither key is another
+// person's. The count is written, at the version read, with every
+// credential a person adds, so two processes adding at once cannot take
+// them past MaxPerPerson. A person kept before the count is counted on
+// their next new credential.
+const namespace = "credentials"
+
+// New returns an empty store in this process's memory that keeps values in
+// secrets. With a nil secrets it keeps references only.
 func New(secrets Secrets) *Store {
-	return &Store{by: map[[2]string]map[string]Credential{}, secrets: secrets}
+	s, _ := Open(nil, secrets)
+	return s
 }
 
 // key names a record within its tenant: the subject, then the provider,
 // whose name holds no slash.
 func key(subject, provider string) string { return subject + "/" + provider }
 
-// Open returns a store that keeps its records in st and its values in
-// secrets, holding what st already has. A nil st keeps records in memory.
+func guardKey(subject string) string { return subject + "/#" }
+
+// Open returns a store that keeps its records in st, which may be shared
+// with other processes, and its values in secrets. A nil st keeps records in
+// this process's memory.
 func Open(st state.Store, secrets Secrets) (*Store, error) {
-	s := New(secrets)
-	s.kept = state.NewTable[Credential](st, "credentials")
-	err := s.kept.Load(func(tenant, k string, c Credential) error {
-		i := strings.LastIndexByte(k, '/')
-		if i <= 0 || k[i+1:] != c.Provider {
-			return fmt.Errorf("credentials: a record is kept under %q", k)
-		}
-		s.of(tenant, k[:i])[c.Provider] = c
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("credentials: load: %w", err)
+	if st == nil {
+		st = state.NewMemory()
 	}
-	return s, nil
+	return &Store{st: st, kept: state.NewTable[Credential](st, namespace), secrets: secrets}, nil
 }
 
-func (s *Store) of(tenant, subject string) map[string]Credential {
-	m := s.by[[2]string{tenant, subject}]
-	if m == nil {
-		m = map[string]Credential{}
-		s.by[[2]string{tenant, subject}] = m
+// count reads a person's count and its version: 0 when they have none yet,
+// and then n is what they hold, counted.
+func (s *Store) count(tenant, subject string) (n int, version int64, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+	defer cancel()
+	r, err := s.st.Lookup(ctx, namespace, tenant, guardKey(subject))
+	if err == nil {
+		if err := json.Unmarshal(r.Value, &n); err != nil {
+			return 0, 0, fmt.Errorf("credentials: count: %w", err)
+		}
+		return n, r.Version, nil
 	}
-	return m
+	if !errors.Is(err, state.ErrNotFound) {
+		return 0, 0, err
+	}
+	held, err := s.mine(tenant, subject)
+	return len(held), 0, err
+}
+
+// opAt is an op that writes v at version: created when version is 0.
+func opAt(tenant, key string, v any, version int64) (state.Op, error) {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return state.Op{}, err
+	}
+	if version == 0 {
+		return state.Create(tenant, key, raw), nil
+	}
+	return state.PutAt(tenant, key, raw, version), nil
+}
+
+func (s *Store) write(ops ...state.Op) error {
+	ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+	defer cancel()
+	return s.st.Write(ctx, namespace, ops...)
+}
+
+// mine reads a person's credentials, by provider name. Keys under the
+// person's prefix that belong to someone else (a subject that continues it
+// past a slash) or to the count are passed over.
+func (s *Store) mine(tenant, subject string) ([]Credential, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+	defer cancel()
+	prefix := subject + "/"
+	var out []Credential
+	after := ""
+	for {
+		page, next, err := s.st.List(ctx, namespace, tenant, state.Query{Prefix: prefix, After: after, Limit: state.MaxList})
+		if err != nil {
+			return nil, fmt.Errorf("credentials: read: %w", err)
+		}
+		for _, r := range page {
+			rest := strings.TrimPrefix(r.Key, prefix)
+			if !toolprovider.ValidName(rest) {
+				continue
+			}
+			var c Credential
+			if err := json.Unmarshal(r.Value, &c); err != nil {
+				return nil, fmt.Errorf("credentials: %q: %w", r.Key, err)
+			}
+			if c.Provider == rest {
+				out = append(out, c)
+			}
+		}
+		if len(out) > MaxPerPerson {
+			return nil, fmt.Errorf("credentials: %w: a person holds more than %d credentials", state.ErrTooMany, MaxPerPerson)
+		}
+		if next == "" {
+			return out, nil
+		}
+		after = next
+	}
 }
 
 func checkWho(tenant, subject, provider string) error {
@@ -208,6 +279,40 @@ func checkWho(tenant, subject, provider string) error {
 		return fmt.Errorf("%w: %q is not a tool provider's name", ErrInvalid, provider)
 	}
 	return nil
+}
+
+// put writes a person's credential at the version read, and, when it is
+// new to them, their count with it.
+func (s *Store) put(tenant, subject string, c Credential) error {
+	return state.Retry(func() error {
+		cur, err := s.kept.Lookup(tenant, key(subject, c.Provider))
+		if err == nil {
+			op, err := opAt(tenant, key(subject, c.Provider), c, cur.Version)
+			if err != nil {
+				return err
+			}
+			return s.write(op)
+		}
+		if !errors.Is(err, state.ErrNotFound) {
+			return err
+		}
+		n, version, err := s.count(tenant, subject)
+		if err != nil {
+			return err
+		}
+		if n >= MaxPerPerson {
+			return fmt.Errorf("%w: a person holds at most %d credentials", ErrLimit, MaxPerPerson)
+		}
+		rec, err := opAt(tenant, key(subject, c.Provider), c, 0)
+		if err != nil {
+			return err
+		}
+		head, err := opAt(tenant, guardKey(subject), n+1, version)
+		if err != nil {
+			return err
+		}
+		return s.write(rec, head)
+	})
 }
 
 // Put sets a person's credential for a provider, in place of the one they
@@ -224,12 +329,6 @@ func (s *Store) Put(tenant, subject, provider string, in Input, at time.Time) (C
 	if in.Value != "" {
 		c.Kind, c.Ref = Value, ""
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	mine := s.of(tenant, subject)
-	if _, had := mine[provider]; !had && len(mine) >= MaxPerPerson {
-		return Credential{}, fmt.Errorf("%w: a person holds at most %d credentials", ErrLimit, MaxPerPerson)
-	}
 	who := owner(subject)
 	if c.Kind == Value {
 		if s.secrets == nil {
@@ -239,19 +338,23 @@ func (s *Store) Put(tenant, subject, provider string, in Input, at time.Time) (C
 		if err := s.secrets.Put(tenant, who, provider, in.Value); err != nil {
 			return Credential{}, fmt.Errorf("credentials: write: %w", err)
 		}
-		if err := s.kept.Put(tenant, key(subject, provider), c); err != nil {
+		if err := s.put(tenant, subject, c); err != nil {
 			// The record was not written, so the value it would have
 			// named is put back as it was.
 			_ = s.secrets.Put(tenant, who, provider, before)
+			if errors.Is(err, ErrLimit) {
+				return Credential{}, err
+			}
 			return Credential{}, fmt.Errorf("credentials: write: %w", err)
 		}
-		mine[provider] = c
 		return c, nil
 	}
-	if err := s.kept.Put(tenant, key(subject, provider), c); err != nil {
+	if err := s.put(tenant, subject, c); err != nil {
+		if errors.Is(err, ErrLimit) {
+			return Credential{}, err
+		}
 		return Credential{}, fmt.Errorf("credentials: write: %w", err)
 	}
-	mine[provider] = c
 	if err := s.forget(tenant, who, provider); err != nil {
 		return c, err
 	}
@@ -272,57 +375,75 @@ func (s *Store) forget(tenant, who, provider string) error {
 	return nil
 }
 
-// Get returns a person's credential for a provider.
-func (s *Store) Get(tenant, subject, provider string) (Credential, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	c, ok := s.by[[2]string{tenant, subject}][provider]
-	return c, ok
+// Get returns a person's credential for a provider. ok is false when they
+// have none.
+func (s *Store) Get(tenant, subject, provider string) (Credential, bool, error) {
+	it, err := s.kept.Lookup(tenant, key(subject, provider))
+	if errors.Is(err, state.ErrNotFound) {
+		return Credential{}, false, nil
+	}
+	if err != nil {
+		return Credential{}, false, fmt.Errorf("credentials: read: %w", err)
+	}
+	return it.Value, true, nil
 }
 
 // List returns a person's credentials by provider name, never more than
 // MaxPerPerson.
-func (s *Store) List(tenant, subject string) []Credential {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make([]Credential, 0, len(s.by[[2]string{tenant, subject}]))
-	for _, c := range s.by[[2]string{tenant, subject}] {
-		out = append(out, c)
+func (s *Store) List(tenant, subject string) ([]Credential, error) {
+	out, err := s.mine(tenant, subject)
+	if err != nil {
+		return nil, err
 	}
-	slices.SortFunc(out, func(a, b Credential) int { return strings.Compare(a.Provider, b.Provider) })
-	if len(out) > MaxPerPerson {
-		out = out[:MaxPerPerson]
+	if out == nil {
+		out = []Credential{}
 	}
-	return out
+	return out, nil
 }
 
 // Value returns the value a person stored for a provider. ok is false when
 // their credential is a reference, when they have none, and when the value
 // is no longer held.
-func (s *Store) Value(tenant, subject, provider string) (string, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	c, has := s.by[[2]string{tenant, subject}][provider]
-	if !has || c.Kind != Value || s.secrets == nil {
-		return "", false
+func (s *Store) Value(tenant, subject, provider string) (string, bool, error) {
+	c, has, err := s.Get(tenant, subject, provider)
+	if err != nil || !has || c.Kind != Value || s.secrets == nil {
+		return "", false, err
 	}
 	v, ok := s.secrets.Get(tenant, owner(subject), provider)
-	return v, ok && v != ""
+	return v, ok && v != "", nil
 }
 
 // Delete removes a person's credential for a provider, and the value if it
 // was one.
 func (s *Store) Delete(tenant, subject, provider string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	mine := s.by[[2]string{tenant, subject}]
-	if _, ok := mine[provider]; !ok {
-		return fmt.Errorf("%w: no credential for %q", ErrNotFound, provider)
+	err := state.Retry(func() error {
+		cur, err := s.kept.Lookup(tenant, key(subject, provider))
+		if errors.Is(err, state.ErrNotFound) {
+			return fmt.Errorf("%w: no credential for %q", ErrNotFound, provider)
+		}
+		if err != nil {
+			return err
+		}
+		ops := []state.Op{state.DeleteAt(tenant, key(subject, provider), cur.Version)}
+		n, version, err := s.count(tenant, subject)
+		if err != nil {
+			return err
+		}
+		if version != 0 {
+			head, err := opAt(tenant, guardKey(subject), max(n-1, 0), version)
+			if err != nil {
+				return err
+			}
+			ops = append(ops, head)
+		}
+		return s.write(ops...)
+	})
+	if errors.Is(err, ErrNotFound) {
+		return err
 	}
-	if err := s.kept.Delete(tenant, key(subject, provider)); err != nil {
+	if err != nil {
 		return fmt.Errorf("credentials: write: %w", err)
 	}
-	delete(mine, provider)
 	return s.forget(tenant, owner(subject), provider)
 }
 
@@ -335,20 +456,22 @@ func (s *Store) MarkUsed(tenant, subject, provider string, at time.Time) error {
 	if at.IsZero() {
 		return ErrInvalid
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	mine := s.by[[2]string{tenant, subject}]
-	held, ok := mine[provider]
-	if !ok {
-		return ErrNotFound
-	}
-	if !held.LastUsedAt.IsZero() && !at.After(held.LastUsedAt) {
-		return nil
-	}
-	held.LastUsedAt = at.UTC()
-	if err := s.kept.Put(tenant, key(subject, provider), held); err != nil {
-		return err
-	}
-	mine[provider] = held
-	return nil
+	err := state.Retry(func() error {
+		cur, err := s.kept.Lookup(tenant, key(subject, provider))
+		if errors.Is(err, state.ErrNotFound) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		held := cur.Value
+		if !held.LastUsedAt.IsZero() && !at.After(held.LastUsedAt) {
+			return nil
+		}
+		held.LastUsedAt = at.UTC()
+		b := s.kept.Batch()
+		b.PutAt(tenant, key(subject, provider), held, cur.Version)
+		return b.Commit()
+	})
+	return err
 }

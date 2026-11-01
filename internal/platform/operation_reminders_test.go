@@ -31,7 +31,7 @@ func TestNativeReminderTimersSurviveRestartWithoutApprovingOrDuplicatingWork(t *
 		if err := p.Operations.BlockAssignment("t", assignment.ID, "Needs source repair", base); err != nil {
 			t.Fatal(err)
 		}
-		assignment, _ = p.Operations.Assignment("t", assignment.ID)
+		assignment, _, _ = p.Operations.Assignment("t", assignment.ID)
 		p.operationEscalation("t", "assignment", assignment.ID, "", "", "", "worker", "owner", assignment.Blocker)
 		at = base.Add(2 * time.Hour)
 		p.reconcileOperationReminders(t.Context())
@@ -88,7 +88,7 @@ func TestBlockedHandoffKeepsRequesterAndManagerAudienceAcrossRestart(t *testing.
 		if len(messages) != 1 || !slices.Contains(messages[0].Audience, "requester") || !slices.Contains(messages[0].Audience, "manager") {
 			t.Fatalf("accountable participants lost on replay: %+v", messages)
 		}
-		kept, _ := restarted.Operations.Handoff("t", h.ID)
+		kept, _, _ := restarted.Operations.Handoff("t", h.ID)
 		wire, err := json.Marshal(kept)
 		if err != nil {
 			t.Fatal(err)
@@ -125,7 +125,7 @@ func TestReminderControlAuditSurvivesRestartAndRecordsRefusedVersion(t *testing.
 			t.Fatal(err)
 		}
 		defer func() { _ = restarted.Close() }()
-		kept := restarted.AgentControl("t", "")
+		kept, _ := restarted.AgentControl("t", "")
 		if kept.ReminderAfterSeconds == nil || *kept.ReminderAfterSeconds != 300 {
 			t.Fatal("refused timer edit changed saved control")
 		}

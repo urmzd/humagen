@@ -42,7 +42,7 @@ func TestRestart(t *testing.T) {
 		if _, err := again.Get("acme", gone.ID); !errors.Is(err, artifacts.ErrNotFound) {
 			t.Fatalf("a deleted artifact came back: %v", err)
 		}
-		if u := again.Usage("acme"); u.Bytes != 22 {
+		if u := usageOf(t, again, "acme"); u.Bytes != 22 {
 			t.Fatalf("usage after restart = %+v", u)
 		}
 		// The id of the deleted newest artifact is not issued again, so
@@ -97,10 +97,10 @@ func TestWhatAFileCountsTowardSurvivesARestart(t *testing.T) {
 			t.Fatalf("after restart the file is within %q (%v)", got.Within, err)
 		}
 		// Renewals and Globex are gone from the tree; Field still holds the file.
-		if n := again.UsedUnder("acme", "Field", []string{"Field", "Initech"}); n != 13 {
+		if n := usedUnderOf(t, again, "acme", "Field", []string{"Field", "Initech"}); n != 13 {
 			t.Fatalf("Field holds %d bytes, want 13", n)
 		}
-		if n := again.UsedUnder("acme", "Initech", []string{"Initech"}); n != 3 {
+		if n := usedUnderOf(t, again, "acme", "Initech", []string{"Initech"}); n != 3 {
 			t.Fatalf("Initech holds %d bytes, want 3", n)
 		}
 	})

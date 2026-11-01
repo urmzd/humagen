@@ -22,6 +22,12 @@
 // against a dollar limit: it is counted in Usage.UnpricedCalls or
 // Usage.OtherCosts and never as zero spend silently, and its tokens count
 // against MaxTokens, which bounds every call whether it is priced or not.
+//
+// # Storage
+//
+// Store reads and writes the database per request (pkg/state, per request):
+// it holds nothing in memory, so any number of processes on one database
+// agree, and it does not need pkg/state's single-writer lock.
 package policy
 
 import (

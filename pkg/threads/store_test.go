@@ -448,7 +448,7 @@ func TestThreadsAreCappedByWorkspaceAndByProject(t *testing.T) {
 	if _, _, err := s.Start("initech", shared("Globex", "general"), msg("dana", "hi"), t0); err != nil {
 		t.Fatalf("another workspace's thread = %v", err)
 	}
-	if got, _ := s.Summaries("acme", func(threads.Thread) bool { return true }); len(got) != threads.MaxThreads {
+	if got, _, _ := s.Summaries("acme", func(threads.Thread) bool { return true }); len(got) != threads.MaxThreads {
 		t.Fatalf("acme holds %d threads, want %d", len(got), threads.MaxThreads)
 	}
 }
@@ -459,7 +459,10 @@ func TestSummariesCopyOnlyWhatTheyKeep(t *testing.T) {
 	s := threads.NewStore()
 	here, _ := start(t, s, "acme", shared("Globex", "renewals"), msg("dana", strings.Repeat("long ", 2*threads.MaxTitle)))
 	there, _ := start(t, s, "acme", shared("Initech", "general"), msg("dana", "elsewhere"))
-	got, elsewhere := s.Summaries("acme", func(th threads.Thread) bool { return th.Project == "Globex" })
+	got, elsewhere, err := s.Summaries("acme", func(th threads.Thread) bool { return th.Project == "Globex" })
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 1 || got[0].ID != here.ID || len([]rune(got[0].First)) != threads.MaxTitle || got[0].Messages != 1 {
 		t.Fatalf("kept %+v", got)
 	}

@@ -53,5 +53,10 @@ func (s *Server) listReadAudit(w http.ResponseWriter, r *http.Request, who auth.
 		fail(w, http.StatusBadRequest, "audit window must be at most 31 days")
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"records": s.P.ReadAudit.List(who.Tenant, from, to, limit)})
+	records, err := s.P.ReadAudit.List(who.Tenant, from, to, limit)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, map[string]any{"records": records})
 }

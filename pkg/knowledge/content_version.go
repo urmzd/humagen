@@ -3,6 +3,7 @@ package knowledge
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -34,20 +35,20 @@ func retainedDigest(src *source) [32]byte {
 // cursor prevents a delete/recreate from looking like an old source revision.
 const MaxSourceNames = 10000
 
+// contentClock is a name's last content revision, kept after the source is
+// deleted, and the last number its documents were given.
 type contentClock struct {
 	Name  string `json:"name"`
 	Value uint64 `json:"value"`
+	Seq   int64  `json:"seq,omitempty"`
 }
 
 func clockKey(name string) string { return "version/" + name }
-func (s *Store) rememberVersion(tenant, name string, value uint64) {
-	if s.versions[tenant] == nil {
-		s.versions[tenant] = map[string]uint64{}
-	}
-	s.versions[tenant][name] = max(s.versions[tenant][name], value)
-}
-func (s *Store) nextVersion(tenant, name string) (uint64, error) {
-	value := s.versions[tenant][name]
+
+// nextVersion is the revision after a source's: past its record and its
+// name's clock, which a source kept before clocks may lack.
+func nextVersion(src Source, clk contentClock) (uint64, error) {
+	value := max(src.ContentVersion, clk.Value)
 	if value == ^uint64(0) {
 		return 0, fmt.Errorf("%w: source content revision exhausted", ErrInvalid)
 	}
@@ -56,8 +57,14 @@ func (s *Store) nextVersion(tenant, name string) (uint64, error) {
 
 // ContentCursor returns a deleted name's final revision too. It exposes no
 // content or freshness and is for internal dependency reconciliation only.
-func (s *Store) ContentCursor(tenant, name string) uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.versions[tenant][name]
+func (s *Store) ContentCursor(tenant, name string) (uint64, error) {
+	clk, _, err := s.clock(tenant, name)
+	if err != nil {
+		return 0, err
+	}
+	src, _, err := s.meta(tenant, name)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return 0, err
+	}
+	return max(src.ContentVersion, clk.Value), nil
 }

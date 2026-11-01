@@ -130,7 +130,7 @@ func TestInboxDecidesProposedMemory(t *testing.T) {
 			t.Fatalf("%s = %v, want a refused action", name, err)
 		}
 	}
-	for _, n := range p.Memory.List(tenant, "lead") {
+	for _, n := range notesOf(t, p.Memory, tenant, "lead") {
 		if n.Status != memory.Pending {
 			t.Fatalf("a refused attempt changed a note: %+v", n)
 		}
@@ -140,7 +140,7 @@ func TestInboxDecidesProposedMemory(t *testing.T) {
 	if err != nil || done.State != inbox.Resolved || done.Parts[0].Outcome.By != "ada" || len(done.Parts[0].Actions) != 0 {
 		t.Fatalf("keep = %+v, %v", done, err)
 	}
-	notes := p.Memory.List(tenant, "lead")
+	notes := notesOf(t, p.Memory, tenant, "lead")
 	if len(notes) != 1 || notes[0].ID != keep || notes[0].Status != memory.Approved {
 		t.Fatalf("after keeping one, the agent holds %+v", notes)
 	}
@@ -150,7 +150,7 @@ func TestInboxDecidesProposedMemory(t *testing.T) {
 	if err != nil || again.Parts[0].Outcome.Action != platform.ActKeep {
 		t.Fatalf("a second decision = %+v, %v", again.Parts[0].Outcome, err)
 	}
-	if got := p.Memory.List(tenant, "lead"); len(got) != 1 {
+	if got := notesOf(t, p.Memory, tenant, "lead"); len(got) != 1 {
 		t.Fatalf("a second decision changed the notes: %+v", got)
 	}
 }
@@ -178,7 +178,7 @@ func TestProposalsForAProjectsNotesNeedWhatItsRoutesNeed(t *testing.T) {
 	news, launch := proposed(t, p, "api-news", "News"), proposed(t, p, "api-launch", "Launch")
 	pending := func(owner string) int {
 		n := 0
-		for _, note := range p.Memory.List(tenant, owner) {
+		for _, note := range notesOf(t, p.Memory, tenant, owner) {
 			if note.Status == memory.Pending {
 				n++
 			}
@@ -227,7 +227,7 @@ func TestProposalsForAProjectsNotesNeedWhatItsRoutesNeed(t *testing.T) {
 	if _, err := p.InboxResolve(ctx, operator, launch.ID, part.ID, platform.Resolution{Action: platform.ActDiscard}); err != nil {
 		t.Fatalf("an operator discarding a team project's proposals = %v", err)
 	}
-	if n := len(p.Memory.List(tenant, memory.ProjectOwner("Launch"))); n != 0 {
+	if n := len(notesOf(t, p.Memory, tenant, memory.ProjectOwner("Launch"))); n != 0 {
 		t.Fatalf("%d of Launch's proposals outlived the discard", n)
 	}
 
@@ -249,7 +249,7 @@ func TestProposalsForAProjectsNotesNeedWhatItsRoutesNeed(t *testing.T) {
 	if _, err := p.InboxResolve(ctx, admin, root.ID, root.Parts[0].ID, platform.Resolution{Action: platform.ActKeep, IDs: []string{note.ID}}); err != nil {
 		t.Fatal(err)
 	}
-	if got := p.Memory.List(tenant, memory.ProjectOwner("")); len(got) != 1 || got[0].Status != memory.Approved {
+	if got := notesOf(t, p.Memory, tenant, memory.ProjectOwner("")); len(got) != 1 || got[0].Status != memory.Approved {
 		t.Fatalf("the workspace's notes = %+v", got)
 	}
 }
@@ -282,8 +282,8 @@ func TestAutoApproveNeverBypassesProjectMemoryReview(t *testing.T) {
 			t.Fatal(err)
 		}
 		await(t, p, first.ID, runs.Completed)
-		within(t, c.owner+"'s notes are written", func() bool { return len(p.Memory.List(tenant, c.owner)) > 0 })
-		for _, n := range p.Memory.List(tenant, c.owner) {
+		within(t, c.owner+"'s notes are written", func() bool { return len(notesOf(t, p.Memory, tenant, c.owner)) > 0 })
+		for _, n := range notesOf(t, p.Memory, tenant, c.owner) {
 			want := memory.Approved
 			if c.project != "" {
 				want = memory.Pending
@@ -303,14 +303,14 @@ func TestAutoApproveNeverBypassesProjectMemoryReview(t *testing.T) {
 	if !slices.Equal(ops.Audience, []string{inbox.OwnersAudience("Ops")}) {
 		t.Fatalf("a member's proposals for Ops are addressed to %v", ops.Audience)
 	}
-	for _, n := range p.Memory.List(tenant, memory.ProjectOwner("Ops")) {
+	for _, n := range notesOf(t, p.Memory, tenant, memory.ProjectOwner("Ops")) {
 		if n.Status != memory.Pending {
 			t.Fatalf("a member's turn kept a note of Ops unasked: %+v", n)
 		}
 	}
 
 	msg := proposed(t, p, "api-news", "News")
-	notes := p.Memory.List(tenant, memory.ProjectOwner("News"))
+	notes := notesOf(t, p.Memory, tenant, memory.ProjectOwner("News"))
 	if len(notes) == 0 || len(notes) != len(msg.Parts[0].Memory.Notes) {
 		t.Fatalf("News holds %+v, and the inbox proposes %+v", notes, msg.Parts[0].Memory.Notes)
 	}
@@ -346,7 +346,7 @@ func TestMemoryDecidedElsewhereClosesItsMessage(t *testing.T) {
 	if err != nil || got.State != inbox.Dismissed {
 		t.Fatalf("after every proposal was dealt with the message is %s (%v)", got.State, err)
 	}
-	if open := p.InboxCount(admin).Open; open != 0 {
+	if open := inboxCount(t, p, admin).Open; open != 0 {
 		t.Fatalf("%d still open", open)
 	}
 }
@@ -434,7 +434,7 @@ func TestInboxHoldsFailures(t *testing.T) {
 	if len(page) != 1 || page[0].Kind != inbox.KindAlert || len(page[0].Parts) != 2 || page[0].From.Name != "any" {
 		t.Fatalf("with a rule the inbox is %+v", page)
 	}
-	raised := p.Alerts.Alerts(tenant)
+	raised := kept(p.Alerts.Alerts(tenant))
 	if len(raised) != 1 || !raised[0].Open() {
 		t.Fatalf("alerts = %+v", raised)
 	}
@@ -457,7 +457,7 @@ func TestInboxHoldsFailures(t *testing.T) {
 	if got, err := p.InboxDismiss(operator, page[0].ID); err != nil || got.State != inbox.Resolved {
 		t.Fatalf("dismiss = %s, %v", got.State, err)
 	}
-	for _, a := range p.Alerts.Alerts(tenant) {
+	for _, a := range kept(p.Alerts.Alerts(tenant)) {
 		if a.Open() {
 			t.Fatalf("an alert is open with its message settled: %+v", a)
 		}
@@ -465,7 +465,7 @@ func TestInboxHoldsFailures(t *testing.T) {
 			t.Fatalf("the alert was acknowledged by %q", a.AckedBy)
 		}
 	}
-	if open := p.InboxCount(admin).Open; open != 0 {
+	if open := inboxCount(t, p, admin).Open; open != 0 {
 		t.Fatalf("%d still open", open)
 	}
 	// A rule that names whom to notify addresses its message to them alone,
@@ -495,7 +495,7 @@ func TestInboxHoldsFailures(t *testing.T) {
 	// Anyone who may acknowledge alerts can still acknowledge it from the
 	// alert's side, and its message is settled though they were not notified.
 	var opsAlert alerts.Alert
-	for _, a := range p.Alerts.Alerts(tenant) {
+	for _, a := range kept(p.Alerts.Alerts(tenant)) {
 		if a.RunID == fourth.ID {
 			opsAlert = a
 		}
@@ -614,4 +614,14 @@ func TestRetryingAFailedTurnInAProjectTakesAMember(t *testing.T) {
 	if len(again) != 1 || again[0].Project != "Globex" || again[0].Actor.ID != "mel" {
 		t.Fatalf("the retry is %+v, want one run filed in Globex for mel", again)
 	}
+}
+
+// inboxCount is InboxCount, failing the test when it cannot be read.
+func inboxCount(t testing.TB, p *platform.Platform, who auth.Principal) inbox.Counts {
+	t.Helper()
+	c, err := p.InboxCount(who)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
 }

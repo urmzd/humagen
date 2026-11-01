@@ -404,7 +404,7 @@ func TestContentCursorSurvivesDeleteRecreateAndRestart(t *testing.T) {
 		if err := s.Delete("acme", "docs"); err != nil {
 			t.Fatal(err)
 		}
-		tomb := s.ContentCursor("acme", "docs")
+		tomb, _ := s.ContentCursor("acme", "docs")
 		if tomb <= before.ContentVersion {
 			t.Fatal("deletion reset cursor")
 		}
@@ -412,7 +412,7 @@ func TestContentCursorSurvivesDeleteRecreateAndRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if replay.ContentCursor("acme", "docs") != tomb {
+		if cursor, _ := replay.ContentCursor("acme", "docs"); cursor != tomb {
 			t.Fatal("deleted cursor lost across restart")
 		}
 		recreated, err := replay.Create("acme", "docs", "", "ana", now)

@@ -55,19 +55,16 @@ func TestTheFirstRuleThatAppliesDecides(t *testing.T) {
 	}
 }
 
-func TestAtMostThreeAgentsAnswerOneMessage(t *testing.T) {
-	in := threads.Input{Mentions: []threads.Mention{agent("a"), agent("b"), person("okta|dana"), agent("c"), agent("d"), agent("e")}}
+func TestEveryAgentAMessageTagsAnswers(t *testing.T) {
+	in := threads.Input{Mentions: []threads.Mention{agent("a"), agent("b"), person("okta|dana"), agent("c"), agent("d"), agent("e"), agent("f")}, TagsOnly: true, Routed: []string{"g", "h"}, Mode: threads.ModeAll}
 	d := threads.Decide(in)
-	if !reflect.DeepEqual(d.Agents, []string{"a", "b", "c"}) {
-		t.Fatalf("agents = %v", d.Agents)
+	if d.Rule != threads.RuleTagged || !reflect.DeepEqual(d.Agents, []string{"a", "b", "c", "d", "e", "f"}) {
+		t.Fatalf("Decide = %+v; want every tagged agent", d)
 	}
 	for i, m := range d.Mentions {
-		if over := m.Name == "d" || m.Name == "e"; over != (m.Refused != "") {
-			t.Fatalf("tag %d = %+v", i, m)
+		if m.Refused != "" {
+			t.Fatalf("tag %d refused: %+v", i, m)
 		}
-	}
-	if in.Mentions[3].Refused != "" || in.Mentions[4].Refused != "" {
-		t.Fatal("Decide changed its input")
 	}
 }
 

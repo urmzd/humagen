@@ -4,13 +4,17 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
 	"slices"
+	"strings"
+	"sync"
 	"time"
 
 	dense "github.com/urmzd/humagen/fiber/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // Embedder turns text into vectors. It is fiber's, the same one
@@ -48,22 +52,22 @@ func (s *Store) Search(tenant string, connectors []string, query string, limit i
 	if len(connectors) == 0 {
 		return []Hit{}, nil
 	}
-	// Embedded before the lock: it may call a model.
-	s.mu.RLock()
-	d := s.dense
-	s.mu.RUnlock()
-	qv, model := d.query(query)
+	// Embedded first: it may call a model.
+	qv, model := s.embedder().query(query)
 
 	names := slices.Clone(connectors)
 	slices.Sort(names)
 	names = slices.Compact(names)
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	var in []*entry
 	for _, n := range names {
-		if c, ok := s.tenants[tenant][n]; ok {
-			in = append(in, c.entries...)
+		es, err := s.current(tenant, n)
+		if errors.Is(err, ErrNotFound) {
+			continue
 		}
+		if err != nil {
+			return nil, err
+		}
+		in = append(in, es...)
 	}
 	if len(in) == 0 {
 		return []Hit{}, nil
@@ -222,6 +226,14 @@ func (s *Store) UseEmbedder(ctx context.Context, e Embedder, log *slog.Logger) {
 	d.nudge()
 }
 
+func (s *Store) embedder() *denseIndex {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.dense
+}
+
+func (s *Store) nudge() { s.embedder().nudge() }
+
 func (d *denseIndex) nudge() {
 	if d == nil {
 		return
@@ -256,75 +268,215 @@ func (s *Store) index(ctx context.Context, d *denseIndex) {
 		case <-d.wake:
 		case <-tick.C:
 		}
-		s.sweep(ctx, d)
+		if err := s.sweep(ctx, d); err != nil && ctx.Err() == nil {
+			d.log.Warn("catalog: entries not embedded; will retry", "model", d.model, "err", err)
+		}
 	}
 }
 
-// pending is a batch of one connector's entries that need vectors.
-type pending struct {
-	tenant, name string
-	generation   int64
-	entries      []*entry
-	texts        []string
-}
+// errStop ends a sweep early without an error to report.
+var errStop = errors.New("catalog: sweep stopped")
 
-// sweep embeds every entry without a vector from d's model. Texts are read
-// under the read lock, embedded with no lock held, and kept only if the
-// connector has not been crawled again meanwhile.
-func (s *Store) sweep(ctx context.Context, d *denseIndex) {
-	var jobs []pending
-	s.mu.RLock()
-	for tenant, cs := range s.tenants {
-		for name, c := range cs {
-			var job *pending
-			for _, e := range c.entries {
-				if e.vec != nil && e.model == d.model {
-					continue
+// sweep embeds every entry without a vector from d's model, tenant by
+// tenant through the directory and connector by connector. A batch is kept
+// only if its connector has not been crawled again meanwhile. Two processes
+// sweeping at once may both embed an entry; the vector either keeps is the
+// same.
+func (s *Store) sweep(ctx context.Context, d *denseIndex) error {
+	err := s.dir.Each(func(tenant string) error {
+		cs, err := s.Connectors(tenant)
+		if err != nil {
+			return err
+		}
+		for _, c := range cs {
+			es, err := s.current(tenant, c.Name)
+			if errors.Is(err, ErrNotFound) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			var todo []*entry
+			for _, e := range es {
+				if e.vec == nil || e.model != d.model {
+					todo = append(todo, e)
 				}
-				if job == nil || len(job.entries) == batchSize {
-					jobs = append(jobs, pending{tenant: tenant, name: name, generation: c.Generation})
-					job = &jobs[len(jobs)-1]
+			}
+			for batch := range slices.Chunk(todo, batchSize) {
+				if ctx.Err() != nil {
+					return errStop
 				}
-				job.entries = append(job.entries, e)
-				job.texts = append(job.texts, Text(e.Entry))
+				texts := make([]string, len(batch))
+				for i, e := range batch {
+					texts[i] = Text(e.Entry)
+				}
+				bctx, cancel := context.WithTimeout(ctx, batchTimeout)
+				vectors, err := d.embedder.Embed(bctx, texts)
+				cancel()
+				if err == nil && len(vectors) != len(texts) {
+					err = dense.ErrEmbedding
+				}
+				if err != nil {
+					return err
+				}
+				if err := s.keepVectors(tenant, c.Name, c.Generation, batch, d.model, vectors); err != nil {
+					return err
+				}
 			}
 		}
+		return nil
+	})
+	if errors.Is(err, errStop) {
+		return nil
 	}
-	s.mu.RUnlock()
-
-	for _, j := range jobs {
-		if ctx.Err() != nil {
-			return
-		}
-		bctx, cancel := context.WithTimeout(ctx, batchTimeout)
-		vectors, err := d.embedder.Embed(bctx, j.texts)
-		cancel()
-		if err == nil && len(vectors) != len(j.texts) {
-			err = dense.ErrEmbedding
-		}
-		if err != nil {
-			d.log.Warn("catalog: entries not embedded; will retry", "model", d.model, "connector", j.name, "err", err)
-			return
-		}
-		s.keepVectors(j, d.model, vectors)
-	}
+	return err
 }
 
-func (s *Store) keepVectors(j pending, model string, vectors [][]float32) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	c, ok := s.tenants[j.tenant][j.name]
-	if !ok || c.Generation != j.generation {
-		return
+// keepVectors writes a batch's vectors at the version of its connector,
+// unless the connector was crawled again since generation.
+func (s *Store) keepVectors(tenant, name string, generation int64, batch []*entry, model string, vectors [][]float32) error {
+	return state.Retry(func() error {
+		c, version, err := s.connector(tenant, name)
+		if errors.Is(err, ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if c.Generation != generation {
+			return nil
+		}
+		b := s.kept.Batch()
+		for i, e := range batch {
+			b.Put(tenant, vectorKey(name, e.Path), record{Vector: &vectorRecord{Model: model, Generation: generation, Data: encode(vectors[i])}})
+		}
+		b.PutAt(tenant, connectorKey(name), record{Connector: &c}, version)
+		return b.Commit()
+	})
+}
+
+// current returns a connector's entries, indexed for search, with the
+// vectors of its generation, as of one version of the connector record.
+func (s *Store) current(tenant, name string) ([]*entry, error) {
+	for range state.MaxTries {
+		c, version, err := s.connector(tenant, name)
+		if err != nil {
+			return nil, err
+		}
+		es, err := s.entries(tenant, name, c, version)
+		if errors.Is(err, state.ErrConflict) {
+			continue
+		}
+		return es, err
 	}
-	b := s.kept.Batch()
-	for i, e := range j.entries {
-		b.Put(j.tenant, vectorKey(j.name, e.Path), record{Vector: &vectorRecord{Model: model, Generation: j.generation, Data: encode(vectors[i])}})
+	return nil, state.ErrBusy
+}
+
+// entries reads a connector's entries and vectors as of the version of its
+// record that c was read at, from this process's cache when it has them at
+// that version. A read that the connector moved under returns
+// state.ErrConflict. The entries returned are shared: they are never
+// changed.
+func (s *Store) entries(tenant, name string, c Connector, version int64) ([]*entry, error) {
+	if es, ok := s.read.get(tenant, name, c, version); ok {
+		return es, nil
 	}
-	if err := b.Commit(); err != nil {
-		return
+	items, err := s.kept.All(tenant, entryPrefix(name), MaxEntries)
+	if err != nil {
+		return nil, err
 	}
-	for i, e := range j.entries {
-		e.vec, e.model = vectors[i], model
+	vecs, err := s.kept.All(tenant, vectorPrefix(name), MaxEntries)
+	if err != nil {
+		return nil, err
 	}
+	if _, again, err := s.connector(tenant, name); err != nil {
+		return nil, err
+	} else if again != version {
+		return nil, state.ErrConflict
+	}
+	byPath := make(map[string]*vectorRecord, len(vecs))
+	for _, it := range vecs {
+		if it.Value.Vector != nil {
+			byPath[strings.TrimPrefix(it.Key, vectorPrefix(name))] = it.Value.Vector
+		}
+	}
+	out := make([]*entry, 0, len(items))
+	for _, it := range items {
+		if it.Value.Entry == nil {
+			continue
+		}
+		in := indexed(*it.Value.Entry)
+		if v := byPath[in.Path]; v != nil && v.Generation == c.Generation {
+			in.vec, in.model = v.decode()
+		}
+		out = append(out, in)
+	}
+	slices.SortFunc(out, func(a, b *entry) int { return strings.Compare(a.Path, b.Path) })
+	s.read.put(tenant, name, c, version, out)
+	return out, nil
+}
+
+// readCache keeps the entries this process read, by connector, its record
+// and the version of its record. Every change to a connector's entries or
+// vectors moves that version, and a connector removed and declared again
+// starts its versions over with another record (its crawl time differs), so
+// an entry here is what the database holds at both, and dropping one changes
+// no answer.
+type readCache struct {
+	mu sync.Mutex
+	by map[[2]string]cached
+}
+
+type cached struct {
+	connector Connector
+	version   int64
+	entries   []*entry
+}
+
+// cacheSize bounds how many connectors' entries a process keeps.
+const cacheSize = 64
+
+func newReadCache() *readCache { return &readCache{by: map[[2]string]cached{}} }
+
+func (r *readCache) get(tenant, name string, connector Connector, version int64) ([]*entry, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, ok := r.by[[2]string{tenant, name}]
+	if !ok || c.version != version || !sameConnector(c.connector, connector) {
+		return nil, false
+	}
+	return c.entries, true
+}
+
+func (r *readCache) put(tenant, name string, connector Connector, version int64, entries []*entry) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	k := [2]string{tenant, name}
+	if _, ok := r.by[k]; !ok && len(r.by) >= cacheSize {
+		for other := range r.by {
+			delete(r.by, other)
+			break
+		}
+	}
+	r.by[k] = cached{connector, version, entries}
+}
+
+// sameConnector compares two connector records by value.
+func sameConnector(a, b Connector) bool {
+	at := func(t *time.Time) time.Time {
+		if t == nil {
+			return time.Time{}
+		}
+		return *t
+	}
+	mark := func(m *Mark) Mark {
+		if m == nil {
+			return Mark{}
+		}
+		return *m
+	}
+	return a.Name == b.Name && a.System == b.System && a.Owner == b.Owner && a.Project == b.Project && a.Entries == b.Entries && a.Generation == b.Generation &&
+		at(a.CrawledAt).Equal(at(b.CrawledAt)) && (a.CrawledAt == nil) == (b.CrawledAt == nil) &&
+		mark(a.Published) == mark(b.Published) && (a.Published == nil) == (b.Published == nil) &&
+		mark(a.Withdrawn) == mark(b.Withdrawn) && (a.Withdrawn == nil) == (b.Withdrawn == nil)
 }
