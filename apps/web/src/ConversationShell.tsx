@@ -149,7 +149,7 @@ export function ConversationPage({
             )}
             <button
               type="button"
-              className={control}
+              className={`${control} max-md:hidden`}
               aria-label={words.context}
               onClick={() => onPanel("context")}
             >
@@ -165,11 +165,20 @@ export function ConversationPage({
             >
               {(close) => (
                 <div className="flex flex-col p-1">
-                  {(["activity", "deliverables"] as const).map((panel) => (
+                  {/* On a phone the header is one line: where the conversation is, who is in it, and Context are here. */}
+                  <div className="flex flex-col gap-1.5 border-aui-border border-b px-2.5 pt-1.5 pb-2.5 text-aui-xs text-aui-muted md:hidden">
+                    <span className="inline-flex min-w-0 items-center gap-1.5" title={project}>
+                      <ProjectIcon size={14} />
+                      <span className="truncate">{project}</span>
+                    </span>
+                    {location}
+                    {agents.length > 0 && <Involved agents={[...new Set(agents)]} />}
+                  </div>
+                  {(["context", "activity", "deliverables"] as const).map((panel) => (
                     <button
                       key={panel}
                       type="button"
-                      className={`${control} justify-start`}
+                      className={`${control} justify-start ${panel === "context" ? "md:hidden" : ""}`}
                       onClick={() => {
                         close();
                         onPanel(panel);

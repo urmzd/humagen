@@ -45,6 +45,7 @@ import { type HomeAnnouncement, HomeBoxes, type Loaded } from "./HomePage.tsx";
 import { Integrations } from "./Integrations.tsx";
 import { Knowledge } from "./Knowledge.tsx";
 import { MemoryLibrary } from "./MemoryLibrary.tsx";
+import { ModeSwitch } from "./ModeSwitch.tsx";
 import { Monitor } from "./Monitor.tsx";
 import { type Source as About, transport as mail, type PlatformMessage } from "./mail.ts";
 import { NotificationsPage, useNotifications } from "./Notifications.tsx";
@@ -65,7 +66,7 @@ import {
 } from "./route.ts";
 import { Schedules } from "./Schedules.tsx";
 import { Settings } from "./Settings.tsx";
-import { DrawerButton, Sidebar } from "./Sidebar.tsx";
+import { DrawerButton, Sidebar, useEdgeSwipe } from "./Sidebar.tsx";
 import { SkillsLibrary } from "./SkillsLibrary.tsx";
 import { Storage } from "./Storage.tsx";
 import { DRAWER_BELOW, SIDEBAR_KEY, sidebarStartsOpen } from "./sidebarState.ts";
@@ -286,6 +287,8 @@ function Console({
   const [projects, setProjects] = useState<ProjectView[] | null>(null);
   const [root, setRoot] = useState<ProjectView | null>(null);
   const [open, setOpen] = useState(() => sidebarStartsOpen(window.innerWidth));
+  const openDrawer = useCallback(() => setOpen(true), []);
+  useEdgeSwipe(!open, openDrawer);
   const [runs, setRuns] = useState<Run[]>([]);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [agents, setAgents] = useState<Revision[]>([]);
@@ -729,13 +732,16 @@ function Console({
           )}
         </Presence>
         <DrawerButton open={open} inboxCount={inboxCounts.open} onOpen={() => setOpen(true)} />
+        {route.page === "new" && (
+          <ModeSwitch current="chat" waiting={inboxCounts.open} onGo={navigate} />
+        )}
         {/* On a phone the drawer button sits in the corner, so the page starts below it. */}
         <main
           ref={content}
           data-arriving={arrived ? undefined : ""}
           // Under an open drawer the page can be neither reached nor scrolled.
           inert={drawer || undefined}
-          className="humagen-content flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-md:pt-[calc(3rem+env(safe-area-inset-top))]"
+          className="humagen-content flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
         >
           {workspaceHub(route) && (
             <WorkspaceTabs

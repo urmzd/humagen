@@ -5,7 +5,7 @@
   "description": "Your agents, your inbox and what they are doing, wherever you are.",
   "lang": "en",
   "dir": "ltr",
-  "start_url": "/inbox",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],

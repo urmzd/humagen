@@ -15,12 +15,19 @@ export function Thread({
   children,
   label = "Conversation",
   className,
+  column,
   turns,
   busy = false,
 }: {
   children: ReactNode;
   label?: string;
   className?: string;
+  /**
+   * The column the messages read in, inside a list that spans its whole
+   * pane, so the wave sits at the pane's far left and the scrollbar at its
+   * far right, both clear of the messages.
+   */
+  column?: string;
   /** Turns for the left-edge rail (see railEntry). Omit to hide the rail. */
   turns?: TurnRailEntry[];
   /** Shows a thin indeterminate bar at the top while a turn is in flight. */
@@ -45,6 +52,8 @@ export function Thread({
       if (stuck.current) toBottom(false);
     });
     observer.observe(el);
+    // The list itself shrinking (the keyboard opening on a phone) keeps the latest in view too.
+    if (scroller.current) observer.observe(scroller.current);
     return () => observer.disconnect();
   }, [toBottom]);
 
@@ -56,10 +65,11 @@ export function Thread({
     setAtBottom(near);
   };
 
+  const wave = turns && turns.length > 1 ? turns : null;
   return (
     <div className={`relative flex min-h-0 flex-col ${className ?? ""}`}>
       {busy && <div aria-hidden className="aui-busy-bar absolute inset-x-0 top-0 z-10" />}
-      {turns && turns.length > 1 && <TurnRail turns={turns} scroller={scroller} />}
+      {wave && <TurnRail turns={wave} scroller={scroller} />}
       <div
         ref={scroller}
         role="log"
@@ -68,11 +78,11 @@ export function Thread({
         // biome-ignore lint/a11y/noNoninteractiveTabindex: scrollable region must be keyboard reachable
         tabIndex={0}
         onScroll={onScroll}
-        className="aui-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain outline-none focus-visible:ring-2 focus-visible:ring-aui-accent focus-visible:ring-inset [scrollbar-gutter:stable]"
+        className={`aui-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain outline-none focus-visible:ring-2 focus-visible:ring-aui-accent focus-visible:ring-inset [scrollbar-gutter:stable] ${wave ? "md:px-8" : ""}`}
       >
         <div
           ref={content}
-          className={`flex flex-col gap-5 py-4 pr-1 ${turns && turns.length > 1 ? "pl-1 md:pl-9" : "pl-1"}`}
+          className={`aui-thread-turns flex flex-col gap-5 py-4 ${column ?? "px-1"}`}
         >
           {children}
         </div>

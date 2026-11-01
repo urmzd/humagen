@@ -68,6 +68,10 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-039 | Changing screens never blanks or jumps; chrome is glass on one app frame | Implemented: `transition.ts`, delayed skeletons, frame and chrome glass; web tests and Console screens pass; navigation CLS measured 0 at no added latency |
 | DES-040 | The console works on a phone and installs as an app: touch targets, the keyboard, safe areas, a modal drawer, an Inspector sheet, an offline screen and a prompt for new versions | Implemented: `styles.css`, `viewport.ts`, `pwa.ts`, `sw.ts`; web and Go tests pass; Console screens pass at 320, 375, 390, 430 and 844x390 with 44px touch targets and 16px fields; iOS keyboard and install need a real device |
 | DES-041 | Agents a message goes to are its @mentions, never chips beside the project; a message has no cap on mentioned agents | Implemented: `mentionsIn`, `withMention`, `withoutMention` in `tags.ts`, `mentionPicks` in `Plus.tsx`; `pkg/threads.Decide` runs every tagged agent; web, tags and platform tests pass; `chat-mentions`, `channel-plus` and `workspace-find-help-selection` screens pass |
+| DES-042 | On a phone the console fills the installed app's screen, the drawer button floats instead of taking a row, and Home keeps the chat bar in reach of a thumb | Implemented: `viewport.ts`, `styles.css`, `HomePage.tsx`; web tests pass; Console screens pass at 320x568, 390x844 and 844x390; the iOS height needs a real device |
+| DES-043 | The brand's colors edge the page round its corners and glow round the chat bar, turning while a reply is in flight | Implemented: `styles.css`, `Composer.tsx`; web tests pass; screens pass light and dark at 1280x800 and 390x844 |
+| DES-044 | A conversation has a wave down its left edge to scan and scrub through its turns, and the keyboard opens and closes cleanly on a phone | Implemented: `TurnRail.tsx`, `Thread.tsx`, `Chat.tsx`, `Room.tsx`, `viewport.ts`; web tests pass (`wave.dom.test.tsx`, `pwa.test.ts`); screens pass at 390x844 and 1280x800; the keyboard on iOS needs a real device |
+| DES-045 | A phone reads like a native chat app: quiet message actions, a one-line chat bar and header, Chat and Work at the top of Home, a swipe from the edge for the drawer, and the installed app opening on Chat | Implemented: `theme.css`, `styles.css`, `Composer.tsx`, `ConversationShell.tsx`, `ModeSwitch.tsx`, `Sidebar.tsx`, `manifest.webmanifest`; web tests pass; screens pass at 390x844 and 1280x800 |
 
 ### DES-001: Working integrations
 
@@ -1028,3 +1032,118 @@ editing the words, and the posted body); `go test -race ./pkg/threads
 `TestABudgetStillRefusesTagsPastItsLimit`); `make screens` with
 `chat-mentions` (was `chat-chips`), `channel-plus`, `chat-plus`,
 `home-project-picker` and `workspace-find-help-selection`.
+
+### DES-042: A phone, closer to a native app
+
+Owner request: improve the console on a phone, after a screenshot of the
+installed app on an iPhone showed an empty strip under the composer.
+
+Found before the change (the `make screens` fixtures at 390x844):
+
+- Installed on an iPhone with the status bar drawn over the page, Safari
+  sizes `100dvh` short by the status bar's height, so the console ended that
+  far above the bottom of the screen.
+- The drawer button took a row of its own at the top of every page: 48px
+  holding one 44px button, above a conversation's own header.
+- Home put the chat bar in the upper middle of the screen, out of a thumb's
+  reach, with the bottom half empty before the first message.
+
+Rules:
+
+- Installed on iOS, `viewport.ts` writes the screen's height to
+  `--humagen-app-height`, which the console, the drawer and the Inspector
+  sheet are sized from. While the keyboard is up it hands back to `100dvh`,
+  which the keyboard's height is measured against.
+- On a phone the drawer button is round, on glass, and floats over the top
+  left corner. A conversation's header and a hub's tabs start beside it; a
+  page's title starts just under it. Anything else keeps the reserved row.
+- On a phone Home keeps the chat bar at the bottom with its suggestions above
+  it, and centers the greeting in the space left. The boxes scroll under the
+  bar. A wide window is unchanged.
+
+Evidence: `cd apps/web && pnpm test` covers the installed-app height and the
+handover to the keyboard (`pwa.test.ts`). `make screens` passes with
+`SCREENS_VIEWPORTS=390x844,320x568,844x390`.
+
+Needs a real device: the installed app's height on an iPhone.
+
+### DES-043: The brand's glow
+
+Owner request: the colored streak along the top had rough ends at the
+rounded corners; carry it round, and into the chat bar, so the system reads
+as glowing.
+
+Found before the change: the streak was a 1px background line along the
+sidebar's top only. It stopped where the page's rounded panel began and did
+not follow any corner.
+
+Rules:
+
+- Wider than a phone, the page's border is the streak: the brand's red,
+  yellow and green along the top, bending with the 0.75rem corners and fading
+  into the neutral rule down the sides. The phone drawer, square at the top,
+  keeps its flat streak.
+- The chat bar has a 1px ring in the brand's sweep (red, yellow, green, the
+  accent) and a soft halo under it: quiet at rest, brighter while the person
+  writes. While a reply is in flight the sweep turns round the bar, by
+  transform only; reduced motion stills it. Nothing waiting on a person moves.
+
+### DES-044: The conversation's wave, and the keyboard
+
+Owner request: a sound-wave strip down the left of a conversation, with
+previews of what was said, to scan through it on the web and on a phone; and
+the keyboard's open and close fixed on a phone.
+
+Found before the change: `TurnRail` in `@humagen/web` drew such a rail, but
+no conversation passed it any turns, it was hidden on a phone, and each tick
+was an 8px button. After the keyboard closed, Safari could leave the page
+panned up, with a strip of nothing under the console, and the message list
+did not keep the latest message in view as the keyboard shrank it.
+
+Rules:
+
+- A conversation of two or more turns has a wave down its left edge: a tick
+  per message and per answer, longer the more it says, swelling near the turn
+  in view or under the pointer. The turn in view is drawn in the brand's
+  sweep. It rests faint and brightens while the reader scrolls or reaches for
+  it.
+- It is one vertical slider. Hover previews a turn: a person's own words, an
+  answer's first line. Press, or on a touch screen press and drag, to scrub
+  through the conversation; arrows, Home and End step through it. On a phone
+  the ticks stay in the thread's gutter and the rail is 44px wide.
+- Whenever the keyboard opens or closes, the page's pan is undone, and the
+  height is checked again once focus settles. The list keeps the latest
+  message in view as it shrinks. While the keyboard is up the chat bar sits
+  right on it and the disclaimer is hidden; it returns when the keyboard
+  closes.
+
+### DES-045: A phone that reads like a native chat app
+
+Owner request: carry out the design follow-ups (quiet message actions, a
+one-line chat bar, a one-line header, Chat and Work, a swipe for the drawer),
+put the wave at the far left, clear of the messages, and open the installed
+app on Chat.
+
+Rules:
+
+- Message actions: the latest message in a thread keeps its row. An earlier
+  one shows its row while hovered, focused or tapped (a tap focuses the
+  message), or while one of its actions is pressed. On a phone an earlier row
+  takes no room until then; with a mouse it keeps its room.
+- The wave sits at the conversation pane's far left: the message list spans
+  the pane and its messages read in a centered column (`Thread`'s `column`).
+  On a phone the rail stays in the 16px gutter at the screen's edge.
+- On a phone the chat bar is one line: +, the project picker as its folder,
+  the field and Dictate or Send. Agents are @mentions in the field
+  (DES-041). A conversation's fixed project is in its header's menu.
+- On a phone a conversation's header is one line: its title and its Share
+  and menu controls. Its project, who is in it and Context are in the menu.
+- On a phone Home's top center has Chat and Work, on glass beside the drawer
+  button: Chat is the new conversation, Work the person's Notifications,
+  with how many wait on them.
+- On a phone a swipe from within 24px of the left edge, at least 56px right
+  and more sideways than up or down, opens the drawer. A touch on the wave
+  waits to see which way it goes: down scrubs, a tap jumps, sideways is left
+  to the swipe.
+- The installed app opens on `/`, the new conversation. Notifications stays
+  a shortcut.

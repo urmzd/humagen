@@ -22,6 +22,7 @@ GlobalRegistrator.register({ url: "http://localhost:5173/" });
 await loadTests([
   "/src/email-preferences.dom.test.tsx",
   "/src/activity.dom.test.tsx",
+  "/src/wave.dom.test.tsx",
   "/src/usage-page.dom.test.tsx",
   "/src/operations.dom.test.tsx",
   "/src/source-lifecycle.dom.test.tsx",
