@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.65.0 (2026-11-01)
+
+### Features
+
+- **state**: drop the single-writer lock and allow replicas (RFC 0004, change 9, step 3) (#175) ([3b41a42](https://github.com/urmzd/humagen/commit/3b41a4238007e56975fd1087551e2fd4fba4234d))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.64.0...v0.65.0)
+
+
 ## 0.64.0 (2026-11-01)
 
 ### Features

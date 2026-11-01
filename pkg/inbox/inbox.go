@@ -42,6 +42,7 @@ package inbox
 
 import (
 	"cmp"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -49,11 +50,11 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/urmzd/humagen/pkg/notice"
 	"github.com/urmzd/humagen/pkg/state"
 )
 
@@ -641,10 +642,9 @@ type Notice struct {
 type Store struct {
 	st  state.Store
 	dir *state.Tenants
-	// watchers are this process's watchers, by tenant.
-	mu       sync.Mutex
-	watchers map[string]map[int]chan Notice
-	nextW    int
+	// notices are this process's watchers, by tenant, and the way a
+	// change reaches other processes' (Relay).
+	notices *notice.Hub[Notice]
 }
 
 // storedChange is a change as it is written, with what the wire forms of a
@@ -715,7 +715,7 @@ func OpenStore(st state.Store) (*Store, error) {
 	if st == nil {
 		st = state.NewMemory()
 	}
-	s := &Store{st: st, watchers: map[string]map[int]chan Notice{}}
+	s := &Store{st: st, notices: notice.New[Notice](noticeTopic)}
 	if err := s.convert(); err != nil {
 		return nil, fmt.Errorf("inbox: convert: %w", err)
 	}
@@ -729,7 +729,7 @@ func OpenStore(st state.Store) (*Store, error) {
 
 // change runs fn on a fresh read of a tenant and writes what it changed,
 // again from a fresh read whenever another writer moved what it read, and
-// tells this process's watchers once it is written.
+// tells the watchers once it is written.
 func (s *Store) change(tenantName string, fn func(x *tx) (Message, bool, error)) (Message, bool, error) {
 	var out Message
 	var changed bool
@@ -758,17 +758,13 @@ func (s *Store) change(tenantName string, fn func(x *tx) (Message, bool, error))
 	return out, changed, nil
 }
 
+// noticeTopic names the inbox's notices between processes.
+const noticeTopic = "inbox"
+
 func (s *Store) tell(tenantName string, n Notice) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, ch := range s.watchers[tenantName] {
-		// A watcher that is not keeping up misses a notice, never blocks the
-		// inbox. It refetches on the next one.
-		select {
-		case ch <- n:
-		default:
-		}
-	}
+	// A watcher that is not keeping up misses a notice, never blocks the
+	// inbox. It refetches on the next one.
+	s.notices.Tell(tenantName, n)
 }
 
 // applyAs applies a change and returns its message as whoever made it sees
@@ -1582,21 +1578,15 @@ func (s *Store) Raised(tenantName string, kind Kind, since, until time.Time, mos
 	return out, nil
 }
 
-// Watch reports changes this process makes to a tenant's inbox until
-// cancel is called.
+// Watch reports changes to a tenant's inbox until cancel is called: those
+// this process makes and, while Relay runs, those every other process on
+// the database makes.
 func (s *Store) Watch(tenantName string) (<-chan Notice, func()) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	ch := make(chan Notice, 32)
-	id := s.nextW
-	s.nextW++
-	if s.watchers[tenantName] == nil {
-		s.watchers[tenantName] = map[int]chan Notice{}
-	}
-	s.watchers[tenantName][id] = ch
-	return ch, func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		delete(s.watchers[tenantName], id)
-	}
+	return s.notices.Watch(tenantName)
+}
+
+// Relay carries this inbox's notices to and from the other processes on its
+// database through r until ctx ends (see pkg/notice).
+func (s *Store) Relay(ctx context.Context, r notice.Relay, report func(error)) error {
+	return s.notices.Relay(ctx, r, report)
 }

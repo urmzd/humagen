@@ -1225,6 +1225,17 @@ func (p *Platform) Run(ctx context.Context) error {
 		loop("observer "+tenant, func() error { return p.observeTenant(ctx, sub, observed) })
 		loop("egress "+tenant, func() error { return p.deliver.Run(ctx, tenant) })
 	})
+	// A change to the inbox or the threads made on another process reaches
+	// this process's watchers, and this process's reach theirs.
+	if r := p.cfg.Backends.Notices; r != nil {
+		report := func(what string) func(error) {
+			return func(err error) {
+				p.log.Warn("platform: notices could not reach other processes", "store", what, "err", err)
+			}
+		}
+		loop("inbox notices", func() error { return p.Inbox.Relay(ctx, r, report("inbox")) })
+		loop("threads notices", func() error { return p.Threads.Relay(ctx, r, report("threads")) })
+	}
 	// A process's own share: what it holds in memory or on its own disk.
 	// Pending connector renders are this process's egress (fed by the
 	// per-tenant loops above), and sandboxes are directories on this host.
