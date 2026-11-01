@@ -770,7 +770,7 @@ export function SelectionChips({
       ))}
       {label !== null && (
         <li
-          className={projectControl ? "min-w-0 max-w-full" : chip}
+          className={`humagen-chip-project ${projectControl ? "humagen-chip-picker min-w-0 max-w-full" : chip}`}
           title={path.length > 0 ? [...path, where].join(" › ") : undefined}
         >
           {projectControl ?? (

@@ -1350,6 +1350,49 @@ export function DrawerButton({
  * least 56px toward the left edge, and more sideways than up or down, so
  * scrolling its lists never closes it.
  */
+/**
+ * Whether a touch that went from `from` to `to` swiped the drawer open from
+ * the screen's left edge: started within EDGE_PX of it, went at least 56px
+ * right, and more sideways than up or down.
+ */
+export function edgeSwiped(from: { x: number; y: number }, to: { x: number; y: number }): boolean {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  return from.x <= EDGE_PX && dx >= 56 && Math.abs(dx) > Math.abs(dy) * 1.5;
+}
+
+/** How near the screen's left edge a swipe must start to open the drawer. */
+export const EDGE_PX = 24;
+
+/**
+ * On a phone, with the drawer shut, a swipe from the screen's left edge
+ * toward the middle opens it, as the drawer button does.
+ */
+export function useEdgeSwipe(enabled: boolean, onOpen: () => void): void {
+  useEffect(() => {
+    if (!enabled) return;
+    let from: { x: number; y: number } | null = null;
+    const start = (e: TouchEvent) => {
+      const t = e.touches[0];
+      from =
+        e.touches.length === 1 && t && t.clientX <= EDGE_PX && window.innerWidth < 768
+          ? { x: t.clientX, y: t.clientY }
+          : null;
+    };
+    const end = (e: TouchEvent) => {
+      const t = e.changedTouches[0];
+      if (from && t && edgeSwiped(from, { x: t.clientX, y: t.clientY })) onOpen();
+      from = null;
+    };
+    window.addEventListener("touchstart", start, { passive: true });
+    window.addEventListener("touchend", end, { passive: true });
+    return () => {
+      window.removeEventListener("touchstart", start);
+      window.removeEventListener("touchend", end);
+    };
+  }, [enabled, onOpen]);
+}
+
 export function drawerSwiped(
   from: { x: number; y: number },
   to: { x: number; y: number },

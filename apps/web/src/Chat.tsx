@@ -1007,7 +1007,8 @@ export function Chat({
         )}
         <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
           <Thread
-            className="mx-auto w-full max-w-4xl flex-1 px-4"
+            className="w-full flex-1"
+            column="mx-auto w-full max-w-4xl px-4"
             busy={tailWorking}
             label="Conversation"
             turns={wave}

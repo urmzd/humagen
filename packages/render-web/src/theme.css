@@ -1419,8 +1419,8 @@
 /*
  * The conversation's wave (TurnRail in @humagen/web): one tick per turn down
  * the thread's left edge. The turn in view is drawn in the brand's sweep. On
- * a phone the ticks stay inside the thread's gutter, and the rail is a full
- * 44px wide to catch a thumb.
+ * a phone the ticks and the rail stay inside the 16px gutter at the screen's
+ * edge, so a tap on a message is always the message's.
  */
 .aui-wave-rail {
   width: 1.75rem;
@@ -1439,10 +1439,40 @@
 }
 @media (max-width: 47.99rem) {
   .aui-wave-rail {
-    width: 2.75rem;
+    width: 1rem;
     padding-inline: 2px 0;
   }
   .aui-wave-tick {
     width: calc(var(--aui-wave-w, 8px) * 0.55);
   }
+}
+
+/*
+ * Message actions stay out of the way. The latest message in a thread keeps
+ * its row; an earlier one shows its row only while it is hovered, focused or
+ * tapped (a message takes focus when tapped), or while one of its actions is
+ * pressed. On a phone an earlier row takes no room until then; with a mouse
+ * it keeps its room, so nothing moves under the pointer.
+ */
+.aui-thread-turns > :not(:last-child) .aui-message-actions {
+  transition: opacity 150ms ease-out;
+}
+:is(
+    .aui-thread-turns > .group\/message:not(:last-child),
+    .aui-thread-turns > :not(:last-child) .group\/message
+  ):not(:hover, :focus-within)
+  .aui-message-actions:not(:has([aria-pressed="true"])) {
+  opacity: 0;
+}
+@media (pointer: coarse) {
+  :is(
+      .aui-thread-turns > .group\/message:not(:last-child),
+      .aui-thread-turns > :not(:last-child) .group\/message
+    ):not(:focus-within)
+    .aui-message-actions:not(:has([aria-pressed="true"])) {
+    display: none;
+  }
+}
+.group\/message:focus {
+  outline: none;
 }

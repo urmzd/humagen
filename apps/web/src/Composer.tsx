@@ -377,7 +377,7 @@ export function Composer({
           send(false);
         }}
         data-working={queue.running ? "" : undefined}
-        className="humagen-glow relative flex flex-col gap-1 rounded-[1.25rem] border bg-aui-surface p-2"
+        className="humagen-glow humagen-composer relative flex flex-col gap-1 rounded-[1.25rem] border bg-aui-surface p-2"
       >
         {/* The brand's glow round the bar (styles.css). */}
         <span aria-hidden className="humagen-glow-halo">
@@ -509,14 +509,14 @@ export function Composer({
           aria-controls={tags && shown.length > 0 ? "composer-tags" : undefined}
           aria-autocomplete={tags ? "list" : undefined}
           aria-activedescendant={tags && shown.length > 0 ? `composer-tag-${current}` : undefined}
-          className="max-h-[200px] min-h-10 pointer-coarse:min-h-11 w-full resize-none bg-transparent px-3 pt-2 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted"
+          className="humagen-composer-input max-h-[200px] min-h-10 pointer-coarse:min-h-11 w-full resize-none bg-transparent px-3 pt-2 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted"
         />
         {notice && (
           <p role="status" className="px-3 text-aui-xs text-aui-muted">
             {notice}
           </p>
         )}
-        <div className="flex items-center gap-1">
+        <div className="humagen-composer-bar flex items-center gap-1">
           <input
             ref={picker}
             type="file"
@@ -533,7 +533,7 @@ export function Composer({
             <button
               type="button"
               data-plus-button
-              className={`${tool} self-start`}
+              className={`${tool} humagen-composer-plus self-start`}
               aria-label={defaultCopy.chat.plus}
               aria-haspopup="dialog"
               aria-expanded={menu}
@@ -545,7 +545,7 @@ export function Composer({
           ) : (
             <button
               type="button"
-              className={tool}
+              className={`${tool} humagen-composer-plus`}
               aria-label="Attach files"
               title="Attach text files"
               onClick={() => picker.current?.click()}
@@ -555,7 +555,7 @@ export function Composer({
           )}
           {leading}
           {/* What the + menu picked sits in the bar, beside +, so nothing under it moves. */}
-          <div className="min-w-0 flex-1">{plus?.chips}</div>
+          <div className="humagen-composer-chips min-w-0 flex-1">{plus?.chips}</div>
           {trailing}
           {/*
           One button in one place. With nothing to send it listens, and once
@@ -566,7 +566,7 @@ export function Composer({
           {listening || (!ready && canDictate) ? (
             <button
               type="button"
-              className={`${action} ${listening ? "bg-aui-accent text-aui-accent-fg" : "bg-aui-hover text-aui-fg"}`}
+              className={`${action} humagen-composer-send ${listening ? "bg-aui-accent text-aui-accent-fg" : "bg-aui-hover text-aui-fg"}`}
               aria-label={listening ? "Stop dictating" : "Dictate"}
               aria-pressed={listening}
               title={listening ? "Stop dictating" : "Dictate"}
@@ -584,7 +584,7 @@ export function Composer({
               disabled={!ready}
               aria-label={queue.running ? "Queue message" : "Send message"}
               title={queue.running ? "Queue behind the reply in flight" : "Send"}
-              className={`${action} bg-aui-primary text-aui-primary-fg hover:opacity-90 disabled:opacity-40`}
+              className={`${action} humagen-composer-send bg-aui-primary text-aui-primary-fg hover:opacity-90 disabled:opacity-40`}
             >
               <ArrowUpIcon size={16} strokeWidth={2.5} />
             </button>

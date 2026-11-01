@@ -314,7 +314,7 @@ export function Page({
   if (layout === "conversation") {
     return (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="humagen-conversation-header humagen-beside-drawer relative z-10 grid shrink-0 items-center gap-x-4 gap-y-2 border-aui-border border-b px-4 py-3 md:px-6 lg:h-[var(--humagen-header-h,4.5rem)]">
+        <header className="humagen-conversation-header humagen-beside-drawer relative max-md:min-h-[3.75rem] z-10 grid shrink-0 items-center gap-x-4 gap-y-2 border-aui-border border-b px-4 py-3 md:px-6 lg:h-[var(--humagen-header-h,4.5rem)]">
           <div className="humagen-conversation-title min-w-0">
             <h1
               className="truncate text-aui-base font-semibold leading-6 text-aui-fg"
@@ -323,7 +323,8 @@ export function Page({
               {title}
             </h1>
             {(start || meta) && (
-              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-aui-xs text-aui-muted">
+              // On a phone the header is one line; where it is and who is in it move to its menu.
+              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-aui-xs text-aui-muted max-md:hidden">
                 {start}
                 {meta}
               </div>

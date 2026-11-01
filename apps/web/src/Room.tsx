@@ -272,6 +272,8 @@ function MessageView({
       id={`message-${m.id}`}
       data-turn-id={m.id}
       aria-label={`Message from ${m.name || m.by}`}
+      // A tap focuses the message, which shows its actions (theme.css).
+      tabIndex={-1}
       className={`group/message flex gap-3 rounded-aui ${focused ? "outline-2 outline-offset-4 outline-aui-accent" : ""}`}
     >
       <PersonMark name={m.name || m.by} />
@@ -784,7 +786,8 @@ export function ThreadRoom({
         )}
         <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
           <ThreadList
-            className="mx-auto w-full max-w-4xl flex-1 px-4"
+            className="w-full flex-1"
+            column="mx-auto w-full max-w-4xl px-4"
             busy={busy}
             label="Thread"
             turns={wave}

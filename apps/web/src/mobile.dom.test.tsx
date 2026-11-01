@@ -6,7 +6,7 @@ import { useState } from "react";
 import type { Me } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import type { UpdateState, Updates } from "./pwa.ts";
-import { DrawerButton, drawerSwiped, Sidebar } from "./Sidebar.tsx";
+import { DrawerButton, drawerSwiped, edgeSwiped, Sidebar } from "./Sidebar.tsx";
 import { UpdatePrompt } from "./UpdatePrompt.tsx";
 
 // The phone's drawer and the installed app's update prompt, driven as a
@@ -103,6 +103,17 @@ test("drawerSwiped: far enough left, and more sideways than up or down", () => {
   assert.equal(drawerSwiped({ x: 200, y: 0 }, { x: 160, y: 0 }), false, "too short");
   assert.equal(drawerSwiped({ x: 100, y: 0 }, { x: 200, y: 0 }), false, "the wrong way");
   assert.equal(drawerSwiped({ x: 200, y: 0 }, { x: 120, y: 70 }), false, "too steep");
+});
+
+test("edgeSwiped: from the left edge, far enough right, and more sideways than up or down", () => {
+  assert.equal(edgeSwiped({ x: 8, y: 300 }, { x: 90, y: 320 }), true);
+  assert.equal(edgeSwiped({ x: 60, y: 300 }, { x: 200, y: 300 }), false, "not from the edge");
+  assert.equal(edgeSwiped({ x: 8, y: 300 }, { x: 40, y: 300 }), false, "too short");
+  assert.equal(
+    edgeSwiped({ x: 8, y: 300 }, { x: 80, y: 400 }),
+    false,
+    "too steep: scrubbing the wave",
+  );
 });
 
 /** A store the test moves by hand. */

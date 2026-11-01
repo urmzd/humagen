@@ -81,6 +81,9 @@ export function TurnRail({
   // After a jump, the target stays current while the scroll settles.
   const lockUntil = useRef(0);
   const lastJump = useRef(-1);
+  // A touch waits to see which way it goes: down the rail scrubs, a tap jumps,
+  // and sideways is left to the page (a swipe from the edge opens the drawer).
+  const press = useRef<{ x: number; y: number; decided: boolean } | null>(null);
 
   useEffect(() => {
     const root = scroller.current;
@@ -149,10 +152,29 @@ export function TurnRail({
     const i = slotOf(e);
     setScrubbing(true);
     setHovered(i);
+    if (e.pointerType === "touch") {
+      press.current = { x: e.clientX, y: e.clientY, decided: false };
+      return;
+    }
+    press.current = null;
     jump(i, e.pointerType === "mouse");
   };
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     const i = slotOf(e);
+    const p = press.current;
+    if (scrubbing && p && !p.decided) {
+      const dx = Math.abs(e.clientX - p.x);
+      const dy = Math.abs(e.clientY - p.y);
+      if (dx > 10 && dx > dy) {
+        press.current = null;
+        setScrubbing(false);
+        setHovered(null);
+        e.currentTarget.releasePointerCapture?.(e.pointerId);
+        return;
+      }
+      if (dy <= 6) return;
+      p.decided = true;
+    }
     if (scrubbing) {
       if (i !== lastJump.current) {
         jump(i, false);
@@ -163,6 +185,10 @@ export function TurnRail({
     } else if (e.pointerType === "mouse") setHovered(i);
   };
   const onPointerEnd = (e: PointerEvent<HTMLDivElement>) => {
+    const p = press.current;
+    // A tap: no scrub, so the turn under it is the one to go to.
+    if (scrubbing && p && !p.decided && e.type === "pointerup") jump(slotOf(e), true);
+    press.current = null;
     setScrubbing(false);
     if (e.pointerType !== "mouse" || e.type === "pointerleave") setHovered(null);
   };

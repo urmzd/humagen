@@ -161,6 +161,18 @@ async function twoAgents(page: Page): Promise<void> {
  * dialog, a shared conversation, and answers its selected agents were
  * routed to.
  */
+/**
+ * Opens a conversation's Context: from its header, or on a phone, where the
+ * header is one line, from its menu.
+ */
+async function openContext(page: Page): Promise<void> {
+  if ((page.viewportSize()?.width ?? 0) < 768)
+    await page
+      .getByRole("button", { name: defaultCopy.conversation.settings, exact: true })
+      .click();
+  await page.getByRole("button", { name: defaultCopy.conversation.context, exact: true }).click();
+}
+
 function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
   return [
     {
@@ -170,6 +182,8 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
         const human = page.getByRole("article", { name: /^Message from / }).first();
         const agent = page.getByRole("article", { name: "helper message", exact: true }).first();
         for (const message of [human, agent]) {
+          // An earlier message shows its actions once tapped or hovered (theme.css).
+          await message.click({ position: { x: 4, y: 4 } });
           const actions = message.getByRole("toolbar", { name: "Message actions" });
           await actions.getByRole("button", { name: /^Copy (message|answer)/ }).waitFor();
           await actions.getByRole("button", { name: "Reply", exact: true }).waitFor();
@@ -417,9 +431,7 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       act: async (page) => {
         const main = page.locator("main");
         const before = await main.boundingBox();
-        await page
-          .getByRole("button", { name: defaultCopy.conversation.context, exact: true })
-          .click();
+        await openContext(page);
         const drawer = page.getByRole("dialog", {
           name: defaultCopy.conversation.context,
           exact: true,
@@ -441,9 +453,7 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
         await drawer.waitFor({ state: "hidden" });
         const restored = await main.boundingBox();
         assert.ok(restored && Math.abs(restored.width - before.width) < 1);
-        await page
-          .getByRole("button", { name: defaultCopy.conversation.context, exact: true })
-          .click();
+        await openContext(page);
         await drawer.waitFor();
       },
     },
