@@ -3,6 +3,11 @@
 // reminders. Work that each replica does for its own share, such as a
 // tenant's delivery, is not elected here.
 //
+// An elector made WithKey is a lease on one thing rather than on the
+// deployment: one process at a time holds each key, different keys may be
+// held by different processes, and WithDelay lets a process that already
+// holds many leave the next to another.
+//
 // An Elector calls a term function each time this process becomes the
 // leader, with a context that ends when it stops being one. A term may be
 // cut short at any moment, by a lost connection or a shutdown, so the work
@@ -46,6 +51,10 @@ func (Always) Campaign(ctx context.Context, term Term) error {
 // schemas of one database each elect their own leader.
 const LockClass = 0x6c656164 // "lead"
 
+// KeyClass is the first half of the advisory lock a keyed elector (WithKey)
+// holds. The second half is the hash of the schema and the key.
+const KeyClass = 0x6b657973 // "keys"
+
 // DefaultInterval is how often a follower asks for the lock and the leader
 // checks the connection that holds it.
 const DefaultInterval = 2 * time.Second
@@ -68,6 +77,11 @@ type Postgres struct {
 	connect  func(context.Context) (*pgx.Conn, error)
 	interval time.Duration
 	log      *slog.Logger
+	// class and key name the lock: LockClass and no key for the
+	// deployment's leader, KeyClass and a key for a lease.
+	class int32
+	key   string
+	delay func() time.Duration
 }
 
 // Option configures a Postgres elector.
@@ -93,6 +107,25 @@ func WithLogger(l *slog.Logger) Option {
 	}
 }
 
+// WithKey makes the elector a lease on key instead of the deployment's
+// leadership: it holds an advisory lock of KeyClass on the schema and key,
+// so one process at a time holds each key, and the deployment's leader is
+// elected apart from it.
+func WithKey(key string) Option {
+	return func(e *Postgres) {
+		if key != "" {
+			e.class, e.key = KeyClass, key
+		}
+	}
+}
+
+// WithDelay waits what fn says before each time this process asks for the
+// lock, the first included. A process that holds several leases can
+// wait longer, so a process that holds fewer takes the next one.
+func WithDelay(fn func() time.Duration) Option {
+	return func(e *Postgres) { e.delay = fn }
+}
+
 // NewPostgres returns an elector that opens its own connection from cfg,
 // apart from any pool, so the lock lives exactly as long as that session.
 // cfg's search_path decides the schema, and so the deployment, it elects in.
@@ -105,6 +138,7 @@ func NewPostgres(cfg *pgx.ConnConfig, opts ...Option) (*Postgres, error) {
 		connect:  func(ctx context.Context) (*pgx.Conn, error) { return pgx.ConnectConfig(ctx, cfg) },
 		interval: DefaultInterval,
 		log:      slog.New(slog.DiscardHandler),
+		class:    LockClass,
 	}
 	for _, o := range opts {
 		o(e)
@@ -115,6 +149,13 @@ func NewPostgres(cfg *pgx.ConnConfig, opts ...Option) (*Postgres, error) {
 // Campaign implements Elector.
 func (e *Postgres) Campaign(ctx context.Context, term Term) error {
 	for {
+		if e.delay != nil {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-time.After(max(e.delay(), 0)):
+			}
+		}
 		conn, err := e.try(ctx)
 		switch {
 		case err != nil && ctx.Err() == nil:
@@ -130,6 +171,23 @@ func (e *Postgres) Campaign(ctx context.Context, term Term) error {
 	}
 }
 
+// lockSQL and unlockSQL take and give back this elector's lock: the
+// schema's hash for the leader, and the hash of the schema and the key for
+// a lease.
+const (
+	lockSQL   = `SELECT pg_try_advisory_lock($1, hashtext(current_schema() || $2))`
+	unlockSQL = `SELECT pg_advisory_unlock($1, hashtext(current_schema() || $2))`
+)
+
+// suffix is what the schema is hashed with: nothing for the leader, so its
+// lock stays the one earlier releases took.
+func (e *Postgres) suffix() string {
+	if e.key == "" {
+		return ""
+	}
+	return "/" + e.key
+}
+
 // try opens a connection and asks for the lock on it. It returns the
 // connection when the lock is held, and closes it otherwise.
 func (e *Postgres) try(ctx context.Context) (*pgx.Conn, error) {
@@ -140,7 +198,7 @@ func (e *Postgres) try(ctx context.Context) (*pgx.Conn, error) {
 		return nil, err
 	}
 	var held bool
-	if err := conn.QueryRow(ask, `SELECT pg_try_advisory_lock($1, hashtext(current_schema()))`, int32(LockClass)).Scan(&held); err != nil {
+	if err := conn.QueryRow(ask, lockSQL, e.class, e.suffix()).Scan(&held); err != nil {
 		_ = conn.Close(context.Background())
 		return nil, fmt.Errorf("leader: lock: %w", err)
 	}
@@ -171,7 +229,7 @@ func (e *Postgres) lead(ctx context.Context, conn *pgx.Conn, term Term) {
 	if !e.grace(ctx, conn) {
 		bye, stop := context.WithTimeout(context.Background(), e.interval)
 		defer stop()
-		_, _ = conn.Exec(bye, `SELECT pg_advisory_unlock($1, hashtext(current_schema()))`, int32(LockClass))
+		_, _ = conn.Exec(bye, unlockSQL, e.class, e.suffix())
 		_ = conn.Close(bye)
 		return
 	}
@@ -189,7 +247,7 @@ func (e *Postgres) lead(ctx context.Context, conn *pgx.Conn, term Term) {
 		bye, stop := context.WithTimeout(context.Background(), e.interval)
 		defer stop()
 		if release {
-			_, _ = conn.Exec(bye, `SELECT pg_advisory_unlock($1, hashtext(current_schema()))`, int32(LockClass))
+			_, _ = conn.Exec(bye, unlockSQL, e.class, e.suffix())
 		}
 		_ = conn.Close(bye)
 	}

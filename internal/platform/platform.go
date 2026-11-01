@@ -371,6 +371,9 @@ type Platform struct {
 	secrets  clients.Secrets
 	// clientsMu serializes creating, updating and deleting clients.
 	clientsMu sync.Mutex
+	// clientSync is what this replica last read of the clients' change
+	// count (client_sync.go).
+	clientSync clientSyncState
 	// admitting holds runs between admission and their record, by run id.
 	admitting         sync.Map
 	publicationGuards []ConversationPublicationGuard
@@ -557,6 +560,7 @@ func New(cfg Config) (*Platform, error) {
 			}
 		}
 	}
+	p.primeClientSync()
 	p.restore()
 
 	// Delivery follows the channel: a run's events go to the sink of its
@@ -1225,6 +1229,9 @@ func (p *Platform) Run(ctx context.Context) error {
 	// Pending connector renders are this process's egress (fed by the
 	// per-tenant loops above), and sandboxes are directories on this host.
 	loop("connector flush", func() error { return p.flushConnections(ctx) })
+	// Every replica seats every client; a change made on another reaches
+	// this one's seats.
+	loop("client sync", func() error { return p.syncClientsLoop(ctx) })
 	loop("sandbox sweep", func() error {
 		tick := time.NewTicker(time.Hour)
 		defer tick.Stop()

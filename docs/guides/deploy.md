@@ -41,7 +41,11 @@ process with its stores beside it.
   deployment runs on one elected leader, so the server runs as more than one
   replica. More than one needs `stores.kind: postgres` and shared blobs
   (`blobs.kind: s3` or `gcs`); the chart refuses otherwise. It upgrades with a
-  rolling update that adds no pod before one is gone. Turns scale on their own
+  rolling update that adds no pod before one is gone. Every replica answers
+  every Slack and GitHub webhook client, and a client changed through one
+  replica reaches the others within 2 seconds. A Socket Mode Slack app
+  (`surfaces.slack`) runs on one replica at a time, under a lease another
+  replica takes over when it stops. Turns scale on their own
   with workers: see [Process roles](#process-roles).
 - **Sign-in in a container is OIDC.** `auth.kind` `dev`, `mock` and
   `tailscale` trust loopback and refuse any other listen address, and a

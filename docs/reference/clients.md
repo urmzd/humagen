@@ -350,6 +350,24 @@ another surface goes out through the one client in its workspace that serves
 the address and may route to its agent. With none, or with more than one, the
 event is undeliverable.
 
+## On every replica
+
+Every client here is a webhook client (Slack's Events API over HTTP, GitHub's
+webhooks), so every replica seats every enabled client and a load balancer may
+send any request to any of them. Delivery is one replica per workspace at a
+time, through egress's consumer group. A client created, changed, turned off or
+deleted through one replica is seated the same way on the others within 2
+seconds (`clients.Generations`, a change count every replica reads), and a
+webhook or an event no seat on a replica matches makes that replica look at
+once, at most every 250ms. A message a connector was streaming when its client
+was reseated starts a new message.
+
+The Socket Mode Slack app a Platform document runs (`surfaces.slack`) holds
+one connection per deployment: it runs on the replica that holds its lease
+(`pkg/leader`, `WithKey`), and another replica takes it over within a few
+seconds when that one stops. A replica already running apps waits longer for
+the next, so several apps spread across replicas.
+
 ## In the console
 
 Settings, Connections lists a workspace's clients: what each answers for, the
