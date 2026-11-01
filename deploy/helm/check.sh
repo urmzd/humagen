@@ -57,7 +57,6 @@ refuse() {
 		exit 1
 	fi
 }
-refuse --set replicaCount=2
 refuse --set system.spec.auth.kind=dev
 # tailscale trusts headers from the pod's loopback: only with the Tailscale
 # proxy container in the pod (ci/tailscale-values.yaml), never behind an

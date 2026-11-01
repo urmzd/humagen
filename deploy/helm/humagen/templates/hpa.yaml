@@ -1,6 +1,6 @@
-{{- /* The server's HorizontalPodAutoscaler. The single-writer guard in
-deployment.yaml holds maxReplicas at 1 today; this is where more replicas
-will come from once the stores allow them. */}}
+{{- /* The server's HorizontalPodAutoscaler. More than one replica needs
+Postgres stores and shared blobs (s3 or gcs); deployment.yaml refuses
+otherwise. */}}
 {{- $a := .Values.autoscaling | default dict -}}
 {{- if $a.enabled }}
 {{- if gt (int $a.minReplicas) (int $a.maxReplicas) }}

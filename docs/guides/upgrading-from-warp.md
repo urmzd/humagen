@@ -261,9 +261,10 @@ The release that folds fiber into this repository also moves every event onto
 one envelope with a typed body ([API contract](../reference/api.md#events)). Upgrade like
 this:
 
-- **Run one replica.** Stop the old process before the new one starts on the
-  same database. The agent move below runs once at start behind a marker, and
-  a second process on the schema is refused (`state.ErrLocked`), as always.
+- **Stop the old process first.** Stop every process of the old release
+  before the new one starts on the same database: an older release keeps its
+  stores in memory and must not run beside a newer one. The agent move below
+  runs once at start behind a marker.
 - **Runs in flight fail terminally.** A run recorded under the old activity
   names (`fiber.turn`, `fiber.turn.agent`, `fiber.turn.resume`) ends as
   failed with a reason instead of replaying a turn the new code cannot

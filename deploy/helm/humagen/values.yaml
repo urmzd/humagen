@@ -17,11 +17,11 @@
 development:
   loopback: false
 
-# -- One replica of the server. Keep it at one: humagen's stores are single-writer (the run
-# index, the usage ledger, the admission lock and the schedules all assume one
-# process owns them), and the workspace volume is ReadWriteOnce. A second
-# replica would race the first, not share its load. To run turns on more
-# pods, use `worker` below.
+# -- Replicas of the server. The stores read and write the database per
+# request, delivery and the observer share work through consumer groups, and
+# the work done once per deployment runs on one elected leader, so more than
+# one is safe. With more than one, keep blobs off the ReadWriteOnce disk (s3 or
+# gcs). To run turns on more pods, use `worker` below.
 replicaCount: 1
 
 image:
@@ -301,8 +301,8 @@ podDisruptionBudget:
   minAvailable: ""
 
 # -- A HorizontalPodAutoscaler for the server. The Deployment then omits
-# replicas. maxReplicas above 1 is refused while the stores are single-writer
-# (see replicaCount); scale turns out with the worker instead.
+# replicas. maxReplicas above 1 needs Postgres stores and shared blobs (s3 or
+# gcs), as replicaCount does; the worker scales turns on their own.
 autoscaling:
   enabled: false
   minReplicas: 1

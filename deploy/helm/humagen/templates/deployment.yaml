@@ -1,6 +1,3 @@
-{{- if ne (int .Values.replicaCount) 1 }}
-{{- fail "replicaCount must be 1: humagen's stores are single-writer. See values.yaml." }}
-{{- end }}
 {{- include "humagen.keepOldNames" . -}}
 {{- $fullname := include "humagen.fullname" . -}}
 {{- $dev := ((.Values.development | default dict).loopback) | default false -}}
@@ -13,9 +10,13 @@
 {{- fail "tailscale sign-in is reached only through the Tailscale proxy container in the pod; an Ingress would bypass it" }}
 {{- end }}
 {{- $hpa := .Values.autoscaling | default dict -}}
-{{- if $hpa.enabled }}
-{{- if gt (int $hpa.maxReplicas) 1 }}
-{{- fail "autoscaling.maxReplicas must be 1 for the server: humagen's stores are single-writer (see replicaCount in values.yaml). Scale the worker instead" }}
+{{- $many := or (gt (int .Values.replicaCount) 1) (and $hpa.enabled (gt (int $hpa.maxReplicas) 1)) -}}
+{{- if $many }}
+{{- if ne (include "humagen.storesKind" .) "postgres" }}
+{{- fail "more than one server replica needs system.spec.stores.kind=postgres: replicas share the stores, the run queue and the bus through Postgres" }}
+{{- end }}
+{{- if has (include "humagen.blobsKind" .) (list "disk" "memory") }}
+{{- fail "more than one server replica needs shared blobs (system.spec.blobs.kind s3 or gcs): each pod's disk is its own" }}
 {{- end }}
 {{- end }}
 {{- $drainArgs := include "humagen.drainArgs" . -}}
@@ -27,12 +28,16 @@ metadata:
     {{- include "humagen.labels" . | nindent 4 }}
 spec:
   {{- if not $hpa.enabled }}
-  replicas: 1
+  replicas: {{ .Values.replicaCount }}
   {{- end }}
-  # Recreate, not RollingUpdate: the old pod must let go of the stores and the
-  # ReadWriteOnce volume before the new one starts.
+  # The stores read and write the database per request and take no lock, so
+  # pods are replaced one at a time. None is added before one is taken away:
+  # with disk blobs the workspace volume is ReadWriteOnce.
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       {{- include "humagen.selectorLabels" . | nindent 6 }}

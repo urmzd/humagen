@@ -36,13 +36,13 @@ process with its stores beside it.
   variable (`HUMAGEN_PERSON_ANA_ISSUES`) is set in its environment like any other
   secret. `humagen deploy` refuses the others for a container
   ([Deploying it](../reference/spec.md#deploying-it)).
-- **One replica.** The stores are single-writer: the run index, the
-  schedules and the rest assume one process owns them (see
-  [Limits at scale](../architecture/overview.md#limits-at-scale)). Admission
-  and spend counts are shared on Postgres, but that alone does not make a
-  second process safe, and `pkg/state` refuses one at start. The chart
-  refuses `replicaCount` other than 1 and upgrades with `Recreate`. The
-  roles that will split it are in place: see [Process roles](#process-roles).
+- **Replicas.** The stores read and write Postgres per request, delivery and
+  the observer share work through consumer groups, and the work done once per
+  deployment runs on one elected leader, so the server runs as more than one
+  replica. More than one needs `stores.kind: postgres` and shared blobs
+  (`blobs.kind: s3` or `gcs`); the chart refuses otherwise. It upgrades with a
+  rolling update that adds no pod before one is gone. Turns scale on their own
+  with workers: see [Process roles](#process-roles).
 - **Sign-in in a container is OIDC.** `auth.kind` `dev`, `mock` and
   `tailscale` trust loopback and refuse any other listen address, and a
   published container port is not loopback. Use `kind: oidc` with `issuer`,
@@ -288,8 +288,8 @@ a drain evict the pod and limits evictions once there are more replicas.
 
 `autoscaling.enabled` adds a HorizontalPodAutoscaler for the server (CPU,
 optional memory, and `autoscaling.metrics` appended as written) and the
-Deployment then omits `replicas`. While the stores are single-writer the
-chart refuses `maxReplicas` above 1, the same rule as `replicaCount`.
+Deployment then omits `replicas`. `maxReplicas` above 1 needs Postgres stores
+and shared blobs, the same rule as `replicaCount`.
 
 ### Workers and KEDA
 
