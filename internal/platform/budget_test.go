@@ -26,7 +26,10 @@ var billing = auth.Principal{Tenant: tenant, Subject: "ana", Kind: auth.User, Ro
 
 // waitsUntil answers its first n calls at once and each later one only once
 // ready says so, as a real model's seconds-long call gives the platform time
-// to judge the call before it.
+// to judge the call before it. It waits as long as await does: the platform
+// judges a call from the run's events, a moment behind the run, and on a
+// loaded machine that moment has outlasted a shorter wait, which let the run
+// go past the call it was to be held at and end without a hold.
 type waitsUntil struct {
 	saigetypes.Provider
 	n     int
@@ -40,7 +43,7 @@ func (g *waitsUntil) Stream(ctx context.Context, req saigetypes.Request) (<-chan
 	g.calls++
 	n := g.calls
 	g.mu.Unlock()
-	for deadline := time.Now().Add(10 * time.Second); n > g.n && !g.ready() && time.Now().Before(deadline); {
+	for deadline := time.Now().Add(30 * time.Second); n > g.n && !g.ready() && time.Now().Before(deadline) && ctx.Err() == nil; {
 		time.Sleep(5 * time.Millisecond)
 	}
 	return g.Provider.Stream(ctx, req)
