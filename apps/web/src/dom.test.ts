@@ -28,6 +28,7 @@ await loadTests([
   "/src/source-lifecycle.dom.test.tsx",
   "/src/workspace.dom.test.tsx",
   "/src/workspace-files.dom.test.tsx",
+  "/src/workspace-hub.dom.test.tsx",
   "/src/code-editor.dom.test.tsx",
   "/src/navigation-guard.dom.test.tsx",
   "/src/storage.dom.test.tsx",

@@ -1,4 +1,6 @@
 import type {
+  ConversationSandboxes,
+  RunSandbox,
   WorkspaceFileContent,
   WorkspaceFileList,
   WorkspaceFileWrite,
@@ -6,7 +8,13 @@ import type {
 import { ApiError } from "./api.ts";
 import type { Stored } from "./storage.ts";
 
-export type { WorkspaceFileContent, WorkspaceFileList, WorkspaceFileWrite };
+export type {
+  ConversationSandboxes,
+  RunSandbox,
+  WorkspaceFileContent,
+  WorkspaceFileList,
+  WorkspaceFileWrite,
+};
 export const MAX_WORKSPACE_FILE_BYTES = 2 * 1024 * 1024;
 
 const at = (thread: string) => `/api/threads/${encodeURIComponent(thread)}/files`;
@@ -26,6 +34,13 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 export const workspaceFiles = {
+  sandboxes: (thread: string) =>
+    request<ConversationSandboxes>("GET", `/api/threads/${encodeURIComponent(thread)}/sandboxes`),
+  artifacts: (thread: string) =>
+    request<{ artifacts: Stored[]; next?: string | null }>(
+      "GET",
+      `/api/artifacts?${new URLSearchParams({ thread, limit: "100" })}`,
+    ),
   list: (thread: string) => request<WorkspaceFileList>("GET", at(thread)),
   read: (thread: string, path: string) =>
     request<WorkspaceFileContent>("GET", `${at(thread)}/content?${new URLSearchParams({ path })}`),

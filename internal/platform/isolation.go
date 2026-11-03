@@ -18,6 +18,7 @@ import (
 	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/fiber/pkg/isolation"
 	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 // Where a run's tools execute (RFC 0004, "The sandbox").
@@ -173,6 +174,13 @@ func (f *runFiles) Save(ctx context.Context, inst isolation.Instance) error {
 		return err
 	}
 	var errs []error
+	var wrote []runs.SandboxFile
+	var refused []string
+	defer func() {
+		if err := f.p.Runs.RecordSandbox(f.tenant, f.run, true, wrote, refused); err != nil {
+			f.p.log.Info("platform: the run's sandbox record was not kept", "run", f.run, "error", err)
+		}
+	}()
 	kept := map[string]bool{}
 	for _, file := range files {
 		kept[file.Path] = true
@@ -194,21 +202,27 @@ func (f *runFiles) Save(ctx context.Context, inst isolation.Instance) error {
 		current, readErr := dst.read(ctx, clean)
 		before, existed := loaded[clean]
 		if (existed && (readErr != nil || sha256.Sum256(current) != before)) || (!existed && readErr == nil) {
-			errs = append(errs, fmt.Errorf("%w: %q changed after this run loaded it; its output was not copied back", ErrWorkspaceConflict, clean))
+			err := fmt.Errorf("%w: %q changed after this run loaded it; its output was not copied back", ErrWorkspaceConflict, clean)
+			errs, refused = append(errs, err), append(refused, err.Error())
 			continue
 		}
 		if _, err := writeSandbox(ctx, dst, clean, string(b)); err != nil {
 			errs = append(errs, fmt.Errorf("%q was not kept: %w", clean, err))
+			continue
 		}
+		wrote = append(wrote, runs.SandboxFile{Path: clean, Size: int64(len(b)), Revision: fileRevision(b)})
 	}
 	for name := range loaded {
 		if !kept[name] {
 			current, err := dst.read(ctx, name)
 			if err != nil || sha256.Sum256(current) != loaded[name] {
-				errs = append(errs, fmt.Errorf("%w: %q changed after this run loaded it; it was not removed", ErrWorkspaceConflict, name))
+				err := fmt.Errorf("%w: %q changed after this run loaded it; it was not removed", ErrWorkspaceConflict, name)
+				errs, refused = append(errs, err), append(refused, err.Error())
 				continue
 			}
-			_ = dst.remove(name)
+			if dst.remove(name) == nil {
+				wrote = append(wrote, runs.SandboxFile{Path: name, Removed: true})
+			}
 		}
 	}
 	return errors.Join(errs...)

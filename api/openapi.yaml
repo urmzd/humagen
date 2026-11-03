@@ -3844,6 +3844,25 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/threads/{id}/sandboxes:
+    get:
+      operationId: listSandboxes
+      tags: [threads]
+      summary: The conversation's session sandbox and each agent run's nested sandbox
+      x-permission: runs:read
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      responses:
+        "200":
+          description: The session sandbox and at most 50 runs' sandboxes, newest first.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ConversationSandboxes"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/threads/{id}/files:
     get:
       operationId: listWorkspaceFiles
@@ -7678,6 +7697,63 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/Refusal"}
   schemas:
+    SandboxFile:
+      type: object
+      required: [path, size]
+      properties:
+        path: {type: string, maxLength: 512}
+        size: {type: integer, minimum: 0}
+        revision: {type: string, maxLength: 64, description: SHA-256 of the content the run left; absent when it removed the file.}
+        removed: {type: boolean}
+    RunSandboxRecord:
+      description: What a run left in its conversation's files, and the copyback changes refused because someone else changed the file first.
+      type: object
+      required: [isolated, files]
+      properties:
+        isolated: {type: boolean}
+        files: {type: array, maxItems: 64, items: {$ref: "#/components/schemas/SandboxFile"}}
+        more: {type: integer, minimum: 0, description: Files past the 64 named.}
+        conflicts: {type: array, maxItems: 16, items: {type: string, maxLength: 512}}
+    SandboxMount:
+      type: object
+      required: [dir, kind]
+      properties:
+        dir: {type: string}
+        kind: {type: string, enum: [session, person, project, agent]}
+        name: {type: string}
+        read_only: {type: boolean}
+    SessionSandbox:
+      type: object
+      required: [isolated, files, bytes, retention_days, writable]
+      properties:
+        isolated: {type: boolean, description: Runs lease an instance of their own; false means tools work in the session directory on the host.}
+        files: {type: integer, minimum: 0, maximum: 200}
+        bytes: {type: integer, minimum: 0}
+        retention_days: {type: integer, const: 7}
+        writable: {type: boolean}
+        reason: {type: string}
+    RunSandbox:
+      type: object
+      required: [run, agent, depth, status, created_at, isolated, mounts, files]
+      properties:
+        run: {type: string}
+        agent: {type: string}
+        parent: {type: string}
+        depth: {type: integer, minimum: 0}
+        status: {$ref: "#/components/schemas/RunStatus"}
+        created_at: {type: string, format: date-time}
+        isolated: {type: boolean}
+        mounts: {type: array, items: {$ref: "#/components/schemas/SandboxMount"}}
+        files: {type: array, maxItems: 64, items: {$ref: "#/components/schemas/SandboxFile"}}
+        more: {type: integer, minimum: 0}
+        conflicts: {type: array, maxItems: 16, items: {type: string, maxLength: 512}}
+    ConversationSandboxes:
+      type: object
+      required: [session, runs, more]
+      properties:
+        session: {$ref: "#/components/schemas/SessionSandbox"}
+        runs: {type: array, maxItems: 50, items: {$ref: "#/components/schemas/RunSandbox"}}
+        more: {type: boolean}
     WorkspaceFile:
       type: object
       required: [path, size, revision]
@@ -9267,6 +9343,7 @@ components:
             be empty. It is never the whole answer when `status` is `stopped`.
           type: string
         outcome: {$ref: "#/components/schemas/RunOutcome"}
+        sandbox: {$ref: "#/components/schemas/RunSandboxRecord"}
         citations:
           type: array
           maxItems: 64

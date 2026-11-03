@@ -681,6 +681,11 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 				if err != nil {
 					return "", err
 				}
+				// An isolated run's writes are recorded when its instance is
+				// copied back; unisolated, they land in the conversation now.
+				if _, isolated := area.(workArea); !isolated {
+					_ = p.Runs.RecordSandbox(req.Tenant, req.RunID, false, []runs.SandboxFile{{Path: f.Path, Size: f.Size, Revision: fileRevision([]byte(content))}}, nil)
+				}
 				return fmt.Sprintf("Wrote %s (%d bytes).", f.Path, f.Size), nil
 			}),
 		ToolFileRead: tool(ToolFileRead,

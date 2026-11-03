@@ -8,11 +8,21 @@ import (
 )
 
 func (s *Server) workspaceFileRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/threads/{id}/sandboxes", s.authed(auth.RunsRead, s.seenThread(s.sandboxes)))
 	mux.HandleFunc("GET /api/threads/{id}/files", s.authed(auth.RunsRead, s.seenThread(s.workspaceFiles)))
 	mux.HandleFunc("GET /api/threads/{id}/files/content", s.authed(auth.RunsRead, s.seenThread(s.workspaceFile)))
 	mux.HandleFunc("PUT /api/threads/{id}/files/content", s.authed(auth.RunsWrite, s.seenThread(s.writeWorkspaceFile)))
 	mux.HandleFunc("DELETE /api/threads/{id}/files/content", s.authed(auth.RunsWrite, s.seenThread(s.deleteWorkspaceFile)))
 	mux.HandleFunc("POST /api/threads/{id}/files/publish", s.authed(auth.ArtifactsWrite, s.seenThread(s.publishWorkspaceFile)))
+}
+
+func (s *Server) sandboxes(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	out, err := s.P.Sandboxes(r.Context(), who, r.PathValue("id"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, out)
 }
 
 func (s *Server) workspaceFiles(w http.ResponseWriter, r *http.Request, who auth.Principal) {

@@ -21,6 +21,15 @@ test("every route survives a round trip through its address", () => {
     { page: "conversation", id: "t-1", panel: "activity", run: "run/with spaces" },
     { page: "conversation", id: "t-1", panel: "deliverables" },
     { page: "conversation", id: "t-1", panel: "workspace" },
+    { page: "conversation", id: "t-1", panel: "workspace", workspaceSection: "sandboxes" },
+    {
+      page: "conversation",
+      id: "t-1",
+      panel: "workspace",
+      workspaceSection: "sandboxes",
+      sandbox: "r/with spaces",
+    },
+    { page: "conversation", id: "t-1", panel: "workspace", workspaceSection: "artifacts" },
     {
       page: "conversation",
       id: "t-1",
@@ -510,4 +519,32 @@ test("a change of screen is told from a change on the same screen", () => {
   assert.ok(same({ page: "projects" }, { page: "projects", q: "launch" }));
   // The old inbox address is the Notifications screen.
   assert.ok(same({ page: "inbox" }, { page: "notifications" }));
+});
+
+test("Workspace sections have their own paths, Files keeps the panel's own address", () => {
+  assert.equal(
+    href({ page: "conversation", id: "t-1", panel: "workspace", workspaceSection: "files" }),
+    "/conversations/t-1/workspace",
+  );
+  assert.equal(
+    href({
+      page: "conversation",
+      id: "t-1",
+      panel: "workspace",
+      workspaceSection: "sandboxes",
+      sandbox: "r1",
+    }),
+    "/conversations/t-1/workspace/sandboxes/r1",
+  );
+  assert.deepEqual(at("/conversations/t-1/workspace/files?file=a.md"), {
+    page: "conversation",
+    id: "t-1",
+    panel: "workspace",
+    file: "a.md",
+  });
+  // An unknown section falls back to Files.
+  assert.equal(
+    (at("/conversations/t-1/workspace/nope") as { workspaceSection?: string }).workspaceSection,
+    undefined,
+  );
 });

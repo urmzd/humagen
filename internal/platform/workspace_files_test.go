@@ -13,6 +13,7 @@ import (
 	"github.com/urmzd/humagen/fiber/pkg/isolation/isolationtest"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -160,5 +161,69 @@ func TestWorkspaceFileListingBoundsFilesCreatedOutsideFileTools(t *testing.T) {
 	}
 	if _, err := p.WorkspaceFiles(t.Context(), operator, th.ID); err == nil {
 		t.Fatal("listing returned more than the bounded file set")
+	}
+}
+
+func TestRunSandboxesRecordWhatEachRunLeft(t *testing.T) {
+	leaser := &isolationtest.Leaser{Dir: t.TempDir()}
+	p := startWith(t, platform.Config{Sandbox: isolation.Sandbox{Leaser: leaser, Name: "test"}})
+	run, req := turn(t, p, "sandbox-record", "")
+	if err := p.PutFile(tenant, run.Thread, "keep.md", "kept"); err != nil {
+		t.Fatal(err)
+	}
+	ctx, claim := p.Claim(t.Context(), req)
+	if _, err := useIn(t, ctx, p, req, platform.ToolShell, map[string]any{"command": "echo made > made.txt; rm keep.md"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := claim.Release(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := p.Runs.Get(tenant, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Sandbox == nil || !got.Sandbox.Isolated || len(got.Sandbox.Files) != 2 {
+		t.Fatalf("sandbox record = %+v", got.Sandbox)
+	}
+	byPath := map[string]runs.SandboxFile{}
+	for _, f := range got.Sandbox.Files {
+		byPath[f.Path] = f
+	}
+	if f := byPath["made.txt"]; f.Removed || len(f.Revision) != 64 || f.Size != 5 {
+		t.Errorf("made.txt = %+v", f)
+	}
+	if f := byPath["keep.md"]; !f.Removed {
+		t.Errorf("keep.md = %+v", f)
+	}
+	view, err := p.Sandboxes(t.Context(), operator, run.Thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !view.Session.Isolated || view.Session.Files != 1 || len(view.Runs) == 0 {
+		t.Fatalf("view = %+v", view)
+	}
+	rs := view.Runs[0]
+	if rs.Run != run.ID || len(rs.Files) != 2 || len(rs.Mounts) == 0 || rs.Mounts[0].Dir != "/work" {
+		t.Fatalf("run sandbox = %+v", rs)
+	}
+	// Another workspace's person sees no such conversation.
+	other := auth.Principal{Subject: "vi", Tenant: "elsewhere", Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	if _, err := p.Sandboxes(t.Context(), other, run.Thread); !errors.Is(err, threads.ErrNotFound) {
+		t.Fatalf("outsider = %v", err)
+	}
+}
+
+func TestUnisolatedFileWritesAreRecordedOnTheRun(t *testing.T) {
+	p := start(t, call.Limits{})
+	run, req := turn(t, p, "sandbox-unisolated", "")
+	if _, err := use(t, p, req, platform.ToolFileWrite, map[string]any{"path": "out/report.md", "content": "# Report"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := p.Runs.Get(tenant, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Sandbox == nil || got.Sandbox.Isolated || len(got.Sandbox.Files) != 1 || got.Sandbox.Files[0].Path != "out/report.md" {
+		t.Fatalf("sandbox record = %+v", got.Sandbox)
 	}
 }

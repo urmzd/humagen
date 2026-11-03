@@ -13,10 +13,12 @@ It does not introduce another agent execution path.
 ## The conversation page
 
 Each conversation uses `Page` with a centered title. Its project sits on the
-left; Context, People & Access and Conversation Settings sit on the right.
-On a phone the title takes its own centered row. Activity and Deliverables
-open from the settings control. The sidebar groups conversations by project
-and shows the agents that took part beneath each conversation title.
+left; who is in it (Share or People & Access) and Conversation Settings sit
+on the right, as compact icon controls with one 4px gap. Share keeps its label
+on a wide conversation. Conversation Settings holds the conversation's own
+items: Workspace, Context and Activity. On a phone the title takes its own
+centered row. The sidebar groups conversations by project and shows the
+agents that took part beneath each conversation title.
 
 Activity is the execution detail of this conversation: its runs, calls to
 other agents, tool steps and usage. A selected run has its own URL. The
@@ -166,9 +168,30 @@ provider snapshots and oversized text are refused. `AddForScope` guards source
 identity and audience under the insertion lock, and an audit attempt records
 the copy. Only an opaque artifact/version reference enters provenance metadata.
 
+## The Workspace panel
+
+A conversation is a session with a sandbox of its own, and each agent run in
+it works in a nested sandbox (RFC 0004, isolated runs). **Workspace**, from
+Conversation Settings, is the one place for what the session holds. It is an
+inspector beside the conversation on a desktop and a sheet on a phone, with
+its sections as tabs that scroll sideways when they do not fit:
+
+| Section | What it shows | Address |
+|---|---|---|
+| Sandboxes | The session sandbox (its files, size, retention and whether runs are isolated) and a nested entry per agent run, newest first and indented under its caller: its mounts (`/work` from the session, and the memory trees in `/project` and `/me`), the files it left and the copyback changes refused because someone changed the file first | `/conversations/{id}/workspace/sandboxes[/{run}]` |
+| Files | The session's files, editor and change review below | `/conversations/{id}/workspace?file=&tab=` |
+| Artifacts | The conversation's saved, versioned artifacts; each opens in Deliverables | `/conversations/{id}/workspace/artifacts` |
+
+`GET /api/threads/{id}/sandboxes` answers Sandboxes, behind `runs:read` and
+the conversation's audience, at most 50 runs. What a run left is recorded on
+the run (`Run.sandbox`, at most 64 files and 16 refusals): when an isolated
+run's instance is copied back, and, unisolated, when its `file_write` lands in
+the session's files. Files keeps its unsaved drafts while another section is
+shown or the panel is closed.
+
 ## Files, scratchpads and change review
 
-The conversation's **Files** control opens a workbench beside the conversation.
+Workspace's **Files** section is a workbench beside the conversation.
 File, view and conversation selections have copied addresses under
 `/conversations/{id}/workspace`. The file browser, open tabs, text editor and
 review are web presentation components; the host performs authenticated API

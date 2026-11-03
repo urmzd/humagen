@@ -73,6 +73,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-044 | A conversation has a wave down its left edge to scan and scrub through its turns, and the keyboard opens and closes cleanly on a phone | Implemented: `TurnRail.tsx`, `Thread.tsx`, `Chat.tsx`, `Room.tsx`, `viewport.ts`; web tests pass (`wave.dom.test.tsx`, `pwa.test.ts`); screens pass at 390x844 and 1280x800; the keyboard on iOS needs a real device |
 | DES-045 | A phone reads like a native chat app: quiet message actions, a one-line chat bar and header, Chat and Work at the top of Home, a swipe from the edge for the drawer, and the installed app opening on Chat | Implemented: `theme.css`, `styles.css`, `Composer.tsx`, `ConversationShell.tsx`, `ModeSwitch.tsx`, `Sidebar.tsx`, `manifest.webmanifest`; web tests pass; screens pass at 390x844 and 1280x800 |
 | DES-046 | Conversation files, scratchpads, code editing, change review and artifact publication | Implemented; 739 console tests, Go race/confinement suites, client checks and 27 responsive browser captures pass |
+| DES-047 | One Workspace panel for a conversation's items, opened from Conversation Settings; a compact header keeps only who is in it, Share and Conversation Settings | Implemented: `Workspace.tsx`, `ConversationShell.tsx`, `GET /api/threads/{id}/sandboxes`; web, route and Go tests pass; `conversation-header` and `workspace-*` screens pass at 390x844 and 1280x800 |
 
 ### DES-001: Working integrations
 
@@ -200,6 +201,25 @@ planned collections, browser, protocol and improvement work from this UI pass.
   required-query confinement sweeps and real-file mutation canaries. Go lint
   reports zero issues; console, renderer, web and client typechecks and the
   production console build pass.
+
+### DES-047: One Workspace panel
+
+- Files, Context and Activity leave the conversation header for Conversation
+  Settings. The header keeps the people facepile, Share and Conversation
+  Settings: icon-sized controls, one 4px gap, no side padding, an accessible
+  name and a tooltip on each, and Share's label only on a wide conversation.
+- Workspace holds the session's items as tabs: Sandboxes (the session sandbox
+  and a nested sandbox per agent run), Files and Artifacts. Each section and
+  run selection has an address. It is the shared inspector on a desktop and a
+  sheet on a phone.
+- Evidence: `workspace-hub.dom.test.tsx` (sections, nesting, mounts, files a
+  run left, refused copyback, empty and failed states, opening a file, a run
+  and an artifact), `workspace.dom.test.tsx` (the menu), `route.test.ts`,
+  `pkg/runs/sandbox_test.go` (merge, bounds, write-through, tenant),
+  `internal/platform/workspace_files_test.go` (isolated copyback and unisolated
+  writes are recorded; another tenant gets 404) and the HTTP contract and
+  confinement sweeps. Screens: `conversation-header`, `workspace-menu`,
+  `workspace-sandboxes` and `workspace-artifacts`.
 
 ## Review and implementation evidence
 

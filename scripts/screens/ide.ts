@@ -11,6 +11,11 @@ type Screen = {
 type File = { path: string; content: string; revision: string };
 
 const copy = defaultCopy.workspaceFiles;
+/** The Workspace opens from Conversation Settings. */
+const openWorkspace = async (page: Page) => {
+  await page.getByRole("button", { name: defaultCopy.conversation.settings, exact: true }).click();
+  await page.getByRole("button", { name: defaultCopy.workspace.menu, exact: true }).click();
+};
 const greeting = 'export function greeting(name: string) {\n  return "Hello, " + name;\n}\n';
 const changedGreeting =
   'export function greeting(name: string) {\n  return "Welcome, " + name.trim();\n}\n';
@@ -117,7 +122,7 @@ export function ideScreens(call: Call): Screen[] {
           1,
           "Review feedback stays unsent",
         );
-        await page.getByRole("button", { name: copy.title, exact: true }).click();
+        await openWorkspace(page);
         await page.getByRole("button", { name: copy.changes, exact: true }).click();
         await review.waitFor();
       },
@@ -150,7 +155,7 @@ export function ideScreens(call: Call): Screen[] {
         await page.getByRole("link", { name: "Download Original", exact: true }).waitFor();
         assert.match(page.url(), /\/deliverables\//, "Publication opens its immutable artifact");
         await page.getByRole("button", { name: "Close notes.md", exact: true }).click();
-        await page.getByRole("button", { name: copy.title, exact: true }).click();
+        await openWorkspace(page);
         await page.getByRole("button", { name: copy.preview, exact: true }).click();
         await page.getByRole("heading", { name: "Launch review", exact: true }).waitFor();
       },

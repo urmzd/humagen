@@ -140,7 +140,7 @@ test("picking a clarification does not answer or approve until the explicit subm
   assert.equal(actions.length, 1);
 });
 
-test("conversation settings exposes Activity and Deliverables around one page title", () => {
+test("conversation settings holds Workspace, Context and Activity around one page title", () => {
   const chosen: string[] = [];
   render(
     <ConversationPage
@@ -154,10 +154,14 @@ test("conversation settings exposes Activity and Deliverables around one page ti
     </ConversationPage>,
   );
   assert.equal(screen.getAllByRole("heading", { level: 1 }).length, 1);
-  assert.ok(screen.getByRole("button", { name: words.context }));
-  fireEvent.click(screen.getByRole("button", { name: words.settings }));
-  fireEvent.click(screen.getByRole("button", { name: words.activity }));
-  assert.deepEqual(chosen, ["activity"]);
+  // The header keeps only who is in it and the settings menu.
+  assert.equal(screen.queryByRole("button", { name: words.context }), null);
+  assert.equal(screen.queryByRole("button", { name: defaultCopy.workspace.menu }), null);
+  for (const name of [defaultCopy.workspace.menu, words.context, words.activity]) {
+    fireEvent.click(screen.getByRole("button", { name: words.settings }));
+    fireEvent.click(screen.getByRole("button", { name }));
+  }
+  assert.deepEqual(chosen, ["workspace", "context", "activity"]);
   assert.equal(screen.queryByText("Execution history"), null);
 });
 

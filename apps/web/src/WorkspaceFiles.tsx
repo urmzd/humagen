@@ -19,7 +19,7 @@ import {
 import { Button } from "@humagen/render-web/ui/button";
 import { Input } from "@humagen/render-web/ui/input";
 import { ChangeReview, CodeEditor, FileBrowser, Inspector } from "@humagen/web";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import { ApiError, api } from "./api.ts";
 import type { ConversationView } from "./route.ts";
 import {
@@ -79,6 +79,7 @@ export function WorkspaceFiles({
   onView,
   onRequest,
   onPublished,
+  frame,
 }: {
   thread: string;
   open: boolean;
@@ -87,6 +88,8 @@ export function WorkspaceFiles({
   onView: (view: ConversationView) => void;
   onRequest?: (text: string) => void;
   onPublished?: (id: string) => void;
+  /** Frames the body instead of the files' own inspector. */
+  frame?: (body: ReactNode) => ReactNode;
 }) {
   const [listing, setListing] = useState<WorkspaceFileList | null>(null);
   const [tabs, setTabs] = useState<Record<string, Draft>>({});
@@ -391,368 +394,369 @@ export function WorkspaceFiles({
       .filter(([, file]) => changed(file))
       .map(([name]) => [name, `${name.split("/").at(-1)} (${words.dirty})`]),
   );
-  return (
-    <Inspector open={open} title={words.title} onClose={onClose} wide>
-      <div className="flex min-w-0 flex-col gap-3" data-slot="workspace-files">
-        <div className="flex flex-wrap gap-1.5">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!writable || !!busy}
-            onClick={() => setCreating((value) => !value)}
-          >
-            <PlusIcon size={15} />
-            {words.newFile}
-          </Button>
-          <Button variant="ghost" size="sm" disabled={!writable || !!busy} onClick={scratchpad}>
-            <StickyNoteIcon size={15} />
-            {words.scratchpad}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={!writable || !!busy}
-            onClick={() => upload.current?.click()}
-          >
-            <UploadIcon size={15} />
-            {words.import}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={loading || !!busy}
-            onClick={() => void refresh()}
-          >
-            <RefreshIcon size={15} />
-            {words.refresh}
-          </Button>
-          <input
-            ref={upload}
-            type="file"
-            className="sr-only"
-            aria-label={words.import}
-            accept="text/*,.diff,.patch,.ts,.tsx,.js,.jsx,.json,.yaml,.yml,.go,.py,.rs,.css,.html,.md,.toml,.sql,.sh"
-            onChange={(event) => void importFile(event.currentTarget.files?.[0])}
-          />
-        </div>
-        {creating && (
-          <form
-            className="flex flex-wrap items-end gap-2 rounded-aui border border-aui-border p-3"
-            onSubmit={(event) => {
-              event.preventDefault();
-              createDraft(newPath.trim());
-            }}
-          >
-            <label htmlFor={pathId} className="min-w-0 flex-1 text-aui-xs">
-              {words.path}
-              <Input
-                id={pathId}
-                value={newPath}
-                onChange={(event) => setNewPath(event.target.value)}
-                placeholder={words.pathHint}
-                className="mt-1"
-              />
-            </label>
-            <Button type="submit" size="sm" disabled={!writable || !newPath.trim()}>
-              {words.create}
-            </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={() => setCreating(false)}>
-              {words.cancel}
-            </Button>
-          </form>
-        )}
-        <p className="text-aui-xs leading-relaxed text-aui-muted">
-          {words.retention(listing?.retention_days ?? 7)}
-        </p>
-        {listing && !writable && (
-          <output className="rounded-aui border border-aui-border p-3 text-aui-xs">
-            {listing.reason || words.readOnly}
-          </output>
-        )}
-        {problem && (
-          <div role="alert" className="flex flex-wrap items-center gap-2 text-aui-xs text-aui-bad">
-            {problem}
-            {
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  void refresh();
-                  setReadAttempt((value) => value + 1);
-                }}
-              >
-                {words.retry}
-              </Button>
-            }
-          </div>
-        )}
-        {note && (
-          <output className="text-aui-xs text-aui-muted">
-            {note}
-            {published && onPublished && (
-              <Button variant="link" size="sm" onClick={() => onPublished(published)}>
-                {words.openPublished}
-              </Button>
-            )}
-          </output>
-        )}
-        {loading && !listing && (
-          <output className="text-aui-xs text-aui-muted">{words.loading}</output>
-        )}
-        {Object.keys(tabs).length > 0 && (
-          <nav aria-label={words.openFiles} className="flex max-w-full flex-wrap gap-1">
-            {Object.entries(tabs).map(([name, file]) => (
-              <span
-                key={name}
-                className={`inline-flex min-w-0 max-w-full items-center rounded-aui border ${path === name ? "border-aui-accent bg-aui-hover" : "border-aui-border"}`}
-              >
-                <button
-                  type="button"
-                  className="inline-flex min-h-9 min-w-0 items-center gap-1.5 px-2 text-aui-xs focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
-                  aria-current={path === name ? "page" : undefined}
-                  title={name}
-                  onClick={() => choose(name)}
-                >
-                  <FileIcon size={13} />
-                  <span className="max-w-40 truncate">{name.split("/").at(-1)}</span>
-                  {changed(file) && <span className="text-aui-muted">{words.dirty}</span>}
-                </button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={words.closeFile(name)}
-                  disabled={!!busy}
-                  onClick={() => closeTab(name)}
-                >
-                  <XIcon size={13} />
-                </Button>
-              </span>
-            ))}
-          </nav>
-        )}
-        {closing && (
-          <div
-            role="alert"
-            className="flex flex-wrap items-center gap-2 rounded-aui border border-aui-border p-3 text-aui-xs"
-          >
-            <p>{words.closeDirty}</p>
-            <Button variant="outline" size="sm" onClick={() => closeTab(closing, true)}>
-              {words.discardClose}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setClosing("")}>
-              {words.cancel}
-            </Button>
-          </div>
-        )}
-        <Input
-          aria-label={words.filter}
-          placeholder={words.filter}
-          value={filter}
-          onChange={(event) => setFilter(event.target.value)}
+  const body = (
+    <div className="flex min-w-0 flex-col gap-3" data-slot="workspace-files">
+      <div className="flex flex-wrap gap-1.5">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!writable || !!busy}
+          onClick={() => setCreating((value) => !value)}
+        >
+          <PlusIcon size={15} />
+          {words.newFile}
+        </Button>
+        <Button variant="ghost" size="sm" disabled={!writable || !!busy} onClick={scratchpad}>
+          <StickyNoteIcon size={15} />
+          {words.scratchpad}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={!writable || !!busy}
+          onClick={() => upload.current?.click()}
+        >
+          <UploadIcon size={15} />
+          {words.import}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={loading || !!busy}
+          onClick={() => void refresh()}
+        >
+          <RefreshIcon size={15} />
+          {words.refresh}
+        </Button>
+        <input
+          ref={upload}
+          type="file"
+          className="sr-only"
+          aria-label={words.import}
+          accept="text/*,.diff,.patch,.ts,.tsx,.js,.jsx,.json,.yaml,.yml,.go,.py,.rs,.css,.html,.md,.toml,.sql,.sh"
+          onChange={(event) => void importFile(event.currentTarget.files?.[0])}
         />
-        {listing && paths.length === 0 && (
-          <p className="py-3 text-aui-xs text-aui-muted">
-            {filter ? words.noMatches : words.empty}
-          </p>
-        )}
-        {(paths.length > 0 || draft) && (
-          <FileBrowser
-            paths={paths}
-            selected={path}
-            labels={labels}
-            onSelect={choose}
-            label={words.files}
-          >
-            {loadingPath && loadingPath === path ? (
-              <output className="p-3 text-aui-xs text-aui-muted">{words.loading}</output>
-            ) : draft ? (
-              <div className="flex min-w-0 flex-col">
-                <div className="flex flex-wrap items-center justify-between gap-1 border-b border-aui-border p-2">
-                  <fieldset aria-label={words.modes} className="flex flex-wrap gap-1">
-                    {(["edit", "preview", "changes"] as const).map((item) => (
-                      <Button
-                        key={item}
-                        variant={mode === item ? "secondary" : "ghost"}
-                        size="sm"
-                        aria-pressed={mode === item}
-                        onClick={() => changeMode(item)}
-                      >
-                        {item === "changes" ? (
-                          <DiffIcon size={14} />
-                        ) : item === "edit" ? (
-                          <CodeIcon size={14} />
-                        ) : null}
-                        {words[item]}
-                      </Button>
-                    ))}
-                  </fieldset>
+      </div>
+      {creating && (
+        <form
+          className="flex flex-wrap items-end gap-2 rounded-aui border border-aui-border p-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            createDraft(newPath.trim());
+          }}
+        >
+          <label htmlFor={pathId} className="min-w-0 flex-1 text-aui-xs">
+            {words.path}
+            <Input
+              id={pathId}
+              value={newPath}
+              onChange={(event) => setNewPath(event.target.value)}
+              placeholder={words.pathHint}
+              className="mt-1"
+            />
+          </label>
+          <Button type="submit" size="sm" disabled={!writable || !newPath.trim()}>
+            {words.create}
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setCreating(false)}>
+            {words.cancel}
+          </Button>
+        </form>
+      )}
+      <p className="text-aui-xs leading-relaxed text-aui-muted">
+        {words.retention(listing?.retention_days ?? 7)}
+      </p>
+      {listing && !writable && (
+        <output className="rounded-aui border border-aui-border p-3 text-aui-xs">
+          {listing.reason || words.readOnly}
+        </output>
+      )}
+      {problem && (
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-aui-xs text-aui-bad">
+          {problem}
+          {
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void refresh();
+                setReadAttempt((value) => value + 1);
+              }}
+            >
+              {words.retry}
+            </Button>
+          }
+        </div>
+      )}
+      {note && (
+        <output className="text-aui-xs text-aui-muted">
+          {note}
+          {published && onPublished && (
+            <Button variant="link" size="sm" onClick={() => onPublished(published)}>
+              {words.openPublished}
+            </Button>
+          )}
+        </output>
+      )}
+      {loading && !listing && (
+        <output className="text-aui-xs text-aui-muted">{words.loading}</output>
+      )}
+      {Object.keys(tabs).length > 0 && (
+        <nav aria-label={words.openFiles} className="flex max-w-full flex-wrap gap-1">
+          {Object.entries(tabs).map(([name, file]) => (
+            <span
+              key={name}
+              className={`inline-flex min-w-0 max-w-full items-center rounded-aui border ${path === name ? "border-aui-accent bg-aui-hover" : "border-aui-border"}`}
+            >
+              <button
+                type="button"
+                className="inline-flex min-h-9 min-w-0 items-center gap-1.5 px-2 text-aui-xs focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
+                aria-current={path === name ? "page" : undefined}
+                title={name}
+                onClick={() => choose(name)}
+              >
+                <FileIcon size={13} />
+                <span className="max-w-40 truncate">{name.split("/").at(-1)}</span>
+                {changed(file) && <span className="text-aui-muted">{words.dirty}</span>}
+              </button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={words.closeFile(name)}
+                disabled={!!busy}
+                onClick={() => closeTab(name)}
+              >
+                <XIcon size={13} />
+              </Button>
+            </span>
+          ))}
+        </nav>
+      )}
+      {closing && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-2 rounded-aui border border-aui-border p-3 text-aui-xs"
+        >
+          <p>{words.closeDirty}</p>
+          <Button variant="outline" size="sm" onClick={() => closeTab(closing, true)}>
+            {words.discardClose}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setClosing("")}>
+            {words.cancel}
+          </Button>
+        </div>
+      )}
+      <Input
+        aria-label={words.filter}
+        placeholder={words.filter}
+        value={filter}
+        onChange={(event) => setFilter(event.target.value)}
+      />
+      {listing && paths.length === 0 && (
+        <p className="py-3 text-aui-xs text-aui-muted">{filter ? words.noMatches : words.empty}</p>
+      )}
+      {(paths.length > 0 || draft) && (
+        <FileBrowser
+          paths={paths}
+          selected={path}
+          labels={labels}
+          onSelect={choose}
+          label={words.files}
+        >
+          {loadingPath && loadingPath === path ? (
+            <output className="p-3 text-aui-xs text-aui-muted">{words.loading}</output>
+          ) : draft ? (
+            <div className="flex min-w-0 flex-col">
+              <div className="flex flex-wrap items-center justify-between gap-1 border-b border-aui-border p-2">
+                <fieldset aria-label={words.modes} className="flex flex-wrap gap-1">
+                  {(["edit", "preview", "changes"] as const).map((item) => (
+                    <Button
+                      key={item}
+                      variant={mode === item ? "secondary" : "ghost"}
+                      size="sm"
+                      aria-pressed={mode === item}
+                      onClick={() => changeMode(item)}
+                    >
+                      {item === "changes" ? (
+                        <DiffIcon size={14} />
+                      ) : item === "edit" ? (
+                        <CodeIcon size={14} />
+                      ) : null}
+                      {words[item]}
+                    </Button>
+                  ))}
+                </fieldset>
+                <Button
+                  size="sm"
+                  disabled={!dirty || !writable || !!busy || draft.conflict}
+                  onClick={() => void save()}
+                >
+                  <SaveIcon size={14} />
+                  {busy === "save" ? words.saving : words.save}
+                  <kbd className="hidden text-[10px] opacity-60 sm:inline">⌘/Ctrl S</kbd>
+                </Button>
+              </div>
+              {draft.conflict && (
+                <div className="flex flex-wrap items-center gap-2 border-b border-aui-border p-3 text-aui-xs">
+                  <p>{words.conflict}</p>
                   <Button
+                    variant="outline"
                     size="sm"
-                    disabled={!dirty || !writable || !!busy || draft.conflict}
-                    onClick={() => void save()}
+                    disabled={!!busy}
+                    onClick={() => void latest(false)}
                   >
-                    <SaveIcon size={14} />
-                    {busy === "save" ? words.saving : words.save}
-                    <kbd className="hidden text-[10px] opacity-60 sm:inline">⌘/Ctrl S</kbd>
+                    {words.compareLatest}
                   </Button>
-                </div>
-                {draft.conflict && (
-                  <div className="flex flex-wrap items-center gap-2 border-b border-aui-border p-3 text-aui-xs">
-                    <p>{words.conflict}</p>
+                  {draft.latest && (
                     <Button
                       variant="outline"
                       size="sm"
                       disabled={!!busy}
-                      onClick={() => void latest(false)}
+                      onClick={() => {
+                        updateDraft(path, (current) =>
+                          current.latest
+                            ? {
+                                ...current,
+                                base: current.latest.content,
+                                revision: current.latest.revision,
+                                latest: undefined,
+                                conflict: false,
+                              }
+                            : current,
+                        );
+                        setNote(words.baseUpdated);
+                        setProblem("");
+                      }}
                     >
-                      {words.compareLatest}
+                      {words.useLatestBase}
                     </Button>
-                    {draft.latest && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!!busy}
-                        onClick={() => {
-                          updateDraft(path, (current) =>
-                            current.latest
-                              ? {
-                                  ...current,
-                                  base: current.latest.content,
-                                  revision: current.latest.revision,
-                                  latest: undefined,
-                                  conflict: false,
-                                }
-                              : current,
-                          );
-                          setNote(words.baseUpdated);
-                          setProblem("");
-                        }}
-                      >
-                        {words.useLatestBase}
-                      </Button>
-                    )}
-                  </div>
-                )}
-                {mode === "edit" ? (
-                  <CodeEditor
-                    path={path}
-                    value={draft.content}
-                    readOnly={!writable || !!busy}
-                    saving={busy === "save"}
-                    onChange={(content) =>
-                      updateDraft(path, (current) => ({ ...current, content }))
-                    }
-                    onSave={() => void save()}
-                    onAskSelection={
+                  )}
+                </div>
+              )}
+              {mode === "edit" ? (
+                <CodeEditor
+                  path={path}
+                  value={draft.content}
+                  readOnly={!writable || !!busy}
+                  saving={busy === "save"}
+                  onChange={(content) => updateDraft(path, (current) => ({ ...current, content }))}
+                  onSave={() => void save()}
+                  onAskSelection={
+                    onRequest
+                      ? ({ text, startLine, endLine }) =>
+                          onRequest(words.selectionRequest(path, startLine, endLine, text))
+                      : undefined
+                  }
+                />
+              ) : mode === "preview" ? (
+                <Preview path={path} content={draft.content} />
+              ) : (
+                <div className="min-w-0 p-2">
+                  <ChangeReview
+                    key={path}
+                    {...(/\.(diff|patch)$/i.test(path)
+                      ? { patch: draft.content }
+                      : {
+                          before: draft.latest?.content ?? draft.base,
+                          after: draft.content,
+                          path,
+                        })}
+                    onComment={
                       onRequest
-                        ? ({ text, startLine, endLine }) =>
-                            onRequest(words.selectionRequest(path, startLine, endLine, text))
+                        ? (comment) =>
+                            onRequest(
+                              workspaceReviewPrompt(
+                                { ...draft, base: draft.latest?.content ?? draft.base },
+                                comment,
+                              ),
+                            )
                         : undefined
                     }
                   />
-                ) : mode === "preview" ? (
-                  <Preview path={path} content={draft.content} />
-                ) : (
-                  <div className="min-w-0 p-2">
-                    <ChangeReview
-                      key={path}
-                      {...(/\.(diff|patch)$/i.test(path)
-                        ? { patch: draft.content }
-                        : {
-                            before: draft.latest?.content ?? draft.base,
-                            after: draft.content,
-                            path,
-                          })}
-                      onComment={
-                        onRequest
-                          ? (comment) =>
-                              onRequest(
-                                workspaceReviewPrompt(
-                                  { ...draft, base: draft.latest?.content ?? draft.base },
-                                  comment,
-                                ),
-                              )
-                          : undefined
-                      }
-                    />
-                    {onRequest && (
-                      <p className="mt-3 text-aui-xs text-aui-muted">{words.reviewHint}</p>
-                    )}
-                  </div>
-                )}
-                <div className="flex flex-wrap gap-1 border-t border-aui-border p-2">
-                  <Button variant="ghost" size="sm" onClick={download}>
-                    <DownloadIcon size={14} />
-                    {words.download}
-                  </Button>
                   {onRequest && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={!draft.revision || dirty || draft.conflict}
-                      onClick={() => onRequest(words.request(path))}
-                    >
-                      {words.ask}
-                    </Button>
+                    <p className="mt-3 text-aui-xs text-aui-muted">{words.reviewHint}</p>
                   )}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-1 border-t border-aui-border p-2">
+                <Button variant="ghost" size="sm" onClick={download}>
+                  <DownloadIcon size={14} />
+                  {words.download}
+                </Button>
+                {onRequest && (
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={!dirty || !!busy}
-                    onClick={() => (draft.revision ? void latest(true) : closeTab(path, true))}
+                    disabled={!draft.revision || dirty || draft.conflict}
+                    onClick={() => onRequest(words.request(path))}
                   >
-                    {words.discard}
+                    {words.ask}
                   </Button>
-                  {canPublish && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={!writable || dirty || !!busy || draft.conflict}
-                      title={words.publishHint}
-                      onClick={() => void publish()}
-                    >
-                      {words.publish}
-                    </Button>
-                  )}
-                  {draft.revision && writable && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={!!busy}
-                      onClick={() => setDeleting(true)}
-                    >
-                      <TrashIcon size={14} />
-                      {words.delete}
-                    </Button>
-                  )}
-                </div>
-                {deleting && (
-                  <div
-                    role="alert"
-                    className="flex flex-wrap items-center gap-2 border-t border-aui-border p-3 text-aui-xs"
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={!dirty || !!busy}
+                  onClick={() => (draft.revision ? void latest(true) : closeTab(path, true))}
+                >
+                  {words.discard}
+                </Button>
+                {canPublish && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!writable || dirty || !!busy || draft.conflict}
+                    title={words.publishHint}
+                    onClick={() => void publish()}
                   >
-                    <p>{words.deleteConfirm(path)}</p>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      disabled={!!busy}
-                      onClick={() => void remove()}
-                    >
-                      {words.delete}
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setDeleting(false)}>
-                      {words.cancel}
-                    </Button>
-                  </div>
+                    {words.publish}
+                  </Button>
+                )}
+                {draft.revision && writable && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={!!busy}
+                    onClick={() => setDeleting(true)}
+                  >
+                    <TrashIcon size={14} />
+                    {words.delete}
+                  </Button>
                 )}
               </div>
-            ) : (
-              <p className="p-3 text-aui-xs text-aui-muted">{words.select}</p>
-            )}
-          </FileBrowser>
-        )}
-        {hasDrafts && <p className="text-aui-xs text-aui-muted">{words.draftHint}</p>}
-      </div>
+              {deleting && (
+                <div
+                  role="alert"
+                  className="flex flex-wrap items-center gap-2 border-t border-aui-border p-3 text-aui-xs"
+                >
+                  <p>{words.deleteConfirm(path)}</p>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={!!busy}
+                    onClick={() => void remove()}
+                  >
+                    {words.delete}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setDeleting(false)}>
+                    {words.cancel}
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="p-3 text-aui-xs text-aui-muted">{words.select}</p>
+          )}
+        </FileBrowser>
+      )}
+      {hasDrafts && <p className="text-aui-xs text-aui-muted">{words.draftHint}</p>}
+    </div>
+  );
+  // The Workspace panel frames the body in its own inspector, with its sections.
+  if (frame) return frame(body);
+  return (
+    <Inspector open={open} title={words.title} onClose={onClose} wide>
+      {body}
     </Inspector>
   );
 }

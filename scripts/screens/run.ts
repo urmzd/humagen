@@ -395,6 +395,57 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       },
     },
     {
+      // The conversation header alone: who is in it, Share and Conversation Settings.
+      name: "conversation-header",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        await page.getByRole("heading", { level: 1 }).first().waitFor();
+      },
+    },
+    {
+      name: "workspace-menu",
+      path: `/conversations/${ids.nativeThread}`,
+      act: async (page) => {
+        await page
+          .getByRole("button", { name: defaultCopy.conversation.settings, exact: true })
+          .click();
+        for (const name of [
+          defaultCopy.workspace.menu,
+          defaultCopy.conversation.context,
+          defaultCopy.conversation.activity,
+        ])
+          await page.getByRole("button", { name, exact: true }).waitFor();
+      },
+    },
+    {
+      name: "workspace-sandboxes",
+      path: `/conversations/${ids.nativeThread}/workspace/sandboxes`,
+      act: async (page) => {
+        const panel = page.getByRole("dialog", { name: defaultCopy.workspace.title, exact: true });
+        await panel.getByText(defaultCopy.workspace.sessionSandbox, { exact: true }).waitFor();
+        await panel
+          .getByRole("button", { name: /native-writer/ })
+          .first()
+          .click();
+        await panel.getByText(defaultCopy.workspace.filesLeft, { exact: true }).waitFor();
+        await panel
+          .getByRole("button", { name: /native-launch\.pptx/ })
+          .first()
+          .waitFor();
+      },
+    },
+    {
+      name: "workspace-artifacts",
+      path: `/conversations/${ids.nativeThread}/workspace/artifacts`,
+      act: async (page) => {
+        const panel = page.getByRole("dialog", { name: defaultCopy.workspace.title, exact: true });
+        await panel
+          .getByRole("button", { name: /native-launch\.pptx/ })
+          .first()
+          .waitFor();
+      },
+    },
+    {
       name: "conversation-outcome-redirect",
       path: `/conversations/${ids.nativeThread}`,
       act: async (page) => {

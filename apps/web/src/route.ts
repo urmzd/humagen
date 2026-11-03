@@ -114,6 +114,9 @@ const CONVERSATION_PANELS: ConversationPanel[] = [
   "deliverables",
   "workspace",
 ];
+/** The Workspace panel's sections. Files is the default, at the panel's own address. */
+export type WorkspaceSection = "sandboxes" | "files" | "artifacts";
+export const WORKSPACE_SECTIONS: WorkspaceSection[] = ["sandboxes", "files", "artifacts"];
 export type ArtifactTab = "preview" | "versions" | "provenance";
 const ARTIFACT_TABS: ArtifactTab[] = ["preview", "versions", "provenance"];
 export interface ConversationView {
@@ -124,6 +127,10 @@ export interface ConversationView {
   run?: string;
   artifact?: string;
   artifactTab?: ArtifactTab;
+  /** The Workspace section; absent is Files. */
+  workspaceSection?: WorkspaceSection;
+  /** The run whose nested sandbox is open in Sandboxes. */
+  sandbox?: string;
   file?: string;
   workspaceTab?: "edit" | "preview" | "changes";
   /** One-based slide selection. */
@@ -347,7 +354,10 @@ export function href(r: Route): string {
           const q = new URLSearchParams();
           if (r.file) q.set("file", r.file);
           if (r.workspaceTab) q.set("tab", r.workspaceTab);
-          return `${base}${q.size ? `?${q}` : ""}`;
+          const section =
+            r.workspaceSection && r.workspaceSection !== "files" ? `/${r.workspaceSection}` : "";
+          const item = r.workspaceSection === "sandboxes" && r.sandbox ? `/${enc(r.sandbox)}` : "";
+          return `${base}${section}${item}${q.size ? `?${q}` : ""}`;
         }
         if (r.panel === "deliverables" && r.artifact)
           return `${base}/${enc(r.artifact)}${r.artifactTab ? `/${r.artifactTab}` : ""}${r.slide ? `?slide=${r.slide}` : ""}`;
@@ -580,6 +590,9 @@ function read(pathname: string, search: string): Route {
           panel: b as ConversationPanel,
           ...(b === "workspace"
             ? {
+                workspaceSection:
+                  parts[3] === "files" ? undefined : oneOf(parts[3], WORKSPACE_SECTIONS),
+                sandbox: parts[3] === "sandboxes" ? parts[4] : undefined,
                 file: q.get("file") || undefined,
                 workspaceTab: oneOf(q.get("tab"), ["edit", "preview", "changes"] as const),
               }

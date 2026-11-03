@@ -67,7 +67,7 @@ import {
   Problem,
   primary,
 } from "./ui.tsx";
-import { WorkspaceFiles } from "./WorkspaceFiles.tsx";
+import { Workspace } from "./Workspace.tsx";
 
 /**
  * Conversations, channels and shared threads: where people and agents work
@@ -974,7 +974,7 @@ export function ThreadRoom({
         project={projectTitle(projects, th.project, workspaceName, personalProject)}
         onClose={() => openPanel()}
       />
-      <WorkspaceFiles
+      <Workspace
         key={id}
         thread={id}
         open={shownView.panel === "workspace"}
@@ -989,7 +989,8 @@ export function ThreadRoom({
               }
             : undefined
         }
-        onPublished={(artifact) => openPanel("deliverables", { artifact })}
+        onArtifact={(artifact) => openPanel("deliverables", { artifact })}
+        onRun={(run) => openPanel("activity", { run })}
       />
       <Presence when={shownView.panel === "deliverables"} ms={220}>
         {(leaving) => (

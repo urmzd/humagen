@@ -38,6 +38,7 @@ import type {
   ClientInput,
   ClientView,
   ConnectKnowledgeSourceBody,
+  ConversationSandboxes,
   CreateCallRequest,
   CreateKnowledgeSourceBody,
   CreateRunRequest,
@@ -3638,6 +3639,23 @@ to that machine only, wherever the message is read.
     return this.rawRequest<void>("PUT", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The conversation's session sandbox and each agent run's nested sandbox */
+  async listSandboxes(id: string, options?: RequestOptions): Promise<ConversationSandboxes> {
+    let path = "/api/threads/{id}/sandboxes";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ConversationSandboxes>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listSandboxesRaw(id: string, options?: RequestOptions): Promise<ApiResponse<ConversationSandboxes>> {
+    let path = "/api/threads/{id}/sandboxes";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ConversationSandboxes>("GET", path, {
       ...options,
     });
   }

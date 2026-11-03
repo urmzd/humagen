@@ -19,6 +19,10 @@ func exerciseWorkspaceFileContract(t *testing.T, c *contract, actor, other strin
 	content := "/api/threads/{id}/files/content"
 	publish := "/api/threads/{id}/files/publish"
 	c.call(actor, "GET", list, base, "", http.StatusOK)
+	sandboxes := c.call(actor, "GET", "/api/threads/{id}/sandboxes", "/api/threads/"+id+"/sandboxes", "", http.StatusOK)
+	if _, ok := sandboxes.field("session").(map[string]any); !ok {
+		t.Fatalf("sandboxes: %s", sandboxes.raw)
+	}
 	c.call(actor, "GET", content, base+"/content?path=../escape", "", http.StatusBadRequest)
 	c.call(actor, "PUT", content, base+"/content", `{"path":"../escape","content":"x","revision":""}`, http.StatusBadRequest)
 	saved := c.call(actor, "PUT", content, base+"/content", `{"path":"notes/plan.md","content":"# First version","revision":""}`, http.StatusOK)
@@ -40,7 +44,7 @@ func exerciseWorkspaceFileContract(t *testing.T, c *contract, actor, other strin
 	c.call(actor, "DELETE", content, base+"/content?path=../escape&revision="+revision, "", http.StatusBadRequest)
 	c.call(actor, "DELETE", content, base+"/content?path=notes/plan.md&revision="+updated.str("revision"), "", http.StatusNoContent)
 	for _, req := range []struct{ method, template, path, body string }{
-		{"GET", list, base, ""}, {"GET", content, base + "/content?path=notes/plan.md", ""},
+		{"GET", list, base, ""}, {"GET", "/api/threads/{id}/sandboxes", "/api/threads/" + id + "/sandboxes", ""}, {"GET", content, base + "/content?path=notes/plan.md", ""},
 		{"PUT", content, base + "/content", `{"path":"x","content":"x","revision":""}`},
 		{"DELETE", content, base + "/content?path=x&revision=bad", ""},
 		{"POST", publish, base + "/publish", `{"path":"x","revision":"bad"}`},

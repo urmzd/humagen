@@ -49,7 +49,7 @@ import {
   Presence,
   Problem,
 } from "./ui.tsx";
-import { WorkspaceFiles } from "./WorkspaceFiles.tsx";
+import { Workspace } from "./Workspace.tsx";
 
 const words = defaultCopy.threads;
 
@@ -1091,7 +1091,7 @@ export function Chat({
         />
       )}
       {threadId && (
-        <WorkspaceFiles
+        <Workspace
           key={threadId}
           thread={threadId}
           open={shownView.panel === "workspace"}
@@ -1106,7 +1106,8 @@ export function Chat({
                 }
               : undefined
           }
-          onPublished={(artifact) => openPanel("deliverables", { artifact })}
+          onArtifact={(artifact) => openPanel("deliverables", { artifact })}
+          onRun={(run) => openPanel("activity", { run })}
         />
       )}
       <Presence when={shownView.panel === "deliverables"} ms={220}>

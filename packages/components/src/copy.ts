@@ -88,6 +88,61 @@ export const defaultCopy = {
     selectionRequest: (path: string, first: number, last: number, text: string) =>
       `Please review this selection from ${JSON.stringify(path)}, lines ${first}-${last}. The quoted content reflects my current editor draft:\n\n${JSON.stringify(text)}\n\nRequested changes: `,
   },
+  workspace: {
+    title: "Workspace",
+    menu: "Workspace",
+    sections: "Workspace sections",
+    section: {
+      sandboxes: "Sandboxes",
+      files: "Files",
+      artifacts: "Artifacts",
+    },
+    sessionSandbox: "Session sandbox",
+    sessionHint: (isolated: boolean) =>
+      isolated
+        ? "Every agent run in this conversation leases a sandbox of its own. It starts from these files at /work and copies back what it changed when it ends."
+        : "This deployment runs no isolated sandbox. Agent tools work directly in these files on the server.",
+    size: (bytes: number) =>
+      bytes < 1024
+        ? `${bytes} B`
+        : bytes < 1048576
+          ? `${(bytes / 1024).toFixed(1)} KB`
+          : `${(bytes / 1048576).toFixed(1)} MB`,
+    sessionStats: (files: number, size: string) =>
+      `${files} ${files === 1 ? "file" : "files"}, ${size}`,
+    runFiles: (count: number) => `${count} ${count === 1 ? "file" : "files"}`,
+    openFiles: "Open Files",
+    runs: "Agent runs",
+    noRuns: "No agent has run in this conversation yet.",
+    moreRuns: "Older runs are not listed. Activity has every run.",
+    loading: "Loading sandboxes",
+    failed: "The sandboxes could not be read.",
+    retry: "Retry",
+    back: "All Sandboxes",
+    isolated: "Isolated",
+    unisolated: "Unisolated",
+    mounts: "Mounted",
+    mountKind: {
+      session: "Session files",
+      person: "Requester's memory",
+      project: "Project memory",
+      agent: "Agent memory",
+    } as Record<string, string>,
+    readOnly: "read only",
+    filesLeft: "Files it left",
+    noFiles: "This run left no file changes.",
+    moreFiles: (count: number) => `${count} more ${count === 1 ? "file" : "files"} not listed.`,
+    removed: "Removed",
+    conflicts: "Changes not copied back",
+    conflictHint: "Someone changed these files after the run loaded them, so their edit was kept.",
+    openFile: (path: string) => `Open ${path}`,
+    openActivity: "Open in Activity",
+    artifactsHint: "Saved, versioned results from this conversation.",
+    artifactsEmpty: "Nothing has been saved as an artifact here yet.",
+    artifactsFailed: "The artifacts could not be read.",
+    artifactVersion: (version: number) => `Version ${version}`,
+    openArtifact: "Open",
+  },
   accentPresets: {
     workspace: "Workspace",
     red: "Red",
