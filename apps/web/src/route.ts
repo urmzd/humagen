@@ -162,7 +162,14 @@ export type NotificationView = (typeof NOTIFICATION_VIEWS)[number];
 
 export type YouSection = "profile" | "notifications" | "privacy" | "agents" | "connections";
 export type Route =
-  | { page: "pull-requests"; q?: string; repo?: string; agent?: string; status?: "running" | "waiting" | "done"; display?: "list" }
+  | {
+      page: "pull-requests";
+      q?: string;
+      repo?: string;
+      agent?: string;
+      status?: "running" | "waiting" | "done";
+      display?: "list";
+    }
   | {
       page: "library";
       section: LibrarySection;
@@ -321,7 +328,8 @@ export function href(r: Route): string {
   switch (r.page) {
     case "pull-requests": {
       const q = new URLSearchParams();
-      for (const key of ["q", "repo", "agent", "status", "display"] as const) if (r[key]) q.set(key, r[key]);
+      for (const key of ["q", "repo", "agent", "status", "display"] as const)
+        if (r[key]) q.set(key, r[key]);
       return `/pull-requests${q.size ? `?${q}` : ""}`;
     }
     case "library": {
@@ -552,7 +560,14 @@ function read(pathname: string, search: string): Route {
   const [head, a, b, c] = parts;
   switch (head) {
     case "pull-requests":
-      return {page: "pull-requests", q: queryText(q,"q",200), repo: queryText(q,"repo",200), agent: queryText(q,"agent",160), status: oneOf(q.get("status"), ["running","waiting","done"] as const), display: oneOf(q.get("display"), ["list"] as const)};
+      return {
+        page: "pull-requests",
+        q: queryText(q, "q", 200),
+        repo: queryText(q, "repo", 200),
+        agent: queryText(q, "agent", 160),
+        status: oneOf(q.get("status"), ["running", "waiting", "done"] as const),
+        display: oneOf(q.get("display"), ["list"] as const),
+      };
     case "notifications":
       return {
         page: "notifications",

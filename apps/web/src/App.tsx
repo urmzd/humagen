@@ -1,4 +1,3 @@
-import { PullRequests } from "./PullRequests.tsx";
 import { notificationsOf, updatesOf } from "@humagen/adapter";
 import { defaultCopy } from "@humagen/components";
 import { HOME_NEEDS, type HomeNotifications, type HomeUpdate } from "@humagen/core";
@@ -53,6 +52,7 @@ import { type Source as About, transport as mail, type PlatformMessage } from ".
 import { NotificationsPage, useNotifications } from "./Notifications.tsx";
 import { PersonalPreferences } from "./PersonalPreferences.tsx";
 import { ProjectPage, ProjectsPage } from "./Projects.tsx";
+import { PullRequests } from "./PullRequests.tsx";
 import { usePreferences } from "./preferences.ts";
 import { QuickSwitcher } from "./QuickSwitcher.tsx";
 import { ChannelPage } from "./Room.tsx";
