@@ -1,6 +1,6 @@
 import { answerOfAction, answers } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
-import { ActionId, readReview, reviewPullRequest, type UiAction } from "@humagen/core";
+import { ActionId, type UiAction } from "@humagen/core";
 import { BringBackIcon, ForkIcon, WebSurface } from "@humagen/render-web";
 import { AgentMessage, messageActionButton, railEntry, Thread, useQueue } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -24,7 +24,7 @@ import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
 import { FindHelp, type HelpSuggestion } from "./FindHelp.tsx";
-import { GitHubTab, reviewView } from "./GitHubTab.tsx";
+import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { type HomeAnnouncement, HomePage } from "./HomePage.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { MessageTime } from "./MessageTime.tsx";
@@ -1121,13 +1121,7 @@ export function Chat({
         <Workspace
           extraTab={(tab) => {
             if (!["review", "pull", "issue"].includes(tab.kind)) return undefined;
-            const matching = turns.find((run) => {
-              const report = readReview(run.answer ?? "");
-              return (
-                report.kind === "review" && reviewPullRequest(report.report)?.label === tab.ref
-              );
-            });
-            return <GitHubTab tab={tab} review={matching?.answer ?? ""} />;
+            return <GitHubTab tab={tab} review={reviewText(turns, tab.ref)} />;
           }}
           key={threadId}
           thread={threadId}

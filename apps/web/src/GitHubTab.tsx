@@ -1,5 +1,5 @@
 import { defaultCopy } from "@humagen/components";
-import { readReview } from "@humagen/core";
+import { readReview, reviewPullRequest } from "@humagen/core";
 import { Markdown } from "@humagen/primitives";
 import { ChangeReview } from "@humagen/web";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -7,10 +7,22 @@ import type { GitHubIssue, GitHubPull } from "../../../packages/client/src/gener
 import { api } from "./api.ts";
 import { githubRef } from "./github-ref.ts";
 import { openTab, type PaneTab } from "./pane.ts";
-import type { ConversationView } from "./route.ts";
 import { reviewPins } from "./review-pins.ts";
+import type { ConversationView } from "./route.ts";
 
-export const reviewView = (view: ConversationView, ref: string): ConversationView => ({...openTab(view,{kind:"review",ref}),expanded:true});
+export const reviewView = (view: ConversationView, ref: string): ConversationView => ({
+  ...openTab(view, { kind: "review", ref }),
+  expanded: true,
+});
+
+export function reviewText(runs: { answer?: string }[], ref?: string): string {
+  return (
+    runs.find((run) => {
+      const read = readReview(run.answer ?? "");
+      return read.kind === "review" && reviewPullRequest(read.report)?.label === ref;
+    })?.answer ?? ""
+  );
+}
 
 const w = defaultCopy.githubTabs;
 const button =
@@ -77,6 +89,7 @@ export function GitHubTab({ tab, review = "" }: { tab: PaneTab; review?: string 
   const [phone, setPhone] = useState("changes");
   const [file, setFile] = useState("");
   useEffect(() => {
+    void attempt;
     let live = true;
     setValue(undefined);
     setProblem(false);
