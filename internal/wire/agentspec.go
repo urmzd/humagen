@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/orchagent/flow/runtime"
 )
 
 // ErrInvalidAgent reports a definition that will not be accepted. Callers match with

@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/urmzd/humagen/fiber/pkg/connectors"
-	"github.com/urmzd/humagen/fiber/pkg/connectors/mention"
-	"github.com/urmzd/humagen/fiber/pkg/signature"
+	"github.com/urmzd/orchagent/flow/connectors"
+	"github.com/urmzd/orchagent/flow/connectors/mention"
+	"github.com/urmzd/orchagent/flow/signature"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	transport "github.com/urmzd/humagen/fiber/pkg/connectors/github"
+	transport "github.com/urmzd/orchagent/flow/connectors/github"
 )
 
 func testEvidence() transport.Context {

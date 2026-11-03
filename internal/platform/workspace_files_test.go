@@ -9,14 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/humagen/fiber/pkg/isolation"
-	"github.com/urmzd/humagen/fiber/pkg/isolation/isolationtest"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
+	"github.com/urmzd/orchagent/flow/isolation"
+	"github.com/urmzd/orchagent/flow/isolation/isolationtest"
 )
 
 func TestWorkspaceFileRevisionsPreventConcurrentLostEdits(t *testing.T) {

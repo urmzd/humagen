@@ -4,10 +4,10 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/orchagent/flow/runtime"
 )
 
 // ErrSourceStop requires operator repair and an explicit assignment resume.

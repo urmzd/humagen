@@ -50,7 +50,7 @@ export function tagId(subject: string, key: string): string {
 /**
  * The id the platform gives a run this caller starts with a key. The runtime
  * derives it from the workspace and the trigger id together (`RunID` in
- * `fiber/pkg/runtime`): a sha256 over each, length-prefixed, cut to 16 bytes.
+ * `orchagent/flow/runtime`): a sha256 over each, length-prefixed, cut to 16 bytes.
  */
 export function runId(tenant: string, subject: string, key: string): string {
   const h = createHash("sha256");

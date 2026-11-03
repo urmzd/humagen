@@ -23,29 +23,29 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/urmzd/anchor"
-	"github.com/urmzd/anchor/pkg/ledger"
-	dqueue "github.com/urmzd/anchor/pkg/queue"
-	drun "github.com/urmzd/anchor/pkg/run"
-	"github.com/urmzd/anchor/pkg/worker"
-	"github.com/urmzd/humagen/fiber/pkg/attachment/resolve"
-	filesblob "github.com/urmzd/humagen/fiber/pkg/blob"
-	"github.com/urmzd/humagen/fiber/pkg/bus"
-	"github.com/urmzd/humagen/fiber/pkg/connector"
-	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
-	"github.com/urmzd/humagen/fiber/pkg/egress"
-	"github.com/urmzd/humagen/fiber/pkg/event"
-	"github.com/urmzd/humagen/fiber/pkg/isolation"
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
-	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
-	"github.com/urmzd/humagen/fiber/pkg/turn"
-	"github.com/urmzd/humagen/fiber/pkg/turn/native"
-	"github.com/urmzd/humagen/fiber/pkg/turn/sandbox"
-	"github.com/urmzd/playscape/pkg/controlplane"
-	"github.com/urmzd/playscape/pkg/metrics"
-	"github.com/urmzd/playscape/pkg/node/inproc"
-	"github.com/urmzd/playscape/pkg/tool"
-	"github.com/urmzd/playscape/pkg/workspace"
+	"github.com/urmzd/orchagent/durable"
+	"github.com/urmzd/orchagent/durable/ledger"
+	dqueue "github.com/urmzd/orchagent/durable/queue"
+	drun "github.com/urmzd/orchagent/durable/run"
+	"github.com/urmzd/orchagent/durable/worker"
+	"github.com/urmzd/orchagent/flow/attachment/resolve"
+	filesblob "github.com/urmzd/orchagent/flow/blob"
+	"github.com/urmzd/orchagent/flow/bus"
+	"github.com/urmzd/orchagent/flow/connector"
+	"github.com/urmzd/orchagent/flow/connectors/cron"
+	"github.com/urmzd/orchagent/flow/egress"
+	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/orchagent/flow/isolation"
+	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/orchagent/flow/toolprovider"
+	"github.com/urmzd/orchagent/flow/turn"
+	"github.com/urmzd/orchagent/flow/turn/native"
+	"github.com/urmzd/orchagent/flow/turn/sandbox"
+	"github.com/urmzd/orchagent/sandbox/controlplane"
+	"github.com/urmzd/orchagent/sandbox/metrics"
+	"github.com/urmzd/orchagent/sandbox/node/inproc"
+	"github.com/urmzd/orchagent/sandbox/tool"
+	"github.com/urmzd/orchagent/sandbox/workspace"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
@@ -591,7 +591,7 @@ func New(cfg Config) (*Platform, error) {
 		return nil, err
 	}
 	rt, err := runtime.New(
-		anchor.New(p.ledger, p.queue),
+		durable.New(p.ledger, p.queue),
 		p.Agents.Resolver(),
 		p.broker,
 		runtime.WithRuntime(exec),

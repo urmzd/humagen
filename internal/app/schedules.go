@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
+	"github.com/urmzd/orchagent/flow/connectors/cron"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
