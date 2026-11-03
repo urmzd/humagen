@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.71.0 (2026-11-03)
+
+### Features
+
+- slash commands are the only way to offer skills in the composer (#187) ([b55cd47](https://github.com/urmzd/humagen/commit/b55cd47442d5b651fc0d568fb223d33fccecb503))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.70.0...v0.71.0)
+
+
 ## 0.70.0 (2026-11-03)
 
 ### Features
