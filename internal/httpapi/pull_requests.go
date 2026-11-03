@@ -3,13 +3,13 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
-	"github.com/urmzd/humagen/internal/platform"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/urmzd/humagen/internal/platform"
 	presentation "github.com/urmzd/humagen/internal/presentation/github"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/integrations/github"
