@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	dense "github.com/urmzd/humagen/fiber/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/state"
+	dense "github.com/urmzd/orchagent/flow/knowledge"
 )
 
 // counting wraps an embedder and counts the texts it was asked to embed.

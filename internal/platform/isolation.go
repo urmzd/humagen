@@ -12,12 +12,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/playscape/pkg/workspace"
+	"github.com/urmzd/orchagent/sandbox/workspace"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/humagen/fiber/pkg/event"
-	"github.com/urmzd/humagen/fiber/pkg/isolation"
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/orchagent/flow/isolation"
+	"github.com/urmzd/orchagent/flow/runtime"
 )
 
 // Where a run's tools execute (RFC 0004, "The sandbox").
@@ -26,7 +26,7 @@ import (
 // (Config.Sandbox), leased on the first tool that needs one and destroyed
 // when the turn ends. The file tools work in its work directory, the shell
 // runs in its workload compartment, and stdio MCP servers run in its
-// connectors compartment (fiber/pkg/mcptools). The work directory starts
+// connectors compartment (orchagent/flow/mcptools). The work directory starts
 // from the conversation's scratch directory and is written back to it at
 // the end (runFiles), so a follow-up turn sees what the last one wrote. The
 // run's memory is installed into /project and /me and kept the same way

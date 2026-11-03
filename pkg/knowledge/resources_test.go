@@ -2,9 +2,9 @@ package knowledge
 
 import (
 	"context"
-	"github.com/urmzd/humagen/fiber/pkg/mcptools"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
+	"github.com/urmzd/orchagent/flow/mcptools"
 	"io"
 	"net/http"
 	"strings"

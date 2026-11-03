@@ -7,9 +7,9 @@ import (
 
 	"github.com/urmzd/humagen/internal/wire"
 
-	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
+	"github.com/urmzd/orchagent/flow/event"
 )
 
 func TestLearningGuardBindsRetainedOutcomeAndTenantAcrossRestart(t *testing.T) {

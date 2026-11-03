@@ -8,7 +8,7 @@ import (
 
 	sdef "github.com/urmzd/saige/agent/definition"
 
-	"github.com/urmzd/humagen/fiber/pkg/definition"
+	"github.com/urmzd/orchagent/flow/definition"
 )
 
 // DefinitionCatalog is an AgentCatalog over saige definitions (pkg/agents,

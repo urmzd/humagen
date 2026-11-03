@@ -5,12 +5,12 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/urmzd/humagen/fiber/pkg/event"
-	turnrt "github.com/urmzd/humagen/fiber/pkg/turn"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/settings"
+	"github.com/urmzd/orchagent/flow/event"
+	turnrt "github.com/urmzd/orchagent/flow/turn"
 )
 
 // A Runtime in the configuration runs every turn in place of the native one,

@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/urmzd/humagen/fiber/pkg/event"
-	"github.com/urmzd/humagen/fiber/pkg/turn"
 	"github.com/urmzd/humagen/internal/app"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/orchagent/flow/turn"
 )
 
 func TestWithRuntimeSetsThePlatformsRuntime(t *testing.T) {

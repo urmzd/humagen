@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/orchagent/flow/turn/native"
 
 	"github.com/urmzd/humagen/pkg/credref"
 	"github.com/urmzd/humagen/pkg/spec"

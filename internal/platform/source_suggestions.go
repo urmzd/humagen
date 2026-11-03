@@ -5,7 +5,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -13,6 +12,7 @@ import (
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
+	"github.com/urmzd/orchagent/flow/event"
 )
 
 func (p *Platform) sourceSuggestionVisible(who auth.Principal, row sourcelinks.Suggestion) bool {

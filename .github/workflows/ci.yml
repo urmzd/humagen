@@ -45,7 +45,7 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     # The Postgres backends are held to the same suites as the in-memory
-    # ones (pkg/state/statetest, fiber/pkg/*/postgres_test.go). The
+    # ones (pkg/state/statetest, the fiber upgrade test in internal/legacy). The
     # image is the one `make integration` uses: the knowledge store needs
     # pgvector.
     services:
@@ -64,7 +64,7 @@ jobs:
           --health-retries 30
     env:
       HUMAGEN_POSTGRES_TEST_URL: postgres://humagen:humagen@localhost:5432/humagen?sslmode=disable
-      FIBER_POSTGRES_TEST_URL: postgres://humagen:humagen@localhost:5432/humagen?sslmode=disable
+      FLOW_POSTGRES_TEST_URL: postgres://humagen:humagen@localhost:5432/humagen?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -79,7 +79,7 @@ jobs:
       # Suites that also need Redis are left out: no Redis runs here.
       - name: Fail if a Postgres suite skipped
         run: |
-          if grep -nE 'set (HUMAGEN_POSTGRES_TEST_URL|FIBER_POSTGRES_TEST_URL)' test.log | grep -v FIBER_REDIS_ADDR; then
+          if grep -nE 'set (HUMAGEN_POSTGRES_TEST_URL|FLOW_POSTGRES_TEST_URL)' test.log | grep -v FLOW_REDIS_ADDR; then
             echo "A Postgres suite skipped. Check the variable names above."
             exit 1
           fi

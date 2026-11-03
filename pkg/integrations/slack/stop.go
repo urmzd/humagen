@@ -5,9 +5,9 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/urmzd/humagen/fiber/pkg/address"
-	transport "github.com/urmzd/humagen/fiber/pkg/connectors/slack"
-	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/orchagent/flow/address"
+	transport "github.com/urmzd/orchagent/flow/connectors/slack"
+	"github.com/urmzd/orchagent/flow/event"
 )
 
 // StopFunc asks one run to stop at the request of the Slack user who pressed

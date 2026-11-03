@@ -3,8 +3,8 @@ package github
 import (
 	"strconv"
 
-	"github.com/urmzd/humagen/fiber/pkg/address"
-	transport "github.com/urmzd/humagen/fiber/pkg/connectors/github"
+	"github.com/urmzd/orchagent/flow/address"
+	transport "github.com/urmzd/orchagent/flow/connectors/github"
 )
 
 type API = transport.API

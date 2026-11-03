@@ -3,6 +3,16 @@
 Status: proposed. This document changes no behavior. It describes the target
 design and the order of the changes that reach it.
 
+> **Superseded in part (2026-11):** fiber was not kept in Humagen. It moved,
+> with anchor and playscape, into one module,
+> [github.com/urmzd/orchagent](https://github.com/urmzd/orchagent), as
+> `orchagent/flow` (`fiber/pkg/durable` became `flow/runschema`). Humagen now
+> depends on orchagent and has no `fiber/` directory. The decisions below on
+> the bus, consumer groups and replicas still stand; they now land in
+> `orchagent/flow` where they touch the layer. "fiber is folded in fully"
+> describes the plan before that move. Stored names (`fiber_*` tables,
+> `fiber://` URIs, `fiber.*` event kinds) are unchanged.
+
 ## Goal
 
 Humagen runs as more than one replica on one database. Any replica can serve

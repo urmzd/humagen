@@ -3,9 +3,9 @@ package platform
 import (
 	"testing"
 
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/internal/wire"
 	githubflow "github.com/urmzd/humagen/pkg/integrations/github"
+	"github.com/urmzd/orchagent/flow/runtime"
 )
 
 func TestConnectorToolsBelongOnlyToTheirInstallationTenant(t *testing.T) {

@@ -4,12 +4,12 @@ import (
 	"errors"
 	"testing"
 
-	transportslack "github.com/urmzd/humagen/fiber/pkg/connectors/slack"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/runs"
+	transportslack "github.com/urmzd/orchagent/flow/connectors/slack"
 )
 
 func TestSlackAttachmentsComeFromTheActualPostersMessage(t *testing.T) {

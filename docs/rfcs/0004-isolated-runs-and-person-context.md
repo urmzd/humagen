@@ -21,7 +21,7 @@ people in it.
   `os.Root`, shared by every run in it, including called runs
   (`internal/platform/sandbox.go`).
 - **Tool servers.** A stdio MCP server is a host process started with the
-  platform's own privileges (`fiber/pkg/mcptools`). A person-scoped provider
+  platform's own privileges (`orchagent/flow/mcptools`). A person-scoped provider
   already connects with that person's credential, one session per person.
 - **Person state.** It is spread over `pkg/credentials` (credentials),
   `pkg/prefs` (display choices only, which never grant) and nothing else.
