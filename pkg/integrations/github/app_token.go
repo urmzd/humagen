@@ -238,5 +238,6 @@ func NewAppHTTPAPIAt(base string, cfg AppConfig) (*HTTPAPI, error) {
 		Timeout:   timeout,
 		Transport: &appRoundTripper{base: baseTransport, source: source},
 	}
-	return transport.NewHTTPAPIAt(strings.TrimRight(base, "/"), "", authed), nil
+	base = strings.TrimRight(base, "/")
+	return &HTTPAPI{HTTPAPI: transport.NewHTTPAPIAt(base, "", authed), base: base, http: authed}, nil
 }
