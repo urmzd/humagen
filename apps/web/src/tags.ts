@@ -1,21 +1,22 @@
 /**
  * Completion in the chat bar: what is being typed at the caret, what it could
  * complete to, and the text once one is picked. `@` names people, agents
- * and the kinds of `@kind:name` mention (`@sme:billing`); `$` names a
- * skill. The platform reads them (pkg/threads); this only helps a person
+ * and the kinds of `@kind:name` mention (`@sme:billing`); `/` names a
+ * skill, as a slash command (commands.ts). The platform still reads `$name`
+ * and `@skill:name` as quiet aliases, but nothing here offers them. The platform reads them (pkg/threads); this only helps a person
  * write them, so it follows the same rules: a tag starts a word, and nothing
  * inside code is a tag.
  */
 
-/** What starts a tag: `@` for people, agents and mention kinds, `$` for a skill. */
-export type Sigil = "@" | "$";
+/** What starts a tag: `@` for people, agents and mention kinds, `/` for a skill (commands.ts). */
+export type Sigil = "@" | "/";
 
 /** A name a message can tag, as completion offers it. */
 export interface TagOption {
   /**
    * agent: who runs. person: someone to bring in. kind: a mention
    * kind, written `@kind:` and completed further. item: one item of a
-   * mention kind, `@kind:name` (and `@sme`, every expert). skill: `$name`.
+   * mention kind, `@kind:name` (and `@sme`, every expert). skill: `/name`.
    */
   kind: "agent" | "person" | "kind" | "item" | "skill";
   /** What is written after the sigil: an agent's name, a handle, `sme:`, `sme:billing`, a skill's name. */
@@ -27,7 +28,7 @@ export interface TagOption {
 }
 
 /** The sigil an option is written after. */
-export const sigilOf = (o: TagOption): Sigil => (o.kind === "skill" ? "$" : "@");
+export const sigilOf = (o: TagOption): Sigil => (o.kind === "skill" ? "/" : "@");
 
 /** The tag being typed at the caret. */
 export interface Typing {
@@ -45,10 +46,16 @@ export function tagAt(text: string, caret: number): Typing | null {
   let i = caret;
   while (i > 0 && TAG_CHAR.test(text[i - 1] ?? "")) i--;
   const sigil = text[i - 1];
-  if (i === 0 || (sigil !== "@" && sigil !== "$")) return null;
+  if (i === 0 || (sigil !== "@" && sigil !== "/")) return null;
   const start = i - 1;
   // A tag starts a word: an @ inside one, as in an email address, is not one.
   if (start > 0 && !/[\s(]/.test(text[start - 1] ?? "")) return null;
+  // A slash command starts the message or follows a space, and is a name:
+  // a path, a fraction or a URL is not one.
+  if (sigil === "/") {
+    if (start > 0 && !/\s/.test(text[start - 1] ?? "")) return null;
+    if (!/^[A-Za-z0-9_-]*$/.test(text.slice(i, caret))) return null;
+  }
   // Inside inline code or a code block, nothing is a tag.
   const ticks = (text.slice(0, start).match(/`/g) ?? []).length;
   if (ticks % 2 === 1) return null;
@@ -175,7 +182,8 @@ export interface KindOption {
 /**
  * What a message can tag: the agents that can answer
  * there, then people, then each mention kind (`@sme:`) and the items of it
- * read so far (topics are sme's), then skills for `$`. Experts on every
+ * read so far (topics are sme's), then skills for `/`. A kind that resolves
+ * to skills (`@skill:`) is never offered: skills are slash commands. Experts on every
  * topic, `@sme`, are offered when sme is a kind here.
  */
 export function tagOptions(
@@ -190,14 +198,23 @@ export function tagOptions(
   } = {},
 ): TagOption[] {
   // Old expert metadata can still be returned by a cached or older host, but
-  // discovery replaces routing and those choices are never offered again.
+  // discovery replaces routing and those choices are never offered again. A
+  // kind over skills, the built-in `@skill:` included, is a slash command.
   const retired = new Set(
     (extra.kinds ?? [])
-      .filter((k) => k.kind === "sme" || k.resolves === "experts")
+      .filter(
+        (k) =>
+          k.kind === "sme" ||
+          k.resolves === "experts" ||
+          k.kind === "skill" ||
+          k.resolves === "skills",
+      )
       .map((k) => k.kind),
   );
   const kinds = (extra.kinds ?? []).filter((k) => !retired.has(k.kind));
-  const items = (extra.items ?? []).filter((i) => i.kind !== "sme" && !retired.has(i.kind));
+  const items = (extra.items ?? []).filter(
+    (i) => i.kind !== "sme" && i.kind !== "skill" && !retired.has(i.kind),
+  );
   return [
     ...agents.map((a) => ({
       kind: "agent" as const,

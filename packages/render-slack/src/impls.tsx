@@ -35,4 +35,5 @@ export const slackImpls: PrimitiveImpls = {
   Tiles: host("Tiles"),
   Amount: host("Amount"),
   Request: host("Request"),
+  Review: host("Review"),
 };

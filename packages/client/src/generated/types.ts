@@ -85,6 +85,25 @@ export interface WorkspaceFilePublish {
   title?: string;
 }
 
+/** Lines of one file at one commit, numbered from first. */
+export interface SourceExcerpt {
+  /** owner/name. */
+  repo: string;
+  sha: string;
+  path: string;
+  /** The number of the first line in lines. */
+  first: number;
+  /** The first line asked for. */
+  start: number;
+  /** The last line asked for, within the file. */
+  end: number;
+  /** How many lines the file has. */
+  total: number;
+  lines: string[];
+  /** The lines on GitHub. */
+  url: string;
+}
+
 export type HealthStatus = "operational" | "degraded" | "down";
 
 export interface Health {
@@ -1281,8 +1300,8 @@ export interface ThreadFork {
 
 /** One tag in a message, and what it came to. */
 export interface ThreadMention {
-  /** `agent`, `person` and `sme` as tagged; `skill` for `$<name>` and
-`@skill:<name>`, which the runs the message starts are told to
+  /** `agent`, `person` and `sme` as tagged; `skill` for `$<name>`,
+`@skill:<name>` and a slash command `/<name>`, which the runs the message starts are told to
 use; `role` for the people holding a role, through a mention kind
 that resolves roles. A mention kind the workspace declares is
 recorded as what it resolves to.
@@ -1933,7 +1952,7 @@ for a caller without `knowledge:read`.
  */
   knowledge?: string[];
   /** Named instructions a message posted here and below can tell an
-agent to use, by writing `$<name>`, without their instructions,
+agent to use, by writing `$<name>` or `/<name>`, without their instructions,
 which `GET /api/projects/{name}/skills` reads. Set with `PUT
 /api/projects/{name}/skills`. Absent when it declares none. A
 change in the project's history records them the same way.

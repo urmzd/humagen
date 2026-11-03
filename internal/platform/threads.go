@@ -371,7 +371,14 @@ type tagLookup struct {
 	tree    *projects.Tree
 	project string
 	person  string
+	// console is a message written in the console, where the composer
+	// writes slash commands; a client's surface has commands of its own.
+	console bool
 }
+
+// Slashes reports whether /<name> names a skill: in the console, not on a
+// client's surface.
+func (l tagLookup) Slashes() bool { return l.console }
 
 // Skill reports whether a skill goes by name on the chain of the project
 // the message is posted in.
@@ -770,7 +777,7 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 		sf := on.ref.surface(on.client.ID)
 		rec.Surface, rec.Announcement, first.SurfaceID, slack = &sf, on.announcement, on.ref.message(), nil
 	}
-	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: seer.Agent, tree: tree, project: project, person: humanSubject(person)})
+	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: seer.Agent, tree: tree, project: project, person: humanSubject(person), console: on == nil})
 	if err != nil {
 		return Posted{}, err
 	}
@@ -857,7 +864,7 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		surfaceID, slack = on.ref.message(), nil
 	}
 	sees := p.Seer(person).Agent
-	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: sees, tree: tree, project: th.Project, person: humanSubject(person)})
+	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: sees, tree: tree, project: th.Project, person: humanSubject(person), console: on == nil})
 	if err != nil {
 		return Posted{}, err
 	}

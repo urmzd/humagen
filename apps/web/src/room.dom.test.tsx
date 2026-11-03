@@ -1709,7 +1709,7 @@ const people = {
   ],
 };
 
-test("$ completes the project's skills and @kind: completes a mention kind's items; Tab picks and Escape closes", async () => {
+test("/ offers the project's skills as commands, $ opens nothing, and @kind: completes a role kind's items but never @skill:; Tab picks and Escape closes", async () => {
   net = stubFetch({
     "GET /api/threads/th-00000000000000aa": () => mine,
     "GET /api/projects/Globex/agents": () => ({
@@ -1726,17 +1726,17 @@ test("$ completes the project's skills and @kind: completes a mention kind's ite
       ],
     }),
     "GET /api/mentions": (_, q) =>
-      q.get("kind") === "skill"
+      q.get("kind") === "team"
         ? {
-            items: [
-              { name: "review", description: "Reviews a change" },
-              { name: "release-notes" },
-            ].filter((i) => i.name.startsWith(q.get("q") ?? "")),
+            items: [{ name: "sre" }, { name: "support", description: "Support team" }].filter((i) =>
+              i.name.startsWith(q.get("q") ?? ""),
+            ),
           }
         : {
             kinds: [
               { kind: "sme", title: "Experts", resolves: "experts" },
               { kind: "skill", title: "Skills", resolves: "skills" },
+              { kind: "team", title: "Teams", resolves: "role" },
             ],
           },
   });
@@ -1749,40 +1749,47 @@ test("$ completes the project's skills and @kind: completes a mention kind's ite
     assert.ok(net?.seen.some((s) => s.path.startsWith("/api/mentions?project=Globex"))),
   );
 
-  // $ offers skills alone.
-  fireEvent.change(box, { target: { value: "@helper $" } });
-  let list = await screen.findByRole("listbox");
+  // / offers skills alone, as commands.
+  fireEvent.change(box, { target: { value: "@helper /" } });
+  let list = await screen.findByRole("listbox", { name: defaultCopy.threads.commands });
   await waitFor(() =>
     assert.ok(
-      list.textContent?.includes("$review") && list.textContent.includes("$triage"),
+      list.textContent?.includes("/review") && list.textContent.includes("/triage"),
       list.textContent ?? "",
     ),
   );
   assert.ok(!list.textContent?.includes("@helper"), list.textContent ?? "");
-  fireEvent.change(box, { target: { value: "@helper $tr" } });
+  fireEvent.change(box, { target: { value: "@helper /tr" } });
   fireEvent.keyDown(box, { key: "Tab" });
-  await waitFor(() => assert.equal(box.value, "@helper $triage "));
+  await waitFor(() => assert.equal(box.value, "@helper /triage "));
   assert.equal(screen.queryByRole("listbox"), null);
 
-  // @ offers the mention kinds as kind:, and a kind picked opens its items.
-  fireEvent.change(box, { target: { value: "@sk" } });
+  // $ is no trigger.
+  fireEvent.change(box, { target: { value: "@helper $" } });
+  assert.equal(screen.queryByRole("listbox"), null);
+
+  // @ never offers skills or @skill:, but a role kind completes its items.
+  fireEvent.change(box, { target: { value: "@" } });
   list = await screen.findByRole("listbox");
-  assert.ok(list.textContent?.includes("@skill:"), list.textContent ?? "");
+  await waitFor(() => assert.ok(list.textContent?.includes("@team:"), list.textContent ?? ""));
+  assert.ok(!list.textContent?.includes("skill"), list.textContent ?? "");
+  assert.ok(!list.textContent?.includes("review"), list.textContent ?? "");
+  fireEvent.change(box, { target: { value: "@te" } });
   fireEvent.keyDown(box, { key: "Tab" });
-  await waitFor(() => assert.equal(box.value, "@skill:"));
+  await waitFor(() => assert.equal(box.value, "@team:"));
   await waitFor(() =>
     assert.ok(
-      net?.seen.some((s) => s.path.includes("kind=skill")),
+      net?.seen.some((s) => s.path.includes("kind=team")),
       JSON.stringify(net?.seen.map((s) => s.path)),
     ),
   );
   list = await screen.findByRole("listbox");
   await waitFor(() =>
-    assert.ok(list.textContent?.includes("@skill:release-notes"), list.textContent ?? ""),
+    assert.ok(list.textContent?.includes("@team:support"), list.textContent ?? ""),
   );
   fireEvent.keyDown(box, { key: "ArrowDown" });
   fireEvent.keyDown(box, { key: "Tab" });
-  await waitFor(() => assert.equal(box.value, "@skill:release-notes "));
+  await waitFor(() => assert.equal(box.value, "@team:support "));
 
   // Escape closes the list and leaves the words.
   fireEvent.change(box, { target: { value: "@he" } });
@@ -3353,7 +3360,7 @@ for (const kind of ["conversation", "channel"] as const) {
           id: "skill-message",
           thread: mine.thread.id,
           by: "ana",
-          text: "$review Keep this request.",
+          text: "/review Keep this request.",
           mentions: [],
           via: "console",
           at,
@@ -3369,7 +3376,7 @@ for (const kind of ["conversation", "channel"] as const) {
           id: "skill-message",
           thread: "skill-thread",
           by: "ana",
-          text: "$review Keep this request.",
+          text: "/review Keep this request.",
           mentions: [],
           via: "console",
           at,
@@ -3420,7 +3427,7 @@ for (const kind of ["conversation", "channel"] as const) {
     const menu = await screen.findByRole("dialog", { name: defaultCopy.chat.menu });
     fireEvent.click(within(menu).getByRole("button", { name: /^Skills\b/ }));
     fireEvent.click(await within(menu).findByRole("button", { name: /^\$?review(?:\s|$)/i }));
-    await waitFor(() => assert.equal(box.value, "$review Keep this request."));
+    await waitFor(() => assert.equal(box.value, "/review Keep this request."));
     assert.equal(!!screen.queryByRole("dialog", { name: defaultCopy.chat.menu }), false);
     assert.equal(net.seen.filter((request) => request.method === "POST").length, 0);
     fireEvent.keyDown(box, { key: "Enter" });
@@ -3432,7 +3439,7 @@ for (const kind of ["conversation", "channel"] as const) {
       posted?.path,
       kind === "conversation" ? `/api/threads/${mine.thread.id}/messages` : "/api/threads",
     );
-    assert.equal((posted?.body as { text: string }).text, "$review Keep this request.");
+    assert.equal((posted?.body as { text: string }).text, "/review Keep this request.");
   });
 }
 
