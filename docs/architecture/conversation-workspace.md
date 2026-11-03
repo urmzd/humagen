@@ -181,6 +181,7 @@ its sections as tabs that scroll sideways when they do not fit:
 | Sandboxes | The session sandbox (its files, size, retention and whether runs are isolated) and a nested entry per agent run, newest first and indented under its caller: its mounts (`/work` from the session, and the memory trees in `/project` and `/me`), the files it left and the copyback changes refused because someone changed the file first | `/conversations/{id}/workspace/sandboxes[/{run}]` |
 | Files | The session's files, editor and change review below | `/conversations/{id}/workspace?file=&tab=` |
 | Scratchpads | Named notes beside the conversation: create, name, rename, delete and edit in the code editor, with a Markdown preview | `/conversations/{id}/workspace/scratchpads[/{scratchpad}]` |
+| Memories | Read only, by scope: the memory trees the conversation draws on, what the session's runs used and wrote, and each message's run, with links to where memory is changed | `/conversations/{id}/workspace/memories[/{run}]` |
 | Artifacts | The conversation's saved, versioned artifacts; each opens in Deliverables | `/conversations/{id}/workspace/artifacts` |
 
 `GET /api/threads/{id}/sandboxes` answers Sandboxes, behind `runs:read` and
@@ -189,6 +190,27 @@ the run (`Run.sandbox`, at most 64 files and 16 refusals): when an isolated
 run's instance is copied back, and, unisolated, when its `file_write` lands in
 the session's files. Files keeps its unsaved drafts while another section is
 shown or the panel is closed.
+
+## Memories by scope
+
+`GET /api/threads/{id}/memory` (`runs:read`, the conversation's audience)
+answers three scopes:
+
+- **Conversation**: the memory trees it draws on: its project, then each
+  ancestor (read only), and every tree mounted for one of its runs.
+- **Session**: by tree, across its runs: how many runs had it, the versions
+  installed, the versions written and the proposals made.
+- **Message**: each run's trees, the version installed and what it kept
+  (committed version, proposals, changes not kept), and the notes drawn from it
+  (`By` is the run).
+
+What a run used and wrote is recorded on the run (`Run.memory`, at most 16
+trees and 16 proposals each) when its instance is leased (`InstallMemory`) and
+released (`FinishMemory`). Unisolated, nothing is installed and the view says
+memory reached the run through its context. A tree the reader may not read is
+counted in `hidden`, never named; another person's own memory is never named.
+Nothing here changes memory: each tree links to the Library's Memory or the
+agent's Memory tab.
 
 ## Scratchpads
 

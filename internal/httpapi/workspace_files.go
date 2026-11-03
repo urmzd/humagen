@@ -9,6 +9,7 @@ import (
 
 func (s *Server) workspaceFileRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/threads/{id}/sandboxes", s.authed(auth.RunsRead, s.seenThread(s.sandboxes)))
+	mux.HandleFunc("GET /api/threads/{id}/memory", s.authed(auth.RunsRead, s.seenThread(s.conversationMemory)))
 	mux.HandleFunc("GET /api/threads/{id}/files", s.authed(auth.RunsRead, s.seenThread(s.workspaceFiles)))
 	mux.HandleFunc("GET /api/threads/{id}/files/content", s.authed(auth.RunsRead, s.seenThread(s.workspaceFile)))
 	mux.HandleFunc("PUT /api/threads/{id}/files/content", s.authed(auth.RunsWrite, s.seenThread(s.writeWorkspaceFile)))
@@ -18,6 +19,15 @@ func (s *Server) workspaceFileRoutes(mux *http.ServeMux) {
 
 func (s *Server) sandboxes(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	out, err := s.P.Sandboxes(r.Context(), who, r.PathValue("id"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, out)
+}
+
+func (s *Server) conversationMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	out, err := s.P.ConversationMemories(r.Context(), who, r.PathValue("id"))
 	if err != nil {
 		s.problem(w, err)
 		return

@@ -95,7 +95,46 @@ export const defaultCopy = {
       sandboxes: "Sandboxes",
       files: "Files",
       scratchpads: "Scratchpads",
+      memories: "Memories",
       artifacts: "Artifacts",
+    },
+    memories: {
+      hint: (isolated: boolean) =>
+        isolated
+          ? "Memory each run was given in its sandbox, at /project and /me, and what it kept. Change memory where it is kept."
+          : "Memory reaches each run through its context; this deployment installs no memory files. Change memory where it is kept.",
+      conversation: "This conversation draws on",
+      session: "This session used and wrote",
+      runs: "By message",
+      none: "No memory yet.",
+      noRuns: "No agent has run here yet.",
+      hidden: (n: number) => `${n} more ${n === 1 ? "memory" : "memories"} you cannot read.`,
+      loading: "Loading memories",
+      failed: "Memories could not be read.",
+      retry: "Retry",
+      back: "All Memories",
+      kind: {
+        person: "Your memory",
+        project: "Project memory",
+        agent: "Agent memory",
+      } as Record<string, string>,
+      workspace: "Workspace",
+      head: (version: number, files: number) =>
+        version > 0 ? `Version ${version}, ${files} ${files === 1 ? "file" : "files"}` : "Empty",
+      readOnly: "read only",
+      runsUsing: (n: number) => `${n} ${n === 1 ? "run" : "runs"}`,
+      versionsUsed: (versions: number[]) =>
+        versions.length ? `Used version ${versions.join(", ")}` : "In context only",
+      commits: (versions: number[]) => `Wrote version ${versions.join(", ")}`,
+      wrote: "Wrote memory",
+      proposals: (n: number) => `${n} ${n === 1 ? "proposal" : "proposals"} to review`,
+      notes: (n: number) => `${n} ${n === 1 ? "note" : "notes"} drawn`,
+      installed: (version: number) => `Given version ${version}`,
+      inContext: "In its context",
+      committed: (version: number) => `Kept its changes as version ${version}`,
+      dropped: (n: number) => `${n} ${n === 1 ? "change" : "changes"} not kept`,
+      notesTitle: "Notes it drew",
+      edit: "Open Memory",
     },
     scratchpads: {
       hint: "Named notes beside this conversation. Its agents read them as scratch:<name>; only people change them.",

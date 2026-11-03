@@ -129,6 +129,7 @@ test("the Workspace panel holds its sections as tabs, each with its own address"
       words.section.sandboxes,
       words.section.files,
       words.section.scratchpads,
+      words.section.memories,
       words.section.artifacts,
     ],
   );

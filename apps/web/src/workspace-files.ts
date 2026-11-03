@@ -1,4 +1,5 @@
 import type {
+  ConversationMemory,
   ConversationSandboxes,
   RunSandbox,
   Scratchpad,
@@ -11,6 +12,7 @@ import { ApiError } from "./api.ts";
 import type { Stored } from "./storage.ts";
 
 export type {
+  ConversationMemory,
   ConversationSandboxes,
   RunSandbox,
   Scratchpad,
@@ -54,6 +56,8 @@ export const scratchpadApi = {
 };
 
 export const workspaceFiles = {
+  memory: (thread: string) =>
+    request<ConversationMemory>("GET", `/api/threads/${encodeURIComponent(thread)}/memory`),
   sandboxes: (thread: string) =>
     request<ConversationSandboxes>("GET", `/api/threads/${encodeURIComponent(thread)}/sandboxes`),
   artifacts: (thread: string) =>

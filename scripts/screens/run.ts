@@ -466,6 +466,19 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       },
     },
     {
+      name: "workspace-memories",
+      path: `/conversations/${ids.nativeThread}/workspace/memories`,
+      act: async (page) => {
+        const panel = page.getByRole("dialog", { name: defaultCopy.workspace.title, exact: true });
+        await panel.getByText(defaultCopy.workspace.memories.session, { exact: true }).waitFor();
+        await panel
+          .getByRole("button", { name: /native-writer/ })
+          .first()
+          .click();
+        await panel.getByText(defaultCopy.workspace.memories.inContext).first().waitFor();
+      },
+    },
+    {
       name: "workspace-artifacts",
       path: `/conversations/${ids.nativeThread}/workspace/artifacts`,
       act: async (page) => {

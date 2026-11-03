@@ -329,7 +329,10 @@ type Run struct {
 	Outcome *Outcome `json:"outcome,omitempty"`
 	// Sandbox is what the run left in its conversation's files.
 	Sandbox *Sandbox `json:"sandbox,omitempty"`
-	Error   string   `json:"error,omitempty"`
+	// Memory is the memory trees the run's instance was given and what it
+	// wrote to them.
+	Memory []MemoryUse `json:"memory,omitempty"`
+	Error  string      `json:"error,omitempty"`
 	// Reason says what a parked run is waiting for, or that a run which has
 	// answered is waiting for the agents attached to it.
 	Reason string `json:"reason,omitempty"`

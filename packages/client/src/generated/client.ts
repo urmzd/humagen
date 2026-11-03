@@ -38,6 +38,7 @@ import type {
   ClientInput,
   ClientView,
   ConnectKnowledgeSourceBody,
+  ConversationMemory,
   ConversationSandboxes,
   CreateCallRequest,
   CreateKnowledgeSourceBody,
@@ -3642,6 +3643,23 @@ to that machine only, wherever the message is read.
     return this.rawRequest<void>("PUT", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The memory a conversation draws on, and what its session and each run used and wrote */
+  async conversationMemory(id: string, options?: RequestOptions): Promise<ConversationMemory> {
+    let path = "/api/threads/{id}/memory";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ConversationMemory>("GET", path, {
+      ...options,
+    });
+  }
+
+  async conversationMemoryRaw(id: string, options?: RequestOptions): Promise<ApiResponse<ConversationMemory>> {
+    let path = "/api/threads/{id}/memory";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ConversationMemory>("GET", path, {
       ...options,
     });
   }
