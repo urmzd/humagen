@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { compareText, parseUnifiedDiff } from "../../../packages/web/src/code-diff.ts";
+import { compareText, parseUnifiedDiff, splitRows } from "../../../packages/web/src/code-diff.ts";
 
 test("unified review keeps file identity and exact old/new line coordinates", () => {
   const result = parseUnifiedDiff(
@@ -72,4 +72,15 @@ test("large unrelated files have bounded work and a declared render limit", () =
   assert.equal(result.files[0]?.lines.length, 4000);
   assert.equal(result.files[0]?.additions, 10000);
   assert.equal(result.files[0]?.deletions, 10000);
+});
+
+test("a side-by-side diff pairs removals with the additions after them", () => {
+  const diff = compareText("a\nb\nc\n", "a\nB\nc\nd\n", "f.txt");
+  const rows = splitRows(diff.files[0]?.lines ?? []);
+  const changed = rows.find((row) => row.left?.kind === "remove");
+  assert.equal(changed?.left?.text, "b");
+  assert.equal(changed?.right?.text, "B");
+  const tail = rows.find((row) => row.right?.text === "d");
+  assert.equal(tail?.left, undefined);
+  assert.ok(rows.some((row) => row.left?.kind === "context" && row.left === row.right));
 });

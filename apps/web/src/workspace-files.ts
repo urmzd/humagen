@@ -55,7 +55,15 @@ export const scratchpadApi = {
     ),
 };
 
+export interface ArtifactSave {
+  source: "run" | "message" | "scratchpad";
+  id: string;
+  title?: string;
+}
+
 export const workspaceFiles = {
+  save: (thread: string, what: ArtifactSave) =>
+    request<Stored>("POST", `/api/threads/${encodeURIComponent(thread)}/artifacts`, what),
   memory: (thread: string) =>
     request<ConversationMemory>("GET", `/api/threads/${encodeURIComponent(thread)}/memory`),
   sandboxes: (thread: string) =>

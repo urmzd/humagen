@@ -62,3 +62,24 @@ func TestScratchpadRoutesConfineAndBound(t *testing.T) {
 		t.Fatalf("oversized scratchpad: %d", res.StatusCode)
 	}
 }
+
+// exerciseSaveContract saves a person's message and a scratchpad as
+// versioned artifacts, refuses what is not there, and keeps them from
+// another workspace.
+func exerciseSaveContract(t *testing.T, c *contract, actor, other, thread, pad string) {
+	t.Helper()
+	at := "/api/threads/{id}/artifacts"
+	path := "/api/threads/" + thread + "/artifacts"
+	msg := c.call(actor, "POST", at, path, `{"source":"message","id":"m-1","title":"Kickoff"}`, http.StatusCreated)
+	if msg.str("title") != "Kickoff.md" || msg.str("created_by") == "" {
+		t.Fatalf("saved message: %s", msg.raw)
+	}
+	first := c.call(actor, "POST", at, path, fmt.Sprintf(`{"source":"scratchpad","id":%q}`, pad), http.StatusCreated)
+	again := c.call(actor, "POST", at, path, fmt.Sprintf(`{"source":"scratchpad","id":%q}`, pad), http.StatusCreated)
+	if first.str("title") != again.str("title") || fmt.Sprint(again.field("version")) != "2" {
+		t.Fatalf("saving again makes a new version: %s then %s", first.raw, again.raw)
+	}
+	c.call(actor, "POST", at, path, `{"source":"message","id":"m-999"}`, http.StatusNotFound)
+	c.call(actor, "POST", at, path, `{"source":"nope","id":"x"}`, http.StatusBadRequest)
+	c.call(other, "POST", at, path, `{"source":"message","id":"m-1"}`, http.StatusNotFound)
+}

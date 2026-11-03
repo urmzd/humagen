@@ -32,6 +32,7 @@ import {
   tabKey,
 } from "./pane.ts";
 import type { ConversationView } from "./route.ts";
+import { SaveAsArtifact } from "./SaveAsArtifact.tsx";
 import { Scratchpads, usePadDrafts } from "./Scratchpads.tsx";
 import { AgentMark, ago, Popover, SkeletonRows } from "./ui.tsx";
 import { WorkspaceFiles } from "./WorkspaceFiles.tsx";
@@ -405,6 +406,18 @@ export function Workspace({
             drafts={drafts}
             setDrafts={setDrafts}
             onName={nameTab}
+            actions={(pad, dirty) => (
+              <SaveAsArtifact
+                thread={thread}
+                what={{ source: "scratchpad", id: pad.id }}
+                label
+                disabled={dirty}
+                className="inline-flex min-h-8 items-center gap-1.5 rounded-aui px-2.5 text-aui-xs hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50 pointer-coarse:min-h-11"
+                onSaved={(artifact) =>
+                  onView(openTab(view, { kind: "artifact", ref: artifact.id }))
+                }
+              />
+            )}
           />
         );
       case "memories":
@@ -434,6 +447,7 @@ export function Workspace({
                 {
                   artifactTab: next.artifactTab,
                   slide: next.slide,
+                  compare: next.compare,
                 },
               )
             }

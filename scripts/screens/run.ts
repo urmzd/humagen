@@ -553,6 +553,21 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       },
     },
     {
+      name: "workspace-save-message",
+      path: `/conversations/${ids.nativeThread}`,
+      act: async (page) => {
+        // A finished answer offers Save as Artifact among its actions.
+        const save = page
+          .getByRole("article", { name: "native-writer message", exact: true })
+          .getByRole("button", { name: defaultCopy.workspace.save.action, exact: true })
+          .last();
+        await save.scrollIntoViewIfNeeded();
+        await save.click({ force: true });
+        const panel = page.getByRole("dialog", { name: defaultCopy.workspace.title, exact: true });
+        await panel.getByRole("link", { name: "Download Original", exact: true }).first().waitFor();
+      },
+    },
+    {
       name: "workspace-artifacts",
       path: `/conversations/${ids.nativeThread}/workspace/artifacts`,
       act: async (page) => {

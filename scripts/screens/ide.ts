@@ -82,7 +82,10 @@ export function ideScreens(call: Call): Screen[] {
         const { endpoint } = await prepare(page, "src/greeting.ts");
         const editor = page.getByRole("textbox", { name: "Edit src/greeting.ts", exact: true });
         await editor.fill(changedGreeting);
-        await page.getByRole("button", { name: /^Save/ }).first().click();
+        await page
+          .getByRole("button", { name: /^Save(?! as)/ })
+          .first()
+          .click();
         await page.waitForFunction(() => !document.body.textContent?.includes("Unsaved"));
         assert.equal((await savedFile(endpoint, "src/greeting.ts")).content, changedGreeting);
         await page.reload();
@@ -143,12 +146,18 @@ export function ideScreens(call: Call): Screen[] {
         await scratch.fill(
           "# Launch review\n\nThe greeting handles surrounding whitespace. Ready for publication.\n",
         );
-        await page.getByRole("button", { name: /^Save/ }).first().click();
+        await page
+          .getByRole("button", { name: /^Save(?! as)/ })
+          .first()
+          .click();
         await page.waitForFunction(() => !document.body.textContent?.includes("Unsaved"));
         assert.match((await savedFile(endpoint, "notes.md")).content, /Ready for publication/);
         await page.getByRole("button", { name: copy.preview, exact: true }).click();
         await page.getByRole("heading", { name: "Launch review", exact: true }).waitFor();
-        await page.getByRole("button", { name: copy.publish, exact: true }).click();
+        await page
+          .getByRole("dialog", { name: defaultCopy.workspace.title, exact: true })
+          .getByRole("button", { name: copy.publish, exact: true })
+          .click();
         await page.getByRole("button", { name: copy.openPublished, exact: true }).waitFor();
         await page.getByRole("button", { name: copy.openPublished, exact: true }).click();
         await page.getByRole("link", { name: "Download Original", exact: true }).waitFor();
@@ -205,7 +214,10 @@ export function ideScreens(call: Call): Screen[] {
           ...prior,
           content: `${greeting}// Teammate edit\n`,
         });
-        await page.getByRole("button", { name: /^Save/ }).first().click();
+        await page
+          .getByRole("button", { name: /^Save(?! as)/ })
+          .first()
+          .click();
         await page.getByText(copy.conflict, { exact: true }).first().waitFor();
         assert.equal(
           await editor.inputValue(),
@@ -217,6 +229,51 @@ export function ideScreens(call: Call): Screen[] {
     },
   ];
   return [
+    {
+      // Two saved versions of a text artifact, compared in a Workspace tab.
+      name: "workspace-diff",
+      path: "/",
+      act: async (page) => {
+        const posted = await call<{ thread: { id: string } }>("POST", "/api/threads", {
+          project: "Launch",
+          text: "Compare two saved versions of the launch plan.",
+          visibility: "private",
+        });
+        const thread = posted.thread.id;
+        const endpoint = `/api/threads/${encodeURIComponent(thread)}/files`;
+        const first = await call<File>("PUT", `${endpoint}/content`, {
+          path: "plan.md",
+          content: "# Launch plan\n\n- Ship on Tuesday\n- Owner: Ada\n- Review the greeting\n",
+          revision: "",
+        });
+        const v1 = await call<{ id: string }>("POST", `${endpoint}/publish`, {
+          path: "plan.md",
+          revision: first.revision,
+        });
+        const second = await call<File>("PUT", `${endpoint}/content`, {
+          path: "plan.md",
+          content:
+            "# Launch plan\n\n- Ship on Wednesday\n- Owner: Ada\n- Review the greeting\n- Trim names before greeting\n",
+          revision: first.revision,
+        });
+        const v2 = await call<{ id: string }>("POST", `${endpoint}/publish`, {
+          path: "plan.md",
+          revision: second.revision,
+        });
+        const tab = encodeURIComponent(`artifact:${v2.id}`);
+        await page.goto(
+          new URL(
+            `/conversations/${encodeURIComponent(thread)}/workspace?tabs=${tab}&active=${tab}&artifact_tab=versions&compare=${encodeURIComponent(v1.id)}`,
+            page.url(),
+          ).href,
+          { waitUntil: "domcontentloaded" },
+        );
+        await page
+          .getByRole("region", { name: defaultCopy.workspace.compare.title(1, 2), exact: true })
+          .waitFor();
+        await page.getByText("- Ship on Wednesday").first().waitFor();
+      },
+    },
     ...screens,
     ...screens
       .filter((screen) => screen.name === "ide-editor" || screen.name === "ide-patch-review")

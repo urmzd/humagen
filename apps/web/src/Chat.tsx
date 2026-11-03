@@ -35,6 +35,7 @@ import { ThreadRoom, topicsOf } from "./Room.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
+import { SaveAsArtifact } from "./SaveAsArtifact.tsx";
 import { Scroller } from "./Scroller.tsx";
 import { useThreadSelection } from "./selection.ts";
 import { mentionsIn } from "./tags.ts";
@@ -1016,6 +1017,19 @@ export function Chat({
                   !room?.thread.read_only && run.status === "completed" ? (
                     <>
                       <OutcomeActions run={run} canWrite={canLearn} />
+                      {canRun && threadId && (
+                        <SaveAsArtifact
+                          thread={threadId}
+                          what={{ source: "run", id: run.id }}
+                          className={messageActionButton}
+                          onSaved={(artifact) =>
+                            openPanel(
+                              "workspace",
+                              openPane(shownView, { kind: "artifact", ref: artifact.id }),
+                            )
+                          }
+                        />
+                      )}
                       {canRun && forkActions?.onFork && (
                         <button
                           type="button"

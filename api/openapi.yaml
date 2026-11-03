@@ -3879,6 +3879,32 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/threads/{id}/artifacts:
+    post:
+      operationId: saveArtifact
+      tags: [threads]
+      summary: Save a message or a scratchpad of the conversation as a versioned artifact
+      description: An agent's answer (source run), a person's message (source message) or a scratchpad. A structured review (humagen.github.review.v1) is kept as its JSON. Saving the same title again makes a new version.
+      x-permission: artifacts:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ArtifactSave"}
+      responses:
+        "201":
+          description: The saved version.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Artifact"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/threads/{id}/memory:
     get:
       operationId: conversationMemory
@@ -7856,6 +7882,13 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/Refusal"}
   schemas:
+    ArtifactSave:
+      type: object
+      required: [source, id]
+      properties:
+        source: {type: string, enum: [run, message, scratchpad]}
+        id: {type: string, minLength: 1}
+        title: {type: string, maxLength: 120}
     RunMemoryUse:
       description: A memory tree a run's instance was given, and what the run kept of its changes.
       type: object

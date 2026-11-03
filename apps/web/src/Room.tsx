@@ -50,6 +50,7 @@ import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { followRoom } from "./roomFollow.ts";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
+import { SaveAsArtifact } from "./SaveAsArtifact.tsx";
 import { ShareDialog } from "./Share.tsx";
 import { useThreadSelection } from "./selection.ts";
 import { mergeTurns } from "./turns.ts";
@@ -864,16 +865,31 @@ export function ThreadRoom({
                   continued={turns[i - 1]?.message?.by === t.message.by}
                   focused={focus === t.message.id}
                   actions={
-                    posts && forkActions?.onFork ? (
-                      <button
-                        type="button"
-                        className={messageActionButton}
-                        aria-label={defaultCopy.forking.fromHere}
-                        title={defaultCopy.forking.fromHere}
-                        onClick={() => forkActions.onFork?.(t.message!.id)}
-                      >
-                        <ForkIcon size={16} />
-                      </button>
+                    posts ? (
+                      <>
+                        <SaveAsArtifact
+                          thread={id}
+                          what={{ source: "message", id: t.message.id }}
+                          className={messageActionButton}
+                          onSaved={(artifact) =>
+                            openPanel(
+                              "workspace",
+                              openPane(shownView, { kind: "artifact", ref: artifact.id }),
+                            )
+                          }
+                        />
+                        {forkActions?.onFork && (
+                          <button
+                            type="button"
+                            className={messageActionButton}
+                            aria-label={defaultCopy.forking.fromHere}
+                            title={defaultCopy.forking.fromHere}
+                            onClick={() => forkActions.onFork?.(t.message!.id)}
+                          >
+                            <ForkIcon size={16} />
+                          </button>
+                        )}
+                      </>
                     ) : undefined
                   }
                   onReply={
@@ -895,6 +911,19 @@ export function ThreadRoom({
                     !th.read_only && t.run.status === "completed" ? (
                       <>
                         <OutcomeActions run={t.run} canWrite={canLearn} />
+                        {posts && (
+                          <SaveAsArtifact
+                            thread={id}
+                            what={{ source: "run", id: t.run.id }}
+                            className={messageActionButton}
+                            onSaved={(artifact) =>
+                              openPanel(
+                                "workspace",
+                                openPane(shownView, { kind: "artifact", ref: artifact.id }),
+                              )
+                            }
+                          />
+                        )}
                         {posts && forkActions?.onFork && (
                           <button
                             type="button"
