@@ -167,7 +167,12 @@ function GitHubContent({ tab, review = "" }: { tab: PaneTab; review?: string }) 
             </>
           )}
         </p>
-        <a className="inline-flex min-h-7 items-center underline pointer-coarse:min-h-11" href={value.subject.html_url} target="_blank" rel="noreferrer">
+        <a
+          className="inline-flex min-h-7 items-center underline pointer-coarse:min-h-11"
+          href={value.subject.html_url}
+          target="_blank"
+          rel="noreferrer"
+        >
           {w.github}
         </a>
       </header>
@@ -232,7 +237,12 @@ function GitHubContent({ tab, review = "" }: { tab: PaneTab; review?: string }) 
               {"workflows" in value &&
                 (value.workflows ?? []).map((run) => (
                   <p key={run.id} className="text-aui-xs">
-                    <a className="inline-flex min-h-7 items-center underline pointer-coarse:min-h-11" href={run.html_url} target="_blank" rel="noreferrer">
+                    <a
+                      className="inline-flex min-h-7 items-center underline pointer-coarse:min-h-11"
+                      href={run.html_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
                       {run.name}
                     </a>
                     : {run.conclusion || run.status}
@@ -279,7 +289,10 @@ function GitHubContent({ tab, review = "" }: { tab: PaneTab; review?: string }) 
           <h3 className="mt-4 font-medium">{w.comments}</h3>
           {value.comments?.map((comment) => (
             <article key={comment.id} className="mt-3 border-t border-aui-border pt-3">
-              <a href={comment.html_url} className="inline-flex min-h-7 items-center text-aui-xs underline pointer-coarse:min-h-11">
+              <a
+                href={comment.html_url}
+                className="inline-flex min-h-7 items-center text-aui-xs underline pointer-coarse:min-h-11"
+              >
                 {comment.user.login}
               </a>
               <Markdown text={comment.body} />

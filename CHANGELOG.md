@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.76.0 (2026-11-03)
+
+### Features
+
+- **automations**: build schedules and signed GitHub event rules (#200) ([e9f4019](https://github.com/urmzd/humagen/commit/e9f4019a441c82e1be1b7cdfff0f0cc663ef45b4))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.75.0...v0.76.0)
+
+
 ## 0.74.0 (2026-11-03)
 
 ### Features

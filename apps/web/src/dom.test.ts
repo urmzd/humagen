@@ -22,6 +22,7 @@ GlobalRegistrator.register({ url: "http://localhost:5173/" });
 await loadTests([
   "/src/github-tab.dom.test.tsx",
   "/src/pull-requests.dom.test.tsx",
+  "/src/automations.dom.test.tsx",
   "/src/email-preferences.dom.test.tsx",
   "/src/activity.dom.test.tsx",
   "/src/wave.dom.test.tsx",

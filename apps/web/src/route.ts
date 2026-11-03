@@ -227,6 +227,7 @@ export type Route =
   /** One of a project's channels, with its shared threads. */
   | { page: "channel"; project: string; channel: string }
   | { page: "schedules"; name?: string }
+  | { page: "automations" }
   | { page: "monitor"; tab: MonitorTab }
   /** The inbox, at a message, at the message an alert raised, or narrowed to one kind. */
   | { page: "inbox"; message?: string; alert?: string; kind?: string; view?: NotificationView }
@@ -276,6 +277,7 @@ const PAGE_TITLES: Record<Page, string> = {
   project: "Project",
   channel: "Channel",
   schedules: "Schedules",
+  automations: "Automations",
   monitor: "Monitor",
   inbox: "Notifications",
   context: "Context",
@@ -445,6 +447,8 @@ export function href(r: Route): string {
     }
     case "channel":
       return `/projects/${r.project === "" ? "~" : enc(r.project)}/channels/${enc(r.channel)}`;
+    case "automations":
+      return "/automations";
     case "schedules":
       return r.name ? `/schedules/${enc(r.name)}` : "/schedules";
     case "monitor":
@@ -726,6 +730,8 @@ function read(pathname: string, search: string): Route {
         message: tab === "inbox" ? (q.get("message") ?? undefined) : undefined,
       };
     }
+    case "automations":
+      return { page: "automations" };
     case "schedules":
       return { page: "schedules", name: a };
     case "monitor":

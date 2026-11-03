@@ -12,6 +12,7 @@ import { AgentSetupWizard } from "./AgentSetup.tsx";
 import { Agents } from "./Agents.tsx";
 import { Assignments } from "./Assignments.tsx";
 import { Audit } from "./Audit.tsx";
+import { Automations } from "./Automations.tsx";
 import type { Run } from "./adapter.ts";
 import { agentHuePath, configureAgentHues } from "./agentHues.ts";
 import {
@@ -1164,6 +1165,16 @@ function Console({
               onOpenProject={() => go({ page: "project", name: route.project, tab: "channels" })}
               onOpenProjects={() => go({ page: "projects" })}
               onOpenThread={openThread}
+            />
+          )}
+          {route.page === "automations" && (
+            <Automations
+              schedules={schedules}
+              agents={agents}
+              projects={projects ?? []}
+              can={can}
+              onChanged={loadSchedules}
+              onSchedule={(name) => go({ page: "schedules", name })}
             />
           )}
           {route.page === "schedules" && (
