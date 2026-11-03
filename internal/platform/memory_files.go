@@ -83,7 +83,7 @@ func (p *Platform) MemoryMounts(run runs.Run) []drive.Mount {
 	for i, pr := range chain {
 		tree := drive.Project(pr.Name)
 		dir := tree.Mount()
-		readOnly := i != len(chain)-1
+		readOnly := i != 0
 		if readOnly {
 			name := pr.Name
 			if name == "" {

@@ -37,6 +37,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, chromium, type Page } from "playwright-core";
 import { defaultCopy } from "../../packages/components/src/copy.ts";
+import { automationScreens } from "./automations.ts";
 import { collect, DESKTOP, judge, LANDSCAPE, PHONE, type Problem, type Rules } from "./checks.ts";
 import { conversationDeletions } from "./deletions.ts";
 import { emailScreens, notificationEmailFixture } from "./email.ts";
@@ -47,7 +48,7 @@ import { usageScreens } from "./observability.ts";
 import { reviewScreens } from "./review.ts";
 import { sidebarParticipants } from "./sidebar-participants.ts";
 import { sidebarScroll } from "./sidebar-scroll.ts";
-import { sidebarViews } from "./sidebar-views.ts";
+import { sidebarViews, wavePreview } from "./sidebar-views.ts";
 import { workspaceScreens } from "./workspace.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -1026,6 +1027,7 @@ function screens(ids: Ids, call: Call): Screen[] {
     { name: "sidebar-scroll", path: "/settings/profile", act: sidebarScroll },
     sidebarParticipants(call, ids.routedChat),
     ...sidebarViews(),
+    wavePreview(`/conversations/${ids.privateChat}`),
     conversationDeletions(call),
     { name: "task", path: `/conversations/${ids.task}` },
     ...chats(ids, call),
@@ -1386,6 +1388,7 @@ function screens(ids: Ids, call: Call): Screen[] {
     ...ideScreens(call),
     ...libraryScreens(call),
     ...workspaceScreens(call),
+    ...automationScreens(),
     ...reviewScreens(call),
     ...usageScreens(),
     ...emailScreens(call),

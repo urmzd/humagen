@@ -8,11 +8,15 @@ import {
   useRef,
   useState,
 } from "react";
+import { AgentInitials } from "./AgentOrb.tsx";
 
 export interface TurnRailEntry {
   /** Matches `data-turn-id` on the turn's element (AgentMessage stamps it). */
   id: string;
+  /** Who said it: an agent's name, or a person's name when `kind` is person. */
   agent: string;
+  /** An agent's answer (the default) or a person's message; picks the preview's mark. */
+  kind?: "agent" | "person";
   /** What the preview card says: the prompt that started the turn, or the answer's first line. */
   preview: string;
   status: TurnStatus;
@@ -289,6 +293,17 @@ export function TurnRail({
           style={{ top: `${((hovered + 0.5) / turns.length) * 100}%` }}
         >
           <span className="flex items-center gap-1.5 text-aui-2xs text-aui-muted">
+            {shown.kind === "person" ? (
+              <span
+                aria-hidden
+                data-mark="person"
+                className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-aui-hover text-[9px] font-medium text-aui-fg"
+              >
+                {(shown.agent.trim()[0] ?? "?").toUpperCase()}
+              </span>
+            ) : (
+              <AgentInitials name={shown.agent} size={16} />
+            )}
             <span className="font-medium text-aui-fg">{shown.agent}</span>
             <span>· {statusWord[shown.status]}</span>
             <span className="ml-auto tabular-nums">

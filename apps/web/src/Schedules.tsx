@@ -92,7 +92,7 @@ function History({ runs, onOpenRun }: { runs: Run[]; onOpenRun?: (id: string) =>
 const copy = defaultCopy.schedules;
 
 /** Create a schedule, or change one. Every field is checked by the server before anything is replaced. */
-function ScheduleForm({
+export function ScheduleForm({
   editing,
   agents,
   projects,
