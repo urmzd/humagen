@@ -1,6 +1,14 @@
 import { messageState, resolveMessage, type UiAction } from "@humagen/core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type PlatformMessage, transport as platform, type Transport, toRequest } from "./mail.ts";
+import {
+  type MailCounts,
+  type MailMark,
+  type MailView,
+  type PlatformMessage,
+  transport as platform,
+  type Transport,
+  toRequest,
+} from "./mail.ts";
 import { within } from "./timeout.ts";
 
 const PAGE = 30;
@@ -61,6 +69,56 @@ export function useHeld(
   return { messages, missing, keep };
 }
 
+/**
+ * What the Notifications badge says: everything unread in the reader's Inbox,
+ * announcements included, the same number the Unread view shows.
+ */
+export const unreadBadge = (counts: { unread: number; updates?: number }): number =>
+  counts.unread + (counts.updates ?? 0);
+
+const VIEWS: readonly string[] = ["inbox", "unread", "hidden", "done"];
+
+/** Whether what is shown is one of the reader's own views, rather than a state. */
+export const isView = (shown: string): shown is MailView => VIEWS.includes(shown);
+
+/**
+ * Whether a message the reader marked leaves the view they are looking at:
+ * hiding or deleting takes it out of every view but Hidden, unhiding out of
+ * Hidden, and reading out of Unread.
+ */
+export function leaves(view: MailView, mark: MailMark): boolean {
+  switch (mark) {
+    case "delete":
+      return true;
+    case "hide":
+      return view !== "hidden";
+    case "unhide":
+      return view === "hidden";
+    case "read":
+      return view === "unread";
+    default:
+      return false;
+  }
+}
+
+/** A message as the reader will see it once a mark lands. */
+export function marked(message: PlatformMessage, mark: MailMark): PlatformMessage {
+  switch (mark) {
+    case "read":
+      return { ...message, unread: false };
+    case "unread":
+      return { ...message, unread: true };
+    case "hide":
+      return { ...message, hidden: true };
+    case "unhide":
+      return { ...message, hidden: false };
+    case "delete":
+      return { ...message, deleted: true };
+    case "restore":
+      return { ...message, deleted: false };
+  }
+}
+
 /** A message as it will look once an action lands, for showing a click before the platform confirms it. */
 export function after(message: PlatformMessage, action: UiAction, by: string): PlatformMessage {
   return resolveMessage(message, action, { by, at: new Date().toISOString() }) as PlatformMessage;
@@ -77,7 +135,7 @@ export function after(message: PlatformMessage, action: UiAction, by: string): P
  */
 export function useInbox(
   kind: string,
-  show: "open" | "resolved" | "all",
+  show: "open" | "resolved" | "all" | MailView,
   signal: unknown,
   via: Transport = platform,
   viewer = "You",
@@ -86,6 +144,23 @@ export function useInbox(
   const [next, setNext] = useState<string | null>(null);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(0);
+  const [counts, setCounts] = useState<MailCounts>({
+    open: 0,
+    unread: 0,
+    updates: 0,
+    inbox: 0,
+    hidden: 0,
+  });
+  const latest = useRef(messages);
+  latest.current = messages;
+  // A mark the platform settled: the first page is read again, as a signal would.
+  const [again, setAgain] = useState(0);
+  const view = isView(show) ? show : undefined;
+  const take = useCallback((c: MailCounts) => {
+    setCounts(c);
+    setOpen(c.open);
+    setUnread(c.unread);
+  }, []);
   const [loading, setLoading] = useState<"first" | "more" | null>("first");
   const [failed, setFailed] = useState(false);
   const [moreFailed, setMoreFailed] = useState(false);
@@ -93,6 +168,7 @@ export function useInbox(
 
   // Both filters are the server's, so together they name what is loaded.
   const key = `${kind}|${show}`;
+  const ask = isView(show) ? { view: show } : { state: show };
   const current = useRef(key);
   const pages = useRef({ key: "", count: 0 });
 
@@ -107,11 +183,18 @@ export function useInbox(
       setMoreFailed(false);
       setLoading("first");
     }
-    within(via.list({ limit: PAGE, state: show, kind: kind || undefined }))
+    within(via.list({ limit: PAGE, ...ask, kind: kind || undefined }))
       .then((page) => {
         if (current.current !== key) return;
         setUnread(page.unread);
         setOpen(page.open);
+        setCounts({
+          open: page.open,
+          unread: page.unread,
+          updates: page.updates ?? 0,
+          inbox: page.inbox ?? 0,
+          hidden: page.hidden ?? 0,
+        });
         setFailed(false);
         if (fresh || pages.current.count <= 1 || page.next === null) {
           setMessages(page.messages);
@@ -128,13 +211,13 @@ export function useInbox(
       .finally(() => {
         if (current.current === key) setLoading((l) => (l === "first" ? null : l));
       });
-  }, [key, signal, via]);
+  }, [key, signal, via, again]);
 
   const more = useCallback(() => {
     if (!next || loading) return;
     setLoading("more");
     setMoreFailed(false);
-    within(via.list({ limit: PAGE, state: show, kind: kind || undefined, before: next }))
+    within(via.list({ limit: PAGE, ...ask, kind: kind || undefined, before: next }))
       .then((page) => {
         if (current.current !== key) return;
         setMessages((old) => {
@@ -191,11 +274,67 @@ export function useInbox(
     [via, viewer],
   );
 
+  /**
+   * Set one of the reader's own marks on messages: shown at once, leaving the
+   * view when the mark takes them out of it, and put back if the platform
+   * says no. Resolves to what the platform did, or null when it refused.
+   */
+  const mark = useCallback(
+    async (ids: string[], what: MailMark) => {
+      if (!via.mark || ids.length === 0) return null;
+      const chosen = new Set(ids);
+      const before = latest.current;
+      setMessages(
+        before
+          .filter((m) => !(chosen.has(m.id) && view && leaves(view, what)))
+          .map((m) => (chosen.has(m.id) ? marked(m, what) : m)),
+      );
+      setProblem(null);
+      try {
+        const done = await within(via.mark(ids, what));
+        take(done.counts);
+        const fresh = new Map(done.messages.map((m) => [m.id, m]));
+        setMessages((all) => all.map((m) => fresh.get(m.id) ?? m));
+        // Brought back from elsewhere: the view reads again to place it.
+        if (what === "restore" || (what === "unhide" && view !== "hidden")) setAgain((n) => n + 1);
+        return done;
+      } catch (e) {
+        setMessages(before);
+        const sorry = "That did not go through.";
+        setProblem(e instanceof Error && e.message ? `${sorry} ${e.message}` : sorry);
+        return null;
+      }
+    },
+    [via, view, take],
+  );
+
+  /** Mark read what is unread in the view being looked at. */
+  const readAll = useCallback(async () => {
+    if (!via.readAll || !view) return null;
+    setProblem(null);
+    try {
+      const done = await within(via.readAll(view, kind || undefined));
+      take(done.counts);
+      setMessages((all) =>
+        view === "unread" ? [] : all.map((m) => (m.unread ? { ...m, unread: false } : m)),
+      );
+      setAgain((n) => n + 1);
+      return done;
+    } catch (e) {
+      const sorry = "That did not go through.";
+      setProblem(e instanceof Error && e.message ? `${sorry} ${e.message}` : sorry);
+      return null;
+    }
+  }, [via, view, kind, take]);
+
   return {
     messages,
     hasMore: next !== null,
     unread,
     open,
+    counts,
+    mark,
+    readAll,
     loading,
     failed,
     moreFailed,

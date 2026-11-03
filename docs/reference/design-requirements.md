@@ -77,6 +77,13 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-050 | A sidebar row previews itself on hover or a long press, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview`, `conversation-wave-preview`) at 390x844 and 1280x800 |
 | DES-053 | A one-time tip teaches search, dismissed once per person | Implemented: `Sidebar.tsx`, `POST /api/marks/tips`; DOM test and `sidebar-tip` screens pass |
 | DES-047 | Skills are slash commands, the only way the console offers them: `/` opens a menu of the skills a message here can name, fuzzy filtered with the match highlighted; `@` offers no skill or `@skill:`, `$` opens nothing, and a posted `$name` or `@skill:name` shows as a `/name` chip | Implemented: `commands.ts`, `tags.ts`, `Composer.tsx`, `ui.tsx` (`Mentioned`), `pkg/threads/tags.go`; web, threads and platform tests pass; `chat-at`, `chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection` screens at 390x844 and 1280x800 |
+| DES-048 | A turn reads as a transcript: words and runs of tool calls in the order they came, each run one line that names what it did, a file written opening in the Workspace, and the reader's messages on the right | Implemented: `packages/core/src/timeline.ts`, `packages/components/src/timeline.ts`, `WorkSteps.tsx`, `ToolLines` for Slack, `Room.tsx` message sides; core, components, adapter, render-slack and web DOM tests pass; `pnpm validate:slack` passes; screen `conversation-timeline` passes at 390x844 and 1280x800 |
+| DES-049 | A finished turn that changed files ends with a card of them: how many and their lines, a Review, and a row per file that opens its changes | Implemented: core `turnChanges`, web `TurnChanges`; core and web DOM tests pass; screen `conversation-timeline` passes at 390x844 and 1280x800 |
+| DES-050 | The Workspace is a pane of tabs beside the conversation: + opens items, tabs close, Expand and Show Two Tabs, tabs in the address, a full-screen sheet on a phone | Implemented: `Workspace.tsx`, `pane.ts`, `Inspector` `expanded`; web, pane and route tests pass; `workspace-pane-split`, `workspace-pane-expanded` and the other Workspace screens pass at 390x844 and 1280x800 |
+| DES-051 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
+| DES-052 | Conversation files, scratchpads, code editing, change review and artifact publication, in one Workspace panel opened from Conversation Settings beside a compact header | Implemented: `WorkspaceFiles.tsx`, `Workspace.tsx`, `ConversationShell.tsx`, `/api/threads/{id}/files`, `GET /api/threads/{id}/sandboxes`; web, route, Go race and confinement suites pass; `conversation-header`, `workspace-*` and `ide-*` screens pass at 390x844 and 1280x800 |
+| DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
+| DES-054 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row says its project, its age or an unread dot, and whether it waits on a person, runs or failed | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
 
 ### DES-001: Working integrations
 
@@ -176,6 +183,74 @@ planned collections, browser, protocol and improvement work from this UI pass.
   the `sidebar-scroll` screen fixture, checks real wheel input, long lists,
   fixed header/account geometry and independent content scroll in Chromium at
   phone and desktop widths. Long content is inserted only for the layout test.
+
+### DES-052: Conversation files, scratchpads and the Workspace
+
+- Give conversation files, scratchpads, previews and change review one native
+  workbench with direct header access and reloadable selections.
+- Share the bounded scratch directory with agent file tools. Require current
+  conversation access, explicit saves and content-hash conflict detection.
+- Preserve unsaved drafts across drawer changes. Show busy, denied, binary,
+  stale and failed operations honestly. Explain scratch retention.
+- Support code editing, imported unified patches and contextual review comments
+  that prepare the composer. Publish exact saved revisions as immutable
+  deliverables, and edit saved text artifacts through a working copy.
+- Implementation: `WorkspaceFiles.tsx`, reusable `CodeEditor` and `ChangeReview`,
+  and the confined `/api/threads/{id}/files` API. See
+  [conversation-workspace.md](../architecture/conversation-workspace.md#files-scratchpads-and-change-review).
+- Evidence: 739 console tests pass, including editor shortcuts, selected-code
+  feedback, unsaved draft navigation, immutable copies, active-run refusal,
+  conflict recovery and scratch-only sharing consent. Platform race tests cover
+  concurrent saves, isolated copyback and publication consent. Client typecheck
+  and 21 transport tests pass. `scripts/screens/ide.ts` verifies five real API
+  flows: editing/reload, patch comments, scratchpad publication, stale saves and
+  inert HTML previews. All 27 light/dark captures pass at 320, 390, 768 and
+  1280px widths, with tablet and narrow-phone reflow. Captures are reproducible
+  under `.screens-ide/`, `.screens-ide-dark/` and `.screens-ide-focused/`.
+  Full platform, HTTP, artifact and thread race suites pass, including the
+  required-query confinement sweeps and real-file mutation canaries. Go lint
+  reports zero issues; console, renderer, web and client typechecks and the
+  production console build pass.
+
+#### Save as Artifact and diffs
+
+- A message (a structured review kept as its JSON), a scratchpad or a file
+  saves as a versioned artifact and opens in a Workspace tab. Artifact
+  versions and a file's saved and edited state diff side by side on a
+  desktop and in one column on a phone, with review findings pinned to
+  their lines.
+- Evidence: `TestSaveAsArtifactKeepsAnswersMessagesAndScratchpadsAsVersions`,
+  `TestAStructuredReviewIsToldFromText`, the HTTP contract,
+  `artifact-save.dom.test.tsx`, `review-pins.test.ts`, `code-diff.test.ts`,
+  and the `workspace-diff` and `workspace-save-message` screens.
+
+#### Scratchpads
+
+- A conversation has up to 50 named scratchpads, created, renamed, deleted
+  and edited in the Workspace, read by its agents as `scratch:<name>`.
+- Evidence: `pkg/scratchpads` store tests (versions, names, bounds, tenant
+  and conversation isolation, deletion with the conversation), platform and
+  HTTP contract and confinement tests, `scratchpads.dom.test.tsx` and the
+  `workspace-scratchpads` screens.
+
+#### One Workspace panel
+
+- Files, Context and Activity leave the conversation header for Conversation
+  Settings. The header keeps the people facepile, Share and Conversation
+  Settings: icon-sized controls, one 4px gap, no side padding, an accessible
+  name and a tooltip on each, and Share's label only on a wide conversation.
+- Workspace holds the session's items as tabs: Sandboxes (the session sandbox
+  and a nested sandbox per agent run), Files and Artifacts. Each section and
+  run selection has an address. It is the shared inspector on a desktop and a
+  sheet on a phone.
+- Evidence: `workspace-hub.dom.test.tsx` (sections, nesting, mounts, files a
+  run left, refused copyback, empty and failed states, opening a file, a run
+  and an artifact), `workspace.dom.test.tsx` (the menu), `route.test.ts`,
+  `pkg/runs/sandbox_test.go` (merge, bounds, write-through, tenant),
+  `internal/platform/workspace_files_test.go` (isolated copyback and unisolated
+  writes are recorded; another tenant gets 404) and the HTTP contract and
+  confinement sweeps. Screens: `conversation-header`, `workspace-menu`,
+  `workspace-sandboxes` and `workspace-artifacts`.
 
 ## Review and implementation evidence
 
@@ -317,6 +392,38 @@ the Storybook stories, which were removed on October 30, 2026.
 The concurrent full console run reports 636/637 passing; its remaining failure is
 `the tree at depth 4 indents one level at 390px, and deeper rows say where they sit`
 (`ok(indents.length > 0)`) in the other session's project layout work.
+
+### DES-053: Notification views and a reader's own marks
+
+Every notification stays in one list no longer. The page opens on **Inbox**,
+what is open for the reader and not hidden by them, read or not, unread rows
+with a dot and stronger weight. A segmented control beside it switches to
+**Unread**, **Hidden** (the hidden box) and **Done** (resolved or dismissed for
+everyone), each with its count; Done is not counted, since no counter keeps
+what is settled. The view is in the address (`/notifications?view=hidden`;
+the Inbox is left out). Rows carry no state word: the view says it.
+
+Opening a message marks it read. Each row offers Mark Read or Unread, Hide or
+Unhide and Delete on hover and keyboard focus, and the reading pane offers the
+same. Rows are picked with a checkbox, or `x` on the focused row, and the
+toolbar then marks them read or unread, hides, unhides or deletes them; with
+nothing picked it offers Mark All Read for the view. Hide and Delete ask no
+confirmation: a toast says what moved and offers Undo for eight seconds.
+
+Each mark is the reader's own (`pkg/inbox`: `mark.Hide`, `mark.Deleted`):
+nobody else's inbox, views or counts change, and a shared message is never
+removed from the record. Delete takes it out of every view of the reader's;
+Restore brings it back. A run's open question can be hidden but not deleted.
+The sidebar badge is the Unread view's count, announcements included, and what was hidden or deleted leaves
+Home's and Slack Home's Needs you and its total, which read the same open
+state. API: `view` on `GET /api/inbox`, `POST /api/inbox/marks` (1 to 200
+ids), `POST /api/inbox/read-all` (the newest 600), with `inbox` and `hidden`
+in the counts. Acceptance: `TestViewsArePerReader`, `TestMarksStayInTheirTenant`,
+`TestViewsAreBounded`, `TestCountsAgreeWithAScan` (hides, deletes and restores
+among its random steps), `TestInboxMarksArePerReader`,
+`notification-views.dom.test.tsx`, the route tests for `view`, and the
+`notifications-inbox`, `notifications-hidden` and `notifications-bulk`
+captures at phone and desktop width.
 
 ### DES-011: Docked conversation workspace
 
@@ -617,7 +724,7 @@ API. The open drawer uses its own bounds checks rather than page-content gutters
 
 ### DES-022: Conversation lifecycle in the consolidated workspace
 
-Conversation actions offer Pin, Rename, Archive and Delete. Since DES-049 the
+Conversation actions offer Pin, Rename, Archive and Delete. Since DES-054 the
 sidebar's Archive is the reader's own and is undone from its Archived view;
 Delete still queues the conversation for an admin. Existing participant
 identity, project pins and keyboard focus are retained when rows move or disappear.
@@ -778,7 +885,7 @@ approval, disabled early approval, restoration, refusal and the combined menu.
 - A run of steps is one quiet line with an icon that says what they did
   ("Read plan.md", "Searched the web, read files"). Open, each step shows the
   input it was given and the output it returned. A step waiting on a person
-  or one that failed keeps its group open.
+  keeps its group open; a failed one is counted in the line (DES-048).
 - A finished turn folds its steps under one "Worked" line.
 - Acceptance: a turn that read, wrote, then answered shows the read and the
   write between the words they came between, each with its input and output.
@@ -1244,7 +1351,7 @@ and the posted text); `go test -race ./pkg/threads ./internal/platform`
 `TestSkillsAndMentionKinds` for the aliases); `make screens` with `chat-at`,
 `chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection`.
 
-### DES-049: Recents, Pinned, Projects and Archived
+### DES-054: Recents, Pinned, Projects and Archived
 
 Owner request: a flat list of conversations across projects, each row its
 title, its project under it and its age or an unread dot, with Pinned on
@@ -1343,3 +1450,52 @@ Rules:
 
 Evidence: `sidebar-views.dom.test.tsx` (the tip test); `make screens` with
 `sidebar-tip`.
+
+### DES-048: A turn as a transcript
+
+- A turn is an ordered list of segments built from the stream
+  (`timeline` in `@humagen/core`): text, thinking, runs of tool calls between
+  two pieces of text, and calls to other agents. Order comes from `Task.at`
+  and `Thought.at`, set by the reducer when each first appears, so it holds
+  across model steps and across a replay from the journal.
+- A run of tool calls is one muted line, written from the calls' names and
+  arguments alone (`toolsLine`): a lone call says what it was pointed at
+  ("Read docker.go", "Checked urmzd/humagen#178", "Ran go test ./..."), one
+  kind counts ("Read 3 files", "Ran 2 commands"), a mix names each kind in
+  order ("Read 2 files, ran a command"), and more than three kinds count
+  calls ("Used 6 tools"). A failed call adds "1 failed" in the same tone. A
+  call waiting on a person adds "waiting for you" and does not animate.
+- While a call runs, its run says "Running <tool>".
+- Open, each call is one compact row: an icon for its kind, its name, and
+  its command or target in muted monospace, cut with an ellipsis, then its
+  duration. A row opens to its arguments (the command, or indented JSON) and
+  its result, cut to ten lines with Show More.
+- A call that writes a workspace file reads "Updated <path> +a -b",
+  "Created <path> +a" or, when the earlier content is not known, "Wrote
+  <path> +a". It links to `/conversations/<id>/workspace?file=<path>&tab=changes`.
+- A connector action the runtime hands back to the model as "action failed:"
+  text is a failed call.
+- Slack draws each run as one context line, in order, at most eight a
+  message, the rest counted in the last.
+- In a conversation the reader's own messages sit on the right as a compact
+  bubble without a mark, decided by comparing the author with the signed-in
+  person, so another person's are on the left under their mark and name. A
+  person's consecutive messages show their name once.
+- Acceptance: a turn of words, two reads, words, a file written, an answer
+  shows those in that order, the reads as "Read 2 files", the file as a link
+  to its Changes, and Slack shows the same runs as context lines.
+
+### DES-049: What a turn changed
+
+- A finished turn that created or edited workspace files ends with a card
+  under it: "N files changed +a −b", open by default and folding to that line.
+- Each file is one row: an icon for its type, its name, its folder in muted
+  text cut from the start, and its lines added and removed. A row opens the
+  file's Changes in the Workspace (`/conversations/<id>/workspace?file=<path>&tab=changes`).
+- Review opens the Workspace at the turn's first changed file, since the
+  Workspace reviews one file at a time.
+- The totals come from the same detection as each call's own line
+  (`fileEdits`), one row per path: a file written whole more than once counts
+  from what the turn started with to what it left; edits add up.
+- No card while the turn runs, or when it changed no file.
+- The chat bar's prompt is "Ask anything, @ to mention, / for actions".

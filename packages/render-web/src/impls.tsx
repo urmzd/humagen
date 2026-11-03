@@ -2,6 +2,8 @@ import { TIME_TOKEN, type Tone } from "@humagen/core";
 import type { PrimitiveImpls, PrimitiveProps } from "@humagen/primitives";
 import {
   Children,
+  createContext,
+  createElement,
   isValidElement,
   type ReactNode,
   useContext,
@@ -91,6 +93,16 @@ function textOf(node: ReactNode): string {
 
 const CITE = /^\[?(\d{1,3})\]?$/;
 
+/** The first Markdown heading level, for documents embedded below a page title. */
+export const MarkdownHeadingContext = createContext<1 | 2 | 3 | 4 | 5 | 6>(1);
+
+function markdownHeading(level: number): Components["h1"] {
+  return function MarkdownHeading({ node: _node, children, ...props }) {
+    const base = useContext(MarkdownHeadingContext);
+    return createElement(`h${Math.min(6, base + level - 1)}`, props, children);
+  };
+}
+
 /**
  * True when a link leaves the page's site: an absolute URL on another origin.
  * Relative links, fragments and same-origin URLs stay in the tab.
@@ -128,6 +140,12 @@ const linkRenderer: Components["a"] = ({ href, children }) => {
 
 const markdownComponents: Components = {
   a: linkRenderer,
+  h1: markdownHeading(1),
+  h2: markdownHeading(2),
+  h3: markdownHeading(3),
+  h4: markdownHeading(4),
+  h5: markdownHeading(5),
+  h6: markdownHeading(6),
   pre: ({ children }) => {
     const code = Children.toArray(children)[0];
     if (isValidElement<{ className?: string; children?: ReactNode }>(code)) {

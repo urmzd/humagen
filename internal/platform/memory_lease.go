@@ -51,7 +51,22 @@ func (m *runMemory) Load(ctx context.Context, inst isolation.Instance) error {
 	m.mu.Lock()
 	m.loaded, m.record, m.installed = true, run, installed
 	m.mu.Unlock()
+	uses := make([]runs.MemoryUse, 0, len(installed))
+	for _, in := range installed {
+		u := memoryUse(in.Mount)
+		u.Version, u.Files = in.Version, len(in.Entries)
+		uses = append(uses, u)
+	}
+	if err := m.p.Runs.RecordMemory(m.tenant, m.run, uses); err != nil {
+		m.p.log.Info("platform: the run's memory record was not kept", "run", m.run, "error", err)
+	}
 	return nil
+}
+
+// memoryUse is the record of a mounted tree, before what was installed or
+// kept is known.
+func memoryUse(m drive.Mount) runs.MemoryUse {
+	return runs.MemoryUse{Kind: string(m.Tree.Kind), Person: m.Tree.Person, Project: m.Tree.Project, Agent: m.Tree.Agent, Dir: m.Dir, ReadOnly: m.ReadOnly}
 }
 
 // Save implements isolation.Files: it keeps what the run changed in its
@@ -64,6 +79,15 @@ func (m *runMemory) Save(ctx context.Context, inst isolation.Instance) error {
 		return nil
 	}
 	done, err := m.p.FinishMemory(ctx, run, installed, instanceMemory{ctx: ctx, inst: inst})
+	uses := make([]runs.MemoryUse, 0, len(done))
+	for _, f := range done {
+		u := memoryUse(f.Mount)
+		u.Committed, u.Proposals, u.Dropped, u.Finished = f.Version, f.Proposals, len(f.Dropped), true
+		uses = append(uses, u)
+	}
+	if rerr := m.p.Runs.RecordMemory(m.tenant, m.run, uses); rerr != nil {
+		m.p.log.Info("platform: the run's memory record was not kept", "run", m.run, "error", rerr)
+	}
 	for _, f := range done {
 		if len(f.Dropped) > 0 {
 			m.p.log.Info("platform: memory changes a run made were not kept", "run", run.ID, "dir", f.Mount.Dir, "paths", f.Dropped)

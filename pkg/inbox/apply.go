@@ -57,7 +57,11 @@ func (x *tx) apply(c Change) (*Message, bool, error) {
 	if m == nil || err != nil {
 		return nil, false, err
 	}
-	if m.Broadcast && (c.What == DidDismiss || c.What == DidSnooze || c.What == DidUnhide) {
+	switch c.What {
+	case DidHide, DidUnhide, DidDelete, DidRestore:
+		return m, false, x.setAside(m, c)
+	}
+	if m.Broadcast && (c.What == DidDismiss || c.What == DidSnooze) {
 		return m, false, x.hideFor(m, c)
 	}
 	switch c.What {
@@ -90,10 +94,10 @@ func (x *tx) apply(c Change) (*Message, bool, error) {
 		if k.Read == (c.What == MarkRead) {
 			return m, false, nil
 		}
-		wasOut := isOut(m, k)
+		was := k
 		k.Read = c.What == MarkRead
 		x.putMark(m.ID, k)
-		if err := x.remark(m, k, wasOut); err != nil {
+		if err := x.remark(m, was, k); err != nil {
 			return nil, false, err
 		}
 		x.record(m, c)
@@ -178,6 +182,7 @@ func (x *tx) raise(c Change) (*Message, bool, error) {
 	m := c.Raised.clone()
 	m.ID, m.reminded, m.changes = id, false, 0
 	m.Tenant, m.At, m.UpdatedAt, m.State, m.Unread, m.Hidden, m.Deliveries, m.SnoozedUntil = x.tenant, c.At, c.At, Open, false, false, nil, time.Time{}
+	m.Deleted = false
 	for i := range m.Parts {
 		m.Parts[i].ID = "p" + strconv.Itoa(i+1)
 		m.Parts[i].Actions, m.Parts[i].Outcome = nil, nil
@@ -218,12 +223,11 @@ func (x *tx) restate(m *Message, st State, until time.Time) error {
 	return x.join(m)
 }
 
-// hideFor records one reader dismissing, snoozing or unhiding a broadcast
-// for themselves. It changes nothing anyone else sees, so it tells no
-// watcher. A broadcast already closed for everyone, a dismiss or snooze of
-// one the reader dismissed, a snooze to the time it is already snoozed
-// until, an unhide of one the reader never set aside, or a change with no
-// reader, is not recorded.
+// hideFor records one reader dismissing or snoozing a broadcast for
+// themselves. It changes nothing anyone else sees, so it tells no watcher. A
+// broadcast already closed for everyone, a dismiss or snooze of one the
+// reader dismissed, a snooze to the time it is already snoozed until, or a
+// change with no reader, is not recorded.
 func (x *tx) hideFor(m *Message, c Change) error {
 	if c.By == "" || settled(m) {
 		return nil
@@ -232,30 +236,86 @@ func (x *tx) hideFor(m *Message, c Change) error {
 	if err != nil {
 		return err
 	}
-	wasOut := isOut(m, k)
-	if c.What == DidUnhide {
+	was := k
+	if k.Hide != nil && k.Hide.State == Dismissed {
+		return nil
+	}
+	h := hide{State: Dismissed}
+	if c.What == DidSnooze {
+		h = hide{State: Snoozed, Until: c.Until}
+	}
+	if k.Hide != nil && k.Hide.State == h.State && k.Hide.Until.Equal(h.Until) {
+		return nil
+	}
+	k.Hide = &h
+	return x.remarked(m, c, was, k)
+}
+
+// setAside records one reader hiding, unhiding, deleting or restoring a
+// message for themselves, in any state. It changes nothing anyone else
+// sees, so it tells no watcher. A change that leaves their marks as they
+// were, or that names no reader, is not recorded.
+func (x *tx) setAside(m *Message, c Change) error {
+	if c.By == "" {
+		return nil
+	}
+	k, err := x.markOf(m.ID, c.By)
+	if err != nil {
+		return err
+	}
+	was := k
+	switch c.What {
+	case DidHide:
+		if k.Hide != nil && k.Hide.State == Dismissed {
+			return nil
+		}
+		k.Hide = &hide{State: Dismissed}
+	case DidUnhide:
 		if k.Hide == nil {
 			return nil
 		}
 		k.Hide = nil
-	} else {
-		if k.Hide != nil && k.Hide.State == Dismissed {
+	case DidDelete:
+		if k.Deleted {
 			return nil
 		}
-		h := hide{State: Dismissed}
-		if c.What == DidSnooze {
-			h = hide{State: Snoozed, Until: c.Until}
-		}
-		if k.Hide != nil && k.Hide.State == h.State && k.Hide.Until.Equal(h.Until) {
+		k.Deleted = true
+	case DidRestore:
+		if !k.Deleted {
 			return nil
 		}
-		k.Hide = &h
+		k.Deleted = false
 	}
+	return x.remarked(m, c, was, k)
+}
+
+// remarked writes one reader's changed marks, the counts and the index of
+// what they hid with them, and records the change.
+func (x *tx) remarked(m *Message, c Change, was, k mark) error {
 	x.putMark(m.ID, k)
-	if err := x.remark(m, k, wasOut); err != nil {
+	if err := x.remark(m, was, k); err != nil {
+		return err
+	}
+	if err := x.indexHidden(m, k); err != nil {
 		return err
 	}
 	x.record(m, c)
+	return nil
+}
+
+// indexHidden keeps the "h:" record of a message for one reader while they
+// have it hidden and not deleted, so their Hidden view is counted without
+// reading every message.
+func (x *tx) indexHidden(m *Message, k mark) error {
+	key := hiddenKey(k.Subject, m.ID)
+	if k.Hide != nil && !k.Deleted {
+		x.put(key, hiddenRec{Sig: signature(m), Rep: keptRep(m), Until: k.Hide.Until})
+		return nil
+	}
+	if _, err := x.raw(key); err != nil {
+		return err
+	}
+	x.del(key)
 	return nil
 }
 
@@ -277,7 +337,8 @@ func stateFor(m *Message, k mark, now time.Time) (st State, until time.Time, own
 // view is a message as one reader sees it.
 func view(m *Message, k mark, now time.Time) Message {
 	out := m.clone()
-	out.State, out.SnoozedUntil, out.Hidden = stateFor(m, k, now)
+	out.State, out.SnoozedUntil, _ = stateFor(m, k, now)
+	out.Hidden, out.Deleted = hiddenFor(k, now), k.Deleted
 	out.Unread = !k.Read
 	return out
 }

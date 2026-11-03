@@ -727,6 +727,9 @@ button.humagen-tick:focus-visible {
     flex-shrink: 0;
   }
   .humagen-inspector-dock > .humagen-inspector[data-wide] { width: min(44rem, 42vw); }
+  /* Expanded, the Workspace pane fills the page beside the sidebar. */
+  .humagen-inspector-dock:has(> .humagen-inspector[data-expanded][open]) { width: 100%; flex-shrink: 1; }
+  .humagen-inspector-dock > .humagen-inspector[data-expanded] { width: 100%; max-width: none; }
   .humagen-inspector-dock > .humagen-inspector {
     border: var(--aui-stroke);
     border-radius: 0.75rem;
@@ -1119,7 +1122,7 @@ body {
 }
 
 /*
- * A conversation row's dot (DES-049). Waiting on a person is colored and
+ * A conversation row's dot (DES-054). Waiting on a person is colored and
  * still; running is a ring that breathes slowly; a failed reply is solid
  * red; unread is the accent, solid and still.
  */

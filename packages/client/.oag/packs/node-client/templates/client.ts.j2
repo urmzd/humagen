@@ -334,6 +334,7 @@ export class ApiClient {
     return response.data;
   }
 {% for op in operations %}
+{% set request_path = "_requestPath" if op.query_params | selectattr("name", "equalto", "path") | list | length > 0 else "path" %}
 
 {% if op.description %}
   /** {{ op.description | escape_jsdoc }} */
@@ -346,12 +347,12 @@ export class ApiClient {
 {% if op.kind == "standard" %}
   async {{ op.method_name }}({{ op.params_signature }}): Promise<{{ op.return_type }}> {
 {% if op.has_path_params or op.has_query_params %}
-    let path = "{{ op.path }}";
+    let {{ request_path }} = "{{ op.path }}";
 {% for param in op.path_params %}
-    path = path.replace("{{ "{" }}{{ param.original_name }}{{ "}" }}", encodeURIComponent(String({{ param.name }})));
+    {{ request_path }} = {{ request_path }}.replace("{{ "{" }}{{ param.original_name }}{{ "}" }}", encodeURIComponent(String({{ param.name }})));
 {% endfor %}
 {% else %}
-    const path = "{{ op.path }}";
+    const {{ request_path }} = "{{ op.path }}";
 {% endif %}
 {% if op.has_query_params %}
     const _q = new URLSearchParams();
@@ -371,7 +372,7 @@ export class ApiClient {
 {% endif %}
 {% endfor %}
     const _qs = _q.toString();
-    if (_qs) path += `?${_qs}`;
+    if (_qs) {{ request_path }} += `?${_qs}`;
 {% endif %}
 {% if op.has_header_params %}
     const _hdr: Record<string, string> = {};
@@ -379,7 +380,7 @@ export class ApiClient {
       if (v !== undefined && v !== null) _hdr[k] = String(v);
     }
 {% endif %}
-    return this.request<{{ op.return_type }}>("{{ op.http_method }}", path, {
+    return this.request<{{ op.return_type }}>("{{ op.http_method }}", {{ request_path }}, {
 {% if op.has_body %}
       body,
       contentType: "{{ op.body_content_type }}",
@@ -400,12 +401,12 @@ export class ApiClient {
 
   async {{ op.method_name }}Raw({{ op.params_signature }}): Promise<ApiResponse<{{ op.return_type }}>> {
 {% if op.has_path_params or op.has_query_params %}
-    let path = "{{ op.path }}";
+    let {{ request_path }} = "{{ op.path }}";
 {% for param in op.path_params %}
-    path = path.replace("{{ "{" }}{{ param.original_name }}{{ "}" }}", encodeURIComponent(String({{ param.name }})));
+    {{ request_path }} = {{ request_path }}.replace("{{ "{" }}{{ param.original_name }}{{ "}" }}", encodeURIComponent(String({{ param.name }})));
 {% endfor %}
 {% else %}
-    const path = "{{ op.path }}";
+    const {{ request_path }} = "{{ op.path }}";
 {% endif %}
 {% if op.has_query_params %}
     const _q = new URLSearchParams();
@@ -425,7 +426,7 @@ export class ApiClient {
 {% endif %}
 {% endfor %}
     const _qs = _q.toString();
-    if (_qs) path += `?${_qs}`;
+    if (_qs) {{ request_path }} += `?${_qs}`;
 {% endif %}
 {% if op.has_header_params %}
     const _hdr: Record<string, string> = {};
@@ -433,7 +434,7 @@ export class ApiClient {
       if (v !== undefined && v !== null) _hdr[k] = String(v);
     }
 {% endif %}
-    return this.rawRequest<{{ op.return_type }}>("{{ op.http_method }}", path, {
+    return this.rawRequest<{{ op.return_type }}>("{{ op.http_method }}", {{ request_path }}, {
 {% if op.has_body %}
       body,
       contentType: "{{ op.body_content_type }}",
@@ -454,12 +455,12 @@ export class ApiClient {
 {% elif op.kind == "sse" %}
   async *{{ op.method_name }}({{ op.params_signature }}): AsyncGenerator<SSEEvent<{{ op.return_type }}>> {
 {% if op.has_path_params or op.has_query_params %}
-    let path = "{{ op.path }}";
+    let {{ request_path }} = "{{ op.path }}";
 {% for param in op.path_params %}
-    path = path.replace("{{ "{" }}{{ param.original_name }}{{ "}" }}", encodeURIComponent(String({{ param.name }})));
+    {{ request_path }} = {{ request_path }}.replace("{{ "{" }}{{ param.original_name }}{{ "}" }}", encodeURIComponent(String({{ param.name }})));
 {% endfor %}
 {% else %}
-    const path = "{{ op.path }}";
+    const {{ request_path }} = "{{ op.path }}";
 {% endif %}
 {% if op.has_query_params %}
     const _q = new URLSearchParams();
@@ -479,7 +480,7 @@ export class ApiClient {
 {% endif %}
 {% endfor %}
     const _qs = _q.toString();
-    if (_qs) path += `?${_qs}`;
+    if (_qs) {{ request_path }} += `?${_qs}`;
 {% endif %}
     let url = `${this.baseUrl}${path}`;
 {% if op.has_header_params %}
@@ -507,12 +508,12 @@ export class ApiClient {
 {% elif op.kind == "void" %}
   async {{ op.method_name }}({{ op.params_signature }}): Promise<void> {
 {% if op.has_path_params or op.has_query_params %}
-    let path = "{{ op.path }}";
+    let {{ request_path }} = "{{ op.path }}";
 {% for param in op.path_params %}
-    path = path.replace("{{ "{" }}{{ param.original_name }}{{ "}" }}", encodeURIComponent(String({{ param.name }})));
+    {{ request_path }} = {{ request_path }}.replace("{{ "{" }}{{ param.original_name }}{{ "}" }}", encodeURIComponent(String({{ param.name }})));
 {% endfor %}
 {% else %}
-    const path = "{{ op.path }}";
+    const {{ request_path }} = "{{ op.path }}";
 {% endif %}
 {% if op.has_query_params %}
     const _q = new URLSearchParams();
@@ -532,7 +533,7 @@ export class ApiClient {
 {% endif %}
 {% endfor %}
     const _qs = _q.toString();
-    if (_qs) path += `?${_qs}`;
+    if (_qs) {{ request_path }} += `?${_qs}`;
 {% endif %}
 {% if op.has_header_params %}
     const _hdr: Record<string, string> = {};
@@ -540,7 +541,7 @@ export class ApiClient {
       if (v !== undefined && v !== null) _hdr[k] = String(v);
     }
 {% endif %}
-    await this.request<void>("{{ op.http_method }}", path, {
+    await this.request<void>("{{ op.http_method }}", {{ request_path }}, {
 {% if op.has_body %}
       body,
       contentType: "{{ op.body_content_type }}",
@@ -561,12 +562,12 @@ export class ApiClient {
 
   async {{ op.method_name }}Raw({{ op.params_signature }}): Promise<ApiResponse<void>> {
 {% if op.has_path_params or op.has_query_params %}
-    let path = "{{ op.path }}";
+    let {{ request_path }} = "{{ op.path }}";
 {% for param in op.path_params %}
-    path = path.replace("{{ "{" }}{{ param.original_name }}{{ "}" }}", encodeURIComponent(String({{ param.name }})));
+    {{ request_path }} = {{ request_path }}.replace("{{ "{" }}{{ param.original_name }}{{ "}" }}", encodeURIComponent(String({{ param.name }})));
 {% endfor %}
 {% else %}
-    const path = "{{ op.path }}";
+    const {{ request_path }} = "{{ op.path }}";
 {% endif %}
 {% if op.has_query_params %}
     const _q = new URLSearchParams();
@@ -586,7 +587,7 @@ export class ApiClient {
 {% endif %}
 {% endfor %}
     const _qs = _q.toString();
-    if (_qs) path += `?${_qs}`;
+    if (_qs) {{ request_path }} += `?${_qs}`;
 {% endif %}
 {% if op.has_header_params %}
     const _hdr: Record<string, string> = {};
@@ -594,7 +595,7 @@ export class ApiClient {
       if (v !== undefined && v !== null) _hdr[k] = String(v);
     }
 {% endif %}
-    return this.rawRequest<void>("{{ op.http_method }}", path, {
+    return this.rawRequest<void>("{{ op.http_method }}", {{ request_path }}, {
 {% if op.has_body %}
       body,
       contentType: "{{ op.body_content_type }}",

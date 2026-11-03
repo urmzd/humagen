@@ -7,12 +7,15 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // What Count reads is kept as changes apply, in the same write as the change:
 // the messages open for everyone, in buckets of messages that every reader
 // is shown alike ("b:"), with how many of each bucket each reader has set
-// aside ("o:"). A count adds up buckets, never reading a message that is
+// aside ("o:": read, hidden or deleted) and how many they hid or deleted
+// ("s:"). A count adds up buckets, never reading a message that is
 // settled, and asks who may see a bucket once, of a message that stands for
 // all of it.
 //
@@ -95,23 +98,41 @@ func keptRep(m *Message) keptMessage {
 	return keep(&r)
 }
 
-// isOut reports whether a reader has set a message aside: read it, or hid
-// or snoozed their own copy of a broadcast.
+// isOut reports whether a reader has set a message aside, so it is not
+// unread for them: read it, hid it (or snoozed their own copy of a
+// broadcast) or deleted it. Only a broadcast was hidden before a reader
+// could hide any message, so the count of older records stands.
 func isOut(m *Message, k mark) bool {
-	return k.Read || (m.Broadcast && k.Hide != nil)
+	return k.Read || k.Hide != nil || k.Deleted
 }
+
+// isAside reports whether a message has left a reader's Inbox by their own
+// hand: hidden, snoozed for themselves, or deleted.
+func isAside(k mark) bool { return k.Hide != nil || k.Deleted }
 
 // out moves one reader's count of what they set aside in a bucket.
 func (x *tx) out(subject, sig string, by int) error {
+	return x.tally(outKey(subject, sig), by)
+}
+
+// aside moves one reader's count of what they hid or deleted in a bucket.
+func (x *tx) aside(subject, sig string, by int) error {
+	return x.tally(asideKey(subject, sig), by)
+}
+
+// tally moves one reader's counter. It never goes below zero: a mark kept
+// before its counter was (a broadcast hidden before "s:" counted it) leaves
+// nothing to take away.
+func (x *tx) tally(key string, by int) error {
 	var o outRec
-	if _, err := x.get(outKey(subject, sig), &o); err != nil {
+	if _, err := x.get(key, &o); err != nil {
 		return err
 	}
-	if o.N += by; o.N == 0 {
-		x.del(outKey(subject, sig))
+	if o.N += by; o.N <= 0 {
+		x.del(key)
 		return nil
 	}
-	x.put(outKey(subject, sig), o)
+	x.put(key, o)
 	return nil
 }
 
@@ -146,6 +167,11 @@ func (x *tx) join(m *Message) error {
 		for _, k := range marks {
 			if isOut(m, k) {
 				if err := x.out(k.Subject, sig, 1); err != nil {
+					return err
+				}
+			}
+			if isAside(k) {
+				if err := x.aside(k.Subject, sig, 1); err != nil {
 					return err
 				}
 			}
@@ -186,6 +212,11 @@ func (x *tx) leave(m *Message) error {
 					return err
 				}
 			}
+			if isAside(k) {
+				if err := x.aside(k.Subject, sig, -1); err != nil {
+					return err
+				}
+			}
 			if k.Hide != nil {
 				x.ownSnooze(k.Subject, m.ID, sig, time.Time{})
 			}
@@ -194,21 +225,20 @@ func (x *tx) leave(m *Message) error {
 	return nil
 }
 
-// remark brings the count up to date after one reader's own mark on a
-// message changed: wasOut is whether the message was set aside for them
-// before.
-func (x *tx) remark(m *Message, k mark, wasOut bool) error {
+// remark brings the count up to date after one reader's own marks on a
+// message changed from was to k.
+func (x *tx) remark(m *Message, was, k mark) error {
 	if m.State != Open {
 		return nil
 	}
 	sig := signature(m)
-	switch now := isOut(m, k); {
-	case now && !wasOut:
-		if err := x.out(k.Subject, sig, 1); err != nil {
+	if by := shift(isOut(m, was), isOut(m, k)); by != 0 {
+		if err := x.out(k.Subject, sig, by); err != nil {
 			return err
 		}
-	case !now && wasOut:
-		if err := x.out(k.Subject, sig, -1); err != nil {
+	}
+	if by := shift(isAside(was), isAside(k)); by != 0 {
+		if err := x.aside(k.Subject, sig, by); err != nil {
 			return err
 		}
 	}
@@ -218,6 +248,17 @@ func (x *tx) remark(m *Message, k mark, wasOut bool) error {
 	}
 	x.ownSnooze(k.Subject, m.ID, sig, until)
 	return nil
+}
+
+// shift is how a counter moves when a mark goes from was to now.
+func shift(was, now bool) int {
+	switch {
+	case now && !was:
+		return 1
+	case was && !now:
+		return -1
+	}
+	return 0
 }
 
 // count adds up what is open for a reader: each bucket they are shown, less
@@ -251,18 +292,35 @@ func (x *tx) count(f filter) (Counts, error) {
 		}
 		out[it.key[len(outPrefix(f.Reader)):]] = o.N
 	}
+	asides, err := x.list(asidePrefix(f.Reader), maxBuckets)
+	if err != nil {
+		return c, err
+	}
+	aside := make(map[string]int, len(asides))
+	for _, it := range asides {
+		var o outRec
+		if err := unmarshal(it, &o); err != nil {
+			return c, err
+		}
+		aside[it.key[len(asidePrefix(f.Reader)):]] = o.N
+	}
 	for h, b := range buckets {
 		rep := b.Rep.message("")
 		if admitted[h] = f.admits(rep); !admitted[h] {
 			continue
 		}
-		unread := b.Open - out[h]
+		unread := max(b.Open-out[h], 0)
+		in := max(b.Open-aside[h], 0)
+		c.Inbox += in
 		if rep.Broadcast {
 			c.Updates += unread
 			continue
 		}
-		c.Open += b.Open
+		c.Open += in
 		c.Unread += unread
+	}
+	if c.Hidden, err = x.countHidden(f); err != nil {
+		return c, err
 	}
 	if f.Now.IsZero() {
 		return c, nil
@@ -290,11 +348,15 @@ func (x *tx) count(f filter) (Counts, error) {
 			continue
 		}
 		id := idOfKey(it.key)
-		c.Open++
 		k, err := x.markOf(id, f.Reader)
 		if err != nil {
 			return c, err
 		}
+		if isAside(k) {
+			continue
+		}
+		c.Open++
+		c.Inbox++
 		if !k.Read {
 			c.Unread++
 		}
@@ -319,11 +381,43 @@ func (x *tx) count(f filter) (Counts, error) {
 		if err != nil {
 			return c, err
 		}
+		if k.Deleted {
+			continue
+		}
+		c.Inbox++
 		if !k.Read {
 			c.Updates++
 		}
 	}
 	return c, nil
+}
+
+// countHidden adds up a reader's Hidden view from their "h:" records, at
+// most MaxHiddenCount, asking who may read each set alike once. A snooze
+// that has run out is in their Inbox again, not here.
+func (x *tx) countHidden(f filter) (int, error) {
+	n := 0
+	asked := map[string]bool{}
+	_, err := scan(x.st, x.tenant, hiddenPrefix(f.Reader), "", false, MaxHiddenCount, func(r state.Record) (bool, error) {
+		var h hiddenRec
+		if err := json.Unmarshal(r.Value, &h); err != nil {
+			return false, fmt.Errorf("inbox: %q: %w", r.Key, err)
+		}
+		if !h.Until.IsZero() && !f.Now.IsZero() && !f.Now.Before(h.Until) {
+			return true, nil
+		}
+		sig := hash(h.Sig)
+		ok, seen := asked[sig]
+		if !seen {
+			ok = f.admits(h.Rep.message(""))
+			asked[sig] = ok
+		}
+		if ok {
+			n++
+		}
+		return true, nil
+	})
+	return n, err
 }
 
 // scopeParts retains only the independent configuration scopes needed by read

@@ -192,6 +192,12 @@ interface Published {
     preview?: string;
   };
 }
+/**
+ * fiber hands a refused or failed connector action back to the model as text,
+ * so the agent can react, and the call ends with that text as its result and
+ * no error. It is still a call that failed.
+ */
+const FAILED_RESULT = /^action failed:/i;
 /** The tool an agent publishes a file with. */
 const PUBLISH = "publish_artifact";
 /** The tool an agent hands work to another agent with, without waiting for it. */
@@ -394,7 +400,7 @@ export function adapter(
         const duration = start !== undefined ? Date.parse(e.time) - start : undefined;
         return [
           { type: "activity", activity: "thinking" },
-          { type: "task.upserted", task: task(t.id, name, { status: t.error ? "error" : "complete", output: t.error || t.result, ...(t.arguments === undefined ? {} : { input: JSON.stringify(t.arguments, null, 2).slice(0, 32_000) }), ...(duration !== undefined && Number.isFinite(duration) && duration >= 0 ? { durationMs: duration } : {}) }) },
+          { type: "task.upserted", task: task(t.id, name, { status: t.error || FAILED_RESULT.test(t.result ?? "") ? "error" : "complete", output: t.error || t.result, ...(t.arguments === undefined ? {} : { input: JSON.stringify(t.arguments, null, 2).slice(0, 32_000) }), ...(duration !== undefined && Number.isFinite(duration) && duration >= 0 ? { durationMs: duration } : {}) }) },
         ];
       }
       case "run.action.taken.v1": {

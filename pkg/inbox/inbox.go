@@ -38,6 +38,14 @@
 // "project:<name>" audience entry and the projects a reader belongs to, so
 // a post is never copied per person. Dismissing or snoozing a broadcast
 // hides it for that reader alone; withdrawing it closes it for everyone.
+//
+// # A reader's own marks
+//
+// Each reader keeps their own marks on any message, which change nothing for
+// anyone else: read or unread, hidden (Hide, back with Unhide) and deleted
+// (Delete, back with Restore). A message is shared, so deleting it removes
+// it from the reader's views and never from the record. The views (View)
+// are drawn from these marks: Inbox, Unread, Hidden and Done.
 package inbox
 
 import (
@@ -459,12 +467,15 @@ type Message struct {
 	SnoozedUntil time.Time `json:"snoozed_until,omitzero"`
 	// Unread is filled in for whoever is reading.
 	Unread bool `json:"unread"`
-	// Hidden is filled in for whoever is reading: they hid or snoozed this
-	// broadcast for themselves, so State is theirs alone and everyone else
-	// still has it. Unhide brings it back.
-	Hidden bool   `json:"hidden,omitempty"`
-	Source Source `json:"source"`
-	Parts  []Part `json:"parts"`
+	// Hidden is filled in for whoever is reading: they hid this message, or
+	// hid or snoozed this broadcast, for themselves. On a broadcast State is
+	// then theirs alone; everyone else still has it. Unhide brings it back.
+	Hidden bool `json:"hidden,omitempty"`
+	// Deleted is filled in for whoever is reading: they deleted it for
+	// themselves, so no view of theirs lists it. Restore brings it back.
+	Deleted bool   `json:"deleted,omitempty"`
+	Source  Source `json:"source"`
+	Parts   []Part `json:"parts"`
 	// Deliveries are where clients posted the message, by client id.
 	Deliveries map[string]Delivery `json:"deliveries,omitempty"`
 }
@@ -604,9 +615,16 @@ const (
 	DidDismiss  What = "dismissed"
 	DidSnooze   What = "snoozed"
 	DidWithdraw What = "withdrawn"
-	// DidUnhide is a reader bringing back a broadcast they hid or snoozed
-	// for themselves.
+	// DidUnhide is a reader bringing back a message they hid, or a
+	// broadcast they snoozed, for themselves.
 	DidUnhide What = "unhidden"
+	// DidHide is a reader hiding a message for themselves, any message in
+	// any state: it moves to their Hidden view.
+	DidHide What = "hidden"
+	// DidDelete is a reader deleting a message for themselves, and
+	// DidRestore bringing it back.
+	DidDelete  What = "deleted"
+	DidRestore What = "restored"
 )
 
 // Change is one thing that happened to a message. The list of them is the
@@ -671,7 +689,7 @@ func storedOf(c Change) storedChange {
 	out := storedChange{Change: c, Delivery: c.Delivery}
 	if c.Raised != nil {
 		r := c.Raised.clone()
-		r.Unread, r.Hidden = false, false
+		r.Unread, r.Hidden, r.Deleted = false, false, false
 		out.Raised = &storedMessage{Message: r, Key: r.Key, Audience: r.Audience, Excluded: r.Excluded, Broadcast: r.Broadcast, Once: &r.Once}
 	}
 	return out
@@ -914,12 +932,29 @@ func (s *Store) Withdraw(tenantName, id, by, note string, at time.Time) (Message
 	return s.do(Change{Tenant: tenantName, Message: id, What: DidWithdraw, By: by, Note: note, At: at})
 }
 
-// Unhide brings back a broadcast one reader hid or snoozed for themselves,
-// as everyone else has it. It changes nothing for anyone else, and nothing
-// at all for a message that is not a broadcast or that the reader never set
-// aside.
+// Unhide brings back a message one reader hid, or a broadcast they snoozed,
+// for themselves, as everyone else has it. It changes nothing for anyone
+// else, and nothing at all for a message the reader never set aside.
 func (s *Store) Unhide(tenantName, id, by string, at time.Time) (Message, bool, error) {
 	return s.do(Change{Tenant: tenantName, Message: id, What: DidUnhide, By: by, At: at})
+}
+
+// Hide moves a message to one reader's Hidden view, in whatever state it
+// is. Everyone else still has it as it was.
+func (s *Store) Hide(tenantName, id, by string, at time.Time) (Message, bool, error) {
+	return s.do(Change{Tenant: tenantName, Message: id, What: DidHide, By: by, At: at})
+}
+
+// Delete takes a message out of every view of one reader's. The message is
+// shared, so it stays in the record and everyone else's inbox; Restore
+// brings it back for them.
+func (s *Store) Delete(tenantName, id, by string, at time.Time) (Message, bool, error) {
+	return s.do(Change{Tenant: tenantName, Message: id, What: DidDelete, By: by, At: at})
+}
+
+// Restore brings back a message one reader deleted.
+func (s *Store) Restore(tenantName, id, by string, at time.Time) (Message, bool, error) {
+	return s.do(Change{Tenant: tenantName, Message: id, What: DidRestore, By: by, At: at})
 }
 
 // Snooze hides a message until a time, when it is open again. A broadcast is
@@ -1029,13 +1064,13 @@ func scan(st state.Store, tenantName, prefix, after string, desc bool, most int,
 }
 
 // ownMark reports whether a change is one reader's mark on their own copy of
-// a message: a read or an unread, and on a broadcast a hide, a snooze or an
-// unhide.
+// a message: a read or an unread, a hide, an unhide, a delete or a restore,
+// and on a broadcast a dismissal or a snooze.
 func ownMark(what What, broadcast bool) bool {
 	switch what {
-	case MarkRead, MarkUnread:
+	case MarkRead, MarkUnread, DidHide, DidUnhide, DidDelete, DidRestore:
 		return true
-	case DidDismiss, DidSnooze, DidUnhide:
+	case DidDismiss, DidSnooze:
 		return broadcast
 	}
 	return false
@@ -1144,6 +1179,10 @@ type Query struct {
 	// News keeps only posted announcements, what Counts.Updates counts: an
 	// agent's draft, which shares their kind, is left out.
 	News bool
+	// View, when set, is one of the reader's views, in place of State and
+	// Unread. Without it, State keeps its meaning, a message the reader
+	// deleted is never listed, and one they hid is not listed as open.
+	View View
 	// Visible reports whether the reader may see a kind. Nil means all.
 	Visible func(Kind) bool
 	// Sees reports whether the reader may read what a message is about:
@@ -1159,6 +1198,43 @@ type Query struct {
 
 // All is the State that matches every message.
 const All State = "all"
+
+// View is one of a reader's views of their inbox, drawn from their own
+// marks. A message they deleted is in none.
+type View string
+
+const (
+	// ViewInbox is what is open for the reader and not hidden by them,
+	// read or not.
+	ViewInbox View = "inbox"
+	// ViewUnread is the Inbox less what they have read.
+	ViewUnread View = "unread"
+	// ViewHidden is what they hid, in any state.
+	ViewHidden View = "hidden"
+	// ViewDone is what was resolved or dismissed for everyone, less what
+	// they hid.
+	ViewDone View = "done"
+)
+
+// Valid reports whether v names a view.
+func (v View) Valid() bool {
+	switch v {
+	case ViewInbox, ViewUnread, ViewHidden, ViewDone:
+		return true
+	}
+	return false
+}
+
+// withView sets the State a view reads, which decides the index a page scans.
+func (q Query) withView() Query {
+	switch q.View {
+	case ViewInbox, ViewUnread:
+		q.State, q.Unread = Open, q.View == ViewUnread
+	case ViewHidden, ViewDone:
+		q.State = All
+	}
+	return q
+}
 
 // filter is a Query made ready to test many messages against.
 type filter struct {
@@ -1197,14 +1273,26 @@ func (q filter) admits(m *Message) bool {
 // match reports whether a message is in a page, as one reader whose marks
 // on it are k sees it.
 func match(m *Message, k mark, q filter) bool {
-	if !matchShared(m, q) {
+	if !matchShared(m, q) || k.Deleted {
 		return false
+	}
+	hidden := hiddenFor(k, q.Now)
+	switch q.View {
+	case ViewHidden:
+		return hidden && (!q.Unread || !k.Read)
+	case ViewDone:
+		return settled(m) && !hidden && (!q.Unread || !k.Read)
 	}
 	want := q.State
 	if want == "" {
 		want = Open
 	}
-	if st, _, _ := stateFor(m, k, q.Now); want != All && st != want {
+	st, _, _ := stateFor(m, k, q.Now)
+	if want != All && st != want {
+		return false
+	}
+	// What the reader hid is not open for them, whoever else has it.
+	if want == Open && hidden {
 		return false
 	}
 	return !q.Unread || !k.Read
@@ -1277,6 +1365,7 @@ func decodeCursor(c string) (int64, string, error) {
 // reads at most maxScan messages: one that finds fewer than it holds in
 // those returns them with a cursor where it stopped.
 func (s *Store) Page(tenantName string, q Query) ([]Message, string, error) {
+	q = q.withView()
 	limit := q.Limit
 	if limit <= 0 {
 		limit = DefaultPage
@@ -1336,11 +1425,15 @@ func (s *Store) Page(tenantName string, q Query) ([]Message, string, error) {
 // Counts is what a reader's inbox holds open: Open and Unread count what
 // may need them, and Updates the broadcasts open for them that they have
 // not read. A broadcast counts only in Updates, so announcements never grow
-// the badge.
+// the badge. Inbox is everything in their Inbox view, read or not,
+// broadcasts included, and Hidden what is in their Hidden view, at most
+// MaxHiddenCount. What they hid or deleted is in none but Hidden.
 type Counts struct {
 	Open    int `json:"open"`
 	Unread  int `json:"unread"`
 	Updates int `json:"updates"`
+	Inbox   int `json:"inbox"`
+	Hidden  int `json:"hidden"`
 }
 
 // Count returns what is open for a reader across their whole inbox: the
@@ -1350,7 +1443,7 @@ type Counts struct {
 // messages, and of messages snoozed for everyone, alike in kind, addressing
 // and what they are about.
 func (s *Store) Count(tenantName string, q Query) (Counts, error) {
-	q.State, q.Kind, q.Kinds, q.Projects, q.Shared, q.Alert, q.Agent, q.Unread, q.Needs, q.News = Open, "", nil, nil, false, "", "", false, false, false
+	q.State, q.Kind, q.Kinds, q.Projects, q.Shared, q.Alert, q.Agent, q.Unread, q.Needs, q.News, q.View = Open, "", nil, nil, false, "", "", false, false, false, ""
 	c, err := newTx(s.st, tenantName).count(q.filter())
 	if err != nil {
 		return Counts{}, fmt.Errorf("inbox: count: %w", err)

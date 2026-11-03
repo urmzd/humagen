@@ -18,6 +18,8 @@ import (
 	"github.com/urmzd/orchagent/flow/event"
 	"github.com/urmzd/orchagent/flow/isolation"
 	"github.com/urmzd/orchagent/flow/runtime"
+
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 // Where a run's tools execute (RFC 0004, "The sandbox").
@@ -122,6 +124,8 @@ func (f *runFiles) Load(ctx context.Context, inst isolation.Instance) error {
 	if err != nil {
 		return err
 	}
+	f.p.workspaceMu.Lock()
+	defer f.p.workspaceMu.Unlock()
 	root, err := f.p.openSandbox(f.tenant, thread)
 	if err != nil {
 		return err
@@ -151,6 +155,8 @@ func (f *runFiles) Load(ctx context.Context, inst isolation.Instance) error {
 
 // Save implements isolation.Files.
 func (f *runFiles) Save(ctx context.Context, inst isolation.Instance) error {
+	f.p.workspaceMu.Lock()
+	defer f.p.workspaceMu.Unlock()
 	src := inst.Files()
 	f.mu.Lock()
 	thread, loaded := f.thread, f.loaded
@@ -169,6 +175,13 @@ func (f *runFiles) Save(ctx context.Context, inst isolation.Instance) error {
 		return err
 	}
 	var errs []error
+	var wrote []runs.SandboxFile
+	var refused []string
+	defer func() {
+		if err := f.p.Runs.RecordSandbox(f.tenant, f.run, true, wrote, refused); err != nil {
+			f.p.log.Info("platform: the run's sandbox record was not kept", "run", f.run, "error", err)
+		}
+	}()
 	kept := map[string]bool{}
 	for _, file := range files {
 		kept[file.Path] = true
@@ -185,13 +198,32 @@ func (f *runFiles) Save(ctx context.Context, inst isolation.Instance) error {
 		if sum, ok := loaded[clean]; ok && sum == sha256.Sum256(b) {
 			continue
 		}
+		// A person or another run may have saved after this lease loaded.
+		// Preserve that edit instead of silently replacing it at copyback.
+		current, readErr := dst.read(ctx, clean)
+		before, existed := loaded[clean]
+		if (existed && (readErr != nil || sha256.Sum256(current) != before)) || (!existed && readErr == nil) {
+			err := fmt.Errorf("%w: %q changed after this run loaded it; its output was not copied back", ErrWorkspaceConflict, clean)
+			errs, refused = append(errs, err), append(refused, err.Error())
+			continue
+		}
 		if _, err := writeSandbox(ctx, dst, clean, string(b)); err != nil {
 			errs = append(errs, fmt.Errorf("%q was not kept: %w", clean, err))
+			continue
 		}
+		wrote = append(wrote, runs.SandboxFile{Path: clean, Size: int64(len(b)), Revision: fileRevision(b)})
 	}
 	for name := range loaded {
 		if !kept[name] {
-			_ = dst.remove(name)
+			current, err := dst.read(ctx, name)
+			if err != nil || sha256.Sum256(current) != loaded[name] {
+				err := fmt.Errorf("%w: %q changed after this run loaded it; it was not removed", ErrWorkspaceConflict, name)
+				errs, refused = append(errs, err), append(refused, err.Error())
+				continue
+			}
+			if dst.remove(name) == nil {
+				wrote = append(wrote, runs.SandboxFile{Path: name, Removed: true})
+			}
 		}
 	}
 	return errors.Join(errs...)

@@ -1204,7 +1204,7 @@ test("on a phone, one small button opens the sidebar, and there is no bottom bar
   assert.doesNotMatch(closed, /bottom-0|Quick navigation/);
   assert.match(
     renderToStaticMarkup(<DrawerButton open={false} inboxCount={2} onOpen={() => {}} />),
-    /aria-label="Open sidebar, 2 need you"/,
+    /aria-label="Open sidebar, 2 unread"/,
   );
   assert.equal(
     renderToStaticMarkup(<DrawerButton open inboxCount={2} onOpen={() => {}} />),
