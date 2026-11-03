@@ -219,8 +219,8 @@ func (t *personalTool) Execute(ctx context.Context, args map[string]any) (string
 
 func (p *Platform) personHTTPClient() *http.Client {
 	base := http.DefaultClient
-	if p.personalHTTP != nil {
-		base = p.personalHTTP
+	if p.cfg.PersonalHTTP != nil {
+		base = p.cfg.PersonalHTTP
 	}
 	client := *base
 	client.Timeout = 30 * time.Second

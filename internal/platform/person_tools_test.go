@@ -104,12 +104,11 @@ func TestPersonalToolsTrustedWorkerSnapshotsAndRevocation(t *testing.T) {
 	httpServer := httptest.NewTLSServer(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, nil))
 	defer httpServer.Close()
 
-	p, err := New(Config{Workspace: t.TempDir()})
+	p, err := New(Config{Workspace: t.TempDir(), PersonalHTTP: httpServer.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = p.Close() }()
-	p.personalHTTP = httpServer.Client()
 	host := personctx.ToolServer{Name: "notes", URL: httpServer.URL}
 	if err := p.SetRunSettings("acme", runsettings.Layer{Ceilings: runsettings.Ceilings{ToolServers: []string{host.Host()}}}, nil); err != nil {
 		t.Fatal(err)

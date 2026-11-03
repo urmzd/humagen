@@ -169,6 +169,9 @@ type Config struct {
 	// token. Nil means the real one over HTTP.
 	SlackAPI  func(token string) slack.API
 	GitHubAPI func(token string) github.API
+	// PersonalHTTP is the client a person's own tool servers are reached
+	// through. Nil means the default client over HTTP.
+	PersonalHTTP *http.Client
 	// ClientInterval coalesces a client's edits to its surface. Zero means
 	// the connector's default.
 	ClientInterval time.Duration
@@ -254,8 +257,6 @@ type Config struct {
 
 // Platform is the assembled system.
 type Platform struct {
-	// personalHTTP permits an isolated transport in tests; nil uses the worker HTTP client.
-	personalHTTP *http.Client
 	// Rooms holds the conversations followed on this server (pkg/rooms).
 	Rooms    *rooms.Hub
 	roomGate *rooms.Gate
