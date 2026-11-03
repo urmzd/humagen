@@ -494,7 +494,6 @@ export function Workspace({
       </div>
       <Popover
         label={pane.open}
-        tooltip={pane.open}
         button={<PlusIcon size={16} />}
         className="inline-flex size-9 shrink-0 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:size-11"
         align="right"
