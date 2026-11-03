@@ -56,9 +56,11 @@ not command-line arguments, source files, terminal output or chat.
 | `slack_signing_secret` | `HUMAGEN_SLACK_SIGNING_SECRET` |
 | `slack_team_id`, `slack_bot_user_id` | Workspace and agent routing |
 
-The server accepts a token per client; it does not yet mint or refresh GitHub installation
-tokens. Refresh expired tokens before a trial. App IDs/private keys alone do
-not configure the connector. Keep non-secret model, repository, bot mappings and
+The server accepts a token per client. For GitHub that token is either a current
+installation token, which you refresh before it expires, or the App's private key
+PEM. Given the private key with the client's `identity.app_id` and
+`identity.installation`, the server mints installation tokens and refreshes them
+before they expire ([clients.md](../reference/clients.md)). Keep non-secret model, repository, bot mappings and
 forwarding URLs alongside the item's instructions. No credentials were created
 or consolidated by this migration; a live trial needs the actual item and targets.
 

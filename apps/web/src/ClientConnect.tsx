@@ -23,6 +23,7 @@ export function ClientConnect({
   const [login, setLogin] = useState("");
   const [agent, setAgent] = useState("");
   const [allowed, setAllowed] = useState("");
+  const [people, setPeople] = useState("");
   const [token, setToken] = useState("");
   const [signing, setSigning] = useState("");
   const [tokenWay, setTokenWay] = useState("value");
@@ -34,6 +35,19 @@ export function ClientConnect({
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
+  const parsePeople = (text: string): Record<string, string> => {
+    const out: Record<string, string> = {};
+    for (const entry of text.split(/[\n,]+/)) {
+      const trimmed = entry.trim();
+      if (!trimmed) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq <= 0) continue;
+      const ext = trimmed.slice(0, eq).trim();
+      const subj = trimmed.slice(eq + 1).trim();
+      if (ext && subj) out[ext] = subj;
+    }
+    return out;
+  };
   const credential = (way: string, text: string): ToolCredentialInput =>
     way === "reference" ? { ref: text.trim() } : { value: text };
   const submit = async (event: FormEvent) => {
@@ -61,6 +75,8 @@ export function ClientConnect({
       setProblem(words.credentialsRequired);
       return;
     }
+    const mappedPeople = parsePeople(people);
+    const hasPeople = Object.keys(mappedPeople).length > 0;
     const input: ClientCreateInput = {
       id: id.trim(),
       name: name.trim(),
@@ -76,7 +92,15 @@ export function ClientConnect({
       default_agent: agent.trim(),
       agents: [...new Set(agents)],
       enabled: true,
-      ...(surface === "github" && login.trim() !== "" ? { github: { login: login.trim() } } : {}),
+      ...(surface === "slack" && hasPeople ? { slack: { people: mappedPeople } } : {}),
+      ...(surface === "github" && (login.trim() !== "" || hasPeople)
+        ? {
+            github: {
+              ...(login.trim() !== "" ? { login: login.trim() } : {}),
+              ...(hasPeople ? { people: mappedPeople } : {}),
+            },
+          }
+        : {}),
       credentials: {
         token: credential(tokenWay, token),
         signing_secret: credential(signingWay, signing),
@@ -191,6 +215,15 @@ export function ClientConnect({
         </Label>
         <Label text={words.allowedAgents} hint={words.allowedAgentsHint}>
           <input className={field} value={allowed} onChange={(e) => setAllowed(e.target.value)} />
+        </Label>
+        <Label text={words.people} hint={words.peopleHint(surface)}>
+          <textarea
+            className={field}
+            rows={2}
+            placeholder={words.peoplePlaceholder(surface)}
+            value={people}
+            onChange={(e) => setPeople(e.target.value)}
+          />
         </Label>
         <p className="text-aui-xs text-aui-muted">{words.credentialHint}</p>
         <Label text={words.tokenSource}>
