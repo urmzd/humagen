@@ -557,6 +557,27 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 			w.WriteHeader(http.StatusOK)
 			return
 		}
+		if current.Surface == clients.GitHub {
+			delivery := r.Header.Get("X-GitHub-Delivery")
+			if delivery != "" && len(delivery) <= 128 {
+				kind := r.Header.Get("X-GitHub-Event")
+				for _, rule := range current.MatchAutomations(kind, body) {
+					tag := wire.NewEvent(wire.Raise{
+						ID:     "automation/" + url.PathEscape(current.ID) + "/" + url.PathEscape(delivery) + "/" + url.PathEscape(rule.Name),
+						Tenant: current.Tenant, Origin: "github", Agent: rule.Agent,
+						Text:    rule.Instructions + "\n\nRepository: " + rule.Repository + "\nEvent: " + kind + clients.AutomationContext(body),
+						At:      time.Now().UTC(),
+						Context: map[string]string{wire.MetaGitHubEvent: kind, wire.MetaGitHubOwner: strings.SplitN(rule.Repository, "/", 2)[0], wire.MetaGitHubRepo: strings.SplitN(rule.Repository, "/", 2)[1]},
+					})
+					for _, raised := range s.stamp(r.Context(), st, tag) {
+						if _, err := s.p.Invoke(r.Context(), raised); err != nil {
+							http.Error(w, "automation admission failed", http.StatusServiceUnavailable)
+							return
+						}
+					}
+				}
+			}
+		}
 	}
 	r = r.Clone(r.Context())
 	r.Body = io.NopCloser(bytes.NewReader(body))
