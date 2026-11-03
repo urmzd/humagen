@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/playscape/pkg/isolate/docker"
+	"github.com/urmzd/orchagent/sandbox/isolate/docker"
 
-	"github.com/urmzd/humagen/fiber/pkg/isolation"
 	"github.com/urmzd/humagen/pkg/credref"
+	"github.com/urmzd/orchagent/flow/isolation"
 )
 
 func openSandboxWith(t *testing.T, l loaded, runtimeDefault string, args ...string) (isolation.Sandbox, error) {

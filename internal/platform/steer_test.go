@@ -10,9 +10,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
-	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/orchagent/flow/toolprovider"
+	"github.com/urmzd/orchagent/flow/turn/native"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 

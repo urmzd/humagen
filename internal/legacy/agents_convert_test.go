@@ -14,11 +14,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/urmzd/humagen/fiber/pkg/definition"
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/pkg/agents"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
+	"github.com/urmzd/orchagent/flow/definition"
 )
 
 var t0 = time.Date(2025, 6, 1, 9, 0, 0, 0, time.UTC)

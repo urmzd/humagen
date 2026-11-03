@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/anchor/pkg/ledger"
-	dqueue "github.com/urmzd/anchor/pkg/queue"
-	"github.com/urmzd/humagen/fiber/pkg/bus"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/orchagent/durable/ledger"
+	dqueue "github.com/urmzd/orchagent/durable/queue"
+	"github.com/urmzd/orchagent/flow/bus"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/call"

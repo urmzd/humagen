@@ -3,8 +3,8 @@ package legacy_test
 import (
 	"testing"
 
-	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/orchagent/flow/event"
 )
 
 // The journal stored the old envelope.Event with json.Marshal, so its

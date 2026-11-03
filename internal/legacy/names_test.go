@@ -19,7 +19,6 @@ import (
 var wholeFiles = []struct{ pattern, why string }{
 	{"CHANGELOG.md", "release history, never edited"},
 	{"docs/guides/renaming.md", "the history of names"},
-	{"fiber/CHANGELOG.md", "fiber's release history, never edited"},
 	{"docs/guides/upgrading-from-warp.md", "what changed, for operators"},
 	{"internal/legacy/*", "the one Go package that reads old names"},
 	{"apps/*/src/legacy.ts", "the one module per app that reads old names"},
@@ -83,7 +82,6 @@ var fiberWord = regexp.MustCompile(`(?i)mandatum`)
 
 var fiberFiles = []struct{ pattern, why string }{
 	{"CHANGELOG.md", "release history, never edited"},
-	{"fiber/CHANGELOG.md", "fiber's release history, never edited"},
 	{"docs/guides/renaming.md", "the history of names"},
 	{"internal/legacy/*", "the one Go package that reads old names"},
 }

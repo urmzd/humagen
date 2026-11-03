@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/humagen/fiber/pkg/definition"
 	"github.com/urmzd/humagen/pkg/agents"
 	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/orchagent/flow/definition"
 )
 
 // Page is one page of a listing.

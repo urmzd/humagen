@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/humagen/fiber/pkg/isolation"
-	"github.com/urmzd/humagen/fiber/pkg/isolation/isolationtest"
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/orchagent/flow/isolation"
+	"github.com/urmzd/orchagent/flow/isolation/isolationtest"
+	"github.com/urmzd/orchagent/flow/runtime"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/call"

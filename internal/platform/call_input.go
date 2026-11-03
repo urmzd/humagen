@@ -9,14 +9,14 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/urmzd/anchor"
-	"github.com/urmzd/humagen/fiber/pkg/event"
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
-	"github.com/urmzd/humagen/fiber/pkg/turn"
-	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/orchagent/durable"
+	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/orchagent/flow/turn"
+	"github.com/urmzd/orchagent/flow/turn/native"
 )
 
 // prepareCall resolves references once, before accepting the child. The tag
@@ -228,10 +228,10 @@ func (e callExecutor) Turn(ctx context.Context, def turn.Pinned, in turn.Input, 
 	}
 	if format != nil {
 		if utf8.RuneCountInString(out.Text) > call.MaxOutputChars {
-			return turn.Result{}, anchor.NonRetryable(fmt.Errorf("%w: helper output exceeds limit", call.ErrInvalid))
+			return turn.Result{}, durable.NonRetryable(fmt.Errorf("%w: helper output exceeds limit", call.ErrInvalid))
 		}
 		if err := format.ValidateOutput(out.Text); err != nil {
-			return turn.Result{}, anchor.NonRetryable(err)
+			return turn.Result{}, durable.NonRetryable(err)
 		}
 		for _, b := range buffered {
 			if emit != nil {
