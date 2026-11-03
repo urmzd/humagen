@@ -2603,6 +2603,33 @@ export const defaultCopy = {
   /** What Slack says under the rating buttons, which can't show which one was pressed. */
   rated: { up: "Rated helpful", down: "Rated not helpful" },
   /** Where a schedule's answers go, and the weekly recap a project can add. */
+  automations: {
+    labels: {
+      name: "Name",
+      installation: "GitHub installation",
+      repository: "Repository",
+      event: "Event",
+      action: "Action equals",
+      conclusion: "Conclusion equals",
+      label: "Label equals",
+      agent: "Target agent",
+      instructions: "Instructions",
+      paused: "Paused",
+    },
+    title: "Automations",
+    lede: "Give an agent instructions to run on a schedule or when GitHub sends an event.",
+    newSchedule: "New Schedule",
+    newGitHub: "New GitHub Automation",
+    newTitle: "New GitHub Automation",
+    editTitle: "Edit Automation",
+    save: "Save Automation",
+    schedules: "Schedules",
+    triggers: "GitHub triggers",
+    noSchedules: "No schedules yet.",
+    noTriggers: "No GitHub triggers yet. Connect a GitHub installation in Settings to begin.",
+    guard:
+      "The bot’s own events and commits are ignored. Check runs without commit author evidence are ignored. The installation’s event permissions still apply.",
+  },
   schedules: {
     deliver: "Answer",
     deliverHint: "Where each run's answer goes. A recap that finds nothing to say sends nothing.",
