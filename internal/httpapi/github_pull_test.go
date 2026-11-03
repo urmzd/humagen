@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"net/http"
@@ -39,5 +40,32 @@ func TestGitHubItemsAreTenantScopedPermissionCheckedAndBounded(t *testing.T) {
 				t.Fatalf("%s: %d %v want %d", tc.path, res.StatusCode, body, tc.want)
 			}
 		}
+	}
+}
+
+func contractGitHubItems(t *testing.T, f *fixture, c *contract, fake *github.Fake) {
+	t.Helper()
+	tok := f.machine(t, "source-check", "humagen:runs:read")
+	var evidence github.Context
+	evidence.Subject.Number = 42
+	evidence.Subject.Title = "Review"
+	evidence.Subject.Head.SHA = sourceCommit
+	evidence.Subject.PullRequest = &struct {
+		URL string `json:"url"`
+	}{URL: "https://api.github.com/repos/acme/api/pulls/42"}
+	evidence.Comments = []github.ContextComment{}
+	evidence.Files = []github.ContextFile{}
+	if err := fake.SeedContext(github.Ref{Owner: "acme", Repo: "api", Number: 42}, evidence); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"pull", "issue"} {
+		route := "/api/github/" + kind
+		query := route + "?repo=acme%2Fapi&number=42"
+		c.call(tok, "GET", route, query, "", http.StatusOK)
+		c.call(tok, "GET", route, query+"&page=11", "", http.StatusBadRequest)
+		c.call(tok, "GET", route, route+"?repo=stranger%2Fsecret&number=42", "", http.StatusNotFound)
+		fake.Err = errors.New("GitHub offline")
+		c.call(tok, "GET", route, query, "", http.StatusBadGateway)
+		fake.Err = nil
 	}
 }

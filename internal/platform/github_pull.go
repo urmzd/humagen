@@ -50,8 +50,8 @@ func (p *Platform) GitHubIssue(ctx context.Context, tenant, repo string, number,
 		out.Subject.Body = out.Subject.Body[:65536]
 	}
 	// Independent caps also cover custom client implementations.
-	out.Comments = out.Comments[:min(len(out.Comments), 30)]
-	out.Files = out.Files[:min(len(out.Files), 30)]
+	out.Comments = append([]github.ContextComment{}, out.Comments[:min(len(out.Comments), 30)]...)
+	out.Files = append([]github.ContextFile{}, out.Files[:min(len(out.Files), 30)]...)
 	out.Reviews = out.Reviews[:min(len(out.Reviews), 30)]
 	out.ReviewComments = out.ReviewComments[:min(len(out.ReviewComments), 30)]
 	for i := range out.Files {
