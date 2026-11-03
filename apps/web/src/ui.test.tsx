@@ -2034,7 +2034,9 @@ test("a page's header shows two actions as buttons, and with more, one primary a
       ]}
     />,
   );
-  assert.match(many, /aria-haspopup="menu"[^>]*>More/);
+  assert.match(many, /aria-haspopup="menu"[^>]*aria-label="More"/);
+  // The three-dot control comes after the primary action.
+  assert.ok(many.indexOf(">Run Now</button>") < many.indexOf('aria-haspopup="menu"'));
   assert.doesNotMatch(many, />Edit<\/button>|>Delete<\/button>/);
   assert.match(many, />Run Now<\/button>/);
 });
