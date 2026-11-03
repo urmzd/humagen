@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -253,6 +254,8 @@ type Config struct {
 
 // Platform is the assembled system.
 type Platform struct {
+	// personalHTTP permits an isolated transport in tests; nil uses the worker HTTP client.
+	personalHTTP *http.Client
 	// Rooms holds the conversations followed on this server (pkg/rooms).
 	Rooms    *rooms.Hub
 	roomGate *rooms.Gate

@@ -242,6 +242,12 @@ func boundRunContext(req runtime.Request) (runtime.Request, error) {
 	if ceil.Tools != nil {
 		spec.Tools = slices.DeleteFunc(slices.Clone(spec.Tools), func(name string) bool { return !ceil.AllowsTool(name) })
 	}
+	for i, name := range spec.Tools {
+		if name == "person_tools" {
+			spec.Tools = slices.Clone(spec.Tools)
+			spec.Tools[i] = personToolsGrant
+		}
+	}
 	req.Definition.Spec = spec
 	return req, nil
 }

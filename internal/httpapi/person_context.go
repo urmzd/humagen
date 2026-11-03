@@ -32,3 +32,17 @@ func (s *Server) putPersonContext(w http.ResponseWriter, r *http.Request, who au
 	}
 	ok(w, http.StatusOK, out)
 }
+
+func (s *Server) reviewPersonTools(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body personctx.ToolServer
+	if !decode(w, r, &body) {
+		return
+	}
+	tools, err := s.P.DiscoverPersonTools(r.Context(), who, body)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	body.Tools = tools
+	ok(w, http.StatusOK, body)
+}

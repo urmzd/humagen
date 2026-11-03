@@ -688,6 +688,28 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/me/tool-servers/review:
+    post:
+      operationId: reviewPersonTools
+      tags: [credentials]
+      summary: Preview a personal server's tools before approval
+      x-permission: runs:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PersonToolServer"}
+      responses:
+        "200":
+          description: The server with its current bounded tool list for approval.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PersonToolServer"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/me/context:
     get:
       operationId: getPersonContext
@@ -9571,11 +9593,25 @@ components:
         compaction_tokens:
           description: Input size, in tokens, past which a run's history is summarized, 1024 to 2000000.
           type: integer
+    PersonalApprovedTool:
+      type: object
+      required: [name, schema_hash]
+      properties:
+        name: {type: string}
+        description: {type: string}
+        input_schema: {}
+        schema_hash: {type: string}
+        class: {type: string, enum: [read, write]}
     PersonToolServer:
       description: An MCP server a person adds for themselves. Its credential is a reference, never a secret.
       type: object
       required: [name, url]
       properties:
+        tools:
+          description: Exact tools approved by the person. Missing means unavailable to runs.
+          type: array
+          maxItems: 64
+          items: {$ref: "#/components/schemas/PersonalApprovedTool"}
         name: {type: string}
         url:
           description: The server's https address, with no user or password in it.
