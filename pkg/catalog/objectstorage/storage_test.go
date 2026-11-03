@@ -49,3 +49,13 @@ func TestCollectText(t *testing.T) {
 		t.Fatalf("docs=%+v err=%v", docs, err)
 	}
 }
+
+func TestS3ReaderCredentialRegion(t *testing.T) {
+	b, err := dial(context.Background(), Config{System: "s3", Bucket: "reports"}, `{"access_key_id":"test","secret_access_key":"test","region":"eu-west-1"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := b.(*s3Bucket).c.Options().Region; got != "eu-west-1" {
+		t.Fatalf("region=%q", got)
+	}
+}

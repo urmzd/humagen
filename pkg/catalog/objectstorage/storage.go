@@ -67,7 +67,7 @@ func (c *Connector) Crawl(ctx context.Context) ([]catalog.Entry, error) {
 	if err != nil {
 		return nil, errors.New("storage connector: authentication failed")
 	}
-	defer b.Close()
+	defer func() { _ = b.Close() }()
 	objs, err := b.List(ctx, c.cfg.Prefix, catalog.MaxEntries)
 	if err != nil {
 		return nil, err
@@ -113,7 +113,7 @@ func (p Provider) Fetch(ctx context.Context, origin string, secret mcptools.Secr
 	if err != nil {
 		return nil, knowledge.ProviderError{Cause: knowledge.AuthExpired}
 	}
-	defer b.Close()
+	defer func() { _ = b.Close() }()
 	return c.collect(ctx, b)
 }
 func (c *Connector) collect(ctx context.Context, b bucket) ([]knowledge.ImportDocument, error) {
@@ -225,11 +225,15 @@ func dial(ctx context.Context, c Config, key string) (bucket, error) {
 		Access string `json:"access_key_id"`
 		Secret string `json:"secret_access_key"`
 		Token  string `json:"session_token"`
+		Region string `json:"region"`
 	}
 	if json.Unmarshal([]byte(key), &cred) != nil || cred.Access == "" || cred.Secret == "" {
 		return nil, fmt.Errorf("s3: credential requires access_key_id and secret_access_key")
 	}
 	region := c.Region
+	if region == "" {
+		region = cred.Region
+	}
 	if region == "" {
 		region = "us-east-1"
 	}

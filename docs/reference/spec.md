@@ -1214,7 +1214,8 @@ GCS and S3 sources use the existing indexed source lifecycle. Set `provider`
 to `gcs` with an origin such as `gs://reports/monthly/`, or to `s3` with
 `s3://reports/monthly/`. Connect a credential reference as the current reader.
 Collection never uses a machine credential, and catalog publication never
-grants access to object text. The reader's credential uses the same JSON
+grants access to object text. The reader's S3 credential may also include `region` for buckets outside
+`us-east-1`. The reader's credential uses the same JSON
 format documented above. Only UTF-8 `.txt`, `.md`, `.csv`, and `.json` objects
 are collected. A prefix exceeding 200 objects or 8 MiB, an unsupported file,
 or any failed read refuses the whole snapshot. Narrow the prefix to collect
