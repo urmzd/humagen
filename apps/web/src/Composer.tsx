@@ -10,6 +10,14 @@ import {
   useState,
 } from "react";
 import {
+  type Command,
+  commandsFor,
+  commandTokens,
+  type Hit,
+  nextEnabled,
+  segments,
+} from "./commands.ts";
+import {
   insertTag,
   matching,
   sigilOf,
@@ -167,7 +175,7 @@ export function Composer({
   /** Controls before the send or speak button. */
   trailing?: ReactNode;
   /**
-   * Completion: what a message here can tag with `@` and `$`, and a call
+   * Completion: what a message here can tag with `@`, the skills `/` offers as commands, and a call
    * each time the tag being typed changes, for options looked up as it is
    * typed.
    */
@@ -219,11 +227,29 @@ export function Composer({
 
   const [typing, setTyping] = useState<Typing | null>(null);
   const [active, setActive] = useState(0);
-  const shown = tags && typing ? matching(tags.options, typing.query, 8, typing.sigil) : [];
-  // The highlighted option, kept inside the list as it shrinks under the caret.
-  const current = Math.max(0, Math.min(active, shown.length - 1));
+  // `/` opens the command menu (commands.ts); `@` the tag list.
+  const commands: Command[] =
+    tags && typing?.sigil === "/"
+      ? commandsFor(tags.options, value, typing, {
+          named: defaultCopy.threads.commandNamed,
+          limit: defaultCopy.threads.commandLimit,
+        })
+      : [];
+  const shown =
+    tags && typing && typing.sigil !== "/"
+      ? matching(tags.options, typing.query, 8, typing.sigil)
+      : [];
+  const count = commands.length || shown.length;
+  // The highlighted option, kept inside the list as it shrinks under the
+  // caret, and never on a command that cannot be picked.
+  const clamped = Math.max(0, Math.min(active, count - 1));
+  const current = commands[clamped]?.disabled ? nextEnabled(commands, clamped, 1) : clamped;
   // The list opens toward the side of the bar with more room, no taller than that room.
-  const open = shown.length > 0;
+  const open = count > 0;
+  // The skills a message here can name, drawn as tokens where it names them.
+  const skillNames = tags?.options.filter((o) => o.kind === "skill").map((o) => o.token) ?? [];
+  const tokens = commandTokens(value, skillNames);
+  const backdrop = useRef<HTMLDivElement>(null);
   const [listAt, setListAt] = useState<{ up: boolean; max: number }>({ up: true, max: 256 });
   useLayoutEffect(() => {
     if (!open) return;
@@ -253,11 +279,10 @@ export function Composer({
     // A mention kind is completed further: `@sme:` opens its items.
     if (option.kind === "kind") follow(next.text, next.caret);
     else setTyping(null);
-    requestAnimationFrame(() => {
-      const el = input.current;
-      el?.focus();
-      el?.setSelectionRange(next.caret, next.caret);
-    });
+    // The caret is placed as the box shows the new text, before another key
+    // can land where it was.
+    input.current?.focus();
+    caretAfter.current = next.caret;
   };
 
   const change = (next: string) => {
@@ -312,6 +337,34 @@ export function Composer({
     el.style.overflowY = el.scrollHeight > MAX_HEIGHT ? "auto" : "hidden";
   }, [value]);
 
+  // The tokens' backdrop sits exactly under the text box, with its box and
+  // its type, so each token lies under its words.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: placed after each change of the text
+  useLayoutEffect(() => {
+    const el = input.current;
+    const under = backdrop.current;
+    if (!el || !under) return;
+    const place = () => {
+      const css = getComputedStyle(el);
+      Object.assign(under.style, {
+        left: `${el.offsetLeft}px`,
+        top: `${el.offsetTop}px`,
+        width: `${el.clientWidth}px`,
+        height: `${el.clientHeight}px`,
+        padding: css.padding,
+        font: css.font,
+        letterSpacing: css.letterSpacing,
+        lineHeight: css.lineHeight,
+      });
+      under.scrollTop = el.scrollTop;
+    };
+    place();
+    if (typeof ResizeObserver === "undefined") return;
+    const watch = new ResizeObserver(place);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [value, tokens.length > 0]);
+
   useEffect(() => {
     if (autoFocus) input.current?.focus();
   }, [autoFocus]);
@@ -339,17 +392,24 @@ export function Composer({
       return;
     }
     // While the typeahead is open, the keys move through it and pick from it.
-    if (shown.length > 0 && !e.nativeEvent.isComposing) {
+    if (open && !e.nativeEvent.isComposing) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
-        setActive((i) => (i + (e.key === "ArrowDown" ? 1 : shown.length - 1)) % shown.length);
+        if (commands.length > 0) {
+          const next = nextEnabled(commands, current, e.key === "ArrowDown" ? 1 : -1);
+          if (next >= 0) setActive(next);
+        } else setActive((i) => (i + (e.key === "ArrowDown" ? 1 : count - 1)) % count);
         return;
       }
-      // Enter with a modifier sends or adds a line, as it does with the list closed.
-      if ((e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) || e.key === "Tab") {
+      // Enter with a modifier sends or adds a line, as it does with the list
+      // closed. With every command greyed, Enter sends the text as it is.
+      const option = commands.length > 0 ? commands[current]?.option : shown[current];
+      if (
+        option &&
+        ((e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) || e.key === "Tab")
+      ) {
         e.preventDefault();
-        const option = shown[current];
-        if (option) pickTag(option);
+        pickTag(option);
         return;
       }
       if (e.key === "Escape") {
@@ -426,6 +486,45 @@ export function Composer({
         <span aria-hidden className="humagen-glow-ring">
           <span className="humagen-glow-sweep" />
         </span>
+        {tags && commands.length > 0 && (
+          // Still: a list waiting on a person does not animate.
+          <ul
+            id="composer-tags"
+            data-layer="completion"
+            data-commands
+            role="listbox"
+            aria-label={defaultCopy.threads.commands}
+            style={{ maxHeight: listAt.max }}
+            className={`absolute right-2 left-2 z-20 overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg ${listAt.up ? "bottom-full mb-1" : "top-full mt-1"}`}
+          >
+            {commands.map((c, i) => (
+              <li
+                key={c.option.token}
+                id={`composer-tag-${i}`}
+                role="option"
+                aria-selected={i === current}
+                aria-disabled={c.disabled ? true : undefined}
+                onMouseDown={(e) => {
+                  // Keep the text box's focus and caret while picking.
+                  e.preventDefault();
+                  if (!c.disabled) pickTag(c.option);
+                }}
+                className="flex pointer-coarse:min-h-11 min-w-0 cursor-pointer items-center gap-3 rounded-aui px-2.5 py-1.5 text-aui-sm text-aui-fg aria-disabled:cursor-default aria-disabled:text-aui-muted aria-selected:bg-aui-hover"
+              >
+                <span className="shrink-0 font-medium">
+                  /<Marked text={c.option.token} hits={c.nameHits} />
+                </span>
+                <span className="min-w-0 flex-1 truncate text-aui-xs text-aui-muted">
+                  {c.disabled ??
+                    (c.option.hint && <Marked text={c.option.hint} hits={c.hintHits} />)}
+                </span>
+                <span className="shrink-0 text-aui-2xs text-aui-muted">
+                  {defaultCopy.threads.commandKind}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
         {tags && shown.length > 0 && (
           // Still: a list waiting on a person does not animate.
           <ul
@@ -456,11 +555,7 @@ export function Composer({
                     aria-hidden
                     className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-aui-hover text-[0.6rem] font-medium"
                   >
-                    {o.kind === "person"
-                      ? (o.hint ?? o.label).trim().charAt(0).toUpperCase()
-                      : o.kind === "skill"
-                        ? "$"
-                        : "@"}
+                    {o.kind === "person" ? (o.hint ?? o.label).trim().charAt(0).toUpperCase() : "@"}
                   </span>
                 )}
                 <span className="shrink-0 font-medium">
@@ -522,6 +617,28 @@ export function Composer({
         <label className="sr-only" htmlFor="composer-input">
           Message
         </label>
+        {tokens.length > 0 && (
+          // The skills the message names, drawn behind the text as tokens.
+          <div
+            ref={backdrop}
+            aria-hidden
+            data-tokens
+            className="pointer-events-none absolute overflow-hidden break-words whitespace-pre-wrap text-transparent"
+          >
+            {tokenRuns(value, tokens).map((run, i) =>
+              run.token ? (
+                // biome-ignore lint/suspicious/noArrayIndexKey: runs are positional
+                <mark key={i} className="rounded-sm bg-aui-accent-soft text-transparent">
+                  {run.text}
+                </mark>
+              ) : (
+                // biome-ignore lint/suspicious/noArrayIndexKey: runs are positional
+                <span key={i}>{run.text}</span>
+              ),
+            )}
+            {"\u200b"}
+          </div>
+        )}
         <textarea
           id="composer-input"
           ref={input}
@@ -544,12 +661,17 @@ export function Composer({
           }}
           onClick={() => follow(value)}
           onBlur={() => setTyping(null)}
+          onScroll={(e) => {
+            if (backdrop.current) backdrop.current.scrollTop = e.currentTarget.scrollTop;
+          }}
           role={tags ? "combobox" : undefined}
-          aria-expanded={tags ? shown.length > 0 : undefined}
-          aria-controls={tags && shown.length > 0 ? "composer-tags" : undefined}
+          aria-expanded={tags ? open : undefined}
+          aria-controls={tags && open ? "composer-tags" : undefined}
           aria-autocomplete={tags ? "list" : undefined}
-          aria-activedescendant={tags && shown.length > 0 ? `composer-tag-${current}` : undefined}
-          className="humagen-composer-input max-h-[200px] min-h-10 pointer-coarse:min-h-11 w-full resize-none bg-transparent px-3 pt-2 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted"
+          aria-activedescendant={
+            tags && open && current >= 0 ? `composer-tag-${current}` : undefined
+          }
+          className="humagen-composer-input relative max-h-[200px] min-h-10 pointer-coarse:min-h-11 w-full resize-none bg-transparent px-3 pt-2 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted"
         />
         {notice && (
           <p role="status" className="px-3 text-aui-xs text-aui-muted">
@@ -639,4 +761,38 @@ export function Composer({
       )}
     </div>
   );
+}
+
+/** Text with the runs a query matched highlighted. */
+function Marked({ text, hits }: { text: string; hits: Hit[] }) {
+  return (
+    <>
+      {segments(text, hits).map((seg, i) =>
+        seg.hit ? (
+          // biome-ignore lint/suspicious/noArrayIndexKey: segments are positional
+          <mark key={i} className="rounded-sm bg-aui-accent-soft text-aui-accent">
+            {seg.text}
+          </mark>
+        ) : (
+          seg.text
+        ),
+      )}
+    </>
+  );
+}
+
+/** The draft in runs, each a token or the text between. */
+function tokenRuns(
+  text: string,
+  tokens: { start: number; end: number }[],
+): { text: string; token: boolean }[] {
+  const out: { text: string; token: boolean }[] = [];
+  let at = 0;
+  for (const t of tokens) {
+    if (t.start > at) out.push({ text: text.slice(at, t.start), token: false });
+    out.push({ text: text.slice(t.start, t.end), token: true });
+    at = t.end;
+  }
+  if (at < text.length) out.push({ text: text.slice(at), token: false });
+  return out;
 }

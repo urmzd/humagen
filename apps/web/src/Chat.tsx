@@ -789,7 +789,7 @@ export function Chat({
                     skills={skills}
                     skillsFailed={skillsFailed}
                     onSkill={(name) => {
-                      setSeed({ text: `$${name} `, mode: "prepend" });
+                      setSeed({ text: `/${name} `, mode: "prepend" });
                     }}
                     selection={runs.selection}
                     onChange={runs.select}
@@ -821,7 +821,7 @@ export function Chat({
                     skills={skills}
                     skillsFailed={skillsFailed}
                     onSkill={(name) => {
-                      setSeed({ text: `$${name} `, mode: "prepend" });
+                      setSeed({ text: `/${name} `, mode: "prepend" });
                     }}
                     selection={selection}
                     onChange={select}

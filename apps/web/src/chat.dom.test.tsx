@@ -158,12 +158,14 @@ test("@ completes the agents available here and people, never @auto, never the p
   fireEvent.change(box(), { target: { value: "ask @he" } });
   fireEvent.keyDown(box(), { key: "Tab" });
   await waitFor(() => assert.equal(box().value, "ask @helper "));
-  // $ completes skills.
+  // / completes skills, as commands; $ is no trigger.
   fireEvent.change(box(), { target: { value: "ask @helper $r" } });
+  assert.equal(screen.queryByRole("listbox"), null);
+  fireEvent.change(box(), { target: { value: "ask @helper /r" } });
   const skills = await screen.findByRole("listbox");
-  await waitFor(() => assert.ok(skills.textContent?.includes("$review"), skills.textContent ?? ""));
+  await waitFor(() => assert.ok(skills.textContent?.includes("/review"), skills.textContent ?? ""));
   fireEvent.keyDown(box(), { key: "Enter" });
-  await waitFor(() => assert.equal(box().value, "ask @helper $review "));
+  await waitFor(() => assert.equal(box().value, "ask @helper /review "));
   assert.ok(!net?.seen.some((s) => s.method === "POST"), "picking with Enter does not send");
 });
 
@@ -1267,7 +1269,7 @@ test("choosing a project skill keeps the draft and attached file and waits for e
   const menu = await screen.findByRole("dialog", { name: chat.menu });
   fireEvent.click(within(menu).getByRole("button", { name: /^Skills\b/ }));
   fireEvent.click(await within(menu).findByRole("button", { name: /^\$?review(?:\s|$)/i }));
-  await waitFor(() => assert.equal(box().value, "$review Review this launch change."));
+  await waitFor(() => assert.equal(box().value, "/review Review this launch change."));
   assert.equal(!!screen.queryByRole("dialog", { name: chat.menu }), false);
   assert.ok(within(screen.getByRole("list", { name: "Attached files" })).getByText("launch.txt"));
   assert.equal(document.activeElement === box(), true);
@@ -1283,7 +1285,7 @@ test("choosing a project skill keeps the draft and attached file and waits for e
   )?.body as { text: string };
   assert.equal(
     started.text,
-    "$review Review this launch change.\n\nAttached file: launch.txt\n```\nLaunch evidence\n```",
+    "/review Review this launch change.\n\nAttached file: launch.txt\n```\nLaunch evidence\n```",
   );
 });
 
