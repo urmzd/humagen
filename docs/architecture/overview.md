@@ -778,3 +778,7 @@ approved, unexpired note to a destination project as a pending suggestion. Only 
 expiry cross the boundary; the copier replaces private source provenance. The destination owners
 must review it before it enters context. ReadContext Ask and Never, including forced-approval dry
 runs, withhold automatic memory grounding; fixed instructions and briefing preferences remain.
+
+Catalog connectors include Snowflake (catalog and live SELECT) and GCS/S3
+(metadata catalog and per-reader collected text copies). Each connector uses
+an explicit credential reference; object catalog crawling never reads content.

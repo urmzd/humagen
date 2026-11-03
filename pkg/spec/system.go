@@ -48,7 +48,7 @@ var Builtin = map[string][]string{
 	SlotEgress:     {"none", "gate"},
 	SlotModels:     {"anthropic", "openai", "google"},
 	SlotTools:      {"mcp"},
-	SlotConnectors: {"bigquery"},
+	SlotConnectors: {"bigquery", "snowflake", "gcs", "s3"},
 }
 
 // System is how and where humagen runs.
@@ -650,6 +650,10 @@ func builtinBlock(slot, kind string) (any, bool) {
 		return &VertexEmbedder{}, true
 	case "models.anthropic", "models.openai", "models.google":
 		return &ModelBlock{}, true
+	case "connectors.snowflake":
+		return &SnowflakeConnector{}, true
+	case "connectors.gcs", "connectors.s3":
+		return &StorageConnector{}, true
 	case "connectors.bigquery":
 		return &BigQueryConnector{}, true
 	case "tools.mcp":
@@ -730,6 +734,22 @@ func checkBlock(where string, blk any) error {
 		}
 		if b.Network != "" && !runtimeName.MatchString(b.Network) {
 			return fmt.Errorf("%s: network %q is not a Docker network's name", where, b.Network)
+		}
+	case *SnowflakeConnector:
+		if b.Account == "" || b.Database == "" || b.Warehouse == "" || b.Role == "" || !b.Credential.Set() {
+			return fmt.Errorf("%s: account, database, warehouse, role and credential are required", where)
+		}
+		if b.MaxRows < 0 || b.MaxRows > 10000 {
+			return fmt.Errorf("%s: max_rows is at most 10000", where)
+		}
+		if b.Timeout != "" {
+			if d, err := time.ParseDuration(b.Timeout); err != nil || d < time.Second || d > 10*time.Minute {
+				return fmt.Errorf("%s: timeout is 1s to 10m", where)
+			}
+		}
+	case *StorageConnector:
+		if b.Bucket == "" || !b.Credential.Set() {
+			return fmt.Errorf("%s: bucket and credential are required", where)
 		}
 	case *BigQueryConnector:
 		if b.Project == "" {

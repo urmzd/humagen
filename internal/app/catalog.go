@@ -8,6 +8,8 @@ import (
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/catalog"
 	"github.com/urmzd/humagen/pkg/catalog/bigquery"
+	"github.com/urmzd/humagen/pkg/catalog/objectstorage"
+	"github.com/urmzd/humagen/pkg/catalog/snowflake"
 	"github.com/urmzd/humagen/pkg/spec"
 )
 
@@ -22,6 +24,38 @@ func openConnectors(ctx context.Context, o Options, cfg spec.Config) ([]platform
 			where := fmt.Sprintf("platform %q: connector %q", doc.Metadata.Name, c.Name)
 			var impl any
 			switch c.Kind {
+			case snowflake.System:
+				b, err := spec.Block[spec.SnowflakeConnector](c.Slot)
+				if err != nil {
+					return nil, err
+				}
+				config := snowflake.Config{Account: b.Account, Database: b.Database, Warehouse: b.Warehouse, Role: b.Role, MaxRows: b.MaxRows}
+				if b.Credential.Set() {
+					config.Credential = b.Credential.Ref
+				}
+				if b.Timeout != "" {
+					config.Timeout, err = time.ParseDuration(b.Timeout)
+					if err != nil {
+						return nil, err
+					}
+				}
+				impl, err = snowflake.New(config)
+				if err != nil {
+					return nil, fmt.Errorf("%s: %w", where, err)
+				}
+			case "gcs", "s3":
+				b, err := spec.Block[spec.StorageConnector](c.Slot)
+				if err != nil {
+					return nil, err
+				}
+				config := objectstorage.Config{System: c.Kind, Bucket: b.Bucket, Prefix: b.Prefix, Region: b.Region}
+				if b.Credential.Set() {
+					config.Credential = b.Credential.Ref
+				}
+				impl, err = objectstorage.New(config)
+				if err != nil {
+					return nil, fmt.Errorf("%s: %w", where, err)
+				}
 			case bigquery.System:
 				b, err := spec.Block[spec.BigQueryConnector](c.Slot)
 				if err != nil {

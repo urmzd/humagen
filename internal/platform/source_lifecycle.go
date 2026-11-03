@@ -14,6 +14,7 @@ import (
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/catalog/objectstorage"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/knowledge"
@@ -71,6 +72,9 @@ func (p *Platform) ConfigureSource(who auth.Principal, name string, cfg knowledg
 func (p *Platform) sourceProvider(kind string) knowledge.Provider {
 	if provider := p.cfg.Ext.SourceProviders[kind]; provider != nil {
 		return provider
+	}
+	if kind == "gcs" || kind == "s3" {
+		return objectstorage.Provider{System: kind}
 	}
 	if kind == "drive" || kind == "notion" {
 		return knowledge.HTTPProvider{Kind: kind}
