@@ -395,6 +395,10 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if err != nil {
 		return err
 	}
+	transcriber, err := openSpeech(ctx, o, file, keys)
+	if err != nil {
+		return err
+	}
 	connectors, err := openConnectors(ctx, o, file.cfg)
 	if err != nil {
 		return err
@@ -450,6 +454,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 		BuiltinModel:     *builtinModel,
 		Blobs:            blobs,
 		Embedder:         embedder,
+		Speech:           transcriber,
 		Connectors:       connectors,
 		Bus:              broker,
 		Workspace:        *workspaceDir,

@@ -452,7 +452,7 @@ export interface Refusal {
   resets_at?: string;
 }
 
-export type Permission = "agents:read" | "agents:write" | "runs:read" | "runs:write" | "schedules:read" | "schedules:write" | "alerts:read" | "alerts:write" | "knowledge:read" | "knowledge:write" | "evals:read" | "evals:write" | "billing:read" | "billing:write" | "artifacts:read" | "artifacts:write" | "clients:read" | "clients:write" | "projects:read" | "projects:write" | "projects:govern" | "people:read";
+export type Permission = "agents:read" | "agents:write" | "runs:read" | "runs:write" | "schedules:read" | "schedules:write" | "alerts:read" | "alerts:write" | "knowledge:read" | "knowledge:write" | "evals:read" | "evals:write" | "billing:read" | "billing:write" | "artifacts:read" | "artifacts:write" | "clients:read" | "clients:write" | "projects:read" | "projects:write" | "projects:govern" | "people:read" | "speech:write";
 
 /** An authenticated caller. The tenant is the workspace everything they touch is confined to. */
 export interface Principal {
@@ -2350,6 +2350,18 @@ export interface AgentPlace {
 
 /** Where an agent now lives. */
 export type AgentHome = { agent: string } & AgentPlace;
+
+/** Whether voice notes are transcribed, and the largest recording taken. */
+export interface VoiceSettings {
+  transcribe: boolean;
+  max_bytes: number;
+}
+
+/** What a recording said, and the language it was said in when the speech kind reports one. */
+export interface VoiceTranscript {
+  text: string;
+  language?: string;
+}
 
 /** One person in the directory. No email address is shown: a subject
 that holds one, as a Tailscale login does, is left out.

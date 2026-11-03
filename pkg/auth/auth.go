@@ -80,6 +80,11 @@ const (
 	// PeopleRead is seeing the workspace's directory of people: names,
 	// handles, pictures and roles. Never an email address.
 	PeopleRead Permission = "people:read"
+	// SpeechWrite is sending a recording to be transcribed, which spends
+	// the deployment's speech provider. Voice notes posted from a surface
+	// are transcribed as the message is posted, under the poster's
+	// runs:write.
+	SpeechWrite Permission = "speech:write"
 )
 
 // Permissions lists every permission, for validating configured scopes.
@@ -89,7 +94,7 @@ func Permissions() []Permission {
 		AlertsRead, AlertsWrite, KnowledgeRead, KnowledgeWrite, EvalsRead, EvalsWrite,
 		BillingRead, BillingWrite, ArtifactsRead, ArtifactsWrite,
 		ClientsRead, ClientsWrite, ProjectsRead, ProjectsWrite, ProjectsGovern,
-		PeopleRead,
+		PeopleRead, SpeechWrite,
 	}
 }
 

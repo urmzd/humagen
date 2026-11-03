@@ -23,9 +23,14 @@ The built-in one declares these four, and the group flags grant them:
 | Role | Permissions |
 |------|-------------|
 | `viewer` | `agents:read`, `runs:read`, `schedules:read`, `alerts:read`, `knowledge:read`, `evals:read`, `billing:read`, `artifacts:read`, `clients:read`, `projects:read`, `people:read` |
-| `operator` | viewer, plus `runs:write`, `schedules:write`, `alerts:write`, `evals:write`, `artifacts:write`, `projects:write` |
+| `operator` | viewer, plus `runs:write`, `schedules:write`, `alerts:write`, `evals:write`, `artifacts:write`, `projects:write`, `speech:write` |
 | `manager` | operator, plus `agents:write`, `knowledge:write`. Writing agents covers their call policies, so a manager is the natural approver of calls between agents |
 | `admin` | manager, plus `billing:write`, `clients:write`, `projects:govern` |
+
+Recording a voice note in the console (`speech:write`) is an operator's,
+as running an agent is: each recording spends the deployment's speech
+provider. A voice note posted from a surface is transcribed under the
+poster's `runs:write`, as the message is posted ([docs/guides/voice.md](../guides/voice.md)).
 
 Writing knowledge is an admin permission because a document an agent is grounded
 in changes what that agent says. Writing clients is one because a client hands

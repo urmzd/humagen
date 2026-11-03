@@ -150,6 +150,11 @@ may read. A project record from before roles reads as everyone owning it,
 which is what any operator could do to it; the workspace reads as everyone a
 member, owned by `projects:govern`.
 
+Voice notes have one permission, `speech:write`: sending a recording from
+the console to be transcribed. The built-in operator role holds it (`allow
+write on ... speech`), and so do manager and admin; a policy file that lists
+writes by resource adds `speech`.
+
 The directory has one permission, `people:read`: seeing who is in the
 workspace, by name, handle, picture and roles. `allow read on *` holds it, so
 every built-in role does, and a policy file that lists reads by resource adds

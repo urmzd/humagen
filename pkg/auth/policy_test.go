@@ -26,6 +26,9 @@ var legacyRolePermissions = map[auth.Role][]auth.Permission{
 		auth.AlertsRead, auth.AlertsWrite, auth.KnowledgeRead, auth.EvalsRead, auth.EvalsWrite,
 		auth.BillingRead, auth.ArtifactsRead, auth.ArtifactsWrite, auth.ClientsRead,
 		auth.ProjectsRead, auth.ProjectsWrite, auth.PeopleRead,
+		// Added with voice notes: recording one is an operator's, as
+		// running an agent is.
+		auth.SpeechWrite,
 	},
 	auth.Admin: auth.Permissions(),
 }

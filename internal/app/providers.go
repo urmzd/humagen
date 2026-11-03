@@ -24,7 +24,8 @@ import (
 // providers are, so a workspace model named like a built-in behaves like it:
 // Anthropic sends prompt cache breakpoints (the short lifetime fiber uses by
 // default) and Google reaches Gemini or Vertex AI. A local server such as
-// Ollama serves the OpenAI API, so it is openai. When fiber exposes its provider
+// Ollama serves the OpenAI API, so it is openai, and so is groq, whose block
+// arrives with Groq's base URL and key filled in (spec.ModelDefaults). When fiber exposes its provider
 // construction (an Endpoint with a key function), this file becomes a call
 // to it.
 

@@ -344,11 +344,12 @@ func fileExtensions(ctx context.Context, o Options, cfg spec.Config, keys credre
 				continue // the same model, declared by another workspace
 			}
 			switch m.Kind {
-			case "anthropic", "openai", "google":
+			case "anthropic", "openai", "google", "groq":
 				b, err := spec.Block[spec.ModelBlock](m.Slot)
 				if err != nil {
 					return ext, err
 				}
+				b = spec.ModelDefaults(m.Kind, b)
 				ext.Providers[m.Name] = modelProvider(m.Kind, m.Name, b, keys)
 				ext.Probes[m.Name] = modelProbe(m.Kind, b, keys)
 			default:

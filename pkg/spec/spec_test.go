@@ -37,8 +37,17 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	if cfg.System.Spec.Server.Role != "all" {
 		t.Fatalf("server.role = %q", cfg.System.Spec.Server.Role)
 	}
-	if cfg.System.Spec.Stores.Kind != "postgres" || len(cfg.Platforms) != 1 || len(cfg.Platforms[0].Spec.Models) != 3 {
+	if cfg.System.Spec.Stores.Kind != "postgres" || len(cfg.Platforms) != 1 || len(cfg.Platforms[0].Spec.Models) != 4 {
 		t.Fatalf("config = %+v", cfg)
+	}
+	if sp, err := Block[GroqSpeech](cfg.System.Spec.Speech); err != nil || cfg.System.Spec.Speech.Kind != "groq" || sp.KeyRef() != GroqKey ||
+		sp.Model != "whisper-large-v3-turbo" || sp.MaxBytes != 25<<20 || sp.TimeoutOr(0) != time.Minute {
+		t.Fatalf("the example's speech = %+v %+v %v", cfg.System.Spec.Speech, sp, err)
+	}
+	if g := cfg.Platforms[0].Spec.Models[3]; g.Kind != "groq" {
+		t.Fatalf("the example's groq model = %+v", g)
+	} else if b, err := Block[ModelBlock](g.Slot); err != nil || ModelDefaults(g.Kind, b).BaseURL != GroqBaseURL || ModelDefaults(g.Kind, b).Key.Ref != GroqKey {
+		t.Fatalf("the example's groq model takes Groq's defaults: %+v %v", b, err)
 	}
 	oidc, err := Block[OIDC](cfg.System.Spec.Auth.Slot)
 	if err != nil || oidc.ClientSecret.Ref != "env:HUMAGEN_OIDC_CLIENT_SECRET" || cfg.System.Spec.Auth.Groups.Roles["admin"][0] != "platform-admins" {
