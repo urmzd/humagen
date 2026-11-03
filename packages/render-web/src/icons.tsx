@@ -286,6 +286,21 @@ export const HistoryIcon = icon(
   </>,
   "HistoryIcon",
 );
+export const MaximizeIcon = icon(
+  <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />,
+  "MaximizeIcon",
+);
+export const MinimizeIcon = icon(
+  <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7" />,
+  "MinimizeIcon",
+);
+export const ColumnsIcon = icon(
+  <>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M12 3v18" />
+  </>,
+  "ColumnsIcon",
+);
 export const PanelLeftOpenIcon = icon(
   <>
     <rect x="3" y="3" width="18" height="18" rx="2" />

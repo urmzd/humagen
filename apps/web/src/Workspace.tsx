@@ -1,13 +1,39 @@
 import { defaultCopy } from "@humagen/components";
-import { ArtifactIcon, ChevronRightIcon, FileIcon, FolderIcon } from "@humagen/render-web";
+import {
+  BrainIcon,
+  ChevronRightIcon,
+  CircleIcon,
+  ColumnsIcon,
+  DiffIcon,
+  FileIcon,
+  FolderIcon,
+  ForkIcon,
+  LayersIcon,
+  MaximizeIcon,
+  MinimizeIcon,
+  PlusIcon,
+  StickyNoteIcon,
+  XIcon,
+} from "@humagen/render-web";
 import { Button } from "@humagen/render-web/ui/button";
 import { Inspector } from "@humagen/web";
-import { useCallback, useEffect, useState } from "react";
+import { type ComponentProps, type ReactNode, useCallback, useEffect, useState } from "react";
+import { Deliverables } from "./Deliverables.tsx";
 import { Memories } from "./Memories.tsx";
-import type { ConversationView, WorkspaceSection } from "./route.ts";
+import {
+  activeKey,
+  closeTab,
+  openTab,
+  type PaneKind,
+  type PaneTab,
+  paneTabs,
+  parseTab,
+  replaceTab,
+  tabKey,
+} from "./pane.ts";
+import type { ConversationView } from "./route.ts";
 import { Scratchpads, usePadDrafts } from "./Scratchpads.tsx";
-import type { Stored } from "./storage.ts";
-import { AgentMark, ago, SkeletonRows, Tabs } from "./ui.tsx";
+import { AgentMark, ago, Popover, SkeletonRows } from "./ui.tsx";
 import { WorkspaceFiles } from "./WorkspaceFiles.tsx";
 import { type ConversationSandboxes, type RunSandbox, workspaceFiles } from "./workspace-files.ts";
 
@@ -64,7 +90,7 @@ export function Sandboxes({
   thread: string;
   open: boolean;
   selected?: string;
-  onSelect: (run?: string) => void;
+  onSelect: (run?: string, label?: string) => void;
   onFile: (path: string) => void;
   onActivity?: (run: string) => void;
 }) {
@@ -114,7 +140,7 @@ export function Sandboxes({
           <ul className="flex min-w-0 flex-col">
             {value.runs.map((r) => (
               <li key={r.run} style={{ paddingInlineStart: `${Math.min(r.depth, 4) * 16}px` }}>
-                <button type="button" className={row} onClick={() => onSelect(r.run)}>
+                <button type="button" className={row} onClick={() => onSelect(r.run, r.agent)}>
                   <AgentMark name={r.agent} size={14} />
                   <span className="min-w-0 flex-1 truncate">{r.agent}</span>
                   <span className="shrink-0 text-aui-xs text-aui-muted tabular-nums">
@@ -231,50 +257,44 @@ function RunDetail({
   );
 }
 
-/** The conversation's saved artifacts; each opens in Deliverables. */
-export function Artifacts({
-  thread,
-  open,
-  onOpen,
-}: {
-  thread: string;
-  open: boolean;
-  onOpen: (artifact: string) => void;
-}) {
-  const read = useCallback(() => workspaceFiles.artifacts(thread), [thread]);
-  const { value, failed, retry } = useRead(open, read);
-  if (failed) return <Failed message={words.artifactsFailed} onRetry={retry} />;
-  if (!value) return <SkeletonRows count={3} />;
-  const items: Stored[] = value.artifacts ?? [];
-  return (
-    <div className="flex min-w-0 flex-col gap-2" data-slot="workspace-artifacts">
-      <p className="text-aui-xs text-aui-muted">{words.artifactsHint}</p>
-      {items.length === 0 ? (
-        <p className="py-3 text-aui-xs text-aui-muted">{words.artifactsEmpty}</p>
-      ) : (
-        <ul className="flex min-w-0 flex-col">
-          {items.map((a) => (
-            <li key={a.id}>
-              <button type="button" className={row} onClick={() => onOpen(a.id)}>
-                <ArtifactIcon kind={a.kind} phase="ready" size={18} />
-                <span className="min-w-0 flex-1 truncate">{a.title}</span>
-                <span className="shrink-0 text-aui-xs text-aui-muted">
-                  {words.artifactVersion(a.version)}
-                </span>
-                <ChevronRightIcon size={14} />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
+const pane = defaultCopy.workspace.pane;
+
+const icons: Record<PaneKind, ReactNode> = {
+  sandboxes: <FolderIcon size={14} />,
+  sandbox: <FolderIcon size={14} />,
+  files: <FileIcon size={14} />,
+  file: <FileIcon size={14} />,
+  scratchpads: <StickyNoteIcon size={14} />,
+  scratchpad: <StickyNoteIcon size={14} />,
+  memories: <BrainIcon size={14} />,
+  memory: <BrainIcon size={14} />,
+  artifacts: <LayersIcon size={14} />,
+  artifact: <LayersIcon size={14} />,
+  issue: <CircleIcon size={14} />,
+  pull: <ForkIcon size={14} />,
+  review: <DiffIcon size={14} />,
+};
+
+/** What a tab is called: a list by its section, an item by its name when known. */
+function tabLabel(tab: PaneTab, labels: Record<string, string>): string {
+  const known = labels[tabKey(tab)];
+  if (known) return known;
+  if (!tab.ref) return pane.kind[tab.kind];
+  if (tab.kind === "file") return tab.ref.split("/").at(-1) || tab.ref;
+  if (tab.kind === "issue" || tab.kind === "pull") return tab.ref.replace(/^.*\//, "");
+  return pane.kind[tab.kind];
 }
 
+/** The item tabs a "+" opens: each list, from which an item opens its own tab. */
+const PICKS: PaneKind[] = ["files", "scratchpads", "artifacts", "sandboxes", "memories"];
+
 /**
- * One place for a conversation's items. The conversation is a session with a
- * sandbox of its own; each agent run in it works in a nested one. Files keeps
- * its drafts while another section is shown or the panel is closed.
+ * The conversation's Workspace: a pane beside it with a tab for each open
+ * item, a file, a scratchpad, an artifact, a run's sandbox or memory. On a
+ * desktop it is the third pane, which can fill the page or show two tabs
+ * side by side; on a phone it is a full-screen sheet with the same tabs. The
+ * open tabs are the pane's address. Files and scratchpads keep their drafts
+ * while another tab is shown or the pane is closed.
  */
 export function Workspace({
   thread,
@@ -283,8 +303,11 @@ export function Workspace({
   onView,
   onClose,
   onRequest,
-  onArtifact,
   onRun,
+  extraTab,
+  extraPicks,
+  onRevise,
+  promotion,
 }: {
   thread: string;
   open: boolean;
@@ -292,66 +315,285 @@ export function Workspace({
   onView: (view: ConversationView) => void;
   onClose: () => void;
   onRequest?: (text: string) => void;
-  /** Opens a saved artifact in Deliverables. */
-  onArtifact: (id: string) => void;
   /** Opens a run in Activity. */
   onRun?: (run: string) => void;
+  /** Renders tabs of kinds this pane does not own, such as a GitHub issue or a review. */
+  extraTab?: (tab: PaneTab, show: (view: ConversationView) => void) => ReactNode | undefined;
+  /** More "+" choices, such as opening a GitHub issue. */
+  extraPicks?: (close: () => void) => ReactNode;
+  /** An artifact tab's Request Changes and promotion, as Deliverables takes them. */
+  onRevise?: ComponentProps<typeof Deliverables>["onRevise"];
+  promotion?: ComponentProps<typeof Deliverables>["promotion"];
 }) {
-  const section: WorkspaceSection = view.workspaceSection ?? "files";
   const [drafts, setDrafts] = usePadDrafts();
-  const go = (next: WorkspaceSection, extra: Partial<ConversationView> = {}) =>
-    onView({ panel: "workspace", workspaceSection: next === "files" ? undefined : next, ...extra });
-  const nav = (
-    <Tabs
-      label={words.sections}
-      value={section}
-      tabs={(["sandboxes", "files", "scratchpads", "memories", "artifacts"] as const).map((id) => ({
-        id,
-        label: words.section[id],
-      }))}
-      onChange={(next) => go(next)}
-    />
+  const [labels, setLabels] = useState<Record<string, string>>({});
+  const tabs = paneTabs(view);
+  const active = activeKey(view);
+  const current = parseTab(active) ?? (tabs.at(-1) as PaneTab);
+  const keys = tabs.map(tabKey);
+  const before = keys[keys.indexOf(active) - 1] ?? keys[keys.indexOf(active) + 1];
+  const second = view.split && before ? parseTab(before) : undefined;
+  const fileKind = (t?: PaneTab) => t?.kind === "file" || t?.kind === "files";
+  const name = (tab: PaneTab, label?: string) => {
+    if (label) setLabels((l) => ({ ...l, [tabKey(tab)]: label }));
+    return tab;
+  };
+  /** Opens an item from a tab: a list keeps its tab, an item tab is replaced. */
+  const show = (
+    from: PaneTab,
+    tab: PaneTab,
+    label?: string,
+    extra: Partial<ConversationView> = {},
+  ) =>
+    onView({
+      ...(from.ref
+        ? replaceTab(view, tabKey(from), name(tab, label))
+        : openTab(view, name(tab, label))),
+      ...extra,
+    });
+  const nameTab = useCallback(
+    (id: string, label: string) =>
+      setLabels((l) =>
+        l[`scratchpad:${id}`] === label ? l : { ...l, [`scratchpad:${id}`]: label },
+      ),
+    [],
   );
+  const nameArtifact = useCallback(
+    (id: string, label: string) =>
+      setLabels((l) => (l[`artifact:${id}`] === label ? l : { ...l, [`artifact:${id}`]: label })),
+    [],
+  );
+  const close = (key: string) => {
+    const next = closeTab(view, key);
+    if (next) onView(next);
+    else onClose();
+  };
+  const toggle = (field: "expanded" | "split") =>
+    onView({ ...view, [field]: !view[field] || undefined });
+
+  const render = (tab: PaneTab, files: ReactNode): ReactNode => {
+    switch (tab.kind) {
+      case "files":
+      case "file":
+        return files;
+      case "sandboxes":
+      case "sandbox":
+        return (
+          <Sandboxes
+            thread={thread}
+            open={open}
+            selected={tab.ref}
+            onSelect={(run, label) =>
+              show(tab, run ? { kind: "sandbox", ref: run } : { kind: "sandboxes" }, label)
+            }
+            onFile={(file) =>
+              onView(openTab(view, file ? { kind: "file", ref: file } : { kind: "files" }))
+            }
+            onActivity={onRun}
+          />
+        );
+      case "scratchpads":
+      case "scratchpad":
+        return (
+          <Scratchpads
+            thread={thread}
+            open={open}
+            selected={tab.ref}
+            onSelect={(id, label) =>
+              show(tab, id ? { kind: "scratchpad", ref: id } : { kind: "scratchpads" }, label)
+            }
+            drafts={drafts}
+            setDrafts={setDrafts}
+            onName={nameTab}
+          />
+        );
+      case "memories":
+      case "memory":
+        return (
+          <Memories
+            thread={thread}
+            open={open}
+            selected={tab.ref}
+            onSelect={(run, label) =>
+              show(tab, run ? { kind: "memory", ref: run } : { kind: "memories" }, label)
+            }
+          />
+        );
+      case "artifacts":
+      case "artifact":
+        return (
+          <Deliverables
+            open={open}
+            thread={thread}
+            view={{ ...view, artifact: tab.ref }}
+            onView={(next) =>
+              show(
+                tab,
+                next.artifact ? { kind: "artifact", ref: next.artifact } : { kind: "artifacts" },
+                undefined,
+                {
+                  artifactTab: next.artifactTab,
+                  slide: next.slide,
+                },
+              )
+            }
+            onEditCopy={(file) => onView(openTab(view, { kind: "file", ref: file }))}
+            onRevise={onRevise}
+            promotion={promotion}
+            onClose={onClose}
+            frame={(body) => body}
+            onTitle={nameArtifact}
+          />
+        );
+      default:
+        return (
+          extraTab?.(tab, onView) ?? (
+            <p className="text-aui-xs text-aui-muted">{pane.unavailable}</p>
+          )
+        );
+    }
+  };
+
+  const strip = (
+    <div className="flex min-w-0 items-center gap-1">
+      <div
+        role="tablist"
+        aria-label={pane.tabs}
+        className="aui-scroll flex min-w-0 flex-1 gap-1 overflow-x-auto"
+      >
+        {tabs.map((tab) => {
+          const key = tabKey(tab);
+          const label = tabLabel(tab, labels);
+          return (
+            <span
+              key={key}
+              className={`inline-flex min-w-0 shrink-0 items-center rounded-aui ${key === active ? "bg-aui-hover text-aui-fg" : "text-aui-muted"}`}
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={key === active}
+                title={tab.ref ?? label}
+                onClick={() => onView(openTab(view, tab))}
+                className="inline-flex min-h-9 max-w-44 items-center gap-1.5 px-2 text-aui-xs focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
+              >
+                {icons[tab.kind]}
+                <span className="truncate">{label}</span>
+              </button>
+              <button
+                type="button"
+                aria-label={pane.close(label)}
+                onClick={() => close(key)}
+                className="inline-flex size-7 items-center justify-center rounded-aui hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:size-11"
+              >
+                <XIcon size={12} />
+              </button>
+            </span>
+          );
+        })}
+      </div>
+      <Popover
+        label={pane.open}
+        button={<PlusIcon size={16} />}
+        className="inline-flex size-9 shrink-0 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:size-11"
+        align="right"
+        narrow
+      >
+        {(closeMenu) => (
+          <div className="flex flex-col p-1">
+            {PICKS.map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                className="inline-flex min-h-9 items-center gap-2 rounded-aui px-2.5 text-left text-aui-xs hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
+                onClick={() => {
+                  closeMenu();
+                  onView(openTab(view, { kind }));
+                }}
+              >
+                {icons[kind]}
+                {pane.pick[kind]}
+              </button>
+            ))}
+            {extraPicks?.(closeMenu)}
+          </div>
+        )}
+      </Popover>
+    </div>
+  );
+  const actions = (
+    <>
+      <button
+        type="button"
+        aria-label={pane.split}
+        title={pane.split}
+        aria-pressed={!!view.split}
+        disabled={tabs.length < 2}
+        onClick={() => toggle("split")}
+        className="inline-flex size-9 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-40 aria-pressed:text-aui-fg max-lg:hidden"
+      >
+        <ColumnsIcon size={16} />
+      </button>
+      <button
+        type="button"
+        aria-label={view.expanded ? pane.collapse : pane.expand}
+        title={view.expanded ? pane.collapse : pane.expand}
+        aria-pressed={!!view.expanded}
+        onClick={() => toggle("expanded")}
+        className="inline-flex size-9 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:text-aui-fg max-lg:hidden"
+      >
+        {view.expanded ? <MinimizeIcon size={16} /> : <MaximizeIcon size={16} />}
+      </button>
+    </>
+  );
+  const fileView: ConversationView = {
+    ...view,
+    file: current.kind === "file" ? current.ref : second?.kind === "file" ? second.ref : undefined,
+  };
   return (
     <WorkspaceFiles
       thread={thread}
-      open={open && section === "files"}
-      view={view}
-      onView={onView}
+      open={open && (fileKind(current) || fileKind(second))}
+      view={fileView}
+      onView={(next) =>
+        onView({
+          ...openTab(view, next.file ? { kind: "file", ref: next.file } : { kind: "files" }),
+          workspaceTab: next.workspaceTab,
+        })
+      }
       onClose={onClose}
       onRequest={onRequest}
-      onPublished={onArtifact}
+      onPublished={(id) => onView(openTab(view, { kind: "artifact", ref: id }))}
       frame={(files) => (
-        <Inspector open={open} title={words.title} onClose={onClose} wide lead={nav}>
-          {section === "files" ? (
-            files
-          ) : section === "sandboxes" ? (
-            <Sandboxes
-              thread={thread}
-              open={open}
-              selected={view.sandbox}
-              onSelect={(run) => go("sandboxes", { sandbox: run })}
-              onFile={(file) => go("files", file ? { file } : {})}
-              onActivity={onRun}
-            />
-          ) : section === "scratchpads" ? (
-            <Scratchpads
-              thread={thread}
-              open={open}
-              selected={view.scratchpad}
-              onSelect={(id) => go("scratchpads", { scratchpad: id })}
-              drafts={drafts}
-              setDrafts={setDrafts}
-            />
-          ) : section === "memories" ? (
-            <Memories
-              thread={thread}
-              open={open}
-              selected={view.memoryRun}
-              onSelect={(run) => go("memories", { memoryRun: run })}
-            />
+        <Inspector
+          open={open}
+          title={defaultCopy.workspace.title}
+          onClose={onClose}
+          wide
+          expanded={!!view.expanded}
+          lead={strip}
+          actions={actions}
+        >
+          {second ? (
+            <div className="grid min-w-0 gap-4 lg:grid-cols-2" data-slot="workspace-split">
+              <section aria-label={tabLabel(current, labels)} className="min-w-0">
+                {render(current, files)}
+              </section>
+              <section
+                aria-label={tabLabel(second, labels)}
+                className="min-w-0 max-lg:hidden lg:border-aui-border lg:border-l lg:pl-4"
+              >
+                {fileKind(second) && fileKind(current) ? (
+                  <p className="text-aui-xs text-aui-muted">{pane.splitFiles}</p>
+                ) : (
+                  render(second, files)
+                )}
+              </section>
+            </div>
           ) : (
-            <Artifacts thread={thread} open={open} onOpen={onArtifact} />
+            <div className="min-w-0" data-slot={`workspace-tab-${current.kind}`}>
+              {render(current, files)}
+            </div>
           )}
         </Inspector>
       )}

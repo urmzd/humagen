@@ -4,10 +4,12 @@ import { defaultCopy } from "@humagen/components";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { stubFetch } from "./dom.ts";
+import { activeKey } from "./pane.ts";
 import type { ConversationView } from "./route.ts";
 import { Workspace } from "./Workspace.tsx";
 
 const words = defaultCopy.workspace;
+const pane = words.pane;
 let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
   cleanup();
@@ -112,36 +114,54 @@ function Harness({
         setView(next);
       }}
       onClose={() => {}}
-      onArtifact={(id) => opened.push(`artifact:${id}`)}
       onRun={(run) => opened.push(`run:${run}`)}
     />
   );
 }
 
-test("the Workspace panel holds its sections as tabs, each with its own address", async () => {
+test("the Workspace is a pane of tabs: + opens an item list, a tab closes, and the tabs are its address", async () => {
   setup();
   const views: ConversationView[] = [];
   render(<Harness initial={{ panel: "workspace" }} opened={[]} views={views} />);
-  const tabs = await screen.findAllByRole("tab");
+  // A bare address opens Files.
+  const first = await screen.findAllByRole("tab");
   assert.deepEqual(
-    tabs.map((t) => t.textContent),
-    [
-      words.section.sandboxes,
-      words.section.files,
-      words.section.scratchpads,
-      words.section.memories,
-      words.section.artifacts,
-    ],
+    first.map((t) => t.textContent),
+    [pane.kind.files],
   );
-  // Files is the default section, at the panel's own address.
-  assert.equal(
-    screen.getByRole("tab", { name: words.section.files }).getAttribute("aria-selected"),
-    "true",
+  fireEvent.click(screen.getByRole("button", { name: pane.open }));
+  for (const kind of ["files", "scratchpads", "artifacts", "sandboxes", "memories"])
+    assert.ok(screen.getByRole("button", { name: pane.pick[kind] }), kind);
+  fireEvent.click(screen.getByRole("button", { name: pane.pick.sandboxes }));
+  assert.deepEqual(views.at(-1)?.tabs, ["files", "sandboxes"]);
+  assert.equal(activeKey(views.at(-1) ?? {}), "sandboxes");
+  assert.ok(await screen.findByText(words.sessionSandbox));
+  // Showing another tab keeps both open; closing one shows its neighbor.
+  fireEvent.click(screen.getByRole("tab", { name: pane.kind.files }));
+  assert.equal(views.at(-1)?.active, "files");
+  fireEvent.click(screen.getByRole("button", { name: pane.close(pane.kind.files) }));
+  assert.deepEqual(views.at(-1)?.tabs, ["sandboxes"]);
+  // Expand and split are toggles in the address.
+  fireEvent.click(screen.getByRole("button", { name: pane.expand }));
+  assert.equal(views.at(-1)?.expanded, true);
+});
+
+test("split shows two tabs side by side", async () => {
+  setup();
+  render(
+    <Harness
+      initial={{
+        panel: "workspace",
+        tabs: ["sandboxes", "memories"],
+        active: "sandboxes",
+        split: true,
+      }}
+      opened={[]}
+    />,
   );
-  fireEvent.click(screen.getByRole("tab", { name: words.section.sandboxes }));
-  assert.equal(views.at(-1)?.workspaceSection, "sandboxes");
-  fireEvent.click(screen.getByRole("tab", { name: words.section.files }));
-  assert.equal(views.at(-1)?.workspaceSection, undefined);
+  const split = await screen.findByRole("region", { name: pane.kind.sandboxes });
+  assert.ok(split);
+  assert.ok(screen.getByRole("region", { name: pane.kind.memories }));
 });
 
 test("Sandboxes shows the session sandbox and a nested sandbox per agent run", async () => {
@@ -162,7 +182,9 @@ test("Sandboxes shows the session sandbox and a nested sandbox per agent run", a
   const writer = screen.getByRole("button", { name: /Writer/ });
   assert.equal(writer.closest("li")?.getAttribute("style"), "padding-inline-start: 16px;");
   fireEvent.click(screen.getByRole("button", { name: /^.*Lead.*2 files/ }));
-  assert.equal(views.at(-1)?.sandbox, "r-lead");
+  assert.equal(activeKey(views.at(-1) ?? {}), "sandbox:r-lead");
+  // The tab is named for its run's agent.
+  assert.ok(screen.getByRole("tab", { name: "Lead" }));
   // The run's sandbox: its mounts, what it left, and what copyback refused.
   assert.ok(await screen.findByText("/work"));
   assert.ok(screen.getByText(`${words.mountKind.project}: Launch`));
@@ -173,8 +195,7 @@ test("Sandboxes shows the session sandbox and a nested sandbox per agent run", a
   assert.deepEqual(opened, ["run:r-lead"]);
   // A file it left opens in Files.
   fireEvent.click(screen.getByRole("button", { name: words.openFile("report.md") }));
-  assert.equal(views.at(-1)?.workspaceSection, undefined);
-  assert.equal(views.at(-1)?.file, "report.md");
+  assert.equal(activeKey(views.at(-1) ?? {}), "file:report.md");
   assert.ok(await screen.findByRole("textbox", { name: "Edit report.md" }));
 });
 
@@ -212,14 +233,17 @@ test("a failed sandboxes read is recoverable", async () => {
   assert.ok(await screen.findByText(words.sessionSandbox));
 });
 
-test("Artifacts lists saved versions and opens one in Deliverables", async () => {
+test("Artifacts lists saved versions and opens one in its own tab", async () => {
   setup();
-  const opened: string[] = [];
+  const views: ConversationView[] = [];
   render(
-    <Harness initial={{ panel: "workspace", workspaceSection: "artifacts" }} opened={opened} />,
+    <Harness
+      initial={{ panel: "workspace", workspaceSection: "artifacts" }}
+      opened={[]}
+      views={views}
+    />,
   );
   const item = await screen.findByRole("button", { name: /Launch brief\.md/ });
-  assert.ok(screen.getByText(words.artifactVersion(3)));
   fireEvent.click(item);
-  await waitFor(() => assert.deepEqual(opened, ["artifact:art-1"]));
+  await waitFor(() => assert.equal(activeKey(views.at(-1) ?? {}), "artifact:art-1"));
 });

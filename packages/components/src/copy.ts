@@ -98,6 +98,38 @@ export const defaultCopy = {
       memories: "Memories",
       artifacts: "Artifacts",
     },
+    pane: {
+      tabs: "Open items",
+      open: "Open in Workspace",
+      close: (label: string) => `Close ${label}`,
+      expand: "Expand Workspace",
+      collapse: "Show Conversation",
+      split: "Show Two Tabs",
+      splitFiles: "Files show in one tab at a time. Choose another tab to see beside it.",
+      unavailable: "This item cannot be shown here.",
+      kind: {
+        sandboxes: "Sandboxes",
+        sandbox: "Sandbox",
+        files: "Files",
+        file: "File",
+        scratchpads: "Scratchpads",
+        scratchpad: "Scratchpad",
+        memories: "Memories",
+        memory: "Memory",
+        artifacts: "Artifacts",
+        artifact: "Artifact",
+        issue: "Issue",
+        pull: "Pull Request",
+        review: "Review",
+      },
+      pick: {
+        files: "File",
+        scratchpads: "Scratchpad",
+        artifacts: "Artifact",
+        sandboxes: "Sandbox",
+        memories: "Memories",
+      } as Record<string, string>,
+    },
     memories: {
       hint: (isolated: boolean) =>
         isolated

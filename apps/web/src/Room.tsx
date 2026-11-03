@@ -45,6 +45,7 @@ import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { PersonMark } from "./PersonMark.tsx";
 import { mentionPicks, PlusMenu, SelectionChips } from "./Plus.tsx";
+import { openPane } from "./pane.ts";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { followRoom } from "./roomFollow.ts";
@@ -767,7 +768,9 @@ export function ThreadRoom({
               : undefined
         }
         onPanel={(next) => openPanel(next)}
-        onArtifact={(id) => openPanel("deliverables", { artifact: id })}
+        onArtifact={(id) =>
+          openPanel("workspace", openPane(shownView, { kind: "artifact", ref: id }))
+        }
       >
         <Presence when={!!shareable && !!sharing} ms={220}>
           {(leaving) => (
@@ -1043,7 +1046,19 @@ export function ThreadRoom({
               }
             : undefined
         }
-        onArtifact={(artifact) => openPanel("deliverables", { artifact })}
+        promotion={
+          artifactActions
+            ? { project: th.project, shared: th.visibility === "shared", ...artifactActions }
+            : undefined
+        }
+        onRevise={
+          posts
+            ? (file, slide) => {
+                setSeed({ text: revisionPrompt(file, slide), mode: "prepend" });
+                openPanel();
+              }
+            : undefined
+        }
         onRun={(run) => openPanel("activity", { run })}
       />
       <Presence when={shownView.panel === "deliverables"} ms={220}>

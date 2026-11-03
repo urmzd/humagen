@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { stubFetch } from "./dom.ts";
 import { memoryEditHref } from "./Memories.tsx";
+import { activeKey } from "./pane.ts";
 import type { ConversationView } from "./route.ts";
 import { Workspace } from "./Workspace.tsx";
 
@@ -71,7 +72,6 @@ function Harness({
         setView(next);
       }}
       onClose={() => {}}
-      onArtifact={() => {}}
     />
   );
 }
@@ -103,7 +103,7 @@ test("Memories shows the conversation's, the session's and each message's memory
   assert.equal(screen.queryByRole("button", { name: /Save|Delete/ }), null);
   // A message: what it was given and kept, and the notes it drew.
   fireEvent.click(screen.getByRole("button", { name: /Lead/ }));
-  assert.equal(views.at(-1)?.memoryRun, "r-2");
+  assert.equal(activeKey(views.at(-1) ?? {}), "memory:r-2");
   assert.ok(await screen.findByText(words.installed(4)));
   assert.ok(screen.getByText(words.committed(5)));
   assert.ok(screen.getByText(words.dropped(2)));

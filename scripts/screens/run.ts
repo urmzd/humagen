@@ -323,7 +323,12 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
         assert.equal(pdf.suggestedFilename(), "native-launch.pdf");
         assert.equal(readFileSync(pdfPath).subarray(0, 5).toString(), "%PDF-");
         await page.getByRole("button", { name: "Present", exact: true }).click();
-        await page.getByRole("dialog", { name: "native-launch.pptx", exact: true }).waitFor();
+        await page
+          .getByRole("dialog", {
+            name: defaultCopy.conversation.artifactPresentation("native-launch.pptx"),
+            exact: true,
+          })
+          .waitFor();
         await page.getByRole("button", { name: "Exit Presentation", exact: true }).click();
         await page.getByRole("button", { name: "Request Changes", exact: true }).click();
         await page.waitForFunction(() =>
@@ -527,6 +532,24 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
           .first()
           .click();
         await panel.getByText(defaultCopy.workspace.memories.inContext).first().waitFor();
+      },
+    },
+    {
+      // The pane's tabs, the artifact and a run's sandbox side by side.
+      name: "workspace-pane-split",
+      path: `/conversations/${ids.nativeThread}/workspace?tabs=sandboxes,${encodeURIComponent(`artifact:${ids.nativeArtifact}`)}&active=${encodeURIComponent(`artifact:${ids.nativeArtifact}`)}&split=1`,
+      act: async (page) => {
+        const panel = page.getByRole("dialog", { name: defaultCopy.workspace.title, exact: true });
+        await panel.getByRole("tab", { name: defaultCopy.workspace.pane.kind.sandboxes }).waitFor();
+        await panel.getByRole("link", { name: "Download Original", exact: true }).first().waitFor();
+      },
+    },
+    {
+      name: "workspace-pane-expanded",
+      path: `/conversations/${ids.nativeThread}/workspace?tabs=${encodeURIComponent(`artifact:${ids.nativeArtifact}`)}&full=1`,
+      act: async (page) => {
+        const panel = page.getByRole("dialog", { name: defaultCopy.workspace.title, exact: true });
+        await panel.getByRole("link", { name: "Download Original", exact: true }).first().waitFor();
       },
     },
     {
@@ -739,7 +762,10 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
         await page.getByRole("button", { name: "Conversation Settings", exact: true }).click();
         await page.getByRole("button", { name: defaultCopy.workspace.menu, exact: true }).click();
         await page
-          .getByRole("tab", { name: defaultCopy.workspace.section.artifacts, exact: true })
+          .getByRole("button", { name: defaultCopy.workspace.pane.open, exact: true })
+          .click();
+        await page
+          .getByRole("button", { name: defaultCopy.workspace.pane.pick.artifacts, exact: true })
           .click();
         await page
           .getByRole("button", { name: /Launch briefing\.pptx/ })

@@ -150,7 +150,7 @@ export function Memories({
   thread: string;
   open: boolean;
   selected?: string;
-  onSelect: (run?: string) => void;
+  onSelect: (run?: string, label?: string) => void;
 }) {
   const [value, setValue] = useState<ConversationMemory>();
   const [failed, setFailed] = useState(false);
@@ -236,7 +236,7 @@ export function Memories({
                 <button
                   type="button"
                   className="flex min-h-11 w-full min-w-0 items-center gap-2 rounded-aui px-2 py-2 text-left text-aui-sm hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-                  onClick={() => onSelect(r.run)}
+                  onClick={() => onSelect(r.run, r.agent)}
                 >
                   <AgentMark name={r.agent} size={14} />
                   <span className="min-w-0 flex-1 truncate">{r.agent}</span>
