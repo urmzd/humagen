@@ -253,6 +253,8 @@ planned collections, browser, protocol and improvement work from this UI pass.
   confinement sweeps. Screens: `conversation-header`, `workspace-menu`,
   `workspace-sandboxes` and `workspace-artifacts`.
 
+| DES-058 | Replay a finished turn with a chosen agent in a saved fork | Implemented; replay unit and DOM tests; `conversation-replay-agent` screen registered for CI |
+
 ## Review and implementation evidence
 
 The approved implementation pass covers supported Slack and GitHub workspace
@@ -1543,3 +1545,18 @@ Evidence: `go test -race ./pkg/threads ./internal/platform ./internal/httpapi`
 `TestOnlyAPersonChoosesApproveForMe`, the contract tests); `cd apps/web &&
 pnpm test` (`approval-mode.dom.test.tsx`, `chat.dom.test.tsx`); `make
 screens` with `home-project-above` and `composer-approval-mode`.
+
+### DES-058: Replay with an agent
+
+- A completed turn's message actions include **Replay With**, opening an agent
+  picker with `AgentMark`. The agent that answered is listed last.
+- Picking an agent saves a fork through that finished turn using the existing
+  Fork API, then posts the same prompt addressed to the chosen agent and opens
+  the new conversation. First turns also keep their fork lineage. Earlier
+  turns and answers remain passive context; no prior tools execute again.
+- Posting permission is required; read-only conversations have no replay action.
+  A refused fork or post reports an error and does not navigate. The picker
+  blocks repeat submissions while a replay is in flight.
+
+Evidence: `replay.test.ts`, `replay.dom.test.tsx`; the phone and desktop
+`conversation-replay-agent` screen is registered in `scripts/screens` for CI.

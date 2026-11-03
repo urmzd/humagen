@@ -1113,6 +1113,11 @@ export const defaultCopy = {
   product: "Humagen",
   forking: {
     fromHere: "Fork",
+    /** Replay with another agent (DES-058): the same prompt, in a fork at that turn. */
+    replay: "Replay With",
+    replayWith: (agent: string) => `Replay with @${agent}`,
+    replayHint: "Sends the same prompt to the agent you pick, in a new branch from this turn.",
+    replayFailed: "Could not replay. Try again.",
     archive: "Read-only conversation archive",
     title: "Fork Conversation",
     create: "Create Fork",

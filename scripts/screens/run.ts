@@ -44,6 +44,7 @@ import { ideScreens } from "./ide.ts";
 import { libraryScreens } from "./library.ts";
 import { startNativeModel } from "./native.ts";
 import { usageScreens } from "./observability.ts";
+import { replayScreens } from "./replay.ts";
 import { reviewScreens } from "./review.ts";
 import { sidebarParticipants } from "./sidebar-participants.ts";
 import { sidebarScroll } from "./sidebar-scroll.ts";
@@ -1028,6 +1029,7 @@ function screens(ids: Ids, call: Call): Screen[] {
     ...sidebarViews(),
     wavePreview(`/conversations/${ids.privateChat}`),
     ...composerChrome(ids.privateChat),
+    ...replayScreens(ids.privateChat),
     conversationDeletions(call),
     { name: "task", path: `/conversations/${ids.task}` },
     ...chats(ids, call),
