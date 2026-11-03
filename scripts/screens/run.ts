@@ -44,6 +44,7 @@ import { ideScreens } from "./ide.ts";
 import { libraryScreens } from "./library.ts";
 import { startNativeModel } from "./native.ts";
 import { usageScreens } from "./observability.ts";
+import { reviewScreens } from "./review.ts";
 import { sidebarParticipants } from "./sidebar-participants.ts";
 import { sidebarScroll } from "./sidebar-scroll.ts";
 import { workspaceScreens } from "./workspace.ts";
@@ -172,7 +173,7 @@ async function mentioned(page: Page, text: string): Promise<void> {
 
 /**
  * The chat's states, each a page and what a person does on it: completion
- * open after @ and after $, the + menu with two agents checked, the box
+ * open after @, the / command menu, the + menu with two agents checked, the box
  * with their mentions, a private conversation answered, its Share
  * dialog, a shared conversation, and answers its selected agents were
  * routed to.
@@ -182,10 +183,8 @@ async function mentioned(page: Page, text: string): Promise<void> {
  * header is one line, from its menu.
  */
 async function openContext(page: Page): Promise<void> {
-  if ((page.viewportSize()?.width ?? 0) < 768)
-    await page
-      .getByRole("button", { name: defaultCopy.conversation.settings, exact: true })
-      .click();
+  // Context is in Conversation Settings at every width.
+  await page.getByRole("button", { name: defaultCopy.conversation.settings, exact: true }).click();
   await page.getByRole("button", { name: defaultCopy.conversation.context, exact: true }).click();
 }
 
@@ -686,8 +685,14 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
         await artifactFixtures(page, ids.privateChat);
         await bar(page).fill("Make the owner clear.");
         await page.getByRole("button", { name: "Conversation Settings", exact: true }).click();
-        await page.getByRole("button", { name: "Deliverables", exact: true }).click();
-        await page.getByRole("button", { name: /^Launch briefing.pptx/ }).click();
+        await page.getByRole("button", { name: defaultCopy.workspace.menu, exact: true }).click();
+        await page
+          .getByRole("tab", { name: defaultCopy.workspace.section.artifacts, exact: true })
+          .click();
+        await page
+          .getByRole("button", { name: /Launch briefing\.pptx/ })
+          .first()
+          .click();
         await page.getByRole("button", { name: /^Slide 3:/ }).click();
         await page.getByRole("button", { name: "Request Changes", exact: true }).click();
         await page.waitForFunction(() =>
@@ -697,14 +702,6 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
         );
         assert.match(await bar(page).inputValue(), /Make the owner clear/);
         assert.equal(new URL(page.url()).pathname.includes("deliverables"), false);
-      },
-    },
-    {
-      name: "chat-kind-items",
-      path: "/",
-      act: async (page) => {
-        await bar(page).fill("@skill:");
-        await page.getByRole("listbox").getByText("@skill:launch-review").waitFor();
       },
     },
     {
@@ -744,15 +741,36 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       path: "/",
       act: async (page) => {
         await bar(page).fill("@");
-        await page.getByRole("listbox").getByText("@helper").waitFor();
+        const list = page.getByRole("listbox");
+        await list.getByText("@helper").waitFor();
+        // Skills are slash commands: @ offers neither them nor @skill: (DES-047).
+        assert.equal(await list.getByText(/skill|launch-review/).count(), 0);
       },
     },
     {
-      name: "chat-dollar",
+      // The `/` command menu (DES-046): skills with their descriptions and
+      // kind, the typed letters highlighted.
+      name: "chat-slash",
       path: "/",
       act: async (page) => {
-        await bar(page).fill("@helper $");
-        await page.getByRole("listbox").getByText("$launch-review").waitFor();
+        await bar(page).fill("/re");
+        const menu = page.getByRole("listbox", { name: defaultCopy.threads.commands });
+        await menu.getByText("Reviews a launch plan against the checklist").waitFor();
+        assert.equal(await menu.getByRole("option").count(), 2);
+        assert.ok((await menu.locator("mark").count()) >= 2, "the typed letters are highlighted");
+      },
+    },
+    {
+      // A picked command is written `/name ` and drawn as a token.
+      name: "chat-slash-picked",
+      path: "/",
+      act: async (page) => {
+        await bar(page).fill("/re");
+        await page.getByRole("listbox", { name: defaultCopy.threads.commands }).waitFor();
+        await page.keyboard.press("Enter");
+        await page.keyboard.type("for the launch plan");
+        assert.equal(await bar(page).inputValue(), "/release-notes for the launch plan");
+        await page.locator("[data-tokens] mark").getByText("/release-notes").waitFor();
       },
     },
     { name: "chat-plus", path: "/", act: twoAgents },
@@ -853,9 +871,9 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
                 (expected) =>
                   document.querySelector<HTMLTextAreaElement>('form[aria-label="Message"] textarea')
                     ?.value === expected,
-                `$launch-review ${draft}`,
+                `/launch-review ${draft}`,
               );
-              assert.equal(await bar(page).inputValue(), `$launch-review ${draft}`);
+              assert.equal(await bar(page).inputValue(), `/launch-review ${draft}`);
             } else assert.equal(await bar(page).inputValue(), draft);
             await page.getByText("brief.txt", { exact: true }).waitFor();
             assert.equal(posts, 0, "Picking a skill must not submit the message");
@@ -1273,6 +1291,7 @@ function screens(ids: Ids, call: Call): Screen[] {
     ...ideScreens(call),
     ...libraryScreens(call),
     ...workspaceScreens(call),
+    ...reviewScreens(call),
     ...usageScreens(),
     ...emailScreens(call),
   );

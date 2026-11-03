@@ -31,6 +31,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { Run } from "./adapter.ts";
+import { skillRefs } from "./commands.ts";
 import { dollars, elapsed, took } from "./format.ts";
 import { moreOf, nudgeInto, revealAt } from "./layout.ts";
 import { href } from "./route.ts";
@@ -747,22 +748,41 @@ export function Checkpoint({ agent, children }: { agent?: string; children: Reac
 
 /**
  * Text with each `@name` of an agent as a link to its profile, so anyone
- * reading can follow it. A name that is not an agent stays as written.
+ * reading can follow it, and each skill it names as a `/name` chip, however
+ * it was written (`$name` and `@skill:name` are aliases the platform still
+ * reads). skills are the names the message's tags resolved to; without
+ * them a `/name` stays text (commands.ts, skillRefs). A name that is not an
+ * agent stays as written.
  */
-export function Mentioned({ text }: { text: string }) {
-  const parts = text.split(/(@[a-z0-9][a-z0-9_-]*)/gi);
-  return (
-    <>
-      {parts.map((part, i) =>
+export function Mentioned({ text, skills }: { text: string; skills?: string[] }) {
+  const out: ReactNode[] = [];
+  let at = 0;
+  const agents = (chunk: string) => {
+    for (const part of chunk.split(/(@[a-z0-9][a-z0-9_-]*)/gi))
+      out.push(
         part.startsWith("@") && part.length > 1 ? (
-          // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one text never reorder
-          <MentionLink key={i} name={part.slice(1)} />
+          <MentionLink key={out.length} name={part.slice(1)} />
         ) : (
           part
         ),
-      )}
-    </>
-  );
+      );
+  };
+  for (const ref of skillRefs(text, skills)) {
+    agents(text.slice(at, ref.start));
+    out.push(
+      <span
+        key={out.length}
+        data-skill={ref.name}
+        title={defaultCopy.threads.commandKind}
+        className="rounded-sm bg-aui-accent-soft px-0.5 font-medium"
+      >
+        /{ref.name}
+      </span>,
+    );
+    at = ref.end;
+  }
+  agents(text.slice(at));
+  return <>{out}</>;
 }
 
 /** What a mention's hover card says about an agent. */
