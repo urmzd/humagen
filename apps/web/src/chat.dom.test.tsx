@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
+import { reviewStreamingTurn, reviewTurn } from "@humagen/core/fixtures";
+import { SourceContext, WebSurface } from "@humagen/render-web";
+import { AgentMessage } from "@humagen/web";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Run } from "./adapter.ts";
-import type { ProjectAgentsView, Revision, ThreadPage } from "./api.ts";
+import { api, type ProjectAgentsView, type Revision, type ThreadPage } from "./api.ts";
 import { Chat } from "./Chat.tsx";
 import { stubEventSource, stubFetch } from "./dom.ts";
 import { globex } from "./projects.fixtures.ts";
@@ -155,12 +158,14 @@ test("@ completes the agents available here and people, never @auto, never the p
   fireEvent.change(box(), { target: { value: "ask @he" } });
   fireEvent.keyDown(box(), { key: "Tab" });
   await waitFor(() => assert.equal(box().value, "ask @helper "));
-  // $ completes skills.
+  // / completes skills, as commands; $ is no trigger.
   fireEvent.change(box(), { target: { value: "ask @helper $r" } });
+  assert.equal(screen.queryByRole("listbox"), null);
+  fireEvent.change(box(), { target: { value: "ask @helper /r" } });
   const skills = await screen.findByRole("listbox");
-  await waitFor(() => assert.ok(skills.textContent?.includes("$review"), skills.textContent ?? ""));
+  await waitFor(() => assert.ok(skills.textContent?.includes("/review"), skills.textContent ?? ""));
   fireEvent.keyDown(box(), { key: "Enter" });
-  await waitFor(() => assert.equal(box().value, "ask @helper $review "));
+  await waitFor(() => assert.equal(box().value, "ask @helper /review "));
   assert.ok(!net?.seen.some((s) => s.method === "POST"), "picking with Enter does not send");
 });
 
@@ -1264,7 +1269,7 @@ test("choosing a project skill keeps the draft and attached file and waits for e
   const menu = await screen.findByRole("dialog", { name: chat.menu });
   fireEvent.click(within(menu).getByRole("button", { name: /^Skills\b/ }));
   fireEvent.click(await within(menu).findByRole("button", { name: /^\$?review(?:\s|$)/i }));
-  await waitFor(() => assert.equal(box().value, "$review Review this launch change."));
+  await waitFor(() => assert.equal(box().value, "/review Review this launch change."));
   assert.equal(!!screen.queryByRole("dialog", { name: chat.menu }), false);
   assert.ok(within(screen.getByRole("list", { name: "Attached files" })).getByText("launch.txt"));
   assert.equal(document.activeElement === box(), true);
@@ -1280,6 +1285,201 @@ test("choosing a project skill keeps the draft and attached file and waits for e
   )?.body as { text: string };
   assert.equal(
     started.text,
-    "$review Review this launch change.\n\nAttached file: launch.txt\n```\nLaunch evidence\n```",
+    "/review Review this launch change.\n\nAttached file: launch.txt\n```\nLaunch evidence\n```",
+  );
+});
+
+test("a structured review is a card, and Ask Follow-up puts @agent and its prompt in the box without sending", async () => {
+  const ana = { id: "ana", display: "Ana", user: "ana" };
+  open({ ...answered(ana), agent: "helper", answer: reviewTurn.text }, "ana");
+  const card = await screen.findByRole("region", { name: defaultCopy.reviewReport.title });
+  // Never the JSON it came as.
+  assert.ok(!screen.queryByText(/"format"/));
+  const counts = within(card).getByRole("list", { name: defaultCopy.reviewReport.severity });
+  assert.deepEqual(
+    within(counts)
+      .getAllByRole("listitem")
+      .map((li) => li.textContent),
+    ["1 error", "1 warning", "1 info"],
+  );
+  // Grouped by severity, errors first.
+  const groups = ["Errors", "Warnings", "Info"].map((name) =>
+    within(card).getByRole("region", { name }),
+  );
+  assert.equal(groups.length, 3);
+  const pinned = within(card).getByRole("link", { name: /internal\/app\/slack\.go:298-304/ });
+  assert.match(pinned.getAttribute("href") ?? "", /\/blob\/316c56f8.*#L298-L304$/);
+  assert.equal(
+    within(card).getByRole("link", { name: "Commit 316c56f" }).getAttribute("href"),
+    "https://github.com/urmzd/humagen/commit/316c56f81540c3eaca02184173df322a48aebdd9",
+  );
+  assert.ok(within(card).getByText("go test -race ./internal/platform -run TestClientSync"));
+  assert.ok(within(card).getByRole("region", { name: defaultCopy.reviewReport.comments }));
+  assert.ok(within(card).getByRole("link", { name: "PostgreSQL advisory locks" }));
+
+  const posts = () => net?.seen.filter((r) => r.method === "POST").length ?? 0;
+  const before = posts();
+  fireEvent.click(
+    within(groups[1] as HTMLElement).getByRole("button", {
+      name: defaultCopy.reviewReport.followUpLabel("Refresh gap is fixed at 250ms"),
+    }),
+  );
+  await waitFor(() =>
+    assert.equal(
+      box().value,
+      "@helper How does the 250ms refresh gap behave under a burst of unknown webhooks? ",
+    ),
+  );
+  assert.equal(posts(), before);
+});
+
+test("a review copies as Markdown from its card", async () => {
+  const ana = { id: "ana", display: "Ana", user: "ana" };
+  const copied: string[] = [];
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: async (t: string) => void copied.push(t) },
+  });
+  try {
+    open({ ...answered(ana), agent: "helper", answer: reviewTurn.text }, "ana");
+    const card = await screen.findByRole("region", { name: defaultCopy.reviewReport.title });
+    fireEvent.click(
+      within(card).getByRole("button", { name: defaultCopy.reviewReport.copyMarkdown }),
+    );
+    await waitFor(() => assert.equal(copied.length, 1));
+    assert.match(copied[0] ?? "", /^🔴 \*\*1 error\*\* 🟡 \*\*1 warning\*\* 🔵 \*\*1 info\*\*/);
+    assert.match(copied[0] ?? "", /\| 🔴 Errors \| Lease is released before the socket closes \|/);
+    assert.match(copied[0] ?? "", /\[internal\/app\/slack\.go:298-304\]\(https:\/\/github\.com\//);
+    assert.ok(!(copied[0] ?? "").includes('"format"'));
+    await within(card).findByText(defaultCopy.reviewReport.copied);
+  } finally {
+    if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+    else delete (navigator as { clipboard?: unknown }).clipboard;
+  }
+});
+
+test("a review still arriving shows its summary on a still card; one that ends unparsed is its text", () => {
+  const { rerender } = render(
+    <WebSurface>
+      <AgentMessage turn={reviewStreamingTurn} onAskAgent={() => {}} />
+    </WebSurface>,
+  );
+  const card = screen.getByRole("region", { name: defaultCopy.reviewReport.title });
+  assert.ok(within(card).getByText(defaultCopy.reviewReport.preparing));
+  assert.ok(within(card).getByText(/Adds horizontal scaling/));
+  assert.ok(!within(card).queryByRole("button"));
+  assert.ok(!screen.queryByText(/"summary"/));
+  const cut = { ...reviewTurn, text: reviewStreamingTurn.text };
+  rerender(
+    <WebSurface>
+      <AgentMessage turn={cut} onAskAgent={() => {}} />
+    </WebSurface>,
+  );
+  assert.ok(!screen.queryByRole("region", { name: defaultCopy.reviewReport.title }));
+  assert.ok(screen.getByText(/"summary"/));
+  cleanup();
+});
+
+test("a review where nobody may ask the agent shows each follow-up as words, with no button", () => {
+  render(
+    <WebSurface>
+      <AgentMessage turn={reviewTurn} />
+    </WebSurface>,
+  );
+  const card = screen.getByRole("region", { name: defaultCopy.reviewReport.title });
+  assert.ok(!within(card).queryByRole("button", { name: defaultCopy.reviewReport.followUp }));
+  assert.ok(
+    within(card).getByText(
+      "@github-agent Explain why the generation counter cannot skip a change.",
+    ),
+  );
+  cleanup();
+});
+
+test("a review's pinned evidence opens the cited lines in place, read through the API", async () => {
+  const asked: unknown[] = [];
+  const lines = Array.from({ length: 13 }, (_, i) => `\tline(${295 + i}) // note`);
+  const load = async (ref: {
+    repo: string;
+    sha: string;
+    path: string;
+    start: number;
+    end: number;
+  }) => {
+    asked.push(ref);
+    if (ref.path.endsWith("client_sync.go")) throw new Error("not granted");
+    return { first: 295, start: 298, end: 304, lines, url: "https://github.com/x#L298-L304" };
+  };
+  render(
+    <SourceContext.Provider value={load}>
+      <WebSurface>
+        <AgentMessage turn={reviewTurn} onAskAgent={() => {}} />
+      </WebSurface>
+    </SourceContext.Provider>,
+  );
+  const words = defaultCopy.reviewReport.source;
+  const chip = screen.getByRole("button", { name: `${words.show} internal/app/slack.go:298-304` });
+  assert.equal(chip.getAttribute("aria-expanded"), "false");
+  fireEvent.click(chip);
+  assert.equal(chip.getAttribute("aria-expanded"), "true");
+  assert.deepEqual(asked, [
+    {
+      repo: "urmzd/humagen",
+      sha: "316c56f81540c3eaca02184173df322a48aebdd9",
+      path: "internal/app/slack.go",
+      start: 298,
+      end: 304,
+    },
+  ]);
+  const excerpt = document.getElementById(chip.getAttribute("aria-controls") ?? "") as HTMLElement;
+  await waitFor(() => assert.equal(excerpt.querySelectorAll("tr").length, 13));
+  const rows = excerpt.querySelectorAll("tr");
+  // Highlighted: the comment and the number are their own spans.
+  assert.ok(rows[0]?.querySelector("span.italic")?.textContent?.startsWith("// note"));
+  assert.equal(excerpt.querySelectorAll("tr[data-cited]").length, 7);
+  assert.equal(rows[0]?.querySelector("td")?.textContent, "295");
+  assert.equal(rows[3]?.textContent, "298\tline(298) // note");
+  assert.equal(
+    within(excerpt).getByRole("link", { name: words.open }).getAttribute("href"),
+    "https://github.com/x#L298-L304",
+  );
+  // Closed again, the lines go; opened, a repository the server will not read says so.
+  fireEvent.click(chip);
+  assert.ok(!document.getElementById(excerpt.id));
+  fireEvent.click(
+    screen.getByRole("button", { name: `${words.show} internal/platform/client_sync.go:30` }),
+  );
+  await screen.findByText(words.failed);
+  // A command is not a place in a file: it stays text.
+  assert.ok(!screen.queryByRole("button", { name: /TestClientSync/ }));
+  cleanup();
+});
+
+test("the console reads cited lines from the source route", async () => {
+  net = stubFetch({
+    "GET /api/github/source": (_, q) => ({
+      repo: q.get("repo"),
+      sha: q.get("sha"),
+      path: q.get("file"),
+      first: 1,
+      start: 2,
+      end: 2,
+      total: 3,
+      lines: ["a", "b", "c"],
+      url: "https://github.com/o/r/blob/x/a.go#L2-L2",
+    }),
+  });
+  const got = await api.githubSource({
+    repo: "o/r",
+    sha: "x".repeat(40),
+    path: "pkg/a.go",
+    start: 2,
+    end: 2,
+  });
+  assert.deepEqual(got.lines, ["a", "b", "c"]);
+  assert.equal(
+    net.seen[0]?.path,
+    `/api/github/source?repo=o%2Fr&sha=${"x".repeat(40)}&file=pkg%2Fa.go&start=2&end=2&context=3`,
   );
 });

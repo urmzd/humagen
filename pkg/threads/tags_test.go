@@ -209,6 +209,12 @@ type workspace struct {
 
 func (w *workspace) Skill(name string) bool { w.skillAsks++; return w.skills[name] }
 
+// slashWorkspace is a workspace whose messages are written in the console,
+// where a slash command names a skill.
+type slashWorkspace struct{ *workspace }
+
+func (slashWorkspace) Slashes() bool { return true }
+
 func (w *workspace) MentionKind(kind string) (string, bool) {
 	w.kindAsks++
 	r, ok := w.kinds[kind]
@@ -450,5 +456,70 @@ func TestAnIncompleteRosterLooksUpWhatItDidNotRead(t *testing.T) {
 	got, err := threads.Parse("@lead @LEAD @other", r)
 	if err != nil || len(got) != 2 || got[0] != agent("lead") || r.agents != 1 {
 		t.Fatalf("Parse = %+v, %v; %d agent lookups", got, err, r.agents)
+	}
+}
+
+// A slash command names a skill as $ does, but only where it starts a word
+// after a space, ends the word, and names a skill that is there: anything
+// else, a path or a fraction included, is text and refuses nothing.
+func TestASlashCommandNamesASkill(t *testing.T) {
+	for _, c := range []struct {
+		text string
+		want []threads.Mention
+	}{
+		{"/review", []threads.Mention{skillOf("review")}},
+		{"/review this change", []threads.Mention{skillOf("review")}},
+		{"@ignite /review, then /q4-report.", []threads.Mention{agent("ignite"), skillOf("review"), skillOf("q4-report")}},
+		{"line one\n/triage now", []threads.Mention{skillOf("triage")}},
+		{"/review and $review and @skill:review are one", []threads.Mention{skillOf("review")}},
+		// A slash that names no skill is text, not refused.
+		{"/ghost or /new", []threads.Mention{}},
+		// Paths, fractions, URLs and a slash inside a word are text.
+		{"see /review/notes and /tmp/x and 1/2 and and/review and https://x.test/review", []threads.Mention{}},
+		{"/Review /review_x /review- (/review)", []threads.Mention{}},
+		{"`/review` is code", []threads.Mention{}},
+	} {
+		got, err := threads.Parse(c.text, slashWorkspace{newWorkspace()})
+		if err != nil || !reflect.DeepEqual(got, c.want) {
+			t.Errorf("Parse(%q) = %+v, %v; want %+v", c.text, got, err, c.want)
+		}
+	}
+	// Where slash commands are not read, as on a client's surface, which has
+	// commands of its own, a / is text.
+	if got, err := threads.Parse("/review", newWorkspace()); err != nil || len(got) != 0 {
+		t.Fatalf("Parse(/review) on a surface = %+v, %v", got, err)
+	}
+	// Without lookups a slash command is kept unfound, so a check of whether
+	// a message tags anyone (postNeed) fails closed.
+	if got, _ := threads.Parse("/review", nil); len(got) != 1 || got[0].Refused == "" {
+		t.Fatalf("Parse(/review, nil) = %+v", got)
+	}
+	if got, _ := threads.Parse("/tmp/x", nil); len(got) != 0 {
+		t.Fatalf("Parse(/tmp/x, nil) = %+v", got)
+	}
+}
+
+// A slash that names no skill holds no place, and at most MaxMentions of
+// them are looked up, however many the text writes.
+func TestSlashCommandsCostBoundedLookups(t *testing.T) {
+	var b strings.Builder
+	for i := range 1 << 14 {
+		fmt.Fprintf(&b, "/s%d ", i)
+	}
+	b.WriteString("/review")
+	w := newWorkspace()
+	got, err := threads.Parse(b.String(), slashWorkspace{w})
+	if err != nil || len(got) != 0 {
+		t.Fatalf("Parse = %+v, %v", got, err)
+	}
+	if w.skillAsks > threads.MaxMentions {
+		t.Fatalf("looked up %d skills", w.skillAsks)
+	}
+	w = newWorkspace()
+	if _, err := threads.Parse(strings.Repeat("/review /ghost ", 1<<14), slashWorkspace{w}); err != nil {
+		t.Fatal(err)
+	}
+	if w.skillAsks != 2 {
+		t.Fatalf("two names were looked up %d times", w.skillAsks)
 	}
 }

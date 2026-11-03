@@ -1,12 +1,21 @@
 import {
+  AnswerText,
   type Copy,
   defaultCopy,
   linkCitations,
+  reviewMarkdown,
   type TurnCapabilities,
   TurnView,
 } from "@humagen/components";
-import { ActionId, formatTokens, formatUsd, type Task, type Turn, type Usage } from "@humagen/core";
-import { Markdown } from "@humagen/primitives";
+import {
+  ActionId,
+  formatTokens,
+  formatUsd,
+  readReview,
+  type Task,
+  type Turn,
+  type Usage,
+} from "@humagen/core";
 import {
   ActionContext,
   FeedbackPromptContext,
@@ -326,7 +335,12 @@ function MessageActions({
 }) {
   const onAction = useContext(ActionContext);
   const itemActions = useContext(ItemActionsContext);
-  const text = turn.text.replace(/\[\[[^\]]+\]\]/g, "").trim();
+  // A review copies as the Markdown its card offers, not as the JSON it came as.
+  const review = readReview(turn.text);
+  const text =
+    review.kind === "review"
+      ? reviewMarkdown(review.report, copy)
+      : turn.text.replace(/\[\[[^\]]+\]\]/g, "").trim();
   const hostCopy = text ? (itemActions?.({ kind: "answer", turn }) ?? null) : null;
   return (
     <MessageActionRow
@@ -472,9 +486,20 @@ export function AgentMessage({
     lastThought?.at === turn.text.length &&
     lastThought.after === turn.tasks.length;
   const [traceOpen, setTraceOpen] = useState(true);
+  // A review's Ask Follow-up writes in the composer, which a host that may ask this agent has.
+  const followUp = capabilities?.followUp ?? onAskAgent !== undefined;
   const block = (b: Block) =>
     b.kind === "text" ? (
-      <Markdown key={b.key} text={linkCitations(b.text, turn.citations)} />
+      <AnswerText
+        key={b.key}
+        turnId={turn.id}
+        agent={turn.agent.name}
+        text={b.text}
+        markdown={linkCitations(b.text, turn.citations)}
+        pullRequestHint={turn.source?.url}
+        followUp={followUp}
+        copy={copy}
+      />
     ) : b.kind === "thought" ? (
       <Reasoning key={b.key} text={b.text} streaming={thinkingNow && b.last} />
     ) : b.kind === "steps" ? (
@@ -547,7 +572,7 @@ export function AgentMessage({
                 <TurnView
                   turn={{ ...turn, text: tail }}
                   copy={copy}
-                  capabilities={capabilities}
+                  capabilities={{ ...capabilities, followUp }}
                   hideTasks
                 />
                 {rest.map(block)}

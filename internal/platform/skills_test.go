@@ -561,3 +561,20 @@ func TestAReplyThatNamesASkillStartsNothing(t *testing.T) {
 		}
 	}
 }
+
+// A slash command the console's menu writes, /review, names the skill as
+// $review does, and a slash that names no skill, /ghost, is posted as text.
+func TestASlashCommandIsPinnedAsItsSkill(t *testing.T) {
+	p, _ := skillsRoom(t)
+	got := startThread(t, p, operator, platform.ThreadInput{Project: "Globex", Text: "/review @support the renewal"})
+	if got.Rule != threads.RuleTagged || len(got.Runs) != 1 || got.Runs[0].Agent != "support" {
+		t.Fatalf("the message started %+v", got)
+	}
+	run := await(t, p, got.Runs[0].ID, runs.Completed)
+	if want := "review<Field"; strings.Join(pinned(t, run), " ") != want {
+		t.Fatalf("the run was pinned %v, want %v", pinned(t, run), want)
+	}
+	if got := startThread(t, p, operator, platform.ThreadInput{Project: "Globex", Text: "/ghost see /tmp/x", PostOnly: true}); len(got.Message.Mentions) != 0 {
+		t.Fatalf("text read as skills: %+v", got.Message.Mentions)
+	}
+}

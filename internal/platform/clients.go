@@ -453,7 +453,11 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		if err != nil {
 			return nil, refused(err)
 		}
-		return &seat{client: c, peer: peer, verifier: cfg.Verifier}, nil
+		st := &seat{client: c, peer: peer, verifier: cfg.Verifier}
+		if files, ok := api.(github.FileAPI); ok {
+			st.files = files
+		}
+		return st, nil
 	}
 	return nil, fmt.Errorf("%w: unknown surface %q", clients.ErrInvalid, c.Surface)
 }
