@@ -298,3 +298,50 @@ export function formatResult(output: string | undefined): string {
     return raw;
   }
 }
+
+/** One file a turn changed, with its lines added and removed across the turn. */
+export interface FileChange extends FileEdit {
+  /** The calls that wrote it, in order. */
+  calls: string[];
+}
+
+/**
+ * Every file a turn wrote, once each, in the order each was first written,
+ * from the same detection as each call's own line (`fileEdits`). A file
+ * written whole more than once counts from what the turn started with to
+ * what it left; edits counted by their old and new text add up.
+ */
+export function turnChanges(tasks: readonly Task[]): FileChange[] {
+  const edits = fileEdits(tasks);
+  const out = new Map<string, FileChange & { first?: string; last?: string; whole: boolean }>();
+  for (const t of tasks) {
+    const edit = edits.get(t.id);
+    if (!edit) continue;
+    const a = toolArgs(t);
+    const content = typeof a?.content === "string" ? a.content : undefined;
+    const was = out.get(edit.path);
+    if (!was) {
+      out.set(edit.path, {
+        ...edit,
+        calls: [t.id],
+        whole: content !== undefined,
+        // A file the turn created, or wrote whole without showing what was
+        // there, counts from nothing.
+        first: edit.change === "updated" ? undefined : "",
+        last: content,
+      });
+      continue;
+    }
+    was.calls.push(t.id);
+    was.whole &&= content !== undefined;
+    was.last = content;
+    was.added += edit.added;
+    was.removed += edit.removed;
+    if (was.change === "wrote" && edit.change === "updated") was.change = "updated";
+  }
+  return [...out.values()].map(({ first, last, whole, ...change }) =>
+    whole && first !== undefined && last !== undefined && change.calls.length > 1
+      ? { ...change, ...lineDiff(first, last) }
+      : change,
+  );
+}

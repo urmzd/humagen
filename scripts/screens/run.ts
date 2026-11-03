@@ -378,6 +378,15 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
           href?.endsWith(`/conversations/${ids.timelineThread}/workspace?file=plan.md&tab=changes`),
           String(href),
         );
+        // The turn ends with the files it changed, and Review opens them.
+        const changes = message.getByTestId("turn-changes");
+        await changes.getByText("1 file changed").waitFor();
+        assert.equal(await changes.getByTestId("turn-change").count(), 1);
+        const review = await changes
+          .getByRole("link", { name: defaultCopy.conversation.changes.reviewLabel(1) })
+          .getAttribute("href");
+        assert.ok(review?.endsWith("workspace?file=plan.md&tab=changes"), String(review));
+        await changes.scrollIntoViewIfNeeded();
       },
     },
     {

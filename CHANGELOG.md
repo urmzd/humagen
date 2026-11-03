@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.73.0 (2026-11-03)
+
+### Features
+
+- **console**: a finished turn ends with the files it changed (#189) ([b958c19](https://github.com/urmzd/humagen/commit/b958c19b0d00e1ca4144902595b1297d74752b27))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.72.0...v0.73.0)
+
+
 ## 0.72.0 (2026-11-03)
 
 ### Features
