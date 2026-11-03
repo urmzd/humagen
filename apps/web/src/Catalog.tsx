@@ -27,7 +27,7 @@ export function Catalog({
     setPage(undefined);
     setProblem(null);
     api
-      .catalog(query)
+      .catalog(query || undefined)
       .then((value) => {
         if (active) setPage(value);
       })
@@ -47,7 +47,9 @@ export function Catalog({
     setBusy(true);
     setProblem(null);
     try {
-      await api.catalogAction(name, kind);
+      if (kind === "crawl") await api.crawlCatalogConnector(name);
+      else if (kind === "publish") await api.publishCatalogConnector(name);
+      else await api.withdrawCatalogConnector(name);
       setVersion((v) => v + 1);
     } catch {
       setProblem(copy.actionFailed);

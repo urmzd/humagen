@@ -45,7 +45,7 @@ export function libraryScreens(call: Call): Screen[] {
       name: "library-catalog",
       path: "/library/catalog",
       act: async (page) => {
-        await page.route("**/api/catalog?*", (route) =>
+        await page.route("**/api/catalog*", (route) =>
           route.fulfill({
             json: {
               connectors: [

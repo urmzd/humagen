@@ -40,7 +40,11 @@ test("catalog browses schema and reloads after owner publishes", async () => {
     fireEvent.click(screen.getByRole("button", { name: defaultCopy.catalog.publish }));
     await waitFor(() => assert.ok(calls.some((call) => call.path.includes("/warehouse/publish"))));
     await waitFor(() =>
-      assert.equal(calls.filter((call) => call.path.includes("?limit=50")).length, 2),
+      assert.equal(
+        calls.filter((call) => call.method === "GET" && call.path.split("?")[0] === "/api/catalog")
+          .length,
+        2,
+      ),
     );
   } finally {
     restore();
