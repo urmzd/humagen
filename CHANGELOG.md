@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.74.0 (2026-11-03)
+
+### Features
+
+- **sidebar**: Recents, Pinned, Projects and Archived with per-person marks (#191) ([75038aa](https://github.com/urmzd/humagen/commit/75038aa6f1faedcd2ef13d230af545c03748cf6c))
+- notification views, per-reader hide and delete, bulk marks with undo (#190) ([7d39054](https://github.com/urmzd/humagen/commit/7d39054aa8c261bd878d8a88fb236083d0125de7))
+- **console**: save messages, reviews and scratchpads as artifacts, and diff versions (#193) ([0d47db3](https://github.com/urmzd/humagen/commit/0d47db36a6282ecf25545dca0a244aa6409a19dc))
+- **console**: the Workspace is a pane of tabs beside the conversation (#186) ([016a470](https://github.com/urmzd/humagen/commit/016a47031fbf260f7a2ae2cecb8198915f2bd063))
+- **console**: memories by conversation, session and message (#183) ([9e214de](https://github.com/urmzd/humagen/commit/9e214deea48eb193016c665aa96ab9ae62c7dfa0))
+- **console**: named scratchpads per conversation, read by its agents (#182) ([1078f6e](https://github.com/urmzd/humagen/commit/1078f6eb15de6ac55ca77f4750a297bae4acf756))
+- **console**: one Workspace panel and a compact conversation header (#180) ([6845161](https://github.com/urmzd/humagen/commit/68451613b08b347daaf21b0d151da884cb515460))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.73.0...v0.74.0)
+
+
 ## 0.73.0 (2026-11-03)
 
 ### Features
