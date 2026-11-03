@@ -1,3 +1,4 @@
+import { defaultCopy } from "@humagen/components";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import {
   ApiError,
@@ -28,6 +29,8 @@ import {
 } from "./ui.tsx";
 import { money } from "./usage.ts";
 
+const approval = defaultCopy.limitApproval;
+
 const kindWord: Record<PolicyScope["kind"], string> = {
   tenant: "Workspace",
   project: "Project",
@@ -52,6 +55,13 @@ function brief(p: Policy): string {
     p.spend_limit ? `${dollars(p.spend_limit)} a ${p.period}` : "",
     p.max_lease ? `${dollars(p.max_lease)} a run` : "",
     p.max_tokens ? `${plain(p.max_tokens)} tokens a ${p.period}` : "",
+    p.action === "approve"
+      ? p.max_grant
+        ? approval.approvesUpTo(dollars(p.max_grant))
+        : p.max_grant_tokens
+          ? approval.approvesTokensUpTo(plain(p.max_grant_tokens))
+          : approval.asks
+      : "",
   ].filter(Boolean);
   return parts.join(", ") || "no limits";
 }
@@ -206,6 +216,11 @@ export function Limits({
   const [tokens, setTokens] = useState(policy?.max_tokens ? String(policy.max_tokens) : "");
   const [spend, setSpend] = useState<number | null>(policy?.spend_limit || null);
   const [period, setPeriod] = useState<Policy["period"]>(policy?.period ?? "day");
+  const [action, setAction] = useState<Policy["action"]>(policy?.action ?? "block");
+  const [maxGrant, setMaxGrant] = useState<number | null>(policy?.max_grant || null);
+  const [maxGrantTokens, setMaxGrantTokens] = useState(
+    policy?.max_grant_tokens ? String(policy.max_grant_tokens) : "",
+  );
   const [problem, setProblem] = useState<string | null>(null);
   const { flash, say } = useFlash();
 
@@ -217,6 +232,9 @@ export function Limits({
     setTokens(policy?.max_tokens ? String(policy.max_tokens) : "");
     setSpend(policy?.spend_limit || null);
     setPeriod(policy?.period ?? "day");
+    setAction(policy?.action ?? "block");
+    setMaxGrant(policy?.max_grant || null);
+    setMaxGrantTokens(policy?.max_grant_tokens ? String(policy.max_grant_tokens) : "");
   }, [policy?.version]);
 
   const fail = (fallback: string) => (e: unknown) =>
@@ -227,6 +245,9 @@ export function Limits({
     count(atOnce) !== (policy?.max_concurrent ?? 0) ||
     count(tokens) !== (policy?.max_tokens ?? 0) ||
     (spend ?? 0) !== (policy?.spend_limit ?? 0) ||
+    action !== (policy?.action ?? "block") ||
+    (action === "approve" ? (maxGrant ?? 0) : 0) !== (policy?.max_grant ?? 0) ||
+    (action === "approve" ? count(maxGrantTokens) : 0) !== (policy?.max_grant_tokens ?? 0) ||
     (policy !== undefined && period !== policy.period);
 
   const save = (e: FormEvent) => {
@@ -242,6 +263,9 @@ export function Limits({
         spend_limit: spend ?? 0,
         max_lease: policy?.max_lease,
         warn_at: policy?.warn_at,
+        action,
+        max_grant: action === "approve" ? (maxGrant ?? 0) : 0,
+        max_grant_tokens: action === "approve" ? count(maxGrantTokens) : 0,
       })
       .then(() => {
         say("Saved");
@@ -301,6 +325,51 @@ export function Limits({
                 }}
               />
             </div>
+          </div>
+          <div className="grid grid-cols-1 gap-3 @lg:grid-cols-3">
+            <Label text={approval.whenReached}>
+              <select
+                className={field}
+                value={action}
+                onChange={(e) => setAction(e.target.value as Policy["action"])}
+              >
+                <option value="block">{approval.block}</option>
+                <option value="approve">{approval.approve}</option>
+              </select>
+            </Label>
+            {action === "approve" && (
+              <>
+                <Label text={approval.maxGrant}>
+                  <input
+                    className={field}
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder={approval.maxGrantPlaceholder}
+                    value={maxGrant ? String(maxGrant / 1_000_000) : ""}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      setMaxGrant(
+                        e.target.value.trim() === "" || Number.isNaN(n) || n <= 0
+                          ? null
+                          : Math.round(n * 1_000_000),
+                      );
+                    }}
+                  />
+                </Label>
+                <Label text={approval.maxGrantTokens}>
+                  <input
+                    className={field}
+                    type="number"
+                    min={0}
+                    step={1000}
+                    placeholder={approval.maxGrantTokensPlaceholder}
+                    value={maxGrantTokens}
+                    onChange={(e) => setMaxGrantTokens(e.target.value)}
+                  />
+                </Label>
+              </>
+            )}
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-aui-xs text-aui-muted">

@@ -241,6 +241,37 @@ test("connects GitHub with explicit agent reach and environment references", asy
   });
 });
 
+test("maps a GitHub client's logins to people and counts them, never sending a blank or malformed line", async () => {
+  let created: unknown;
+  let clients: unknown[] = [];
+  net = stubFetch({
+    "GET /api/clients": () => ({ clients, caps: clientsCaps }),
+    "POST /api/clients": (input) => {
+      created = input;
+      clients = [
+        {
+          ...(input as object),
+          version: 1,
+          credentials: { token: { set: true }, signing_secret: { set: true } },
+        },
+      ];
+      return clients[0];
+    },
+  });
+  await openConnect();
+  changeConnection("System", "github");
+  changeConnection("GitHub accounts", "acme");
+  changeConnection("People mapping (optional)", "octocat=okta|ada\n\n=nobody, hubot=okta|bea\nbroken");
+  changeConnection("Token", "ghs-test-token");
+  changeConnection("Signing secret", "test-signing");
+  submitConnection();
+  await waitFor(() => assert.ok(!screen.queryByRole("form", { name: "Connect a system" })));
+  assert.deepEqual((created as { github?: unknown }).github, {
+    people: { octocat: "okta|ada", hubot: "okta|bea" },
+  });
+  assert.ok(await screen.findByText("2 mapped"));
+});
+
 test("a refused connection preserves non-secret details and clears credential values", async () => {
   net = stubFetch({
     "GET /api/clients": () => ({ clients: [], caps: clientsCaps }),
