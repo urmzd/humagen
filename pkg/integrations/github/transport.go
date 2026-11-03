@@ -27,7 +27,6 @@ type FileContent = transport.FileContent
 type FileEdit = transport.FileEdit
 type Guide = transport.Guide
 type GuideAPI = transport.GuideAPI
-type HTTPAPI = transport.HTTPAPI
 type MutationAPI = transport.MutationAPI
 type NotFoundError = transport.NotFoundError
 type ReactionCounts = transport.ReactionCounts
@@ -44,7 +43,6 @@ const HeaderDelivery = transport.HeaderDelivery
 const MaxBodyChars = transport.MaxBodyChars
 
 var NewFake = transport.NewFake
-var NewHTTPAPI = transport.NewHTTPAPI
 
 func refAddress(r Ref, kind string) address.Address {
 	return address.Address{Connector: Name, Workspace: r.Owner, Path: []string{r.Repo, kind, strconv.Itoa(r.Number)}}
