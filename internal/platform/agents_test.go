@@ -2,7 +2,11 @@ package platform_test
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"slices"
@@ -706,6 +710,31 @@ func TestAClientsPeopleAndThePolicysSubjectsAreRecorded(t *testing.T) {
 	}
 	if got, err := p.People.Get(tenant, "okta|fox"); err != nil || len(got.Sources) != 1 || got.Sources[0] != people.Slack {
 		t.Fatalf("a mapped person = %+v, %v", got, err)
+	}
+	if _, err := p.CreateClient(t.Context(), tenant, "ada", platform.ClientInput{
+		Client: clients.Client{ID: "gh-docs", Name: "gh-docs", Surface: clients.GitHub, Enabled: true, DefaultAgent: "lead",
+			Identity: clients.Identity{Owners: []string{"acme"}},
+			GitHub:   &clients.GitHubOptions{People: map[string]string{"octocat": "okta|mulder"}}},
+		Token: clients.SecretInput{Value: "ghp-docs"}, SigningSecret: clients.SecretInput{Value: "sig-gh-docs"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := p.People.Get(tenant, "okta|mulder"); err != nil || len(got.Sources) != 1 || got.Sources[0] != people.GitHub {
+		t.Fatalf("a github-mapped person = %+v, %v", got, err)
+	}
+	// A GitHub App private key mints installation tokens, so it needs the
+	// app and the installation it mints for. Without them the client is refused.
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyPEM := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))
+	if _, err := p.CreateClient(t.Context(), tenant, "ada", platform.ClientInput{
+		Client: clients.Client{ID: "gh-app", Name: "gh-app", Surface: clients.GitHub, Enabled: true, DefaultAgent: "lead",
+			Identity: clients.Identity{Owners: []string{"acme"}}},
+		Token: clients.SecretInput{Value: keyPEM}, SigningSecret: clients.SecretInput{Value: "sig-gh-app"},
+	}); !errors.Is(err, clients.ErrInvalid) || !strings.Contains(err.Error(), "app_id") {
+		t.Fatalf("a private key without its app = %v, want ErrInvalid naming app_id", err)
 	}
 	if err := p.SeeGranted(tenant, []platform.Grant{{Subject: "okta|skinner", Roles: []string{"admin"}}}); err != nil {
 		t.Fatal(err)
