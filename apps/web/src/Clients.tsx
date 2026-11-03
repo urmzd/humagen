@@ -30,6 +30,11 @@ function reach(c: Client): string {
 }
 
 /** A client's own limits, set under Limits with the client as the scope. */
+/** How many outside people the client maps to Humagen subjects. */
+function mapped(c: Client): number {
+  return Object.keys(c.slack?.people ?? {}).length + Object.keys(c.github?.people ?? {}).length;
+}
+
 function limits(c: Client): string | null {
   const l = c.limits;
   if (!l) return null;
@@ -129,6 +134,12 @@ export function ClientSettings({ canWrite }: { canWrite: boolean }) {
                 ? "In the server's environment"
                 : "Held by the server"}
             </dd>
+            {mapped(c) > 0 && (
+              <>
+                <dt className="text-aui-muted">{defaultCopy.clientConnect.peopleLabel}</dt>
+                <dd className="text-aui-fg">{defaultCopy.clientConnect.peopleMapped(mapped(c))}</dd>
+              </>
+            )}
             {limits(c) && (
               <>
                 <dt className="text-aui-muted">Limits</dt>
