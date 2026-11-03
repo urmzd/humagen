@@ -576,6 +576,7 @@ export const defaultCopy = {
       "Older conversations could not be loaded. Your current list is still available. Try See More again.",
   },
   navigation: {
+    customize: "Customize",
     newConversation: "New",
     updates: "Updates",
     people: "People",

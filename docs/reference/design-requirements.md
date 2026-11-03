@@ -1570,3 +1570,18 @@ Evidence: `sidebar-views.dom.test.tsx` (the tip test); `make screens` with
   `TestAutomationBoundsAndCopies`, `automations.dom.test.tsx`, route round-trip
   tests and the `automations` and `automation-builder` screen definitions.
   Full screens run in CI.
+
+### DES-062: Customize and personal tool servers
+
+- Customize groups the existing Agents, Skills, Connected Accounts and Your tool
+  servers sections at `/customize/{section}`, with permission-filtered tabs.
+- Personal MCP clients run in the trusted worker using the existing credential
+  resolver and person-scoped MCP session path. Agents need an explicit
+  `person_tools` registry grant. Workspace and project host ceilings still apply.
+- A person previews and approves the exact tool list. Schema, description,
+  tool additions/removals or readOnlyHint changes stop the server's tools until
+  approved again. Revocation also stops admitted runs. Only a readOnlyHint
+  classifies a tool as read; every other tool requires that person's approval.
+- Evidence: `customize.test.ts`, `tool-servers.dom.test.tsx`,
+  `internal/platform/person_tools_test.go`, and the Customize states in
+  `scripts/screens/library.ts`. Screens are judged in CI.

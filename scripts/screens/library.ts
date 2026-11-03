@@ -42,6 +42,21 @@ export function libraryScreens(call: Call): Screen[] {
   }
   return [
     {
+      name: "customize-agents",
+      path: "/customize/agents",
+      act: async (page) => {
+        await heading(page, "Agents");
+        await page.getByRole("navigation", { name: "Customize" }).waitFor();
+      },
+    },
+    {
+      name: "customize-tool-servers",
+      path: "/customize/tools",
+      act: async (page) => {
+        await heading(page, "Your tool servers");
+      },
+    },
+    {
       name: "library-sources-new",
       path: "/library/sources",
       act: async (page) => {

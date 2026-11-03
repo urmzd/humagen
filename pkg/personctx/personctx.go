@@ -21,8 +21,10 @@ package personctx
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/urmzd/orchagent/flow/toolprovider"
 	"net/url"
 	"regexp"
 	"slices"
@@ -52,6 +54,8 @@ const (
 
 // ToolServer is an MCP server a person adds for themselves.
 type ToolServer struct {
+	// Tools is the exact list the person approved. Nil means not approved.
+	Tools []toolprovider.Tool `json:"tools,omitempty"`
 	// Name is lower case letters, digits and dashes, unique among the
 	// person's servers.
 	Name string `json:"name"`
@@ -109,7 +113,22 @@ func (in Input) Check() error {
 	if len(in.ToolServers) > MaxToolServers {
 		return fmt.Errorf("%w: at most %d tool servers", ErrInvalid, MaxToolServers)
 	}
+	raw, _ := json.Marshal(in.ToolServers)
+	if len(raw) > 48<<10 {
+		return fmt.Errorf("%w: tool servers exceed 48 KiB", ErrInvalid)
+	}
 	for i, t := range in.ToolServers {
+		if len(t.Tools) > 64 {
+			return fmt.Errorf("%w: at most 64 tools per server", ErrInvalid)
+		}
+		names := map[string]bool{}
+		for _, tool := range t.Tools {
+			canonical, err := toolprovider.NewTool(tool.Name, tool.Description, tool.InputSchema)
+			if err != nil || tool.Name == "" || names[tool.Name] || canonical.SchemaHash != tool.SchemaHash || (tool.Class != toolprovider.ClassRead && tool.Class != toolprovider.ClassWrite) {
+				return fmt.Errorf("%w: invalid approved tool", ErrInvalid)
+			}
+			names[tool.Name] = true
+		}
 		if !serverName.MatchString(t.Name) {
 			return fmt.Errorf("%w: tool_servers[%d]: a name is lower case letters, digits and dashes, at most 63", ErrInvalid, i)
 		}

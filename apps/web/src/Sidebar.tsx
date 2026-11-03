@@ -776,7 +776,7 @@ export function Sidebar({
   const hub = workspaceHub(route);
   const notificationRoute: Route = { page: "notifications" };
   const libraryTabs = hubTabs("library", route, can);
-  const agentTabs = hubTabs("agents", route, can);
+  const customizeTabs = hubTabs("customize", route, can);
   const operationTabs = hubTabs("operations", route, can);
   const entries: {
     to: Route;
@@ -812,11 +812,11 @@ export function Sidebar({
       group: "library",
     },
     {
-      to: agentTabs[0]?.route ?? { page: "agents" },
-      label: nav.agents,
+      to: customizeTabs[0]?.route ?? { page: "customize", section: "agents" },
+      label: nav.customize,
       icon: <BotIcon />,
-      show: agentTabs.length > 0,
-      active: hub === "agents",
+      show: customizeTabs.length > 0,
+      active: hub === "customize" || hub === "agents",
       group: "operations",
     },
     {

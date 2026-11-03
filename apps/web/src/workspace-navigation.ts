@@ -1,7 +1,7 @@
 import { defaultCopy } from "@humagen/components/copy";
 import type { Route } from "./route.ts";
 
-export type WorkspaceHub = "library" | "agents" | "operations" | "notifications";
+export type WorkspaceHub = "library" | "agents" | "operations" | "notifications" | "customize";
 export interface HubTab {
   label: string;
   route: Route;
@@ -9,6 +9,7 @@ export interface HubTab {
 }
 
 export function workspaceHub(route: Route): WorkspaceHub | null {
+  if (route.page === "customize") return "customize";
   if (route.page === "notifications" || route.page === "inbox") return "notifications";
   if (route.page === "monitor" && route.tab === "rules") return "notifications";
   if (route.page === "library" || route.page === "artifacts" || route.page === "context")
@@ -33,6 +34,23 @@ export function hubTabs(
   can: (permission: string) => boolean,
 ): HubTab[] {
   const nav = defaultCopy.navigation;
+  if (hub === "customize") {
+    return (
+      [
+        ["agents", nav.agents, can("agents:read")],
+        ["skills", nav.skills, can("projects:read")],
+        ["connections", nav.connections, can("runs:read")],
+        ["tools", "Your tool servers", can("runs:read")],
+      ] as const
+    )
+      .filter(([, , visible]) => visible)
+      .map(([section, label]) => ({
+        label,
+        route: { page: "customize" as const, section },
+        active: route.page === "customize" && route.section === section,
+      }));
+  }
+
   const rows: (HubTab & { visible: boolean })[] =
     hub === "notifications"
       ? [

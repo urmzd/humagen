@@ -937,8 +937,18 @@ export interface RunPreferences {
   compaction_tokens?: number;
 }
 
+export interface PersonalApprovedTool {
+  name: string;
+  description?: string;
+  input_schema?: unknown;
+  schema_hash: string;
+  class?: "read" | "write";
+}
+
 /** An MCP server a person adds for themselves. Its credential is a reference, never a secret. */
 export interface PersonToolServer {
+  /** Exact tools approved by the person. Missing means unavailable to runs. */
+  tools?: PersonalApprovedTool[];
   name: string;
   /** The server's https address, with no user or password in it. */
   url: string;
