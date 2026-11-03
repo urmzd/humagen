@@ -629,6 +629,9 @@ func (t *txn) place(r *Run) error {
 	if !r.Status.Terminal() {
 		s.Active++
 	}
+	if r.Status == Parked {
+		s.Waiting++
+	}
 	if r.Status == Failed {
 		s.Failed++
 	}
@@ -640,8 +643,12 @@ func (t *txn) place(r *Run) error {
 		if !slices.Contains(s.Agents, r.Agent) {
 			s.Agents = append(s.Agents, r.Agent)
 		}
-		if who := AskedBy(*r); who != "" && !slices.Contains(s.People, who) {
+		who := AskedBy(*r)
+		if who != "" && !slices.Contains(s.People, who) {
 			s.People = append(s.People, who)
+		}
+		if line := firstLine(r.Text); line != "" {
+			s.Last, s.LastBy, s.LastAgent = line, who, false
 		}
 		// A second answer at the same point makes that point a branch.
 		// Runs answering one person's message answer it side by side
@@ -690,7 +697,7 @@ func (t *txn) commit() error {
 		}
 		t.put(recKey(r.seq), stored(r), h.version)
 		was, is := !h.before.Status.Terminal(), !r.Status.Terminal()
-		if was == is && h.before.Status != Failed && r.Status != Failed && !r.UpdatedAt.After(h.before.UpdatedAt) {
+		if was == is && h.before.Status == r.Status && r.Status != Failed && !r.UpdatedAt.After(h.before.UpdatedAt) {
 			continue
 		}
 		if was && !is {
@@ -712,12 +719,20 @@ func (t *txn) commit() error {
 		}
 		active := b2i(is) - b2i(was)
 		failed := b2i(r.Status == Failed) - b2i(h.before.Status == Failed)
+		waiting := b2i(r.Status == Parked) - b2i(h.before.Status == Parked)
 		later := r.UpdatedAt.After(s.UpdatedAt)
-		if active != 0 || failed != 0 || later {
+		// An answer to a turn is the latest thing said in the conversation.
+		answered := r.Parent == "" && was && r.Status == Completed && firstLine(r.Answer) != ""
+		if active != 0 || failed != 0 || waiting != 0 || later || answered {
 			s.Active += active
 			s.Failed += failed
+			// A run parked before the count was kept may resume after it.
+			s.Waiting = max(0, s.Waiting+waiting)
 			if later {
 				s.UpdatedAt = r.UpdatedAt
+			}
+			if answered {
+				s.Last, s.LastBy, s.LastAgent = firstLine(r.Answer), r.Agent, true
 			}
 			t.threadChanged(r.Thread)
 		}

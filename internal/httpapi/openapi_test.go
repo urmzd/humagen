@@ -1267,6 +1267,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/runs/{id}/events", "/api/runs/"+id+"/events", "", http.StatusOK)
 	c.call(acme, "GET", "/api/runs/{id}/manifest", "/api/runs/"+id+"/manifest", "", http.StatusOK)
 	c.call(acme, "GET", "/api/threads/{id}", "/api/threads/"+first.str("thread"), "", http.StatusOK)
+	c.call(acme, "PATCH", "/api/threads/{id}/marks", "/api/threads/"+first.str("thread")+"/marks", `{"archived":true,"read":true}`, http.StatusOK)
+	c.call(acme, "POST", "/api/marks/tips", "/api/marks/tips", `{"name":"search"}`, http.StatusOK)
+	c.call(acme, "POST", "/api/marks/tips", "/api/marks/tips", `{"name":"a b"}`, http.StatusBadRequest)
 	c.call(acme, "GET", "/api/threads", "/api/threads?limit=1", "", http.StatusOK)
 	c.call(acme, "GET", "/api/threads", "/api/threads?limit=0", "", http.StatusBadRequest)
 	c.call(acme, "GET", "/api/threads", "/api/threads?before=nonsense", "", http.StatusBadRequest)
@@ -2470,7 +2473,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/projects/{name}/knowledge": `{"version":1,"knowledge":[]}`, "/api/projects/{name}/skills": `{"version":1,"skills":[]}`, "/api/threads/{id}": `{"version":1}`,
 		"/api/threads/{id}/messages": `{"text":"x"}`, "/api/threads/{id}/participants": `{"version":1}`,
 		"/api/threads/{id}/fork": `{"through":"m-1"}`, "/api/threads/{id}/bring-back": `{"run":"r00000000000000000000000000000000"}`,
-		"/api/threads/{id}/share":      `{}`,
+		"/api/threads/{id}/share": `{}`, "/api/threads/{id}/marks": `{"read":true}`,
 		"/api/projects/{name}/members": `{"version":1,"members":[{"who":"*","role":"member"}]}`, "/api/projects/{name}/move": `{"version":1,"parent":""}`,
 		"/api/projects/{name}/limits": `{"period":"day","max_runs":1}`, "/api/projects/{name}/announcements": `{"subject":"Hi","text":"Hi."}`,
 		"/api/memory/files/proposals/{id}": `{"scope":"project","decision":"discard"}`,

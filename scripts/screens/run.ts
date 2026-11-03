@@ -46,6 +46,7 @@ import { usageScreens } from "./observability.ts";
 import { reviewScreens } from "./review.ts";
 import { sidebarParticipants } from "./sidebar-participants.ts";
 import { sidebarScroll } from "./sidebar-scroll.ts";
+import { sidebarViews } from "./sidebar-views.ts";
 import { workspaceScreens } from "./workspace.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -831,6 +832,7 @@ function screens(ids: Ids, call: Call): Screen[] {
     { name: "home", path: "/" },
     { name: "sidebar-scroll", path: "/settings/profile", act: sidebarScroll },
     sidebarParticipants(call, ids.routedChat),
+    ...sidebarViews(),
     conversationDeletions(call),
     { name: "task", path: `/conversations/${ids.task}` },
     ...chats(ids, call),

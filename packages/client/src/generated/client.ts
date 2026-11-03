@@ -43,6 +43,7 @@ import type {
   CreateRunRequest,
   DecideSourceLinkSuggestionBody,
   DiscoverWorkspaceResponse,
+  DismissTipBody,
   DraftLibrarySkillBody,
   DraftSkillFromOutcomeBody,
   EvalRun,
@@ -113,6 +114,8 @@ import type {
   ListUsageNoticesResponse,
   Manifest,
   MarkInboxReadBody,
+  MarkThreadBody,
+  Marks,
   Me,
   MemoryDecisionInput,
   MemoryFile,
@@ -2951,6 +2954,61 @@ here too (429).
     let path = "/api/threads/{id}/archive";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<Thread>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Each field left out is left as it is. `read` marks it read at the server's time. A conversation the caller cannot read is not found. */
+  async markThread(id: string, body: MarkThreadBody, options?: RequestOptions): Promise<Marks> {
+    let path = "/api/threads/{id}/marks";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Marks>("PATCH", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async markThreadRaw(id: string, body: MarkThreadBody, options?: RequestOptions): Promise<ApiResponse<Marks>> {
+    let path = "/api/threads/{id}/marks";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Marks>("PATCH", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Get what the caller marked on the conversations they read */
+  async getMarks(options?: RequestOptions): Promise<Marks> {
+    const path = "/api/marks";
+    return this.request<Marks>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getMarksRaw(options?: RequestOptions): Promise<ApiResponse<Marks>> {
+    const path = "/api/marks";
+    return this.rawRequest<Marks>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Dismiss a one-time tip for the caller */
+  async dismissTip(body: DismissTipBody, options?: RequestOptions): Promise<Marks> {
+    const path = "/api/marks/tips";
+    return this.request<Marks>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async dismissTipRaw(body: DismissTipBody, options?: RequestOptions): Promise<ApiResponse<Marks>> {
+    const path = "/api/marks/tips";
+    return this.rawRequest<Marks>("POST", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }

@@ -73,6 +73,7 @@ import (
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/leader"
 	"github.com/urmzd/humagen/pkg/library"
+	"github.com/urmzd/humagen/pkg/marks"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/notifications"
 	"github.com/urmzd/humagen/pkg/operations"
@@ -281,6 +282,9 @@ type Platform struct {
 	Evals        *evals.Store
 	Feedback     *feedback.Store
 	Prefs        *prefs.Store
+	// Marks is what each person marked on the conversations they read:
+	// archived for them, when last read, and the tips they dismissed.
+	Marks *marks.Store
 	// PersonContexts is what each person brings to the runs that act for
 	// them: their run settings, tool servers and memory volume.
 	PersonContexts       *personctx.Store

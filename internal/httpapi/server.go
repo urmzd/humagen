@@ -40,6 +40,7 @@ import (
 	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/library"
+	"github.com/urmzd/humagen/pkg/marks"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/notifications"
 	"github.com/urmzd/humagen/pkg/operations"
@@ -212,6 +213,7 @@ func (s *Server) Handler() http.Handler {
 	s.artifactRoutes(mux)
 	s.observeRoutes(mux)
 	s.preferenceRoutes(mux)
+	s.markRoutes(mux)
 	s.projectRoutes(mux)
 	s.peopleRoutes(mux)
 	s.threadRoutes(mux)
@@ -1237,7 +1239,7 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 	case errors.Is(err, call.ErrInvalid), errors.Is(err, wire.ErrInvalidPage), errors.Is(err, wire.ErrInvalidAgent),
 		errors.Is(err, event.ErrInvalid), errors.Is(err, cron.ErrSchedule),
 		errors.Is(err, alerts.ErrInvalid), errors.Is(err, knowledge.ErrInvalid), errors.Is(err, evals.ErrInvalid),
-		errors.Is(err, prefs.ErrInvalid), errors.Is(err, memory.ErrInvalid), errors.Is(err, policy.ErrInvalid), errors.Is(err, personctx.ErrInvalid),
+		errors.Is(err, prefs.ErrInvalid), errors.Is(err, marks.ErrInvalid), errors.Is(err, memory.ErrInvalid), errors.Is(err, policy.ErrInvalid), errors.Is(err, personctx.ErrInvalid),
 		errors.Is(err, inbox.ErrInvalid), errors.Is(err, platform.ErrAction):
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, platform.ErrSandbox), errors.Is(err, artifacts.ErrInvalid):

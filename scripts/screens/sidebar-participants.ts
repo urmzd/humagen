@@ -46,12 +46,20 @@ export function sidebarParticipants(call: Call, thread: string) {
       await page.reload();
       await open();
       const navigation = page.getByRole("complementary", { name: "Navigation" });
+      // Project pins live in the list's Projects view (DES-049), picked from its filter menu.
+      const projectsView = async () => {
+        const filter = navigation.getByRole("button", { name: /^Filter conversations/ });
+        await filter.click();
+        await page.getByRole("button", { name: "Projects", exact: true }).click();
+        await filter.click();
+      };
       // A conversation's row is its title alone: who takes part is in the conversation.
       await navigation
         .getByRole("button", { name: /^Draft the launch checklist with the team/ })
         .first()
         .waitFor();
       assert.equal(await navigation.getByRole("group", { name: /^(Agents|People): / }).count(), 0);
+      await projectsView();
       const projectPin = navigation.getByRole("button", {
         name: "Pin project Launch",
         exact: true,
@@ -84,6 +92,7 @@ export function sidebarParticipants(call: Call, thread: string) {
       await unpinConversation.click();
       await page.getByRole("menuitem", { name: /^Unpin\b/ }).waitFor();
       await page.keyboard.press("Escape");
+      await projectsView();
       await navigation.getByRole("button", { name: "Pin project Launch", exact: true }).click();
       await pinned.getByRole("link", { name: "Launch", exact: true }).waitFor();
       await pinned.scrollIntoViewIfNeeded();

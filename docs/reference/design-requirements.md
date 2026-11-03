@@ -73,6 +73,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-044 | A conversation has a wave down its left edge to scan and scrub through its turns, and the keyboard opens and closes cleanly on a phone | Implemented: `TurnRail.tsx`, `Thread.tsx`, `Chat.tsx`, `Room.tsx`, `viewport.ts`; web tests pass (`wave.dom.test.tsx`, `pwa.test.ts`); screens pass at 390x844 and 1280x800; the keyboard on iOS needs a real device |
 | DES-045 | A phone reads like a native chat app: quiet message actions, a one-line chat bar and header, Chat and Work at the top of Home, a swipe from the edge for the drawer, and the installed app opening on Chat | Implemented: `theme.css`, `styles.css`, `Composer.tsx`, `ConversationShell.tsx`, `ModeSwitch.tsx`, `Sidebar.tsx`, `manifest.webmanifest`; web tests pass; screens pass at 390x844 and 1280x800 |
 | DES-046 | A structured review reads as a card with its evidence in place, the same in Slack | Implemented: core `readReview`, components `ReviewCard`, the `Review` primitive in render-web and render-slack, `GET /api/github/source`; core, Slack, web DOM and Go tests pass; `pnpm validate:slack` passes; `conversation-review-*` screens pass at phone and desktop |
+| DES-049 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row says its project, its age or an unread dot, and whether it waits on a person, runs or failed | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
 | DES-047 | Skills are slash commands, the only way the console offers them: `/` opens a menu of the skills a message here can name, fuzzy filtered with the match highlighted; `@` offers no skill or `@skill:`, `$` opens nothing, and a posted `$name` or `@skill:name` shows as a `/name` chip | Implemented: `commands.ts`, `tags.ts`, `Composer.tsx`, `ui.tsx` (`Mentioned`), `pkg/threads/tags.go`; web, threads and platform tests pass; `chat-at`, `chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection` screens at 390x844 and 1280x800 |
 
 ### DES-001: Working integrations
@@ -614,7 +615,9 @@ API. The open drawer uses its own bounds checks rather than page-content gutters
 
 ### DES-022: Conversation lifecycle in the consolidated workspace
 
-Conversation actions offer Pin, Rename, Archive and Delete. Existing participant
+Conversation actions offer Pin, Rename, Archive and Delete. Since DES-049 the
+sidebar's Archive is the reader's own and is undone from its Archived view;
+Delete still queues the conversation for an admin. Existing participant
 identity, project pins and keyboard focus are retained when rows move or disappear.
 An archive is hidden from conversation lists and becomes eligible for deletion
 after 30 days. Delete requests immediate eligibility; neither action removes
@@ -1238,3 +1241,59 @@ and the posted text); `go test -race ./pkg/threads ./internal/platform`
 `TestASlashCommandIsPinnedAsItsSkill`, `TestASlackCommandNamedForASkillUsesIt`,
 `TestSkillsAndMentionKinds` for the aliases); `make screens` with `chat-at`,
 `chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection`.
+
+### DES-049: Recents, Pinned, Projects and Archived
+
+Owner request: a flat list of conversations across projects, each row its
+title, its project under it and its age or an unread dot, with Pinned on
+top; Projects kept as another view; pin and archive from the row; an
+Archived view; and dots for what is running and what needs the reader.
+
+Rules:
+
+- The list's views are picked from its filter menu: **Recents** (the
+  default: every project, newest first), **Projects** (the conversations
+  under folders, open and closed folder icons) and **Archived**. Pinned sits
+  above whichever view is on and holds pinned projects and conversations.
+- A row is its title, then its project ("Personal", the workspace's name or
+  the project's title) on a second line, and on the right how long ago it
+  moved (`now`, `5m`, `3h`, `2d`, `3w`, `9mo`, `2y`) or an unread dot. Inside
+  a project's group the project line is left out.
+- One dot before the title, most urgent first: **needs you** (a run is
+  parked on a person, an approval or a question: colored and still, since
+  it waits on a person), **running** (a ring that breathes slowly, still
+  with reduced motion) and **a reply failed** (solid). Unread is the accent
+  dot in place of the age. A screen reader hears each as words.
+- Unread: an agent said the last thing, after the reader last opened the
+  conversation. Opening a conversation reads it, and so does staying in it
+  while it moves. Before a reader's first mark nothing reads as unread, so
+  the first release does not light up every older conversation.
+- Hover or focus trades the age for **Pin**, **Archive** and the ⋮ menu (Pin,
+  Rename, Archive, Delete). On a touch screen the ⋮ menu stays and holds
+  them all; every control is at least 32px, 44px on a touch screen.
+- **Archive is the reader's own**: the conversation leaves their Pinned and
+  Recents and is listed under Archived, where Unarchive brings it back.
+  Anyone else still sees it. A note offers **Undo**. Delete still asks once
+  more and queues it for an admin (DES-022).
+- In Projects, a project with nothing loaded starts folded and opens to "No
+  conversations"; a group shows five rows, then **See All (N)** and **Show
+  Fewer**. The reader's projects beyond those with conversations are listed,
+  at most 12.
+- The server keeps each person's marks per request on `pkg/state`, tenant
+  scoped: at most 500 archived, the last read of 500 conversations (the
+  oldest is forgotten) and 32 dismissed tips. `GET /api/marks` and `PATCH
+  /api/threads/{id}/marks` take `runs:read`; a conversation the caller cannot
+  read is not found. A thread summary carries `waiting` (runs parked on a
+  person) and `last`, `last_by` and `last_agent` (the first line of the
+  latest message or answer, at most 160 bytes, and who said it, a person by
+  handle).
+
+Evidence: `go test -race ./pkg/marks ./pkg/runs ./internal/httpapi` (`TestArchiveIsPerPersonAndReversible`,
+`TestArchivedIsBounded`, `TestReadKeepsTheLatestAndForgetsTheOldest`,
+`TestMarksOutliveAProcess` on memory and Postgres,
+`TestAThreadSaysWhatWaitsAndWhatWasSaidLast`, `TestMarksArePerPersonAndConfined`,
+`TestMarksTakeRunsRead`, the contract tests); `cd apps/web && pnpm test`
+(`conversationList.test.ts`, `sidebar-views.dom.test.tsx`,
+`preferences.dom.test.tsx`); `make screens` with `sidebar-recents`,
+`sidebar-row-actions`, `sidebar-projects`, `sidebar-archived` and
+`sidebar-participants`.

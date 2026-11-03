@@ -1117,3 +1117,34 @@ body {
     display: none;
   }
 }
+
+/*
+ * A conversation row's dot (DES-049). Waiting on a person is colored and
+ * still; running is a ring that breathes slowly; a failed reply is solid
+ * red; unread is the accent, solid and still.
+ */
+.humagen-row-dot {
+  display: inline-block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+}
+.humagen-row-dot[data-standing="needs"] {
+  background: var(--aui-warn);
+}
+.humagen-row-dot[data-standing="running"] {
+  box-shadow: inset 0 0 0 1.5px var(--aui-accent);
+  animation: humagen-tick-live 1.6s ease-in-out infinite;
+}
+.humagen-row-dot[data-standing="failed"] {
+  background: var(--aui-bad);
+}
+.humagen-row-dot[data-standing="unread"] {
+  background: var(--aui-accent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .humagen-row-dot[data-standing="running"] {
+    animation: none;
+  }
+}

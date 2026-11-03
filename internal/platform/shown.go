@@ -258,12 +258,15 @@ func (p *Platform) ShowTurns(tenant string, th threads.Thread, turns []ThreadTur
 }
 
 // ShowSummaries is a page of conversations as it is handed out: the people
-// in each by handle.
+// in each, and whoever said its last line, by handle.
 func (p *Platform) ShowSummaries(tenant string, page []ThreadSummary) []ThreadSummary {
 	s := p.shower(tenant)
 	out := make([]ThreadSummary, len(page))
 	for i, sum := range page {
 		sum.People = s.list(sum.People, s.key)
+		if !sum.LastAgent {
+			sum.LastBy = s.key(sum.LastBy)
+		}
 		out[i] = sum
 	}
 	return out

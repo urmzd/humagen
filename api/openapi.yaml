@@ -2972,6 +2972,80 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/threads/{id}/marks:
+    patch:
+      operationId: markThread
+      tags: [preferences]
+      summary: Archive a conversation for the caller alone, bring it back, or mark it read
+      description: Each field left out is left as it is. `read` marks it read at the server's time. A conversation the caller cannot read is not found.
+      x-permission: runs:read
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                archived: {type: boolean}
+                read: {type: boolean}
+      responses:
+        "200":
+          description: The caller's marks.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Marks"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
+  /api/marks:
+    get:
+      operationId: getMarks
+      tags: [preferences]
+      summary: Get what the caller marked on the conversations they read
+      x-permission: runs:read
+      responses:
+        "200":
+          description: The caller's marks.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Marks"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
+  /api/marks/tips:
+    post:
+      operationId: dismissTip
+      tags: [preferences]
+      summary: Dismiss a one-time tip for the caller
+      x-permission: runs:read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: {type: string, maxLength: 128}
+      responses:
+        "200":
+          description: The caller's marks.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Marks"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/deletions:
     get:
       operationId: listDeletions
@@ -9344,7 +9418,7 @@ components:
         One conversation: what its runs say, with what its record adds. A
         thread people started that no agent has answered yet is one too.
       type: object
-      required: [id, title, named, origin, channel, agents, people, turns, branches, active, failed, created_at, updated_at, visibility, messages]
+      required: [id, title, named, origin, channel, agents, people, turns, branches, active, waiting, failed, created_at, updated_at, visibility, messages]
       properties:
         id: {type: string}
         title: {type: string}
@@ -9373,9 +9447,47 @@ components:
         active:
           description: How many of its runs are in flight.
           type: integer
+        waiting:
+          description: How many of its runs are parked on a person, an approval or a question waiting on someone. They are counted in `active` too.
+          type: integer
         failed: {type: integer}
+        last:
+          description: The first line of the latest thing said in it, a person's message or an agent's answer, at most 160 bytes.
+          type: string
+        last_by:
+          description: Who said `last`, an agent's name when `last_agent`, else a person's handle.
+          type: string
+        last_agent:
+          description: An agent said `last`.
+          type: boolean
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+
+    Marks:
+      description: |
+        What the caller marked on the conversations they read. Archived
+        here is for the caller alone: anyone else still sees the
+        conversation. Bounded: 500 archived, the last read of 500
+        conversations (the oldest is forgotten), 32 dismissed tips.
+      type: object
+      required: [archived, read, tips]
+      properties:
+        archived:
+          description: Conversations the caller put away, most recent first.
+          type: array
+          items: {type: string}
+        read:
+          description: When the caller last read each conversation, by its id.
+          type: object
+          additionalProperties: {type: string, format: date-time}
+        tips:
+          description: The one-time tips the caller dismissed, by name.
+          type: array
+          items: {type: string}
+        since:
+          description: When the caller first marked anything, absent before that. A conversation unchanged since then reads as read.
+          type: string
+          format: date-time
 
     ThreadVisibility:
       description: |

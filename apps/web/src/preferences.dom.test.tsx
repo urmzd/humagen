@@ -112,6 +112,12 @@ async function choose(title: string, item: "Pin" | "Unpin", init?: object) {
   fireEvent.click(entry!, init);
 }
 const manage = (title: string) => screen.findByRole("button", { name: `Manage ${title}` });
+
+/** Switches the conversation list to its Projects view, from the filter menu. */
+async function projectsView() {
+  fireEvent.click(await screen.findByRole("button", { name: /^Filter conversations/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "Projects" }));
+}
 const pinnedRegion = () => screen.queryByRole("region", { name: "Pinned" });
 
 test("a pin that cannot be saved goes back, and the sidebar says so beside the task", async () => {
@@ -304,6 +310,7 @@ test("project and conversation pins persist independently through unpinning and 
     }),
   });
   render(<Pins />);
+  await projectsView();
   fireEvent.click(await screen.findByRole("button", { name: "Pin project Launch" }));
   await screen.findByRole("link", { name: "Launch" });
   await choose("Quarterly report", "Pin");
@@ -335,6 +342,7 @@ test("keyboard project pinning moves focus to its shortcut and unpinning returns
     }),
   });
   render(<Pins />);
+  await projectsView();
   const pin = await screen.findByRole("button", { name: "Pin project Launch" });
   pin.focus();
   fireEvent.click(pin, { detail: 0 });
@@ -378,6 +386,7 @@ test("a refused project pin rolls back and says so beside the project", async ()
     }),
   });
   render(<Pins />);
+  await projectsView();
   fireEvent.click(await screen.findByRole("button", { name: "Pin project Launch" }));
   await screen.findByText("Could not pin. Try again.");
   assert.ok(screen.getByRole("button", { name: "Pin project Launch" }));
@@ -414,7 +423,7 @@ test("overlapping project and conversation saves keep both lists", async () => {
   assert.deepEqual(result.current.prefs.pinned, ["t1", "t0"]);
 });
 
-test("a conversation row is its title alone: who took part is in the conversation, not the list", async () => {
+test("a conversation row is its title, project and age: who took part is in the conversation, not the list", async () => {
   const conversation = {
     ...task("t1", "Launch checklist"),
     agents: ["lead", "helper"],
@@ -426,18 +435,20 @@ test("a conversation row is its title alone: who took part is in the conversatio
   });
   render(<Pins />);
   const row = await screen.findByRole("button", { name: /^Launch checklist/ });
-  assert.equal(row.textContent, "Launch checklist");
+  assert.match(row.textContent ?? "", /^Launch checklist/);
+  assert.doesNotMatch(row.textContent ?? "", /lead|helper|ada|mira/);
+  assert.ok(row.querySelector("[data-row-age]")?.textContent, "the row says how long ago it moved");
   assert.equal(screen.queryByRole("group", { name: /^Agents:|^People:/ }), null);
 });
 
-test("Archive hides a conversation at once, and Delete asks once more before queueing it for an admin", async () => {
+test("Archive hides a conversation for the reader at once, and Delete asks once more before queueing it for an admin", async () => {
   net = stubFetch({
     "GET /api/preferences": () => saved,
     "GET /api/threads": () => ({
       threads: [task("t1", "Quarterly report"), task("t2", "Old draft")],
       next: null,
     }),
-    "POST /api/threads/t1/archive": () => ({}),
+    "PATCH /api/threads/t1/marks": () => ({ archived: ["t1"], read: {}, tips: [] }),
     "POST /api/threads/t2/archive": () => ({}),
   });
   render(<Pins />);
@@ -449,7 +460,7 @@ test("Archive hides a conversation at once, and Delete asks once more before que
       "the archived row is still listed",
     ),
   );
-  assert.ok(screen.getByText(/Archived/));
+  assert.ok(screen.getByText(/Archived for you/));
 
   fireEvent.click(await manage("Old draft"));
   fireEvent.click(await screen.findByRole("menuitem", { name: /^Delete/ }));
@@ -463,10 +474,12 @@ test("Archive hides a conversation at once, and Delete asks once more before que
   const archives = net.seen.filter((r) => r.method === "POST" && r.path.endsWith("/archive"));
   assert.deepEqual(
     archives.map((r) => [r.path, (r.body as { delete_now: boolean }).delete_now]),
-    [
-      ["/api/threads/t1/archive", false],
-      ["/api/threads/t2/archive", true],
-    ],
+    [["/api/threads/t2/archive", true]],
+  );
+  const marked = net.seen.filter((r) => r.method === "PATCH" && r.path.endsWith("/marks"));
+  assert.deepEqual(
+    marked.map((r) => [r.path, r.body]),
+    [["/api/threads/t1/marks", { archived: true }]],
   );
 });
 
