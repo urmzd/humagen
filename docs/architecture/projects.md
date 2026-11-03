@@ -331,12 +331,18 @@ One grammar, parsed by the platform for every surface (`pkg/threads`):
 | `@<agent>` | that agent answers. It must be available in the thread's project |
 | `@<handle>` | that person is notified: their inbox, and Slack when a client maps them |
 | `@sme` or `@sme:<topic>` | retired; no run or notification is created, and the person is directed to Find Help |
-| `$<skill>` or `@skill:<skill>` | the agents the message starts are told to use that skill (see [Skills](#skills)) |
+| `$<skill>`, `/<skill>` or `@skill:<skill>` | the agents the message starts are told to use that skill (see [Skills](#skills)) |
 | `@<kind>:<name>` | an item of a mention kind the workspace declares, resolved as the kind says (see [Mention kinds](#mention-kinds)) |
 | `<@U…>` (Slack only) | the Slack person, mapped to a subject through the client's `slack.people` |
 
 A `$` is a skill only when a skill's whole name follows it, so `$5`, `$PATH`
-and `$my_var` stay text. A skill nobody on the project's chain declares
+and `$my_var` stay text. A `/` is a skill, as a slash command, only in a
+message posted through the API or the console, at the start of the message or
+after a space, before a skill's whole name that ends the word, and only when
+that skill is on the chain: `/tmp/x`, `1/2`, `and/or` and a `/` that names no
+skill stay text and refuse nothing. At most 10 names after a `/` that are no
+skill are looked up; any after are text. A Slack or GitHub message reads a
+`/` only as one of its client's commands (see [Skills](#skills)). A skill nobody on the project's chain declares
 refuses a message typed in the console with 400 "there is no skill called
 ...", before anything is posted; a message Slack or GitHub posted is there
 already, so it is kept and the skill is refused, saying why. At most 4 skills
@@ -450,7 +456,8 @@ a skill package, and the tests hold the two to saige's parser.
   posted in a project can name the skills its project declares, then each
   ancestor's, nearest first, each name once from the nearest project that
   declares it, at most 128. A sibling's or a child's are never offered.
-- **A person names one** with `$<name>` or `@skill:<name>`. Every run the
+- **A person names one** with `$<name>`, `@skill:<name>` or, in the
+  console, the slash command `/<name>`. Every run the
   message starts is told to use it: when the message is accepted,
   `answerMessage` pins each skill's instructions into the run's tag as
   `_warp.skills`, a private key fiber keeps out of every prompt and record, so
@@ -1703,6 +1710,13 @@ An unknown tab falls back to the default through `pick`. Names never hold
     over the project's skills (`GET /api/skills`). Tab or Enter picks the
     highlighted item, the arrow keys move, Escape closes. Each kind keeps a
     place in the list's eight;
+  - `/` at the start of the message or after a space opens the command
+    menu over the same skills: each row `/name`, its description and the
+    kind (Skill), filtered as the name is typed, closest name first, then by
+    description, the matched letters highlighted. A skill the message already
+    names, or every other once it names 4, is greyed with the reason and
+    cannot be picked. A pick writes `/name `, drawn in the box as a token, and
+    the message is sent as its text (DES-046);
   - the + button (or Ctrl+/) opens a menu: Attach Files; Agents, a
     searchable list with AgentMark colors of the agents available in the
     project, several of which can be checked (arrows move, Space checks,

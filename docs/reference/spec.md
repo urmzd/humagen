@@ -808,7 +808,8 @@ grounds nothing until it does. Through the API, naming one takes an owner of
 the project who holds `knowledge:read`.
 
 `skills` are named instructions a person can tell an agent to use: writing
-`$<name>`, or `@skill:<name>`, in a message has every run the message starts
+`$<name>`, `@skill:<name>` or, in the console, the slash command `/<name>` in
+a message has every run the message starts
 given the skill's instructions ahead of the turn, below the project's and the
 agent's own. A message posted in a project can name its project's skills, then
 each project's above it, `workspace.skills` last, nearest first, each name

@@ -171,7 +171,7 @@ async function mentioned(page: Page, text: string): Promise<void> {
 
 /**
  * The chat's states, each a page and what a person does on it: completion
- * open after @ and after $, the + menu with two agents checked, the box
+ * open after @ and after $, the / command menu, the + menu with two agents checked, the box
  * with their mentions, a private conversation answered, its Share
  * dialog, a shared conversation, and answers its selected agents were
  * routed to.
@@ -657,6 +657,32 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       act: async (page) => {
         await bar(page).fill("@helper $");
         await page.getByRole("listbox").getByText("$launch-review").waitFor();
+      },
+    },
+    {
+      // The `/` command menu (DES-046): skills with their descriptions and
+      // kind, the typed letters highlighted.
+      name: "chat-slash",
+      path: "/",
+      act: async (page) => {
+        await bar(page).fill("/re");
+        const menu = page.getByRole("listbox", { name: defaultCopy.threads.commands });
+        await menu.getByText("Reviews a launch plan against the checklist").waitFor();
+        assert.equal(await menu.getByRole("option").count(), 2);
+        assert.ok((await menu.locator("mark").count()) >= 2, "the typed letters are highlighted");
+      },
+    },
+    {
+      // A picked command is written `/name ` and drawn as a token.
+      name: "chat-slash-picked",
+      path: "/",
+      act: async (page) => {
+        await bar(page).fill("/re");
+        await page.getByRole("listbox", { name: defaultCopy.threads.commands }).waitFor();
+        await page.keyboard.press("Enter");
+        await page.keyboard.type("for the launch plan");
+        assert.equal(await bar(page).inputValue(), "/release-notes for the launch plan");
+        await page.locator("[data-tokens] mark").getByText("/release-notes").waitFor();
       },
     },
     { name: "chat-plus", path: "/", act: twoAgents },

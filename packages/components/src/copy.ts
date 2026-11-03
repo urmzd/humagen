@@ -2664,6 +2664,14 @@ export const defaultCopy = {
     answer: "Answer",
     answered: "Answered",
     typeahead: "People, agents and skills to tag",
+    /** The `/` command menu, as a screen reader names it. */
+    commands: "Slash commands",
+    /** What a `/` command is, on the right of its row. */
+    commandKind: "Skill",
+    /** Why a skill the message already names is greyed in the `/` menu. */
+    commandNamed: "Already in this message",
+    /** Why every other skill is greyed once a message names as many as it may. */
+    commandLimit: (max: number) => `A message names at most ${max} skills`,
     /** A mention kind, as completion offers `@kind:`: its title, or what it is. */
     mentionKind: (kind: string, title?: string) => title || `Mention by ${kind}`,
     /** The chat bar's prompt in a conversation. Nothing runs until a message tags an agent. */

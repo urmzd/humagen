@@ -7,8 +7,11 @@
  * inside code is a tag.
  */
 
-/** What starts a tag: `@` for people, agents and mention kinds, `$` for a skill. */
-export type Sigil = "@" | "$";
+/**
+ * What starts a tag: `@` for people, agents and mention kinds, `$` for a
+ * skill, and `/` for a skill as a slash command (commands.ts).
+ */
+export type Sigil = "@" | "$" | "/";
 
 /** A name a message can tag, as completion offers it. */
 export interface TagOption {
@@ -26,7 +29,7 @@ export interface TagOption {
   hint?: string;
 }
 
-/** The sigil an option is written after. */
+/** The sigil an option is written after in `@` and `$` completion. */
 export const sigilOf = (o: TagOption): Sigil => (o.kind === "skill" ? "$" : "@");
 
 /** The tag being typed at the caret. */
@@ -45,10 +48,16 @@ export function tagAt(text: string, caret: number): Typing | null {
   let i = caret;
   while (i > 0 && TAG_CHAR.test(text[i - 1] ?? "")) i--;
   const sigil = text[i - 1];
-  if (i === 0 || (sigil !== "@" && sigil !== "$")) return null;
+  if (i === 0 || (sigil !== "@" && sigil !== "$" && sigil !== "/")) return null;
   const start = i - 1;
   // A tag starts a word: an @ inside one, as in an email address, is not one.
   if (start > 0 && !/[\s(]/.test(text[start - 1] ?? "")) return null;
+  // A slash command starts the message or follows a space, and is a name:
+  // a path, a fraction or a URL is not one.
+  if (sigil === "/") {
+    if (start > 0 && !/\s/.test(text[start - 1] ?? "")) return null;
+    if (!/^[A-Za-z0-9_-]*$/.test(text.slice(i, caret))) return null;
+  }
   // Inside inline code or a code block, nothing is a tag.
   const ticks = (text.slice(0, start).match(/`/g) ?? []).length;
   if (ticks % 2 === 1) return null;
@@ -115,7 +124,9 @@ export function insertTag(
 ): { text: string; caret: number } {
   const end = at.start + 1 + at.query.length;
   const open = option.kind === "kind";
-  const tag = `${sigilOf(option)}${option.token}${open ? "" : " "}`;
+  // A skill picked from the `/` menu is written as the command it was typed as.
+  const sigil = at.sigil === "/" && option.kind === "skill" ? "/" : sigilOf(option);
+  const tag = `${sigil}${option.token}${open ? "" : " "}`;
   const rest = open ? text.slice(end) : text.slice(end).replace(/^ /, "");
   return { text: text.slice(0, at.start) + tag + rest, caret: at.start + tag.length };
 }
