@@ -21,6 +21,7 @@ import type {
   Approved,
   ArchiveThreadBody,
   Artifact,
+  ArtifactSave,
   Assignment,
   AssignmentInput,
   AttachKnowledgeSourceBody,
@@ -38,6 +39,8 @@ import type {
   ClientInput,
   ClientView,
   ConnectKnowledgeSourceBody,
+  ConversationMemory,
+  ConversationSandboxes,
   CreateCallRequest,
   CreateKnowledgeSourceBody,
   CreateRunRequest,
@@ -113,7 +116,11 @@ import type {
   ListThreadsResponse,
   ListUsageNoticesResponse,
   Manifest,
+  MarkInboxMessagesBody,
+  MarkInboxMessagesResponse,
   MarkInboxReadBody,
+  MarkInboxViewReadBody,
+  MarkInboxViewReadResponse,
   MarkThreadBody,
   Marks,
   Me,
@@ -172,6 +179,9 @@ import type {
   SaveRunFeedbackBody,
   Schedule,
   ScheduleView,
+  Scratchpad,
+  ScratchpadInput,
+  ScratchpadList,
   SearchKnowledgeResponse,
   SearchMemoryResponse,
   SetAgentHomeBody,
@@ -204,6 +214,10 @@ import type {
   ToolCredentialInput,
   ToolCredentials,
   UpdatePreferencesBody,
+  WorkspaceFileContent,
+  WorkspaceFileList,
+  WorkspaceFilePublish,
+  WorkspaceFileWrite,
 } from "./types.js";
 import { type SSEEvent, type SSEOptions, streamSse } from "./sse.js";
 
@@ -3451,7 +3465,7 @@ may do with each part, is decided per message: a memory proposal needs
 null at the end. A client's machine reads one of its people's inbox
 with `act_as_client` and `act_as_user`, as the Slack app's Home does.
  */
-  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source" | "operation", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ListInboxResponse> {
+  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source" | "operation", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", view?: "inbox" | "unread" | "hidden" | "done", options?: RequestOptions): Promise<ListInboxResponse> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -3466,6 +3480,7 @@ with `act_as_client` and `act_as_user`, as the Slack app's Home does.
     if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
     if (needs !== undefined && needs !== null) _q.set("needs", String(needs));
     if (news !== undefined && news !== null) _q.set("news", String(news));
+    if (view !== undefined && view !== null) _q.set("view", String(view));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.request<ListInboxResponse>("GET", path, {
@@ -3473,7 +3488,7 @@ with `act_as_client` and `act_as_user`, as the Slack app's Home does.
     });
   }
 
-  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source" | "operation", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
+  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source" | "operation", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", view?: "inbox" | "unread" | "hidden" | "done", options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -3488,6 +3503,7 @@ with `act_as_client` and `act_as_user`, as the Slack app's Home does.
     if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
     if (needs !== undefined && needs !== null) _q.set("needs", String(needs));
     if (news !== undefined && news !== null) _q.set("news", String(news));
+    if (view !== undefined && view !== null) _q.set("view", String(view));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListInboxResponse>("GET", path, {
@@ -3614,11 +3630,10 @@ it maps with `act_as_client` and `act_as_user`.
     });
   }
 
-  /** An announcement the caller hid or snoozed (`hidden`) is open for them
-again, as everyone else has it. Only their own copy changes, so it
-needs what hiding it needs. One they never set aside, or one withdrawn
-for everyone, is answered as it is. Any other message is set aside for
-everyone, and is not brought back this way (400).
+  /** A message the caller hid, or an announcement they snoozed (`hidden`),
+leaves their `hidden` view, as everyone else has it. Only their own
+copy changes, so seeing the message is all it takes. One they never
+set aside is answered as it is.
  */
   async unhideInboxMessage(id: string, options?: RequestOptions): Promise<InboxMessage> {
     let path = "/api/inbox/{id}/unhide";
@@ -3632,6 +3647,55 @@ everyone, and is not brought back this way (400).
     let path = "/api/inbox/{id}/unhide";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<InboxMessage>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** `read` and `unread`, `hide` and `unhide`, `delete` and `restore`,
+on 1 to 200 messages. Each changes only what the caller sees:
+nobody else's inbox, views or counts. A message is shared, so
+`delete` removes it from every view of the caller's and never from
+the record; `restore` brings it back, as an undo does. A message the
+caller cannot see, or one they asked to delete while a run waits on
+a question in it, is skipped with the reason, and the rest are
+marked.
+ */
+  async markInboxMessages(body: MarkInboxMessagesBody, options?: RequestOptions): Promise<MarkInboxMessagesResponse> {
+    const path = "/api/inbox/marks";
+    return this.request<MarkInboxMessagesResponse>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async markInboxMessagesRaw(body: MarkInboxMessagesBody, options?: RequestOptions): Promise<ApiResponse<MarkInboxMessagesResponse>> {
+    const path = "/api/inbox/marks";
+    return this.rawRequest<MarkInboxMessagesResponse>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The newest 600 unread messages in the view, narrowed by `kind` when
+given, are marked read for the caller alone. `more` says some are
+still unread.
+ */
+  async markInboxViewRead(body: MarkInboxViewReadBody, options?: RequestOptions): Promise<MarkInboxViewReadResponse> {
+    const path = "/api/inbox/read-all";
+    return this.request<MarkInboxViewReadResponse>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async markInboxViewReadRaw(body: MarkInboxViewReadBody, options?: RequestOptions): Promise<ApiResponse<MarkInboxViewReadResponse>> {
+    const path = "/api/inbox/read-all";
+    return this.rawRequest<MarkInboxViewReadResponse>("POST", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }
@@ -3724,6 +3788,279 @@ to that machine only, wherever the message is read.
     path = path.replace("{id}", encodeURIComponent(String(id)));
     path = path.replace("{client}", encodeURIComponent(String(client)));
     return this.rawRequest<void>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** An agent's answer (source run), a person's message (source message) or a scratchpad. A structured review (humagen.github.review.v1) is kept as its JSON. Saving the same title again makes a new version. */
+  async saveArtifact(id: string, body: ArtifactSave, options?: RequestOptions): Promise<Artifact> {
+    let path = "/api/threads/{id}/artifacts";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Artifact>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async saveArtifactRaw(id: string, body: ArtifactSave, options?: RequestOptions): Promise<ApiResponse<Artifact>> {
+    let path = "/api/threads/{id}/artifacts";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Artifact>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The memory a conversation draws on, and what its session and each run used and wrote */
+  async conversationMemory(id: string, options?: RequestOptions): Promise<ConversationMemory> {
+    let path = "/api/threads/{id}/memory";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ConversationMemory>("GET", path, {
+      ...options,
+    });
+  }
+
+  async conversationMemoryRaw(id: string, options?: RequestOptions): Promise<ApiResponse<ConversationMemory>> {
+    let path = "/api/threads/{id}/memory";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ConversationMemory>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** The conversation's session sandbox and each agent run's nested sandbox */
+  async listSandboxes(id: string, options?: RequestOptions): Promise<ConversationSandboxes> {
+    let path = "/api/threads/{id}/sandboxes";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ConversationSandboxes>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listSandboxesRaw(id: string, options?: RequestOptions): Promise<ApiResponse<ConversationSandboxes>> {
+    let path = "/api/threads/{id}/sandboxes";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ConversationSandboxes>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** List a conversation's scratchpads, without their content */
+  async listScratchpads(id: string, options?: RequestOptions): Promise<ScratchpadList> {
+    let path = "/api/threads/{id}/scratchpads";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ScratchpadList>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listScratchpadsRaw(id: string, options?: RequestOptions): Promise<ApiResponse<ScratchpadList>> {
+    let path = "/api/threads/{id}/scratchpads";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ScratchpadList>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Add a named scratchpad to a conversation */
+  async createScratchpad(id: string, body: ScratchpadInput, options?: RequestOptions): Promise<Scratchpad> {
+    let path = "/api/threads/{id}/scratchpads";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Scratchpad>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async createScratchpadRaw(id: string, body: ScratchpadInput, options?: RequestOptions): Promise<ApiResponse<Scratchpad>> {
+    let path = "/api/threads/{id}/scratchpads";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Scratchpad>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Read a scratchpad with its content */
+  async getScratchpad(id: string, pad: string, options?: RequestOptions): Promise<Scratchpad> {
+    let path = "/api/threads/{id}/scratchpads/{pad}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{pad}", encodeURIComponent(String(pad)));
+    return this.request<Scratchpad>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getScratchpadRaw(id: string, pad: string, options?: RequestOptions): Promise<ApiResponse<Scratchpad>> {
+    let path = "/api/threads/{id}/scratchpads/{pad}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{pad}", encodeURIComponent(String(pad)));
+    return this.rawRequest<Scratchpad>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Rename a scratchpad or replace its content, from the version read */
+  async updateScratchpad(id: string, pad: string, body: ScratchpadInput, options?: RequestOptions): Promise<Scratchpad> {
+    let path = "/api/threads/{id}/scratchpads/{pad}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{pad}", encodeURIComponent(String(pad)));
+    return this.request<Scratchpad>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async updateScratchpadRaw(id: string, pad: string, body: ScratchpadInput, options?: RequestOptions): Promise<ApiResponse<Scratchpad>> {
+    let path = "/api/threads/{id}/scratchpads/{pad}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{pad}", encodeURIComponent(String(pad)));
+    return this.rawRequest<Scratchpad>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Delete a scratchpad at the version read */
+  async deleteScratchpad(id: string, pad: string, version: number, options?: RequestOptions): Promise<void> {
+    let path = "/api/threads/{id}/scratchpads/{pad}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{pad}", encodeURIComponent(String(pad)));
+    const _q = new URLSearchParams();
+    if (version !== undefined && version !== null) _q.set("version", String(version));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteScratchpadRaw(id: string, pad: string, version: number, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/threads/{id}/scratchpads/{pad}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{pad}", encodeURIComponent(String(pad)));
+    const _q = new URLSearchParams();
+    if (version !== undefined && version !== null) _q.set("version", String(version));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** List conversation working files */
+  async listWorkspaceFiles(id: string, options?: RequestOptions): Promise<WorkspaceFileList> {
+    let path = "/api/threads/{id}/files";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<WorkspaceFileList>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listWorkspaceFilesRaw(id: string, options?: RequestOptions): Promise<ApiResponse<WorkspaceFileList>> {
+    let path = "/api/threads/{id}/files";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<WorkspaceFileList>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Read a conversation text file */
+  async readWorkspaceFile(id: string, path: string, options?: RequestOptions): Promise<WorkspaceFileContent> {
+    let _requestPath = "/api/threads/{id}/files/content";
+    _requestPath = _requestPath.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (path !== undefined && path !== null) _q.set("path", String(path));
+    const _qs = _q.toString();
+    if (_qs) _requestPath += `?${_qs}`;
+    return this.request<WorkspaceFileContent>("GET", _requestPath, {
+      ...options,
+    });
+  }
+
+  async readWorkspaceFileRaw(id: string, path: string, options?: RequestOptions): Promise<ApiResponse<WorkspaceFileContent>> {
+    let _requestPath = "/api/threads/{id}/files/content";
+    _requestPath = _requestPath.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (path !== undefined && path !== null) _q.set("path", String(path));
+    const _qs = _q.toString();
+    if (_qs) _requestPath += `?${_qs}`;
+    return this.rawRequest<WorkspaceFileContent>("GET", _requestPath, {
+      ...options,
+    });
+  }
+
+  /** Save a conversation text file at its current revision */
+  async writeWorkspaceFile(id: string, body: WorkspaceFileWrite, options?: RequestOptions): Promise<WorkspaceFileContent> {
+    let path = "/api/threads/{id}/files/content";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<WorkspaceFileContent>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async writeWorkspaceFileRaw(id: string, body: WorkspaceFileWrite, options?: RequestOptions): Promise<ApiResponse<WorkspaceFileContent>> {
+    let path = "/api/threads/{id}/files/content";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<WorkspaceFileContent>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Delete a conversation file at its current revision */
+  async deleteWorkspaceFile(id: string, path: string, revision: string, options?: RequestOptions): Promise<void> {
+    let _requestPath = "/api/threads/{id}/files/content";
+    _requestPath = _requestPath.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (path !== undefined && path !== null) _q.set("path", String(path));
+    if (revision !== undefined && revision !== null) _q.set("revision", String(revision));
+    const _qs = _q.toString();
+    if (_qs) _requestPath += `?${_qs}`;
+    await this.request<void>("DELETE", _requestPath, {
+      ...options,
+    });
+  }
+
+  async deleteWorkspaceFileRaw(id: string, path: string, revision: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let _requestPath = "/api/threads/{id}/files/content";
+    _requestPath = _requestPath.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (path !== undefined && path !== null) _q.set("path", String(path));
+    if (revision !== undefined && revision !== null) _q.set("revision", String(revision));
+    const _qs = _q.toString();
+    if (_qs) _requestPath += `?${_qs}`;
+    return this.rawRequest<void>("DELETE", _requestPath, {
+      ...options,
+    });
+  }
+
+  /** Publish an immutable version of a conversation file */
+  async publishWorkspaceFile(id: string, body: WorkspaceFilePublish, options?: RequestOptions): Promise<Artifact> {
+    let path = "/api/threads/{id}/files/publish";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Artifact>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async publishWorkspaceFileRaw(id: string, body: WorkspaceFilePublish, options?: RequestOptions): Promise<ApiResponse<Artifact>> {
+    let path = "/api/threads/{id}/files/publish";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Artifact>("POST", path, {
       body,
       contentType: "application/json",
       ...options,

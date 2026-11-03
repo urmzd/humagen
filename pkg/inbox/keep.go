@@ -29,8 +29,10 @@ import (
 //	d:<post>                 the messages a client posted at a place, the last last
 //	c:<id>:<n>               the n-th change to a message
 //	u:<id>:<subject>         one reader's own marks on a message
+//	h:<subject>:<id>         a message one reader hid, for their Hidden view's count
 //	b:<signature>            open messages alike in who reads them, counted
 //	o:<subject>:<signature>  how many of those one reader has set aside
+//	s:<subject>:<signature>  how many of those one reader hid or deleted
 //	z:<id>                   a message snoozed for everyone, until when
 //	y:<subject>:<id>         one reader's own snooze of an open broadcast
 //	p:<day>                  the announcements posted on a day
@@ -63,6 +65,9 @@ const (
 	maxChanges = 100000
 	// maxMessages is the most messages Snapshot reads.
 	maxMessages = 100000
+	// MaxHiddenCount is the most hidden messages a count adds up: past it,
+	// Counts.Hidden reads as this many.
+	MaxHiddenCount = 1000
 )
 
 func hash(s string) string {
@@ -114,6 +119,10 @@ func markKey(id, subject string) string      { return markPrefix(id) + hash(subj
 func bucketKey(sig string) string            { return "b:" + hash(sig) }
 func outPrefix(subject string) string        { return "o:" + hash(subject) + ":" }
 func outKey(subject, sig string) string      { return outPrefix(subject) + hash(sig) }
+func asidePrefix(subject string) string      { return "s:" + hash(subject) + ":" }
+func asideKey(subject, sig string) string    { return asidePrefix(subject) + hash(sig) }
+func hiddenPrefix(subject string) string     { return "h:" + hash(subject) + ":" }
+func hiddenKey(subject, id string) string    { return hiddenPrefix(subject) + seqOf(id) }
 func sleepKey(id string) string              { return "z:" + seqOf(id) }
 func ownSnoozePrefix(subject string) string  { return "y:" + hash(subject) + ":" }
 func ownSnoozeKey(subject, id string) string { return ownSnoozePrefix(subject) + seqOf(id) }
@@ -163,7 +172,7 @@ type keptMessage struct {
 
 func keep(m *Message) keptMessage {
 	k := keptMessage{Message: *m, Key: m.Key, Audience: m.Audience, Excluded: m.Excluded, Broadcast: m.Broadcast, Once: m.Once, Reminded: m.reminded, Changes: m.changes}
-	k.Unread, k.Hidden = false, false
+	k.Unread, k.Hidden, k.Deleted = false, false, false
 	return k
 }
 
@@ -178,11 +187,33 @@ func (k keptMessage) message(tenant string) *Message {
 type mark struct {
 	Subject string `json:"subject"`
 	Read    bool   `json:"read,omitempty"`
-	// Hide is how they set a broadcast aside for themselves.
+	// Hide is how they set a message aside for themselves: a broadcast
+	// dismissed or snoozed, or any message hidden (dismissed for them).
 	Hide *hide `json:"hide,omitempty"`
+	// Deleted is a message they deleted: it is gone from every view of
+	// theirs, and nobody else's changes.
+	Deleted bool `json:"deleted,omitempty"`
 }
 
-func (k mark) empty() bool { return !k.Read && k.Hide == nil }
+func (k mark) empty() bool { return !k.Read && k.Hide == nil && !k.Deleted }
+
+// hiddenFor reports whether a reader's marks keep a message in their Hidden
+// view at a moment: hidden, or snoozed for themselves until a time still to
+// come. A zero now leaves a snooze as it is.
+func hiddenFor(k mark, now time.Time) bool {
+	if k.Hide == nil || k.Deleted {
+		return false
+	}
+	return k.Hide.State != Snoozed || now.IsZero() || now.Before(k.Hide.Until)
+}
+
+// hiddenRec is an "h:" record: what decides who may read a hidden message,
+// so a count asks once for all alike, and until when a snooze holds it.
+type hiddenRec struct {
+	Sig   string      `json:"sig"`
+	Rep   keptMessage `json:"rep"`
+	Until time.Time   `json:"until,omitzero"`
+}
 
 // hide is one reader's own state of a broadcast: dismissed, or snoozed
 // until a time.

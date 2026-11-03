@@ -176,7 +176,9 @@ function room(routes: Record<string, (body: unknown) => unknown> = {}, initial: 
 
 test("a shared thread shows people by name and agents by theirs and where it is shared, with no line saying who answers and no Share", async () => {
   const { opened } = room();
-  assert.ok(await screen.findByText("Ana"));
+  // The reader's own message is on the right, without their name.
+  const own = await screen.findByRole("article", { name: "Message from Ana" });
+  assert.equal(own.getAttribute("data-side"), "mine");
   // The thread is untitled, so its first message is its title as well.
   assert.equal(screen.getAllByText("@helper when does Globex renew?").length, 2);
   assert.ok(screen.getByText("It renews on May 3."));
@@ -190,6 +192,37 @@ test("a shared thread shows people by name and agents by theirs and where it is 
   assert.ok(!screen.queryByRole("button", { name: words.share }));
   fireEvent.click(where);
   assert.deepEqual(opened, ["Globex/renewals"]);
+});
+
+test("the reader's messages sit on the right, everyone else's on the left under one name per run", async () => {
+  const message = (id: string, by: string, name: string, text: string): ThreadTurn => ({
+    kind: "message",
+    message: { id, thread: page.thread.id, by, name, text, mentions: [], via: "console", at },
+  });
+  room(
+    {},
+    {
+      ...page,
+      turns: [
+        message("m-1", "ana", "Ana", "Mine first"),
+        message("m-2", "ana", "Ana", "Mine again"),
+        message("m-3", "dana", "Dana Scully", "Theirs first"),
+        message("m-4", "dana", "Dana Scully", "Theirs again"),
+      ],
+    },
+  );
+  const all = await screen.findAllByRole("article", { name: /^Message from/ });
+  assert.deepEqual(
+    all.map((a) => a.getAttribute("data-side")),
+    ["mine", "mine", "theirs", "theirs"],
+  );
+  // The reader's own carry no name; another person's name shows once for the run.
+  assert.equal(within(all[0] as HTMLElement).queryByText("Ana"), null);
+  assert.equal(screen.getAllByText("Dana Scully").length, 1);
+  assert.ok(within(all[2] as HTMLElement).getByText("Dana Scully"));
+  // Both sides keep their actions.
+  for (const a of all)
+    assert.ok(within(a).getByRole("button", { name: defaultCopy.conversation.copyMessage }));
 });
 
 test("message dates reveal the exact local date, time and timezone on hover, focus and tap", async () => {
@@ -710,7 +743,7 @@ test("a run waiting on a person, such as an expert's answer, is shown still", as
           onChanged={() => {}}
         />,
       );
-      await screen.findByText("Ana");
+      await screen.findByRole("article", { name: "Message from Ana" });
       assert.equal(document.querySelectorAll(".aui-busy-bar").length, bars, `a ${status} run`);
       cleanup();
       net.restore();
@@ -1910,6 +1943,16 @@ test("Share at the top of a private conversation moves it into a project's chann
       })),
     }),
     "GET /api/people": () => people,
+    "GET /api/threads/th-00000000000000aa/placement": (_body, query) => ({
+      thread: mine.thread.id,
+      project: query.get("project"),
+      channel: query.get("channel"),
+      audience: "Initech members",
+      runs: 0,
+      workspace_files: 0,
+      token: "empty-conversation-token",
+      exclusions: [],
+    }),
     "POST /api/threads/th-00000000000000aa/share": () => ({ ...shared, not_added: [] }),
   });
   render(<Sharing initial={mine} onShared={(o) => opened.push(o)} />);
@@ -1942,7 +1985,12 @@ test("Share at the top of a private conversation moves it into a project's chann
   await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "POST")));
   const sent = net?.seen.find((s) => s.method === "POST");
   assert.equal(sent?.path, "/api/threads/th-00000000000000aa/share");
-  assert.deepEqual(sent?.body, { project: "Initech", channel: "general", add: ["dana"] });
+  assert.deepEqual(sent?.body, {
+    project: "Initech",
+    channel: "general",
+    add: ["dana"],
+    placement_token: "empty-conversation-token",
+  });
   // Shared, it says where, and offers no Share.
   assert.ok(await screen.findByRole("button", { name: words.sharedIn("Initech", "general") }));
   assert.equal(screen.queryByRole("dialog"), null);
@@ -1951,7 +1999,7 @@ test("Share at the top of a private conversation moves it into a project's chann
   assert.ok(screen.getByText(words.sharedTold(["dana"])));
 });
 
-test("completed work requires destination review, and an unseen run refusal stays actionable", async () => {
+test("completed work requires destination review, and an unseen run refresh invalidates the old review", async () => {
   const ran: ThreadPage = { ...mine, turns: [...mine.turns, page.turns[1] as ThreadTurn] };
   net = stubFetch({
     "GET /api/threads/th-00000000000000aa": () => ran,
@@ -2000,7 +2048,9 @@ test("completed work requires destination review, and an unseen run refusal stay
   cleanup();
   net?.restore();
 
-  // A run the page has not read yet: the server refuses the move (409), and the dialog says why.
+  // A run the page has not read yet invalidates the snapshot and needs a fresh review.
+  let placementReads = 0;
+  let shares = 0;
   net = stubFetch({
     "GET /api/threads/th-00000000000000aa": () => mine,
     "GET /api/projects/Globex/agents": () => ({
@@ -2011,10 +2061,22 @@ test("completed work requires destination review, and an unseen run refusal stay
     }),
     "GET /api/projects/Globex/channels": () => ({ channels: [] }),
     "GET /api/projects/Initech/channels": () => ({ channels: [] }),
-    "POST /api/threads/th-00000000000000aa/share": () =>
-      new Response(JSON.stringify({ error: "a conversation that has runs stays in its project" }), {
+    "GET /api/threads/th-00000000000000aa/placement": (_body, query) => ({
+      thread: mine.thread.id,
+      project: query.get("project"),
+      channel: query.get("channel"),
+      audience: "Initech members",
+      runs: shares > 0 ? 1 : 0,
+      workspace_files: 0,
+      token: `unseen-run-${++placementReads}`,
+      exclusions: [],
+    }),
+    "POST /api/threads/th-00000000000000aa/share": () => {
+      shares++;
+      return new Response(JSON.stringify({ error: "placement changed" }), {
         status: 409,
-      }),
+      });
+    },
   });
   render(<Sharing initial={mine} />);
   fireEvent.click(await screen.findByRole("button", { name: words.share }));
@@ -2022,16 +2084,103 @@ test("completed work requires destination review, and an unseen run refusal stay
   fireEvent.change(within(dialog).getByLabelText(words.shareProject), {
     target: { value: "Initech" },
   });
-  fireEvent.click(within(dialog).getByRole("button", { name: words.share }));
-  assert.ok(await within(dialog).findByText(words.shareConflict));
-  // The refused project goes back to where the conversation is, and stays.
+  const save = within(dialog).getByRole("button", { name: words.share }) as HTMLButtonElement;
+  await waitFor(() => assert.equal(save.disabled, false));
+  const readsBeforeShare = placementReads;
+  fireEvent.click(save);
+  assert.ok(await within(dialog).findByText(words.placementChanged));
+  await waitFor(() => assert.ok(placementReads > readsBeforeShare));
+  const review = await within(dialog).findByRole("checkbox", { name: words.placementReview });
+  assert.equal((review as HTMLInputElement).checked, false);
+  assert.equal(save.disabled, true);
+  assert.equal(shares, 1);
+  // The selected destination remains editable for a new review.
   const moved = within(dialog).getByLabelText(
     new RegExp(`^${words.shareProject}`),
   ) as HTMLSelectElement;
-  assert.equal(moved.value, "Globex");
-  assert.equal(moved.disabled, true);
-  // Still not shared: the dialog stays open to share it where it is.
+  assert.equal(moved.value, "Initech");
+  assert.equal(moved.disabled, false);
+  // Still not shared: the dialog stays open for an explicit new decision.
   assert.ok(dialog.isConnected, "the dialog stays open");
+});
+
+test("scratch-only sharing waits for the file audience preview, sends its token, and requires fresh consent after files change", async () => {
+  let resolvePreview: ((value: unknown) => void) | undefined;
+  let previewReads = 0;
+  const publications: unknown[] = [];
+  const shared: ThreadPage = { ...mine, thread: { ...mine.thread, visibility: "shared" } };
+  const preview = (files: number, token: string) => ({
+    thread: mine.thread.id,
+    project: "Globex",
+    channel: "general",
+    audience: "Globex members",
+    runs: 0,
+    workspace_files: files,
+    token,
+    exclusions: [],
+  });
+  net = stubFetch({
+    "GET /api/projects/Globex/channels": () => ({ channels: [] }),
+    "GET /api/threads/th-00000000000000aa/placement": () => {
+      previewReads++;
+      return previewReads === 1
+        ? new Promise((resolve) => {
+            resolvePreview = resolve;
+          })
+        : preview(3, "scratch-three-files");
+    },
+    "POST /api/threads/th-00000000000000aa/share": (body) => {
+      publications.push(body);
+      return publications.length === 1
+        ? Response.json({ error: "placement changed" }, { status: 409 })
+        : { ...shared, not_added: [] };
+    },
+  });
+  const accepted: ThreadPage[] = [];
+  render(
+    <ShareDialog
+      thread={mine.thread}
+      hasRuns={false}
+      projects={tree}
+      workspaceName="Acme"
+      me="ana"
+      onShared={(next) => accepted.push(next)}
+      onClose={() => {}}
+    />,
+  );
+  const dialog = await screen.findByRole("dialog", { name: defaultCopy.conversation.people });
+  const publish = within(dialog).getByRole("button", { name: words.share }) as HTMLButtonElement;
+  assert.equal(publish.disabled, true, "Unread scratch files cannot be shared before the preview");
+  await waitFor(() => assert.ok(resolvePreview));
+  fireEvent.click(publish);
+  assert.deepEqual(publications, []);
+  resolvePreview?.(preview(2, "scratch-two-files"));
+  assert.ok(await within(dialog).findByText(defaultCopy.workspaceFiles.sharingFiles(2)));
+  const review = within(dialog).getByRole("checkbox", {
+    name: words.placementReview,
+  }) as HTMLInputElement;
+  assert.equal(review.checked, false);
+  assert.equal(publish.disabled, true);
+  fireEvent.click(review);
+  assert.equal(publish.disabled, false);
+  fireEvent.click(publish);
+  assert.ok(await within(dialog).findByText(words.placementChanged));
+  assert.ok(await within(dialog).findByText(defaultCopy.workspaceFiles.sharingFiles(3)));
+  const freshReview = within(dialog).getByRole("checkbox", {
+    name: words.placementReview,
+  }) as HTMLInputElement;
+  assert.equal(freshReview.checked, false, "A changed file snapshot invalidates earlier consent");
+  assert.equal(publish.disabled, true);
+  assert.deepEqual(accepted, []);
+  assert.deepEqual(publications, [{ channel: "general", placement_token: "scratch-two-files" }]);
+  fireEvent.click(freshReview);
+  fireEvent.click(publish);
+  await waitFor(() => assert.equal(accepted.length, 1));
+  assert.deepEqual(publications, [
+    { channel: "general", placement_token: "scratch-two-files" },
+    { channel: "general", placement_token: "scratch-three-files" },
+  ]);
+  assert.equal(previewReads, 2);
 });
 
 test("an agent picked in a conversation's + menu is @mentioned in the box, never saved on the thread, and an answer an earlier selection routed still says so", async () => {
@@ -2857,6 +3006,16 @@ test("Share says who the platform did not add, and why, beside who was told", as
     }),
     "GET /api/projects/Globex/channels": () => ({ channels: [] }),
     "GET /api/people": () => people2,
+    "GET /api/threads/th-00000000000000aa/placement": () => ({
+      thread: mine.thread.id,
+      project: "Globex",
+      channel: "general",
+      audience: "Globex members",
+      runs: 0,
+      workspace_files: 0,
+      token: "add-people-token",
+      exclusions: [],
+    }),
     "POST /api/threads/th-00000000000000aa/share": () => ({
       ...shared,
       not_added: [

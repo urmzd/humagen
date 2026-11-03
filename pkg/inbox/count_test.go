@@ -20,6 +20,9 @@ import (
 func scanned(s *Store, tenantName string, q Query) Counts {
 	q.State, q.Kind, q.Kinds, q.Projects, q.Shared, q.Alert, q.Agent, q.Unread = Open, "", nil, nil, false, "", "", false
 	f := q.filter()
+	wide := q
+	wide.State = All
+	all := wide.filter()
 	msgs, _ := s.Snapshot(tenantName)
 	x := newTx(s.st, tenantName)
 	var c Counts
@@ -29,9 +32,13 @@ func scanned(s *Store, tenantName string, q Query) Counts {
 		if err != nil {
 			panic(err)
 		}
+		if hiddenFor(k, q.Now) && matchShared(m, all) {
+			c.Hidden++
+		}
 		if !match(m, k, f) {
 			continue
 		}
+		c.Inbox++
 		unread := !k.Read
 		switch {
 		case m.Broadcast:
@@ -192,6 +199,16 @@ func (w *world) step() {
 		w.dropped += n
 	case 10:
 		w.now = w.now.Add(time.Duration(r.IntN(90)) * time.Minute)
+	case 11:
+		// A reader's own hide, delete or restore, of any message in any state.
+		switch r.IntN(3) {
+		case 0:
+			_, _, _ = w.s.Hide(acme, id, who, at)
+		case 1:
+			_, _, _ = w.s.Delete(acme, id, who, at)
+		default:
+			_, _, _ = w.s.Restore(acme, id, who, at)
+		}
 	default:
 		w.raise()
 	}
@@ -302,9 +319,9 @@ func TestCountsAgreeWithAScan(t *testing.T) {
 					switch r.Key[:2] {
 					case "g:":
 						t.Fatalf("retention left %s to clean", r.Key)
-					case "c:", "u:", "z:", "e:", "l:":
+					case "c:", "u:", "z:", "e:", "l:", "h:":
 						id := "m-" + strings.TrimLeft(strings.Split(r.Key, ":")[1], "0")
-						if r.Key[:2] == "e:" || r.Key[:2] == "l:" {
+						if r.Key[:2] == "e:" || r.Key[:2] == "l:" || r.Key[:2] == "h:" {
 							id = idOfKey(r.Key)
 						}
 						if _, ok := w.s.ByID(acme, id); !ok {
@@ -383,7 +400,7 @@ func TestACountAsksOnceForMessagesAlike(t *testing.T) {
 	q := readerIn("ada", "Field")
 	q.Now = t0.Add(2 * time.Hour)
 	q.Sees = func(Message) bool { asked++; return true }
-	if c := count(s, acme, q); c != (Counts{Open: 70, Unread: 70, Updates: 50}) || asked != 3 {
+	if c := count(s, acme, q); c != (Counts{Open: 70, Unread: 70, Updates: 50, Inbox: 120}) || asked != 3 {
 		t.Fatalf("counts %+v, asking %d times", c, asked)
 	}
 }

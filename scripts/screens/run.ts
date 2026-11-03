@@ -40,6 +40,7 @@ import { defaultCopy } from "../../packages/components/src/copy.ts";
 import { collect, DESKTOP, judge, LANDSCAPE, PHONE, type Problem, type Rules } from "./checks.ts";
 import { conversationDeletions } from "./deletions.ts";
 import { emailScreens, notificationEmailFixture } from "./email.ts";
+import { ideScreens } from "./ide.ts";
 import { libraryScreens } from "./library.ts";
 import { startNativeModel } from "./native.ts";
 import { usageScreens } from "./observability.ts";
@@ -120,6 +121,8 @@ interface Ids {
   routedChat: string;
   nativeThread: string;
   nativeArtifact: string;
+  /** A conversation whose one turn has words, runs of tool calls and a file written twice, in order. */
+  timelineThread: string;
 }
 
 /** Opens a page's More menu. */
@@ -183,10 +186,8 @@ async function mentioned(page: Page, text: string): Promise<void> {
  * header is one line, from its menu.
  */
 async function openContext(page: Page): Promise<void> {
-  if ((page.viewportSize()?.width ?? 0) < 768)
-    await page
-      .getByRole("button", { name: defaultCopy.conversation.settings, exact: true })
-      .click();
+  // Context is in Conversation Settings at every width.
+  await page.getByRole("button", { name: defaultCopy.conversation.settings, exact: true }).click();
   await page.getByRole("button", { name: defaultCopy.conversation.context, exact: true }).click();
 }
 
@@ -323,7 +324,12 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
         assert.equal(pdf.suggestedFilename(), "native-launch.pdf");
         assert.equal(readFileSync(pdfPath).subarray(0, 5).toString(), "%PDF-");
         await page.getByRole("button", { name: "Present", exact: true }).click();
-        await page.getByRole("dialog", { name: "native-launch.pptx", exact: true }).waitFor();
+        await page
+          .getByRole("dialog", {
+            name: defaultCopy.conversation.artifactPresentation("native-launch.pptx"),
+            exact: true,
+          })
+          .waitFor();
         await page.getByRole("button", { name: "Exit Presentation", exact: true }).click();
         await page.getByRole("button", { name: "Request Changes", exact: true }).click();
         await page.waitForFunction(() =>
@@ -337,6 +343,56 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
         assert.ok(draft.includes(`artifact:${ids.nativeArtifact}@1`));
         assert.ok(draft.includes("slide 2"));
         assert.ok(draft.includes("Keep my unsent draft."));
+      },
+    },
+    {
+      // A turn as a transcript: words, a run of calls as one line, words, a
+      // file written as "Updated plan.md +a -b", the answer.
+      name: "conversation-timeline",
+      path: `/conversations/${ids.timelineThread}`,
+      act: async (page) => {
+        const message = page.getByRole("article", { name: "native-writer message", exact: true });
+        await message.getByText("The plan now keeps the November 12 date").waitFor();
+        const text = (await message.innerText()).replace(/\s+/g, " ");
+        const order = [
+          "I'll draft the plan",
+          "plan.md",
+          "The draft is there.",
+          "Read 2 files",
+          "The owner is missing",
+          "Updated plan.md",
+          "The plan now keeps",
+        ].map((part) => text.indexOf(part));
+        assert.ok(
+          order.every((i) => i >= 0),
+          `every part of the turn shows: ${order} in ${text}`,
+        );
+        assert.deepEqual(
+          [...order].sort((a, b) => a - b),
+          order,
+          "in the order it happened",
+        );
+        // Opened, a run lists each call; a call opens to its arguments.
+        const run = message.getByTestId("step-group").filter({ hasText: "Read 2 files" });
+        await run.getByRole("button", { expanded: false }).first().click();
+        await run.getByTestId("tool-row").first().getByRole("button").first().click();
+        await run.getByText("Arguments").waitFor();
+        // A file written opens in the Workspace at its changes.
+        const link = message.getByRole("link", { name: "Open plan.md in the Workspace" }).last();
+        const href = await link.getAttribute("href");
+        assert.ok(
+          href?.endsWith(`/conversations/${ids.timelineThread}/workspace?file=plan.md&tab=changes`),
+          String(href),
+        );
+        // The turn ends with the files it changed, and Review opens them.
+        const changes = message.getByTestId("turn-changes");
+        await changes.getByText("1 file changed").waitFor();
+        assert.equal(await changes.getByTestId("turn-change").count(), 1);
+        const review = await changes
+          .getByRole("link", { name: defaultCopy.conversation.changes.reviewLabel(1) })
+          .getAttribute("href");
+        assert.ok(review?.endsWith("workspace?file=plan.md&tab=changes"), String(review));
+        await changes.scrollIntoViewIfNeeded();
       },
     },
     {
@@ -393,6 +449,134 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
         await page.getByText("Developer owns the briefing", { exact: true }).first().waitFor();
         await page.locator("summary").filter({ hasText: "Speaker notes" }).click();
         await page.getByText("https://example.test/launch-owner", { exact: true }).waitFor();
+      },
+    },
+    {
+      // The conversation header alone: who is in it, Share and Conversation Settings.
+      name: "conversation-header",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        await page.getByRole("heading", { level: 1 }).first().waitFor();
+      },
+    },
+    {
+      name: "workspace-menu",
+      path: `/conversations/${ids.nativeThread}`,
+      act: async (page) => {
+        await page
+          .getByRole("button", { name: defaultCopy.conversation.settings, exact: true })
+          .click();
+        for (const name of [
+          defaultCopy.workspace.menu,
+          defaultCopy.conversation.context,
+          defaultCopy.conversation.activity,
+        ])
+          await page.getByRole("button", { name, exact: true }).waitFor();
+      },
+    },
+    {
+      name: "workspace-sandboxes",
+      path: `/conversations/${ids.nativeThread}/workspace/sandboxes`,
+      act: async (page) => {
+        const panel = page.getByRole("dialog", { name: defaultCopy.workspace.title, exact: true });
+        await panel.getByText(defaultCopy.workspace.sessionSandbox, { exact: true }).waitFor();
+        await panel
+          .getByRole("button", { name: /native-writer/ })
+          .first()
+          .click();
+        await panel.getByText(defaultCopy.workspace.filesLeft, { exact: true }).waitFor();
+        await panel
+          .getByRole("button", { name: /native-launch\.pptx/ })
+          .first()
+          .waitFor();
+      },
+    },
+    {
+      name: "workspace-scratchpads",
+      path: `/conversations/${ids.nativeThread}/workspace/scratchpads`,
+      act: async (page) => {
+        const width = page.viewportSize()?.width ?? 0;
+        const pad = await call<{ id: string }>(
+          "POST",
+          `/api/threads/${ids.nativeThread}/scratchpads`,
+          {
+            name: `Launch plan ${width}`,
+            content:
+              "# Launch plan\n\n- Keep the November 12 date\n- Confirm the briefing owner\n- Publish after review\n",
+          },
+        );
+        await call("POST", `/api/threads/${ids.nativeThread}/scratchpads`, {
+          name: `Open questions ${width}`,
+          content: "# Open questions\n\n- Who signs off?\n",
+        });
+        await page.reload({ waitUntil: "domcontentloaded" });
+        const panel = page.getByRole("dialog", { name: defaultCopy.workspace.title, exact: true });
+        await panel.getByRole("button", { name: new RegExp(`Launch plan ${width}`) }).waitFor();
+        await page.goto(
+          new URL(`/conversations/${ids.nativeThread}/workspace/scratchpads/${pad.id}`, page.url())
+            .href,
+          { waitUntil: "domcontentloaded" },
+        );
+        await page
+          .getByRole("textbox", { name: `Edit Launch plan ${width}.md`, exact: true })
+          .waitFor();
+      },
+    },
+    {
+      name: "workspace-memories",
+      path: `/conversations/${ids.nativeThread}/workspace/memories`,
+      act: async (page) => {
+        const panel = page.getByRole("dialog", { name: defaultCopy.workspace.title, exact: true });
+        await panel.getByText(defaultCopy.workspace.memories.session, { exact: true }).waitFor();
+        await panel
+          .getByRole("button", { name: /native-writer/ })
+          .first()
+          .click();
+        await panel.getByText(defaultCopy.workspace.memories.inContext).first().waitFor();
+      },
+    },
+    {
+      // The pane's tabs, the artifact and a run's sandbox side by side.
+      name: "workspace-pane-split",
+      path: `/conversations/${ids.nativeThread}/workspace?tabs=sandboxes,${encodeURIComponent(`artifact:${ids.nativeArtifact}`)}&active=${encodeURIComponent(`artifact:${ids.nativeArtifact}`)}&split=1`,
+      act: async (page) => {
+        const panel = page.getByRole("dialog", { name: defaultCopy.workspace.title, exact: true });
+        await panel.getByRole("tab", { name: defaultCopy.workspace.pane.kind.sandboxes }).waitFor();
+        await panel.getByRole("link", { name: "Download Original", exact: true }).first().waitFor();
+      },
+    },
+    {
+      name: "workspace-pane-expanded",
+      path: `/conversations/${ids.nativeThread}/workspace?tabs=${encodeURIComponent(`artifact:${ids.nativeArtifact}`)}&full=1`,
+      act: async (page) => {
+        const panel = page.getByRole("dialog", { name: defaultCopy.workspace.title, exact: true });
+        await panel.getByRole("link", { name: "Download Original", exact: true }).first().waitFor();
+      },
+    },
+    {
+      name: "workspace-save-message",
+      path: `/conversations/${ids.nativeThread}`,
+      act: async (page) => {
+        // A finished answer offers Save as Artifact among its actions.
+        const save = page
+          .getByRole("article", { name: "native-writer message", exact: true })
+          .getByRole("button", { name: defaultCopy.workspace.save.action, exact: true })
+          .last();
+        await save.scrollIntoViewIfNeeded();
+        await save.click({ force: true });
+        const panel = page.getByRole("dialog", { name: defaultCopy.workspace.title, exact: true });
+        await panel.getByRole("link", { name: "Download Original", exact: true }).first().waitFor();
+      },
+    },
+    {
+      name: "workspace-artifacts",
+      path: `/conversations/${ids.nativeThread}/workspace/artifacts`,
+      act: async (page) => {
+        const panel = page.getByRole("dialog", { name: defaultCopy.workspace.title, exact: true });
+        await panel
+          .getByRole("button", { name: /native-launch\.pptx/ })
+          .first()
+          .waitFor();
       },
     },
     {
@@ -592,8 +776,17 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
         await artifactFixtures(page, ids.privateChat);
         await bar(page).fill("Make the owner clear.");
         await page.getByRole("button", { name: "Conversation Settings", exact: true }).click();
-        await page.getByRole("button", { name: "Deliverables", exact: true }).click();
-        await page.getByRole("button", { name: /^Launch briefing.pptx/ }).click();
+        await page.getByRole("button", { name: defaultCopy.workspace.menu, exact: true }).click();
+        await page
+          .getByRole("button", { name: defaultCopy.workspace.pane.open, exact: true })
+          .click();
+        await page
+          .getByRole("button", { name: defaultCopy.workspace.pane.pick.artifacts, exact: true })
+          .click();
+        await page
+          .getByRole("button", { name: /Launch briefing\.pptx/ })
+          .first()
+          .click();
         await page.getByRole("button", { name: /^Slide 3:/ }).click();
         await page.getByRole("button", { name: "Request Changes", exact: true }).click();
         await page.waitForFunction(() =>
@@ -1190,6 +1383,7 @@ function screens(ids: Ids, call: Call): Screen[] {
     })),
   ];
   list.push(
+    ...ideScreens(call),
     ...libraryScreens(call),
     ...workspaceScreens(call),
     ...reviewScreens(call),
@@ -1441,6 +1635,7 @@ const ids0: Ids = {
   routedChat: "",
   nativeThread: "",
   nativeArtifact: "",
+  timelineThread: "",
 };
 
 interface Posted {
@@ -1632,6 +1827,17 @@ async function seedNative(call: Call): Promise<Pick<Ids, "nativeThread" | "nativ
   assert.ok(file, "The actual model/tool pipeline must publish a native presentation");
   assert.equal(file.version, 1);
   return { nativeThread: posted.thread.id, nativeArtifact: file.id };
+}
+
+/** A turn over several model steps, through the real runtime and sandbox tools. */
+async function seedTimeline(call: Call): Promise<Pick<Ids, "timelineThread">> {
+  const posted = await call<Posted>("POST", "/api/threads", {
+    project: "Launch",
+    visibility: "private",
+    text: "@native-writer Write the multi-step plan in the scratchpad.",
+  });
+  for (const run of posted.runs) await settled(call, run.id);
+  return { timelineThread: posted.thread.id };
 }
 
 async function waitFor(ok: () => Promise<boolean>, failure: string): Promise<void> {
@@ -2063,6 +2269,7 @@ async function main(): Promise<void> {
       schedule: "weekly-summary",
       ...(await seedChats(call)),
       ...(await seedNative(call)),
+      ...(await seedTimeline(call)),
     };
     results.push(...(await capture(browser, base, screens(ids, call))));
 

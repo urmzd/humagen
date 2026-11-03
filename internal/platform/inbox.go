@@ -487,21 +487,14 @@ func (p *Platform) InboxDismiss(who auth.Principal, id string) (inbox.Message, e
 	return p.InboxGet(who, id)
 }
 
-// InboxUnhide brings back an announcement the caller hid or snoozed for
-// themselves, as everyone else has it. Only their own copy changes, so it
-// takes what hiding it took. One they never set aside, or one withdrawn for
-// everyone, is answered as it is. Any other message is everyone's to set
-// aside, and is not brought back this way.
+// InboxUnhide brings back a message the caller hid, or an announcement they
+// snoozed, for themselves, as everyone else has it. Only their own copy
+// changes, so seeing the message is all it takes. One they never set aside
+// is answered as it is.
 func (p *Platform) InboxUnhide(who auth.Principal, id string) (inbox.Message, error) {
 	m, err := p.InboxGet(who, id)
 	if err != nil {
 		return inbox.Message{}, err
-	}
-	if !m.Broadcast {
-		return inbox.Message{}, fmt.Errorf("%w: only an announcement you hid for yourself is brought back", ErrAction)
-	}
-	if !who.Can(writes(m.Kind)) {
-		return inbox.Message{}, fmt.Errorf("%w: bringing this back needs %s", ErrForbidden, writes(m.Kind))
 	}
 	if !m.Hidden {
 		return m, nil
@@ -509,8 +502,127 @@ func (p *Platform) InboxUnhide(who auth.Principal, id string) (inbox.Message, er
 	if _, _, err := p.Inbox.Unhide(who.Tenant, id, who.Subject, p.now()); err != nil {
 		return inbox.Message{}, err
 	}
-	p.audit(who, m, "", "unhide", "")
 	return p.InboxGet(who, id)
+}
+
+// A reader's own marks, which InboxMark sets on many messages at once.
+const (
+	MarkRead    = "read"
+	MarkUnread  = "unread"
+	MarkHide    = "hide"
+	MarkUnhide  = "unhide"
+	MarkDelete  = "delete"
+	MarkRestore = "restore"
+)
+
+// MaxMarks is the most messages one InboxMark names.
+const MaxMarks = 200
+
+// Skipped is a message InboxMark left as it was, and why.
+type Skipped struct {
+	ID     string `json:"id"`
+	Reason string `json:"reason"`
+}
+
+// InboxMark sets one of the caller's own marks on each of the messages
+// named: read or unread, hidden or not, deleted or restored. Each changes
+// only what the caller sees, so seeing a message is all it takes, and
+// nobody else's inbox or count changes. A message the caller cannot see, or
+// one deleted while a run waits on a question in it, is skipped with the
+// reason, and the rest are marked. It answers each marked message as the
+// caller now sees it.
+func (p *Platform) InboxMark(who auth.Principal, ids []string, mark string) ([]inbox.Message, []Skipped, error) {
+	switch mark {
+	case MarkRead, MarkUnread, MarkHide, MarkUnhide, MarkDelete, MarkRestore:
+	default:
+		return nil, nil, fmt.Errorf("%w: mark is read, unread, hide, unhide, delete or restore", inbox.ErrInvalid)
+	}
+	if len(ids) == 0 || len(ids) > MaxMarks {
+		return nil, nil, fmt.Errorf("%w: name 1 to %d messages", inbox.ErrInvalid, MaxMarks)
+	}
+	out := []inbox.Message{}
+	skipped := []Skipped{}
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		m, err := p.InboxGet(who, id)
+		if errors.Is(err, inbox.ErrNotFound) {
+			skipped = append(skipped, Skipped{ID: id, Reason: "not found"})
+			continue
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		if mark == MarkDelete && slices.ContainsFunc(m.Parts, func(x inbox.Part) bool { return x.Question != nil && x.State == inbox.PartOpen }) {
+			skipped = append(skipped, Skipped{ID: id, Reason: "a run is waiting on this question; answer it, or hide it"})
+			continue
+		}
+		now := p.now()
+		switch mark {
+		case MarkRead, MarkUnread:
+			_, err = p.Inbox.Read(who.Tenant, id, who.Subject, mark == MarkRead, now)
+		case MarkHide:
+			_, _, err = p.Inbox.Hide(who.Tenant, id, who.Subject, now)
+		case MarkUnhide:
+			_, _, err = p.Inbox.Unhide(who.Tenant, id, who.Subject, now)
+		case MarkDelete:
+			_, _, err = p.Inbox.Delete(who.Tenant, id, who.Subject, now)
+		case MarkRestore:
+			_, _, err = p.Inbox.Restore(who.Tenant, id, who.Subject, now)
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		if m, err = p.InboxGet(who, id); err != nil {
+			return nil, nil, err
+		}
+		out = append(out, m)
+	}
+	return out, skipped, nil
+}
+
+// MaxReadAll is the most messages one InboxReadAll marks read: the newest
+// unread, a few pages of them.
+const MaxReadAll = 600
+
+// InboxReadAll marks read what is unread in one of the caller's views, q
+// narrowing it by kind as a page does, at most MaxReadAll, newest first. It
+// reports how many it marked and whether more are still unread.
+func (p *Platform) InboxReadAll(who auth.Principal, q inbox.Query) (int, bool, error) {
+	if !q.View.Valid() {
+		return 0, false, fmt.Errorf("%w: view is inbox, unread, hidden or done", inbox.ErrInvalid)
+	}
+	q.Unread, q.Before, q.Limit = true, "", inbox.MaxPage
+	if q.View == inbox.ViewInbox {
+		q.View = inbox.ViewUnread
+	}
+	n := 0
+	for pages := 0; pages < MaxReadAll/inbox.MaxPage; pages++ {
+		page, next, err := p.InboxPage(who, q)
+		if err != nil {
+			return n, false, err
+		}
+		for _, m := range page {
+			if !m.Unread {
+				continue
+			}
+			if n == MaxReadAll {
+				return n, true, nil
+			}
+			if _, err := p.Inbox.Read(who.Tenant, m.ID, who.Subject, true, p.now()); err != nil {
+				return n, false, err
+			}
+			n++
+		}
+		if next == "" {
+			return n, false, nil
+		}
+		q.Before = next
+	}
+	return n, true, nil
 }
 
 // InboxResolve carries out what a person decided about one part of a message,

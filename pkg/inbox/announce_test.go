@@ -228,12 +228,12 @@ func TestBroadcastsCountOnlyInUpdates(t *testing.T) {
 	a := post(t, s, "Field", "One", t0)
 	b := post(t, s, "", "Two", t0)
 	q := readerIn("ada", "", "Field")
-	if c := count(s, acme, q); c != (Counts{Open: 1, Unread: 1, Updates: 2}) {
+	if c := count(s, acme, q); c != (Counts{Open: 1, Unread: 1, Updates: 2, Inbox: 3}) {
 		t.Fatalf("counts = %+v", c)
 	}
 	_, _ = s.Read(acme, a.ID, "ada", true, t0)
 	_, _, _ = s.Dismiss(acme, b.ID, "ada", t0)
-	if c := count(s, acme, q); c != (Counts{Open: 1, Unread: 1, Updates: 0}) {
+	if c := count(s, acme, q); c != (Counts{Open: 1, Unread: 1, Updates: 0, Inbox: 2, Hidden: 1}) {
 		t.Fatalf("counts after reading one and hiding one = %+v", c)
 	}
 	// Someone else still has both to read.
@@ -272,7 +272,7 @@ func TestNeedsLeavesOutBroadcastsBeforeThePageIsCut(t *testing.T) {
 	if got := ids(t, s, q); !slices.Equal(got, []string{draft.ID, alert.ID}) {
 		t.Fatalf("what needs ada = %q, want the draft and the alert", got)
 	}
-	if c := count(s, acme, q); c != (Counts{Open: 2, Unread: 2, Updates: 3}) {
+	if c := count(s, acme, q); c != (Counts{Open: 2, Unread: 2, Updates: 3, Inbox: 5}) {
 		t.Fatalf("counts = %+v", c)
 	}
 	// News is the other side: the posted announcements alone, the draft left

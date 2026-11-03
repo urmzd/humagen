@@ -1,14 +1,16 @@
 import { defaultCopy } from "@humagen/components";
 import { ActionId, type InboxMessage, messageState, openParts, type UiAction } from "@humagen/core";
-import { SlidersIcon } from "@humagen/render-web";
+import { SlidersIcon, XIcon } from "@humagen/render-web";
 import { Button } from "@humagen/render-web/ui/button";
 import { NativeSelect } from "@humagen/render-web/ui/native-select";
-import { Mailbox, type MailboxShow } from "@humagen/web";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { useHeld, useInbox } from "./inbox.ts";
+import { Mailbox, type MailboxMark, type MailboxShow } from "@humagen/web";
+import { type ComponentProps, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { leaves, unreadBadge, useHeld, useInbox } from "./inbox.ts";
 import { platformParts } from "./MailParts.tsx";
 import {
   kinds,
+  type MailMark,
+  type MailView,
   type PlatformMessage,
   transport as platform,
   type Source,
@@ -105,11 +107,12 @@ export function NotificationFilters({
   onQuery: (query: string) => void;
   kind: string;
   onKind: (kind: string) => void;
-  show: MailboxShow;
-  onShow: (show: MailboxShow) => void;
+  /** Open, resolved or all. Left out where the reader's views say it instead. */
+  show?: MailboxShow;
+  onShow?: (show: MailboxShow) => void;
 }) {
   const c = defaultCopy.inboxControls;
-  const count = Number(Boolean(kind)) + Number(show !== "all");
+  const count = Number(Boolean(kind)) + Number(show !== undefined && show !== "all");
   return (
     <div role="group" aria-label={c.filters} className="flex min-w-0 items-center gap-2">
       <SearchField label={c.search} value={query} onChange={onQuery} className="min-w-0 flex-1" />
@@ -131,20 +134,22 @@ export function NotificationFilters({
       >
         {(close) => (
           <div className="flex flex-col gap-4 p-1">
-            <label className="flex flex-col gap-1.5 text-aui-sm">
-              {c.status}
-              <NativeSelect
-                aria-label={c.status}
-                value={show}
-                onChange={(event) => onShow(event.target.value as MailboxShow)}
-              >
-                {(["all", "open", "resolved"] as const).map((state) => (
-                  <option key={state} value={state}>
-                    {defaultCopy.show[state]}
-                  </option>
-                ))}
-              </NativeSelect>
-            </label>
+            {show !== undefined && onShow && (
+              <label className="flex flex-col gap-1.5 text-aui-sm">
+                {c.status}
+                <NativeSelect
+                  aria-label={c.status}
+                  value={show}
+                  onChange={(event) => onShow(event.target.value as MailboxShow)}
+                >
+                  {(["all", "open", "resolved"] as const).map((state) => (
+                    <option key={state} value={state}>
+                      {defaultCopy.show[state]}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </label>
+            )}
             <label className="flex flex-col gap-1.5 text-aui-sm">
               {c.type}
               <NativeSelect
@@ -166,7 +171,7 @@ export function NotificationFilters({
                 disabled={count === 0}
                 onClick={() => {
                   onKind("");
-                  onShow("all");
+                  onShow?.("all");
                 }}
               >
                 {c.reset}
@@ -210,7 +215,19 @@ export function MailboxView({
   heading,
   groupByAction,
   previewFirst,
+  views,
+  view,
+  onView,
+  onMark,
+  onReadAll,
+  emptyView,
 }: {
+  views?: ComponentProps<typeof Mailbox>["views"];
+  view?: string;
+  onView?: (view: string) => void;
+  onMark?: (ids: string[], mark: MailboxMark) => void;
+  onReadAll?: () => void;
+  emptyView?: { title: string; hint: string };
   /** Show the first message in the empty reading pane on a wide screen. */
   previewFirst?: boolean;
   /** `false` where the page is the inbox, so its title and count are the page's. */
@@ -259,6 +276,12 @@ export function MailboxView({
       onShow={onShow}
       messageActions={messageActions && ((m) => messageActions(m as PlatformMessage))}
       emptyOpen={emptyOpen}
+      views={views}
+      view={view}
+      onView={onView}
+      onMark={onMark}
+      onReadAll={onReadAll}
+      emptyView={emptyView}
       renderFrame={(message, children) => {
         const edge = edgeOf(message);
         const sources = shownAbout((message as PlatformMessage).about ?? []);
@@ -315,8 +338,13 @@ export function InboxPage({
   actions,
   notice,
   messageActions,
+  view: wantedView,
+  onView,
   via = platform,
 }: {
+  /** The reader's view, when the address says it: the Inbox by default. */
+  view?: MailView;
+  onView?: (view: MailView) => void;
   /** The kind shown, when the address says it: "alert" shows only what rules fired. */
   kind?: string;
   onKind?: (kind: string) => void;
@@ -329,7 +357,7 @@ export function InboxPage({
   /** Open what a message is about: a run, a rule, an agent, a project. */
   onOpen: (source: Source) => void;
   /** Reports the open and unread totals, for the sidebar's badge. */
-  onCounts?: (counts: { open: number; unread: number }) => void;
+  onCounts?: (counts: { open: number; unread: number; updates: number }) => void;
   /** Hosts with a router keep selection and the copied address in one state. */
   onSelection?: (id: string | null) => void;
   actions?: ReactNode;
@@ -340,12 +368,16 @@ export function InboxPage({
   const [ownKind, setOwnKind] = useState(wantedKind ?? "");
   const kind = onKind ? (wantedKind ?? "") : ownKind;
   const setKind = (next: string) => (onKind ? onKind(next) : setOwnKind(next));
-  const [show, setShow] = useState<MailboxShow>("all");
+  const [ownView, setOwnView] = useState<MailView>(wantedView ?? "inbox");
+  const view = onView ? (wantedView ?? "inbox") : ownView;
+  const setView = (next: MailView) => (onView ? onView(next) : setOwnView(next));
   const [query, setQuery] = useState("");
+  const [undo, setUndo] = useState<Undo | null>(null);
+  const [skipped, setSkipped] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(() =>
     openId === undefined ? linked() : openId,
   );
-  const inbox = useInbox(kind, show, signal, via, viewer);
+  const inbox = useInbox(kind, view, signal, via, viewer);
   const { messages, missing, keep } = useHeld(
     inbox.messages,
     selected,
@@ -374,10 +406,41 @@ export function InboxPage({
   };
 
   const { open, unread } = inbox;
+  const { updates } = inbox.counts;
   // biome-ignore lint/correctness/useExhaustiveDependencies: report when the totals change, not when the callback does
   useEffect(() => {
-    onCounts?.({ open, unread });
-  }, [open, unread]);
+    onCounts?.({ open, unread, updates });
+  }, [open, unread, updates]);
+
+  const vc = defaultCopy.inboxViews;
+  /** Mark what the reader chose, and offer to undo what moved it out of sight. */
+  async function onMark(ids: string[], what: MailMark) {
+    setSkipped(null);
+    const done = await inbox.mark(ids, what);
+    if (!done) return;
+    for (const m of done.messages) keep(m);
+    if (done.skipped.length > 0) {
+      setSkipped(vc.skipped(done.skipped.length, done.skipped[0]?.reason ?? ""));
+    }
+    const moved = done.messages.map((m) => m.id);
+    if (what === "delete" && selected && moved.includes(selected)) select(null);
+    if (moved.length === 0 || !leaves(view, what)) return;
+    if (what === "delete")
+      setUndo({ text: vc.deletedDone(moved.length), ids: moved, back: "restore" });
+    else if (what === "hide")
+      setUndo({ text: vc.hiddenDone(moved.length), ids: moved, back: "unhide" });
+  }
+  async function readAll() {
+    const done = await inbox.readAll();
+    if (done) setUndo({ text: vc.readAllDone(done.marked), ids: [], back: null });
+  }
+  const views = [
+    { id: "inbox", label: vc.inbox, count: inbox.counts.inbox },
+    { id: "unread", label: vc.unread, count: unreadBadge(inbox.counts) },
+    { id: "hidden", label: vc.hidden, count: inbox.counts.hidden },
+    { id: "done", label: vc.done },
+  ];
+  const [emptyTitle, emptyHint] = vc.empty[view];
 
   function onAction(action: UiAction) {
     const message = messages.find((m) => m.id === action.payload.turnId);
@@ -403,14 +466,8 @@ export function InboxPage({
           <Problem message="That message is not here. It may have been removed, or you may not have access to it." />
         )}
 
-        <NotificationFilters
-          query={query}
-          onQuery={setQuery}
-          kind={kind}
-          onKind={setKind}
-          show={show}
-          onShow={setShow}
-        />
+        {skipped && <Problem message={skipped} />}
+        <NotificationFilters query={query} onQuery={setQuery} kind={kind} onKind={setKind} />
         {query.trim() && inbox.hasMore && (
           <p className="text-aui-xs text-aui-muted">{defaultCopy.inboxControls.loadedHint}</p>
         )}
@@ -435,6 +492,12 @@ export function InboxPage({
             viewer={viewer}
             openCount={open}
             show={null}
+            views={views}
+            view={view}
+            onView={(next) => setView(next as MailView)}
+            onMark={via.mark ? onMark : undefined}
+            onReadAll={via.readAll ? readAll : undefined}
+            emptyView={query.trim() ? undefined : { title: emptyTitle, hint: emptyHint }}
             messageActions={messageActions}
             listEnd={
               (inbox.hasMore || inbox.loading === "more") && (
@@ -456,7 +519,82 @@ export function InboxPage({
             }
           />
         )}
+        {undo && (
+          <UndoToast
+            key={undo.text + undo.ids.join()}
+            text={undo.text}
+            onUndo={
+              undo.back
+                ? () => {
+                    const back = undo.back;
+                    setUndo(null);
+                    if (back) void inbox.mark(undo.ids, back);
+                  }
+                : undefined
+            }
+            onClose={() => setUndo(null)}
+          />
+        )}
       </div>
     </Page>
+  );
+}
+
+/** What the undo toast takes back: the messages, and the mark that brings them back. */
+interface Undo {
+  text: string;
+  ids: string[];
+  back: MailMark | null;
+}
+
+/**
+ * Says what a mark did, with Undo, in place of a confirm dialog. It stays
+ * eight seconds, longer while pointed at or focused, and does not animate.
+ */
+export function UndoToast({
+  text,
+  onUndo,
+  onClose,
+}: {
+  text: string;
+  onUndo?: () => void;
+  onClose: () => void;
+}) {
+  const [held, setHeld] = useState(false);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    if (held) return;
+    const t = setTimeout(() => close.current(), 8000);
+    return () => clearTimeout(t);
+  }, [held]);
+  return (
+    <output
+      data-testid="undo-toast"
+      onMouseEnter={() => setHeld(true)}
+      onMouseLeave={() => setHeld(false)}
+      onFocus={() => setHeld(true)}
+      onBlur={() => setHeld(false)}
+      className="fixed inset-x-4 bottom-4 z-[60] mx-auto flex max-w-sm items-center gap-3 rounded-aui border border-aui-border bg-aui-surface py-1.5 pr-1.5 pl-3 text-aui-sm shadow-lg sm:inset-x-auto sm:right-4 sm:left-auto"
+    >
+      <span className="min-w-0 flex-1 text-aui-fg">{text}</span>
+      {onUndo && (
+        <button
+          type="button"
+          onClick={onUndo}
+          className={`${button} min-h-9 pointer-coarse:min-h-11`}
+        >
+          {defaultCopy.inboxViews.undo}
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onClose}
+        className="inline-flex size-9 pointer-coarse:size-11 items-center justify-center rounded-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+        aria-label={defaultCopy.inboxViews.dismissNote}
+      >
+        <XIcon size={14} />
+      </button>
+    </output>
   );
 }

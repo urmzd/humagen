@@ -155,6 +155,17 @@ func (x *tx) drop(id string, before time.Time) (bool, error) {
 			return false, err
 		}
 	}
+	// A reader who hid it counted it in their Hidden view: it leaves that
+	// count with the message, before its marks are cleaned.
+	marks, err := x.marks(id)
+	if err != nil {
+		return false, err
+	}
+	for _, k := range marks {
+		if k.Hide != nil && !k.Deleted {
+			x.del(hiddenKey(k.Subject, id))
+		}
+	}
 	x.put(garbageKey(id), struct{}{})
 	// The message is gone: flush writes nothing more of it.
 	delete(x.msgs, id)

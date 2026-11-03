@@ -606,7 +606,8 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 
 		"SourceDependency": {typ: platform.SourceDependency{}}, "SourceDependencies": {typ: platform.SourceDependencies{}},
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
-		"Thread":        {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},
+		"WorkspaceFile": {typ: platform.WorkspaceFile{}}, "WorkspaceFileContent": {typ: platform.WorkspaceFileContent{}}, "WorkspaceFileList": {typ: platform.WorkspaceFileList{}}, "WorkspaceFileWrite": {typ: platform.WorkspaceFileWrite{}, written: true}, "WorkspaceFilePublish": {typ: platform.WorkspaceFilePublish{}, written: true},
+		"Thread": {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},
 		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}}, "ThreadAnnouncement": {typ: threads.Announcement{}}, "ThreadAsk": {typ: platform.Ask{}},
 		"ThreadAnswers": {typ: answers{}}, "ThreadPosted": {typ: platform.Posted{}}, "ThreadNotice": {typ: threads.Notice{}}, "RoomPage": {typ: rooms.Page{}},
 		"ThreadInput": {typ: platform.ThreadInput{}, written: true}, "ThreadMessageInput": {typ: platform.MessageInput{}, written: true},
@@ -1617,7 +1618,19 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		t.Errorf("an announcement brought back = %s", back.raw)
 	}
 	c.call(acme, "POST", "/api/inbox/{id}/unhide", newsPath+"/unhide", "", http.StatusOK)
-	c.call(acme, "POST", "/api/inbox/{id}/unhide", inboxPath+"/unhide", "", http.StatusBadRequest)
+	// Any message the caller hid comes back the same way; one never hidden is answered as it is.
+	c.call(acme, "POST", "/api/inbox/{id}/unhide", inboxPath+"/unhide", "", http.StatusOK)
+	marked := c.call(acme, "POST", "/api/inbox/marks", "/api/inbox/marks", `{"ids":["`+mid+`","m-99999"],"mark":"hide"}`, http.StatusOK)
+	if ms, sk := marked.field("messages").([]any), marked.field("skipped").([]any); len(ms) != 1 || len(sk) != 1 {
+		t.Fatalf("marks = %+v", marked)
+	}
+	c.call(acme, "GET", "/api/inbox", "/api/inbox?view=hidden", "", http.StatusOK)
+	c.call(acme, "GET", "/api/inbox", "/api/inbox?view=nonsense", "", http.StatusBadRequest)
+	c.call(acme, "POST", "/api/inbox/marks", "/api/inbox/marks", `{"ids":["`+mid+`"],"mark":"unhide"}`, http.StatusOK)
+	c.call(acme, "POST", "/api/inbox/marks", "/api/inbox/marks", `{"ids":[],"mark":"hide"}`, http.StatusBadRequest)
+	c.call(acme, "POST", "/api/inbox/marks", "/api/inbox/marks", `{"ids":["`+mid+`"],"mark":"burn"}`, http.StatusBadRequest)
+	c.call(acme, "POST", "/api/inbox/read-all", "/api/inbox/read-all", `{"view":"inbox"}`, http.StatusOK)
+	c.call(acme, "POST", "/api/inbox/read-all", "/api/inbox/read-all", `{"view":"everything"}`, http.StatusBadRequest)
 	c.call(acme, "DELETE", "/api/projects/{name}/announcements/{id}", "/api/projects/Ops/announcements/"+news.str("id"), "", http.StatusNotFound)
 	c.call(acme, "DELETE", "/api/projects/{name}/announcements/{id}", "/api/projects/Field/announcements/"+news.str("id"), "", http.StatusNoContent)
 
@@ -2379,6 +2392,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/handoffs", "/api/handoffs", "", http.StatusOK)
 	c.call(acme, "GET", "/api/agent-network", "/api/agent-network", "", http.StatusOK)
 
+	workspaceID := exerciseWorkspaceFileContract(t, c, auditAdmin, globex)
+	padID := exerciseScratchpadContract(t, c, auditAdmin, globex, workspaceID)
+	exerciseSaveContract(t, c, auditAdmin, globex, workspaceID, padID)
 	// Two rules hold for every route that takes something: another
 	// workspace's object is not found, and a body with a field the route
 	// does not know is refused. Both are asked of every operation the spec
@@ -2394,6 +2410,14 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/projects/{name}/memory/{id}", "/api/projects/Launch/memory/"+freshProjectNote.str("id"), `{"text":""}`, http.StatusBadRequest)
 	freshPersonalNote := c.call(auditAdmin, "POST", "/api/me/memory", "/api/me/memory", `{"text":"Personal correction source"}`, http.StatusCreated)
 	real := map[string]map[string]string{
+		"/api/threads/{id}/files":                             {"id": workspaceID},
+		"/api/threads/{id}/files/content":                     {"id": workspaceID},
+		"/api/threads/{id}/files/publish":                     {"id": workspaceID},
+		"/api/threads/{id}/sandboxes":                         {"id": workspaceID},
+		"/api/threads/{id}/memory":                            {"id": workspaceID},
+		"/api/threads/{id}/artifacts":                         {"id": workspaceID},
+		"/api/threads/{id}/scratchpads":                       {"id": workspaceID},
+		"/api/threads/{id}/scratchpads/{pad}":                 {"id": workspaceID, "pad": padID},
 		"/api/runs/{id}/questions/{question}/answer":          {"id": id, "question": "x"},
 		"/api/runs/{id}/feedback":                             {"id": id},
 		"/api/runs/{id}/learning":                             {"id": learningID},
@@ -2463,6 +2487,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/knowledge/{name}/documents/{id}": `{"excluded":false}`, "/api/knowledge/{name}/variants": `{"name":"other"}`,
 		"/api/projects/{name}": `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
 		"/api/inbox/{id}/deliveries/{client}": `{"channel":"C0123ABC","ts":"1700000000.000100"}`, "/api/inbox/{id}/dismiss": ``, "/api/inbox/{id}/unhide": ``,
+		"/api/inbox/marks": `{"ids":["m-1"],"mark":"read"}`, "/api/inbox/read-all": `{"view":"inbox"}`,
 		"/api/projects/{name}/agents": `{"version":1}`, "/api/agents/{name}/home": `{"project":""}`,
 		"/api/runs/{id}/calls":                       `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
 		"/api/runs/{id}/questions/{question}/answer": `{"action":"choose","choice":"red"}`,

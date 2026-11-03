@@ -201,6 +201,7 @@ export function ShareDialog({
     null,
   );
   const [reviewed, setReviewed] = useState(false);
+  const needsReview = hasRuns || (preview?.runs ?? 0) > 0 || (preview?.workspace_files ?? 0) > 0;
   const [summary, setSummary] = useState("");
   const [previewFailed, setPreviewFailed] = useState(false);
   const [reviewVersion, setReviewVersion] = useState(0);
@@ -234,7 +235,6 @@ export function ShareDialog({
   }, [project]);
 
   useEffect(() => {
-    if (!hasRuns) return;
     let live = true;
     setPreview(null);
     setReviewed(false);
@@ -254,8 +254,9 @@ export function ShareDialog({
 
   const share = () => {
     if (
-      hasRuns &&
-      (!preview || !reviewed || (preview.summary_required && (!summary.trim() || !onPublished)))
+      !preview ||
+      (needsReview && !reviewed) ||
+      (preview.summary_required && (!summary.trim() || !onPublished))
     )
       return;
     setProblem(null);
@@ -305,7 +306,7 @@ export function ShareDialog({
         setBusy(false);
         // Each refusal in the console's own words: a run fixes the project
         // and the channel, and someone else may have changed it meanwhile.
-        if (hasRuns && e instanceof ApiError && e.status === 409) {
+        if (e instanceof ApiError && e.status === 409) {
           setReviewed(false);
           setReviewVersion((n) => n + 1);
           setProblem(words.placementChanged);
@@ -344,10 +345,9 @@ export function ShareDialog({
             className={primary}
             disabled={
               busy ||
-              (hasRuns &&
-                (!preview ||
-                  !reviewed ||
-                  (preview.summary_required && (!summary.trim() || !onPublished))))
+              !preview ||
+              (needsReview && !reviewed) ||
+              (preview.summary_required && (!summary.trim() || !onPublished))
             }
             onClick={() => form.current?.requestSubmit()}
           >
@@ -401,7 +401,7 @@ export function ShareDialog({
             </select>
           </Label>
         </div>
-        {hasRuns && (
+        {(needsReview || !preview) && (
           <section
             aria-live="polite"
             className="flex flex-col gap-3 rounded-aui border border-aui-border p-3"
@@ -411,6 +411,11 @@ export function ShareDialog({
                 <p className="text-aui-sm text-aui-fg">
                   {words.placementContents(preview.audience, preview.runs)}
                 </p>
+                {(preview.workspace_files ?? 0) > 0 && (
+                  <p className="text-aui-xs text-aui-muted">
+                    {defaultCopy.workspaceFiles.sharingFiles(preview.workspace_files ?? 0)}
+                  </p>
+                )}
                 {preview.exclusions.length > 0 && (
                   <ul className="list-disc pl-5 text-aui-xs text-aui-muted">
                     {preview.exclusions.map((item) => (

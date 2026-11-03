@@ -1061,6 +1061,7 @@ export function Sidebar({
                 open={open}
                 active={hub === "notifications"}
                 badge={inboxCount}
+                badgeLabel={`${nav.notifications}, ${inboxCount} unread`}
                 onClick={() =>
                   go(can("runs:read") ? notificationRoute : { page: "monitor", tab: "rules" })
                 }
@@ -1496,7 +1497,7 @@ export function Sidebar({
 /**
  * On a phone the sidebar is a drawer, opened from one small button in the
  * corner, as Claude's own app does it. Nothing else sits over the page. A dot
- * on it says something in the inbox needs you.
+ * on it says something in the inbox is unread.
  */
 export function DrawerButton({
   open,
@@ -1513,7 +1514,7 @@ export function DrawerButton({
       type="button"
       data-testid="drawer-button"
       onClick={onOpen}
-      aria-label={inboxCount > 0 ? `Open sidebar, ${inboxCount} need you` : "Open sidebar"}
+      aria-label={inboxCount > 0 ? `Open sidebar, ${inboxCount} unread` : "Open sidebar"}
       className="humagen-drawer-button fixed top-[calc(0.5rem+env(safe-area-inset-top))] left-[max(1rem,env(safe-area-inset-left))] z-30 inline-flex size-11 items-center justify-center rounded-full border border-aui-border text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent md:hidden"
     >
       <PanelLeftOpenIcon size={20} />

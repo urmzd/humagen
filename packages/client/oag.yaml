@@ -2,7 +2,8 @@
 # root, which runs `oag generate` here with the pinned oag version.
 #
 # The node-client pack is committed under .oag/packs/, copied unchanged from
-# oag v0.20.6. Without it oag fetches the pack from its main branch at
+# oag v0.20.6, with a local path-query variable collision fix. Without it
+# oag fetches the pack from its main branch at
 # generation time, and the output would change under us.
 input: ../../api/openapi.yaml
 

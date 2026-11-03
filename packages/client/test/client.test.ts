@@ -146,6 +146,24 @@ test("a response with no content resolves to nothing", async () => {
   assert.equal(`${last().method} ${last().url}`, "DELETE /api/schedules/nightly");
 });
 
+test("workspace file path queries remain separate from the request URL", async () => {
+  const client = createClient({ baseUrl: base });
+  const filePath = "scratchpads/review & notes.md";
+  const revision = "a".repeat(64);
+  serve((_req, res) => json(res, 200, { path: filePath, content: "draft", revision }));
+  await client.readWorkspaceFile("th/1", filePath);
+  assert.equal(last().url, "/api/threads/th%2F1/files/content?path=scratchpads%2Freview+%26+notes.md");
+  await client.readWorkspaceFileRaw("th/1", filePath);
+  assert.equal(new URL(last().url, base).searchParams.get("path"), filePath);
+  serve((_req, res) => void res.writeHead(204).end());
+  await client.deleteWorkspaceFile("th/1", filePath, revision);
+  assert.equal(new URL(last().url, base).searchParams.get("path"), filePath);
+  assert.equal(new URL(last().url, base).searchParams.get("revision"), revision);
+  await client.deleteWorkspaceFileRaw("th/1", filePath, revision);
+  assert.equal(last().method, "DELETE");
+  assert.equal(new URL(last().url, base).searchParams.get("path"), filePath);
+});
+
 test("a failure carries its status and the API's error body", async () => {
   serve((_req, res) => json(res, 404, { error: "not found" }));
   const client = createClient({ baseUrl: base });
