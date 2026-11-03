@@ -1,6 +1,6 @@
 import { answerOfAction, answers } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
-import { ActionId, type UiAction } from "@humagen/core";
+import { ActionId, readReview, reviewPullRequest, type UiAction } from "@humagen/core";
 import { BringBackIcon, ForkIcon, WebSurface } from "@humagen/render-web";
 import { AgentMessage, messageActionButton, railEntry, Thread, useQueue } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -24,6 +24,7 @@ import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
 import { FindHelp, type HelpSuggestion } from "./FindHelp.tsx";
+import { GitHubTab, reviewView } from "./GitHubTab.tsx";
 import { type HomeAnnouncement, HomePage } from "./HomePage.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { MessageTime } from "./MessageTime.tsx";
@@ -696,6 +697,10 @@ export function Chat({
   const onAction = (a: UiAction) => {
     // An agent drawn inside a turn opens the drawer on its run.
     if (a.id === ActionId.openRun) return openPanel("activity", { run: a.payload.target });
+    if (a.id === ActionId.openReview && a.payload.target) {
+      openPanel("workspace", reviewView(shownView, a.payload.target));
+      return;
+    }
     // A review's Ask Follow-up puts its words, tagging the agent, in the box. Nothing is sent.
     if (a.id === ActionId.reviewFollowUp) {
       if (canRun && a.payload.text) setSeed({ text: `${a.payload.text} `, mode: "prepend" });
@@ -1114,6 +1119,16 @@ export function Chat({
       )}
       {threadId && (
         <Workspace
+          extraTab={(tab) => {
+            if (!["review", "pull", "issue"].includes(tab.kind)) return undefined;
+            const matching = turns.find((run) => {
+              const report = readReview(run.answer ?? "");
+              return (
+                report.kind === "review" && reviewPullRequest(report.report)?.label === tab.ref
+              );
+            });
+            return <GitHubTab tab={tab} review={matching?.answer ?? ""} />;
+          }}
           key={threadId}
           thread={threadId}
           open={shownView.panel === "workspace"}

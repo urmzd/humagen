@@ -64,6 +64,7 @@ export const ActionId = {
    * the finding's index and `text` the words for the composer (see
    * `reviewFollowUp`). The host puts them in the box; nothing is sent.
    */
+  openReview: "aui.review.open",
   reviewFollowUp: "aui.review.follow_up",
 } as const;
 

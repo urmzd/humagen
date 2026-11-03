@@ -26,6 +26,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 | ID | Requirement | Status |
 | --- | --- | --- |
+| DES-059 | PR review evidence in two panes, with GitHub issue and pull request Workspace tabs | Implemented: `GitHubTab.tsx`, `github-ref.ts`, tenant-scoped `GET /api/github/pull` and `/api/github/issue`, bounded repository/SHA patch cache, workflow status, labels and comments; unit, DOM and endpoint regressions added; `conversation-review-workspace` screen registered for CI. |
 | DES-001 | Integration controls use the existing system and report real results | Slack/GitHub configuration form implemented; automated checks pass; live delivery pending |
 | DES-002 | Use spacing instead of dots between words in UI metadata | All boards and touched console metadata implemented and checked; audit other console screens when changing them |
 | DES-003 | Reveal the message Fork action on hover and keyboard focus | Native saved-fork API, immutable lineage, source checks and inspector built; shared action wiring pending |
@@ -1503,3 +1504,21 @@ Evidence: `sidebar-views.dom.test.tsx` (the tip test); `make screens` with
   from what the turn started with to what it left; edits add up.
 - No card while the turn runs, or when it changed no file.
 - The chat bar's prompt is "Ask anything, @ to mention, / for actions".
+
+### DES-059: Review GitHub changes in context
+
+A finished review opens a Workspace review tab with its findings pinned to changed
+lines. Changes and findings share two columns on a desktop; phone tabs select one
+column. Findings jump to their file and line. The pane shows the reviewed summary,
+head revision's workflow results, GitHub description and bounded comments.
+The + picker accepts a public GitHub issue or pull URL, or #number with a repository.
+Issue tabs render Markdown, labels and comments. Repository access is checked through
+an enabled workspace client before reading or consulting the immutable patch cache.
+Pages hold at most 30 files/comments and requests stop at page 10. Large patches
+are unavailable rather than silently shown as complete.
+
+Evidence: `github-ref.test.ts`, `github-tab.dom.test.tsx`,
+`TestGitHubPullEvidenceAndTenantBounds`,
+`TestGitHubItemsAreTenantScopedPermissionCheckedAndBounded`,
+`TestConsoleLabelsUseServerTokenAndBoundedRead`; screenshot fixture
+`conversation-review-workspace` runs in CI at phone and desktop sizes.

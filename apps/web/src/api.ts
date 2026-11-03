@@ -772,6 +772,16 @@ import type {
 } from "../../../packages/client/src/generated/types.ts";
 
 export const api = {
+  githubPull: (repo: string, number: number, page = 1) =>
+    call<import("../../../packages/client/src/generated/types.ts").GitHubPull>(
+      "GET",
+      `/api/github/pull?${new URLSearchParams({ repo, number: String(number), page: String(page) })}`,
+    ),
+  githubIssue: (repo: string, number: number, page = 1) =>
+    call<import("../../../packages/client/src/generated/types.ts").GitHubIssue>(
+      "GET",
+      `/api/github/issue?${new URLSearchParams({ repo, number: String(number), page: String(page) })}`,
+    ),
   /** Lines a review's evidence cites, read on the server through the workspace's GitHub client. */
   githubSource: (ref: { repo: string; sha: string; path: string; start: number; end: number }) =>
     call<import("../../../packages/client/src/generated/types.ts").SourceExcerpt>(

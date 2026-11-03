@@ -19,6 +19,7 @@ import { Button } from "@humagen/render-web/ui/button";
 import { Inspector } from "@humagen/web";
 import { type ComponentProps, type ReactNode, useCallback, useEffect, useState } from "react";
 import { Deliverables } from "./Deliverables.tsx";
+import { GitHubPicker, GitHubTab } from "./GitHubTab.tsx";
 import { Memories } from "./Memories.tsx";
 import {
   activeKey,
@@ -459,6 +460,10 @@ export function Workspace({
             onTitle={nameArtifact}
           />
         );
+      case "pull":
+      case "issue":
+      case "review":
+        return extraTab?.(tab, onView) ?? <GitHubTab tab={tab} />;
       default:
         return (
           extraTab?.(tab, onView) ?? (
@@ -530,6 +535,7 @@ export function Workspace({
               </button>
             ))}
             {extraPicks?.(closeMenu)}
+            <GitHubPicker close={closeMenu} onOpen={(tab) => onView(openTab(view, tab))} />
           </div>
         )}
       </Popover>

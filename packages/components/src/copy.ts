@@ -16,6 +16,31 @@ const OUTCOMES: Record<string, string> = {
 };
 
 export const defaultCopy = {
+  githubTabs: {
+    repository: "Repository",
+    address: "GitHub URL or #number",
+    invalid: "Enter a GitHub URL, or a number and repository.",
+    open: "Open GitHub Tab",
+    failed: "GitHub evidence could not be read.",
+    retry: "Retry",
+    loading: "Reading GitHub evidence…",
+    pull: "Pull request",
+    issue: "Issue",
+    github: "Open on GitHub",
+    sections: "Review sections",
+    changes: "Changes",
+    findings: "Findings",
+    files: "Changed files",
+    noPatch: "GitHub did not provide a text patch for this file.",
+    ci: "CI status",
+    noCI: "No workflow runs reported for this head.",
+    noFindings: "No findings pinned to this pull request.",
+    description: "Description",
+    comments: "Comments",
+    previous: "Previous Page",
+    next: "Next Page",
+    openReview: "Open Review",
+  },
   workspaceFiles: {
     control: "Files",
     sharingFiles: (count: number) =>
