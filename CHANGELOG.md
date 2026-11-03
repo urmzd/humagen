@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.74.1 (2026-11-03)
+
+### Bug Fixes
+
+- **memory**: mount the run project before read-only ancestors (#196) ([6f4044e](https://github.com/urmzd/humagen/commit/6f4044ea365643815f7dbb0e5e5d5fd483a4ad17))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.74.0...v0.74.1)
+
+
 ## 0.74.0 (2026-11-03)
 
 ### Features
