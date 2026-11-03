@@ -174,7 +174,7 @@ export function sidebarViews(): Scene[] {
     }),
     scene("sidebar-archived", async (page) => {
       await openSidebar(page);
-      await pick(page, /^Archived/);
+      await pick(page, /^Archived(?: \(\d+\))?$/);
       const nav = page.getByRole("complementary", { name: "Navigation" });
       await nav
         .getByRole("list", { name: "Archived" })

@@ -70,6 +70,14 @@ export function sidebarParticipants(call: Call, thread: string) {
         name: "Manage Draft the launch checklist with the team",
         exact: true,
       });
+      // Earlier screens add conversations to Launch, so this one can sit past
+      // the project's first rows, behind See All.
+      if ((await conversationPin.count()) === 0) {
+        await navigation
+          .getByRole("button", { name: /^See All \(\d+\)$/ })
+          .first()
+          .click();
+      }
       await conversationPin.scrollIntoViewIfNeeded();
       await conversationPin.click();
       await page.getByRole("menuitem", { name: /^Pin\b/ }).click();
