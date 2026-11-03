@@ -120,6 +120,7 @@ function paneView(view: ConversationView, keys: string[], active: string): Conve
   if (view.workspaceTab) out.workspaceTab = view.workspaceTab;
   if (view.artifactTab) out.artifactTab = view.artifactTab;
   if (view.slide) out.slide = view.slide;
+  if (view.compare) out.compare = view.compare;
   if (view.expanded) out.expanded = true;
   if (view.split) out.split = true;
   return out;

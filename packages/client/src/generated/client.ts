@@ -21,6 +21,7 @@ import type {
   Approved,
   ArchiveThreadBody,
   Artifact,
+  ArtifactSave,
   Assignment,
   AssignmentInput,
   AttachKnowledgeSourceBody,
@@ -3641,6 +3642,27 @@ to that machine only, wherever the message is read.
     path = path.replace("{id}", encodeURIComponent(String(id)));
     path = path.replace("{client}", encodeURIComponent(String(client)));
     return this.rawRequest<void>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** An agent's answer (source run), a person's message (source message) or a scratchpad. A structured review (humagen.github.review.v1) is kept as its JSON. Saving the same title again makes a new version. */
+  async saveArtifact(id: string, body: ArtifactSave, options?: RequestOptions): Promise<Artifact> {
+    let path = "/api/threads/{id}/artifacts";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Artifact>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async saveArtifactRaw(id: string, body: ArtifactSave, options?: RequestOptions): Promise<ApiResponse<Artifact>> {
+    let path = "/api/threads/{id}/artifacts";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Artifact>("POST", path, {
       body,
       contentType: "application/json",
       ...options,

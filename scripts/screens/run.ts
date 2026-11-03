@@ -502,6 +502,19 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       },
     },
     {
+      name: "workspace-save-message",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        const answer = page.getByRole("article", { name: "helper message", exact: true }).first();
+        await answer.hover();
+        await answer
+          .getByRole("button", { name: defaultCopy.workspace.save.action, exact: true })
+          .click();
+        const panel = page.getByRole("dialog", { name: defaultCopy.workspace.title, exact: true });
+        await panel.getByRole("link", { name: "Download Original", exact: true }).first().waitFor();
+      },
+    },
+    {
       name: "workspace-artifacts",
       path: `/conversations/${ids.nativeThread}/workspace/artifacts`,
       act: async (page) => {

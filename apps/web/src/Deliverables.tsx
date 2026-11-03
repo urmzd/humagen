@@ -1,7 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import { Markdown } from "@humagen/primitives";
-import { ArtifactIcon, PencilIcon, WebSurface } from "@humagen/render-web";
-import { HumagenMark, Inspector } from "@humagen/web";
+import { ArtifactIcon, DiffIcon, PencilIcon, WebSurface } from "@humagen/render-web";
+import { ChangeReview, HumagenMark, Inspector, type ReviewPin } from "@humagen/web";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { ArtifactPromotion, type ArtifactPromotionAccess } from "./ArtifactPromotion.tsx";
 import { api } from "./api.ts";
@@ -13,6 +13,71 @@ import { appendPage, contentUrl, type Stored } from "./storage.ts";
 import { AgentMark, ago, button, Problem, SkeletonRows } from "./ui.tsx";
 
 const words = defaultCopy.conversation;
+const compareWords = defaultCopy.workspace.compare;
+
+async function artifactText(id: string, signal: AbortSignal): Promise<string> {
+  const response = await fetch(`/api/artifacts/${encodeURIComponent(id)}/content`, {
+    credentials: "same-origin",
+    signal,
+  });
+  if (!response.ok) throw new Error(compareWords.failed);
+  return new TextDecoder("utf-8", { fatal: true }).decode(await response.arrayBuffer());
+}
+
+/**
+ * Two saved versions of a text artifact compared: side by side on a wide
+ * screen, one column on a phone. The older is on the left.
+ */
+export function ArtifactCompare({
+  a,
+  b,
+  pins,
+  onClose,
+}: {
+  a: Stored;
+  b: Stored;
+  pins?: ReviewPin[];
+  onClose: () => void;
+}) {
+  const [older, newer] = a.version <= b.version ? [a, b] : [b, a];
+  const [texts, setTexts] = useState<[string, string]>();
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    const abort = new AbortController();
+    setTexts(undefined);
+    setFailed(false);
+    Promise.all([artifactText(older.id, abort.signal), artifactText(newer.id, abort.signal)]).then(
+      (pair) => setTexts(pair),
+      () => {
+        if (!abort.signal.aborted) setFailed(true);
+      },
+    );
+    return () => abort.abort();
+  }, [older.id, newer.id]);
+  return (
+    <section
+      aria-label={compareWords.title(older.version, newer.version)}
+      className="mb-4 flex min-w-0 flex-col gap-2"
+      data-slot="artifact-compare"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-aui-sm font-medium">
+          {compareWords.title(older.version, newer.version)}
+        </h4>
+        <button type="button" className={`${button} min-h-8`} onClick={onClose}>
+          {compareWords.close}
+        </button>
+      </div>
+      {failed ? (
+        <Problem message={compareWords.failed} />
+      ) : !texts ? (
+        <SkeletonRows count={3} />
+      ) : (
+        <ChangeReview before={texts[0]} after={texts[1]} path={newer.title} pins={pins} />
+      )}
+    </section>
+  );
+}
 const at = (id: string) => `/api/artifacts/${encodeURIComponent(id)}`;
 export function revisionPrompt(file: Stored, slide?: number): string {
   const target = href({
@@ -427,6 +492,7 @@ export function Deliverables({
   promotion,
   frame,
   onTitle,
+  pins,
 }: {
   open?: boolean;
   thread: string;
@@ -440,6 +506,8 @@ export function Deliverables({
   frame?: (body: ReactNode) => ReactNode;
   /** Says the selected version's title, for a Workspace tab. */
   onTitle?: (id: string, title: string) => void;
+  /** Notes pinned to lines of a compared version, such as a review's findings. */
+  pins?: ReviewPin[];
 }) {
   const [items, setItems] = useState<Stored[]>();
   const [file, setFile] = useState<Stored>();
@@ -578,6 +646,10 @@ export function Deliverables({
   useEffect(() => {
     if (file) onTitle?.(file.id, file.title);
   }, [file, onTitle]);
+  const compared =
+    file && view.compare
+      ? versions?.find((v) => v.id === view.compare && v.id !== file.id)
+      : undefined;
   const body = (
     <>
       <Problem message={problem ?? null} />
@@ -660,6 +732,14 @@ export function Deliverables({
                 />
               ) : tab === "versions" ? (
                 <>
+                  {compared && (
+                    <ArtifactCompare
+                      a={compared}
+                      b={file}
+                      pins={pins}
+                      onClose={() => onView({ ...view, compare: undefined })}
+                    />
+                  )}
                   <Problem message={versionProblem ?? null} />
                   {versions === undefined && <SkeletonRows count={2} />}
                   <ul className="divide-aui-border divide-y">
@@ -676,6 +756,22 @@ export function Deliverables({
                             {version.id === file.id ? "Viewing" : ago(version.created_at)}
                           </span>
                         </button>
+                        {version.id !== file.id &&
+                          canEditArtifact(version) &&
+                          canEditArtifact(file) && (
+                            <button
+                              type="button"
+                              className="mb-2 inline-flex min-h-8 items-center gap-1.5 rounded-aui px-2 text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
+                              aria-pressed={view.compare === version.id}
+                              aria-label={compareWords.with(version.version)}
+                              onClick={() =>
+                                onView({ ...view, artifactTab: "versions", compare: version.id })
+                              }
+                            >
+                              <DiffIcon size={14} />
+                              {compareWords.action}
+                            </button>
+                          )}
                       </li>
                     ))}
                   </ul>

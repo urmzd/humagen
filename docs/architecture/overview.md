@@ -530,6 +530,7 @@ and GitHub release from `main`, using the main-only `release` environment.
 
 | Piece | State |
 |-------|-------|
+| Save as Artifact and diffs | Implemented: `POST /api/threads/{id}/artifacts` saves an answer, a message (a structured review as its JSON) or a scratchpad through the publication path; artifact version comparison and file changes share `ChangeReview`, side by side on a desktop, with line pins for review findings. See [conversation-workspace.md](conversation-workspace.md#save-as-artifact-and-diffs). |
 | Workspace pane | Implemented: the Workspace is a tabbed pane beside the conversation (`pane.ts`: tabs, active, Expand and split in the address; at most 12 tabs), opened from Conversation Settings and from artifacts in the conversation; a full-screen sheet on a phone. See [conversation-workspace.md](conversation-workspace.md#the-workspace-panel). |
 | Memories by scope | Implemented: `Run.memory` recorded at memory install and finish on lease and release, `GET /api/threads/{id}/memory`, and the Workspace's read-only Memories section by conversation, session and message. See [conversation-workspace.md](conversation-workspace.md#memories-by-scope). |
 | Conversation scratchpads | Implemented: `pkg/scratchpads` on `pkg/state` per request (50 per conversation, 80-character names, 256 KiB, versioned), `/api/threads/{id}/scratchpads`, the Workspace's Scratchpads section, and `file_read scratch:<name>` for the conversation's agents. See [conversation-workspace.md](conversation-workspace.md#scratchpads). |

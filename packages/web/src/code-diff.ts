@@ -220,3 +220,51 @@ export function compareText(before: string, after: string, path = "file"): Revie
   };
   return { files: [file], truncated: lines.length > MAX_RENDER_LINES };
 }
+
+/** One row of a side-by-side diff: the old line, the new line, or a full-width hunk header. */
+export interface SplitRow {
+  left?: ReviewLine;
+  right?: ReviewLine;
+  full?: ReviewLine;
+}
+
+/**
+ * Pairs a unified diff's lines for a side-by-side view: context on both
+ * sides, a run of removals beside the additions that follow it, and hunk
+ * headers across both.
+ */
+export function splitRows(lines: ReviewLine[]): SplitRow[] {
+  const rows: SplitRow[] = [];
+  let removed: ReviewLine[] = [];
+  let added: ReviewLine[] = [];
+  const flush = () => {
+    for (let i = 0; i < Math.max(removed.length, added.length); i++)
+      rows.push({ left: removed[i], right: added[i] });
+    removed = [];
+    added = [];
+  };
+  for (const line of lines) {
+    if (line.kind === "remove") {
+      if (added.length) flush();
+      removed.push(line);
+    } else if (line.kind === "add") added.push(line);
+    else {
+      flush();
+      if (line.kind === "context") rows.push({ left: line, right: line });
+      else rows.push({ full: line });
+    }
+  }
+  flush();
+  return rows;
+}
+
+/**
+ * A note pinned to a line of a compared file, such as a review finding that
+ * cites `path:line`. Display only.
+ */
+export interface ReviewPin {
+  path: string;
+  line: number;
+  text: string;
+  severity?: "error" | "warning" | "info";
+}

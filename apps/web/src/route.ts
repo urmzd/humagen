@@ -144,6 +144,8 @@ export interface ConversationView {
   /** The Workspace pane's open tabs (pane.ts), oldest first, and the active one. */
   tabs?: string[];
   active?: string;
+  /** The artifact version the selected one is compared with. */
+  compare?: string;
   /** The pane fills the page, or shows two tabs side by side. */
   expanded?: boolean;
   split?: boolean;
@@ -385,10 +387,17 @@ export function href(r: Route): string {
           if (r.active) q.set("active", r.active);
           if (r.expanded) q.set("full", "1");
           if (r.split) q.set("split", "1");
+          if (r.compare) q.set("compare", r.compare);
+          if (r.artifactTab) q.set("artifact_tab", r.artifactTab);
+          if (r.slide) q.set("slide", String(r.slide));
           return `${base}${section}${item}${q.size ? `?${q}` : ""}`;
         }
-        if (r.panel === "deliverables" && r.artifact)
-          return `${base}/${enc(r.artifact)}${r.artifactTab ? `/${r.artifactTab}` : ""}${r.slide ? `?slide=${r.slide}` : ""}`;
+        if (r.panel === "deliverables" && r.artifact) {
+          const q = new URLSearchParams();
+          if (r.slide) q.set("slide", String(r.slide));
+          if (r.compare) q.set("compare", r.compare);
+          return `${base}/${enc(r.artifact)}${r.artifactTab ? `/${r.artifactTab}` : ""}${q.size ? `?${q}` : ""}`;
+        }
         return base;
       }
       return r.message
@@ -635,6 +644,9 @@ function read(pathname: string, search: string): Route {
                 active: q.get("active") || undefined,
                 expanded: q.get("full") === "1" || undefined,
                 split: q.get("split") === "1" || undefined,
+                compare: q.get("compare") || undefined,
+                artifactTab: oneOf(q.get("artifact_tab"), ARTIFACT_TABS),
+                slide: Number.isInteger(slide) && slide >= 1 && slide <= 80 ? slide : undefined,
                 file: q.get("file") || undefined,
                 workspaceTab: oneOf(q.get("tab"), ["edit", "preview", "changes"] as const),
               }
@@ -653,6 +665,7 @@ function read(pathname: string, search: string): Route {
             ? {
                 artifact: parts[3],
                 artifactTab: oneOf(parts[4], ARTIFACT_TABS),
+                compare: q.get("compare") || undefined,
                 slide: Number.isInteger(slide) && slide >= 1 && slide <= 80 ? slide : undefined,
               }
             : {}),

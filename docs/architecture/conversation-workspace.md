@@ -207,6 +207,30 @@ run's instance is copied back, and, unisolated, when its `file_write` lands in
 the session's files. Files keeps its unsaved drafts while another section is
 shown or the panel is closed.
 
+## Save as Artifact and diffs
+
+**Save as Artifact** keeps an agent's answer or a person's message (from its
+message actions), a scratchpad (from its tab) or a file (from Files) as a
+versioned artifact of the conversation, then opens it in a Workspace tab.
+`POST /api/threads/{id}/artifacts` (`artifacts:write`, the conversation's
+audience) takes `{source: run | message | scratchpad, id, title?}` and goes
+through the same publication files take: title versioning (saving the same
+title again makes the next version), storage limits, provenance and the inbox
+notice. A saved answer records its run; the person who saved it is its
+creator. A structured review (`humagen.github.review.v1`) is kept as its JSON,
+`<agent> review.review.json`, so its findings stay addressable by file and
+line.
+
+Diffs use one component, `ChangeReview`: side by side on a wide screen and one
+column on a phone, with line comments that prepare a message. A file's
+**Changes** compares its saved and edited state. An artifact's **Versions**
+offers **Compare** on each other text version, at
+`?artifact_tab=versions&compare=<id>`, older on the left. `ChangeReview` takes
+`pins`, notes under the lines they cite; `reviewPins` (apps/web/src/review-pins.ts)
+reads them from a saved review's findings (`path:line` or a permalink's
+`#L<line>`), and Deliverables passes them to its comparison, so a review view
+can show findings in place.
+
 ## Memories by scope
 
 `GET /api/threads/{id}/memory` (`runs:read`, the conversation's audience)
