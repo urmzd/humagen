@@ -7612,7 +7612,7 @@ components:
         path: {type: string}
         first: {type: integer, description: The number of the first line in lines.}
         start: {type: integer, description: The first line asked for.}
-        end: {type: integer, description: The last line asked for, within the file.}
+        end: {type: integer, description: "The last line asked for, within the file."}
         total: {type: integer, description: How many lines the file has.}
         lines: {type: array, items: {type: string}}
         url: {type: string, description: The lines on GitHub.}

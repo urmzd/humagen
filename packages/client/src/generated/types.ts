@@ -9,7 +9,7 @@ export interface SourceExcerpt {
   first: number;
   /** The first line asked for. */
   start: number;
-  /** The last line asked for */
+  /** The last line asked for, within the file. */
   end: number;
   /** How many lines the file has. */
   total: number;
