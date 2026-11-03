@@ -183,10 +183,8 @@ async function mentioned(page: Page, text: string): Promise<void> {
  * header is one line, from its menu.
  */
 async function openContext(page: Page): Promise<void> {
-  if ((page.viewportSize()?.width ?? 0) < 768)
-    await page
-      .getByRole("button", { name: defaultCopy.conversation.settings, exact: true })
-      .click();
+  // Context is in Conversation Settings at every width.
+  await page.getByRole("button", { name: defaultCopy.conversation.settings, exact: true }).click();
   await page.getByRole("button", { name: defaultCopy.conversation.context, exact: true }).click();
 }
 
@@ -643,8 +641,14 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
         await artifactFixtures(page, ids.privateChat);
         await bar(page).fill("Make the owner clear.");
         await page.getByRole("button", { name: "Conversation Settings", exact: true }).click();
-        await page.getByRole("button", { name: "Deliverables", exact: true }).click();
-        await page.getByRole("button", { name: /^Launch briefing.pptx/ }).click();
+        await page.getByRole("button", { name: defaultCopy.workspace.menu, exact: true }).click();
+        await page
+          .getByRole("tab", { name: defaultCopy.workspace.section.artifacts, exact: true })
+          .click();
+        await page
+          .getByRole("button", { name: /Launch briefing\.pptx/ })
+          .first()
+          .click();
         await page.getByRole("button", { name: /^Slide 3:/ }).click();
         await page.getByRole("button", { name: "Request Changes", exact: true }).click();
         await page.waitForFunction(() =>

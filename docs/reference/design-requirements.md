@@ -74,8 +74,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-045 | A phone reads like a native chat app: quiet message actions, a one-line chat bar and header, Chat and Work at the top of Home, a swipe from the edge for the drawer, and the installed app opening on Chat | Implemented: `theme.css`, `styles.css`, `Composer.tsx`, `ConversationShell.tsx`, `ModeSwitch.tsx`, `Sidebar.tsx`, `manifest.webmanifest`; web tests pass; screens pass at 390x844 and 1280x800 |
 | DES-046 | A structured review reads as a card with its evidence in place, the same in Slack | Implemented: core `readReview`, components `ReviewCard`, the `Review` primitive in render-web and render-slack, `GET /api/github/source`; core, Slack, web DOM and Go tests pass; `pnpm validate:slack` passes; `conversation-review-*` screens pass at phone and desktop |
 | DES-047 | Skills are slash commands, the only way the console offers them: `/` opens a menu of the skills a message here can name, fuzzy filtered with the match highlighted; `@` offers no skill or `@skill:`, `$` opens nothing, and a posted `$name` or `@skill:name` shows as a `/name` chip | Implemented: `commands.ts`, `tags.ts`, `Composer.tsx`, `ui.tsx` (`Mentioned`), `pkg/threads/tags.go`; web, threads and platform tests pass; `chat-at`, `chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection` screens at 390x844 and 1280x800 |
-| DES-048 | Conversation files, scratchpads, code editing, change review and artifact publication | Implemented; 739 console tests, Go race/confinement suites, client checks and 27 responsive browser captures pass |
-| DES-049 | One Workspace panel for a conversation's items, opened from Conversation Settings; a compact header keeps only who is in it, Share and Conversation Settings | Implemented: `Workspace.tsx`, `ConversationShell.tsx`, `GET /api/threads/{id}/sandboxes`; web, route and Go tests pass; `conversation-header` and `workspace-*` screens pass at 390x844 and 1280x800 |
+| DES-052 | Conversation files, scratchpads, code editing, change review and artifact publication, in one Workspace panel opened from Conversation Settings beside a compact header | Implemented: `WorkspaceFiles.tsx`, `Workspace.tsx`, `ConversationShell.tsx`, `/api/threads/{id}/files`, `GET /api/threads/{id}/sandboxes`; web, route, Go race and confinement suites pass; `conversation-header`, `workspace-*` and `ide-*` screens pass at 390x844 and 1280x800 |
 
 ### DES-001: Working integrations
 
@@ -176,7 +175,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
   fixed header/account geometry and independent content scroll in Chromium at
   phone and desktop widths. Long content is inserted only for the layout test.
 
-### DES-048: Conversation file workbench
+### DES-052: Conversation files, scratchpads and the Workspace
 
 - Give conversation files, scratchpads, previews and change review one native
   workbench with direct header access and reloadable selections.
@@ -204,7 +203,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
   reports zero issues; console, renderer, web and client typechecks and the
   production console build pass.
 
-### DES-049: One Workspace panel
+#### One Workspace panel
 
 - Files, Context and Activity leave the conversation header for Conversation
   Settings. The header keeps the people facepile, Share and Conversation
