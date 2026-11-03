@@ -29,6 +29,7 @@ export const PERMISSIONS = [
   "projects:write",
   "projects:govern",
   "people:read",
+  "speech:write",
 ] as const;
 
 /** What each permission lets a person do, after "can". */
@@ -52,6 +53,7 @@ export const doing: Record<string, string> = {
   "clients:read": "see connections",
   "clients:write": "manage connections",
   "people:read": "see who is in the workspace",
+  "speech:write": "record voice notes",
   "projects:read": "see projects",
   "projects:write": "make and change projects",
   // Break-glass: owner of every project, the workspace and company projects included.

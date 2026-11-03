@@ -51,6 +51,7 @@ import {
   Presence,
   Problem,
 } from "./ui.tsx";
+import { useVoiceNotes } from "./useVoiceNotes.ts";
 import { Workspace } from "./Workspace.tsx";
 
 const words = defaultCopy.threads;
@@ -308,7 +309,8 @@ function ChatBar({
   useEffect(() => {
     if (tags.agents) onAvailable?.(tags.agents);
   }, [tags.agents]);
-  return <Composer {...rest} tags={tags} plus={plus?.(tags)} />;
+  const voice = useVoiceNotes();
+  return <Composer {...rest} tags={tags} plus={plus?.(tags)} voice={voice} />;
 }
 
 /**

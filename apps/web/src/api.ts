@@ -45,6 +45,8 @@ import type {
   SkillUsage,
   SourceDependencies,
   ThreadShare,
+  VoiceSettings,
+  VoiceTranscript,
 } from "../../../packages/client/src/generated/types.ts";
 import type { Run, RunEvent } from "./adapter.ts";
 import { track } from "./transition.ts";
@@ -1242,6 +1244,20 @@ export const api = {
       personal?: PersonalPreferences;
     },
   ) => call<Preferences>("PUT", "/api/preferences", p),
+  /** Whether this deployment transcribes voice notes, and the largest recording it takes. */
+  voice: () => call<VoiceSettings>("GET", "/api/voice"),
+  /** A recording's words. It is sent as its own bytes; the server decides what it is and keeps nothing. */
+  transcribeVoice: async (audio: Blob) => {
+    const res = await fetch("/api/voice/transcriptions", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: audio,
+    });
+    const data = (await res.json().catch(() => ({}))) as VoiceTranscript & { error?: string };
+    if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`);
+    return data as VoiceTranscript;
+  },
   removePhoto: () => call<Preferences>("DELETE", "/api/preferences/photo"),
   // The picture is sent as its own bytes. The server decides what it is.
   uploadPhoto: async (file: Blob) => {

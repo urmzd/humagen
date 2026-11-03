@@ -2446,6 +2446,25 @@ export const defaultCopy = {
     handle: (name: string) => `@${name}`,
   },
   /** The chat bar's + menu and what it selects for a conversation. */
+  /** Voice notes recorded in the composer and transcribed by the deployment's speech kind. */
+  voice: {
+    /** The microphone button, before recording. */
+    record: "Record a voice note",
+    /** The same button while recording. */
+    stop: "Stop recording",
+    /** Said while recording, so the person knows the microphone is on. */
+    recording: "Recording. Press stop when you are done.",
+    /** Said while the server transcribes. */
+    transcribing: "Transcribing your voice note.",
+    /** The microphone was refused or is missing. */
+    denied: "The microphone could not be used. Check that it is allowed for this page.",
+    /** The recording was over what the server takes. */
+    tooLong: "That voice note is too long. Record a shorter one.",
+    /** Transcription failed; the reason is the server's. */
+    failed: (why: string) => `The voice note could not be transcribed: ${why}`,
+    /** What marks a transcript in a message, as the server marks one from Slack. */
+    mark: (language?: string) => (language ? `[Voice note, ${language}]` : "[Voice note]"),
+  },
   chat: {
     /** The + button, which opens the menu. */
     plus: "Add files, agents or a project",
