@@ -19,7 +19,7 @@ func EventIDs(surface Surface) []string {
 		return []string{"app_mention", "message", "slash_command"}
 	}
 	if surface == GitHub {
-		return []string{"issue_comment", "pull_request_review_comment", "pull_request_review", "issues", "pull_request"}
+		return []string{"issue_comment", "pull_request_review_comment", "pull_request_review", "issues", "pull_request", "check_run", "push"}
 	}
 	return []string{}
 }

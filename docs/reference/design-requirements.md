@@ -26,6 +26,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 | ID | Requirement | Status |
 | --- | --- | --- |
+| DES-061 | Automations gather schedules and signed GitHub event rules with agent instructions | Implemented; focused Go/DOM tests and phone/desktop screen definitions; CI screens pending |
 | DES-001 | Integration controls use the existing system and report real results | Slack/GitHub configuration form implemented; automated checks pass; live delivery pending |
 | DES-002 | Use spacing instead of dots between words in UI metadata | All boards and touched console metadata implemented and checked; audit other console screens when changing them |
 | DES-003 | Reveal the message Fork action on hover and keyboard focus | Native saved-fork API, immutable lineage, source checks and inspector built; shared action wiring pending |
@@ -85,6 +86,10 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-055 | A sidebar row previews itself on hover or a long press, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview`, `conversation-wave-preview`) at 390x844 and 1280x800 |
 | DES-056 | A one-time tip teaches search, dismissed once per person | Implemented: `Sidebar.tsx`, `POST /api/marks/tips`; DOM test and `sidebar-tip` screens pass |
 | DES-057 | Home files a new conversation from over its chat bar; a conversation's approval mode is a text control under the composer, Default or Approve for Me, within policy and audited | Implemented: `ApprovalModePicker.tsx`, `HomePage.tsx`, `pkg/threads/approval.go`, `internal/platform/approval_mode.go`, `PUT /api/threads/{id}/approval`; Go, DOM and screens pass (`home-project-above`, `composer-approval-mode`). The model and effort picker is not built: no agent spec allows an override yet |
+| DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
+| DES-050 | The Workspace is a pane of tabs beside the conversation: + opens items, tabs close, Expand and Show Two Tabs, tabs in the address, a full-screen sheet on a phone | Implemented: `Workspace.tsx`, `pane.ts`, `Inspector` `expanded`; web, pane and route tests pass; `workspace-pane-split`, `workspace-pane-expanded` and the other Workspace screens pass at 390x844 and 1280x800 |
+| DES-051 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
+| DES-052 | Conversation files, scratchpads, code editing, change review and artifact publication, in one Workspace panel opened from Conversation Settings beside a compact header | Implemented: `WorkspaceFiles.tsx`, `Workspace.tsx`, `ConversationShell.tsx`, `/api/threads/{id}/files`, `GET /api/threads/{id}/sandboxes`; web, route, Go race and confinement suites pass; `conversation-header`, `workspace-*` and `ide-*` screens pass at 390x844 and 1280x800 |
 
 ### DES-001: Working integrations
 
@@ -1560,3 +1565,26 @@ screens` with `home-project-above` and `composer-approval-mode`.
 
 Evidence: `replay.test.ts`, `replay.dom.test.tsx`; the phone and desktop
 `conversation-replay-agent` screen is registered in `scripts/screens` for CI.
+
+### DES-061: Automations
+
+- `/automations` is a permission-aware sidebar destination. Schedules reuse
+  the existing schedule form and CRUD API; existing GitHub label triggers are
+  listed beside signed webhook rules.
+- A rule names its installation, repository, event, action, optional conclusion
+  or label, target agent and plain-language instructions. Rules may be paused
+  and edited. They use the installation's existing client API and state store.
+- At most 50 rules per client, 64 bytes per name and 16,000 bytes of
+  instructions. Repository owners and target agents must be granted to that
+  installation. Event capabilities remain enforced. Hidden agents and their
+  rules are filtered by the existing client visibility boundary.
+- Only signature-verified webhooks dispatch a rule. Delivery IDs deduplicate
+  retries through the existing run ledger. Rule runs act for nobody and file
+  in the installation's home through the standard stamping path.
+- Own bot events and bot-authored commits are ignored. Push and check-run
+  events missing commit author evidence fail closed. Only bounded identifiers
+  accompany instructions; webhook body text is never injected into prompts.
+- Evidence: `TestAutomationsMatchOnlyTheirInstallationConditions`,
+  `TestAutomationBoundsAndCopies`, `automations.dom.test.tsx`, route round-trip
+  tests and the `automations` and `automation-builder` screen definitions.
+  Full screens run in CI.
