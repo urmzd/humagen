@@ -110,6 +110,30 @@ export const FileIcon = icon(
   "FileIcon",
 );
 export const TerminalIcon = icon(<path d="m4 17 6-6-6-6M12 19h8" />, "TerminalIcon");
+export const CodeIcon = icon(<path d="m8 6-6 6 6 6M16 6l6 6-6 6M14 3l-4 18" />, "CodeIcon");
+export const SaveIcon = icon(
+  <>
+    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2Z" />
+    <path d="M7 3v6h10V3M7 21v-8h10v8" />
+  </>,
+  "SaveIcon",
+);
+export const WrapIcon = icon(
+  <path d="M3 6h18M3 12h14a4 4 0 0 1 0 8h-4m2-2-2 2 2 2M3 18h4" />,
+  "WrapIcon",
+);
+export const DiffIcon = icon(
+  <path d="M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M7 9h4M9 7v4M13 16h4" />,
+  "DiffIcon",
+);
+export const StickyNoteIcon = icon(
+  <path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10l6-6V5a2 2 0 0 0-2-2h-3ZM15 21v-6h6M7 8h10M7 12h6" />,
+  "StickyNoteIcon",
+);
+export const MessageSquareIcon = icon(
+  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2ZM7 8h10M7 12h6" />,
+  "MessageSquareIcon",
+);
 export const ExternalLinkIcon = icon(
   <path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />,
   "ExternalLinkIcon",

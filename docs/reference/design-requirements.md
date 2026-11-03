@@ -76,6 +76,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-047 | Skills are slash commands, the only way the console offers them: `/` opens a menu of the skills a message here can name, fuzzy filtered with the match highlighted; `@` offers no skill or `@skill:`, `$` opens nothing, and a posted `$name` or `@skill:name` shows as a `/name` chip | Implemented: `commands.ts`, `tags.ts`, `Composer.tsx`, `ui.tsx` (`Mentioned`), `pkg/threads/tags.go`; web, threads and platform tests pass; `chat-at`, `chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection` screens at 390x844 and 1280x800 |
 | DES-048 | A turn reads as a transcript: words and runs of tool calls in the order they came, each run one line that names what it did, a file written opening in the Workspace, and the reader's messages on the right | Implemented: `packages/core/src/timeline.ts`, `packages/components/src/timeline.ts`, `WorkSteps.tsx`, `ToolLines` for Slack, `Room.tsx` message sides; core, components, adapter, render-slack and web DOM tests pass; `pnpm validate:slack` passes; screen `conversation-timeline` passes at 390x844 and 1280x800 |
 | DES-049 | A finished turn that changed files ends with a card of them: how many and their lines, a Review, and a row per file that opens its changes | Implemented: core `turnChanges`, web `TurnChanges`; core and web DOM tests pass; screen `conversation-timeline` passes at 390x844 and 1280x800 |
+| DES-052 | Conversation files, scratchpads, code editing, change review and artifact publication, in one Workspace panel opened from Conversation Settings beside a compact header | Implemented: `WorkspaceFiles.tsx`, `Workspace.tsx`, `ConversationShell.tsx`, `/api/threads/{id}/files`, `GET /api/threads/{id}/sandboxes`; web, route, Go race and confinement suites pass; `conversation-header`, `workspace-*` and `ide-*` screens pass at 390x844 and 1280x800 |
 
 ### DES-001: Working integrations
 
@@ -175,6 +176,53 @@ planned collections, browser, protocol and improvement work from this UI pass.
   the `sidebar-scroll` screen fixture, checks real wheel input, long lists,
   fixed header/account geometry and independent content scroll in Chromium at
   phone and desktop widths. Long content is inserted only for the layout test.
+
+### DES-052: Conversation files, scratchpads and the Workspace
+
+- Give conversation files, scratchpads, previews and change review one native
+  workbench with direct header access and reloadable selections.
+- Share the bounded scratch directory with agent file tools. Require current
+  conversation access, explicit saves and content-hash conflict detection.
+- Preserve unsaved drafts across drawer changes. Show busy, denied, binary,
+  stale and failed operations honestly. Explain scratch retention.
+- Support code editing, imported unified patches and contextual review comments
+  that prepare the composer. Publish exact saved revisions as immutable
+  deliverables, and edit saved text artifacts through a working copy.
+- Implementation: `WorkspaceFiles.tsx`, reusable `CodeEditor` and `ChangeReview`,
+  and the confined `/api/threads/{id}/files` API. See
+  [conversation-workspace.md](../architecture/conversation-workspace.md#files-scratchpads-and-change-review).
+- Evidence: 739 console tests pass, including editor shortcuts, selected-code
+  feedback, unsaved draft navigation, immutable copies, active-run refusal,
+  conflict recovery and scratch-only sharing consent. Platform race tests cover
+  concurrent saves, isolated copyback and publication consent. Client typecheck
+  and 21 transport tests pass. `scripts/screens/ide.ts` verifies five real API
+  flows: editing/reload, patch comments, scratchpad publication, stale saves and
+  inert HTML previews. All 27 light/dark captures pass at 320, 390, 768 and
+  1280px widths, with tablet and narrow-phone reflow. Captures are reproducible
+  under `.screens-ide/`, `.screens-ide-dark/` and `.screens-ide-focused/`.
+  Full platform, HTTP, artifact and thread race suites pass, including the
+  required-query confinement sweeps and real-file mutation canaries. Go lint
+  reports zero issues; console, renderer, web and client typechecks and the
+  production console build pass.
+
+#### One Workspace panel
+
+- Files, Context and Activity leave the conversation header for Conversation
+  Settings. The header keeps the people facepile, Share and Conversation
+  Settings: icon-sized controls, one 4px gap, no side padding, an accessible
+  name and a tooltip on each, and Share's label only on a wide conversation.
+- Workspace holds the session's items as tabs: Sandboxes (the session sandbox
+  and a nested sandbox per agent run), Files and Artifacts. Each section and
+  run selection has an address. It is the shared inspector on a desktop and a
+  sheet on a phone.
+- Evidence: `workspace-hub.dom.test.tsx` (sections, nesting, mounts, files a
+  run left, refused copyback, empty and failed states, opening a file, a run
+  and an artifact), `workspace.dom.test.tsx` (the menu), `route.test.ts`,
+  `pkg/runs/sandbox_test.go` (merge, bounds, write-through, tenant),
+  `internal/platform/workspace_files_test.go` (isolated copyback and unisolated
+  writes are recorded; another tenant gets 404) and the HTTP contract and
+  confinement sweeps. Screens: `conversation-header`, `workspace-menu`,
+  `workspace-sandboxes` and `workspace-artifacts`.
 
 ## Review and implementation evidence
 

@@ -44,7 +44,7 @@ const note = (id: string, text: string): Note => ({
 let net: ReturnType<typeof stubFetch>;
 afterEach(() => {
   cleanup();
-  net.restore();
+  net?.restore();
 });
 
 const everything = [

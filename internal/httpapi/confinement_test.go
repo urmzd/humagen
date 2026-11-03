@@ -67,6 +67,7 @@ type hidden struct {
 	sourceSuggestion                                              string
 	project, agent, schedule, rule, source, eval, client, variant string
 	run, thread, message, artifact, agentNote, projectNote, doc   string
+	workspaceFile, workspaceRevision                              string
 	memoryProposal                                                string
 	personalNote                                                  string
 	// connector is a catalog connector of the hidden project, owned by the
@@ -220,6 +221,8 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		t.Fatal(err)
 	}
 	h.artifact = published.ID
+	h.workspaceFile, h.workspaceRevision = "plan-"+marker+".txt", published.SHA256
+	h.checkWorkspaceFile(t, f, owner)
 
 	must("POST", "/api/schedules", `{"name":"`+h.schedule+`","expression":"0 3 * * *","agent":"`+h.agent+`","text":"Schedule `+marker+`.","project":"`+h.project+`","deliver":"inbox"}`, http.StatusCreated)
 	if inside {
@@ -281,6 +284,9 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		dana := f.person(t, "acme", "00u-dana", "Dana", "humagen-operators")
 		started := want(t, f, dana, "POST", "/api/threads", `{"visibility":"shared","text":"Plans.","post_only":true,"default":"`+drifter+`"}`, http.StatusCreated)
 		h.openThread = obj(started["thread"])["id"].(string)
+		if err := f.p.PutFile("acme", h.openThread, "public.txt", "Public plans."); err != nil {
+			t.Fatal(err)
+		}
 		want(t, f, dana, "PUT", "/api/threads/"+h.openThread+"/participants", `{"version":1,"add":[{"kind":"agent","name":"`+drifter+`"}]}`, http.StatusOK)
 		must("PUT", "/api/agents/"+drifter+"/home", `{"project":"`+h.project+`"}`, http.StatusOK)
 		if out := must("GET", "/api/threads/"+h.openThread, "", http.StatusOK); !strings.Contains(fmt.Sprint(out["thread"]), drifter) {
@@ -415,6 +421,8 @@ func hidePrivate(t *testing.T, f *fixture, owner string) hidden {
 		t.Fatal(err)
 	}
 	h.artifact = published.ID
+	h.workspaceFile, h.workspaceRevision = "plan-"+marker+".txt", published.SHA256
+	h.checkWorkspaceFile(t, f, owner)
 
 	deadline := time.Now().Add(10 * time.Second)
 	for h.alert == "" || h.message == "" {
@@ -745,7 +753,7 @@ func sweepGets(t *testing.T, f *fixture, owner, outsider string, inside bool) {
 func sweepGetsOf(t *testing.T, f *fixture, outsider string, h hidden) {
 	t.Helper()
 	s := loadSpec(t)
-	defaults := map[string]string{"run": "missing", "channel": "C01PUBLIC", "project": "~", "permission": "runs:read", "q": "hello", "agent": h.agent, "names": "missing", "scope": "project", "file": "notes/missing.md"}
+	defaults := map[string]string{"run": "missing", "channel": "C01PUBLIC", "project": "~", "permission": "runs:read", "q": "hello", "agent": h.agent, "names": "missing", "scope": "project", "file": "notes/missing.md", "path": h.workspaceFile, "revision": h.workspaceRevision}
 
 	var keys []string
 	for key := range s.ops {
@@ -778,7 +786,14 @@ func sweepGetsOf(t *testing.T, f *fixture, outsider string, h hidden) {
 		// A project the outsider reads names nothing hidden, though its
 		// allow list holds the hidden agent.
 		if open, ok := h.openPath(op.path); ok {
-			code, body := get(t, f, outsider, withQuery(open, query))
+			openQuery := query
+			if op.path == "/api/threads/{id}/files/content" {
+				openQuery = url.Values{"path": {"public.txt"}}
+			}
+			code, body := get(t, f, outsider, withQuery(open, openQuery))
+			if op.path == "/api/threads/{id}/files/content" && code != http.StatusOK {
+				t.Errorf("public workspace file = %d %s", code, body)
+			}
 			if code >= 500 {
 				t.Errorf("%s = %d %s", key, code, body)
 			}
@@ -933,6 +948,19 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 		if op.method == http.MethodDelete {
 			body = ""
 		}
+		switch op.path {
+		case "/api/threads/{id}/files/content":
+			switch op.method {
+			case http.MethodDelete:
+				query := url.Values{"path": {h.workspaceFile}, "revision": {h.workspaceRevision}}
+				hiddenPath += "?" + query.Encode()
+				ghostPath += "?" + query.Encode()
+			case http.MethodPut:
+				body = fmt.Sprintf(`{"path":%q,"content":"changed by an outsider","revision":%q}`, h.workspaceFile, h.workspaceRevision)
+			}
+		case "/api/threads/{id}/files/publish":
+			body = fmt.Sprintf(`{"path":%q,"revision":%q}`, h.workspaceFile, h.workspaceRevision)
+		}
 		code, out := send(t, f, outsider, op.method, hiddenPath, body)
 		ghostCode, ghostOut := send(t, f, outsider, op.method, ghostPath, body)
 		same(key, code, out, ghostCode, ghostOut, swaps)
@@ -940,6 +968,7 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 			t.Errorf("%s changed a hidden object for an outsider: %d %s", key, code, out)
 		}
 	}
+	h.checkWorkspaceFile(t, f, owner)
 
 	// A turn after the hidden run answers as one after a run that is not
 	// there.
@@ -1144,6 +1173,17 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 		if a.ID == h.alert && !a.Open() {
 			t.Errorf("after the sweep the hidden alert was acknowledged by %s", a.AckedBy)
 		}
+	}
+}
+
+// The canary is an actual readable scratch file. An outsider's refused writes
+// must leave both its contents and its optimistic revision unchanged.
+func (h hidden) checkWorkspaceFile(t *testing.T, f *fixture, owner string) {
+	t.Helper()
+	query := url.Values{"path": {h.workspaceFile}}
+	file := want(t, f, owner, http.MethodGet, "/api/threads/"+h.thread+"/files/content?"+query.Encode(), "", http.StatusOK)
+	if file["path"] != h.workspaceFile || file["revision"] != h.workspaceRevision || file["content"] != "Plan "+marker+"." {
+		t.Fatalf("hidden workspace file changed: %v", file)
 	}
 }
 

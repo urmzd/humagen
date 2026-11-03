@@ -13,10 +13,12 @@ It does not introduce another agent execution path.
 ## The conversation page
 
 Each conversation uses `Page` with a centered title. Its project sits on the
-left; Context, People & Access and Conversation Settings sit on the right.
-On a phone the title takes its own centered row. Activity and Deliverables
-open from the settings control. The sidebar groups conversations by project
-and shows the agents that took part beneath each conversation title.
+left; who is in it (Share or People & Access) and Conversation Settings sit
+on the right, as compact icon controls with one 4px gap. Share keeps its label
+on a wide conversation. Conversation Settings holds the conversation's own
+items: Workspace, Context and Activity. On a phone the title takes its own
+centered row. The sidebar groups conversations by project and shows the
+agents that took part beneath each conversation title.
 
 Activity is the execution detail of this conversation: its runs, calls to
 other agents, tool steps and usage. A selected run has its own URL. The
@@ -165,3 +167,69 @@ not the newest scratch file. Private outputs, broader destinations, external
 provider snapshots and oversized text are refused. `AddForScope` guards source
 identity and audience under the insertion lock, and an audit attempt records
 the copy. Only an opaque artifact/version reference enters provenance metadata.
+
+## The Workspace panel
+
+A conversation is a session with a sandbox of its own, and each agent run in
+it works in a nested sandbox (RFC 0004, isolated runs). **Workspace**, from
+Conversation Settings, is the one place for what the session holds. It is an
+inspector beside the conversation on a desktop and a sheet on a phone, with
+its sections as tabs that scroll sideways when they do not fit:
+
+| Section | What it shows | Address |
+|---|---|---|
+| Sandboxes | The session sandbox (its files, size, retention and whether runs are isolated) and a nested entry per agent run, newest first and indented under its caller: its mounts (`/work` from the session, and the memory trees in `/project` and `/me`), the files it left and the copyback changes refused because someone changed the file first | `/conversations/{id}/workspace/sandboxes[/{run}]` |
+| Files | The session's files, editor and change review below | `/conversations/{id}/workspace?file=&tab=` |
+| Artifacts | The conversation's saved, versioned artifacts; each opens in Deliverables | `/conversations/{id}/workspace/artifacts` |
+
+`GET /api/threads/{id}/sandboxes` answers Sandboxes, behind `runs:read` and
+the conversation's audience, at most 50 runs. What a run left is recorded on
+the run (`Run.sandbox`, at most 64 files and 16 refusals): when an isolated
+run's instance is copied back, and, unisolated, when its `file_write` lands in
+the session's files. Files keeps its unsaved drafts while another section is
+shown or the panel is closed.
+
+## Files, scratchpads and change review
+
+Workspace's **Files** section is a workbench beside the conversation.
+File, view and conversation selections have copied addresses under
+`/conversations/{id}/workspace`. The file browser, open tabs, text editor and
+review are web presentation components; the host performs authenticated API
+requests and prepares conversation messages.
+
+People and agents use the same bounded conversation scratch directory. Create
+files, import UTF-8 code or patches, and keep Markdown scratchpads there. The
+editor provides line numbers, indentation, find, wrapping, selected-code
+feedback and a visible Save command with Ctrl/Command+S. Drafts stay in the mounted conversation when its
+drawer closes. Closing or reloading the page can lose unsaved drafts. Scratch
+files are host-local and expire after seven untouched days; publish a deliverable
+for a retained, versioned result.
+
+A save names the content hash it read. A stale hash returns a conflict and
+preserves the browser draft. File mutations require permission to write runs
+and to post in the current conversation. Publication additionally requires
+permission to write artifacts. Archived and read-only conversations refuse
+writes. Active or waiting runs temporarily prevent human mutations; admission
+and copyback guards prevent overwrites. Reads and writes check the current
+conversation audience and tenant before opening its directory.
+
+The Changes view compares an unsaved edit with its saved base, or renders an
+imported unified `.diff` or `.patch` with file summaries and old/new line
+numbers. A line comment prepares a message with its file, side, line, source revision
+and a bounded excerpt of the reviewed content, including unsaved edits. The
+person reviews and sends that message through the normal composer. Reviewing
+a patch does not apply it or post a GitHub review. HTML previews display static
+content in an isolated frame with scripts, navigation and network access
+blocked. Markdown previews use the existing renderer.
+
+Publish saves the exact selected revision through the existing artifact
+storage. **Edit a Copy** reads an immutable text artifact into a new workspace
+file. The original version remains unchanged; publishing the edited copy
+creates a new deliverable. Native Office and PDF generation continue to use
+the existing agent file tools and immutable artifact pipeline.
+
+The interaction references are [Codex's in-thread diffs and comments](https://openai.com/index/introducing-the-codex-app/),
+[Claude's editable artifacts beside the conversation](https://support.claude.com/en/articles/17153992-what-are-artifacts-and-how-do-i-use-them),
+[Devin's familiar editor controls](https://docs.devin.ai/collaborate-with-devin/vscode-profiles),
+and [Cursor's file review and selected-code feedback](https://cursor.com/help/ai-features/agent).
+Humagen keeps its existing theme, agent identity, permissions and call path.

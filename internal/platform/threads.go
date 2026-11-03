@@ -1655,7 +1655,7 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 		if preview.SummaryRequired {
 			return threads.Thread{}, fmt.Errorf("%w: private context requires a reviewed summary copy", threads.ErrInvalid)
 		}
-		if preview.Runs > 0 && (in.PlacementToken == "" || in.PlacementToken != preview.Token) {
+		if (preview.Runs > 0 || preview.WorkspaceFiles > 0) && (in.PlacementToken == "" || in.PlacementToken != preview.Token) {
 			return threads.Thread{}, fmt.Errorf("%w: review the current publication preview", threads.ErrVersion)
 		}
 	}
@@ -1926,7 +1926,7 @@ func (p *Platform) share(ctx context.Context, who auth.Principal, id string, in 
 		if preview.SummaryRequired {
 			return Shared{}, fmt.Errorf("%w: private context requires a reviewed summary copy before publication", threads.ErrInvalid)
 		}
-		if preview.Runs > 0 && (in.PlacementToken == "" || in.PlacementToken != preview.Token) {
+		if (preview.Runs > 0 || preview.WorkspaceFiles > 0) && (in.PlacementToken == "" || in.PlacementToken != preview.Token) {
 			return Shared{}, fmt.Errorf("%w: review and confirm the current publication preview", threads.ErrVersion)
 		}
 	}

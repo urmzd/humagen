@@ -8,7 +8,7 @@ import { stubFetch } from "./dom.ts";
 let net: ReturnType<typeof stubFetch>;
 afterEach(() => {
   cleanup();
-  net.restore();
+  net?.restore();
 });
 
 const row = (id: string, due: boolean): Deletion => ({

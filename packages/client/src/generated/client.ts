@@ -38,6 +38,7 @@ import type {
   ClientInput,
   ClientView,
   ConnectKnowledgeSourceBody,
+  ConversationSandboxes,
   CreateCallRequest,
   CreateKnowledgeSourceBody,
   CreateRunRequest,
@@ -201,6 +202,10 @@ import type {
   ToolCredentialInput,
   ToolCredentials,
   UpdatePreferencesBody,
+  WorkspaceFileContent,
+  WorkspaceFileList,
+  WorkspaceFilePublish,
+  WorkspaceFileWrite,
 } from "./types.js";
 import { type SSEEvent, type SSEOptions, streamSse } from "./sse.js";
 
@@ -3666,6 +3671,134 @@ to that machine only, wherever the message is read.
     path = path.replace("{id}", encodeURIComponent(String(id)));
     path = path.replace("{client}", encodeURIComponent(String(client)));
     return this.rawRequest<void>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The conversation's session sandbox and each agent run's nested sandbox */
+  async listSandboxes(id: string, options?: RequestOptions): Promise<ConversationSandboxes> {
+    let path = "/api/threads/{id}/sandboxes";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ConversationSandboxes>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listSandboxesRaw(id: string, options?: RequestOptions): Promise<ApiResponse<ConversationSandboxes>> {
+    let path = "/api/threads/{id}/sandboxes";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ConversationSandboxes>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** List conversation working files */
+  async listWorkspaceFiles(id: string, options?: RequestOptions): Promise<WorkspaceFileList> {
+    let path = "/api/threads/{id}/files";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<WorkspaceFileList>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listWorkspaceFilesRaw(id: string, options?: RequestOptions): Promise<ApiResponse<WorkspaceFileList>> {
+    let path = "/api/threads/{id}/files";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<WorkspaceFileList>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Read a conversation text file */
+  async readWorkspaceFile(id: string, path: string, options?: RequestOptions): Promise<WorkspaceFileContent> {
+    let _requestPath = "/api/threads/{id}/files/content";
+    _requestPath = _requestPath.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (path !== undefined && path !== null) _q.set("path", String(path));
+    const _qs = _q.toString();
+    if (_qs) _requestPath += `?${_qs}`;
+    return this.request<WorkspaceFileContent>("GET", _requestPath, {
+      ...options,
+    });
+  }
+
+  async readWorkspaceFileRaw(id: string, path: string, options?: RequestOptions): Promise<ApiResponse<WorkspaceFileContent>> {
+    let _requestPath = "/api/threads/{id}/files/content";
+    _requestPath = _requestPath.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (path !== undefined && path !== null) _q.set("path", String(path));
+    const _qs = _q.toString();
+    if (_qs) _requestPath += `?${_qs}`;
+    return this.rawRequest<WorkspaceFileContent>("GET", _requestPath, {
+      ...options,
+    });
+  }
+
+  /** Save a conversation text file at its current revision */
+  async writeWorkspaceFile(id: string, body: WorkspaceFileWrite, options?: RequestOptions): Promise<WorkspaceFileContent> {
+    let path = "/api/threads/{id}/files/content";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<WorkspaceFileContent>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async writeWorkspaceFileRaw(id: string, body: WorkspaceFileWrite, options?: RequestOptions): Promise<ApiResponse<WorkspaceFileContent>> {
+    let path = "/api/threads/{id}/files/content";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<WorkspaceFileContent>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Delete a conversation file at its current revision */
+  async deleteWorkspaceFile(id: string, path: string, revision: string, options?: RequestOptions): Promise<void> {
+    let _requestPath = "/api/threads/{id}/files/content";
+    _requestPath = _requestPath.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (path !== undefined && path !== null) _q.set("path", String(path));
+    if (revision !== undefined && revision !== null) _q.set("revision", String(revision));
+    const _qs = _q.toString();
+    if (_qs) _requestPath += `?${_qs}`;
+    await this.request<void>("DELETE", _requestPath, {
+      ...options,
+    });
+  }
+
+  async deleteWorkspaceFileRaw(id: string, path: string, revision: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let _requestPath = "/api/threads/{id}/files/content";
+    _requestPath = _requestPath.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (path !== undefined && path !== null) _q.set("path", String(path));
+    if (revision !== undefined && revision !== null) _q.set("revision", String(revision));
+    const _qs = _q.toString();
+    if (_qs) _requestPath += `?${_qs}`;
+    return this.rawRequest<void>("DELETE", _requestPath, {
+      ...options,
+    });
+  }
+
+  /** Publish an immutable version of a conversation file */
+  async publishWorkspaceFile(id: string, body: WorkspaceFilePublish, options?: RequestOptions): Promise<Artifact> {
+    let path = "/api/threads/{id}/files/publish";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Artifact>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async publishWorkspaceFileRaw(id: string, body: WorkspaceFilePublish, options?: RequestOptions): Promise<ApiResponse<Artifact>> {
+    let path = "/api/threads/{id}/files/publish";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Artifact>("POST", path, {
       body,
       contentType: "application/json",
       ...options,

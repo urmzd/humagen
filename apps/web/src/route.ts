@@ -106,8 +106,17 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   "deletions",
 ];
 
-export type ConversationPanel = "activity" | "context" | "people" | "deliverables";
-const CONVERSATION_PANELS: ConversationPanel[] = ["activity", "context", "people", "deliverables"];
+export type ConversationPanel = "activity" | "context" | "people" | "deliverables" | "workspace";
+const CONVERSATION_PANELS: ConversationPanel[] = [
+  "activity",
+  "context",
+  "people",
+  "deliverables",
+  "workspace",
+];
+/** The Workspace panel's sections. Files is the default, at the panel's own address. */
+export type WorkspaceSection = "sandboxes" | "files" | "artifacts";
+export const WORKSPACE_SECTIONS: WorkspaceSection[] = ["sandboxes", "files", "artifacts"];
 export type ArtifactTab = "preview" | "versions" | "provenance";
 const ARTIFACT_TABS: ArtifactTab[] = ["preview", "versions", "provenance"];
 export interface ConversationView {
@@ -118,6 +127,12 @@ export interface ConversationView {
   run?: string;
   artifact?: string;
   artifactTab?: ArtifactTab;
+  /** The Workspace section; absent is Files. */
+  workspaceSection?: WorkspaceSection;
+  /** The run whose nested sandbox is open in Sandboxes. */
+  sandbox?: string;
+  file?: string;
+  workspaceTab?: "edit" | "preview" | "changes";
   /** One-based slide selection. */
   slide?: number;
 }
@@ -335,6 +350,15 @@ export function href(r: Route): string {
           return `${base}${r.run ? `/${enc(r.run)}` : ""}${q.size ? `?${q}` : ""}`;
         }
         if (r.panel === "context" && r.contextTab === "instructions") return `${base}/instructions`;
+        if (r.panel === "workspace") {
+          const q = new URLSearchParams();
+          if (r.file) q.set("file", r.file);
+          if (r.workspaceTab) q.set("tab", r.workspaceTab);
+          const section =
+            r.workspaceSection && r.workspaceSection !== "files" ? `/${r.workspaceSection}` : "";
+          const item = r.workspaceSection === "sandboxes" && r.sandbox ? `/${enc(r.sandbox)}` : "";
+          return `${base}${section}${item}${q.size ? `?${q}` : ""}`;
+        }
         if (r.panel === "deliverables" && r.artifact)
           return `${base}/${enc(r.artifact)}${r.artifactTab ? `/${r.artifactTab}` : ""}${r.slide ? `?slide=${r.slide}` : ""}`;
         return base;
@@ -564,6 +588,15 @@ function read(pathname: string, search: string): Route {
           page: "conversation",
           id: a,
           panel: b as ConversationPanel,
+          ...(b === "workspace"
+            ? {
+                workspaceSection:
+                  parts[3] === "files" ? undefined : oneOf(parts[3], WORKSPACE_SECTIONS),
+                sandbox: parts[3] === "sandboxes" ? parts[4] : undefined,
+                file: q.get("file") || undefined,
+                workspaceTab: oneOf(q.get("tab"), ["edit", "preview", "changes"] as const),
+              }
+            : {}),
           ...(b === "context" && parts[3] === "instructions"
             ? { contextTab: "instructions" as const }
             : {}),
@@ -693,6 +726,17 @@ export function useRoute(): [Route, (next: Route, opts?: { replace?: boolean }) 
   // place of the address (typing in a filter), is applied at once. The address
   // changes in the same step as the screen, so the two always agree.
   const show = useCallback((next: Route, transition: boolean, address?: () => void) => {
+    if (screenOf(next) !== screenOf(shown.current)) {
+      const leaving = new CustomEvent("humagen:before-navigate", {
+        cancelable: true,
+        detail: { from: shown.current, to: next },
+      });
+      if (!window.dispatchEvent(leaving)) {
+        // Back/Forward already changed the address before popstate was sent.
+        if (!address) window.history.replaceState(null, "", href(shown.current));
+        return;
+      }
+    }
     const apply = () => {
       address?.();
       shown.current = next;

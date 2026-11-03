@@ -317,6 +317,8 @@ func kindOf(mime, name string) artifacts.Kind {
 // PutFile writes a file into a conversation's sandbox, under the same bounds
 // an agent's own writes are held to.
 func (p *Platform) PutFile(tenant, thread, name, content string) error {
+	p.workspaceMu.Lock()
+	defer p.workspaceMu.Unlock()
 	root, err := p.openSandbox(tenant, thread)
 	if err != nil {
 		return err
@@ -340,6 +342,8 @@ type Publication struct {
 
 // Publish copies a file out of a conversation's sandbox into storage.
 func (p *Platform) Publish(ctx context.Context, pub Publication) (artifacts.Artifact, error) {
+	p.workspaceMu.Lock()
+	defer p.workspaceMu.Unlock()
 	root, err := p.openSandbox(pub.Tenant, pub.Thread)
 	if err != nil {
 		return artifacts.Artifact{}, err
@@ -515,6 +519,8 @@ func (p *Platform) DeleteArtifact(ctx context.Context, who auth.Principal, id st
 // sweepSandboxes removes scratch directories nothing has touched for the
 // retention period. Published files are in storage and are not affected.
 func (p *Platform) sweepSandboxes() {
+	p.workspaceMu.Lock()
+	defer p.workspaceMu.Unlock()
 	base := filepath.Join(p.dir, "sandboxes")
 	tenants, _ := os.ReadDir(base)
 	cutoff := p.now().Add(-SandboxRetention)
@@ -607,11 +613,13 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 			}
 			return thread, run.Project, workArea{ws: inst.Files()}, nil
 		}
+		p.workspaceMu.Lock()
 		root, err := p.openSandbox(req.Tenant, thread)
 		if err != nil {
+			p.workspaceMu.Unlock()
 			return "", "", nil, err
 		}
-		return thread, run.Project, rootArea{root}, nil
+		return thread, run.Project, lockedWorkspaceArea{fileArea: rootArea{root}, unlock: p.workspaceMu.Unlock}, nil
 	}
 	tool := func(name, desc string, params saigetypes.ParameterSchema, fn func(ctx context.Context, args map[string]any) (string, error)) saigetypes.Tool {
 		return &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: name, Description: desc, Parameters: params}, Fn: fn}
@@ -672,6 +680,11 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 				f, err := writeSandbox(ctx, area, arg(args, "path"), content)
 				if err != nil {
 					return "", err
+				}
+				// An isolated run's writes are recorded when its instance is
+				// copied back; unisolated, they land in the conversation now.
+				if _, isolated := area.(workArea); !isolated {
+					_ = p.Runs.RecordSandbox(req.Tenant, req.RunID, false, []runs.SandboxFile{{Path: f.Path, Size: f.Size, Revision: fileRevision([]byte(content))}}, nil)
 				}
 				return fmt.Sprintf("Wrote %s (%d bytes).", f.Path, f.Size), nil
 			}),

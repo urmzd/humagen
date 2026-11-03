@@ -388,7 +388,7 @@ export function StepGroup({
     "flex max-w-full min-w-0 pointer-coarse:min-h-11 items-center gap-2 rounded-aui-sm px-1 py-0.5 text-left text-aui-muted text-aui-sm hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
   return (
     <div className="min-w-0" data-testid="step-group">
-      <div className="-mx-1 flex min-w-0 items-center gap-0.5">
+      <div className="flex min-w-0 items-center gap-0.5">
         {href && line.file ? (
           <a
             href={href}

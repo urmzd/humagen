@@ -210,6 +210,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/events", s.authed(auth.RunsRead, s.events))
 	s.inboxRoutes(mux)
 	s.artifactRoutes(mux)
+	s.workspaceFileRoutes(mux)
 	s.observeRoutes(mux)
 	s.preferenceRoutes(mux)
 	s.projectRoutes(mux)
@@ -281,7 +282,12 @@ func (s *Server) authed(perm auth.Permission, h handler) http.HandlerFunc {
 		if len(who.Granted()) > 0 {
 			s.P.SeePerson(who)
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+		bodyLimit := int64(maxBody)
+		if r.Pattern == "PUT /api/threads/{id}/files/content" {
+			// A UTF-8 file can expand to six JSON bytes per input byte.
+			bodyLimit = 6*platform.MaxFileBytes + 4096
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, bodyLimit)
 		if r.Method != http.MethodGet {
 			s.Log.Info("httpapi: change", "subject", who.Subject, "kind", who.Kind, "tenant", who.Tenant,
 				"method", r.Method, "path", r.URL.Path)
@@ -1240,6 +1246,8 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		errors.Is(err, prefs.ErrInvalid), errors.Is(err, memory.ErrInvalid), errors.Is(err, policy.ErrInvalid), errors.Is(err, personctx.ErrInvalid),
 		errors.Is(err, inbox.ErrInvalid), errors.Is(err, platform.ErrAction):
 		fail(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, platform.ErrWorkspaceConflict):
+		fail(w, http.StatusConflict, err.Error())
 	case errors.Is(err, platform.ErrSandbox), errors.Is(err, artifacts.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, memory.ErrSensitive):

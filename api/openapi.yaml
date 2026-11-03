@@ -3879,6 +3879,136 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/threads/{id}/sandboxes:
+    get:
+      operationId: listSandboxes
+      tags: [threads]
+      summary: The conversation's session sandbox and each agent run's nested sandbox
+      x-permission: runs:read
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      responses:
+        "200":
+          description: The session sandbox and at most 50 runs' sandboxes, newest first.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ConversationSandboxes"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/threads/{id}/files:
+    get:
+      operationId: listWorkspaceFiles
+      tags: [threads]
+      summary: List conversation working files
+      x-permission: runs:read
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      responses:
+        "200":
+          description: List conversation working files.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WorkspaceFileList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/threads/{id}/files/content:
+    get:
+      operationId: readWorkspaceFile
+      tags: [threads]
+      summary: Read a conversation text file
+      x-permission: runs:read
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+        - {name: path, in: query, required: true, schema: {type: string, maxLength: 240}}
+      responses:
+        "200":
+          description: Read a conversation text file.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WorkspaceFileContent"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: writeWorkspaceFile
+      tags: [threads]
+      summary: Save a conversation text file at its current revision
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/WorkspaceFileWrite"}
+      responses:
+        "200":
+          description: Save a conversation text file at its current revision.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WorkspaceFileContent"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: deleteWorkspaceFile
+      tags: [threads]
+      summary: Delete a conversation file at its current revision
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+        - {name: path, in: query, required: true, schema: {type: string, maxLength: 240}}
+        - {name: revision, in: query, required: true, schema: {type: string, minLength: 64, maxLength: 64}}
+      responses:
+        "204":
+          description: Delete a conversation file at its current revision.
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/threads/{id}/files/publish:
+    post:
+      operationId: publishWorkspaceFile
+      tags: [threads]
+      summary: Publish an immutable version of a conversation file
+      x-permission: artifacts:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/WorkspaceFilePublish"}
+      responses:
+        "201":
+          description: Publish an immutable version of a conversation file.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Artifact"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/artifacts:
     get:
       operationId: listArtifacts
@@ -7603,6 +7733,102 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/Refusal"}
   schemas:
+    SandboxFile:
+      type: object
+      required: [path, size]
+      properties:
+        path: {type: string, maxLength: 512}
+        size: {type: integer, minimum: 0}
+        revision: {type: string, maxLength: 64, description: SHA-256 of the content the run left; absent when it removed the file.}
+        removed: {type: boolean}
+    RunSandboxRecord:
+      description: What a run left in its conversation's files, and the copyback changes refused because someone else changed the file first.
+      type: object
+      required: [isolated, files]
+      properties:
+        isolated: {type: boolean}
+        files: {type: array, maxItems: 64, items: {$ref: "#/components/schemas/SandboxFile"}}
+        more: {type: integer, minimum: 0, description: Files past the 64 named.}
+        conflicts: {type: array, maxItems: 16, items: {type: string, maxLength: 512}}
+    SandboxMount:
+      type: object
+      required: [dir, kind]
+      properties:
+        dir: {type: string}
+        kind: {type: string, enum: [session, person, project, agent]}
+        name: {type: string}
+        read_only: {type: boolean}
+    SessionSandbox:
+      type: object
+      required: [isolated, files, bytes, retention_days, writable]
+      properties:
+        isolated: {type: boolean, description: Runs lease an instance of their own; false means tools work in the session directory on the host.}
+        files: {type: integer, minimum: 0, maximum: 200}
+        bytes: {type: integer, minimum: 0}
+        retention_days: {type: integer, const: 7}
+        writable: {type: boolean}
+        reason: {type: string}
+    RunSandbox:
+      type: object
+      required: [run, agent, depth, status, created_at, isolated, mounts, files]
+      properties:
+        run: {type: string}
+        agent: {type: string}
+        parent: {type: string}
+        depth: {type: integer, minimum: 0}
+        status: {$ref: "#/components/schemas/RunStatus"}
+        created_at: {type: string, format: date-time}
+        isolated: {type: boolean}
+        mounts: {type: array, items: {$ref: "#/components/schemas/SandboxMount"}}
+        files: {type: array, maxItems: 64, items: {$ref: "#/components/schemas/SandboxFile"}}
+        more: {type: integer, minimum: 0}
+        conflicts: {type: array, maxItems: 16, items: {type: string, maxLength: 512}}
+    ConversationSandboxes:
+      type: object
+      required: [session, runs, more]
+      properties:
+        session: {$ref: "#/components/schemas/SessionSandbox"}
+        runs: {type: array, maxItems: 50, items: {$ref: "#/components/schemas/RunSandbox"}}
+        more: {type: boolean}
+    WorkspaceFile:
+      type: object
+      required: [path, size, revision]
+      properties:
+        path: {type: string, maxLength: 240}
+        size: {type: integer, minimum: 0, maximum: 2097152}
+        revision: {type: string, minLength: 64, maxLength: 64}
+    WorkspaceFileContent:
+      type: object
+      required: [path, content, revision]
+      properties:
+        path: {type: string, maxLength: 240}
+        content: {type: string, maxLength: 2097152}
+        revision: {type: string, minLength: 64, maxLength: 64}
+    WorkspaceFileList:
+      type: object
+      required: [files, writable, retention_days]
+      properties:
+        files: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/WorkspaceFile"}}
+        writable: {type: boolean}
+        reason: {type: string}
+        retention_days: {type: integer, const: 7}
+    WorkspaceFileWrite:
+      type: object
+      required: [path, content, revision]
+      properties:
+        path: {type: string, minLength: 1, maxLength: 240}
+        content: {type: string, maxLength: 2097152}
+        revision:
+          type: string
+          maxLength: 64
+          description: SHA-256 of the file read. Empty means create only. A stale revision returns 409.
+    WorkspaceFilePublish:
+      type: object
+      required: [path, revision]
+      properties:
+        path: {type: string, minLength: 1, maxLength: 240}
+        revision: {type: string, minLength: 64, maxLength: 64}
+        title: {type: string, maxLength: 120}
     SourceExcerpt:
       type: object
       description: Lines of one file at one commit, numbered from first.
@@ -9167,6 +9393,7 @@ components:
             be empty. It is never the whole answer when `status` is `stopped`.
           type: string
         outcome: {$ref: "#/components/schemas/RunOutcome"}
+        sandbox: {$ref: "#/components/schemas/RunSandboxRecord"}
         citations:
           type: array
           maxItems: 64
@@ -9836,7 +10063,7 @@ components:
         reason: {type: string}
     PlacementPreview:
       type: object
-      required: [thread, project, channel, audience, runs, token, exclusions]
+      required: [thread, project, channel, audience, runs, workspace_files, token, exclusions]
       properties:
         summary_required:
           description: Raw private-source history cannot move; publish only a person-reviewed summary copy.
@@ -9846,6 +10073,7 @@ components:
         channel: {type: string}
         audience: {type: string}
         runs: {type: integer, minimum: 0}
+        workspace_files: {type: integer, minimum: 0, maximum: 200}
         token: {type: string}
         exclusions:
           type: array

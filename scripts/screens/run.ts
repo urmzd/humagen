@@ -40,6 +40,7 @@ import { defaultCopy } from "../../packages/components/src/copy.ts";
 import { collect, DESKTOP, judge, LANDSCAPE, PHONE, type Problem, type Rules } from "./checks.ts";
 import { conversationDeletions } from "./deletions.ts";
 import { emailScreens, notificationEmailFixture } from "./email.ts";
+import { ideScreens } from "./ide.ts";
 import { libraryScreens } from "./library.ts";
 import { startNativeModel } from "./native.ts";
 import { usageScreens } from "./observability.ts";
@@ -184,10 +185,8 @@ async function mentioned(page: Page, text: string): Promise<void> {
  * header is one line, from its menu.
  */
 async function openContext(page: Page): Promise<void> {
-  if ((page.viewportSize()?.width ?? 0) < 768)
-    await page
-      .getByRole("button", { name: defaultCopy.conversation.settings, exact: true })
-      .click();
+  // Context is in Conversation Settings at every width.
+  await page.getByRole("button", { name: defaultCopy.conversation.settings, exact: true }).click();
   await page.getByRole("button", { name: defaultCopy.conversation.context, exact: true }).click();
 }
 
@@ -447,6 +446,57 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       },
     },
     {
+      // The conversation header alone: who is in it, Share and Conversation Settings.
+      name: "conversation-header",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        await page.getByRole("heading", { level: 1 }).first().waitFor();
+      },
+    },
+    {
+      name: "workspace-menu",
+      path: `/conversations/${ids.nativeThread}`,
+      act: async (page) => {
+        await page
+          .getByRole("button", { name: defaultCopy.conversation.settings, exact: true })
+          .click();
+        for (const name of [
+          defaultCopy.workspace.menu,
+          defaultCopy.conversation.context,
+          defaultCopy.conversation.activity,
+        ])
+          await page.getByRole("button", { name, exact: true }).waitFor();
+      },
+    },
+    {
+      name: "workspace-sandboxes",
+      path: `/conversations/${ids.nativeThread}/workspace/sandboxes`,
+      act: async (page) => {
+        const panel = page.getByRole("dialog", { name: defaultCopy.workspace.title, exact: true });
+        await panel.getByText(defaultCopy.workspace.sessionSandbox, { exact: true }).waitFor();
+        await panel
+          .getByRole("button", { name: /native-writer/ })
+          .first()
+          .click();
+        await panel.getByText(defaultCopy.workspace.filesLeft, { exact: true }).waitFor();
+        await panel
+          .getByRole("button", { name: /native-launch\.pptx/ })
+          .first()
+          .waitFor();
+      },
+    },
+    {
+      name: "workspace-artifacts",
+      path: `/conversations/${ids.nativeThread}/workspace/artifacts`,
+      act: async (page) => {
+        const panel = page.getByRole("dialog", { name: defaultCopy.workspace.title, exact: true });
+        await panel
+          .getByRole("button", { name: /native-launch\.pptx/ })
+          .first()
+          .waitFor();
+      },
+    },
+    {
       name: "conversation-outcome-redirect",
       path: `/conversations/${ids.nativeThread}`,
       act: async (page) => {
@@ -643,8 +693,14 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
         await artifactFixtures(page, ids.privateChat);
         await bar(page).fill("Make the owner clear.");
         await page.getByRole("button", { name: "Conversation Settings", exact: true }).click();
-        await page.getByRole("button", { name: "Deliverables", exact: true }).click();
-        await page.getByRole("button", { name: /^Launch briefing.pptx/ }).click();
+        await page.getByRole("button", { name: defaultCopy.workspace.menu, exact: true }).click();
+        await page
+          .getByRole("tab", { name: defaultCopy.workspace.section.artifacts, exact: true })
+          .click();
+        await page
+          .getByRole("button", { name: /Launch briefing\.pptx/ })
+          .first()
+          .click();
         await page.getByRole("button", { name: /^Slide 3:/ }).click();
         await page.getByRole("button", { name: "Request Changes", exact: true }).click();
         await page.waitForFunction(() =>
@@ -1240,6 +1296,7 @@ function screens(ids: Ids, call: Call): Screen[] {
     })),
   ];
   list.push(
+    ...ideScreens(call),
     ...libraryScreens(call),
     ...workspaceScreens(call),
     ...reviewScreens(call),
