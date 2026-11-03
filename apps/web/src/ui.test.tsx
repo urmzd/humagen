@@ -132,7 +132,7 @@ test("pinned conversations sit in their own section, ahead of the rest", () => {
   assert.match(out, /aria-label="Manage Fix the build"/);
   // An id that is not loaded is not drawn, and nothing is listed twice.
   assert.equal(out.match(/Fix the build</g)?.length, 1);
-  assert.ok(out.indexOf(">Pinned<") < out.indexOf(">Conversations<"));
+  assert.ok(out.indexOf(">Pinned<") < out.indexOf(">Recents<"));
 });
 
 test("project pins work without recent conversations and omit unreadable projects", () => {

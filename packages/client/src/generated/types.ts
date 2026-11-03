@@ -1248,9 +1248,33 @@ export interface ThreadSummary {
   branches: number;
   /** How many of its runs are in flight. */
   active: number;
+  /** How many of its runs are parked on a person, an approval or a question waiting on someone. They are counted in `active` too. */
+  waiting: number;
   failed: number;
+  /** The first line of the latest thing said in it, a person's message or an agent's answer, at most 160 bytes. */
+  last?: string;
+  /** Who said `last`, an agent's name when `last_agent`, else a person's handle. */
+  last_by?: string;
+  /** An agent said `last`. */
+  last_agent?: boolean;
   created_at: string;
   updated_at: string;
+}
+
+/** What the caller marked on the conversations they read. Archived
+here is for the caller alone: anyone else still sees the
+conversation. Bounded: 500 archived, the last read of 500
+conversations (the oldest is forgotten), 32 dismissed tips.
+ */
+export interface Marks {
+  /** Conversations the caller put away, most recent first. */
+  archived: string[];
+  /** When the caller last read each conversation, by its id. */
+  read: Record<string, string>;
+  /** The one-time tips the caller dismissed, by name. */
+  tips: string[];
+  /** When the caller first marked anything, absent before that. A conversation unchanged since then reads as read. */
+  since?: string;
 }
 
 /** Who reads a thread. `shared` is everyone who can see its project.
@@ -4631,6 +4655,15 @@ export interface BringBackThreadResultBody {
 
 export interface ArchiveThreadBody {
   delete_now?: boolean;
+}
+
+export interface MarkThreadBody {
+  archived?: boolean;
+  read?: boolean;
+}
+
+export interface DismissTipBody {
+  name: string;
 }
 
 export interface ListDeletionsResponse {

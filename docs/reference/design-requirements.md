@@ -76,6 +76,11 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-047 | Skills are slash commands, the only way the console offers them: `/` opens a menu of the skills a message here can name, fuzzy filtered with the match highlighted; `@` offers no skill or `@skill:`, `$` opens nothing, and a posted `$name` or `@skill:name` shows as a `/name` chip | Implemented: `commands.ts`, `tags.ts`, `Composer.tsx`, `ui.tsx` (`Mentioned`), `pkg/threads/tags.go`; web, threads and platform tests pass; `chat-at`, `chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection` screens at 390x844 and 1280x800 |
 | DES-048 | A turn reads as a transcript: words and runs of tool calls in the order they came, each run one line that names what it did, a file written opening in the Workspace, and the reader's messages on the right | Implemented: `packages/core/src/timeline.ts`, `packages/components/src/timeline.ts`, `WorkSteps.tsx`, `ToolLines` for Slack, `Room.tsx` message sides; core, components, adapter, render-slack and web DOM tests pass; `pnpm validate:slack` passes; screen `conversation-timeline` passes at 390x844 and 1280x800 |
 | DES-049 | A finished turn that changed files ends with a card of them: how many and their lines, a Review, and a row per file that opens its changes | Implemented: core `turnChanges`, web `TurnChanges`; core and web DOM tests pass; screen `conversation-timeline` passes at 390x844 and 1280x800 |
+| DES-050 | The Workspace is a pane of tabs beside the conversation: + opens items, tabs close, Expand and Show Two Tabs, tabs in the address, a full-screen sheet on a phone | Implemented: `Workspace.tsx`, `pane.ts`, `Inspector` `expanded`; web, pane and route tests pass; `workspace-pane-split`, `workspace-pane-expanded` and the other Workspace screens pass at 390x844 and 1280x800 |
+| DES-051 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
+| DES-052 | Conversation files, scratchpads, code editing, change review and artifact publication, in one Workspace panel opened from Conversation Settings beside a compact header | Implemented: `WorkspaceFiles.tsx`, `Workspace.tsx`, `ConversationShell.tsx`, `/api/threads/{id}/files`, `GET /api/threads/{id}/sandboxes`; web, route, Go race and confinement suites pass; `conversation-header`, `workspace-*` and `ide-*` screens pass at 390x844 and 1280x800 |
+| DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
+| DES-054 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row says its project, its age or an unread dot, and whether it waits on a person, runs or failed | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
 | DES-050 | The Workspace is a pane of tabs beside the conversation: + opens items, tabs close, Expand and Show Two Tabs, tabs in the address, a full-screen sheet on a phone | Implemented: `Workspace.tsx`, `pane.ts`, `Inspector` `expanded`; web, pane and route tests pass; `workspace-pane-split`, `workspace-pane-expanded` and the other Workspace screens pass at 390x844 and 1280x800 |
 | DES-051 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
@@ -720,7 +725,9 @@ API. The open drawer uses its own bounds checks rather than page-content gutters
 
 ### DES-022: Conversation lifecycle in the consolidated workspace
 
-Conversation actions offer Pin, Rename, Archive and Delete. Existing participant
+Conversation actions offer Pin, Rename, Archive and Delete. Since DES-054 the
+sidebar's Archive is the reader's own and is undone from its Archived view;
+Delete still queues the conversation for an admin. Existing participant
 identity, project pins and keyboard focus are retained when rows move or disappear.
 An archive is hidden from conversation lists and becomes eligible for deletion
 after 30 days. Delete requests immediate eligibility; neither action removes
@@ -1344,6 +1351,62 @@ and the posted text); `go test -race ./pkg/threads ./internal/platform`
 `TestASlashCommandIsPinnedAsItsSkill`, `TestASlackCommandNamedForASkillUsesIt`,
 `TestSkillsAndMentionKinds` for the aliases); `make screens` with `chat-at`,
 `chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection`.
+
+### DES-054: Recents, Pinned, Projects and Archived
+
+Owner request: a flat list of conversations across projects, each row its
+title, its project under it and its age or an unread dot, with Pinned on
+top; Projects kept as another view; pin and archive from the row; an
+Archived view; and dots for what is running and what needs the reader.
+
+Rules:
+
+- The list's views are picked from its filter menu: **Recents** (the
+  default: every project, newest first), **Projects** (the conversations
+  under folders, open and closed folder icons) and **Archived**. Pinned sits
+  above whichever view is on and holds pinned projects and conversations.
+- A row is its title, then its project ("Personal", the workspace's name or
+  the project's title) on a second line, and on the right how long ago it
+  moved (`now`, `5m`, `3h`, `2d`, `3w`, `9mo`, `2y`) or an unread dot. Inside
+  a project's group the project line is left out.
+- One dot before the title, most urgent first: **needs you** (a run is
+  parked on a person, an approval or a question: colored and still, since
+  it waits on a person), **running** (a ring that breathes slowly, still
+  with reduced motion) and **a reply failed** (solid). Unread is the accent
+  dot in place of the age. A screen reader hears each as words.
+- Unread: an agent said the last thing, after the reader last opened the
+  conversation. Opening a conversation reads it, and so does staying in it
+  while it moves. Before a reader's first mark nothing reads as unread, so
+  the first release does not light up every older conversation.
+- Hover or focus trades the age for **Pin**, **Archive** and the ⋮ menu (Pin,
+  Rename, Archive, Delete). On a touch screen the ⋮ menu stays and holds
+  them all; every control is at least 32px, 44px on a touch screen.
+- **Archive is the reader's own**: the conversation leaves their Pinned and
+  Recents and is listed under Archived, where Unarchive brings it back.
+  Anyone else still sees it. A note offers **Undo**. Delete still asks once
+  more and queues it for an admin (DES-022).
+- In Projects, a project with nothing loaded starts folded and opens to "No
+  conversations"; a group shows five rows, then **See All (N)** and **Show
+  Fewer**. The reader's projects beyond those with conversations are listed,
+  at most 12.
+- The server keeps each person's marks per request on `pkg/state`, tenant
+  scoped: at most 500 archived, the last read of 500 conversations (the
+  oldest is forgotten) and 32 dismissed tips. `GET /api/marks` and `PATCH
+  /api/threads/{id}/marks` take `runs:read`; a conversation the caller cannot
+  read is not found. A thread summary carries `waiting` (runs parked on a
+  person) and `last`, `last_by` and `last_agent` (the first line of the
+  latest message or answer, at most 160 bytes, and who said it, a person by
+  handle).
+
+Evidence: `go test -race ./pkg/marks ./pkg/runs ./internal/httpapi` (`TestArchiveIsPerPersonAndReversible`,
+`TestArchivedIsBounded`, `TestReadKeepsTheLatestAndForgetsTheOldest`,
+`TestMarksOutliveAProcess` on memory and Postgres,
+`TestAThreadSaysWhatWaitsAndWhatWasSaidLast`, `TestMarksArePerPersonAndConfined`,
+`TestMarksTakeRunsRead`, the contract tests); `cd apps/web && pnpm test`
+(`conversationList.test.ts`, `sidebar-views.dom.test.tsx`,
+`preferences.dom.test.tsx`); `make screens` with `sidebar-recents`,
+`sidebar-row-actions`, `sidebar-projects`, `sidebar-archived` and
+`sidebar-participants`.
 
 ### DES-048: A turn as a transcript
 

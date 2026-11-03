@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/urmzd/orchagent/flow/event"
 	"github.com/urmzd/orchagent/flow/runtime"
@@ -1036,10 +1037,42 @@ type ThreadSummary struct {
 	// Branches is how many turns have more than one answer.
 	Branches int `json:"branches"`
 	// Active is how many of its runs have not ended.
-	Active    int       `json:"active"`
-	Failed    int       `json:"failed"`
+	Active int `json:"active"`
+	// Waiting is how many of its runs are parked on a person: an approval
+	// or a question waits on someone. They are counted in Active too.
+	Waiting int `json:"waiting"`
+	Failed  int `json:"failed"`
+	// Last is the first line of the latest thing said in it, a person's
+	// message or an agent's answer, at most MaxLast bytes, and LastBy who
+	// said it: an agent's name when LastAgent, else a person's subject.
+	Last      string    `json:"last,omitempty"`
+	LastBy    string    `json:"last_by,omitempty"`
+	LastAgent bool      `json:"last_agent,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// MaxLast bounds ThreadSummary.Last, in bytes.
+const MaxLast = 160
+
+// firstLine is the first line of text that holds anything, trimmed and cut
+// to MaxLast bytes on a rune boundary.
+func firstLine(text string) string {
+	for line := range strings.Lines(text) {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if len(line) > MaxLast {
+			cut := MaxLast
+			for cut > 0 && !utf8.RuneStart(line[cut]) {
+				cut--
+			}
+			line = strings.TrimSpace(line[:cut]) + "…"
+		}
+		return line
+	}
+	return ""
 }
 
 // Conversation returns the turns of a thread, oldest first. Runs an agent

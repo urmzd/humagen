@@ -416,9 +416,28 @@ export interface ThreadSummary {
   turns: number;
   branches: number;
   active: number;
+  /** How many of its runs are parked on a person: an approval or a question. Counted in active too. */
+  waiting?: number;
   failed: number;
+  /** The first line of the latest thing said in it. */
+  last?: string;
+  /** Who said it: an agent's name when last_agent, else a person's handle. */
+  last_by?: string;
+  last_agent?: boolean;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * What one person marked on the conversations they read: archived for them
+ * alone, when they last read each, and the tips they dismissed.
+ */
+export interface Marks {
+  archived: string[];
+  read: Record<string, string>;
+  tips: string[];
+  /** When they first marked anything. A conversation unchanged since reads as read. */
+  since?: string;
 }
 
 /** One agent's answer to whether it would take a message that names no agent. */
@@ -1932,6 +1951,13 @@ export const coworking = {
         mode: t.mode,
       }),
     ),
+  /** The caller's own marks on conversations. */
+  marks: () => call<Marks>("GET", "/api/marks"),
+  /** Archives a conversation for the caller alone, brings it back, or marks it read. */
+  markThread: (id: string, mark: { archived?: boolean; read?: boolean }) =>
+    call<Marks>("PATCH", `${threadPath(id)}/marks`, mark),
+  /** Dismisses a one-time tip for the caller. */
+  dismissTip: (name: string) => call<Marks>("POST", "/api/marks/tips", { name }),
   /** Archives a conversation: hidden now, queued for an admin to delete in 30 days, or at once with deleteNow. */
   archive: (id: string, deleteNow = false) =>
     call<Thread>("POST", `${threadPath(id)}/archive`, { delete_now: deleteNow }),

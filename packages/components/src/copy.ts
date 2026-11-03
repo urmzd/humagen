@@ -2216,6 +2216,31 @@ export const defaultCopy = {
     moreParticipants: (count: number) => `+${count}`,
     pinProject: (title: string, pinned: boolean) => `${pinned ? "Unpin" : "Pin"} project ${title}`,
     dismiss: "Dismiss navigation",
+    /** The conversation list's views, chosen from its filter menu. */
+    view: "View",
+    recents: "Recents",
+    projects: "Projects",
+    archived: "Archived",
+    noConversations: "No conversations",
+    noArchived: "Nothing archived. Archive a conversation from its menu to put it away.",
+    seeAll: (count: number) => `See All (${count})`,
+    showFewer: "Show Fewer",
+    pin: (title: string, pinned: boolean) => `${pinned ? "Unpin" : "Pin"} ${title}`,
+    archive: (title: string, archived: boolean) => `${archived ? "Unarchive" : "Archive"} ${title}`,
+    archivedNote: "Archived for you. Others still see it.",
+    unarchivedNote: "Back in your conversations.",
+    archiveFailed: "Could not archive. Try again.",
+    unarchiveFailed: "Could not bring it back. Try again.",
+    undo: "Undo",
+    /** What a row's dot says, for a screen reader and the row's tooltip. */
+    standing: {
+      needs: "Needs you",
+      running: "Running",
+      failed: "A reply failed",
+      unread: "Unread",
+    },
+    updated: (when: string) => `Updated ${when}`,
+    outsideProject: "Outside of a project",
   },
   /**
    * The installed app: the prompt for a new version, which waits for the

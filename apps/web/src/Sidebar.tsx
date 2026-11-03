@@ -4,7 +4,9 @@ import {
   BellIcon,
   BotIcon,
   CheckIcon,
-  EllipsisIcon,
+  EllipsisVerticalIcon,
+  FolderIcon,
+  FolderOpenIcon,
   LayersIcon,
   LogOutIcon,
   MonitorIcon,
@@ -35,6 +37,16 @@ import {
   type ThreadSummary,
 } from "./api.ts";
 import { type Branding, servedBranding } from "./branding.ts";
+import {
+  age,
+  GROUP_ROWS,
+  type ListView,
+  partition,
+  projectOrder,
+  type RowStanding,
+  standingOf,
+} from "./conversationList.ts";
+import { useMarks } from "./marks.ts";
 import { type Standing, useRecents } from "./recents.ts";
 import { href, type Route, type Page as RoutePage } from "./route.ts";
 import { Avatar } from "./Settings.tsx";
@@ -173,13 +185,16 @@ function PinButton({
 function ProjectGroup({
   title,
   holdsCurrent,
+  startsOpen = true,
   children,
 }: {
   title: string;
   holdsCurrent: boolean;
+  /** A project with nothing loaded in it starts folded. */
+  startsOpen?: boolean;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(startsOpen);
   useEffect(() => {
     if (holdsCurrent) setOpen(true);
   }, [holdsCurrent]);
@@ -204,7 +219,7 @@ function ProjectGroup({
         >
           <path d="M9 6l6 6-6 6" />
         </svg>
-        <ProjectIcon size={14} />
+        {open ? <FolderOpenIcon size={14} /> : <FolderIcon size={14} />}
         <span className="min-w-0 flex-1 truncate">{title}</span>
       </summary>
       {children}
@@ -212,41 +227,64 @@ function ProjectGroup({
   );
 }
 
-/** One conversation by its title, with a ⋯ menu to pin, rename, archive or delete it. */
+/** A quiet icon button in a row's hover actions. */
+const rowAction =
+  "inline-flex size-8 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
+
+/**
+ * One conversation: its title, the project it is in under it, and on the
+ * right how long ago it moved or a dot when an agent said something unread.
+ * A dot before the title says it waits on a person (still), is running, or
+ * a reply failed. Hover or focus trades the age for Pin, Archive and the ⋮
+ * menu; on a touch screen the ⋮ menu stays and holds them all.
+ */
 function TaskRow({
   task,
-  projectTitle,
+  projectLabel,
   current,
   pinned,
+  archived = false,
+  standing = "",
+  ageText = "",
   onSelect,
   onPin,
   onRename,
   onArchive,
+  onDelete,
   flash = null,
 }: {
   task: ThreadSummary;
-  projectTitle: string;
+  /** The project it is in, shown under its title; left out inside a project's group. */
+  projectLabel?: string;
   current: boolean;
   pinned: boolean;
+  archived?: boolean;
+  standing?: RowStanding;
+  ageText?: string;
   onSelect: () => void;
   onPin?: (button: HTMLButtonElement) => void;
   onRename?: (title: string) => void;
-  /** Archives it; deleteNow asks an admin to delete it at once. */
-  onArchive?: (deleteNow: boolean) => void;
+  /** Archives it for the reader alone, or brings it back. */
+  onArchive?: (on: boolean) => void;
+  /** Asks an admin to delete it. */
+  onDelete?: () => void;
   flash?: Flash | null;
 }) {
   const title = task.title || "Untitled conversation";
-  const state = task.active > 0 ? "In progress" : task.failed > 0 ? "Needs attention" : "Finished";
+  const words = defaultCopy.sidebar;
   const [renaming, setRenaming] = useState(false);
-  const menu = useRef<HTMLDivElement>(null);
-  const trigger = () => menu.current?.querySelector<HTMLButtonElement>("button") ?? null;
-  const hasMenu = onPin || onRename || onArchive;
+  const actions = useRef<HTMLDivElement>(null);
+  const trigger = () =>
+    actions.current?.querySelector<HTMLButtonElement>("[data-row-menu] button") ?? null;
+  const hasMenu = onPin || onRename || onArchive || onDelete;
   const save = (next: string) => {
     setRenaming(false);
     const t = next.trim();
     if (t && t !== task.title) onRename?.(t);
     requestAnimationFrame(() => trigger()?.focus());
   };
+  const said = standing ? words.standing[standing] : "";
+  const dot = standing === "needs" || standing === "running" || standing === "failed";
   return (
     // A row that is saying something sits over its neighbours and over the
     // section's label, which sticks above the first row, so the note shows.
@@ -273,13 +311,18 @@ function TaskRow({
         <button
           type="button"
           onClick={onSelect}
-          title={`${title}\n${state}\n${projectTitle}`}
+          data-thread-row={task.id}
           aria-current={current ? "page" : undefined}
-          className="flex min-h-10 pointer-coarse:min-h-11 w-full items-center gap-2 rounded-aui py-2 pr-10 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-subtle aria-[current=page]:font-medium aria-[current=page]:text-aui-fg aria-[current=page]:shadow-[inset_2px_0_0_var(--aui-accent)] [@media(pointer:coarse)]:pr-14"
+          className="flex min-h-10 pointer-coarse:min-h-11 w-full items-start gap-2 rounded-aui py-1.5 pr-2 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-subtle aria-[current=page]:font-medium aria-[current=page]:text-aui-fg aria-[current=page]:shadow-[inset_2px_0_0_var(--aui-accent)] [@media(pointer:coarse)]:pr-12"
         >
-          <span className="flex min-w-0 flex-1 flex-col gap-1">
+          {dot && (
+            <span aria-hidden data-standing={standing} className="humagen-row-dot mt-[7px]" />
+          )}
+          <span className="flex min-w-0 flex-1 flex-col">
             <span className="flex min-w-0 items-center gap-1.5">
-              <span className="truncate">{title}</span>
+              <span className={`truncate ${standing === "unread" ? "text-aui-fg" : ""}`}>
+                {title}
+              </span>
               {pinned && (
                 <PinIcon
                   size={11}
@@ -289,54 +332,100 @@ function TaskRow({
                 />
               )}
             </span>
+            {projectLabel && (
+              <span className="truncate text-aui-2xs font-normal text-aui-muted">
+                {projectLabel}
+              </span>
+            )}
           </span>
-          {task.active > 0 && <span className="sr-only">, running</span>}
-          {task.active === 0 && task.failed > 0 && (
-            <span className="sr-only">, a reply failed</span>
-          )}
+          <span
+            data-row-age
+            className={`mt-0.5 shrink-0 text-aui-2xs font-normal text-aui-muted tabular-nums ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:invisible [@media(pointer:fine)]:group-hover/task:invisible" : ""}`}
+          >
+            {standing === "unread" ? (
+              <span aria-hidden data-standing="unread" className="humagen-row-dot mt-1 block" />
+            ) : (
+              ageText
+            )}
+          </span>
+          {said && <span className="sr-only">, {said}</span>}
         </button>
       )}
       {hasMenu && !renaming && (
         <div
-          ref={menu}
+          ref={actions}
           data-pin-thread={task.id}
-          className="absolute top-1 right-1 [@media(pointer:coarse)]:top-0.5"
+          className="absolute top-1 right-1 flex items-center [@media(pointer:coarse)]:top-0.5"
         >
-          <Popover
-            narrow
-            align="right"
-            label={`Manage ${title}`}
-            className="inline-flex size-8 items-center justify-center rounded-aui text-aui-muted opacity-0 transition-opacity hover:bg-aui-hover hover:text-aui-fg focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-aui-accent group-hover/task:opacity-100 group-focus-within/task:opacity-100 aria-expanded:opacity-100 aria-expanded:bg-aui-hover aria-expanded:text-aui-fg [@media(pointer:coarse)]:size-11 [@media(pointer:coarse)]:opacity-100"
-            button={<EllipsisIcon size={16} />}
-          >
-            {(close) => (
-              <RowMenu
-                pinned={pinned}
-                onPin={
-                  onPin &&
-                  (() => {
-                    close();
-                    const b = trigger();
-                    if (b) onPin(b);
-                  })
-                }
-                onRename={
-                  onRename &&
-                  (() => {
-                    close();
-                    setRenaming(true);
-                  })
-                }
-                onArchive={
-                  onArchive &&
-                  ((now) => {
-                    close();
-                    onArchive(now);
-                  })
-                }
-              />
-            )}
-          </Popover>
+          {onPin && (
+            <button
+              type="button"
+              data-row-pin
+              aria-label={words.pin(title, pinned)}
+              aria-pressed={pinned}
+              title={words.pin(title, pinned)}
+              onClick={(e) => onPin(e.currentTarget)}
+              className={`${rowAction} opacity-0 group-hover/task:opacity-100 group-focus-within/task:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:hidden`}
+            >
+              <PinIcon size={14} fill={pinned ? "currentColor" : "none"} />
+            </button>
+          )}
+          {onArchive && (
+            <button
+              type="button"
+              aria-label={words.archive(title, archived)}
+              title={words.archive(title, archived)}
+              onClick={() => onArchive(!archived)}
+              className={`${rowAction} opacity-0 group-hover/task:opacity-100 group-focus-within/task:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:hidden`}
+            >
+              <ArchiveIcon size={14} />
+            </button>
+          )}
+          <div data-row-menu>
+            <Popover
+              narrow
+              align="right"
+              label={`Manage ${title}`}
+              className={`${rowAction} opacity-0 group-hover/task:opacity-100 group-focus-within/task:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 aria-expanded:bg-aui-hover aria-expanded:text-aui-fg [@media(pointer:coarse)]:size-11 [@media(pointer:coarse)]:opacity-100`}
+              button={<EllipsisVerticalIcon size={15} />}
+            >
+              {(close) => (
+                <RowMenu
+                  pinned={pinned}
+                  archived={archived}
+                  onPin={
+                    onPin &&
+                    (() => {
+                      close();
+                      const b = trigger();
+                      if (b) onPin(b);
+                    })
+                  }
+                  onRename={
+                    onRename &&
+                    (() => {
+                      close();
+                      setRenaming(true);
+                    })
+                  }
+                  onArchive={
+                    onArchive &&
+                    (() => {
+                      close();
+                      onArchive(!archived);
+                    })
+                  }
+                  onDelete={
+                    onDelete &&
+                    (() => {
+                      close();
+                      onDelete();
+                    })
+                  }
+                />
+              )}
+            </Popover>
+          </div>
         </div>
       )}
       {hasMenu && <FlashNote flash={flash} align="right" />}
@@ -353,14 +442,18 @@ const menuItem =
  */
 function RowMenu({
   pinned,
+  archived,
   onPin,
   onRename,
   onArchive,
+  onDelete,
 }: {
   pinned: boolean;
+  archived: boolean;
   onPin?: () => void;
   onRename?: () => void;
-  onArchive?: (deleteNow: boolean) => void;
+  onArchive?: () => void;
+  onDelete?: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -372,12 +465,12 @@ function RowMenu({
     onRename && { key: "r", label: "Rename", icon: <PencilIcon size={15} />, run: onRename },
     onArchive && {
       key: "a",
-      label: "Archive",
+      label: archived ? "Unarchive" : "Archive",
       icon: <ArchiveIcon size={15} />,
-      run: () => onArchive(false),
+      run: onArchive,
       separated: true,
     },
-    onArchive && {
+    onDelete && {
       key: "d",
       label: "Delete",
       icon: <TrashIcon size={15} />,
@@ -385,7 +478,7 @@ function RowMenu({
       danger: true,
     },
   ].filter((i): i is Exclude<typeof i, undefined | null | false> => Boolean(i));
-  if (confirming && onArchive) {
+  if (confirming && onDelete) {
     return (
       <div ref={root} className="flex flex-col gap-2 p-1.5">
         <p className="text-aui-sm text-aui-fg">Delete this conversation?</p>
@@ -402,7 +495,7 @@ function RowMenu({
           </button>
           <button
             type="button"
-            onClick={() => onArchive(true)}
+            onClick={onDelete}
             className="h-7 rounded-aui bg-aui-bad px-2.5 text-aui-sm text-white hover:opacity-90 focus-visible:outline-2 focus-visible:outline-aui-accent"
           >
             Delete
@@ -596,9 +689,13 @@ export function Sidebar({
     };
   }, [drawer]);
   const swipe = useRef<{ x: number; y: number } | null>(null);
-  const pinFocus = useRef<{ kind: "conversation" | "project"; id: string; pinned: boolean } | null>(
-    null,
-  );
+  const pinFocus = useRef<{
+    kind: "conversation" | "project";
+    id: string;
+    pinned: boolean;
+    /** The row's control it was pinned from: its ⋮ menu or its Pin button. */
+    from?: string;
+  } | null>(null);
   useEffect(() => {
     const target = pinFocus.current;
     if (!target) return;
@@ -611,7 +708,7 @@ export function Sidebar({
         ).find((button) => button.dataset.pinProject === target.id)
       : Array.from(sidebar.current?.querySelectorAll<HTMLElement>("[data-pin-thread]") ?? [])
           .find((menu) => menu.dataset.pinThread === target.id)
-          ?.querySelector<HTMLButtonElement>("button");
+          ?.querySelector<HTMLButtonElement>(target.from ?? "[data-row-menu] button");
     // An unpinned row may leave the current group or loaded page.
     // Keep focus at its remaining control or a stable navigation target.
     const fallback = projects
@@ -627,7 +724,12 @@ export function Sidebar({
   const togglePin = (id: string, on: boolean, button: HTMLButtonElement) => {
     unsay();
     if (document.activeElement === button)
-      pinFocus.current = { kind: "conversation", id, pinned: on };
+      pinFocus.current = {
+        kind: "conversation",
+        id,
+        pinned: on,
+        from: button.closest("[data-row-menu]") ? "[data-row-menu] button" : "[data-row-pin]",
+      };
     onPin(id, on).catch(() => {
       if (pinFocus.current?.kind === "conversation" && pinFocus.current.id === id)
         pinFocus.current = null;
@@ -710,47 +812,52 @@ export function Sidebar({
     },
   ];
 
-  // Pinned conversations come from whatever is loaded. One that cannot be found
-  // (deleted, or no longer readable) is not shown.
-  const [archived, setArchived] = useState<{
-    id: string;
-    title: string;
-    deleteNow: boolean;
-  } | null>(null);
+  // Archived here is the reader's own: the conversation leaves their lists
+  // and stays for everyone else. Delete still asks an admin.
+  const { marks, archive: setArchivedMark, read: markRead } = useMarks(can("runs:read"));
+  const [view, setView] = useState<ListView>("recents");
+  const [note, setNote] = useState<{ id: string; archived: boolean } | null>(null);
   const [gone, setGone] = useState<Set<string>>(() => new Set());
   const [titles, setTitles] = useState<Record<string, string>>({});
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const [now, setNow] = useState(() => Date.now());
+  // Ages move on their own; once a minute is enough for "5m".
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(t);
+  }, []);
   const shown = (t: ThreadSummary) =>
     titles[t.id] ? { ...t, title: titles[t.id]!, named: true } : t;
-  const archive = (t: ThreadSummary, deleteNow: boolean) => {
+  const toggleArchive = (t: ThreadSummary, on: boolean) => {
+    unsay();
+    setNote({ id: t.id, archived: on });
+    if (on && selected === t.id) go({ page: "new" });
+    setArchivedMark(t.id, on).catch(() => {
+      setNote(null);
+      setFlashed(t.id);
+      say(on ? defaultCopy.sidebar.archiveFailed : defaultCopy.sidebar.unarchiveFailed, true);
+    });
+  };
+  const undoArchive = () => {
+    if (!note) return;
+    const { id, archived } = note;
+    setNote(null);
+    setArchivedMark(id, !archived).catch(() => {});
+  };
+  const remove = (t: ThreadSummary) => {
     unsay();
     setGone((g) => new Set(g).add(t.id));
-    setArchived({ id: t.id, title: t.title || "Untitled conversation", deleteNow });
     if (pinned.includes(t.id)) onPin(t.id, false).catch(() => {});
     if (selected === t.id) go({ page: "new" });
-    coworking.archive(t.id, deleteNow).catch(() => {
+    coworking.archive(t.id, true).catch(() => {
       setGone((g) => {
         const n = new Set(g);
         n.delete(t.id);
         return n;
       });
-      setArchived(null);
       setFlashed(t.id);
-      say(deleteNow ? "Could not delete. Try again." : "Could not archive. Try again.", true);
+      say("Could not delete. Try again.", true);
     });
-  };
-  const undoArchive = () => {
-    if (!archived) return;
-    const { id } = archived;
-    setArchived(null);
-    coworking.unarchive(id).then(
-      () =>
-        setGone((g) => {
-          const n = new Set(g);
-          n.delete(id);
-          return n;
-        }),
-      () => {},
-    );
   };
   const rename = (t: ThreadSummary, title: string) => {
     unsay();
@@ -767,22 +874,40 @@ export function Sidebar({
       say("Could not rename. Try again.", true);
     });
   };
+  // Every conversation loaded, once each: the caller's live ones and the
+  // pages of Recents. Pinned and Archived come from these, so one that cannot
+  // be found (deleted, or no longer readable) is not shown.
   const known = new Map(
     [...threads, ...recents].filter((t) => !gone.has(t.id)).map((t) => [t.id, shown(t)]),
   );
-  const pinnedRows = pinned
-    .map((id) => known.get(id))
-    .filter((t): t is ThreadSummary => t !== undefined);
+  const lists = partition(
+    [...known.values()].sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
+    pinned,
+    marks,
+  );
+  const pinnedRows = lists.pinned;
   const pinnedSet = new Set(pinned);
-  const unpinned = recents.filter((t) => !pinnedSet.has(t.id) && !gone.has(t.id)).map(shown);
+  // Recents is the paged list, so a filter narrows it; the open conversation
+  // stays in it even when it is older than what is loaded.
+  const archivedSet = new Set(marks.archived);
+  const unpinned = recents
+    .filter((t) => !pinnedSet.has(t.id) && !gone.has(t.id) && !archivedSet.has(t.id))
+    .map(shown);
   const currentThread = selected ? known.get(selected) : undefined;
   if (
     currentThread &&
     !pinnedSet.has(currentThread.id) &&
+    !archivedSet.has(currentThread.id) &&
     !unpinned.some((thread) => thread.id === currentThread.id)
   ) {
     unpinned.push(currentThread);
   }
+  // Opening a conversation reads it, and so does staying in it while it moves.
+  const selectedUpdated = currentThread?.updated_at;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a newer update is the reason to mark it read again
+  useEffect(() => {
+    if (selected && can("runs:read")) markRead(selected);
+  }, [selected, selectedUpdated, markRead, can]);
   const noConversations = recents.length === 0 && unpinned.length === 0;
   const isCurrent = (t: ThreadSummary) => t.id === selected;
   const canPin = can("runs:read");
@@ -791,13 +916,41 @@ export function Sidebar({
     (project) =>
       can("projects:read") && (project === "~" || projects.some((item) => item.name === project)),
   );
-  const projectGroups = [
-    ...new Set(
-      [...recents.filter((t) => !gone.has(t.id)), ...unpinned].map(
-        (thread) => thread.project || "~",
-      ),
-    ),
-  ];
+  // The Projects view: projects with a conversation loaded first, then the
+  // reader's others, which open to "No conversations". Bounded, as the
+  // sidebar is not the project list.
+  const projectGroups = projectOrder(
+    unpinned,
+    projects.slice(0, 12).map((p) => p.name),
+  );
+  const row = (t: ThreadSummary, opts: { label: boolean; pinned?: boolean }) => (
+    <TaskRow
+      key={t.id}
+      task={t}
+      projectLabel={opts.label ? projectTitle(t.project) : undefined}
+      current={isCurrent(t)}
+      pinned={opts.pinned ?? false}
+      archived={archivedSet.has(t.id)}
+      standing={standingOf(t, marks)}
+      ageText={age(t.updated_at, now)}
+      onSelect={() => go({ page: "conversation", id: t.id })}
+      onPin={
+        canPin && !archivedSet.has(t.id)
+          ? (button) => togglePin(t.id, !opts.pinned, button)
+          : undefined
+      }
+      onRename={can("runs:write") ? (title) => rename(t, title) : undefined}
+      onArchive={canPin ? (on) => toggleArchive(t, on) : undefined}
+      onDelete={can("runs:write") ? () => remove(t) : undefined}
+      flash={flashed === t.id ? flash : null}
+    />
+  );
+  const viewTitle =
+    view === "projects"
+      ? defaultCopy.sidebar.projects
+      : view === "archived"
+        ? defaultCopy.sidebar.archived
+        : defaultCopy.sidebar.recents;
 
   const clear = () => {
     setStanding("");
@@ -995,20 +1148,7 @@ export function Sidebar({
                     />
                   </li>
                 ))}
-                {pinnedRows.map((t) => (
-                  <TaskRow
-                    key={t.id}
-                    task={t}
-                    projectTitle={projectTitle(t.project)}
-                    current={isCurrent(t)}
-                    pinned
-                    onSelect={() => go({ page: "conversation", id: t.id })}
-                    onPin={(button) => togglePin(t.id, false, button)}
-                    onRename={(title) => rename(t, title)}
-                    onArchive={(now) => archive(t, now)}
-                    flash={flashed === t.id ? flash : null}
-                  />
-                ))}
+                {pinnedRows.map((t) => row(t, { label: true, pinned: true }))}
               </ul>
             </section>
           )}
@@ -1016,6 +1156,7 @@ export function Sidebar({
           {open && can("runs:read") && (
             <section
               aria-label="Conversations"
+              data-view={view}
               className="humagen-sidebar-reveal flex shrink-0 flex-col pt-4"
             >
               {/* The label stays in reach while the list scrolls under it. */}
@@ -1029,7 +1170,7 @@ export function Sidebar({
                     button={
                       <>
                         <SlidersIcon size={14} />
-                        {filters > 0 && (
+                        {(filters > 0 || view !== "recents") && (
                           <span
                             aria-hidden
                             className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-aui-accent"
@@ -1040,6 +1181,22 @@ export function Sidebar({
                   >
                     {() => (
                       <div className="aui-scroll flex max-h-[60vh] flex-col overflow-y-auto">
+                        <Choices
+                          title={defaultCopy.sidebar.view}
+                          value={view}
+                          options={[
+                            { value: "recents", label: defaultCopy.sidebar.recents },
+                            { value: "projects", label: defaultCopy.sidebar.projects },
+                            {
+                              value: "archived",
+                              label:
+                                marks.archived.length > 0
+                                  ? `${defaultCopy.sidebar.archived} (${marks.archived.length})`
+                                  : defaultCopy.sidebar.archived,
+                            },
+                          ]}
+                          onChange={setView}
+                        />
                         <Choices
                           title="Show"
                           value={standing}
@@ -1079,28 +1236,28 @@ export function Sidebar({
                   </Popover>
                 }
               >
-                Conversations
+                {viewTitle}
               </Label>
-              {archived && (
+              {note && (
                 <p
                   role="status"
                   className="mx-3 mb-1 flex items-center gap-2 rounded-aui bg-aui-hover px-2.5 py-1.5 text-aui-xs text-aui-muted"
                 >
                   <span className="min-w-0 flex-1">
-                    {archived.deleteNow
-                      ? "Sent to an admin to delete."
-                      : "Archived. An admin can delete it after 30 days."}
+                    {note.archived
+                      ? defaultCopy.sidebar.archivedNote
+                      : defaultCopy.sidebar.unarchivedNote}
                   </span>
                   <button
                     type="button"
                     onClick={undoArchive}
                     className="shrink-0 rounded-aui px-1.5 font-medium text-aui-fg hover:bg-aui-bg focus-visible:outline-2 focus-visible:outline-aui-accent"
                   >
-                    Undo
+                    {defaultCopy.sidebar.undo}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setArchived(null)}
+                    onClick={() => setNote(null)}
                     aria-label="Dismiss"
                     className="shrink-0 rounded-aui px-1 text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
                   >
@@ -1108,7 +1265,7 @@ export function Sidebar({
                   </button>
                 </p>
               )}
-              <ul className="px-2 pb-3" aria-label="Conversations" aria-busy={loading !== null}>
+              <ul className="px-2 pb-3" aria-label={viewTitle} aria-busy={loading !== null}>
                 {noConversations && loading === "first" && (
                   <li className="px-2.5">
                     <SkeletonRows count={5} height="1.25rem" />
@@ -1126,65 +1283,90 @@ export function Sidebar({
                     </button>
                   </li>
                 )}
-                {noConversations && loading !== "first" && !stalled && (
+                {view !== "archived" && noConversations && loading !== "first" && !stalled && (
                   <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
                     {filters > 0
                       ? "No conversation matches these filters."
                       : "Your conversations appear here. Start with New."}
                   </li>
                 )}
-                {projectGroups.map((project) => (
-                  <li
-                    key={project}
-                    className={`group/project relative min-w-0 pt-2 ${flashed === `project:${project}` && flash ? "z-20" : ""}`}
-                  >
-                    <ProjectGroup
-                      title={projectTitle(project)}
-                      holdsCurrent={unpinned.some(
-                        (t) => (t.project || "~") === project && isCurrent(t),
-                      )}
-                    >
-                      <ul className="ml-2 border-aui-border border-l pl-1">
-                        {unpinned
-                          .filter((thread) => (thread.project || "~") === project)
-                          .map((t) => (
-                            <TaskRow
-                              key={t.id}
-                              task={t}
-                              projectTitle={projectTitle(t.project)}
-                              current={isCurrent(t)}
-                              pinned={false}
-                              onSelect={() => go({ page: "conversation", id: t.id })}
-                              onPin={canPin ? (button) => togglePin(t.id, true, button) : undefined}
-                              onRename={can("runs:write") ? (title) => rename(t, title) : undefined}
-                              onArchive={can("runs:write") ? (now) => archive(t, now) : undefined}
-                              flash={flashed === t.id ? flash : null}
+                {view === "recents" && unpinned.map((t) => row(t, { label: true }))}
+                {view === "archived" &&
+                  (lists.archived.length === 0 && loading !== "first" ? (
+                    <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
+                      {defaultCopy.sidebar.noArchived}
+                    </li>
+                  ) : (
+                    lists.archived.map((t) => row(t, { label: true }))
+                  ))}
+                {view === "projects" &&
+                  projectGroups.map((project) => {
+                    const inGroup = unpinned.filter((t) => (t.project || "~") === project);
+                    const all = expanded.has(project);
+                    const rows = all ? inGroup : inGroup.slice(0, GROUP_ROWS);
+                    return (
+                      <li
+                        key={project}
+                        className={`group/project relative min-w-0 pt-2 ${flashed === `project:${project}` && flash ? "z-20" : ""}`}
+                      >
+                        <ProjectGroup
+                          title={projectTitle(project)}
+                          startsOpen={inGroup.length > 0}
+                          holdsCurrent={inGroup.some(isCurrent)}
+                        >
+                          <ul className="ml-2 border-aui-border border-l pl-1">
+                            {inGroup.length === 0 && (
+                              <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
+                                {defaultCopy.sidebar.noConversations}
+                              </li>
+                            )}
+                            {rows.map((t) => row(t, { label: false }))}
+                            {inGroup.length > GROUP_ROWS && (
+                              <li>
+                                <button
+                                  type="button"
+                                  aria-expanded={all}
+                                  onClick={() =>
+                                    setExpanded((e) => {
+                                      const n = new Set(e);
+                                      if (all) n.delete(project);
+                                      else n.add(project);
+                                      return n;
+                                    })
+                                  }
+                                  className="flex h-8 w-full items-center rounded-aui px-2.5 text-left text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                                >
+                                  {all
+                                    ? defaultCopy.sidebar.showFewer
+                                    : defaultCopy.sidebar.seeAll(inGroup.length)}
+                                </button>
+                              </li>
+                            )}
+                          </ul>
+                        </ProjectGroup>
+                        {onPinProject && can("projects:read") && (
+                          <div className="absolute top-2 right-0 h-10 w-10">
+                            <PinButton
+                              project
+                              projectId={project}
+                              pinned={pinnedProjects.has(project)}
+                              label={defaultCopy.sidebar.pinProject(
+                                projectTitle(project),
+                                pinnedProjects.has(project),
+                              )}
+                              onClick={(button) =>
+                                toggleProjectPin(project, !pinnedProjects.has(project), button)
+                              }
                             />
-                          ))}
-                      </ul>
-                    </ProjectGroup>
-                    {onPinProject && can("projects:read") && (
-                      <div className="absolute top-2 right-0 h-10 w-10">
-                        <PinButton
-                          project
-                          projectId={project}
-                          pinned={pinnedProjects.has(project)}
-                          label={defaultCopy.sidebar.pinProject(
-                            projectTitle(project),
-                            pinnedProjects.has(project),
-                          )}
-                          onClick={(button) =>
-                            toggleProjectPin(project, !pinnedProjects.has(project), button)
-                          }
+                          </div>
+                        )}
+                        <FlashNote
+                          flash={flashed === `project:${project}` ? flash : null}
+                          align="right"
                         />
-                      </div>
-                    )}
-                    <FlashNote
-                      flash={flashed === `project:${project}` ? flash : null}
-                      align="right"
-                    />
-                  </li>
-                ))}
+                      </li>
+                    );
+                  })}
                 {/* Older conversations arrive a page at a time, when asked for. */}
                 {(hasMore || loading === "more") && (
                   <li className="flex justify-center pt-2">

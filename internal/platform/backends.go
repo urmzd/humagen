@@ -32,6 +32,7 @@ import (
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/library"
+	"github.com/urmzd/humagen/pkg/marks"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/notice"
 	"github.com/urmzd/humagen/pkg/notifications"
@@ -213,6 +214,8 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("feedback", err)
 	p.Prefs, err = prefs.Open(perRequest)
 	keep("prefs", err)
+	p.Marks, err = marks.Open(perRequest)
+	keep("marks", err)
 	p.PersonContexts, err = personctx.Open(perRequest)
 	keep("person contexts", err)
 	p.ContextFlags, err = contextflags.Open(perRequest)
