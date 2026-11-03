@@ -12,6 +12,7 @@ import (
 
 	presentation "github.com/urmzd/humagen/internal/presentation/github"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/integrations/github"
 )
 
 type reviewedPull struct {
@@ -130,24 +131,7 @@ func (s *Server) listReviewedPulls(w http.ResponseWriter, r *http.Request, who a
 			item.Status = "done"
 			state = "done"
 		}
-		if len(detail.Workflows) > 0 {
-			item.CI = "success"
-			for _, job := range detail.Workflows {
-				if job.HeadSHA != detail.Subject.Head.SHA {
-					continue
-				}
-				if job.Conclusion == "failure" || job.Conclusion == "timed_out" || job.Conclusion == "action_required" {
-					item.CI = "failure"
-					break
-				}
-				if job.Status != "completed" {
-					item.CI = "pending"
-				}
-				if job.Conclusion == "cancelled" && item.CI != "pending" {
-					item.CI = "cancelled"
-				}
-			}
-		}
+		item.CI = reviewedPullCI(detail.Workflows, detail.Subject.Head.SHA)
 		if status != "" && state != status || q.Get("repo") != "" && item.Repo != q.Get("repo") || q.Get("agent") != "" && item.Agent != q.Get("agent") {
 			continue
 		}
@@ -160,4 +144,39 @@ func (s *Server) listReviewedPulls(w http.ResponseWriter, r *http.Request, who a
 		}
 	}
 	ok(w, http.StatusOK, map[string]any{"pulls": out})
+}
+
+// Re-runs of one workflow supersede older runs on the same reviewed commit.
+func reviewedPullCI(workflows []github.WorkflowRun, sha string) string {
+	latest := map[string]github.WorkflowRun{}
+	for _, job := range workflows {
+		if sha == "" || job.HeadSHA != sha {
+			continue
+		}
+		previous, ok := latest[job.Name]
+		if !ok || job.ID > previous.ID || job.ID == previous.ID && job.Attempt > previous.Attempt {
+			latest[job.Name] = job
+		}
+	}
+	result := "unknown"
+	for _, job := range latest {
+		if job.Conclusion == "failure" || job.Conclusion == "timed_out" || job.Conclusion == "action_required" {
+			return "failure"
+		}
+		if job.Status != "completed" {
+			result = "pending"
+			continue
+		}
+		if result == "pending" {
+			continue
+		}
+		if job.Conclusion == "cancelled" {
+			result = "cancelled"
+			continue
+		}
+		if result != "cancelled" {
+			result = "success"
+		}
+	}
+	return result
 }
