@@ -152,9 +152,13 @@ export function ideScreens(call: Call): Screen[] {
         await page.getByRole("button", { name: copy.openPublished, exact: true }).waitFor();
         await page.getByRole("button", { name: copy.openPublished, exact: true }).click();
         await page.getByRole("link", { name: "Download Original", exact: true }).waitFor();
-        assert.match(page.url(), /\/deliverables\//, "Publication opens its immutable artifact");
-        await page.getByRole("button", { name: "Close notes.md", exact: true }).click();
-        await openWorkspace(page);
+        assert.match(
+          decodeURIComponent(page.url()),
+          /active=artifact:/,
+          "Publication opens its immutable artifact in a Workspace tab",
+        );
+        // The file stays open in its own tab beside the artifact.
+        await page.getByRole("tab", { name: "notes.md", exact: true }).first().click();
         await page.getByRole("button", { name: copy.preview, exact: true }).click();
         await page.getByRole("heading", { name: "Launch review", exact: true }).waitFor();
       },

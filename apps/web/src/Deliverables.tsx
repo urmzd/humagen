@@ -2,7 +2,7 @@ import { defaultCopy } from "@humagen/components";
 import { Markdown } from "@humagen/primitives";
 import { ArtifactIcon, PencilIcon, WebSurface } from "@humagen/render-web";
 import { HumagenMark, Inspector } from "@humagen/web";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { ArtifactPromotion, type ArtifactPromotionAccess } from "./ArtifactPromotion.tsx";
 import { api } from "./api.ts";
 import { canEditArtifact, copyArtifactToWorkspace } from "./artifact-copy.ts";
@@ -425,6 +425,8 @@ export function Deliverables({
   onRevise,
   onEditCopy,
   promotion,
+  frame,
+  onTitle,
 }: {
   open?: boolean;
   thread: string;
@@ -434,6 +436,10 @@ export function Deliverables({
   onRevise?: (file: Stored, slide?: number) => void;
   onEditCopy?: (path: string) => void;
   promotion?: ArtifactPromotionAccess;
+  /** Frames the body instead of its own inspector. */
+  frame?: (body: ReactNode) => ReactNode;
+  /** Says the selected version's title, for a Workspace tab. */
+  onTitle?: (id: string, title: string) => void;
 }) {
   const [items, setItems] = useState<Stored[]>();
   const [file, setFile] = useState<Stored>();
@@ -569,13 +575,11 @@ export function Deliverables({
       if (!abort.signal.aborted) setMoreBusy(false);
     }
   };
-  return (
-    <Inspector
-      open={open}
-      wide={!!selected}
-      title={file?.title || words.deliverables}
-      onClose={onClose}
-    >
+  useEffect(() => {
+    if (file) onTitle?.(file.id, file.title);
+  }, [file, onTitle]);
+  const body = (
+    <>
       <Problem message={problem ?? null} />
       {selected ? (
         <div className="flex min-w-0 flex-col gap-4">
@@ -780,6 +784,18 @@ export function Deliverables({
           )}
         </div>
       )}
+    </>
+  );
+  // The Workspace pane shows it as a tab, in its own frame.
+  if (frame) return frame(body);
+  return (
+    <Inspector
+      open={open}
+      wide={!!selected}
+      title={file?.title || words.deliverables}
+      onClose={onClose}
+    >
+      {body}
     </Inspector>
   );
 }

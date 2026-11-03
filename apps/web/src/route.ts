@@ -141,6 +141,12 @@ export interface ConversationView {
   scratchpad?: string;
   /** The run whose memory is open in Memories. */
   memoryRun?: string;
+  /** The Workspace pane's open tabs (pane.ts), oldest first, and the active one. */
+  tabs?: string[];
+  active?: string;
+  /** The pane fills the page, or shows two tabs side by side. */
+  expanded?: boolean;
+  split?: boolean;
   file?: string;
   workspaceTab?: "edit" | "preview" | "changes";
   /** One-based slide selection. */
@@ -375,6 +381,10 @@ export function href(r: Route): string {
                   ? r.memoryRun
                   : undefined;
           const item = selected ? `/${enc(selected)}` : "";
+          if (r.tabs?.length) q.set("tabs", r.tabs.map(encodeURIComponent).join(","));
+          if (r.active) q.set("active", r.active);
+          if (r.expanded) q.set("full", "1");
+          if (r.split) q.set("split", "1");
           return `${base}${section}${item}${q.size ? `?${q}` : ""}`;
         }
         if (r.panel === "deliverables" && r.artifact)
@@ -613,6 +623,18 @@ function read(pathname: string, search: string): Route {
                 sandbox: parts[3] === "sandboxes" ? parts[4] : undefined,
                 scratchpad: parts[3] === "scratchpads" ? parts[4] : undefined,
                 memoryRun: parts[3] === "memories" ? parts[4] : undefined,
+                tabs: q.get("tabs")
+                  ? (q.get("tabs") as string).split(",").flatMap((t) => {
+                      try {
+                        return t ? [decodeURIComponent(t)] : [];
+                      } catch {
+                        return [];
+                      }
+                    })
+                  : undefined,
+                active: q.get("active") || undefined,
+                expanded: q.get("full") === "1" || undefined,
+                split: q.get("split") === "1" || undefined,
                 file: q.get("file") || undefined,
                 workspaceTab: oneOf(q.get("tab"), ["edit", "preview", "changes"] as const),
               }

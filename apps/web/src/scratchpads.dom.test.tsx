@@ -4,6 +4,7 @@ import { defaultCopy } from "@humagen/components";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { stubFetch } from "./dom.ts";
+import { activeKey } from "./pane.ts";
 import type { ConversationView } from "./route.ts";
 import { Workspace } from "./Workspace.tsx";
 import type { Scratchpad } from "./workspace-files.ts";
@@ -98,7 +99,6 @@ function Harness({
           setView(next);
         }}
         onClose={() => setOpen(false)}
-        onArtifact={() => {}}
       />
     </>
   );
@@ -128,7 +128,7 @@ test("a person creates a named scratchpad, edits it and saves from the version r
   fireEvent.click(screen.getByRole("button", { name: words.new }));
   fireEvent.change(screen.getByLabelText(words.name), { target: { value: "Launch plan" } });
   fireEvent.click(screen.getByRole("button", { name: words.create }));
-  await waitFor(() => assert.equal(views.at(-1)?.scratchpad, "sp-1"));
+  await waitFor(() => assert.equal(activeKey(views.at(-1) ?? {}), "scratchpad:sp-1"));
   const editor = (await screen.findByRole("textbox", {
     name: "Edit Launch plan.md",
   })) as HTMLTextAreaElement;
@@ -171,7 +171,7 @@ test("rename, a taken name, and delete after confirmation", async () => {
   assert.ok(screen.getByText(words.deleteConfirm("Launch plan")));
   fireEvent.click(screen.getAllByRole("button", { name: words.delete }).at(-1) as HTMLElement);
   await waitFor(() => assert.equal(s.pads.has("sp-1"), false));
-  assert.equal(views.at(-1)?.scratchpad, undefined);
+  assert.equal(activeKey(views.at(-1) ?? {}), "scratchpads");
 });
 
 test("a stale save keeps the draft and offers the latest", async () => {
@@ -223,13 +223,13 @@ test("drafts survive closing the panel and switching sections, and guard navigat
     name: "Edit Plan.md",
   })) as HTMLTextAreaElement;
   fireEvent.change(editor, { target: { value: "# Pending" } });
-  fireEvent.click(screen.getByRole("tab", { name: defaultCopy.workspace.section.sandboxes }));
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.workspace.pane.open }));
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.workspace.pane.pick.sandboxes }));
+  await screen.findByText(defaultCopy.workspace.sessionSandbox);
   fireEvent.click(screen.getByRole("button", { name: "Toggle Workspace" }));
   fireEvent.click(screen.getByRole("button", { name: "Toggle Workspace" }));
-  fireEvent.click(
-    await screen.findByRole("tab", { name: defaultCopy.workspace.section.scratchpads }),
-  );
-  fireEvent.click(await screen.findByRole("button", { name: /Plan/ }));
+  // The scratchpad's tab is named for it.
+  fireEvent.click(await screen.findByRole("tab", { name: "Plan" }));
   await waitFor(() =>
     assert.equal(
       (screen.getByRole("textbox", { name: "Edit Plan.md" }) as HTMLTextAreaElement).value,

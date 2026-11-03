@@ -30,6 +30,7 @@ import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { emptySelection, mentionPicks, PlusMenu, type Selection, SelectionChips } from "./Plus.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
+import { openPane } from "./pane.ts";
 import { ThreadRoom, topicsOf } from "./Room.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
@@ -986,7 +987,9 @@ export function Chat({
         agents={summary?.agents ?? [...new Set(turns.map((t) => t.agent))]}
         people={room?.thread.participants?.filter((p) => p.kind === "person").map((p) => p.name)}
         onPanel={(next) => openPanel(next)}
-        onArtifact={(id) => openPanel("deliverables", { artifact: id })}
+        onArtifact={(id) =>
+          openPanel("workspace", openPane(shownView, { kind: "artifact", ref: id }))
+        }
       >
         {room && canRun && !room.thread.read_only && (
           <ConversationForkPanels thread={room.thread} runs={turns} actions={forkActions} />
@@ -1106,7 +1109,23 @@ export function Chat({
                 }
               : undefined
           }
-          onArtifact={(artifact) => openPanel("deliverables", { artifact })}
+          promotion={
+            artifactActions
+              ? {
+                  project: room?.thread.project ?? where ?? "",
+                  shared: room?.thread.visibility === "shared",
+                  ...artifactActions,
+                }
+              : undefined
+          }
+          onRevise={
+            canRun
+              ? (file, slide) => {
+                  setSeed({ text: revisionPrompt(file, slide), mode: "prepend" });
+                  openPanel();
+                }
+              : undefined
+          }
           onRun={(run) => openPanel("activity", { run })}
         />
       )}

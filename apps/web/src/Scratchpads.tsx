@@ -77,15 +77,18 @@ export function Scratchpads({
   drafts,
   setDrafts,
   actions,
+  onName,
 }: {
   thread: string;
   open: boolean;
   selected?: string;
-  onSelect: (id?: string) => void;
+  onSelect: (id?: string, label?: string) => void;
   drafts: PadDrafts;
   setDrafts: (change: (previous: PadDrafts) => PadDrafts) => void;
   /** More actions for the open scratchpad, such as Save as Artifact. */
   actions?: (pad: Scratchpad, dirty: boolean) => ReactNode;
+  /** Says the open scratchpad's name, for its tab. */
+  onName?: (id: string, name: string) => void;
 }) {
   const [list, setList] = useState<ScratchpadList>();
   const [failed, setFailed] = useState(false);
@@ -123,6 +126,10 @@ export function Scratchpads({
     if (open) void refresh();
   }, [open, refresh, attempt]);
   const draft = selected ? drafts[selected] : undefined;
+  const shownName = draft?.saved.name;
+  useEffect(() => {
+    if (selected && shownName) onName?.(selected, shownName);
+  }, [selected, shownName, onName]);
   useEffect(() => {
     if (!open || !selected || drafts[selected]) return;
     let current = true;
@@ -166,7 +173,7 @@ export function Scratchpads({
       setCreating(false);
       setName("");
       await refresh();
-      onSelect(pad.id);
+      onSelect(pad.id, pad.name);
     } catch (error) {
       fail(error);
     } finally {
@@ -467,7 +474,7 @@ export function Scratchpads({
         <ul className="flex min-w-0 flex-col">
           {list.scratchpads.map((pad) => (
             <li key={pad.id}>
-              <button type="button" className={row} onClick={() => onSelect(pad.id)}>
+              <button type="button" className={row} onClick={() => onSelect(pad.id, pad.name)}>
                 <StickyNoteIcon size={14} />
                 <span className="min-w-0 flex-1 truncate">{pad.name}</span>
                 {dirty(drafts[pad.id]) && (

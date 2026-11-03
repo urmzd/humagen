@@ -171,18 +171,34 @@ the copy. Only an opaque artifact/version reference enters provenance metadata.
 ## The Workspace panel
 
 A conversation is a session with a sandbox of its own, and each agent run in
-it works in a nested sandbox (RFC 0004, isolated runs). **Workspace**, from
-Conversation Settings, is the one place for what the session holds. It is an
-inspector beside the conversation on a desktop and a sheet on a phone, with
-its sections as tabs that scroll sideways when they do not fit:
+it works in a nested sandbox (RFC 0004, isolated runs). **Workspace** is the one
+place for what the session holds: a pane beside the conversation with a tab
+for each open item. It opens from Conversation Settings and from an artifact
+clicked in the conversation. On a desktop it is the third pane (sidebar,
+conversation, Workspace); **Expand** fills the page with it and **Show Two
+Tabs** puts the active tab beside the one before it. On a phone it is a
+full-screen sheet with the same tabs.
 
-| Section | What it shows | Address |
-|---|---|---|
-| Sandboxes | The session sandbox (its files, size, retention and whether runs are isolated) and a nested entry per agent run, newest first and indented under its caller: its mounts (`/work` from the session, and the memory trees in `/project` and `/me`), the files it left and the copyback changes refused because someone changed the file first | `/conversations/{id}/workspace/sandboxes[/{run}]` |
-| Files | The session's files, editor and change review below | `/conversations/{id}/workspace?file=&tab=` |
-| Scratchpads | Named notes beside the conversation: create, name, rename, delete and edit in the code editor, with a Markdown preview | `/conversations/{id}/workspace/scratchpads[/{scratchpad}]` |
-| Memories | Read only, by scope: the memory trees the conversation draws on, what the session's runs used and wrote, and each message's run, with links to where memory is changed | `/conversations/{id}/workspace/memories[/{run}]` |
-| Artifacts | The conversation's saved, versioned artifacts; each opens in Deliverables | `/conversations/{id}/workspace/artifacts` |
+**+** opens a list (Files, Scratchpads, Artifacts, Sandboxes, Memories), and an
+item chosen from a list opens in a tab of its own. A tab closes with its X;
+closing the last closes the pane. The open tabs, the active one and the
+Expand and split toggles are the pane's address, so a copied link reopens the
+same pane: `/conversations/{id}/workspace?tabs=files,file%3Asrc%252Fa.ts&active=file%3Asrc%252Fa.ts&full=1&split=1`
+(`apps/web/src/pane.ts`; at most 12 tabs, the oldest closing first). An item
+tab is one of:
+
+| Tab | What it shows |
+|---|---|
+| `sandboxes`, `sandbox:<run>` | The session sandbox (its files, size, retention and whether runs are isolated) and a nested entry per agent run, newest first and indented under its caller: its mounts (`/work` from the session, and the memory trees in `/project` and `/me`), the files it left and the copyback changes refused because someone changed the file first |
+| `files`, `file:<path>` | The session's files, editor and change review below |
+| `scratchpads`, `scratchpad:<id>` | Named notes beside the conversation |
+| `memories`, `memory:<run>` | Read only, by scope: the memory trees the conversation draws on, what the session's runs used and wrote, and each message's run |
+| `artifacts`, `artifact:<id>` | The conversation's saved, versioned artifacts with the Deliverables preview, versions, provenance, Present and Request Changes |
+
+A host can add tab kinds it renders itself (`issue`, `pull` and `review` are
+reserved) through `Workspace`'s `extraTab` and `extraPicks`. Addresses from
+before tabs (`/workspace/sandboxes/{run}`, `/workspace?file=`) open the one
+tab they named.
 
 `GET /api/threads/{id}/sandboxes` answers Sandboxes, behind `runs:read` and
 the conversation's audience, at most 50 runs. What a run left is recorded on
