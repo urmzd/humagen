@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.75.0 (2026-11-03)
+
+### Features
+
+- **sidebar**: previews of a conversation and a turn, and a one-time search tip (#192) ([390fa96](https://github.com/urmzd/humagen/commit/390fa96aab479305dc2cda2ebe9052388cf7c204))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.74.1...v0.75.0)
+
+
 ## 0.74.0 (2026-11-03)
 
 ### Features
