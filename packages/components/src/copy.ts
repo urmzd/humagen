@@ -1125,6 +1125,76 @@ export const defaultCopy = {
     stepFailed: (count: number) => `${count} failed`,
     workedFor: (time: string) => `Worked for ${time}`,
     worked: "Worked",
+    /**
+     * A run of tool calls between two parts of an answer, as one line, and
+     * each call in it as a row. `one` names what a lone call was pointed at;
+     * `many` counts calls of one kind.
+     */
+    toolLine: {
+      read: {
+        one: (t: string) => `Read ${t}`,
+        a: "Read a file",
+        many: (n: number) => `Read ${n} files`,
+      },
+      lookup: {
+        one: (t: string) => `Checked ${t}`,
+        a: "Checked a source",
+        many: (n: number) => `Checked ${n} sources`,
+      },
+      search: {
+        one: (t: string) => `Searched ${t}`,
+        a: "Ran a search",
+        many: (n: number) => `Ran ${n} searches`,
+      },
+      fetch: {
+        one: (t: string) => `Fetched ${t}`,
+        a: "Fetched a page",
+        many: (n: number) => `Fetched ${n} pages`,
+      },
+      memory: {
+        one: (t: string) => `Checked memory for ${t}`,
+        a: "Checked memory",
+        many: (n: number) => `Checked memory ${n} times`,
+      },
+      run: {
+        one: (t: string) => `Ran ${t}`,
+        a: "Ran a command",
+        many: (n: number) => `Ran ${n} commands`,
+      },
+      write: {
+        one: (t: string) => `Changed ${t}`,
+        a: "Made a change",
+        many: (n: number) => `Made ${n} changes`,
+      },
+      tool: {
+        one: (t: string) => `Used ${t}`,
+        a: "Used a tool",
+        many: (n: number) => `Used ${n} tools`,
+      },
+      created: (path: string) => `Created ${path}`,
+      updated: (path: string) => `Updated ${path}`,
+      wrote: (path: string) => `Wrote ${path}`,
+      files: (n: number) => `Updated ${n} files`,
+      running: (what: string) => `Running ${what}`,
+      failed: (n: number) => `${n} failed`,
+      waiting: "waiting for you",
+      showMore: "Show more",
+      showLess: "Show less",
+      arguments: "Arguments",
+      result: "Result",
+      noResult: "No result",
+      openFile: (path: string) => `Open ${path} in the Workspace`,
+      details: (what: string) => `Details of ${what}`,
+    },
+    /** The files a finished turn changed, as one card under it. */
+    changes: {
+      title: (n: number) => `${n} ${n === 1 ? "file" : "files"} changed`,
+      review: "Review",
+      reviewLabel: (n: number) =>
+        `Review the ${n === 1 ? "change" : `${n} changed files`} in the Workspace`,
+      show: "Show changed files",
+      hide: "Hide changed files",
+    },
     askAgent: (agent: string) => `Ask ${agent}`,
     reply: "Reply",
     question: "Clarification",
@@ -2749,7 +2819,7 @@ export const defaultCopy = {
     /** A mention kind, as completion offers `@kind:`: its title, or what it is. */
     mentionKind: (kind: string, title?: string) => title || `Mention by ${kind}`,
     /** The chat bar's prompt in a conversation. Nothing runs until a message tags an agent. */
-    message: "Message. Tag an agent with @ to ask it",
+    message: "Ask anything, @ to mention, / for actions",
     /** The control at the top of a private conversation that shares it in a project's channel. */
     share: "Share",
     shareTitle: "Share this conversation",

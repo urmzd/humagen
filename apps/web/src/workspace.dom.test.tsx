@@ -61,12 +61,12 @@ test("each step sits where it happened, as one line that opens to its input and 
   const after = text.indexOf("The launch brief is ready.");
   assert.ok(before >= 0 && before < step && step < after, `${before} ${step} ${after}`);
   // Folded, the line says what was done; open, each step shows its input and output.
-  assert.equal(screen.queryByText("Input"), null);
+  assert.equal(screen.queryByText("Arguments"), null);
   fireEvent.click(screen.getByRole("button", { name: "Read plan.md" }));
   fireEvent.click(screen.getByRole("button", { name: /Read the plan/ }));
-  assert.ok(screen.getByText("Input"));
-  assert.ok(screen.getByText("plan.md"));
-  assert.ok(screen.getByText("Output"));
+  assert.ok(screen.getByText("Arguments"));
+  assert.match(document.body.textContent ?? "", /"path": "plan.md"/);
+  assert.ok(screen.getByText("Result"));
   assert.match(document.body.textContent ?? "", /The embargo stays on November 12/);
   // The trace folds under "Worked", leaving the answer.
   fireEvent.click(screen.getByRole("button", { name: /^Worked/ }));
@@ -87,7 +87,7 @@ test("a tool waiting for approval opens its step line without animating", () => 
     </WebSurface>,
   );
   assert.equal(
-    screen.getByRole("button", { name: /waiting for you/ }).getAttribute("aria-expanded"),
+    screen.getAllByRole("button", { name: /waiting for you/ })[0]?.getAttribute("aria-expanded"),
     "true",
   );
   assert.ok(screen.getByText("Waiting for approval"));
