@@ -77,6 +77,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-048 | A turn reads as a transcript: words and runs of tool calls in the order they came, each run one line that names what it did, a file written opening in the Workspace, and the reader's messages on the right | Implemented: `packages/core/src/timeline.ts`, `packages/components/src/timeline.ts`, `WorkSteps.tsx`, `ToolLines` for Slack, `Room.tsx` message sides; core, components, adapter, render-slack and web DOM tests pass; `pnpm validate:slack` passes; screen `conversation-timeline` passes at 390x844 and 1280x800 |
 | DES-050 | The Workspace is a pane of tabs beside the conversation: + opens items, tabs close, Expand and Show Two Tabs, tabs in the address, a full-screen sheet on a phone | Implemented: `Workspace.tsx`, `pane.ts`, `Inspector` `expanded`; web, pane and route tests pass; `workspace-pane-split`, `workspace-pane-expanded` and the other Workspace screens pass at 390x844 and 1280x800 |
 | DES-051 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
+| DES-049 | A finished turn that changed files ends with a card of them: how many and their lines, a Review, and a row per file that opens its changes | Implemented: core `turnChanges`, web `TurnChanges`; core and web DOM tests pass; screen `conversation-timeline` passes at 390x844 and 1280x800 |
 | DES-052 | Conversation files, scratchpads, code editing, change review and artifact publication, in one Workspace panel opened from Conversation Settings beside a compact header | Implemented: `WorkspaceFiles.tsx`, `Workspace.tsx`, `ConversationShell.tsx`, `/api/threads/{id}/files`, `GET /api/threads/{id}/sandboxes`; web, route, Go race and confinement suites pass; `conversation-header`, `workspace-*` and `ide-*` screens pass at 390x844 and 1280x800 |
 
 ### DES-001: Working integrations
@@ -1332,3 +1333,18 @@ and the posted text); `go test -race ./pkg/threads ./internal/platform`
 - Acceptance: a turn of words, two reads, words, a file written, an answer
   shows those in that order, the reads as "Read 2 files", the file as a link
   to its Changes, and Slack shows the same runs as context lines.
+
+### DES-049: What a turn changed
+
+- A finished turn that created or edited workspace files ends with a card
+  under it: "N files changed +a −b", open by default and folding to that line.
+- Each file is one row: an icon for its type, its name, its folder in muted
+  text cut from the start, and its lines added and removed. A row opens the
+  file's Changes in the Workspace (`/conversations/<id>/workspace?file=<path>&tab=changes`).
+- Review opens the Workspace at the turn's first changed file, since the
+  Workspace reviews one file at a time.
+- The totals come from the same detection as each call's own line
+  (`fileEdits`), one row per path: a file written whole more than once counts
+  from what the turn started with to what it left; edits add up.
+- No card while the turn runs, or when it changed no file.
+- The chat bar's prompt is "Ask anything, @ to mention, / for actions".

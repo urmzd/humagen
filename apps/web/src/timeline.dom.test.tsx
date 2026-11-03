@@ -138,3 +138,54 @@ test("while a call runs, its run says which, and a call waiting on a person does
   // A run waiting on a person is open, at the step's own row.
   assert.ok(within(group).getByText("Waiting for approval"));
 });
+
+test("a finished turn that changed files ends with a card of them, each opening its changes", () => {
+  const opened: string[] = [];
+  const edit = (id: string, path: string, old_string: string, new_string: string) => ({
+    id,
+    title: "Edit file",
+    tool: "edit_file",
+    status: "complete" as const,
+    input: JSON.stringify({ path, old_string, new_string }),
+    at: 0,
+  });
+  const turn: Turn = {
+    ...multiStepTurn,
+    tasks: [
+      ...multiStepTurn.tasks,
+      edit("e1", "apps/web/src/LandingExperience.tsx", "a", "b\nc\nd"),
+      edit("e2", "apps/web/src/LandingExperience.tsx", "x\ny", "z"),
+    ],
+  };
+  show(turn, opened);
+  const card = screen.getByTestId("turn-changes");
+  // review-notes.md +4, LandingExperience.tsx +3 -1 then +1 -2.
+  assert.ok((card.textContent ?? "").includes("2 files changed"));
+  assert.ok((card.textContent ?? "").includes("+8"));
+  assert.ok((card.textContent ?? "").includes("−3"));
+  const rows = within(card).getAllByTestId("turn-change");
+  assert.equal(rows.length, 2);
+  assert.ok((rows[1]?.textContent ?? "").includes("LandingExperience.tsx"));
+  assert.ok((rows[1]?.textContent ?? "").includes("apps/web/src"));
+  fireEvent.click(within(rows[1] as HTMLElement).getByRole("link"));
+  assert.deepEqual(opened, ["apps/web/src/LandingExperience.tsx"]);
+  // Review opens the first file the turn changed.
+  const review = within(card).getByRole("link", {
+    name: "Review the 2 changed files in the Workspace",
+  });
+  assert.equal(
+    review.getAttribute("href"),
+    "/conversations/c1/workspace?file=scratchpads%2Freview-notes.md&tab=changes",
+  );
+  // It folds to its one line.
+  fireEvent.click(within(card).getByRole("button", { name: "Hide changed files" }));
+  assert.equal(within(card).queryAllByTestId("turn-change").length, 0);
+});
+
+test("no card while the turn runs, or when it changed nothing", () => {
+  show({ ...multiStepTurn, status: "working" });
+  assert.equal(screen.queryByTestId("turn-changes"), null);
+  cleanup();
+  show({ ...multiStepTurn, tasks: multiStepTurn.tasks.slice(0, 5) });
+  assert.equal(screen.queryByTestId("turn-changes"), null);
+});

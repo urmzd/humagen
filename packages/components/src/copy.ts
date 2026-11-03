@@ -1382,6 +1382,15 @@ export const defaultCopy = {
       openFile: (path: string) => `Open ${path} in the Workspace`,
       details: (what: string) => `Details of ${what}`,
     },
+    /** The files a finished turn changed, as one card under it. */
+    changes: {
+      title: (n: number) => `${n} ${n === 1 ? "file" : "files"} changed`,
+      review: "Review",
+      reviewLabel: (n: number) =>
+        `Review the ${n === 1 ? "change" : `${n} changed files`} in the Workspace`,
+      show: "Show changed files",
+      hide: "Hide changed files",
+    },
     askAgent: (agent: string) => `Ask ${agent}`,
     reply: "Reply",
     question: "Clarification",
@@ -3006,7 +3015,7 @@ export const defaultCopy = {
     /** A mention kind, as completion offers `@kind:`: its title, or what it is. */
     mentionKind: (kind: string, title?: string) => title || `Mention by ${kind}`,
     /** The chat bar's prompt in a conversation. Nothing runs until a message tags an agent. */
-    message: "Message. Tag an agent with @ to ask it",
+    message: "Ask anything, @ to mention, / for actions",
     /** The control at the top of a private conversation that shares it in a project's channel. */
     share: "Share",
     shareTitle: "Share this conversation",
