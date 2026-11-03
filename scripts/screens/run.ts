@@ -40,6 +40,7 @@ import { defaultCopy } from "../../packages/components/src/copy.ts";
 import { collect, DESKTOP, judge, LANDSCAPE, PHONE, type Problem, type Rules } from "./checks.ts";
 import { conversationDeletions } from "./deletions.ts";
 import { emailScreens, notificationEmailFixture } from "./email.ts";
+import { ideScreens } from "./ide.ts";
 import { libraryScreens } from "./library.ts";
 import { startNativeModel } from "./native.ts";
 import { usageScreens } from "./observability.ts";
@@ -1174,6 +1175,7 @@ function screens(ids: Ids, call: Call): Screen[] {
     })),
   ];
   list.push(
+    ...ideScreens(call),
     ...libraryScreens(call),
     ...workspaceScreens(call),
     ...usageScreens(),

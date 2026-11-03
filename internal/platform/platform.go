@@ -346,6 +346,8 @@ type Platform struct {
 	waiting atomic.Int64
 	// publishing makes a storage check and the write it allows one step.
 	publishing sync.Mutex
+	// workspaceMu serializes host scratch writes with isolated-run copyback.
+	workspaceMu sync.Mutex
 
 	broker  bus.Bus
 	sinks   *connector.Registry

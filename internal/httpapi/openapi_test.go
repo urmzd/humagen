@@ -605,7 +605,8 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 
 		"SourceDependency": {typ: platform.SourceDependency{}}, "SourceDependencies": {typ: platform.SourceDependencies{}},
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
-		"Thread":        {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},
+		"WorkspaceFile": {typ: platform.WorkspaceFile{}}, "WorkspaceFileContent": {typ: platform.WorkspaceFileContent{}}, "WorkspaceFileList": {typ: platform.WorkspaceFileList{}}, "WorkspaceFileWrite": {typ: platform.WorkspaceFileWrite{}, written: true}, "WorkspaceFilePublish": {typ: platform.WorkspaceFilePublish{}, written: true},
+		"Thread": {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},
 		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}}, "ThreadAnnouncement": {typ: threads.Announcement{}}, "ThreadAsk": {typ: platform.Ask{}},
 		"ThreadAnswers": {typ: answers{}}, "ThreadPosted": {typ: platform.Posted{}}, "ThreadNotice": {typ: threads.Notice{}}, "RoomPage": {typ: rooms.Page{}},
 		"ThreadInput": {typ: platform.ThreadInput{}, written: true}, "ThreadMessageInput": {typ: platform.MessageInput{}, written: true},
@@ -2372,6 +2373,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/handoffs", "/api/handoffs", "", http.StatusOK)
 	c.call(acme, "GET", "/api/agent-network", "/api/agent-network", "", http.StatusOK)
 
+	workspaceID := exerciseWorkspaceFileContract(t, c, auditAdmin, globex)
 	// Two rules hold for every route that takes something: another
 	// workspace's object is not found, and a body with a field the route
 	// does not know is refused. Both are asked of every operation the spec
@@ -2387,6 +2389,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/projects/{name}/memory/{id}", "/api/projects/Launch/memory/"+freshProjectNote.str("id"), `{"text":""}`, http.StatusBadRequest)
 	freshPersonalNote := c.call(auditAdmin, "POST", "/api/me/memory", "/api/me/memory", `{"text":"Personal correction source"}`, http.StatusCreated)
 	real := map[string]map[string]string{
+		"/api/threads/{id}/files":                             {"id": workspaceID},
+		"/api/threads/{id}/files/content":                     {"id": workspaceID},
+		"/api/threads/{id}/files/publish":                     {"id": workspaceID},
 		"/api/runs/{id}/questions/{question}/answer":          {"id": id, "question": "x"},
 		"/api/runs/{id}/feedback":                             {"id": id},
 		"/api/runs/{id}/learning":                             {"id": learningID},

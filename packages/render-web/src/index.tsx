@@ -21,7 +21,7 @@ export { Feedback, FeedbackPromptContext, Rating } from "./feedback";
 export { ArtifactIcon, FileTile, phaseLabel } from "./file";
 export { Checkboxes, FormContext, FormStore, useGroup } from "./form";
 export * from "./icons";
-export { localizeTimes, webImpls } from "./impls";
+export { localizeTimes, MarkdownHeadingContext, webImpls } from "./impls";
 export {
   ArtifactOpenContext,
   type ItemActions,

@@ -72,6 +72,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-043 | The brand's colors edge the page round its corners and glow round the chat bar, turning while a reply is in flight | Implemented: `styles.css`, `Composer.tsx`; web tests pass; screens pass light and dark at 1280x800 and 390x844 |
 | DES-044 | A conversation has a wave down its left edge to scan and scrub through its turns, and the keyboard opens and closes cleanly on a phone | Implemented: `TurnRail.tsx`, `Thread.tsx`, `Chat.tsx`, `Room.tsx`, `viewport.ts`; web tests pass (`wave.dom.test.tsx`, `pwa.test.ts`); screens pass at 390x844 and 1280x800; the keyboard on iOS needs a real device |
 | DES-045 | A phone reads like a native chat app: quiet message actions, a one-line chat bar and header, Chat and Work at the top of Home, a swipe from the edge for the drawer, and the installed app opening on Chat | Implemented: `theme.css`, `styles.css`, `Composer.tsx`, `ConversationShell.tsx`, `ModeSwitch.tsx`, `Sidebar.tsx`, `manifest.webmanifest`; web tests pass; screens pass at 390x844 and 1280x800 |
+| DES-046 | Conversation files, scratchpads, code editing, change review and artifact publication | Implemented; 739 console tests, Go race/confinement suites, client checks and 27 responsive browser captures pass |
 
 ### DES-001: Working integrations
 
@@ -171,6 +172,34 @@ planned collections, browser, protocol and improvement work from this UI pass.
   the `sidebar-scroll` screen fixture, checks real wheel input, long lists,
   fixed header/account geometry and independent content scroll in Chromium at
   phone and desktop widths. Long content is inserted only for the layout test.
+
+### DES-046: Conversation file workbench
+
+- Give conversation files, scratchpads, previews and change review one native
+  workbench with direct header access and reloadable selections.
+- Share the bounded scratch directory with agent file tools. Require current
+  conversation access, explicit saves and content-hash conflict detection.
+- Preserve unsaved drafts across drawer changes. Show busy, denied, binary,
+  stale and failed operations honestly. Explain scratch retention.
+- Support code editing, imported unified patches and contextual review comments
+  that prepare the composer. Publish exact saved revisions as immutable
+  deliverables, and edit saved text artifacts through a working copy.
+- Implementation: `WorkspaceFiles.tsx`, reusable `CodeEditor` and `ChangeReview`,
+  and the confined `/api/threads/{id}/files` API. See
+  [conversation-workspace.md](../architecture/conversation-workspace.md#files-scratchpads-and-change-review).
+- Evidence: 739 console tests pass, including editor shortcuts, selected-code
+  feedback, unsaved draft navigation, immutable copies, active-run refusal,
+  conflict recovery and scratch-only sharing consent. Platform race tests cover
+  concurrent saves, isolated copyback and publication consent. Client typecheck
+  and 21 transport tests pass. `scripts/screens/ide.ts` verifies five real API
+  flows: editing/reload, patch comments, scratchpad publication, stale saves and
+  inert HTML previews. All 27 light/dark captures pass at 320, 390, 768 and
+  1280px widths, with tablet and narrow-phone reflow. Captures are reproducible
+  under `.screens-ide/`, `.screens-ide-dark/` and `.screens-ide-focused/`.
+  Full platform, HTTP, artifact and thread race suites pass, including the
+  required-query confinement sweeps and real-file mutation canaries. Go lint
+  reports zero issues; console, renderer, web and client typechecks and the
+  production console build pass.
 
 ## Review and implementation evidence
 

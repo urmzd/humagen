@@ -122,6 +122,8 @@ func (f *runFiles) Load(ctx context.Context, inst isolation.Instance) error {
 	if err != nil {
 		return err
 	}
+	f.p.workspaceMu.Lock()
+	defer f.p.workspaceMu.Unlock()
 	root, err := f.p.openSandbox(f.tenant, thread)
 	if err != nil {
 		return err
@@ -151,6 +153,8 @@ func (f *runFiles) Load(ctx context.Context, inst isolation.Instance) error {
 
 // Save implements isolation.Files.
 func (f *runFiles) Save(ctx context.Context, inst isolation.Instance) error {
+	f.p.workspaceMu.Lock()
+	defer f.p.workspaceMu.Unlock()
 	src := inst.Files()
 	f.mu.Lock()
 	thread, loaded := f.thread, f.loaded
@@ -185,12 +189,25 @@ func (f *runFiles) Save(ctx context.Context, inst isolation.Instance) error {
 		if sum, ok := loaded[clean]; ok && sum == sha256.Sum256(b) {
 			continue
 		}
+		// A person or another run may have saved after this lease loaded.
+		// Preserve that edit instead of silently replacing it at copyback.
+		current, readErr := dst.read(ctx, clean)
+		before, existed := loaded[clean]
+		if (existed && (readErr != nil || sha256.Sum256(current) != before)) || (!existed && readErr == nil) {
+			errs = append(errs, fmt.Errorf("%w: %q changed after this run loaded it; its output was not copied back", ErrWorkspaceConflict, clean))
+			continue
+		}
 		if _, err := writeSandbox(ctx, dst, clean, string(b)); err != nil {
 			errs = append(errs, fmt.Errorf("%q was not kept: %w", clean, err))
 		}
 	}
 	for name := range loaded {
 		if !kept[name] {
+			current, err := dst.read(ctx, name)
+			if err != nil || sha256.Sum256(current) != loaded[name] {
+				errs = append(errs, fmt.Errorf("%w: %q changed after this run loaded it; it was not removed", ErrWorkspaceConflict, name))
+				continue
+			}
 			_ = dst.remove(name)
 		}
 	}

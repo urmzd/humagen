@@ -1,10 +1,13 @@
 import { defaultCopy } from "@humagen/components";
 import { Markdown } from "@humagen/primitives";
-import { ArtifactIcon, WebSurface } from "@humagen/render-web";
+import { ArtifactIcon, PencilIcon, WebSurface } from "@humagen/render-web";
 import { HumagenMark, Inspector } from "@humagen/web";
 import { useEffect, useRef, useState } from "react";
 import { ArtifactPromotion, type ArtifactPromotionAccess } from "./ArtifactPromotion.tsx";
+import { api } from "./api.ts";
+import { canEditArtifact, copyArtifactToWorkspace } from "./artifact-copy.ts";
 import type { FilePreview } from "./artifactPreview.ts";
+import { PersonMark } from "./PersonMark.tsx";
 import { type ArtifactTab, type ConversationView, href } from "./route.ts";
 import { appendPage, contentUrl, type Stored } from "./storage.ts";
 import { AgentMark, ago, button, Problem, SkeletonRows } from "./ui.tsx";
@@ -18,7 +21,7 @@ export function revisionPrompt(file: Stored, slide?: number): string {
     panel: "deliverables",
     artifact: file.id,
   });
-  return `@${file.agent} please revise [this artifact, v${file.version}${slide ? `, slide ${slide}` : ""}](${target}).${words.artifactReadSource(file.id, file.version)} Requested changes: `;
+  return `${file.agent ? `@${file.agent} please` : "Please"} revise [this artifact, v${file.version}${slide ? `, slide ${slide}` : ""}](${target}).${words.artifactReadSource(file.id, file.version)} Requested changes: `;
 }
 function ExportPDF({ file }: { file: Stored }) {
   const [busy, setBusy] = useState(false);
@@ -420,6 +423,7 @@ export function Deliverables({
   onView,
   onClose,
   onRevise,
+  onEditCopy,
   promotion,
 }: {
   open?: boolean;
@@ -428,6 +432,7 @@ export function Deliverables({
   onView: (view: ConversationView) => void;
   onClose: () => void;
   onRevise?: (file: Stored, slide?: number) => void;
+  onEditCopy?: (path: string) => void;
   promotion?: ArtifactPromotionAccess;
 }) {
   const [items, setItems] = useState<Stored[]>();
@@ -437,6 +442,11 @@ export function Deliverables({
   const [problem, setProblem] = useState<string>();
   const [next, setNext] = useState<string | null>(null);
   const [moreBusy, setMoreBusy] = useState(false);
+  const [mayEdit, setMayEdit] = useState(false);
+  const [copyBusy, setCopyBusy] = useState(false);
+  const [copyProblem, setCopyProblem] = useState<string>();
+  const copyRequest = useRef<AbortController | null>(null);
+  const editingEnabled = !!onEditCopy;
   const moreRequest = useRef<AbortController | null>(null);
   const selected = view.artifact;
   const tab = view.artifactTab ?? "preview";
@@ -450,6 +460,36 @@ export function Deliverables({
   const [slideCount, setSlideCount] = useState(0);
   const slide = Math.max(0, Math.min((view.slide ?? 1) - 1, Math.max(0, slideCount - 1)));
   const setSlide = (next: number) => onView({ ...view, slide: next + 1 });
+  useEffect(() => {
+    let live = true;
+    setMayEdit(false);
+    if (editingEnabled)
+      api.me().then(
+        (me) => {
+          if (live) setMayEdit(me.permissions.includes("runs:write"));
+        },
+        () => {},
+      );
+    return () => {
+      live = false;
+    };
+  }, [editingEnabled]);
+  const editCopy = async () => {
+    if (!file || !mayEdit || !onEditCopy || copyBusy) return;
+    const abort = new AbortController();
+    copyRequest.current = abort;
+    setCopyBusy(true);
+    setCopyProblem(undefined);
+    try {
+      const path = await copyArtifactToWorkspace(file, thread, abort.signal);
+      if (!abort.signal.aborted) onEditCopy(path);
+    } catch (error) {
+      if (!abort.signal.aborted)
+        setCopyProblem(error instanceof Error ? error.message : words.artifactCopyFailed);
+    } finally {
+      if (!abort.signal.aborted) setCopyBusy(false);
+    }
+  };
   useEffect(() => {
     const abort = new AbortController();
     setItems(undefined);
@@ -480,6 +520,8 @@ export function Deliverables({
     setVersionProblem(undefined);
     setProblem(undefined);
     setSlideCount(0);
+    setCopyProblem(undefined);
+    setCopyBusy(false);
     if (selected) {
       get<Stored>(at(selected), abort.signal)
         .then((value) => {
@@ -502,7 +544,10 @@ export function Deliverables({
           }
         });
     }
-    return () => abort.abort();
+    return () => {
+      abort.abort();
+      copyRequest.current?.abort();
+    };
   }, [thread, selected]);
   const more = async () => {
     if (!next || moreBusy) return;
@@ -551,8 +596,12 @@ export function Deliverables({
                   <h3 className="break-words font-semibold text-aui-base">{file.title}</h3>
                   <p className="mt-1 flex flex-wrap items-center gap-2 text-aui-xs text-aui-muted">
                     <span>v{file.version}</span>
-                    <AgentMark name={file.agent} size={12} />
-                    <span>{file.agent}</span>
+                    {file.agent ? (
+                      <AgentMark name={file.agent} size={12} />
+                    ) : (
+                      <PersonMark name={file.created_by} size={16} />
+                    )}
+                    <span>{file.agent || file.created_by}</span>
                     <time dateTime={file.created_at}>{ago(file.created_at)}</time>
                   </p>
                 </div>
@@ -565,6 +614,20 @@ export function Deliverables({
               >
                 Download Original
               </a>
+              {onEditCopy && mayEdit && canEditArtifact(file) && (
+                <div className="flex flex-col items-start gap-2">
+                  <button
+                    type="button"
+                    className={`${button} gap-2`}
+                    disabled={copyBusy}
+                    onClick={() => void editCopy()}
+                  >
+                    <PencilIcon size={14} />
+                    {copyBusy ? words.artifactCopyBusy : words.artifactEditCopy}
+                  </button>
+                  <Problem message={copyProblem ?? null} />
+                </div>
+              )}
               <ExportPDF key={`pdf:${file.id}`} file={file} />
               <div className="flex gap-4 border-aui-border border-b" aria-label="Artifact views">
                 {(["preview", "versions", "provenance"] as const).map((value) => (
@@ -615,10 +678,14 @@ export function Deliverables({
                 </>
               ) : (
                 <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-3 break-words text-aui-xs">
-                  <dt>Agent</dt>
-                  <dd>{file.agent}</dd>
-                  <dt>Run</dt>
-                  <dd>{file.run}</dd>
+                  <dt>{file.agent ? "Agent" : words.artifactCreatedBy}</dt>
+                  <dd>{file.agent || file.created_by}</dd>
+                  {file.run && (
+                    <>
+                      <dt>Run</dt>
+                      <dd>{file.run}</dd>
+                    </>
+                  )}
                   <dt>Conversation</dt>
                   <dd>{file.thread}</dd>
                   <dt>Created</dt>
@@ -689,7 +756,7 @@ export function Deliverables({
                         {item.title}
                       </strong>
                       <span className="mt-1 block text-aui-2xs text-aui-muted">
-                        v{item.version} {item.agent}
+                        v{item.version} {item.agent || item.created_by}
                       </span>
                     </span>
                     <span aria-hidden>›</span>

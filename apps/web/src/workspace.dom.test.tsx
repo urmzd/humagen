@@ -4,7 +4,7 @@ import { defaultCopy, TurnView } from "@humagen/components";
 import { ActionId, type Task, type Turn, type UiAction } from "@humagen/core";
 import { WebSurface } from "@humagen/render-web";
 import { AgentMessage, useQueue } from "@humagen/web";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { ArtifactPromotion } from "./ArtifactPromotion.tsx";
 import type { Thread } from "./api.ts";
@@ -249,6 +249,109 @@ test("the workbench opens an older saved version and sends that exact version fo
   assert.match(revisionPrompt(previous, 3), /v1, slide 3/);
   assert.match(revisionPrompt(previous, 3), /file_read path artifact:art-1@1/);
   assert.match(revisionPrompt(previous, 3), /\/conversations\/thread-1\/deliverables\/art-1/);
+});
+
+test("Edit a Copy saves the selected exact text version and opens it only after the workspace accepted it", async () => {
+  const content = "# Current brief\n\nThe decision is ready.";
+  let fail = true;
+  let complete: ((value: unknown) => void) | undefined;
+  const opened: string[] = [];
+  net = stubFetch({
+    "GET /api/me": () => ({ permissions: ["runs:read", "runs:write"] }),
+    "GET /api/artifacts": () => ({ artifacts: [saved], next: null }),
+    "GET /api/artifacts/art-2": () => saved,
+    "GET /api/artifacts/art-2/versions": () => ({ versions: [saved] }),
+    "GET /api/artifacts/art-2/content": () => new Response(content),
+    "PUT /api/threads/thread-1/files/content": (body) => {
+      const input = body as { path: string; content: string; revision: string };
+      assert.equal(input.content, content);
+      assert.equal(input.revision, "");
+      assert.match(input.path, /^copies\/[a-f0-9-]{36}\/Launch_brief\.md$/);
+      if (fail) return Response.json({ error: "A run is updating these files." }, { status: 409 });
+      return new Promise((resolve) => {
+        complete = resolve;
+      });
+    },
+  });
+  render(
+    <Deliverables
+      thread="thread-1"
+      view={{ artifact: saved.id }}
+      onView={() => {}}
+      onClose={() => {}}
+      onEditCopy={(path) => opened.push(path)}
+    />,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: words.artifactEditCopy }));
+  assert.ok(await screen.findByText("A run is updating these files."));
+  assert.deepEqual(opened, []);
+  fail = false;
+  fireEvent.click(screen.getByRole("button", { name: words.artifactEditCopy }));
+  await waitFor(() => assert.ok(complete));
+  assert.equal(
+    (screen.getByRole("button", { name: words.artifactCopyBusy }) as HTMLButtonElement).disabled,
+    true,
+  );
+  assert.deepEqual(opened, []);
+  complete?.({ revision: "saved-revision" });
+  await waitFor(() => assert.equal(opened.length, 1));
+  assert.match(opened[0] ?? "", /^copies\//);
+  assert.equal(saved.id, "art-2");
+  assert.equal(saved.version, 2);
+  assert.equal(
+    net.seen.some(
+      (request) => request.method !== "GET" && request.path.startsWith("/api/artifacts"),
+    ),
+    false,
+  );
+});
+
+test("read-only people cannot create editable artifact copies", async () => {
+  net = stubFetch({
+    "GET /api/me": () => ({ permissions: ["runs:read"] }),
+    "GET /api/artifacts": () => ({ artifacts: [saved], next: null }),
+    "GET /api/artifacts/art-2": () => saved,
+    "GET /api/artifacts/art-2/versions": () => ({ versions: [saved] }),
+    "GET /api/artifacts/art-2/content": () => new Response("# Saved brief"),
+  });
+  render(
+    <Deliverables
+      thread="thread-1"
+      view={{ artifact: saved.id }}
+      onView={() => {}}
+      onClose={() => {}}
+      onEditCopy={() => assert.fail("No copy may be created")}
+    />,
+  );
+  assert.ok(await screen.findByText("Saved brief"));
+  assert.equal(screen.queryByRole("button", { name: words.artifactEditCopy }), null);
+  assert.equal(
+    net.seen.some((request) => request.method === "PUT"),
+    false,
+  );
+});
+
+test("human-produced artifacts show their creator without an agent mark, run, or empty mention", async () => {
+  const human = { ...saved, agent: "", run: "", created_by: "ana" };
+  net = stubFetch({
+    "GET /api/artifacts": () => ({ artifacts: [human], next: null }),
+    "GET /api/artifacts/art-2": () => human,
+    "GET /api/artifacts/art-2/versions": () => ({ versions: [human] }),
+    "GET /api/artifacts/art-2/content": () => new Response("# Human brief"),
+  });
+  function HumanArtifact() {
+    const [view, setView] = useState<ConversationView>({ artifact: human.id });
+    return <Deliverables thread="thread-1" view={view} onView={setView} onClose={() => {}} />;
+  }
+  render(<HumanArtifact />);
+  assert.ok(await screen.findByText("Human brief"));
+  assert.ok(screen.getByText("ana"));
+  fireEvent.click(screen.getByRole("button", { name: words.artifactSources }));
+  assert.ok(screen.getByText(words.artifactCreatedBy));
+  assert.equal(screen.queryByText("Agent"), null);
+  assert.equal(screen.queryByText("Run"), null);
+  assert.match(revisionPrompt(human), /^Please revise /);
+  assert.doesNotMatch(revisionPrompt(human), /^@/);
 });
 
 test("an unavailable version history does not block the saved preview", async () => {

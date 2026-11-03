@@ -49,6 +49,7 @@ import {
   Presence,
   Problem,
 } from "./ui.tsx";
+import { WorkspaceFiles } from "./WorkspaceFiles.tsx";
 
 const words = defaultCopy.threads;
 
@@ -1089,6 +1090,25 @@ export function Chat({
           onClose={() => openPanel()}
         />
       )}
+      {threadId && (
+        <WorkspaceFiles
+          key={threadId}
+          thread={threadId}
+          open={shownView.panel === "workspace"}
+          view={shownView}
+          onView={(next) => openPanel("workspace", next)}
+          onClose={() => openPanel()}
+          onRequest={
+            canRun && !room?.thread.read_only
+              ? (text) => {
+                  setSeed({ text, mode: "prepend" });
+                  openPanel();
+                }
+              : undefined
+          }
+          onPublished={(artifact) => openPanel("deliverables", { artifact })}
+        />
+      )}
       <Presence when={shownView.panel === "deliverables"} ms={220}>
         {(leaving) => (
           <Deliverables
@@ -1105,6 +1125,7 @@ export function Chat({
             thread={threadId}
             view={shownView}
             onView={(next) => openPanel("deliverables", next)}
+            onEditCopy={(file) => openPanel("workspace", { file, workspaceTab: "edit" })}
             onClose={() => openPanel()}
             onRevise={
               canRun

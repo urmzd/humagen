@@ -2,6 +2,7 @@ import { defaultCopy } from "@humagen/components";
 import {
   ArtifactOpenContext,
   EllipsisIcon,
+  FolderIcon,
   LayersIcon,
   ProjectIcon,
   ShareIcon,
@@ -124,6 +125,17 @@ export function ConversationPage({
         }
         actions={
           <>
+            <button
+              type="button"
+              className={control}
+              aria-label={defaultCopy.workspaceFiles.title}
+              onClick={() => onPanel("workspace")}
+            >
+              <FolderIcon size={18} />
+              <span className="hidden @3xl/conversation:inline">
+                {defaultCopy.workspaceFiles.control}
+              </span>
+            </button>
             {/* One control for who is in it: Share where it can be shared, else People & Access. Both open the same panel. */}
             {personal && onProject ? (
               <button
@@ -135,7 +147,7 @@ export function ConversationPage({
               >
                 <Faces people={people} />
                 <ShareIcon size={18} />
-                <span className="hidden sm:inline">{defaultCopy.threads.share}</span>
+                <span className="hidden @3xl/conversation:inline">{defaultCopy.threads.share}</span>
               </button>
             ) : (
               <button
@@ -154,7 +166,7 @@ export function ConversationPage({
               onClick={() => onPanel("context")}
             >
               <LayersIcon size={18} />
-              <span className="hidden xl:inline">{words.context}</span>
+              <span className="hidden @3xl/conversation:inline">{words.context}</span>
             </button>
             <Popover
               label={words.settings}

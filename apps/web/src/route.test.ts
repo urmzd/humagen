@@ -20,6 +20,28 @@ test("every route survives a round trip through its address", () => {
     { page: "conversation", id: "t-1", panel: "activity" },
     { page: "conversation", id: "t-1", panel: "activity", run: "run/with spaces" },
     { page: "conversation", id: "t-1", panel: "deliverables" },
+    { page: "conversation", id: "t-1", panel: "workspace" },
+    {
+      page: "conversation",
+      id: "t-1",
+      panel: "workspace",
+      file: "src/a file.ts",
+      workspaceTab: "edit",
+    },
+    {
+      page: "conversation",
+      id: "t-1",
+      panel: "workspace",
+      file: "scratchpads/想法.md",
+      workspaceTab: "preview",
+    },
+    {
+      page: "conversation",
+      id: "t-1",
+      panel: "workspace",
+      file: "pr #42.diff",
+      workspaceTab: "changes",
+    },
     { page: "conversation", id: "t-1", panel: "deliverables", artifact: "art-1" },
     {
       page: "conversation",

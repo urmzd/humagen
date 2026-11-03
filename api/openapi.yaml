@@ -3844,6 +3844,117 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/threads/{id}/files:
+    get:
+      operationId: listWorkspaceFiles
+      tags: [threads]
+      summary: List conversation working files
+      x-permission: runs:read
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      responses:
+        "200":
+          description: List conversation working files.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WorkspaceFileList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/threads/{id}/files/content:
+    get:
+      operationId: readWorkspaceFile
+      tags: [threads]
+      summary: Read a conversation text file
+      x-permission: runs:read
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+        - {name: path, in: query, required: true, schema: {type: string, maxLength: 240}}
+      responses:
+        "200":
+          description: Read a conversation text file.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WorkspaceFileContent"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: writeWorkspaceFile
+      tags: [threads]
+      summary: Save a conversation text file at its current revision
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/WorkspaceFileWrite"}
+      responses:
+        "200":
+          description: Save a conversation text file at its current revision.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WorkspaceFileContent"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: deleteWorkspaceFile
+      tags: [threads]
+      summary: Delete a conversation file at its current revision
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+        - {name: path, in: query, required: true, schema: {type: string, maxLength: 240}}
+        - {name: revision, in: query, required: true, schema: {type: string, minLength: 64, maxLength: 64}}
+      responses:
+        "204":
+          description: Delete a conversation file at its current revision.
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/threads/{id}/files/publish:
+    post:
+      operationId: publishWorkspaceFile
+      tags: [threads]
+      summary: Publish an immutable version of a conversation file
+      x-permission: artifacts:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/WorkspaceFilePublish"}
+      responses:
+        "201":
+          description: Publish an immutable version of a conversation file.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Artifact"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/artifacts:
     get:
       operationId: listArtifacts
@@ -7567,6 +7678,45 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/Refusal"}
   schemas:
+    WorkspaceFile:
+      type: object
+      required: [path, size, revision]
+      properties:
+        path: {type: string, maxLength: 240}
+        size: {type: integer, minimum: 0, maximum: 2097152}
+        revision: {type: string, minLength: 64, maxLength: 64}
+    WorkspaceFileContent:
+      type: object
+      required: [path, content, revision]
+      properties:
+        path: {type: string, maxLength: 240}
+        content: {type: string, maxLength: 2097152}
+        revision: {type: string, minLength: 64, maxLength: 64}
+    WorkspaceFileList:
+      type: object
+      required: [files, writable, retention_days]
+      properties:
+        files: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/WorkspaceFile"}}
+        writable: {type: boolean}
+        reason: {type: string}
+        retention_days: {type: integer, const: 7}
+    WorkspaceFileWrite:
+      type: object
+      required: [path, content, revision]
+      properties:
+        path: {type: string, minLength: 1, maxLength: 240}
+        content: {type: string, maxLength: 2097152}
+        revision:
+          type: string
+          maxLength: 64
+          description: SHA-256 of the file read. Empty means create only. A stale revision returns 409.
+    WorkspaceFilePublish:
+      type: object
+      required: [path, revision]
+      properties:
+        path: {type: string, minLength: 1, maxLength: 240}
+        revision: {type: string, minLength: 64, maxLength: 64}
+        title: {type: string, maxLength: 120}
     HealthStatus:
       type: string
       enum: [operational, degraded, down]
@@ -9786,7 +9936,7 @@ components:
         reason: {type: string}
     PlacementPreview:
       type: object
-      required: [thread, project, channel, audience, runs, token, exclusions]
+      required: [thread, project, channel, audience, runs, workspace_files, token, exclusions]
       properties:
         summary_required:
           description: Raw private-source history cannot move; publish only a person-reviewed summary copy.
@@ -9796,6 +9946,7 @@ components:
         channel: {type: string}
         audience: {type: string}
         runs: {type: integer, minimum: 0}
+        workspace_files: {type: integer, minimum: 0, maximum: 200}
         token: {type: string}
         exclusions:
           type: array
