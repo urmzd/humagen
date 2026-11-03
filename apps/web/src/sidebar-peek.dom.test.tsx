@@ -7,7 +7,7 @@ import { unreadPrefs } from "./preferences.ts";
 import { HOLD_MS, PEEK_MS } from "./RowPreview.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 
-// DES-050: a sidebar row previews itself on hover, or on a long press.
+// DES-055: a sidebar row previews itself on hover, or on a long press.
 
 let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {

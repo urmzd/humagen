@@ -73,17 +73,17 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-044 | A conversation has a wave down its left edge to scan and scrub through its turns, and the keyboard opens and closes cleanly on a phone | Implemented: `TurnRail.tsx`, `Thread.tsx`, `Chat.tsx`, `Room.tsx`, `viewport.ts`; web tests pass (`wave.dom.test.tsx`, `pwa.test.ts`); screens pass at 390x844 and 1280x800; the keyboard on iOS needs a real device |
 | DES-045 | A phone reads like a native chat app: quiet message actions, a one-line chat bar and header, Chat and Work at the top of Home, a swipe from the edge for the drawer, and the installed app opening on Chat | Implemented: `theme.css`, `styles.css`, `Composer.tsx`, `ConversationShell.tsx`, `ModeSwitch.tsx`, `Sidebar.tsx`, `manifest.webmanifest`; web tests pass; screens pass at 390x844 and 1280x800 |
 | DES-046 | A structured review reads as a card with its evidence in place, the same in Slack | Implemented: core `readReview`, components `ReviewCard`, the `Review` primitive in render-web and render-slack, `GET /api/github/source`; core, Slack, web DOM and Go tests pass; `pnpm validate:slack` passes; `conversation-review-*` screens pass at phone and desktop |
-| DES-049 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row says its project, its age or an unread dot, and whether it waits on a person, runs or failed | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
-| DES-050 | A sidebar row previews itself on hover or a long press, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview`, `conversation-wave-preview`) at 390x844 and 1280x800 |
-| DES-053 | A one-time tip teaches search, dismissed once per person | Implemented: `Sidebar.tsx`, `POST /api/marks/tips`; DOM test and `sidebar-tip` screens pass |
 | DES-047 | Skills are slash commands, the only way the console offers them: `/` opens a menu of the skills a message here can name, fuzzy filtered with the match highlighted; `@` offers no skill or `@skill:`, `$` opens nothing, and a posted `$name` or `@skill:name` shows as a `/name` chip | Implemented: `commands.ts`, `tags.ts`, `Composer.tsx`, `ui.tsx` (`Mentioned`), `pkg/threads/tags.go`; web, threads and platform tests pass; `chat-at`, `chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection` screens at 390x844 and 1280x800 |
 | DES-048 | A turn reads as a transcript: words and runs of tool calls in the order they came, each run one line that names what it did, a file written opening in the Workspace, and the reader's messages on the right | Implemented: `packages/core/src/timeline.ts`, `packages/components/src/timeline.ts`, `WorkSteps.tsx`, `ToolLines` for Slack, `Room.tsx` message sides; core, components, adapter, render-slack and web DOM tests pass; `pnpm validate:slack` passes; screen `conversation-timeline` passes at 390x844 and 1280x800 |
+| DES-049 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row says its project, its age or an unread dot, and whether it waits on a person, runs or failed | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
 | DES-049 | A finished turn that changed files ends with a card of them: how many and their lines, a Review, and a row per file that opens its changes | Implemented: core `turnChanges`, web `TurnChanges`; core and web DOM tests pass; screen `conversation-timeline` passes at 390x844 and 1280x800 |
 | DES-050 | The Workspace is a pane of tabs beside the conversation: + opens items, tabs close, Expand and Show Two Tabs, tabs in the address, a full-screen sheet on a phone | Implemented: `Workspace.tsx`, `pane.ts`, `Inspector` `expanded`; web, pane and route tests pass; `workspace-pane-split`, `workspace-pane-expanded` and the other Workspace screens pass at 390x844 and 1280x800 |
 | DES-051 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
 | DES-052 | Conversation files, scratchpads, code editing, change review and artifact publication, in one Workspace panel opened from Conversation Settings beside a compact header | Implemented: `WorkspaceFiles.tsx`, `Workspace.tsx`, `ConversationShell.tsx`, `/api/threads/{id}/files`, `GET /api/threads/{id}/sandboxes`; web, route, Go race and confinement suites pass; `conversation-header`, `workspace-*` and `ide-*` screens pass at 390x844 and 1280x800 |
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
 | DES-054 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row says its project, its age or an unread dot, and whether it waits on a person, runs or failed | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
+| DES-055 | A sidebar row previews itself on hover or a long press, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview`, `conversation-wave-preview`) at 390x844 and 1280x800 |
+| DES-056 | A one-time tip teaches search, dismissed once per person | Implemented: `Sidebar.tsx`, `POST /api/marks/tips`; DOM test and `sidebar-tip` screens pass |
 
 ### DES-001: Working integrations
 
@@ -1407,7 +1407,7 @@ Evidence: `go test -race ./pkg/marks ./pkg/runs ./internal/httpapi` (`TestArchiv
 `sidebar-row-actions`, `sidebar-projects`, `sidebar-archived` and
 `sidebar-participants`.
 
-### DES-050: Previews of a conversation and of a turn
+### DES-055: Previews of a conversation and of a turn
 
 Owner request: a preview card when hovering a sidebar row (title, project,
 updated time), as Antigravity does, and on the conversation's turn rail, as
@@ -1434,7 +1434,7 @@ Evidence: `cd apps/web && pnpm test` (`peek.test.ts`,
 `sidebar-preview` (a hover on desktop, a held finger on a phone) and
 `conversation-wave-preview`.
 
-### DES-053: A one-time tip for search
+### DES-056: A one-time tip for search
 
 Owner request: a dismissible tip card for search across conversations, as
 Antigravity shows once.
@@ -1446,7 +1446,7 @@ Rules:
   controls.
 - It waits for the person's marks to be read, so a tip already dismissed
   never flashes in, and once dismissed it stays away on every device:
-  `POST /api/marks/tips` keeps the name in the person's marks (DES-049).
+  `POST /api/marks/tips` keeps the name in the person's marks (DES-054).
 
 Evidence: `sidebar-views.dom.test.tsx` (the tip test); `make screens` with
 `sidebar-tip`.

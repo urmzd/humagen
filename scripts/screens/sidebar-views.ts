@@ -109,7 +109,7 @@ export function sidebarViews(): Scene[] {
     after: release,
   });
   return [
-    // DES-053: the one-time search tip, before it is dismissed.
+    // DES-056: the one-time search tip, before it is dismissed.
     scene(
       "sidebar-tip",
       async (page) => {
@@ -121,7 +121,7 @@ export function sidebarViews(): Scene[] {
       },
       [],
     ),
-    // DES-050: a row's preview, on hover with a mouse and a long press on a phone.
+    // DES-055: a row's preview, on hover with a mouse and a long press on a phone.
     scene("sidebar-preview", async (page) => {
       const nav = await openSidebar(page);
       const row = nav.getByRole("list", { name: "Recents" }).locator("[data-thread-row]").nth(2);
@@ -185,7 +185,7 @@ export function sidebarViews(): Scene[] {
   ];
 }
 
-/** DES-050: the wave's preview of a turn carries its author's mark. */
+/** DES-055: the wave's preview of a turn carries its author's mark. */
 export function wavePreview(path: string): Scene {
   return {
     name: "conversation-wave-preview",
