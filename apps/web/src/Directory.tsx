@@ -197,6 +197,14 @@ function People() {
                 </span>
                 <span className="block truncate text-aui-xs text-aui-muted">
                   {words.handle(p.handle)} · {words.roles(p.roles)}
+                  {p.projects && p.projects.length > 0 && (
+                    <span className="ml-3">
+                      {words.personProjects(
+                        p.projects.map((proj) => proj.title || proj.name),
+                        p.projects_more ?? 0,
+                      )}
+                    </span>
+                  )}
                 </span>
               </span>
             </li>

@@ -71,6 +71,8 @@ const (
 	SignIn = "signin"
 	// Slack is a client mapping a Slack person to the person's subject.
 	Slack = "slack"
+	// GitHub is a client mapping a GitHub login to the person's subject.
+	GitHub = "github"
 	// Policy is the policy granting a role to the person's subject.
 	Policy = "policy"
 )
@@ -153,7 +155,7 @@ func ValidHandle(s string) bool { return validHandle.MatchString(s) }
 // IsReserved reports whether a handle is one no person can hold.
 func IsReserved(handle string) bool { return slices.Contains(Reserved, handle) }
 
-func validSource(s string) bool { return s == SignIn || s == Slack || s == Policy }
+func validSource(s string) bool { return s == SignIn || s == Slack || s == GitHub || s == Policy }
 
 func validSubject(s string) bool {
 	return s != "" && len(s) <= MaxSubject && utf8.ValidString(s) && !strings.ContainsFunc(s, unicode.IsControl)
