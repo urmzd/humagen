@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.69.0 (2026-11-03)
+
+### Breaking
+
+- depend on orchagent for flow, durable and sandbox (#181) ([4279a7c](https://github.com/urmzd/humagen/commit/4279a7cfd73a4fe05a5e5a77c687d87962b08c80))
+
+### Features
+
+- **console**: a three-dot More control after a page's primary action (#185) ([c550d73](https://github.com/urmzd/humagen/commit/c550d736889736172d8022082b6e542bb30fef36))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.68.0...v0.69.0)
+
+
 ## 0.68.0 (2026-11-01)
 
 ### Features
