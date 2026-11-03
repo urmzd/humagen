@@ -248,15 +248,26 @@ function RoomComposer({
   );
 }
 
-/** A person's message: who posted it, when, and what it says. */
+/**
+ * A person's message: who posted it, when, and what it says. The reader's own
+ * sit on the right as a compact bubble with no mark, as in any chat; everyone
+ * else's sit on the left under their mark and name. A message that follows
+ * one from the same person leaves the mark and name out.
+ */
 function MessageView({
   m,
   focused,
+  mine = false,
+  continued = false,
   onReply,
   actions,
 }: {
   m: ThreadMessage;
   focused: boolean;
+  /** Posted by the reader. */
+  mine?: boolean;
+  /** Follows a message from the same person. */
+  continued?: boolean;
   onReply?: () => void;
   actions?: ReactNode;
 }) {
@@ -264,37 +275,70 @@ function MessageView({
   useEffect(() => {
     if (focused) ref.current?.scrollIntoView({ block: "center" });
   }, [focused]);
+  const who = m.name || m.by;
+  const notes = (
+    <>
+      {m.surface_id && <span>{words.fromSlack}</span>}
+      {m.answers && <span>{words.answered}</span>}
+    </>
+  );
+  const row = (
+    <MessageActionRow
+      text={m.text}
+      copyLabel={defaultCopy.conversation.copyMessage}
+      onReply={onReply}
+    >
+      {actions}
+    </MessageActionRow>
+  );
+  if (mine)
+    return (
+      <article
+        ref={ref}
+        id={`message-${m.id}`}
+        data-turn-id={m.id}
+        data-side="mine"
+        aria-label={`Message from ${who}`}
+        tabIndex={-1}
+        className={`group/message flex flex-col items-end gap-0.5 rounded-aui ${continued ? "-mt-2" : ""} ${focused ? "outline-2 outline-offset-4 outline-aui-accent" : ""}`}
+      >
+        <p className="humagen-glass max-w-[85%] whitespace-pre-wrap break-words rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg sm:max-w-[70%]">
+          <Mentioned text={m.text} />
+        </p>
+        <p className="flex flex-wrap items-baseline justify-end gap-x-2 text-aui-2xs text-aui-muted">
+          {notes}
+          <MessageTime at={m.at} />
+        </p>
+        <div className="flex justify-end">{row}</div>
+      </article>
+    );
   return (
     <article
       ref={ref}
       id={`message-${m.id}`}
       data-turn-id={m.id}
-      aria-label={`Message from ${m.name || m.by}`}
+      data-side="theirs"
+      aria-label={`Message from ${who}`}
       // A tap focuses the message, which shows its actions (theme.css).
       tabIndex={-1}
-      className={`group/message flex gap-3 rounded-aui ${focused ? "outline-2 outline-offset-4 outline-aui-accent" : ""}`}
+      className={`group/message flex gap-3 rounded-aui ${continued ? "-mt-2" : ""} ${focused ? "outline-2 outline-offset-4 outline-aui-accent" : ""}`}
     >
-      <PersonMark name={m.name || m.by} />
+      {continued ? <span aria-hidden className="w-7 shrink-0" /> : <PersonMark name={who} />}
       <div className="min-w-0 flex-1">
-        <p className="flex flex-wrap items-baseline gap-x-2 text-aui-xs text-aui-muted">
-          <span className="font-medium text-aui-fg">{m.name || m.by}</span>
-          <MessageTime at={m.at} />
-          {m.surface_id && <span>{words.fromSlack}</span>}
-          {m.answers && <span>{words.answered}</span>}
-        </p>
+        {!continued && (
+          <p className="flex flex-wrap items-baseline gap-x-2 text-aui-xs text-aui-muted">
+            <span className="font-medium text-aui-fg">{who}</span>
+            <MessageTime at={m.at} />
+            {notes}
+          </p>
+        )}
         <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">
           <Mentioned
             text={m.text}
             skills={m.mentions.filter((t) => t.kind === "skill" && !t.refused).map((t) => t.name)}
           />
         </p>
-        <MessageActionRow
-          text={m.text}
-          copyLabel={defaultCopy.conversation.copyMessage}
-          onReply={onReply}
-        >
-          {actions}
-        </MessageActionRow>
+        {row}
       </div>
     </article>
   );
@@ -805,13 +849,15 @@ export function ThreadRoom({
                 {words.olderTurns}
               </button>
             )}
-            {turns.map((t) =>
+            {turns.map((t, i) =>
               t.announcement ? (
                 <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />
               ) : t.message ? (
                 <MessageView
                   key={t.message.id}
                   m={t.message}
+                  mine={t.message.by === me || (!!handle && t.message.by === handle)}
+                  continued={turns[i - 1]?.message?.by === t.message.by}
                   focused={focus === t.message.id}
                   actions={
                     posts && forkActions?.onFork ? (

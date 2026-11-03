@@ -1,138 +1,109 @@
-import { type Copy, defaultCopy, TaskList } from "@humagen/components";
-import type { Task, Thought, Turn } from "@humagen/core";
-import { ShimmerVerb } from "@humagen/render-web";
-import { type ReactNode, useState } from "react";
+import {
+  type Copy,
+  callLine,
+  clipTarget,
+  defaultCopy,
+  editCounts,
+  type LineKind,
+  lineKind,
+  TaskList,
+  toolsLine,
+} from "@humagen/components";
+import {
+  type FileEdit,
+  fileEdits,
+  formatArgs,
+  formatResult,
+  type Segment,
+  type Task,
+  type Thought,
+  type Turn,
+  timeline,
+  toolFailed,
+  toolTarget,
+} from "@humagen/core";
+import { ItemActionsContext, ShimmerVerb } from "@humagen/render-web";
+import {
+  createContext,
+  type MouseEvent,
+  type ReactNode,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
 
 /**
  * A turn as it happened: words, the steps taken between them, and the calls
- * made to other agents, in the order they came. Each step keeps the place in
- * the answer where it started (`Task.at`), so cutting the text at those
- * places puts every step back where it was.
+ * made to other agents, in the order they came (`timeline` in
+ * @humagen/core). Kept under its old name for callers of this package.
  */
-export type Block =
-  | { kind: "text"; key: string; text: string }
-  | { kind: "thought"; key: string; text: string; last: boolean }
-  | { kind: "steps"; key: string; tasks: Task[] }
-  | { kind: "call"; key: string; task: Task };
-
-type Placed =
-  | { at: number; seq: number; task: Task }
-  | { at: number; seq: number; thought: Thought; index: number };
+export type Block = Segment;
 
 export function interleave(
   text: string,
   tasks: readonly Task[],
   thoughts: readonly Thought[] = [],
 ): { blocks: Block[]; tail: string; rest: Block[] } {
-  const clamp = (n: number | undefined) => Math.min(Math.max(n ?? text.length, 0), text.length);
-  // At one place in the text, a thought that began after k steps comes
-  // before step k: seq orders them as they happened.
-  const placed: Placed[] = [
-    ...tasks.flatMap((task, i) =>
-      task.at === undefined ? [] : [{ at: clamp(task.at), seq: i * 2 + 1, task }],
-    ),
-    ...thoughts.map((thought, index) => ({
-      at: clamp(thought.at),
-      seq: thought.after * 2,
-      thought,
-      index,
-    })),
-  ].sort((a, b) => a.at - b.at || a.seq - b.seq);
-  const blocks: Block[] = [];
-  let cursor = 0;
-  for (const p of placed) {
-    if (p.at > cursor) {
-      const words = text.slice(cursor, p.at);
-      if (words.trim()) blocks.push({ kind: "text", key: `text-${cursor}`, text: words });
-      cursor = p.at;
-    }
-    if ("thought" in p) {
-      if (p.thought.text.trim())
-        blocks.push({
-          kind: "thought",
-          key: `thought-${p.index}`,
-          text: p.thought.text,
-          last: p.index === thoughts.length - 1,
-        });
-      continue;
-    }
-    const t = p.task;
-    const last = blocks[blocks.length - 1];
-    if (t.subagent) blocks.push({ kind: "call", key: t.id, task: t });
-    else if (last?.kind === "steps") last.tasks.push(t);
-    else blocks.push({ kind: "steps", key: t.id, tasks: [t] });
-  }
-  // A step recorded before steps had a place goes after the answer, as it did.
-  const rest: Block[] = [];
-  for (const t of tasks) {
-    if (t.at !== undefined) continue;
-    const last = rest[rest.length - 1];
-    if (t.subagent) rest.push({ kind: "call", key: t.id, task: t });
-    else if (last?.kind === "steps") last.tasks.push(t);
-    else rest.push({ kind: "steps", key: t.id, tasks: [t] });
-  }
-  return { blocks, tail: text.slice(cursor), rest };
+  const t = timeline({ text, tasks: [...tasks], thoughts: [...thoughts] });
+  return { blocks: t.segments, tail: t.tail, rest: t.rest };
 }
-
-export type StepKind = keyof Copy["conversation"]["stepWords"];
-
-/** What kind of thing a tool does, from its name. */
-export function stepKind(task: Pick<Task, "tool" | "title">): StepKind {
-  const name = `${task.tool ?? ""} ${task.title}`.toLowerCase();
-  if (/web|search|google|bing|query/.test(name)) return "search";
-  if (/fetch|http|url|browse|scrape/.test(name)) return "fetch";
-  if (/memory|recall|remember/.test(name)) return "memory";
-  if (/read|file|open|list|glob|grep|get|lookup|retriev|knowledge|source/.test(name)) return "read";
-  if (/run|exec|shell|bash|command|terminal|script/.test(name)) return "run";
-  if (/write|edit|create|update|publish|delete|post|send|comment/.test(name)) return "write";
-  return "tool";
-}
-
-/** The one thing a step was pointed at, when its arguments name one: a query, a URL, a path. */
-export function stepTarget(task: Pick<Task, "input">): string | undefined {
-  try {
-    const args = JSON.parse(task.input ?? "") as Record<string, unknown>;
-    for (const key of ["query", "q", "url", "path", "file", "command", "name"]) {
-      const v = args?.[key];
-      if (typeof v === "string" && v.trim()) return v.trim();
-    }
-  } catch {
-    // Arguments that are not JSON name nothing.
-  }
-  return undefined;
-}
-
-const live = (t: Task) => t.status === "in_progress" || t.status === "pending";
 
 /**
- * A run of steps as one line: what they did, in the order they did it
- * ("Read files, searched the web"). A lone step says what it was pointed at.
+ * Where a file an agent wrote opens: the conversation's Workspace at that
+ * file's changes. A host passes its own; the default reads the conversation
+ * from the address the reader is on and moves there in place, which the
+ * console's router follows (it listens for popstate).
  */
-export function stepsLine(tasks: readonly Task[], copy: Copy = defaultCopy): string {
-  const words = copy.conversation.stepWords;
-  const phrases: string[] = [];
-  for (const t of tasks) {
-    // A tool of no known kind is named by its own title, not "used a tool".
-    const kind = stepKind(t);
-    const w =
-      kind === "tool" && t.title
-        ? t.title.charAt(0).toLowerCase() + t.title.slice(1)
-        : words[kind][live(t) ? "live" : "done"];
-    if (!phrases.includes(w)) phrases.push(w);
-  }
-  const only = tasks.length === 1 ? tasks[0] : undefined;
-  const target = only && !live(only) ? stepTarget(only) : undefined;
-  const kind = only && stepKind(only);
-  const line =
-    only && kind && kind !== "tool" && target ? words[kind].one(target) : phrases.join(", ");
-  return line.charAt(0).toUpperCase() + line.slice(1);
+export interface FileLinks {
+  href: (path: string) => string | undefined;
+  open?: (path: string) => void;
 }
 
-const icons: Record<StepKind, ReactNode> = {
+/** The Workspace address of a file in a conversation, at its Changes tab. */
+export function workspaceFileHref(conversation: string, path: string): string {
+  const q = new URLSearchParams({ file: path, tab: "changes" });
+  return `/conversations/${encodeURIComponent(conversation)}/workspace?${q}`;
+}
+
+function conversationHere(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const m = /^\/conversations\/([^/?#]+)/.exec(window.location.pathname);
+  return m?.[1] ? decodeURIComponent(m[1]) : undefined;
+}
+
+const addressLinks: FileLinks = {
+  href: (path) => {
+    const id = conversationHere();
+    return id ? workspaceFileHref(id, path) : undefined;
+  },
+  open: (path) => {
+    const id = conversationHere();
+    if (!id) return;
+    try {
+      window.history.pushState(null, "", workspaceFileHref(id, path));
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    } catch {
+      window.location.assign(workspaceFileHref(id, path));
+    }
+  },
+};
+
+export const FileLinkContext = createContext<FileLinks>(addressLinks);
+
+/** A plain click opens in place; a modified one is left to the browser (a new tab). */
+function onOpen(links: FileLinks, path: string) {
+  return (e: MouseEvent<HTMLAnchorElement>) => {
+    if (!links.open || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    links.open(path);
+  };
+}
+
+const icons: Record<LineKind | "file", ReactNode> = {
   search: (
     <>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
     </>
   ),
   fetch: (
@@ -141,18 +112,30 @@ const icons: Record<StepKind, ReactNode> = {
       <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
     </>
   ),
-  read: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
+  read: (
+    <>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5" />
+    </>
+  ),
+  lookup: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
   memory: (
     <path d="M12 5a3 3 0 0 0-5.9.8A3 3 0 0 0 4 11a3 3 0 0 0 2 5.7A3 3 0 0 0 12 19m0-14a3 3 0 0 1 5.9.8A3 3 0 0 1 20 11a3 3 0 0 1-2 5.7A3 3 0 0 1 12 19m0-14v14" />
   ),
   run: <path d="M4 17l6-5-6-5M12 19h8" />,
   write: <path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4" />,
+  file: (
+    <>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5M9 15l2 2 4-4" />
+    </>
+  ),
   tool: (
     <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z" />
   ),
 };
 
-function StepIcon({ kind }: { kind: StepKind }) {
+function StepIcon({ kind }: { kind: LineKind | "file" }) {
   return (
     <svg
       aria-hidden="true"
@@ -166,16 +149,205 @@ function StepIcon({ kind }: { kind: StepKind }) {
       strokeLinecap="round"
       strokeLinejoin="round"
       className="shrink-0"
+      data-kind={kind}
     >
       {icons[kind]}
     </svg>
   );
 }
 
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      width={12}
+      height={12}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      className={`shrink-0 transition-transform motion-reduce:transition-none ${open ? "rotate-90" : ""}`}
+    >
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+}
+
+/** Lines added and removed, the added in the good tone: "+17 -2". */
+function Counts({ edit }: { edit: Pick<FileEdit, "added" | "removed" | "change"> }) {
+  const [added, removed] = editCounts(edit).split(" ");
+  return (
+    <span className="shrink-0 font-mono text-aui-2xs tabular-nums">
+      <span className="text-aui-ok">{added}</span>
+      {removed && <span className="ml-1 text-aui-muted">{removed}</span>}
+    </span>
+  );
+}
+
+const live = (t: Task) => t.status === "in_progress" || t.status === "pending";
+
+function duration(ms?: number): string | undefined {
+  // Under a tenth of a second is no time worth reading.
+  if (ms === undefined || !Number.isFinite(ms) || ms < 100) return undefined;
+  if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`;
+  const s = ms / 1000;
+  return s < 60
+    ? `${s < 10 ? s.toFixed(1) : Math.round(s)}s`
+    : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
+}
+
+const PREVIEW_CHARS = 600;
+const PREVIEW_LINES = 10;
+
+/** A block of quiet monospace text, cut to a preview with Show more. */
+function Quiet({ label, text, copy }: { label: string; text: string; copy: Copy }) {
+  const [all, setAll] = useState(false);
+  const cut = useMemo(() => {
+    const byLines = text.split("\n").slice(0, PREVIEW_LINES).join("\n");
+    const short = byLines.length > PREVIEW_CHARS ? byLines.slice(0, PREVIEW_CHARS) : byLines;
+    return short.length < text.length ? `${short.trimEnd()}…` : undefined;
+  }, [text]);
+  return (
+    <div className="min-w-0">
+      <p className="text-aui-2xs text-aui-muted">{label}</p>
+      <pre
+        className="mt-0.5 max-h-96 min-w-0 overflow-auto whitespace-pre-wrap break-words rounded-aui-sm bg-aui-hover px-2.5 py-1.5 font-mono text-aui-2xs text-aui-fg/85"
+        data-testid="tool-block"
+      >
+        {all || !cut ? text : cut}
+      </pre>
+      {cut && (
+        <button
+          type="button"
+          onClick={() => setAll(!all)}
+          className="mt-0.5 rounded-aui-sm text-aui-2xs text-aui-muted underline-offset-2 hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+        >
+          {all ? copy.conversation.toolLine.showLess : copy.conversation.toolLine.showMore}
+        </button>
+      )}
+    </div>
+  );
+}
+
+const rowClass =
+  "group/row flex min-h-7 pointer-coarse:min-h-11 w-full min-w-0 items-center gap-2 rounded-aui-sm px-1 text-left text-aui-muted text-aui-sm hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
+
 /**
- * Steps taken between two parts of an answer, as one quiet line with an icon.
- * Open, it lists each step with what it was given and what it returned. A
- * step waiting on a person or one that failed keeps the group open.
+ * One tool call as a compact row: an icon for its kind, what it was, and the
+ * command or target in quiet monospace. A row for a file opens the file in
+ * the Workspace; any other row opens to the call's arguments and result.
+ */
+function ToolRow({
+  turn,
+  task,
+  edit,
+  copy,
+}: {
+  turn: Turn;
+  task: Task;
+  edit?: FileEdit;
+  copy: Copy;
+}) {
+  const links = useContext(FileLinkContext);
+  const itemActions = useContext(ItemActionsContext);
+  const [open, setOpen] = useState(false);
+  const w = copy.conversation.toolLine;
+  const failed = toolFailed(task);
+  const running = live(task);
+  const target = edit ? undefined : toolTarget(task);
+  const label = edit ? callLine(task, edit, copy) : task.title;
+  const href = edit ? links.href(edit.path) : undefined;
+  const took = duration(task.durationMs);
+  const args = formatArgs(task);
+  const result = formatResult(task.output);
+  const detailId = `tool-${turn.id}-${task.id}`;
+  const status = (
+    <>
+      {task.status === "waiting" && <span className="shrink-0 text-aui-accent">{w.waiting}</span>}
+      {failed && <span className="shrink-0 text-aui-muted">{w.failed(1)}</span>}
+      {took && !running && (
+        <span className="ml-auto shrink-0 text-aui-2xs text-aui-muted tabular-nums">{took}</span>
+      )}
+    </>
+  );
+  const body = (
+    <>
+      <StepIcon kind={edit ? "file" : lineKind(task)} />
+      <span className="shrink-0 truncate text-aui-fg/90">
+        {running ? <ShimmerVerb>{label}</ShimmerVerb> : label}
+      </span>
+      {edit && <Counts edit={edit} />}
+      {target && (
+        <span className="min-w-0 flex-1 truncate font-mono text-aui-2xs text-aui-muted">
+          {clipTarget(target, 200)}
+        </span>
+      )}
+      {!target && <span className="flex-1" />}
+      {status}
+    </>
+  );
+  return (
+    <li className="min-w-0" data-testid="tool-row" data-tool={task.tool}>
+      <div className="flex min-w-0 items-center">
+        {href && edit ? (
+          <a
+            href={href}
+            onClick={onOpen(links, edit.path)}
+            aria-label={w.openFile(edit.path)}
+            className={rowClass}
+          >
+            {body}
+          </a>
+        ) : (
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={detailId}
+            onClick={() => setOpen(!open)}
+            className={rowClass}
+          >
+            {body}
+          </button>
+        )}
+        {href && (
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={detailId}
+            aria-label={w.details(label)}
+            onClick={() => setOpen(!open)}
+            className="flex size-7 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-aui-sm text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+          >
+            <Chevron open={open} />
+          </button>
+        )}
+        {itemActions && (
+          <span className="shrink-0 opacity-0 group-hover/message:opacity-100 focus-within:opacity-100">
+            {itemActions({ kind: "task", turn, task })}
+          </span>
+        )}
+      </div>
+      {open && (
+        <div id={detailId} className="mt-1 mb-2 ml-6 flex min-w-0 flex-col gap-2">
+          {args && <Quiet label={w.arguments} text={args} copy={copy} />}
+          {result ? (
+            <Quiet label={w.result} text={result} copy={copy} />
+          ) : (
+            !running && <p className="text-aui-2xs text-aui-muted">{w.noResult}</p>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+/**
+ * Steps taken between two parts of an answer, as one quiet line. Open, it
+ * lists each call as a row. A run that wrote one file is that file: the line
+ * opens it in the Workspace, and the chevron beside it lists the calls. A
+ * step waiting on a person keeps the run open; a failed one is counted in the
+ * line, in the same quiet tone, since nobody needs to act on it.
  */
 export function StepGroup({
   turn,
@@ -186,37 +358,81 @@ export function StepGroup({
   tasks: Task[];
   copy?: Copy;
 }) {
-  const attention = tasks.some((t) => t.status === "waiting" || t.status === "error");
-  const [open, setOpen] = useState<boolean | null>(null);
-  const shown = open ?? attention;
-  const running = tasks.some(live);
-  const failed = tasks.filter((t) => t.status === "error").length;
+  const links = useContext(FileLinkContext);
   const waiting = tasks.some((t) => t.status === "waiting");
+  const [open, setOpen] = useState<boolean | null>(null);
+  const shown = open ?? waiting;
+  const edits = useMemo(() => fileEdits(turn.tasks), [turn.tasks]);
+  const line = useMemo(() => toolsLine(tasks, copy, edits), [tasks, copy, edits]);
+  const w = copy.conversation.toolLine;
   const first = tasks[0];
-  const line = stepsLine(tasks, copy);
+  const kind = line.file ? "file" : first ? lineKind(first) : "tool";
+  // Calls waiting on a person, or with their own controls or sources, keep the full task row.
+  const full = (t: Task) =>
+    t.status === "waiting" || t.interruptId !== undefined || (t.sources?.length ?? 0) > 0;
+  const href = line.file ? links.href(line.file.path) : undefined;
+  const text = (
+    <>
+      <StepIcon kind={kind} />
+      <span className="min-w-0 truncate">
+        {line.running ? <ShimmerVerb>{line.text}</ShimmerVerb> : line.text}
+      </span>
+      {line.counts && !line.running && line.file && <Counts edit={line.file} />}
+      {line.waiting && <span className="shrink-0 text-aui-accent">{w.waiting}</span>}
+      {line.failed > 0 && (
+        <span className="shrink-0 text-aui-muted">· {w.failed(line.failed)}</span>
+      )}
+    </>
+  );
+  const lineClass =
+    "flex max-w-full min-w-0 pointer-coarse:min-h-11 items-center gap-2 rounded-aui-sm px-1 py-0.5 text-left text-aui-muted text-aui-sm hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
   return (
     <div className="min-w-0" data-testid="step-group">
-      <button
-        type="button"
-        aria-expanded={shown}
-        onClick={() => setOpen(!shown)}
-        className="group -mx-1 flex max-w-full min-w-0 pointer-coarse:min-h-11 items-center gap-2 rounded-aui-sm px-1 py-0.5 text-left text-aui-muted text-aui-sm hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-      >
-        {first && <StepIcon kind={stepKind(first)} />}
-        <span className="min-w-0 truncate">
-          {running ? <ShimmerVerb>{line}</ShimmerVerb> : line}
-        </span>
-        {waiting && (
-          <span className="shrink-0 text-aui-accent">{copy.conversation.stepNeedsYou}</span>
+      <div className="-mx-1 flex min-w-0 items-center gap-0.5">
+        {href && line.file ? (
+          <a
+            href={href}
+            onClick={onOpen(links, line.file.path)}
+            className={lineClass}
+            aria-label={w.openFile(line.file.path)}
+          >
+            {text}
+          </a>
+        ) : (
+          <button
+            type="button"
+            aria-expanded={shown}
+            onClick={() => setOpen(!shown)}
+            className={lineClass}
+          >
+            {text}
+            <Chevron open={shown} />
+          </button>
         )}
-        {failed > 0 && (
-          <span className="shrink-0 text-aui-bad">{copy.conversation.stepFailed(failed)}</span>
+        {href && (
+          <button
+            type="button"
+            aria-expanded={shown}
+            aria-label={w.details(line.text)}
+            onClick={() => setOpen(!shown)}
+            className="flex size-6 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-aui-sm text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+          >
+            <Chevron open={shown} />
+          </button>
         )}
-      </button>
+      </div>
       {shown && (
-        <div className="mt-1 ml-[0.4375rem] flex min-w-0 flex-col border-aui-border border-l pl-3">
-          <TaskList turn={{ ...turn, planTitle: undefined, tasks }} copy={copy} />
-        </div>
+        <ul className="mt-0.5 ml-[0.4375rem] flex min-w-0 flex-col border-aui-border border-l pl-2">
+          {tasks.map((t) =>
+            full(t) ? (
+              <li key={t.id} className="min-w-0">
+                <TaskList turn={{ ...turn, planTitle: undefined, tasks: [t] }} copy={copy} />
+              </li>
+            ) : (
+              <ToolRow key={t.id} turn={turn} task={t} edit={edits.get(t.id)} copy={copy} />
+            ),
+          )}
+        </ul>
       )}
     </div>
   );
