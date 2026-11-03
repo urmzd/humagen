@@ -48,6 +48,7 @@ import (
 	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
@@ -968,6 +969,7 @@ func (c *contract) settled(tok, id string) reply {
 func TestResponsesMatchTheSpec(t *testing.T) {
 	// An agent on the "anthropic" provider asks a person, so a run can park on
 	// a question here. Every other agent is offline.
+	sourceFake := github.NewFake()
 	f := newFixtureWith(t, platform.Config{AgentOptions: []native.Option{
 		native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
@@ -994,8 +996,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 			{Tenant: "acme", Connector: catalog.Connector{Name: "broken", System: "bigquery", Owner: "catalog-owner"}, Crawler: contractWarehouse{fail: true}},
 			{Tenant: "acme", Connector: catalog.Connector{Name: "live-only", System: "bigquery", Owner: "catalog-owner"}, Querier: contractWarehouse{}},
 		},
+		GitHubAPI: func(string) github.API { return sourceFake },
 	})
 	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
+	contractSource(t, f, c, sourceFake)
 	acme, globex := f.machine(t, "acme", everything...), f.machine(t, "globex", everything...)
 	auditAdmin := f.person(t, "acme", "audit-admin", "Audit admin", "humagen-admins")
 	// The catalog: its owner crawls, publishes and withdraws a connector.

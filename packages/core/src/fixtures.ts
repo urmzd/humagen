@@ -1731,3 +1731,89 @@ export const homes: Record<
     links: [],
   },
 };
+
+/** A structured review an agent answered with (`humagen.github.review.v1`), fenced as models do. */
+export const reviewReportJSON = JSON.stringify(
+  {
+    format: "humagen.github.review.v1",
+    summary:
+      "Adds horizontal scaling for clients by seating webhook clients on every replica and leasing Socket Mode apps with Postgres advisory locks. Reviewed SHA 316c56f81540c3eaca02184173df322a48aebdd9.",
+    comments: [
+      "Concurrency tests cover the change counter and multi-replica leases.",
+      "CI for the reviewed SHA passed; no load test was run.",
+    ],
+    findings: [
+      {
+        severity: "error",
+        title: "Lease is released before the socket closes",
+        suggestion:
+          "Close the Socket Mode connection, then release the advisory lock, so two replicas never hold the same app.",
+        evidence: [
+          {
+            observation: "`unlock` runs in a defer registered before `conn.Close`.",
+            source:
+              "https://github.com/urmzd/humagen/blob/316c56f81540c3eaca02184173df322a48aebdd9/internal/app/slack.go#L298-L304",
+          },
+        ],
+        prompt: "Show the order of unlock and close in the lease loop and propose the fix.",
+      },
+      {
+        severity: "warning",
+        title: "Refresh gap is fixed at 250ms",
+        suggestion: "Make the gap a spec field with 250ms as its default.",
+        evidence: [
+          {
+            observation: "An unknown webhook triggers a sync at most once every 250ms.",
+            source:
+              "https://github.com/urmzd/humagen/blob/316c56f81540c3eaca02184173df322a48aebdd9/internal/platform/client_sync.go#L30",
+          },
+          {
+            observation: "The race test passes with the fixed gap.",
+            source: "go test -race ./internal/platform -run TestClientSync",
+          },
+        ],
+        prompt: "How does the 250ms refresh gap behave under a burst of unknown webhooks?",
+      },
+      {
+        severity: "info",
+        title: "Generation tracking is race-safe",
+        suggestion: "Keep the compare-and-set on the generation counter.",
+        evidence: [
+          {
+            observation: "`seen` only advances when it was exactly n-1.",
+            source:
+              "https://github.com/urmzd/humagen/blob/316c56f81540c3eaca02184173df322a48aebdd9/pkg/clients/generations.go#L52",
+          },
+        ],
+        prompt: "Explain why the generation counter cannot skip a change.",
+      },
+    ],
+    related: [
+      {
+        title: "PostgreSQL advisory locks",
+        url: "https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS",
+      },
+    ],
+  },
+  null,
+  2,
+);
+
+export const reviewTurn: Turn = {
+  ...doneTurn,
+  id: "turn-review",
+  agent: { name: "github-agent" },
+  tasks: [],
+  citations: [],
+  text: `\`\`\`json\n${reviewReportJSON}\n\`\`\``,
+  source: { label: "urmzd/humagen#212", url: "https://github.com/urmzd/humagen/pull/212" },
+};
+
+/** The same review still arriving: its summary has come, its findings have not. */
+export const reviewStreamingTurn: Turn = {
+  ...reviewTurn,
+  id: "turn-review-streaming",
+  status: "working",
+  durationMs: undefined,
+  text: reviewReportJSON.slice(0, reviewReportJSON.indexOf('"comments"')),
+};

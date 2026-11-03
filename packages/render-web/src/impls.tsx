@@ -37,6 +37,7 @@ import {
 } from "./icons";
 import { SuppressContext, timeLeft, useNow, useTurnMeta } from "./meta";
 import { RequestBubble } from "./request";
+import { Review } from "./review";
 
 export { SuppressContext } from "./meta";
 
@@ -645,4 +646,5 @@ export const webImpls: PrimitiveImpls = {
   Tiles,
   Amount,
   Request: RequestBubble,
+  Review,
 };

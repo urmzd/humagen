@@ -88,6 +88,9 @@ type seat struct {
 	peer   Peer
 	// verifier is nil for a Connection, which verifies inside its handler.
 	verifier verifier
+	// files reads source at a commit for the console (GitHubSource). Nil
+	// for a surface with no files.
+	files sourceReader
 
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -105,6 +108,8 @@ type surface struct {
 	// ctx and publish are set while Ingest runs.
 	ctx     context.Context
 	publish connector.Publish
+	// sources are files read at a commit for GitHubSource.
+	sources sourceFiles
 }
 
 var (

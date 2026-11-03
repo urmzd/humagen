@@ -184,6 +184,7 @@ import type {
   SkillUsage,
   SnoozeInboxMessageBody,
   SourceDependencies,
+  SourceExcerpt,
   SourceLinkResource,
   SourceLinkRule,
   SourceLinkRuleInput,
@@ -2256,6 +2257,39 @@ agents answering the next message are sent.
     return this.rawRequest<Note>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The lines an evidence permalink points at, with context around them, read through a GitHub client of the caller's workspace so its token stays on the server. A client may read repositories its owners include or its read_repositories name. Any other file, or one GitHub does not give, answers 404. All four of repo, sha, file and start are required. */
+  async getGitHubSource(file: string, repo?: string, sha?: string, start?: number, end?: number, context?: number, options?: RequestOptions): Promise<SourceExcerpt> {
+    let path = "/api/github/source";
+    const _q = new URLSearchParams();
+    if (repo !== undefined && repo !== null) _q.set("repo", String(repo));
+    if (sha !== undefined && sha !== null) _q.set("sha", String(sha));
+    if (file !== undefined && file !== null) _q.set("file", String(file));
+    if (start !== undefined && start !== null) _q.set("start", String(start));
+    if (end !== undefined && end !== null) _q.set("end", String(end));
+    if (context !== undefined && context !== null) _q.set("context", String(context));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<SourceExcerpt>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getGitHubSourceRaw(file: string, repo?: string, sha?: string, start?: number, end?: number, context?: number, options?: RequestOptions): Promise<ApiResponse<SourceExcerpt>> {
+    let path = "/api/github/source";
+    const _q = new URLSearchParams();
+    if (repo !== undefined && repo !== null) _q.set("repo", String(repo));
+    if (sha !== undefined && sha !== null) _q.set("sha", String(sha));
+    if (file !== undefined && file !== null) _q.set("file", String(file));
+    if (start !== undefined && start !== null) _q.set("start", String(start));
+    if (end !== undefined && end !== null) _q.set("end", String(end));
+    if (context !== undefined && context !== null) _q.set("context", String(context));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<SourceExcerpt>("GET", path, {
       ...options,
     });
   }
@@ -5752,9 +5786,10 @@ platform file sets.
   }
 
   /** A skill is named instructions an agent can be told to use: a person
-writes `$<name>`, or `@skill:<name>`, in a message, and the runs the
-message starts are given the skill's instructions as part of the
-turn. A message posted in a project can name the skills its project
+writes `$<name>`, `@skill:<name>` or, in a message posted through the
+API or the console, the slash command `/<name>` at the start of the
+message or after a space, and the runs the message starts are given
+the skill's instructions as part of the turn. A message posted in a project can name the skills its project
 declares, then each project's above it, nearest first: `offered`,
 each name once, from the nearest project that declares it, at most
 128. A sibling's or a sub-project's are never offered. They are fixed
@@ -6016,7 +6051,7 @@ an announcement in this project is 404.
 
   /** The project's own skills first, then each project's above it, nearest
 first, each name once, at most 128, without their instructions: what
-the console completes after `$`. A project the caller cannot see
+the console offers after `/`. A project the caller cannot see
 answers 404, as one that does not exist.
  */
   async listSkills(project?: string, options?: RequestOptions): Promise<ListSkillsResponse> {

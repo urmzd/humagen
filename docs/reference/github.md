@@ -135,6 +135,31 @@ Structured output is held while the run streams, then rendered in its existing
 comment. Lifecycle-only routes also render the final report. Ordinary Markdown
 answers retain their streaming behavior.
 
+### Reviews in the console and Slack
+
+The console and the Slack app read the same report and draw it as a review
+card: the pull request and the reviewed commit, the summary, severity counts
+computed by the client, findings grouped by severity with their evidence, notes
+and related links. The same checks apply: a report the formatter would reject
+is shown as the text it was. While a review streams, the card shows its summary
+once it has arrived; Slack holds the JSON back and posts the card when the run
+ends. In the console, **Ask Follow-up** puts `@<agent> <prompt>` in the message
+box without sending it, and **Copy as Markdown** copies the client-side
+equivalent of the comment the GitHub sink posts. In Slack, each follow-up is
+shown as words to ask with.
+
+Evidence that is a permalink to lines at a full commit SHA
+(`https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<a>-L<b>`) reads as
+`path:a-b`. In the console it opens the cited lines in place, with three lines
+of context, line numbers and a link to GitHub. The lines come from
+`GET /api/github/source` (`runs:read`), which reads the file at that commit
+through a GitHub client of the caller's workspace, so the client's token never
+reaches the browser. A client reads repositories its owners include or its
+`read_repositories` name; any other repository, another workspace's, or a file
+the commit lacks answers 404. One request shows at most 200 lines and 20 lines
+of context, from a file of at most 256,000 bytes of UTF-8 text, and files read
+at a commit are kept, 64 at most, since they never change.
+
 ## Check progress
 
 Set `HUMAGEN_GITHUB_CHECKS=true` with a GitHub App token that has Checks write

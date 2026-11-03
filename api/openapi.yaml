@@ -2073,6 +2073,41 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '500': {$ref: '#/components/responses/ServerError'}
+  /api/github/source:
+    get:
+      operationId: getGitHubSource
+      tags: [runs]
+      summary: Read lines of a file at a commit, for a review's evidence
+      description: >-
+        The lines an evidence permalink points at, with context around them,
+        read through a GitHub client of the caller's workspace so its token
+        stays on the server. A client may read repositories its owners include
+        or its read_repositories name. Any other file, or one GitHub does not
+        give, answers 404. All four of repo, sha, file and start are required.
+      x-permission: runs:read
+      parameters:
+        - {name: repo, in: query, schema: {type: string}, description: "owner/name."}
+        - {name: sha, in: query, schema: {type: string}, description: The full commit SHA.}
+        - {name: file, in: query, required: true, schema: {type: string}, description: The file's path in the repository.}
+        - {name: start, in: query, schema: {type: integer, minimum: 1}, description: The first line asked for.}
+        - {name: end, in: query, schema: {type: integer, minimum: 1}, description: "The last line asked for, at most 200 lines after start. Defaults to start."}
+        - {name: context, in: query, schema: {type: integer, minimum: 0, maximum: 20, default: 3}, description: Lines to add before and after.}
+      responses:
+        "200":
+          description: The lines.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SourceExcerpt"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+        "502":
+          description: GitHub did not give the file as text.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
   /api/runs/{id}:
     get:
       operationId: getRun
@@ -6255,9 +6290,10 @@ paths:
       summary: Read the skills a project declares, and what a message posted in it can name
       description: |
         A skill is named instructions an agent can be told to use: a person
-        writes `$<name>`, or `@skill:<name>`, in a message, and the runs the
-        message starts are given the skill's instructions as part of the
-        turn. A message posted in a project can name the skills its project
+        writes `$<name>`, `@skill:<name>` or, in a message posted through the
+        API or the console, the slash command `/<name>` at the start of the
+        message or after a space, and the runs the message starts are given
+        the skill's instructions as part of the turn. A message posted in a project can name the skills its project
         declares, then each project's above it, nearest first: `offered`,
         each name once, from the nearest project that declares it, at most
         128. A sibling's or a sub-project's are never offered. They are fixed
@@ -6567,7 +6603,7 @@ paths:
       description: |
         The project's own skills first, then each project's above it, nearest
         first, each name once, at most 128, without their instructions: what
-        the console completes after `$`. A project the caller cannot see
+        the console offers after `/`. A project the caller cannot see
         answers 404, as one that does not exist.
       x-permission: projects:read
       parameters:
@@ -7888,7 +7924,7 @@ components:
         - type: object
           required: [installed]
           properties:
-            installed: {type: boolean, description: The tree was installed into the run's instance; false in an unisolated deployment, where memory reaches the run only through its context.}
+            installed: {type: boolean, description: "The tree was installed into the run's instance; false in an unisolated deployment, where memory reaches the run only through its context."}
             version: {type: integer, minimum: 0}
             finished: {type: boolean}
             committed: {type: integer, minimum: 0}
@@ -7963,16 +7999,16 @@ components:
       type: object
       required: [name, content]
       properties:
-        name: {type: string, minLength: 1, maxLength: 320, description: 1 to 80 printable characters without a slash, unique in the conversation in any case.}
+        name: {type: string, minLength: 1, maxLength: 320, description: "1 to 80 printable characters without a slash, unique in the conversation in any case."}
         content: {type: string, maxLength: 262144}
-        version: {type: integer, minimum: 1, description: The version read. Required to change a scratchpad; a stale one returns 409.}
+        version: {type: integer, minimum: 1, description: "The version read. Required to change a scratchpad; a stale one returns 409."}
     SandboxFile:
       type: object
       required: [path, size]
       properties:
         path: {type: string, maxLength: 512}
         size: {type: integer, minimum: 0}
-        revision: {type: string, maxLength: 64, description: SHA-256 of the content the run left; absent when it removed the file.}
+        revision: {type: string, maxLength: 64, description: "SHA-256 of the content the run left; absent when it removed the file."}
         removed: {type: boolean}
     RunSandboxRecord:
       description: What a run left in its conversation's files, and the copyback changes refused because someone else changed the file first.
@@ -7995,7 +8031,7 @@ components:
       type: object
       required: [isolated, files, bytes, retention_days, writable]
       properties:
-        isolated: {type: boolean, description: Runs lease an instance of their own; false means tools work in the session directory on the host.}
+        isolated: {type: boolean, description: "Runs lease an instance of their own; false means tools work in the session directory on the host."}
         files: {type: integer, minimum: 0, maximum: 200}
         bytes: {type: integer, minimum: 0}
         retention_days: {type: integer, const: 7}
@@ -8062,6 +8098,20 @@ components:
         path: {type: string, minLength: 1, maxLength: 240}
         revision: {type: string, minLength: 64, maxLength: 64}
         title: {type: string, maxLength: 120}
+    SourceExcerpt:
+      type: object
+      description: Lines of one file at one commit, numbered from first.
+      required: [repo, sha, path, first, start, end, total, lines, url]
+      properties:
+        repo: {type: string, description: owner/name.}
+        sha: {type: string}
+        path: {type: string}
+        first: {type: integer, description: The number of the first line in lines.}
+        start: {type: integer, description: The first line asked for.}
+        end: {type: integer, description: "The last line asked for, within the file."}
+        total: {type: integer, description: How many lines the file has.}
+        lines: {type: array, items: {type: string}}
+        url: {type: string, description: The lines on GitHub.}
     HealthStatus:
       type: string
       enum: [operational, degraded, down]
@@ -10063,8 +10113,8 @@ components:
       properties:
         kind:
           description: |
-            `agent`, `person` and `sme` as tagged; `skill` for `$<name>` and
-            `@skill:<name>`, which the runs the message starts are told to
+            `agent`, `person` and `sme` as tagged; `skill` for `$<name>`,
+            `@skill:<name>` and a slash command `/<name>`, which the runs the message starts are told to
             use; `role` for the people holding a role, through a mention kind
             that resolves roles. A mention kind the workspace declares is
             recorded as what it resolves to.
@@ -11001,7 +11051,7 @@ components:
         skills:
           description: |
             Named instructions a message posted here and below can tell an
-            agent to use, by writing `$<name>`, without their instructions,
+            agent to use, by writing `$<name>` or `/<name>`, without their instructions,
             which `GET /api/projects/{name}/skills` reads. Set with `PUT
             /api/projects/{name}/skills`. Absent when it declares none. A
             change in the project's history records them the same way.

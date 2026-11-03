@@ -54,4 +54,5 @@ await loadTests([
   "/src/conversation-sources.dom.test.tsx",
   "/src/outcome-actions.dom.test.tsx",
   "/src/mobile.dom.test.tsx",
+  "/src/slash-commands.dom.test.tsx",
 ]);

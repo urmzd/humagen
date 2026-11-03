@@ -286,7 +286,10 @@ function MessageView({
           {m.answers && <span>{words.answered}</span>}
         </p>
         <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">
-          <Mentioned text={m.text} />
+          <Mentioned
+            text={m.text}
+            skills={m.mentions.filter((t) => t.kind === "skill" && !t.refused).map((t) => t.name)}
+          />
         </p>
         <MessageActionRow
           text={m.text}
@@ -648,6 +651,11 @@ export function ThreadRoom({
 
   const onAction = (a: UiAction) => {
     if (a.id === ActionId.openRun) return openPanel("activity", { run: a.payload.target });
+    // A review's Ask Follow-up puts its words, tagging the agent, in the box. Nothing is sent.
+    if (a.id === ActionId.reviewFollowUp) {
+      if (posts && a.payload.text) setSeed({ text: `${a.payload.text} `, mode: "prepend" });
+      return;
+    }
     if (!isAnswer(a)) return;
     const answer = answerOfAction(a);
     if (!answer) return;
@@ -954,7 +962,7 @@ export function ThreadRoom({
                     skills={tags.skills}
                     skillsFailed={tags.skillsFailed}
                     onSkill={(name) => {
-                      setSeed({ text: `$${name} `, mode: "prepend" });
+                      setSeed({ text: `/${name} `, mode: "prepend" });
                     }}
                     selection={selection}
                     onChange={select}
@@ -1275,7 +1283,7 @@ export function ChannelPage({
                 skills={tags.skills}
                 skillsFailed={tags.skillsFailed}
                 onSkill={(name) => {
-                  setSeed({ text: `$${name} `, mode: "prepend" });
+                  setSeed({ text: `/${name} `, mode: "prepend" });
                 }}
                 selection={{ project, channel }}
                 onChange={() => {}}

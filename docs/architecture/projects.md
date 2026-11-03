@@ -331,12 +331,21 @@ One grammar, parsed by the platform for every surface (`pkg/threads`):
 | `@<agent>` | that agent answers. It must be available in the thread's project |
 | `@<handle>` | that person is notified: their inbox, and Slack when a client maps them |
 | `@sme` or `@sme:<topic>` | retired; no run or notification is created, and the person is directed to Find Help |
-| `$<skill>` or `@skill:<skill>` | the agents the message starts are told to use that skill (see [Skills](#skills)) |
+| `$<skill>`, `/<skill>` or `@skill:<skill>` | the agents the message starts are told to use that skill (see [Skills](#skills)) |
 | `@<kind>:<name>` | an item of a mention kind the workspace declares, resolved as the kind says (see [Mention kinds](#mention-kinds)) |
 | `<@U…>` (Slack only) | the Slack person, mapped to a subject through the client's `slack.people` |
 
 A `$` is a skill only when a skill's whole name follows it, so `$5`, `$PATH`
-and `$my_var` stay text. A skill nobody on the project's chain declares
+and `$my_var` stay text. A `/` is a skill, as a slash command, only in a
+message posted through the API or the console, at the start of the message or
+after a space, before a skill's whole name that ends the word, and only when
+that skill is on the chain: `/tmp/x`, `1/2`, `and/or` and a `/` that names no
+skill stay text and refuse nothing. The console offers only `/`; `$<skill>`
+and `@skill:<skill>` are quiet aliases it still reads, so older messages,
+Slack and GitHub text and agents' instructions keep working, and it shows
+them as `/name`. At most 10 names after a `/` that are no
+skill are looked up; any after are text. A Slack or GitHub message reads a
+`/` only as one of its client's commands (see [Skills](#skills)). A skill nobody on the project's chain declares
 refuses a message typed in the console with 400 "there is no skill called
 ...", before anything is posted; a message Slack or GitHub posted is there
 already, so it is kept and the skill is refused, saying why. At most 4 skills
@@ -450,7 +459,8 @@ a skill package, and the tests hold the two to saige's parser.
   posted in a project can name the skills its project declares, then each
   ancestor's, nearest first, each name once from the nearest project that
   declares it, at most 128. A sibling's or a child's are never offered.
-- **A person names one** with `$<name>` or `@skill:<name>`. Every run the
+- **A person names one** with `$<name>`, `@skill:<name>` or, in the
+  console, the slash command `/<name>`. Every run the
   message starts is told to use it: when the message is accepted,
   `answerMessage` pins each skill's instructions into the run's tag as
   `_warp.skills`, a private key fiber keeps out of every prompt and record, so
@@ -1496,7 +1506,7 @@ kept with the run whatever the selection becomes, and absent otherwise.
 |---|---|---|
 | `GET /api/projects/{name}/skills` | `projects:read` | `{version, skills: [{name, description, argument_hint?, instructions}] (<= 32), offered: [{name, description, argument_hint, from}] (<= 128)}`: what the project declares, and what a message posted there can name, nearest first |
 | `PUT /api/projects/{name}/skills` | `projects:write` | `{version, skills}`; owner, `projects:govern` for the workspace and company projects (403); a name twice or a field past its bound is 400; 409 stale version or skills the file declares |
-| `GET /api/skills` | `projects:read` | `?project=` (`~` or left out for the workspace) → `{skills: [{name, description, argument_hint, from}]}` (<= 128), what the console completes after `$`, without instructions. A project the caller cannot see is 404 |
+| `GET /api/skills` | `projects:read` | `?project=` (`~` or left out for the workspace) → `{skills: [{name, description, argument_hint, from}]}` (<= 128), what the console offers after `/`, without instructions. A project the caller cannot see is 404 |
 | `GET /api/mentions` | `projects:read` | `?project=` → `{kinds: [{kind, title, resolves}]}`, the built-in `sme` and `skill` first. With `&kind=K&q=prefix` → `{items: [{name, description?}]}` (<= 20) by name, the items whose name starts with `q`, ignoring case. A kind the workspace does not have, or a project the caller cannot see, is 404; `q` without `kind` is 400; people complete only with `people:read` |
 | `POST /api/threads`, `POST /api/threads/{id}/messages` | `runs:write` | a skill nobody on the chain declares is 400 "there is no skill called ..." before anything is posted, in the console; a console message that names a skill and tags no agent asks the agents, and each that joins is told the skill; a client's message is answered by its default with the skill |
 
@@ -1698,11 +1708,21 @@ An unknown tab falls back to the default through `pick`. Names never hold
     "Private" in words;
   - one chat bar, the same as Home's, with completion: `@` over available
     agents (AgentMark), people (never the person typing) and the
-    mention kinds (`@sme:`, `@skill:`, read from `GET /api/mentions`),
-    which complete further to their items (`GET /api/mentions?kind=`); `$`
-    over the project's skills (`GET /api/skills`). Tab or Enter picks the
+    mention kinds that name people or roles (read from `GET /api/mentions`),
+    which complete further to their items (`GET /api/mentions?kind=`); never
+    a skill, nor `@skill:` or another kind over skills. Tab or Enter picks the
     highlighted item, the arrow keys move, Escape closes. Each kind keeps a
-    place in the list's eight;
+    place in the list's eight. `$` opens nothing;
+  - `/` at the start of the message or after a space opens the command
+    menu over the project's skills (`GET /api/skills`), the only way the
+    console offers them: each row `/name`, its description and the
+    kind (Skill), filtered as the name is typed, closest name first, then by
+    description, the matched letters highlighted. A skill the message already
+    names, or every other once it names 4, is greyed with the reason and
+    cannot be picked. A pick writes `/name `, drawn in the box as a token, and
+    the message is sent as its text. The + menu's Skills write `/name ` too.
+    A posted message shows each skill it names as a `/name` chip, whether it
+    was written `/name`, `$name` or `@skill:name` (DES-047);
   - the + button (or Ctrl+/) opens a menu: Attach Files; Agents, a
     searchable list with AgentMark colors of the agents available in the
     project, several of which can be checked (arrows move, Space checks,

@@ -72,12 +72,11 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-043 | The brand's colors edge the page round its corners and glow round the chat bar, turning while a reply is in flight | Implemented: `styles.css`, `Composer.tsx`; web tests pass; screens pass light and dark at 1280x800 and 390x844 |
 | DES-044 | A conversation has a wave down its left edge to scan and scrub through its turns, and the keyboard opens and closes cleanly on a phone | Implemented: `TurnRail.tsx`, `Thread.tsx`, `Chat.tsx`, `Room.tsx`, `viewport.ts`; web tests pass (`wave.dom.test.tsx`, `pwa.test.ts`); screens pass at 390x844 and 1280x800; the keyboard on iOS needs a real device |
 | DES-045 | A phone reads like a native chat app: quiet message actions, a one-line chat bar and header, Chat and Work at the top of Home, a swipe from the edge for the drawer, and the installed app opening on Chat | Implemented: `theme.css`, `styles.css`, `Composer.tsx`, `ConversationShell.tsx`, `ModeSwitch.tsx`, `Sidebar.tsx`, `manifest.webmanifest`; web tests pass; screens pass at 390x844 and 1280x800 |
-| DES-046 | Conversation files, scratchpads, code editing, change review and artifact publication | Implemented; 739 console tests, Go race/confinement suites, client checks and 27 responsive browser captures pass |
-| DES-051 | Save a message, a review, a scratchpad or a file as a versioned artifact; diff artifact versions and a file's saved and edited state, side by side on a desktop and one column on a phone | Implemented: `SaveAsArtifact.tsx`, `POST /api/threads/{id}/artifacts`, `ArtifactCompare`, `ChangeReview` layout and pins; web, Go and contract tests pass; `workspace-diff` and `workspace-save-message` screens pass at 390x844 and 1280x800 |
+| DES-046 | A structured review reads as a card with its evidence in place, the same in Slack | Implemented: core `readReview`, components `ReviewCard`, the `Review` primitive in render-web and render-slack, `GET /api/github/source`; core, Slack, web DOM and Go tests pass; `pnpm validate:slack` passes; `conversation-review-*` screens pass at phone and desktop |
+| DES-047 | Skills are slash commands, the only way the console offers them: `/` opens a menu of the skills a message here can name, fuzzy filtered with the match highlighted; `@` offers no skill or `@skill:`, `$` opens nothing, and a posted `$name` or `@skill:name` shows as a `/name` chip | Implemented: `commands.ts`, `tags.ts`, `Composer.tsx`, `ui.tsx` (`Mentioned`), `pkg/threads/tags.go`; web, threads and platform tests pass; `chat-at`, `chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection` screens at 390x844 and 1280x800 |
 | DES-050 | The Workspace is a pane of tabs beside the conversation: + opens items, tabs close, Expand and Show Two Tabs, tabs in the address, a full-screen sheet on a phone | Implemented: `Workspace.tsx`, `pane.ts`, `Inspector` `expanded`; web, pane and route tests pass; `workspace-pane-split`, `workspace-pane-expanded` and the other Workspace screens pass at 390x844 and 1280x800 |
-| DES-049 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
-| DES-048 | A conversation has named scratchpads: create, rename, delete and edit, read by its agents | Implemented: `Scratchpads.tsx`, `pkg/scratchpads`, `/api/threads/{id}/scratchpads`; web, route and Go tests pass; `workspace-scratchpads` screens pass at 390x844 and 1280x800 |
-| DES-047 | One Workspace panel for a conversation's items, opened from Conversation Settings; a compact header keeps only who is in it, Share and Conversation Settings | Implemented: `Workspace.tsx`, `ConversationShell.tsx`, `GET /api/threads/{id}/sandboxes`; web, route and Go tests pass; `conversation-header` and `workspace-*` screens pass at 390x844 and 1280x800 |
+| DES-051 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
+| DES-052 | Conversation files, scratchpads, code editing, change review and artifact publication, in one Workspace panel opened from Conversation Settings beside a compact header | Implemented: `WorkspaceFiles.tsx`, `Workspace.tsx`, `ConversationShell.tsx`, `/api/threads/{id}/files`, `GET /api/threads/{id}/sandboxes`; web, route, Go race and confinement suites pass; `conversation-header`, `workspace-*` and `ide-*` screens pass at 390x844 and 1280x800 |
 
 ### DES-001: Working integrations
 
@@ -178,7 +177,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
   fixed header/account geometry and independent content scroll in Chromium at
   phone and desktop widths. Long content is inserted only for the layout test.
 
-### DES-046: Conversation file workbench
+### DES-052: Conversation files, scratchpads and the Workspace
 
 - Give conversation files, scratchpads, previews and change review one native
   workbench with direct header access and reloadable selections.
@@ -206,7 +205,28 @@ planned collections, browser, protocol and improvement work from this UI pass.
   reports zero issues; console, renderer, web and client typechecks and the
   production console build pass.
 
-### DES-047: One Workspace panel
+#### Save as Artifact and diffs
+
+- A message (a structured review kept as its JSON), a scratchpad or a file
+  saves as a versioned artifact and opens in a Workspace tab. Artifact
+  versions and a file's saved and edited state diff side by side on a
+  desktop and in one column on a phone, with review findings pinned to
+  their lines.
+- Evidence: `TestSaveAsArtifactKeepsAnswersMessagesAndScratchpadsAsVersions`,
+  `TestAStructuredReviewIsToldFromText`, the HTTP contract,
+  `artifact-save.dom.test.tsx`, `review-pins.test.ts`, `code-diff.test.ts`,
+  and the `workspace-diff` and `workspace-save-message` screens.
+
+#### Scratchpads
+
+- A conversation has up to 50 named scratchpads, created, renamed, deleted
+  and edited in the Workspace, read by its agents as `scratch:<name>`.
+- Evidence: `pkg/scratchpads` store tests (versions, names, bounds, tenant
+  and conversation isolation, deletion with the conversation), platform and
+  HTTP contract and confinement tests, `scratchpads.dom.test.tsx` and the
+  `workspace-scratchpads` screens.
+
+#### One Workspace panel
 
 - Files, Context and Activity leave the conversation header for Conversation
   Settings. The header keeps the people facepile, Share and Conversation
@@ -1200,3 +1220,92 @@ Rules:
   to the swipe.
 - The installed app opens on `/`, the new conversation. Notifications stays
   a shortcut.
+
+### DES-046: A structured review reads as a card
+
+Owner request: an agent's `humagen.github.review.v1` answer showed in the
+console as raw JSON, and its evidence links were bare URLs. Only the GitHub
+sink turned it into Markdown.
+
+Rules:
+
+- An answer that is a valid report (the GitHub formatter's checks) is a card:
+  the pull request and the reviewed commit, the summary, counts per severity
+  computed by the client, findings grouped as errors, warnings and info, each
+  with its suggestion, evidence and follow-up, then notes and related links.
+  Anything else, including a report that does not parse once the run ends,
+  is the text it was.
+- While a review streams, the card shows its summary once it has arrived and
+  holds still. Slack holds the JSON back and posts the card at the end.
+- **Ask Follow-up** puts `@<agent> <prompt>` in the composer through the
+  mention seed the composer already takes, and sends nothing. Where the reader
+  may not ask the agent, and on Slack, the prompt is shown as words.
+- **Copy as Markdown** copies the layout the GitHub sink posts, computed in
+  the client, since the API does not expose the formatter's output. The answer's
+  Copy as menu does the same for a review.
+- Evidence pinned to lines at a full commit SHA reads as `path:a-b` and opens
+  those lines in place with context, line numbers, simple highlighting and
+  Open on GitHub, read through `GET /api/github/source` with the token kept on
+  the server (docs/reference/github.md#reviews-in-the-console-and-slack).
+
+Evidence: `cd packages/core && pnpm test` (`review.test.ts`: fenced,
+unfenced, streaming and invalid reports, sources, commit and pull request);
+`cd packages/render-slack && pnpm test` (`review.test.tsx`); `cd apps/web &&
+pnpm test` (`chat.dom.test.tsx` review tests, `copyas.test.ts`); `go test
+-race ./internal/platform ./internal/httpapi -run GitHubSource`; `pnpm
+validate:slack`; `make screens` with `conversation-review-card`,
+`conversation-review-follow-up` and `conversation-review-source`.
+
+### DES-047: Skills are slash commands
+
+Owner request: invoke skills the way Copilot does, with `/` in the composer,
+in place of remembering `$name`; then make `/` the only way skills are
+offered, with no `@skill` and no `$` menu.
+
+Rules:
+
+- `/` at the start of a message or after a space opens the command menu.
+  It lists the skills a message here can name, from `GET /api/skills`. A
+  slash inside a word, a path, a URL or code opens nothing.
+- `/` is the only way the console offers a skill. `@` offers agents,
+  people and mention kinds over people or roles: never a skill, never
+  `@skill:` or another kind that resolves to skills. `$` opens nothing.
+  The + menu's Skills write `/name `.
+- Each row is `/name`, the skill's one-line description and, on the right,
+  its kind (Skill). Typing filters the list: a name that starts with the
+  query first, then one with a word that does, then one that holds it, then
+  one with its letters in order, then a description that holds it. The
+  matched letters are highlighted in the name and the description.
+- The arrow keys move, Enter or Tab picks, Esc closes, and a tap picks on a
+  phone. A command that cannot be picked here is greyed with the reason in
+  place of its description and the highlight skips it: a skill the message
+  already names ("Already in this message"), and every other once the
+  message names 4 (`threads.MaxSkills`).
+- A pick writes `/name ` into the box, drawn as a token behind its words.
+  The message is sent as its text. The platform reads `/name` as a skill in
+  a message posted through the API or the console, at the start or after a
+  space, before a skill's whole name that is on the chain. Anything else
+  after a `/` is text and refuses nothing.
+- `$name` and `@skill:name` stay quiet aliases on the server, so older
+  messages, Slack and GitHub text and agents' instructions keep working. A
+  posted message in the console shows each skill it names as a `/name`
+  chip, however it was written. Slack and GitHub read a `/` only as one of
+  their client's commands.
+- No built-in commands. `/new` would need the conversation's navigation and
+  `/review <PR URL>` an agent name that differs per workspace, so neither
+  maps cleanly to existing behavior yet. The kind label is there for them.
+- Acceptance: typing `/rev` lists `/review` then `/security-review` with
+  `rev` highlighted; Enter leaves `/review ` in the box as a token; sending
+  `/review the launch` pins the review skill on the runs it starts; typing
+  `@` lists no skill and `$` opens nothing; a posted `$review` reads
+  `/review`.
+
+Evidence: `cd apps/web && pnpm test` (`commands.test.ts` for matching,
+greying, tokens and chips; `tags.test.ts` for `@` without skills;
+`slash-commands.dom.test.tsx`, `chat.dom.test.tsx` and `room.dom.test.tsx`
+for the menu, keys, tap, greyed rows, `$` and `@`, the + menu's pick, chips
+and the posted text); `go test -race ./pkg/threads ./internal/platform`
+(`TestASlashCommandNamesASkill`, `TestSlashCommandsCostBoundedLookups`,
+`TestASlashCommandIsPinnedAsItsSkill`, `TestASlackCommandNamedForASkillUsesIt`,
+`TestSkillsAndMentionKinds` for the aliases); `make screens` with `chat-at`,
+`chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection`.
