@@ -827,6 +827,14 @@ export function Sidebar({
       active: hub === "operations",
       group: "operations",
     },
+    {
+      to: { page: "automations" },
+      label: defaultCopy.automations.title,
+      icon: <SlidersIcon />,
+      show: can("schedules:read") || can("clients:read"),
+      active: here("automations"),
+      group: "operations",
+    },
   ];
 
   // Archived here is the reader's own: the conversation leaves their lists

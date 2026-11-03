@@ -71,6 +71,9 @@ func agentsNamed(c clients.Client) []string {
 		out = append(out, c.Bots[ext])
 	}
 	if c.GitHub != nil {
+		for _, rule := range c.GitHub.Automations {
+			out = append(out, rule.Agent)
+		}
 		for _, repo := range slices.Sorted(maps.Keys(c.GitHub.AutoLabels)) {
 			labels := c.GitHub.AutoLabels[repo]
 			for _, label := range slices.Sorted(maps.Keys(labels)) {
@@ -100,6 +103,12 @@ func (s *Seer) Client(c clients.Client) clients.Client {
 	c.Bots = s.shownMap(c.Bots)
 	if c.GitHub != nil {
 		g := *c.GitHub
+		g.Automations = nil
+		for _, rule := range c.GitHub.Automations {
+			if s.Agent(rule.Agent) {
+				g.Automations = append(g.Automations, rule)
+			}
+		}
 		g.AutoLabels = nil
 		for repo, labels := range c.GitHub.AutoLabels {
 			if shown := s.shownMap(labels); len(shown) > 0 {
@@ -204,6 +213,17 @@ func (p *Platform) ClientWrittenBy(ctx context.Context, who auth.Principal, old 
 		}
 	}
 	if old.GitHub != nil {
+		for _, rule := range old.GitHub.Automations {
+			owner, _, _ := strings.Cut(rule.Repository, "/")
+			if !shown(rule.Agent) && c.Serves(owner) {
+				if c.GitHub == nil {
+					c.GitHub = &clients.GitHubOptions{}
+				}
+				if !slices.ContainsFunc(c.GitHub.Automations, func(a clients.GitHubAutomation) bool { return a.Name == rule.Name }) {
+					c.GitHub.Automations = append(c.GitHub.Automations, rule)
+				}
+			}
+		}
 		for repo, labels := range old.GitHub.AutoLabels {
 			if owner, _, _ := strings.Cut(repo, "/"); !c.Serves(owner) {
 				continue

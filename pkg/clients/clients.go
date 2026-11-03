@@ -214,8 +214,21 @@ func (c Client) ActsFor(machine, user string) (string, bool) {
 }
 
 // GitHubOptions are the options of a GitHub client.
+type GitHubAutomation struct {
+	Name         string `json:"name"`
+	Repository   string `json:"repository"`
+	Event        string `json:"event"`
+	Action       string `json:"action"`
+	Conclusion   string `json:"conclusion,omitempty"`
+	Label        string `json:"label,omitempty"`
+	Agent        string `json:"agent"`
+	Instructions string `json:"instructions"`
+	Paused       bool   `json:"paused"`
+}
+
 type GitHubOptions struct {
-	People map[string]string `json:"people,omitempty"`
+	Automations []GitHubAutomation `json:"automations,omitempty"`
+	People      map[string]string  `json:"people,omitempty"`
 	// AutoLabels maps "owner/repo" to label to agent.
 	AutoLabels map[string]map[string]string `json:"auto_labels,omitempty"`
 	Checks     bool                         `json:"checks,omitempty"`
@@ -498,6 +511,29 @@ func (c Client) validateGitHub() error {
 		return nil
 	}
 	g := c.GitHub
+	if len(g.Automations) > 50 {
+		return bad("a client has at most 50 automations")
+	}
+	names := map[string]bool{}
+	for _, a := range g.Automations {
+		owner, _, _ := strings.Cut(a.Repository, "/")
+		if !repoPattern.MatchString(a.Repository) || !c.Serves(owner) || !c.Routes(a.Agent) {
+			return bad("automation repository and agent must belong to this client")
+		}
+		if strings.TrimSpace(a.Name) == "" || len(a.Name) > 64 || names[a.Name] || strings.TrimSpace(a.Instructions) == "" || len(a.Instructions) > 16000 {
+			return bad("automations need unique bounded names and instructions")
+		}
+		names[a.Name] = true
+		if a.Event != "check_run" && a.Event != "issues" && a.Event != "pull_request" && a.Event != "push" {
+			return bad("unsupported automation event")
+		}
+		if a.Action == "" && a.Event != "push" {
+			return bad("an automation needs an action")
+		}
+		if len(a.Action) > 64 || len(a.Conclusion) > 64 || len(a.Label) > 128 {
+			return bad("automation conditions are too long")
+		}
+	}
 	if len(g.ReadRepositories) > maxRepos || len(g.AutoLabels) > maxRepos {
 		return bad("a client names at most %d repositories", maxRepos)
 	}
@@ -573,6 +609,7 @@ func (c Client) clone() Client {
 	}
 	if c.GitHub != nil {
 		g := *c.GitHub
+		g.Automations = slices.Clone(g.Automations)
 		if g.People != nil {
 			g.People = map[string]string{}
 			for k, v := range c.GitHub.People {

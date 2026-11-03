@@ -37,6 +37,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, chromium, type Page } from "playwright-core";
 import { defaultCopy } from "../../packages/components/src/copy.ts";
+import { automationScreens } from "./automations.ts";
 import { collect, DESKTOP, judge, LANDSCAPE, PHONE, type Problem, type Rules } from "./checks.ts";
 import { conversationDeletions } from "./deletions.ts";
 import { emailScreens, notificationEmailFixture } from "./email.ts";
@@ -1388,6 +1389,7 @@ function screens(ids: Ids, call: Call): Screen[] {
     ...ideScreens(call),
     ...libraryScreens(call),
     ...workspaceScreens(call),
+    ...automationScreens(),
     ...reviewScreens(call),
     ...usageScreens(),
     ...emailScreens(call),

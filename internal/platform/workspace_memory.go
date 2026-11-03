@@ -110,7 +110,7 @@ func (p *Platform) ConversationMemories(ctx context.Context, who auth.Principal,
 	heads := map[string]MemoryTreeView{}
 	view := func(t drive.Tree, dir string, readOnly bool) MemoryTreeView {
 		if v, ok := heads[t.Key()]; ok {
-			v.Dir, v.ReadOnly = dir, readOnly
+			v.Dir, v.ReadOnly = "/"+dir, readOnly
 			return v
 		}
 		v := MemoryTreeView{Kind: string(t.Kind), Project: t.Project, Agent: t.Agent, Self: t.Kind == drive.PersonKind, Dir: "/" + dir, ReadOnly: readOnly}
