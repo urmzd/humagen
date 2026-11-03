@@ -77,3 +77,4 @@ export const Prompt = primitive("Prompt");
 export const Tiles = primitive("Tiles");
 export const Amount = primitive("Amount");
 export const Request = primitive("Request");
+export const Review = primitive("Review");

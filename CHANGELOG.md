@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.70.0 (2026-11-03)
+
+### Features
+
+- **console**: structured reviews read as a card, with cited code in place (#184) ([49e8b93](https://github.com/urmzd/humagen/commit/49e8b938028c298676004905cd3956ecc4fc47df))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.69.0...v0.70.0)
+
+
 ## 0.68.0 (2026-11-01)
 
 ### Features

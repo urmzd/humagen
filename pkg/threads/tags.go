@@ -21,7 +21,7 @@ const (
 	// SMEName is @sme, and @sme:<topic>: the project's experts.
 	SMEName = "sme"
 	// SkillName is the built-in mention kind @skill:<name>, which is
-	// $<name>.
+	// $<name> and /<name>.
 	SkillName = "skill"
 )
 
@@ -83,17 +83,32 @@ type Lookups interface {
 	MentionKind(kind string) (resolves string, ok bool)
 }
 
+// Slashes is what a Resolver may say besides: whether /<name> names a skill
+// where the message is posted. The console's composer writes slash commands;
+// a client's surface has commands of its own, so a Resolver that is not a
+// Slashes, or says false, reads a / as text.
+type Slashes interface {
+	Slashes() bool
+}
+
 // slackMention is Slack's own mention of a person: <@U123> or <@U123|dana>.
 var slackMention = regexp.MustCompile(`^<@([A-Z][A-Z0-9]{2,31})(?:\|[^<>]{0,100})?>`)
 
 // Parse finds the tags in a message: @<agent>, @<handle> for a
-// person, @sme and @sme:<topic> for experts, $<name> and @skill:<name> for a
-// skill, @<kind>:<name> for a mention kind the workspace declares, and
+// person, @sme and @sme:<topic> for experts, $<name>, /<name> and
+// @skill:<name> for a skill, @<kind>:<name> for a mention kind the workspace declares, and
 // Slack's <@U…> for a Slack person. Text inside inline code or a code block
 // is not a tag, nor is an @ or a $ inside a word, such as in an email
 // address. A $ is a skill only when a skill's name follows it whole, so a
-// price ($5) or a variable ($PATH, $my_var) is not one. A tag that names
-// nobody is kept, refused, so the person who wrote it is told. Each tag is
+// price ($5) or a variable ($PATH, $my_var) is not one. A / is a skill, as
+// a slash command, only at the start of the text or after a space, before a
+// whole skill's name that ends the word, only when the Resolver reads slash
+// commands (Slashes) and only when that skill is there:
+// a path (/tmp/x), a fraction (1/2) or a / that names no skill is text, never
+// refused. A Resolver that cannot be asked, nil, keeps /<name> as a skill it
+// could not find, so a check of whether a message tags anyone fails closed.
+// A tag that names nobody is kept, refused, so the person who wrote it is
+// told. Each tag is
 // kept once, in the order it first appears. Parse is a pure function of the
 // text and the lookups.
 //
@@ -104,7 +119,8 @@ var slackMention = regexp.MustCompile(`^<@([A-Z][A-Z0-9]{2,31})(?:\|[^<>]{0,100}
 // skills (ErrInvalid). Each name is looked up once, however often it is
 // written, and a message naming more than MaxMentions of them is refused
 // before the next lookup, so a message costs at most one roster read and
-// MaxMentions lookups of each kind.
+// MaxMentions lookups of each kind. A / that names no skill holds no place,
+// and at most MaxMentions of them are looked up; any after are text.
 func Parse(text string, r Resolver) ([]Mention, error) {
 	var out []Mention
 	seen := map[[2]string]bool{}
@@ -112,6 +128,8 @@ func Parse(text string, r Resolver) ([]Mention, error) {
 	places := 0
 	tooMany := fmt.Errorf("%w: a message tags at most %d people, experts, roles and skills (agents are not counted)", ErrInvalid, MaxMentions)
 	kinds := kindLookup{r: r, asked: map[string]kindAnswer{}}
+	// The names a / was looked up under and found no skill, at most MaxMentions.
+	slashMisses := map[string]bool{}
 	roster := rosterLookup{r: r}
 	keep := func(m Mention) {
 		k := [2]string{m.Kind, m.Name}
@@ -179,6 +197,34 @@ func Parse(text string, r Resolver) ([]Mention, error) {
 				return nil, err
 			}
 			i += 1 + n
+		case c == '/' && startsSlash(text, i):
+			name, n := readSlash(text[i+1:])
+			if name == "" {
+				i++
+				continue
+			}
+			i += 1 + n
+			key := "$" + name
+			if asked[key] || slashMisses[name] {
+				continue
+			}
+			if r == nil {
+				if err := add(key, func() Mention { return skillTag(name, nil) }); err != nil {
+					return nil, err
+				}
+				continue
+			}
+			l, ok := r.(Lookups)
+			if sl, on := r.(Slashes); !ok || !on || !sl.Slashes() || len(slashMisses) == MaxMentions {
+				continue
+			}
+			if !l.Skill(name) {
+				slashMisses[name] = true
+				continue
+			}
+			if err := add(key, func() Mention { return Mention{Kind: Skill, Name: name} }); err != nil {
+				return nil, err
+			}
 		default:
 			i++
 		}
@@ -388,6 +434,45 @@ func startsTag(text string, i int) bool {
 	}
 	r, _ := utf8.DecodeLastRuneInString(text[:i])
 	return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune("_.@/\\-+", r)
+}
+
+// startsSlash reports whether the / at i can start a slash command: at the
+// start of the text or after a space, so a path or a fraction is not one.
+func startsSlash(text string, i int) bool {
+	if i == 0 {
+		return true
+	}
+	r, _ := utf8.DecodeLastRuneInString(text[:i])
+	return unicode.IsSpace(r)
+}
+
+// readSlash reads the skill a / names, and how much of the text it read:
+// a whole skill's name ending the word, at the end of the text, before a
+// space, or before punctuation a sentence puts after a word and then a space
+// or the end. "" otherwise, so /tmp/x, /Users and /a_b are text.
+func readSlash(s string) (string, int) {
+	n := 0
+	for n < len(s) && n < maxToken {
+		c := s[n]
+		if !isAlnum(c) && c != '_' && c != '-' {
+			break
+		}
+		n++
+	}
+	name := s[:n]
+	if !projects.ValidSkill(name) {
+		return "", 0
+	}
+	rest := s[n:]
+	if p := strings.IndexAny(rest, ".,;:!?)"); p == 0 {
+		rest = rest[1:]
+	}
+	if rest != "" {
+		if r, _ := utf8.DecodeRuneInString(rest); !unicode.IsSpace(r) {
+			return "", 0
+		}
+	}
+	return name, n
 }
 
 // readToken reads the name after an @, leaving out the punctuation a

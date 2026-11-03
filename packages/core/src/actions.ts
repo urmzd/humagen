@@ -59,6 +59,12 @@ export const ActionId = {
   homeAnsweredBy: "aui.home.answered_by",
   /** Connect an account. `target` is a connection id, or PERSONAL_ACCOUNT. */
   homeConnect: "aui.home.connect",
+  /**
+   * Ask the agent that wrote a review about one of its findings. `target` is
+   * the finding's index and `text` the words for the composer (see
+   * `reviewFollowUp`). The host puts them in the box; nothing is sent.
+   */
+  reviewFollowUp: "aui.review.follow_up",
 } as const;
 
 export type ActionId = (typeof ActionId)[keyof typeof ActionId];

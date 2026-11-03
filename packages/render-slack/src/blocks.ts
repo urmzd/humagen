@@ -208,6 +208,8 @@ class Serializer {
         return this.amount(p);
       case "Request":
         return this.request(p);
+      case "Review":
+        return this.review(p);
       case "Summary":
         // First summary wins: the outermost component states the point.
         this.summary ??= toPlain((p as PrimitiveProps["Summary"]).text);
@@ -701,6 +703,70 @@ class Serializer {
         text: this.clip(`${who}: ${escapeSlackText(text)}`, LIMITS.sectionText, "request"),
       },
     });
+  }
+
+  /**
+   * A review as a header, the commit and pull request, the summary, the counts,
+   * then each finding as a section with its evidence and its follow-up words in
+   * context lines. Slack's composer is its own, so a follow-up is words to copy,
+   * never a button; nothing is copied to a clipboard.
+   */
+  review(p: PrimitiveProps["Review"]) {
+    this.header({ text: p.title });
+    const link = (label: string, url?: string) =>
+      url ? `[${label.replace(/[[\]]/g, "")}](${url})` : label;
+    const where = [
+      ...(p.pullRequest ? [link(p.pullRequest.label, p.pullRequest.url)] : []),
+      ...(p.commit ? [link(p.commit.label, p.commit.url)] : []),
+    ];
+    if (where.length) this.context({ items: where });
+    if (p.pending) {
+      if (p.pendingLabel) this.context({ items: [p.pendingLabel] });
+      if (p.summary) this.text({ text: p.summary });
+      return;
+    }
+    if (p.summary) this.text({ text: p.summary });
+    if (p.counts.length) {
+      this.context({
+        items: [
+          p.counts
+            .map((c) => `${TONE_PREFIX[c.tone] ? `${TONE_PREFIX[c.tone]} ` : ""}${c.label}`)
+            .join("   "),
+        ],
+      });
+    }
+    if (p.groups.length === 0) this.text({ text: p.labels.noFindings });
+    for (const g of p.groups) {
+      this.blocks.push({ type: "divider" });
+      for (const f of g.findings) {
+        const prefix = TONE_PREFIX[g.tone];
+        this.text({
+          text: `${prefix ? `${prefix} ` : ""}**${f.title}**\n${f.suggestion}`,
+        });
+        this.context({
+          items: [
+            ...f.evidence.map(
+              (e) =>
+                `${e.observation} (${e.source.url ? link(e.source.label, e.source.url) : `\`${e.source.label}\``})`,
+            ),
+            `${p.labels.followUpPrompt}: \`${f.prompt.replace(/`/g, "'")}\``,
+          ],
+        });
+      }
+    }
+    if (p.comments?.items.length) {
+      this.blocks.push({ type: "divider" });
+      this.text({
+        text: `**${p.comments.label}**\n${p.comments.items.map((c) => `• ${c}`).join("\n")}`,
+      });
+    }
+    if (p.related?.items.length) {
+      this.context({
+        items: [
+          `${p.related.label}: ${p.related.items.map((l) => link(l.title, l.url)).join("   ")}`,
+        ],
+      });
+    }
   }
 
   feedback({ up, down, selected, labels, blockId }: PrimitiveProps["Feedback"]) {

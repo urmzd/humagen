@@ -1,4 +1,4 @@
-import type { PromptConfig, Task, Turn } from "@humagen/core";
+import { type PromptConfig, readReview, type Task, type Turn } from "@humagen/core";
 import type { Block } from "./blocks";
 import { toMrkdwn, toPlain } from "./mrkdwn";
 import { nextBreak } from "./split";
@@ -88,6 +88,18 @@ function streamText(text: string, citations: Turn["citations"]): string {
 }
 
 /**
+ * The part of an answer that streams as words. A structured review is held
+ * back whole, from its first brace or opening fence, and drawn as a card in
+ * the final blocks (`TurnView streamed`); if it turns out not to be one, the
+ * held words stream then.
+ */
+function streamable(text: string): string {
+  const start = text.trimStart();
+  if (/^```[^\n`]*(\n\s*)?$/.test(start)) return "";
+  return readReview(text, true).kind === "text" ? text : "";
+}
+
+/**
  * Chunks that move Slack from `prev` to `next`. Progress first, then text, so
  * a task never finishes after the words that depend on it. Text that was
  * rewritten (not appended) can't be streamed; the result says so and the host
@@ -108,15 +120,16 @@ export function streamUpdate(
     chunks.push({ type: "plan_update", title: clip(next.planTitle) });
   }
 
-  const sent = prev?.text ?? "";
-  const rewritten = !next.text.startsWith(sent);
-  if (!rewritten && next.text.length > sent.length) {
+  const sent = streamable(prev?.text ?? "");
+  const text = streamable(next.text);
+  const rewritten = !text.startsWith(sent);
+  if (!rewritten && text.length > sent.length) {
     const before = streamText(sent, prev?.citations ?? []);
-    const after = streamText(next.text, next.citations);
+    const after = streamText(text, next.citations);
     // A citation that arrived after its marker was sent changes text Slack already has.
     const delta = after.startsWith(before)
       ? after.slice(before.length)
-      : streamText(next.text.slice(sent.length), next.citations);
+      : streamText(text.slice(sent.length), next.citations);
     for (let i = 0; i < delta.length; i += MARKDOWN_CHUNK) {
       chunks.push({ type: "markdown_text", text: delta.slice(i, i + MARKDOWN_CHUNK) });
     }
