@@ -40,6 +40,7 @@ await loadTests([
   "/src/directory.dom.test.tsx",
   "/src/room.dom.test.tsx",
   "/src/chat.dom.test.tsx",
+  "/src/timeline.dom.test.tsx",
   "/src/roles.dom.test.tsx",
   "/src/governance.dom.test.tsx",
   "/src/read-audit.dom.test.tsx",

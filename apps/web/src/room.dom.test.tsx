@@ -176,7 +176,9 @@ function room(routes: Record<string, (body: unknown) => unknown> = {}, initial: 
 
 test("a shared thread shows people by name and agents by theirs and where it is shared, with no line saying who answers and no Share", async () => {
   const { opened } = room();
-  assert.ok(await screen.findByText("Ana"));
+  // The reader's own message is on the right, without their name.
+  const own = await screen.findByRole("article", { name: "Message from Ana" });
+  assert.equal(own.getAttribute("data-side"), "mine");
   // The thread is untitled, so its first message is its title as well.
   assert.equal(screen.getAllByText("@helper when does Globex renew?").length, 2);
   assert.ok(screen.getByText("It renews on May 3."));
@@ -190,6 +192,37 @@ test("a shared thread shows people by name and agents by theirs and where it is 
   assert.ok(!screen.queryByRole("button", { name: words.share }));
   fireEvent.click(where);
   assert.deepEqual(opened, ["Globex/renewals"]);
+});
+
+test("the reader's messages sit on the right, everyone else's on the left under one name per run", async () => {
+  const message = (id: string, by: string, name: string, text: string): ThreadTurn => ({
+    kind: "message",
+    message: { id, thread: page.thread.id, by, name, text, mentions: [], via: "console", at },
+  });
+  room(
+    {},
+    {
+      ...page,
+      turns: [
+        message("m-1", "ana", "Ana", "Mine first"),
+        message("m-2", "ana", "Ana", "Mine again"),
+        message("m-3", "dana", "Dana Scully", "Theirs first"),
+        message("m-4", "dana", "Dana Scully", "Theirs again"),
+      ],
+    },
+  );
+  const all = await screen.findAllByRole("article", { name: /^Message from/ });
+  assert.deepEqual(
+    all.map((a) => a.getAttribute("data-side")),
+    ["mine", "mine", "theirs", "theirs"],
+  );
+  // The reader's own carry no name; another person's name shows once for the run.
+  assert.equal(within(all[0] as HTMLElement).queryByText("Ana"), null);
+  assert.equal(screen.getAllByText("Dana Scully").length, 1);
+  assert.ok(within(all[2] as HTMLElement).getByText("Dana Scully"));
+  // Both sides keep their actions.
+  for (const a of all)
+    assert.ok(within(a).getByRole("button", { name: defaultCopy.conversation.copyMessage }));
 });
 
 test("message dates reveal the exact local date, time and timezone on hover, focus and tap", async () => {
@@ -710,7 +743,7 @@ test("a run waiting on a person, such as an expert's answer, is shown still", as
           onChanged={() => {}}
         />,
       );
-      await screen.findByText("Ana");
+      await screen.findByRole("article", { name: "Message from Ana" });
       assert.equal(document.querySelectorAll(".aui-busy-bar").length, bars, `a ${status} run`);
       cleanup();
       net.restore();
