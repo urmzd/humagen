@@ -4,7 +4,7 @@ import type { ReviewedPull } from "../../../packages/client/src/generated/types.
 import { api } from "./api.ts";
 import { age } from "./conversationList.ts";
 import { href, type Route } from "./route.ts";
-import { AgentMark, field, Page, Problem } from "./ui.tsx";
+import { AgentMark, button, field, Page, Problem } from "./ui.tsx";
 
 const words = defaultCopy.pullRequests;
 type PullRoute = Extract<Route, { page: "pull-requests" }>;
@@ -59,7 +59,7 @@ export function PullRequests({
         e.preventDefault();
         go(pullConversation(p));
       }}
-      className="block rounded-aui border border-aui-line bg-aui-panel p-4 hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+      className="block rounded-aui border border-aui-border bg-aui-surface p-4 hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
     >
       <div className="text-aui-xs text-aui-muted">
         {p.repo} #{p.number}
@@ -129,7 +129,7 @@ export function PullRequests({
           type="button"
           aria-pressed={!route.display}
           onClick={() => change({ display: undefined })}
-          className={field}
+          className={button}
         >
           {words.board}
         </button>
@@ -137,7 +137,7 @@ export function PullRequests({
           type="button"
           aria-pressed={route.display === "list"}
           onClick={() => change({ display: "list" })}
-          className={field}
+          className={button}
         >
           {words.list}
         </button>

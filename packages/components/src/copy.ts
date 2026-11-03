@@ -59,7 +59,7 @@ export const defaultCopy = {
     loading: "Loading reviews…",
     empty: "No pull requests match these filters.",
     counts: (errors: number, warnings: number, infos: number) =>
-      `${errors} errors · ${warnings} warnings · ${infos} notes`,
+      `${errors} ${errors === 1 ? "error" : "errors"} · ${warnings} ${warnings === 1 ? "warning" : "warnings"} · ${infos} ${infos === 1 ? "note" : "notes"}`,
     ci: (state: string) => `CI: ${state}`,
   },
   workspaceFiles: {
