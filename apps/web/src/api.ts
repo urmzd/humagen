@@ -782,6 +782,7 @@ export const api = {
       "GET",
       `/api/github/issue?${new URLSearchParams({ repo, number: String(number), page: String(page) })}`,
     ),
+  reviewedPulls: (query: string) => call<{pulls: import("../../../packages/client/src/generated/types.ts").ReviewedPull[]}>("GET", `/api/pull-requests${query ? `?${query}` : ""}`),
   /** Lines a review's evidence cites, read on the server through the workspace's GitHub client. */
   githubSource: (ref: { repo: string; sha: string; path: string; start: number; end: number }) =>
     call<import("../../../packages/client/src/generated/types.ts").SourceExcerpt>(

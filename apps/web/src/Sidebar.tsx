@@ -787,6 +787,7 @@ export function Sidebar({
     badge?: number;
     group: "projects" | "library" | "operations";
   }[] = [
+    {to: {page: "pull-requests"}, label: defaultCopy.pullRequests.title, icon: <ProjectIcon />, show: can("runs:read"), active: here("pull-requests"), group: "projects"},
     {
       to: { page: "projects" },
       label: nav.projects,

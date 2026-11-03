@@ -1,3 +1,4 @@
+import { PullRequests } from "./PullRequests.tsx";
 import { notificationsOf, updatesOf } from "@humagen/adapter";
 import { defaultCopy } from "@humagen/components";
 import { HOME_NEEDS, type HomeNotifications, type HomeUpdate } from "@humagen/core";
@@ -785,6 +786,7 @@ function Console({
                 <Problem message={defaultCopy.noPermission} />
               </Page>
             ))}
+          {route.page === "pull-requests" && <PullRequests route={route} go={go} />}
           {route.page === "assignments" &&
             (can("runs:read") ? (
               <Assignments

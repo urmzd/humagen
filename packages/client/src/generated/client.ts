@@ -172,6 +172,7 @@ import type {
   Readiness,
   RememberOutcomeDecisionBody,
   Resolution,
+  ReviewedPullsResponse,
   ReviseAgentBody,
   Revision,
   Run,
@@ -547,6 +548,35 @@ export class ApiClient {
       );
     }
     return response.data;
+  }
+
+  /** Up to 100 reviews from the newest 1000 runs in the last 30 days. */
+  async reviewedPulls(q?: string, repo?: string, agent?: string, status?: "running" | "waiting" | "done", options?: RequestOptions): Promise<ReviewedPullsResponse> {
+    let path = "/api/pull-requests";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (repo !== undefined && repo !== null) _q.set("repo", String(repo));
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
+    if (status !== undefined && status !== null) _q.set("status", String(status));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ReviewedPullsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async reviewedPullsRaw(q?: string, repo?: string, agent?: string, status?: "running" | "waiting" | "done", options?: RequestOptions): Promise<ApiResponse<ReviewedPullsResponse>> {
+    let path = "/api/pull-requests";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (repo !== undefined && repo !== null) _q.set("repo", String(repo));
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
+    if (status !== undefined && status !== null) _q.set("status", String(status));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ReviewedPullsResponse>("GET", path, {
+      ...options,
+    });
   }
 
   /** Read this installation's actual event and action inventory */

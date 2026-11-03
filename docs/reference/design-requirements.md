@@ -82,6 +82,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-051 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
 | DES-052 | Conversation files, scratchpads, code editing, change review and artifact publication, in one Workspace panel opened from Conversation Settings beside a compact header | Implemented: `WorkspaceFiles.tsx`, `Workspace.tsx`, `ConversationShell.tsx`, `/api/threads/{id}/files`, `GET /api/threads/{id}/sandboxes`; web, route, Go race and confinement suites pass; `conversation-header`, `workspace-*` and `ide-*` screens pass at 390x844 and 1280x800 |
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
+| DES-060 | Pull requests across workspace repositories, with board/list views and filters | Implemented; `pull_requests.go`, `PullRequests.tsx`, endpoint and DOM tests; board/list screens registered for CI |
 | DES-054 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row says its project, its age or an unread dot, and whether it waits on a person, runs or failed | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
 | DES-055 | A sidebar row previews itself on hover or a long press, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview`, `conversation-wave-preview`) at 390x844 and 1280x800 |
 | DES-056 | A one-time tip teaches search, dismissed once per person | Implemented: `Sidebar.tsx`, `POST /api/marks/tips`; DOM test and `sidebar-tip` screens pass |
@@ -1522,3 +1523,13 @@ Evidence: `github-ref.test.ts`, `github-tab.dom.test.tsx`,
 `TestGitHubItemsAreTenantScopedPermissionCheckedAndBounded`,
 `TestConsoleLabelsUseServerTokenAndBoundedRead`; screenshot fixture
 `conversation-review-workspace` runs in CI at phone and desktop sizes.
+
+### DES-060: Pull requests across repositories
+
+A top-level Pull requests page collects agent review answers visible to the
+reader in the last 30 days. Board and list views preserve search, status,
+repository and agent filters in the route. Cards open the conversation with
+its pull tab selected, using the DES-059 tab reference.
+
+Evidence: `PullRequests.tsx`, `pull_requests.go`, scoped endpoint and DOM tests;
+`pull-requests-board` and `pull-requests-list` screens are registered for CI.

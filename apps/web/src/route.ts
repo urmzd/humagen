@@ -162,6 +162,7 @@ export type NotificationView = (typeof NOTIFICATION_VIEWS)[number];
 
 export type YouSection = "profile" | "notifications" | "privacy" | "agents" | "connections";
 export type Route =
+  | { page: "pull-requests"; q?: string; repo?: string; agent?: string; status?: "running" | "waiting" | "done"; display?: "list" }
   | {
       page: "library";
       section: LibrarySection;
@@ -250,6 +251,7 @@ const pick = <T extends string>(value: string | undefined, allowed: readonly T[]
   oneOf(value, allowed) ?? fallback;
 
 const PAGE_TITLES: Record<Page, string> = {
+  "pull-requests": defaultCopy.pullRequests.title,
   library: "Library",
   operations: "Operations",
   assignments: "Assignments",
@@ -317,6 +319,11 @@ export function documentTitle(r: Route, unread = 0, product = "Humagen"): string
 /** The address of a route, path and query. */
 export function href(r: Route): string {
   switch (r.page) {
+    case "pull-requests": {
+      const q = new URLSearchParams();
+      for (const key of ["q", "repo", "agent", "status", "display"] as const) if (r[key]) q.set(key, r[key]);
+      return `/pull-requests${q.size ? `?${q}` : ""}`;
+    }
     case "library": {
       const q = new URLSearchParams();
       if (r.scope) q.set("scope", r.scope);
@@ -544,6 +551,8 @@ function read(pathname: string, search: string): Route {
   const parts = pathname.split("/").filter(Boolean).map(dec);
   const [head, a, b, c] = parts;
   switch (head) {
+    case "pull-requests":
+      return {page: "pull-requests", q: queryText(q,"q",200), repo: queryText(q,"repo",200), agent: queryText(q,"agent",160), status: oneOf(q.get("status"), ["running","waiting","done"] as const), display: oneOf(q.get("display"), ["list"] as const)};
     case "notifications":
       return {
         page: "notifications",
