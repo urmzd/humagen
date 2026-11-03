@@ -753,6 +753,19 @@ import type {
 } from "../../../packages/client/src/generated/types.ts";
 
 export const api = {
+  /** Lines a review's evidence cites, read on the server through the workspace's GitHub client. */
+  githubSource: (ref: { repo: string; sha: string; path: string; start: number; end: number }) =>
+    call<import("../../../packages/client/src/generated/types.ts").SourceExcerpt>(
+      "GET",
+      `/api/github/source?${new URLSearchParams({
+        repo: ref.repo,
+        sha: ref.sha,
+        file: ref.path,
+        start: String(ref.start),
+        end: String(ref.end),
+        context: "3",
+      })}`,
+    ),
   outcomeLearning: (id: string, scope: "personal" | "project" = "personal") =>
     call<import("../../../packages/client/src/generated/types.ts").OutcomeLearningPreview>(
       "GET",

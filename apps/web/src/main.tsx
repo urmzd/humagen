@@ -31,11 +31,16 @@ async function start() {
   if (branding) brandCopy(defaultCopy, branding);
   const { App } = await import("./App.tsx");
   const { UpdatePrompt } = await import("./UpdatePrompt.tsx");
+  const { api } = await import("./api.ts");
+  const { SourceContext } = await import("@humagen/render-web");
   // The installed app's worker, in a build only: the dev server's modules change by the second.
   const updates = import.meta.env.PROD ? browserUpdates() : noUpdates;
   createRoot(root).render(
     <StrictMode>
-      <App preloaded={branding} />
+      {/* A review's evidence reads the lines it cites through the API. */}
+      <SourceContext.Provider value={api.githubSource}>
+        <App preloaded={branding} />
+      </SourceContext.Provider>
       <UpdatePrompt updates={updates} />
     </StrictMode>,
   );

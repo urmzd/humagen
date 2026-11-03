@@ -321,6 +321,67 @@ export interface RequestProps {
   text: string;
 }
 
+/**
+ * A structured code review an agent returned: who reviewed what, the point, how
+ * many findings of each severity, the findings with their evidence, notes and
+ * related links. All words are given; the renderer lays them out. The web draws
+ * a card; Slack a header, sections and context lines, with each follow-up as
+ * words to copy, since its composer is Slack's own.
+ */
+export interface ReviewProps {
+  title: string;
+  /** The commit the review read, short, with a link when known. */
+  commit?: { label: string; url?: string };
+  pullRequest?: { label: string; url: string };
+  summary?: string;
+  /** Still arriving: only the summary is known. Drawn still, with `pendingLabel`. */
+  pending?: boolean;
+  pendingLabel?: string;
+  /** One per severity, in order, with its label ("2 warnings") and tone. */
+  counts: { id: string; label: string; count: number; tone: Tone }[];
+  groups: {
+    id: string;
+    label: string;
+    tone: Tone;
+    findings: {
+      title: string;
+      suggestion: string;
+      evidence: {
+        observation: string;
+        source: {
+          label: string;
+          url?: string;
+          /**
+           * Lines at a full commit SHA. A renderer whose host can read them
+           * (the web's SourceContext) shows the code in place.
+           */
+          code?: { repo: string; sha: string; path: string; start: number; end: number };
+        };
+      }[];
+      /** The words of the follow-up, shown where there is no button. */
+      prompt: string;
+      followUp?: { label: string; action: ActionRef; accessibilityLabel?: string };
+    }[];
+  }[];
+  labels: {
+    severity: string;
+    suggestion: string;
+    evidence: string;
+    followUpPrompt: string;
+    noFindings: string;
+    /** Words for shown code: the link to GitHub, and while or if it cannot be read. */
+    /** `show` is read aloud before the place: "Show the code at" a/b.go:3. */
+    source?: { open: string; loading: string; failed: string; show: string };
+  };
+  comments?: { label: string; items: string[] };
+  related?: { label: string; items: { title: string; url: string }[] };
+  /**
+   * The whole review as Markdown, for a renderer that can copy it. The web
+   * copies it to the clipboard in place; Slack leaves it out.
+   */
+  copyMarkdown?: { label: string; done: string; text: string };
+}
+
 export interface TableProps {
   columns: { key: string; label: string; align?: "left" | "center" | "right" }[];
   rows: Record<string, string | number>[];
@@ -353,6 +414,7 @@ export interface PrimitiveProps {
   Tiles: TilesProps;
   Amount: AmountProps;
   Request: RequestProps;
+  Review: ReviewProps;
 }
 
 export type PrimitiveName = keyof PrimitiveProps;

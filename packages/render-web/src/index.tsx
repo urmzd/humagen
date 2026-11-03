@@ -44,6 +44,7 @@ export {
   useVerbSequence,
 } from "./motion";
 export { RequestBubble, readableMentions } from "./request";
+export { SourceContext, type SourceExcerpt, type SourceLoader } from "./review";
 export * from "./Tooltip";
 export { StatusIcon, statusLabel } from "./task";
 

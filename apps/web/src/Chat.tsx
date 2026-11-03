@@ -693,6 +693,11 @@ export function Chat({
   const onAction = (a: UiAction) => {
     // An agent drawn inside a turn opens the drawer on its run.
     if (a.id === ActionId.openRun) return openPanel("activity", { run: a.payload.target });
+    // A review's Ask Follow-up puts its words, tagging the agent, in the box. Nothing is sent.
+    if (a.id === ActionId.reviewFollowUp) {
+      if (canRun && a.payload.text) setSeed({ text: `${a.payload.text} `, mode: "prepend" });
+      return;
+    }
     // A question the run waits on is answered in place. The run's own events
     // settle the card once the answer is recorded, whoever's it was.
     if (answers(a)) {

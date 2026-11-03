@@ -16,6 +16,7 @@ import {
   type Interrupt,
   isRetryable,
   type Notice,
+  readReview,
   SERVICE_TONE,
   type SessionState,
   type SystemAlert,
@@ -51,6 +52,7 @@ import {
 } from "@humagen/primitives";
 import type { ReactNode } from "react";
 import { type Copy, defaultCopy } from "./copy";
+import { AnswerText, reviewCountLine } from "./review";
 
 interface WithCopy {
   copy?: Copy;
@@ -67,6 +69,8 @@ export interface TurnCapabilities {
   regenerate?: boolean;
   /** Report Issue on an internal failure. */
   report?: boolean;
+  /** Ask Follow-up on a review's findings, which puts words in the host's composer. */
+  followUp?: boolean;
 }
 
 /** Fallback preview when a tool supplies none: scalar args as fields, never a JSON dump. */
@@ -624,6 +628,10 @@ export function summarizeTurn(turn: Turn, copy: Copy = defaultCopy): string {
     return `${failureTitle(turn.failure, copy)}: ${failureMessage(turn.failure, copy)}`;
   }
   if (turn.status === "stopped") return copy.stopped;
+  const review = readReview(turn.text);
+  if (review.kind === "review") {
+    return copy.reviewReport.point(reviewCountLine(review.report, copy), review.report.summary);
+  }
   const answer = turn.text.replace(/\[\[[^\]]+\]\]/g, "").trim();
   if (answer) return answer.length > 300 ? `${answer.slice(0, 299)}…` : answer;
   return planTitle(turn, copy);
@@ -712,12 +720,24 @@ export function TurnView({
           )}
         </>
       )}
-      {!streamed && turn.text && turn.text.trim() !== turn.outcome?.summary.trim() && (
-        <Markdown
-          text={linkCitations(turn.text, turn.citations)}
-          streaming={turn.status === "working" && !turn.detached}
-        />
-      )}
+      {/*
+        A review is never streamed as words (render-slack holds it back), so it is
+        drawn here: as a card, or as the text it was if it did not parse.
+      */}
+      {(!streamed || readReview(turn.text, true).kind !== "text") &&
+        turn.text &&
+        turn.text.trim() !== turn.outcome?.summary.trim() && (
+          <AnswerText
+            turnId={turn.id}
+            agent={turn.agent.name}
+            text={turn.text}
+            markdown={linkCitations(turn.text, turn.citations)}
+            streaming={turn.status === "working" && !turn.detached}
+            pullRequestHint={turn.source?.url}
+            followUp={capabilities?.followUp !== false}
+            copy={copy}
+          />
+        )}
       {turn.attachments?.map((a) => (
         <AttachmentView key={a.id} attachment={a} />
       ))}
