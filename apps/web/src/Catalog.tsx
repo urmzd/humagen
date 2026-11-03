@@ -143,7 +143,7 @@ export function Catalog({
                 )}
                 {!!entry.schema?.length && (
                   <details className="mt-3">
-                    <summary className="cursor-pointer text-sm">
+                    <summary className="min-h-8 cursor-pointer py-2 text-sm pointer-coarse:min-h-11">
                       {copy.schema} ({entry.schema.length})
                     </summary>
                     <dl className="mt-2 space-y-2">

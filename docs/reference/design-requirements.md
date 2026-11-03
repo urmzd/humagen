@@ -1469,4 +1469,5 @@ capabilities, and storage collection requires the reader's own credential.
 Implemented in `Catalog.tsx`, `SourceCatalog.tsx`, and the connector kinds in
 `pkg/catalog`. Evidence: catalog DOM tests, route round-trip regression,
 Snowflake/object-storage race tests, and `library-catalog` phone/desktop screen
-fixture. Local full screen suite is intentionally deferred to CI.
+fixture. The Catalog and New Source captures pass at phone and desktop widths
+(4 captures). The full screen suite is intentionally deferred to CI.
