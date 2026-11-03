@@ -56,7 +56,7 @@ func New(c Config) (*Connector, error) {
 	out.open = func(ctx context.Context, key string) (bucket, error) { return dial(ctx, c, key) }
 	return out, nil
 }
-func (c *Connector) Crawl(ctx context.Context) ([]catalog.Entry, error) {
+func (c *Connector) Crawl(ctx context.Context) (entries []catalog.Entry, err error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	key, err := credref.Default.Resolve(ctx, c.cfg.Credential)
@@ -67,12 +67,17 @@ func (c *Connector) Crawl(ctx context.Context) ([]catalog.Entry, error) {
 	if err != nil {
 		return nil, errors.New("storage connector: authentication failed")
 	}
-	defer func() { _ = b.Close() }()
+	defer func() {
+		err = errors.Join(err, b.Close())
+		if err != nil {
+			entries = nil
+		}
+	}()
 	objs, err := b.List(ctx, c.cfg.Prefix, catalog.MaxEntries)
 	if err != nil {
 		return nil, err
 	}
-	entries := make([]catalog.Entry, 0, len(objs))
+	entries = make([]catalog.Entry, 0, len(objs))
 	for _, o := range objs {
 		size, modified := o.Bytes, o.Modified
 		entries = append(entries, catalog.Entry{System: c.cfg.System, Kind: "object", Path: c.uri(o.Key), Title: path.Base(o.Key), Stats: catalog.Stats{Bytes: &size, Modified: &modified}})
@@ -91,7 +96,7 @@ func (c *Connector) uri(key string) string {
 // gs://bucket/prefix or s3://bucket/prefix, supplied by the reader.
 type Provider struct{ System string }
 
-func (p Provider) Fetch(ctx context.Context, origin string, secret mcptools.Secret) ([]knowledge.ImportDocument, error) {
+func (p Provider) Fetch(ctx context.Context, origin string, secret mcptools.Secret) (docs []knowledge.ImportDocument, err error) {
 	if secret.Empty() {
 		return nil, knowledge.ProviderError{Cause: knowledge.AuthExpired}
 	}
@@ -113,7 +118,12 @@ func (p Provider) Fetch(ctx context.Context, origin string, secret mcptools.Secr
 	if err != nil {
 		return nil, knowledge.ProviderError{Cause: knowledge.AuthExpired}
 	}
-	defer func() { _ = b.Close() }()
+	defer func() {
+		err = errors.Join(err, b.Close())
+		if err != nil {
+			docs = nil
+		}
+	}()
 	return c.collect(ctx, b)
 }
 func (c *Connector) collect(ctx context.Context, b bucket) ([]knowledge.ImportDocument, error) {

@@ -2,6 +2,7 @@ package objectstorage
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -10,9 +11,10 @@ import (
 )
 
 type fakeBucket struct {
-	objects []object
-	reads   int
-	body    string
+	closeErr error
+	objects  []object
+	reads    int
+	body     string
 }
 
 func (f *fakeBucket) List(context.Context, string, int) ([]object, error) { return f.objects, nil }
@@ -20,7 +22,7 @@ func (f *fakeBucket) Read(context.Context, string) (io.ReadCloser, error) {
 	f.reads++
 	return io.NopCloser(strings.NewReader(f.body)), nil
 }
-func (f *fakeBucket) Close() error { return nil }
+func (f *fakeBucket) Close() error { return f.closeErr }
 func TestCrawlNeverReadsContent(t *testing.T) {
 	t.Setenv("STORAGE_CATALOG_TOKEN", "credential")
 	c, _ := New(Config{System: "s3", Bucket: "bucket", Prefix: "docs/", Credential: "env:STORAGE_CATALOG_TOKEN"})
@@ -57,5 +59,17 @@ func TestS3ReaderCredentialRegion(t *testing.T) {
 	}
 	if got := b.(*s3Bucket).c.Options().Region; got != "eu-west-1" {
 		t.Fatalf("region=%q", got)
+	}
+}
+
+func TestCrawlPropagatesCloseFailureWithoutPublishingEntries(t *testing.T) {
+	t.Setenv("STORAGE_CATALOG_TOKEN", "credential")
+	c, _ := New(Config{System: "s3", Bucket: "bucket", Credential: "env:STORAGE_CATALOG_TOKEN"})
+	closeErr := errors.New("close failed")
+	b := &fakeBucket{objects: []object{{Key: "a.md", Bytes: 4}}, closeErr: closeErr}
+	c.open = func(context.Context, string) (bucket, error) { return b, nil }
+	entries, err := c.Crawl(context.Background())
+	if !errors.Is(err, closeErr) || entries != nil {
+		t.Fatalf("entries=%v error=%v", entries, err)
 	}
 }
