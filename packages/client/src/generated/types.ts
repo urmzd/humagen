@@ -1330,6 +1330,8 @@ not selected. Absent when none is selected.
   surface?: ThreadSurface;
   fork?: ThreadFork;
   archive?: ThreadArchive;
+  /** How the conversation's gated tool actions are approved, and who chose it. Absent asks a person. `auto` approves for that person what they may approve themselves, within policy; a budget request and an action the agent or the policy always asks about still go to a person. */
+  approval?: ThreadApproval;
   /** The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it. */
   announcement?: string;
   /** Counts edits to the record, from 1. A conversation from before threads reads 0 until its record is written. */
@@ -4376,6 +4378,13 @@ export interface PreparedCallInputMessagesItem {
   text: string;
 }
 
+export interface ThreadApproval {
+  mode: "auto";
+  by: string;
+  roles?: string[];
+  at: string;
+}
+
 export interface ProjectRollupProjectsItem {
   name: string;
   title: string;
@@ -4675,6 +4684,10 @@ export interface PublishThreadSummaryBody {
   channel?: string;
   summary: string;
   placement_token: string;
+}
+
+export interface SetApprovalModeBody {
+  mode: "ask" | "auto";
 }
 
 export interface ListSchedulesResponse {

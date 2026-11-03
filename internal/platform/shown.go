@@ -175,6 +175,11 @@ func (s *shower) thread(th threads.Thread) threads.Thread {
 		ps[i] = who
 	}
 	th.Participants = ps
+	if th.Approval != nil {
+		a := *th.Approval
+		a.By = s.key(a.By)
+		th.Approval = &a
+	}
 	if th.Fork != nil {
 		f := *th.Fork
 		f.By = s.key(f.By)

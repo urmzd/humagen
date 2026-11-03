@@ -1644,6 +1644,8 @@ export interface Thread {
       at: string;
     }[];
   };
+  /** How its gated tool actions are approved: absent asks a person; auto approves for `by` (DES-057). */
+  approval?: { mode: "auto"; by: string; roles?: string[]; at: string };
   /** The inbox id of the announcement a reply to which, in Slack, started the thread. */
   announcement?: string;
   /** The Slack thread this thread is, when it was started from Slack. It never changes. */
@@ -1903,6 +1905,9 @@ export const coworking = {
     body: { project: string; channel: string; summary: string; placement_token: string },
   ) => call<Thread>("POST", `${threadPath(id)}/publication`, body),
   share: (id: string, s: ThreadShare) => call<ThreadShared>("POST", `${threadPath(id)}/share`, s),
+  /** Sets how a conversation's gated tool actions are approved: ask, or auto for the caller. */
+  setApprovalMode: (id: string, mode: "ask" | "auto") =>
+    call<Thread>("PUT", `${threadPath(id)}/approval`, { mode }),
   /** The skills a `$name` can pick in a project. */
   skills: (project: string) =>
     call<{ skills: Skill[] }>(

@@ -25,8 +25,11 @@ export function HomePage({
   hasAgents,
   banner,
   below,
+  above,
   children,
 }: {
+  /** Over the chat bar on a wide screen: where the new conversation is filed (DES-057). */
+  above?: ReactNode;
   banner?: HomeAnnouncement;
   greeting: string;
   canRun: boolean;
@@ -61,6 +64,14 @@ export function HomePage({
             data-layer="sticky"
             className="flex flex-col max-md:sticky max-md:bg-aui-bg max-md:flex-col-reverse max-md:gap-2 max-md:bottom-0 max-md:z-10 max-md:order-last max-md:pt-2"
           >
+            {above && (
+              <div
+                data-home-above
+                className="mx-auto hidden w-full max-w-4xl px-4 pb-1 md:flex md:items-center"
+              >
+                {above}
+              </div>
+            )}
             {children}
           </div>
         )}
