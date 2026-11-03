@@ -180,6 +180,7 @@ its sections as tabs that scroll sideways when they do not fit:
 |---|---|---|
 | Sandboxes | The session sandbox (its files, size, retention and whether runs are isolated) and a nested entry per agent run, newest first and indented under its caller: its mounts (`/work` from the session, and the memory trees in `/project` and `/me`), the files it left and the copyback changes refused because someone changed the file first | `/conversations/{id}/workspace/sandboxes[/{run}]` |
 | Files | The session's files, editor and change review below | `/conversations/{id}/workspace?file=&tab=` |
+| Scratchpads | Named notes beside the conversation: create, name, rename, delete and edit in the code editor, with a Markdown preview | `/conversations/{id}/workspace/scratchpads[/{scratchpad}]` |
 | Artifacts | The conversation's saved, versioned artifacts; each opens in Deliverables | `/conversations/{id}/workspace/artifacts` |
 
 `GET /api/threads/{id}/sandboxes` answers Sandboxes, behind `runs:read` and
@@ -188,6 +189,23 @@ the run (`Run.sandbox`, at most 64 files and 16 refusals): when an isolated
 run's instance is copied back, and, unisolated, when its `file_write` lands in
 the session's files. Files keeps its unsaved drafts while another section is
 shown or the panel is closed.
+
+## Scratchpads
+
+A conversation holds up to 50 scratchpads (`pkg/scratchpads`), each a name of
+1 to 80 printable characters, unique in the conversation in any case, and up
+to 256 KiB of UTF-8 text. They are kept per request on `pkg/state`, tenant
+first, under `/api/threads/{id}/scratchpads`: listing and reading need
+`runs:read` and the conversation's audience; creating, renaming, editing and
+deleting need `runs:write` and permission to post, in an open conversation,
+and name the version read (a stale one is a conflict that keeps the draft).
+Unlike files, a run in flight does not hold them.
+
+Agents in the conversation read a scratchpad with `file_read` and the path
+`scratch:<name>`, beside `artifact:` and `skill:`, and `file_list` names them.
+They are not files in the session sandbox: the database keeps them past the
+sandbox's seven-day retention, and a run's copyback can never overwrite a
+person's note. An agent cannot change a scratchpad; it writes files.
 
 ## Files, scratchpads and change review
 

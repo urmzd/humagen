@@ -53,6 +53,7 @@ import (
 	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/scratchpads"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
 )
 
@@ -210,6 +211,7 @@ func (s *Server) Handler() http.Handler {
 	s.inboxRoutes(mux)
 	s.artifactRoutes(mux)
 	s.workspaceFileRoutes(mux)
+	s.scratchpadRoutes(mux)
 	s.observeRoutes(mux)
 	s.preferenceRoutes(mux)
 	s.projectRoutes(mux)
@@ -282,9 +284,12 @@ func (s *Server) authed(perm auth.Permission, h handler) http.HandlerFunc {
 			s.P.SeePerson(who)
 		}
 		bodyLimit := int64(maxBody)
-		if r.Pattern == "PUT /api/threads/{id}/files/content" {
+		switch r.Pattern {
+		case "PUT /api/threads/{id}/files/content":
 			// A UTF-8 file can expand to six JSON bytes per input byte.
 			bodyLimit = 6*platform.MaxFileBytes + 4096
+		case "POST /api/threads/{id}/scratchpads", "PUT /api/threads/{id}/scratchpads/{pad}":
+			bodyLimit = 6*scratchpads.MaxContent + 4096
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, bodyLimit)
 		if r.Method != http.MethodGet {

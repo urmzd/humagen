@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -144,7 +145,14 @@ func (p *Platform) ApproveDeletion(who auth.Principal, id string) error {
 	if !th.Archive.Due(p.now()) {
 		return fmt.Errorf("%w: only an archived conversation that is due is deleted", threads.ErrInvalid)
 	}
-	return p.Threads.Purge(who.Tenant, id, who.Subject, p.now())
+	if err := p.Threads.Purge(who.Tenant, id, who.Subject, p.now()); err != nil {
+		return err
+	}
+	// Its scratchpads go with its messages.
+	if err := p.Scratchpads.DeleteThread(context.Background(), who.Tenant, id); err != nil {
+		p.log.Info("platform: a deleted conversation's scratchpads were not removed", "thread", id, "error", err)
+	}
+	return nil
 }
 
 // RejectDeletion keeps an archived conversation: it is brought back.

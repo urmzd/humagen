@@ -1,6 +1,8 @@
 import type {
   ConversationSandboxes,
   RunSandbox,
+  Scratchpad,
+  ScratchpadList,
   WorkspaceFileContent,
   WorkspaceFileList,
   WorkspaceFileWrite,
@@ -11,6 +13,8 @@ import type { Stored } from "./storage.ts";
 export type {
   ConversationSandboxes,
   RunSandbox,
+  Scratchpad,
+  ScratchpadList,
   WorkspaceFileContent,
   WorkspaceFileList,
   WorkspaceFileWrite,
@@ -32,6 +36,22 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     throw new ApiError(response.status, value.error || `Request failed (${response.status})`);
   return value as T;
 }
+
+const pads = (thread: string) => `/api/threads/${encodeURIComponent(thread)}/scratchpads`;
+export const scratchpadApi = {
+  list: (thread: string) => request<ScratchpadList>("GET", pads(thread)),
+  read: (thread: string, id: string) =>
+    request<Scratchpad>("GET", `${pads(thread)}/${encodeURIComponent(id)}`),
+  create: (thread: string, name: string, content = "") =>
+    request<Scratchpad>("POST", pads(thread), { name, content }),
+  update: (thread: string, id: string, pad: { name: string; content: string; version: number }) =>
+    request<Scratchpad>("PUT", `${pads(thread)}/${encodeURIComponent(id)}`, pad),
+  remove: (thread: string, id: string, version: number) =>
+    request<void>(
+      "DELETE",
+      `${pads(thread)}/${encodeURIComponent(id)}?${new URLSearchParams({ version: String(version) })}`,
+    ),
+};
 
 export const workspaceFiles = {
   sandboxes: (thread: string) =>

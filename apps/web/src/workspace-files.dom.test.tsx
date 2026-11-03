@@ -144,26 +144,27 @@ test("stale revision preserves the draft and requires an explicit reviewed base 
   );
 });
 
-test("scratchpad drafts survive drawer closure and prevent accidental navigation", async () => {
+test("new file drafts survive drawer closure and prevent accidental navigation", async () => {
   setup();
   render(<Harness initial={{}} />);
   await waitFor(() =>
     assert.equal(
-      (screen.getByRole("button", { name: words.scratchpad }) as HTMLButtonElement).disabled,
+      (screen.getByRole("button", { name: words.newFile }) as HTMLButtonElement).disabled,
       false,
     ),
   );
-  fireEvent.click(screen.getByRole("button", { name: words.scratchpad }));
+  fireEvent.click(screen.getByRole("button", { name: words.newFile }));
+  fireEvent.change(screen.getByLabelText(words.path), { target: { value: "notes/plan.md" } });
+  fireEvent.click(screen.getByRole("button", { name: words.create }));
   const input = (await screen.findByRole("textbox", {
-    name: "Edit scratchpads/notes.md",
+    name: "Edit notes/plan.md",
   })) as HTMLTextAreaElement;
   fireEvent.change(input, { target: { value: "# My pending plan\n" } });
   fireEvent.click(screen.getByRole("button", { name: "Toggle Workspace" }));
   fireEvent.click(screen.getByRole("button", { name: "Toggle Workspace" }));
   await waitFor(() =>
     assert.equal(
-      (screen.getByRole("textbox", { name: "Edit scratchpads/notes.md" }) as HTMLTextAreaElement)
-        .value,
+      (screen.getByRole("textbox", { name: "Edit notes/plan.md" }) as HTMLTextAreaElement).value,
       "# My pending plan\n",
     ),
   );

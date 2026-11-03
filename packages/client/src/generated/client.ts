@@ -170,6 +170,9 @@ import type {
   SaveRunFeedbackBody,
   Schedule,
   ScheduleView,
+  Scratchpad,
+  ScratchpadInput,
+  ScratchpadList,
   SearchKnowledgeResponse,
   SearchMemoryResponse,
   SetAgentHomeBody,
@@ -3656,6 +3659,113 @@ to that machine only, wherever the message is read.
     let path = "/api/threads/{id}/sandboxes";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<ConversationSandboxes>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** List a conversation's scratchpads, without their content */
+  async listScratchpads(id: string, options?: RequestOptions): Promise<ScratchpadList> {
+    let path = "/api/threads/{id}/scratchpads";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ScratchpadList>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listScratchpadsRaw(id: string, options?: RequestOptions): Promise<ApiResponse<ScratchpadList>> {
+    let path = "/api/threads/{id}/scratchpads";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ScratchpadList>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Add a named scratchpad to a conversation */
+  async createScratchpad(id: string, body: ScratchpadInput, options?: RequestOptions): Promise<Scratchpad> {
+    let path = "/api/threads/{id}/scratchpads";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Scratchpad>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async createScratchpadRaw(id: string, body: ScratchpadInput, options?: RequestOptions): Promise<ApiResponse<Scratchpad>> {
+    let path = "/api/threads/{id}/scratchpads";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Scratchpad>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Read a scratchpad with its content */
+  async getScratchpad(id: string, pad: string, options?: RequestOptions): Promise<Scratchpad> {
+    let path = "/api/threads/{id}/scratchpads/{pad}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{pad}", encodeURIComponent(String(pad)));
+    return this.request<Scratchpad>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getScratchpadRaw(id: string, pad: string, options?: RequestOptions): Promise<ApiResponse<Scratchpad>> {
+    let path = "/api/threads/{id}/scratchpads/{pad}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{pad}", encodeURIComponent(String(pad)));
+    return this.rawRequest<Scratchpad>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Rename a scratchpad or replace its content, from the version read */
+  async updateScratchpad(id: string, pad: string, body: ScratchpadInput, options?: RequestOptions): Promise<Scratchpad> {
+    let path = "/api/threads/{id}/scratchpads/{pad}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{pad}", encodeURIComponent(String(pad)));
+    return this.request<Scratchpad>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async updateScratchpadRaw(id: string, pad: string, body: ScratchpadInput, options?: RequestOptions): Promise<ApiResponse<Scratchpad>> {
+    let path = "/api/threads/{id}/scratchpads/{pad}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{pad}", encodeURIComponent(String(pad)));
+    return this.rawRequest<Scratchpad>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Delete a scratchpad at the version read */
+  async deleteScratchpad(id: string, pad: string, version: number, options?: RequestOptions): Promise<void> {
+    let path = "/api/threads/{id}/scratchpads/{pad}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{pad}", encodeURIComponent(String(pad)));
+    const _q = new URLSearchParams();
+    if (version !== undefined && version !== null) _q.set("version", String(version));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteScratchpadRaw(id: string, pad: string, version: number, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/threads/{id}/scratchpads/{pad}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{pad}", encodeURIComponent(String(pad)));
+    const _q = new URLSearchParams();
+    if (version !== undefined && version !== null) _q.set("version", String(version));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<void>("DELETE", path, {
       ...options,
     });
   }

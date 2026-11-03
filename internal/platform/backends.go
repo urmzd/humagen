@@ -45,6 +45,7 @@ import (
 	"github.com/urmzd/humagen/pkg/readaudit"
 	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/scratchpads"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -187,6 +188,7 @@ func (p *Platform) openStores(cfg Config) error {
 	var err error
 	p.AgentColors, err = agentcolors.Open(perRequest)
 	keep("agent colors", err)
+	p.Scratchpads = scratchpads.Open(perRequest)
 	p.Runs, err = runs.Open(perRequest)
 	keep("runs", err)
 	p.Schedules, err = OpenSchedules(perRequest)

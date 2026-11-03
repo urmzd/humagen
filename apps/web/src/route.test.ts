@@ -30,6 +30,14 @@ test("every route survives a round trip through its address", () => {
       sandbox: "r/with spaces",
     },
     { page: "conversation", id: "t-1", panel: "workspace", workspaceSection: "artifacts" },
+    { page: "conversation", id: "t-1", panel: "workspace", workspaceSection: "scratchpads" },
+    {
+      page: "conversation",
+      id: "t-1",
+      panel: "workspace",
+      workspaceSection: "scratchpads",
+      scratchpad: "sp-0123",
+    },
     {
       page: "conversation",
       id: "t-1",

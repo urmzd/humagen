@@ -3863,6 +3863,111 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/threads/{id}/scratchpads:
+    get:
+      operationId: listScratchpads
+      tags: [threads]
+      summary: List a conversation's scratchpads, without their content
+      x-permission: runs:read
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      responses:
+        "200":
+          description: The conversation's scratchpads by name, at most 50.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ScratchpadList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    post:
+      operationId: createScratchpad
+      tags: [threads]
+      summary: Add a named scratchpad to a conversation
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ScratchpadInput"}
+      responses:
+        "201":
+          description: The new scratchpad.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Scratchpad"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/threads/{id}/scratchpads/{pad}:
+    get:
+      operationId: getScratchpad
+      tags: [threads]
+      summary: Read a scratchpad with its content
+      x-permission: runs:read
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+        - {name: pad, in: path, required: true, schema: {type: string, maxLength: 64}}
+      responses:
+        "200":
+          description: The scratchpad.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Scratchpad"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: updateScratchpad
+      tags: [threads]
+      summary: Rename a scratchpad or replace its content, from the version read
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+        - {name: pad, in: path, required: true, schema: {type: string, maxLength: 64}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ScratchpadInput"}
+      responses:
+        "200":
+          description: The changed scratchpad.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Scratchpad"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: deleteScratchpad
+      tags: [threads]
+      summary: Delete a scratchpad at the version read
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+        - {name: pad, in: path, required: true, schema: {type: string, maxLength: 64}}
+        - {name: version, in: query, required: true, schema: {type: integer, minimum: 1}}
+      responses:
+        "204":
+          description: Deleted.
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/threads/{id}/files:
     get:
       operationId: listWorkspaceFiles
@@ -7697,6 +7802,36 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/Refusal"}
   schemas:
+    Scratchpad:
+      description: A named note people keep beside a conversation. Its agents read it with file_read and the path scratch:<name>. A listing leaves content empty.
+      type: object
+      required: [id, thread, name, content, size, version, created_by, created_at, updated_by, updated_at]
+      properties:
+        id: {type: string}
+        thread: {type: string}
+        name: {type: string, minLength: 1, maxLength: 320}
+        content: {type: string, maxLength: 262144}
+        size: {type: integer, minimum: 0, maximum: 262144}
+        version: {type: integer, minimum: 1}
+        created_by: {type: string}
+        created_at: {type: string, format: date-time}
+        updated_by: {type: string}
+        updated_at: {type: string, format: date-time}
+    ScratchpadList:
+      type: object
+      required: [scratchpads, writable, limit]
+      properties:
+        scratchpads: {type: array, maxItems: 50, items: {$ref: "#/components/schemas/Scratchpad"}}
+        writable: {type: boolean}
+        reason: {type: string}
+        limit: {type: integer, const: 50}
+    ScratchpadInput:
+      type: object
+      required: [name, content]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 320, description: 1 to 80 printable characters without a slash, unique in the conversation in any case.}
+        content: {type: string, maxLength: 262144}
+        version: {type: integer, minimum: 1, description: The version read. Required to change a scratchpad; a stale one returns 409.}
     SandboxFile:
       type: object
       required: [path, size]

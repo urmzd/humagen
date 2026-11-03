@@ -10,7 +10,6 @@ import {
   PlusIcon,
   RefreshIcon,
   SaveIcon,
-  StickyNoteIcon,
   TrashIcon,
   UploadIcon,
   WebSurface,
@@ -298,15 +297,6 @@ export function WorkspaceFiles({
     setNewPath("");
     choose(name);
   };
-  const scratchpad = () => {
-    const paths = new Set([
-      ...Object.keys(tabs),
-      ...(listing?.files.map((file) => file.path) ?? []),
-    ]);
-    let name = "scratchpads/notes.md";
-    for (let i = 2; paths.has(name); i++) name = `scratchpads/notes-${i}.md`;
-    createDraft(name, "# Scratchpad\n\n");
-  };
   const importFile = async (file: File | undefined) => {
     if (!file) return;
     setProblem("");
@@ -405,10 +395,6 @@ export function WorkspaceFiles({
         >
           <PlusIcon size={15} />
           {words.newFile}
-        </Button>
-        <Button variant="ghost" size="sm" disabled={!writable || !!busy} onClick={scratchpad}>
-          <StickyNoteIcon size={15} />
-          {words.scratchpad}
         </Button>
         <Button
           variant="ghost"
