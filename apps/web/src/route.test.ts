@@ -31,6 +31,14 @@ test("every route survives a round trip through its address", () => {
     },
     { page: "conversation", id: "t-1", panel: "workspace", workspaceSection: "artifacts" },
     { page: "conversation", id: "t-1", panel: "workspace", workspaceSection: "scratchpads" },
+    { page: "conversation", id: "t-1", panel: "workspace", workspaceSection: "memories" },
+    {
+      page: "conversation",
+      id: "t-1",
+      panel: "workspace",
+      workspaceSection: "memories",
+      memoryRun: "r-1",
+    },
     {
       page: "conversation",
       id: "t-1",

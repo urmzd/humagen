@@ -3,6 +3,7 @@ import { ArtifactIcon, ChevronRightIcon, FileIcon, FolderIcon } from "@humagen/r
 import { Button } from "@humagen/render-web/ui/button";
 import { Inspector } from "@humagen/web";
 import { useCallback, useEffect, useState } from "react";
+import { Memories } from "./Memories.tsx";
 import type { ConversationView, WorkspaceSection } from "./route.ts";
 import { Scratchpads, usePadDrafts } from "./Scratchpads.tsx";
 import type { Stored } from "./storage.ts";
@@ -304,7 +305,7 @@ export function Workspace({
     <Tabs
       label={words.sections}
       value={section}
-      tabs={(["sandboxes", "files", "scratchpads", "artifacts"] as const).map((id) => ({
+      tabs={(["sandboxes", "files", "scratchpads", "memories", "artifacts"] as const).map((id) => ({
         id,
         label: words.section[id],
       }))}
@@ -341,6 +342,13 @@ export function Workspace({
               onSelect={(id) => go("scratchpads", { scratchpad: id })}
               drafts={drafts}
               setDrafts={setDrafts}
+            />
+          ) : section === "memories" ? (
+            <Memories
+              thread={thread}
+              open={open}
+              selected={view.memoryRun}
+              onSelect={(run) => go("memories", { memoryRun: run })}
             />
           ) : (
             <Artifacts thread={thread} open={open} onOpen={onArtifact} />

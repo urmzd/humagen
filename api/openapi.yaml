@@ -3879,6 +3879,24 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/threads/{id}/memory:
+    get:
+      operationId: conversationMemory
+      tags: [threads]
+      summary: The memory a conversation draws on, and what its session and each run used and wrote
+      x-permission: runs:read
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      responses:
+        "200":
+          description: Read only. Trees the reader may not read are counted in hidden, never named. At most 50 runs, newest first.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ConversationMemory"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/threads/{id}/sandboxes:
     get:
       operationId: listSandboxes
@@ -7838,6 +7856,89 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/Refusal"}
   schemas:
+    RunMemoryUse:
+      description: A memory tree a run's instance was given, and what the run kept of its changes.
+      type: object
+      required: [kind, dir, version, files]
+      properties:
+        kind: {type: string, enum: [person, project, agent]}
+        person: {type: string}
+        project: {type: string}
+        agent: {type: string}
+        dir: {type: string}
+        read_only: {type: boolean}
+        version: {type: integer, minimum: 0}
+        files: {type: integer, minimum: 0}
+        committed: {type: integer, minimum: 0}
+        proposals: {type: array, maxItems: 16, items: {type: string}}
+        dropped: {type: integer, minimum: 0}
+        finished: {type: boolean}
+    MemoryTreeView:
+      type: object
+      required: [kind, dir, head, files]
+      properties:
+        kind: {type: string, enum: [person, project, agent]}
+        project: {type: string}
+        agent: {type: string}
+        self: {type: boolean, description: The reader's own memory.}
+        dir: {type: string}
+        read_only: {type: boolean}
+        head: {type: integer, minimum: 0}
+        files: {type: integer, minimum: 0}
+    RunMemoryTree:
+      allOf:
+        - {$ref: "#/components/schemas/MemoryTreeView"}
+        - type: object
+          required: [installed]
+          properties:
+            installed: {type: boolean, description: "The tree was installed into the run's instance; false in an unisolated deployment, where memory reaches the run only through its context."}
+            version: {type: integer, minimum: 0}
+            finished: {type: boolean}
+            committed: {type: integer, minimum: 0}
+            proposals: {type: integer, minimum: 0}
+            dropped: {type: integer, minimum: 0}
+    MemoryNoteView:
+      type: object
+      required: [id, kind, text, status, at]
+      properties:
+        id: {type: string}
+        kind: {type: string, enum: [person, project, agent]}
+        owner: {type: string}
+        text: {type: string}
+        status: {type: string}
+        at: {type: string, format: date-time}
+    RunMemory:
+      type: object
+      required: [run, agent, depth, created_at, trees, notes, hidden]
+      properties:
+        run: {type: string}
+        agent: {type: string}
+        depth: {type: integer, minimum: 0}
+        created_at: {type: string, format: date-time}
+        trees: {type: array, maxItems: 16, items: {$ref: "#/components/schemas/RunMemoryTree"}}
+        notes: {type: array, maxItems: 20, items: {$ref: "#/components/schemas/MemoryNoteView"}}
+        hidden: {type: integer, minimum: 0}
+    SessionMemoryTree:
+      allOf:
+        - {$ref: "#/components/schemas/MemoryTreeView"}
+        - type: object
+          required: [runs, versions, commits, proposals, notes]
+          properties:
+            runs: {type: integer, minimum: 0}
+            versions: {type: array, items: {type: integer}}
+            commits: {type: array, items: {type: integer}}
+            proposals: {type: integer, minimum: 0}
+            notes: {type: integer, minimum: 0}
+    ConversationMemory:
+      type: object
+      required: [isolated, conversation, session, runs, hidden, more]
+      properties:
+        isolated: {type: boolean}
+        conversation: {type: array, items: {$ref: "#/components/schemas/MemoryTreeView"}}
+        session: {type: array, items: {$ref: "#/components/schemas/SessionMemoryTree"}}
+        runs: {type: array, maxItems: 50, items: {$ref: "#/components/schemas/RunMemory"}}
+        hidden: {type: integer, minimum: 0}
+        more: {type: boolean}
     Scratchpad:
       description: A named note people keep beside a conversation. Its agents read it with file_read and the path scratch:<name>. A listing leaves content empty.
       type: object
@@ -9529,6 +9630,7 @@ components:
           type: string
         outcome: {$ref: "#/components/schemas/RunOutcome"}
         sandbox: {$ref: "#/components/schemas/RunSandboxRecord"}
+        memory: {type: array, maxItems: 16, items: {$ref: "#/components/schemas/RunMemoryUse"}}
         citations:
           type: array
           maxItems: 64

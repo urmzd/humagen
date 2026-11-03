@@ -23,6 +23,10 @@ func exerciseWorkspaceFileContract(t *testing.T, c *contract, actor, other strin
 	if _, ok := sandboxes.field("session").(map[string]any); !ok {
 		t.Fatalf("sandboxes: %s", sandboxes.raw)
 	}
+	mem := c.call(actor, "GET", "/api/threads/{id}/memory", "/api/threads/"+id+"/memory", "", http.StatusOK)
+	if _, ok := mem.field("conversation").([]any); !ok {
+		t.Fatalf("memory: %s", mem.raw)
+	}
 	c.call(actor, "GET", content, base+"/content?path=../escape", "", http.StatusBadRequest)
 	c.call(actor, "PUT", content, base+"/content", `{"path":"../escape","content":"x","revision":""}`, http.StatusBadRequest)
 	saved := c.call(actor, "PUT", content, base+"/content", `{"path":"notes/plan.md","content":"# First version","revision":""}`, http.StatusOK)
@@ -44,7 +48,7 @@ func exerciseWorkspaceFileContract(t *testing.T, c *contract, actor, other strin
 	c.call(actor, "DELETE", content, base+"/content?path=../escape&revision="+revision, "", http.StatusBadRequest)
 	c.call(actor, "DELETE", content, base+"/content?path=notes/plan.md&revision="+updated.str("revision"), "", http.StatusNoContent)
 	for _, req := range []struct{ method, template, path, body string }{
-		{"GET", list, base, ""}, {"GET", "/api/threads/{id}/sandboxes", "/api/threads/" + id + "/sandboxes", ""}, {"GET", content, base + "/content?path=notes/plan.md", ""},
+		{"GET", list, base, ""}, {"GET", "/api/threads/{id}/sandboxes", "/api/threads/" + id + "/sandboxes", ""}, {"GET", "/api/threads/{id}/memory", "/api/threads/" + id + "/memory", ""}, {"GET", content, base + "/content?path=notes/plan.md", ""},
 		{"PUT", content, base + "/content", `{"path":"x","content":"x","revision":""}`},
 		{"DELETE", content, base + "/content?path=x&revision=bad", ""},
 		{"POST", publish, base + "/publish", `{"path":"x","revision":"bad"}`},
