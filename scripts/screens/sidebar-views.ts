@@ -10,7 +10,7 @@ import type { Page } from "playwright-core";
 const THREADS = /\/api\/threads(?:\?|$)/;
 const MARKS = /\/api\/marks$/;
 
-async function dress(page: Page, archived: string[] = []) {
+async function dress(page: Page, tips: string[] = ["search"]) {
   const since = new Date(Date.now() - 30 * 24 * 3_600_000).toISOString();
   let order: string[] = [];
   let listed = () => {};
@@ -44,9 +44,9 @@ async function dress(page: Page, archived: string[] = []) {
     await seen;
     await route.fulfill({
       json: {
-        archived: archived.length ? archived : order.slice(-1),
+        archived: order.slice(-1),
         read: {},
-        tips: ["search"],
+        tips,
         since,
       },
     });
@@ -92,13 +92,13 @@ export function sidebarViews(): Scene[] {
     if (held) await undress(held);
     held = undefined;
   };
-  const scene = (name: string, act: (page: Page) => Promise<void>): Scene => ({
+  const scene = (name: string, act: (page: Page) => Promise<void>, tips?: string[]): Scene => ({
     name,
     path: "/settings/profile",
     rules: { target: 24 },
     act: async (page) => {
       held = page;
-      await dress(page);
+      await dress(page, tips);
       await page.reload();
       // Nothing hovered or focused from the screen before: a row's hover
       // actions would hide its age and dot.
@@ -109,6 +109,35 @@ export function sidebarViews(): Scene[] {
     after: release,
   });
   return [
+    // DES-053: the one-time search tip, before it is dismissed.
+    scene(
+      "sidebar-tip",
+      async (page) => {
+        const nav = await openSidebar(page);
+        await nav
+          .getByRole("complementary", { name: "Search across conversations" })
+          .getByRole("button", { name: "Dismiss" })
+          .waitFor();
+      },
+      [],
+    ),
+    // DES-050: a row's preview, on hover with a mouse and a long press on a phone.
+    scene("sidebar-preview", async (page) => {
+      const nav = await openSidebar(page);
+      const row = nav.getByRole("list", { name: "Recents" }).locator("[data-thread-row]").nth(2);
+      if ((page.viewportSize()?.width ?? 0) >= 768) {
+        await row.hover();
+      } else {
+        const box = await row.boundingBox();
+        assert.ok(box);
+        await row.dispatchEvent("touchstart", {
+          touches: [{ identifier: 1, clientX: box.x + 20, clientY: box.y + 10 }],
+        });
+      }
+      const card = page.locator("[data-peek]");
+      await card.waitFor();
+      assert.match((await card.textContent()) ?? "", /Updated/);
+    }),
     scene("sidebar-recents", async (page) => {
       const nav = await openSidebar(page);
       const list = nav.getByRole("list", { name: "Recents" });
@@ -154,4 +183,24 @@ export function sidebarViews(): Scene[] {
         .waitFor();
     }),
   ];
+}
+
+/** DES-050: the wave's preview of a turn carries its author's mark. */
+export function wavePreview(path: string): Scene {
+  return {
+    name: "conversation-wave-preview",
+    path,
+    act: async (page) => {
+      const wave = page.getByRole("slider", { name: "Turns in this conversation" });
+      await wave.waitFor();
+      await wave.focus();
+      await page.keyboard.press("Home");
+      const tip = page.getByRole("tooltip");
+      await tip.waitFor();
+      assert.ok(
+        (await tip.locator("[data-mark='person'], .aui-initials").count()) > 0,
+        "the preview shows who said it",
+      );
+    },
+  };
 }

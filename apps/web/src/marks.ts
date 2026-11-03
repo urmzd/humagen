@@ -9,11 +9,17 @@ import { NO_MARKS } from "./conversationList.ts";
  */
 export function useMarks(enabled: boolean) {
   const [marks, setMarks] = useState<Marks>(NO_MARKS);
+  // Whether the saved marks have been read: a one-time tip waits for them,
+  // so one already dismissed never flashes in.
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     if (!enabled) return;
     coworking
       .marks()
-      .then(setMarks)
+      .then((m) => {
+        setMarks(m);
+        setLoaded(true);
+      })
       .catch(() => {});
   }, [enabled]);
   const archive = useCallback((id: string, on: boolean) => {
@@ -41,5 +47,5 @@ export function useMarks(enabled: boolean) {
       .then(setMarks)
       .catch(() => {});
   }, []);
-  return { marks, archive, read, dismissTip };
+  return { marks, loaded, archive, read, dismissTip };
 }

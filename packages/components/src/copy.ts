@@ -1884,6 +1884,13 @@ export const defaultCopy = {
     },
     updated: (when: string) => `Updated ${when}`,
     outsideProject: "Outside of a project",
+    /** A one-time tip, until the person dismisses it. */
+    searchTip: {
+      title: "Search across conversations",
+      body: "Find any conversation, project or page by what it says.",
+      open: "Search",
+      dismiss: "Dismiss",
+    },
   },
   /**
    * The installed app: the prompt for a new version, which waits for the

@@ -198,3 +198,48 @@ test("opening a conversation marks it read", async () => {
     ),
   );
 });
+
+test("the search tip shows once marks are read, and Dismiss keeps it away for the person", async () => {
+  let marks: Marks = { archived: [], read: {}, tips: [] };
+  net = stubFetch({
+    "GET /api/marks": () => marks,
+    "POST /api/marks/tips": (body) => {
+      marks = { ...marks, tips: [...marks.tips, (body as { name: string }).name] };
+      return marks;
+    },
+    "GET /api/threads": () => ({ threads: [], next: null }),
+  });
+  const noop = () => {};
+  const bar = () => (
+    <Sidebar
+      open
+      onToggle={noop}
+      route={{ page: "new" }}
+      go={noop}
+      me={me}
+      prefs={prefs}
+      can={(p) => me.permissions.includes(p)}
+      threads={[]}
+      pinned={[]}
+      onPin={async () => {}}
+      inboxCount={0}
+      live
+      onSignOut={noop}
+      onSearch={noop}
+    />
+  );
+  render(bar());
+  const tip = await screen.findByRole("complementary", { name: "Search across conversations" });
+  fireEvent.click(within(tip).getByRole("button", { name: "Dismiss" }));
+  await waitFor(() => assert.deepEqual(marks.tips, ["search"]));
+  assert.equal(screen.queryByRole("complementary", { name: "Search across conversations" }), null);
+  cleanup();
+  render(bar());
+  await screen.findByRole("list", { name: "Recents" });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(
+    screen.queryByRole("complementary", { name: "Search across conversations" }),
+    null,
+    "a dismissed tip stays dismissed",
+  );
+});

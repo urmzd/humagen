@@ -74,6 +74,8 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-045 | A phone reads like a native chat app: quiet message actions, a one-line chat bar and header, Chat and Work at the top of Home, a swipe from the edge for the drawer, and the installed app opening on Chat | Implemented: `theme.css`, `styles.css`, `Composer.tsx`, `ConversationShell.tsx`, `ModeSwitch.tsx`, `Sidebar.tsx`, `manifest.webmanifest`; web tests pass; screens pass at 390x844 and 1280x800 |
 | DES-046 | A structured review reads as a card with its evidence in place, the same in Slack | Implemented: core `readReview`, components `ReviewCard`, the `Review` primitive in render-web and render-slack, `GET /api/github/source`; core, Slack, web DOM and Go tests pass; `pnpm validate:slack` passes; `conversation-review-*` screens pass at phone and desktop |
 | DES-049 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row says its project, its age or an unread dot, and whether it waits on a person, runs or failed | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
+| DES-050 | A sidebar row previews itself on hover or a long press, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview`, `conversation-wave-preview`) at 390x844 and 1280x800 |
+| DES-053 | A one-time tip teaches search, dismissed once per person | Implemented: `Sidebar.tsx`, `POST /api/marks/tips`; DOM test and `sidebar-tip` screens pass |
 | DES-047 | Skills are slash commands, the only way the console offers them: `/` opens a menu of the skills a message here can name, fuzzy filtered with the match highlighted; `@` offers no skill or `@skill:`, `$` opens nothing, and a posted `$name` or `@skill:name` shows as a `/name` chip | Implemented: `commands.ts`, `tags.ts`, `Composer.tsx`, `ui.tsx` (`Mentioned`), `pkg/threads/tags.go`; web, threads and platform tests pass; `chat-at`, `chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection` screens at 390x844 and 1280x800 |
 
 ### DES-001: Working integrations
@@ -1297,3 +1299,47 @@ Evidence: `go test -race ./pkg/marks ./pkg/runs ./internal/httpapi` (`TestArchiv
 `preferences.dom.test.tsx`); `make screens` with `sidebar-recents`,
 `sidebar-row-actions`, `sidebar-projects`, `sidebar-archived` and
 `sidebar-participants`.
+
+### DES-050: Previews of a conversation and of a turn
+
+Owner request: a preview card when hovering a sidebar row (title, project,
+updated time), as Antigravity does, and on the conversation's turn rail, as
+ChatGPT does.
+
+Rules:
+
+- Resting a mouse on a row for 450ms opens a card beside it: the title, its
+  project and "Updated" with a time today or a date before, then the first
+  line of the latest thing said, after its author's mark (an agent's
+  initials in its ring, a person's initial). Leaving, scrolling or Escape
+  closes it. The row names the card with `aria-describedby` while it shows.
+- On a touch screen a 500ms hold opens the card under the row, across the
+  screen, or over it near the bottom. The hold does not also open the
+  conversation, and the browser's own menu does not open; the next tap does.
+- The card is drawn over the page, so the sidebar's scrolling list never
+  clips it, and it is kept inside the window.
+- The wave's preview of a turn (DES-044) leads with its author's mark: a
+  person's initial for a message, an agent's initials for an answer.
+- Hovering a row on a wide screen keeps its title clear of its actions.
+
+Evidence: `cd apps/web && pnpm test` (`peek.test.ts`,
+`sidebar-peek.dom.test.tsx`, `wave.dom.test.tsx`); `make screens` with
+`sidebar-preview` (a hover on desktop, a held finger on a phone) and
+`conversation-wave-preview`.
+
+### DES-053: A one-time tip for search
+
+Owner request: a dismissible tip card for search across conversations, as
+Antigravity shows once.
+
+Rules:
+
+- The sidebar shows "Search across conversations" above Pinned, with
+  **Search** (opens search and dismisses it) and **Dismiss**, both text
+  controls.
+- It waits for the person's marks to be read, so a tip already dismissed
+  never flashes in, and once dismissed it stays away on every device:
+  `POST /api/marks/tips` keeps the name in the person's marks (DES-049).
+
+Evidence: `sidebar-views.dom.test.tsx` (the tip test); `make screens` with
+`sidebar-tip`.
