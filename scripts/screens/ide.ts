@@ -132,10 +132,12 @@ export function ideScreens(call: Call): Screen[] {
       path: "/",
       act: async (page) => {
         const { endpoint } = await prepare(page, "scratchpads/plan.md", "preview");
-        await page.getByRole("button", { name: copy.scratchpad, exact: true }).click();
+        await page.getByRole("button", { name: copy.newFile, exact: true }).click();
+        await page.getByLabel(copy.path, { exact: true }).fill("notes.md");
+        await page.getByRole("button", { name: copy.create, exact: true }).click();
         await page.getByRole("button", { name: copy.edit, exact: true }).click();
         const scratch = page.getByRole("textbox", {
-          name: "Edit scratchpads/notes.md",
+          name: "Edit notes.md",
           exact: true,
         });
         await scratch.fill(
@@ -143,10 +145,7 @@ export function ideScreens(call: Call): Screen[] {
         );
         await page.getByRole("button", { name: /^Save/ }).first().click();
         await page.waitForFunction(() => !document.body.textContent?.includes("Unsaved"));
-        assert.match(
-          (await savedFile(endpoint, "scratchpads/notes.md")).content,
-          /Ready for publication/,
-        );
+        assert.match((await savedFile(endpoint, "notes.md")).content, /Ready for publication/);
         await page.getByRole("button", { name: copy.preview, exact: true }).click();
         await page.getByRole("heading", { name: "Launch review", exact: true }).waitFor();
         await page.getByRole("button", { name: copy.publish, exact: true }).click();

@@ -68,6 +68,7 @@ type hidden struct {
 	project, agent, schedule, rule, source, eval, client, variant string
 	run, thread, message, artifact, agentNote, projectNote, doc   string
 	workspaceFile, workspaceRevision                              string
+	scratchpad                                                    string
 	memoryProposal                                                string
 	personalNote                                                  string
 	// connector is a catalog connector of the hidden project, owned by the
@@ -223,6 +224,11 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	h.artifact = published.ID
 	h.workspaceFile, h.workspaceRevision = "plan-"+marker+".txt", published.SHA256
 	h.checkWorkspaceFile(t, f, owner)
+	pad, err := f.p.Scratchpads.Create(t.Context(), "acme", h.thread, "Pad "+marker, "Canary"+marker, "owner", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.scratchpad = pad.ID
 
 	must("POST", "/api/schedules", `{"name":"`+h.schedule+`","expression":"0 3 * * *","agent":"`+h.agent+`","text":"Schedule `+marker+`.","project":"`+h.project+`","deliver":"inbox"}`, http.StatusCreated)
 	if inside {
@@ -423,6 +429,11 @@ func hidePrivate(t *testing.T, f *fixture, owner string) hidden {
 	h.artifact = published.ID
 	h.workspaceFile, h.workspaceRevision = "plan-"+marker+".txt", published.SHA256
 	h.checkWorkspaceFile(t, f, owner)
+	pad, err := f.p.Scratchpads.Create(t.Context(), "acme", h.thread, "Pad "+marker, "Canary"+marker, "owner", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.scratchpad = pad.ID
 
 	deadline := time.Now().Add(10 * time.Second)
 	for h.alert == "" || h.message == "" {
@@ -624,6 +635,8 @@ func (h hidden) value(path, param string) (string, bool) {
 		return "p1", true
 	case "question":
 		return "q1", true
+	case "pad":
+		return h.scratchpad, true
 	}
 	return "", false
 }

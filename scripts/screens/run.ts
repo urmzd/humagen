@@ -486,6 +486,37 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       },
     },
     {
+      name: "workspace-scratchpads",
+      path: `/conversations/${ids.nativeThread}/workspace/scratchpads`,
+      act: async (page) => {
+        const width = page.viewportSize()?.width ?? 0;
+        const pad = await call<{ id: string }>(
+          "POST",
+          `/api/threads/${ids.nativeThread}/scratchpads`,
+          {
+            name: `Launch plan ${width}`,
+            content:
+              "# Launch plan\n\n- Keep the November 12 date\n- Confirm the briefing owner\n- Publish after review\n",
+          },
+        );
+        await call("POST", `/api/threads/${ids.nativeThread}/scratchpads`, {
+          name: `Open questions ${width}`,
+          content: "# Open questions\n\n- Who signs off?\n",
+        });
+        await page.reload({ waitUntil: "domcontentloaded" });
+        const panel = page.getByRole("dialog", { name: defaultCopy.workspace.title, exact: true });
+        await panel.getByRole("button", { name: new RegExp(`Launch plan ${width}`) }).waitFor();
+        await page.goto(
+          new URL(`/conversations/${ids.nativeThread}/workspace/scratchpads/${pad.id}`, page.url())
+            .href,
+          { waitUntil: "domcontentloaded" },
+        );
+        await page
+          .getByRole("textbox", { name: `Edit Launch plan ${width}.md`, exact: true })
+          .waitFor();
+      },
+    },
+    {
       name: "workspace-artifacts",
       path: `/conversations/${ids.nativeThread}/workspace/artifacts`,
       act: async (page) => {

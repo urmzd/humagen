@@ -125,7 +125,12 @@ test("the Workspace panel holds its sections as tabs, each with its own address"
   const tabs = await screen.findAllByRole("tab");
   assert.deepEqual(
     tabs.map((t) => t.textContent),
-    [words.section.sandboxes, words.section.files, words.section.artifacts],
+    [
+      words.section.sandboxes,
+      words.section.files,
+      words.section.scratchpads,
+      words.section.artifacts,
+    ],
   );
   // Files is the default section, at the panel's own address.
   assert.equal(

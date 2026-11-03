@@ -2378,6 +2378,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/agent-network", "/api/agent-network", "", http.StatusOK)
 
 	workspaceID := exerciseWorkspaceFileContract(t, c, auditAdmin, globex)
+	padID := exerciseScratchpadContract(t, c, auditAdmin, globex, workspaceID)
 	// Two rules hold for every route that takes something: another
 	// workspace's object is not found, and a body with a field the route
 	// does not know is refused. Both are asked of every operation the spec
@@ -2396,6 +2397,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/threads/{id}/files":                             {"id": workspaceID},
 		"/api/threads/{id}/files/content":                     {"id": workspaceID},
 		"/api/threads/{id}/files/publish":                     {"id": workspaceID},
+		"/api/threads/{id}/sandboxes":                         {"id": workspaceID},
+		"/api/threads/{id}/scratchpads":                       {"id": workspaceID},
+		"/api/threads/{id}/scratchpads/{pad}":                 {"id": workspaceID, "pad": padID},
 		"/api/runs/{id}/questions/{question}/answer":          {"id": id, "question": "x"},
 		"/api/runs/{id}/feedback":                             {"id": id},
 		"/api/runs/{id}/learning":                             {"id": learningID},

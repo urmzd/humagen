@@ -205,6 +205,15 @@ planned collections, browser, protocol and improvement work from this UI pass.
   reports zero issues; console, renderer, web and client typechecks and the
   production console build pass.
 
+#### Scratchpads
+
+- A conversation has up to 50 named scratchpads, created, renamed, deleted
+  and edited in the Workspace, read by its agents as `scratch:<name>`.
+- Evidence: `pkg/scratchpads` store tests (versions, names, bounds, tenant
+  and conversation isolation, deletion with the conversation), platform and
+  HTTP contract and confinement tests, `scratchpads.dom.test.tsx` and the
+  `workspace-scratchpads` screens.
+
 #### One Workspace panel
 
 - Files, Context and Activity leave the conversation header for Conversation

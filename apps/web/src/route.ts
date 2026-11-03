@@ -115,8 +115,13 @@ const CONVERSATION_PANELS: ConversationPanel[] = [
   "workspace",
 ];
 /** The Workspace panel's sections. Files is the default, at the panel's own address. */
-export type WorkspaceSection = "sandboxes" | "files" | "artifacts";
-export const WORKSPACE_SECTIONS: WorkspaceSection[] = ["sandboxes", "files", "artifacts"];
+export type WorkspaceSection = "sandboxes" | "files" | "scratchpads" | "artifacts";
+export const WORKSPACE_SECTIONS: WorkspaceSection[] = [
+  "sandboxes",
+  "files",
+  "scratchpads",
+  "artifacts",
+];
 export type ArtifactTab = "preview" | "versions" | "provenance";
 const ARTIFACT_TABS: ArtifactTab[] = ["preview", "versions", "provenance"];
 export interface ConversationView {
@@ -131,6 +136,8 @@ export interface ConversationView {
   workspaceSection?: WorkspaceSection;
   /** The run whose nested sandbox is open in Sandboxes. */
   sandbox?: string;
+  /** The scratchpad open in Scratchpads. */
+  scratchpad?: string;
   file?: string;
   workspaceTab?: "edit" | "preview" | "changes";
   /** One-based slide selection. */
@@ -356,7 +363,13 @@ export function href(r: Route): string {
           if (r.workspaceTab) q.set("tab", r.workspaceTab);
           const section =
             r.workspaceSection && r.workspaceSection !== "files" ? `/${r.workspaceSection}` : "";
-          const item = r.workspaceSection === "sandboxes" && r.sandbox ? `/${enc(r.sandbox)}` : "";
+          const selected =
+            r.workspaceSection === "sandboxes"
+              ? r.sandbox
+              : r.workspaceSection === "scratchpads"
+                ? r.scratchpad
+                : undefined;
+          const item = selected ? `/${enc(selected)}` : "";
           return `${base}${section}${item}${q.size ? `?${q}` : ""}`;
         }
         if (r.panel === "deliverables" && r.artifact)
@@ -593,6 +606,7 @@ function read(pathname: string, search: string): Route {
                 workspaceSection:
                   parts[3] === "files" ? undefined : oneOf(parts[3], WORKSPACE_SECTIONS),
                 sandbox: parts[3] === "sandboxes" ? parts[4] : undefined,
+                scratchpad: parts[3] === "scratchpads" ? parts[4] : undefined,
                 file: q.get("file") || undefined,
                 workspaceTab: oneOf(q.get("tab"), ["edit", "preview", "changes"] as const),
               }

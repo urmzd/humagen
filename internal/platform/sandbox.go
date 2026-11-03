@@ -689,7 +689,7 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 				return fmt.Sprintf("Wrote %s (%d bytes).", f.Path, f.Size), nil
 			}),
 		ToolFileRead: tool(ToolFileRead,
-			"Read text or the editable revision JSON of a native Office file from this conversation. To revise an immutable published version, use path artifact:<id>@<version>. Read a pinned skill's supporting file with path skill:<name>/<path>. Other conversations and unselected skills are never read.",
+			"Read text or the editable revision JSON of a native Office file from this conversation. Read a scratchpad people keep in this conversation with path scratch:<name>. To revise an immutable published version, use path artifact:<id>@<version>. Read a pinned skill's supporting file with path skill:<name>/<path>. Other conversations and unselected skills are never read.",
 			schema([]string{"path"}, map[string]string{"path": "Relative path of the file"}),
 			func(ctx context.Context, args map[string]any) (string, error) {
 				if requested := arg(args, "path"); strings.HasPrefix(requested, "skill:") {
@@ -700,6 +700,9 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 					return "", err
 				}
 				defer func() { _ = area.close() }()
+				if requested := arg(args, "path"); strings.HasPrefix(requested, ScratchpadPrefix) {
+					return p.readScratchpad(ctx, req.Tenant, thread, requested)
+				}
 				var b []byte
 				requested := arg(args, "path")
 				if strings.HasPrefix(requested, "artifact:") {
@@ -733,10 +736,10 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 				return string(b), nil
 			}),
 		ToolFileList: tool(ToolFileList,
-			"List the files in this conversation's working directory.",
+			"List the files in this conversation's working directory, and the scratchpads people keep in it.",
 			schema(nil, nil),
 			func(ctx context.Context, _ map[string]any) (string, error) {
-				_, _, area, err := where(ctx)
+				thread, _, area, err := where(ctx)
 				if err != nil {
 					return "", err
 				}
@@ -745,14 +748,15 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 				if err != nil {
 					return "", fmt.Errorf("platform: sandbox: %w", err)
 				}
+				pads := p.scratchpadLines(ctx, req.Tenant, thread)
 				if len(files) == 0 {
-					return "No files yet.", nil
+					return "No files yet." + pads, nil
 				}
 				var b strings.Builder
 				for _, f := range files {
 					fmt.Fprintf(&b, "%s (%d bytes)\n", f.Path, f.Size)
 				}
-				return b.String(), nil
+				return b.String() + pads, nil
 			}),
 		ToolPublish: tool(ToolPublish,
 			"Publish a file from the working directory so the person can open and download it. Publishing a title again in the same conversation makes a new version.",

@@ -4,6 +4,7 @@ import { Button } from "@humagen/render-web/ui/button";
 import { Inspector } from "@humagen/web";
 import { useCallback, useEffect, useState } from "react";
 import type { ConversationView, WorkspaceSection } from "./route.ts";
+import { Scratchpads, usePadDrafts } from "./Scratchpads.tsx";
 import type { Stored } from "./storage.ts";
 import { AgentMark, ago, SkeletonRows, Tabs } from "./ui.tsx";
 import { WorkspaceFiles } from "./WorkspaceFiles.tsx";
@@ -296,13 +297,14 @@ export function Workspace({
   onRun?: (run: string) => void;
 }) {
   const section: WorkspaceSection = view.workspaceSection ?? "files";
+  const [drafts, setDrafts] = usePadDrafts();
   const go = (next: WorkspaceSection, extra: Partial<ConversationView> = {}) =>
     onView({ panel: "workspace", workspaceSection: next === "files" ? undefined : next, ...extra });
   const nav = (
     <Tabs
       label={words.sections}
       value={section}
-      tabs={(["sandboxes", "files", "artifacts"] as const).map((id) => ({
+      tabs={(["sandboxes", "files", "scratchpads", "artifacts"] as const).map((id) => ({
         id,
         label: words.section[id],
       }))}
@@ -330,6 +332,15 @@ export function Workspace({
               onSelect={(run) => go("sandboxes", { sandbox: run })}
               onFile={(file) => go("files", file ? { file } : {})}
               onActivity={onRun}
+            />
+          ) : section === "scratchpads" ? (
+            <Scratchpads
+              thread={thread}
+              open={open}
+              selected={view.scratchpad}
+              onSelect={(id) => go("scratchpads", { scratchpad: id })}
+              drafts={drafts}
+              setDrafts={setDrafts}
             />
           ) : (
             <Artifacts thread={thread} open={open} onOpen={onArtifact} />
