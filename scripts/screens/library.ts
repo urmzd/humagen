@@ -21,6 +21,8 @@ const heading = (page: Page, title: string) =>
 export function libraryScreens(call: Call): Screen[] {
   let originalPersonal: Record<string, unknown> | undefined;
   let digestMessages: { id: string; subject: string }[] | undefined;
+  let hiddenNotice: { id: string; subject: string } | undefined;
+  const views = defaultCopy.inboxViews;
   async function memory() {
     const { notes } = await call<{ notes: Note[] }>("GET", "/api/me/memory");
     return (
@@ -612,17 +614,27 @@ export function libraryScreens(call: Call): Screen[] {
           );
           if (!failed) {
             await page.route(/\/api\/inbox(?:\?.*)?$/, (route) =>
-              route.fulfill({ json: { messages: [], next: null, open: 0, unread: 0, updates: 0 } }),
+              route.fulfill({
+                json: {
+                  messages: [],
+                  next: null,
+                  open: 0,
+                  unread: 0,
+                  updates: 0,
+                  inbox: 0,
+                  hidden: 0,
+                },
+              }),
             );
             await page.route("**/api/inbox/count", (route) =>
-              route.fulfill({ json: { open: 0, unread: 0, updates: 0 } }),
+              route.fulfill({ json: { open: 0, unread: 0, updates: 0, inbox: 0, hidden: 0 } }),
             );
           }
           await page.reload();
           await heading(page, "Notifications");
           await page.getByRole("link", { name: "Notification Preferences", exact: true }).waitFor();
           if (failed) await page.getByRole("button", { name: "Try Again", exact: true }).waitFor();
-          else await page.getByText(defaultCopy.mailbox.empty, { exact: true }).waitFor();
+          else await page.getByText(views.empty.inbox[0], { exact: true }).waitFor();
         },
       }),
     ),
@@ -650,10 +662,11 @@ export function libraryScreens(call: Call): Screen[] {
         const bell = sections.getByRole("link", { name: /^Notifications/ });
         assert.equal(await bell.count(), 1, "Notifications has one sidebar destination");
         assert.equal(await sections.getByRole("link", { name: /^Needs You/ }).count(), 0);
-        const { open } = await call<{ open: number }>("GET", "/api/inbox/count");
-        if (open > 0)
+        // The badge counts what is unread, never what was read, hidden or deleted.
+        const { unread } = await call<{ unread: number }>("GET", "/api/inbox/count");
+        if (unread > 0)
           await sections
-            .getByRole("link", { name: new RegExp(`^Notifications, ${open} need`) })
+            .getByRole("link", { name: new RegExp(`^Notifications, ${unread} unread`) })
             .waitFor();
         assert.equal(await bell.getAttribute("href"), "/notifications");
         await bell.click();
@@ -687,9 +700,8 @@ export function libraryScreens(call: Call): Screen[] {
           name: defaultCopy.inboxControls.notificationFilter,
           exact: true,
         });
-        await panel
-          .getByLabel(defaultCopy.inboxControls.status, { exact: true })
-          .selectOption("open");
+        // The views say the status, so the panel holds only the type.
+        assert.equal(await panel.getByLabel(defaultCopy.inboxControls.status).count(), 0);
         await panel
           .getByLabel(defaultCopy.inboxControls.type, { exact: true })
           .selectOption("failure");
@@ -710,6 +722,59 @@ export function libraryScreens(call: Call): Screen[] {
           .getByRole("button", { name: defaultCopy.inboxControls.done, exact: true })
           .click();
         assert.equal(new URL(page.url()).searchParams.get("kind"), null);
+      },
+    },
+    {
+      name: "notifications-inbox",
+      path: "/notifications",
+      act: async (page) => {
+        await heading(page, "Notifications");
+        const control = page.getByRole("group", { name: views.label, exact: true });
+        const inbox = control.getByRole("button", { name: new RegExp(`^${views.inbox}`) });
+        assert.equal(await inbox.getAttribute("aria-pressed"), "true", "the Inbox is the default");
+        for (const name of [views.unread, views.hidden, views.done])
+          await control.getByRole("button", { name: new RegExp(`^${name}`) }).waitFor();
+        await page.locator("main [data-message]").first().waitFor();
+        // A row in a view carries no state word: the view says it.
+        const words = await page.locator("main [data-message]").allTextContents();
+        assert.ok(words.every((text) => !/\b(Dismissed|Hidden)\b/.test(text)));
+      },
+    },
+    {
+      name: "notifications-hidden",
+      path: "/notifications?view=hidden",
+      act: async (page) => {
+        // A notice of its own, hidden by this reader alone, so other screens keep theirs.
+        hiddenNotice ??= await call<{ id: string; subject: string }>(
+          "POST",
+          "/api/projects/Launch/announcements",
+          { subject: "Planning moved to Thursday", text: "The weekly planning review moved." },
+        );
+        await call("POST", "/api/inbox/marks", { ids: [hiddenNotice.id], mark: "hide" });
+        await page.reload();
+        await heading(page, "Notifications");
+        const control = page.getByRole("group", { name: views.label, exact: true });
+        const hidden = control.getByRole("button", { name: new RegExp(`^${views.hidden}`) });
+        assert.equal(await hidden.getAttribute("aria-pressed"), "true");
+        await page.locator(`main [data-message="${hiddenNotice.id}"]`).click();
+        const pane = page.getByRole("region", { name: defaultCopy.mailbox.reading, exact: true });
+        await pane.getByRole("button", { name: views.unhide, exact: true }).waitFor();
+        await pane.getByText(views.hiddenNote, { exact: true }).waitFor();
+      },
+    },
+    {
+      name: "notifications-bulk",
+      path: "/notifications",
+      act: async (page) => {
+        await heading(page, "Notifications");
+        const boxes = page.locator("main [data-message]");
+        await boxes.nth(1).waitFor();
+        const picks = page.locator('main li input[type="checkbox"]');
+        for (const i of [0, 1]) await picks.nth(i).check();
+        const bulk = page.getByRole("toolbar", { name: views.bulk, exact: true });
+        await bulk.getByText(views.selected(2), { exact: true }).waitFor();
+        for (const name of [views.markRead, views.markUnread, views.hide, views.delete])
+          await bulk.getByRole("button", { name, exact: true }).waitFor();
       },
     },
     {

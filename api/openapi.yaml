@@ -3528,7 +3528,10 @@ paths:
       parameters:
         - name: state
           in: query
-          description: Defaults to `open`, or to `all` when `alert` is given.
+          description: |
+            Defaults to `open`, or to `all` when `alert` is given. Ignored
+            with `view`. A message the caller deleted is never listed, and
+            one they hid is not listed as open.
           schema: {type: string, enum: [open, resolved, dismissed, snoozed, all]}
         - name: kind
           in: query
@@ -3582,6 +3585,15 @@ paths:
             counts: an agent's draft, which shares their kind, is left out
             before the page is cut. Home reads What's new this way.
           schema: {type: string, enum: ["true"]}
+        - name: view
+          in: query
+          description: |
+            One of the caller's own views, drawn from their marks, in place
+            of `state`: `inbox` is what is open for them and not hidden, read
+            or not; `unread` the same, unread; `hidden` what they hid, in any
+            state; `done` what was resolved or dismissed for everyone, less
+            what they hid. A message the caller deleted is in no view.
+          schema: {type: string, enum: [inbox, unread, hidden, done]}
       responses:
         "200":
           description: One page, with the caller's counts.
@@ -3589,7 +3601,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [messages, next, open, unread, updates]
+                required: [messages, next, open, unread, updates, inbox, hidden]
                 properties:
                   messages:
                     type: array
@@ -3599,6 +3611,12 @@ paths:
                   unread: {type: integer}
                   updates:
                     description: Announcements the caller has not read. They never count in `open` or `unread`.
+                    type: integer
+                  inbox:
+                    description: Everything in the caller's `inbox` view, read or not, announcements included.
+                    type: integer
+                  hidden:
+                    description: What is in the caller's `hidden` view, at most 1000.
                     type: integer
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
@@ -3755,13 +3773,12 @@ paths:
     post:
       operationId: unhideInboxMessage
       tags: [inbox]
-      summary: Bring back an announcement the caller hid for themselves
+      summary: Bring back a message the caller hid for themselves
       description: |
-        An announcement the caller hid or snoozed (`hidden`) is open for them
-        again, as everyone else has it. Only their own copy changes, so it
-        needs what hiding it needs. One they never set aside, or one withdrawn
-        for everyone, is answered as it is. Any other message is set aside for
-        everyone, and is not brought back this way (400).
+        A message the caller hid, or an announcement they snoozed (`hidden`),
+        leaves their `hidden` view, as everyone else has it. Only their own
+        copy changes, so seeing the message is all it takes. One they never
+        set aside is answered as it is.
       x-permission: runs:read
       parameters:
         - {$ref: "#/components/parameters/MessageID"}
@@ -3771,10 +3788,101 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/InboxMessage"}
-        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/inbox/marks:
+    post:
+      operationId: markInboxMessages
+      tags: [inbox]
+      summary: Set one of the caller's own marks on many messages
+      description: |
+        `read` and `unread`, `hide` and `unhide`, `delete` and `restore`,
+        on 1 to 200 messages. Each changes only what the caller sees:
+        nobody else's inbox, views or counts. A message is shared, so
+        `delete` removes it from every view of the caller's and never from
+        the record; `restore` brings it back, as an undo does. A message the
+        caller cannot see, or one they asked to delete while a run waits on
+        a question in it, is skipped with the reason, and the rest are
+        marked.
+      x-permission: runs:read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids, mark]
+              properties:
+                ids:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  items: {type: string}
+                mark: {type: string, enum: [read, unread, hide, unhide, delete, restore]}
+      responses:
+        "200":
+          description: The messages marked, as the caller now sees them, what was skipped, and the caller's counts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [messages, skipped, counts]
+                properties:
+                  messages:
+                    type: array
+                    items: {$ref: "#/components/schemas/InboxMessage"}
+                  skipped:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, reason]
+                      properties:
+                        id: {type: string}
+                        reason: {type: string}
+                  counts: {$ref: "#/components/schemas/InboxCounts"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/inbox/read-all:
+    post:
+      operationId: markInboxViewRead
+      tags: [inbox]
+      summary: Mark read what is unread in one of the caller's views
+      description: |
+        The newest 600 unread messages in the view, narrowed by `kind` when
+        given, are marked read for the caller alone. `more` says some are
+        still unread.
+      x-permission: runs:read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [view]
+              properties:
+                view: {type: string, enum: [inbox, unread, hidden, done]}
+                kind: {type: string}
+      responses:
+        "200":
+          description: How many were marked, whether more are unread, and the caller's counts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [marked, more, counts]
+                properties:
+                  marked: {type: integer}
+                  more: {type: boolean}
+                  counts: {$ref: "#/components/schemas/InboxCounts"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/inbox/{id}/parts/{part}/resolve:
     post:
@@ -11811,16 +11919,22 @@ components:
     InboxCounts:
       description: What a reader's inbox holds open.
       type: object
-      required: [open, unread, updates]
+      required: [open, unread, updates, inbox, hidden]
       properties:
         open:
-          description: Open messages that may need the reader.
+          description: Open messages that may need the reader, less what they hid or deleted.
           type: integer
         unread:
-          description: Of those, the ones the reader has not read.
+          description: Of those, the ones the reader has not read. The console's badge counts these.
           type: integer
         updates:
-          description: Announcements open for the reader that they have not read.
+          description: Announcements open for the reader that they have not read or hidden.
+          type: integer
+        inbox:
+          description: Everything in the reader's `inbox` view, read or not, announcements included.
+          type: integer
+        hidden:
+          description: What is in the reader's `hidden` view, at most 1000.
           type: integer
     InboxKind:
       description: |
@@ -12272,9 +12386,16 @@ components:
           type: boolean
         hidden:
           description: |
-            The caller hid or snoozed this announcement for themselves, so
-            `state` is theirs alone and everyone else still has it. Left out
-            otherwise. `unhideInboxMessage` brings it back.
+            The caller hid this message, or hid or snoozed this announcement,
+            for themselves: it is in their `hidden` view. On an announcement
+            `state` is then theirs alone. Everyone else still has it. Left
+            out otherwise. `unhideInboxMessage` brings it back.
+          type: boolean
+        deleted:
+          description: |
+            The caller deleted this message for themselves, so no view of
+            theirs lists it. Left out otherwise. `markInboxMessages` with
+            `restore` brings it back.
           type: boolean
         source: {$ref: "#/components/schemas/InboxSource"}
         parts:
@@ -12294,7 +12415,7 @@ components:
         by: {type: string}
         what:
           type: string
-          enum: [raised, read, unread, resolved, dismissed, snoozed, withdrawn, delivered, unhidden, reminded]
+          enum: [raised, read, unread, resolved, dismissed, snoozed, withdrawn, delivered, unhidden, reminded, hidden, deleted, restored]
         part: {type: string}
         action: {type: string}
         note: {type: string}

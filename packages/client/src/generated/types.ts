@@ -2519,12 +2519,16 @@ export interface AnnouncementInput {
 
 /** What a reader's inbox holds open. */
 export interface InboxCounts {
-  /** Open messages that may need the reader. */
+  /** Open messages that may need the reader, less what they hid or deleted. */
   open: number;
-  /** Of those, the ones the reader has not read. */
+  /** Of those, the ones the reader has not read. The console's badge counts these. */
   unread: number;
-  /** Announcements open for the reader that they have not read. */
+  /** Announcements open for the reader that they have not read or hidden. */
   updates: number;
+  /** Everything in the reader's `inbox` view, read or not, announcements included. */
+  inbox: number;
+  /** What is in the reader's `hidden` view, at most 1000. */
+  hidden: number;
 }
 
 /** What a message is about. `approval` and `clarification` are questions
@@ -2859,11 +2863,17 @@ export interface InboxMessage {
 whoever posted an announcement has read it.
  */
   unread: boolean;
-  /** The caller hid or snoozed this announcement for themselves, so
-`state` is theirs alone and everyone else still has it. Left out
-otherwise. `unhideInboxMessage` brings it back.
+  /** The caller hid this message, or hid or snoozed this announcement,
+for themselves: it is in their `hidden` view. On an announcement
+`state` is then theirs alone. Everyone else still has it. Left
+out otherwise. `unhideInboxMessage` brings it back.
  */
   hidden?: boolean;
+  /** The caller deleted this message for themselves, so no view of
+theirs lists it. Left out otherwise. `markInboxMessages` with
+`restore` brings it back.
+ */
+  deleted?: boolean;
   source: InboxSource;
   parts: InboxPart[];
   /** Where the reading client posted the message, by client id. Shown only to that client's machine. */
@@ -2875,7 +2885,7 @@ export interface InboxChange {
   message: string;
   at: string;
   by?: string;
-  what: "raised" | "read" | "unread" | "resolved" | "dismissed" | "snoozed" | "withdrawn" | "delivered" | "unhidden" | "reminded";
+  what: "raised" | "read" | "unread" | "resolved" | "dismissed" | "snoozed" | "withdrawn" | "delivered" | "unhidden" | "reminded" | "hidden" | "deleted" | "restored";
   part?: string;
   action?: string;
   note?: string;
@@ -4644,6 +4654,8 @@ export interface ListInboxResponse {
   open: number;
   unread: number;
   updates: number;
+  inbox: number;
+  hidden: number;
 }
 
 export interface GetInboxMessageResponse {
@@ -4657,6 +4669,33 @@ export interface MarkInboxReadBody {
 
 export interface SnoozeInboxMessageBody {
   until: string;
+}
+
+export interface MarkInboxMessagesResponseSkippedItem {
+  id: string;
+  reason: string;
+}
+
+export interface MarkInboxMessagesResponse {
+  messages: InboxMessage[];
+  skipped: MarkInboxMessagesResponseSkippedItem[];
+  counts: InboxCounts;
+}
+
+export interface MarkInboxMessagesBody {
+  ids: string[];
+  mark: "read" | "unread" | "hide" | "unhide" | "delete" | "restore";
+}
+
+export interface MarkInboxViewReadResponse {
+  marked: number;
+  more: boolean;
+  counts: InboxCounts;
+}
+
+export interface MarkInboxViewReadBody {
+  view: "inbox" | "unread" | "hidden" | "done";
+  kind?: string;
 }
 
 export interface ListArtifactsResponse {

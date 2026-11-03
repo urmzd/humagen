@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/urmzd/humagen/pkg/inbox"
@@ -237,5 +238,95 @@ func TestInboxResolvesWhatItHolds(t *testing.T) {
 	rebuilt, rebuiltRead := inbox.Rebuild(f.p.Inbox.Changes("acme")).Snapshot("acme")
 	if !reflect.DeepEqual(live, rebuilt) || !reflect.DeepEqual(liveRead, rebuiltRead) {
 		t.Fatalf("rebuilt inbox differs\nlive %+v\nrebuilt %+v", live, rebuilt)
+	}
+}
+
+// A reader's marks are theirs alone: one hiding or deleting a message
+// changes nothing for another reader in the workspace, another workspace
+// cannot mark it at all, and a bulk mark is bounded.
+func TestInboxMarksArePerReader(t *testing.T) {
+	f := newFixture(t)
+	ada := f.machine(t, "acme", everything...)
+	bo := f.machineAs(t, "svc-bo", "acme", everything...)
+	globex := f.machine(t, "globex", everything...)
+
+	f.do(t, nil, "POST", "/api/agents", ada, helperSpec)
+	f.do(t, nil, "POST", "/api/projects", ada, `{"name":"Launch"}`)
+	f.do(t, nil, "PUT", "/api/policies", ada, `{"scope":{"kind":"project","name":"Launch"},"period":"day","max_runs":1}`)
+	for range 2 {
+		f.do(t, nil, "POST", "/api/runs", ada, `{"agent":"helper","text":"go","project":"Launch"}`)
+	}
+	_, out := f.do(t, nil, "GET", "/api/inbox?view=inbox", ada, "")
+	list := refusals(messages(t, out))
+	if len(list) != 1 {
+		t.Fatalf("inbox = %v", out)
+	}
+	id := list[0]["id"].(string)
+	inView := func(token, view string) bool {
+		t.Helper()
+		_, out := f.do(t, nil, "GET", "/api/inbox?view="+view, token, "")
+		for _, m := range messages(t, out) {
+			if m["id"] == id {
+				return true
+			}
+		}
+		return false
+	}
+
+	res, out := f.do(t, nil, "POST", "/api/inbox/marks", ada, `{"ids":["`+id+`"],"mark":"hide"}`)
+	if res.StatusCode != http.StatusOK || out["counts"].(map[string]any)["hidden"].(float64) != 1 {
+		t.Fatalf("hide = %d %v", res.StatusCode, out)
+	}
+	if inView(ada, "inbox") || !inView(ada, "hidden") {
+		t.Fatal("ada's hide did not move it to her Hidden view")
+	}
+	if !inView(bo, "inbox") || inView(bo, "hidden") {
+		t.Fatal("ada's hide reached bo")
+	}
+
+	f.do(t, nil, "POST", "/api/inbox/marks", ada, `{"ids":["`+id+`"],"mark":"delete"}`)
+	for _, v := range []string{"inbox", "unread", "hidden", "done"} {
+		if inView(ada, v) {
+			t.Fatalf("ada's deleted message is in her %s view", v)
+		}
+	}
+	if !inView(bo, "inbox") {
+		t.Fatal("ada's delete reached bo")
+	}
+	_, got := f.do(t, nil, "GET", "/api/inbox/"+id, bo, "")
+	if m := got["message"].(map[string]any); m["deleted"] != nil || m["hidden"] != nil {
+		t.Fatalf("bo reads ada's marks: %v", m)
+	}
+	// Undo brings it back for her.
+	f.do(t, nil, "POST", "/api/inbox/marks", ada, `{"ids":["`+id+`"],"mark":"restore"}`)
+	if !inView(ada, "hidden") {
+		t.Fatal("a restore did not bring it back")
+	}
+
+	// Another workspace cannot see it, so it is skipped and changes nothing.
+	res, out = f.do(t, nil, "POST", "/api/inbox/marks", globex, `{"ids":["`+id+`"],"mark":"delete"}`)
+	if res.StatusCode != http.StatusOK || len(out["messages"].([]any)) != 0 || len(out["skipped"].([]any)) != 1 {
+		t.Fatalf("globex's delete = %d %v", res.StatusCode, out)
+	}
+	if !inView(bo, "inbox") {
+		t.Fatal("globex's delete reached acme")
+	}
+
+	ids := make([]string, 201)
+	for i := range ids {
+		ids[i] = `"` + id + `"`
+	}
+	if res, _ := f.do(t, nil, "POST", "/api/inbox/marks", ada, `{"ids":[`+strings.Join(ids, ",")+`],"mark":"read"}`); res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("201 ids = %d", res.StatusCode)
+	}
+
+	// Mark All Read reads the view for her alone.
+	f.do(t, nil, "POST", "/api/inbox/marks", ada, `{"ids":["`+id+`"],"mark":"unhide"}`)
+	res, out = f.do(t, nil, "POST", "/api/inbox/read-all", ada, `{"view":"inbox"}`)
+	if res.StatusCode != http.StatusOK || out["marked"].(float64) < 1 || out["counts"].(map[string]any)["unread"].(float64) != 0 {
+		t.Fatalf("read-all = %d %v", res.StatusCode, out)
+	}
+	if !inView(bo, "unread") {
+		t.Fatal("ada's Mark All Read reached bo")
 	}
 }

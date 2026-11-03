@@ -146,12 +146,12 @@ test("Notifications hides without run access and gives machines the same feed", 
   );
 });
 
-test("the Notifications badge counts actionable work without switching destinations", () => {
+test("the Notifications badge counts unread work without switching destinations", () => {
   net = stubFetch({ "GET /api/threads": () => ({ threads: [], next: null }) });
   const visited: Route[] = [];
   const onGo = (route: Route) => visited.push(route);
   const { rerender } = render(<Navigation inboxCount={3} route={{ page: "inbox" }} onGo={onGo} />);
-  let link = screen.getByRole("link", { name: "Notifications, 3 need you" });
+  let link = screen.getByRole("link", { name: "Notifications, 3 unread" });
   assert.equal(link.getAttribute("href"), "/notifications");
   assert.equal(link.getAttribute("aria-current"), "page");
   fireEvent.click(link, { metaKey: true });
@@ -159,7 +159,7 @@ test("the Notifications badge counts actionable work without switching destinati
   fireEvent.click(link);
   assert.deepEqual(visited, [{ page: "notifications" }]);
   rerender(<Navigation inboxCount={3} open={false} onGo={onGo} />);
-  link = screen.getByRole("link", { name: "Notifications, 3 need you" });
+  link = screen.getByRole("link", { name: "Notifications, 3 unread" });
   assert.equal(link.getAttribute("href"), "/notifications");
   rerender(<Navigation inboxCount={0} onGo={onGo} />);
   link = screen.getByRole("link", { name: "Notifications" });
@@ -378,7 +378,7 @@ test("a failed delivery read leaves the unified feed available and offers retry"
   assert.equal(net.seen.filter((request) => request.path === "/api/me/notifications").length, 2);
 });
 
-test("one filter panel combines status and type, defaults to all, and preserves selection", async () => {
+test("the views replace the status filter, the Inbox is the default, and the type filter keeps the selection", async () => {
   net = stubFetch({});
   const queries: Parameters<Transport["list"]>[0][] = [];
   const via: Transport = {
@@ -392,7 +392,8 @@ test("one filter panel combines status and type, defaults to all, and preserves 
     <NotificationsPage signal={0} onGo={() => {}} onOpen={() => {}} openId="in-one" via={via} />,
   );
   await screen.findByRole("region", { name: "Message" });
-  assert.equal(queries.at(-1)?.state, "all", "actions and updates use one initial feed");
+  assert.equal(queries.at(-1)?.view, "inbox", "the Inbox is the first view");
+  assert.equal(queries.at(-1)?.state, undefined);
   assert.equal(screen.queryAllByRole("button", { name: "Open" }).length, 0);
   assert.equal(screen.queryAllByRole("combobox").length, 0, "filters stay behind one trigger");
   const trigger = screen.getByRole("button", {
@@ -400,10 +401,11 @@ test("one filter panel combines status and type, defaults to all, and preserves 
   });
   fireEvent.click(trigger);
   const panel = screen.getByRole("dialog", { name: defaultCopy.inboxControls.notificationFilter });
-  fireEvent.change(within(panel).getByRole("combobox", { name: "Status" }), {
-    target: { value: "resolved" },
-  });
-  await waitFor(() => assert.equal(queries.at(-1)?.state, "resolved"));
+  assert.equal(
+    within(panel).queryByRole("combobox", { name: "Status" }),
+    null,
+    "which view is shown says the status",
+  );
   fireEvent.change(within(panel).getByRole("combobox", { name: "Type" }), {
     target: { value: "alert" },
   });
@@ -416,7 +418,7 @@ test("one filter panel combines status and type, defaults to all, and preserves 
   );
   fireEvent.click(within(panel).getByRole("button", { name: "Reset" }));
   await waitFor(() => {
-    assert.equal(queries.at(-1)?.state, "all");
+    assert.equal(queries.at(-1)?.view, "inbox");
     assert.equal(queries.at(-1)?.kind, undefined);
   });
   fireEvent.keyDown(panel, { key: "Escape" });

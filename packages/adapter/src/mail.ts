@@ -509,6 +509,8 @@ export function fromServer(raw: unknown): PlatformMessage {
     ...(state === "snoozed" ? { snoozedUntil: str(m.snoozed_until) || updated } : {}),
     // Set aside by this reader alone, so theirs to bring back.
     ...(m.hidden === true ? { hidden: true } : {}),
+    // Deleted by this reader alone: no view of theirs lists it, and an undo brings it back.
+    ...(m.deleted === true ? { deleted: true } : {}),
     // A message about a limit leads with an alert part, so it is laid out by what it is about.
     ...(templateOf[str(m.kind)] ? { template: templateOf[str(m.kind)] } : {}),
     kind: str(m.kind),
@@ -601,12 +603,52 @@ export interface Page {
   /** Open and unread messages across the whole inbox, not only this page. */
   open: number;
   unread: number;
+  /** The reader's whole inbox: announcements unread, the Inbox view, and the Hidden view. */
+  updates?: number;
+  inbox?: number;
+  hidden?: number;
 }
+
+/** One of a reader's own views of their inbox, drawn from their own marks. */
+export type MailView = "inbox" | "unread" | "hidden" | "done";
+
+/** A mark a reader sets on their own copy of messages. Nobody else's changes. */
+export type MailMark = "read" | "unread" | "hide" | "unhide" | "delete" | "restore";
+
+/** A reader's counts, as the platform keeps them. */
+export interface MailCounts {
+  open: number;
+  unread: number;
+  updates: number;
+  inbox: number;
+  hidden: number;
+}
+
+/** What a mark did: the messages as the reader now sees them, those left as they were, and the counts. */
+export interface Marked {
+  messages: PlatformMessage[];
+  skipped: { id: string; reason: string }[];
+  counts: MailCounts;
+}
+
+const countsOf = (raw: unknown): MailCounts => {
+  const c = obj(raw);
+  const n = (v: unknown) => (typeof v === "number" ? v : 0);
+  return {
+    open: n(c.open),
+    unread: n(c.unread),
+    updates: n(c.updates),
+    inbox: n(c.inbox),
+    hidden: n(c.hidden),
+  };
+};
 
 export interface Query {
   limit: number;
   before?: string;
   state?: "open" | "resolved" | "all";
+  /** One of the reader's own views, in place of `state`. Only the person's own inbox takes it. */
+  view?: MailView;
   kind?: string;
   /**
    * Only posted announcements, never an agent's draft (`news=true`). Only the
@@ -626,6 +668,10 @@ export interface Transport {
   list(q: Query): Promise<Page>;
   get(id: string): Promise<PlatformMessage>;
   send(message: PlatformMessage, request: Request): Promise<PlatformMessage>;
+  /** Set one of the reader's own marks on up to 200 messages. Each changes only the reader's own copy. */
+  mark?(ids: string[], mark: MailMark): Promise<Marked>;
+  /** Mark read what is unread in one of the reader's views, narrowed by kind. */
+  readAll?(view: MailView, kind?: string): Promise<{ marked: number; more: boolean; counts: MailCounts }>;
 }
 
 export class MailError extends Error {
@@ -650,18 +696,48 @@ export function mailTransport(http: Http): Transport {
       if (q.kind) params.set("kind", q.kind);
       if (q.news) params.set("news", "true");
       if (q.needs) params.set("needs", "true");
+      if (q.view) {
+        params.set("view", q.view);
+        params.delete("state");
+      }
       const page = await http<{
         messages: unknown[];
         next: string | null;
         open: number;
         unread: number;
+        updates?: number;
+        inbox?: number;
+        hidden?: number;
       }>("GET", `/api/inbox?${params}`);
       return {
         messages: (page.messages ?? []).map(fromServer),
         next: page.next ?? null,
         open: page.open ?? 0,
         unread: page.unread ?? 0,
+        updates: page.updates ?? 0,
+        inbox: page.inbox ?? 0,
+        hidden: page.hidden ?? 0,
       };
+    },
+    mark: async (ids, mark) => {
+      const out = await http<{ messages?: unknown[]; skipped?: unknown[]; counts?: unknown }>(
+        "POST",
+        "/api/inbox/marks",
+        { ids, mark },
+      );
+      return {
+        messages: (out.messages ?? []).map(fromServer),
+        skipped: (out.skipped ?? []).map((x) => ({ id: str(obj(x).id), reason: str(obj(x).reason) })),
+        counts: countsOf(out.counts),
+      };
+    },
+    readAll: async (view, kind) => {
+      const out = await http<{ marked?: number; more?: boolean; counts?: unknown }>(
+        "POST",
+        "/api/inbox/read-all",
+        kind ? { view, kind } : { view },
+      );
+      return { marked: out.marked ?? 0, more: out.more === true, counts: countsOf(out.counts) };
     },
     get: async (id) => fromServer((await http<{ message: unknown }>("GET", at(id))).message),
     send: async (message, r) => {

@@ -76,6 +76,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-047 | Skills are slash commands, the only way the console offers them: `/` opens a menu of the skills a message here can name, fuzzy filtered with the match highlighted; `@` offers no skill or `@skill:`, `$` opens nothing, and a posted `$name` or `@skill:name` shows as a `/name` chip | Implemented: `commands.ts`, `tags.ts`, `Composer.tsx`, `ui.tsx` (`Mentioned`), `pkg/threads/tags.go`; web, threads and platform tests pass; `chat-at`, `chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection` screens at 390x844 and 1280x800 |
 | DES-048 | A turn reads as a transcript: words and runs of tool calls in the order they came, each run one line that names what it did, a file written opening in the Workspace, and the reader's messages on the right | Implemented: `packages/core/src/timeline.ts`, `packages/components/src/timeline.ts`, `WorkSteps.tsx`, `ToolLines` for Slack, `Room.tsx` message sides; core, components, adapter, render-slack and web DOM tests pass; `pnpm validate:slack` passes; screen `conversation-timeline` passes at 390x844 and 1280x800 |
 | DES-049 | A finished turn that changed files ends with a card of them: how many and their lines, a Review, and a row per file that opens its changes | Implemented: core `turnChanges`, web `TurnChanges`; core and web DOM tests pass; screen `conversation-timeline` passes at 390x844 and 1280x800 |
+| DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
 | DES-050 | The Workspace is a pane of tabs beside the conversation: + opens items, tabs close, Expand and Show Two Tabs, tabs in the address, a full-screen sheet on a phone | Implemented: `Workspace.tsx`, `pane.ts`, `Inspector` `expanded`; web, pane and route tests pass; `workspace-pane-split`, `workspace-pane-expanded` and the other Workspace screens pass at 390x844 and 1280x800 |
 | DES-051 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
 | DES-052 | Conversation files, scratchpads, code editing, change review and artifact publication, in one Workspace panel opened from Conversation Settings beside a compact header | Implemented: `WorkspaceFiles.tsx`, `Workspace.tsx`, `ConversationShell.tsx`, `/api/threads/{id}/files`, `GET /api/threads/{id}/sandboxes`; web, route, Go race and confinement suites pass; `conversation-header`, `workspace-*` and `ide-*` screens pass at 390x844 and 1280x800 |
@@ -387,6 +388,38 @@ the Storybook stories, which were removed on October 30, 2026.
 The concurrent full console run reports 636/637 passing; its remaining failure is
 `the tree at depth 4 indents one level at 390px, and deeper rows say where they sit`
 (`ok(indents.length > 0)`) in the other session's project layout work.
+
+### DES-053: Notification views and a reader's own marks
+
+Every notification stays in one list no longer. The page opens on **Inbox**,
+what is open for the reader and not hidden by them, read or not, unread rows
+with a dot and stronger weight. A segmented control beside it switches to
+**Unread**, **Hidden** (the hidden box) and **Done** (resolved or dismissed for
+everyone), each with its count; Done is not counted, since no counter keeps
+what is settled. The view is in the address (`/notifications?view=hidden`;
+the Inbox is left out). Rows carry no state word: the view says it.
+
+Opening a message marks it read. Each row offers Mark Read or Unread, Hide or
+Unhide and Delete on hover and keyboard focus, and the reading pane offers the
+same. Rows are picked with a checkbox, or `x` on the focused row, and the
+toolbar then marks them read or unread, hides, unhides or deletes them; with
+nothing picked it offers Mark All Read for the view. Hide and Delete ask no
+confirmation: a toast says what moved and offers Undo for eight seconds.
+
+Each mark is the reader's own (`pkg/inbox`: `mark.Hide`, `mark.Deleted`):
+nobody else's inbox, views or counts change, and a shared message is never
+removed from the record. Delete takes it out of every view of the reader's;
+Restore brings it back. A run's open question can be hidden but not deleted.
+The sidebar badge is the Unread view's count, announcements included, and what was hidden or deleted leaves
+Home's and Slack Home's Needs you and its total, which read the same open
+state. API: `view` on `GET /api/inbox`, `POST /api/inbox/marks` (1 to 200
+ids), `POST /api/inbox/read-all` (the newest 600), with `inbox` and `hidden`
+in the counts. Acceptance: `TestViewsArePerReader`, `TestMarksStayInTheirTenant`,
+`TestViewsAreBounded`, `TestCountsAgreeWithAScan` (hides, deletes and restores
+among its random steps), `TestInboxMarksArePerReader`,
+`notification-views.dom.test.tsx`, the route tests for `view`, and the
+`notifications-inbox`, `notifications-hidden` and `notifications-bulk`
+captures at phone and desktop width.
 
 ### DES-011: Docked conversation workspace
 

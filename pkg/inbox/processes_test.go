@@ -33,7 +33,7 @@ func TestTwoProcessesAgree(t *testing.T) {
 		if got, err := two.Get(acme, q.ID, "ada"); err != nil || got.Subject != "question" || got.State != Open {
 			t.Fatalf("the other process reads %+v, %v", got, err)
 		}
-		if c := count(two, acme, Query{Reader: "ada"}); c != (Counts{Open: 1, Unread: 1}) {
+		if c := count(two, acme, Query{Reader: "ada"}); c != (Counts{Open: 1, Unread: 1, Inbox: 1}) {
 			t.Fatalf("the other process counts %+v", c)
 		}
 
@@ -112,11 +112,16 @@ func TestTwoProcessesAgree(t *testing.T) {
 					t.Fatalf("%s reads the news as %+v, %v", who, m, err)
 				}
 				c := count(s, acme, Query{Reader: who, ReaderProjects: []string{""}})
-				if c != (Counts{Open: raises, Unread: raises}) {
+				hidden := 0
+				if i%3 == 0 {
+					hidden = 1
+				}
+				// The news is read by all and in the Inbox of those who did not hide it.
+				if c != (Counts{Open: raises, Unread: raises, Inbox: raises + 1 - hidden, Hidden: hidden}) {
 					t.Fatalf("%s counts %+v", who, c)
 				}
 			}
-			if c := count(s, acme, Query{Reader: "nobody", ReaderProjects: []string{""}}); c != (Counts{Open: raises, Unread: raises, Updates: 1}) {
+			if c := count(s, acme, Query{Reader: "nobody", ReaderProjects: []string{""}}); c != (Counts{Open: raises, Unread: raises, Updates: 1, Inbox: raises + 1}) {
 				t.Fatalf("someone who read nothing counts %+v", c)
 			}
 		}

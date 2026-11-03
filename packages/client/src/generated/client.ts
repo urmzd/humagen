@@ -115,7 +115,11 @@ import type {
   ListThreadsResponse,
   ListUsageNoticesResponse,
   Manifest,
+  MarkInboxMessagesBody,
+  MarkInboxMessagesResponse,
   MarkInboxReadBody,
+  MarkInboxViewReadBody,
+  MarkInboxViewReadResponse,
   Me,
   MemoryDecisionInput,
   MemoryFile,
@@ -3403,7 +3407,7 @@ may do with each part, is decided per message: a memory proposal needs
 null at the end. A client's machine reads one of its people's inbox
 with `act_as_client` and `act_as_user`, as the Slack app's Home does.
  */
-  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source" | "operation", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ListInboxResponse> {
+  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source" | "operation", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", view?: "inbox" | "unread" | "hidden" | "done", options?: RequestOptions): Promise<ListInboxResponse> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -3418,6 +3422,7 @@ with `act_as_client` and `act_as_user`, as the Slack app's Home does.
     if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
     if (needs !== undefined && needs !== null) _q.set("needs", String(needs));
     if (news !== undefined && news !== null) _q.set("news", String(news));
+    if (view !== undefined && view !== null) _q.set("view", String(view));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.request<ListInboxResponse>("GET", path, {
@@ -3425,7 +3430,7 @@ with `act_as_client` and `act_as_user`, as the Slack app's Home does.
     });
   }
 
-  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source" | "operation", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
+  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source" | "operation", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", view?: "inbox" | "unread" | "hidden" | "done", options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -3440,6 +3445,7 @@ with `act_as_client` and `act_as_user`, as the Slack app's Home does.
     if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
     if (needs !== undefined && needs !== null) _q.set("needs", String(needs));
     if (news !== undefined && news !== null) _q.set("news", String(news));
+    if (view !== undefined && view !== null) _q.set("view", String(view));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListInboxResponse>("GET", path, {
@@ -3566,11 +3572,10 @@ it maps with `act_as_client` and `act_as_user`.
     });
   }
 
-  /** An announcement the caller hid or snoozed (`hidden`) is open for them
-again, as everyone else has it. Only their own copy changes, so it
-needs what hiding it needs. One they never set aside, or one withdrawn
-for everyone, is answered as it is. Any other message is set aside for
-everyone, and is not brought back this way (400).
+  /** A message the caller hid, or an announcement they snoozed (`hidden`),
+leaves their `hidden` view, as everyone else has it. Only their own
+copy changes, so seeing the message is all it takes. One they never
+set aside is answered as it is.
  */
   async unhideInboxMessage(id: string, options?: RequestOptions): Promise<InboxMessage> {
     let path = "/api/inbox/{id}/unhide";
@@ -3584,6 +3589,55 @@ everyone, and is not brought back this way (400).
     let path = "/api/inbox/{id}/unhide";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<InboxMessage>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** `read` and `unread`, `hide` and `unhide`, `delete` and `restore`,
+on 1 to 200 messages. Each changes only what the caller sees:
+nobody else's inbox, views or counts. A message is shared, so
+`delete` removes it from every view of the caller's and never from
+the record; `restore` brings it back, as an undo does. A message the
+caller cannot see, or one they asked to delete while a run waits on
+a question in it, is skipped with the reason, and the rest are
+marked.
+ */
+  async markInboxMessages(body: MarkInboxMessagesBody, options?: RequestOptions): Promise<MarkInboxMessagesResponse> {
+    const path = "/api/inbox/marks";
+    return this.request<MarkInboxMessagesResponse>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async markInboxMessagesRaw(body: MarkInboxMessagesBody, options?: RequestOptions): Promise<ApiResponse<MarkInboxMessagesResponse>> {
+    const path = "/api/inbox/marks";
+    return this.rawRequest<MarkInboxMessagesResponse>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The newest 600 unread messages in the view, narrowed by `kind` when
+given, are marked read for the caller alone. `more` says some are
+still unread.
+ */
+  async markInboxViewRead(body: MarkInboxViewReadBody, options?: RequestOptions): Promise<MarkInboxViewReadResponse> {
+    const path = "/api/inbox/read-all";
+    return this.request<MarkInboxViewReadResponse>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async markInboxViewReadRaw(body: MarkInboxViewReadBody, options?: RequestOptions): Promise<ApiResponse<MarkInboxViewReadResponse>> {
+    const path = "/api/inbox/read-all";
+    return this.rawRequest<MarkInboxViewReadResponse>("POST", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }
