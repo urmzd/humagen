@@ -57,4 +57,6 @@ await loadTests([
   "/src/outcome-actions.dom.test.tsx",
   "/src/mobile.dom.test.tsx",
   "/src/slash-commands.dom.test.tsx",
+  // Waits on real timers, so it loads last: every hook is registered by then.
+  "/src/sidebar-peek.dom.test.tsx",
 ]);

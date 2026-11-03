@@ -58,3 +58,32 @@ test("a conversation of one turn has no wave", () => {
   );
   assert.equal(screen.queryByRole("slider"), null);
 });
+
+test("a turn's preview carries its author's mark: an agent's initials, a person's initial", () => {
+  const mixed: TurnRailEntry[] = [
+    {
+      id: "p",
+      agent: "Mira",
+      kind: "person",
+      preview: "Can we ship Friday?",
+      status: "done",
+      weight: 60,
+    },
+    { id: "a", agent: "lead", preview: "Yes, once QA signs off.", status: "done", weight: 80 },
+  ];
+  render(
+    <Thread turns={mixed}>
+      {mixed.map((t) => (
+        <article key={t.id} data-turn-id={t.id} />
+      ))}
+    </Thread>,
+  );
+  const wave = screen.getByRole("slider", { name: "Turns in this conversation" });
+  fireEvent.keyDown(wave, { key: "Home" });
+  const person = screen.getByRole("tooltip");
+  assert.equal(person.querySelector("[data-mark='person']")?.textContent, "M");
+  assert.match(person.textContent ?? "", /Can we ship Friday\?/);
+  fireEvent.keyDown(wave, { key: "End" });
+  const agent = screen.getByRole("tooltip");
+  assert.equal(agent.querySelector(".aui-initials")?.textContent, "LA");
+});
