@@ -537,6 +537,22 @@ export const defaultCopy = {
       "Live query reads the provider when you search. A collected copy refreshes on demand or on a schedule. Queries still check your own provider access. Continuous push updates require a connector that supports them.",
     formatsHint: "PDF and Office extraction is not available in text-source uploads.",
     back: "Choose Another Provider",
+    catalog: {
+      title: "Data catalog",
+      label: "Connected catalog",
+      search: "Search catalog tables",
+      searchPlaceholder: "Filter tables and columns",
+      crawl: "Crawl",
+      crawling: "Crawling…",
+      publish: "Publish",
+      withdraw: "Withdraw",
+      published: "Published",
+      private: "Private",
+      entries: (count: number) => `${count} ${count === 1 ? "table" : "tables"}`,
+      crawled: (ago: string) => `Crawled ${ago}`,
+      columns: (path: string) => `Columns of ${path}`,
+      failed: "The catalog action could not be completed.",
+    },
   },
   projectWork: {
     hint: "Follow the work, open a conversation, and pick up where it left off.",
@@ -1067,6 +1083,18 @@ export const defaultCopy = {
     noMatches: "No matching activity",
     noMatchesBody: "Choose another filter to see the conversation's recorded work.",
   },
+  limitApproval: {
+    whenReached: "When reached",
+    block: "Block",
+    approve: "Ask for approval",
+    maxGrant: "Max grant (USD)",
+    maxGrantPlaceholder: "No dollar cap",
+    maxGrantTokens: "Max token grant",
+    maxGrantTokensPlaceholder: "No token cap",
+    asks: "asks for approval",
+    approvesUpTo: (amount: string) => `approves up to ${amount}`,
+    approvesTokensUpTo: (tokens: string) => `approves up to ${tokens} tokens`,
+  },
   usagePage: {
     title: "Usage",
     lede: "Agent work, human involvement and budgets, from the runs you can read.",
@@ -1497,7 +1525,16 @@ export const defaultCopy = {
     allowedAgentsHint:
       "Individual agent names, separated by commas. No access is granted by default.",
     credentialHint:
-      "Credential values are stored by the server and never shown again. An environment reference must be permitted by your workspace operator. GitHub needs a current installation token; it is not refreshed automatically.",
+      "Credential values are stored by the server and never shown again. An environment reference must be permitted by your workspace operator. For GitHub, give an installation token, or the GitHub App's private key with its App ID and Installation ID so the server mints and refreshes installation tokens.",
+    people: "People mapping (optional)",
+    peopleHint: (surface: "slack" | "github") =>
+      surface === "slack"
+        ? "Map Slack member IDs to Humagen subjects, such as U0123ABCDEF=alice, one per line or separated by commas."
+        : "Map GitHub logins to Humagen subjects, such as octocat=alice, one per line or separated by commas.",
+    peoplePlaceholder: (surface: "slack" | "github") =>
+      surface === "slack" ? "U0123ABCDEF=alice" : "octocat=alice",
+    peopleLabel: "People",
+    peopleMapped: (count: number) => `${count} mapped`,
     tokenSource: "Token source",
     signingSource: "Signing secret source",
     value: "Value",
@@ -2568,6 +2605,9 @@ export const defaultCopy = {
     noMatch: "Nothing matches that search.",
     /** A person's handle, which is how they are tagged. */
     handle: (handle: string) => `@${handle}`,
+    /** The projects a person's row names, and how many more there are. */
+    personProjects: (names: string[], more: number) =>
+      `${names.join(", ")}${more ? ` and ${more} more` : ""}`,
     more: "Show More",
     failed: "The directory could not be read.",
     /** An agent's row: where it lives or that it is a platform agent, and where it is enabled. */

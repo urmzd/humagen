@@ -431,7 +431,22 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		}
 		return &seat{client: c, peer: peer, verifier: cfg.Verifier}, nil
 	case clients.GitHub:
-		var api github.API = github.NewHTTPAPI(secrets.token, http.DefaultClient)
+		var api github.API
+		if github.IsPrivateKeyPEM(secrets.token) {
+			appAPI, err := github.NewAppHTTPAPI(github.AppConfig{
+				AppID:          c.Identity.AppID,
+				InstallationID: c.Identity.Installation,
+				PrivateKey:     secrets.token,
+				HTTPClient:     http.DefaultClient,
+				Clock:          p.now,
+			})
+			if err != nil {
+				return nil, refused(err)
+			}
+			api = appAPI
+		} else {
+			api = github.NewHTTPAPI(secrets.token, http.DefaultClient)
+		}
 		if p.cfg.GitHubAPI != nil {
 			api = p.cfg.GitHubAPI(secrets.token)
 		}

@@ -223,9 +223,13 @@ secret is. A reference keeps no value and survives either way, because the
 environment does. A secret manager goes behind the same three-method
 `clients.Secrets` interface.
 
-For GitHub, the token is an installation access token. The server does not mint
-or refresh one. A fix grant is signed with the client's own webhook secret, so
-one client's grant is worth nothing to another.
+For GitHub, the token is either an installation access token or a GitHub App
+RSA private key PEM (`RSA PRIVATE KEY` or `PRIVATE KEY`). When a private key PEM
+is given alongside `identity.app_id` and `identity.installation`, the GitHub
+connector signs a short-lived RS256 App JWT and exchanges it at
+`POST /app/installations/{installation}/access_tokens`, caching the installation
+token until two minutes before expiry. A fix grant is signed with the client's
+own webhook secret, so one client's grant is worth nothing to another.
 
 ## Defaults
 
@@ -380,7 +384,6 @@ or remove one. Creating a client and setting its limits are API calls.
   are kept in the database, values as written.
 - Creating and editing a client in the console, and setting a client's limits
   there.
-- Minting or refreshing GitHub installation tokens.
 - Slack OAuth installation. A client is given a bot token.
 - Jira and email clients. The two surfaces are Slack and GitHub.
 
@@ -408,3 +411,7 @@ GitHub installations may set `github.people`, a bounded exact GitHub-login to
 workspace-subject map. Only that verified installation's map applies. Bot,
 unmapped and disabled-installation actors act for nobody. A mapping does not
 grant membership or permissions; current project and policy checks still apply.
+Like a Slack client's `slack.people`, each subject a GitHub client maps is
+recorded in the workspace's people (source `github`) when the client is saved,
+so the Directory lists them before they sign in. The console's connection form
+takes either map as `login=subject` lines.
