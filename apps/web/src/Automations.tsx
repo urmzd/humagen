@@ -40,8 +40,11 @@ export function Automations({
   const [clientID, setClientID] = useState("");
   const [draft, setDraft] = useState<GitHubAutomation>(blank);
   const [saving, setSaving] = useState(false);
-  const fail = useCallback((error: unknown) =>
-    setProblem(error instanceof Error ? error.message : "Could not save automation."), []);
+  const fail = useCallback(
+    (error: unknown) =>
+      setProblem(error instanceof Error ? error.message : "Could not save automation."),
+    [],
+  );
   const reload = useCallback(() => {
     if (can("clients:read"))
       api
@@ -49,7 +52,9 @@ export function Automations({
         .then((r) => setClients(r.clients.filter((c) => c.surface === "github")))
         .catch(fail);
   }, [can, fail]);
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => {
+    reload();
+  }, [reload]);
   const patch = (next: Partial<GitHubAutomation>) => setDraft((old) => ({ ...old, ...next }));
   const client = clients.find((c) => c.id === clientID);
   const allowedAgents = agents.filter(
