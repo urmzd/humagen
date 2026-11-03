@@ -286,3 +286,42 @@ go run ./examples/github-review
 The [rendered preview](../../examples/github-review/preview.md) uses synthetic
 findings to demonstrate severity counts, comments, the aligned evidence table,
 related concepts, and native feedback instructions. It is not a repository review.
+
+## Event automations
+
+The Automations page uses `GET /api/clients` and `PUT /api/clients/{id}` to
+manage `github.automations` on an installation. The same client read/write
+permissions, tenant boundary and agent visibility rules apply. A rule is:
+
+```json
+{
+  "name": "failed-check",
+  "repository": "acme/app",
+  "event": "check_run",
+  "action": "completed",
+  "conclusion": "failure",
+  "agent": "reviewer",
+  "instructions": "Investigate this check failure and report the smallest fix.",
+  "paused": false
+}
+```
+
+Supported events are `check_run`, `issues`, `pull_request` and `push`. For a
+push, `action` is empty. Issue and pull-request rules may additionally match
+`label`; a blank conclusion or label means no condition on that field.
+Subscribe the GitHub App or repository webhook to the desired events and
+permit those event IDs in the installation's capabilities. All events enter
+through the existing signed GitHub webhook endpoint.
+
+A client holds at most 50 rules. Names are unique within it; target agents
+and repository owners must already be allowed by that client. Runs have no
+person's credentials and use the client's existing home and runtime policy.
+The prompt receives the rule's instructions and bounded repository, issue/PR
+number and head SHA identifiers, never arbitrary text from the webhook.
+
+Own bot events and bot-authored commits do not trigger automation. Push and
+check-run payloads must include commit author evidence (`head_commit.author`
+or `check_run.check_suite.head_commit.author`); missing evidence is ignored.
+A GitHub delivery ID, installation and rule name identify the run, so a
+webhook redelivery does not start a second run. The existing `auto_labels`
+map remains supported and is listed alongside event rules.
