@@ -5503,9 +5503,10 @@ platform file sets.
   }
 
   /** A skill is named instructions an agent can be told to use: a person
-writes `$<name>`, or `@skill:<name>`, in a message, and the runs the
-message starts are given the skill's instructions as part of the
-turn. A message posted in a project can name the skills its project
+writes `$<name>`, `@skill:<name>` or, in a message posted through the
+API or the console, the slash command `/<name>` at the start of the
+message or after a space, and the runs the message starts are given
+the skill's instructions as part of the turn. A message posted in a project can name the skills its project
 declares, then each project's above it, nearest first: `offered`,
 each name once, from the nearest project that declares it, at most
 128. A sibling's or a sub-project's are never offered. They are fixed
@@ -5767,7 +5768,7 @@ an announcement in this project is 404.
 
   /** The project's own skills first, then each project's above it, nearest
 first, each name once, at most 128, without their instructions: what
-the console completes after `$`. A project the caller cannot see
+the console offers after `/`. A project the caller cannot see
 answers 404, as one that does not exist.
  */
   async listSkills(project?: string, options?: RequestOptions): Promise<ListSkillsResponse> {

@@ -6011,9 +6011,10 @@ paths:
       summary: Read the skills a project declares, and what a message posted in it can name
       description: |
         A skill is named instructions an agent can be told to use: a person
-        writes `$<name>`, or `@skill:<name>`, in a message, and the runs the
-        message starts are given the skill's instructions as part of the
-        turn. A message posted in a project can name the skills its project
+        writes `$<name>`, `@skill:<name>` or, in a message posted through the
+        API or the console, the slash command `/<name>` at the start of the
+        message or after a space, and the runs the message starts are given
+        the skill's instructions as part of the turn. A message posted in a project can name the skills its project
         declares, then each project's above it, nearest first: `offered`,
         each name once, from the nearest project that declares it, at most
         128. A sibling's or a sub-project's are never offered. They are fixed
@@ -6323,7 +6324,7 @@ paths:
       description: |
         The project's own skills first, then each project's above it, nearest
         first, each name once, at most 128, without their instructions: what
-        the console completes after `$`. A project the caller cannot see
+        the console offers after `/`. A project the caller cannot see
         answers 404, as one that does not exist.
       x-permission: projects:read
       parameters:
@@ -9615,8 +9616,8 @@ components:
       properties:
         kind:
           description: |
-            `agent`, `person` and `sme` as tagged; `skill` for `$<name>` and
-            `@skill:<name>`, which the runs the message starts are told to
+            `agent`, `person` and `sme` as tagged; `skill` for `$<name>`,
+            `@skill:<name>` and a slash command `/<name>`, which the runs the message starts are told to
             use; `role` for the people holding a role, through a mention kind
             that resolves roles. A mention kind the workspace declares is
             recorded as what it resolves to.
@@ -10552,7 +10553,7 @@ components:
         skills:
           description: |
             Named instructions a message posted here and below can tell an
-            agent to use, by writing `$<name>`, without their instructions,
+            agent to use, by writing `$<name>` or `/<name>`, without their instructions,
             which `GET /api/projects/{name}/skills` reads. Set with `PUT
             /api/projects/{name}/skills`. Absent when it declares none. A
             change in the project's history records them the same way.

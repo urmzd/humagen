@@ -333,7 +333,10 @@ function MessageView({
           </p>
         )}
         <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">
-          <Mentioned text={m.text} />
+          <Mentioned
+            text={m.text}
+            skills={m.mentions.filter((t) => t.kind === "skill" && !t.refused).map((t) => t.name)}
+          />
         </p>
         {row}
       </div>
@@ -972,7 +975,7 @@ export function ThreadRoom({
                     skills={tags.skills}
                     skillsFailed={tags.skillsFailed}
                     onSkill={(name) => {
-                      setSeed({ text: `$${name} `, mode: "prepend" });
+                      setSeed({ text: `/${name} `, mode: "prepend" });
                     }}
                     selection={selection}
                     onChange={select}
@@ -1262,7 +1265,7 @@ export function ChannelPage({
                 skills={tags.skills}
                 skillsFailed={tags.skillsFailed}
                 onSkill={(name) => {
-                  setSeed({ text: `$${name} `, mode: "prepend" });
+                  setSeed({ text: `/${name} `, mode: "prepend" });
                 }}
                 selection={{ project, channel }}
                 onChange={() => {}}
