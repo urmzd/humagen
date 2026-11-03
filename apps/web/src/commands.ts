@@ -86,9 +86,9 @@ const DOLLAR = new RegExp(`(^|[\\s(])\\$(${NAME})(?![A-Za-z0-9_-])`, "g");
 const AT_SKILL = new RegExp(`(^|[\\s(])@skill:(${NAME})(?![A-Za-z0-9_-])`, "gi");
 
 /**
- * Where a message names one of the skills given, in order: each `/name` or
- * `$name` outside code. The box draws these as tokens; `@skill:name` is
- * left as text, as `@` completion writes it.
+ * Where a message names one of the skills given as a slash command, in
+ * order: each `/name` outside code. The box draws these as tokens; the
+ * aliases `$name` and `@skill:name` are left as text there.
  */
 export function commandTokens(
   text: string,
@@ -96,14 +96,13 @@ export function commandTokens(
 ): { start: number; end: number; name: string }[] {
   const known = new Set(skills);
   const out: { start: number; end: number; name: string }[] = [];
-  for (const re of [SLASH, DOLLAR])
-    for (const m of text.matchAll(re)) {
-      const name = m[2] ?? "";
-      const start = (m.index ?? 0) + (m[1] ?? "").length;
-      if (known.has(name) && outsideCode(text, start))
-        out.push({ start, end: start + 1 + name.length, name });
-    }
-  return out.sort((a, b) => a.start - b.start);
+  for (const m of text.matchAll(SLASH)) {
+    const name = m[2] ?? "";
+    const start = (m.index ?? 0) + (m[1] ?? "").length;
+    if (known.has(name) && outsideCode(text, start))
+      out.push({ start, end: start + 1 + name.length, name });
+  }
+  return out;
 }
 
 /** The skills a message names, once each in the order written, outside code. */
@@ -176,4 +175,28 @@ export function nextEnabled(commands: Command[], from: number, step: 1 | -1): nu
     if (!commands[i]?.disabled) return i;
   }
   return -1;
+}
+
+/**
+ * Where text names a skill, in any of the ways the platform reads one, for
+ * the console to show each as `/name`: `$name` and `@skill:name`, the quiet
+ * aliases, and `/name`. With skills given (the names a posted message's tags
+ * resolved to), only those count; without, a `/name` is left as text, since
+ * a path reads the same, and any well-formed alias counts. Outside code, in
+ * order.
+ */
+export function skillRefs(
+  text: string,
+  skills?: Iterable<string>,
+): { start: number; end: number; name: string }[] {
+  const known = skills ? new Set(skills) : null;
+  const out: { start: number; end: number; name: string }[] = [];
+  for (const re of known ? [SLASH, DOLLAR, AT_SKILL] : [DOLLAR, AT_SKILL])
+    for (const m of text.matchAll(re)) {
+      const name = (m[2] ?? "").toLowerCase();
+      const start = (m.index ?? 0) + (m[1] ?? "").length;
+      const end = start + m[0].length - (m[1] ?? "").length;
+      if ((!known || known.has(name)) && outsideCode(text, start)) out.push({ start, end, name });
+    }
+  return out.sort((a, b) => a.start - b.start);
 }

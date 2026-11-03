@@ -72,7 +72,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-043 | The brand's colors edge the page round its corners and glow round the chat bar, turning while a reply is in flight | Implemented: `styles.css`, `Composer.tsx`; web tests pass; screens pass light and dark at 1280x800 and 390x844 |
 | DES-044 | A conversation has a wave down its left edge to scan and scrub through its turns, and the keyboard opens and closes cleanly on a phone | Implemented: `TurnRail.tsx`, `Thread.tsx`, `Chat.tsx`, `Room.tsx`, `viewport.ts`; web tests pass (`wave.dom.test.tsx`, `pwa.test.ts`); screens pass at 390x844 and 1280x800; the keyboard on iOS needs a real device |
 | DES-045 | A phone reads like a native chat app: quiet message actions, a one-line chat bar and header, Chat and Work at the top of Home, a swipe from the edge for the drawer, and the installed app opening on Chat | Implemented: `theme.css`, `styles.css`, `Composer.tsx`, `ConversationShell.tsx`, `ModeSwitch.tsx`, `Sidebar.tsx`, `manifest.webmanifest`; web tests pass; screens pass at 390x844 and 1280x800 |
-| DES-046 | Skills are slash commands: `/` in the chat bar opens a menu of the skills a message here can name, fuzzy filtered with the match highlighted, and a pick writes `/name ` as a token that the platform reads as `$name` | Implemented: `commands.ts`, `tags.ts`, `Composer.tsx`, `pkg/threads/tags.go`; web, threads and platform tests pass; `chat-slash` screen at 390x844 and 1280x800 |
+| DES-047 | Skills are slash commands, the only way the console offers them: `/` opens a menu of the skills a message here can name, fuzzy filtered with the match highlighted; `@` offers no skill or `@skill:`, `$` opens nothing, and a posted `$name` or `@skill:name` shows as a `/name` chip | Implemented: `commands.ts`, `tags.ts`, `Composer.tsx`, `ui.tsx` (`Mentioned`), `pkg/threads/tags.go`; web, threads and platform tests pass; `chat-at`, `chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection` screens at 390x844 and 1280x800 |
 
 ### DES-001: Working integrations
 
@@ -1149,17 +1149,21 @@ Rules:
 - The installed app opens on `/`, the new conversation. Notifications stays
   a shortcut.
 
-### DES-046: Skills are slash commands
+### DES-047: Skills are slash commands
 
 Owner request: invoke skills the way Copilot does, with `/` in the composer,
-in place of remembering `$name`.
+in place of remembering `$name`; then make `/` the only way skills are
+offered, with no `@skill` and no `$` menu.
 
 Rules:
 
 - `/` at the start of a message or after a space opens the command menu.
-  It lists the skills a message here can name, from `GET /api/skills` with
-  the same permissions as `$`. A slash inside a word, a path, a URL or code
-  opens nothing.
+  It lists the skills a message here can name, from `GET /api/skills`. A
+  slash inside a word, a path, a URL or code opens nothing.
+- `/` is the only way the console offers a skill. `@` offers agents,
+  people and mention kinds over people or roles: never a skill, never
+  `@skill:` or another kind that resolves to skills. `$` opens nothing.
+  The + menu's Skills write `/name `.
 - Each row is `/name`, the skill's one-line description and, on the right,
   its kind (Skill). Typing filters the list: a name that starts with the
   query first, then one with a word that does, then one that holds it, then
@@ -1171,22 +1175,30 @@ Rules:
   already names ("Already in this message"), and every other once the
   message names 4 (`threads.MaxSkills`).
 - A pick writes `/name ` into the box, drawn as a token behind its words.
-  The message is sent as its text. The platform reads `/name` as `$name` in
+  The message is sent as its text. The platform reads `/name` as a skill in
   a message posted through the API or the console, at the start or after a
   space, before a skill's whole name that is on the chain. Anything else
-  after a `/` is text and refuses nothing. `$name` and `@skill:name` keep
-  working. Slack and GitHub read a `/` only as one of their client's
-  commands.
+  after a `/` is text and refuses nothing.
+- `$name` and `@skill:name` stay quiet aliases on the server, so older
+  messages, Slack and GitHub text and agents' instructions keep working. A
+  posted message in the console shows each skill it names as a `/name`
+  chip, however it was written. Slack and GitHub read a `/` only as one of
+  their client's commands.
 - No built-in commands. `/new` would need the conversation's navigation and
   `/review <PR URL>` an agent name that differs per workspace, so neither
   maps cleanly to existing behavior yet. The kind label is there for them.
 - Acceptance: typing `/rev` lists `/review` then `/security-review` with
   `rev` highlighted; Enter leaves `/review ` in the box as a token; sending
-  `/review the launch` pins the review skill on the runs it starts.
+  `/review the launch` pins the review skill on the runs it starts; typing
+  `@` lists no skill and `$` opens nothing; a posted `$review` reads
+  `/review`.
 
 Evidence: `cd apps/web && pnpm test` (`commands.test.ts` for matching,
-greying and tokens; `slash-commands.dom.test.tsx` for the menu, keys, tap,
-greyed rows and the posted text); `go test -race ./pkg/threads
-./internal/platform` (`TestASlashCommandNamesASkill`,
-`TestSlashCommandsCostBoundedLookups`, `TestASlashCommandIsPinnedAsItsSkill`,
-`TestASlackCommandNamedForASkillUsesIt`); `make screens` with `chat-slash`.
+greying, tokens and chips; `tags.test.ts` for `@` without skills;
+`slash-commands.dom.test.tsx`, `chat.dom.test.tsx` and `room.dom.test.tsx`
+for the menu, keys, tap, greyed rows, `$` and `@`, the + menu's pick, chips
+and the posted text); `go test -race ./pkg/threads ./internal/platform`
+(`TestASlashCommandNamesASkill`, `TestSlashCommandsCostBoundedLookups`,
+`TestASlashCommandIsPinnedAsItsSkill`, `TestASlackCommandNamedForASkillUsesIt`,
+`TestSkillsAndMentionKinds` for the aliases); `make screens` with `chat-at`,
+`chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection`.

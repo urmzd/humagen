@@ -808,8 +808,9 @@ grounds nothing until it does. Through the API, naming one takes an owner of
 the project who holds `knowledge:read`.
 
 `skills` are named instructions a person can tell an agent to use: writing
-`$<name>`, `@skill:<name>` or, in the console, the slash command `/<name>` in
-a message has every run the message starts
+the slash command `/<name>` in a console message (or the aliases `$<name>`
+and `@skill:<name>`, which Slack and GitHub text and agents' instructions
+may use, and which the console shows as `/<name>`) has every run the message starts
 given the skill's instructions ahead of the turn, below the project's and the
 agent's own. A message posted in a project can name its project's skills, then
 each project's above it, `workspace.skills` last, nearest first, each name
@@ -829,7 +830,7 @@ a kind of lower case letters, digits and dashes, starting with a letter, at
 most 32, that is not `sme`, `skill` or `auto`, once; a title of at most 40
 characters, as the console shows it; and `resolves`, what its items are:
 `experts` (`@<kind>:<topic>` is `@sme:<topic>`), `skills` (`@<kind>:<name>` is
-`$<name>`), `role` (everyone holding the policy role `<name>` is notified,
+`$<name>`, which the console offers and shows as `/<name>`), `role` (everyone holding the policy role `<name>` is notified,
 except in a private thread, where the tag is refused) or `people` (the person
 whose handle is `<name>`). Left out, a workspace has the built-in kinds only.
 Only the file declares them; the console completes each kind's items as a

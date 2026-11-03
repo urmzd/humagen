@@ -7,6 +7,7 @@ import {
   MAX_SKILLS,
   nextEnabled,
   segments,
+  skillRefs,
   skillsIn,
 } from "./commands.ts";
 import { insertTag, matching, tagAt, tagOptions } from "./tags.ts";
@@ -32,8 +33,9 @@ test("/ starts a command at the start of a message or after a space, never in a 
   assert.equal(tagAt("(/rev", 5), null);
   assert.equal(tagAt("https://x", 8), null);
   assert.equal(tagAt("run `/rev", 9), null);
-  // `@` and `$` completion never answer for a slash.
-  assert.deepEqual(matching(options, "rev", 8, "/"), []);
+  // `@` completion never offers a skill, and `$` opens nothing.
+  assert.ok(!matching(options, "rev", 8, "@").some((o) => o.kind === "skill"));
+  assert.equal(tagAt("$rev", 4), null);
 });
 
 test("fuzzy matches a prefix first, then a word start, then inside a word, then letters in order", () => {
@@ -120,10 +122,26 @@ test("a picked command is written /name with a space, and the box draws known sk
     caret: 8,
   });
   const names = ["review", "triage"];
-  assert.deepEqual(commandTokens("/review this, then $triage.", names), [
+  assert.deepEqual(commandTokens("/review this, then /triage.", names), [
     { start: 0, end: 7, name: "review" },
     { start: 19, end: 26, name: "triage" },
   ]);
+  // The aliases are left as text in the box.
+  assert.deepEqual(commandTokens("$review @skill:triage", names), []);
   // A path, an unknown name, a slash in a word, and code are text.
   assert.deepEqual(commandTokens("/review/x /ghost a/review `/review`", names), []);
+});
+
+test("a posted message shows every way of naming a skill as /name, and /name only for its resolved skills", () => {
+  const text = "$review then @Skill:triage and /draft, see /tmp/x, $5 `$review`";
+  assert.deepEqual(skillRefs(text, ["review", "triage", "draft"]), [
+    { start: 0, end: 7, name: "review" },
+    { start: 13, end: 26, name: "triage" },
+    { start: 31, end: 37, name: "draft" },
+  ]);
+  // Without the resolved names a /name is text, since a path reads the same.
+  assert.deepEqual(
+    skillRefs(text).map((r) => r.name),
+    ["review", "triage"],
+  );
 });

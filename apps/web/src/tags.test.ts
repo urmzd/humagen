@@ -103,26 +103,34 @@ test("picking an option writes the tag and a space, and puts the caret after it"
   });
 });
 
-test("$ starts a skill, and only skills complete after it; @ never offers a skill", () => {
-  assert.deepEqual(tagAt("@lead $rev", 10), { start: 6, query: "rev", sigil: "$" });
+test("$ completes nothing; @ never offers a skill or a kind over skills; a skill is written /name", () => {
+  assert.equal(tagAt("@lead $rev", 10), null);
   assert.equal(tagAt("costs a$5", 9), null);
-  assert.equal(tagAt("run `$review", 12), null);
   const options = tagOptions([{ name: "lead" }], [{ handle: "review-ann" }], [], words, {
+    kinds: [
+      { kind: "skill", title: "Skills", resolves: "skills" },
+      { kind: "howto", title: "How-tos", resolves: "skills" },
+      { kind: "team", title: "Teams", resolves: "role" },
+    ],
+    items: [
+      { kind: "skill", name: "review" },
+      { kind: "howto", name: "review" },
+      { kind: "team", name: "sre" },
+    ],
     skills: [{ name: "review", description: "Reviews a change" }, { name: "triage" }],
   });
   assert.deepEqual(
-    matching(options, "re", 8, "$").map((o) => o.token),
-    ["review"],
+    matching(options, "", 20, "@").map((o) => o.token),
+    ["lead", "review-ann", "team:", "team:sre"],
   );
   assert.deepEqual(
-    matching(options, "", 8, "$").map((o) => o.token),
-    ["review", "triage"],
+    matching(options, "re", 8, "@").map((o) => o.token),
+    ["review-ann", "team:sre"],
   );
-  assert.ok(!matching(options, "re", 8, "@").some((o) => o.kind === "skill"));
   const skill = options.find((o) => o.kind === "skill");
   assert.ok(skill);
-  assert.deepEqual(insertTag("@lead $re now", { start: 6, query: "re", sigil: "$" }, skill), {
-    text: "@lead $review now",
+  assert.deepEqual(insertTag("@lead /re now", { start: 6, query: "re", sigil: "/" }, skill), {
+    text: "@lead /review now",
     caret: 14,
   });
 });
@@ -136,39 +144,39 @@ test("a mention kind completes to @kind: and stays open for its items, which com
     {
       kinds: [
         { kind: "sme", title: "Experts" },
-        { kind: "skill", title: "Skills" },
+        { kind: "team", title: "Teams", resolves: "role" },
       ],
       items: [
-        { kind: "skill", name: "review" },
-        { kind: "skill", name: "release-notes" },
+        { kind: "team", name: "sre" },
+        { kind: "team", name: "support" },
       ],
     },
   );
   // The kinds are offered by their own names, and a kind written in full is not offered again.
   assert.deepEqual(
-    matching(options, "sk").map((o) => o.token),
-    ["skill:", "skill:review", "skill:release-notes"],
+    matching(options, "te").map((o) => o.token),
+    ["team:", "team:sre", "team:support"],
   );
   assert.deepEqual(
-    matching(options, "skill:").map((o) => o.token),
-    ["skill:review", "skill:release-notes"],
+    matching(options, "team:").map((o) => o.token),
+    ["team:sre", "team:support"],
   );
   assert.deepEqual(
-    matching(options, "skill:rel").map((o) => o.token),
-    ["skill:release-notes"],
+    matching(options, "team:su").map((o) => o.token),
+    ["team:support"],
   );
-  const kind = options.find((o) => o.token === "skill:");
+  const kind = options.find((o) => o.token === "team:");
   assert.equal(kind?.kind, "kind");
-  assert.equal(kind?.hint, "Skills");
+  assert.equal(kind?.hint, "Teams");
   // No space after a kind: what is typed next is its item.
-  assert.deepEqual(insertTag("ask @sk", { start: 4, query: "sk", sigil: "@" }, kind as TagOption), {
-    text: "ask @skill:",
-    caret: 11,
+  assert.deepEqual(insertTag("ask @te", { start: 4, query: "te", sigil: "@" }, kind as TagOption), {
+    text: "ask @team:",
+    caret: 10,
   });
-  const item = options.find((o) => o.token === "skill:review") as TagOption;
-  assert.deepEqual(insertTag("ask @skill:re", { start: 4, query: "skill:re", sigil: "@" }, item), {
-    text: "ask @skill:review ",
-    caret: 18,
+  const item = options.find((o) => o.token === "team:sre") as TagOption;
+  assert.deepEqual(insertTag("ask @team:s", { start: 4, query: "team:s", sigil: "@" }, item), {
+    text: "ask @team:sre ",
+    caret: 14,
   });
 });
 

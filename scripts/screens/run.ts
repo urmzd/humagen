@@ -171,7 +171,7 @@ async function mentioned(page: Page, text: string): Promise<void> {
 
 /**
  * The chat's states, each a page and what a person does on it: completion
- * open after @ and after $, the / command menu, the + menu with two agents checked, the box
+ * open after @, the / command menu, the + menu with two agents checked, the box
  * with their mentions, a private conversation answered, its Share
  * dialog, a shared conversation, and answers its selected agents were
  * routed to.
@@ -604,14 +604,6 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       },
     },
     {
-      name: "chat-kind-items",
-      path: "/",
-      act: async (page) => {
-        await bar(page).fill("@skill:");
-        await page.getByRole("listbox").getByText("@skill:launch-review").waitFor();
-      },
-    },
-    {
       name: "chat-plus-project",
       path: "/",
       act: async (page) => {
@@ -648,15 +640,10 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       path: "/",
       act: async (page) => {
         await bar(page).fill("@");
-        await page.getByRole("listbox").getByText("@helper").waitFor();
-      },
-    },
-    {
-      name: "chat-dollar",
-      path: "/",
-      act: async (page) => {
-        await bar(page).fill("@helper $");
-        await page.getByRole("listbox").getByText("$launch-review").waitFor();
+        const list = page.getByRole("listbox");
+        await list.getByText("@helper").waitFor();
+        // Skills are slash commands: @ offers neither them nor @skill: (DES-047).
+        assert.equal(await list.getByText(/skill|launch-review/).count(), 0);
       },
     },
     {
@@ -783,9 +770,9 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
                 (expected) =>
                   document.querySelector<HTMLTextAreaElement>('form[aria-label="Message"] textarea')
                     ?.value === expected,
-                `$launch-review ${draft}`,
+                `/launch-review ${draft}`,
               );
-              assert.equal(await bar(page).inputValue(), `$launch-review ${draft}`);
+              assert.equal(await bar(page).inputValue(), `/launch-review ${draft}`);
             } else assert.equal(await bar(page).inputValue(), draft);
             await page.getByText("brief.txt", { exact: true }).waitFor();
             assert.equal(posts, 0, "Picking a skill must not submit the message");

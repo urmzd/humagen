@@ -175,7 +175,7 @@ export function Composer({
   /** Controls before the send or speak button. */
   trailing?: ReactNode;
   /**
-   * Completion: what a message here can tag with `@` and `$`, the skills `/` offers as commands, and a call
+   * Completion: what a message here can tag with `@`, the skills `/` offers as commands, and a call
    * each time the tag being typed changes, for options looked up as it is
    * typed.
    */
@@ -227,7 +227,7 @@ export function Composer({
 
   const [typing, setTyping] = useState<Typing | null>(null);
   const [active, setActive] = useState(0);
-  // `/` opens the command menu (commands.ts); `@` and `$` the tag list.
+  // `/` opens the command menu (commands.ts); `@` the tag list.
   const commands: Command[] =
     tags && typing?.sigil === "/"
       ? commandsFor(tags.options, value, typing, {
@@ -555,11 +555,7 @@ export function Composer({
                     aria-hidden
                     className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-aui-hover text-[0.6rem] font-medium"
                   >
-                    {o.kind === "person"
-                      ? (o.hint ?? o.label).trim().charAt(0).toUpperCase()
-                      : o.kind === "skill"
-                        ? "$"
-                        : "@"}
+                    {o.kind === "person" ? (o.hint ?? o.label).trim().charAt(0).toUpperCase() : "@"}
                   </span>
                 )}
                 <span className="shrink-0 font-medium">

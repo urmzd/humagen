@@ -5,6 +5,7 @@ import { useQueue } from "@humagen/web";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Composer } from "./Composer.tsx";
 import { tagOptions } from "./tags.ts";
+import { Mentioned } from "./ui.tsx";
 
 afterEach(() => cleanup());
 
@@ -122,4 +123,30 @@ test("a skill the message already names is greyed with the reason, and is skippe
   assert.equal(box.value, "$review /");
   fireEvent.keyDown(box, { key: "Enter" });
   assert.equal(box.value, "$review /security-review ");
+});
+
+test("$ opens no menu, and @ offers no skill", () => {
+  const { type, menu } = setup();
+  type("$rev");
+  assert.equal(screen.queryByRole("listbox"), null);
+  type("@");
+  const list = screen.getByRole("listbox");
+  assert.ok(!list.textContent?.includes("review"), list.textContent ?? "");
+  assert.equal(menu(), null);
+});
+
+test("a posted message shows each skill it names as a /name chip, the aliases included", () => {
+  render(
+    <p>
+      <Mentioned
+        text="$review then @skill:triage and /security-review, not /tmp/x or $5"
+        skills={["review", "triage", "security-review"]}
+      />
+    </p>,
+  );
+  assert.deepEqual(
+    Array.from(document.querySelectorAll("[data-skill]")).map((c) => c.textContent),
+    ["/review", "/triage", "/security-review"],
+  );
+  assert.ok(document.body.textContent?.includes("not /tmp/x or $5"));
 });

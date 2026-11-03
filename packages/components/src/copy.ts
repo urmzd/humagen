@@ -2663,7 +2663,7 @@ export const defaultCopy = {
       "This turn acted for nobody, so anyone who may start runs can retry it from the inbox.",
     answer: "Answer",
     answered: "Answered",
-    typeahead: "People, agents and skills to tag",
+    typeahead: "People and agents to tag",
     /** The `/` command menu, as a screen reader names it. */
     commands: "Slash commands",
     /** What a `/` command is, on the right of its row. */

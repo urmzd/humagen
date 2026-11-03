@@ -5734,7 +5734,7 @@ an announcement in this project is 404.
 
   /** The project's own skills first, then each project's above it, nearest
 first, each name once, at most 128, without their instructions: what
-the console completes after `/` and `$`. A project the caller cannot see
+the console offers after `/`. A project the caller cannot see
 answers 404, as one that does not exist.
  */
   async listSkills(project?: string, options?: RequestOptions): Promise<ListSkillsResponse> {
