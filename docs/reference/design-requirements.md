@@ -48,6 +48,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-019 | Project work has readable states, scoped filters and honest recovery | Implemented; automated delivery checks pass; final browser/CI verification pending |
 | DES-020 | Workspace previews reuse console controls, fonts and consolidated navigation | Implemented; automated delivery checks pass; final browser/CI verification pending |
 | DES-021 | Sidebar conversations show their title; projects and conversations can be pinned independently | Implemented; saved preferences, access checks, restart and DOM regressions, and responsive sidebar captures |
+| DES-046 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
 | DES-022 | Conversation actions support rename, archive and admin-reviewed deletion | Included in the consolidated branch; bounded API, durable lifecycle and review UI checks |
 | DES-023 | A deployment and each workspace brand the console from the spec, without a fork or a rebuild | Implemented; spec, server, API and console tests pass; browser check of a branded build pending |
 | DES-024 | An agent calling another agent reads as a message, nested under its caller | Implemented in `AgentMessage` (`AgentCall`); checked live: `@lead` called researcher, then writer, with real providers |
@@ -314,6 +315,38 @@ the Storybook stories, which were removed on October 30, 2026.
 The concurrent full console run reports 636/637 passing; its remaining failure is
 `the tree at depth 4 indents one level at 390px, and deeper rows say where they sit`
 (`ok(indents.length > 0)`) in the other session's project layout work.
+
+### DES-046: Notification views and a reader's own marks
+
+Every notification stays in one list no longer. The page opens on **Inbox**,
+what is open for the reader and not hidden by them, read or not, unread rows
+with a dot and stronger weight. A segmented control beside it switches to
+**Unread**, **Hidden** (the hidden box) and **Done** (resolved or dismissed for
+everyone), each with its count; Done is not counted, since no counter keeps
+what is settled. The view is in the address (`/notifications?view=hidden`;
+the Inbox is left out). Rows carry no state word: the view says it.
+
+Opening a message marks it read. Each row offers Mark Read or Unread, Hide or
+Unhide and Delete on hover and keyboard focus, and the reading pane offers the
+same. Rows are picked with a checkbox, or `x` on the focused row, and the
+toolbar then marks them read or unread, hides, unhides or deletes them; with
+nothing picked it offers Mark All Read for the view. Hide and Delete ask no
+confirmation: a toast says what moved and offers Undo for eight seconds.
+
+Each mark is the reader's own (`pkg/inbox`: `mark.Hide`, `mark.Deleted`):
+nobody else's inbox, views or counts change, and a shared message is never
+removed from the record. Delete takes it out of every view of the reader's;
+Restore brings it back. A run's open question can be hidden but not deleted.
+The sidebar badge counts unread only, and what was hidden or deleted leaves
+Home's and Slack Home's Needs you and its total, which read the same open
+state. API: `view` on `GET /api/inbox`, `POST /api/inbox/marks` (1 to 200
+ids), `POST /api/inbox/read-all` (the newest 600), with `inbox` and `hidden`
+in the counts. Acceptance: `TestViewsArePerReader`, `TestMarksStayInTheirTenant`,
+`TestViewsAreBounded`, `TestCountsAgreeWithAScan` (hides, deletes and restores
+among its random steps), `TestInboxMarksArePerReader`,
+`notification-views.dom.test.tsx`, the route tests for `view`, and the
+`notifications-inbox`, `notifications-hidden` and `notifications-bulk`
+captures at phone and desktop width.
 
 ### DES-011: Docked conversation workspace
 

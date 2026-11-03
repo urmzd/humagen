@@ -213,6 +213,43 @@ export const defaultCopy = {
     typefaceDescription:
       "IBM Plex Sans for reading. IBM Plex Mono for files and technical details.",
   },
+  /** The reader's own views of their notifications, and what they do to one or many. */
+  inboxViews: {
+    label: "Views",
+    inbox: "Inbox",
+    unread: "Unread",
+    hidden: "Hidden",
+    done: "Done",
+    markRead: "Mark Read",
+    markUnread: "Mark Unread",
+    hide: "Hide",
+    unhide: "Unhide",
+    delete: "Delete",
+    markAllRead: "Mark All Read",
+    selectAll: "Select All",
+    clear: "Clear",
+    select: (subject: string) => `Select ${subject}`,
+    selected: (n: number) => `${n} selected`,
+    actions: (subject: string) => `Actions for ${subject}`,
+    bulk: "Selected notifications",
+    undo: "Undo",
+    dismissNote: "Dismiss",
+    hiddenDone: (n: number) => (n === 1 ? "Moved to Hidden." : `${n} moved to Hidden.`),
+    deletedDone: (n: number) => (n === 1 ? "Notification deleted." : `${n} notifications deleted.`),
+    readAllDone: (n: number) => (n === 1 ? "1 marked read." : `${n} marked read.`),
+    nothingUnread: "Nothing unread here.",
+    failed: "That did not go through.",
+    skipped: (n: number, reason: string) =>
+      n === 1 ? `One was left as it was: ${reason}.` : `${n} were left as they were. ${reason}.`,
+    /** Under a message the reader hid. */
+    hiddenNote: "Hidden for you. Others still see it.",
+    empty: {
+      inbox: ["You're all caught up", "New approvals, alerts and updates land here."],
+      unread: ["Nothing unread", "Opening a notification marks it read."],
+      hidden: ["Nothing hidden", "What you hide moves here. Others still see it."],
+      done: ["Nothing done yet", "What was resolved or dismissed for everyone lands here."],
+    } as Record<"inbox" | "unread" | "hidden" | "done", [string, string]>,
+  },
   inboxControls: {
     search: "Search notifications",
     filter: "Filter updates",

@@ -24,9 +24,12 @@ import {
   BrainIcon,
   buttonClass,
   CheckCircleIcon,
+  CheckIcon,
   ChevronRightIcon,
+  CircleIcon,
   ClockIcon,
   EyeIcon,
+  EyeOffIcon,
   FileIcon,
   GaugeIcon,
   InfoIcon,
@@ -34,6 +37,7 @@ import {
   MessageIcon,
   ShieldIcon,
   SparkleIcon,
+  TrashIcon,
   WebSurface,
   XCircleIcon,
   XIcon,
@@ -56,6 +60,17 @@ export type PartRenderer = (props: {
 }) => ReactNode;
 
 export type MailboxShow = "open" | "resolved" | "all";
+
+/** A mark a reader sets on their own copy of messages, from a row, the pane, or a selection. */
+export type MailboxMark = "read" | "unread" | "hide" | "unhide" | "delete";
+
+/** One of the reader's views, as the segmented control draws it. */
+export interface MailboxView {
+  id: string;
+  label: string;
+  /** Left out where the host does not count it. */
+  count?: number;
+}
 
 export interface MailboxProps {
   messages: InboxMessage[];
@@ -116,6 +131,25 @@ export interface MailboxProps {
   onShow?: (show: MailboxShow) => void;
   /** The number in the header, when `messages` is only one page of the inbox. */
   openCount?: number;
+  /**
+   * The reader's own views (Inbox, Unread, Hidden), as a segmented control
+   * with their counts, in place of the show control. With views, a row says
+   * no state: which view it is in says it.
+   */
+  views?: MailboxView[];
+  view?: string;
+  onView?: (id: string) => void;
+  /**
+   * The reader's own marks. With it, each row offers Mark Read or Unread,
+   * Hide or Unhide and Delete on hover and focus, rows can be selected to
+   * mark many at once, and the reading pane offers the same in place of
+   * Snooze and Dismiss. Leave out for none.
+   */
+  onMark?: (ids: string[], mark: MailboxMark) => void;
+  /** Mark read what is unread in the view. */
+  onReadAll?: () => void;
+  /** What an empty view says, in place of the default. */
+  emptyView?: { title: string; hint: string };
   /** ISO time used to decide whether a snooze has ended. */
   now?: string;
   /**
@@ -262,6 +296,9 @@ const OWN_BOX = new Set<MessagePart["type"]>(["failure"]);
 /** A small text button for the reading pane's header. Words, not a box of icons. */
 const headerButton = `${buttonClass("ghost")} min-h-10 px-2.5`;
 
+/** A compact text button for the selection toolbar, so its marks fit the list's width. */
+const bulkButton = `${buttonClass("ghost")} min-h-9 pointer-coarse:min-h-11 gap-1.5 px-2 text-aui-xs`;
+
 /**
  * The inbox as a mailbox: a list of messages and a reading pane that shows the
  * selected message's parts in order, each with the controls that resolve it.
@@ -296,11 +333,22 @@ export function Mailbox({
   show: controlledShow,
   onShow,
   openCount,
+  views,
+  view,
+  onView,
+  onMark,
+  onReadAll,
+  emptyView,
   now,
   heading = 2,
   className,
 }: MailboxProps) {
   const copy = defaultCopy;
+  const vc = copy.inboxViews;
+  // The rows picked to mark at once. A new view starts with none.
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new view clears the selection
+  useEffect(() => setPicked(new Set()), [view]);
   const [ownShow, setOwnShow] = useState<MailboxShow>(defaultShow);
   const show = controlledShow === undefined ? ownShow : controlledShow;
   const setShow = (next: MailboxShow) => {
@@ -320,6 +368,22 @@ export function Mailbox({
   const rest = shown.filter((m) => !asking.includes(m));
   const grouped = groupByAction && show !== "resolved" && asking.length > 0 && rest.length > 0;
   const ordered = [...asking, ...rest];
+  const chosen = ordered.filter((m) => picked.has(m.id));
+  const choosing = Boolean(onMark) && chosen.length > 0;
+  const pick = (id: string, on: boolean) =>
+    setPicked((was) => {
+      const next = new Set(was);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  const markChosen = (mark: MailboxMark) => {
+    onMark?.(
+      chosen.map((m) => m.id),
+      mark,
+    );
+    setPicked(new Set());
+  };
 
   const current = selectedId === undefined ? own : selectedId;
   // Keep showing a message that just left this tab, so its record is read where it was resolved.
@@ -365,7 +429,11 @@ export function Mailbox({
     else if (e.key === "ArrowUp") move(i - 1);
     else if (e.key === "Home") move(0);
     else if (e.key === "End") move(ordered.length - 1);
-    else if (e.key === "Enter" && selected) {
+    else if (e.key === "x" && onMark && current) {
+      // x picks the row in focus, as a mail client's does.
+      e.preventDefault();
+      pick(current, !picked.has(current));
+    } else if (e.key === "Enter" && selected) {
       e.preventDefault();
       // Land on the first thing that resolves it, or on the pane itself to read.
       const first = pane.current?.querySelector<HTMLElement>(
@@ -387,15 +455,30 @@ export function Mailbox({
     const state = messageState(m, now);
     const open = state === "open";
     const asks = open && openParts(m).length > 0;
+    const on = picked.has(m.id);
     return (
-      <li key={m.id} className="group relative">
+      <li key={m.id} className={`group relative ${onMark ? "flex items-start" : ""}`}>
+        {onMark && (
+          // Picking is its own control beside the row, never inside its button.
+          <label
+            className={`flex min-h-11 w-9 shrink-0 cursor-pointer items-center justify-center self-stretch pointer-coarse:w-11 pointer-coarse:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 has-[:focus-visible]:opacity-100 ${choosing || on ? "opacity-100" : "opacity-0"}`}
+          >
+            <input
+              type="checkbox"
+              checked={on}
+              onChange={(e) => pick(m.id, e.target.checked)}
+              aria-label={vc.select(m.subject)}
+              className="size-4 accent-[var(--aui-accent)]"
+            />
+          </label>
+        )}
         <button
           type="button"
           data-message={m.id}
           data-template={messageTemplate(m)}
           aria-current={m.id === shownInPane?.id ? "true" : undefined}
           onClick={() => select(m.id)}
-          className="flex w-full min-w-0 items-start gap-3 rounded-aui px-3 py-2.5 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent focus-visible:-outline-offset-2 aria-[current]:bg-aui-accent-soft motion-reduce:transition-none"
+          className={`flex w-full min-w-0 items-start gap-3 rounded-aui py-2.5 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent focus-visible:-outline-offset-2 aria-[current]:bg-aui-accent-soft motion-reduce:transition-none ${onMark ? "pr-3 pl-1" : "px-3"} ${on ? "bg-aui-subtle" : ""}`}
         >
           {/* The unread dot has its own column, so read and unread rows line up. */}
           <span className="flex w-1.5 shrink-0 justify-center self-stretch pt-3.5">
@@ -417,7 +500,7 @@ export function Mailbox({
               <time
                 dateTime={m.at}
                 title={fullWhen(m.at)}
-                className={`shrink-0 text-aui-2xs tabular-nums ${m.unread ? "text-aui-fg" : "text-aui-muted"} ${open ? "group-focus-within:opacity-0 group-hover:opacity-0" : ""}`}
+                className={`shrink-0 text-aui-2xs tabular-nums ${m.unread ? "text-aui-fg" : "text-aui-muted"} ${open || onMark ? "group-focus-within:opacity-0 group-hover:opacity-0" : ""}`}
               >
                 {shortWhen(m.at)}
               </time>
@@ -435,7 +518,7 @@ export function Mailbox({
                 </span>
               )}
               <span className="min-w-0 flex-1 truncate text-aui-muted">{messagePreview(m)}</span>
-              {!open && (
+              {!open && !views && (
                 <span className="shrink-0 text-aui-2xs text-aui-muted capitalize">
                   {/* Put away by this reader alone: hidden, as Hide for Me says. */}
                   {m.hidden && state === "dismissed" ? copy.announcements.hidden : state}
@@ -444,8 +527,37 @@ export function Mailbox({
             </span>
           </span>
         </button>
+        {onMark && (
+          // The reader's own marks, on hover and focus, as an email client's row actions are.
+          <fieldset
+            aria-label={vc.actions(m.subject)}
+            className="pointer-events-none absolute top-1.5 right-1.5 m-0 flex items-center border-0 p-0 gap-0.5 rounded-aui-sm bg-aui-bg opacity-0 pointer-coarse:hidden group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+          >
+            <RowAction
+              label={m.unread ? vc.markRead : vc.markUnread}
+              subject={m.subject}
+              onClick={() => onMark([m.id], m.unread ? "read" : "unread")}
+            >
+              {m.unread ? <CheckIcon size={14} /> : <CircleIcon size={14} />}
+            </RowAction>
+            <RowAction
+              label={m.hidden ? vc.unhide : vc.hide}
+              subject={m.subject}
+              onClick={() => onMark([m.id], m.hidden ? "unhide" : "hide")}
+            >
+              {m.hidden ? <EyeIcon size={14} /> : <EyeOffIcon size={14} />}
+            </RowAction>
+            <RowAction
+              label={vc.delete}
+              subject={m.subject}
+              onClick={() => onMark([m.id], "delete")}
+            >
+              <TrashIcon size={14} />
+            </RowAction>
+          </fieldset>
+        )}
         {/* Put away without opening it, as an email client's hover action does. */}
-        {open && (
+        {open && !onMark && (
           <button
             type="button"
             onClick={() => dismiss(m)}
@@ -482,6 +594,7 @@ export function Mailbox({
       onDismiss={() => dismiss(shownInPane)}
       onSnooze={() => snooze(shownInPane)}
       onUnhide={() => unhide(shownInPane)}
+      onMark={onMark && ((mark) => onMark([shownInPane.id], mark))}
       actions={messageActions?.(shownInPane)}
     />
   ) : (
@@ -492,10 +605,95 @@ export function Mailbox({
   );
 
   const nothingOpen = show === "open" && !filter;
+  const viewControl = views && (
+    <fieldset className="inline-flex min-w-0 shrink-0 flex-wrap rounded-aui border border-aui-border p-0.5">
+      <legend className="sr-only">{vc.label}</legend>
+      {views.map((v) => (
+        <button
+          key={v.id}
+          type="button"
+          aria-pressed={view === v.id}
+          onClick={() => onView?.(v.id)}
+          className="inline-flex h-7 pointer-coarse:h-11 pointer-coarse:min-w-11 items-center gap-1.5 rounded-aui-sm px-2.5 text-aui-muted text-aui-xs transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-subtle aria-pressed:text-aui-fg motion-reduce:transition-none"
+        >
+          {v.label}
+          {v.count !== undefined && v.count > 0 && (
+            <span className="text-aui-2xs tabular-nums opacity-80">{v.count}</span>
+          )}
+        </button>
+      ))}
+    </fieldset>
+  );
+  const bulk = onMark && (
+    <div
+      role="toolbar"
+      aria-label={vc.bulk}
+      className="flex min-h-11 min-w-0 flex-wrap items-center gap-x-1 gap-y-1"
+    >
+      <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 pr-2 pl-2.5 text-aui-xs text-aui-muted">
+        <input
+          type="checkbox"
+          checked={ordered.length > 0 && chosen.length === ordered.length}
+          ref={(el) => {
+            if (el) el.indeterminate = chosen.length > 0 && chosen.length < ordered.length;
+          }}
+          disabled={ordered.length === 0}
+          onChange={(e) =>
+            setPicked(e.target.checked ? new Set(ordered.map((m) => m.id)) : new Set())
+          }
+          className="size-4 accent-[var(--aui-accent)]"
+        />
+        {choosing ? vc.selected(chosen.length) : vc.selectAll}
+      </label>
+      {choosing ? (
+        <>
+          <button type="button" className={bulkButton} onClick={() => markChosen("read")}>
+            <CheckIcon size={14} />
+            {vc.markRead}
+          </button>
+          <button type="button" className={bulkButton} onClick={() => markChosen("unread")}>
+            <CircleIcon size={14} />
+            {vc.markUnread}
+          </button>
+          {chosen.every((m) => m.hidden) ? (
+            <button type="button" className={bulkButton} onClick={() => markChosen("unhide")}>
+              <EyeIcon size={14} />
+              {vc.unhide}
+            </button>
+          ) : (
+            <button type="button" className={bulkButton} onClick={() => markChosen("hide")}>
+              <EyeOffIcon size={14} />
+              {vc.hide}
+            </button>
+          )}
+          <button type="button" className={bulkButton} onClick={() => markChosen("delete")}>
+            <TrashIcon size={14} />
+            {vc.delete}
+          </button>
+          <button type="button" className={bulkButton} onClick={() => setPicked(new Set())}>
+            {vc.clear}
+          </button>
+        </>
+      ) : (
+        onReadAll && (
+          <button
+            type="button"
+            className={`${headerButton} ml-auto`}
+            disabled={!ordered.some((m) => m.unread)}
+            onClick={onReadAll}
+          >
+            <CheckIcon size={16} />
+            {vc.markAllRead}
+          </button>
+        )
+      )}
+    </div>
+  );
   const showControl = (
     <>
+      {viewControl}
       {/* Open, resolved or all: a quiet segmented control, never a native select. */}
-      {show && (
+      {show && !views && (
         <fieldset className="ml-auto inline-flex shrink-0 rounded-aui border border-aui-border p-0.5">
           <legend className="sr-only">{copy.show.label}</legend>
           {(Object.keys(SHOW) as MailboxShow[]).map((id) => (
@@ -532,27 +730,37 @@ export function Mailbox({
       )}
       {heading === false
         ? // With no title of its own, the show control sits at the end of the filters' row.
-          (toolbar || show) && (
+          (toolbar || show || views) &&
+          (views ? (
+            // The views lead their own row, under the search, so they fit a phone.
+            <div className="flex min-w-0 flex-col gap-2 pb-2">
+              {toolbar && <div className="min-w-0">{toolbar}</div>}
+              <div className="flex min-w-0 flex-wrap items-center gap-2">{viewControl}</div>
+            </div>
+          ) : (
             <div className="flex min-w-0 flex-wrap items-center gap-2 pb-2">
               <div className="min-w-0 flex-1">{toolbar}</div>
               {showControl}
             </div>
-          )
+          ))
         : toolbar && <div className="min-w-0 pb-2">{toolbar}</div>}
       <div className="flex min-h-0 min-w-0 flex-1 border-aui-border border-t">
         <div
           className={`min-h-0 w-full min-w-0 flex-col @2xl:flex @2xl:w-[22rem] @2xl:shrink-0 @2xl:border-aui-border @2xl:border-r @2xl:pr-2 @5xl:w-[26rem] ${selected ? "hidden" : "flex"}`}
         >
+          {bulk && ordered.length > 0 && <div className="border-aui-border border-b">{bulk}</div>}
           {ordered.length === 0 ? (
             <div className="flex flex-col items-center gap-1.5 px-4 py-14 text-center">
               <CheckCircleIcon size={22} className="text-aui-ok" />
               <p className="font-medium text-aui-sm">
-                {nothingOpen ? (emptyOpen?.title ?? copy.mailbox.emptyOpen) : copy.mailbox.empty}
+                {emptyView?.title ??
+                  (nothingOpen ? (emptyOpen?.title ?? copy.mailbox.emptyOpen) : copy.mailbox.empty)}
               </p>
               <p className="max-w-64 text-aui-muted text-aui-xs">
-                {nothingOpen
-                  ? (emptyOpen?.hint ?? copy.mailbox.emptyOpenHint)
-                  : copy.mailbox.emptyHint}
+                {emptyView?.hint ??
+                  (nothingOpen
+                    ? (emptyOpen?.hint ?? copy.mailbox.emptyOpenHint)
+                    : copy.mailbox.emptyHint)}
               </p>
             </div>
           ) : (
@@ -588,6 +796,31 @@ export function Mailbox({
   );
 }
 
+/** One of a row's own marks: an icon button, named in words for a screen reader and a tooltip. */
+function RowAction({
+  label,
+  subject,
+  onClick,
+  children,
+}: {
+  label: string;
+  subject: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={`${label}: ${subject}`}
+      className="inline-flex size-7 pointer-coarse:size-11 items-center justify-center rounded-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+    >
+      {children}
+    </button>
+  );
+}
+
 /**
  * One message, read: its subject, who sent it and when, what its template
  * leads with, then its parts. Prose reads as the body of an email; each part
@@ -604,6 +837,7 @@ function ReadingPane({
   onDismiss,
   onSnooze,
   onUnhide,
+  onMark,
   actions,
 }: {
   message: InboxMessage;
@@ -616,6 +850,8 @@ function ReadingPane({
   onDismiss: () => void;
   onSnooze: () => void;
   onUnhide: () => void;
+  /** The reader's own marks, in place of Snooze and Dismiss. */
+  onMark?: (mark: MailboxMark) => void;
   /** The host's own controls for this message. */
   actions?: ReactNode;
 }) {
@@ -625,8 +861,11 @@ function ReadingPane({
   const template = messageTemplate(message);
   // Posted for everyone, not an agent's draft waiting for an owner.
   const announcement = isAnnouncement(message);
-  // Set aside by this reader alone, so it is theirs to bring back.
-  const hidden = Boolean(message.hidden) && (state === "dismissed" || state === "snoozed");
+  // Set aside by this reader alone, so it is theirs to bring back. With marks, any message they hid.
+  const hidden = onMark
+    ? Boolean(message.hidden)
+    : Boolean(message.hidden) && (state === "dismissed" || state === "snoozed");
+  const vc = copy.inboxViews;
   return (
     <article
       data-aui="message"
@@ -643,7 +882,33 @@ function ReadingPane({
           <ChevronRightIcon size={16} className="rotate-180" />
           {copy.mailbox.back}
         </button>
-        {(open || hidden || actions) && (
+        {onMark && (
+          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-2">
+            {/* Opening marks it read, so the first control undoes that. */}
+            <button
+              type="button"
+              onClick={() => onMark(message.unread ? "read" : "unread")}
+              className={headerButton}
+            >
+              {message.unread ? <CheckIcon size={16} /> : <CircleIcon size={16} />}
+              {message.unread ? vc.markRead : vc.markUnread}
+            </button>
+            <button
+              type="button"
+              onClick={() => onMark(message.hidden ? "unhide" : "hide")}
+              className={headerButton}
+            >
+              {message.hidden ? <EyeIcon size={16} /> : <EyeOffIcon size={16} />}
+              {message.hidden ? vc.unhide : vc.hide}
+            </button>
+            <button type="button" onClick={() => onMark("delete")} className={headerButton}>
+              <TrashIcon size={16} />
+              {vc.delete}
+            </button>
+            {actions}
+          </div>
+        )}
+        {!onMark && (open || hidden || actions) && (
           <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-2">
             {open && (
               <>
@@ -725,12 +990,13 @@ function ReadingPane({
             })}
           </div>
         </WebSurface>
-        {open && openParts(message).length === 0 && (
+        {open && openParts(message).length === 0 && !onMark && (
           <p className="pt-4 text-aui-muted text-aui-xs">
             {announcement ? copy.announcements.readOnly : copy.mailbox.readOnly}
           </p>
         )}
-        {hidden && (
+        {hidden && onMark && <p className="pt-4 text-aui-muted text-aui-xs">{vc.hiddenNote}</p>}
+        {hidden && !onMark && (
           <p className="pt-4 text-aui-muted text-aui-xs">
             {state === "snoozed"
               ? copy.announcements.snoozedForYou

@@ -699,7 +699,7 @@ function Console({
           pinned={prefs.pinned}
           onPin={pin}
           onPinProject={pinProject}
-          inboxCount={inboxCounts.open}
+          inboxCount={inboxCounts.unread}
           live={live}
           onSearch={() => {
             setSearchOpen(true);
@@ -731,7 +731,7 @@ function Console({
             />
           )}
         </Presence>
-        <DrawerButton open={open} inboxCount={inboxCounts.open} onOpen={() => setOpen(true)} />
+        <DrawerButton open={open} inboxCount={inboxCounts.unread} onOpen={() => setOpen(true)} />
         {route.page === "new" && (
           <ModeSwitch current="chat" waiting={inboxCounts.open} onGo={navigate} />
         )}
@@ -1216,16 +1216,34 @@ function Console({
                 openId={route.message ?? null}
                 onSelection={(message) =>
                   go(
-                    { page: "notifications", message: message ?? undefined, kind: route.kind },
+                    {
+                      page: "notifications",
+                      message: message ?? undefined,
+                      kind: route.kind,
+                      view: route.view,
+                    },
                     { replace: true },
                   )
                 }
                 kind={route.kind ?? ""}
                 onKind={(kind) =>
                   go(
-                    { page: "notifications", message: route.message, kind: kind || undefined },
+                    {
+                      page: "notifications",
+                      message: route.message,
+                      kind: kind || undefined,
+                      view: route.view,
+                    },
                     { replace: true },
                   )
+                }
+                view={route.view ?? "inbox"}
+                onView={(view) =>
+                  go({
+                    page: "notifications",
+                    kind: route.kind,
+                    view: view === "inbox" ? undefined : view,
+                  })
                 }
                 onCounts={setInboxCounts}
                 onOpen={openSource}

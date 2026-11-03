@@ -72,6 +72,8 @@ test("every route survives a round trip through its address", () => {
     { page: "inbox", alert: "a1" },
     { page: "inbox" },
     { page: "notifications" },
+    { page: "notifications", view: "hidden" },
+    { page: "notifications", view: "unread", kind: "alert", message: "m2" },
     { page: "inbox", message: "m1" },
     { page: "context" },
     { page: "context", source: "handbook", tab: "documents" },
@@ -488,4 +490,19 @@ test("a change of screen is told from a change on the same screen", () => {
   assert.ok(same({ page: "projects" }, { page: "projects", q: "launch" }));
   // The old inbox address is the Notifications screen.
   assert.ok(same({ page: "inbox" }, { page: "notifications" }));
+});
+
+test("a notification view is in the address, and the Inbox, the default, is left out", () => {
+  const plain = (r: Route) => JSON.parse(JSON.stringify(r));
+  assert.equal(href({ page: "notifications", view: "hidden" }), "/notifications?view=hidden");
+  assert.equal(href({ page: "notifications", view: "done" }), "/notifications?view=done");
+  assert.equal(href({ page: "notifications" }), "/notifications");
+  assert.deepEqual(plain(at("/notifications?view=unread")), {
+    page: "notifications",
+    view: "unread",
+  });
+  assert.deepEqual(plain(at("/inbox?view=hidden")), { page: "inbox", view: "hidden" });
+  // A view this console does not have opens the Inbox.
+  assert.deepEqual(plain(at("/notifications?view=trash")), { page: "notifications" });
+  assert.deepEqual(plain(at("/notifications?view=inbox")), { page: "notifications" });
 });

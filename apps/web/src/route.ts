@@ -123,6 +123,10 @@ export interface ConversationView {
 }
 
 export type LibrarySection = "sources" | "skills" | "memory" | "deliverables";
+/** The reader's own views of their notifications, besides the Inbox, which is the default. */
+export const NOTIFICATION_VIEWS = ["unread", "hidden", "done"] as const;
+export type NotificationView = (typeof NOTIFICATION_VIEWS)[number];
+
 export type YouSection = "profile" | "notifications" | "privacy" | "agents" | "connections";
 export type Route =
   | {
@@ -147,7 +151,14 @@ export type Route =
   | { page: "agent-network"; handoff?: string }
   | { page: "agent-control"; agent?: string }
   | { page: "action-policy"; scope?: "workspace" | "agent" | "project" | "personal"; name?: string }
-  | { page: "notifications"; message?: string; alert?: string; kind?: string }
+  | {
+      page: "notifications";
+      message?: string;
+      alert?: string;
+      kind?: string;
+      /** The reader's view; the Inbox, the default, is left out of the address. */
+      view?: NotificationView;
+    }
   | { page: "audit" }
   | { page: "usage"; days?: 7 | 14 | 30; day?: string; display?: "chart" | "table" }
   | { page: "you"; section: YouSection; provider?: string }
@@ -177,7 +188,7 @@ export type Route =
   | { page: "schedules"; name?: string }
   | { page: "monitor"; tab: MonitorTab }
   /** The inbox, at a message, at the message an alert raised, or narrowed to one kind. */
-  | { page: "inbox"; message?: string; alert?: string; kind?: string }
+  | { page: "inbox"; message?: string; alert?: string; kind?: string; view?: NotificationView }
   | { page: "context"; source?: string; tab?: SourceTab }
   | { page: "agents" }
   | { page: "agent"; name: string | null; tab: AgentTab }
@@ -368,6 +379,7 @@ export function href(r: Route): string {
       if (r.message) q.set("message", r.message);
       if (r.alert) q.set("alert", r.alert);
       if (r.kind) q.set("kind", r.kind);
+      if (r.view) q.set("view", r.view);
       const query = q.toString();
       const path = r.page === "notifications" ? "/notifications" : "/inbox";
       return query ? `${path}?${query}` : path;
@@ -404,6 +416,7 @@ function inboxAt(q: URLSearchParams): Route {
     message: q.get("message") ?? undefined,
     alert: q.get("alert") ?? undefined,
     kind: q.get("kind") ?? undefined,
+    view: oneOf(q.get("view"), NOTIFICATION_VIEWS),
   };
 }
 
@@ -476,6 +489,7 @@ function read(pathname: string, search: string): Route {
         message: q.get("message") ?? undefined,
         alert: q.get("alert") ?? undefined,
         kind: q.get("kind") ?? undefined,
+        view: oneOf(q.get("view"), NOTIFICATION_VIEWS),
       };
     case "library":
       return {

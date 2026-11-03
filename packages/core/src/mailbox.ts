@@ -184,10 +184,13 @@ export interface InboxMessage {
   dismissedAt?: string;
   snoozedUntil?: string;
   /**
-   * Put away or snoozed by this reader alone, while everyone else still has
-   * it, as an announcement is. `ActionId.unhide` brings it back.
+   * Hidden by this reader alone, while everyone else still has it: any
+   * message they hid, or an announcement they snoozed. `ActionId.unhide`
+   * brings it back.
    */
   hidden?: boolean;
+  /** Deleted by this reader alone: no view of theirs lists it. Everyone else still has it. */
+  deleted?: boolean;
 }
 
 const RESOLVABLE: Record<Exclude<PartType, "custom">, boolean> = {
