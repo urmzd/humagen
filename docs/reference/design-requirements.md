@@ -91,6 +91,9 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-050 | The Workspace is a pane of tabs beside the conversation: + opens items, tabs close, Expand and Show Two Tabs, tabs in the address, a full-screen sheet on a phone | Implemented: `Workspace.tsx`, `pane.ts`, `Inspector` `expanded`; web, pane and route tests pass; `workspace-pane-split`, `workspace-pane-expanded` and the other Workspace screens pass at 390x844 and 1280x800 |
 | DES-051 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
 | DES-052 | Conversation files, scratchpads, code editing, change review and artifact publication, in one Workspace panel opened from Conversation Settings beside a compact header | Implemented: `WorkspaceFiles.tsx`, `Workspace.tsx`, `ConversationShell.tsx`, `/api/threads/{id}/files`, `GET /api/threads/{id}/sandboxes`; web, route, Go race and confinement suites pass; `conversation-header`, `workspace-*` and `ide-*` screens pass at 390x844 and 1280x800 |
+| DES-064 | A connection maps its Slack members or GitHub logins to people, and a GitHub connection can be given its App's private key so the server mints installation tokens | Implemented: `ClientConnect.tsx`, `Clients.tsx`, `pkg/integrations/github/app_token.go`, `seeMapped` in `internal/platform/people.go`; web DOM, `pkg/integrations/github`, `pkg/people` and platform tests pass; live GitHub minting not yet tried |
+| DES-065 | Sources shows the data catalog a reader sees: connectors, tables and columns, never data, with Crawl, Publish and Withdraw for the owner | Implemented: `CatalogBrowser` in `SourceCatalog.tsx`, on `GET /api/catalog` and the connector routes; web DOM test passes; screens not yet captured |
+| DES-066 | A spend limit says what happens when it is reached, block or ask for approval with a grant cap, and the Directory names a person's projects | Implemented: `Billing.tsx` (`action`, `max_grant`, `max_grant_tokens`), `Directory.tsx` (`projects`, `projects_more`); web typecheck and tests pass; screens not yet captured |
 
 ### DES-001: Working integrations
 
@@ -259,6 +262,45 @@ planned collections, browser, protocol and improvement work from this UI pass.
   confinement sweeps. Screens: `conversation-header`, `workspace-menu`,
   `workspace-sandboxes` and `workspace-artifacts`.
 
+### DES-064: People maps and GitHub App keys on a connection
+
+- The connection form takes an optional people map, one `login=subject` (or
+  Slack `member=subject`) per line or separated by commas. Blank and malformed
+  lines are left out, never sent. It is sent as `slack.people` or
+  `github.people`, which the server already bounds and validates.
+- A connection's card says how many people it maps.
+- Saving a GitHub client records each subject it maps in the workspace's people
+  with the source `github`, as a Slack client's map already did.
+- A GitHub token may be the App's private key PEM (PKCS#1 or PKCS#8). With
+  `identity.app_id` and `identity.installation` the server signs an RS256 App
+  JWT, exchanges it for an installation token and refreshes it two minutes
+  before it expires. Without them the client is refused when it is created.
+- Evidence: `settings.dom.test.tsx` (`maps a GitHub client's logins to people
+  and counts them`), `TestAppTokenSourceMintsAndRefreshesInstallationTokens`,
+  `TestAClientsPeopleAndThePolicysSubjectsAreRecorded`,
+  `TestASightingIsValidated`. A live installation has not been tried.
+
+### DES-065: The data catalog in Sources
+
+- With no source selected, Sources shows the catalog of connected systems the
+  reader sees (`GET /api/catalog`): each connector with its system, whether it
+  is published, how many tables it holds, when it was crawled and its last
+  error; and each entry by title or path, opening to its columns.
+- Only a connector's owner (`mine`) sees Crawl and Publish or Withdraw.
+  Withdraw is `DELETE /api/catalog/connectors/{name}/publish`. A refusal is
+  said in words. Nothing renders while the reader sees no connector.
+- Evidence: `integrations.dom.test.tsx` (`the data catalog lists what the
+  reader sees`). Screens are not yet captured.
+
+### DES-066: Approval limits and a person's projects
+
+- A spend limit's form sets what happens when it is reached: Block, or Ask
+  for approval with an optional dollar and token grant cap, sent as
+  `action`, `max_grant` and `max_grant_tokens`. The summary line says it.
+- The Directory's person row names the projects the server lists for them,
+  and how many more there are.
+- Evidence: web typecheck and the console suite. Screens are not yet captured.
+
 ## Review and implementation evidence
 
 The approved implementation pass covers supported Slack and GitHub workspace
@@ -276,7 +318,7 @@ is supplied; naming an agent explicitly remains a separate routing path.
 
 | Requirement | Implementation and evidence | Remaining work |
 | --- | --- | --- |
-| DES-001 | `apps/web/src/ClientConnect.tsx`, `Clients.tsx`, and `api.ts` use the existing `POST /api/clients` contract. Settings DOM tests cover Slack values, GitHub references and routing, server refusal, permission gating, secret clearing, and default-deny reach. Reproducible phone/desktop captures cover Slack and GitHub forms, pending requests and server refusal; new copy lives in `packages/components/src/copy.ts`. | Supply installed-app credentials and a reachable signed webhook listener, then observe real replies. OAuth installation and GitHub token refresh remain separate backend work. |
+| DES-001 | `apps/web/src/ClientConnect.tsx`, `Clients.tsx`, and `api.ts` use the existing `POST /api/clients` contract, including `slack.people` and `github.people` maps (DES-064). Settings DOM tests cover Slack values, GitHub references and routing, server refusal, permission gating, secret clearing, and default-deny reach. Reproducible phone/desktop captures cover Slack and GitHub forms, pending requests and server refusal; new copy lives in `packages/components/src/copy.ts`. | Supply installed-app credentials and a reachable signed webhook listener, then observe real replies. Slack OAuth installation remains separate backend work; GitHub App token minting (DES-064) needs a live installation trial. |
 | DES-002 | All 26 board HTML files render in Chromium without separator dots. Main evidence fields wrap without horizontal overflow at 390px. `ConversationShell.tsx`, `Room.tsx`, `Clients.tsx`, and web `AgentMessage.tsx` use gaps or readable phrases. The `Mailbox.tsx` row says "N to decide" as its own label beside the preview (DES-038). | Older untouched console and shared presentation copy needs review as it changes. |
 | DES-003 | `boards/ForkConversation.html` and `assets/boards.css` reveal actions on hover/focus, retain touch availability, and navigate to the existing prototype panel. Chromium checked hover, focus, target focus, and stable message dimensions. | A native fork needs a saved conversation operation, lineage, permissions, routes, and isolation tests. The board action is a prototype. |
 | DES-004 | Human messages and announcements in `Room.tsx` use recorded timestamps with full local date, time, and timezone on hover, focus, and tap. Room DOM tests cover the recorded instant, accessible description, and dismissal. A Chromium phone regression reproduced tooltip overflow before the fix; phone and desktop captures verify placement through the existing panel-gutter helper. | Carry real recorded timestamps through agent-message presentation. |
