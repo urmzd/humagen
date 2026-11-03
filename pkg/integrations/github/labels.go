@@ -15,8 +15,11 @@ type LabelAPI interface {
 }
 
 // HTTPAPI composes the shared transport with the console's label read.
+// token is empty when the client's transport authenticates every request
+// itself, as a GitHub App installation's does.
 type HTTPAPI struct {
 	*transport.HTTPAPI
+	base  string
 	token string
 	http  *http.Client
 }
@@ -25,14 +28,16 @@ func NewHTTPAPI(token string, client *http.Client) *HTTPAPI {
 	if client == nil {
 		client = http.DefaultClient
 	}
-	return &HTTPAPI{HTTPAPI: transport.NewHTTPAPI(token, client), token: token, http: client}
+	return &HTTPAPI{HTTPAPI: transport.NewHTTPAPI(token, client), base: transport.GitHubBaseURL, token: token, http: client}
 }
 func (a *HTTPAPI) IssueLabels(ctx context.Context, ref Ref) ([]string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("https://api.github.com/repos/%s/%s/issues/%d/labels?per_page=100", ref.Owner, ref.Repo, ref.Number), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/repos/%s/%s/issues/%d/labels?per_page=100", a.base, ref.Owner, ref.Repo, ref.Number), nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+a.token)
+	if a.token != "" {
+		req.Header.Set("Authorization", "Bearer "+a.token)
+	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	resp, err := a.http.Do(req)

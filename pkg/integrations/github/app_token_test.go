@@ -119,6 +119,14 @@ func TestAppTokenSourceMintsAndRefreshesInstallationTokens(t *testing.T) {
 				"id":       int64(100 + c),
 				"html_url": "https://github.com/acme/widgets/issues/42#issuecomment-101",
 			})
+		case r.Method == http.MethodGet && r.Host == "api.github.example" && r.URL.Path == "/repos/acme/widgets/issues/42/labels":
+			if got := r.Header.Get("Authorization"); got != "Bearer ghs_install_token_1" {
+				t.Errorf("labels Authorization = %q, want the installation token", got)
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[{"name":"bug"}]`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -146,6 +154,10 @@ func TestAppTokenSourceMintsAndRefreshesInstallationTokens(t *testing.T) {
 	ref := Ref{Owner: "acme", Repo: "widgets", Number: 42}
 	if id, err := api.CreateComment(context.Background(), ref, "First comment"); err != nil || id != 101 {
 		t.Fatalf("first CreateComment = %d, %v", id, err)
+	}
+	// Labels go to the App's base URL with the installation token.
+	if labels, err := api.IssueLabels(context.Background(), ref); err != nil || len(labels) != 1 || labels[0] != "bug" {
+		t.Fatalf("IssueLabels = %v, %v", labels, err)
 	}
 	// Second comment 30 minutes later should reuse cached token.
 	now = now.Add(30 * time.Minute)
