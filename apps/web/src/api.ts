@@ -9,6 +9,8 @@ import type {
   AnalyticsGroup,
   AuditRecord,
   Branding,
+  CatalogConnector,
+  CatalogPage,
   Note as GeneratedNote,
   Health as HealthReport,
   KnowledgeLifecycle,
@@ -1316,6 +1318,9 @@ export const api = {
   deleteAlertRule: (name: string) =>
     call<void>("DELETE", `/api/alert-rules/${encodeURIComponent(name)}`),
 
+  catalog: (q = "") => call<CatalogPage>("GET", `/api/catalog?limit=50&q=${encodeURIComponent(q)}`),
+  catalogAction: (name: string, action: "publish" | "withdraw" | "crawl") =>
+    call<CatalogConnector>("POST", `/api/catalog/connectors/${encodeURIComponent(name)}/${action}`),
   sources: () => call<{ sources: Source[] }>("GET", "/api/knowledge").then((r) => r.sources),
   createSource: (name: string, description: string, configuration?: SourceConfiguration) =>
     call<Source>("POST", "/api/knowledge", {

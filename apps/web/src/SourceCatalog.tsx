@@ -9,7 +9,7 @@ import {
 } from "@humagen/render-web";
 import { Badge } from "@humagen/render-web/ui/badge";
 
-export type SourceChoice = "manual" | "drive" | "notion";
+export type SourceChoice = "manual" | "drive" | "notion" | "gcs" | "s3";
 
 /** Display only native creation paths as available; tool access is a separate capability. */
 export function SourceCatalog({ onSelect }: { onSelect: (provider: SourceChoice) => void }) {
@@ -17,6 +17,7 @@ export function SourceCatalog({ onSelect }: { onSelect: (provider: SourceChoice)
   return (
     <div className="space-y-6">
       <section className="space-y-2" aria-label={copy.available}>
+        <h3 className="text-sm font-medium">{copy.available}</h3>
         {(
           [
             {
@@ -56,10 +57,33 @@ export function SourceCatalog({ onSelect }: { onSelect: (provider: SourceChoice)
           </button>
         ))}
       </section>
+      <section className="space-y-2" aria-label={copy.collectAndCatalog}>
+        <h3 className="text-sm font-medium">{copy.collectAndCatalog}</h3>
+        {(
+          [
+            { id: "gcs", title: "Google Cloud Storage" },
+            { id: "s3", title: "Amazon S3" },
+          ] as const
+        ).map((provider) => (
+          <button
+            type="button"
+            key={provider.id}
+            onClick={() => onSelect(provider.id)}
+            className="flex min-h-20 w-full items-start gap-3 rounded-aui-lg border border-aui-border p-4 text-left hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+          >
+            <DatabaseIcon size={20} />
+            <span>
+              <span className="block text-sm font-medium">{provider.title}</span>
+              <span className="mt-1 block text-sm text-aui-muted">{copy.storageHint}</span>
+            </span>
+          </button>
+        ))}
+      </section>
       <section
         className="space-y-3 border-t border-aui-border pt-4"
         aria-label={copy.moreProviders}
       >
+        <h3 className="text-sm font-medium">{copy.catalogAndLive}</h3>
         {["Snowflake", "BigQuery"].map((provider) => (
           <div key={provider} className="flex items-start gap-3">
             <DatabaseIcon size={18} className="mt-1 shrink-0 text-aui-muted" />

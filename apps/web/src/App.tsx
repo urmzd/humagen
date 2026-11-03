@@ -34,6 +34,7 @@ import {
   type Settings as Workspace,
 } from "./api.ts";
 import { accentAttribute, brandCopy, servedBranding } from "./branding.ts";
+import { Catalog } from "./Catalog.tsx";
 import { Chat } from "./Chat.tsx";
 import { YourConnections } from "./Connections.tsx";
 import { ContextHealth } from "./ContextHealth.tsx";
@@ -1256,6 +1257,15 @@ function Console({
                 <Problem message={defaultCopy.noPermission} />
               </Page>
             ))}
+          {route.page === "library" && route.section === "catalog" && can("knowledge:read") && (
+            <Catalog
+              canWrite={can("knowledge:write")}
+              query={route.catalogQuery}
+              onFilter={(catalogQuery) =>
+                go({ page: "library", section: "catalog", catalogQuery: catalogQuery || undefined })
+              }
+            />
+          )}
           {(route.page === "context" ||
             (route.page === "library" && route.section === "sources")) && (
             <Knowledge

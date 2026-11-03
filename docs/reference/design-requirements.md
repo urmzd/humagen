@@ -1456,3 +1456,17 @@ Evidence: `go test -race ./pkg/marks ./pkg/runs ./internal/httpapi` (`TestArchiv
   from what the turn started with to what it left; edits add up.
 - No card while the turn runs, or when it changed no file.
 - The chat bar's prompt is "Ask anything, @ to mention, / for actions".
+
+### DES-063: Connectors and catalog
+
+Browse and search warehouse and object metadata in Library > Catalog. Search
+text has an address. Show columns and descriptions without copying
+rows or file content. Owners can crawl, publish metadata to the connector's
+project, and withdraw it. Readers do not receive owner controls. New Source
+groups collection, storage collection/catalog, and warehouse catalog/live
+capabilities, and storage collection requires the reader's own credential.
+
+Implemented in `Catalog.tsx`, `SourceCatalog.tsx`, and the connector kinds in
+`pkg/catalog`. Evidence: catalog DOM tests, route round-trip regression,
+Snowflake/object-storage race tests, and `library-catalog` phone/desktop screen
+fixture. Local full screen suite is intentionally deferred to CI.

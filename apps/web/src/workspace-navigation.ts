@@ -60,6 +60,12 @@ export function hubTabs(
               visible: can("knowledge:read"),
             },
             {
+              label: defaultCopy.catalog.title,
+              route: { page: "library", section: "catalog" },
+              active: route.page === "library" && route.section === "catalog",
+              visible: can("knowledge:read"),
+            },
+            {
               label: nav.skills,
               route: { page: "library", section: "skills" },
               active: route.page === "library" && route.section === "skills",
