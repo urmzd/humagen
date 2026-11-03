@@ -86,7 +86,7 @@ func (p *Platform) discoverPersonTools(ctx context.Context, server personctx.Too
 	if err != nil {
 		return nil, errors.New("personal tool server could not be reached")
 	}
-	defer cs.Close()
+	defer func() { _ = cs.Close() }()
 	out := []toolprovider.Tool{}
 	for tool, err := range cs.Tools(ctx, nil) {
 		if err != nil {
@@ -171,7 +171,7 @@ func (p *Platform) personalToolGroup(ctx context.Context, req runtime.Request) (
 		}
 		tools, err := session.Toolset(ctx, toolprovider.Snapshot{Tenant: req.Tenant, Provider: prov.Name, Tools: server.Tools}, toolprovider.GrantWrite)
 		if err != nil {
-			session.Close()
+			_ = session.Close()
 			return native.ToolGroup{}, err
 		}
 		go func() { <-ctx.Done(); _ = session.Close() }()

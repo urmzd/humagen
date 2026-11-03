@@ -108,7 +108,7 @@ func TestPersonalToolsTrustedWorkerSnapshotsAndRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 	p.personalHTTP = httpServer.Client()
 	host := personctx.ToolServer{Name: "notes", URL: httpServer.URL}
 	if err := p.SetRunSettings("acme", runsettings.Layer{Ceilings: runsettings.Ceilings{ToolServers: []string{host.Host()}}}, nil); err != nil {
