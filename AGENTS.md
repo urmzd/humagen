@@ -97,6 +97,7 @@ and evidence when implementing a requirement.
 ## Conventions
 
 - Conventional commits. `sr.yaml` derives versions from them.
+- Work in a worktree, never the primary checkout. Each change gets its own branch at `.worktrees/<name>`, started from a fresh `origin/main`: `git fetch origin && git worktree add -b <branch> .worktrees/<name> origin/main`. The primary checkout stays on `main`, clean and fast-forwarded with `git pull --ff-only`. If you find uncommitted changes there, stop and ask; do not build on them.
 - Money is an `int64` of micro-USD. No floats.
 - Tests run with `-race`.
 - No em dashes in docs or comments.
