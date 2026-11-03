@@ -85,3 +85,82 @@ test("GitHub picker requires a repository for a number", () => {
     cleanup();
   }
 });
+
+test("Open Review in a conversation room opens its pull evidence pane", async () => {
+  const { ThreadRoom } = await import("./Room.tsx");
+  const { reviewReportJSON } = await import("@humagen/core/fixtures");
+  const { stubEventSource } = await import("./dom.ts");
+  const report = JSON.parse(reviewReportJSON);
+  report.summary += " https://github.com/acme/api/pull/12";
+  const at = "2026-11-01T00:00:00Z";
+  const initial = {
+    thread: {
+      id: "th-review",
+      project: "",
+      channel: "",
+      visibility: "private",
+      participants: [],
+      version: 1,
+      created_by: "ada",
+      created_at: at,
+      updated_at: at,
+    },
+    turns: [
+      {
+        kind: "run",
+        run: {
+          id: "review-run",
+          agent: "reviewer",
+          thread: "th-review",
+          status: "completed",
+          answer: JSON.stringify(report),
+          text: "Review",
+          created_at: at,
+          updated_at: at,
+        },
+      },
+    ],
+    next: null,
+    answers: { agent: "reviewer", from: "project" },
+  } as unknown as import("./api.ts").ThreadPage;
+  const net = stubFetch({
+    "GET /api/github/pull": () => ({
+      subject: {
+        title: "Review evidence",
+        number: 12,
+        state: "open",
+        body: "",
+        html_url: "https://github.com/acme/api/pull/12",
+      },
+      files: [],
+      comments: [],
+      workflows: [],
+    }),
+    "GET /api/threads/th-review": () => initial,
+  });
+  const restore = stubEventSource();
+  try {
+    render(
+      <ThreadRoom
+        id="th-review"
+        me="ada"
+        initial={initial}
+        tick={0}
+        agents={[]}
+        projects={[]}
+        root={null}
+        workspaceName="Acme"
+        canRun={false}
+        onOpenChannel={() => {}}
+        onChanged={() => {}}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Open Review" }));
+    await screen.findByRole("heading", { name: "Review evidence #12" });
+    assert.ok(screen.getByText("No workflow runs reported for this head."));
+  } finally {
+    cleanup();
+    restore();
+    net.restore();
+  }
+});

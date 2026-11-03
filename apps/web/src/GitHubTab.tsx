@@ -1,6 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import { readReview, reviewPullRequest } from "@humagen/core";
 import { Markdown } from "@humagen/primitives";
+import { WebSurface } from "@humagen/render-web";
 import { ChangeReview } from "@humagen/web";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { GitHubIssue, GitHubPull } from "../../../packages/client/src/generated/types.ts";
@@ -78,7 +79,14 @@ export function GitHubPicker({
     </form>
   );
 }
-export function GitHubTab({ tab, review = "" }: { tab: PaneTab; review?: string }) {
+export function GitHubTab(props: { tab: PaneTab; review?: string }) {
+  return (
+    <WebSurface className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <GitHubContent {...props} />
+    </WebSurface>
+  );
+}
+function GitHubContent({ tab, review = "" }: { tab: PaneTab; review?: string }) {
   const ref = useMemo(() => githubRef(tab.ref ?? ""), [tab.ref]);
   const region = useRef<HTMLElement>(null);
   const pull = tab.kind !== "issue";
@@ -151,7 +159,7 @@ export function GitHubTab({ tab, review = "" }: { tab: PaneTab; review?: string 
               {" "}
               ·{" "}
               <a
-                className="underline"
+                className="inline-flex min-h-7 items-center underline pointer-coarse:min-h-11"
                 href={`https://github.com/${ref?.repo}/commit/${value.subject.head.sha}`}
               >
                 {value.subject.head.sha.slice(0, 7)}
@@ -159,7 +167,7 @@ export function GitHubTab({ tab, review = "" }: { tab: PaneTab; review?: string 
             </>
           )}
         </p>
-        <a className="underline" href={value.subject.html_url} target="_blank" rel="noreferrer">
+        <a className="inline-flex min-h-7 items-center underline pointer-coarse:min-h-11" href={value.subject.html_url} target="_blank" rel="noreferrer">
           {w.github}
         </a>
       </header>
@@ -224,7 +232,7 @@ export function GitHubTab({ tab, review = "" }: { tab: PaneTab; review?: string 
               {"workflows" in value &&
                 (value.workflows ?? []).map((run) => (
                   <p key={run.id} className="text-aui-xs">
-                    <a className="underline" href={run.html_url} target="_blank" rel="noreferrer">
+                    <a className="inline-flex min-h-7 items-center underline pointer-coarse:min-h-11" href={run.html_url} target="_blank" rel="noreferrer">
                       {run.name}
                     </a>
                     : {run.conclusion || run.status}
@@ -271,7 +279,7 @@ export function GitHubTab({ tab, review = "" }: { tab: PaneTab; review?: string 
           <h3 className="mt-4 font-medium">{w.comments}</h3>
           {value.comments?.map((comment) => (
             <article key={comment.id} className="mt-3 border-t border-aui-border pt-3">
-              <a href={comment.html_url} className="text-aui-xs underline">
+              <a href={comment.html_url} className="inline-flex min-h-7 items-center text-aui-xs underline pointer-coarse:min-h-11">
                 {comment.user.login}
               </a>
               <Markdown text={comment.body} />
