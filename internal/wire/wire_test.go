@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/orchagent/flow/event"
 )
 
 func TestText(t *testing.T) {
@@ -104,14 +104,14 @@ func TestSeam(t *testing.T) {
 		t.Fatalf("git ls-files: %v", err)
 	}
 	banned := map[string]bool{
-		"github.com/urmzd/humagen/fiber/pkg/definition":   true,
-		"github.com/urmzd/humagen/fiber/pkg/event/legacy": true,
+		"github.com/urmzd/orchagent/flow/definition":   true,
+		"github.com/urmzd/orchagent/flow/event/legacy": true,
 	}
 	// Who else may import them: the store of definitions, and the one home
 	// of names from before the union.
 	allowed := map[string][]string{
-		"github.com/urmzd/humagen/fiber/pkg/definition":   {"pkg/agents/", "internal/legacy/"},
-		"github.com/urmzd/humagen/fiber/pkg/event/legacy": {"internal/legacy/"},
+		"github.com/urmzd/orchagent/flow/definition":   {"pkg/agents/", "internal/legacy/"},
+		"github.com/urmzd/orchagent/flow/event/legacy": {"internal/legacy/"},
 	}
 	keys := map[string]bool{}
 	for _, k := range []string{MetaSlackEvent, MetaSlackChannel, MetaSlackCommand, MetaGitHubEvent, MetaGitHubOwner, MetaGitHubRepo, MetaGitHubLabels, MetaGitHubAuthor, MetaGitHubHeadSHA, MetaCronSchedule, MetaCronExpression} {
@@ -133,7 +133,7 @@ func TestSeam(t *testing.T) {
 			if banned[path] && !slices.ContainsFunc(allowed[path], func(dir string) bool { return strings.HasPrefix(p, dir) }) {
 				bad = append(bad, fset.Position(im.Pos()).String()+": imports "+path)
 			}
-			if path == "github.com/urmzd/humagen/fiber/pkg/event" {
+			if path == "github.com/urmzd/orchagent/flow/event" {
 				payloadName = "event"
 				if im.Name != nil {
 					payloadName = im.Name.Name

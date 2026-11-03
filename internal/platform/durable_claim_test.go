@@ -11,9 +11,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/urmzd/humagen/fiber/pkg/durable"
-	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/orchagent/flow/runschema"
+	"github.com/urmzd/orchagent/flow/turn/native"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
@@ -209,7 +209,7 @@ func TestARunClaimedAsThePlatformStopsIsResumedAfterTheRestart(t *testing.T) {
 	}
 	queued := func() (place, error) {
 		var at place
-		err := pool.QueryRow(ctx, "SELECT ready_at IS NOT NULL, lease_until IS NOT NULL, attempt FROM "+durable.QueueTable+" WHERE run_id = $1", r.ID).Scan(&at.ready, &at.leased, &at.attempt)
+		err := pool.QueryRow(ctx, "SELECT ready_at IS NOT NULL, lease_until IS NOT NULL, attempt FROM "+runschema.QueueTable+" WHERE run_id = $1", r.ID).Scan(&at.ready, &at.leased, &at.attempt)
 		return at, err
 	}
 	late.holdClaims()

@@ -259,7 +259,7 @@ Flags override the block: `-sandbox`, `-sandbox-runtime`,
 `-sandbox-connectors-image`, `-sandbox-work-root`, `-sandbox-host` and
 `-sandbox-tls-dir`. A binary can register
 another kind with `humagen.WithKind(humagen.Sandbox, name, factory)`, whose
-factory returns an `isolation.Leaser` (`fiber/pkg/isolation`).
+factory returns an `isolation.Leaser` (`orchagent/flow/isolation`).
 
 ### Egress
 
@@ -1157,22 +1157,29 @@ unknown-field errors as the built-ins'. Sign-in and stores are built in only,
 for now.
 
 `humagen.WithRuntime(rt)` runs every turn on your own `turn.Runtime`
-(`github.com/urmzd/humagen/fiber/pkg/turn`) in place of the native saige
+(`github.com/urmzd/orchagent/flow/turn`) in place of the native saige
 turn. It is handed the pinned definition and the triggering event and streams
-back catalog event bodies. It runs inside the same playscape sandbox and on
+back catalog event bodies. It runs inside the same sandbox and on
 the same durable runs; it brings its own models and tools, so the spec's
 `models` and `WithModelProvider` do not reach it.
 
-### Since fiber moved into this repository
+### Since fiber moved into orchagent
 
-fiber now lives in this module, at `fiber/`, and a program built on the
-`humagen` package imports it from `github.com/urmzd/humagen/fiber/...`. It
-drops `github.com/urmzd/fiber` from its `go.mod`. This is a breaking change for
+fiber, anchor and playscape now live in one module,
+`github.com/urmzd/orchagent`, as `flow`, `durable` and `sandbox`. A program
+built on the `humagen` package imports fiber from
+`github.com/urmzd/orchagent/flow/...` (`fiber/pkg/durable` is now
+`flow/runschema`), anchor from `github.com/urmzd/orchagent/durable/...` and
+playscape from `github.com/urmzd/orchagent/sandbox/...`. It drops
+`github.com/urmzd/fiber`, `github.com/urmzd/anchor` and
+`github.com/urmzd/playscape` from its `go.mod`. Their error messages now start
+`flow:`, `durable:` and `sandbox:`; stored names (`fiber_*` tables, `fiber://`
+URIs, `fiber.*` event kinds) are unchanged. This is a breaking change for
 such a program, not for a file:
 
 | Before | Now |
 |--------|-----|
-| `github.com/urmzd/fiber/pkg/agentrt` | `github.com/urmzd/humagen/fiber/pkg/turn/native` (`native.ProviderFunc`, `native.Option`) |
+| `github.com/urmzd/fiber/pkg/agentrt` | `github.com/urmzd/orchagent/flow/turn/native` (`native.ProviderFunc`, `native.Option`) |
 | `envelope.Tag`, `envelope.Event` | one `event.Envelope`, with a typed body per event type |
 | a kind (`delta.text`) and a payload | a type (`run.delta.text.v1`) and its body |
 | `router`, `registry`, `agentspec`, topics | `egress`, `definition` over `pkg/agents`, channels per tenant |

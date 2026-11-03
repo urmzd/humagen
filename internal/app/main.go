@@ -22,7 +22,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/internal/branding"
 	"github.com/urmzd/humagen/internal/httpapi"
 	"github.com/urmzd/humagen/internal/legacy"
@@ -37,6 +36,7 @@ import (
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/spec"
+	"github.com/urmzd/orchagent/flow/event"
 )
 
 // Version is the build metadata `humagen version` reports.

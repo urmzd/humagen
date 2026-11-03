@@ -18,27 +18,27 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/anchor"
-	"github.com/urmzd/anchor/pkg/ledger"
-	dqueue "github.com/urmzd/anchor/pkg/queue"
-	"github.com/urmzd/anchor/pkg/worker"
-	"github.com/urmzd/playscape/pkg/controlplane"
-	"github.com/urmzd/playscape/pkg/metrics"
-	"github.com/urmzd/playscape/pkg/node/inproc"
-	"github.com/urmzd/playscape/pkg/tool"
-	"github.com/urmzd/playscape/pkg/workspace"
+	"github.com/urmzd/orchagent/durable"
+	"github.com/urmzd/orchagent/durable/ledger"
+	dqueue "github.com/urmzd/orchagent/durable/queue"
+	"github.com/urmzd/orchagent/durable/worker"
+	"github.com/urmzd/orchagent/sandbox/controlplane"
+	"github.com/urmzd/orchagent/sandbox/metrics"
+	"github.com/urmzd/orchagent/sandbox/node/inproc"
+	"github.com/urmzd/orchagent/sandbox/tool"
+	"github.com/urmzd/orchagent/sandbox/workspace"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/humagen/fiber/pkg/bus"
-	"github.com/urmzd/humagen/fiber/pkg/connector"
-	"github.com/urmzd/humagen/fiber/pkg/egress"
-	"github.com/urmzd/humagen/fiber/pkg/event"
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
-	"github.com/urmzd/humagen/fiber/pkg/signature"
-	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/integrations/github"
+	"github.com/urmzd/orchagent/flow/bus"
+	"github.com/urmzd/orchagent/flow/connector"
+	"github.com/urmzd/orchagent/flow/egress"
+	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/orchagent/flow/signature"
+	"github.com/urmzd/orchagent/flow/turn/native"
 )
 
 // githubIntegrationBus preserves the real bus and records the runtime's output.
@@ -153,7 +153,7 @@ func TestGitHubCollaborationFlowsThroughDurableSandboxAndEgress(t *testing.T) {
 	}
 	broker := &githubIntegrationBus{Bus: bus.NewMemory(), subscribed: make(chan struct{})}
 	lgr, q := ledger.NewMemory(), dqueue.NewMemory()
-	durable, err := runtime.New(anchor.New(lgr, q), store.Resolver(), broker, runtime.WithRuntime(sandbox), runtime.WithLogger(quiet))
+	durable, err := runtime.New(durable.New(lgr, q), store.Resolver(), broker, runtime.WithRuntime(sandbox), runtime.WithLogger(quiet))
 	if err != nil {
 		t.Fatal(err)
 	}

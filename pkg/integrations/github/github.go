@@ -11,13 +11,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/humagen/fiber/pkg/address"
-	"github.com/urmzd/humagen/fiber/pkg/connector"
-	transport "github.com/urmzd/humagen/fiber/pkg/connectors/github"
-	"github.com/urmzd/humagen/fiber/pkg/connectors/mention"
-	"github.com/urmzd/humagen/fiber/pkg/event"
 	presentation "github.com/urmzd/humagen/internal/presentation/github"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/orchagent/flow/address"
+	"github.com/urmzd/orchagent/flow/connector"
+	transport "github.com/urmzd/orchagent/flow/connectors/github"
+	"github.com/urmzd/orchagent/flow/connectors/mention"
+	"github.com/urmzd/orchagent/flow/event"
 )
 
 // Config combines transport configuration with explicit product policy.

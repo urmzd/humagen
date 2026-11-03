@@ -7,10 +7,10 @@ import (
 	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/urmzd/anchor/pkg/ledger"
-	dqueue "github.com/urmzd/anchor/pkg/queue"
-	"github.com/urmzd/humagen/fiber/pkg/bus"
-	"github.com/urmzd/humagen/fiber/pkg/durable"
+	"github.com/urmzd/orchagent/durable/ledger"
+	dqueue "github.com/urmzd/orchagent/durable/queue"
+	"github.com/urmzd/orchagent/flow/bus"
+	"github.com/urmzd/orchagent/flow/runschema"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
@@ -140,7 +140,7 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 	}); err != nil {
 		return Backends{}, nil, err
 	}
-	l, q, err := durable.Open(ctx, pool)
+	l, q, err := runschema.Open(ctx, pool)
 	if err != nil {
 		return Backends{}, nil, err
 	}

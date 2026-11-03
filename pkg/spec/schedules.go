@@ -5,9 +5,9 @@ import (
 	"regexp"
 	"unicode/utf8"
 
-	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/orchagent/flow/connectors/cron"
 )
 
 // What becomes of what a scheduled agent posts in a project.

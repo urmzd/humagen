@@ -3,8 +3,8 @@ package httpapi
 import (
 	"context"
 
-	"github.com/urmzd/humagen/fiber/pkg/mcptools"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/orchagent/flow/mcptools"
 )
 
 // contractSourceBoundary is an explicit offline external-provider boundary.

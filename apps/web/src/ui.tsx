@@ -3,6 +3,7 @@ import {
   BanIcon,
   CheckIcon,
   ChevronDownIcon,
+  EllipsisVerticalIcon,
   SearchIcon,
   ShieldIcon,
   Tooltip,
@@ -1159,25 +1160,29 @@ export function PageActions({
   const few = actions.length + (main ? 1 : 0) <= 2;
   return (
     <span className="relative inline-flex flex-wrap items-center gap-2">
-      {few
-        ? actions.map((a) => (
-            <button key={a.label} type="button" className={button} onClick={a.onSelect}>
-              {a.label}
-            </button>
-          ))
-        : actions.length > 0 && <MoreMenu items={actions} />}
+      {few &&
+        actions.map((a) => (
+          <button key={a.label} type="button" className={button} onClick={a.onSelect}>
+            {a.label}
+          </button>
+        ))}
       {main && (
         <button type="button" className={primary} onClick={main.onSelect}>
           {main.label}
         </button>
       )}
+      {!few && actions.length > 0 && <MoreMenu items={actions} />}
       {note}
     </span>
   );
 }
 
+/** The More control: a square icon button with three vertical dots, after a page's other actions. */
+const moreControl =
+  "inline-flex size-9 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg";
+
 /**
- * The More menu: a text control that opens a list of actions. Arrow keys,
+ * The More menu: a three-dot control that opens a list of actions. Arrow keys,
  * Home and End move through it; Escape, Tab or a click outside close it and
  * put focus back on the control. Destructive actions come last, after a rule.
  */
@@ -1242,7 +1247,9 @@ export function MoreMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? id : undefined}
-        className={textAction}
+        aria-label={label}
+        title={label}
+        className={moreControl}
         onClick={() => (open ? close() : show())}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") {
@@ -1254,8 +1261,7 @@ export function MoreMenu({
           }
         }}
       >
-        {label}
-        <ChevronDownIcon size={14} />
+        <EllipsisVerticalIcon size={18} />
       </button>
       {open && (
         <div

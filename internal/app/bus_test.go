@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/humagen/fiber/pkg/bus"
+	"github.com/urmzd/orchagent/flow/bus"
 
 	"github.com/urmzd/humagen/internal/platform"
 )

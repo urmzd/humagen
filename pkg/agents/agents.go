@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/humagen/fiber/pkg/definition"
 	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/orchagent/flow/definition"
 )
 
 // Namespaces in the state store.

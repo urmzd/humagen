@@ -5,11 +5,11 @@ import (
 	"errors"
 	"strconv"
 
-	"github.com/urmzd/humagen/fiber/pkg/event"
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/orchagent/flow/runtime"
 )
 
 func (p *Platform) recoverAssignmentInvocation(ctx context.Context, tenant string, a operations.Assignment) {

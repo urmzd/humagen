@@ -8,11 +8,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/urmzd/playscape/pkg/workspace"
+	"github.com/urmzd/orchagent/sandbox/workspace"
 
-	"github.com/urmzd/humagen/fiber/pkg/isolation"
 	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/orchagent/flow/isolation"
 )
 
 // A run's memory in its instance (RFC 0004, "Where the files live").

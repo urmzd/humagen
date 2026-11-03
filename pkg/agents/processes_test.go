@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/humagen/fiber/pkg/definition"
-	"github.com/urmzd/humagen/fiber/pkg/definition/definitiontest"
 	"github.com/urmzd/humagen/pkg/agents"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
+	"github.com/urmzd/orchagent/flow/definition"
+	"github.com/urmzd/orchagent/flow/definition/definitiontest"
 )
 
 func open2(t *testing.T, a, b state.Store) (*agents.Store, *agents.Store) {

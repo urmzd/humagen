@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/urmzd/humagen/fiber/pkg/event"
-	fl "github.com/urmzd/humagen/fiber/pkg/event/legacy"
+	"github.com/urmzd/orchagent/flow/event"
+	fl "github.com/urmzd/orchagent/flow/event/legacy"
 )
 
 // Run triggers and run events before the event union.
