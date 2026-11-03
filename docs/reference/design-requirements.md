@@ -27,6 +27,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | ID | Requirement | Status |
 | --- | --- | --- |
 | DES-059 | PR review evidence in two panes, with GitHub issue and pull request Workspace tabs | Implemented: `GitHubTab.tsx`, `github-ref.ts`, tenant-scoped `GET /api/github/pull` and `/api/github/issue`, bounded repository/SHA patch cache, workflow status, labels and comments; unit, DOM and endpoint regressions added; `conversation-review-workspace` screen registered for CI. |
+| DES-061 | Automations gather schedules and signed GitHub event rules with agent instructions | Implemented; focused Go/DOM tests and phone/desktop screen definitions; CI screens pending |
 | DES-001 | Integration controls use the existing system and report real results | Slack/GitHub configuration form implemented; automated checks pass; live delivery pending |
 | DES-002 | Use spacing instead of dots between words in UI metadata | All boards and touched console metadata implemented and checked; audit other console screens when changing them |
 | DES-003 | Reveal the message Fork action on hover and keyboard focus | Native saved-fork API, immutable lineage, source checks and inspector built; shared action wiring pending |
@@ -1522,3 +1523,27 @@ Evidence: `github-ref.test.ts`, `github-tab.dom.test.tsx`,
 `TestGitHubItemsAreTenantScopedPermissionCheckedAndBounded`,
 `TestConsoleLabelsUseServerTokenAndBoundedRead`; screenshot fixture
 `conversation-review-workspace` runs in CI at phone and desktop sizes.
+
+
+### DES-061: Automations
+
+- `/automations` is a permission-aware sidebar destination. Schedules reuse
+  the existing schedule form and CRUD API; existing GitHub label triggers are
+  listed beside signed webhook rules.
+- A rule names its installation, repository, event, action, optional conclusion
+  or label, target agent and plain-language instructions. Rules may be paused
+  and edited. They use the installation's existing client API and state store.
+- At most 50 rules per client, 64 bytes per name and 16,000 bytes of
+  instructions. Repository owners and target agents must be granted to that
+  installation. Event capabilities remain enforced. Hidden agents and their
+  rules are filtered by the existing client visibility boundary.
+- Only signature-verified webhooks dispatch a rule. Delivery IDs deduplicate
+  retries through the existing run ledger. Rule runs act for nobody and file
+  in the installation's home through the standard stamping path.
+- Own bot events and bot-authored commits are ignored. Push and check-run
+  events missing commit author evidence fail closed. Only bounded identifiers
+  accompany instructions; webhook body text is never injected into prompts.
+- Evidence: `TestAutomationsMatchOnlyTheirInstallationConditions`,
+  `TestAutomationBoundsAndCopies`, `automations.dom.test.tsx`, route round-trip
+  tests and the `automations` and `automation-builder` screen definitions.
+  Full screens run in CI.

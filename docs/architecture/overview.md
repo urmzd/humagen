@@ -530,6 +530,7 @@ and GitHub release from `main`, using the main-only `release` environment.
 
 | Piece | State |
 |-------|-------|
+| Automations | `/automations` reuses schedule editing and lists GitHub label triggers; bounded installation rules match signed issue, pull request, push and check-run webhooks. Rules reuse client grants, event capabilities and run deduplication. Bot commits are ignored; missing commit author evidence fails closed. Tests and screen definitions cover the builder; CI screens pending. |
 | Save as Artifact and diffs | Implemented: `POST /api/threads/{id}/artifacts` saves an answer, a message (a structured review as its JSON) or a scratchpad through the publication path; artifact version comparison and file changes share `ChangeReview`, side by side on a desktop, with line pins for review findings. See [conversation-workspace.md](conversation-workspace.md#save-as-artifact-and-diffs). |
 | GitHub review tabs | Implemented: Workspace pull, issue and review tabs read bounded GitHub evidence through tenant-authorized clients, display exact-head workflow status and changed-file findings, and preserve their tab references in the address. |
 | Workspace pane | Implemented: the Workspace is a tabbed pane beside the conversation (`pane.ts`: tabs, active, Expand and split in the address; at most 12 tabs), opened from Conversation Settings and from artifacts in the conversation; a full-screen sheet on a phone. See [conversation-workspace.md](conversation-workspace.md#the-workspace-panel). |

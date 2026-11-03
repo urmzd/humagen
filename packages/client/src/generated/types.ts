@@ -3699,7 +3699,21 @@ person it maps is that principal's answer; anyone else is refused.
   people?: Record<string, string>;
 }
 
+export interface GitHubAutomation {
+  name: string;
+  repository: string;
+  event: "check_run" | "issues" | "pull_request" | "push";
+  action: string;
+  conclusion?: string;
+  label?: string;
+  agent: string;
+  instructions: string;
+  paused: boolean;
+}
+
 export interface GitHubOptions {
+  /** Signed webhook rules. Own bot events and commits are always ignored. Check runs require commit author evidence in the payload. */
+  automations?: GitHubAutomation[];
   /** Exact verified non-bot GitHub logins mapped explicitly by this installation to workspace subjects. No inferred identity or cross-installation fallback. */
   people?: Record<string, string>;
   auto_labels?: Record<string, Record<string, string>>;
