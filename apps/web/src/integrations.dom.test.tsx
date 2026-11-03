@@ -6,6 +6,7 @@ import type { Source } from "./api.ts";
 import { ContextHealth } from "./ContextHealth.tsx";
 import { stubFetch } from "./dom.ts";
 import { ConnectSource, Integrations } from "./Integrations.tsx";
+import { CatalogBrowser } from "./SourceCatalog.tsx";
 import {
   SourceAccessMode,
   SourceAttachments,
@@ -13,7 +14,6 @@ import {
   SourceSyncSettings,
   sourceConfiguration,
 } from "./SourceLifecycle.tsx";
-import { CatalogBrowser } from "./SourceCatalog.tsx";
 
 const at = "2026-10-26T12:00:00Z";
 const source: Source = {
@@ -706,18 +706,19 @@ test("the data catalog lists what the reader sees and lets only the owner crawl,
   net = stubFetch({
     "GET /api/catalog": (_body, query) => ({
       connectors: [connector(true), connector(false)],
-      entries: query.get("q") === "nothing"
-        ? []
-        : [
-            {
-              system: "bigquery",
-              kind: "table",
-              path: "sales.orders",
-              connector: "warehouse",
-              seen_at: at,
-              schema: [{ name: "order_id", type: "STRING", description: "Order key" }],
-            },
-          ],
+      entries:
+        query.get("q") === "nothing"
+          ? []
+          : [
+              {
+                system: "bigquery",
+                kind: "table",
+                path: "sales.orders",
+                connector: "warehouse",
+                seen_at: at,
+                schema: [{ name: "order_id", type: "STRING", description: "Order key" }],
+              },
+            ],
     }),
     "POST /api/catalog/connectors/warehouse/publish": () => {
       published = true;

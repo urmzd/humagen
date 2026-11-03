@@ -261,7 +261,10 @@ test("maps a GitHub client's logins to people and counts them, never sending a b
   await openConnect();
   changeConnection("System", "github");
   changeConnection("GitHub accounts", "acme");
-  changeConnection("People mapping (optional)", "octocat=okta|ada\n\n=nobody, hubot=okta|bea\nbroken");
+  changeConnection(
+    "People mapping (optional)",
+    "octocat=okta|ada\n\n=nobody, hubot=okta|bea\nbroken",
+  );
   changeConnection("Token", "ghs-test-token");
   changeConnection("Signing secret", "test-signing");
   submitConnection();
