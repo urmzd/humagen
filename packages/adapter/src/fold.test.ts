@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { timeline } from "@humagen/core";
 import { follow, settled } from "./fold.ts";
 import { turnOf, type RunEvent, type Run } from "./run.ts";
 
@@ -140,4 +141,43 @@ test("a run settled from its record worked from its creation to its last change"
   assert.equal(turnOf(run({ status: "running", updated_at: "2026-10-09T00:01:05Z" })).durationMs, undefined);
   const f = streamed("Done.");
   assert.equal(f.settle(run({ status: "completed", answer: "Done.", updated_at: "2026-10-09T00:00:12Z" })).durationMs, 12_000);
+});
+
+// A run as the journal records it across three model steps: words, two
+// reads (one refused), words, a write, the answer. The completed event
+// repeats every word the run said.
+const steps = (): RunEvent[] => [
+  ev("run.accepted.v1"),
+  ev("run.started.v1", { attempt: 1 }),
+  ev("run.delta.text.v1", { text: "Reading the change first." }),
+  ev("run.delta.tool.call.v1", { id: "c1", name: "file_read", phase: "requested" }),
+  ev("run.delta.tool.call.v1", { id: "c1", name: "file_read", phase: "executing", arguments: { path: "a.go" } }),
+  ev("run.delta.tool.done.v1", { id: "c1", name: "file_read", result: "package a", arguments: { path: "a.go" } }),
+  ev("run.delta.tool.call.v1", { id: "c2", name: "github_workflow_status", phase: "executing", arguments: { ref: "f4a7" } }),
+  ev("run.delta.tool.done.v1", { id: "c2", name: "github_workflow_status", result: "action failed: operations: action denied" }),
+  ev("run.usage.v1", { requests: 1 }),
+  ev("run.delta.text.v1", { text: " Writing notes." }),
+  ev("run.delta.tool.call.v1", { id: "c3", name: "file_write", phase: "executing", arguments: { path: "notes.md", content: "a\nb\n" } }),
+  ev("run.delta.tool.done.v1", { id: "c3", name: "file_write", result: "Wrote notes.md (4 bytes)." }),
+  ev("run.delta.text.v1", { text: " Done." }),
+  ev("run.completed.v1", { attempt: 1, text: "Reading the change first. Writing notes. Done." }),
+];
+
+test("a replayed run keeps its words and tool calls in the order they came", () => {
+  const f = follow(run());
+  for (const e of steps()) f.apply(e);
+  const turn = f.settle(run({ status: "completed", answer: "Reading the change first. Writing notes. Done." }));
+  const t = timeline(turn);
+  assert.deepEqual(
+    t.segments.map((s) => (s.kind === "tools" ? s.tasks.map((x) => x.id).join("+") : s.kind === "text" ? s.text : s.kind)),
+    ["Reading the change first.", "c1+c2", " Writing notes.", "c3"],
+  );
+  assert.equal(t.tail, " Done.");
+});
+
+test("an action handed back to the model as failed text is a failed call", () => {
+  const f = follow(run());
+  for (const e of steps()) f.apply(e);
+  assert.equal(f.turn.tasks.find((t) => t.id === "c2")?.status, "error");
+  assert.equal(f.turn.tasks.find((t) => t.id === "c1")?.status, "complete");
 });

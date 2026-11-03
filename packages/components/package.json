@@ -1,6 +1,6 @@
 {
   "name": "@humagen/components",
-  "version": "0.70.0",
+  "version": "0.72.0",
   "private": true,
   "type": "module",
   "description": "Shared agent components (turn, approval, clarification, notice) built only from primitives.",
@@ -9,6 +9,7 @@
     "./copy": "./src/copy.ts"
   },
   "scripts": {
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
