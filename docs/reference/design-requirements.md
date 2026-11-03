@@ -72,6 +72,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-043 | The brand's colors edge the page round its corners and glow round the chat bar, turning while a reply is in flight | Implemented: `styles.css`, `Composer.tsx`; web tests pass; screens pass light and dark at 1280x800 and 390x844 |
 | DES-044 | A conversation has a wave down its left edge to scan and scrub through its turns, and the keyboard opens and closes cleanly on a phone | Implemented: `TurnRail.tsx`, `Thread.tsx`, `Chat.tsx`, `Room.tsx`, `viewport.ts`; web tests pass (`wave.dom.test.tsx`, `pwa.test.ts`); screens pass at 390x844 and 1280x800; the keyboard on iOS needs a real device |
 | DES-045 | A phone reads like a native chat app: quiet message actions, a one-line chat bar and header, Chat and Work at the top of Home, a swipe from the edge for the drawer, and the installed app opening on Chat | Implemented: `theme.css`, `styles.css`, `Composer.tsx`, `ConversationShell.tsx`, `ModeSwitch.tsx`, `Sidebar.tsx`, `manifest.webmanifest`; web tests pass; screens pass at 390x844 and 1280x800 |
+| DES-046 | A structured review reads as a card with its evidence in place, the same in Slack | Implemented: core `readReview`, components `ReviewCard`, the `Review` primitive in render-web and render-slack, `GET /api/github/source`; core, Slack, web DOM and Go tests pass; `pnpm validate:slack` passes; `conversation-review-*` screens pass at phone and desktop |
 
 ### DES-001: Working integrations
 
@@ -1147,3 +1148,38 @@ Rules:
   to the swipe.
 - The installed app opens on `/`, the new conversation. Notifications stays
   a shortcut.
+
+### DES-046: A structured review reads as a card
+
+Owner request: an agent's `humagen.github.review.v1` answer showed in the
+console as raw JSON, and its evidence links were bare URLs. Only the GitHub
+sink turned it into Markdown.
+
+Rules:
+
+- An answer that is a valid report (the GitHub formatter's checks) is a card:
+  the pull request and the reviewed commit, the summary, counts per severity
+  computed by the client, findings grouped as errors, warnings and info, each
+  with its suggestion, evidence and follow-up, then notes and related links.
+  Anything else, including a report that does not parse once the run ends,
+  is the text it was.
+- While a review streams, the card shows its summary once it has arrived and
+  holds still. Slack holds the JSON back and posts the card at the end.
+- **Ask Follow-up** puts `@<agent> <prompt>` in the composer through the
+  mention seed the composer already takes, and sends nothing. Where the reader
+  may not ask the agent, and on Slack, the prompt is shown as words.
+- **Copy as Markdown** copies the layout the GitHub sink posts, computed in
+  the client, since the API does not expose the formatter's output. The answer's
+  Copy as menu does the same for a review.
+- Evidence pinned to lines at a full commit SHA reads as `path:a-b` and opens
+  those lines in place with context, line numbers, simple highlighting and
+  Open on GitHub, read through `GET /api/github/source` with the token kept on
+  the server (docs/reference/github.md#reviews-in-the-console-and-slack).
+
+Evidence: `cd packages/core && pnpm test` (`review.test.ts`: fenced,
+unfenced, streaming and invalid reports, sources, commit and pull request);
+`cd packages/render-slack && pnpm test` (`review.test.tsx`); `cd apps/web &&
+pnpm test` (`chat.dom.test.tsx` review tests, `copyas.test.ts`); `go test
+-race ./internal/platform ./internal/httpapi -run GitHubSource`; `pnpm
+validate:slack`; `make screens` with `conversation-review-card`,
+`conversation-review-follow-up` and `conversation-review-source`.

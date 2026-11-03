@@ -6,6 +6,8 @@
  * the same serialisers, so what is pasted and what is saved cannot differ.
  * Adding a format is one entry here. No React in this file.
  */
+import { defaultCopy } from "@humagen/components/copy";
+import { readReview, reviewMarkdown } from "@humagen/core/review";
 import type { Run } from "./adapter.ts";
 import type { Span } from "./api.ts";
 import { cause, elapsed, took, usd } from "./format.ts";
@@ -301,11 +303,17 @@ export function formats(item: Item): Format[] {
     case "answer": {
       const { run } = item;
       const answer = (run.answer ?? "").trim();
+      // A structured review copies as the Markdown its card shows, not as its JSON.
+      const review = readReview(answer);
+      const markdown =
+        review.kind === "review"
+          ? reviewMarkdown(review.report, defaultCopy.reviewReport)
+          : `${answer}\n`;
       return [
         ...(answer
           ? [
-              md("markdown", "Markdown", () => `${answer}\n`),
-              txt("text", "Plain text", () => `${plain(answer)}\n`),
+              md("markdown", "Markdown", () => markdown),
+              txt("text", "Plain text", () => `${plain(markdown.trim())}\n`),
             ]
           : []),
         js("json", "JSON", () => runRecord(run), `The run's record. ${variantOf(run)}.`),
