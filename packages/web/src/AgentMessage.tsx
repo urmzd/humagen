@@ -45,6 +45,7 @@ import { AgentInitials, AgentOrb, type OrbState, turnOrbState } from "./AgentOrb
 import { StopBanner } from "./Alerts";
 import { MessageActionRow, messageActionButton } from "./MessageActionRow";
 import { Reasoning } from "./Reasoning";
+import { TurnChanges } from "./TurnChanges";
 import { type Block, interleave, StepGroup, WorkedFor } from "./WorkSteps";
 
 function seconds(ms?: number) {
@@ -579,6 +580,8 @@ export function AgentMessage({
                 {turn.status === "stopped" && turn.stop && (
                   <StopBanner turnId={turn.id} stop={turn.stop} label={copy.stopPhase[turn.stop]} />
                 )}
+                {/* What the turn changed, once it is over: a card that opens each file. */}
+                {settledTurn && <TurnChanges tasks={turn.tasks} copy={copy} />}
               </div>
             </SuppressContext.Provider>
           </TurnMetaContext.Provider>

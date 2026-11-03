@@ -255,3 +255,24 @@ describe("the multi-step fixture", () => {
     expect(t.tail.trim().startsWith("The driver is sound.")).toBe(true);
   });
 });
+
+describe("turnChanges", () => {
+  it("lists each file once, in the order first written, with its lines across the turn", async () => {
+    const { turnChanges } = await import("./timeline");
+    const done = { status: "complete" as const };
+    const changes = turnChanges([
+      call("1", "file_write", { path: "plan.md", content: "a\nb\n" }, done),
+      call("2", "file_read", { path: "plan.md" }, done),
+      call("3", "edit_file", { path: "src/a.go", old_string: "x", new_string: "y\nz" }, done),
+      call("4", "file_write", { path: "plan.md", content: "a\nc\nd\n" }, done),
+      call("5", "edit_file", { path: "src/a.go", old_string: "q", new_string: "" }, done),
+      call("6", "file_write", { path: "x.md", content: "no" }, { status: "error" }),
+    ]);
+    expect(changes.map((c) => [c.path, c.added, c.removed, c.calls])).toEqual([
+      // Written whole twice: from nothing to what it left.
+      ["plan.md", 3, 0, ["1", "4"]],
+      // Edits add up.
+      ["src/a.go", 2, 2, ["3", "5"]],
+    ]);
+  });
+});

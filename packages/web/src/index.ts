@@ -19,6 +19,7 @@ export * from "./Reasoning";
 export * from "./ResourceBrowser";
 export * from "./StatusLine";
 export * from "./Thread";
+export * from "./TurnChanges";
 export * from "./TurnRail";
 export * from "./useQueue";
 export * from "./useTurn";
