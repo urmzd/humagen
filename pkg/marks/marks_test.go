@@ -18,7 +18,7 @@ func TestArchiveIsPerPersonAndReversible(t *testing.T) {
 		t.Fatalf("empty = %+v, %v", m, err)
 	}
 	before := time.Now().Add(-time.Second)
-	s.SetArchived("acme", "ada", "t1", true)
+	_, _ = s.SetArchived("acme", "ada", "t1", true)
 	m, err := s.SetArchived("acme", "ada", "t2", true)
 	if err != nil || len(m.Archived) != 2 || m.Archived[0] != "t2" || m.Since.Before(before) {
 		t.Fatalf("archived = %v since %v, %v", m.Archived, m.Since, err)
@@ -62,12 +62,12 @@ func TestArchivedIsBounded(t *testing.T) {
 
 func TestReadKeepsTheLatestAndForgetsTheOldest(t *testing.T) {
 	s := NewStore()
-	s.MarkRead("acme", "ada", "t1", t0.Add(time.Minute))
+	_, _ = s.MarkRead("acme", "ada", "t1", t0.Add(time.Minute))
 	if m, _ := s.MarkRead("acme", "ada", "t1", t0); !m.Read["t1"].Equal(t0.Add(time.Minute)) {
 		t.Fatalf("an earlier read moved it back: %v", m.Read["t1"])
 	}
 	for i := range MaxRead {
-		s.MarkRead("acme", "ada", fmt.Sprintf("r%d", i), t0.Add(time.Hour+time.Duration(i)*time.Second))
+		_, _ = s.MarkRead("acme", "ada", fmt.Sprintf("r%d", i), t0.Add(time.Hour+time.Duration(i)*time.Second))
 	}
 	m, err := s.Get("acme", "ada")
 	if err != nil || len(m.Read) != MaxRead {
@@ -80,12 +80,12 @@ func TestReadKeepsTheLatestAndForgetsTheOldest(t *testing.T) {
 
 func TestTipsAreDismissedOnce(t *testing.T) {
 	s := NewStore()
-	s.DismissTip("acme", "ada", "search")
+	_, _ = s.DismissTip("acme", "ada", "search")
 	if m, _ := s.DismissTip("acme", "ada", "search"); len(m.Tips) != 1 {
 		t.Fatalf("tips = %v", m.Tips)
 	}
 	for i := range MaxTips - 1 {
-		s.DismissTip("acme", "ada", fmt.Sprintf("tip-%d", i))
+		_, _ = s.DismissTip("acme", "ada", fmt.Sprintf("tip-%d", i))
 	}
 	if _, err := s.DismissTip("acme", "ada", "past"); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("past the bound: %v", err)
@@ -96,9 +96,9 @@ func TestMarksOutliveAProcess(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		st := open(t)
 		s, _ := Open(st)
-		s.SetArchived("acme", "ada", "t1", true)
-		s.MarkRead("acme", "ada", "t2", t0)
-		s.DismissTip("acme", "ada", "search")
+		_, _ = s.SetArchived("acme", "ada", "t1", true)
+		_, _ = s.MarkRead("acme", "ada", "t2", t0)
+		_, _ = s.DismissTip("acme", "ada", "search")
 		again, _ := Open(st)
 		m, err := again.Get("acme", "ada")
 		if err != nil || len(m.Archived) != 1 || !m.Read["t2"].Equal(t0) || len(m.Tips) != 1 {
