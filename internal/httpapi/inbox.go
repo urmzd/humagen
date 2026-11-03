@@ -25,6 +25,9 @@ func (s *Server) inboxRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/inbox/{id}/dismiss", s.authed(auth.RunsRead, s.dismissInbox))
 	mux.HandleFunc("POST /api/inbox/{id}/snooze", s.authed(auth.RunsRead, s.snoozeInbox))
 	mux.HandleFunc("POST /api/inbox/{id}/unhide", s.authed(auth.RunsRead, s.unhideInbox))
+	// A reader's own marks on many messages at once, and on a whole view.
+	mux.HandleFunc("POST /api/inbox/marks", s.authed(auth.RunsRead, s.markInbox))
+	mux.HandleFunc("POST /api/inbox/read-all", s.authed(auth.RunsRead, s.readAllInbox))
 	mux.HandleFunc("POST /api/inbox/{id}/parts/{part}/resolve", s.authed(auth.RunsRead, s.resolveInbox))
 	// A client's machine records where it posted a message. The platform
 	// answers 404 to anyone else.
@@ -84,7 +87,9 @@ func (s *Server) readingInbox(w http.ResponseWriter, r *http.Request, who auth.P
 
 // listInbox pages the caller's inbox, newest first.
 //
-// state is open (the default), resolved, dismissed, snoozed or all. kind,
+// view is one of the caller's own views (inbox, unread, hidden or done),
+// drawn from their marks, and replaces state when given. Without it, state
+// is open (the default), resolved, dismissed, snoozed or all. kind,
 // unread, needs, news, alert, agent, project, limit and before are optional.
 // needs keeps what open counts: every message but a posted announcement, an
 // agent's draft included. news keeps only posted announcements, what updates
@@ -100,7 +105,11 @@ func (s *Server) listInbox(w http.ResponseWriter, r *http.Request, who auth.Prin
 		return
 	}
 	q := r.URL.Query()
-	query := inbox.Query{State: inbox.State(q.Get("state")), Kind: inbox.Kind(q.Get("kind")), Before: q.Get("before"), Unread: q.Get("unread") == "true", Needs: q.Get("needs") == "true", News: q.Get("news") == "true", Alert: q.Get("alert"), Agent: q.Get("agent")}
+	query := inbox.Query{State: inbox.State(q.Get("state")), Kind: inbox.Kind(q.Get("kind")), Before: q.Get("before"), Unread: q.Get("unread") == "true", Needs: q.Get("needs") == "true", News: q.Get("news") == "true", Alert: q.Get("alert"), Agent: q.Get("agent"), View: inbox.View(q.Get("view"))}
+	if q.Has("view") && !query.View.Valid() {
+		fail(w, http.StatusBadRequest, "view is inbox, unread, hidden or done")
+		return
+	}
 	// Asking after one alert means its message, wherever it stands.
 	if query.Alert != "" && query.State == "" {
 		query.State = inbox.All
@@ -145,7 +154,57 @@ func (s *Server) listInbox(w http.ResponseWriter, r *http.Request, who auth.Prin
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"messages": page, "next": cursor, "open": c.Open, "unread": c.Unread, "updates": c.Updates})
+	ok(w, http.StatusOK, map[string]any{"messages": page, "next": cursor, "open": c.Open, "unread": c.Unread, "updates": c.Updates, "inbox": c.Inbox, "hidden": c.Hidden})
+}
+
+// markInbox sets one of the caller's own marks on up to 200 messages: read,
+// unread, hide, unhide, delete or restore. Each changes only what the
+// caller sees. A message they cannot see, or one a run waits on that they
+// asked to delete, is skipped with the reason. The answer carries the
+// messages as the caller now sees them and their counts.
+func (s *Server) markInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body struct {
+		IDs  []string `json:"ids"`
+		Mark string   `json:"mark"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	msgs, skipped, err := s.P.InboxMark(who, body.IDs, body.Mark)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	c, err := s.P.InboxCount(who)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, map[string]any{"messages": msgs, "skipped": skipped, "counts": c})
+}
+
+// readAllInbox marks read what is unread in one of the caller's views,
+// narrowed by kind, the newest 600 at most. more says some are still
+// unread.
+func (s *Server) readAllInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body struct {
+		View string `json:"view"`
+		Kind string `json:"kind"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	n, more, err := s.P.InboxReadAll(who, inbox.Query{View: inbox.View(body.View), Kind: inbox.Kind(body.Kind)})
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	c, err := s.P.InboxCount(who)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, map[string]any{"marked": n, "more": more, "counts": c})
 }
 
 // countInbox counts the caller's inbox. open and unread are what may need

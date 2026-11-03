@@ -160,7 +160,11 @@ func TestRetentionDropsOnlyWhatWasSettledBeforeTheCut(t *testing.T) {
 				}
 			}
 			for _, q := range readers {
-				if c := count(store, acme, q); c != before[q.Reader] {
+				// What was hidden and settled leaves the Hidden view with
+				// the message; nothing else counts what is settled.
+				c, want := count(store, acme, q), before[q.Reader]
+				c.Hidden, want.Hidden = 0, 0
+				if c != want {
 					t.Errorf("%s: %s counts %+v, before %+v", name, q.Reader, c, before[q.Reader])
 				}
 			}
