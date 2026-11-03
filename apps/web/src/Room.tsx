@@ -100,6 +100,7 @@ export function waveOf(turns: ThreadTurn[]): TurnRailEntry[] {
         {
           id: t.message.id,
           agent: t.message.name || t.message.by,
+          kind: "person",
           preview: text,
           status: "done",
           weight: text.length + 40,

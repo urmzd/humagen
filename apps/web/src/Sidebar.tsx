@@ -47,6 +47,7 @@ import {
   standingOf,
 } from "./conversationList.ts";
 import { useMarks } from "./marks.ts";
+import { ConversationPeek, PeekCard, usePeek } from "./RowPreview.tsx";
 import { type Standing, useRecents } from "./recents.ts";
 import { href, type Route, type Page as RoutePage } from "./route.ts";
 import { Avatar } from "./Settings.tsx";
@@ -227,6 +228,9 @@ function ProjectGroup({
   );
 }
 
+/** The one-time tip that teaches search; dismissed once per person (pkg/marks). */
+const SEARCH_TIP = "search";
+
 /** A quiet icon button in a row's hover actions. */
 const rowAction =
   "inline-flex size-8 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
@@ -241,6 +245,7 @@ const rowAction =
 function TaskRow({
   task,
   projectLabel,
+  projectTitle,
   current,
   pinned,
   archived = false,
@@ -256,6 +261,8 @@ function TaskRow({
   task: ThreadSummary;
   /** The project it is in, shown under its title; left out inside a project's group. */
   projectLabel?: string;
+  /** The project's title for its preview card, shown even inside a group. */
+  projectTitle?: string;
   current: boolean;
   pinned: boolean;
   archived?: boolean;
@@ -284,6 +291,9 @@ function TaskRow({
     requestAnimationFrame(() => trigger()?.focus());
   };
   const said = standing ? words.standing[standing] : "";
+  // Resting the pointer on the row, or holding a finger on it, previews it.
+  const peek = usePeek();
+  const peekId = `peek-${task.id}`;
   const dot = standing === "needs" || standing === "running" || standing === "failed";
   return (
     // A row that is saying something sits over its neighbours and over the
@@ -311,9 +321,11 @@ function TaskRow({
         <button
           type="button"
           onClick={onSelect}
+          {...peek.bind}
+          aria-describedby={peek.at ? peekId : undefined}
           data-thread-row={task.id}
           aria-current={current ? "page" : undefined}
-          className="flex min-h-10 pointer-coarse:min-h-11 w-full items-start gap-2 rounded-aui py-1.5 pr-2 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-subtle aria-[current=page]:font-medium aria-[current=page]:text-aui-fg aria-[current=page]:shadow-[inset_2px_0_0_var(--aui-accent)] [@media(pointer:coarse)]:pr-12"
+          className={`flex min-h-10 pointer-coarse:min-h-11 w-full items-start gap-2 rounded-aui py-1.5 pr-2 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-subtle aria-[current=page]:font-medium aria-[current=page]:text-aui-fg aria-[current=page]:shadow-[inset_2px_0_0_var(--aui-accent)] [@media(pointer:coarse)]:pr-12 ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:pr-20 [@media(pointer:fine)]:group-hover/task:pr-20" : ""}`}
         >
           {dot && (
             <span aria-hidden data-standing={standing} className="humagen-row-dot mt-[7px]" />
@@ -429,6 +441,11 @@ function TaskRow({
         </div>
       )}
       {hasMenu && <FlashNote flash={flash} align="right" />}
+      {peek.at && !renaming && (
+        <PeekCard at={peek.at} id={peekId} onClose={peek.close}>
+          <ConversationPeek task={task} project={projectTitle ?? projectLabel} />
+        </PeekCard>
+      )}
     </li>
   );
 }
@@ -810,11 +827,27 @@ export function Sidebar({
       active: hub === "operations",
       group: "operations",
     },
+    {
+      to: { page: "automations" },
+      label: defaultCopy.automations.title,
+      icon: <SlidersIcon />,
+      show: can("schedules:read") || can("clients:read"),
+      active: here("automations"),
+      group: "operations",
+    },
   ];
 
   // Archived here is the reader's own: the conversation leaves their lists
   // and stays for everyone else. Delete still asks an admin.
-  const { marks, archive: setArchivedMark, read: markRead } = useMarks(can("runs:read"));
+  const {
+    marks,
+    loaded: marksRead,
+    archive: setArchivedMark,
+    read: markRead,
+    dismissTip,
+  } = useMarks(can("runs:read"));
+  const tip = defaultCopy.sidebar.searchTip;
+  const showTip = open && onSearch && marksRead && !marks.tips.includes(SEARCH_TIP);
   const [view, setView] = useState<ListView>("recents");
   const [note, setNote] = useState<{ id: string; archived: boolean } | null>(null);
   const [gone, setGone] = useState<Set<string>>(() => new Set());
@@ -928,6 +961,7 @@ export function Sidebar({
       key={t.id}
       task={t}
       projectLabel={opts.label ? projectTitle(t.project) : undefined}
+      projectTitle={projectTitle(t.project)}
       current={isCurrent(t)}
       pinned={opts.pinned ?? false}
       archived={archivedSet.has(t.id)}
@@ -1097,6 +1131,41 @@ export function Sidebar({
               );
             })}
           </nav>
+
+          {showTip && (
+            <aside
+              aria-label={tip.title}
+              data-tip={SEARCH_TIP}
+              className="humagen-sidebar-reveal mx-2 mt-4 flex flex-col gap-1 rounded-aui border border-[var(--humagen-rule)] px-3 py-2.5 text-aui-xs"
+            >
+              <p className="flex items-center gap-1.5 font-medium text-aui-fg">
+                <SearchIcon size={13} />
+                {tip.title}
+              </p>
+              <p className="text-aui-muted">
+                {tip.body} <kbd className="text-aui-2xs">⌘ K</kbd>
+              </p>
+              <div className="mt-0.5 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    dismissTip(SEARCH_TIP);
+                    onSearch?.();
+                  }}
+                  className="inline-flex h-6 pointer-coarse:h-11 items-center text-aui-fg underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+                >
+                  {tip.open}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => dismissTip(SEARCH_TIP)}
+                  className="inline-flex h-6 pointer-coarse:h-11 items-center text-aui-muted underline-offset-2 hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+                >
+                  {tip.dismiss}
+                </button>
+              </div>
+            </aside>
+          )}
 
           {open && (pinnedRows.length > 0 || readableProjectPins.length > 0) && (
             <section

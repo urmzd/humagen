@@ -26,6 +26,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 | ID | Requirement | Status |
 | --- | --- | --- |
+| DES-061 | Automations gather schedules and signed GitHub event rules with agent instructions | Implemented; focused Go/DOM tests and phone/desktop screen definitions; CI screens pending |
 | DES-001 | Integration controls use the existing system and report real results | Slack/GitHub configuration form implemented; automated checks pass; live delivery pending |
 | DES-002 | Use spacing instead of dots between words in UI metadata | All boards and touched console metadata implemented and checked; audit other console screens when changing them |
 | DES-003 | Reveal the message Fork action on hover and keyboard focus | Native saved-fork API, immutable lineage, source checks and inspector built; shared action wiring pending |
@@ -75,12 +76,15 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-046 | A structured review reads as a card with its evidence in place, the same in Slack | Implemented: core `readReview`, components `ReviewCard`, the `Review` primitive in render-web and render-slack, `GET /api/github/source`; core, Slack, web DOM and Go tests pass; `pnpm validate:slack` passes; `conversation-review-*` screens pass at phone and desktop |
 | DES-047 | Skills are slash commands, the only way the console offers them: `/` opens a menu of the skills a message here can name, fuzzy filtered with the match highlighted; `@` offers no skill or `@skill:`, `$` opens nothing, and a posted `$name` or `@skill:name` shows as a `/name` chip | Implemented: `commands.ts`, `tags.ts`, `Composer.tsx`, `ui.tsx` (`Mentioned`), `pkg/threads/tags.go`; web, threads and platform tests pass; `chat-at`, `chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection` screens at 390x844 and 1280x800 |
 | DES-048 | A turn reads as a transcript: words and runs of tool calls in the order they came, each run one line that names what it did, a file written opening in the Workspace, and the reader's messages on the right | Implemented: `packages/core/src/timeline.ts`, `packages/components/src/timeline.ts`, `WorkSteps.tsx`, `ToolLines` for Slack, `Room.tsx` message sides; core, components, adapter, render-slack and web DOM tests pass; `pnpm validate:slack` passes; screen `conversation-timeline` passes at 390x844 and 1280x800 |
+| DES-049 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row says its project, its age or an unread dot, and whether it waits on a person, runs or failed | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
 | DES-049 | A finished turn that changed files ends with a card of them: how many and their lines, a Review, and a row per file that opens its changes | Implemented: core `turnChanges`, web `TurnChanges`; core and web DOM tests pass; screen `conversation-timeline` passes at 390x844 and 1280x800 |
 | DES-050 | The Workspace is a pane of tabs beside the conversation: + opens items, tabs close, Expand and Show Two Tabs, tabs in the address, a full-screen sheet on a phone | Implemented: `Workspace.tsx`, `pane.ts`, `Inspector` `expanded`; web, pane and route tests pass; `workspace-pane-split`, `workspace-pane-expanded` and the other Workspace screens pass at 390x844 and 1280x800 |
 | DES-051 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
 | DES-052 | Conversation files, scratchpads, code editing, change review and artifact publication, in one Workspace panel opened from Conversation Settings beside a compact header | Implemented: `WorkspaceFiles.tsx`, `Workspace.tsx`, `ConversationShell.tsx`, `/api/threads/{id}/files`, `GET /api/threads/{id}/sandboxes`; web, route, Go race and confinement suites pass; `conversation-header`, `workspace-*` and `ide-*` screens pass at 390x844 and 1280x800 |
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
 | DES-054 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row says its project, its age or an unread dot, and whether it waits on a person, runs or failed | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
+| DES-055 | A sidebar row previews itself on hover or a long press, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview`, `conversation-wave-preview`) at 390x844 and 1280x800 |
+| DES-056 | A one-time tip teaches search, dismissed once per person | Implemented: `Sidebar.tsx`, `POST /api/marks/tips`; DOM test and `sidebar-tip` screens pass |
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
 | DES-050 | The Workspace is a pane of tabs beside the conversation: + opens items, tabs close, Expand and Show Two Tabs, tabs in the address, a full-screen sheet on a phone | Implemented: `Workspace.tsx`, `pane.ts`, `Inspector` `expanded`; web, pane and route tests pass; `workspace-pane-split`, `workspace-pane-expanded` and the other Workspace screens pass at 390x844 and 1280x800 |
 | DES-051 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
@@ -1408,6 +1412,50 @@ Evidence: `go test -race ./pkg/marks ./pkg/runs ./internal/httpapi` (`TestArchiv
 `sidebar-row-actions`, `sidebar-projects`, `sidebar-archived` and
 `sidebar-participants`.
 
+### DES-055: Previews of a conversation and of a turn
+
+Owner request: a preview card when hovering a sidebar row (title, project,
+updated time), as Antigravity does, and on the conversation's turn rail, as
+ChatGPT does.
+
+Rules:
+
+- Resting a mouse on a row for 450ms opens a card beside it: the title, its
+  project and "Updated" with a time today or a date before, then the first
+  line of the latest thing said, after its author's mark (an agent's
+  initials in its ring, a person's initial). Leaving, scrolling or Escape
+  closes it. The row names the card with `aria-describedby` while it shows.
+- On a touch screen a 500ms hold opens the card under the row, across the
+  screen, or over it near the bottom. The hold does not also open the
+  conversation, and the browser's own menu does not open; the next tap does.
+- The card is drawn over the page, so the sidebar's scrolling list never
+  clips it, and it is kept inside the window.
+- The wave's preview of a turn (DES-044) leads with its author's mark: a
+  person's initial for a message, an agent's initials for an answer.
+- Hovering a row on a wide screen keeps its title clear of its actions.
+
+Evidence: `cd apps/web && pnpm test` (`peek.test.ts`,
+`sidebar-peek.dom.test.tsx`, `wave.dom.test.tsx`); `make screens` with
+`sidebar-preview` (a hover on desktop, a held finger on a phone) and
+`conversation-wave-preview`.
+
+### DES-056: A one-time tip for search
+
+Owner request: a dismissible tip card for search across conversations, as
+Antigravity shows once.
+
+Rules:
+
+- The sidebar shows "Search across conversations" above Pinned, with
+  **Search** (opens search and dismisses it) and **Dismiss**, both text
+  controls.
+- It waits for the person's marks to be read, so a tip already dismissed
+  never flashes in, and once dismissed it stays away on every device:
+  `POST /api/marks/tips` keeps the name in the person's marks (DES-054).
+
+Evidence: `sidebar-views.dom.test.tsx` (the tip test); `make screens` with
+`sidebar-tip`.
+
 ### DES-048: A turn as a transcript
 
 - A turn is an ordered list of segments built from the stream
@@ -1456,6 +1504,29 @@ Evidence: `go test -race ./pkg/marks ./pkg/runs ./internal/httpapi` (`TestArchiv
   from what the turn started with to what it left; edits add up.
 - No card while the turn runs, or when it changed no file.
 - The chat bar's prompt is "Ask anything, @ to mention, / for actions".
+
+### DES-061: Automations
+
+- `/automations` is a permission-aware sidebar destination. Schedules reuse
+  the existing schedule form and CRUD API; existing GitHub label triggers are
+  listed beside signed webhook rules.
+- A rule names its installation, repository, event, action, optional conclusion
+  or label, target agent and plain-language instructions. Rules may be paused
+  and edited. They use the installation's existing client API and state store.
+- At most 50 rules per client, 64 bytes per name and 16,000 bytes of
+  instructions. Repository owners and target agents must be granted to that
+  installation. Event capabilities remain enforced. Hidden agents and their
+  rules are filtered by the existing client visibility boundary.
+- Only signature-verified webhooks dispatch a rule. Delivery IDs deduplicate
+  retries through the existing run ledger. Rule runs act for nobody and file
+  in the installation's home through the standard stamping path.
+- Own bot events and bot-authored commits are ignored. Push and check-run
+  events missing commit author evidence fail closed. Only bounded identifiers
+  accompany instructions; webhook body text is never injected into prompts.
+- Evidence: `TestAutomationsMatchOnlyTheirInstallationConditions`,
+  `TestAutomationBoundsAndCopies`, `automations.dom.test.tsx`, route round-trip
+  tests and the `automations` and `automation-builder` screen definitions.
+  Full screens run in CI.
 
 ### DES-063: Connectors and catalog
 
