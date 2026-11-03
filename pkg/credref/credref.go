@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/humagen/fiber/pkg/mcptools"
+	"github.com/urmzd/orchagent/flow/mcptools"
 
 	"github.com/urmzd/humagen/internal/legacy"
 )

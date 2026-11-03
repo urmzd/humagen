@@ -9,7 +9,7 @@ import (
 
 	"github.com/urmzd/humagen/internal/wire"
 
-	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/orchagent/flow/event"
 )
 
 // filed records a run of lead filed in a project, ended as kind.

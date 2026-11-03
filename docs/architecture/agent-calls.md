@@ -119,11 +119,11 @@ endpoint also accepts the structured contract under `input`.
 
 ## Runtime dependency
 
-fiber lives at `fiber/` in this module, so there is no fiber version to pin
-and no `go.work` to link. It carries:
+fiber is `orchagent/flow`, pinned with the rest of orchagent in `go.mod`
+(`github.com/urmzd/orchagent`). It carries:
 - the call extension;
 - model fallbacks with `fallback_on`, and per-call approvals through
-  `native.Approving` (`github.com/urmzd/humagen/fiber/pkg/turn/native`);
+  `native.Approving` (`github.com/urmzd/orchagent/flow/turn/native`);
 - `mcp:<provider>[:write]` grants from the tool provider store;
 - unavailable tools and tool groups dropped with a warning rather than
   failing the run.

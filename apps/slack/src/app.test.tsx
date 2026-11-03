@@ -416,7 +416,7 @@ test("a run whose retries ran out is ended by its record, as the ledger decides"
   assert.ok(!w.slack.methods.includes("chat.stopStream"));
   w.humagen.set(run, {
     status: "failed",
-    error: "anchor: max attempts exhausted\nconnection refused",
+    error: "durable: max attempts exhausted\nconnection refused",
   });
   await w.app.idle();
   const final = w.slack.of("chat.stopStream")[0];
