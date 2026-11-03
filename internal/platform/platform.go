@@ -85,6 +85,7 @@ import (
 	"github.com/urmzd/humagen/pkg/readaudit"
 	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/scratchpads"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
@@ -300,6 +301,8 @@ type Platform struct {
 	emailPreferenceLocks [64]sync.Mutex
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
+	// Scratchpads keeps each conversation's named scratchpads.
+	Scratchpads *scratchpads.Store
 	// Projects is each tenant's tree of projects.
 	Projects     *projects.Store
 	ProjectForks *projectforks.Store
@@ -346,6 +349,8 @@ type Platform struct {
 	waiting atomic.Int64
 	// publishing makes a storage check and the write it allows one step.
 	publishing sync.Mutex
+	// workspaceMu serializes host scratch writes with isolated-run copyback.
+	workspaceMu sync.Mutex
 
 	broker  bus.Bus
 	sinks   *connector.Registry

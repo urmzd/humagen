@@ -327,7 +327,12 @@ type Run struct {
 	// may already have read. It is never the whole answer, and Status says so.
 	Answer  string   `json:"answer,omitempty"`
 	Outcome *Outcome `json:"outcome,omitempty"`
-	Error   string   `json:"error,omitempty"`
+	// Sandbox is what the run left in its conversation's files.
+	Sandbox *Sandbox `json:"sandbox,omitempty"`
+	// Memory is the memory trees the run's instance was given and what it
+	// wrote to them.
+	Memory []MemoryUse `json:"memory,omitempty"`
+	Error  string      `json:"error,omitempty"`
 	// Reason says what a parked run is waiting for, or that a run which has
 	// answered is waiting for the agents attached to it.
 	Reason string `json:"reason,omitempty"`

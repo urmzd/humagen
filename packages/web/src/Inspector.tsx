@@ -11,6 +11,7 @@ export function Inspector({
   onClose,
   onEscape,
   wide = false,
+  expanded = false,
   footer,
   actions,
   lead,
@@ -24,6 +25,8 @@ export function Inspector({
   /** A nested selection can step back before closing its inspector. */
   onEscape?: () => void;
   wide?: boolean;
+  /** Docked beside the page, it fills the page. */
+  expanded?: boolean;
   footer?: ReactNode;
   /** Stays under the header while the body scrolls, such as an intro line. */
   lead?: ReactNode;
@@ -65,6 +68,7 @@ export function Inspector({
       ref={root}
       data-layer="inspector"
       data-wide={wide || undefined}
+      data-expanded={expanded || undefined}
       inert={!open}
       aria-hidden={!open || undefined}
       aria-labelledby={label}

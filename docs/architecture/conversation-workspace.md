@@ -13,10 +13,12 @@ It does not introduce another agent execution path.
 ## The conversation page
 
 Each conversation uses `Page` with a centered title. Its project sits on the
-left; Context, People & Access and Conversation Settings sit on the right.
-On a phone the title takes its own centered row. Activity and Deliverables
-open from the settings control. The sidebar groups conversations by project
-and shows the agents that took part beneath each conversation title.
+left; who is in it (Share or People & Access) and Conversation Settings sit
+on the right, as compact icon controls with one 4px gap. Share keeps its label
+on a wide conversation. Conversation Settings holds the conversation's own
+items: Workspace, Context and Activity. On a phone the title takes its own
+centered row. The sidebar groups conversations by project and shows the
+agents that took part beneath each conversation title.
 
 Activity is the execution detail of this conversation: its runs, calls to
 other agents, tool steps and usage. A selected run has its own URL. The
@@ -165,3 +167,149 @@ not the newest scratch file. Private outputs, broader destinations, external
 provider snapshots and oversized text are refused. `AddForScope` guards source
 identity and audience under the insertion lock, and an audit attempt records
 the copy. Only an opaque artifact/version reference enters provenance metadata.
+
+## The Workspace panel
+
+A conversation is a session with a sandbox of its own, and each agent run in
+it works in a nested sandbox (RFC 0004, isolated runs). **Workspace** is the one
+place for what the session holds: a pane beside the conversation with a tab
+for each open item. It opens from Conversation Settings and from an artifact
+clicked in the conversation. On a desktop it is the third pane (sidebar,
+conversation, Workspace); **Expand** fills the page with it and **Show Two
+Tabs** puts the active tab beside the one before it. On a phone it is a
+full-screen sheet with the same tabs.
+
+**+** opens a list (Files, Scratchpads, Artifacts, Sandboxes, Memories), and an
+item chosen from a list opens in a tab of its own. A tab closes with its X;
+closing the last closes the pane. The open tabs, the active one and the
+Expand and split toggles are the pane's address, so a copied link reopens the
+same pane: `/conversations/{id}/workspace?tabs=files,file%3Asrc%252Fa.ts&active=file%3Asrc%252Fa.ts&full=1&split=1`
+(`apps/web/src/pane.ts`; at most 12 tabs, the oldest closing first). An item
+tab is one of:
+
+| Tab | What it shows |
+|---|---|
+| `sandboxes`, `sandbox:<run>` | The session sandbox (its files, size, retention and whether runs are isolated) and a nested entry per agent run, newest first and indented under its caller: its mounts (`/work` from the session, and the memory trees in `/project` and `/me`), the files it left and the copyback changes refused because someone changed the file first |
+| `files`, `file:<path>` | The session's files, editor and change review below |
+| `scratchpads`, `scratchpad:<id>` | Named notes beside the conversation |
+| `memories`, `memory:<run>` | Read only, by scope: the memory trees the conversation draws on, what the session's runs used and wrote, and each message's run |
+| `artifacts`, `artifact:<id>` | The conversation's saved, versioned artifacts with the Deliverables preview, versions, provenance, Present and Request Changes |
+
+A host can add tab kinds it renders itself (`issue`, `pull` and `review` are
+reserved) through `Workspace`'s `extraTab` and `extraPicks`. Addresses from
+before tabs (`/workspace/sandboxes/{run}`, `/workspace?file=`) open the one
+tab they named.
+
+`GET /api/threads/{id}/sandboxes` answers Sandboxes, behind `runs:read` and
+the conversation's audience, at most 50 runs. What a run left is recorded on
+the run (`Run.sandbox`, at most 64 files and 16 refusals): when an isolated
+run's instance is copied back, and, unisolated, when its `file_write` lands in
+the session's files. Files keeps its unsaved drafts while another section is
+shown or the panel is closed.
+
+## Save as Artifact and diffs
+
+**Save as Artifact** keeps an agent's answer or a person's message (from its
+message actions), a scratchpad (from its tab) or a file (from Files) as a
+versioned artifact of the conversation, then opens it in a Workspace tab.
+`POST /api/threads/{id}/artifacts` (`artifacts:write`, the conversation's
+audience) takes `{source: run | message | scratchpad, id, title?}` and goes
+through the same publication files take: title versioning (saving the same
+title again makes the next version), storage limits, provenance and the inbox
+notice. A saved answer records its run; the person who saved it is its
+creator. A structured review (`humagen.github.review.v1`) is kept as its JSON,
+`<agent> review.review.json`, so its findings stay addressable by file and
+line.
+
+Diffs use one component, `ChangeReview`: side by side on a wide screen and one
+column on a phone, with line comments that prepare a message. A file's
+**Changes** compares its saved and edited state. An artifact's **Versions**
+offers **Compare** on each other text version, at
+`?artifact_tab=versions&compare=<id>`, older on the left. `ChangeReview` takes
+`pins`, notes under the lines they cite; `reviewPins` (apps/web/src/review-pins.ts)
+reads them from a saved review's findings (`path:line` or a permalink's
+`#L<line>`), and Deliverables passes them to its comparison, so a review view
+can show findings in place.
+
+## Memories by scope
+
+`GET /api/threads/{id}/memory` (`runs:read`, the conversation's audience)
+answers three scopes:
+
+- **Conversation**: the memory trees it draws on: its project, then each
+  ancestor (read only), and every tree mounted for one of its runs.
+- **Session**: by tree, across its runs: how many runs had it, the versions
+  installed, the versions written and the proposals made.
+- **Message**: each run's trees, the version installed and what it kept
+  (committed version, proposals, changes not kept), and the notes drawn from it
+  (`By` is the run).
+
+What a run used and wrote is recorded on the run (`Run.memory`, at most 16
+trees and 16 proposals each) when its instance is leased (`InstallMemory`) and
+released (`FinishMemory`). Unisolated, nothing is installed and the view says
+memory reached the run through its context. A tree the reader may not read is
+counted in `hidden`, never named; another person's own memory is never named.
+Nothing here changes memory: each tree links to the Library's Memory or the
+agent's Memory tab.
+
+## Scratchpads
+
+A conversation holds up to 50 scratchpads (`pkg/scratchpads`), each a name of
+1 to 80 printable characters, unique in the conversation in any case, and up
+to 256 KiB of UTF-8 text. They are kept per request on `pkg/state`, tenant
+first, under `/api/threads/{id}/scratchpads`: listing and reading need
+`runs:read` and the conversation's audience; creating, renaming, editing and
+deleting need `runs:write` and permission to post, in an open conversation,
+and name the version read (a stale one is a conflict that keeps the draft).
+Unlike files, a run in flight does not hold them.
+
+Agents in the conversation read a scratchpad with `file_read` and the path
+`scratch:<name>`, beside `artifact:` and `skill:`, and `file_list` names them.
+They are not files in the session sandbox: the database keeps them past the
+sandbox's seven-day retention, and a run's copyback can never overwrite a
+person's note. An agent cannot change a scratchpad; it writes files.
+
+## Files, scratchpads and change review
+
+Workspace's **Files** section is a workbench beside the conversation.
+File, view and conversation selections have copied addresses under
+`/conversations/{id}/workspace`. The file browser, open tabs, text editor and
+review are web presentation components; the host performs authenticated API
+requests and prepares conversation messages.
+
+People and agents use the same bounded conversation scratch directory. Create
+files, import UTF-8 code or patches, and keep Markdown scratchpads there. The
+editor provides line numbers, indentation, find, wrapping, selected-code
+feedback and a visible Save command with Ctrl/Command+S. Drafts stay in the mounted conversation when its
+drawer closes. Closing or reloading the page can lose unsaved drafts. Scratch
+files are host-local and expire after seven untouched days; publish a deliverable
+for a retained, versioned result.
+
+A save names the content hash it read. A stale hash returns a conflict and
+preserves the browser draft. File mutations require permission to write runs
+and to post in the current conversation. Publication additionally requires
+permission to write artifacts. Archived and read-only conversations refuse
+writes. Active or waiting runs temporarily prevent human mutations; admission
+and copyback guards prevent overwrites. Reads and writes check the current
+conversation audience and tenant before opening its directory.
+
+The Changes view compares an unsaved edit with its saved base, or renders an
+imported unified `.diff` or `.patch` with file summaries and old/new line
+numbers. A line comment prepares a message with its file, side, line, source revision
+and a bounded excerpt of the reviewed content, including unsaved edits. The
+person reviews and sends that message through the normal composer. Reviewing
+a patch does not apply it or post a GitHub review. HTML previews display static
+content in an isolated frame with scripts, navigation and network access
+blocked. Markdown previews use the existing renderer.
+
+Publish saves the exact selected revision through the existing artifact
+storage. **Edit a Copy** reads an immutable text artifact into a new workspace
+file. The original version remains unchanged; publishing the edited copy
+creates a new deliverable. Native Office and PDF generation continue to use
+the existing agent file tools and immutable artifact pipeline.
+
+The interaction references are [Codex's in-thread diffs and comments](https://openai.com/index/introducing-the-codex-app/),
+[Claude's editable artifacts beside the conversation](https://support.claude.com/en/articles/17153992-what-are-artifacts-and-how-do-i-use-them),
+[Devin's familiar editor controls](https://docs.devin.ai/collaborate-with-devin/vscode-profiles),
+and [Cursor's file review and selected-code feedback](https://cursor.com/help/ai-features/agent).
+Humagen keeps its existing theme, agent identity, permissions and call path.

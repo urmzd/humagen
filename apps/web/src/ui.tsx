@@ -316,7 +316,7 @@ export function Page({
   if (layout === "conversation") {
     return (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="humagen-conversation-header humagen-beside-drawer relative max-md:min-h-[3.75rem] z-10 grid shrink-0 items-center gap-x-4 gap-y-2 border-aui-border border-b px-4 py-3 md:px-6 lg:h-[var(--humagen-header-h,4.5rem)]">
+        <header className="@container/conversation humagen-conversation-header humagen-beside-drawer relative max-md:min-h-[3.75rem] z-10 grid shrink-0 items-center gap-x-4 gap-y-2 border-aui-border border-b px-4 py-3 md:px-6 lg:h-[var(--humagen-header-h,4.5rem)]">
           <div className="humagen-conversation-title min-w-0">
             <h1
               className="truncate text-aui-base font-semibold leading-6 text-aui-fg"

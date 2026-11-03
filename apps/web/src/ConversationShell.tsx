@@ -2,6 +2,8 @@ import { defaultCopy } from "@humagen/components";
 import {
   ArtifactOpenContext,
   EllipsisIcon,
+  FolderIcon,
+  HistoryIcon,
   LayersIcon,
   ProjectIcon,
   ShareIcon,
@@ -25,8 +27,13 @@ import { type ConversationPanel, href } from "./route.ts";
 import { AgentMark, Page, Popover, Problem, SkeletonRows, Tabs } from "./ui.tsx";
 
 const words = defaultCopy.conversation;
-const control =
-  "inline-flex min-h-9 min-w-9 pointer-coarse:min-h-11 pointer-coarse:min-w-11 items-center justify-center gap-2 rounded-aui px-2.5 text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aui-accent";
+const focus =
+  "rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aui-accent";
+/** A row in the settings menu. */
+const control = `inline-flex min-h-9 pointer-coarse:min-h-11 items-center gap-2 px-2.5 text-aui-xs ${focus}`;
+/** Header actions are dense, like the console's other headers: icon-sized, one 4px gap, no side padding. */
+const headerIcon = `inline-flex size-9 shrink-0 pointer-coarse:size-11 items-center justify-center ${focus}`;
+const headerLabeled = `inline-flex h-9 min-w-9 shrink-0 pointer-coarse:h-11 pointer-coarse:min-w-11 items-center justify-center gap-1.5 px-1.5 text-aui-xs ${focus}`;
 
 /**
  * Who took part, at a glance: the first few agents by mark and name, then how
@@ -129,43 +136,36 @@ export function ConversationPage({
               <button
                 ref={projectRef}
                 type="button"
-                className={control}
+                className={headerLabeled}
                 aria-label={defaultCopy.threads.share}
+                title={defaultCopy.threads.share}
                 onClick={onProject}
               >
                 <Faces people={people} />
                 <ShareIcon size={18} />
-                <span className="hidden sm:inline">{defaultCopy.threads.share}</span>
+                <span className="hidden @3xl/conversation:inline">{defaultCopy.threads.share}</span>
               </button>
             ) : (
               <button
                 type="button"
-                className={control}
+                className={people.length > 0 ? headerLabeled : headerIcon}
                 aria-label={words.people}
+                title={words.people}
                 onClick={() => onPanel("people")}
               >
                 {people.length > 0 ? <Faces people={people} /> : <UsersIcon size={18} />}
               </button>
             )}
-            <button
-              type="button"
-              className={`${control} max-md:hidden`}
-              aria-label={words.context}
-              onClick={() => onPanel("context")}
-            >
-              <LayersIcon size={18} />
-              <span className="hidden xl:inline">{words.context}</span>
-            </button>
             <Popover
               label={words.settings}
               button={<EllipsisIcon size={18} />}
-              className={control}
+              className={headerIcon}
               align="right"
               narrow
             >
               {(close) => (
                 <div className="flex flex-col p-1">
-                  {/* On a phone the header is one line: where the conversation is, who is in it, and Context are here. */}
+                  {/* On a phone the header is one line: where the conversation is and who is in it are here. */}
                   <div className="flex flex-col gap-1.5 border-aui-border border-b px-2.5 pt-1.5 pb-2.5 text-aui-xs text-aui-muted md:hidden">
                     <span className="inline-flex min-w-0 items-center gap-1.5" title={project}>
                       <ProjectIcon size={14} />
@@ -174,17 +174,25 @@ export function ConversationPage({
                     {location}
                     {agents.length > 0 && <Involved agents={[...new Set(agents)]} />}
                   </div>
-                  {(["context", "activity", "deliverables"] as const).map((panel) => (
+                  {/* The conversation's own items: its Workspace, its Context and its Activity. */}
+                  {(["workspace", "context", "activity"] as const).map((panel) => (
                     <button
                       key={panel}
                       type="button"
-                      className={`${control} justify-start ${panel === "context" ? "md:hidden" : ""}`}
+                      className={`${control} justify-start`}
                       onClick={() => {
                         close();
                         onPanel(panel);
                       }}
                     >
-                      {words[panel]}
+                      {panel === "workspace" ? (
+                        <FolderIcon size={16} />
+                      ) : panel === "context" ? (
+                        <LayersIcon size={16} />
+                      ) : (
+                        <HistoryIcon size={16} />
+                      )}
+                      {panel === "workspace" ? defaultCopy.workspace.menu : words[panel]}
                     </button>
                   ))}
                 </div>

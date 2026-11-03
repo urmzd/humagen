@@ -20,7 +20,70 @@ test("every route survives a round trip through its address", () => {
     { page: "conversation", id: "t-1", panel: "activity" },
     { page: "conversation", id: "t-1", panel: "activity", run: "run/with spaces" },
     { page: "conversation", id: "t-1", panel: "deliverables" },
+    { page: "conversation", id: "t-1", panel: "workspace" },
+    { page: "conversation", id: "t-1", panel: "workspace", workspaceSection: "sandboxes" },
+    {
+      page: "conversation",
+      id: "t-1",
+      panel: "workspace",
+      workspaceSection: "sandboxes",
+      sandbox: "r/with spaces",
+    },
+    { page: "conversation", id: "t-1", panel: "workspace", workspaceSection: "artifacts" },
+    { page: "conversation", id: "t-1", panel: "workspace", workspaceSection: "scratchpads" },
+    { page: "conversation", id: "t-1", panel: "workspace", workspaceSection: "memories" },
+    {
+      page: "conversation",
+      id: "t-1",
+      panel: "workspace",
+      workspaceSection: "memories",
+      memoryRun: "r-1",
+    },
+    {
+      page: "conversation",
+      id: "t-1",
+      panel: "workspace",
+      workspaceSection: "scratchpads",
+      scratchpad: "sp-0123",
+    },
+    {
+      page: "conversation",
+      id: "t-1",
+      panel: "workspace",
+      file: "src/a file.ts",
+      workspaceTab: "edit",
+    },
+    {
+      page: "conversation",
+      id: "t-1",
+      panel: "workspace",
+      file: "scratchpads/想法.md",
+      workspaceTab: "preview",
+    },
+    {
+      page: "conversation",
+      id: "t-1",
+      panel: "workspace",
+      file: "pr #42.diff",
+      workspaceTab: "changes",
+    },
     { page: "conversation", id: "t-1", panel: "deliverables", artifact: "art-1" },
+    {
+      page: "conversation",
+      id: "t-1",
+      panel: "deliverables",
+      artifact: "art-2",
+      artifactTab: "versions",
+      compare: "art-1",
+    },
+    {
+      page: "conversation",
+      id: "t-1",
+      panel: "workspace",
+      tabs: ["artifact:art-2"],
+      artifactTab: "versions",
+      compare: "art-1",
+    },
     {
       page: "conversation",
       id: "t-1",
@@ -505,4 +568,32 @@ test("a notification view is in the address, and the Inbox, the default, is left
   // A view this console does not have opens the Inbox.
   assert.deepEqual(plain(at("/notifications?view=trash")), { page: "notifications" });
   assert.deepEqual(plain(at("/notifications?view=inbox")), { page: "notifications" });
+});
+
+test("Workspace sections have their own paths, Files keeps the panel's own address", () => {
+  assert.equal(
+    href({ page: "conversation", id: "t-1", panel: "workspace", workspaceSection: "files" }),
+    "/conversations/t-1/workspace",
+  );
+  assert.equal(
+    href({
+      page: "conversation",
+      id: "t-1",
+      panel: "workspace",
+      workspaceSection: "sandboxes",
+      sandbox: "r1",
+    }),
+    "/conversations/t-1/workspace/sandboxes/r1",
+  );
+  assert.deepEqual(at("/conversations/t-1/workspace/files?file=a.md"), {
+    page: "conversation",
+    id: "t-1",
+    panel: "workspace",
+    file: "a.md",
+  });
+  // An unknown section falls back to Files.
+  assert.equal(
+    (at("/conversations/t-1/workspace/nope") as { workspaceSection?: string }).workspaceSection,
+    undefined,
+  );
 });

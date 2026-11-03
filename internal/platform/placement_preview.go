@@ -27,6 +27,7 @@ type PlacementPreview struct {
 	Channel         string   `json:"channel"`
 	Audience        string   `json:"audience"`
 	Runs            int      `json:"runs"`
+	WorkspaceFiles  int      `json:"workspace_files"`
 	Token           string   `json:"token"`
 	Exclusions      []string `json:"exclusions"`
 }
@@ -100,6 +101,10 @@ func (p *Platform) previewPlacement(ctx context.Context, who auth.Principal, th 
 	if err != nil {
 		return PlacementPreview{}, err
 	}
+	files, err := p.workspaceSnapshot(ctx, who.Tenant, th.ID)
+	if err != nil {
+		return PlacementPreview{}, err
+	}
 	// Every ancestor version participates: a membership change invalidates consent.
 	consent := struct {
 		Thread      threads.Thread
@@ -107,7 +112,8 @@ func (p *Platform) previewPlacement(ctx context.Context, who auth.Principal, th 
 		Source      []projects.Project
 		Channel     projects.Channel
 		Runs        []string
-	}{th, chain, tree.Chain(th.Project), channelRecord, ids}
+		Files       []WorkspaceFile
+	}{th, chain, tree.Chain(th.Project), channelRecord, ids, files}
 	raw, err := json.Marshal(consent)
 	if err != nil {
 		return PlacementPreview{}, err
@@ -124,7 +130,7 @@ func (p *Platform) previewPlacement(ctx context.Context, who auth.Principal, th 
 	if operationalPrivate {
 		exclusions = append(exclusions, "Private assignment and handoff contracts remain in the original conversation")
 	}
-	return PlacementPreview{SummaryRequired: summaryRequired, Thread: th.ID, Project: project, Channel: channel, Audience: audience, Runs: len(ids), Token: hex.EncodeToString(digest[:]), Exclusions: exclusions}, nil
+	return PlacementPreview{SummaryRequired: summaryRequired, Thread: th.ID, Project: project, Channel: channel, Audience: audience, Runs: len(ids), WorkspaceFiles: len(files), Token: hex.EncodeToString(digest[:]), Exclusions: exclusions}, nil
 }
 
 func (p *Platform) threadNeedsSummary(ctx context.Context, tenant, thread, destination string) bool {

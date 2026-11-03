@@ -30,10 +30,12 @@ import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { emptySelection, mentionPicks, PlusMenu, type Selection, SelectionChips } from "./Plus.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
+import { openPane } from "./pane.ts";
 import { ThreadRoom, topicsOf } from "./Room.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
+import { SaveAsArtifact } from "./SaveAsArtifact.tsx";
 import { Scroller } from "./Scroller.tsx";
 import { useThreadSelection } from "./selection.ts";
 import { mentionsIn } from "./tags.ts";
@@ -49,6 +51,7 @@ import {
   Presence,
   Problem,
 } from "./ui.tsx";
+import { Workspace } from "./Workspace.tsx";
 
 const words = defaultCopy.threads;
 
@@ -990,7 +993,9 @@ export function Chat({
         agents={summary?.agents ?? [...new Set(turns.map((t) => t.agent))]}
         people={room?.thread.participants?.filter((p) => p.kind === "person").map((p) => p.name)}
         onPanel={(next) => openPanel(next)}
-        onArtifact={(id) => openPanel("deliverables", { artifact: id })}
+        onArtifact={(id) =>
+          openPanel("workspace", openPane(shownView, { kind: "artifact", ref: id }))
+        }
       >
         {room && canRun && !room.thread.read_only && (
           <ConversationForkPanels thread={room.thread} runs={turns} actions={forkActions} />
@@ -1012,6 +1017,19 @@ export function Chat({
                   !room?.thread.read_only && run.status === "completed" ? (
                     <>
                       <OutcomeActions run={run} canWrite={canLearn} />
+                      {canRun && threadId && (
+                        <SaveAsArtifact
+                          thread={threadId}
+                          what={{ source: "run", id: run.id }}
+                          className={messageActionButton}
+                          onSaved={(artifact) =>
+                            openPanel(
+                              "workspace",
+                              openPane(shownView, { kind: "artifact", ref: artifact.id }),
+                            )
+                          }
+                        />
+                      )}
                       {canRun && forkActions?.onFork && (
                         <button
                           type="button"
@@ -1094,6 +1112,42 @@ export function Chat({
           onClose={() => openPanel()}
         />
       )}
+      {threadId && (
+        <Workspace
+          key={threadId}
+          thread={threadId}
+          open={shownView.panel === "workspace"}
+          view={shownView}
+          onView={(next) => openPanel("workspace", next)}
+          onClose={() => openPanel()}
+          onRequest={
+            canRun && !room?.thread.read_only
+              ? (text) => {
+                  setSeed({ text, mode: "prepend" });
+                  openPanel();
+                }
+              : undefined
+          }
+          promotion={
+            artifactActions
+              ? {
+                  project: room?.thread.project ?? where ?? "",
+                  shared: room?.thread.visibility === "shared",
+                  ...artifactActions,
+                }
+              : undefined
+          }
+          onRevise={
+            canRun
+              ? (file, slide) => {
+                  setSeed({ text: revisionPrompt(file, slide), mode: "prepend" });
+                  openPanel();
+                }
+              : undefined
+          }
+          onRun={(run) => openPanel("activity", { run })}
+        />
+      )}
       <Presence when={shownView.panel === "deliverables"} ms={220}>
         {(leaving) => (
           <Deliverables
@@ -1110,6 +1164,7 @@ export function Chat({
             thread={threadId}
             view={shownView}
             onView={(next) => openPanel("deliverables", next)}
+            onEditCopy={(file) => openPanel("workspace", { file, workspaceTab: "edit" })}
             onClose={() => openPanel()}
             onRevise={
               canRun
