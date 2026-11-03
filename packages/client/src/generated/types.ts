@@ -21,7 +21,7 @@ export interface ScratchpadList {
 }
 
 export interface ScratchpadInput {
-  /** 1 to 80 printable characters without a slash */
+  /** 1 to 80 printable characters without a slash, unique in the conversation in any case. */
   name: string;
   content: string;
   /** The version read. Required to change a scratchpad; a stale one returns 409. */
