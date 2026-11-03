@@ -83,7 +83,7 @@ apart, so each scales on its own:
 | Workers, as many as the run queue needs | `humagen worker -f humagen.yaml` | none over HTTP: a worker listens on nothing, so check the process |
 
 Both read the same spec and the same Postgres; runs pass between them through
-anchor's ledger and queue. A split role on memory stores is refused at start.
+the durable ledger and queue. A split role on memory stores is refused at start.
 Whatever the roles, the processes elect one leader with a Postgres advisory
 lock, and only it runs the reconciler, schedules, inbox retention, email
 notices, knowledge refresh and catalog crawls. If the leader's database
@@ -118,7 +118,7 @@ spec you give it: set `sandbox` there for compose and kubernetes targets too.
 
 ### Upgrading: runc is refused by default
 
-playscape v0.10.0 refuses a runtime that shares the host's kernel. A spec
+orchagent's sandbox (playscape v0.10.0 and later) refuses a runtime that shares the host's kernel. A spec
 with `sandbox.docker.runtime: runc` now logs `sandbox: docker is unavailable`
 and every tool that needs an instance refuses, until it also sets
 `insecure_development_runtime: true` (or the server gets

@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/urmzd/humagen/fiber/pkg/address"
-	"github.com/urmzd/humagen/fiber/pkg/connector"
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/operations"
+	"github.com/urmzd/orchagent/flow/address"
+	"github.com/urmzd/orchagent/flow/connector"
+	"github.com/urmzd/orchagent/flow/runtime"
 )
 
 type capabilityActor struct {

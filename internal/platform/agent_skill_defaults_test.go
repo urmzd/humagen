@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/audit"
@@ -18,6 +17,7 @@ import (
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
+	"github.com/urmzd/orchagent/flow/turn/native"
 	saigetypes "github.com/urmzd/saige/agent/types"
 )
 

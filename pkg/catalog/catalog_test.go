@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	dense "github.com/urmzd/humagen/fiber/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/state"
+	dense "github.com/urmzd/orchagent/flow/knowledge"
 )
 
 var at = time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)

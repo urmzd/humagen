@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/humagen/fiber/pkg/definition"
 	"github.com/urmzd/humagen/pkg/agents"
+	"github.com/urmzd/orchagent/flow/definition"
 )
 
 // TestDefinitionCatalogReadsWhatTheRegistryHeld moves revisions through

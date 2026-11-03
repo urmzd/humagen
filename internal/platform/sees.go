@@ -3,9 +3,9 @@ package platform
 import (
 	"slices"
 
-	"github.com/urmzd/humagen/fiber/pkg/event"
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/orchagent/flow/runtime"
 
 	"github.com/urmzd/humagen/pkg/call"
 

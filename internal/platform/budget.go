@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/urmzd/humagen/fiber/pkg/event"
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
-	"github.com/urmzd/humagen/fiber/pkg/turn"
+	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/orchagent/flow/turn"
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/inbox"

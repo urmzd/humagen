@@ -10,11 +10,11 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
-	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/orchagent/flow/turn/native"
 )
 
 const maxSourceGrants = 1024

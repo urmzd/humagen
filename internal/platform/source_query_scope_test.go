@@ -11,16 +11,16 @@ import (
 
 	"github.com/urmzd/humagen/internal/wire"
 
-	"github.com/urmzd/humagen/fiber/pkg/event"
-	"github.com/urmzd/humagen/fiber/pkg/mcptools"
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
-	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
+	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/orchagent/flow/mcptools"
+	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/orchagent/flow/turn/native"
 )
 
 type selectedQueryProvider struct {
