@@ -4,8 +4,9 @@ import { defaultCopy } from "@humagen/components";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { stubFetch } from "./dom.ts";
 import { InboxPage } from "./InboxPage.tsx";
-import { leaves, marked } from "./inbox.ts";
+import { leaves, marked, unreadBadge } from "./inbox.ts";
 import type { MailCounts, MailMark, MailView, PlatformMessage, Transport } from "./mail.ts";
+import { DrawerButton } from "./Sidebar.tsx";
 
 const vc = defaultCopy.inboxViews;
 
@@ -261,4 +262,63 @@ test("a row in a view says no state word: Hidden and Done are views, not labels"
   await waitFor(() => assert.ok(row("m1")));
   const text = row("m1")?.textContent ?? "";
   assert.doesNotMatch(text, /dismissed|hidden/i);
+});
+
+test("the badge says what the Unread view says: unread announcements and notices alike", async () => {
+  net = stubFetch({});
+  // Fresh seed data: one announcement and two artifact notices, all unread.
+  // The platform counts the announcement in updates, the notices in unread.
+  const seeded = [
+    message("a1", "Welcome to Humagen", { kind: "announcement", template: "announcement" }),
+    message("n1", "lead published signups.csv"),
+    message("n2", "lead updated launch-checklist.md"),
+  ];
+  const via: Transport = {
+    list: async () => ({
+      messages: seeded,
+      next: null,
+      open: 2,
+      unread: 2,
+      updates: 1,
+      inbox: 3,
+      hidden: 0,
+    }),
+    get: async (id) => {
+      const found = seeded.find((m) => m.id === id);
+      if (!found) throw new Error("not found");
+      return found;
+    },
+    send: async (m) => m,
+    mark: async () => ({
+      messages: [],
+      skipped: [],
+      counts: { open: 2, unread: 2, updates: 1, inbox: 3, hidden: 0 },
+    }),
+  };
+  const reported: { open: number; unread: number; updates: number }[] = [];
+  render(
+    <InboxPage
+      signal={0}
+      onOpen={() => {}}
+      openId={null}
+      via={via}
+      onCounts={(c) => reported.push(c)}
+    />,
+  );
+  await waitFor(() => assert.ok(row("n2")));
+  const unread = within(views()).getByRole("button", { name: new RegExp(`^${vc.unread}`) });
+  assert.match(unread.textContent ?? "", /3$/);
+  await waitFor(() => assert.equal(unreadBadge(reported.at(-1) ?? { unread: 0 }), 3));
+  // The sidebar draws exactly that number.
+  const { container } = render(
+    <DrawerButton
+      open={false}
+      inboxCount={unreadBadge(reported.at(-1) ?? { unread: 0 })}
+      onOpen={() => {}}
+    />,
+  );
+  assert.equal(
+    container.querySelector("button")?.getAttribute("aria-label"),
+    "Open sidebar, 3 unread",
+  );
 });

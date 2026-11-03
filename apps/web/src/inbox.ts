@@ -69,6 +69,13 @@ export function useHeld(
   return { messages, missing, keep };
 }
 
+/**
+ * What the Notifications badge says: everything unread in the reader's Inbox,
+ * announcements included, the same number the Unread view shows.
+ */
+export const unreadBadge = (counts: { unread: number; updates?: number }): number =>
+  counts.unread + (counts.updates ?? 0);
+
 const VIEWS: readonly string[] = ["inbox", "unread", "hidden", "done"];
 
 /** Whether what is shown is one of the reader's own views, rather than a state. */

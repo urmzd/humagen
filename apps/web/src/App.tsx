@@ -43,6 +43,7 @@ import { ForkProject } from "./ForkProject.tsx";
 import { Health } from "./Health.tsx";
 import { type HomeAnnouncement, HomeBoxes, type Loaded } from "./HomePage.tsx";
 import { Integrations } from "./Integrations.tsx";
+import { unreadBadge } from "./inbox.ts";
 import { Knowledge } from "./Knowledge.tsx";
 import { MemoryLibrary } from "./MemoryLibrary.tsx";
 import { ModeSwitch } from "./ModeSwitch.tsx";
@@ -276,13 +277,15 @@ function Console({
   const thread = route.page === "conversation" ? route.id : null;
   // The inbox is the server's. This holds only its totals for the badge, a
   // counter that tells the page to look again, and a message to open first.
-  const [inboxCounts, setInboxCounts] = useState({ open: 0, unread: 0 });
+  const [inboxCounts, setInboxCounts] = useState({ open: 0, unread: 0, updates: 0 });
+  // The badge is the Unread view's number: announcements unread count too.
+  const badge = unreadBadge(inboxCounts);
   const [inboxTick, setInboxTick] = useState(0);
   useBrandingStyle(branding.style);
   const product = branding.title;
   useEffect(() => {
-    document.title = documentTitle(route, inboxCounts.unread, product);
-  }, [route, inboxCounts.unread, product]);
+    document.title = documentTitle(route, badge, product);
+  }, [route, badge, product]);
   // The project tree, null until it is read, and the workspace's own view, which heads it.
   const [projects, setProjects] = useState<ProjectView[] | null>(null);
   const [root, setRoot] = useState<ProjectView | null>(null);
@@ -699,7 +702,7 @@ function Console({
           pinned={prefs.pinned}
           onPin={pin}
           onPinProject={pinProject}
-          inboxCount={inboxCounts.unread}
+          inboxCount={badge}
           live={live}
           onSearch={() => {
             setSearchOpen(true);
@@ -731,7 +734,7 @@ function Console({
             />
           )}
         </Presence>
-        <DrawerButton open={open} inboxCount={inboxCounts.unread} onOpen={() => setOpen(true)} />
+        <DrawerButton open={open} inboxCount={badge} onOpen={() => setOpen(true)} />
         {route.page === "new" && (
           <ModeSwitch current="chat" waiting={inboxCounts.open} onGo={navigate} />
         )}

@@ -337,7 +337,7 @@ Each mark is the reader's own (`pkg/inbox`: `mark.Hide`, `mark.Deleted`):
 nobody else's inbox, views or counts change, and a shared message is never
 removed from the record. Delete takes it out of every view of the reader's;
 Restore brings it back. A run's open question can be hidden but not deleted.
-The sidebar badge counts unread only, and what was hidden or deleted leaves
+The sidebar badge is the Unread view's count, announcements included, and what was hidden or deleted leaves
 Home's and Slack Home's Needs you and its total, which read the same open
 state. API: `view` on `GET /api/inbox`, `POST /api/inbox/marks` (1 to 200
 ids), `POST /api/inbox/read-all` (the newest 600), with `inbox` and `hidden`

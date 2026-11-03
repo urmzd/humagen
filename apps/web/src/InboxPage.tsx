@@ -5,7 +5,7 @@ import { Button } from "@humagen/render-web/ui/button";
 import { NativeSelect } from "@humagen/render-web/ui/native-select";
 import { Mailbox, type MailboxMark, type MailboxShow } from "@humagen/web";
 import { type ComponentProps, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { leaves, useHeld, useInbox } from "./inbox.ts";
+import { leaves, unreadBadge, useHeld, useInbox } from "./inbox.ts";
 import { platformParts } from "./MailParts.tsx";
 import {
   kinds,
@@ -357,7 +357,7 @@ export function InboxPage({
   /** Open what a message is about: a run, a rule, an agent, a project. */
   onOpen: (source: Source) => void;
   /** Reports the open and unread totals, for the sidebar's badge. */
-  onCounts?: (counts: { open: number; unread: number }) => void;
+  onCounts?: (counts: { open: number; unread: number; updates: number }) => void;
   /** Hosts with a router keep selection and the copied address in one state. */
   onSelection?: (id: string | null) => void;
   actions?: ReactNode;
@@ -406,10 +406,11 @@ export function InboxPage({
   };
 
   const { open, unread } = inbox;
+  const { updates } = inbox.counts;
   // biome-ignore lint/correctness/useExhaustiveDependencies: report when the totals change, not when the callback does
   useEffect(() => {
-    onCounts?.({ open, unread });
-  }, [open, unread]);
+    onCounts?.({ open, unread, updates });
+  }, [open, unread, updates]);
 
   const vc = defaultCopy.inboxViews;
   /** Mark what the reader chose, and offer to undo what moved it out of sight. */
@@ -435,7 +436,7 @@ export function InboxPage({
   }
   const views = [
     { id: "inbox", label: vc.inbox, count: inbox.counts.inbox },
-    { id: "unread", label: vc.unread, count: inbox.counts.unread + inbox.counts.updates },
+    { id: "unread", label: vc.unread, count: unreadBadge(inbox.counts) },
     { id: "hidden", label: vc.hidden, count: inbox.counts.hidden },
     { id: "done", label: vc.done },
   ];
