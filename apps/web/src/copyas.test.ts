@@ -138,6 +138,39 @@ test("answer: the answer as written, plain, and the run's record", () => {
   );
 });
 
+test("answer: a structured review copies as the Markdown its card shows, never its JSON", () => {
+  const report = {
+    format: "humagen.github.review.v1",
+    summary: "Docs only | no code.",
+    findings: [
+      {
+        severity: "warning",
+        title: "Broken link",
+        suggestion: "Point it at the guide.",
+        evidence: [
+          { observation: "404", source: "https://github.com/o/r/blob/0123abc/README.md#L4" },
+        ],
+        prompt: "Which links are broken?",
+      },
+    ],
+  };
+  const item: Item = {
+    kind: "answer",
+    run: { ...runOf("r2"), answer: `\`\`\`json\n${JSON.stringify(report)}\n\`\`\`` },
+  };
+  const md = text(item, "markdown");
+  assert.match(
+    md,
+    /^🔴 \*\*0 errors\*\* 🟡 \*\*1 warning\*\* 🔵 \*\*0 info\*\*\n\n## Summary\n\nDocs only \\\| no code\.\n/,
+  );
+  assert.match(
+    md,
+    /\| 🟡 Warnings \| Broken link \| Point it at the guide\. \| 404 \(\[README\.md:4\]\(https:\/\/github\.com\/o\/r\/blob\/0123abc\/README\.md#L4\)\) \| Which links are broken\? \|/,
+  );
+  assert.ok(!md.includes('"format"'));
+  assert.ok(!text(item, "text").includes("**"));
+});
+
 test("tool call with arguments and a result: every variation", () => {
   const tool: ToolCall = {
     name: "http_get",

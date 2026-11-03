@@ -43,6 +43,7 @@ import { emailScreens, notificationEmailFixture } from "./email.ts";
 import { libraryScreens } from "./library.ts";
 import { startNativeModel } from "./native.ts";
 import { usageScreens } from "./observability.ts";
+import { reviewScreens } from "./review.ts";
 import { sidebarParticipants } from "./sidebar-participants.ts";
 import { sidebarScroll } from "./sidebar-scroll.ts";
 import { workspaceScreens } from "./workspace.ts";
@@ -1176,6 +1177,7 @@ function screens(ids: Ids, call: Call): Screen[] {
   list.push(
     ...libraryScreens(call),
     ...workspaceScreens(call),
+    ...reviewScreens(call),
     ...usageScreens(),
     ...emailScreens(call),
   );

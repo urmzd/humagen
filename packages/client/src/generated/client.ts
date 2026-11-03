@@ -178,6 +178,7 @@ import type {
   SkillUsage,
   SnoozeInboxMessageBody,
   SourceDependencies,
+  SourceExcerpt,
   SourceLinkResource,
   SourceLinkRule,
   SourceLinkRuleInput,
@@ -2246,6 +2247,39 @@ agents answering the next message are sent.
     return this.rawRequest<Note>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The lines an evidence permalink points at, with context around them, read through a GitHub client of the caller's workspace so its token stays on the server. A client may read repositories its owners include or its read_repositories name. Any other file, or one GitHub does not give, answers 404. All four of repo, sha, file and start are required. */
+  async getGitHubSource(file: string, repo?: string, sha?: string, start?: number, end?: number, context?: number, options?: RequestOptions): Promise<SourceExcerpt> {
+    let path = "/api/github/source";
+    const _q = new URLSearchParams();
+    if (repo !== undefined && repo !== null) _q.set("repo", String(repo));
+    if (sha !== undefined && sha !== null) _q.set("sha", String(sha));
+    if (file !== undefined && file !== null) _q.set("file", String(file));
+    if (start !== undefined && start !== null) _q.set("start", String(start));
+    if (end !== undefined && end !== null) _q.set("end", String(end));
+    if (context !== undefined && context !== null) _q.set("context", String(context));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<SourceExcerpt>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getGitHubSourceRaw(file: string, repo?: string, sha?: string, start?: number, end?: number, context?: number, options?: RequestOptions): Promise<ApiResponse<SourceExcerpt>> {
+    let path = "/api/github/source";
+    const _q = new URLSearchParams();
+    if (repo !== undefined && repo !== null) _q.set("repo", String(repo));
+    if (sha !== undefined && sha !== null) _q.set("sha", String(sha));
+    if (file !== undefined && file !== null) _q.set("file", String(file));
+    if (start !== undefined && start !== null) _q.set("start", String(start));
+    if (end !== undefined && end !== null) _q.set("end", String(end));
+    if (context !== undefined && context !== null) _q.set("context", String(context));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<SourceExcerpt>("GET", path, {
       ...options,
     });
   }

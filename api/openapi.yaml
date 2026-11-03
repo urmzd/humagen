@@ -2073,6 +2073,41 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '500': {$ref: '#/components/responses/ServerError'}
+  /api/github/source:
+    get:
+      operationId: getGitHubSource
+      tags: [runs]
+      summary: Read lines of a file at a commit, for a review's evidence
+      description: >-
+        The lines an evidence permalink points at, with context around them,
+        read through a GitHub client of the caller's workspace so its token
+        stays on the server. A client may read repositories its owners include
+        or its read_repositories name. Any other file, or one GitHub does not
+        give, answers 404. All four of repo, sha, file and start are required.
+      x-permission: runs:read
+      parameters:
+        - {name: repo, in: query, schema: {type: string}, description: "owner/name."}
+        - {name: sha, in: query, schema: {type: string}, description: The full commit SHA.}
+        - {name: file, in: query, required: true, schema: {type: string}, description: The file's path in the repository.}
+        - {name: start, in: query, schema: {type: integer, minimum: 1}, description: The first line asked for.}
+        - {name: end, in: query, schema: {type: integer, minimum: 1}, description: "The last line asked for, at most 200 lines after start. Defaults to start."}
+        - {name: context, in: query, schema: {type: integer, minimum: 0, maximum: 20, default: 3}, description: Lines to add before and after.}
+      responses:
+        "200":
+          description: The lines.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SourceExcerpt"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+        "502":
+          description: GitHub did not give the file as text.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
   /api/runs/{id}:
     get:
       operationId: getRun
@@ -7567,6 +7602,20 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/Refusal"}
   schemas:
+    SourceExcerpt:
+      type: object
+      description: Lines of one file at one commit, numbered from first.
+      required: [repo, sha, path, first, start, end, total, lines, url]
+      properties:
+        repo: {type: string, description: owner/name.}
+        sha: {type: string}
+        path: {type: string}
+        first: {type: integer, description: The number of the first line in lines.}
+        start: {type: integer, description: The first line asked for.}
+        end: {type: integer, description: The last line asked for, within the file.}
+        total: {type: integer, description: How many lines the file has.}
+        lines: {type: array, items: {type: string}}
+        url: {type: string, description: The lines on GitHub.}
     HealthStatus:
       type: string
       enum: [operational, degraded, down]
