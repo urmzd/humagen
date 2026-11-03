@@ -10,12 +10,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/humagen/fiber/pkg/address"
-	"github.com/urmzd/humagen/fiber/pkg/connector"
-	"github.com/urmzd/humagen/fiber/pkg/connectors"
-	"github.com/urmzd/humagen/fiber/pkg/connectors/mention"
-	transport "github.com/urmzd/humagen/fiber/pkg/connectors/slack"
-	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/orchagent/flow/address"
+	"github.com/urmzd/orchagent/flow/connector"
+	"github.com/urmzd/orchagent/flow/connectors"
+	"github.com/urmzd/orchagent/flow/connectors/mention"
+	transport "github.com/urmzd/orchagent/flow/connectors/slack"
+	"github.com/urmzd/orchagent/flow/event"
 
 	"github.com/urmzd/humagen/internal/wire"
 )

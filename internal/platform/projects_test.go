@@ -15,9 +15,9 @@ import (
 
 	"github.com/urmzd/humagen/internal/wire"
 
-	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
-	"github.com/urmzd/humagen/fiber/pkg/event"
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/orchagent/flow/connectors/cron"
+	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/orchagent/flow/runtime"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 

@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/playscape/pkg/isolate/egress"
+	"github.com/urmzd/orchagent/sandbox/isolate/egress"
 
-	"github.com/urmzd/humagen/fiber/pkg/isolation"
 	"github.com/urmzd/humagen/pkg/spec"
+	"github.com/urmzd/orchagent/flow/isolation"
 )
 
 func sandboxArgs(t *testing.T, args ...string) sandboxFlags {

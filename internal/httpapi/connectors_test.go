@@ -12,12 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/humagen/fiber/pkg/signature"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	githubflow "github.com/urmzd/humagen/pkg/integrations/github"
 	slackflow "github.com/urmzd/humagen/pkg/integrations/slack"
+	"github.com/urmzd/orchagent/flow/signature"
 )
 
 func TestSignedIntegrationsRunThroughThePlatformAndAppearInItsConsoleAPI(t *testing.T) {

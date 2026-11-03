@@ -10,17 +10,17 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/urmzd/anchor/adapters/postgres/pgledger"
-	"github.com/urmzd/anchor/pkg/run"
+	"github.com/urmzd/orchagent/durable/adapters/postgres/pgledger"
+	"github.com/urmzd/orchagent/durable/run"
 
-	"github.com/urmzd/humagen/fiber/pkg/durable"
-	"github.com/urmzd/humagen/fiber/pkg/knowledge"
-	"github.com/urmzd/humagen/fiber/pkg/thread"
-	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/orchagent/flow/knowledge"
+	"github.com/urmzd/orchagent/flow/runschema"
+	"github.com/urmzd/orchagent/flow/thread"
+	"github.com/urmzd/orchagent/flow/toolprovider"
 )
 
-const postgresEnv = "FIBER_POSTGRES_TEST_URL"
+const postgresEnv = "FLOW_POSTGRES_TEST_URL"
 
 func pool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
@@ -121,9 +121,9 @@ func migrate(t *testing.T, ctx context.Context, p *pgxpool.Pool) stores {
 			t.Fatalf("migrate %s: %v", name, err)
 		}
 	}
-	lgr, _, err := durable.Open(ctx, p)
+	lgr, _, err := runschema.Open(ctx, p)
 	if err != nil {
-		t.Fatalf("durable.Open: %v", err)
+		t.Fatalf("runschema.Open: %v", err)
 	}
 	s.ledger = lgr
 	return s

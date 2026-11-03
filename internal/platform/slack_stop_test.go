@@ -13,11 +13,11 @@ import (
 
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/humagen/fiber/pkg/signature"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/integrations/slack"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/orchagent/flow/signature"
 )
 
 const slackSecret = "8f742231b10e8888abcd99yyyzzz85a5"

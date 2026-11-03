@@ -160,7 +160,6 @@ export function ConversationPage({
               label={words.settings}
               button={<EllipsisIcon size={18} />}
               className={headerIcon}
-              tooltip={words.settings}
               align="right"
               narrow
             >

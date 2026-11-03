@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	dense "github.com/urmzd/humagen/fiber/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/state"
+	dense "github.com/urmzd/orchagent/flow/knowledge"
 )
 
 // Embedder turns text into vectors. It is fiber's, the same one

@@ -7,10 +7,10 @@ import (
 	"strings"
 	"sync"
 
-	transport "github.com/urmzd/humagen/fiber/pkg/connectors/slack"
+	transport "github.com/urmzd/orchagent/flow/connectors/slack"
 
-	"github.com/urmzd/humagen/fiber/pkg/address"
-	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/orchagent/flow/address"
+	"github.com/urmzd/orchagent/flow/event"
 )
 
 // MaxCommands is Slack's limit on commands in one code channel. The limit is

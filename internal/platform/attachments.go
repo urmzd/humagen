@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/urmzd/humagen/fiber/pkg/address"
-	"github.com/urmzd/humagen/fiber/pkg/attachment"
-	"github.com/urmzd/humagen/fiber/pkg/thread"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/orchagent/flow/address"
+	"github.com/urmzd/orchagent/flow/attachment"
+	"github.com/urmzd/orchagent/flow/thread"
 )
 
 // surfaceFiles reads the actual Slack message through its client, so the host

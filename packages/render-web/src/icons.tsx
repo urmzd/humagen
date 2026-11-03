@@ -455,6 +455,14 @@ export const EllipsisIcon = icon(
   </>,
   "EllipsisIcon",
 );
+export const EllipsisVerticalIcon = icon(
+  <>
+    <circle cx="12" cy="5" r="1" />
+    <circle cx="12" cy="12" r="1" />
+    <circle cx="12" cy="19" r="1" />
+  </>,
+  "EllipsisVerticalIcon",
+);
 
 /**
  * In-progress ring. The SVG box itself rotates, so the ring spins in place

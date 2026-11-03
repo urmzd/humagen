@@ -29,12 +29,13 @@ build:
 test:
 	go test ./... -race
 
-# fiber's backend conformance suites against Postgres (pgvector) from the
-# compose integration profile. Without this variable they skip.
+# The fiber upgrade test against Postgres (pgvector) from the compose
+# integration profile. Without this variable it skips. flow's own backend
+# suites run in github.com/urmzd/orchagent.
 integration:
 	$(COMPOSE) --profile integration up -d --wait fiber-postgres
-	FIBER_POSTGRES_TEST_URL=postgres://fiber:fiber@localhost:$${FIBER_POSTGRES_PORT:-5433}/fiber?sslmode=disable \
-	go test -race -count=1 ./fiber/...
+	FLOW_POSTGRES_TEST_URL=postgres://fiber:fiber@localhost:$${FLOW_POSTGRES_PORT:-5433}/fiber?sslmode=disable \
+	go test -race -count=1 ./internal/legacy/...
 
 lint:
 	golangci-lint run

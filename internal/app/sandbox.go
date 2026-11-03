@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/playscape/pkg/isolate"
-	"github.com/urmzd/playscape/pkg/isolate/docker"
-	"github.com/urmzd/playscape/pkg/isolate/local"
+	"github.com/urmzd/orchagent/sandbox/isolate"
+	"github.com/urmzd/orchagent/sandbox/isolate/docker"
+	"github.com/urmzd/orchagent/sandbox/isolate/local"
 
-	"github.com/urmzd/humagen/fiber/pkg/isolation"
-	poolleaser "github.com/urmzd/humagen/fiber/pkg/isolation/isolate"
 	"github.com/urmzd/humagen/pkg/spec"
+	"github.com/urmzd/orchagent/flow/isolation"
+	poolleaser "github.com/urmzd/orchagent/flow/isolation/isolate"
 )
 
 // sandboxFlags say where a run's tools execute (docs/reference/spec.md,
