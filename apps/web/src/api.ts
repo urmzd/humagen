@@ -10,6 +10,7 @@ import type {
   AuditRecord,
   Branding,
   Note as GeneratedNote,
+  GitHubAutomation,
   Health as HealthReport,
   KnowledgeLifecycle,
   KnowledgeSourceConfig,
@@ -536,6 +537,7 @@ export interface Client {
     commands?: { name: string; description: string; argument_hint?: string }[];
   };
   github?: {
+    automations?: GitHubAutomation[];
     auto_labels?: Record<string, Record<string, string>>;
     checks?: boolean;
     guides?: boolean;

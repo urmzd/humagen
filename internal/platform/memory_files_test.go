@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/orchagent/flow/isolation"
+	"github.com/urmzd/orchagent/flow/isolation/isolationtest"
 	"github.com/urmzd/orchagent/flow/turn/native"
 
 	"github.com/urmzd/humagen/internal/platform"
@@ -123,5 +125,98 @@ func TestARunsMemoryIsInstalledAndItsChangesKept(t *testing.T) {
 	other := auth.Principal{Kind: auth.User, Tenant: "globex", Subject: "ada", Roles: []auth.Role{auth.Admin}}
 	if hits, _ := p.SearchMemory(ctx, other, "tables Tuesdays noon", 10); len(hits) != 0 {
 		t.Fatalf("another tenant found %+v", hits)
+	}
+}
+
+// The chain is the run's project first, then ancestors nearest first.
+func TestMemoryMountsKeepOwnProjectWritableAndAncestorsReadOnly(t *testing.T) {
+	p := startWith(t, platform.Config{Sandbox: isolation.Sandbox{Leaser: &isolationtest.Leaser{Dir: t.TempDir()}, Name: "test"}})
+	ctx := t.Context()
+	who := auth.Principal{Kind: auth.User, Tenant: tenant, Subject: "ada", Roles: []auth.Role{auth.Admin}}
+	for _, in := range []platform.ProjectInput{{Name: "Parent"}, {Name: "Child", Parent: "Parent"}} {
+		if _, err := p.CreateProject(ctx, tenant, ada, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, project := range []string{"Child", "Parent", ""} {
+		if _, err := p.Memory.Add(tenant, memory.ProjectOwner(project), "Memory for "+project, memory.Person, memory.Approved, "ada", time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r, err := p.Converse(ctx, tenant, platform.Turn{ID: "memory-chain", Agent: "lead", Text: "Hello", Project: "Child", Actor: platform.ActorOf(who)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := await(t, p, r.ID, runs.Completed)
+	want := map[string]struct {
+		dir      string
+		readOnly bool
+	}{
+		"Child":  {"project/memory/@project", false},
+		"Parent": {"project/memory/@parents/Parent", true},
+		"":       {"project/memory/@parents/@workspace", true},
+	}
+	count := 0
+	for _, m := range p.MemoryMounts(run) {
+		if m.Tree.Kind != drive.ProjectKind {
+			continue
+		}
+		w, ok := want[m.Tree.Project]
+		if !ok || m.Dir != w.dir || m.ReadOnly != w.readOnly {
+			t.Fatalf("mount = %+v, want %+v", m, w)
+		}
+		count++
+	}
+	if count != 3 {
+		t.Fatalf("project mounts = %d", count)
+	}
+	req := runtime.Request{RunID: run.ID, Tenant: tenant, Definition: native.Revision{Spec: native.Spec{Name: "lead"}, Version: wire.VersionOf(1)}}
+	cctx, claim := p.Claim(ctx, req)
+	if out, err := useIn(t, cctx, p, req, platform.ToolShell, map[string]any{"command": "pwd"}); err != nil || !strings.HasPrefix(out, "exit 0") {
+		t.Fatalf("shell = %q %v", out, err)
+	}
+	if err := claim.Release(ctx); err != nil {
+		t.Fatal(err)
+	}
+	recorded, err := p.Runs.Get(tenant, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count = 0
+	for _, u := range recorded.Memory {
+		if u.Kind != string(drive.ProjectKind) {
+			continue
+		}
+		w, ok := want[u.Project]
+		if !ok || u.Dir != w.dir || u.ReadOnly != w.readOnly || u.Files == 0 {
+			t.Fatalf("Run.memory = %+v, want %+v", u, w)
+		}
+		count++
+	}
+	if count != 3 {
+		t.Fatalf("recorded project trees = %d", count)
+	}
+	view, err := p.ConversationMemories(ctx, who, run.Thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count = 0
+	for _, rm := range view.Runs {
+		if rm.Run != run.ID {
+			continue
+		}
+		for _, tr := range rm.Trees {
+			if tr.Kind != string(drive.ProjectKind) {
+				continue
+			}
+			w, ok := want[tr.Project]
+			if !ok || tr.Dir != "/"+w.dir || tr.ReadOnly != w.readOnly || !tr.Installed {
+				t.Fatalf("memory scope = %+v, want %+v", tr, w)
+			}
+			count++
+		}
+	}
+	if count != 3 {
+		t.Fatalf("view project trees = %d", count)
 	}
 }

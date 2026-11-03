@@ -20,6 +20,7 @@ import { loadTests } from "./testload.ts";
 // may still be running the tests after this module returns.
 GlobalRegistrator.register({ url: "http://localhost:5173/" });
 await loadTests([
+  "/src/automations.dom.test.tsx",
   "/src/email-preferences.dom.test.tsx",
   "/src/activity.dom.test.tsx",
   "/src/wave.dom.test.tsx",
@@ -56,4 +57,6 @@ await loadTests([
   "/src/outcome-actions.dom.test.tsx",
   "/src/mobile.dom.test.tsx",
   "/src/slash-commands.dom.test.tsx",
+  // Waits on real timers, so it loads last: every hook is registered by then.
+  "/src/sidebar-peek.dom.test.tsx",
 ]);
