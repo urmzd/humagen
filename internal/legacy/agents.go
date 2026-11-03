@@ -11,9 +11,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/urmzd/humagen/fiber/pkg/definition"
 	"github.com/urmzd/humagen/pkg/agents"
 	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/orchagent/flow/definition"
 )
 
 // BuiltinAgents maps the handles from before the rename to their current

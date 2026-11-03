@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/humagen/fiber/pkg/bus"
-	"github.com/urmzd/humagen/fiber/pkg/event"
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/orchagent/flow/bus"
+	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/orchagent/flow/runtime"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/humagen/internal/platform"

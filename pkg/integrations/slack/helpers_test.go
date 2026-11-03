@@ -6,8 +6,8 @@ import (
 
 	"github.com/urmzd/humagen/internal/wire"
 
-	"github.com/urmzd/humagen/fiber/pkg/address"
-	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/orchagent/flow/address"
+	"github.com/urmzd/orchagent/flow/event"
 )
 
 var target = address.MustParse("slack://T01ABCDEF/C02CHANNEL?thread=1700000000.000100")

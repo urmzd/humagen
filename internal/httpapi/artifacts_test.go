@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/nativefiles"
 	"github.com/urmzd/humagen/pkg/policy"
+	"github.com/urmzd/orchagent/flow/event"
 )
 
 func (f *fixture) raw(t *testing.T, path, bearer string) (*http.Response, string) {

@@ -17,8 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/orchagent/flow/event"
 
 	"github.com/urmzd/humagen/pkg/state"
 )

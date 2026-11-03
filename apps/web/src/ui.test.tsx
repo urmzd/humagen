@@ -2141,7 +2141,7 @@ test("credential failures give an actionable answer and reference without exposi
     failure: {
       kind: "internal",
       message:
-        "anchor: max attempts: resolve op://Private/provider/api_key: credential unavailable",
+        "durable: max attempts: resolve op://Private/provider/api_key: credential unavailable",
       reference: "r-credential",
     },
   };

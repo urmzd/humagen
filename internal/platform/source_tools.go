@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
+	"github.com/urmzd/orchagent/flow/runtime"
 	saigetypes "github.com/urmzd/saige/agent/types"
 )
 
