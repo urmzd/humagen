@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.77.0 (2026-11-03)
+
+### Features
+
+- GitHub App tokens, people maps and the data catalog (ported) (#207) ([3b4c845](https://github.com/urmzd/humagen/commit/3b4c845eb288d6b071fc080616b96a1237fe09b8))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.76.0...v0.77.0)
+
+
 ## 0.76.0 (2026-11-03)
 
 ### Features
