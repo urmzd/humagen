@@ -48,20 +48,28 @@ func (p *Platform) SeePerson(who auth.Principal) {
 	}
 }
 
-// seeMapped records the people a Slack client maps, by subject.
+// seeMapped records the people a Slack or GitHub client maps, by subject.
 func (p *Platform) seeMapped(c clients.Client) {
-	if c.Slack == nil {
-		return
-	}
-	subjects := make([]string, 0, len(c.Slack.People))
-	for _, who := range c.Slack.People {
-		subjects = append(subjects, who)
-	}
-	slices.Sort(subjects)
-	for _, who := range slices.Compact(subjects) {
-		if _, err := p.People.Ensure(c.Tenant, who, people.Slack, p.now()); err != nil && !errors.Is(err, people.ErrLimit) {
-			p.log.Warn("platform: a mapped person could not be recorded", "tenant", c.Tenant, "client", c.ID, "error", err)
+	record := func(mapped map[string]string, source string) {
+		if len(mapped) == 0 {
+			return
 		}
+		subjects := make([]string, 0, len(mapped))
+		for _, who := range mapped {
+			subjects = append(subjects, who)
+		}
+		slices.Sort(subjects)
+		for _, who := range slices.Compact(subjects) {
+			if _, err := p.People.Ensure(c.Tenant, who, source, p.now()); err != nil && !errors.Is(err, people.ErrLimit) {
+				p.log.Warn("platform: a mapped person could not be recorded", "tenant", c.Tenant, "client", c.ID, "error", err)
+			}
+		}
+	}
+	if c.Slack != nil {
+		record(c.Slack.People, people.Slack)
+	}
+	if c.GitHub != nil {
+		record(c.GitHub.People, people.GitHub)
 	}
 }
 
