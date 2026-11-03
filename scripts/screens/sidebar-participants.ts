@@ -46,7 +46,7 @@ export function sidebarParticipants(call: Call, thread: string) {
       await page.reload();
       await open();
       const navigation = page.getByRole("complementary", { name: "Navigation" });
-      // Project pins live in the list's Projects view (DES-049), picked from its filter menu.
+      // Project pins live in the list's Projects view (DES-054), picked from its filter menu.
       const projectsView = async () => {
         const filter = navigation.getByRole("button", { name: /^Filter conversations/ });
         await filter.click();

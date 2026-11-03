@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { Page } from "playwright-core";
 
 /**
- * The sidebar's conversation list (DES-049): Recents with each row's dot and
+ * The sidebar's conversation list (DES-054): Recents with each row's dot and
  * age, its hover actions, the Projects view and Archived. The seeded rows are
  * dressed, in the browser only, with the states a live workspace has: one
  * waiting on a person, one running and one with an unread answer.

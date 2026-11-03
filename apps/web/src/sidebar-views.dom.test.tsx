@@ -7,7 +7,7 @@ import { unreadPrefs } from "./preferences.ts";
 import type { Route } from "./route.ts";
 import { Sidebar } from "./Sidebar.tsx";
 
-// DES-049: Recents, Pinned, Projects and Archived, each row's dot and age,
+// DES-054: Recents, Pinned, Projects and Archived, each row's dot and age,
 // and archiving a conversation for the reader alone.
 
 let net: ReturnType<typeof stubFetch> | undefined;
