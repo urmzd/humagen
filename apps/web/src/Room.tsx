@@ -689,6 +689,11 @@ export function ThreadRoom({
 
   const onAction = (a: UiAction) => {
     if (a.id === ActionId.openRun) return openPanel("activity", { run: a.payload.target });
+    // A review's Ask Follow-up puts its words, tagging the agent, in the box. Nothing is sent.
+    if (a.id === ActionId.reviewFollowUp) {
+      if (posts && a.payload.text) setSeed({ text: `${a.payload.text} `, mode: "prepend" });
+      return;
+    }
     if (!isAnswer(a)) return;
     const answer = answerOfAction(a);
     if (!answer) return;

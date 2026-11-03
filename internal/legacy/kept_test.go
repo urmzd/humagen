@@ -2,6 +2,7 @@ package legacy_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -9,12 +10,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/spec"
+	"github.com/urmzd/orchagent/flow/runschema"
+	"github.com/urmzd/orchagent/flow/runtime"
 )
 
 // These names are stored in run records, schedules, the ledger and the
@@ -94,15 +96,23 @@ var keptFiberTables = []string{
 	"fiber_tool_snapshots",
 }
 
-var createTable = regexp.MustCompile(`CREATE TABLE IF NOT EXISTS (fiber_\w+)`)
+// The new prefixes are matched too, so a table renamed to one of them fails
+// here instead of silently leaving the stored fiber_ table behind.
+var createTable = regexp.MustCompile(`CREATE TABLE IF NOT EXISTS ((?:fiber|flow|durable|sandbox)_\w+)`)
 
-// The tables are read from the stores' source, so a renamed or a new table
-// fails here until it is listed.
+// The tables are read from the stores' source in the orchagent version
+// go.mod pins (flow, which was fiber), so a renamed or a new table fails here
+// until it is listed.
 func TestFiberTablesAreKept(t *testing.T) {
-	root, err := filepath.Abs("../../fiber")
+	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/urmzd/orchagent").Output()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("locate orchagent: %v", err)
 	}
+	dir := strings.TrimSpace(string(out))
+	if dir == "" {
+		t.Fatal("orchagent is not downloaded: run go mod download")
+	}
+	root := filepath.Join(dir, "flow")
 	seen := map[string]bool{}
 	err = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
@@ -135,6 +145,21 @@ func TestFiberTablesAreKept(t *testing.T) {
 	for _, name := range keptFiberTables {
 		if !strings.Contains(string(doc), "`"+name+"`") {
 			t.Errorf("docs/guides/upgrading-from-warp.md does not list %s", name)
+		}
+	}
+}
+
+// The run ledger and queue are opened only through runschema.Open, which maps
+// durable's Postgres adapters (whose own defaults are durable_*) onto these
+// tables. A deployment's existing runs are read from them.
+func TestTheRunTablesKeepTheirFiberNames(t *testing.T) {
+	for got, want := range map[string]string{
+		runschema.RunsTable:    "fiber_runs",
+		runschema.RecordsTable: "fiber_run_records",
+		runschema.QueueTable:   "fiber_run_queue",
+	} {
+		if got != want {
+			t.Errorf("runschema names %q, want %q", got, want)
 		}
 	}
 }

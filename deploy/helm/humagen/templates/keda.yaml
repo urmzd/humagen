@@ -1,5 +1,5 @@
 {{- /* A KEDA ScaledObject for the worker Deployment, scaled on the runs in
-the Postgres queue (fiber_run_queue, anchor's pgqueue mapping). KEDA reads
+the Postgres queue (fiber_run_queue, durable's pgqueue, mapped by flow/runschema). KEDA reads
 the connection string from the existingSecret through a
 TriggerAuthentication. Needs KEDA's CRDs in the cluster. */}}
 {{- $w := .Values.worker | default dict -}}

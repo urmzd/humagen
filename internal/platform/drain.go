@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	dqueue "github.com/urmzd/anchor/pkg/queue"
+	dqueue "github.com/urmzd/orchagent/durable/queue"
 
 	"github.com/urmzd/humagen/pkg/call"
 )

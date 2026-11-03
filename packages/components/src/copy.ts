@@ -1627,6 +1627,43 @@ export const defaultCopy = {
   declinedBy: (by: string, time: string) => `Declined by ${by} · ${time}`,
   approvalNeeded: (summary: string) => `Approval needed: ${summary}`,
   /** A run the platform held at a limit, for a person to grant it more or stop it. */
+  /** A structured code review an agent returned (`humagen.github.review.v1`). */
+  reviewReport: {
+    title: "Review",
+    /** The commit the review read, beside the title. */
+    commit: (sha: string) => `Commit ${sha}`,
+    preparing: "Preparing the review",
+    severity: "Findings by severity",
+    group: { error: "Errors", warning: "Warnings", info: "Info" },
+    count: {
+      error: (n: number) => `${n} ${n === 1 ? "error" : "errors"}`,
+      warning: (n: number) => `${n} ${n === 1 ? "warning" : "warnings"}`,
+      info: (n: number) => `${n} info`,
+    },
+    suggestion: "Suggestion",
+    evidence: "Evidence",
+    /** Where Slack shows the words to ask with, since its composer is its own. */
+    followUpPrompt: "To follow up, ask",
+    followUp: "Ask Follow-up",
+    followUpLabel: (title: string) => `Ask a follow-up about ${title}`,
+    noFindings: "No findings reported. See the summary and notes for the review's scope.",
+    comments: "Notes",
+    related: "Related",
+    summary: "Summary",
+    findings: "Findings",
+    /** Shown code of a piece of evidence, read at the commit it cites. */
+    source: {
+      open: "Open on GitHub",
+      loading: "Reading the lines at that commit",
+      failed: "The lines could not be read here.",
+      /** Read aloud before the place it opens, such as pkg/a.go:12. */
+      show: "Show the code at",
+    },
+    copyMarkdown: "Copy as Markdown",
+    copied: "Copied",
+    /** The one-line point, for notifications and screen readers. */
+    point: (counts: string, summary: string) => `Review: ${counts}. ${summary}`,
+  },
   budgetHold: {
     grant: (amount: string) => `Grant ${amount}`,
     stop: "Stop Run",

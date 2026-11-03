@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/humagen/fiber/pkg/mcptools"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/orchagent/flow/mcptools"
 )
 
 type scheduledSourceBoundary struct {

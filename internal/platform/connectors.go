@@ -15,11 +15,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/humagen/fiber/pkg/address"
-	"github.com/urmzd/humagen/fiber/pkg/connector"
-	"github.com/urmzd/humagen/fiber/pkg/event"
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
-	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/orchagent/flow/address"
+	"github.com/urmzd/orchagent/flow/connector"
+	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/orchagent/flow/turn/native"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -88,6 +88,9 @@ type seat struct {
 	peer   Peer
 	// verifier is nil for a Connection, which verifies inside its handler.
 	verifier verifier
+	// files reads source at a commit for the console (GitHubSource). Nil
+	// for a surface with no files.
+	files sourceReader
 
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -105,6 +108,8 @@ type surface struct {
 	// ctx and publish are set while Ingest runs.
 	ctx     context.Context
 	publish connector.Publish
+	// sources are files read at a commit for GitHubSource.
+	sources sourceFiles
 }
 
 var (

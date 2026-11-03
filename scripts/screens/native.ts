@@ -3,6 +3,7 @@
  */
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { REVIEW_ANSWER, REVIEW_ASK } from "./review.ts";
 
 interface Message {
   role: string;
@@ -113,6 +114,9 @@ function response(request: ModelRequest) {
   }
   const current = request.messages.slice(lastUser + 1);
   const asks = plain(request.messages[lastUser]?.content);
+  // The review card's agent answers at once with its structured review (review.ts).
+  if (asks.includes(REVIEW_ASK))
+    return { delta: { role: "assistant", content: REVIEW_ANSWER }, finish: "stop" };
   const revising = /Requested changes:|please revise/i.test(asks);
   const results = current.filter((message) => message.role === "tool");
   const step = results.length;

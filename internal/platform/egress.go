@@ -5,10 +5,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/urmzd/playscape/pkg/isolate/egress"
+	"github.com/urmzd/orchagent/sandbox/isolate/egress"
 
-	"github.com/urmzd/humagen/fiber/pkg/isolation"
 	"github.com/urmzd/humagen/pkg/audit"
+	"github.com/urmzd/orchagent/flow/isolation"
 )
 
 // Egress decisions in the audit log (docs/reference/spec.md, Egress).

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/humagen/fiber/pkg/mcptools"
+	"github.com/urmzd/orchagent/flow/mcptools"
 )
 
 type transportFunc func(*http.Request) (*http.Response, error)

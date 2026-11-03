@@ -6,10 +6,10 @@ import (
 	"sort"
 	"strings"
 
-	transport "github.com/urmzd/humagen/fiber/pkg/connectors/github"
-	"github.com/urmzd/humagen/fiber/pkg/event"
 	presentation "github.com/urmzd/humagen/internal/presentation/github"
 	"github.com/urmzd/humagen/internal/wire"
+	transport "github.com/urmzd/orchagent/flow/connectors/github"
+	"github.com/urmzd/orchagent/flow/event"
 )
 
 func (c *Connector) guideLogin(agent string) string {

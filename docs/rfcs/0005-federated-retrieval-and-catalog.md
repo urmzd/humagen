@@ -16,7 +16,7 @@ hold at the size of a company's data, and stay inside each reader's own access.
   into passages of about 800 bytes and ranked with BM25 only: lexical, no
   embeddings. Its logic and passages live in memory, written through
   `pkg/state` ([status](../architecture/overview.md#status)).
-- **Hybrid search exists, unused.** `fiber/pkg/knowledge` has an `Embedder`
+- **Hybrid search exists, unused.** `orchagent/flow/knowledge` has an `Embedder`
   interface (a deterministic `Hashing` embedder and an OpenAI-compatible `HTTP`
   one), a dense arm, reciprocal rank fusion and a pgvector backend. The
   platform does not use it.
@@ -47,7 +47,7 @@ copy of the warehouse, and it never guesses a table name.
 ## Hybrid retrieval in `pkg/knowledge`
 
 `pkg/knowledge` keeps its API, lifecycle, variants and access rules. It gains a
-dense arm beside BM25, composed from `fiber/pkg/knowledge` rather than
+dense arm beside BM25, composed from `orchagent/flow/knowledge` rather than
 reimplemented:
 
 - **Embedder slot.** A System spec field `knowledge.embedder`, a slot:
@@ -62,7 +62,7 @@ reimplemented:
   vector is missing or from another model are queued again.
 - **Fusion.** Search embeds the query (bounded by a short timeout, outside the
   store lock), ranks the selected passages by cosine similarity, and fuses that
-  list with BM25 by reciprocal rank fusion, as `fiber/pkg/knowledge` does. A
+  list with BM25 by reciprocal rank fusion, as `orchagent/flow/knowledge` does. A
   passage without a vector still ranks lexically. If the query cannot be
   embedded, search is lexical, and the hit says so.
 - **Same access rules.** Fusion runs over exactly the passages the lexical arm

@@ -12,8 +12,15 @@ import {
   updatesOf,
   type WireProject,
 } from "@humagen/adapter";
-import { defaultCopy, Home, MessageView, TurnView } from "@humagen/components";
-import { ActionId, type MessagePart, partResolution, type Turn } from "@humagen/core";
+import { defaultCopy, Home, MessageView, TurnView, toolsLineText } from "@humagen/components";
+import {
+  ActionId,
+  fileEdits,
+  type MessagePart,
+  partResolution,
+  type Turn,
+  timeline,
+} from "@humagen/core";
 import { homeView, renderToSlack } from "@humagen/render-slack";
 import { WebSurface } from "@humagen/render-web";
 import type { ReactElement } from "react";
@@ -163,10 +170,33 @@ function missing(slackText: string, webText: string, content: string[]) {
   };
 }
 
+/**
+ * Slack says a turn's steps as one line per run of tool calls (`ToolLines`),
+ * not each call's title and output: what a Slack reader must see of them.
+ */
+function slackContent(turn: Turn): string[] {
+  const { segments, rest } = timeline(turn);
+  const edits = fileEdits(turn.tasks);
+  const lines = [...segments, ...rest].flatMap((s) =>
+    s.kind === "tools"
+      ? [toolsLineText(s.tasks, defaultCopy, edits)]
+      : s.kind === "call"
+        ? [s.task.title]
+        : [],
+  );
+  return [...turnContent({ ...turn, tasks: [] }), ...lines.map(plain)].filter(Boolean);
+}
+
 /** Both surfaces show all of a turn. */
 function bothShow(turn: Turn) {
   const el = <TurnView turn={turn} />;
-  assert.deepEqual(missing(slack(el), web(el), turnContent(turn)), { slack: [], web: [] });
+  assert.deepEqual(
+    {
+      slack: missing(slack(el), "", slackContent(turn)).slack,
+      web: missing("", web(el), turnContent(turn)).web,
+    },
+    { slack: [], web: [] },
+  );
 }
 
 /** Both surfaces say each of these. */

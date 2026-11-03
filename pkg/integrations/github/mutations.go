@@ -12,12 +12,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/urmzd/humagen/fiber/pkg/address"
-	"github.com/urmzd/humagen/fiber/pkg/connector"
-	transport "github.com/urmzd/humagen/fiber/pkg/connectors/github"
-	"github.com/urmzd/humagen/fiber/pkg/connectors/mention"
-	"github.com/urmzd/humagen/fiber/pkg/event"
-	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/orchagent/flow/address"
+	"github.com/urmzd/orchagent/flow/connector"
+	transport "github.com/urmzd/orchagent/flow/connectors/github"
+	"github.com/urmzd/orchagent/flow/connectors/mention"
+	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/orchagent/flow/runtime"
 
 	"github.com/urmzd/humagen/internal/wire"
 )
