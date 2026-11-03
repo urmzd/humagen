@@ -10,6 +10,7 @@ import {
   contextPressure,
   type Failure,
   type Field,
+  fileEdits,
   formatAmount,
   formatTokens,
   type InboxItem,
@@ -18,9 +19,12 @@ import {
   type Notice,
   readReview,
   SERVICE_TONE,
+  type Segment,
   type SessionState,
   type SystemAlert,
+  type Task as TaskT,
   type Turn,
+  timeline,
   timeToken,
 } from "@humagen/core";
 import {
@@ -53,6 +57,7 @@ import {
 import type { ReactNode } from "react";
 import { type Copy, defaultCopy } from "./copy";
 import { AnswerText, reviewCountLine } from "./review";
+import { toolsLine } from "./timeline";
 
 interface WithCopy {
   copy?: Copy;
@@ -604,6 +609,62 @@ export function TaskList({ turn, copy = defaultCopy }: { turn: Turn } & WithCopy
   return turn.planTitle ? <Plan title={planTitle(turn, copy)}>{tasks}</Plan> : tasks;
 }
 
+/** The most lines a run of steps takes in one Slack message; the rest are counted in the last. */
+const MAX_TOOL_LINES = 8;
+
+/** A run of tool calls as one line of words, with its counts and what needs saying after it. */
+export function toolsLineText(
+  tasks: readonly TaskT[],
+  copy: Copy = defaultCopy,
+  turnEdits?: ReturnType<typeof fileEdits>,
+): string {
+  const line = toolsLine(tasks, copy, turnEdits);
+  const w = copy.conversation.toolLine;
+  return [
+    line.counts && line.file && !line.running ? `${line.text} ${line.counts}` : line.text,
+    line.failed > 0 ? w.failed(line.failed) : "",
+    line.waiting ? w.waiting : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/**
+ * A turn's steps where a surface has room for one line each: every run of
+ * tool calls between two parts of the answer as one context line, in the
+ * order they came, and each call to another agent as its own row. Slack draws
+ * this; the web opens each run in place.
+ */
+export function ToolLines({ turn, copy = defaultCopy }: { turn: Turn } & WithCopy) {
+  const { segments, rest } = timeline(turn);
+  const edits = fileEdits(turn.tasks);
+  const runs = [...segments, ...rest].filter(
+    (s): s is Extract<Segment, { kind: "tools" | "call" }> =>
+      s.kind === "tools" || s.kind === "call",
+  );
+  if (runs.length === 0) return null;
+  const shown = runs.length > MAX_TOOL_LINES ? runs.slice(0, MAX_TOOL_LINES - 1) : runs;
+  const more = runs.slice(shown.length).flatMap((s) => (s.kind === "tools" ? s.tasks : [s.task]));
+  return (
+    <>
+      {shown.map((s) =>
+        s.kind === "call" ? (
+          <TaskList
+            key={s.key}
+            turn={{ ...turn, planTitle: undefined, tasks: [s.task] }}
+            copy={copy}
+          />
+        ) : (
+          <Context key={s.key} items={[toolsLineText(s.tasks, copy, edits)]} />
+        ),
+      )}
+      {more.length > 0 && (
+        <Context key="more" items={[copy.conversation.toolLine.tool.many(more.length)]} />
+      )}
+    </>
+  );
+}
+
 /** Replace `[[citation-id]]` markers with numbered inline links into the source list. */
 export function linkCitations(text: string, citations: Citation[]): string {
   return text.replace(/\[\[([^\]]+)\]\]/g, (_m, id: string) => {
@@ -696,7 +757,20 @@ export function TurnView({
           ]}
         />
       )}
-      {!streamed && !hideTasks && <TaskList turn={turn} copy={copy} />}
+      {!streamed &&
+        !hideTasks &&
+        (turn.planTitle ? (
+          <TaskList turn={turn} copy={copy} />
+        ) : (
+          <>
+            <Only surface="web">
+              <TaskList turn={turn} copy={copy} />
+            </Only>
+            <Only surface="slack">
+              <ToolLines turn={turn} copy={copy} />
+            </Only>
+          </>
+        ))}
       {settled.map((i) => (
         <InterruptCard key={i.id} turnId={turn.id} interrupt={i} viewer={viewer} copy={copy} />
       ))}

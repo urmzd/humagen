@@ -120,6 +120,8 @@ interface Ids {
   routedChat: string;
   nativeThread: string;
   nativeArtifact: string;
+  /** A conversation whose one turn has words, runs of tool calls and a file written twice, in order. */
+  timelineThread: string;
 }
 
 /** Opens a page's More menu. */
@@ -340,6 +342,47 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
         assert.ok(draft.includes(`artifact:${ids.nativeArtifact}@1`));
         assert.ok(draft.includes("slide 2"));
         assert.ok(draft.includes("Keep my unsent draft."));
+      },
+    },
+    {
+      // A turn as a transcript: words, a run of calls as one line, words, a
+      // file written as "Updated plan.md +a -b", the answer.
+      name: "conversation-timeline",
+      path: `/conversations/${ids.timelineThread}`,
+      act: async (page) => {
+        const message = page.getByRole("article", { name: "native-writer message", exact: true });
+        await message.getByText("The plan now keeps the November 12 date").waitFor();
+        const text = (await message.innerText()).replace(/\s+/g, " ");
+        const order = [
+          "I'll draft the plan",
+          "plan.md",
+          "The draft is there.",
+          "Read 2 files",
+          "The owner is missing",
+          "Updated plan.md",
+          "The plan now keeps",
+        ].map((part) => text.indexOf(part));
+        assert.ok(
+          order.every((i) => i >= 0),
+          `every part of the turn shows: ${order} in ${text}`,
+        );
+        assert.deepEqual(
+          [...order].sort((a, b) => a - b),
+          order,
+          "in the order it happened",
+        );
+        // Opened, a run lists each call; a call opens to its arguments.
+        const run = message.getByTestId("step-group").filter({ hasText: "Read 2 files" });
+        await run.getByRole("button", { expanded: false }).first().click();
+        await run.getByTestId("tool-row").first().getByRole("button").first().click();
+        await run.getByText("Arguments").waitFor();
+        // A file written opens in the Workspace at its changes.
+        const link = message.getByRole("link", { name: "Open plan.md in the Workspace" }).last();
+        const href = await link.getAttribute("href");
+        assert.ok(
+          href?.endsWith(`/conversations/${ids.timelineThread}/workspace?file=plan.md&tab=changes`),
+          String(href),
+        );
       },
     },
     {
@@ -1566,6 +1609,7 @@ const ids0: Ids = {
   routedChat: "",
   nativeThread: "",
   nativeArtifact: "",
+  timelineThread: "",
 };
 
 interface Posted {
@@ -1757,6 +1801,17 @@ async function seedNative(call: Call): Promise<Pick<Ids, "nativeThread" | "nativ
   assert.ok(file, "The actual model/tool pipeline must publish a native presentation");
   assert.equal(file.version, 1);
   return { nativeThread: posted.thread.id, nativeArtifact: file.id };
+}
+
+/** A turn over several model steps, through the real runtime and sandbox tools. */
+async function seedTimeline(call: Call): Promise<Pick<Ids, "timelineThread">> {
+  const posted = await call<Posted>("POST", "/api/threads", {
+    project: "Launch",
+    visibility: "private",
+    text: "@native-writer Write the multi-step plan in the scratchpad.",
+  });
+  for (const run of posted.runs) await settled(call, run.id);
+  return { timelineThread: posted.thread.id };
 }
 
 async function waitFor(ok: () => Promise<boolean>, failure: string): Promise<void> {
@@ -2188,6 +2243,7 @@ async function main(): Promise<void> {
       schedule: "weekly-summary",
       ...(await seedChats(call)),
       ...(await seedNative(call)),
+      ...(await seedTimeline(call)),
     };
     results.push(...(await capture(browser, base, screens(ids, call))));
 
