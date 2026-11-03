@@ -16,6 +16,7 @@ import {
 } from "./api.ts";
 import { AUTO } from "./availability.ts";
 import { ClientConnect } from "./ClientConnect.tsx";
+import { CatalogBrowser } from "./SourceCatalog.tsx";
 import {
   SourceAccessMode,
   SourceAttachments,
@@ -179,7 +180,12 @@ export function Integrations({
                 >
                   <span className="break-words text-aui-sm font-medium">{s.name}</span>
                   <span className="text-aui-xs text-aui-muted">
-                    {s.lifecycle?.provider ?? defaultCopy.sourceLifecycle.providers.manual}
+                    {defaultCopy.sourceLifecycle.providers[
+                      (s.lifecycle?.provider ??
+                        "manual") as keyof typeof defaultCopy.sourceLifecycle.providers
+                    ] ??
+                      s.lifecycle?.provider ??
+                      defaultCopy.sourceLifecycle.providers.manual}
                   </span>
                 </button>
               </li>
@@ -342,7 +348,10 @@ export function Integrations({
               )}
             </>
           ) : (
-            <p className="text-aui-sm text-aui-muted">{words.noSelection}</p>
+            <div className="flex flex-col gap-4">
+              <p className="text-aui-sm text-aui-muted">{words.noSelection}</p>
+              <CatalogBrowser />
+            </div>
           )}
         </section>
       </div>

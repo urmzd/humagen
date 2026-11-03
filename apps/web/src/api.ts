@@ -506,6 +506,10 @@ export interface Policy {
   max_tokens?: number;
   warn_at?: number;
   action: "block" | "approve";
+  /** Maximum micro-USD over-budget grant when action is "approve". */
+  max_grant?: number;
+  /** Maximum model tokens over-budget grant when action is "approve". */
+  max_grant_tokens?: number;
   /** Who set it. Absent is an admin; "owner" is a tighten-only limit a project's owner set. */
   authority?: "admin" | "owner";
   version: number;
@@ -536,6 +540,7 @@ export interface Client {
   slack?: {
     sessions?: boolean;
     commands?: { name: string; description: string; argument_hint?: string }[];
+    people?: Record<string, string>;
   };
   github?: {
     automations?: GitHubAutomation[];
@@ -546,6 +551,7 @@ export interface Client {
     read_repositories?: string[];
     /** The app's own login. Once humagen's GitHub connector reads it, a comment that mentions it and names no agent is answered by the default; until then it changes nothing. */
     login?: string;
+    people?: Record<string, string>;
   };
   /** Where the client files threads it starts outside a bound channel. Absent, the workspace's general. */
   home?: { project: string; channel?: string };
@@ -567,9 +573,18 @@ export type ClientCreateInput = Pick<
   Client,
   "id" | "name" | "surface" | "identity" | "default_agent" | "agents" | "enabled"
 > & {
+  slack?: Client["slack"];
   github?: Client["github"];
   credentials: { token: ToolCredentialInput; signing_secret: ToolCredentialInput };
 };
+
+import type {
+  CatalogConnector,
+  CatalogConnectorView,
+  CatalogEntry,
+  CatalogPage,
+} from "../../../packages/client/src/generated/types.ts";
+export type { CatalogConnector, CatalogConnectorView, CatalogEntry, CatalogPage };
 
 export interface Measure {
   used: number;
@@ -1450,6 +1465,14 @@ export const api = {
       "GET",
       `/api/knowledge/search?${new URLSearchParams(variant ? { q, source, variant } : { q, source })}`,
     ).then((r) => r.hits),
+  catalog: (q?: string) =>
+    call<CatalogPage>("GET", `/api/catalog${q ? `?${new URLSearchParams({ q })}` : ""}`),
+  crawlCatalogConnector: (name: string) =>
+    call<CatalogConnector>("POST", `/api/catalog/connectors/${encodeURIComponent(name)}/crawl`),
+  publishCatalogConnector: (name: string) =>
+    call<CatalogConnector>("POST", `/api/catalog/connectors/${encodeURIComponent(name)}/publish`),
+  withdrawCatalogConnector: (name: string) =>
+    call<CatalogConnector>("DELETE", `/api/catalog/connectors/${encodeURIComponent(name)}/publish`),
   logout: () => call<void>("POST", "/auth/logout"),
 };
 
