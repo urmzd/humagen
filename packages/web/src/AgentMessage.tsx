@@ -477,7 +477,7 @@ export function AgentMessage({
       <Markdown key={b.key} text={linkCitations(b.text, turn.citations)} />
     ) : b.kind === "thought" ? (
       <Reasoning key={b.key} text={b.text} streaming={thinkingNow && b.last} />
-    ) : b.kind === "steps" ? (
+    ) : b.kind === "tools" ? (
       <StepGroup key={b.key} turn={turn} tasks={b.tasks} copy={copy} />
     ) : (
       <ul key={b.key} aria-label="Agent calls" className="flex min-w-0 flex-col">

@@ -12,6 +12,7 @@ import {
   type Failure,
   type FailureKind,
   type Notice,
+  type Task,
   type Turn,
   timeToken,
 } from "./types";
@@ -1730,4 +1731,86 @@ export const homes: Record<
     consoleUrl: CONSOLE,
     links: [],
   },
+};
+
+const step = (
+  id: string,
+  tool: string,
+  args: unknown,
+  at: number,
+  over: Partial<Task> = {},
+): Task => ({
+  id,
+  title: tool.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()),
+  tool,
+  status: "complete",
+  input: JSON.stringify(args, null, 2),
+  at,
+  durationMs: 800,
+  ...over,
+});
+
+const multiStepText = [
+  "I'll read the pull request and the files it changes first.",
+  "\n\nThe change adds a remote Docker driver. CI was not readable from here, so I checked the tests by hand.",
+  "\n\nI wrote my notes to the scratchpad.",
+  "\n\nThe driver is sound. Two things to follow up: large reads copy the whole file first, and the image must ship `sh`, `cat` and `find`.",
+].join("");
+const cut = (n: number) => multiStepText.split("\n\n").slice(0, n).join("\n\n").length;
+
+/**
+ * A finished turn over three model steps: words, tool calls, words, a run
+ * of calls with one refused, words, a file written, the answer.
+ */
+export const multiStepTurn: Turn = {
+  ...base,
+  id: "turn-multi",
+  status: "done",
+  durationMs: 44_000,
+  text: multiStepText,
+  tasks: [
+    step(
+      "m1",
+      "github_read_context",
+      { address: "https://github.com/urmzd/playscape/pull/21" },
+      cut(1),
+      {
+        output: '{"subject":{"number":21,"title":"feat(isolate): drive a remote Docker daemon"}}',
+      },
+    ),
+    step("m2", "file_read", { path: "pkg/isolate/docker/docker.go" }, cut(2)),
+    step("m3", "file_read", { path: "pkg/isolate/docker/remote.go" }, cut(2)),
+    step(
+      "m4",
+      "github_workflow_status",
+      { ref: "f4a72e47a9b555b52d6b865478a3a741c38d8f85" },
+      cut(2),
+      {
+        status: "error",
+        output: "action failed: operations: action denied",
+      },
+    ),
+    step(
+      "m5",
+      "bash",
+      { command: "go test ./pkg/isolate/docker/... -run TestRemote -count=1" },
+      cut(2),
+      {
+        output: "ok  \tgithub.com/urmzd/playscape/pkg/isolate/docker\t2.114s",
+        durationMs: 2400,
+      },
+    ),
+    step(
+      "m6",
+      "file_write",
+      {
+        path: "scratchpads/review-notes.md",
+        content: "# Review\n\n- Large reads copy the file first.\n- Image needs sh, cat, find.\n",
+      },
+      cut(3),
+      {
+        output: "Wrote scratchpads/review-notes.md (88 bytes).",
+      },
+    ),
+  ],
 };

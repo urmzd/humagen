@@ -72,6 +72,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-043 | The brand's colors edge the page round its corners and glow round the chat bar, turning while a reply is in flight | Implemented: `styles.css`, `Composer.tsx`; web tests pass; screens pass light and dark at 1280x800 and 390x844 |
 | DES-044 | A conversation has a wave down its left edge to scan and scrub through its turns, and the keyboard opens and closes cleanly on a phone | Implemented: `TurnRail.tsx`, `Thread.tsx`, `Chat.tsx`, `Room.tsx`, `viewport.ts`; web tests pass (`wave.dom.test.tsx`, `pwa.test.ts`); screens pass at 390x844 and 1280x800; the keyboard on iOS needs a real device |
 | DES-045 | A phone reads like a native chat app: quiet message actions, a one-line chat bar and header, Chat and Work at the top of Home, a swipe from the edge for the drawer, and the installed app opening on Chat | Implemented: `theme.css`, `styles.css`, `Composer.tsx`, `ConversationShell.tsx`, `ModeSwitch.tsx`, `Sidebar.tsx`, `manifest.webmanifest`; web tests pass; screens pass at 390x844 and 1280x800 |
+| DES-046 | A turn reads as a transcript: words and runs of tool calls in the order they came, each run one line that names what it did, a file written opening in the Workspace, and the reader's messages on the right | Implemented: `packages/core/src/timeline.ts`, `packages/components/src/timeline.ts`, `WorkSteps.tsx`, `ToolLines` for Slack, `Room.tsx` message sides; core, components, adapter, render-slack and web DOM tests pass; `pnpm validate:slack` passes; screen `conversation-timeline` passes at 390x844 and 1280x800 |
 
 ### DES-001: Working integrations
 
@@ -771,7 +772,7 @@ approval, disabled early approval, restoration, refusal and the combined menu.
 - A run of steps is one quiet line with an icon that says what they did
   ("Read plan.md", "Searched the web, read files"). Open, each step shows the
   input it was given and the output it returned. A step waiting on a person
-  or one that failed keeps its group open.
+  keeps its group open; a failed one is counted in the line (DES-046).
 - A finished turn folds its steps under one "Worked" line.
 - Acceptance: a turn that read, wrote, then answered shows the read and the
   write between the words they came between, each with its input and output.
@@ -1147,3 +1148,37 @@ Rules:
   to the swipe.
 - The installed app opens on `/`, the new conversation. Notifications stays
   a shortcut.
+
+### DES-046: A turn as a transcript
+
+- A turn is an ordered list of segments built from the stream
+  (`timeline` in `@humagen/core`): text, thinking, runs of tool calls between
+  two pieces of text, and calls to other agents. Order comes from `Task.at`
+  and `Thought.at`, set by the reducer when each first appears, so it holds
+  across model steps and across a replay from the journal.
+- A run of tool calls is one muted line, written from the calls' names and
+  arguments alone (`toolsLine`): a lone call says what it was pointed at
+  ("Read docker.go", "Checked urmzd/humagen#178", "Ran go test ./..."), one
+  kind counts ("Read 3 files", "Ran 2 commands"), a mix names each kind in
+  order ("Read 2 files, ran a command"), and more than three kinds count
+  calls ("Used 6 tools"). A failed call adds "1 failed" in the same tone. A
+  call waiting on a person adds "waiting for you" and does not animate.
+- While a call runs, its run says "Running <tool>".
+- Open, each call is one compact row: an icon for its kind, its name, and
+  its command or target in muted monospace, cut with an ellipsis, then its
+  duration. A row opens to its arguments (the command, or indented JSON) and
+  its result, cut to ten lines with Show More.
+- A call that writes a workspace file reads "Updated <path> +a -b",
+  "Created <path> +a" or, when the earlier content is not known, "Wrote
+  <path> +a". It links to `/conversations/<id>/workspace?file=<path>&tab=changes`.
+- A connector action the runtime hands back to the model as "action failed:"
+  text is a failed call.
+- Slack draws each run as one context line, in order, at most eight a
+  message, the rest counted in the last.
+- In a conversation the reader's own messages sit on the right as a compact
+  bubble without a mark, decided by comparing the author with the signed-in
+  person, so another person's are on the left under their mark and name. A
+  person's consecutive messages show their name once.
+- Acceptance: a turn of words, two reads, words, a file written, an answer
+  shows those in that order, the reads as "Read 2 files", the file as a link
+  to its Changes, and Slack shows the same runs as context lines.

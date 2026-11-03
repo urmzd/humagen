@@ -52,8 +52,65 @@ function revisionModel(content: unknown): RevisionModel {
   }
   throw new Error("Actual file_read did not return a native revision model");
 }
+type Call = { name: string; args: Record<string, unknown> };
+type Reply = { text?: string; calls?: Call[] };
+
+const PLAN = "# Launch plan\n\n- Keep November 12\n- Confirm the owner\n";
+const PLAN_REVISED =
+  "# Launch plan\n\n- Keep November 12\n- Developer owns the briefing\n- Review the draft on Monday\n";
+
+/**
+ * A turn over four model steps, each with words before its tool calls, so
+ * the console's timeline has words, runs of calls and a file written twice to
+ * draw in order (scripts/screens: conversation-timeline).
+ */
+const multiStep: Reply[] = [
+  {
+    text: "I'll draft the plan in the scratchpad first.",
+    calls: [{ name: "file_write", args: { path: "plan.md", content: PLAN } }],
+  },
+  {
+    text: "\n\nThe draft is there. Reading it back with everything else in the folder.",
+    calls: [
+      { name: "file_read", args: { path: "plan.md" } },
+      { name: "file_list", args: { path: "." } },
+    ],
+  },
+  {
+    text: "\n\nThe owner is missing, so I'm adding it.",
+    calls: [{ name: "file_write", args: { path: "plan.md", content: PLAN_REVISED } }],
+  },
+  {
+    text: "\n\nThe plan now keeps the November 12 date, names Developer as the owner and sets a Monday review.",
+  },
+];
+
+function multiStepReply(request: ModelRequest, lastUser: number): Reply {
+  const step = request.messages.slice(lastUser + 1).filter((m) => m.role === "assistant").length;
+  return multiStep[Math.min(step, multiStep.length - 1)] as Reply;
+}
+
 function response(request: ModelRequest) {
   const lastUser = request.messages.findLastIndex((message) => message.role === "user");
+  if (/multi-step plan/i.test(plain(request.messages[lastUser]?.content))) {
+    const reply = multiStepReply(request, lastUser);
+    const step = request.messages.slice(lastUser + 1).filter((m) => m.role === "assistant").length;
+    return {
+      lead: reply.text && reply.calls ? { role: "assistant", content: reply.text } : undefined,
+      delta: reply.calls
+        ? {
+            role: "assistant",
+            tool_calls: reply.calls.map((c, index) => ({
+              index,
+              id: `multi-${step}-${index}`,
+              type: "function",
+              function: { name: c.name, arguments: JSON.stringify(c.args) },
+            })),
+          }
+        : { role: "assistant", content: reply.text },
+      finish: reply.calls ? "tool_calls" : "stop",
+    };
+  }
   const current = request.messages.slice(lastUser + 1);
   const asks = plain(request.messages[lastUser]?.content);
   const revising = /Requested changes:|please revise/i.test(asks);
@@ -189,6 +246,7 @@ export async function startNativeModel(): Promise<{ base: string; close: () => P
           model: "screens-native",
           choices: [{ index: 0, delta, finish_reason }],
         });
+      if ("lead" in output && output.lead) res.write(`data: ${chunk(output.lead)}\n\n`);
       res.write(`data: ${chunk(output.delta)}\n\n`);
       res.write(`data: ${chunk({}, output.finish)}\n\n`);
       res.end("data: [DONE]\n\n");
