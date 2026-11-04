@@ -347,8 +347,14 @@ export function Mailbox({
   const vc = copy.inboxViews;
   // The rows picked to mark at once. A new view starts with none.
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a new view clears the selection
-  useEffect(() => setPicked(new Set()), [view]);
+  // A new view clears the selection. It is reset while rendering, not in an
+  // effect: an effect also runs after the first render, and when that run is
+  // still pending as a person picks their first row, it wipes the pick.
+  const [pickedIn, setPickedIn] = useState(view);
+  if (pickedIn !== view) {
+    setPickedIn(view);
+    setPicked(new Set());
+  }
   const [ownShow, setOwnShow] = useState<MailboxShow>(defaultShow);
   const show = controlledShow === undefined ? ownShow : controlledShow;
   const setShow = (next: MailboxShow) => {
