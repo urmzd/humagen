@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.82.0 (2026-11-04)
+
+### Features
+
+- **review**: add GitHub issue and pull request workspace tabs (#203) ([761a7d8](https://github.com/urmzd/humagen/commit/761a7d820e4bbd54d5e7b58c03a9c55e15983090))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.81.0...v0.82.0)
+
+
 ## 0.79.0 (2026-11-04)
 
 ### Features
