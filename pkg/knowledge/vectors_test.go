@@ -127,7 +127,6 @@ func TestVectorsSurviveARestartAndFollowTheModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx2, cancel2 := context.WithCancel(context.Background())
-	defer cancel2()
 	same := hashing(256)
 	again.UseEmbedder(ctx2, same, nil)
 	indexed(t, again, same.Model())
@@ -137,6 +136,10 @@ func TestVectorsSurviveARestartAndFollowTheModel(t *testing.T) {
 	if n := same.texts.Load(); n != 1 {
 		t.Fatalf("restart embedded %d texts; want only the query", n)
 	}
+	// The restarted process stops before the next starts, as the first did:
+	// an indexer left running on the old model would embed again over the
+	// new model's vectors.
+	cancel2()
 
 	// The restarted store's indexer stops first, or it rewrites the
 	// vectors the new model computes with its own.

@@ -54,3 +54,26 @@ func TestTheSpecDeclaresConnectors(t *testing.T) {
 		t.Fatalf("a kind with no capability = %v", err)
 	}
 }
+
+func TestWarehouseAndStorageConnectorKinds(t *testing.T) {
+	cases := []struct {
+		kind, block string
+		live        bool
+	}{
+		{"snowflake", `{"account":"acme-test","database":"DATA","warehouse":"READ_WH","role":"READER","credential":{"ref":"env:SNOWFLAKE_TOKEN"}}`, true},
+		{"gcs", `{"bucket":"reports","credential":{"ref":"env:GCS_JSON"}}`, false},
+		{"s3", `{"bucket":"reports","credential":{"ref":"env:S3_JSON"}}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.kind, func(t *testing.T) {
+			c := spec.Connector{ConnectorShared: spec.ConnectorShared{Name: "reports", Owner: "ana"}, Slot: spec.Slot{Kind: tc.kind, Block: json.RawMessage(tc.block)}}
+			out, err := openConnectors(context.Background(), Options{}, connectorsFrom(c))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(out) != 1 || out[0].Crawler == nil || (out[0].Querier != nil) != tc.live {
+				t.Fatalf("capabilities=%+v", out)
+			}
+		})
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
@@ -443,7 +444,19 @@ func normalizeSourceConfig(cfg SourceConfig) (SourceConfig, error) {
 	if cfg.Provider == "manual" && cfg.Mode != Indexed {
 		return SourceConfig{}, fmt.Errorf("%w: manual sources are indexed", ErrInvalid)
 	}
-	if cfg.Provider != "manual" && !resourceID.MatchString(cfg.Origin) {
+	storageOrigin := false
+	if cfg.Provider == "gcs" || cfg.Provider == "s3" {
+		u, err := url.Parse(cfg.Origin)
+		scheme := "s3"
+		if cfg.Provider == "gcs" {
+			scheme = "gs"
+		}
+		storageOrigin = err == nil && u.Scheme == scheme && u.Host != "" && u.User == nil && u.RawQuery == "" && u.Fragment == ""
+		if !storageOrigin || cfg.Mode != Indexed {
+			return SourceConfig{}, fmt.Errorf("%w: storage sources require indexed mode and a bucket URI", ErrInvalid)
+		}
+	}
+	if cfg.Provider != "manual" && !storageOrigin && !resourceID.MatchString(cfg.Origin) {
 		return SourceConfig{}, fmt.Errorf("%w: provider resource ID", ErrInvalid)
 	}
 	if cfg.StopAfterSeconds == 0 {

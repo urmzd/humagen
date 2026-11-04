@@ -42,6 +42,50 @@ export function libraryScreens(call: Call): Screen[] {
   }
   return [
     {
+      name: "library-catalog",
+      path: "/library/catalog",
+      act: async (page) => {
+        await page.route("**/api/catalog*", (route) =>
+          route.fulfill({
+            json: {
+              connectors: [
+                {
+                  name: "analytics",
+                  system: "snowflake",
+                  mine: true,
+                  entries: 1,
+                  generation: 1,
+                  capabilities: ["catalog", "live"],
+                },
+              ],
+              entries: [
+                {
+                  system: "snowflake",
+                  kind: "table",
+                  path: "ANALYTICS.BILLING.MONTHLY_REVENUE",
+                  description: "Monthly recurring revenue by region and subscription tier.",
+                  connector: "analytics",
+                  seen_at: "2026-11-03T00:00:00Z",
+                  schema: [
+                    { name: "REGION", type: "VARCHAR", description: "Billing region" },
+                    {
+                      name: "REVENUE_USD",
+                      type: "NUMBER",
+                      description: "Monthly recurring revenue in USD",
+                    },
+                  ],
+                },
+              ],
+            },
+          }),
+        );
+        await page.reload();
+        await page.getByRole("heading", { name: defaultCopy.catalog.title, exact: true }).waitFor();
+        await page.getByText("ANALYTICS.BILLING.MONTHLY_REVENUE", { exact: true }).waitFor();
+        await page.getByText("Columns (2)", { exact: true }).click();
+      },
+    },
+    {
       name: "customize-agents",
       path: "/customize/agents",
       act: async (page) => {

@@ -165,7 +165,15 @@ export function SourceLifecycle({
               <select
                 className={field}
                 value={config.provider}
-                onChange={(event) => setConfig({ ...config, provider: event.target.value })}
+                onChange={(event) =>
+                  setConfig({
+                    ...config,
+                    provider: event.target.value,
+                    ...(event.target.value === "gcs" || event.target.value === "s3"
+                      ? { mode: "indexed" as const }
+                      : {}),
+                  })
+                }
               >
                 {Object.entries(words.providers).map(([value, label]) => (
                   <option key={value} value={value}>
@@ -186,11 +194,17 @@ export function SourceLifecycle({
                   })
                 }
               >
-                {Object.entries(words.modes).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
+                {Object.entries(words.modes)
+                  .filter(
+                    ([value]) =>
+                      (config.provider !== "gcs" && config.provider !== "s3") ||
+                      value === "indexed",
+                  )
+                  .map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
               </select>
             </Label>
             <Label text={words.origin}>

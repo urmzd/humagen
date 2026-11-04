@@ -332,6 +332,9 @@ Entries are searched like knowledge, with `knowledge.embedder` when one is set.
 
 | Kind | Block | Credentials |
 |------|-------|-------------|
+| `snowflake` | `account`, `database`, `warehouse`, `role` (all required), `max_rows` (200, at most 10000), `timeout` (60s, 1s to 10m) | `credential`, a required reference to an OAuth token. The role must have USAGE and SELECT grants only |
+| `gcs` | `bucket` (required), `prefix` (empty lists the bucket) | `credential`, a required reference to service account JSON |
+| `s3` | `bucket` (required), `prefix`, `region` (`us-east-1`) | `credential`, a required reference to JSON with `access_key_id`, `secret_access_key`, and optional `session_token` |
 | `bigquery` | `project` (required), `datasets`, `location`, `max_bytes_billed` (1 GiB), `max_rows` (200, at most 10000), `timeout` (60s, at most 10m) | `credential`, a reference to a service account key in JSON; left out, Application Default Credentials: the VM's service account on GCE |
 
 Two tools use the catalog, granted to an agent by name like any tool:
@@ -1205,6 +1208,26 @@ owner is the authenticated person. `stop_after_seconds` defaults to 86400 and
 accepts 60 through 2592000. No source record contains a credential. Personal
 references follow the existing deployment `credentials.refs` allowlist.
 
+### Storage collection credentials
+
+GCS and S3 sources use the existing indexed source lifecycle. Set `provider`
+to `gcs` with an origin such as `gs://reports/monthly/`, or to `s3` with
+`s3://reports/monthly/`. Connect a credential reference as the current reader.
+Collection never uses a machine credential, and catalog publication never
+grants access to object text. The reader's S3 credential may also include `region` for buckets outside
+`us-east-1`. The reader's credential uses the same JSON
+format documented above. Only UTF-8 `.txt`, `.md`, `.csv`, and `.json` objects
+are collected. A prefix exceeding 200 objects or 8 MiB, an unsupported file,
+or any failed read refuses the whole snapshot. Narrow the prefix to collect
+only the intended text files. Catalog crawls list at most 5000 objects and
+never download their text.
+
+Snowflake uses the SQL API and one explicitly named role with USAGE and
+SELECT grants only. Queries require a single SELECT, are wrapped with a row
+limit, and carry a server-side timeout. Result text is capped at 256 KiB.
+A catalog crawl that exceeds its row, column, or response limits publishes
+nothing. Configure a restricted read warehouse and resource monitor to bound
+warehouse credits; Snowflake does not offer BigQuery's bytes-billed cap.
 
 ### Personal tool server grants
 
