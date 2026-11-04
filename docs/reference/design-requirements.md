@@ -1623,6 +1623,25 @@ its pull tab selected, using the DES-059 tab reference.
 Evidence: `PullRequests.tsx`, `pull_requests.go`, scoped endpoint and DOM tests;
 `pull-requests-board` and `pull-requests-list` screens are registered for CI.
 
+### DES-059: Review GitHub changes in context
+
+A finished review opens a Workspace review tab with its findings pinned to changed
+lines. Changes and findings share two columns on a desktop; phone tabs select one
+column. Findings jump to their file and line. The pane shows the reviewed summary,
+head revision's workflow results, GitHub description and bounded comments.
+The + picker accepts a public GitHub issue or pull URL, or #number with a repository.
+Issue tabs render Markdown, labels and comments. Repository access is checked through
+an enabled workspace client before reading or consulting the immutable patch cache.
+Pages hold at most 30 files/comments and requests stop at page 10. Large patches
+are unavailable rather than silently shown as complete.
+
+Evidence: `github-ref.test.ts`, `github-tab.dom.test.tsx`,
+`TestGitHubPullEvidenceAndTenantBounds`,
+`TestGitHubItemsAreTenantScopedPermissionCheckedAndBounded`,
+`TestConsoleLabelsUseServerTokenAndBoundedRead`; screenshot fixture
+`conversation-review-workspace` runs in CI at phone and desktop sizes.
+
+
 ### DES-058: Replay with an agent
 
 - A completed turn's message actions include **Replay With**, opening an agent
