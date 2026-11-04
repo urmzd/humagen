@@ -1,6 +1,6 @@
 import { Inspector } from "@humagen/web";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { ApiError, api, type PersonContext } from "./api.ts";
+import { ApiError, api, type PersonContext, type PersonToolServer } from "./api.ts";
 import { whereReferences } from "./connections.ts";
 import {
   credentialWords,
@@ -52,6 +52,38 @@ export function YourToolServers({
       .finally(() => setBusy(false));
   };
 
+  const [reviewing, setReviewing] = useState<PersonToolServer | null>(null);
+  const review = async (server: PersonToolServer) => {
+    setBusy(true);
+    setProblem(null);
+    try {
+      setReviewing(await api.reviewPersonTools({ ...server, tools: undefined }));
+    } catch (e) {
+      fail("The tool list could not be loaded.")(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const approve = async () => {
+    if (!context || !reviewing) return;
+    setBusy(true);
+    try {
+      setContext(
+        await api.setPersonContext({
+          run: context.run,
+          version: context.version,
+          tool_servers: context.tool_servers.map((s) =>
+            s.name === reviewing.name ? reviewing : s,
+          ),
+        }),
+      );
+      setReviewing(null);
+    } catch (e) {
+      fail("The tool list could not be approved.")(e);
+    } finally {
+      setBusy(false);
+    }
+  };
   const servers = context?.tool_servers ?? [];
   const full = servers.length >= MAX_TOOL_SERVERS;
   return (
@@ -73,10 +105,21 @@ export function YourToolServers({
       </div>
       <p className="text-aui-sm text-aui-muted">
         MCP servers you add for yourself. They go with the runs that act for you, on hosts the
-        workspace allows, and with nobody else's. They are not connected to runs yet: that waits for
-        the connectors compartment of a run's sandbox.
+        workspace allows, and with nobody else's. Only agents granted person_tools can use them.
+        Review each tool list before connecting. A changed list needs approval again.
       </p>
       <Problem message={problem} />
+      {reviewing && (
+        <section aria-label="Review tool list" className={card}>
+          <ToolList server={reviewing} />
+          <button type="button" className={button} onClick={() => setReviewing(null)}>
+            Cancel
+          </button>
+          <button type="button" className={primary} disabled={busy} onClick={approve}>
+            Approve Tool List
+          </button>
+        </section>
+      )}
       {context && servers.length === 0 && (
         <div className={card}>
           <Empty title="No tool servers">
@@ -98,6 +141,11 @@ export function YourToolServers({
                 </p>
                 <p className="break-all text-aui-xs text-aui-muted">{credentialWords(s)}</p>
               </div>
+              {canConnect && (
+                <button type="button" className={button} disabled={busy} onClick={() => review(s)}>
+                  Review Tools
+                </button>
+              )}
               {canConnect && (
                 <button
                   type="button"
@@ -147,6 +195,7 @@ export function AddToolServer({
   const [credential, setCredential] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [preview, setPreview] = useState<PersonToolServer | null>(null);
   const server = { name: name.trim(), url: url.trim(), credential };
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -157,9 +206,10 @@ export function AddToolServer({
     }
     setBusy(true);
     setProblem(null);
-    api
-      .setPersonContext(withToolServer(context, server))
-      .then(onAdded)
+    const action = preview
+      ? api.setPersonContext(withToolServer(context, preview)).then(onAdded)
+      : api.reviewPersonTools(server).then(setPreview);
+    action
       .catch((err) =>
         setProblem(err instanceof ApiError ? err.message : "The tool server could not be added."),
       )
@@ -168,51 +218,81 @@ export function AddToolServer({
   return (
     <form aria-label="New tool server" className="flex flex-col gap-3" onSubmit={submit}>
       <Problem message={problem} />
-      <Label text="Name" hint="Lower case letters, digits and dashes.">
-        <input
-          className={field}
-          required
-          disabled={busy}
-          maxLength={63}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          autoComplete="off"
-          spellCheck={false}
-        />
-      </Label>
-      <Label text="Address" hint="The server's https URL, with no user or password in it.">
-        <input
-          className={field}
-          required
-          disabled={busy}
-          type="url"
-          maxLength={500}
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://mcp.example.com/mcp"
-          autoComplete="off"
-          spellCheck={false}
-        />
-      </Label>
-      <Label text="Credential reference" hint={`Optional. ${whereReferences(references)}`}>
-        <input
-          className={field}
-          disabled={busy || references.length === 0}
-          value={credential}
-          onChange={(e) => setCredential(e.target.value)}
-          placeholder={references[0] ? `${references[0]}…` : "op://VAULT/ITEM/FIELD"}
-          autoComplete="off"
-          spellCheck={false}
-        />
-      </Label>
+      {preview && <ToolList server={preview} />}
+      <fieldset disabled={busy || preview !== null} className="contents">
+        <Label text="Name" hint="Lower case letters, digits and dashes.">
+          <input
+            className={field}
+            required
+            disabled={busy}
+            maxLength={63}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </Label>
+        <Label text="Address" hint="The server's https URL, with no user or password in it.">
+          <input
+            className={field}
+            required
+            disabled={busy}
+            type="url"
+            maxLength={500}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://mcp.example.com/mcp"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </Label>
+        <Label text="Credential reference" hint={`Optional. ${whereReferences(references)}`}>
+          <input
+            className={field}
+            disabled={busy || references.length === 0}
+            value={credential}
+            onChange={(e) => setCredential(e.target.value)}
+            placeholder={references[0] ? `${references[0]}…` : "op://VAULT/ITEM/FIELD"}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </Label>
+      </fieldset>
       <div className="flex flex-wrap justify-end gap-2">
         <button type="button" className={button} onClick={onCancel}>
           Cancel
         </button>
         <button type="submit" className={primary} disabled={busy}>
-          Add Tool Server
+          {preview ? "Approve Tool List" : "Review Tools"}
         </button>
       </div>
     </form>
+  );
+}
+
+export function ToolList({ server }: { server: PersonToolServer }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="font-medium">Tools from {server.name}</h3>
+      <p className="text-aui-sm text-aui-muted">
+        Read tools run with your permission. Every write tool asks for approval.
+      </p>
+      {server.tools?.length === 0 && <p>No tools offered.</p>}
+      <ul>
+        {server.tools?.map((tool) => (
+          <li key={tool.name} className="py-2">
+            <strong>{tool.name}</strong>{" "}
+            <span>{tool.class === "read" ? "Read" : "Write, approval required"}</span>
+            <p className="text-aui-sm text-aui-muted">{tool.description}</p>
+            <details>
+              <summary>Input Schema</summary>
+              <pre className="overflow-x-auto text-aui-xs">
+                {JSON.stringify(tool.input_schema, null, 2)}
+              </pre>
+            </details>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

@@ -16,6 +16,7 @@ import (
 	"go/types"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"reflect"
@@ -26,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/orchagent/flow/connectors/cron"
@@ -970,7 +972,14 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// An agent on the "anthropic" provider asks a person, so a run can park on
 	// a question here. Every other agent is offline.
 	sourceFake := github.NewFake()
-	f := newFixtureWith(t, platform.Config{AgentOptions: []native.Option{
+	// A person's own tool server, reviewed before it is approved.
+	notes := mcp.NewServer(&mcp.Implementation{Name: "notes", Version: "1"}, nil)
+	notes.AddTool(&mcp.Tool{Name: "lookup", Description: "Read notes", InputSchema: map[string]any{"type": "object"}, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return &mcp.CallToolResult{}, nil
+	})
+	notesServer := httptest.NewTLSServer(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return notes }, nil))
+	t.Cleanup(notesServer.Close)
+	f := newFixtureWith(t, platform.Config{PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
 		native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
 		}),
@@ -1179,6 +1188,17 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(ana, "PUT", "/api/me/context", "/api/me/context", `{"version":1,"tool_servers":[{"name":"notes","url":"https://mcp.example.com","credential":"op://People/ben/notes"}]}`, http.StatusBadRequest)
 	c.call(ana, "PUT", "/api/me/context", "/api/me/context", `{"version":1,"tool_servers":[{"name":"notes","url":"https://mcp.example.com","credential":"tok-raw-secret"}]}`, http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/me/context", "/api/me/context", `{"version":0}`, http.StatusForbidden)
+	// A tool server on a host the workspace allows lists its tools for review.
+	notesHost := personctx.ToolServer{Name: "notes", URL: notesServer.URL}.Host()
+	if err := f.p.SetRunSettings("acme", settings.Layer{Ceilings: settings.Ceilings{ToolServers: []string{notesHost}}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.call(ana, "POST", "/api/me/tool-servers/review", "/api/me/tool-servers/review", `{"name":"notes","url":"`+notesServer.URL+`"}`, http.StatusOK); !strings.Contains(string(got.raw), `"lookup"`) {
+		t.Errorf("reviewed tools = %s", got.raw)
+	}
+	if err := f.p.SetRunSettings("acme", settings.Layer{}, nil); err != nil {
+		t.Fatal(err)
+	}
 
 	// Explicit copies never activate learning without destination review.
 	promotionNote, err := f.p.Memory.Add("acme", memory.PersonalOwner("ana"), "Review product outcomes", memory.Person, memory.Approved, "ana", time.Now())

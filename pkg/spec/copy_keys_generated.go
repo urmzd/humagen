@@ -862,6 +862,7 @@ var copyKeyList = []string{
 	"navigation.connections",
 	"navigation.context",
 	"navigation.controls",
+	"navigation.customize",
 	"navigation.deliverables",
 	"navigation.health",
 	"navigation.integrations",

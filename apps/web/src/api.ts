@@ -25,6 +25,7 @@ import type {
   PersonalPreferences,
   PersonContext,
   PersonContextInput,
+  PersonToolServer,
   PlacementPreview,
   ProjectAgentsInput,
   ProjectAgentsView,
@@ -1099,6 +1100,8 @@ export const api = {
   disconnectTool: (provider: string) =>
     call<void>("DELETE", `/api/me/credentials/${encodeURIComponent(provider)}`),
   /** Your own run context: your run settings and the tool servers you added. */
+  reviewPersonTools: (server: PersonToolServer) =>
+    call<PersonToolServer>("POST", "/api/me/tool-servers/review", server),
   personContext: () => call<PersonContext>("GET", "/api/me/context"),
   setPersonContext: (input: PersonContextInput) =>
     call<PersonContext>("PUT", "/api/me/context", input),

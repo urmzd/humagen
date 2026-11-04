@@ -135,6 +135,7 @@ import type {
   OutcomeLearningPreview,
   PersonContext,
   PersonContextInput,
+  PersonToolServer,
   PlacementPreview,
   Policy,
   PolicyInput,
@@ -1086,6 +1087,25 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<AccessDecision>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Preview a personal server's tools before approval */
+  async reviewPersonTools(body: PersonToolServer, options?: RequestOptions): Promise<PersonToolServer> {
+    const path = "/api/me/tool-servers/review";
+    return this.request<PersonToolServer>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async reviewPersonToolsRaw(body: PersonToolServer, options?: RequestOptions): Promise<ApiResponse<PersonToolServer>> {
+    const path = "/api/me/tool-servers/review";
+    return this.rawRequest<PersonToolServer>("POST", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }
