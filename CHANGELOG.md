@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.81.0 (2026-11-04)
+
+### Features
+
+- **console**: browse and manage connector catalog metadata (#202) ([b6f36f8](https://github.com/urmzd/humagen/commit/b6f36f861e35b8830eb03e9fbaa1e482cea758ae))
+- **catalog**: add Snowflake and storage connectors (#197) ([12ec672](https://github.com/urmzd/humagen/commit/12ec6729cd29da13c3caac555c20ca7c2973b009))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.80.0...v0.81.0)
+
+
 ## 0.79.0 (2026-11-04)
 
 ### Features
