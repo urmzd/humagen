@@ -62,6 +62,8 @@ import type {
   GetProjectInboxResponse,
   GetRunTraceResponse,
   GetUsageResponse,
+  GitHubIssue,
+  GitHubPull,
   HandoffContract,
   HandoffUpdate,
   Health,
@@ -2285,6 +2287,60 @@ agents answering the next message are sent.
     return this.rawRequest<Note>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Read a GitHub pull through a workspace client */
+  async getGitHubPull(repo: string, number: number, page?: number, options?: RequestOptions): Promise<GitHubPull> {
+    let path = "/api/github/pull";
+    const _q = new URLSearchParams();
+    if (repo !== undefined && repo !== null) _q.set("repo", String(repo));
+    if (number !== undefined && number !== null) _q.set("number", String(number));
+    if (page !== undefined && page !== null) _q.set("page", String(page));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<GitHubPull>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getGitHubPullRaw(repo: string, number: number, page?: number, options?: RequestOptions): Promise<ApiResponse<GitHubPull>> {
+    let path = "/api/github/pull";
+    const _q = new URLSearchParams();
+    if (repo !== undefined && repo !== null) _q.set("repo", String(repo));
+    if (number !== undefined && number !== null) _q.set("number", String(number));
+    if (page !== undefined && page !== null) _q.set("page", String(page));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<GitHubPull>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Read a GitHub issue through a workspace client */
+  async getGitHubIssue(repo: string, number: number, page?: number, options?: RequestOptions): Promise<GitHubIssue> {
+    let path = "/api/github/issue";
+    const _q = new URLSearchParams();
+    if (repo !== undefined && repo !== null) _q.set("repo", String(repo));
+    if (number !== undefined && number !== null) _q.set("number", String(number));
+    if (page !== undefined && page !== null) _q.set("page", String(page));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<GitHubIssue>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getGitHubIssueRaw(repo: string, number: number, page?: number, options?: RequestOptions): Promise<ApiResponse<GitHubIssue>> {
+    let path = "/api/github/issue";
+    const _q = new URLSearchParams();
+    if (repo !== undefined && repo !== null) _q.set("repo", String(repo));
+    if (number !== undefined && number !== null) _q.set("number", String(number));
+    if (page !== undefined && page !== null) _q.set("page", String(page));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<GitHubIssue>("GET", path, {
       ...options,
     });
   }

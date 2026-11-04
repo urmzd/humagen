@@ -102,7 +102,15 @@ export function ReviewCard({
               },
             }
           : {})}
-        {...(pr ? { pullRequest: pr } : {})}
+        {...(pr
+          ? {
+              pullRequest: pr,
+              openReview: {
+                label: copy.githubTabs.openReview,
+                action: { id: ActionId.openReview, payload: { turnId, target: pr.label } },
+              },
+            }
+          : {})}
         summary={report.summary}
         counts={REVIEW_SEVERITIES.map((s) => ({
           id: s,

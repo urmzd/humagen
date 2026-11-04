@@ -2095,6 +2095,50 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '500': {$ref: '#/components/responses/ServerError'}
+  /api/github/pull:
+    get:
+      operationId: getGitHubPull
+      tags: [runs]
+      summary: Read a GitHub pull through a workspace client
+      x-permission: runs:read
+      parameters:
+        - {name: repo, in: query, required: true, schema: {type: string}}
+        - {name: number, in: query, required: true, schema: {type: integer, minimum: 1, maximum: 2147483647}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, maximum: 10, default: 1}}
+      responses:
+        "200":
+          description: A bounded page of GitHub evidence.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GitHubPull"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+        "502": {$ref: "#/components/responses/ServerError"}
+  /api/github/issue:
+    get:
+      operationId: getGitHubIssue
+      tags: [runs]
+      summary: Read a GitHub issue through a workspace client
+      x-permission: runs:read
+      parameters:
+        - {name: repo, in: query, required: true, schema: {type: string}}
+        - {name: number, in: query, required: true, schema: {type: integer, minimum: 1, maximum: 2147483647}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, maximum: 10, default: 1}}
+      responses:
+        "200":
+          description: A bounded page of GitHub evidence.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GitHubIssue"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+        "502": {$ref: "#/components/responses/ServerError"}
   /api/github/source:
     get:
       operationId: getGitHubSource
@@ -8340,6 +8384,82 @@ components:
         path: {type: string, minLength: 1, maxLength: 240}
         revision: {type: string, minLength: 64, maxLength: 64}
         title: {type: string, maxLength: 120}
+    GitHubSubject:
+      type: object
+      required: [number, title, body, state, html_url]
+      properties:
+        number: {type: integer}
+        title: {type: string}
+        body: {type: string}
+        state: {type: string}
+        html_url: {type: string}
+        pull_request:
+          type: object
+          properties:
+            url: {type: string}
+        head:
+          type: object
+          properties:
+            sha: {type: string}
+            ref: {type: string}
+    GitHubComment:
+      type: object
+      required: [id, body, html_url, user]
+      properties:
+        id: {type: integer, format: int64}
+        body: {type: string}
+        html_url: {type: string}
+        user:
+          type: object
+          required: [login]
+          properties:
+            login: {type: string}
+        path: {type: string}
+        line: {type: integer}
+        diff_hunk: {type: string}
+        in_reply_to_id: {type: integer, format: int64}
+        state: {type: string}
+    GitHubChangedFile:
+      type: object
+      required: [filename, status, blob_url]
+      properties:
+        filename: {type: string}
+        status: {type: string}
+        patch: {type: string}
+        blob_url: {type: string}
+    GitHubWorkflow:
+      type: object
+      required: [id, name, head_sha, run_attempt, status, conclusion, html_url]
+      properties:
+        id: {type: integer, format: int64}
+        name: {type: string}
+        head_sha: {type: string}
+        run_attempt: {type: integer}
+        status: {type: string}
+        conclusion: {type: string}
+        html_url: {type: string}
+        requested: {type: boolean}
+    GitHubPull:
+      type: object
+      required: [subject, files, comments, workflows]
+      properties:
+        subject: {$ref: "#/components/schemas/GitHubSubject"}
+        files: {type: array, maxItems: 30, items: {$ref: "#/components/schemas/GitHubChangedFile"}}
+        comments: {type: array, maxItems: 30, items: {$ref: "#/components/schemas/GitHubComment"}}
+        workflows: {type: array, maxItems: 30, items: {$ref: "#/components/schemas/GitHubWorkflow"}}
+        next_page: {type: integer}
+    GitHubIssue:
+      type: object
+      required: [subject, comments, page, labels]
+      properties:
+        labels: {type: array, maxItems: 100, items: {type: string}}
+        subject: {$ref: "#/components/schemas/GitHubSubject"}
+        comments: {type: array, maxItems: 30, items: {$ref: "#/components/schemas/GitHubComment"}}
+        reviews: {type: array, maxItems: 30, items: {$ref: "#/components/schemas/GitHubComment"}}
+        review_comments: {type: array, maxItems: 30, items: {$ref: "#/components/schemas/GitHubComment"}}
+        files: {type: array, maxItems: 30, items: {$ref: "#/components/schemas/GitHubChangedFile"}}
+        page: {type: integer}
+        next_page: {type: integer}
     SourceExcerpt:
       type: object
       description: Lines of one file at one commit, numbered from first.

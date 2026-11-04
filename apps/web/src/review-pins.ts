@@ -27,7 +27,12 @@ export function isReviewText(text: string): boolean {
 export function reviewPins(text: string): ReviewPin[] {
   let report: { format?: string; findings?: Finding[] };
   try {
-    report = JSON.parse(text);
+    report = JSON.parse(
+      text
+        .trim()
+        .replace(/^```(?:json)?\s*\n?/, "")
+        .replace(/\n?```$/, ""),
+    );
   } catch {
     return [];
   }

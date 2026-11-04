@@ -197,6 +197,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/settings", s.authed(auth.AgentsWrite, s.putSettings))
 	mux.HandleFunc("GET /api/runs/{id}", s.authed(auth.RunsRead, s.seenRun(s.getRun)))
 	mux.HandleFunc("GET /api/github/source", s.authed(auth.RunsRead, s.getGitHubSource))
+	mux.HandleFunc("GET /api/github/pull", s.authed(auth.RunsRead, s.getGitHubPull))
+	mux.HandleFunc("GET /api/github/issue", s.authed(auth.RunsRead, s.getGitHubIssue))
 	mux.HandleFunc("PUT /api/runs/{id}/feedback", s.authed(auth.RunsRead, s.seenRun(s.putFeedback)))
 	mux.HandleFunc("GET /api/runs/{id}/feedback", s.authed(auth.RunsRead, s.seenRun(s.listFeedback)))
 	mux.HandleFunc("GET /api/runs/{id}/tree", s.authed(auth.RunsRead, s.seenRun(s.runTree)))

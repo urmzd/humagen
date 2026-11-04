@@ -139,6 +139,51 @@ export function reviewScreens(call: Call): Screen[] {
   };
   return [
     {
+      name: "conversation-review-workspace",
+      path: "/",
+      act: async (page) => {
+        await page.route("**/api/github/pull?*", (route) =>
+          route.fulfill({
+            json: {
+              subject: {
+                number: 212,
+                title: "Scale webhook clients",
+                state: "open",
+                body: "Keep leases alive until sockets close.",
+                html_url: "https://github.com/urmzd/humagen/pull/212",
+                head: { sha: SHA, ref: "scale" },
+              },
+              files: [
+                {
+                  filename: "internal/app/slack.go",
+                  status: "modified",
+                  blob_url: blob("internal/app/slack.go", "L298"),
+                  patch: "@@ -298,2 +298,2 @@\n-defer unlock()\n+defer conn.Close()\n work()",
+                },
+              ],
+              comments: [],
+              workflows: [
+                {
+                  id: 1,
+                  name: "Go tests",
+                  head_sha: SHA,
+                  run_attempt: 1,
+                  status: "completed",
+                  conclusion: "success",
+                  html_url: "https://github.com/urmzd/humagen/actions/runs/1",
+                },
+              ],
+            },
+          }),
+        );
+        await open(page);
+        await page
+          .getByRole("button", { name: defaultCopy.githubTabs.openReview, exact: true })
+          .click();
+        await page.getByRole("heading", { name: "Scale webhook clients #212" }).waitFor();
+      },
+    },
+    {
       name: "conversation-review-card",
       path: "/",
       act: async (page) => {

@@ -333,6 +333,8 @@ export interface ReviewProps {
   /** The commit the review read, short, with a link when known. */
   commit?: { label: string; url?: string };
   pullRequest?: { label: string; url: string };
+  /** Opens the console review pane. Renderers without a pane omit it. */
+  openReview?: Pick<ButtonProps, "label" | "action">;
   summary?: string;
   /** Still arriving: only the summary is known. Drawn still, with `pendingLabel`. */
   pending?: boolean;

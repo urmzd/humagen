@@ -296,7 +296,7 @@ export function ChangeReview({
                         : [];
                     return (
                       <Fragment key={`${index}:${line.oldLine}:${line.newLine}`}>
-                        <tr className={tone}>
+                        <tr className={tone} data-review-line={line.newLine}>
                           <td className="w-10 select-none px-2 text-right text-aui-muted">
                             {line.oldLine ?? ""}
                           </td>
