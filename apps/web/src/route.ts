@@ -155,7 +155,7 @@ export interface ConversationView {
   slide?: number;
 }
 
-export type LibrarySection = "sources" | "skills" | "memory" | "deliverables";
+export type LibrarySection = "sources" | "catalog" | "skills" | "memory" | "deliverables";
 /** The reader's own views of their notifications, besides the Inbox, which is the default. */
 export const NOTIFICATION_VIEWS = ["unread", "hidden", "done"] as const;
 export type NotificationView = (typeof NOTIFICATION_VIEWS)[number];
@@ -184,6 +184,7 @@ export type Route =
       version?: number;
       artifact?: string;
       file?: string;
+      catalogQuery?: string;
       libraryTab?: "overview" | "contents" | "versions";
     }
   | {
@@ -342,6 +343,7 @@ export function href(r: Route): string {
         q.set("version", String(r.version));
       if (r.artifact) q.set("artifact", r.artifact);
       if (r.file) q.set("file", r.file);
+      if (r.catalogQuery) q.set("q", r.catalogQuery);
       if (r.libraryTab) q.set("tab", r.libraryTab);
       return `/library/${r.section}${q.size ? `?${q}` : ""}`;
     }
@@ -577,9 +579,14 @@ function read(pathname: string, search: string): Route {
       return {
         artifact: queryText(q, "artifact", 160),
         file: queryText(q, "file", 256),
+        catalogQuery: queryText(q, "q", 1000),
         libraryTab: oneOf(q.get("tab"), ["overview", "contents", "versions"] as const),
         page: "library",
-        section: pick(a, ["sources", "skills", "memory", "deliverables"] as const, "sources"),
+        section: pick(
+          a,
+          ["sources", "catalog", "skills", "memory", "deliverables"] as const,
+          "sources",
+        ),
         scope: oneOf(q.get("scope"), ["personal", "workspace", "project", "agent"] as const),
         project: queryText(q, "project", 63),
         owner: queryText(q, "owner", 512),

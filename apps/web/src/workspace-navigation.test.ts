@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { href, parse, type Route } from "./route.ts";
 import { hubTabs, workspaceHub } from "./workspace-navigation.ts";
 
-test("Library has one hub and preserves selected files in its four tabs", () => {
+test("Library has one hub and preserves selected files in its tabs", () => {
   const route: Route = {
     page: "library",
     section: "skills",
@@ -18,7 +18,7 @@ test("Library has one hub and preserves selected files in its four tabs", () => 
   const tabs = hubTabs("library", route, () => true);
   assert.deepEqual(
     tabs.map((tab) => tab.label),
-    ["Sources", "Skills", "Memory", "Deliverables"],
+    ["Sources", "Catalog", "Skills", "Memory", "Deliverables"],
   );
   assert.deepEqual(
     tabs.filter((tab) => tab.active).map((tab) => tab.label),

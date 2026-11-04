@@ -32,6 +32,7 @@ import { OutcomeActions } from "./OutcomeActions.tsx";
 import { emptySelection, mentionPicks, PlusMenu, type Selection, SelectionChips } from "./Plus.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { openPane } from "./pane.ts";
+import { ReplayMenu } from "./ReplayMenu.tsx";
 import { ThreadRoom, topicsOf } from "./Room.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
@@ -1055,6 +1056,19 @@ export function Chat({
                           <ForkIcon size={16} />
                         </button>
                       )}
+                      {canRun &&
+                        threadId &&
+                        run.status === "completed" &&
+                        !room?.thread.read_only && (
+                          <ReplayMenu
+                            agents={agents.map((a) => a.spec.name)}
+                            answered={run.agent}
+                            prompt={run.text}
+                            thread={threadId}
+                            point={run.id}
+                            onOpen={onThread}
+                          />
+                        )}
                       {canRun && room?.thread.fork && forkActions?.onBringBack && (
                         <button
                           type="button"

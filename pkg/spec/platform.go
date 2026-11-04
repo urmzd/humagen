@@ -465,6 +465,25 @@ type BigQueryConnector struct {
 	Timeout string `json:"timeout,omitempty"`
 }
 
+// SnowflakeConnector is the Snowflake SQL API connector block.
+type SnowflakeConnector struct {
+	Account    string `json:"account"`
+	Database   string `json:"database"`
+	Warehouse  string `json:"warehouse"`
+	Role       string `json:"role"`
+	Credential *Ref   `json:"credential"`
+	MaxRows    int    `json:"max_rows,omitempty"`
+	Timeout    string `json:"timeout,omitempty"`
+}
+
+// StorageConnector scopes GCS or S3 metadata to a bucket and prefix.
+type StorageConnector struct {
+	Bucket     string `json:"bucket"`
+	Prefix     string `json:"prefix,omitempty"`
+	Region     string `json:"region,omitempty"`
+	Credential *Ref   `json:"credential"`
+}
+
 // MinRefresh is the shortest crawl cadence a connector may ask for.
 const MinRefresh = time.Hour
 

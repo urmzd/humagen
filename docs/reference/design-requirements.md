@@ -261,6 +261,8 @@ planned collections, browser, protocol and improvement work from this UI pass.
   confinement sweeps. Screens: `conversation-header`, `workspace-menu`,
   `workspace-sandboxes` and `workspace-artifacts`.
 
+| DES-058 | Replay a finished turn with a chosen agent in a saved fork | Implemented; replay unit and DOM tests; `conversation-replay-agent` screen registered for CI |
+
 ### DES-064: People maps and GitHub App keys on a connection
 
 - The connection form takes an optional people map, one `login=subject` (or
@@ -1591,6 +1593,21 @@ Evidence: `go test -race ./pkg/threads ./internal/platform ./internal/httpapi`
 pnpm test` (`approval-mode.dom.test.tsx`, `chat.dom.test.tsx`); `make
 screens` with `home-project-above` and `composer-approval-mode`.
 
+### DES-058: Replay with an agent
+
+- A completed turn's message actions include **Replay With**, opening an agent
+  picker with `AgentMark`. The agent that answered is listed last.
+- Picking an agent saves a fork through that finished turn using the existing
+  Fork API, then posts the same prompt addressed to the chosen agent and opens
+  the new conversation. First turns also keep their fork lineage. Earlier
+  turns and answers remain passive context; no prior tools execute again.
+- Posting permission is required; read-only conversations have no replay action.
+  A refused fork or post reports an error and does not navigate. The picker
+  blocks repeat submissions while a replay is in flight.
+
+Evidence: `replay.test.ts`, `replay.dom.test.tsx`; the phone and desktop
+`conversation-replay-agent` screen is registered in `scripts/screens` for CI.
+
 ### DES-061: Automations
 
 - `/automations` is a permission-aware sidebar destination. Schedules reuse
@@ -1628,3 +1645,18 @@ screens` with `home-project-above` and `composer-approval-mode`.
 - Evidence: `customize.test.ts`, `tool-servers.dom.test.tsx`,
   `internal/platform/person_tools_test.go`, and the Customize states in
   `scripts/screens/library.ts`. Screens are judged in CI.
+
+### DES-063: Connectors and catalog
+
+Browse and search warehouse and object metadata in Library > Catalog. Search
+text has an address. Show columns and descriptions without copying
+rows or file content. Owners can crawl, publish metadata to the connector's
+project, and withdraw it. Readers do not receive owner controls. New Source
+groups collection, storage collection/catalog, and warehouse catalog/live
+capabilities, and storage collection requires the reader's own credential.
+
+Implemented in `Catalog.tsx`, `SourceCatalog.tsx`, and the connector kinds in
+`pkg/catalog`. Evidence: catalog DOM tests, route round-trip regression,
+Snowflake/object-storage race tests, and `library-catalog` phone/desktop screen
+fixture. The Catalog and New Source captures pass at phone and desktop widths
+(4 captures). The full screen suite is intentionally deferred to CI.
