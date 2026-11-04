@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.80.0 (2026-11-04)
+
+### Features
+
+- **conversations**: replay turns with a chosen agent (#211) ([66a28f9](https://github.com/urmzd/humagen/commit/66a28f95603ff28aab8c0eebd6dc81c7b06729d3))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.79.0...v0.80.0)
+
+
 ## 0.79.0 (2026-11-04)
 
 ### Features
