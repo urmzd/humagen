@@ -48,6 +48,7 @@ import { OutcomeActions } from "./OutcomeActions.tsx";
 import { PersonMark } from "./PersonMark.tsx";
 import { mentionPicks, PlusMenu, SelectionChips } from "./Plus.tsx";
 import { openPane } from "./pane.ts";
+import { ReplayMenu } from "./ReplayMenu.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { followRoom } from "./roomFollow.ts";
@@ -945,6 +946,19 @@ export function ThreadRoom({
                           >
                             <ForkIcon size={16} />
                           </button>
+                        )}
+                        {posts && onOpenThread && t.run.status === "completed" && !th.read_only && (
+                          <ReplayMenu
+                            agents={agents.map((a) => a.spec.name)}
+                            answered={t.run.agent}
+                            prompt={
+                              turns.find((x) => x.message?.id === t.run!.message)?.message?.text ??
+                              t.run.text
+                            }
+                            thread={id}
+                            point={t.run.id}
+                            onOpen={onOpenThread}
+                          />
                         )}
                         {posts && th.fork && forkActions?.onBringBack && (
                           <button

@@ -598,3 +598,8 @@ test("Workspace sections have their own paths, Files keeps the panel's own addre
     undefined,
   );
 });
+
+test("catalog search has an address", () => {
+  const route = { page: "library", section: "catalog", catalogQuery: "customer" } as const;
+  assert.equal(href(at(href(route))), href(route));
+});

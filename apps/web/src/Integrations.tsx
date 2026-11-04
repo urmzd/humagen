@@ -366,14 +366,16 @@ export function ConnectSource({
 }: {
   onCreated: (name: string) => void;
   onCancel: () => void;
-  initialProvider?: "drive" | "notion";
+  initialProvider?: "drive" | "notion" | "gcs" | "s3";
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [provider, setProvider] = useState<string>(initialProvider);
   const [origin, setOrigin] = useState("");
   const [project, setProject] = useState("~");
-  const [mode, setMode] = useState<"indexed" | "live" | "hybrid">("live");
+  const [mode, setMode] = useState<"indexed" | "live" | "hybrid">(
+    initialProvider === "gcs" || initialProvider === "s3" ? "indexed" : "live",
+  );
   const [scheduled, setScheduled] = useState(false);
   const [every, setEvery] = useState("60");
   const [busy, setBusy] = useState(false);
@@ -430,8 +432,13 @@ export function ConnectSource({
           aria-label={words.provider}
           className={field}
           value={provider}
-          onChange={(e) => setProvider(e.target.value)}
+          onChange={(e) => {
+            setProvider(e.target.value);
+            if (e.target.value === "gcs" || e.target.value === "s3") setMode("indexed");
+          }}
         >
+          <option value="gcs">Google Cloud Storage</option>
+          <option value="s3">Amazon S3</option>
           <option value="drive">{defaultCopy.sourceLifecycle.providers.drive}</option>
           <option value="notion">{defaultCopy.sourceLifecycle.providers.notion}</option>
         </select>
@@ -443,11 +450,13 @@ export function ConnectSource({
           value={mode}
           onChange={(e) => setMode(e.target.value as typeof mode)}
         >
-          {Object.entries(defaultCopy.sourceLifecycle.modes).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
+          {Object.entries(defaultCopy.sourceLifecycle.modes)
+            .filter(([value]) => (provider !== "gcs" && provider !== "s3") || value === "indexed")
+            .map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
         </select>
       </Label>
       <p className="text-aui-xs leading-5 text-aui-muted sm:col-span-2">
