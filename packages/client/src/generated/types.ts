@@ -180,6 +180,65 @@ export interface WorkspaceFilePublish {
   title?: string;
 }
 
+export interface GitHubSubject {
+  number: number;
+  title: string;
+  body: string;
+  state: string;
+  html_url: string;
+  pull_request?: GitHubSubjectPullRequest;
+  head?: GitHubSubjectHead;
+}
+
+export interface GitHubComment {
+  id: number;
+  body: string;
+  html_url: string;
+  user: GitHubCommentUser;
+  path?: string;
+  line?: number;
+  diff_hunk?: string;
+  in_reply_to_id?: number;
+  state?: string;
+}
+
+export interface GitHubChangedFile {
+  filename: string;
+  status: string;
+  patch?: string;
+  blob_url: string;
+}
+
+export interface GitHubWorkflow {
+  id: number;
+  name: string;
+  head_sha: string;
+  run_attempt: number;
+  status: string;
+  conclusion: string;
+  html_url: string;
+  requested?: boolean;
+}
+
+export interface GitHubPull {
+  subject: GitHubSubject;
+  files: GitHubChangedFile[];
+  comments: GitHubComment[];
+  workflows: GitHubWorkflow[];
+  next_page?: number;
+}
+
+export interface GitHubIssue {
+  labels: string[];
+  subject: GitHubSubject;
+  comments: GitHubComment[];
+  reviews?: GitHubComment[];
+  review_comments?: GitHubComment[];
+  files?: GitHubChangedFile[];
+  page: number;
+  next_page?: number;
+}
+
 /** Lines of one file at one commit, numbered from first. */
 export interface SourceExcerpt {
   /** owner/name. */
@@ -4359,6 +4418,19 @@ export interface Manifest {
   root: string;
   runs: ManifestRun[];
   usage: ManifestUsage;
+}
+
+export interface GitHubSubjectPullRequest {
+  url?: string;
+}
+
+export interface GitHubSubjectHead {
+  sha?: string;
+  ref?: string;
+}
+
+export interface GitHubCommentUser {
+  login: string;
 }
 
 export interface HealthComponentHistoryItem {

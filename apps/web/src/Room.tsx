@@ -40,6 +40,7 @@ import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
 import { ForkContext } from "./ForkConversation.tsx";
+import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { OLD_SYSTEM_SENDER } from "./legacy.ts";
 import { MessageTime } from "./MessageTime.tsx";
@@ -705,6 +706,10 @@ export function ThreadRoom({
 
   const onAction = (a: UiAction) => {
     if (a.id === ActionId.openRun) return openPanel("activity", { run: a.payload.target });
+    if (a.id === ActionId.openReview && a.payload.target) {
+      openPanel("workspace", reviewView(shownView, a.payload.target));
+      return;
+    }
     // A review's Ask Follow-up puts its words, tagging the agent, in the box. Nothing is sent.
     if (a.id === ActionId.reviewFollowUp) {
       if (posts && a.payload.text) setSeed({ text: `${a.payload.text} `, mode: "prepend" });
@@ -1085,6 +1090,17 @@ export function ThreadRoom({
         onClose={() => openPanel()}
       />
       <Workspace
+        extraTab={(tab) =>
+          ["review", "pull", "issue"].includes(tab.kind) ? (
+            <GitHubTab
+              tab={tab}
+              review={reviewText(
+                turns.flatMap((t) => (t.run ? [t.run] : [])),
+                tab.ref,
+              )}
+            />
+          ) : undefined
+        }
         key={id}
         thread={id}
         open={shownView.panel === "workspace"}

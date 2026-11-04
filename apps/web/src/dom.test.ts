@@ -20,6 +20,7 @@ import { loadTests } from "./testload.ts";
 // may still be running the tests after this module returns.
 GlobalRegistrator.register({ url: "http://localhost:5173/" });
 await loadTests([
+  "/src/github-tab.dom.test.tsx",
   "/src/voice-notes.dom.test.tsx",
   "/src/automations.dom.test.tsx",
   "/src/catalog.dom.test.tsx",

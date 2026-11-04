@@ -352,6 +352,7 @@ export function Review(p: PrimitiveProps["Review"]) {
         <h3 id={titleId} className="font-semibold text-aui-fg text-aui-sm">
           {p.title}
         </h3>
+        {p.openReview && <Button {...p.openReview} />}
         {p.pullRequest && (
           <a
             href={p.pullRequest.url}
