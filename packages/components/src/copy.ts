@@ -576,6 +576,7 @@ export const defaultCopy = {
       "Older conversations could not be loaded. Your current list is still available. Try See More again.",
   },
   navigation: {
+    customize: "Customize",
     newConversation: "New",
     updates: "Updates",
     people: "People",
@@ -2286,6 +2287,19 @@ export const defaultCopy = {
       dismiss: "Dismiss",
     },
   },
+  /** A conversation's approval mode, a text control under the composer (DES-057). */
+  approvals: {
+    label: "Approvals",
+    ask: "Default",
+    askHint: "Ask a person before a gated action runs.",
+    auto: "Approve for Me",
+    autoHint:
+      "Approve gated actions as you, within policy. Budget requests and actions the agent or the policy always asks about still come to a person. Every approval is audited.",
+    autoFor: (name: string) => `Approved for ${name}`,
+    failed: "Could not change approvals. Try again.",
+  },
+  /** Over Home's chat bar: the person's own project, where a conversation in no project is filed (DES-057). */
+  noProject: "No project",
   /**
    * The installed app: the prompt for a new version, which waits for the
    * person, and the screen shown when there is no network.

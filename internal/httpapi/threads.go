@@ -33,6 +33,7 @@ func (s *Server) threadRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/threads/{id}/placement", s.authed(auth.ProjectsRead, s.seenThread(s.previewPlacement)))
 	mux.HandleFunc("POST /api/threads/{id}/publication", s.authed(auth.RunsWrite, s.seenThread(s.publishSummary)))
 	mux.HandleFunc("POST /api/threads/{id}/share", s.authed(auth.RunsWrite, s.seenThread(s.shareThread)))
+	mux.HandleFunc("PUT /api/threads/{id}/approval", s.authed(auth.RunsWrite, s.seenThread(s.putApprovalMode)))
 	s.archiveRoutes(mux)
 }
 
@@ -209,6 +210,23 @@ func (s *Server) updateThread(w http.ResponseWriter, r *http.Request, who auth.P
 		return
 	}
 	got, err := s.P.UpdateThread(r.Context(), who, r.PathValue("id"), in)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, s.P.Seer(who).Thread(s.P.ShowThread(who.Tenant, got)))
+}
+
+// putApprovalMode sets how the conversation's gated tool actions are
+// approved: ask, or auto for the caller (DES-057).
+func (s *Server) putApprovalMode(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var in struct {
+		Mode string `json:"mode"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	got, err := s.P.SetApprovalMode(who, r.PathValue("id"), in.Mode)
 	if err != nil {
 		s.problem(w, err)
 		return

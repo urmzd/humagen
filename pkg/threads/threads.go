@@ -240,6 +240,9 @@ type Thread struct {
 	// Archive is set while the conversation is archived, and stays as a
 	// tombstone once an admin approves its deletion (SetArchive, Purge).
 	Archive *Archive `json:"archive,omitempty"`
+	// Approval is how gated tool actions in it are approved, and who chose
+	// it (SetApproval). Nil asks a person.
+	Approval *Approval `json:"approval,omitempty"`
 	// Version counts the edits made to the record: its title, visibility,
 	// default and participants. Posting, and joining by posting, leave it.
 	Version int `json:"version"`
@@ -350,6 +353,7 @@ func (t Thread) clone() Thread {
 	t.Agents = slices.Clone(t.Agents)
 	t.Fork = t.Fork.clone()
 	t.Archive = t.Archive.clone()
+	t.Approval = t.Approval.clone()
 	if t.Surface != nil {
 		sf := *t.Surface
 		t.Surface = &sf

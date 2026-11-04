@@ -21,6 +21,7 @@ function serve(initial: PersonContext) {
   let cur = initial;
   return {
     "GET /api/me/context": () => cur,
+    "POST /api/me/tool-servers/review": (body: unknown) => ({ ...(body as object), tools: [] }),
     "PUT /api/me/context": (body: unknown) => {
       const input = body as PersonContextInput;
       if (input.version !== cur.version)
@@ -54,6 +55,9 @@ test("a person adds a server by its address and a reference, and the write keeps
     target: { value: "op://People/lee/issues" },
   });
   fireEvent.submit(form);
+  assert.ok(await screen.findByText("No tools offered."));
+  assert.ok(!net.seen.some((r) => r.method === "PUT"));
+  fireEvent.click(screen.getByRole("button", { name: "Approve Tool List" }));
   assert.ok(await screen.findByRole("listitem", { name: "issues" }));
   assert.ok(screen.getByText(/reads op:\/\/People\/lee\/issues/));
   const put = net.seen.find((r) => r.method === "PUT");
@@ -64,6 +68,7 @@ test("a person adds a server by its address and a reference, and the write keeps
         name: "issues",
         url: "https://issues.example.com/mcp",
         credential: "op://People/lee/issues",
+        tools: [],
       },
     ],
     version: 2,
@@ -112,4 +117,37 @@ test("a person removes a server, and one who may not change them sees them with 
   for (const name of ["Add Tool Server", "Remove notes"])
     assert.ok(!screen.queryByRole("button", { name }), `${name} is offered`);
   await waitFor(() => assert.ok(!net?.seen.some((r) => r.method !== "GET")));
+});
+
+test("an existing server's changed list is reviewed before a new snapshot is saved", async () => {
+  const initial: PersonContext = {
+    run: {},
+    version: 2,
+    tool_servers: [{ name: "notes", url: "https://mcp.example.com" }],
+  };
+  net = stubFetch({
+    ...serve(initial),
+    "POST /api/me/tool-servers/review": (body: unknown) => ({
+      ...(body as object),
+      tools: [
+        {
+          name: "delete_note",
+          description: "Delete a note",
+          schema_hash: "abc",
+          class: "write",
+          input_schema: { type: "object" },
+        },
+      ],
+    }),
+  });
+  render(<YourToolServers references={starts} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Review Tools" }));
+  assert.ok(await screen.findByText("delete_note"));
+  assert.ok(screen.getByText("Write, approval required"));
+  assert.ok(!net.seen.some((r) => r.method === "PUT"));
+  fireEvent.click(screen.getByRole("button", { name: "Approve Tool List" }));
+  await waitFor(() => assert.equal(net?.seen.filter((r) => r.method === "PUT").length, 1));
+  const saved = net.seen.find((r) => r.method === "PUT")?.body as PersonContextInput;
+  assert.equal(saved.version, 2);
+  assert.equal(saved.tool_servers?.[0]?.tools?.[0]?.name, "delete_note");
 });

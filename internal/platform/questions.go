@@ -647,7 +647,11 @@ func (p *Platform) observeQuestion(ctx context.Context, e event.Envelope) {
 		}
 		if run, err := p.Runs.Get(e.Tenant, e.Run); err == nil {
 			// What could not be kept is logged where it was tried.
-			_, _ = p.raiseQuestion(ctx, run, *body.Question, "")
+			if m, err := p.raiseQuestion(ctx, run, *body.Question, ""); err == nil {
+				// A conversation that approves for a person answers here,
+				// off the event loop, since an answer wakes the run.
+				go p.autoApprove(ctx, run, *body.Question, m)
+			}
 		}
 	case event.TypeChildParked:
 		// A run waiting on a run it called shows that run's question. The
