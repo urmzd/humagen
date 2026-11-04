@@ -77,6 +77,12 @@ tags:
       roles, from sign-ins, the Slack people a client maps and the policy's
       subject grants. No email address is shown: a subject that holds one
       is left out, and subjects are not searched.
+  - name: voice
+    description: |
+      Voice notes from the console: whether the deployment transcribes
+      them, and a recording's words. A voice note posted from a surface,
+      such as a Slack audio clip, is transcribed as the message is posted,
+      with the same speech kind (docs/guides/voice.md).
   - name: settings
     description: Workspace settings.
   - name: preferences
@@ -7040,6 +7046,68 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/voice:
+    get:
+      operationId: getVoice
+      tags: [voice]
+      summary: Whether voice notes are transcribed here
+      description: |
+        `transcribe` is false when the System spec has no speech kind; the
+        console then offers no recording. `max_bytes` is the largest
+        recording `POST /api/voice/transcriptions` takes.
+      x-permission: speech:write
+      responses:
+        "200":
+          description: The voice settings.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VoiceSettings"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /api/voice/transcriptions:
+    post:
+      operationId: transcribeVoice
+      tags: [voice]
+      summary: Transcribe a recording
+      description: |
+        The body is the recording's own bytes, at most `max_bytes` from
+        `GET /api/voice` (10 MiB). What it is is decided from the bytes, not
+        the Content-Type. The words come back for the person to read and
+        send; the recording is not kept. 404 when voice notes are off, 422
+        when no words were heard, 503 when the speech provider failed or did
+        not answer in time.
+      x-permission: speech:write
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      responses:
+        "200":
+          description: What was said.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VoiceTranscript"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413":
+          description: The recording is over `max_bytes`, or longer than the speech kind takes.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
+        "422":
+          description: No words were heard in the recording.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
+        "503":
+          description: The speech provider failed or did not answer in time.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/people/{handle}/photo:
     get:
       operationId: getPersonPhoto
@@ -9119,6 +9187,7 @@ components:
         - projects:write
         - projects:govern
         - people:read
+        - speech:write
     Principal:
       description: An authenticated caller. The tenant is the workspace everything they touch is confined to.
       type: object
@@ -12016,6 +12085,20 @@ components:
           properties:
             agent: {type: string}
         - {$ref: "#/components/schemas/AgentPlace"}
+    VoiceSettings:
+      description: Whether voice notes are transcribed, and the largest recording taken.
+      type: object
+      required: [transcribe, max_bytes]
+      properties:
+        transcribe: {type: boolean}
+        max_bytes: {type: integer, format: int64}
+    VoiceTranscript:
+      description: What a recording said, and the language it was said in when the speech kind reports one.
+      type: object
+      required: [text]
+      properties:
+        text: {type: string, maxLength: 8000}
+        language: {type: string}
     Person:
       description: |
         One person in the directory. No email address is shown: a subject

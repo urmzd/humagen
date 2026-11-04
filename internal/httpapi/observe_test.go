@@ -18,7 +18,7 @@ var everything = []string{
 	"humagen:knowledge:read", "humagen:knowledge:write", "humagen:evals:read", "humagen:evals:write",
 	"humagen:billing:read", "humagen:billing:write", "humagen:artifacts:read", "humagen:artifacts:write",
 	"humagen:clients:read", "humagen:clients:write", "humagen:projects:read", "humagen:projects:write", "humagen:projects:govern",
-	"humagen:people:read",
+	"humagen:people:read", "humagen:speech:write",
 }
 
 func TestObservabilityIsConfinedToATenant(t *testing.T) {

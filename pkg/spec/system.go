@@ -15,6 +15,7 @@ import (
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/rooms"
+	"github.com/urmzd/humagen/pkg/speech"
 	"github.com/urmzd/orchagent/flow/bus"
 )
 
@@ -32,6 +33,7 @@ const (
 	SlotModels     = "models"
 	SlotTools      = "tools"
 	SlotConnectors = "connectors"
+	SlotSpeech     = "speech"
 )
 
 // Builtin is the kinds each slot has with no extension. internal/app builds
@@ -46,9 +48,10 @@ var Builtin = map[string][]string{
 	SlotDeploy:     {"local", "compose", "kubernetes"},
 	SlotSandbox:    {"docker", "local", "unisolated"},
 	SlotEgress:     {"none", "gate"},
-	SlotModels:     {"anthropic", "openai", "google"},
+	SlotModels:     {"anthropic", "openai", "google", "groq"},
 	SlotTools:      {"mcp"},
 	SlotConnectors: {"bigquery", "snowflake", "gcs", "s3"},
+	SlotSpeech:     {"none", "groq"},
 }
 
 // System is how and where humagen runs.
@@ -69,6 +72,9 @@ type SystemSpec struct {
 	Blobs         Slot                 `json:"blobs,omitzero"`
 	// Knowledge is how knowledge sources are searched (RFC 0005).
 	Knowledge Knowledge `json:"knowledge,omitzero"`
+	// Speech turns voice notes into text before a run starts: none (the
+	// default, audio stays an attachment no agent hears) or groq.
+	Speech    Slot      `json:"speech,omitzero"`
 	Execution Execution `json:"execution,omitzero"`
 	// Sandbox is where a run's tools execute: the file tools, the shell
 	// and stdio MCP servers, in an instance of the run's own. docker (the
@@ -351,6 +357,75 @@ type Knowledge struct {
 	Embedder Slot `json:"embedder,omitzero"`
 }
 
+// GroqSpeech is the groq speech kind's block: Groq's OpenAI-compatible
+// audio API. Every field has a default, so `kind: groq` alone is enough
+// with GROQ_API_KEY set.
+type GroqSpeech struct {
+	// BaseURL is where the API is. Empty is GroqBaseURL.
+	BaseURL string `json:"base_url,omitempty"`
+	// Key is the API key's reference. Left out: env:GROQ_API_KEY.
+	Key *Ref `json:"key,omitempty"`
+	// Model transcribes. Empty is whisper-large-v3-turbo.
+	Model string `json:"model,omitempty"`
+	// SpeechModel and Voice speak. Empty are canopylabs/orpheus-v1-english
+	// and autumn.
+	SpeechModel string `json:"speech_model,omitempty"`
+	Voice       string `json:"voice,omitempty"`
+	// MaxBytes caps one voice note. Empty is 25 MiB, Groq's own cap.
+	MaxBytes int64 `json:"max_bytes,omitempty"`
+	// Timeout bounds one request. Empty is 60s.
+	Timeout string `json:"timeout,omitempty"`
+}
+
+// Groq's defaults, for the groq model and speech kinds.
+const (
+	GroqBaseURL = speech.GroqBaseURL
+	GroqKey     = "env:GROQ_API_KEY"
+	// MaxSpeechBytes bounds max_bytes.
+	MaxSpeechBytes int64 = 100 << 20
+	// MaxSpeechTimeout bounds timeout.
+	MaxSpeechTimeout = 10 * time.Minute
+)
+
+// TimeoutOr is the block's timeout, or def when it is left out.
+func (g GroqSpeech) TimeoutOr(def time.Duration) time.Duration {
+	if d, err := time.ParseDuration(g.Timeout); err == nil && d > 0 {
+		return d
+	}
+	return def
+}
+
+// KeyRef is the block's key reference, or env:GROQ_API_KEY.
+func (g GroqSpeech) KeyRef() string {
+	if g.Key.Set() {
+		return g.Key.Ref
+	}
+	return GroqKey
+}
+
+// checkSpeech refuses a speech kind that could not be built at start.
+func checkSpeech(s Slot) error {
+	if s.Kind != "groq" {
+		return nil
+	}
+	b, err := Block[GroqSpeech](s)
+	if err != nil {
+		return fmt.Errorf("system: speech: groq: %w", err)
+	}
+	if err := checkBaseURL(b.BaseURL); err != nil {
+		return fmt.Errorf("system: speech: groq: %w", err)
+	}
+	if b.MaxBytes < 0 || b.MaxBytes > MaxSpeechBytes {
+		return fmt.Errorf("system: speech: groq: max_bytes is at most %d", MaxSpeechBytes)
+	}
+	if b.Timeout != "" {
+		if d, err := time.ParseDuration(b.Timeout); err != nil || d <= 0 || d > MaxSpeechTimeout {
+			return fmt.Errorf("system: speech: groq: timeout is a duration up to %s, such as 60s", MaxSpeechTimeout)
+		}
+	}
+	return nil
+}
+
 // HashingEmbedder is the hashing embedder kind's block: deterministic, no
 // model and no network. It matches shared words and word stems, not meaning.
 type HashingEmbedder struct {
@@ -560,7 +635,7 @@ func (s System) check(kinds Kinds) error {
 	slots := []struct {
 		name string
 		slot Slot
-	}{{SlotAuth, sp.Auth.Slot}, {SlotStores, sp.Stores}, {SlotBus, sp.Bus}, {SlotBlobs, sp.Blobs}, {SlotEmbedder, sp.Knowledge.Embedder}, {SlotDeploy, sp.Deploy}, {SlotSandbox, sp.Sandbox}, {SlotEgress, sp.Egress}}
+	}{{SlotAuth, sp.Auth.Slot}, {SlotStores, sp.Stores}, {SlotBus, sp.Bus}, {SlotBlobs, sp.Blobs}, {SlotEmbedder, sp.Knowledge.Embedder}, {SlotSpeech, sp.Speech}, {SlotDeploy, sp.Deploy}, {SlotSandbox, sp.Sandbox}, {SlotEgress, sp.Egress}}
 	for _, e := range sp.Extensions {
 		slots = append(slots, struct {
 			name string
@@ -595,6 +670,9 @@ func (s System) check(kinds Kinds) error {
 			return fmt.Errorf("system: %s: %w", x.name, err)
 		}
 	}
+	if err := checkSpeech(sp.Speech); err != nil {
+		return err
+	}
 	return checkEmbedder(sp.Knowledge.Embedder)
 }
 
@@ -621,7 +699,7 @@ func checkEmbedder(e Slot) error {
 // checked when the file is read.
 func builtinBlock(slot, kind string) (any, bool) {
 	switch slot + "." + kind {
-	case "auth.dev", "auth.tailscale", "stores.memory", "bus.memory", "blobs.memory", "deploy.local", "sandbox.unisolated", "embedder.none", "egress.none":
+	case "auth.dev", "auth.tailscale", "stores.memory", "bus.memory", "blobs.memory", "deploy.local", "sandbox.unisolated", "embedder.none", "egress.none", "speech.none":
 		return &struct{}{}, true
 	case "deploy.compose":
 		return &Compose{}, true
@@ -648,8 +726,10 @@ func builtinBlock(slot, kind string) (any, bool) {
 		return &OpenAIEmbedder{}, true
 	case "embedder.vertex":
 		return &VertexEmbedder{}, true
-	case "models.anthropic", "models.openai", "models.google":
+	case "models.anthropic", "models.openai", "models.google", "models.groq":
 		return &ModelBlock{}, true
+	case "speech.groq":
+		return &GroqSpeech{}, true
 	case "connectors.snowflake":
 		return &SnowflakeConnector{}, true
 	case "connectors.gcs", "connectors.s3":

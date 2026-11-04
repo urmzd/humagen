@@ -365,8 +365,9 @@ func KindOf(p Project) string {
 }
 
 // Model is a model provider agents name as their provider: a slot
-// (anthropic, openai, google) with its name. A local server such as
+// (anthropic, openai, google, groq) with its name. A local server such as
 // Ollama or vLLM is openai with its base_url: it serves the OpenAI API.
+// groq is openai with Groq's base URL and GROQ_API_KEY filled in.
 type Model struct {
 	Slot
 	ModelShared
@@ -849,16 +850,43 @@ func checkScope(b MCP) error {
 	return nil
 }
 
-func checkModel(kind string, b ModelBlock) error {
-	if b.BaseURL != "" {
-		u, err := url.Parse(b.BaseURL)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return fmt.Errorf("base_url must be an http or https URL")
-		}
-		if u.User != nil {
-			return fmt.Errorf("base_url carries credentials; use key")
-		}
+// checkBaseURL refuses a base URL that is not http or https, or that
+// carries credentials.
+func checkBaseURL(base string) error {
+	if base == "" {
+		return nil
 	}
+	u, err := url.Parse(base)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("base_url must be an http or https URL")
+	}
+	if u.User != nil {
+		return fmt.Errorf("base_url carries credentials; use key")
+	}
+	return nil
+}
+
+// ModelDefaults is a model block with its kind's defaults filled in: groq
+// is the OpenAI-compatible API at GroqBaseURL, keyed by env:GROQ_API_KEY
+// unless the block says otherwise.
+func ModelDefaults(kind string, b ModelBlock) ModelBlock {
+	if kind != "groq" {
+		return b
+	}
+	if b.BaseURL == "" {
+		b.BaseURL = GroqBaseURL
+	}
+	if !b.Key.Set() {
+		b.Key = &Ref{Ref: GroqKey}
+	}
+	return b
+}
+
+func checkModel(kind string, b ModelBlock) error {
+	if err := checkBaseURL(b.BaseURL); err != nil {
+		return err
+	}
+	b = ModelDefaults(kind, b)
 	if b.Vertex != nil {
 		switch {
 		case kind != "google":

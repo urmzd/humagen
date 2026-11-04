@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
+import { Mailbox } from "@humagen/web";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { stubFetch } from "./dom.ts";
 import { InboxPage } from "./InboxPage.tsx";
@@ -242,6 +243,33 @@ test("rows are selected to mark many at once, by click or with x, and Mark All R
   );
   await waitFor(() => assert.deepEqual(box.readAll, ["inbox"]));
   await screen.findByText(vc.readAllDone(1));
+});
+
+test("a new view starts with nothing picked", () => {
+  const messages = [message("m1", "Signups published"), message("m2", "Checklist updated")];
+  const views = [
+    { id: "inbox", label: vc.inbox, count: 2 },
+    { id: "unread", label: vc.unread, count: 2 },
+  ];
+  const at = (view: string) => (
+    <Mailbox
+      heading={false}
+      messages={messages}
+      onAction={() => {}}
+      views={views}
+      view={view}
+      onView={() => {}}
+      onMark={() => {}}
+    />
+  );
+  const { rerender } = render(at("inbox"));
+  const bulk = () => screen.getByRole("toolbar", { name: vc.bulk });
+  fireEvent.click(screen.getByRole("checkbox", { name: vc.select("Signups published") }));
+  assert.ok(within(bulk()).getByText(vc.selected(1)));
+  // The same mailbox, kept mounted, shown another view.
+  rerender(at("unread"));
+  assert.equal(within(bulk()).queryByText(vc.selected(1)), null);
+  assert.ok(within(bulk()).getByText(vc.selectAll));
 });
 
 test("a row in a view says no state word: Hidden and Done are views, not labels", async () => {

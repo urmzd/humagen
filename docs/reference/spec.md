@@ -120,6 +120,14 @@ spec:
       # kind: hashing
       # hashing: {dimensions: 256}   # no model: matches words and word stems, not meaning
 
+  speech:                   # slot: none | groq. Left out: none, a voice note stays an attachment no agent hears
+    kind: groq              # transcribes voice notes before a run starts (Voice notes)
+    groq:
+      key: {ref: env:GROQ_API_KEY}           # the default; left out, the same
+      model: whisper-large-v3-turbo          # the default
+      max_bytes: 26214400   # 25 MiB, the default and Groq's own cap; at most 100 MiB
+      timeout: 60s          # one request; the default, at most 10m
+
   execution:
     workspace: ""           # agents' files. Empty is the user cache directory
     concurrency: 4          # a run that calls another agent waits in one place while it runs in another
@@ -315,6 +323,38 @@ lexically. If the embedder fails, writes still succeed and search is lexical.
 Search sees exactly the documents it would without vectors: the same sources,
 exclusions, variants and access checks.
 
+### Voice notes
+
+`speech` turns a voice note into words before the run it starts, so an
+agent reads what was said wherever it was said. A message that carries an
+audio attachment (a Slack audio clip, and the WhatsApp and iMessage voice
+notes the messaging connectors will carry) is transcribed as it is posted,
+and the transcript is put after the message's text, marked
+`[Voice note, english]`. The recording stays attached. In the console, the
+microphone records a voice note and its words come back into the draft,
+marked the same way, for the person to read and send
+([docs/guides/voice.md](../guides/voice.md)).
+
+| Kind | Block | Credentials |
+|------|-------|-------------|
+| `none` | none | Nothing is transcribed, the default |
+| `groq` | `base_url`, `key`, `model`, `speech_model`, `voice`, `max_bytes`, `timeout`, every one optional | `key`, a reference, `env:GROQ_API_KEY` when left out |
+
+`groq` sends each recording to `POST /audio/transcriptions` on Groq's
+OpenAI-compatible API, with `whisper-large-v3-turbo` unless `model` says
+otherwise. A recording over `max_bytes` (25 MiB when left out, at most
+100 MiB) is not sent, and one request waits at most `timeout` (60s, at most
+10m). A message has at most four voice notes transcribed. A note that is too
+long, has no words or reaches a provider that fails is said to be so in the
+message, which still posts. `speech_model` and `voice` (Groq's
+`canopylabs/orpheus-v1-english` and `autumn` when left out) are for speaking
+replies, which nothing uses yet. A binary adds a kind with
+`humagen.WithKind(humagen.Speech, ...)`, building a `speech.Transcriber`.
+
+A model can be Groq too: `kind: groq` under `models` is `openai` with Groq's
+base URL and `env:GROQ_API_KEY` filled in, and an agent names it as its
+provider with a model such as `llama-3.3-70b-versatile`.
+
 ### Catalog connectors
 
 `connectors` in a Platform document are the systems the catalog lists
@@ -497,7 +537,7 @@ spec:
     release_notes: true     # each release's breaking changes and features, posted once in the workspace's inbox from humagen
     inbox_retention: 180d   # how long the inbox keeps what was settled for everyone. Left out: 90d. At least 7d
 
-  models:                   # each a slot: anthropic | openai | google
+  models:                   # each a slot: anthropic | openai | google | groq
     - name: anthropic       # what an agent names as its provider
       kind: anthropic
       anthropic: {key: {ref: env:ANTHROPIC_API_KEY}}
@@ -507,6 +547,8 @@ spec:
     - name: local
       kind: openai          # any OpenAI-compatible server, such as Ollama (http://127.0.0.1:11434/v1) or vLLM
       openai: {base_url: "http://127.0.0.1:8000/v1"}
+    - name: groq
+      kind: groq            # openai on Groq: base_url https://api.groq.com/openai/v1 and key {ref: env:GROQ_API_KEY} by default
 
   model_policies:
     - name: default

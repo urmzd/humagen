@@ -104,7 +104,7 @@ func newFixtureGranting(t *testing.T, cfg platform.Config, grants string) *fixtu
 // grants name.
 const fixtureRoles = `
 role viewer { allow read on * }
-role operator extends viewer { allow write on runs, schedules, alerts, evals, artifacts, projects }
+role operator extends viewer { allow write on runs, schedules, alerts, evals, artifacts, projects, speech }
 role manager extends operator { allow write on agents, knowledge }
 role admin { allow * on * }
 `

@@ -66,6 +66,7 @@ import (
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/settings"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
+	"github.com/urmzd/humagen/pkg/speech"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
 	"github.com/urmzd/orchagent/flow/attachment"
@@ -1006,6 +1007,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 			{Tenant: "acme", Connector: catalog.Connector{Name: "live-only", System: "bigquery", Owner: "catalog-owner"}, Querier: contractWarehouse{}},
 		},
 		GitHubAPI: func(string) github.API { return sourceFake },
+		Speech:    contractSpeech{},
 	})
 	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
 	contractSource(t, f, c, sourceFake)
@@ -1103,6 +1105,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	if got, err := f.p.Inbox.Get("acme", notice.ID, "audit-admin"); err != nil || !got.Unread {
 		t.Fatalf("delivery changed inbox: %+v %v", got, err)
 	}
+
+	// Voice notes: a recording's words, and each way one is refused.
+	c.call(acme, "GET", "/api/voice", "/api/voice", "", http.StatusOK)
+	const transcribe = "/api/voice/transcriptions"
+	octets := []string{"Content-Type", "application/octet-stream"}
+	c.call(acme, "POST", transcribe, transcribe, webmVoice, http.StatusOK, octets...)
+	c.call(acme, "POST", transcribe, transcribe, "not audio", http.StatusBadRequest, octets...)
+	c.call(acme, "POST", transcribe, transcribe, webmVoice+"silence", http.StatusUnprocessableEntity, octets...)
+	c.call(acme, "POST", transcribe, transcribe, webmVoice+"offline", http.StatusServiceUnavailable, octets...)
 
 	c.call(auditAdmin, "GET", "/api/audit", "/api/audit?limit=501", "", http.StatusBadRequest)
 	c.call(auditAdmin, "GET", "/api/read-audit", "/api/read-audit?limit=501", "", http.StatusBadRequest)
@@ -2632,6 +2643,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
+	"POST /api/voice/transcriptions 404":            "a deployment with speech left out, covered by TestWithoutSpeechTheConsoleHasNoVoiceNotes",
 	"POST /api/catalog/connectors/{name}/crawl 409": "a crawl asked for while another of the same connector runs; the guard is in platform.crawl",
 	// The atomic source configuration race is covered by TestPromotionGuardAndProvenanceSurviveRestart.
 	"POST /api/artifacts/{id}/promote-knowledge 409": "source audience changed concurrently",
@@ -2844,4 +2856,21 @@ func (w contractWarehouse) Crawl(context.Context) ([]catalog.Entry, error) {
 
 func (contractWarehouse) Query(context.Context, string) (catalog.Result, error) {
 	return catalog.Result{}, nil
+}
+
+// contractSpeech hears every recording as words, except one that ends in
+// silence or reaches a provider that is offline.
+type contractSpeech struct{}
+
+func (contractSpeech) Transcribe(_ context.Context, audio io.Reader, _ string) (string, string, error) {
+	b, err := io.ReadAll(audio)
+	switch {
+	case err != nil:
+		return "", "", err
+	case bytes.HasSuffix(b, []byte("silence")):
+		return "", "", speech.ErrEmpty
+	case bytes.HasSuffix(b, []byte("offline")):
+		return "", "", speech.ErrUnavailable
+	}
+	return "Ship it on Friday.", "english", nil
 }

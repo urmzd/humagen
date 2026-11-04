@@ -223,6 +223,7 @@ func (s *Server) Handler() http.Handler {
 	s.markRoutes(mux)
 	s.projectRoutes(mux)
 	s.peopleRoutes(mux)
+	s.voiceRoutes(mux)
 	s.threadRoutes(mux)
 	s.billingRoutes(mux)
 	s.clientRoutes(mux)
@@ -297,6 +298,8 @@ func (s *Server) authed(perm auth.Permission, h handler) http.HandlerFunc {
 			bodyLimit = 6*platform.MaxFileBytes + 4096
 		case "POST /api/threads/{id}/scratchpads", "PUT /api/threads/{id}/scratchpads/{pad}":
 			bodyLimit = 6*scratchpads.MaxContent + 4096
+		case "POST /api/voice/transcriptions":
+			bodyLimit = platform.MaxRecordingBytes
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, bodyLimit)
 		if r.Method != http.MethodGet {

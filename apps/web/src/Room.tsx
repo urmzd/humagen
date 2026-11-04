@@ -72,6 +72,7 @@ import {
   Problem,
   primary,
 } from "./ui.tsx";
+import { useVoiceNotes } from "./useVoiceNotes.ts";
 import { Workspace } from "./Workspace.tsx";
 
 /**
@@ -228,6 +229,7 @@ function RoomComposer({
 }) {
   const [problem, setProblem] = useState<string | null>(null);
   // People's messages never wait for an agent: each is posted as it is sent.
+  const voice = useVoiceNotes();
   const queue = useQueue({
     onStart: (m) => {
       setProblem(null);
@@ -253,6 +255,7 @@ function RoomComposer({
         onDraft={onDraft}
         tags={tags}
         plus={plus}
+        voice={voice}
         trailing={trailing}
       />
     </div>

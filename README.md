@@ -120,7 +120,7 @@ One file, two documents:
 
 | Document | Controls |
 |----------|----------|
-| `System` | Sign-in, stores, bus, files, limits |
+| `System` | Sign-in, stores, bus, files, voice notes, limits |
 | `Platform` | Models, tools, agents, Slack, GitHub, workspace settings (one per workspace) |
 
 Name where each secret lives (`env:NAME`, `keychain:SERVICE`, `op://VAULT/ITEM/FIELD`). Humagen reads it when used and never stores it. Flags override the file (`humagen start -addr 127.0.0.1:9090`). See [the spec](docs/reference/spec.md).
@@ -139,6 +139,7 @@ Name where each secret lives (`env:NAME`, `keychain:SERVICE`, `op://VAULT/ITEM/F
 | `GET`, `PUT /api/projects/{name}/agents` | `projects:read`, `projects:write` |
 | `GET`, `PUT /api/projects/{name}/knowledge` | `projects:read`, `projects:write` (naming sources also takes `knowledge:read`) |
 | `GET /api/people`, `GET /api/people/{handle}/photo` | `people:read` |
+| `GET /api/voice`, `POST /api/voice/transcriptions` | `speech:write` |
 | `GET`, `POST /api/evals`, `PUT`, `DELETE /api/evals/{name}`, `POST .../run`, `GET .../runs` | `evals:read`, `evals:write` |
 | `GET`, `PUT /api/preferences`, `GET`, `PUT`, `DELETE /api/preferences/photo` | Signed in, the caller's own |
 | `POST /api/runs/{id}/calls` | `runs:write` |

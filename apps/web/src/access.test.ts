@@ -55,9 +55,10 @@ test("every permission has words, the project ones included", () => {
   assert.equal(doing["projects:write"], "make and change projects");
   assert.equal(doing["projects:govern"], "own every project");
   assert.equal(doing["people:read"], "see who is in the workspace");
+  assert.equal(doing["speech:write"], "record voice notes");
   assert.deepEqual(
-    PERMISSIONS.slice(-4),
-    ["projects:read", "projects:write", "projects:govern", "people:read"],
+    PERMISSIONS.slice(-5),
+    ["projects:read", "projects:write", "projects:govern", "people:read", "speech:write"],
     "in the order the platform lists them",
   );
 });

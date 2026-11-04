@@ -11,7 +11,7 @@ import (
 
 func TestEveryModelKindBuildsWithItsKey(t *testing.T) {
 	keys := credref.Resolver{LookupEnv: func(string) (string, bool) { return "k", true }}
-	for _, kind := range []string{"anthropic", "openai", "google"} {
+	for _, kind := range []string{"anthropic", "openai", "google", "groq"} {
 		b := spec.ModelBlock{Key: &spec.Ref{Ref: "env:K"}}
 		p, err := modelProvider(kind, kind, b, keys)(native.Spec{Name: "a", Model: "m"})
 		if err != nil || p == nil {

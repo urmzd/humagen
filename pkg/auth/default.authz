@@ -9,10 +9,10 @@
 role viewer { allow read on * }
 
 # Runs agents, manages schedules, acknowledges alerts and sets their rules,
-# runs evals, deletes published files, and makes and changes projects:
-# anyone who can start a run can make a project.
+# runs evals, deletes published files, makes and changes projects (anyone
+# who can start a run can make a project), and records voice notes.
 role operator extends viewer {
-  allow write on runs, schedules, alerts, evals, artifacts, projects
+  allow write on runs, schedules, alerts, evals, artifacts, projects, speech
 }
 
 # Everything an operator does, and also defines and revises agents (their

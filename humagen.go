@@ -215,14 +215,15 @@ const (
 	Extensions = spec.SlotExtensions
 	Models     = spec.SlotModels
 	Sandbox    = spec.SlotSandbox
+	Speech     = spec.SlotSpeech
 	Tools      = spec.SlotTools
 )
 
 // Factory builds a registered kind from its block in the spec file, which it
 // decodes strictly itself. What it returns depends on the slot: a blob.Store
 // for Blobs, a bus.Bus for Bus, a native.ProviderFunc for Models, a
-// runtime.Catalog for Tools, an isolation.Leaser for Sandbox, and an
-// Extension for Extensions.
+// runtime.Catalog for Tools, an isolation.Leaser for Sandbox, a
+// speech.Transcriber for Speech, and an Extension for Extensions.
 type Factory = app.Factory
 
 // Extension is a process-wide part, run beside the server until its context

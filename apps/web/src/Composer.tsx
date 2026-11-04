@@ -28,6 +28,13 @@ import {
   withoutMention,
 } from "./tags.ts";
 import { AgentMark, Presence } from "./ui.tsx";
+import {
+  canRecord,
+  MAX_RECORDING_MS,
+  recordingType,
+  type VoiceNotes,
+  withVoiceNote,
+} from "./voice.ts";
 
 const MAX_HEIGHT = 200;
 const MAX_FILES = 5;
@@ -144,7 +151,8 @@ export type ComposerSeed =
   | { mention: string; remove?: boolean };
 
 /**
- * The message box. Type, attach text files, or dictate. Enter sends and
+ * The message box. Type, attach text files, record a voice note (where the
+ * deployment transcribes them) or dictate. Enter sends and
  * Shift+Enter adds a line. While a reply is in flight, sending queues the
  * message behind it, Cmd+Enter (Ctrl+Enter) stops the reply and sends it
  * now, and Esc with nothing typed stops the reply.
@@ -159,8 +167,15 @@ export function Composer({
   seed,
   tags,
   plus,
+  voice,
   disclaimer = defaultCopy.disclaimer(defaultCopy.product),
 }: {
+  /**
+   * Voice notes, when the deployment transcribes them: the microphone
+   * records, and the words come back into the draft, marked, to read and
+   * send. Without it the microphone dictates with the browser's recognizer.
+   */
+  voice?: VoiceNotes;
   /** The AI disclaimer, said once under the prompt bar. null leaves it out. */
   disclaimer?: string | null;
   /** Text to start from, such as a question picked from a list. Each new object replaces what is typed. */
@@ -197,6 +212,9 @@ export function Composer({
   const input = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const speech = useRef<Recognizer | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const recorder = useRef<MediaRecorder | null>(null);
   const form = useRef<HTMLFormElement>(null);
   const [menu, setMenu] = useState(false);
   const [menuEpoch, setMenuEpoch] = useState(0);
@@ -223,7 +241,8 @@ export function Composer({
     document.addEventListener("mousedown", away);
     return () => document.removeEventListener("mousedown", away);
   }, [menu]);
-  const canDictate = recognizer() !== undefined;
+  const records = voice !== undefined && canRecord();
+  const canDictate = records || recognizer() !== undefined;
 
   const [typing, setTyping] = useState<Typing | null>(null);
   const [active, setActive] = useState(0);
@@ -369,7 +388,20 @@ export function Composer({
     if (autoFocus) input.current?.focus();
   }, [autoFocus]);
 
-  useEffect(() => () => speech.current?.stop(), []);
+  useEffect(
+    () => () => {
+      speech.current?.stop();
+      // Leaving the page drops a recording in progress, and frees the microphone.
+      const r = recorder.current;
+      if (r) {
+        r.ondataavailable = null;
+        r.onstop = null;
+        if (r.state !== "inactive") r.stop();
+        for (const track of r.stream.getTracks()) track.stop();
+      }
+    },
+    [],
+  );
 
   const ready = value.trim().length > 0 || files.length > 0;
 
@@ -437,7 +469,63 @@ export function Composer({
     setNotice(skipped.length > 0 ? skipped.join(". ") : null);
   };
 
+  // A voice note: record until stopped (or MAX_RECORDING_MS), then send the
+  // recording to be transcribed and put its words, marked, after the draft.
+  const record = async () => {
+    if (!voice || transcribing) return;
+    if (recording) return recorder.current?.stop();
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setNotice(defaultCopy.voice.denied);
+      return;
+    }
+    const type = recordingType((t) => MediaRecorder.isTypeSupported(t));
+    const r = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+    const chunks: Blob[] = [];
+    let size = 0;
+    r.ondataavailable = (e) => {
+      chunks.push(e.data);
+      size += e.data.size;
+      // Past what the server takes, stop: nothing more would be heard.
+      if (size > voice.maxBytes && r.state === "recording") r.stop();
+    };
+    const limit = setTimeout(() => r.state === "recording" && r.stop(), MAX_RECORDING_MS);
+    r.onstop = () => {
+      clearTimeout(limit);
+      for (const track of stream.getTracks()) track.stop();
+      recorder.current = null;
+      setRecording(false);
+      const audio = new Blob(chunks, { type: r.mimeType || type || "audio/webm" });
+      if (audio.size === 0) return;
+      if (audio.size > voice.maxBytes) {
+        setNotice(defaultCopy.voice.tooLong);
+        return;
+      }
+      setTranscribing(true);
+      setNotice(defaultCopy.voice.transcribing);
+      voice
+        .transcribe(audio)
+        .then((t) => {
+          change(withVoiceNote(input.current?.value ?? "", t));
+          setNotice(null);
+          input.current?.focus();
+        })
+        .catch((e: unknown) =>
+          setNotice(defaultCopy.voice.failed(e instanceof Error ? e.message : String(e))),
+        )
+        .finally(() => setTranscribing(false));
+    };
+    recorder.current = r;
+    setNotice(defaultCopy.voice.recording);
+    setRecording(true);
+    // A chunk a second, so the size is known while it records.
+    r.start(1000);
+  };
+
   const dictate = () => {
+    if (records) return void record();
     if (listening) return speech.current?.stop();
     const Speech = recognizer();
     if (!Speech) return;
@@ -466,6 +554,14 @@ export function Composer({
     setListening(true);
     r.start();
   };
+
+  const micLabel = records
+    ? recording
+      ? defaultCopy.voice.stop
+      : defaultCopy.voice.record
+    : listening
+      ? "Stop dictating"
+      : "Dictate";
 
   return (
     <div className="relative z-10 flex min-w-0 flex-col gap-1.5">
@@ -720,21 +816,23 @@ export function Composer({
           <div className="humagen-composer-chips min-w-0 flex-1">{plus?.chips}</div>
           {trailing}
           {/*
-          One button in one place. With nothing to send it listens, and once
-          there is something to send it sends. While it is listening it stays
-          the stop button, even as words arrive, so dictation can always be
-          ended from where it was started.
+          One button in one place. With nothing to send it records a voice
+          note (or dictates, where the deployment does not transcribe), and
+          once there is something to send it sends. While it records or
+          listens it stays the stop button, even as words arrive, so it can
+          always be ended from where it was started.
         */}
-          {listening || (!ready && canDictate) ? (
+          {listening || recording || transcribing || (!ready && canDictate) ? (
             <button
               type="button"
-              className={`${action} humagen-composer-send ${listening ? "bg-aui-accent text-aui-accent-fg" : "bg-aui-hover text-aui-fg"}`}
-              aria-label={listening ? "Stop dictating" : "Dictate"}
-              aria-pressed={listening}
-              title={listening ? "Stop dictating" : "Dictate"}
+              className={`${action} humagen-composer-send ${listening || recording ? "bg-aui-accent text-aui-accent-fg" : "bg-aui-hover text-aui-fg"} disabled:opacity-40`}
+              aria-label={micLabel}
+              aria-pressed={listening || recording}
+              title={micLabel}
+              disabled={transcribing}
               onClick={dictate}
             >
-              {listening ? (
+              {listening || recording ? (
                 <span aria-hidden className="size-2.5 rounded-[2px] bg-current" />
               ) : (
                 <Glyph d={MIC} />

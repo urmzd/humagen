@@ -89,6 +89,7 @@ import (
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/scratchpads"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
+	"github.com/urmzd/humagen/pkg/speech"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
 )
@@ -189,6 +190,9 @@ type Config struct {
 	// Embedder gives knowledge passages vectors for hybrid search, filled in
 	// the background while Run runs. Nil keeps search lexical.
 	Embedder knowledge.Embedder
+	// Speech transcribes voice notes when a message arrives, before the run
+	// it starts (TranscribeVoiceNotes). Nil transcribes nothing.
+	Speech speech.Transcriber
 	// Connectors are the catalog connectors the Platform documents declare.
 	// The store's connectors become exactly these at start.
 	Connectors []CatalogConnector

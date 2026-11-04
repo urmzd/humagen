@@ -219,6 +219,8 @@ import type {
   ToolCredentialInput,
   ToolCredentials,
   UpdatePreferencesBody,
+  VoiceSettings,
+  VoiceTranscript,
   WorkspaceFileContent,
   WorkspaceFileList,
   WorkspaceFilePublish,
@@ -6387,6 +6389,49 @@ end; pass it back as `before`.
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListPeopleResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** `transcribe` is false when the System spec has no speech kind; the
+console then offers no recording. `max_bytes` is the largest
+recording `POST /api/voice/transcriptions` takes.
+ */
+  async getVoice(options?: RequestOptions): Promise<VoiceSettings> {
+    const path = "/api/voice";
+    return this.request<VoiceSettings>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getVoiceRaw(options?: RequestOptions): Promise<ApiResponse<VoiceSettings>> {
+    const path = "/api/voice";
+    return this.rawRequest<VoiceSettings>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** The body is the recording's own bytes, at most `max_bytes` from
+`GET /api/voice` (10 MiB). What it is is decided from the bytes, not
+the Content-Type. The words come back for the person to read and
+send; the recording is not kept. 404 when voice notes are off, 422
+when no words were heard, 503 when the speech provider failed or did
+not answer in time.
+ */
+  async transcribeVoice(body: Blob, options?: RequestOptions): Promise<VoiceTranscript> {
+    const path = "/api/voice/transcriptions";
+    return this.request<VoiceTranscript>("POST", path, {
+      body,
+      contentType: "application/octet-stream",
+      ...options,
+    });
+  }
+
+  async transcribeVoiceRaw(body: Blob, options?: RequestOptions): Promise<ApiResponse<VoiceTranscript>> {
+    const path = "/api/voice/transcriptions";
+    return this.rawRequest<VoiceTranscript>("POST", path, {
+      body,
+      contentType: "application/octet-stream",
       ...options,
     });
   }
