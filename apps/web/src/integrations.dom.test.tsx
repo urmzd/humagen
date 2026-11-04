@@ -6,6 +6,7 @@ import type { Source } from "./api.ts";
 import { ContextHealth } from "./ContextHealth.tsx";
 import { stubFetch } from "./dom.ts";
 import { ConnectSource, Integrations } from "./Integrations.tsx";
+import { CatalogBrowser } from "./SourceCatalog.tsx";
 import {
   SourceAccessMode,
   SourceAttachments,
@@ -688,4 +689,57 @@ test("empty Context Health offers a source action without zero counters or dead 
   assert.equal(screen.queryByText(defaultCopy.sourceOperations.noSelection), null);
   assert.equal(screen.queryByLabelText(defaultCopy.sourceOperations.filter), null);
   assert.equal(screen.queryByText(defaultCopy.sourceOperations.healthMissing), null);
+});
+
+test("the data catalog lists what the reader sees and lets only the owner crawl, publish and withdraw", async () => {
+  const catalog = defaultCopy.sourceCatalog.catalog;
+  let published = false;
+  const connector = (mine: boolean) => ({
+    name: mine ? "warehouse" : "shared",
+    system: "bigquery",
+    entries: 1,
+    generation: 1,
+    capabilities: ["catalog"],
+    mine,
+    ...(mine && published ? { published: { by: "ada", at } } : {}),
+  });
+  net = stubFetch({
+    "GET /api/catalog": (_body, query) => ({
+      connectors: [connector(true), connector(false)],
+      entries:
+        query.get("q") === "nothing"
+          ? []
+          : [
+              {
+                system: "bigquery",
+                kind: "table",
+                path: "sales.orders",
+                connector: "warehouse",
+                seen_at: at,
+                schema: [{ name: "order_id", type: "STRING", description: "Order key" }],
+              },
+            ],
+    }),
+    "POST /api/catalog/connectors/warehouse/publish": () => {
+      published = true;
+      return connector(true);
+    },
+    "DELETE /api/catalog/connectors/warehouse/publish": () => {
+      published = false;
+      return connector(true);
+    },
+    "POST /api/catalog/connectors/warehouse/crawl": () => connector(true),
+  });
+  render(<CatalogBrowser />);
+  const region = await screen.findByRole("region", { name: catalog.label });
+  const shared = within(region).getByText("shared").closest("li") as HTMLElement;
+  assert.equal(within(shared).queryByRole("button"), null, "only the owner acts on a connector");
+  fireEvent.click(within(region).getByRole("button", { name: catalog.publish }));
+  await within(region).findByRole("button", { name: catalog.withdraw });
+  fireEvent.click(within(region).getByRole("button", { name: catalog.withdraw }));
+  await within(region).findByRole("button", { name: catalog.publish });
+  assert.equal(within(region).queryByText("order_id"), null);
+  fireEvent.click(within(region).getByRole("button", { name: /sales\.orders/ }));
+  assert.ok(within(region).getByText("order_id"));
+  assert.ok(net?.seen.some((r) => r.method === "DELETE" && r.path.endsWith("/warehouse/publish")));
 });

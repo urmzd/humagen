@@ -413,7 +413,7 @@ func TestASightingIsValidated(t *testing.T) {
 		"a control in it":    {Subject: "okta|\x00", Source: people.SignIn},
 		"a long subject":     {Subject: strings.Repeat("s", people.MaxSubject+1), Source: people.SignIn},
 		"no source":          {Subject: "okta|1"},
-		"an unknown source":  {Subject: "okta|1", Source: "github"},
+		"an unknown source":  {Subject: "okta|1", Source: "jira"},
 		"too many roles":     {Subject: "okta|1", Source: people.SignIn, Roles: many},
 		"a role with spaces": {Subject: "okta|1", Source: people.SignIn, Roles: []string{"field eng"}},
 	} {

@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -169,6 +170,9 @@ type Config struct {
 	// token. Nil means the real one over HTTP.
 	SlackAPI  func(token string) slack.API
 	GitHubAPI func(token string) github.API
+	// PersonalHTTP is the client a person's own tool servers are reached
+	// through. Nil means the default client over HTTP.
+	PersonalHTTP *http.Client
 	// ClientInterval coalesces a client's edits to its surface. Zero means
 	// the connector's default.
 	ClientInterval time.Duration

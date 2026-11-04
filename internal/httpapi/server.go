@@ -128,6 +128,7 @@ func (s *Server) Handler() http.Handler {
 	// What the caller brings to their own runs: reading it needs what
 	// reading runs does, and changing it what starting one does.
 	mux.HandleFunc("GET /api/me/context", s.authed(auth.RunsRead, s.getPersonContext))
+	mux.HandleFunc("POST /api/me/tool-servers/review", s.authed(auth.RunsWrite, s.reviewPersonTools))
 	mux.HandleFunc("PUT /api/me/context", s.authed(auth.RunsWrite, s.putPersonContext))
 	mux.HandleFunc("GET /api/agent-hues", s.authed(auth.RunsRead, s.agentHues))
 	// The deployment's status page: each component, checked at most every 30s.
