@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.78.0 (2026-11-04)
+
+### Features
+
+- **customize**: unify setup and connect personal MCP tools (#199) ([e21dbab](https://github.com/urmzd/humagen/commit/e21dbab77a8f663d38e7da0fb4fa470bdcd3baa3))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.77.0...v0.78.0)
+
+
 ## 0.77.0 (2026-11-03)
 
 ### Features
