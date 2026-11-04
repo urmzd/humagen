@@ -530,6 +530,7 @@ and GitHub release from `main`, using the main-only `release` environment.
 
 | Piece | State |
 |-------|-------|
+| Customize and personal tool servers | Existing agents, skills, connections and personal server pages are grouped under Customize. Personal MCP clients execute in trusted workers with explicit person_tools grants, reviewed snapshots, change invalidation and write approvals (DES-062); screenshot review remains in CI. |
 | Automations | `/automations` reuses schedule editing and lists GitHub label triggers; bounded installation rules match signed issue, pull request, push and check-run webhooks. Rules reuse client grants, event capabilities and run deduplication. Bot commits are ignored; missing commit author evidence fails closed. Tests and screen definitions cover the builder; CI screens pending. |
 | Save as Artifact and diffs | Implemented: `POST /api/threads/{id}/artifacts` saves an answer, a message (a structured review as its JSON) or a scratchpad through the publication path; artifact version comparison and file changes share `ChangeReview`, side by side on a desktop, with line pins for review findings. See [conversation-workspace.md](conversation-workspace.md#save-as-artifact-and-diffs). |
 | GitHub review tabs | Implemented: Workspace pull, issue and review tabs read bounded GitHub evidence through tenant-authorized clients, display exact-head workflow status and changed-file findings, and preserve their tab references in the address. |

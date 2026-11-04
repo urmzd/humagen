@@ -161,6 +161,7 @@ export const NOTIFICATION_VIEWS = ["unread", "hidden", "done"] as const;
 export type NotificationView = (typeof NOTIFICATION_VIEWS)[number];
 
 export type YouSection = "profile" | "notifications" | "privacy" | "agents" | "connections";
+export type CustomizeSection = "agents" | "skills" | "connections" | "tools";
 export type Route =
   | {
       page: "pull-requests";
@@ -169,6 +170,17 @@ export type Route =
       agent?: string;
       status?: "running" | "waiting" | "done";
       display?: "list";
+    }
+  | {
+      page: "customize";
+      section: CustomizeSection;
+      provider?: string;
+      scope?: "personal" | "workspace" | "project" | "agent";
+      project?: string;
+      skill?: string;
+      version?: number;
+      file?: string;
+      libraryTab?: "overview" | "contents" | "versions";
     }
   | {
       page: "library";
@@ -260,6 +272,7 @@ const pick = <T extends string>(value: string | undefined, allowed: readonly T[]
 
 const PAGE_TITLES: Record<Page, string> = {
   "pull-requests": defaultCopy.pullRequests.title,
+  customize: "Customize",
   library: "Library",
   operations: "Operations",
   assignments: "Assignments",
@@ -477,6 +490,10 @@ export function href(r: Route): string {
     }
     case "artifacts":
       return r.artifact ? `/artifacts/${enc(r.artifact)}` : "/artifacts";
+    case "customize":
+      if (r.section === "skills")
+        return `/customize/skills${href({ ...r, page: "library", section: "skills" }).replace(/^\/library\/skills/, "")}`;
+      return `/customize/${r.section}${r.provider ? `?provider=${enc(r.provider)}` : ""}`;
     case "connections":
       return r.provider ? `/connections/${enc(r.provider)}` : "/connections";
     case "directory":
@@ -760,6 +777,18 @@ function read(pathname: string, search: string): Route {
       };
     case "artifacts":
       return { page: "artifacts", artifact: a };
+    case "customize":
+      if (a === "skills")
+        return {
+          ...(parse("/library/skills", search) as Extract<Route, { page: "library" }>),
+          page: "customize",
+          section: "skills",
+        };
+      return {
+        page: "customize",
+        section: pick(a, ["agents", "skills", "connections", "tools"] as const, "agents"),
+        provider: q.get("provider") || undefined,
+      };
     case "connections":
       return { page: "connections", provider: a };
     case "directory":

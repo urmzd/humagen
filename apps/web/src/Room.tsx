@@ -13,6 +13,7 @@ import {
 } from "@humagen/web";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
+import { ApprovalModePicker } from "./ApprovalModePicker.tsx";
 import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
 import {
   ApiError,
@@ -207,9 +208,12 @@ function RoomComposer({
   autoFocus,
   seed,
   plus,
+  trailing,
   onDraft,
   onPost,
 }: {
+  /** Text controls in the bar, before Send: the conversation's approval mode. */
+  trailing?: ReactNode;
   /** The conversation it posts in, whose first message, posted where it started, may have said something. */
   thread?: string;
   placeholder: string;
@@ -248,6 +252,7 @@ function RoomComposer({
         onDraft={onDraft}
         tags={tags}
         plus={plus}
+        trailing={trailing}
       />
     </div>
   );
@@ -1001,6 +1006,7 @@ export function ThreadRoom({
           {posts && (
             <RoomComposer
               thread={id}
+              trailing={<ApprovalModePicker thread={th} me={handle || me} />}
               seed={seed}
               placeholder={th.visibility === "private" ? words.message : words.channel(th.channel)}
               tags={tags}

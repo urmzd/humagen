@@ -717,6 +717,28 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/me/tool-servers/review:
+    post:
+      operationId: reviewPersonTools
+      tags: [credentials]
+      summary: Preview a personal server's tools before approval
+      x-permission: runs:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PersonToolServer"}
+      responses:
+        "200":
+          description: The server with its current bounded tool list for approval.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PersonToolServer"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/me/context:
     get:
       operationId: getPersonContext
@@ -3269,6 +3291,44 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /api/threads/{id}/approval:
+    put:
+      operationId: setApprovalMode
+      tags: [threads]
+      summary: Set how a conversation's gated tool actions are approved
+      description: |
+        `ask` asks a person, the default. `auto` approves for the caller what
+        they may approve themselves, through the same checks as their own
+        answer: the approvers a question names, self-approval and the
+        runtime's. A budget request, an action the agent always asks about,
+        a run forced to ask and an action the policy does not ask about still
+        go to a person. Each automatic approval and each change of mode is
+        audited. Takes a person who may post in the conversation.
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [mode]
+              properties:
+                mode: {type: string, enum: [ask, auto]}
+      responses:
+        "200":
+          description: The conversation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Thread"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/threads/{id}/share:
     post:
       operationId: shareThread
@@ -9737,11 +9797,25 @@ components:
         compaction_tokens:
           description: Input size, in tokens, past which a run's history is summarized, 1024 to 2000000.
           type: integer
+    PersonalApprovedTool:
+      type: object
+      required: [name, schema_hash]
+      properties:
+        name: {type: string}
+        description: {type: string}
+        input_schema: {}
+        schema_hash: {type: string}
+        class: {type: string, enum: [read, write]}
     PersonToolServer:
       description: An MCP server a person adds for themselves. Its credential is a reference, never a secret.
       type: object
       required: [name, url]
       properties:
+        tools:
+          description: Exact tools approved by the person. Missing means unavailable to runs.
+          type: array
+          maxItems: 64
+          items: {$ref: "#/components/schemas/PersonalApprovedTool"}
         name: {type: string}
         url:
           description: The server's https address, with no user or password in it.
@@ -10335,6 +10409,20 @@ components:
         surface: {$ref: "#/components/schemas/ThreadSurface"}
         fork: {$ref: "#/components/schemas/ThreadFork"}
         archive: {$ref: "#/components/schemas/ThreadArchive"}
+        approval:
+          description: How the conversation's gated tool actions are approved, and who chose it. Absent asks a person. `auto` approves for that person what they may approve themselves, within policy; a budget request and an action the agent or the policy always asks about still go to a person.
+          type: object
+          required: [mode, by, at]
+          properties:
+            mode: {type: string, enum: [auto]}
+            by:
+              description: The person who chose it, by handle.
+              type: string
+            roles:
+              description: The roles they held when they chose it. An approval given for them never holds more, and holds less once they hold less.
+              type: array
+              items: {type: string}
+            at: {type: string, format: date-time}
         announcement:
           description: The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it.
           type: string

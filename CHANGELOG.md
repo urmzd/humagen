@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.79.0 (2026-11-04)
+
+### Features
+
+- **composer**: Home's project over the chat bar, and Approve for Me per conversation (#209) ([ed969c2](https://github.com/urmzd/humagen/commit/ed969c21b67d7f67d8d19b191bc822d556e2574b))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.78.0...v0.79.0)
+
+
+## 0.78.0 (2026-11-04)
+
+### Features
+
+- **customize**: unify setup and connect personal MCP tools (#199) ([e21dbab](https://github.com/urmzd/humagen/commit/e21dbab77a8f663d38e7da0fb4fa470bdcd3baa3))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.77.0...v0.78.0)
+
+
+## 0.77.0 (2026-11-03)
+
+### Features
+
+- GitHub App tokens, people maps and the data catalog (ported) (#207) ([3b4c845](https://github.com/urmzd/humagen/commit/3b4c845eb288d6b071fc080616b96a1237fe09b8))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.76.0...v0.77.0)
+
+
 ## 0.76.0 (2026-11-03)
 
 ### Features

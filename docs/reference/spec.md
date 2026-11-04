@@ -1204,3 +1204,14 @@ explicit for external sources, with `~` selecting the workspace. The connecting
 owner is the authenticated person. `stop_after_seconds` defaults to 86400 and
 accepts 60 through 2592000. No source record contains a credential. Personal
 references follow the existing deployment `credentials.refs` allowlist.
+
+
+### Personal tool server grants
+
+An agent opts into the requesting person's own servers with
+`tools.registry: [person_tools]`. This grants no hosts: the resolved
+`run.ceilings.tool_servers` must allow each server's host. The person adds
+servers and reviews their tool lists in Customize. Changes to schemas,
+metadata or read-only hints require another review; every write tool asks
+that person for approval. MCP clients and credential resolution run in the
+trusted worker, outside the agent sandbox.

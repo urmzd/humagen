@@ -756,15 +756,19 @@ function Console({
               onGo={go}
             />
           )}
-          {route.page === "library" &&
-            route.section === "skills" &&
+          {((route.page === "library" && route.section === "skills") ||
+            (route.page === "customize" && route.section === "skills")) &&
             (can("projects:read") ? (
               <SkillsLibrary
                 key={`${route.scope}:${route.project}:${route.skill}:${route.version}`}
                 file={route.file}
                 libraryTab={route.libraryTab}
                 onLocationChange={(location) =>
-                  go({ page: "library", section: "skills", ...location })
+                  go({
+                    page: route.page === "customize" ? "customize" : "library",
+                    section: "skills",
+                    ...location,
+                  })
                 }
               />
             ) : (
@@ -1285,7 +1289,8 @@ function Console({
               onOpenAgent={(name) => openAgent(name, "context")}
             />
           )}
-          {route.page === "agents" && (
+          {(route.page === "agents" ||
+            (route.page === "customize" && route.section === "agents")) && (
             <Agents
               operational
               builtin={builtin}
@@ -1449,10 +1454,25 @@ function Console({
               }
             />
           )}
-          {route.page === "connections" && (
+          {(route.page === "connections" ||
+            (route.page === "customize" && ["connections", "tools"].includes(route.section))) && (
             <YourConnections
               open={route.provider}
-              onOpen={(provider) => go({ page: "connections", provider }, { replace: true })}
+              section={
+                route.page === "customize"
+                  ? route.section === "tools"
+                    ? "tools"
+                    : "connections"
+                  : undefined
+              }
+              onOpen={(provider) =>
+                go(
+                  route.page === "customize"
+                    ? { ...route, provider }
+                    : { page: "connections", provider },
+                  { replace: true },
+                )
+              }
               canConnect={can(CONNECT_PERMISSION)}
               onWhy={() =>
                 go({ page: "settings", section: "access", permission: CONNECT_PERMISSION })

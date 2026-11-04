@@ -87,6 +87,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-054 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row says its project, its age or an unread dot, and whether it waits on a person, runs or failed | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
 | DES-055 | A sidebar row previews itself on hover or a long press, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview`, `conversation-wave-preview`) at 390x844 and 1280x800 |
 | DES-056 | A one-time tip teaches search, dismissed once per person | Implemented: `Sidebar.tsx`, `POST /api/marks/tips`; DOM test and `sidebar-tip` screens pass |
+| DES-057 | Home files a new conversation from over its chat bar; a conversation's approval mode is a text control under the composer, Default or Approve for Me, within policy and audited | Implemented: `ApprovalModePicker.tsx`, `HomePage.tsx`, `pkg/threads/approval.go`, `internal/platform/approval_mode.go`, `PUT /api/threads/{id}/approval`; Go, DOM and screens pass (`home-project-above`, `composer-approval-mode`). The model and effort picker is not built: no agent spec allows an override yet |
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
 | DES-050 | The Workspace is a pane of tabs beside the conversation: + opens items, tabs close, Expand and Show Two Tabs, tabs in the address, a full-screen sheet on a phone | Implemented: `Workspace.tsx`, `pane.ts`, `Inspector` `expanded`; web, pane and route tests pass; `workspace-pane-split`, `workspace-pane-expanded` and the other Workspace screens pass at 390x844 and 1280x800 |
 | DES-051 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
@@ -1549,6 +1550,49 @@ Evidence: `sidebar-views.dom.test.tsx` (the tip test); `make screens` with
 - No card while the turn runs, or when it changed no file.
 - The chat bar's prompt is "Ask anything, @ to mention, / for actions".
 
+### DES-057: The composer's chrome: project, approvals
+
+Owner request: a project picker over the composer on Home ("No project" is
+personal), a model and effort picker for agents that allow an override, and
+an approval mode per conversation, Default or Approve for Me, as
+Antigravity and ChatGPT show them.
+
+Rules:
+
+- On a wide screen Home holds where a new conversation is filed over its
+  chat bar; the person's own project reads **No project**. On a phone it
+  stays in the bar as its folder (DES-045). One picker is drawn at a time.
+- A conversation's composer has **Approvals: Default** or **Approve for Me**,
+  a text control before Send. Its menu says what each does. Someone else's
+  choice reads "Approved for <name>". A refused change puts it back and says
+  so.
+- **Approve for Me** answers, as the person who chose it, an approval of a
+  tool action the policy asks about, through the path every answer takes:
+  the approvers the question names, self-approval and the runtime's checks
+  all hold, so it never approves what that person could not. It never
+  answers a budget request or any other question, an action the agent's own
+  spec always asks about, a run forced to ask, or an action the policy
+  refuses. What it may not approve stays in the inbox for a person.
+- It answers with the roles the person held when they chose it, less any
+  they no longer hold when last seen. Each automatic approval is audited as
+  `approval.auto`, naming the tool and who enabled it; each change of mode
+  as `conversation.approval_mode`. Only a person may choose it, and only one
+  who may post in the conversation; a read-only or archived conversation
+  keeps asking.
+- No model or effort picker: an agent spec has no field that allows a
+  per-message override, and the runtime takes none, so the control stays
+  hidden until one does.
+- The placeholder stays in copy (`chat.placeholder`).
+
+Evidence: `go test -race ./pkg/threads ./internal/platform ./internal/httpapi`
+(`TestApprovalModeIsSetOnItsOwnAndKept` on memory and Postgres,
+`TestAutoApprovableIsOnlyAPolicyAskAboutATool`,
+`TestApproveForMeAnswersAPolicyAskAndIsAudited`,
+`TestApproveForMeLeavesWhatTheAgentAlwaysAsksAbout`,
+`TestOnlyAPersonChoosesApproveForMe`, the contract tests); `cd apps/web &&
+pnpm test` (`approval-mode.dom.test.tsx`, `chat.dom.test.tsx`); `make
+screens` with `home-project-above` and `composer-approval-mode`.
+
 ### DES-059: Review GitHub changes in context
 
 A finished review opens a Workspace review tab with its findings pinned to changed
@@ -1599,3 +1643,18 @@ Evidence: `PullRequests.tsx`, `pull_requests.go`, scoped endpoint and DOM tests;
   `TestAutomationBoundsAndCopies`, `automations.dom.test.tsx`, route round-trip
   tests and the `automations` and `automation-builder` screen definitions.
   Full screens run in CI.
+
+### DES-062: Customize and personal tool servers
+
+- Customize groups the existing Agents, Skills, Connected Accounts and Your tool
+  servers sections at `/customize/{section}`, with permission-filtered tabs.
+- Personal MCP clients run in the trusted worker using the existing credential
+  resolver and person-scoped MCP session path. Agents need an explicit
+  `person_tools` registry grant. Workspace and project host ceilings still apply.
+- A person previews and approves the exact tool list. Schema, description,
+  tool additions/removals or readOnlyHint changes stop the server's tools until
+  approved again. Revocation also stops admitted runs. Only a readOnlyHint
+  classifies a tool as read; every other tool requires that person's approval.
+- Evidence: `customize.test.ts`, `tool-servers.dom.test.tsx`,
+  `internal/platform/person_tools_test.go`, and the Customize states in
+  `scripts/screens/library.ts`. Screens are judged in CI.
