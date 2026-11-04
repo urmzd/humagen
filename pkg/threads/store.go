@@ -832,6 +832,8 @@ func (s *Store) update(tenantName, id string, version int, at time.Time, fn func
 			return fmt.Errorf("%w: archive status is immutable", ErrInvalid)
 		case !sameArchive(next.Archive, cur.Archive):
 			return fmt.Errorf("%w: archive and deletion are changed on their own", ErrInvalid)
+		case !sameApproval(next.Approval, cur.Approval):
+			return fmt.Errorf("%w: the approval mode is changed on its own", ErrInvalid)
 		case next.Moves != cur.Moves:
 			return fmt.Errorf("%w: placement history is server managed", ErrInvalid)
 		case next.ID != cur.ID || !sameSurface(next.Surface, cur.Surface) || next.Announcement != cur.Announcement || !sameFork(next.Fork, cur.Fork):

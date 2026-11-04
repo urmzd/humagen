@@ -141,6 +141,9 @@ func TestVectorsSurviveARestartAndFollowTheModel(t *testing.T) {
 	// new model's vectors.
 	cancel2()
 
+	// The restarted store's indexer stops first, or it rewrites the
+	// vectors the new model computes with its own.
+	cancel2()
 	other, err := Open(st)
 	if err != nil {
 		t.Fatal(err)

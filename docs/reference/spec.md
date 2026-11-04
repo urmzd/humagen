@@ -1228,3 +1228,13 @@ limit, and carry a server-side timeout. Result text is capped at 256 KiB.
 A catalog crawl that exceeds its row, column, or response limits publishes
 nothing. Configure a restricted read warehouse and resource monitor to bound
 warehouse credits; Snowflake does not offer BigQuery's bytes-billed cap.
+
+### Personal tool server grants
+
+An agent opts into the requesting person's own servers with
+`tools.registry: [person_tools]`. This grants no hosts: the resolved
+`run.ceilings.tool_servers` must allow each server's host. The person adds
+servers and reviews their tool lists in Customize. Changes to schemas,
+metadata or read-only hints require another review; every write tool asks
+that person for approval. MCP clients and credential resolution run in the
+trusted worker, outside the agent sandbox.

@@ -91,7 +91,7 @@ test("the sidebar groups readable work under Projects Library and Operations", (
     "/projects",
     "/library/sources",
     "/notifications",
-    "/agents",
+    "/customize/agents",
     "/operations/context",
   ])
     assert.ok(out.includes(`href="${route}"`), route);
@@ -106,7 +106,7 @@ test("the sidebar groups readable work under Projects Library and Operations", (
   assert.match(out, /href="\/" aria-current="page"/);
   assert.match(
     sidebar({ route: { page: "agent", name: "lead", tab: "model" } }),
-    /href="\/agents" aria-current="page"/,
+    /href="\/customize\/agents" aria-current="page"/,
   );
 });
 
@@ -117,7 +117,7 @@ test("the sidebar does not expose unreadable destination links", () => {
     "/projects",
     "/library/skills",
     "/inbox",
-    "/agents",
+    "/customize/agents",
     "/assignments",
     "/operations/audit",
   ])

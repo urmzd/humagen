@@ -30,11 +30,13 @@ const follow = (go: () => void) => (e: MouseEvent<HTMLAnchorElement>) => {
  */
 export function YourConnections({
   open,
+  section,
   onOpen,
   canConnect = true,
   onWhy,
 }: {
   open?: string;
+  section?: "connections" | "tools";
   onOpen: (provider?: string) => void;
   /** May give or remove a credential, which the server holds to CONNECT_PERMISSION. */
   canConnect?: boolean;
@@ -71,12 +73,12 @@ export function YourConnections({
 
   return (
     <Page
-      title="Your connections"
+      title={section === "tools" ? "Your tool servers" : "Your connections"}
       lede="Some tools act as you: they reach their service with your own credential. Without one, an agent cannot use them for you, and nobody else's is used instead."
       narrow
     >
       <Problem message={problem} />
-      {!canConnect && state && state.providers.length > 0 && (
+      {section !== "tools" && !canConnect && state && state.providers.length > 0 && (
         <p className="text-aui-sm text-aui-muted">
           {cannotConnect}
           {onWhy && (
@@ -93,27 +95,30 @@ export function YourConnections({
           )}
         </p>
       )}
-      {state && state.providers.length === 0 && (
+      {section !== "tools" && state && state.providers.length === 0 && (
         <Empty title="No tools here act as you">
           A tool acts as each person when the workspace declares it with credential_scope: person.
         </Empty>
       )}
-      {state?.providers.map((c) => (
-        <ConnectionCard
-          key={c.provider}
-          connection={c}
-          ways={ways(state)}
-          references={state.references}
-          canConnect={canConnect}
-          open={canConnect && open === c.provider}
-          busy={busy}
-          onOpen={() => onOpen(c.provider)}
-          onCancel={() => onOpen(undefined)}
-          onSave={(way, text) => save(c.provider, way, text)}
-          onRemove={() => remove(c.provider)}
-        />
-      ))}
-      {state && <YourToolServers references={state.references} canConnect={canConnect} />}
+      {section !== "tools" &&
+        state?.providers.map((c) => (
+          <ConnectionCard
+            key={c.provider}
+            connection={c}
+            ways={ways(state)}
+            references={state.references}
+            canConnect={canConnect}
+            open={canConnect && open === c.provider}
+            busy={busy}
+            onOpen={() => onOpen(c.provider)}
+            onCancel={() => onOpen(undefined)}
+            onSave={(way, text) => save(c.provider, way, text)}
+            onRemove={() => remove(c.provider)}
+          />
+        ))}
+      {section !== "connections" && state && (
+        <YourToolServers references={state.references} canConnect={canConnect} />
+      )}
     </Page>
   );
 }

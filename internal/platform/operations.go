@@ -216,6 +216,13 @@ func (c *operationsCatalog) ToolGroup(name string) (native.ToolGroup, error) {
 			return native.ToolGroup{}, operations.ErrDenied
 		}
 		ctx := event.WithActor(execution.(context.Context), actor)
+		if name == personToolsGrant {
+			group, err := c.p.personalToolGroup(ctx, c.req)
+			if err != nil {
+				return group, err
+			}
+			return c.p.wrapOperationGroup(c.req, name, group.Tools)
+		}
 		ts, ok, err := c.groups.Expand(ctx, c.req.Tenant, name)
 		if err != nil {
 			return native.ToolGroup{}, err
@@ -591,8 +598,13 @@ func (p *Platform) wrapOperationGroup(req runtime.Request, name string, ts []sai
 		if restricted && !slices.Contains(allowed, t.Definition().Name) {
 			continue
 		}
-		wrapped := p.operationTool(req, t, category).(*operationTool)
-		if strings.HasSuffix(name, ":write") {
+		toolCategory := category
+		readPersonal := name == personToolsGrant && t.Definition().Capability == saigetypes.ToolCapabilityRead
+		if readPersonal {
+			toolCategory = operations.ReadContext
+		}
+		wrapped := p.operationTool(req, t, toolCategory).(*operationTool)
+		if strings.HasSuffix(name, ":write") && !readPersonal {
 			wrapped.extra = operations.ExternalMessages
 		}
 		out = append(out, wrapped)

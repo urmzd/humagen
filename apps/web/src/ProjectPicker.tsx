@@ -272,9 +272,14 @@ export function ProjectPicker({
   personalProject,
   channel,
   canCreate = true,
+  personalLabel,
+  className = "",
   onChange,
   onCreated,
 }: {
+  className?: string;
+  /** What the person's own project reads as: "No project" over Home's chat bar. */
+  personalLabel?: string;
   projects: ProjectView[] | null;
   kinds?: ProjectKindSpec[];
   value: string | null;
@@ -292,13 +297,13 @@ export function ProjectPicker({
       : value === ""
         ? words.companyName
         : value === personalProject
-          ? words.personalTitle
+          ? (personalLabel ?? words.personalTitle)
           : chosen
             ? titleOf(chosen)
             : value;
   const label = channel && channel !== "general" ? `${project} / #${channel}` : project;
   return (
-    <div className="humagen-project-picker min-w-0">
+    <div className={`humagen-project-picker min-w-0 ${className}`}>
       <button
         type="button"
         aria-label={value === null ? "Select project" : `Select project: ${label}`}

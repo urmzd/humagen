@@ -1084,17 +1084,15 @@ test("a late personal-home address never becomes visible while project titles lo
   };
   const mounted = render(<Chat {...props} />);
   mounted.rerender(<Chat {...props} personalProject={personal} projects={null} />);
-  const selected = await screen.findByRole("list", { name: defaultCopy.chat.selected });
-  assert.ok(within(selected).getByText(defaultCopy.projects.personalTitle));
+  // On a wide screen the pick is over the chat bar, the person's own project
+  // reading as No project (DES-057).
+  const picker = `Select project: ${defaultCopy.noProject}`;
+  await screen.findByRole("button", { name: picker });
   assert.ok(!document.body.textContent?.includes(personal));
   assert.ok(!screen.queryByRole("button", { name: new RegExp(personal) }));
-  assert.ok(
-    !within(selected).queryByRole("button", {
-      name: defaultCopy.chat.removeProject(defaultCopy.projects.personalTitle),
-    }),
-  );
+  assert.ok(screen.getByRole("list", { name: defaultCopy.chat.selected }));
   mounted.rerender(<Chat {...props} personalProject={personal} projects={[]} />);
-  assert.ok(within(selected).getByText(defaultCopy.projects.personalTitle));
+  assert.ok(screen.getByRole("button", { name: picker }));
 });
 
 test("the composer opens discovery in its picker and preserves the draft and attachments when choosing a match", async () => {
@@ -1234,7 +1232,7 @@ test("Escape returns from discovery to its picker trigger before closing the pic
 test("the Personal project control opens a searchable chooser and keeps an unsent draft when switching", async () => {
   openChat(workspace("lead"), { personalProject: "Personal", projects: [globex] as never });
   fireEvent.change(box(), { target: { value: "Preserve this draft" } });
-  fireEvent.click(screen.getByRole("button", { name: "Select project: Personal" }));
+  fireEvent.click(screen.getByRole("button", { name: `Select project: ${defaultCopy.noProject}` }));
   const drawer = await screen.findByRole("dialog", { name: chat.chooseProject });
   assert.ok(within(drawer).getByRole("button", { name: "Personal" }));
   fireEvent.change(within(drawer).getByRole("searchbox", { name: defaultCopy.projects.search }), {

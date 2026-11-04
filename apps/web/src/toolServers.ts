@@ -46,7 +46,11 @@ export function toolServerProblem(
 /** The write that adds s, made from the context as read. Run settings are kept. */
 export function withToolServer(c: PersonContext, s: PersonToolServer): PersonContextInput {
   const ref = s.credential?.trim();
-  const added: PersonToolServer = { name: s.name, url: s.url.trim() };
+  const added: PersonToolServer = {
+    name: s.name,
+    url: s.url.trim(),
+    ...(s.tools ? { tools: s.tools } : {}),
+  };
   if (ref) added.credential = ref;
   return { run: c.run, tool_servers: [...c.tool_servers, added], version: c.version };
 }
