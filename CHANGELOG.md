@@ -4,6 +4,16 @@
 
 ### Features
 
+- **speech**: Groq models and voice notes (#210) ([225dfdc](https://github.com/urmzd/humagen/commit/225dfdc7be4a35ceaa03024b62f5bd0a7690be39))
+- **console**: add pull requests board and list (#201) ([da86a3f](https://github.com/urmzd/humagen/commit/da86a3f7e5ce9d52274038a8802ef7977a0f21c1))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.82.0...v0.83.0)
+
+
+## 0.83.0 (2026-11-04)
+
+### Features
+
 - **console**: add pull requests board and list (#201) ([da86a3f](https://github.com/urmzd/humagen/commit/da86a3f7e5ce9d52274038a8802ef7977a0f21c1))
 
 [Full Changelog](https://github.com/urmzd/humagen/compare/v0.82.0...v0.83.0)
