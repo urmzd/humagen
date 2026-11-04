@@ -5,7 +5,7 @@ import { button, card, field, Label, Problem, primary } from "./ui.tsx";
 
 const words = defaultCopy.clientConnect;
 
-/** Connect an installed Slack app or GitHub installation using the existing client contract. */
+/** Connect an installed Slack app, GitHub installation, WhatsApp number or iMessage server using the existing client contract. */
 export function ClientConnect({
   onCreated,
   onCancel,
@@ -20,14 +20,19 @@ export function ClientConnect({
   const [owners, setOwners] = useState("");
   const [app, setApp] = useState("");
   const [installation, setInstallation] = useState("");
+  const [phoneNumberId, setPhoneNumberId] = useState("");
+  const [server, setServer] = useState("");
+  const [serverUrl, setServerUrl] = useState("");
   const [login, setLogin] = useState("");
   const [agent, setAgent] = useState("");
   const [allowed, setAllowed] = useState("");
   const [people, setPeople] = useState("");
   const [token, setToken] = useState("");
   const [signing, setSigning] = useState("");
+  const [verify, setVerify] = useState("");
   const [tokenWay, setTokenWay] = useState("value");
   const [signingWay, setSigningWay] = useState("value");
+  const [verifyWay, setVerifyWay] = useState("value");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const list = (text: string) =>
@@ -48,6 +53,23 @@ export function ClientConnect({
     }
     return out;
   };
+  // What the two secrets are called on the surface being connected.
+  const secretWords =
+    surface === "whatsapp"
+      ? {
+          token: words.whatsappToken,
+          tokenPlaceholder: words.whatsappTokenPlaceholder,
+          signing: words.whatsappSigning,
+          signingPlaceholder: words.whatsappSigningPlaceholder,
+        }
+      : surface === "imessage"
+        ? {
+            token: words.imessageToken,
+            tokenPlaceholder: words.imessageTokenPlaceholder,
+            signing: words.imessageSigning,
+            signingPlaceholder: words.imessageSigningPlaceholder,
+          }
+        : words;
   const credential = (way: string, text: string): ToolCredentialInput =>
     way === "reference" ? { ref: text.trim() } : { value: text };
   const submit = async (event: FormEvent) => {
@@ -75,20 +97,29 @@ export function ClientConnect({
       setProblem(words.credentialsRequired);
       return;
     }
+    if (surface === "whatsapp" && verify.trim() === "") {
+      setProblem(words.verifyRequired);
+      return;
+    }
     const mappedPeople = parsePeople(people);
     const hasPeople = Object.keys(mappedPeople).length > 0;
+    const identity: ClientCreateInput["identity"] =
+      surface === "slack"
+        ? { team: team.trim(), ...(app.trim() && { app_id: app.trim() }) }
+        : surface === "whatsapp"
+          ? { phone_number_id: phoneNumberId.trim() }
+          : surface === "imessage"
+            ? { server: server.trim() }
+            : {
+                owners: list(owners),
+                ...(app.trim() && { app_id: app.trim() }),
+                ...(installation.trim() && { installation: installation.trim() }),
+              };
     const input: ClientCreateInput = {
       id: id.trim(),
       name: name.trim(),
       surface,
-      identity:
-        surface === "slack"
-          ? { team: team.trim(), ...(app.trim() && { app_id: app.trim() }) }
-          : {
-              owners: list(owners),
-              ...(app.trim() && { app_id: app.trim() }),
-              ...(installation.trim() && { installation: installation.trim() }),
-            },
+      identity,
       default_agent: agent.trim(),
       agents: [...new Set(agents)],
       enabled: true,
@@ -101,15 +132,21 @@ export function ClientConnect({
             },
           }
         : {}),
+      ...(surface === "whatsapp" && hasPeople ? { whatsapp: { people: mappedPeople } } : {}),
+      ...(surface === "imessage"
+        ? { imessage: { url: serverUrl.trim(), ...(hasPeople ? { people: mappedPeople } : {}) } }
+        : {}),
       credentials: {
         token: credential(tokenWay, token),
         signing_secret: credential(signingWay, signing),
+        ...(surface === "whatsapp" ? { verify_token: credential(verifyWay, verify) } : {}),
       },
     };
     setBusy(true);
     // Values leave the form as soon as they are submitted, also on a refusal.
     setToken("");
     setSigning("");
+    setVerify("");
     try {
       await api.createClient(input);
       onCreated();
@@ -135,11 +172,14 @@ export function ClientConnect({
               setLogin("");
               setToken("");
               setSigning("");
+              setVerify("");
               setProblem(null);
             }}
           >
             <option value="slack">{words.slack}</option>
             <option value="github">{words.github}</option>
+            <option value="whatsapp">{words.whatsapp}</option>
+            <option value="imessage">{words.imessage}</option>
           </select>
         </Label>
         <Label text={words.id} hint={words.idHint}>
@@ -161,7 +201,42 @@ export function ClientConnect({
             onChange={(e) => setName(e.target.value)}
           />
         </Label>
-        {surface === "slack" ? (
+        {surface === "whatsapp" ? (
+          <Label text={words.phoneNumberId} hint={words.phoneNumberIdHint}>
+            <input
+              className={field}
+              required
+              inputMode="numeric"
+              pattern="[0-9]{1,20}"
+              value={phoneNumberId}
+              onChange={(e) => setPhoneNumberId(e.target.value)}
+            />
+          </Label>
+        ) : surface === "imessage" ? (
+          <>
+            <Label text={words.server} hint={words.serverHint}>
+              <input
+                className={field}
+                required
+                maxLength={40}
+                pattern={"[a-z0-9][a-z0-9\\-]{0,39}"}
+                placeholder="home"
+                value={server}
+                onChange={(e) => setServer(e.target.value)}
+              />
+            </Label>
+            <Label text={words.serverUrl} hint={words.serverUrlHint}>
+              <input
+                className={field}
+                required
+                type="url"
+                placeholder="https://bb.example.com"
+                value={serverUrl}
+                onChange={(e) => setServerUrl(e.target.value)}
+              />
+            </Label>
+          </>
+        ) : surface === "slack" ? (
           <Label text={words.slackTeam}>
             <input
               className={field}
@@ -202,9 +277,11 @@ export function ClientConnect({
             </Label>
           </>
         )}
-        <Label text={words.app}>
-          <input className={field} value={app} onChange={(e) => setApp(e.target.value)} />
-        </Label>
+        {(surface === "slack" || surface === "github") && (
+          <Label text={words.app}>
+            <input className={field} value={app} onChange={(e) => setApp(e.target.value)} />
+          </Label>
+        )}
         <Label text={words.defaultAgent} hint={words.defaultAgentHint}>
           <input
             className={field}
@@ -239,7 +316,7 @@ export function ClientConnect({
             <option value="reference">{words.reference}</option>
           </select>
         </Label>
-        <Label text={tokenWay === "value" ? words.token : words.tokenReference}>
+        <Label text={tokenWay === "value" ? secretWords.token : words.tokenReference}>
           <input
             className={field}
             required
@@ -247,7 +324,7 @@ export function ClientConnect({
             autoComplete="off"
             spellCheck={false}
             pattern={tokenWay === "reference" ? "env:HUMAGEN_[A-Z0-9_]+" : undefined}
-            placeholder={tokenWay === "reference" ? words.tokenPlaceholder : undefined}
+            placeholder={tokenWay === "reference" ? secretWords.tokenPlaceholder : undefined}
             value={token}
             onChange={(e) => setToken(e.target.value)}
           />
@@ -265,7 +342,7 @@ export function ClientConnect({
             <option value="reference">{words.reference}</option>
           </select>
         </Label>
-        <Label text={signingWay === "value" ? words.signing : words.signingReference}>
+        <Label text={signingWay === "value" ? secretWords.signing : words.signingReference}>
           <input
             className={field}
             required
@@ -273,11 +350,41 @@ export function ClientConnect({
             autoComplete="off"
             spellCheck={false}
             pattern={signingWay === "reference" ? "env:HUMAGEN_[A-Z0-9_]+" : undefined}
-            placeholder={signingWay === "reference" ? words.signingPlaceholder : undefined}
+            placeholder={signingWay === "reference" ? secretWords.signingPlaceholder : undefined}
             value={signing}
             onChange={(e) => setSigning(e.target.value)}
           />
         </Label>
+        {surface === "whatsapp" && (
+          <>
+            <Label text={words.verifySource}>
+              <select
+                className={field}
+                value={verifyWay}
+                onChange={(e) => {
+                  setVerifyWay(e.target.value);
+                  setVerify("");
+                }}
+              >
+                <option value="value">{words.value}</option>
+                <option value="reference">{words.reference}</option>
+              </select>
+            </Label>
+            <Label text={verifyWay === "value" ? words.verify : words.verifyReference}>
+              <input
+                className={field}
+                required
+                type={verifyWay === "value" ? "password" : "text"}
+                autoComplete="off"
+                spellCheck={false}
+                pattern={verifyWay === "reference" ? "env:HUMAGEN_[A-Z0-9_]+" : undefined}
+                placeholder={verifyWay === "reference" ? words.verifyPlaceholder : undefined}
+                value={verify}
+                onChange={(e) => setVerify(e.target.value)}
+              />
+            </Label>
+          </>
+        )}
         <p className="text-aui-xs text-aui-muted">{words.webhook(surface)}</p>
         <div className="flex flex-wrap gap-2">
           <button type="submit" className={primary}>

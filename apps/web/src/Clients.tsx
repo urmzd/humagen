@@ -4,7 +4,12 @@ import { ApiError, api, type Client, type ClientCaps } from "./api.ts";
 import { ClientConnect } from "./ClientConnect.tsx";
 import { button, card, Problem, pageLede, pageTitle, Switch } from "./ui.tsx";
 
-const surfaces: Record<Client["surface"], string> = { slack: "Slack", github: "GitHub" };
+const surfaces: Record<Client["surface"], string> = {
+  slack: defaultCopy.clientConnect.slack,
+  github: defaultCopy.clientConnect.github,
+  whatsapp: defaultCopy.clientConnect.whatsapp,
+  imessage: defaultCopy.clientConnect.imessage,
+};
 
 /** Who a client answers for, in the words of its surface. */
 function identity(c: Client): string {
@@ -12,11 +17,15 @@ function identity(c: Client): string {
   const parts =
     c.surface === "slack"
       ? [id.team && `team ${id.team}`, id.app_id && `app ${id.app_id}`]
-      : [
-          id.owners?.length && id.owners.join(", "),
-          id.installation && `installation ${id.installation}`,
-          id.app_id && `app ${id.app_id}`,
-        ];
+      : c.surface === "whatsapp"
+        ? [id.phone_number_id && `number ${id.phone_number_id}`]
+        : c.surface === "imessage"
+          ? [id.server && `server ${id.server}`, c.imessage?.url]
+          : [
+              id.owners?.length && id.owners.join(", "),
+              id.installation && `installation ${id.installation}`,
+              id.app_id && `app ${id.app_id}`,
+            ];
   return parts.filter(Boolean).join(", ");
 }
 
@@ -32,7 +41,10 @@ function reach(c: Client): string {
 /** A client's own limits, set under Limits with the client as the scope. */
 /** How many outside people the client maps to Humagen subjects. */
 function mapped(c: Client): number {
-  return Object.keys(c.slack?.people ?? {}).length + Object.keys(c.github?.people ?? {}).length;
+  return [c.slack?.people, c.github?.people, c.whatsapp?.people, c.imessage?.people].reduce(
+    (n, people) => n + Object.keys(people ?? {}).length,
+    0,
+  );
 }
 
 function limits(c: Client): string | null {

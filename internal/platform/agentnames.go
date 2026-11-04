@@ -101,6 +101,21 @@ func (s *Seer) Client(c clients.Client) clients.Client {
 	}
 	c.Agents = s.shownNames(c.Agents)
 	c.Bots = s.shownMap(c.Bots)
+	// A WhatsApp or iMessage people map is phone numbers and email
+	// addresses: shown to those who may change the client, and to no other
+	// reader of it.
+	if !s.who.Can(auth.ClientsWrite) {
+		if c.WhatsApp != nil {
+			w := *c.WhatsApp
+			w.People = nil
+			c.WhatsApp = &w
+		}
+		if c.IMessage != nil {
+			m := *c.IMessage
+			m.People = nil
+			c.IMessage = &m
+		}
+	}
 	if c.GitHub != nil {
 		g := *c.GitHub
 		g.Automations = nil

@@ -88,6 +88,12 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /connectors/github", s.P.Webhook("github"))
 	mux.Handle("POST /connectors/slack", s.P.Webhook("slack"))
 	mux.Handle("POST /connectors/slack/commands", s.P.Webhook("slack"))
+	// WhatsApp: GET is Meta's subscription handshake, verified by the
+	// client's verify token; POST is signed with the client's app secret.
+	mux.Handle("GET /connectors/whatsapp", s.P.Webhook("whatsapp"))
+	mux.Handle("POST /connectors/whatsapp", s.P.Webhook("whatsapp"))
+	// iMessage: the BlueBubbles webhook URL carries the client's secret.
+	mux.Handle("POST /connectors/imessage", s.P.Webhook("imessage"))
 
 	mux.HandleFunc("GET /auth/login", s.Authn.handleLogin)
 	mux.HandleFunc("GET /auth/callback", s.Authn.handleCallback)

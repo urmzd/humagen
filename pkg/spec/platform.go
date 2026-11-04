@@ -527,8 +527,10 @@ type Agent struct {
 
 // Surfaces are where the workspace answers besides the console.
 type Surfaces struct {
-	Slack  *Slack  `json:"slack,omitempty"`
-	GitHub *GitHub `json:"github,omitempty"`
+	Slack    *Slack    `json:"slack,omitempty"`
+	GitHub   *GitHub   `json:"github,omitempty"`
+	WhatsApp *WhatsApp `json:"whatsapp,omitempty"`
+	IMessage *IMessage `json:"imessage,omitempty"`
 }
 
 // Slack runs the Slack app, a client of the server over Socket Mode.
@@ -658,6 +660,45 @@ type GitHub struct {
 	// then by the default chain of the client's home. Left empty, only a
 	// comment that names an agent, or an auto label, starts a run.
 	Login string `json:"login,omitempty"`
+}
+
+// WhatsApp is a business number on Meta's WhatsApp Cloud API, answering
+// through signed webhooks at /connectors/whatsapp (docs/reference/whatsapp.md).
+type WhatsApp struct {
+	Enabled bool `json:"enabled"`
+	// PhoneNumberID is the business number's Graph API phone number id.
+	PhoneNumberID string `json:"phone_number_id"`
+	// Token is a system user access token with whatsapp_business_messaging.
+	Token *Ref `json:"token"`
+	// AppSecret is the Meta app's secret, which signs every webhook.
+	AppSecret *Ref `json:"app_secret"`
+	// VerifyToken is what Meta's subscription handshake echoes.
+	VerifyToken *Ref `json:"verify_token"`
+	// DefaultAgent answers a message that names no agent. Left out, the
+	// default chain of the client's home does.
+	DefaultAgent string `json:"default_agent,omitempty"`
+	// People maps a WhatsApp id (the number's digits) to a subject.
+	People map[string]string `json:"people,omitempty"`
+}
+
+// IMessage is an Apple ID's Messages, relayed by a BlueBubbles server on the
+// operator's Mac, answering at /connectors/imessage
+// (docs/reference/imessage.md).
+type IMessage struct {
+	Enabled bool `json:"enabled"`
+	// Server names the BlueBubbles server. Left out, it is "home".
+	Server string `json:"server,omitempty"`
+	// URL is the BlueBubbles server's base URL.
+	URL string `json:"url"`
+	// Password is the BlueBubbles server's password.
+	Password *Ref `json:"password"`
+	// WebhookSecret is the ?secret= of the webhook URL registered in
+	// BlueBubbles.
+	WebhookSecret *Ref `json:"webhook_secret"`
+	// Method is apple-script (the default) or private-api.
+	Method       string            `json:"method,omitempty"`
+	DefaultAgent string            `json:"default_agent,omitempty"`
+	People       map[string]string `json:"people,omitempty"`
 }
 
 var providerName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
@@ -794,6 +835,16 @@ func (p Platform) check(kinds Kinds) error {
 	if g := sp.Surfaces.GitHub; g != nil && g.Enabled {
 		if len(g.Owners) == 0 || !g.Token.Set() || !g.WebhookSecret.Set() {
 			return fmt.Errorf("%s: surfaces.github: owners, token and webhook_secret are required", where)
+		}
+	}
+	if w := sp.Surfaces.WhatsApp; w != nil && w.Enabled {
+		if w.PhoneNumberID == "" || !w.Token.Set() || !w.AppSecret.Set() || !w.VerifyToken.Set() {
+			return fmt.Errorf("%s: surfaces.whatsapp: phone_number_id, token, app_secret and verify_token are required", where)
+		}
+	}
+	if m := sp.Surfaces.IMessage; m != nil && m.Enabled {
+		if m.URL == "" || !m.Password.Set() || !m.WebhookSecret.Set() {
+			return fmt.Errorf("%s: surfaces.imessage: url, password and webhook_secret are required", where)
 		}
 	}
 	return nil

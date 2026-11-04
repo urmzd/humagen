@@ -14,12 +14,19 @@ type Capabilities struct {
 	DeliverOutcomes bool     `json:"deliver_outcomes"`
 }
 
+// EventMessage is the one event a WhatsApp or iMessage client raises runs
+// from: a message a person sent it.
+const EventMessage = "message"
+
 func EventIDs(surface Surface) []string {
 	if surface == Slack {
 		return []string{"app_mention", "message", "slash_command"}
 	}
 	if surface == GitHub {
 		return []string{"issue_comment", "pull_request_review_comment", "pull_request_review", "issues", "pull_request", "check_run", "push"}
+	}
+	if surface == WhatsApp || surface == IMessage {
+		return []string{EventMessage}
 	}
 	return []string{}
 }
@@ -29,6 +36,12 @@ func ActionIDs(surface Surface) []string {
 	}
 	if surface == GitHub {
 		return []string{"github_read_context", "github_comment", "github_request_review", "github_add_labels", "github_apply_changes", "github_run_checks"}
+	}
+	if surface == WhatsApp {
+		return []string{"whatsapp_send_message"}
+	}
+	if surface == IMessage {
+		return []string{"imessage_send_message"}
 	}
 	return []string{}
 }

@@ -3599,7 +3599,7 @@ export interface UsageSpend {
   other_costs?: PolicyCost[];
 }
 
-export type ClientSurface = "slack" | "github";
+export type ClientSurface = "slack" | "github" | "whatsapp" | "imessage";
 
 /** How a webhook says which client it is for. */
 export interface ClientIdentity {
@@ -3607,6 +3607,10 @@ export interface ClientIdentity {
   team?: string;
   installation?: string;
   owners?: string[];
+  /** A WhatsApp client's business number, as its Graph API phone number id. */
+  phone_number_id?: string;
+  /** The name of the BlueBubbles server an iMessage client is relayed by, such as `home`. */
+  server?: string;
 }
 
 /** Where one of a client's secrets is. The secret itself is never sent. */
@@ -3637,6 +3641,20 @@ export interface SlackOptions {
 is in this workspace, by subject. An answer clicked in Slack by a
 person it maps is that principal's answer; anyone else is refused.
  */
+  people?: Record<string, string>;
+}
+
+export interface WhatsAppOptions {
+  /** WhatsApp ids (a number's digits, without the `+`) mapped to the principal each is in this workspace, by subject. A number it does not map is answered for nobody. Shown only to callers who may change clients. */
+  people?: Record<string, string>;
+}
+
+export interface IMessageOptions {
+  /** The BlueBubbles server's base URL. */
+  url: string;
+  /** How BlueBubbles sends. Absent is `apple-script`. */
+  method?: "apple-script" | "private-api";
+  /** Handles (a `+number` or an email address) mapped to the principal each is in this workspace, by subject. Shown only to callers who may change clients. */
   people?: Record<string, string>;
 }
 
@@ -3678,6 +3696,8 @@ export interface ClientInput {
   bots?: Record<string, string> | null;
   slack?: SlackOptions | null;
   github?: GitHubOptions | null;
+  whatsapp?: WhatsAppOptions | null;
+  imessage?: IMessageOptions | null;
   home?: ClientHome | null;
   /** Defaults to true. */
   enabled?: boolean | null;
@@ -3696,7 +3716,7 @@ export interface ClientHome {
   channel?: string;
 }
 
-/** A Slack app or GitHub installation the workspace answers through, and the limits on the runs it raises. */
+/** A Slack app, GitHub installation, WhatsApp business number or iMessage server the workspace answers through, and the limits on the runs it raises. */
 export interface ClientView {
   capabilities?: ClientCapabilityPolicy;
   id: string;
@@ -3715,6 +3735,8 @@ surface, its `slack.machine`, is shown every agent it names.
   bots?: Record<string, string>;
   slack?: SlackOptions;
   github?: GitHubOptions;
+  whatsapp?: WhatsAppOptions;
+  imessage?: IMessageOptions;
   /** Absent when the client has none, and when it is in a project the caller may not read. */
   home?: ClientHome;
   enabled: boolean;
@@ -4083,8 +4105,36 @@ export interface SlackRef {
   app_id?: string;
 }
 
-/** The body of `message.posted.v1`. `slack` is set when the surface is Slack. */
-export type MessagePostedPayload = EventRequest & { slack?: SlackRef };
+/** Where in WhatsApp (the Cloud API) a message was received. */
+export interface WhatsAppRef {
+  phone_number_id: string;
+  /** The sender's WhatsApp id, their number's digits. */
+  from: string;
+  /** The message's id (`wamid...`), which is also the event id. */
+  message_id: string;
+  /** The WhatsApp message type, such as `text` or `audio`. */
+  type: string;
+  /** Set for an audio message recorded as a voice note. */
+  voice?: boolean;
+  reply_to?: string;
+}
+
+/** Where in iMessage, through a BlueBubbles server, a message was received. */
+export interface IMessageRef {
+  server: string;
+  /** The chat guid. */
+  chat: string;
+  /** The handle that sent it, a phone number or an email address. */
+  sender: string;
+  /** The message guid, which is also the event id. */
+  guid: string;
+  group?: boolean;
+  /** Set for an audio message recorded in Messages. */
+  audio?: boolean;
+}
+
+/** The body of `message.posted.v1`. At most one of `slack`, `whatsapp` and `imessage` is set, naming the surface. */
+export type MessagePostedPayload = EventRequest & { slack?: SlackRef; whatsapp?: WhatsAppRef; imessage?: IMessageRef };
 
 /** The body of `slack.command.invoked.v1`. `text` is the command's arguments. */
 export type SlackCommandPayload = EventRequest & { command: string; team: string; channel: string; user: string; app_id?: string };
@@ -4457,11 +4507,13 @@ export interface UsageEntryGrant {
 export interface ClientInputCredentials {
   token?: SecretInput;
   signing_secret?: SecretInput;
+  verify_token?: SecretInput;
 }
 
 export interface ClientViewCredentials {
   token: SecretRef;
   signing_secret: SecretRef;
+  verify_token?: SecretRef;
 }
 
 export interface ManifestUsage {

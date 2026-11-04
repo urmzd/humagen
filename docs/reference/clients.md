@@ -1,7 +1,9 @@
 # Clients
 
 A client is one installation of the platform on a surface: a Slack app in a
-team, or a GitHub App installation on some accounts. A workspace has as many as
+team, a GitHub App installation on some accounts, a WhatsApp business number
+([whatsapp.md](whatsapp.md)), or an Apple ID's Messages relayed by a
+BlueBubbles server ([imessage.md](imessage.md)). A workspace has as many as
 it needs. One client for everything, several that route to different agents, or
 one per agent are all the same record with different values.
 
@@ -10,13 +12,15 @@ one per agent are all the same record with different values.
 | Field | Meaning |
 |-------|---------|
 | `id`, `name` | The id names the client in its workspace and is what a run records. Left out, it is made from the name. |
-| `surface` | `slack` or `github`. It cannot change after the client is created. |
-| `identity` | The external identity the client answers for. Slack: `team` (required) and `app_id`. GitHub: `owners` (required), `installation` and `app_id`. |
-| `credentials` | `token` and `signing_secret`. Written, never read back. See [Secrets](#secrets). |
+| `surface` | `slack`, `github`, `whatsapp` or `imessage`. It cannot change after the client is created. |
+| `identity` | The external identity the client answers for. Slack: `team` (required) and `app_id`. GitHub: `owners` (required), `installation` and `app_id`. WhatsApp: `phone_number_id` (required). iMessage: `server` (required), the name of its BlueBubbles server. |
+| `credentials` | `token` and `signing_secret`, and for WhatsApp alone `verify_token`. On WhatsApp they are the access token, the app secret and the subscription handshake's token; on iMessage the server password and the webhook URL's secret. Written, never read back. See [Secrets](#secrets). |
 | `default_agent` | Answers a request that named no agent. `"*"` asks each agent the client routes to whether to join (see [the dynamic router](../architecture/projects.md#the-dynamic-router)); `auto` reads as `"*"`. |
 | `agents` | The agents the client may route to, besides its default. |
 | `bots` | A Slack bot user id, or a GitHub login, to the agent it stands for. These three, and `github.auto_labels`, show only the agents the reader may read (see [Agents a reader may not read](#agents-a-reader-may-not-read)). |
 | `slack` | `sessions`, `commands`, and `machine` and `people` (see [People a Slack app answers for](#people-a-slack-app-answers-for)). |
+| `whatsapp` | `people`, a WhatsApp id to a subject (see [WhatsApp](whatsapp.md#people)). |
+| `imessage` | `url` (required), `method` and `people`, a handle to a subject (see [iMessage](imessage.md#people)). |
 | `github` | `auto_labels`, `checks`, `guides`, `mutations`, `read_repositories`, and `login`, the app's own login, which a comment mentions to ask the client's default (see [Who a comment asks](github.md#who-a-comment-asks)). |
 | `home` | `{project, channel}`: where the client files the threads it starts outside a channel bound to one, such as direct messages and GitHub issues. `project` is a project's name, or `~` for the workspace, and must exist. `channel` is one of its channels, not archived; left out, `general`. Left out entirely, the workspace's `general`. A Slack thread outside a bound channel is filed here, private for a direct message (see [Slack coworking](slack.md#coworking-channels-threads-and-mentions)). A home in a project the reader may not read is not shown to them, and their change that names no home keeps it. |
 | `enabled` | A disabled client answers nothing and carries nothing. |
@@ -135,17 +139,23 @@ sign-ins. See [security](../architecture/security.md#rules-the-code-holds).
 ## Routing a request to a client
 
 Every Slack request arrives at `/connectors/slack` or
-`/connectors/slack/commands`, and every GitHub delivery at `/connectors/github`,
-whichever client it is for. A request has no session, so nothing in it is
+`/connectors/slack/commands`, every GitHub delivery at `/connectors/github`,
+every WhatsApp notification at `/connectors/whatsapp` and every BlueBubbles
+webhook at `/connectors/imessage`, whichever client it is for. A request has no session, so nothing in it is
 believed until a secret has verified it.
 
 1. The request states an identity in bytes nobody has verified yet: Slack's
-   `api_app_id` and `team_id`, or GitHub's hook target header, `installation.id`
-   and repository owner.
+   `api_app_id` and `team_id`, GitHub's hook target header, `installation.id`
+   and repository owner, WhatsApp's `metadata.phone_number_id`, or the
+   `server` of the iMessage webhook's URL.
 2. It is offered, oldest first, to every enabled client that statement does not
    disagree with. A field the request leaves out disagrees with nothing, which
    is how Slack's URL verification and GitHub's ping reach a client.
 3. The first client whose own signing secret verifies the exact bytes takes it.
+   For iMessage that is the URL's one `secret`, compared in constant time.
+   WhatsApp's `GET` subscription handshake carries no payload, so it goes to
+   the first WhatsApp client whose verify token it carries, and is a 403 for
+   none.
    The tenant, the client and the agents it may reach come from that client's
    record. A `tenant` in the payload is ignored.
 
@@ -237,7 +247,9 @@ With nothing configured, no client exists and the webhook routes answer 404.
 
 The `HUMAGEN_SLACK_*` and `HUMAGEN_GITHUB_*` variables that used to
 configure the one installation per surface now create one default client per
-surface, `default-slack` and `default-github`, in the server's `-tenant`. It
+surface, `default-slack` and `default-github`, in the server's `-tenant`; the
+`HUMAGEN_WHATSAPP_*` and `HUMAGEN_IMESSAGE_*` variables create
+`default-whatsapp` and `default-imessage` the same way. It
 behaves as that installation did: any agent in the workspace (`"*"`), the same
 options, its secrets left in the environment. It is marked `managed: env` and
 is changed in the environment, not through the API. `HUMAGEN_SLACK_APP`,
@@ -385,7 +397,8 @@ or remove one. Creating a client and setting its limits are API calls.
 - Creating and editing a client in the console, and setting a client's limits
   there.
 - Slack OAuth installation. A client is given a bot token.
-- Jira and email clients. The two surfaces are Slack and GitHub.
+- Jira and email clients. The surfaces are Slack, GitHub, WhatsApp and
+  iMessage.
 
 ## Installation controls and bridge direction
 

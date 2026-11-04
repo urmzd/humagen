@@ -165,9 +165,23 @@ func PersonActor(subject string) event.Actor {
 // one that received the message (a people map needs a machine, so an app
 // built on the API holds it). No mapping, or two clients mapping the user to
 // different people, is nobody. GitHub uses only its own installation’s exact
-// verified login map. A bot always acts for nobody.
+// verified login map. WhatsApp and iMessage use their own client's map of a
+// number or handle, which their connector read from the verified payload. A
+// bot always acts for nobody.
 func (p *Platform) surfacePerson(c clients.Client, tag event.Envelope) string {
 	id := strings.TrimSpace(wire.ActorOf(tag).ID)
+	switch c.Surface {
+	case clients.WhatsApp:
+		if !c.Enabled || wire.ActorOf(tag).Bot || c.WhatsApp == nil || id == "" {
+			return ""
+		}
+		return c.WhatsApp.People[id]
+	case clients.IMessage:
+		if !c.Enabled || wire.ActorOf(tag).Bot || c.IMessage == nil || id == "" {
+			return ""
+		}
+		return c.IMessage.People[id]
+	}
 	if c.Surface == clients.GitHub {
 		if !c.Enabled || wire.ActorOf(tag).Bot || c.GitHub == nil {
 			return ""

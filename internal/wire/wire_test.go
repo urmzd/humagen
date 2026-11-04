@@ -31,12 +31,16 @@ func TestSurfaceOf(t *testing.T) {
 		"slack_event": "app_mention", "slack_channel": "C1", "slack_command": "/ask",
 		"github_event": "issue_comment", "github_owner": "o", "github_repo": "r",
 		"github_labels": "a,b", "github_author": "u", "cron_schedule": "daily",
+		"whatsapp_phone_number_id": "106540352242922", "whatsapp_from": "15551234567",
+		"imessage_server": "home", "imessage_chat": "iMessage;+;chat1", "imessage_sender": "+15551234567", "imessage_group": "true",
 	}})
 	SetGitHubHeadSHA(&tag, "abc")
 	want := Surface{
 		SlackEvent: "app_mention", SlackChannel: "C1", SlackCommand: "/ask",
 		GitHubEvent: "issue_comment", GitHubOwner: "o", GitHubRepo: "r",
 		GitHubLabels: "a,b", GitHubAuthor: "u", GitHubHeadSHA: "abc", CronSchedule: "daily",
+		WhatsAppPhoneNumberID: "106540352242922", WhatsAppFrom: "15551234567",
+		IMessageServer: "home", IMessageChat: "iMessage;+;chat1", IMessageSender: "+15551234567", IMessageGroup: true,
 	}
 	if got := SurfaceOf(tag); got != want {
 		t.Fatalf("SurfaceOf = %+v, want %+v", got, want)
@@ -114,7 +118,8 @@ func TestSeam(t *testing.T) {
 		"github.com/urmzd/orchagent/flow/event/legacy": {"internal/legacy/"},
 	}
 	keys := map[string]bool{}
-	for _, k := range []string{MetaSlackEvent, MetaSlackChannel, MetaSlackCommand, MetaGitHubEvent, MetaGitHubOwner, MetaGitHubRepo, MetaGitHubLabels, MetaGitHubAuthor, MetaGitHubHeadSHA, MetaCronSchedule, MetaCronExpression} {
+	for _, k := range []string{MetaSlackEvent, MetaSlackChannel, MetaSlackCommand, MetaGitHubEvent, MetaGitHubOwner, MetaGitHubRepo, MetaGitHubLabels, MetaGitHubAuthor, MetaGitHubHeadSHA, MetaCronSchedule, MetaCronExpression,
+		MetaWhatsAppPhoneNumberID, MetaWhatsAppFrom, MetaIMessageServer, MetaIMessageChat, MetaIMessageSender, MetaIMessageGroup} {
 		keys[k] = true
 	}
 	var bad []string

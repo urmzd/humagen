@@ -4,6 +4,9 @@
  * everything else in sentence case, no end punctuation in headings, one
  * neutral voice, no emoji in buttons or headings.
  */
+/** Where a client the console connects answers. */
+type ConnectSurface = "slack" | "github" | "whatsapp" | "imessage";
+
 const OUTCOMES: Record<string, string> = {
   allowed_once: "Allowed once",
   raised: "Limit raised",
@@ -1492,7 +1495,7 @@ export const defaultCopy = {
     heading: "Connect a system",
     open: "Connect a System",
     intro:
-      "Install your Slack app or GitHub App first, then provide its credentials here. Saving configures the connection; a real reply verifies it works.",
+      "Install your Slack app or GitHub App, or set up your WhatsApp number or BlueBubbles server, first, then provide its credentials here. Saving configures the connection; a real reply verifies it works.",
     invalidDefaultAgent:
       "The default must name one agent. Use letters, digits, underscores or dashes, starting with a letter or digit.",
     invalidAgents:
@@ -1500,10 +1503,13 @@ export const defaultCopy = {
     invalidGithubLogin:
       "Give the GitHub App's own login, such as your-app[bot], so mentioning it can reach the default agent.",
     credentialsRequired: "Give both a token and a signing secret.",
+    verifyRequired: "Give the verify token you set in your Meta app.",
     failed: "The connection could not be created. Try again.",
     system: "System",
     slack: "Slack",
     github: "GitHub",
+    whatsapp: "WhatsApp",
+    imessage: "iMessage",
     id: "Connection ID",
     idHint: "A unique name of up to 40 lowercase letters, digits and dashes.",
     name: "Name",
@@ -1512,6 +1518,15 @@ export const defaultCopy = {
     githubAccounts: "GitHub accounts",
     githubAccountsHint: "Account or organization names, separated by commas.",
     installation: "Installation ID (optional)",
+    phoneNumberId: "Phone number ID",
+    phoneNumberIdHint:
+      "The business number's ID from your Meta app's WhatsApp setup, not the phone number itself.",
+    server: "Server name",
+    serverHint:
+      "A short name for the BlueBubbles server, such as home: lowercase letters, digits and dashes.",
+    serverUrl: "BlueBubbles server URL",
+    serverUrlHint:
+      "The address the server reaches BlueBubbles at, such as its Cloudflare or ngrok tunnel.",
     botLogin: "GitHub bot login",
     botLoginHint:
       "The app's own GitHub login, such as your-app[bot]. Required with a default agent so native @mentions can reach it.",
@@ -1526,12 +1541,24 @@ export const defaultCopy = {
     credentialHint:
       "Credential values are stored by the server and never shown again. An environment reference must be permitted by your workspace operator. For GitHub, give an installation token, or the GitHub App's private key with its App ID and Installation ID so the server mints and refreshes installation tokens.",
     people: "People mapping (optional)",
-    peopleHint: (surface: "slack" | "github") =>
-      surface === "slack"
-        ? "Map Slack member IDs to Humagen subjects, such as U0123ABCDEF=alice, one per line or separated by commas."
-        : "Map GitHub logins to Humagen subjects, such as octocat=alice, one per line or separated by commas.",
-    peoplePlaceholder: (surface: "slack" | "github") =>
-      surface === "slack" ? "U0123ABCDEF=alice" : "octocat=alice",
+    peopleHint: (surface: ConnectSurface) =>
+      ({
+        slack:
+          "Map Slack member IDs to Humagen subjects, such as U0123ABCDEF=alice, one per line or separated by commas.",
+        github:
+          "Map GitHub logins to Humagen subjects, such as octocat=alice, one per line or separated by commas.",
+        whatsapp:
+          "Map WhatsApp numbers, digits only, to Humagen subjects, such as 15551234567=alice, one per line or separated by commas. A number not mapped is answered for nobody.",
+        imessage:
+          "Map iMessage handles, a +number or an email address, to Humagen subjects, such as +15551234567=alice, one per line or separated by commas.",
+      })[surface],
+    peoplePlaceholder: (surface: ConnectSurface) =>
+      ({
+        slack: "U0123ABCDEF=alice",
+        github: "octocat=alice",
+        whatsapp: "15551234567=alice",
+        imessage: "+15551234567=alice",
+      })[surface],
     peopleLabel: "People",
     peopleMapped: (count: number) => `${count} mapped`,
     tokenSource: "Token source",
@@ -1544,13 +1571,30 @@ export const defaultCopy = {
     signing: "Signing secret",
     signingReference: "Signing secret reference",
     signingPlaceholder: "env:HUMAGEN_SLACK_SIGNING_SECRET",
+    whatsappToken: "Access token",
+    whatsappTokenPlaceholder: "env:HUMAGEN_WHATSAPP_TOKEN",
+    whatsappSigning: "App secret",
+    whatsappSigningPlaceholder: "env:HUMAGEN_WHATSAPP_APP_SECRET",
+    imessageToken: "Server password",
+    imessageTokenPlaceholder: "env:HUMAGEN_IMESSAGE_PASSWORD",
+    imessageSigning: "Webhook secret",
+    imessageSigningPlaceholder: "env:HUMAGEN_IMESSAGE_WEBHOOK_SECRET",
+    verifySource: "Verify token source",
+    verify: "Verify token",
+    verifyReference: "Verify token reference",
+    verifyPlaceholder: "env:HUMAGEN_WHATSAPP_VERIFY_TOKEN",
     connecting: "Connecting…",
     connect: "Connect",
     emptyAdmin:
-      "Connect an installed Slack app or GitHub installation. Its secrets are written once and never shown again.",
-    emptyReader: "An administrator can connect a Slack app or GitHub installation.",
-    webhook: (surface: "slack" | "github") =>
-      `Your app must send signed events to the server's integration listener at /connectors/${surface}. Your workspace operator provides its public address.`,
+      "Connect an installed Slack app, GitHub installation, WhatsApp number or iMessage server. Its secrets are written once and never shown again.",
+    emptyReader:
+      "An administrator can connect a Slack app, GitHub installation, WhatsApp number or iMessage server.",
+    webhook: (surface: ConnectSurface) =>
+      surface === "whatsapp"
+        ? "In your Meta app's WhatsApp configuration, set the callback URL to the server's integration listener at /connectors/whatsapp with this verify token, and subscribe to messages. Your workspace operator provides its public address."
+        : surface === "imessage"
+          ? "In BlueBubbles, add a webhook for new messages at the server's integration listener: /connectors/imessage?secret= followed by this webhook secret. Your workspace operator provides its public address."
+          : `Your app must send signed events to the server's integration listener at /connectors/${surface}. Your workspace operator provides its public address.`,
   },
   notifications: {
     title: "Notifications",

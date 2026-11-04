@@ -33,6 +33,8 @@ import (
 	"github.com/urmzd/orchagent/flow/bus"
 	"github.com/urmzd/orchagent/flow/connector"
 	"github.com/urmzd/orchagent/flow/connectors/cron"
+	"github.com/urmzd/orchagent/flow/connectors/imessage"
+	"github.com/urmzd/orchagent/flow/connectors/whatsapp"
 	"github.com/urmzd/orchagent/flow/egress"
 	"github.com/urmzd/orchagent/flow/event"
 	"github.com/urmzd/orchagent/flow/isolation"
@@ -168,6 +170,17 @@ type Config struct {
 	// token. Nil means the real one over HTTP.
 	SlackAPI  func(token string) slack.API
 	GitHubAPI func(token string) github.API
+	// WhatsAppAPI builds the Cloud API a WhatsApp client writes through from
+	// its access token, and IMessageAPI the BlueBubbles API an iMessage
+	// client writes through from its server's URL and password. Nil means
+	// the real one over HTTP.
+	WhatsAppAPI func(token string) whatsapp.API
+	IMessageAPI func(url, password string) imessage.API
+	// PrepareMessage runs on every message a WhatsApp or iMessage client
+	// takes, after its files (a voice note among them) are attached and
+	// before it raises a run. It is where a transcriber plugs in (see
+	// prepareMessage). An error refuses the message. Nil changes nothing.
+	PrepareMessage func(context.Context, *event.Envelope) error
 	// ClientInterval coalesces a client's edits to its surface. Zero means
 	// the connector's default.
 	ClientInterval time.Duration

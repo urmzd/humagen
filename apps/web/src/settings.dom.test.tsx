@@ -241,6 +241,97 @@ test("connects GitHub with explicit agent reach and environment references", asy
   });
 });
 
+test("connects a WhatsApp number with its verify token and people, never showing a secret", async () => {
+  let created: unknown;
+  let clients: unknown[] = [];
+  net = stubFetch({
+    "GET /api/clients": () => ({ clients, caps: clientsCaps }),
+    "POST /api/clients": (input) => {
+      created = input;
+      clients = [
+        {
+          ...(input as object),
+          version: 1,
+          credentials: {
+            token: { set: true },
+            signing_secret: { set: true },
+            verify_token: { set: true },
+          },
+        },
+      ];
+      return clients[0];
+    },
+  });
+  await openConnect();
+  changeConnection("System", "whatsapp");
+  assert.ok(!screen.queryByLabelText("App ID (optional)"));
+  changeConnection("Phone number ID", "106540352242922");
+  changeConnection("Default agent (optional)", "concierge");
+  changeConnection("People mapping (optional)", "15551234567=ana");
+  changeConnection("Access token", "wa-test-token");
+  changeConnection("App secret", "wa-app-secret");
+  submitConnection();
+  await screen.findByText("Give the verify token you set in your Meta app.");
+  changeConnection("Access token", "wa-test-token");
+  changeConnection("App secret", "wa-app-secret");
+  changeConnection("Verify token source", "reference");
+  changeConnection("Verify token reference", "env:HUMAGEN_WHATSAPP_VERIFY_TOKEN");
+  submitConnection();
+  await waitFor(() => assert.ok(!screen.queryByRole("form", { name: "Connect a system" })));
+  assert.deepEqual(created, {
+    id: "trial-client",
+    name: "Trial connection",
+    surface: "whatsapp",
+    identity: { phone_number_id: "106540352242922" },
+    default_agent: "concierge",
+    agents: [],
+    enabled: true,
+    whatsapp: { people: { "15551234567": "ana" } },
+    credentials: {
+      token: { value: "wa-test-token" },
+      signing_secret: { value: "wa-app-secret" },
+      verify_token: { ref: "env:HUMAGEN_WHATSAPP_VERIFY_TOKEN" },
+    },
+  });
+  await screen.findByRole("heading", { name: "Trial connection WhatsApp" });
+  assert.ok(screen.getByText("1 mapped"));
+  assert.ok(!document.body.textContent?.includes("wa-test-token"));
+});
+
+test("connects an iMessage server by its name, URL, password and webhook secret", async () => {
+  let created: unknown;
+  net = stubFetch({
+    "GET /api/clients": () => ({ clients: [], caps: clientsCaps }),
+    "POST /api/clients": (input) => {
+      created = input;
+      return { ...(input as object), version: 1 };
+    },
+  });
+  await openConnect();
+  changeConnection("System", "imessage");
+  assert.ok(!screen.queryByLabelText("Verify token"));
+  changeConnection("Server name", "home");
+  changeConnection("BlueBubbles server URL", "https://bb.example.com");
+  changeConnection("Server password", "bb-password");
+  changeConnection("Webhook secret", "bb-secret");
+  submitConnection();
+  await waitFor(() => assert.ok(!screen.queryByRole("form", { name: "Connect a system" })));
+  assert.deepEqual(created, {
+    id: "trial-client",
+    name: "Trial connection",
+    surface: "imessage",
+    identity: { server: "home" },
+    default_agent: "",
+    agents: [],
+    enabled: true,
+    imessage: { url: "https://bb.example.com" },
+    credentials: {
+      token: { value: "bb-password" },
+      signing_secret: { value: "bb-secret" },
+    },
+  });
+});
+
 test("maps a GitHub client's logins to people and counts them, never sending a blank or malformed line", async () => {
   let created: unknown;
   let clients: unknown[] = [];

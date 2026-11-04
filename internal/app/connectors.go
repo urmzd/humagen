@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -49,12 +50,34 @@ const (
 	// else by the default chain of the client's home.
 	EnvGitHubLogin   = "HUMAGEN_GITHUB_LOGIN"
 	EnvGitHubDefault = "HUMAGEN_GITHUB_DEFAULT_AGENT"
+
+	// WhatsApp (Meta's Cloud API). The app secret verifies webhooks, the
+	// verify token answers Meta's subscription handshake, and the access
+	// token sends and downloads media.
+	EnvWhatsAppToken         = "HUMAGEN_WHATSAPP_TOKEN"
+	EnvWhatsAppAppSecret     = "HUMAGEN_WHATSAPP_APP_SECRET"
+	EnvWhatsAppVerifyToken   = "HUMAGEN_WHATSAPP_VERIFY_TOKEN"
+	EnvWhatsAppPhoneNumberID = "HUMAGEN_WHATSAPP_PHONE_NUMBER_ID"
+	EnvWhatsAppDefault       = "HUMAGEN_WHATSAPP_DEFAULT_AGENT"
+
+	// iMessage (a BlueBubbles server on the operator's Mac). The webhook
+	// secret is the ?secret= of the URL registered in BlueBubbles; the
+	// password is the server's own.
+	EnvIMessageURL      = "HUMAGEN_IMESSAGE_URL"
+	EnvIMessagePassword = "HUMAGEN_IMESSAGE_PASSWORD"
+	EnvIMessageSecret   = "HUMAGEN_IMESSAGE_WEBHOOK_SECRET"
+	// EnvIMessageServer names the server ("home" when unset).
+	EnvIMessageServer  = "HUMAGEN_IMESSAGE_SERVER"
+	EnvIMessageMethod  = "HUMAGEN_IMESSAGE_METHOD"
+	EnvIMessageDefault = "HUMAGEN_IMESSAGE_DEFAULT_AGENT"
 )
 
 // Ids of the clients the environment configures.
 const (
-	defaultSlackClient  = "default-slack"
-	defaultGitHubClient = "default-github"
+	defaultSlackClient    = "default-slack"
+	defaultGitHubClient   = "default-github"
+	defaultWhatsAppClient = "default-whatsapp"
+	defaultIMessageClient = "default-imessage"
 )
 
 // defaultClients reads the environment into the clients it configures: none,
@@ -62,7 +85,7 @@ const (
 // are passed by reference, so the records name the variables and hold nothing.
 func defaultClients(env func(string) string) ([]platform.ClientInput, error) {
 	var out []platform.ClientInput
-	for _, build := range []func(func(string) string) (*platform.ClientInput, error){githubClient, slackClient} {
+	for _, build := range []func(func(string) string) (*platform.ClientInput, error){githubClient, slackClient, whatsAppClient, iMessageClient} {
 		in, err := build(env)
 		if err != nil {
 			return nil, err
@@ -102,9 +125,13 @@ func secretRefs(raw, tenant string, env func(string) string) (map[string][]strin
 			out[name] = append(out[name], v)
 		}
 	}
-	for _, pair := range [][2]string{{EnvSlackToken, EnvSlackSecret}, {EnvGitHubToken, EnvGitHubSecret}} {
-		if env(pair[0]) != "" || env(pair[1]) != "" {
-			out[tenant] = append(out[tenant], pair[0], pair[1])
+	for _, set := range [][]string{
+		{EnvSlackToken, EnvSlackSecret}, {EnvGitHubToken, EnvGitHubSecret},
+		{EnvWhatsAppToken, EnvWhatsAppAppSecret, EnvWhatsAppVerifyToken},
+		{EnvIMessagePassword, EnvIMessageSecret},
+	} {
+		if slices.ContainsFunc(set, func(name string) bool { return env(name) != "" }) {
+			out[tenant] = append(out[tenant], set...)
 		}
 	}
 	return out, nil
@@ -247,6 +274,66 @@ func githubClient(env func(string) string) (*platform.ClientInput, error) {
 		},
 		Token:         clients.SecretInput{Ref: "env:" + EnvGitHubToken},
 		SigningSecret: clients.SecretInput{Ref: "env:" + EnvGitHubSecret},
+	}, nil
+}
+
+// whatsAppClient is the WhatsApp business number the environment configures.
+func whatsAppClient(env func(string) string) (*platform.ClientInput, error) {
+	names := []string{EnvWhatsAppToken, EnvWhatsAppAppSecret, EnvWhatsAppVerifyToken, EnvWhatsAppPhoneNumberID}
+	set := 0
+	for _, n := range names {
+		if env(n) != "" {
+			set++
+		}
+	}
+	switch set {
+	case 0:
+		return nil, nil
+	case len(names):
+	default:
+		return nil, fmt.Errorf("whatsapp needs all of $%s", strings.Join(names, ", $"))
+	}
+	return &platform.ClientInput{
+		Client: clients.Client{
+			ID: defaultWhatsAppClient, Name: "WhatsApp", Surface: clients.WhatsApp,
+			Identity:     clients.Identity{PhoneNumberID: env(EnvWhatsAppPhoneNumberID)},
+			DefaultAgent: env(EnvWhatsAppDefault),
+		},
+		Token:         clients.SecretInput{Ref: "env:" + EnvWhatsAppToken},
+		SigningSecret: clients.SecretInput{Ref: "env:" + EnvWhatsAppAppSecret},
+		VerifyToken:   clients.SecretInput{Ref: "env:" + EnvWhatsAppVerifyToken},
+	}, nil
+}
+
+// iMessageClient is the BlueBubbles server the environment configures.
+func iMessageClient(env func(string) string) (*platform.ClientInput, error) {
+	names := []string{EnvIMessageURL, EnvIMessagePassword, EnvIMessageSecret}
+	set := 0
+	for _, n := range names {
+		if env(n) != "" {
+			set++
+		}
+	}
+	switch set {
+	case 0:
+		return nil, nil
+	case len(names):
+	default:
+		return nil, fmt.Errorf("imessage needs all of $%s", strings.Join(names, ", $"))
+	}
+	server := env(EnvIMessageServer)
+	if server == "" {
+		server = "home"
+	}
+	return &platform.ClientInput{
+		Client: clients.Client{
+			ID: defaultIMessageClient, Name: "iMessage", Surface: clients.IMessage,
+			Identity:     clients.Identity{Server: server},
+			DefaultAgent: env(EnvIMessageDefault),
+			IMessage:     &clients.IMessageOptions{URL: env(EnvIMessageURL), Method: env(EnvIMessageMethod)},
+		},
+		Token:         clients.SecretInput{Ref: "env:" + EnvIMessagePassword},
+		SigningSecret: clients.SecretInput{Ref: "env:" + EnvIMessageSecret},
 	}, nil
 }
 

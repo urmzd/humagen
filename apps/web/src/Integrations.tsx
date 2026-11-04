@@ -162,10 +162,8 @@ export function Integrations({
                 >
                   <span className="break-words text-aui-sm font-medium">{c.name}</span>
                   <span className="text-aui-xs text-aui-muted">
-                    {c.surface === "slack"
-                      ? defaultCopy.clientConnect.slack
-                      : defaultCopy.clientConnect.github}
-                    : {c.enabled ? words.enabled : words.disabled}
+                    {defaultCopy.clientConnect[c.surface]}:{" "}
+                    {c.enabled ? words.enabled : words.disabled}
                   </span>
                 </button>
               </li>
@@ -587,7 +585,12 @@ function ClientResources({
         </>
       ) : (
         <ul className="flex flex-col gap-2">
-          {(client.github?.read_repositories ?? client.identity.owners ?? []).map((repo) => (
+          {(client.surface === "whatsapp"
+            ? [client.identity.phone_number_id ?? ""]
+            : client.surface === "imessage"
+              ? [client.identity.server ?? ""]
+              : (client.github?.read_repositories ?? client.identity.owners ?? [])
+          ).map((repo) => (
             <li key={repo} className="break-all text-aui-sm">
               {repo}
             </li>

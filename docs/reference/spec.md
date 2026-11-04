@@ -583,6 +583,22 @@ spec:
       token: {ref: env:HUMAGEN_GITHUB_TOKEN}
       webhook_secret: {ref: env:HUMAGEN_GITHUB_WEBHOOK_SECRET}
       login: humagen[bot]      # the app's own login; see github.md, "Who a comment asks"
+    whatsapp:               # a business number on Meta's Cloud API; see whatsapp.md
+      enabled: false
+      phone_number_id: "106540352242922"
+      token: {ref: env:HUMAGEN_WHATSAPP_TOKEN}
+      app_secret: {ref: env:HUMAGEN_WHATSAPP_APP_SECRET}
+      verify_token: {ref: env:HUMAGEN_WHATSAPP_VERIFY_TOKEN}
+      default_agent: lead     # answers a message that names no agent; left out, the home's default chain
+      people: {"15551234567": ana}   # a WhatsApp id (the number's digits) to a subject
+    imessage:               # an Apple ID's Messages through a BlueBubbles server; see imessage.md
+      enabled: false
+      server: home            # the default
+      url: https://bb.example.com
+      password: {ref: env:HUMAGEN_IMESSAGE_PASSWORD}
+      webhook_secret: {ref: env:HUMAGEN_IMESSAGE_WEBHOOK_SECRET}
+      method: apple-script    # or private-api, when the server runs the Private API helper
+      people: {"+15551234567": ana}
 
   branding:                 # this workspace's, over the System document's, once its people sign in
     wordmark: Acme Field
@@ -726,6 +742,20 @@ what wakes an agent. saige checks the file at start, then the platform's
 own rules apply as to any spec. The file's `version` is not kept: the store
 numbers each change, and a run pins the version, digest and policy it
 started with.
+
+### WhatsApp and iMessage
+
+`surfaces.whatsapp` and `surfaces.imessage` each seat one client the API
+cannot change, `file-whatsapp` and `file-imessage`, as `surfaces.github`
+seats `file-github`: it may route to any agent in the workspace, its secrets
+are `env:` references the operator gives the workspace with `-secret-refs`,
+and `enabled: false` turns the kept client off. WhatsApp needs
+`phone_number_id`, `token`, `app_secret` and `verify_token`; iMessage needs
+`url`, `password` and `webhook_secret`. A message that names no agent goes to
+`default_agent`, and else to the default chain of the client's home. `people`
+maps a sender to the person the run acts for; one it does not name is
+answered for nobody. [whatsapp.md](whatsapp.md) and [imessage.md](imessage.md)
+walk through the setup.
 
 ### The Slack app
 

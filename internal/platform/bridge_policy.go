@@ -34,8 +34,11 @@ func (p *Platform) bridgeDirection(c clients.Client, channel string) (projects.B
 	return ch.Slack.Direction.Effective(), true
 }
 func webhookEvent(surface clients.Surface, r *http.Request, body []byte) string {
-	if surface == clients.GitHub {
+	switch surface {
+	case clients.GitHub:
 		return r.Header.Get("X-GitHub-Event")
+	case clients.WhatsApp, clients.IMessage:
+		return clients.EventMessage
 	}
 	if strings.HasSuffix(r.URL.Path, "/commands") {
 		return "slash_command"

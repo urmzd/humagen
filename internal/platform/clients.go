@@ -21,12 +21,14 @@ import (
 	"github.com/urmzd/humagen/pkg/policy"
 )
 
-// ClientInput is a client as someone writes it: the record, and the two
-// secrets. A secret left empty on an update keeps what is already there.
+// ClientInput is a client as someone writes it: the record, and its secrets.
+// A secret left empty on an update keeps what is already there. VerifyToken
+// is a WhatsApp client's alone.
 type ClientInput struct {
 	clients.Client
 	Token         clients.SecretInput
 	SigningSecret clients.SecretInput
+	VerifyToken   clients.SecretInput
 }
 
 // ClientCaps is how many clients a tenant may have: the defaults, or what its
@@ -77,7 +79,7 @@ func (p *Platform) create(tenant, by string, in ClientInput) (clients.Client, er
 	if s := p.surfaces[string(c.Surface)]; s.seat(tenant, c.ID) != nil {
 		return clients.Client{}, fmt.Errorf("%w: %q", clients.ErrExists, c.ID)
 	}
-	creds, secrets, err := p.credentials(tenant, c.ID, clients.Credentials{}, in)
+	creds, secrets, err := p.credentials(tenant, c.ID, c.Surface, clients.Credentials{}, in)
 	if err != nil {
 		return clients.Client{}, err
 	}
@@ -137,7 +139,8 @@ func (p *Platform) UpdateClient(_ context.Context, tenant, id, by string, in Cli
 // them. A client of that id the file does not manage is left as it is and
 // answers ErrExists.
 func (p *Platform) ApplyClient(_ context.Context, tenant, by string, in ClientInput) (clients.Client, error) {
-	if in.Token.Ref == "" || in.SigningSecret.Ref == "" || in.Token.Value != "" || in.SigningSecret.Value != "" {
+	if in.Token.Ref == "" || in.SigningSecret.Ref == "" || in.Token.Value != "" || in.SigningSecret.Value != "" || in.VerifyToken.Value != "" ||
+		(in.Surface == clients.WhatsApp) != (in.VerifyToken.Ref != "") {
 		return clients.Client{}, fmt.Errorf("%w: a client the file declares names its secrets by reference", clients.ErrInvalid)
 	}
 	p.clientsMu.Lock()
@@ -163,6 +166,9 @@ func (p *Platform) ApplyClient(_ context.Context, tenant, by string, in ClientIn
 	same.Credentials = clients.Credentials{
 		Token:         clients.SecretRef{Set: true, Ref: in.Token.Ref},
 		SigningSecret: clients.SecretRef{Set: true, Ref: in.SigningSecret.Ref},
+	}
+	if in.VerifyToken.Ref != "" {
+		same.Credentials.VerifyToken = &clients.SecretRef{Set: true, Ref: in.VerifyToken.Ref}
 	}
 	same.Version, same.CreatedBy, same.CreatedAt, same.UpdatedAt = old.Version, old.CreatedBy, old.CreatedAt, old.UpdatedAt
 	if sameRecord(same, old) {
@@ -230,7 +236,7 @@ func (p *Platform) replace(old, c clients.Client, by string, in ClientInput) (cl
 	if err := p.checkHome(tenant, c); err != nil {
 		return clients.Client{}, err
 	}
-	creds, secrets, err := p.credentials(tenant, id, old.Credentials, in)
+	creds, secrets, err := p.credentials(tenant, id, c.Surface, old.Credentials, in)
 	if err != nil {
 		return clients.Client{}, err
 	}
@@ -306,13 +312,13 @@ func (p *Platform) envSecret(tenant, ref string) (string, bool) {
 	return v, v != ""
 }
 
-// resolved is a client's two secrets, in hand only while its connector is
-// being built.
-type resolved struct{ token, signing string }
+// resolved is a client's secrets, in hand only while its connector is being
+// built.
+type resolved struct{ token, signing, verify string }
 
 // credentials settles where a client's secrets are and reads them. An empty
 // input keeps what the client had.
-func (p *Platform) credentials(tenant, id string, had clients.Credentials, in ClientInput) (clients.Credentials, resolved, error) {
+func (p *Platform) credentials(tenant, id string, surface clients.Surface, had clients.Credentials, in ClientInput) (clients.Credentials, resolved, error) {
 	one := func(name, what string, had clients.SecretRef, in clients.SecretInput) (clients.SecretRef, string, error) {
 		switch {
 		case in.Value != "" && in.Ref != "":
@@ -349,6 +355,21 @@ func (p *Platform) credentials(tenant, id string, had clients.Credentials, in Cl
 	if creds.SigningSecret, secrets.signing, err = one(clients.SecretSigning, "signing secret", had.SigningSecret, in.SigningSecret); err != nil {
 		return clients.Credentials{}, resolved{}, err
 	}
+	if surface != clients.WhatsApp {
+		if !in.VerifyToken.Empty() {
+			return clients.Credentials{}, resolved{}, fmt.Errorf("%w: only a whatsapp client has a verify token", clients.ErrInvalid)
+		}
+		return creds, secrets, nil
+	}
+	var hadVerify clients.SecretRef
+	if had.VerifyToken != nil {
+		hadVerify = *had.VerifyToken
+	}
+	verify, value, err := one(clients.SecretVerify, "verify token", hadVerify, in.VerifyToken)
+	if err != nil {
+		return clients.Credentials{}, resolved{}, err
+	}
+	creds.VerifyToken, secrets.verify = &verify, value
 	return creds, secrets, nil
 }
 
@@ -361,6 +382,7 @@ func (p *Platform) keep(c clients.Client, in ClientInput) error {
 	}{
 		clients.SecretToken:   {c.Credentials.Token, in.Token},
 		clients.SecretSigning: {c.Credentials.SigningSecret, in.SigningSecret},
+		clients.SecretVerify:  {verifyRef(c.Credentials), in.VerifyToken},
 	} {
 		var err error
 		switch {
@@ -374,6 +396,14 @@ func (p *Platform) keep(c clients.Client, in ClientInput) error {
 		}
 	}
 	return nil
+}
+
+// verifyRef is a client's verify token reference, zero when it has none.
+func verifyRef(c clients.Credentials) clients.SecretRef {
+	if c.VerifyToken == nil {
+		return clients.SecretRef{}
+	}
+	return *c.VerifyToken
 }
 
 // seat puts a client's connector on its surface, in place of the one it had.
@@ -473,6 +503,18 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 			st.files = files
 		}
 		return st, nil
+	case clients.WhatsApp:
+		st, err := p.dialWhatsApp(c, secrets)
+		if err != nil {
+			return nil, refused(err)
+		}
+		return st, nil
+	case clients.IMessage:
+		st, err := p.dialIMessage(c, secrets)
+		if err != nil {
+			return nil, refused(err)
+		}
+		return st, nil
 	}
 	return nil, fmt.Errorf("%w: unknown surface %q", clients.ErrInvalid, c.Surface)
 }
@@ -505,7 +547,7 @@ func (p *Platform) restore() {
 			continue
 		}
 		for _, c := range on {
-			_, secrets, err := p.credentials(c.Tenant, c.ID, c.Credentials, ClientInput{})
+			_, secrets, err := p.credentials(c.Tenant, c.ID, c.Surface, c.Credentials, ClientInput{})
 			var st *seat
 			if err == nil {
 				st, err = p.dial(c, secrets)

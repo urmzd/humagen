@@ -38,7 +38,7 @@ import (
 // scheme and keeps the clients behind it:
 //
 //	webhook  →  surface  →  the client whose secret verifies it  →  tag
-//	event    →  surface  →  the client that raised the run        →  Slack, GitHub
+//	event    →  surface  →  the client that raised the run        →  Slack, GitHub, WhatsApp, iMessage
 //
 // A surface never decides who a request is from. It offers the request to the
 // clients whose identity the request states, and the first whose own secret
@@ -91,6 +91,9 @@ type seat struct {
 	// files reads source at a commit for the console (GitHubSource). Nil
 	// for a surface with no files.
 	files sourceReader
+	// verifyToken is a WhatsApp client's, which Meta's subscription
+	// handshake carries. Empty on every other surface.
+	verifyToken string
 
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -215,8 +218,11 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag event.Envelope) []eve
 	}
 	from := wire.SurfaceOf(tag)
 	kind := from.SlackEvent
-	if c.Surface == clients.GitHub {
+	switch c.Surface {
+	case clients.GitHub:
 		kind = from.GitHubEvent
+	case clients.WhatsApp, clients.IMessage:
+		kind = clients.EventMessage
 	}
 	if !current.AllowsEvent(kind) {
 		return nil
@@ -446,6 +452,15 @@ func (s *surface) retire(st *seat) {
 // that names the wrong client is offered to that client and fails its secret.
 func (s *surface) claim(r *http.Request, body []byte) clients.Claim {
 	var c clients.Claim
+	switch s.name {
+	case string(clients.WhatsApp):
+		return whatsAppClaim(body)
+	case string(clients.IMessage):
+		// BlueBubbles says nothing of the server in its payload: the
+		// webhook URL may name it, and its secret decides.
+		c.Server = r.URL.Query().Get("server")
+		return c
+	}
 	if s.name == string(clients.Slack) {
 		if strings.HasSuffix(r.URL.Path, "/commands") {
 			form, err := url.ParseQuery(string(body))
@@ -494,7 +509,14 @@ func (s *surface) claim(r *http.Request, body []byte) clients.Claim {
 // request no client claims is a 404, so an unknown client, a disabled one and
 // a surface with no clients at all look the same. A request that clients claim
 // and none can verify is a 401.
+//
+// WhatsApp's subscription handshake is the one GET a surface answers
+// (serveHandshake).
 func (s *surface) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet && s.name == string(clients.WhatsApp) {
+		s.serveHandshake(w, r, true)
+		return
+	}
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -527,7 +549,7 @@ func (s *surface) route(w http.ResponseWriter, r *http.Request, body []byte, ref
 			}
 			continue
 		}
-		if st.verifier.Verify(r.Header, body) == nil {
+		if st.verified(r, body) {
 			s.hand(st, w, r, body)
 			return
 		}
@@ -696,6 +718,9 @@ func (p *Platform) IngressHandler() http.Handler {
 	mux.Handle("POST /connectors/github", p.Webhook("github"))
 	mux.Handle("POST /connectors/slack", p.Webhook("slack"))
 	mux.Handle("POST /connectors/slack/commands", p.Webhook("slack"))
+	mux.Handle("GET /connectors/whatsapp", p.Webhook("whatsapp"))
+	mux.Handle("POST /connectors/whatsapp", p.Webhook("whatsapp"))
+	mux.Handle("POST /connectors/imessage", p.Webhook("imessage"))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		seated := 0
 		for _, s := range p.surfaces {
@@ -717,13 +742,18 @@ func (p *Platform) IngressHandler() http.Handler {
 }
 
 // connectorTools gives a turn the actions of its tenant's clients, at most one
-// client per surface, and none of another tenant's.
+// client per surface, and none of another tenant's. A WhatsApp or iMessage
+// client's actions reach only the conversation its run answers, so a run
+// gets them only from the client that raised it.
 func (p *Platform) connectorTools(req runtime.Request, emit func(event.Action) error) (native.Tools, error) {
 	reg := connector.NewRegistry()
 	client := p.clientOf(req.Tenant, req.RunID)
 	for _, surface := range clients.Surfaces() {
 		st := p.surfaces[string(surface)].actor(req.Tenant, client, req.Agent())
 		if st == nil {
+			continue
+		}
+		if (surface == clients.WhatsApp || surface == clients.IMessage) && st.client.ID != client {
 			continue
 		}
 		if err := reg.Register(capabilityActor{p: p, st: st, req: req}); err != nil {

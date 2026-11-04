@@ -232,6 +232,16 @@ const (
 	MetaGitHubHeadSHA  = "github_head_sha"
 	MetaCronSchedule   = "cron_schedule"
 	MetaCronExpression = "cron_expression"
+	// WhatsApp: the business number's phone number id, and the sender's
+	// WhatsApp id.
+	MetaWhatsAppPhoneNumberID = "whatsapp_phone_number_id"
+	MetaWhatsAppFrom          = "whatsapp_from"
+	// iMessage: the BlueBubbles server, the chat guid, the sender's handle,
+	// and "true" in a group chat.
+	MetaIMessageServer = "imessage_server"
+	MetaIMessageChat   = "imessage_chat"
+	MetaIMessageSender = "imessage_sender"
+	MetaIMessageGroup  = "imessage_group"
 )
 
 // Surface is what a connector said about where an event came from.
@@ -246,6 +256,13 @@ type Surface struct {
 	GitHubAuthor  string
 	GitHubHeadSHA string
 	CronSchedule  string
+
+	WhatsAppPhoneNumberID string
+	WhatsAppFrom          string
+	IMessageServer        string
+	IMessageChat          string
+	IMessageSender        string
+	IMessageGroup         bool
 }
 
 // SurfaceOf reads the connector fields of an event. A field it does not
@@ -263,8 +280,20 @@ func SurfaceOf(e event.Envelope) Surface {
 		GitHubAuthor:  m[MetaGitHubAuthor],
 		GitHubHeadSHA: m[MetaGitHubHeadSHA],
 		CronSchedule:  m[MetaCronSchedule],
+
+		WhatsAppPhoneNumberID: m[MetaWhatsAppPhoneNumberID],
+		WhatsAppFrom:          m[MetaWhatsAppFrom],
+		IMessageServer:        m[MetaIMessageServer],
+		IMessageChat:          m[MetaIMessageChat],
+		IMessageSender:        m[MetaIMessageSender],
+		IMessageGroup:         m[MetaIMessageGroup] == "true",
 	}
 }
+
+// DirectMessage reports whether an event arrived in a one-to-one
+// conversation: a Slack DM, any WhatsApp message, or an iMessage outside a
+// group chat.
+func DirectMessage(e event.Envelope) bool { return e.Data != nil && event.DirectMessage(e.Data) }
 
 // SetGitHubHeadSHA records the head commit a GitHub event is about.
 func SetGitHubHeadSHA(e *event.Envelope, sha string) {

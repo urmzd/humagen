@@ -172,7 +172,8 @@ func AskedBy(r Run) string {
 
 // ClientOf returns the external client that raised a tag, or "".
 func ClientOf(tag event.Envelope) string {
-	if wire.Origin(tag) == "slack" || wire.Origin(tag) == "github" {
+	switch wire.Origin(tag) {
+	case OriginSlack, OriginGitHub, OriginWhatsApp, OriginIMessage:
 		return wire.Meta(tag)[MetaClient]
 	}
 	return ""
@@ -181,12 +182,12 @@ func ClientOf(tag event.Envelope) string {
 // ProjectOf returns the project a tag files its run under, or "". Only origins
 // whose project the server itself wrote are believed: the API, the cron trigger
 // (a schedule's project is set when the schedule is created), a person's
-// run-now, an eval (filed where the agent it tries lives), and Slack and
-// GitHub, whose ingress writes it from the client's binding over whatever a
-// connector said.
+// run-now, an eval (filed where the agent it tries lives), and Slack, GitHub,
+// WhatsApp and iMessage, whose ingress writes it from the client's binding
+// over whatever a connector said.
 func ProjectOf(tag event.Envelope) string {
 	switch wire.Origin(tag) {
-	case OriginAPI, "cron", OriginManual, OriginEval, OriginSlack, OriginGitHub:
+	case OriginAPI, "cron", OriginManual, OriginEval, OriginSlack, OriginGitHub, OriginWhatsApp, OriginIMessage:
 		return wire.Meta(tag)[MetaProject]
 	}
 	return ""
@@ -194,8 +195,10 @@ func ProjectOf(tag event.Envelope) string {
 
 // The origins of runs a client's in-process connector raised.
 const (
-	OriginSlack  = "slack"
-	OriginGitHub = "github"
+	OriginSlack    = "slack"
+	OriginGitHub   = "github"
+	OriginWhatsApp = "whatsapp"
+	OriginIMessage = "imessage"
 )
 
 // Status is where a run is in its life.

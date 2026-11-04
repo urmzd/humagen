@@ -524,13 +524,25 @@ export interface SecretRef {
   ref?: string;
 }
 
-/** A Slack app or GitHub installation the workspace answers through. */
+/** Where a client answers. */
+export type ClientSurface = "slack" | "github" | "whatsapp" | "imessage";
+
+/** A Slack app, GitHub installation, WhatsApp number or iMessage server the workspace answers through. */
 export interface Client {
   id: string;
   name: string;
-  surface: "slack" | "github";
-  identity: { app_id?: string; team?: string; installation?: string; owners?: string[] };
-  credentials: { token: SecretRef; signing_secret: SecretRef };
+  surface: ClientSurface;
+  identity: {
+    app_id?: string;
+    team?: string;
+    installation?: string;
+    owners?: string[];
+    /** A WhatsApp client's business number, as its Graph API phone number id. */
+    phone_number_id?: string;
+    /** The BlueBubbles server an iMessage client is relayed by. */
+    server?: string;
+  };
+  credentials: { token: SecretRef; signing_secret: SecretRef; verify_token?: SecretRef };
   default_agent?: string;
   /** The agents it may route to besides its default. "*" alone means any. */
   agents?: string[];
@@ -549,6 +561,12 @@ export interface Client {
     read_repositories?: string[];
     /** The app's own login. Once humagen's GitHub connector reads it, a comment that mentions it and names no agent is answered by the default; until then it changes nothing. */
     login?: string;
+    people?: Record<string, string>;
+  };
+  whatsapp?: { people?: Record<string, string> };
+  imessage?: {
+    url: string;
+    method?: "apple-script" | "private-api";
     people?: Record<string, string>;
   };
   /** Where the client files threads it starts outside a bound channel. Absent, the workspace's general. */
@@ -573,7 +591,14 @@ export type ClientCreateInput = Pick<
 > & {
   slack?: Client["slack"];
   github?: Client["github"];
-  credentials: { token: ToolCredentialInput; signing_secret: ToolCredentialInput };
+  whatsapp?: Client["whatsapp"];
+  imessage?: Client["imessage"];
+  credentials: {
+    token: ToolCredentialInput;
+    signing_secret: ToolCredentialInput;
+    /** A WhatsApp client's alone. */
+    verify_token?: ToolCredentialInput;
+  };
 };
 
 import type {

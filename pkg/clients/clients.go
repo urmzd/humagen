@@ -1,7 +1,8 @@
 // Package clients models the external clients a workspace answers through.
 //
 // A client is one installation of the platform on a surface: a Slack app in a
-// team, or a GitHub App installation on some accounts. A workspace may have
+// team, a GitHub App installation on some accounts, a WhatsApp business number,
+// or an iMessage account relayed by a BlueBubbles server. A workspace may have
 // one, or several that route to different agents, down to one per agent.
 //
 // A client is a record and nothing else. It names the external identity it
@@ -35,6 +36,8 @@ package clients
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
@@ -61,10 +64,18 @@ type Surface string
 const (
 	Slack  Surface = "slack"
 	GitHub Surface = "github"
+	// WhatsApp is a business number on Meta's WhatsApp Cloud API.
+	WhatsApp Surface = "whatsapp"
+	// IMessage is an Apple ID's Messages, relayed by a BlueBubbles server on
+	// the operator's Mac.
+	IMessage Surface = "imessage"
 )
 
 // Surfaces lists every surface a client can be on.
-func Surfaces() []Surface { return []Surface{GitHub, Slack} }
+func Surfaces() []Surface { return []Surface{GitHub, Slack, WhatsApp, IMessage} }
+
+// Known reports whether s is a surface a client can be on.
+func (s Surface) Known() bool { return slices.Contains(Surfaces(), s) }
 
 // AnyAgent in an allow-list means every agent in the workspace.
 const AnyAgent = "*"
@@ -112,6 +123,13 @@ type Identity struct {
 	Installation string `json:"installation,omitempty"`
 	// Owners are the GitHub accounts served. Required for GitHub.
 	Owners []string `json:"owners,omitempty"`
+	// PhoneNumberID is the WhatsApp business number's Graph API phone number
+	// id (not the number itself). Required for WhatsApp.
+	PhoneNumberID string `json:"phone_number_id,omitempty"`
+	// Server names the BlueBubbles server an iMessage client is relayed by,
+	// such as "home". It is the workspace of every chat's address. Required
+	// for iMessage.
+	Server string `json:"server,omitempty"`
 }
 
 // SecretRef says where one secret is, never what it is.
@@ -122,17 +140,24 @@ type SecretRef struct {
 	Ref string `json:"ref,omitempty"`
 }
 
-// Credentials are the two secrets a surface needs: a token to write with and
-// a secret to verify inbound requests with.
+// Credentials are the secrets a surface needs: a token to write with and a
+// secret to verify inbound requests with. On WhatsApp the token is the Cloud
+// API access token and the signing secret the Meta app secret; on iMessage
+// they are the BlueBubbles server password and the secret the webhook URL
+// carries. WhatsApp alone has a third, the verify token Meta's subscription
+// handshake echoes.
 type Credentials struct {
 	Token         SecretRef `json:"token"`
 	SigningSecret SecretRef `json:"signing_secret"`
+	// VerifyToken is set on a WhatsApp client only.
+	VerifyToken *SecretRef `json:"verify_token,omitempty"`
 }
 
 // Names of the secrets a client holds, as a Secrets store keys them.
 const (
 	SecretToken   = "token"
 	SecretSigning = "signing_secret"
+	SecretVerify  = "verify_token"
 )
 
 // SecretInput writes one secret: a value, or a reference to one held in the
@@ -213,6 +238,28 @@ func (c Client) ActsFor(machine, user string) (string, bool) {
 	return who, ok && who != ""
 }
 
+// WhatsAppOptions are the options of a WhatsApp client.
+type WhatsAppOptions struct {
+	// People maps a WhatsApp id (the person's number in international form,
+	// digits only) to the principal it is in this workspace, by subject. A
+	// number the map does not name is answered for nobody.
+	People map[string]string `json:"people,omitempty"`
+}
+
+// IMessageOptions are the options of an iMessage client.
+type IMessageOptions struct {
+	// URL is the BlueBubbles server's base URL, reachable from the server
+	// over TLS (its Cloudflare or ngrok tunnel, or a proxy of your own).
+	URL string `json:"url"`
+	// Method is how BlueBubbles sends: "apple-script" (the default) or
+	// "private-api", when the server runs the Private API helper.
+	Method string `json:"method,omitempty"`
+	// People maps a sender's handle (a phone number in international form
+	// with its "+", or an email address) to the principal it is in this
+	// workspace, by subject.
+	People map[string]string `json:"people,omitempty"`
+}
+
 // GitHubOptions are the options of a GitHub client.
 type GitHubAutomation struct {
 	Name         string `json:"name"`
@@ -266,8 +313,10 @@ type Client struct {
 	// bot user id, or a GitHub login.
 	Bots map[string]string `json:"bots,omitempty"`
 
-	Slack  *SlackOptions  `json:"slack,omitempty"`
-	GitHub *GitHubOptions `json:"github,omitempty"`
+	Slack    *SlackOptions    `json:"slack,omitempty"`
+	GitHub   *GitHubOptions   `json:"github,omitempty"`
+	WhatsApp *WhatsAppOptions `json:"whatsapp,omitempty"`
+	IMessage *IMessageOptions `json:"imessage,omitempty"`
 	// Home is where the client files threads it starts outside a bound
 	// channel. Nil is the root's general channel; see HomeOf.
 	Home *Home `json:"home,omitempty"`
@@ -293,10 +342,16 @@ func (c Client) Routes(agent string) bool {
 }
 
 // Serves reports whether an address workspace on the client's surface is one
-// it answers for: its Slack team, or one of its GitHub owners.
+// it answers for: its Slack team, one of its GitHub owners, its WhatsApp
+// phone number id or its BlueBubbles server.
 func (c Client) Serves(workspace string) bool {
-	if c.Surface == Slack {
+	switch c.Surface {
+	case Slack:
 		return c.Identity.Team != "" && c.Identity.Team == workspace
+	case WhatsApp:
+		return c.Identity.PhoneNumberID != "" && c.Identity.PhoneNumberID == workspace
+	case IMessage:
+		return c.Identity.Server != "" && c.Identity.Server == workspace
 	}
 	return slices.ContainsFunc(c.Identity.Owners, func(o string) bool { return strings.EqualFold(o, workspace) })
 }
@@ -305,10 +360,12 @@ func (c Client) Serves(workspace string) bool {
 // been verified. It selects which clients are offered the request and is
 // trusted for nothing else. An empty field means the request did not say.
 type Claim struct {
-	AppID        string
-	Team         string
-	Installation string
-	Owner        string
+	AppID         string
+	Team          string
+	Installation  string
+	Owner         string
+	PhoneNumberID string
+	Server        string
 }
 
 // Claims reports whether a request stating claim could be for this client:
@@ -318,8 +375,13 @@ func (c Client) Claims(claim Claim) bool {
 	if !agree(c.Identity.AppID, claim.AppID) || !agree(c.Identity.Installation, claim.Installation) {
 		return false
 	}
-	if c.Surface == Slack {
+	switch c.Surface {
+	case Slack:
 		return agree(c.Identity.Team, claim.Team)
+	case WhatsApp:
+		return agree(c.Identity.PhoneNumberID, claim.PhoneNumberID)
+	case IMessage:
+		return agree(c.Identity.Server, claim.Server)
 	}
 	return claim.Owner == "" || len(c.Identity.Owners) == 0 || c.Serves(claim.Owner)
 }
@@ -333,8 +395,13 @@ func (c Client) overlaps(o Client) bool {
 	if c.Surface != o.Surface || !either(c.Identity.AppID, o.Identity.AppID) {
 		return false
 	}
-	if c.Surface == Slack {
+	switch c.Surface {
+	case Slack:
 		return c.Identity.Team == o.Identity.Team
+	case WhatsApp:
+		return c.Identity.PhoneNumberID == o.Identity.PhoneNumberID
+	case IMessage:
+		return c.Identity.Server == o.Identity.Server
 	}
 	if !either(c.Identity.Installation, o.Identity.Installation) {
 		return false
@@ -352,6 +419,12 @@ var (
 	commandName  = regexp.MustCompile(`^[^\s/][^\s]{0,30}$`)
 	// githubLogin is a GitHub account's login, or an app's with "[bot]".
 	githubLogin = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,38}(\[bot\])?$`)
+	// waID is a WhatsApp id: a number in international form, digits only.
+	waID = regexp.MustCompile(`^[0-9]{5,20}$`)
+	// handle is an iMessage handle: a +number or an email address.
+	handle = regexp.MustCompile(`^(\+[0-9]{5,20}|[^\s@]{1,64}@[^\s@]{1,190})$`)
+	// serverName is a BlueBubbles server's name, an address workspace.
+	serverName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
 )
 
 // Slug makes an id out of a name: "Docs Bot" becomes "docs-bot".
@@ -385,8 +458,8 @@ func (c Client) Validate() error {
 		return bad("an id is 1 to 40 lowercase letters, digits and dashes")
 	case strings.TrimSpace(c.Name) == "" || len(c.Name) > maxName:
 		return bad("a client has a name of at most %d characters", maxName)
-	case c.Surface != Slack && c.Surface != GitHub:
-		return bad("the surface is slack or github")
+	case !c.Surface.Known():
+		return bad("the surface is slack, github, whatsapp or imessage")
 	case c.DefaultAgent != "" && c.DefaultAgent != AnyAgent && !agentPattern.MatchString(c.DefaultAgent):
 		return bad("the default agent %q is not an agent name", c.DefaultAgent)
 	case len(c.Agents) > maxAgents:
@@ -427,10 +500,91 @@ func (c Client) Validate() error {
 			return err
 		}
 	}
-	if c.Surface == Slack {
+	if (c.Surface == Slack || c.Surface == GitHub) && (c.WhatsApp != nil || c.IMessage != nil || id.PhoneNumberID != "" || id.Server != "") {
+		return bad("a %s client has no whatsapp or imessage identity or options", c.Surface)
+	}
+	switch c.Surface {
+	case Slack:
 		return c.validateSlack()
+	case WhatsApp:
+		return c.validateWhatsApp()
+	case IMessage:
+		return c.validateIMessage()
 	}
 	return c.validateGitHub()
+}
+
+// others reports options or identity fields of another surface on c, which
+// a client of its own surface does not have.
+func (c Client) others() bool {
+	id := c.Identity
+	set := map[Surface]bool{
+		Slack:    c.Slack != nil || id.Team != "",
+		GitHub:   c.GitHub != nil || id.Installation != "" || len(id.Owners) > 0,
+		WhatsApp: c.WhatsApp != nil || id.PhoneNumberID != "",
+		IMessage: c.IMessage != nil || id.Server != "",
+	}
+	for s, on := range set {
+		if s != c.Surface && on {
+			return true
+		}
+	}
+	return false
+}
+
+func (c Client) validateWhatsApp() error {
+	bad := func(format string, args ...any) error {
+		return fmt.Errorf("%w: "+format, append([]any{ErrInvalid}, args...)...)
+	}
+	switch {
+	case c.others():
+		return bad("a whatsapp client has only a phone number id and whatsapp options")
+	case !digits.MatchString(c.Identity.PhoneNumberID):
+		return bad("a whatsapp client names the phone number id it serves")
+	}
+	if c.WhatsApp == nil {
+		return nil
+	}
+	return people(c.WhatsApp.People, waID, "a whatsapp id is the number's digits, without the +")
+}
+
+func (c Client) validateIMessage() error {
+	bad := func(format string, args ...any) error {
+		return fmt.Errorf("%w: "+format, append([]any{ErrInvalid}, args...)...)
+	}
+	switch {
+	case c.others():
+		return bad("an imessage client has only a server and imessage options")
+	case !serverName.MatchString(c.Identity.Server):
+		return bad("an imessage client names its server in 1 to 40 lowercase letters, digits and dashes")
+	case c.IMessage == nil:
+		return bad("an imessage client gives its server's url")
+	}
+	o := c.IMessage
+	u, err := url.Parse(o.URL)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return bad("the server's url is an http or https URL with no credentials, query or fragment")
+	}
+	if o.Method != "" && o.Method != "apple-script" && o.Method != "private-api" {
+		return bad("the send method is apple-script or private-api")
+	}
+	return people(o.People, handle, "a handle is a +number or an email address")
+}
+
+// people checks a map from a surface's handle to a workspace subject.
+func people(m map[string]string, key *regexp.Regexp, what string) error {
+	if len(m) > maxPeople {
+		return fmt.Errorf("%w: a client maps at most %d people", ErrInvalid, maxPeople)
+	}
+	for k, who := range m {
+		if !key.MatchString(k) {
+			return fmt.Errorf("%w: %q: %s", ErrInvalid, k, what)
+		}
+		if strings.TrimSpace(who) == "" || len(who) > maxSubject || strings.ContainsFunc(who, unicode.IsControl) {
+			return fmt.Errorf("%w: %q maps to a subject of 1 to %d characters", ErrInvalid, k, maxSubject)
+		}
+	}
+	return nil
 }
 
 func (c Client) validateSlack() error {
@@ -629,6 +783,20 @@ func (c Client) clone() Client {
 			g.AutoLabels = labels
 		}
 		c.GitHub = &g
+	}
+	if c.Credentials.VerifyToken != nil {
+		v := *c.Credentials.VerifyToken
+		c.Credentials.VerifyToken = &v
+	}
+	if c.WhatsApp != nil {
+		w := *c.WhatsApp
+		w.People = maps.Clone(w.People)
+		c.WhatsApp = &w
+	}
+	if c.IMessage != nil {
+		m := *c.IMessage
+		m.People = maps.Clone(m.People)
+		c.IMessage = &m
 	}
 	if c.Home != nil {
 		h := *c.Home

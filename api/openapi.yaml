@@ -28,10 +28,13 @@ info:
 
     ## Not part of this contract
 
-    `POST /connectors/github`, `POST /connectors/slack` and
-    `POST /connectors/slack/commands` are signed webhook ingress. Slack and
-    GitHub call them, authenticated by a client's signing secret, and no API
-    client should. They are described in `docs/reference/clients.md`.
+    `POST /connectors/github`, `POST /connectors/slack`,
+    `POST /connectors/slack/commands`, `GET` and `POST /connectors/whatsapp`
+    and `POST /connectors/imessage` are signed webhook ingress. Slack, GitHub,
+    Meta and a BlueBubbles server call them, authenticated by a client's
+    signing secret (for iMessage, the secret the webhook URL carries; for
+    WhatsApp's `GET` handshake, its verify token), and no API client should.
+    They are described in `docs/reference/clients.md`.
 servers:
   - url: http://127.0.0.1:8080
     description: A local server started with `make dev`.
@@ -13459,7 +13462,7 @@ components:
 
     ClientSurface:
       type: string
-      enum: [slack, github]
+      enum: [slack, github, whatsapp, imessage]
     ClientIdentity:
       description: How a webhook says which client it is for.
       type: object
@@ -13470,6 +13473,12 @@ components:
         owners:
           type: array
           items: {type: string}
+        phone_number_id:
+          description: A WhatsApp client's business number, as its Graph API phone number id.
+          type: string
+        server:
+          description: The name of the BlueBubbles server an iMessage client is relayed by, such as `home`.
+          type: string
     SecretRef:
       description: Where one of a client's secrets is. The secret itself is never sent.
       type: object
@@ -13508,6 +13517,30 @@ components:
             is in this workspace, by subject. An answer clicked in Slack by a
             person it maps is that principal's answer; anyone else is refused.
           type: object
+          additionalProperties: {type: string}
+    WhatsAppOptions:
+      type: object
+      properties:
+        people:
+          description: WhatsApp ids (a number's digits, without the `+`) mapped to the principal each is in this workspace, by subject. A number it does not map is answered for nobody. Shown only to callers who may change clients.
+          type: object
+          maxProperties: 500
+          additionalProperties: {type: string}
+    IMessageOptions:
+      type: object
+      required: [url]
+      properties:
+        url:
+          description: The BlueBubbles server's base URL.
+          type: string
+        method:
+          description: How BlueBubbles sends. Absent is `apple-script`.
+          type: string
+          enum: [apple-script, private-api]
+        people:
+          description: Handles (a `+number` or an email address) mapped to the principal each is in this workspace, by subject. Shown only to callers who may change clients.
+          type: object
+          maxProperties: 500
           additionalProperties: {type: string}
     GitHubAutomation:
       type: object
@@ -13573,6 +13606,14 @@ components:
           oneOf:
             - $ref: "#/components/schemas/GitHubOptions"
             - type: "null"
+        whatsapp:
+          oneOf:
+            - $ref: "#/components/schemas/WhatsAppOptions"
+            - type: "null"
+        imessage:
+          oneOf:
+            - $ref: "#/components/schemas/IMessageOptions"
+            - type: "null"
         home:
           oneOf:
             - $ref: "#/components/schemas/ClientHome"
@@ -13585,6 +13626,9 @@ components:
           properties:
             token: {$ref: "#/components/schemas/SecretInput"}
             signing_secret: {$ref: "#/components/schemas/SecretInput"}
+            verify_token:
+              description: A WhatsApp client's verify token, which Meta's subscription handshake echoes. No other surface takes one.
+              $ref: "#/components/schemas/SecretInput"
     ClientHome:
       description: |
         Where a client files the threads it starts outside a channel bound to
@@ -13602,7 +13646,7 @@ components:
           type: string
           pattern: "^[a-z0-9][a-z0-9-]{0,39}$"
     ClientView:
-      description: A Slack app or GitHub installation the workspace answers through, and the limits on the runs it raises.
+      description: A Slack app, GitHub installation, WhatsApp business number or iMessage server the workspace answers through, and the limits on the runs it raises.
       type: object
       required: [id, name, surface, identity, credentials, enabled, version, created_at, updated_at]
       properties:
@@ -13617,6 +13661,7 @@ components:
           properties:
             token: {$ref: "#/components/schemas/SecretRef"}
             signing_secret: {$ref: "#/components/schemas/SecretRef"}
+            verify_token: {$ref: "#/components/schemas/SecretRef"}
         default_agent:
           description: Absent when the client has none, and when it lives in a project the caller may not read.
           type: string
@@ -13633,6 +13678,8 @@ components:
           additionalProperties: {type: string}
         slack: {$ref: "#/components/schemas/SlackOptions"}
         github: {$ref: "#/components/schemas/GitHubOptions"}
+        whatsapp: {$ref: "#/components/schemas/WhatsAppOptions"}
+        imessage: {$ref: "#/components/schemas/IMessageOptions"}
         home:
           description: Absent when the client has none, and when it is in a project the caller may not read.
           allOf:
@@ -14126,13 +14173,53 @@ components:
         thread_ts: {type: string}
         channel_type: {type: string}
         app_id: {type: string}
+    WhatsAppRef:
+      description: Where in WhatsApp (the Cloud API) a message was received.
+      type: object
+      required: [phone_number_id, from, message_id, type]
+      properties:
+        phone_number_id: {type: string}
+        from:
+          description: The sender's WhatsApp id, their number's digits.
+          type: string
+        message_id:
+          description: The message's id (`wamid...`), which is also the event id.
+          type: string
+        type:
+          description: The WhatsApp message type, such as `text` or `audio`.
+          type: string
+        voice:
+          description: Set for an audio message recorded as a voice note.
+          type: boolean
+        reply_to: {type: string}
+    IMessageRef:
+      description: Where in iMessage, through a BlueBubbles server, a message was received.
+      type: object
+      required: [server, chat, sender, guid]
+      properties:
+        server: {type: string}
+        chat:
+          description: The chat guid.
+          type: string
+        sender:
+          description: The handle that sent it, a phone number or an email address.
+          type: string
+        guid:
+          description: The message guid, which is also the event id.
+          type: string
+        group: {type: boolean}
+        audio:
+          description: Set for an audio message recorded in Messages.
+          type: boolean
     MessagePostedPayload:
-      description: The body of `message.posted.v1`. `slack` is set when the surface is Slack.
+      description: The body of `message.posted.v1`. At most one of `slack`, `whatsapp` and `imessage` is set, naming the surface.
       allOf:
         - $ref: "#/components/schemas/EventRequest"
         - type: object
           properties:
             slack: {$ref: "#/components/schemas/SlackRef"}
+            whatsapp: {$ref: "#/components/schemas/WhatsAppRef"}
+            imessage: {$ref: "#/components/schemas/IMessageRef"}
     SlackCommandPayload:
       description: The body of `slack.command.invoked.v1`. `text` is the command's arguments.
       allOf:

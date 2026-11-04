@@ -27,7 +27,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | ID | Requirement | Status |
 | --- | --- | --- |
 | DES-061 | Automations gather schedules and signed GitHub event rules with agent instructions | Implemented; focused Go/DOM tests and phone/desktop screen definitions; CI screens pending |
-| DES-001 | Integration controls use the existing system and report real results | Slack/GitHub configuration form implemented; automated checks pass; live delivery pending |
+| DES-001 | Integration controls use the existing system and report real results | Slack/GitHub/WhatsApp/iMessage configuration form implemented; automated checks pass; live delivery pending |
 | DES-002 | Use spacing instead of dots between words in UI metadata | All boards and touched console metadata implemented and checked; audit other console screens when changing them |
 | DES-003 | Reveal the message Fork action on hover and keyboard focus | Native saved-fork API, immutable lineage, source checks and inspector built; shared action wiring pending |
 | DES-004 | Reveal full message date and time on hover and keyboard focus | Human messages and announcements implemented, DOM-tested and browser-checked; agent-message timestamps pending |
@@ -105,7 +105,9 @@ planned collections, browser, protocol and improvement work from this UI pass.
 - Preserve credential references and secret storage conventions. Never return
   saved credentials to the browser or include secrets in logs or error text.
 - Existing GitHub and Slack connector behavior is described in
-  [integrations.md](../guides/integrations.md) and [clients.md](clients.md).
+  [integrations.md](../guides/integrations.md) and [clients.md](clients.md);
+  WhatsApp and iMessage in [whatsapp.md](whatsapp.md) and
+  [imessage.md](imessage.md).
   Automatic resource linking, Drive, Notion, live search, and other board
   features require their own implementation evidence before being offered as
   working capabilities.
@@ -316,7 +318,7 @@ is supplied; naming an agent explicitly remains a separate routing path.
 
 | Requirement | Implementation and evidence | Remaining work |
 | --- | --- | --- |
-| DES-001 | `apps/web/src/ClientConnect.tsx`, `Clients.tsx`, and `api.ts` use the existing `POST /api/clients` contract, including `slack.people` and `github.people` maps (DES-064). Settings DOM tests cover Slack values, GitHub references and routing, server refusal, permission gating, secret clearing, and default-deny reach. Reproducible phone/desktop captures cover Slack and GitHub forms, pending requests and server refusal; new copy lives in `packages/components/src/copy.ts`. | Supply installed-app credentials and a reachable signed webhook listener, then observe real replies. Slack OAuth installation remains separate backend work; GitHub App token minting (DES-064) needs a live installation trial. |
+| DES-001 | `apps/web/src/ClientConnect.tsx`, `Clients.tsx`, and `api.ts` use the existing `POST /api/clients` contract, including `slack.people` and `github.people` maps (DES-064). WhatsApp and iMessage clients use the same form and contract (`identity.phone_number_id` with `credentials.verify_token`; `identity.server` with `imessage.url`), DOM-tested in `settings.dom.test.tsx` and `integrations.dom.test.tsx`, and end to end with orchagent's fakes in `internal/platform/messaging_test.go` (signed delivery answered once, the GET handshake, refused secrets, a voice note reaching the run, tenant isolation). Settings DOM tests cover Slack values, GitHub references and routing, server refusal, permission gating, secret clearing, and default-deny reach. Reproducible phone/desktop captures cover Slack and GitHub forms, pending requests and server refusal; new copy lives in `packages/components/src/copy.ts`. | Supply installed-app credentials and a reachable signed webhook listener, then observe real replies. Slack OAuth installation remains separate backend work; GitHub App token minting (DES-064) needs a live installation trial. |
 | DES-002 | All 26 board HTML files render in Chromium without separator dots. Main evidence fields wrap without horizontal overflow at 390px. `ConversationShell.tsx`, `Room.tsx`, `Clients.tsx`, and web `AgentMessage.tsx` use gaps or readable phrases. The `Mailbox.tsx` row says "N to decide" as its own label beside the preview (DES-038). | Older untouched console and shared presentation copy needs review as it changes. |
 | DES-003 | `boards/ForkConversation.html` and `assets/boards.css` reveal actions on hover/focus, retain touch availability, and navigate to the existing prototype panel. Chromium checked hover, focus, target focus, and stable message dimensions. | A native fork needs a saved conversation operation, lineage, permissions, routes, and isolation tests. The board action is a prototype. |
 | DES-004 | Human messages and announcements in `Room.tsx` use recorded timestamps with full local date, time, and timezone on hover, focus, and tap. Room DOM tests cover the recorded instant, accessible description, and dismissal. A Chromium phone regression reproduced tooltip overflow before the fix; phone and desktop captures verify placement through the existing panel-gutter helper. | Carry real recorded timestamps through agent-message presentation. |

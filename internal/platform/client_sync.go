@@ -158,7 +158,7 @@ func (p *Platform) syncClients() {
 			if st := s.seat(c.Tenant, c.ID); st != nil && st.client.Version == c.Version {
 				continue
 			}
-			_, secrets, err := p.credentials(c.Tenant, c.ID, c.Credentials, ClientInput{})
+			_, secrets, err := p.credentials(c.Tenant, c.ID, c.Surface, c.Credentials, ClientInput{})
 			var st *seat
 			if err == nil {
 				st, err = p.dial(c, secrets)

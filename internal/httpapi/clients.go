@@ -10,8 +10,8 @@ import (
 	"github.com/urmzd/humagen/pkg/projects"
 )
 
-// A client is one Slack app or GitHub installation the workspace answers
-// through. Anyone in the workspace can see which exist. Only an admin can
+// A client is one Slack app, GitHub installation, WhatsApp business number or
+// iMessage server the workspace answers through. Anyone in the workspace can see which exist. Only an admin can
 // create or change one, because that hands the workspace's agents a
 // credential. A secret is written and never read back: no response carries one.
 func (s *Server) clientRoutes(mux *http.ServeMux) {
@@ -30,21 +30,25 @@ func (s *Server) clientRoutes(mux *http.ServeMux) {
 // tenant, for who manages the client, or for its version: those are the
 // server's to say.
 type clientBody struct {
-	ID           string                 `json:"id"`
-	Name         string                 `json:"name"`
-	Surface      clients.Surface        `json:"surface"`
-	Identity     clients.Identity       `json:"identity"`
-	DefaultAgent string                 `json:"default_agent"`
-	Agents       []string               `json:"agents"`
-	Bots         map[string]string      `json:"bots"`
-	Slack        *clients.SlackOptions  `json:"slack"`
-	GitHub       *clients.GitHubOptions `json:"github"`
-	Home         *clients.Home          `json:"home"`
+	ID           string                   `json:"id"`
+	Name         string                   `json:"name"`
+	Surface      clients.Surface          `json:"surface"`
+	Identity     clients.Identity         `json:"identity"`
+	DefaultAgent string                   `json:"default_agent"`
+	Agents       []string                 `json:"agents"`
+	Bots         map[string]string        `json:"bots"`
+	Slack        *clients.SlackOptions    `json:"slack"`
+	GitHub       *clients.GitHubOptions   `json:"github"`
+	WhatsApp     *clients.WhatsAppOptions `json:"whatsapp"`
+	IMessage     *clients.IMessageOptions `json:"imessage"`
+	Home         *clients.Home            `json:"home"`
 	// Enabled defaults to true on create.
 	Enabled     *bool `json:"enabled"`
 	Credentials struct {
 		Token         clients.SecretInput `json:"token"`
 		SigningSecret clients.SecretInput `json:"signing_secret"`
+		// VerifyToken is a WhatsApp client's alone.
+		VerifyToken clients.SecretInput `json:"verify_token"`
 	} `json:"credentials"`
 }
 
@@ -52,10 +56,11 @@ func (b clientBody) input() platform.ClientInput {
 	return platform.ClientInput{
 		Client: clients.Client{
 			ID: b.ID, Name: b.Name, Surface: b.Surface, Identity: b.Identity,
-			DefaultAgent: b.DefaultAgent, Agents: b.Agents, Bots: b.Bots, Slack: b.Slack, GitHub: b.GitHub, Home: b.Home,
+			DefaultAgent: b.DefaultAgent, Agents: b.Agents, Bots: b.Bots, Slack: b.Slack, GitHub: b.GitHub,
+			WhatsApp: b.WhatsApp, IMessage: b.IMessage, Home: b.Home,
 			Enabled: b.Enabled == nil || *b.Enabled,
 		},
-		Token: b.Credentials.Token, SigningSecret: b.Credentials.SigningSecret,
+		Token: b.Credentials.Token, SigningSecret: b.Credentials.SigningSecret, VerifyToken: b.Credentials.VerifyToken,
 	}
 }
 

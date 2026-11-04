@@ -743,3 +743,23 @@ test("the data catalog lists what the reader sees and lets only the owner crawl,
   assert.ok(within(region).getByText("order_id"));
   assert.ok(net?.seen.some((r) => r.method === "DELETE" && r.path.endsWith("/warehouse/publish")));
 });
+
+test("a WhatsApp connection is listed by its surface and shows its number, asking nothing of Slack", async () => {
+  const whatsapp = {
+    id: "phone",
+    name: "Front desk",
+    surface: "whatsapp",
+    identity: { phone_number_id: "106540352242922" },
+    credentials: { token: {}, signing_secret: {}, verify_token: {} },
+    enabled: true,
+    version: 1,
+  } as const;
+  net = stubFetch({
+    "GET /api/clients": () => ({ clients: [whatsapp], caps: { max: 20, max_per_surface: 10 } }),
+    "GET /api/knowledge": () => ({ sources: [] }),
+  });
+  render(<Integrations canWrite canKnowledgeWrite selected="client:phone" tab="resources" />);
+  await screen.findByText("106540352242922");
+  assert.ok(screen.getByText(/WhatsApp:/));
+  assert.ok(!net.seen.some((r) => r.path === "/api/clients/phone/bindings"));
+});

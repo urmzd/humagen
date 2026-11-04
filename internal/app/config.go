@@ -481,6 +481,16 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 				return err
 			}
 		}
+		if w := doc.Spec.Surfaces.WhatsApp; w != nil {
+			if err := applyMessaging(ctx, p, tenant, "whatsapp", w.Enabled, whatsAppInput(*w), log); err != nil {
+				return err
+			}
+		}
+		if m := doc.Spec.Surfaces.IMessage; m != nil {
+			if err := applyMessaging(ctx, p, tenant, "imessage", m.Enabled, iMessageInput(*m), log); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -748,6 +758,80 @@ func applyGitHub(ctx context.Context, p *platform.Platform, tenant string, g spe
 	}
 	if err != nil {
 		return fmt.Errorf("platform %q: surfaces.github: %w", tenant, err)
+	}
+	return nil
+}
+
+// whatsAppInput is the client a file's surfaces.whatsapp declares.
+func whatsAppInput(w spec.WhatsApp) platform.ClientInput {
+	in := platform.ClientInput{
+		Client: clients.Client{
+			ID: "file-whatsapp", Name: "WhatsApp", Surface: clients.WhatsApp,
+			Identity: clients.Identity{PhoneNumberID: w.PhoneNumberID}, DefaultAgent: w.DefaultAgent,
+		},
+		Token: refOf(w.Token), SigningSecret: refOf(w.AppSecret), VerifyToken: refOf(w.VerifyToken),
+	}
+	if len(w.People) > 0 {
+		in.WhatsApp = &clients.WhatsAppOptions{People: w.People}
+	}
+	return in
+}
+
+// iMessageInput is the client a file's surfaces.imessage declares.
+func iMessageInput(m spec.IMessage) platform.ClientInput {
+	server := m.Server
+	if server == "" {
+		server = "home"
+	}
+	return platform.ClientInput{
+		Client: clients.Client{
+			ID: "file-imessage", Name: "iMessage", Surface: clients.IMessage,
+			Identity: clients.Identity{Server: server}, DefaultAgent: m.DefaultAgent,
+			IMessage: &clients.IMessageOptions{URL: m.URL, Method: m.Method, People: m.People},
+		},
+		Token: refOf(m.Password), SigningSecret: refOf(m.WebhookSecret),
+	}
+}
+
+func refOf(r *spec.Ref) clients.SecretInput {
+	if r == nil {
+		return clients.SecretInput{}
+	}
+	return clients.SecretInput{Ref: r.Ref}
+}
+
+// applyMessaging seats the file's WhatsApp number or iMessage server as a
+// client the API cannot change, as applyGitHub does a GitHub installation:
+// its secrets are env: references, and enabled: false turns the kept client
+// off and reads nothing else.
+func applyMessaging(ctx context.Context, p *platform.Platform, tenant, surface string, enabled bool, in platform.ClientInput, log *slog.Logger) error {
+	if !enabled {
+		err := p.TurnOffClient(ctx, tenant, in.ID, "file")
+		if errors.Is(err, clients.ErrExists) {
+			log.Warn(surface+" client from the file not turned off: it is not the file's", "tenant", tenant, "error", err)
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("platform %q: surfaces.%s: %w", tenant, surface, err)
+		}
+		return nil
+	}
+	for _, r := range []clients.SecretInput{in.Token, in.SigningSecret} {
+		if !strings.HasPrefix(r.Ref, "env:") {
+			return fmt.Errorf("platform %q: surfaces.%s: a client's secret is an env: reference", tenant, surface)
+		}
+	}
+	if in.Surface == clients.WhatsApp && !strings.HasPrefix(in.VerifyToken.Ref, "env:") {
+		return fmt.Errorf("platform %q: surfaces.%s: a client's secret is an env: reference", tenant, surface)
+	}
+	in.Enabled, in.Managed, in.Agents = true, clients.ManagedFile, []string{clients.AnyAgent}
+	_, err := p.ApplyClient(ctx, tenant, "file", in)
+	if errors.Is(err, clients.ErrExists) {
+		log.Warn(surface+" client from the file not applied: another client answers for it", "tenant", tenant, "error", err)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("platform %q: surfaces.%s: %w", tenant, surface, err)
 	}
 	return nil
 }

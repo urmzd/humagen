@@ -9,12 +9,15 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/orchagent/flow/connectors/imessage"
+	"github.com/urmzd/orchagent/flow/connectors/whatsapp"
 	"github.com/urmzd/orchagent/flow/signature"
 
 	"github.com/urmzd/humagen/internal/platform"
@@ -63,6 +66,8 @@ func TestAMalformedEnvironmentIsAnError(t *testing.T) {
 		"a github secret with no token": {EnvGitHubSecret: "s"},
 		"github with no owners":         {EnvGitHubToken: "t", EnvGitHubSecret: "s"},
 		"github labels not json":        {EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "acme", EnvGitHubAutoLabels: "{"},
+		"whatsapp with no verify token": {EnvWhatsAppToken: "t", EnvWhatsAppAppSecret: "s", EnvWhatsAppPhoneNumberID: "1065"},
+		"imessage with no url":          {EnvIMessagePassword: "p", EnvIMessageSecret: "s"},
 	} {
 		if _, err := defaultClients(envOf(vars)); err == nil {
 			t.Errorf("%s was accepted", name)
@@ -458,5 +463,116 @@ func TestEnabledFalseTurnsTheFilesGitHubClientOff(t *testing.T) {
 	}
 	if kept := apply(console, off); !kept.Enabled || kept.Managed != "" || kept.Version != 1 {
 		t.Fatalf("the file turned off the console's client: %+v", kept)
+	}
+}
+
+// The environment configures one WhatsApp number and one BlueBubbles server,
+// with their secrets by reference, given only to the server's own tenant, and
+// each answers through its own route.
+func TestTheEnvironmentConfiguresWhatsAppAndIMessage(t *testing.T) {
+	vars := map[string]string{
+		EnvWhatsAppToken: "wa-token", EnvWhatsAppAppSecret: "wa-app-secret", EnvWhatsAppVerifyToken: "wa-verify",
+		EnvWhatsAppPhoneNumberID: "106540352242922", EnvWhatsAppDefault: "helper",
+		EnvIMessageURL: "https://bb.example.com", EnvIMessagePassword: "bb-password", EnvIMessageSecret: "bb-secret",
+		EnvIMessageDefault: "helper",
+	}
+	defaults, err := defaultClients(envOf(vars))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(defaults) != 2 || defaults[0].Surface != clients.WhatsApp || defaults[1].Surface != clients.IMessage {
+		t.Fatalf("defaults = %+v", defaults)
+	}
+	if defaults[1].Identity.Server != "home" || defaults[0].VerifyToken.Ref != "env:"+EnvWhatsAppVerifyToken {
+		t.Fatalf("defaults = %+v", defaults)
+	}
+	refs, err := secretRefs("", "trial", envOf(vars))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{EnvWhatsAppToken, EnvWhatsAppAppSecret, EnvWhatsAppVerifyToken, EnvIMessagePassword, EnvIMessageSecret} {
+		if !slices.Contains(refs["trial"], name) {
+			t.Fatalf("the server's tenant may not reference %s: %v", name, refs)
+		}
+	}
+	p, err := platform.New(platform.Config{
+		Workspace: t.TempDir(), ClientInterval: -1,
+		Env:         func(name string) (string, bool) { v, ok := vars[name]; return v, ok },
+		SecretRefs:  refs,
+		WhatsAppAPI: func(string) whatsapp.API { return whatsapp.NewFake() },
+		IMessageAPI: func(string, string) imessage.API { return imessage.NewFake() },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := seedClients(context.Background(), p, "trial", envOf(vars)); err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	p.IngressHandler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/connectors/whatsapp?hub.mode=subscribe&hub.verify_token=wa-verify&hub.challenge=42", nil))
+	if w.Code != http.StatusOK || w.Body.String() != "42" {
+		t.Fatalf("handshake = %d %q", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	p.IngressHandler().ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/connectors/imessage?secret=wrong", strings.NewReader(`{}`)))
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("a wrong iMessage secret = %d", w.Code)
+	}
+}
+
+// The file's WhatsApp number and iMessage server are clients the API cannot
+// change, applied again unchanged without a new version, and turned off by
+// enabled: false.
+func TestTheFilesMessagingClientsFollowTheFile(t *testing.T) {
+	vars := map[string]string{
+		EnvWhatsAppToken: "wa", EnvWhatsAppAppSecret: "wa-secret", EnvWhatsAppVerifyToken: "wa-verify",
+		EnvIMessagePassword: "bb", EnvIMessageSecret: "bb-secret",
+	}
+	p, err := platform.New(platform.Config{
+		Workspace:   t.TempDir(),
+		Env:         func(name string) (string, bool) { v, ok := vars[name]; return v, ok },
+		SecretRefs:  map[string][]string{"acme": {EnvWhatsAppToken, EnvWhatsAppAppSecret, EnvWhatsAppVerifyToken, EnvIMessagePassword, EnvIMessageSecret}},
+		WhatsAppAPI: func(string) whatsapp.API { return whatsapp.NewFake() },
+		IMessageAPI: func(string, string) imessage.API { return imessage.NewFake() },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.Close() })
+	w := spec.WhatsApp{
+		Enabled: true, PhoneNumberID: "106540352242922", People: map[string]string{"15551234567": "ana"},
+		Token: &spec.Ref{Ref: "env:" + EnvWhatsAppToken}, AppSecret: &spec.Ref{Ref: "env:" + EnvWhatsAppAppSecret},
+		VerifyToken: &spec.Ref{Ref: "env:" + EnvWhatsAppVerifyToken},
+	}
+	m := spec.IMessage{
+		Enabled: true, URL: "https://bb.example.com",
+		Password: &spec.Ref{Ref: "env:" + EnvIMessagePassword}, WebhookSecret: &spec.Ref{Ref: "env:" + EnvIMessageSecret},
+	}
+	for range 2 {
+		if err := applyMessaging(t.Context(), p, "acme", "whatsapp", true, whatsAppInput(w), slog.Default()); err != nil {
+			t.Fatal(err)
+		}
+		if err := applyMessaging(t.Context(), p, "acme", "imessage", true, iMessageInput(m), slog.Default()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wa, err := p.Clients.Get("acme", "file-whatsapp")
+	if err != nil || wa.Managed != clients.ManagedFile || wa.Version != 1 || wa.WhatsApp.People["15551234567"] != "ana" || wa.Credentials.VerifyToken == nil {
+		t.Fatalf("the file's whatsapp client = %+v, %v", wa, err)
+	}
+	im, err := p.Clients.Get("acme", "file-imessage")
+	if err != nil || im.Identity.Server != "home" || im.Version != 1 {
+		t.Fatalf("the file's imessage client = %+v, %v", im, err)
+	}
+	if err := applyMessaging(t.Context(), p, "acme", "whatsapp", false, whatsAppInput(w), slog.Default()); err != nil {
+		t.Fatal(err)
+	}
+	if wa, _ := p.Clients.Get("acme", "file-whatsapp"); wa.Enabled {
+		t.Fatal("enabled: false left the file's whatsapp client on")
+	}
+	bad := w
+	bad.VerifyToken = &spec.Ref{Ref: "op://vault/item"}
+	if err := applyMessaging(t.Context(), p, "acme", "whatsapp", true, whatsAppInput(bad), slog.Default()); err == nil {
+		t.Fatal("a verify token that is no env: reference was accepted")
 	}
 }
