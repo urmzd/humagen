@@ -1645,3 +1645,18 @@ Evidence: `replay.test.ts`, `replay.dom.test.tsx`; the phone and desktop
 - Evidence: `customize.test.ts`, `tool-servers.dom.test.tsx`,
   `internal/platform/person_tools_test.go`, and the Customize states in
   `scripts/screens/library.ts`. Screens are judged in CI.
+
+### DES-063: Connectors and catalog
+
+Browse and search warehouse and object metadata in Library > Catalog. Search
+text has an address. Show columns and descriptions without copying
+rows or file content. Owners can crawl, publish metadata to the connector's
+project, and withdraw it. Readers do not receive owner controls. New Source
+groups collection, storage collection/catalog, and warehouse catalog/live
+capabilities, and storage collection requires the reader's own credential.
+
+Implemented in `Catalog.tsx`, `SourceCatalog.tsx`, and the connector kinds in
+`pkg/catalog`. Evidence: catalog DOM tests, route round-trip regression,
+Snowflake/object-storage race tests, and `library-catalog` phone/desktop screen
+fixture. The Catalog and New Source captures pass at phone and desktop widths
+(4 captures). The full screen suite is intentionally deferred to CI.
