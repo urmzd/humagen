@@ -138,12 +138,17 @@ func TestVectorsSurviveARestartAndFollowTheModel(t *testing.T) {
 		t.Fatalf("restart embedded %d texts; want only the query", n)
 	}
 
+	// The restarted store's indexer stops first, or it rewrites the
+	// vectors the new model computes with its own.
+	cancel2()
 	other, err := Open(st)
 	if err != nil {
 		t.Fatal(err)
 	}
+	ctx3, cancel3 := context.WithCancel(context.Background())
+	defer cancel3()
 	wider := hashing(512)
-	other.UseEmbedder(ctx2, wider, nil)
+	other.UseEmbedder(ctx3, wider, nil)
 	indexed(t, other, wider.Model())
 	if wider.texts.Load() < 2 {
 		t.Fatalf("a new model embedded %d texts; want every passage again", wider.texts.Load())

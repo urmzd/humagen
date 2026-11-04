@@ -19,7 +19,7 @@ export function workspaceScreens(call: Call): Screen[] {
     act: async (page) => {
       const input = page.locator('form[aria-label="Message"] textarea');
       await input.fill("Keep this draft when changing projects.");
-      const picker = page.getByRole("button", { name: /^Select project: Personal/ });
+      const picker = page.getByRole("button", { name: /^Select project: (Personal|No project)/ });
       assert.equal(await picker.getAttribute("aria-haspopup"), "dialog");
       assert.equal(
         await picker.locator("svg").count(),
@@ -268,7 +268,7 @@ export function workspaceScreens(call: Call): Screen[] {
       path: "/",
       act: async (page) => {
         await page.emulateMedia({ reducedMotion: "no-preference" });
-        const picker = page.getByRole("button", { name: /^Select project: Personal/ });
+        const picker = page.getByRole("button", { name: /^Select project: (Personal|No project)/ });
         const drawer = page.getByRole("dialog", {
           name: defaultCopy.chat.chooseProject,
           exact: true,

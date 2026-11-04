@@ -204,3 +204,30 @@ export function wavePreview(path: string): Scene {
     },
   };
 }
+
+/** DES-057: the composer's chrome, the project over Home's bar and a conversation's approval mode. */
+export function composerChrome(conversation: string): Scene[] {
+  return [
+    {
+      name: "home-project-above",
+      path: "/",
+      act: async (page) => {
+        const wide = (page.viewportSize()?.width ?? 0) >= 768;
+        const above = page.locator("[data-home-above]");
+        if (wide) {
+          await above.getByRole("button", { name: /^Select project/ }).waitFor();
+        } else {
+          assert.equal(await above.count(), 0, "on a phone the project stays in the bar");
+        }
+      },
+    },
+    {
+      name: "composer-approval-mode",
+      path: `/conversations/${conversation}`,
+      act: async (page) => {
+        await page.getByRole("button", { name: /^Approvals: / }).click();
+        await page.getByRole("menuitemradio", { name: /^Approve for Me/ }).waitFor();
+      },
+    },
+  ];
+}

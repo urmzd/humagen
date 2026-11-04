@@ -16,6 +16,7 @@ import (
 	"go/types"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"reflect"
@@ -26,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/orchagent/flow/connectors/cron"
@@ -970,7 +972,14 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// An agent on the "anthropic" provider asks a person, so a run can park on
 	// a question here. Every other agent is offline.
 	sourceFake := github.NewFake()
-	f := newFixtureWith(t, platform.Config{AgentOptions: []native.Option{
+	// A person's own tool server, reviewed before it is approved.
+	notes := mcp.NewServer(&mcp.Implementation{Name: "notes", Version: "1"}, nil)
+	notes.AddTool(&mcp.Tool{Name: "lookup", Description: "Read notes", InputSchema: map[string]any{"type": "object"}, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return &mcp.CallToolResult{}, nil
+	})
+	notesServer := httptest.NewTLSServer(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return notes }, nil))
+	t.Cleanup(notesServer.Close)
+	f := newFixtureWith(t, platform.Config{PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
 		native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
 		}),
@@ -1180,6 +1189,17 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(ana, "PUT", "/api/me/context", "/api/me/context", `{"version":1,"tool_servers":[{"name":"notes","url":"https://mcp.example.com","credential":"op://People/ben/notes"}]}`, http.StatusBadRequest)
 	c.call(ana, "PUT", "/api/me/context", "/api/me/context", `{"version":1,"tool_servers":[{"name":"notes","url":"https://mcp.example.com","credential":"tok-raw-secret"}]}`, http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/me/context", "/api/me/context", `{"version":0}`, http.StatusForbidden)
+	// A tool server on a host the workspace allows lists its tools for review.
+	notesHost := personctx.ToolServer{Name: "notes", URL: notesServer.URL}.Host()
+	if err := f.p.SetRunSettings("acme", settings.Layer{Ceilings: settings.Ceilings{ToolServers: []string{notesHost}}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.call(ana, "POST", "/api/me/tool-servers/review", "/api/me/tool-servers/review", `{"name":"notes","url":"`+notesServer.URL+`"}`, http.StatusOK); !strings.Contains(string(got.raw), `"lookup"`) {
+		t.Errorf("reviewed tools = %s", got.raw)
+	}
+	if err := f.p.SetRunSettings("acme", settings.Layer{}, nil); err != nil {
+		t.Fatal(err)
+	}
 
 	// Explicit copies never activate learning without destination review.
 	promotionNote, err := f.p.Memory.Add("acme", memory.PersonalOwner("ana"), "Review product outcomes", memory.Person, memory.Approved, "ana", time.Now())
@@ -1269,6 +1289,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/runs/{id}/events", "/api/runs/"+id+"/events", "", http.StatusOK)
 	c.call(acme, "GET", "/api/runs/{id}/manifest", "/api/runs/"+id+"/manifest", "", http.StatusOK)
 	c.call(acme, "GET", "/api/threads/{id}", "/api/threads/"+first.str("thread"), "", http.StatusOK)
+	c.call(acme, "PUT", "/api/threads/{id}/approval", "/api/threads/"+first.str("thread")+"/approval", `{"mode":"maybe"}`, http.StatusBadRequest)
+	c.call(auditAdmin, "PUT", "/api/threads/{id}/approval", "/api/threads/"+first.str("thread")+"/approval", `{"mode":"auto"}`, http.StatusOK)
+	c.call(auditAdmin, "PUT", "/api/threads/{id}/approval", "/api/threads/"+first.str("thread")+"/approval", `{"mode":"ask"}`, http.StatusOK)
 	c.call(acme, "PATCH", "/api/threads/{id}/marks", "/api/threads/"+first.str("thread")+"/marks", `{"archived":true,"read":true}`, http.StatusOK)
 	c.call(acme, "POST", "/api/marks/tips", "/api/marks/tips", `{"name":"search"}`, http.StatusOK)
 	c.call(acme, "POST", "/api/marks/tips", "/api/marks/tips", `{"name":"a b"}`, http.StatusBadRequest)
@@ -2499,7 +2522,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/projects/{name}/knowledge": `{"version":1,"knowledge":[]}`, "/api/projects/{name}/skills": `{"version":1,"skills":[]}`, "/api/threads/{id}": `{"version":1}`,
 		"/api/threads/{id}/messages": `{"text":"x"}`, "/api/threads/{id}/participants": `{"version":1}`,
 		"/api/threads/{id}/fork": `{"through":"m-1"}`, "/api/threads/{id}/bring-back": `{"run":"r00000000000000000000000000000000"}`,
-		"/api/threads/{id}/share": `{}`, "/api/threads/{id}/marks": `{"read":true}`,
+		"/api/threads/{id}/share": `{}`, "/api/threads/{id}/marks": `{"read":true}`, "/api/threads/{id}/approval": `{"mode":"ask"}`,
 		"/api/projects/{name}/members": `{"version":1,"members":[{"who":"*","role":"member"}]}`, "/api/projects/{name}/move": `{"version":1,"parent":""}`,
 		"/api/projects/{name}/limits": `{"period":"day","max_runs":1}`, "/api/projects/{name}/announcements": `{"subject":"Hi","text":"Hi."}`,
 		"/api/memory/files/proposals/{id}": `{"scope":"project","decision":"discard"}`,

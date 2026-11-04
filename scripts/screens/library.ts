@@ -42,6 +42,21 @@ export function libraryScreens(call: Call): Screen[] {
   }
   return [
     {
+      name: "customize-agents",
+      path: "/customize/agents",
+      act: async (page) => {
+        await heading(page, "Agents");
+        await page.getByRole("navigation", { name: "Customize" }).waitFor();
+      },
+    },
+    {
+      name: "customize-tool-servers",
+      path: "/customize/tools",
+      act: async (page) => {
+        await heading(page, "Your tool servers");
+      },
+    },
+    {
       name: "library-sources-new",
       path: "/library/sources",
       act: async (page) => {
@@ -322,7 +337,11 @@ export function libraryScreens(call: Call): Screen[] {
         const me = await call<{ personal_project: string }>("GET", "/api/me");
         assert.equal(new URL(page.url()).searchParams.get("project"), me.personal_project);
         assert.equal(new URL(page.url()).searchParams.has("channel"), false);
-        await page.getByRole("button", { name: "Select project: Personal", exact: true }).waitFor();
+        // Over Home's chat bar on a wide screen the person's own project reads as No project (DES-057).
+        const personal = (page.viewportSize()?.width ?? 0) >= 768 ? "No project" : "Personal";
+        await page
+          .getByRole("button", { name: `Select project: ${personal}`, exact: true })
+          .waitFor();
         const draft = await page.locator("textarea").first().inputValue();
         assert.ok(draft.includes("Help me review the confirmed memory"));
       },
