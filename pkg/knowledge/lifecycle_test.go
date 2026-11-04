@@ -484,3 +484,23 @@ func TestSnapshotDecisionDoesNotInventASuccessfulRefresh(t *testing.T) {
 		}
 	})
 }
+
+func TestStorageOriginConfiguration(t *testing.T) {
+	for _, provider := range []string{"gcs", "s3"} {
+		scheme := "s3"
+		if provider == "gcs" {
+			scheme = "gs"
+		}
+		good := SourceConfig{Mode: Indexed, Provider: provider, Origin: scheme + "://reports/monthly/"}
+		if _, err := normalizeSourceConfig(good); err != nil {
+			t.Fatal(err)
+		}
+		for _, origin := range []string{"https://example.com", scheme + "://user@bucket/x", scheme + "://bucket/x?secret=x"} {
+			bad := good
+			bad.Origin = origin
+			if _, err := normalizeSourceConfig(bad); err == nil {
+				t.Fatalf("accepted %s", origin)
+			}
+		}
+	}
+}
