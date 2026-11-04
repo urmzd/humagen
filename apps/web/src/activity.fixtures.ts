@@ -2,7 +2,10 @@ import type { Tree } from "./Activity.tsx";
 import type { Run } from "./adapter.ts";
 import type { Span } from "./api.ts";
 
-const at = (secondsAgo: number) => new Date(Date.now() - secondsAgo * 1000).toISOString();
+// One clock reading per set of trees, so a run's duration does not depend on
+// how long building the fixtures took.
+let now = Date.now();
+const at = (secondsAgo: number) => new Date(now - secondsAgo * 1000).toISOString();
 
 function run(id: string, agent: string, text: string, over: Partial<Run> = {}): Run {
   return {
@@ -47,6 +50,7 @@ const tool = (
  * and one still running.
  */
 export function sampleTrees(): Tree[] {
+  now = Date.now();
   return [
     {
       root: "r1",
