@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.79.0 (2026-11-04)
+
+### Features
+
+- **composer**: Home's project over the chat bar, and Approve for Me per conversation (#209) ([ed969c2](https://github.com/urmzd/humagen/commit/ed969c21b67d7f67d8d19b191bc822d556e2574b))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.78.0...v0.79.0)
+
+
 ## 0.78.0 (2026-11-04)
 
 ### Features

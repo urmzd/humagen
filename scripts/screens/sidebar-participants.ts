@@ -78,6 +78,11 @@ export function sidebarParticipants(call: Call, thread: string) {
           .first()
           .click();
       }
+      // Row actions show on hover with a fine pointer (DES-054): hover the row first.
+      await navigation
+        .getByRole("button", { name: /^Draft the launch checklist with the team/ })
+        .first()
+        .hover();
       await conversationPin.scrollIntoViewIfNeeded();
       await conversationPin.click();
       await page.getByRole("menuitem", { name: /^Pin\b/ }).click();
@@ -87,7 +92,7 @@ export function sidebarParticipants(call: Call, thread: string) {
           name: "Manage Draft the launch checklist with the team",
           exact: true,
         })
-        .waitFor();
+        .waitFor({ state: "attached" });
       await page.reload();
       await open();
       await pinned.getByRole("link", { name: "Launch", exact: true }).waitFor();
@@ -96,7 +101,11 @@ export function sidebarParticipants(call: Call, thread: string) {
         name: "Manage Draft the launch checklist with the team",
         exact: true,
       });
-      await unpinConversation.waitFor();
+      await unpinConversation.waitFor({ state: "attached" });
+      await pinned
+        .getByRole("button", { name: /^Draft the launch checklist with the team/ })
+        .first()
+        .hover();
       await unpinConversation.click();
       await page.getByRole("menuitem", { name: /^Unpin\b/ }).waitFor();
       await page.keyboard.press("Escape");
@@ -108,6 +117,10 @@ export function sidebarParticipants(call: Call, thread: string) {
         await navigation.evaluate((element) => element.scrollWidth <= element.clientWidth),
         true,
       );
+      await pinned
+        .getByRole("button", { name: /^Draft the launch checklist with the team/ })
+        .first()
+        .hover();
       const pin = await unpinConversation.boundingBox();
       assert.ok(pin && pin.width >= (phone ? 44 : 32) && pin.height >= (phone ? 44 : 32));
     },

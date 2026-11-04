@@ -5,6 +5,7 @@ import { BringBackIcon, ForkIcon, WebSurface } from "@humagen/render-web";
 import { AgentMessage, messageActionButton, railEntry, Thread, useQueue } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
+import { ApprovalModePicker } from "./ApprovalModePicker.tsx";
 import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
 import {
   ApiError,
@@ -53,6 +54,7 @@ import {
 } from "./ui.tsx";
 import { useVoiceNotes } from "./useVoiceNotes.ts";
 import { Workspace } from "./Workspace.tsx";
+import { useWide } from "./wide.ts";
 
 const words = defaultCopy.threads;
 
@@ -413,6 +415,7 @@ export function Chat({
   const [turns, setTurns] = useState<Run[]>([]);
   // The thread as the platform reads it: its record, and its people's messages besides its runs.
   const [room, setRoom] = useState<ThreadPage | null>(null);
+  const wide = useWide();
   // The + selection of a conversation of runs, saved on its thread as a room's is.
   const runs = useThreadSelection(threadId ?? "", room?.thread ?? noThread, {
     saved: (t) => {
@@ -737,6 +740,30 @@ export function Chat({
       agents.some((a) => a.spec.name === st.agent) && offered !== null && offered.has(st.agent),
   );
 
+  // Where a new conversation is filed: in the bar on a phone, over it on a
+  // wide screen, where the person's own project reads as No project (DES-057).
+  const homeChips = (
+    <SelectionChips
+      personalProject={personalProject}
+      selection={selection}
+      projects={projects}
+      workspace={workspaceName}
+      onChange={select}
+      projectControl={
+        <ProjectPicker
+          projects={projects ?? null}
+          kinds={root?.kinds}
+          value={selection.project}
+          personalProject={personalProject}
+          personalLabel={wide ? defaultCopy.noProject : undefined}
+          channel={selection.channel}
+          canCreate={canCreateProject}
+          onCreated={onProjectCreated}
+          onChange={(project) => select({ ...selection, project, channel: "general" })}
+        />
+      }
+    />
+  );
   const composer = canRun && agents.length > 0 && (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
       <Problem message={problem} />
@@ -759,6 +786,11 @@ export function Chat({
         autoFocus={!threadId}
         seed={seed}
         onDraft={setDraft}
+        trailing={
+          threadId && room?.thread ? (
+            <ApprovalModePicker thread={room.thread} me={handle || me} />
+          ) : undefined
+        }
         // An agent the project picked does not offer is not kept for it.
         onAvailable={
           threadId
@@ -858,29 +890,8 @@ export function Chat({
                     }
                   />
                 ),
-                chips: (
-                  <SelectionChips
-                    personalProject={personalProject}
-                    selection={selection}
-                    projects={projects}
-                    workspace={workspaceName}
-                    onChange={select}
-                    projectControl={
-                      <ProjectPicker
-                        projects={projects ?? null}
-                        kinds={root?.kinds}
-                        value={selection.project}
-                        personalProject={personalProject}
-                        channel={selection.channel}
-                        canCreate={canCreateProject}
-                        onCreated={onProjectCreated}
-                        onChange={(project) =>
-                          select({ ...selection, project, channel: "general" })
-                        }
-                      />
-                    }
-                  />
-                ),
+                // On a wide screen Home holds the project over the chat bar instead.
+                chips: wide ? undefined : homeChips,
               })
         }
       />
@@ -951,6 +962,7 @@ export function Chat({
         canRun={canRun}
         hasAgents={!agentsRead || agents.length > 0}
         below={home}
+        above={wide && homeChips}
       >
         {composer}
         {/*

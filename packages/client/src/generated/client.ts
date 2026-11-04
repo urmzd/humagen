@@ -186,6 +186,7 @@ import type {
   SearchKnowledgeResponse,
   SearchMemoryResponse,
   SetAgentHomeBody,
+  SetApprovalModeBody,
   SetKnowledgeDocumentExcludedBody,
   SetKnowledgeSyncSettingsBody,
   Settings,
@@ -3172,6 +3173,34 @@ whoever started the thread or an owner of its project (403).
     let path = "/api/threads/{id}/publication";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<Thread>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** `ask` asks a person, the default. `auto` approves for the caller what
+they may approve themselves, through the same checks as their own
+answer: the approvers a question names, self-approval and the
+runtime's. A budget request, an action the agent always asks about,
+a run forced to ask and an action the policy does not ask about still
+go to a person. Each automatic approval and each change of mode is
+audited. Takes a person who may post in the conversation.
+ */
+  async setApprovalMode(id: string, body: SetApprovalModeBody, options?: RequestOptions): Promise<Thread> {
+    let path = "/api/threads/{id}/approval";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Thread>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setApprovalModeRaw(id: string, body: SetApprovalModeBody, options?: RequestOptions): Promise<ApiResponse<Thread>> {
+    let path = "/api/threads/{id}/approval";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Thread>("PUT", path, {
       body,
       contentType: "application/json",
       ...options,
