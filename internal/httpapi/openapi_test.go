@@ -1010,6 +1010,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
 	contractSource(t, f, c, sourceFake)
 	contractGitHubItems(t, f, c, sourceFake)
+	pullToken := f.machine(t, "pull-contract", "humagen:runs:read")
+	c.call(pullToken, "GET", "/api/pull-requests", "/api/pull-requests", "", http.StatusOK)
+	c.call(pullToken, "GET", "/api/pull-requests", "/api/pull-requests?status=bad", "", http.StatusBadRequest)
 	acme, globex := f.machine(t, "acme", everything...), f.machine(t, "globex", everything...)
 	auditAdmin := f.person(t, "acme", "audit-admin", "Audit admin", "humagen-admins")
 	// The catalog: its owner crawls, publishes and withdraws a connector.

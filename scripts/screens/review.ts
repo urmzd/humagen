@@ -139,6 +139,26 @@ export function reviewScreens(call: Call): Screen[] {
   };
   return [
     {
+      name: "pull-requests-board",
+      path: "/pull-requests",
+      act: async (page) => {
+        await thread();
+        await page.goto(new URL("/pull-requests", page.url()).href);
+        await page.getByRole("heading", { name: "Pull requests", exact: true }).waitFor();
+        await page.getByRole("link", { name: /urmzd\/humagen #212/ }).waitFor();
+      },
+    },
+    {
+      name: "pull-requests-list",
+      path: "/pull-requests?display=list",
+      act: async (page) => {
+        await thread();
+        await page.goto(new URL("/pull-requests?display=list", page.url()).href);
+        await page.getByRole("heading", { name: "Pull requests", exact: true }).waitFor();
+        await page.getByRole("link", { name: /urmzd\/humagen #212/ }).waitFor();
+      },
+    },
+    {
       name: "conversation-review-workspace",
       path: "/",
       act: async (page) => {

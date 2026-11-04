@@ -41,6 +41,27 @@ export const defaultCopy = {
     next: "Next Page",
     openReview: "Open Review",
   },
+  pullRequests: {
+    title: "Pull requests",
+    running: "Running",
+    waiting: "Waiting for review",
+    done: "Done",
+    intro: "Agent reviews across your repositories. The latest 100 reviews from the last 30 days.",
+    search: "Search",
+    searchHint: "Title, repository or number",
+    status: "Status",
+    all: "All statuses",
+    repository: "Repository",
+    repoHint: "owner/repository",
+    agent: "Agent",
+    board: "Board",
+    list: "List",
+    loading: "Loading reviews…",
+    empty: "No pull requests match these filters.",
+    counts: (errors: number, warnings: number, infos: number) =>
+      `${errors} ${errors === 1 ? "error" : "errors"} · ${warnings} ${warnings === 1 ? "warning" : "warnings"} · ${infos} ${infos === 1 ? "note" : "notes"}`,
+    ci: (state: string) => `CI: ${state}`,
+  },
   workspaceFiles: {
     control: "Files",
     sharingFiles: (count: number) =>

@@ -54,6 +54,7 @@ import { type Source as About, transport as mail, type PlatformMessage } from ".
 import { NotificationsPage, useNotifications } from "./Notifications.tsx";
 import { PersonalPreferences } from "./PersonalPreferences.tsx";
 import { ProjectPage, ProjectsPage } from "./Projects.tsx";
+import { PullRequests } from "./PullRequests.tsx";
 import { usePreferences } from "./preferences.ts";
 import { QuickSwitcher } from "./QuickSwitcher.tsx";
 import { ChannelPage } from "./Room.tsx";
@@ -791,6 +792,7 @@ function Console({
                 <Problem message={defaultCopy.noPermission} />
               </Page>
             ))}
+          {route.page === "pull-requests" && <PullRequests route={route} go={go} />}
           {route.page === "assignments" &&
             (can("runs:read") ? (
               <Assignments
