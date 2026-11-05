@@ -199,7 +199,7 @@ func (p *Platform) unmeteredAlert(tenant string, a policy.Applied) {
 func (p *Platform) settleUsage(ctx context.Context, run runs.Run) error {
 	var micros int64
 	var recorded *event.RunUsage
-	u, ok, err := p.completionUsage(ctx, run)
+	u, ok, err := p.recordedUsage(ctx, run)
 	if err != nil {
 		return err
 	}
@@ -242,25 +242,7 @@ func (p *Platform) settleUsage(ctx context.Context, run runs.Run) error {
 // terminal event when that carried one, otherwise from the run ledger, its
 // output for a run that succeeded there and its usage records for one that
 // failed. It reports false when there is none, for a run that called no model.
-func (p *Platform) recordedUsage(ctx context.Context, run runs.Run) (event.RunUsage, bool) {
-	if run.UsageRecorded() {
-		return *run.Usage, true
-	}
-	rec, records, err := p.ledger.Load(ctx, run.ID)
-	if err != nil {
-		p.log.Warn("platform: a run's usage could not be read from the ledger", "run", run.ID, "error", err)
-		return event.RunUsage{}, false
-	}
-	if rec.Status == drun.StatusSucceeded {
-		var out runtime.Output
-		if json.Unmarshal(rec.Output, &out) == nil && out.Usage != nil {
-			return *out.Usage, true
-		}
-	}
-	return runtime.RecordedUsage(records)
-}
-
-func (p *Platform) completionUsage(ctx context.Context, run runs.Run) (event.RunUsage, bool, error) {
+func (p *Platform) recordedUsage(ctx context.Context, run runs.Run) (event.RunUsage, bool, error) {
 	if run.UsageRecorded() {
 		return *run.Usage, true, nil
 	}

@@ -2,6 +2,7 @@ package runs
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -89,5 +90,27 @@ func TestCompletionFailureKeepsPendingWork(t *testing.T) {
 	c, err = x.ClaimCompletion(t.Context(), r, t0)
 	if err != nil || c.Done("answer") {
 		t.Fatalf("failed action acknowledged: %v", err)
+	}
+}
+
+func TestCompletionPagesPastFailingOldWork(t *testing.T) {
+	x := NewIndex()
+	for i := range 101 {
+		id := fmt.Sprintf("r%d", i)
+		record(t, x, "acme", id, "lead", "api", 0, nil)
+		end(t, x, "acme", id, time.Second, event.TypeCompleted, wire.Lifecycle{})
+	}
+	first, err := x.PendingCompletions()
+	if err != nil || len(first) != 100 {
+		t.Fatalf("first = %d, %v", len(first), err)
+	}
+	// None was acknowledged; the next tick must still reach the new run.
+	second, err := x.PendingCompletions()
+	if err != nil || len(second) != 1 || second[0].ID != "r100" {
+		t.Fatalf("second = %v, %v", second, err)
+	}
+	again, err := x.PendingCompletions()
+	if err != nil || len(again) != 100 {
+		t.Fatalf("wrapped = %d, %v", len(again), err)
 	}
 }
