@@ -422,8 +422,9 @@ type Store struct {
 // beginning one drops the oldest past that.
 const namespace = "evals"
 
-// stored is one record: a suite, a run, a tenant's run counter, or a suite's
-// guard, which holds the number of the suite's newest run in Next.
+// stored is one record: a suite, a run, a tenant's run counter, a suite's
+// guard, which holds the number of the suite's newest run in Next, or the
+// suites guard, which holds the tenant's suite count in Next.
 type stored struct {
 	Suite *Suite `json:"suite,omitempty"`
 	Run   *Run   `json:"run,omitempty"`
@@ -437,6 +438,9 @@ const (
 	suitePrefix = "suite/"
 	runPrefix   = "run/"
 	openPrefix  = "open/"
+	// suitesKey guards a tenant's suite count: every create writes it at the
+	// version it read before counting. It sorts outside suitePrefix.
+	suitesKey = "suites"
 	// maxSuites is the most suites a tenant may create.
 	maxSuites = 200
 	// staleAfter is how long a running run may go unwritten before it is
@@ -505,28 +509,50 @@ func (s *Store) Put(tenantName string, suite Suite, replace bool) error {
 		return err
 	}
 	if !replace {
-		have, _, err := s.kept.List(tenantName, state.Query{Prefix: suitePrefix, Limit: maxSuites})
-		if err != nil {
-			return fmt.Errorf("evals: read: %w", err)
-		}
-		if len(have) >= maxSuites && !slices.ContainsFunc(have, func(it state.Item[stored]) bool { return it.Key == suiteKey(suite.Name) }) {
-			return fmt.Errorf("%w: a workspace has at most %d suites", ErrInvalid, maxSuites)
-		}
+		return wrap(s.create(tenantName, suite))
 	}
 	_, err := s.kept.Update(tenantName, suiteKey(suite.Name), func(v stored, exists bool) (stored, error) {
-		exists = exists && v.Suite != nil
 		switch {
-		case exists && !replace:
-			return v, fmt.Errorf("%w: %q", ErrExists, suite.Name)
-		case !exists && replace:
+		case !exists || v.Suite == nil:
 			return v, fmt.Errorf("%w: suite %q", ErrNotFound, suite.Name)
-		case exists && (v.Suite.Target != suite.Target || v.Suite.Subject != suite.Subject):
+		case v.Suite.Target != suite.Target || v.Suite.Subject != suite.Subject:
 			// History compares like with like, so a suite keeps its target.
 			return v, fmt.Errorf("%w: a suite cannot change what it tests", ErrInvalid)
 		}
 		return stored{Suite: &suite}, nil
 	})
 	return wrap(err)
+}
+
+// create adds a new suite under the tenant's cap. The suites guard is read
+// before the suites are counted and written at that version with the new
+// suite, so two creates racing past the count conflict on the guard and the
+// one that loses counts again.
+func (s *Store) create(tenantName string, suite Suite) error {
+	return state.Retry(func() error {
+		guard, err := s.kept.Lookup(tenantName, suitesKey)
+		if err != nil && !errors.Is(err, state.ErrNotFound) {
+			return fmt.Errorf("evals: read: %w", err)
+		}
+		have, _, err := s.kept.List(tenantName, state.Query{Prefix: suitePrefix, Limit: maxSuites})
+		if err != nil {
+			return fmt.Errorf("evals: read: %w", err)
+		}
+		if slices.ContainsFunc(have, func(it state.Item[stored]) bool { return it.Key == suiteKey(suite.Name) }) {
+			return fmt.Errorf("%w: %q", ErrExists, suite.Name)
+		}
+		if len(have) >= maxSuites {
+			return fmt.Errorf("%w: a workspace has at most %d suites", ErrInvalid, maxSuites)
+		}
+		b := s.kept.Batch()
+		if guard.Version == 0 {
+			b.Create(tenantName, suitesKey, stored{Next: len(have) + 1})
+		} else {
+			b.PutAt(tenantName, suitesKey, stored{Next: len(have) + 1}, guard.Version)
+		}
+		b.Create(tenantName, suiteKey(suite.Name), stored{Suite: &suite})
+		return b.Commit()
+	})
 }
 
 // lookup reads a suite and its version.

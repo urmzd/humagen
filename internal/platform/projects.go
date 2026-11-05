@@ -400,7 +400,7 @@ func (p *Platform) stillNamed(tenant string, ps []projects.Project) ([]projects.
 	}
 	rules, err := p.Alerts.Rules(tenant)
 	if err != nil {
-		p.log.Error("platform: alert rules could not be read; the projects they name are not kept this time", "tenant", tenant, "error", err)
+		return nil, err
 	}
 	for _, r := range rules {
 		add(r.Project, "the alert rule "+r.Name)

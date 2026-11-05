@@ -131,8 +131,12 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 	}
 	l.cfg, l.any = cfg, true
 	// The stores' default comes from $HUMAGEN_POSTGRES_URL, so the file sets
-	// -state only when it says.
+	// -state only when it says. The bus follows the stores (openBus), so
+	// the file sets -bus only when it says too: a default of memory here
+	// would leave replicas on $HUMAGEN_POSTGRES_URL each on a bus of its
+	// own, and a run's events would reach only the process that ran it.
 	declaredStores := cfg.System.Spec.Stores.Kind
+	declaredBus := cfg.System.Spec.Bus.Kind
 	sys := cfg.System
 	sys.Defaults()
 	sp := sys.Spec
@@ -246,7 +250,7 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 			return l, err
 		}
 	}
-	set("bus", sp.Bus.Kind)
+	set("bus", declaredBus)
 
 	switch sp.Sandbox.Kind {
 	case "docker":
