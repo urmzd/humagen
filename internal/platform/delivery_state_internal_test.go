@@ -1,6 +1,8 @@
 package platform
 
 import (
+	"context"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,46 @@ import (
 	"github.com/urmzd/orchagent/flow/address"
 	"github.com/urmzd/orchagent/flow/event"
 )
+
+type deadlinePeer struct {
+	Peer
+	seen chan context.Context
+}
+
+func (p deadlinePeer) Flush(ctx context.Context) error {
+	p.seen <- ctx
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func TestPeriodicConnectorFlushBoundsSurfaceCalls(t *testing.T) {
+	peer := deadlinePeer{seen: make(chan context.Context, 1)}
+	p := &Platform{log: slog.New(slog.DiscardHandler), surfaces: map[string]*surface{
+		"slack": {seats: []*seat{{client: clients.Client{ID: "app"}, peer: peer}}},
+	}}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- p.flushConnections(ctx) }()
+	select {
+	case call := <-peer.seen:
+		deadline, ok := call.Deadline()
+		if !ok || time.Until(deadline) > 5*time.Second {
+			t.Error("periodic flush did not bound its surface request to five seconds")
+		}
+	case <-time.After(3 * time.Second):
+		t.Error("periodic flush never ran")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceling the platform did not cancel its flush")
+	}
+}
 
 // Each newly dialed peer models a client's reseat or a replica taking over
 // delivery. Both must edit the same native message with the full answer.
