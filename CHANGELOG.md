@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.83.1 (2026-11-05)
+
+### Bug Fixes
+
+- atomic evals suite cap and loud alert-rule failure in projects migration (#212) ([766fe63](https://github.com/urmzd/humagen/commit/766fe63203d54becb943e03596cda5dfb9de705c))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.83.0...v0.83.1)
+
+
 ## 0.83.0 (2026-11-04)
 
 ### Features
