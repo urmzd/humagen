@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.86.1 (2026-11-05)
+
+### Bug Fixes
+
+- reconcile run completion after a replica crash (#220) ([ee73cc4](https://github.com/urmzd/humagen/commit/ee73cc48f2b3019d6fe377b0aac6d8e35ba6a97e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.86.0...v0.86.1)
+
+
 ## 0.86.0 (2026-11-05)
 
 ### Features
