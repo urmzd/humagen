@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.86.0 (2026-11-05)
+
+### Features
+
+- model and effort override per message (#216) ([4162ae7](https://github.com/urmzd/humagen/commit/4162ae71edbaba456694776a30e409c8eedb743c))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.85.0...v0.86.0)
+
+
+## 0.85.0 (2026-11-05)
+
+### Features
+
+- **platform**: accept runs through the bus outbox; audit observer redelivery (#215) ([196a93a](https://github.com/urmzd/humagen/commit/196a93aae6b6a17f82f5029e9cf9f94c23cd62b6))
+
+### Misc
+
+- **e2e**: two-replica end-to-end check, and three cross-replica fixes (#217) ([527de3d](https://github.com/urmzd/humagen/commit/527de3d934a35de4a9018c3181c54d5c58b60135))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.84.0...v0.85.0)
+
+
 ## 0.83.0 (2026-11-04)
 
 ### Features
