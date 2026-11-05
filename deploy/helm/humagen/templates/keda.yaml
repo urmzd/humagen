@@ -1,11 +1,14 @@
 {{- /* A KEDA ScaledObject for the worker Deployment, scaled on the runs in
 the Postgres queue (fiber_run_queue, durable's pgqueue, mapped by flow/runschema). KEDA reads
 the connection string from the existingSecret through a
-TriggerAuthentication. Needs KEDA's CRDs in the cluster. */}}
+TriggerAuthentication, or, with connectionFromEnv, from that variable of the
+worker container (a passwordless URL, such as IAM sign-in through the Cloud
+SQL Auth Proxy). Needs KEDA's CRDs in the cluster. */}}
 {{- $w := .Values.worker | default dict -}}
 {{- $k := $w.keda | default dict -}}
 {{- if and $w.enabled $k.enabled }}
-{{- $secret := required "worker.keda.enabled needs existingSecret: KEDA reads the Postgres connection string from it" .Values.existingSecret -}}
+{{- if not $k.connectionFromEnv }}
+{{- $secret := required "worker.keda.enabled needs existingSecret or worker.keda.connectionFromEnv: KEDA reads the Postgres connection string from one" .Values.existingSecret -}}
 apiVersion: keda.sh/v1alpha1
 kind: TriggerAuthentication
 metadata:
@@ -18,6 +21,7 @@ spec:
       name: {{ $secret }}
       key: {{ $k.connectionSecretKey | default "HUMAGEN_POSTGRES_URL" }}
 ---
+{{- end }}
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -36,6 +40,11 @@ spec:
       metadata:
         targetQueryValue: {{ $k.targetQueryValue | toString | quote }}
         query: {{ $k.query | quote }}
+        {{- with $k.connectionFromEnv }}
+        connectionFromEnv: {{ . | quote }}
+        {{- end }}
+      {{- if not $k.connectionFromEnv }}
       authenticationRef:
         name: {{ include "humagen.workerFullname" . }}
+      {{- end }}
 {{- end }}

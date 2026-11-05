@@ -122,6 +122,14 @@ assert worker["spec"]["template"]["spec"]["containers"][0]["args"][:2] == ["work
 assert "replicas" not in worker["spec"], "keda: the worker sets replicas"
 for kind in ("HorizontalPodAutoscaler", "ScaledObject", "TriggerAuthentication", "PodDisruptionBudget"):
     assert kind in kinds(docs), kind
+so = next(d for d in docs if d["kind"] == "ScaledObject")
+assert "authenticationRef" in so["spec"]["triggers"][0], "keda: no TriggerAuthentication reference"
+env = ["--set", "existingSecret=", "--set", "worker.keda.connectionFromEnv=HUMAGEN_POSTGRES_URL",
+       "--set", "extraEnv[0].name=HUMAGEN_POSTGRES_URL", "--set", "extraEnv[0].value=postgres://u@proxy:5432/db"]
+docs = render("-f", chart + "/ci/scale-values.yaml", *env)
+assert "TriggerAuthentication" not in kinds(docs), "keda connectionFromEnv: a TriggerAuthentication was made"
+t = next(d for d in docs if d["kind"] == "ScaledObject")["spec"]["triggers"][0]
+assert t["metadata"]["connectionFromEnv"] == "HUMAGEN_POSTGRES_URL" and "authenticationRef" not in t, "keda connectionFromEnv: trigger"
 svc = next(d for d in docs if d["kind"] == "Service")
 assert all(not k.endswith("worker") for k in svc["spec"]["selector"].values()), "the Service selects workers"
 docs = render("-f", chart + "/ci/tailscale-values.yaml")
