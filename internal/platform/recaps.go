@@ -78,29 +78,29 @@ func scheduledAnswer(run runs.Run) string {
 // (mayCarryPersonData): such an answer is never posted to a project or held
 // for its owners, nor sent to a creator who is someone else. It goes to the
 // person the run acted for instead, saying why.
-func (p *Platform) deliverAnswer(ctx context.Context, run runs.Run) {
+func (p *Platform) deliverAnswer(ctx context.Context, run runs.Run) error {
 	where := scheduledAnswer(run)
 	if where == DeliverNone {
-		return
+		return nil
 	}
 	if person := personOf(run.Actor); person != "" && (where == DeliverProject || wire.Meta(run.Tag())[metaCreatedBy] != person) && p.mayCarryPersonData(ctx, run) {
-		p.keptFor(run, person, where)
-		return
+		return p.keptFor(run, person, where)
 	}
 	switch where {
 	case DeliverInbox:
-		p.deliverToInbox(run)
+		return p.deliverToInbox(run)
 	case DeliverProject:
-		p.deliverToProject(run)
+		return p.deliverToProject(run)
 	}
+	return nil
 }
 
 // keptFor sends a scheduled answer that may carry what a person's own
 // credential reached to that person alone, saying where it would have gone.
-func (p *Platform) keptFor(run runs.Run, person, where string) {
+func (p *Platform) keptFor(run runs.Run, person, where string) error {
 	subject, text, post := announcementOf(run.Answer)
 	if !post {
-		return
+		return nil
 	}
 	if text == "" {
 		text = subject
@@ -109,7 +109,7 @@ func (p *Platform) keptFor(run runs.Run, person, where string) {
 	if where == DeliverProject {
 		why = "Not posted in " + p.whereOf(run.Tenant, p.Projects.Tree(run.Tenant), run.Project)
 	}
-	p.sendTo(run, person, subject, why+": it may hold what your own credentials reached, so it is yours alone.\n\n"+text)
+	return p.sendTo(run, person, subject, why+": it may hold what your own credentials reached, so it is yours alone.\n\n"+text)
 }
 
 // MaxOpenDrafts is how many of its agents' drafts a project holds for its
@@ -123,19 +123,21 @@ const MaxOpenDrafts = 20
 // be posted, because the project's announcements for the day are used up or
 // its owners already hold as many drafts as they may, goes to the schedule's
 // creator, saying why, so nobody's answer is lost.
-func (p *Platform) deliverToProject(run runs.Run) {
+func (p *Platform) deliverToProject(run runs.Run) error {
 	subject, text, post := announcementOf(run.Answer)
 	if !post {
-		return
+		return nil
 	}
 	if text == "" {
 		text = subject
 	}
-	tree := p.Projects.Tree(run.Tenant)
+	tree, err := p.Projects.Read(run.Tenant)
+	if err != nil {
+		return err
+	}
 	if !tree.Has(run.Project) {
 		p.log.Warn("platform: a scheduled answer's project is gone", "tenant", run.Tenant, "run", run.ID, "project", run.Project)
-		p.heldBack(run, subject, text, "its project is gone")
-		return
+		return p.heldBack(run, subject, text, "its project is gone")
 	}
 	where := p.whereOf(run.Tenant, tree, run.Project)
 	if projects.EffectiveAgentPosts(tree, run.Project) == projects.AgentPostsPublish {
@@ -144,17 +146,20 @@ func (p *Platform) deliverToProject(run runs.Run) {
 		}, "")
 		switch {
 		case errors.Is(err, inbox.ErrLimit):
-			p.heldBack(run, subject, text, where+" has posted all the announcements it may today")
+			return p.heldBack(run, subject, text, where+" has posted all the announcements it may today")
 		case err != nil:
-			p.log.Error("platform: a scheduled answer could not be posted", "tenant", run.Tenant, "run", run.ID, "error", err)
+			return err
 		}
-		return
+		return nil
 	}
-	if p.openDrafts(run.Tenant, run.Project) >= MaxOpenDrafts {
-		p.heldBack(run, subject, text, fmt.Sprintf("the owners of %s already hold %d drafts", where, MaxOpenDrafts))
-		return
+	drafts, err := p.countOpenDrafts(run.Tenant, run.Project)
+	if err != nil {
+		return err
 	}
-	p.raiseInbox(run.Tenant, draftKey(run.ID), inbox.Message{
+	if drafts >= MaxOpenDrafts {
+		return p.heldBack(run, subject, text, fmt.Sprintf("the owners of %s already hold %d drafts", where, MaxOpenDrafts))
+	}
+	return p.completionInbox(run.Tenant, draftKey(run.ID), inbox.Message{
 		Kind: inbox.KindAnnouncement, Subject: subject, Severity: inbox.Info,
 		From: inbox.From{Kind: "agent", Name: run.Agent},
 		// Only the project's owners decide, whoever they are when it is
@@ -174,8 +179,9 @@ func draftKey(run string) string { return "draft:" + run }
 // approvedBy is who published it from a draft, or "" for a post the project
 // publishes as it comes.
 func (p *Platform) postFromAgent(tenant string, d inbox.DraftPart, approvedBy string) (inbox.Message, error) {
-	return p.Announce(tenant, d.Project, inbox.From{Kind: "agent", Name: d.Agent, ApprovedBy: approvedBy},
+	m, _, err := p.announce(tenant, d.Project, "answer:"+d.Run, inbox.From{Kind: "agent", Name: d.Agent, ApprovedBy: approvedBy},
 		Announcement{Subject: d.Subject, Text: d.Text, Severity: inbox.Info, Run: d.Run}, p.now())
+	return m, err
 }
 
 // openDrafts counts the drafts a project's owners have still to decide.
@@ -191,43 +197,59 @@ func (p *Platform) openDrafts(tenant, project string) int {
 	return n
 }
 
+func (p *Platform) countOpenDrafts(tenant, project string) (int, error) {
+	n := 0
+	messages, err := p.Inbox.ReadOpen(tenant, inbox.KindAnnouncement)
+	if err != nil {
+		return 0, err
+	}
+	for _, m := range messages {
+		for _, part := range m.Parts {
+			if part.Type == inbox.PartDraft && part.Draft != nil && part.Draft.Project == project && part.State == inbox.PartOpen {
+				n++
+			}
+		}
+	}
+	return n, nil
+}
+
 // heldBack sends a scheduled answer that could not be posted to the
 // schedule's creator, saying why.
-func (p *Platform) heldBack(run runs.Run, subject, text, why string) {
-	p.sendToCreator(run, subject, "Not posted: "+why+".\n\n"+text)
+func (p *Platform) heldBack(run runs.Run, subject, text, why string) error {
+	return p.sendToCreator(run, subject, "Not posted: "+why+".\n\n"+text)
 }
 
 // deliverToInbox sends the answer to the person who created the schedule, as
 // a result only they are shown. A schedule with no creator on record has
 // nobody to send it to, so nothing is sent.
-func (p *Platform) deliverToInbox(run runs.Run) {
+func (p *Platform) deliverToInbox(run runs.Run) error {
 	subject, text, post := announcementOf(run.Answer)
 	if !post {
-		return
+		return nil
 	}
 	// A one-line answer is its own subject, and still the message's body,
 	// as every result has one.
 	if text == "" {
 		text = subject
 	}
-	p.sendToCreator(run, subject, text)
+	return p.sendToCreator(run, subject, text)
 }
 
 // sendToCreator sends a result about a scheduled run to whoever created its
 // schedule, the only one shown it.
-func (p *Platform) sendToCreator(run runs.Run, subject, text string) {
+func (p *Platform) sendToCreator(run runs.Run, subject, text string) error {
 	to := wire.Meta(run.Tag())[metaCreatedBy]
 	if to == "" {
 		p.log.Warn("platform: a scheduled answer has nobody to go to", "tenant", run.Tenant, "run", run.ID, "schedule", run.Schedule)
-		return
+		return nil
 	}
-	p.sendTo(run, to, subject, text)
+	return p.sendTo(run, to, subject, text)
 }
 
 // sendTo sends a result about a scheduled run to one person, the only one
 // shown it.
-func (p *Platform) sendTo(run runs.Run, to, subject, text string) {
-	p.raiseInbox(run.Tenant, "result:"+run.ID, inbox.Message{
+func (p *Platform) sendTo(run runs.Run, to, subject, text string) error {
+	return p.completionInbox(run.Tenant, "result:"+run.ID, inbox.Message{
 		Kind: inbox.KindResult, To: to, Subject: subject,
 		From: inbox.From{Kind: "agent", Name: run.Agent}, Severity: inbox.Info,
 		Source: inbox.Source{Run: run.ID, Thread: run.Thread, Agent: run.Agent, Project: run.Project},

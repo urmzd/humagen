@@ -992,6 +992,16 @@ func (p *Platform) reconcile(ctx context.Context) {
 	p.reconcileOperationReminders(ctx)
 	p.settleOperations(ctx)
 	p.syncAssignmentSchedules()
+	pending, err := p.Runs.PendingCompletions()
+	if err != nil {
+		p.log.Error("platform: pending completions could not be read", "error", err)
+	}
+	for _, run := range pending {
+		if ctx.Err() != nil {
+			return
+		}
+		p.ended(ctx, run)
+	}
 	for _, run := range p.Runs.Unfinished() {
 		p.settleFromLedger(ctx, run.Tenant, run.ID)
 	}
@@ -1077,21 +1087,24 @@ func (p *Platform) observe(ctx context.Context, e event.Envelope) {
 }
 
 // raise checks a run that has just ended against its tenant's alert rules.
-func (p *Platform) raise(run runs.Run) {
+func (p *Platform) raise(run runs.Run) error {
 	spoken := false
-	raised, err := p.Alerts.Evaluate(run, p.Runs.Recent)
+	raised, err := p.Alerts.EvaluateOnce(run, p.Runs.Recent)
 	if err != nil {
-		p.log.Error("platform: alerts could not be kept", "run", run.ID, "error", err)
+		return err
 	}
 	for _, a := range raised {
 		p.log.Warn("platform: alert", "rule", a.Rule, "severity", a.Severity, "title", a.Title, "run", a.RunID)
-		p.inboxAlert(run.Tenant, a)
+		if err := p.inboxAlert(run.Tenant, a); err != nil {
+			return err
+		}
 		spoken = spoken || a.RunID == run.ID
 	}
 	// A failure no rule was watching for still needs someone.
 	if !spoken {
-		p.inboxFailure(run)
+		return p.inboxFailure(run)
 	}
+	return nil
 }
 
 // RunTypes are the type prefixes the platform observes: every run event,
