@@ -115,3 +115,47 @@ func TestTwoProcessesAgree(t *testing.T) {
 		}
 	})
 }
+
+// Creates racing at the suite cap, through two processes, never leave a
+// tenant with more than maxSuites suites.
+func TestSuiteCapHoldsUnderRacingCreates(t *testing.T) {
+	statetest.Processes(t, func(t *testing.T, a, b state.Store) {
+		one, err := Open(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		two, err := Open(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stores := []*Store{one, two}
+		cases := []Case{{ID: "c1", Input: "hi", Checks: []Check{{Kind: Contains, Value: "x"}}}}
+		for i := range maxSuites - 1 {
+			if err := one.Put("acme", Suite{Name: fmt.Sprintf("pre-%03d", i), Target: Agent, Subject: "lead", Cases: cases}, false); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		const n = 32
+		var made atomic.Int32
+		var wg sync.WaitGroup
+		for i := range n {
+			wg.Go(func() {
+				s := Suite{Name: fmt.Sprintf("race-%02d", i), Target: Agent, Subject: "lead", Cases: cases}
+				switch err := stores[i%2].Put("acme", s, false); {
+				case err == nil:
+					made.Add(1)
+				case !errors.Is(err, ErrInvalid):
+					t.Error(err)
+				}
+			})
+		}
+		wg.Wait()
+		if made.Load() != 1 {
+			t.Errorf("%d racing creates succeeded, want 1", made.Load())
+		}
+		if got, err := two.List("acme"); err != nil || len(got) != maxSuites {
+			t.Fatalf("%d suites, want %d: %v", len(got), maxSuites, err)
+		}
+	})
+}
