@@ -887,6 +887,30 @@ export function Chat({
                     workspace={workspaceName}
                     onChange={runs.select}
                     projectFixed
+                    // The prompt bar is where a conversation's project is chosen and changed.
+                    projectControl={
+                      room?.thread ? (
+                        <ProjectPicker
+                          projects={projects ?? null}
+                          kinds={root?.kinds}
+                          value={room.thread.project}
+                          personalProject={personalProject}
+                          channel={room.thread.channel}
+                          canCreate={canCreateProject}
+                          onCreated={onProjectCreated}
+                          onChange={(next) => {
+                            if (next === room.thread.project) return;
+                            coworking.move(room.thread.id, next).then(
+                              (t) => {
+                                setRoom((r) => (r ? { ...r, thread: t } : r));
+                                onChanged();
+                              },
+                              (e) => setProblem(e instanceof Error ? e.message : String(e)),
+                            );
+                          }}
+                        />
+                      ) : undefined
+                    }
                   />
                 ),
               })

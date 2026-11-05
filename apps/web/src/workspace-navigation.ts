@@ -38,7 +38,7 @@ export function hubTabs(
         ["agents", nav.agents, can("agents:read")],
         ["skills", nav.skills, can("projects:read")],
         ["connections", nav.connections, can("runs:read")],
-        ["tools", "Your tool servers", can("runs:read")],
+        ["tools", "Tool Servers", can("runs:read")],
       ] as const
     )
       .filter(([, , visible]) => visible)

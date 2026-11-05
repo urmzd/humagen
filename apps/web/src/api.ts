@@ -193,6 +193,12 @@ export interface MessagePick {
 }
 
 export interface Revision {
+  /** The platform package it comes from, the version it is based on, and the latest. */
+  package?: { name: string; version: string; latest: string };
+  /** Someone in the workspace changed it from its package's version. */
+  customized?: boolean;
+  /** It was customized from an older version of its package than the latest. */
+  update_available?: boolean;
   spec: AgentSpec;
   rev: number;
   hash: string;
@@ -2029,6 +2035,20 @@ export const coworking = {
         default: t.default || "",
         agents: t.agents,
         mode: t.mode,
+      }),
+    ),
+  /** Moves a conversation to another project, keeping everything else as it stands. */
+  move: (id: string, project: string) =>
+    call<ThreadPage>("GET", `${threadPath(id)}?limit=1`).then(({ thread: t }) =>
+      call<Thread>("PUT", threadPath(id), {
+        version: t.version,
+        title: t.title || "",
+        visibility: t.visibility,
+        default: t.default || "",
+        agents: t.agents,
+        mode: t.mode,
+        project: project === "" ? "~" : project,
+        channel: "general",
       }),
     ),
   /** The caller's own marks on conversations. */

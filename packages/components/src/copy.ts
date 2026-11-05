@@ -399,6 +399,10 @@ export const defaultCopy = {
     search: "Find an agent",
     searchAmong: (count: number) => `Find among ${count} agents`,
     builtin: "Built-in",
+    customized: "Customized",
+    updateAvailable: "Update available",
+    packageHint:
+      "Maintained by Humagen. Change it like any agent; a newer version never overwrites your changes.",
     workspaceDefault: "Workspace default",
     noDescription: "No description or prompt yet.",
     runs: "Runs (24h)",

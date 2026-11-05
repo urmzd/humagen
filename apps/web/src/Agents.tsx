@@ -249,8 +249,21 @@ export function Agents({
                       >
                         {name}
                       </span>
-                      {builtin.includes(name) && (
-                        <span className="shrink-0 text-aui-xs text-aui-muted">{words.builtin}</span>
+                      {a.package ? (
+                        // A package agent is maintained by the platform and may be customized here.
+                        <span className="flex shrink-0 items-center gap-1.5 text-aui-xs text-aui-muted">
+                          <span title={words.packageHint}>{a.package.name}</span>
+                          {a.customized && <span>· {words.customized}</span>}
+                          {a.update_available && (
+                            <span className="text-aui-accent">· {words.updateAvailable}</span>
+                          )}
+                        </span>
+                      ) : (
+                        builtin.includes(name) && (
+                          <span className="shrink-0 text-aui-xs text-aui-muted">
+                            {words.builtin}
+                          </span>
+                        )
                       )}
                       {status && status !== "ready" && (
                         <span
