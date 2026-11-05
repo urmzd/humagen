@@ -232,6 +232,42 @@ func TestAFailedImportFailsTheStartAndChangesNothing(t *testing.T) {
 	})
 }
 
+// rulesUnreadable fails every read of one tenant's alert rules.
+type rulesUnreadable struct {
+	state.Store
+	tenant string
+}
+
+func (r rulesUnreadable) Lookup(ctx context.Context, namespace, tenantName, key string) (state.Record, error) {
+	if namespace == "alerts" && tenantName == r.tenant && key == "rules" {
+		return state.Record{}, statetest.ErrInjected
+	}
+	return r.Store.Lookup(ctx, namespace, tenantName, key)
+}
+
+// A migration that cannot read the alert rules fails the start and leaves the
+// settings as they were, rather than importing without the projects those
+// rules still name.
+func TestUnreadableAlertRulesFailTheMigration(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		legacySettings(t, st, tenant, time.Time{})
+		if _, err := newOn(t, rulesUnreadable{Store: st, tenant: tenant}); !errors.Is(err, statetest.ErrInjected) {
+			t.Fatalf("a start that could not read the alert rules = %v", err)
+		}
+		recs, err := st.Load(t.Context(), "projects")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i := slices.IndexFunc(recs, func(r state.Record) bool { return r.Tenant == tenant }); i >= 0 {
+			t.Fatalf("the migration imported %s without the alert rules", recs[i].Key)
+		}
+		if _, held := storedSettings(t, st, tenant)["projects"]; !held {
+			t.Fatal("the migration cleared the settings without the alert rules")
+		}
+	})
+}
+
 // fileOutsideTheTree has a platform on st file a schedule, an alert rule and
 // a limit in projects the tree does not hold, as an earlier version left them
 // when it dropped a project from settings.
