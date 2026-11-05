@@ -95,6 +95,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-064 | A connection maps its Slack members or GitHub logins to people, and a GitHub connection can be given its App's private key so the server mints installation tokens | Implemented: `ClientConnect.tsx`, `Clients.tsx`, `pkg/integrations/github/app_token.go`, `seeMapped` in `internal/platform/people.go`; web DOM, `pkg/integrations/github`, `pkg/people` and platform tests pass; live GitHub minting not yet tried |
 | DES-065 | Sources shows the data catalog a reader sees: connectors, tables and columns, never data, with Crawl, Publish and Withdraw for the owner | Implemented: `CatalogBrowser` in `SourceCatalog.tsx`, on `GET /api/catalog` and the connector routes; web DOM test passes; screens not yet captured |
 | DES-066 | A spend limit says what happens when it is reached, block or ask for approval with a grant cap, and the Directory names a person's projects | Implemented: `Billing.tsx` (`action`, `max_grant`, `max_grant_tokens`), `Directory.tsx` (`projects`, `projects_more`); web typecheck and tests pass; screens not yet captured |
+| DES-068 | The agent editor controls the models and reasoning efforts people may choose per message | Implemented: Model tab allowlists, versioned save, validation and read-only controls; six DOM regressions and console typecheck pass; native browser captures at 320, 390 and 1280 pixels |
 
 ### DES-001: Working integrations
 
@@ -1731,3 +1732,23 @@ Implemented in `Catalog.tsx`, `SourceCatalog.tsx`, and the connector kinds in
 Snowflake/object-storage race tests, and `library-catalog` phone/desktop screen
 fixture. The Catalog and New Source captures pass at phone and desktop widths
 (4 captures). The full screen suite is intentionally deferred to CI.
+
+### DES-068: Agent message choices
+
+The Model tab offers labeled lists of allowed models and reasoning efforts.
+Each model is `provider/model`, one per line. Each effort is a word, one per
+line. Empty lists offer no override; the default model remains available.
+Model providers are validated by the server, and the editor explains that an
+unsupported effort fails before a model call.
+
+Saving uses the existing versioned agent revision API. It trims and deduplicates
+lists, sorts them and lowercases efforts. Clearing both removes `choices`.
+Malformed models and efforts disable Save across tabs. Discard restores the
+saved values, a failed save preserves the draft, and built-in agents and readers
+without write permission cannot change the lists.
+
+Evidence: `agent-choices.dom.test.tsx` covers saving, validation, discard,
+clearing, errors and read-only access. Console typecheck passes. Lightweight
+native browser checks of the actual editor with fixture data pass at 320, 390
+and 1280 pixels, including overflow, invalid save and discard. Live provider
+compatibility was not exercised.
