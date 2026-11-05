@@ -109,3 +109,25 @@ type completionCatalogFailure struct{ wire.AgentStore }
 func (*completionCatalogFailure) Get(context.Context, string, string, int) (wire.Revision, error) {
 	return wire.Revision{}, statetest.ErrInjected
 }
+
+func TestCompletionRetriesPrivateMetadataWithoutPublishing(t *testing.T) {
+	p, err := New(Config{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tag := wire.NewEvent(wire.Raise{ID: "scheduled", Tenant: "acme", Agent: "lead", Origin: "cron", At: time.Now(), Actor: event.Actor{User: "ada"}, Context: map[string]string{wire.MetaCronSchedule: "daily", MetaDeliver: DeliverInbox, metaCreatedBy: "someone-else"}})
+	if err := p.Runs.Record("r1", tag, 1); err != nil {
+		t.Fatal(err)
+	}
+	r, _ := p.Runs.Observe(event.Envelope{Tenant: "acme", Run: "r1", Type: event.TypeCompleted, Time: time.Now(), Data: event.Completed{Text: "Private answer", Usage: &event.RunUsage{}}})
+	p.Agents = &completionCatalogFailure{AgentStore: p.Agents}
+	if err := p.deliverAnswer(t.Context(), r); !errors.Is(err, statetest.ErrInjected) {
+		t.Fatalf("metadata failure = %v", err)
+	}
+	if _, ok := p.Inbox.ByKey("acme", "result:r1"); ok {
+		t.Fatal("unverified answer was published")
+	}
+	if !p.mayCarryPersonData(t.Context(), r) {
+		t.Fatal("ordinary privacy check failed open")
+	}
+}

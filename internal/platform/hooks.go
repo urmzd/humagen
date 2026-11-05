@@ -198,7 +198,11 @@ func (p *Platform) afterTurn(ctx context.Context, run runs.Run) error {
 	if cfg.MemoryAgent != "" && !private {
 		// Every note is sent to other people's runs, so what a person's
 		// own credential reached is not taught at all.
-		if p.mayCarryPersonData(ctx, run) {
+		sensitive, err := p.completionPersonData(ctx, run)
+		if err != nil {
+			return err
+		}
+		if sensitive {
 			p.log.Info("platform: the memory agent is not asked about a turn that may carry what a person's own credential reached",
 				"tenant", run.Tenant, "run", run.ID)
 			return nil
@@ -238,17 +242,33 @@ func (p *Platform) afterTurn(ctx context.Context, run runs.Run) error {
 // index no longer holds, a revision or a granted provider that cannot be
 // found, and a provider changed since the turn, whose scope then is not kept.
 func (p *Platform) mayCarryPersonData(ctx context.Context, run runs.Run) bool {
+	sensitive, err := p.completionPersonData(ctx, run)
+	return sensitive || err != nil
+}
+
+// completionPersonData retains uncertainty as an error for durable work. It
+// sends nothing while metadata is unavailable and retries after recovery.
+func (p *Platform) completionPersonData(ctx context.Context, run runs.Run) (bool, error) {
 	path, err := p.Runs.Path(run.Tenant, run.ID)
-	if err != nil || len(path) == 0 {
-		return true
+	if err != nil {
+		if errors.Is(err, runs.ErrNotFound) {
+			return true, nil
+		}
+		return true, err
+	}
+	if len(path) == 0 {
+		return true, nil
 	}
 	if head := path[0]; head.Prev != "" {
 		if !strings.HasPrefix(head.Prev, "m-") {
-			return true
+			return true, nil
 		}
 		room, err := p.Runs.Conversation(run.Tenant, head.Thread)
 		if err != nil {
-			return true
+			if errors.Is(err, runs.ErrNotFound) {
+				return true, nil
+			}
+			return true, err
 		}
 		for _, r := range room {
 			if r.CreatedAt.Before(run.CreatedAt) {
@@ -272,11 +292,18 @@ func (p *Platform) mayCarryPersonData(ctx context.Context, run runs.Run) bool {
 		}
 		checked[key] = true
 		rev, err := p.Catalog().Get(ctx, turn.Tenant, turn.Agent, turn.Rev)
-		if err != nil || p.grantsPersonScoped(ctx, turn.Tenant, rev.Spec.Tools, turn.CreatedAt) {
-			return true
+		if err != nil {
+			if errors.Is(err, wire.ErrNotFound) {
+				return true, nil
+			}
+			return true, err
+		}
+		sensitive, err := p.completionPersonGrant(ctx, turn.Tenant, rev.Spec.Tools, turn.CreatedAt)
+		if err != nil || sensitive {
+			return sensitive, err
 		}
 	}
-	return false
+	return false, nil
 }
 
 // grantsPersonScoped reports whether tools grant a provider that takes each
@@ -284,9 +311,14 @@ func (p *Platform) mayCarryPersonData(ctx context.Context, run runs.Run) bool {
 // one, and so does one changed after since, when since is set, whose scope
 // then is not kept.
 func (p *Platform) grantsPersonScoped(ctx context.Context, tenant string, tools []string, since time.Time) bool {
+	sensitive, err := p.completionPersonGrant(ctx, tenant, tools, since)
+	return sensitive || err != nil
+}
+
+func (p *Platform) completionPersonGrant(ctx context.Context, tenant string, tools []string, since time.Time) (bool, error) {
 	for _, grant := range tools {
 		if grant == ToolSourceSearch {
-			return true
+			return true, nil
 		}
 		// As fiber expands a grant: anything else is not a provider's.
 		parsed, ok, err := wire.ParseMCPGrant(grant)
@@ -294,11 +326,17 @@ func (p *Platform) grantsPersonScoped(ctx context.Context, tenant string, tools 
 			continue
 		}
 		prov, err := p.ToolProviders.GetProvider(ctx, tenant, parsed.Provider)
-		if err != nil || prov.Scope() == toolprovider.ScopePerson || (!since.IsZero() && prov.UpdatedAt.After(since)) {
-			return true
+		if err != nil {
+			if errors.Is(err, toolprovider.ErrNotFound) {
+				return true, nil
+			}
+			return true, err
+		}
+		if prov.Scope() == toolprovider.ScopePerson || (!since.IsZero() && prov.UpdatedAt.After(since)) {
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, target, prompt string, extra ...map[string]string) error {

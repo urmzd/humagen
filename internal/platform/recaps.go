@@ -83,8 +83,14 @@ func (p *Platform) deliverAnswer(ctx context.Context, run runs.Run) error {
 	if where == DeliverNone {
 		return nil
 	}
-	if person := personOf(run.Actor); person != "" && (where == DeliverProject || wire.Meta(run.Tag())[metaCreatedBy] != person) && p.mayCarryPersonData(ctx, run) {
-		return p.keptFor(run, person, where)
+	if person := personOf(run.Actor); person != "" && (where == DeliverProject || wire.Meta(run.Tag())[metaCreatedBy] != person) {
+		sensitive, err := p.completionPersonData(ctx, run)
+		if err != nil {
+			return err
+		}
+		if sensitive {
+			return p.keptFor(run, person, where)
+		}
 	}
 	switch where {
 	case DeliverInbox:
