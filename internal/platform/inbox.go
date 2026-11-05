@@ -804,7 +804,13 @@ func (p *Platform) AckAlert(tenant, id, by string) (alerts.Alert, error) {
 }
 
 // inboxAlert raises the message about an alert. extra parts follow the alert's.
-func (p *Platform) inboxAlert(tenant string, a alerts.Alert, extra ...inbox.Part) error {
+func (p *Platform) inboxAlert(tenant string, a alerts.Alert, extra ...inbox.Part) {
+	if err := p.inboxAlertCompletion(tenant, a, extra...); err != nil {
+		p.log.Error("platform: completion inbox message could not be kept", "error", err)
+	}
+}
+
+func (p *Platform) inboxAlertCompletion(tenant string, a alerts.Alert, extra ...inbox.Part) error {
 	kind, from := inbox.KindAlert, inbox.From{Kind: "rule", Name: a.Rule}
 	if a.Kind == alerts.Budget {
 		kind, from = inbox.KindBudget, inbox.From{Kind: "system", Name: "Limits"}
@@ -854,7 +860,13 @@ func (p *Platform) inboxFailure(run runs.Run) error {
 }
 
 // inboxMemory raises the message asking which proposed memories to keep.
-func (p *Platform) inboxMemory(run runs.Run, owner string, notes []memory.Note) error {
+func (p *Platform) inboxMemory(run runs.Run, owner string, notes []memory.Note) {
+	if err := p.inboxMemoryCompletion(run, owner, notes); err != nil {
+		p.log.Error("platform: completion inbox message could not be kept", "error", err)
+	}
+}
+
+func (p *Platform) inboxMemoryCompletion(run runs.Run, owner string, notes []memory.Note) error {
 	if len(notes) == 0 {
 		return nil
 	}

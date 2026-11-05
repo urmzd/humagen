@@ -1103,7 +1103,7 @@ func (p *Platform) raise(run runs.Run) error {
 	}
 	for _, a := range raised {
 		p.log.Warn("platform: alert", "rule", a.Rule, "severity", a.Severity, "title", a.Title, "run", a.RunID)
-		if err := p.inboxAlert(run.Tenant, a); err != nil {
+		if err := p.inboxAlertCompletion(run.Tenant, a); err != nil {
 			return err
 		}
 		spoken = spoken || a.RunID == run.ID

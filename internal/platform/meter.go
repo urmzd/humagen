@@ -218,7 +218,7 @@ func (p *Platform) settleUsage(ctx context.Context, run runs.Run) error {
 	}
 	// From here a call reported late changes the ledger, by what goes beyond
 	// this total, and not the run's Spent, which settles into its caller now.
-	if err := p.Runs.SetUsage(run.Tenant, run.ID, recorded, micros); err != nil {
+	if err := p.Runs.SetUsageChecked(run.Tenant, run.ID, recorded, micros); err != nil {
 		return err
 	}
 	p.halting.Delete(run.ID)
@@ -233,7 +233,7 @@ func (p *Platform) settleUsage(ctx context.Context, run runs.Run) error {
 		if err != nil {
 			return err
 		}
-		return p.Runs.SettleCall(now)
+		return p.Runs.SettleCallChecked(now)
 	}
 	return nil
 }

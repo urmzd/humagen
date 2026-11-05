@@ -440,7 +440,14 @@ func (x *Index) update(what, tenant, runID string, fn func(t *txn, r *Run) (Run,
 
 // SetTitle names a conversation. A conversation with no name is shown by the
 // first thing that was asked in it.
-func (x *Index) SetTitle(tenant, thread, title string) error {
+func (x *Index) SetTitle(tenant, thread, title string) {
+	if err := x.SetTitleChecked(tenant, thread, title); err != nil {
+		x.log.Error("runs: SetTitle failed", "error", err)
+	}
+}
+
+// SetTitleChecked preserves storage failures for durable completion retries.
+func (x *Index) SetTitleChecked(tenant, thread, title string) error {
 	return x.setTitle(tenant, thread, title, false)
 }
 
@@ -707,7 +714,14 @@ func (x *Index) ObserveUsage(e event.Envelope) (Run, bool) {
 // the micro-USD its settlement added beyond the calls already spent joins
 // Spent, in one step. Nothing changes a closed run's usage or Spent after
 // that but the calls it made, as they settle with it. A run is closed once.
-func (x *Index) SetUsage(tenant, runID string, u *event.RunUsage, micros int64) error {
+func (x *Index) SetUsage(tenant, runID string, u *event.RunUsage, micros int64) {
+	if err := x.SetUsageChecked(tenant, runID, u, micros); err != nil {
+		x.log.Error("runs: SetUsage failed", "error", err)
+	}
+}
+
+// SetUsageChecked preserves storage failures for durable completion retries.
+func (x *Index) SetUsageChecked(tenant, runID string, u *event.RunUsage, micros int64) error {
 	return x.do(tenant, func(t *txn) error {
 		r, err := t.run(runID)
 		if err != nil {
@@ -759,7 +773,14 @@ func (x *Index) Spend(tenant, runID string, micros int64) (Run, bool) {
 // settled its own spend into its caller already. The spend then climbs on,
 // through every ancestor that has settled, to the nearest one that has not,
 // or to the root, so the tree's figure is whole wherever it is read.
-func (x *Index) SettleCall(child Run) error {
+func (x *Index) SettleCall(child Run) {
+	if err := x.SettleCallChecked(child); err != nil {
+		x.log.Error("runs: SettleCall failed", "error", err)
+	}
+}
+
+// SettleCallChecked preserves storage failures for durable completion retries.
+func (x *Index) SettleCallChecked(child Run) error {
 	err := x.do(child.Tenant, func(t *txn) error {
 		c, err := t.run(child.ID)
 		if err != nil || c == nil || c.settledUp {

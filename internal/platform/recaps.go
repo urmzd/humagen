@@ -191,18 +191,6 @@ func (p *Platform) postFromAgent(tenant string, d inbox.DraftPart, approvedBy st
 }
 
 // openDrafts counts the drafts a project's owners have still to decide.
-func (p *Platform) openDrafts(tenant, project string) int {
-	n := 0
-	for _, m := range p.Inbox.OpenOf(tenant, inbox.KindAnnouncement) {
-		for _, part := range m.Parts {
-			if part.Type == inbox.PartDraft && part.Draft != nil && part.Draft.Project == project && part.State == inbox.PartOpen {
-				n++
-			}
-		}
-	}
-	return n
-}
-
 func (p *Platform) countOpenDrafts(tenant, project string) (int, error) {
 	n := 0
 	messages, err := p.Inbox.ReadOpen(tenant, inbox.KindAnnouncement)

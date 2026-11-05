@@ -414,7 +414,7 @@ func (p *Platform) fileHook(run runs.Run) error {
 	switch meta[metaHook] {
 	case hookTitle:
 		if title := oneLine(run.Answer, maxTitle); title != "" {
-			return p.Runs.SetTitle(run.Tenant, target, title)
+			return p.Runs.SetTitleChecked(run.Tenant, target, title)
 		}
 	case hookMemory:
 		kept := 0
@@ -425,7 +425,7 @@ func (p *Platform) fileHook(run runs.Run) error {
 		if err != nil {
 			return err
 		}
-		unasked := !personal && !projectMemory && cfg.withDefaults().MemoryAutoApprove
+		unasked := !personal && !projectMemory && cfg.withDefaults().MemoryAutoApprove && p.mayKeepUnasked(run.Tenant, target, meta[metaKeepsNotes])
 		for _, line := range strings.Split(run.Answer, "\n") {
 			line = strings.TrimSpace(line)
 			if line == "" || strings.EqualFold(strings.Trim(line, ".-* "), "none") || kept == 3 {
@@ -456,7 +456,7 @@ func (p *Platform) fileHook(run runs.Run) error {
 			}
 		}
 		if !personal {
-			return p.inboxMemory(run, target, proposed)
+			return p.inboxMemoryCompletion(run, target, proposed)
 		}
 	}
 	return nil
