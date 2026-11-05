@@ -87,6 +87,9 @@ func entryOps(e Entry, added *Spend, seq int64) ([]state.Op, error) {
 		return nil, err
 	}
 	ops := []state.Op{state.Put(e.Tenant, entryKey(e.At, seq), raw)}
+	if e.Kind == Settled {
+		ops = append(ops, state.Put(e.Tenant, "settlement:"+e.RunID, raw))
+	}
 	if isNotice(e.Kind) {
 		plain, err := json.Marshal(e)
 		if err != nil {

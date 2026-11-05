@@ -20,6 +20,24 @@ function run(actions: QueueAction[], start: QueueState = emptyQueue()) {
 }
 
 describe("queue", () => {
+  it("keeps distinct choices for identical messages through editing and retry", () => {
+    const first = { ...msg("a"), text: "same", pick: { model: "a/one", effort: "high" } };
+    const second = { ...msg("b"), text: "same", pick: { model: "b/two" } };
+    const { state, effects } = run([
+      { type: "send", message: msg("running") },
+      { type: "send", message: first },
+      { type: "send", message: second },
+      { type: "edit", id: "a", text: "edited" },
+      { type: "turnEnded", outcome: "done" },
+      { type: "rejected" },
+      { type: "resume" },
+      { type: "turnEnded", outcome: "done" },
+    ]);
+    expect(effects[4]).toEqual({ type: "start", message: { ...first, text: "edited" } });
+    expect(effects[6]).toEqual(effects[4]);
+    expect(effects[7]).toEqual({ type: "start", message: second });
+    expect(state.current).toEqual(second);
+  });
   it("keeps a rejected post editable ahead of later messages without retrying", () => {
     const { state, effects } = run([
       { type: "send", message: msg("a") },

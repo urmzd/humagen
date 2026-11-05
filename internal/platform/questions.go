@@ -732,11 +732,15 @@ func (p *Platform) settleQuestion(tenant, runID, questionID string, o inbox.Outc
 
 // settleQuestionsOf settles every question still open on a run that ended:
 // stopped while it waited, or ended without an answer to it.
-func (p *Platform) settleQuestionsOf(run runs.Run) {
+func (p *Platform) settleQuestionsOf(run runs.Run) error {
 	p.answers.Lock()
 	defer p.answers.Unlock()
 	for _, kind := range []inbox.Kind{inbox.KindApproval, inbox.KindClarification} {
-		for _, m := range p.Inbox.OpenOf(run.Tenant, kind) {
+		messages, err := p.Inbox.ReadOpen(run.Tenant, kind)
+		if err != nil {
+			return err
+		}
+		for _, m := range messages {
 			if m.Source.Run != run.ID {
 				continue
 			}
@@ -748,10 +752,13 @@ func (p *Platform) settleQuestionsOf(run runs.Run) {
 				if run.Status == runs.Stopped {
 					o.Action, o.Note = OutcomeStopped, run.Cause
 				}
-				_, _, _ = p.Inbox.Resolve(run.Tenant, m.ID, part.ID, o)
+				if _, _, err := p.Inbox.Resolve(run.Tenant, m.ID, part.ID, o); err != nil {
+					return err
+				}
 			}
 		}
 	}
+	return nil
 }
 
 // questionOf is the question a part holds, as the runtime checks an answer

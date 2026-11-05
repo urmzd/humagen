@@ -224,8 +224,10 @@ type Index struct {
 	instance string
 	// seqs caches each run's number by tenant and id. A run's number never
 	// changes, so the cache may be dropped at any time.
-	seqs sync.Map
-	log  *slog.Logger
+	completionMu    sync.Mutex
+	completionAfter map[string]string
+	seqs            sync.Map
+	log             *slog.Logger
 }
 
 // NewIndex returns an empty index in this process's memory.
@@ -702,6 +704,7 @@ func (t *txn) commit() error {
 		}
 		if was && !is {
 			t.del(activeKey(r.seq))
+			t.put(completionKey(r.seq), completion{Run: r.ID}, 0)
 			if r.Lifecycle == Attached && r.Parent != "" {
 				p, err := t.run(r.Parent)
 				if err != nil {

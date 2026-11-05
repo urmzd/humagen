@@ -1629,6 +1629,12 @@ func (s *Store) Tenants() ([]string, error) {
 // messages, oldest first, are read. A record that cannot be read reads as
 // none.
 func (s *Store) OpenOf(tenantName string, kind Kind) []Message {
+	out, _ := s.ReadOpen(tenantName, kind)
+	return out
+}
+
+// ReadOpen is OpenOf with storage errors preserved for durable work.
+func (s *Store) ReadOpen(tenantName string, kind Kind) ([]Message, error) {
 	var out []Message
 	_, err := scan(s.st, tenantName, "l:", "", false, maxOpen, func(r state.Record) (bool, error) {
 		var km keptMessage
@@ -1641,9 +1647,9 @@ func (s *Store) OpenOf(tenantName string, kind Kind) []Message {
 		return true, nil
 	})
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return out
+	return out, nil
 }
 
 // Raised returns the messages of a kind raised in [since, until), newest

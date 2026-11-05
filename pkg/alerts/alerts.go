@@ -287,10 +287,11 @@ const namespace = "alerts"
 // stored is one record: a tenant's rules (under rulesKey), one alert, or an
 // open key.
 type stored struct {
-	Rules []Rule               `json:"rules,omitempty"`
-	Next  int                  `json:"next,omitempty"`
-	Last  map[string]time.Time `json:"last,omitempty"`
-	Alert *storedAlert         `json:"alert,omitempty"`
+	Completion []Alert              `json:"completion,omitempty"`
+	Rules      []Rule               `json:"rules,omitempty"`
+	Next       int                  `json:"next,omitempty"`
+	Last       map[string]time.Time `json:"last,omitempty"`
+	Alert      *storedAlert         `json:"alert,omitempty"`
 	// Open is, under an open key, the id of the alert that holds it.
 	Open string `json:"open,omitempty"`
 }
@@ -621,12 +622,13 @@ func (e *Engine) isOpen(tenantName, key string) (bool, error) {
 // raising is one change to a tenant that raises alerts: its rules record as
 // read, and the alerts raised so far, written together by commit.
 type raising struct {
-	e       *Engine
-	tenant  string
-	t       stored
-	version int64
-	b       *state.Batch[stored]
-	raised  []Alert
+	e          *Engine
+	tenant     string
+	t          stored
+	version    int64
+	completion string
+	b          *state.Batch[stored]
+	raised     []Alert
 }
 
 func (e *Engine) raising(tenantName string) (*raising, error) {
@@ -688,8 +690,11 @@ func (w *raising) add(a Alert, scope string) error {
 
 // commit writes what was raised and the rules record, at the version read.
 func (w *raising) commit() error {
+	if w.completion != "" {
+		w.b.Create(w.tenant, w.completion, stored{Completion: w.raised})
+	}
 	if len(w.raised) == 0 {
-		return nil
+		return w.b.Commit()
 	}
 	if w.version == 0 {
 		w.b.Create(w.tenant, rulesKey, w.t)
@@ -706,13 +711,34 @@ type Recent func(tenant, agent, project string, since time.Time) runs.Window
 // Evaluate checks a run that has just ended against its tenant's rules and
 // returns the alerts it raised. When they cannot be written none is raised.
 func (e *Engine) Evaluate(run runs.Run, recent Recent) ([]Alert, error) {
+	return e.evaluate(run, recent, false)
+}
+
+// EvaluateOnce keeps the result with the alerts, so interrupted completion can
+// retry their inbox delivery without raising new alerts or resetting cooldowns.
+func (e *Engine) EvaluateOnce(run runs.Run, recent Recent) ([]Alert, error) {
+	return e.evaluate(run, recent, true)
+}
+
+func (e *Engine) evaluate(run runs.Run, recent Recent, once bool) ([]Alert, error) {
 	var raised []Alert
 	err := state.Retry(func() error {
 		raised = nil
+		key := ""
+		if once {
+			key = "completion/" + run.ID
+			if rec, err := e.kept.Lookup(run.Tenant, key); err == nil {
+				raised = rec.Value.Completion
+				return nil
+			} else if !errors.Is(err, state.ErrNotFound) {
+				return err
+			}
+		}
 		w, err := e.raising(run.Tenant)
 		if err != nil {
 			return err
 		}
+		w.completion = key
 		raise := func(r Rule, title, body string) error {
 			return w.fired(r, Alert{
 				Agent: run.Agent, Project: run.Project, RunID: run.ID, Title: title, Body: body, At: run.UpdatedAt,

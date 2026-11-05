@@ -805,6 +805,12 @@ func (p *Platform) AckAlert(tenant, id, by string) (alerts.Alert, error) {
 
 // inboxAlert raises the message about an alert. extra parts follow the alert's.
 func (p *Platform) inboxAlert(tenant string, a alerts.Alert, extra ...inbox.Part) {
+	if err := p.inboxAlertCompletion(tenant, a, extra...); err != nil {
+		p.log.Error("platform: completion inbox message could not be kept", "error", err)
+	}
+}
+
+func (p *Platform) inboxAlertCompletion(tenant string, a alerts.Alert, extra ...inbox.Part) error {
 	kind, from := inbox.KindAlert, inbox.From{Kind: "rule", Name: a.Rule}
 	if a.Kind == alerts.Budget {
 		kind, from = inbox.KindBudget, inbox.From{Kind: "system", Name: "Limits"}
@@ -828,7 +834,7 @@ func (p *Platform) inboxAlert(tenant string, a alerts.Alert, extra ...inbox.Part
 		}
 	}
 	m.Parts = append(m.Parts, extra...)
-	p.raiseInbox(tenant, alertKey(a.ID), m, a.At)
+	return p.completionInbox(tenant, alertKey(a.ID), m, a.At)
 }
 
 func retryable(run runs.Run) bool { return run.Origin == runs.OriginAPI && run.Parent == "" }
@@ -841,11 +847,11 @@ func failurePart(run runs.Run) inbox.Part {
 
 // inboxFailure raises the message about a failed run that no alert rule spoke
 // for. A run a rule did catch is already in the inbox as that alert.
-func (p *Platform) inboxFailure(run runs.Run) {
+func (p *Platform) inboxFailure(run runs.Run) error {
 	if run.Status != runs.Failed || run.Origin == runs.OriginSystem || run.Origin == OriginEval {
-		return
+		return nil
 	}
-	p.raiseInbox(run.Tenant, runKey(run.ID), inbox.Message{
+	return p.completionInbox(run.Tenant, runKey(run.ID), inbox.Message{
 		Kind: inbox.KindFailure, Subject: run.Agent + " failed", From: inbox.From{Kind: "agent", Name: run.Agent},
 		Severity: inbox.Warning,
 		Source:   inbox.Source{Run: run.ID, Thread: run.Thread, Agent: run.Agent, Project: run.Project},
@@ -855,8 +861,14 @@ func (p *Platform) inboxFailure(run runs.Run) {
 
 // inboxMemory raises the message asking which proposed memories to keep.
 func (p *Platform) inboxMemory(run runs.Run, owner string, notes []memory.Note) {
+	if err := p.inboxMemoryCompletion(run, owner, notes); err != nil {
+		p.log.Error("platform: completion inbox message could not be kept", "error", err)
+	}
+}
+
+func (p *Platform) inboxMemoryCompletion(run runs.Run, owner string, notes []memory.Note) error {
 	if len(notes) == 0 {
-		return
+		return nil
 	}
 	part := inbox.MemoryPart{Owner: owner}
 	about := owner
@@ -878,7 +890,7 @@ func (p *Platform) inboxMemory(run runs.Run, owner string, notes []memory.Note) 
 	if len(notes) == 1 {
 		noun = "memory"
 	}
-	p.raiseInbox(run.Tenant, "memory:"+run.ID, inbox.Message{
+	return p.completionInbox(run.Tenant, "memory:"+run.ID, inbox.Message{
 		Kind: inbox.KindMemory, Subject: fmt.Sprintf("%d proposed %s for %s", len(notes), noun, about),
 		From: inbox.From{Kind: "agent", Name: run.Agent}, Severity: inbox.Info, Audience: audience,
 		Source: inbox.Source{Run: run.ID, Agent: part.Agent, Project: part.Project},
@@ -1135,4 +1147,11 @@ func (p *Platform) syncMemory(tenant, owner string) {
 			}
 		}
 	}
+}
+
+// completionInbox retains one message per completed effect, even if a person
+// resolved it before an interrupted completion is retried.
+func (p *Platform) completionInbox(tenant, key string, m inbox.Message, at time.Time) error {
+	_, _, err := p.Inbox.RaiseOnce(tenant, key, m, at)
+	return err
 }

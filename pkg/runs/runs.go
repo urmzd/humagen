@@ -441,9 +441,14 @@ func (x *Index) update(what, tenant, runID string, fn func(t *txn, r *Run) (Run,
 // SetTitle names a conversation. A conversation with no name is shown by the
 // first thing that was asked in it.
 func (x *Index) SetTitle(tenant, thread, title string) {
-	if err := x.setTitle(tenant, thread, title, false); err != nil {
-		x.fail("title", tenant, thread, err)
+	if err := x.SetTitleChecked(tenant, thread, title); err != nil {
+		x.log.Error("runs: SetTitle failed", "error", err)
 	}
+}
+
+// SetTitleChecked preserves storage failures for durable completion retries.
+func (x *Index) SetTitleChecked(tenant, thread, title string) error {
+	return x.setTitle(tenant, thread, title, false)
 }
 
 // setTitle names a conversation; with unset only one not yet named.
@@ -710,9 +715,23 @@ func (x *Index) ObserveUsage(e event.Envelope) (Run, bool) {
 // Spent, in one step. Nothing changes a closed run's usage or Spent after
 // that but the calls it made, as they settle with it. A run is closed once.
 func (x *Index) SetUsage(tenant, runID string, u *event.RunUsage, micros int64) {
-	x.update("usage", tenant, runID, func(t *txn, r *Run) (Run, bool) {
+	if err := x.SetUsageChecked(tenant, runID, u, micros); err != nil {
+		x.log.Error("runs: SetUsage failed", "error", err)
+	}
+}
+
+// SetUsageChecked preserves storage failures for durable completion retries.
+func (x *Index) SetUsageChecked(tenant, runID string, u *event.RunUsage, micros int64) error {
+	return x.do(tenant, func(t *txn) error {
+		r, err := t.run(runID)
+		if err != nil {
+			return err
+		}
+		if r == nil {
+			return ErrNotFound
+		}
 		if r.closed {
-			return Run{}, false
+			return nil
 		}
 		t.touch(r)
 		if u != nil && !r.final {
@@ -721,7 +740,7 @@ func (x *Index) SetUsage(tenant, runID string, u *event.RunUsage, micros int64) 
 		}
 		r.tally, r.closed = nil, true
 		r.Spent += micros
-		return Run{}, true
+		return nil
 	})
 }
 
@@ -755,6 +774,13 @@ func (x *Index) Spend(tenant, runID string, micros int64) (Run, bool) {
 // through every ancestor that has settled, to the nearest one that has not,
 // or to the root, so the tree's figure is whole wherever it is read.
 func (x *Index) SettleCall(child Run) {
+	if err := x.SettleCallChecked(child); err != nil {
+		x.log.Error("runs: SettleCall failed", "error", err)
+	}
+}
+
+// SettleCallChecked preserves storage failures for durable completion retries.
+func (x *Index) SettleCallChecked(child Run) error {
 	err := x.do(child.Tenant, func(t *txn) error {
 		c, err := t.run(child.ID)
 		if err != nil || c == nil || c.settledUp {
@@ -782,9 +808,7 @@ func (x *Index) SettleCall(child Run) {
 		}
 		return nil
 	})
-	if err != nil {
-		x.fail("settle call", child.Tenant, child.ID, err)
-	}
+	return err
 }
 
 // causeOf says why a run stopped, from the request the runtime honoured.
@@ -859,15 +883,39 @@ func hold(r *Run) bool {
 // Settle completes a run that was held open by attached runs, once none of
 // them is still working. It returns the run and whether this call ended it.
 func (x *Index) Settle(tenant, runID string, at time.Time) (Run, bool) {
-	return x.update("settle", tenant, runID, func(t *txn, r *Run) (Run, bool) {
+	r, done, err := x.SettleChecked(tenant, runID, at)
+	if err != nil {
+		x.fail("settle", tenant, runID, err)
+	}
+	return r, done
+}
+
+// SettleChecked preserves storage errors so completion can retry a parent join.
+func (x *Index) SettleChecked(tenant, runID string, at time.Time) (Run, bool, error) {
+	var out Run
+	done := false
+	err := x.do(tenant, func(t *txn) error {
+		out, done = Run{}, false
+		r, err := t.run(runID)
+		if err != nil {
+			return err
+		}
+		if r == nil {
+			return ErrNotFound
+		}
 		if !r.Finishing || r.Status.Terminal() || r.openAttached > 0 {
-			return Run{}, false
+			return nil
 		}
 		t.touch(r)
 		r.Status, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping = Completed, at, false, "", false
 		x.finishAssistance(r)
-		return citationSnapshot(r), true
+		out, done = citationSnapshot(r), true
+		return nil
 	})
+	if err != nil {
+		return Run{}, false, err
+	}
+	return out, done, nil
 }
 
 // AskStop records that a run was asked to stop. From now on the run
@@ -917,14 +965,20 @@ func (x *Index) Stop(tenant, runID, answer, cause string, at time.Time) (Run, bo
 
 // AttachedTo returns the runs attached to a run that have not ended.
 func (x *Index) AttachedTo(tenant, runID string) []Run {
+	out, _ := x.ReadAttached(tenant, runID)
+	return out
+}
+
+// ReadAttached reads attached runs and preserves storage errors for recovery.
+func (x *Index) ReadAttached(tenant, runID string) ([]Run, error) {
 	r, _, err := x.get(tenant, runID)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	tree, err := x.under(tenant, treePrefix(r.Root), MaxTree)
 	if err != nil {
 		x.log.Error("runs: could not read a call tree", "tenant", tenant, "run", runID, "error", err)
-		return nil
+		return nil, err
 	}
 	var out []Run
 	for _, c := range tree {
@@ -932,7 +986,7 @@ func (x *Index) AttachedTo(tenant, runID string) []Run {
 			out = append(out, citationSnapshot(c))
 		}
 	}
-	return out
+	return out, nil
 }
 
 // Window is what the runs in a scope did since a time.

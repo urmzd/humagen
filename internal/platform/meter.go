@@ -196,25 +196,31 @@ func (p *Platform) unmeteredAlert(tenant string, a policy.Applied) {
 // figure on the run, its own calls settled in the usage ledger, and its spend
 // settled with the run that called it. It is called once per run, from ended,
 // and is safe to call again: the ledger settles a run once.
-func (p *Platform) settleUsage(ctx context.Context, run runs.Run) {
+func (p *Platform) settleUsage(ctx context.Context, run runs.Run) error {
 	var micros int64
 	var recorded *event.RunUsage
-	if u, ok := p.recordedUsage(ctx, run); ok {
+	u, ok, err := p.recordedUsage(ctx, run)
+	if err != nil {
+		return err
+	}
+	if ok {
 		recorded = &u
 		// Only the run's own calls: the runs it called settle their own,
 		// so each call in a tree is counted once.
-		added, _, err := p.Usage.Record(usage.Entry{
+		added, err := p.Usage.Settle(usage.Entry{
 			Kind: usage.Settled, Key: "run:" + run.ID, Tenant: run.Tenant, Project: run.Project, Within: run.Within, Agent: run.Agent,
 			Client: run.Client, RunID: run.ID, At: p.now(), Spend: new(usage.Of(u.Own)),
 		})
 		if err != nil {
-			p.log.Error("platform: usage entry could not be written", "kind", usage.Settled, "run", run.ID, "error", err)
+			return err
 		}
 		micros = added.Micros
 	}
 	// From here a call reported late changes the ledger, by what goes beyond
 	// this total, and not the run's Spent, which settles into its caller now.
-	p.Runs.SetUsage(run.Tenant, run.ID, recorded, micros)
+	if err := p.Runs.SetUsageChecked(run.Tenant, run.ID, recorded, micros); err != nil {
+		return err
+	}
 	p.halting.Delete(run.ID)
 	p.holding.Range(func(k, _ any) bool {
 		if key, _ := k.(string); strings.HasPrefix(key, run.ID+"\x00") {
@@ -223,30 +229,33 @@ func (p *Platform) settleUsage(ctx context.Context, run runs.Run) {
 		return true
 	})
 	if run.Parent != "" {
-		if now, err := p.Runs.Get(run.Tenant, run.ID); err == nil {
-			p.Runs.SettleCall(now)
+		now, err := p.Runs.Get(run.Tenant, run.ID)
+		if err != nil {
+			return err
 		}
+		return p.Runs.SettleCallChecked(now)
 	}
+	return nil
 }
 
 // recordedUsage is the runtime's figure for a run that has ended: from its
 // terminal event when that carried one, otherwise from the run ledger, its
 // output for a run that succeeded there and its usage records for one that
 // failed. It reports false when there is none, for a run that called no model.
-func (p *Platform) recordedUsage(ctx context.Context, run runs.Run) (event.RunUsage, bool) {
+func (p *Platform) recordedUsage(ctx context.Context, run runs.Run) (event.RunUsage, bool, error) {
 	if run.UsageRecorded() {
-		return *run.Usage, true
+		return *run.Usage, true, nil
 	}
 	rec, records, err := p.ledger.Load(ctx, run.ID)
 	if err != nil {
-		p.log.Warn("platform: a run's usage could not be read from the ledger", "run", run.ID, "error", err)
-		return event.RunUsage{}, false
+		return event.RunUsage{}, false, err
 	}
 	if rec.Status == drun.StatusSucceeded {
 		var out runtime.Output
 		if json.Unmarshal(rec.Output, &out) == nil && out.Usage != nil {
-			return *out.Usage, true
+			return *out.Usage, true, nil
 		}
 	}
-	return runtime.RecordedUsage(records)
+	u, ok := runtime.RecordedUsage(records)
+	return u, ok, nil
 }
