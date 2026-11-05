@@ -1011,7 +1011,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 	// What the reader may read is decided once a run, from a snapshot of the
 	// tree taken again every refresh, so a role taken away stops the next
 	// run's events within one.
-	gate := newRunGate(s.P, who)
+	gate := newRunGate(r.Context(), s.P, who)
 	tick := time.NewTicker(heartbeat)
 	defer tick.Stop()
 	for {
