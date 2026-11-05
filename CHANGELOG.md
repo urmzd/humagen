@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.87.0 (2026-11-05)
+
+### Features
+
+- edit per-message choices in the agent model tab (#219) ([84adec1](https://github.com/urmzd/humagen/commit/84adec1632965c381bd3231b15fdf72acf3a2e7c))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.86.1...v0.87.0)
+
+
 ## 0.86.1 (2026-11-05)
 
 ### Bug Fixes
