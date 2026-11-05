@@ -395,6 +395,10 @@ saves explicit event/action lists and `deliver_outcomes`. Empty lists disable
 those capabilities. Existing installations without a saved policy keep their
 configured behavior. These controls only narrow the installation's agent,
 project and action-policy grants. Managed installations are read-only.
+GitHub's read-only actions, `github_read_context`, `github_read_file` and
+`github_workflow_status` (CI results for a commit), are in the
+`read_context` action-policy category, so a review agent granted them reads
+CI status wherever it may read context.
 
 A Slack channel binding optionally sets `direction`: `two_way` (the legacy
 default), `inbound`, or `outcomes`. Inbound mirrors mapped human messages

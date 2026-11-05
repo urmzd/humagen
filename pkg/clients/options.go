@@ -28,7 +28,10 @@ func ActionIDs(surface Surface) []string {
 		return []string{"slack_post_message", "slack_add_reaction"}
 	}
 	if surface == GitHub {
-		return []string{"github_read_context", "github_comment", "github_request_review", "github_add_labels", "github_apply_changes", "github_run_checks"}
+		// Every action the GitHub adapter registers, so a saved list can
+		// grant any of them: github_read_file and github_workflow_status
+		// (CI results) are read-only, and the console lists them.
+		return []string{"github_read_context", "github_read_file", "github_workflow_status", "github_comment", "github_request_review", "github_add_labels", "github_apply_changes", "github_run_checks"}
 	}
 	return []string{}
 }

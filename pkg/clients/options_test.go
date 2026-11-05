@@ -61,3 +61,16 @@ func TestInstallationCapabilitiesRejectUnknownAndMalformedPeople(t *testing.T) {
 		}
 	}
 }
+
+// The adapter's read-only actions, CI status among them, can be granted to a
+// saved installation; a list naming them used to fail validation.
+func TestInstallationCapabilitiesGrantGitHubReadActions(t *testing.T) {
+	c := githubOf("github", "acme")
+	c.Capabilities = &Capabilities{Events: []string{"pull_request"}, Actions: []string{"github_read_context", "github_read_file", "github_workflow_status"}}
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if !c.AllowsAction("github_workflow_status") || c.AllowsAction("github_run_checks") {
+		t.Fatal("grant not exact", c.Capabilities)
+	}
+}
