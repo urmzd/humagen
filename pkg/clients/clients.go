@@ -354,6 +354,12 @@ var (
 	githubLogin = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,38}(\[bot\])?$`)
 )
 
+// ValidSlackID reports whether an identifier has Slack's bounded ID format.
+func ValidSlackID(id string) bool { return slackID.MatchString(id) }
+
+// ValidGitHubID reports whether an app or installation ID is 1 to 20 digits.
+func ValidGitHubID(id string) bool { return digits.MatchString(id) }
+
 // Slug makes an id out of a name: "Docs Bot" becomes "docs-bot".
 func Slug(name string) string {
 	var b strings.Builder
