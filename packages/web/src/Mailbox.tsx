@@ -16,7 +16,6 @@ import {
   openParts,
   sortMessages,
   type TemplateId,
-  type Tone,
 } from "@humagen/core";
 import {
   AlertOctagonIcon,
@@ -132,7 +131,7 @@ export interface MailboxProps {
   /** The number in the header, when `messages` is only one page of the inbox. */
   openCount?: number;
   /**
-   * The reader's own views (Inbox, Unread, Hidden), as a segmented control
+   * The reader's own views (Inbox, Hidden, Done), as a segmented control
    * with their counts, in place of the show control. With views, a row says
    * no state: which view it is in says it.
    */
@@ -170,8 +169,8 @@ const SHOW: Record<MailboxShow, InboxItemState[] | null> = {
 type Icon = ComponentType<{ size?: number; className?: string }>;
 
 /**
- * Each template's icon and tint. The tint is a second cue only: the
- * template's name and the severity are always said in words beside it.
+ * Each template's icon and tint for platform messages. Agent messages use
+ * the sender's mark.
  */
 const TEMPLATE_LOOK: Record<TemplateId, { icon: Icon; tint: string }> = {
   alert: { icon: AlertTriangleIcon, tint: "bg-aui-warn/12 text-aui-warn" },
@@ -205,12 +204,6 @@ function lookOf(message: InboxMessage): { icon: Icon; tint: string } {
   }
   return look;
 }
-
-/** Severity is always said in words (copy.severity); the tint is only a second cue. */
-const SEVERITY_TINT: Partial<Record<Tone, string>> = {
-  bad: "text-aui-bad",
-  warn: "text-aui-warn",
-};
 
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
@@ -269,32 +262,23 @@ function TemplateMark({ message, size = "sm" }: { message: InboxMessage; size?: 
   );
 }
 
-/** The template's name and severity remain separate readable fields. */
-function TemplateTag({ message }: { message: InboxMessage }) {
-  const copy = defaultCopy;
-  const severity = message.severity ? copy.severity[message.severity] : undefined;
-  return (
-    <span
-      data-aui="kind"
-      className="inline-flex w-fit shrink-0 items-center gap-2 whitespace-nowrap rounded-aui-sm bg-aui-subtle px-2 py-0.5 text-aui-2xs text-aui-muted"
-    >
-      <span>{message.tag ?? copy.template[messageTemplate(message)]}</span>
-      {severity && (
-        <span
-          className={`font-medium ${(message.severity && SEVERITY_TINT[message.severity]) || ""}`}
-        >
-          {severity}
-        </span>
-      )}
-    </span>
-  );
+/** Avoid repeating the sender when generated subjects already lead with their name. */
+export function notificationTitle(message: InboxMessage): string {
+  const name = message.from.name;
+  const title = message.subject;
+  if (!name || title.slice(0, name.length).toLocaleLowerCase() !== name.toLocaleLowerCase())
+    return title;
+  const rest = title.slice(name.length);
+  if (!/^\s+\S/.test(rest)) return title;
+  const trimmed = rest.trimStart();
+  return trimmed.charAt(0).toLocaleUpperCase() + trimmed.slice(1);
 }
 
 /** Parts whose shared card already draws its own box. */
 const OWN_BOX = new Set<MessagePart["type"]>(["failure"]);
 
 /** A small text button for the reading pane's header. Words, not a box of icons. */
-const headerButton = `${buttonClass("ghost")} min-h-10 px-2.5`;
+const headerButton = `${buttonClass("ghost")} min-h-9 px-2.5 text-aui-sm font-normal text-aui-muted hover:text-aui-fg`;
 
 /** A compact text button for the selection toolbar, so its marks fit the list's width. */
 const bulkButton = `${buttonClass("ghost")} min-h-9 pointer-coarse:min-h-11 gap-1.5 px-2 text-aui-xs`;
@@ -350,9 +334,10 @@ export function Mailbox({
   // A new view clears the selection. It is reset while rendering, not in an
   // effect: an effect also runs after the first render, and when that run is
   // still pending as a person picks their first row, it wipes the pick.
-  const [pickedIn, setPickedIn] = useState(view);
-  if (pickedIn !== view) {
-    setPickedIn(view);
+  const selectionScope = `${view ?? ""}:${filter?.query ?? ""}`;
+  const [pickedIn, setPickedIn] = useState(selectionScope);
+  if (pickedIn !== selectionScope) {
+    setPickedIn(selectionScope);
     setPicked(new Set());
   }
   const [ownShow, setOwnShow] = useState<MailboxShow>(defaultShow);
@@ -401,12 +386,14 @@ export function Mailbox({
   const count = openCount ?? openMessageCount(messages, now);
 
   // Reading is showing: a row click and a deep link (`selectedId`) both mark it read, once.
-  const read = useRef(new Set<string>());
+  const read = useRef<{ id: string | null; marked: boolean }>({ id: null, marked: false });
   useEffect(() => {
-    if (!selected?.unread || read.current.has(selected.id)) return;
-    read.current.add(selected.id);
+    // Reopening a notification marked unread is a new read during this mount.
+    if (read.current.id !== current) read.current = { id: current, marked: false };
+    if (!selected?.unread || read.current.marked) return;
+    read.current.marked = true;
     onAction({ id: ActionId.read, payload: { turnId: selected.id, target: selected.id } });
-  }, [selected, onAction]);
+  }, [current, selected, onAction]);
 
   const select = (id: string | null) => {
     if (selectedId === undefined) setOwn(id);
@@ -423,6 +410,8 @@ export function Mailbox({
     onAction({ id: ActionId.unhide, payload: { turnId: message.id, target: message.id } });
 
   const onListKey = (e: KeyboardEvent) => {
+    if ((e.target as HTMLElement).closest("input, textarea, select, [contenteditable=true]"))
+      return;
     const i = ordered.findIndex((m) => m.id === current);
     const move = (to: number) => {
       const next = ordered[Math.max(0, Math.min(ordered.length - 1, to))];
@@ -452,6 +441,7 @@ export function Mailbox({
   const onPaneKey = (e: KeyboardEvent) => {
     if (e.key !== "Escape" || !shownInPane) return;
     e.preventDefault();
+    select(null);
     list.current
       ?.querySelector<HTMLElement>(`[data-message="${CSS.escape(shownInPane.id)}"]`)
       ?.focus();
@@ -460,14 +450,14 @@ export function Mailbox({
   const row = (m: InboxMessage) => {
     const state = messageState(m, now);
     const open = state === "open";
-    const asks = open && openParts(m).length > 0;
     const on = picked.has(m.id);
     return (
       <li key={m.id} className={`group relative ${onMark ? "flex items-start" : ""}`}>
         {onMark && (
           // Picking is its own control beside the row, never inside its button.
           <label
-            className={`flex min-h-11 w-9 shrink-0 cursor-pointer items-center justify-center self-stretch pointer-coarse:w-11 pointer-coarse:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 has-[:focus-visible]:opacity-100 ${choosing || on ? "opacity-100" : "opacity-0"}`}
+            // It takes the sender mark's own slot (px-2, size-8), so nothing shifts or overlaps.
+            className={`absolute top-2.5 left-2 z-10 flex size-8 cursor-pointer items-center justify-center pointer-coarse:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 has-[:focus-visible]:opacity-100 ${choosing || on ? "opacity-100" : "opacity-0"}`}
           >
             <input
               type="checkbox"
@@ -484,49 +474,41 @@ export function Mailbox({
           data-template={messageTemplate(m)}
           aria-current={m.id === shownInPane?.id ? "true" : undefined}
           onClick={() => select(m.id)}
-          className={`flex w-full min-w-0 items-start gap-3 rounded-aui py-2.5 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent focus-visible:-outline-offset-2 aria-[current]:bg-aui-accent-soft motion-reduce:transition-none ${onMark ? "pr-3 pl-1" : "px-3"} ${on ? "bg-aui-subtle" : ""}`}
+          className={`flex w-full min-w-0 items-start gap-3 rounded-aui py-2.5 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent focus-visible:-outline-offset-2 aria-[current]:bg-aui-accent-soft motion-reduce:transition-none px-2 ${on ? "bg-aui-subtle" : ""}`}
         >
-          {/* The unread dot has its own column, so read and unread rows line up. */}
-          <span className="flex w-1.5 shrink-0 justify-center self-stretch pt-3.5">
-            {m.unread && (
-              <span className="size-1.5 rounded-full bg-aui-accent">
-                <span className="sr-only">{copy.mailbox.unread}</span>
-              </span>
-            )}
+          <span
+            className={`inline-flex size-8 shrink-0 items-center justify-center ${onMark ? `group-focus-within:invisible group-hover:invisible pointer-coarse:visible ${choosing || on ? "invisible" : ""}` : ""}`}
+          >
+            {(m.from.kind === "agent" && renderSender?.(m.from)) || <TemplateMark message={m} />}
           </span>
-          <TemplateMark message={m} />
-          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="flex min-w-0 items-center gap-2">
-              {renderSender?.(m.from)}
               <span
-                className={`min-w-0 flex-1 truncate text-aui-xs ${m.unread ? "font-semibold text-aui-fg" : "text-aui-muted"}`}
+                className={`min-w-0 flex-1 truncate text-aui-sm text-aui-fg ${m.unread ? "font-semibold" : ""} ${onMark ? "[@media(pointer:fine)]:group-hover:pr-20 [@media(pointer:fine)]:group-focus-within:pr-20" : ""}`}
               >
-                {m.from.name}
+                {notificationTitle(m)}
               </span>
               <time
                 dateTime={m.at}
                 title={fullWhen(m.at)}
-                className={`shrink-0 text-aui-2xs tabular-nums ${m.unread ? "text-aui-fg" : "text-aui-muted"} ${open || onMark ? "group-focus-within:opacity-0 group-hover:opacity-0" : ""}`}
+                className={`shrink-0 text-aui-2xs text-aui-muted tabular-nums ${onMark ? "[@media(pointer:fine)]:group-hover:hidden [@media(pointer:fine)]:group-focus-within:hidden" : ""}`}
               >
                 {shortWhen(m.at)}
               </time>
-            </span>
-            <span
-              className={`block min-w-0 truncate text-aui-sm ${m.unread ? "font-semibold text-aui-fg" : "text-aui-fg"}`}
-            >
-              {m.subject}
-            </span>
-            <span className="flex min-w-0 items-baseline gap-2 text-aui-xs">
-              <TemplateTag message={m} />
-              {asks && openParts(m).length > 1 && (
-                <span className="shrink-0 font-medium text-aui-fg tabular-nums">
-                  {openParts(m).length} to decide
+              {m.unread && (
+                <span
+                  className={`size-1.5 shrink-0 rounded-full bg-aui-accent ${onMark ? "[@media(pointer:fine)]:group-hover:hidden [@media(pointer:fine)]:group-focus-within:hidden" : ""}`}
+                >
+                  <span className="sr-only">{copy.mailbox.unread}</span>
                 </span>
               )}
-              <span className="min-w-0 flex-1 truncate text-aui-muted">{messagePreview(m)}</span>
+            </span>
+            <span className="flex min-w-0 items-baseline gap-2 text-aui-xs text-aui-muted">
+              <span className="min-w-0 flex-1 truncate">
+                {m.from.name} · {messagePreview(m)}
+              </span>
               {!open && !views && (
-                <span className="shrink-0 text-aui-2xs text-aui-muted capitalize">
-                  {/* Put away by this reader alone: hidden, as Hide for Me says. */}
+                <span className="shrink-0 text-aui-2xs capitalize">
                   {m.hidden && state === "dismissed" ? copy.announcements.hidden : state}
                 </span>
               )}
@@ -537,7 +519,8 @@ export function Mailbox({
           // The reader's own marks, on hover and focus, as an email client's row actions are.
           <fieldset
             aria-label={vc.actions(m.subject)}
-            className="pointer-events-none absolute top-1.5 right-1.5 m-0 flex items-center border-0 p-0 gap-0.5 rounded-aui-sm bg-aui-bg opacity-0 pointer-coarse:hidden group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+            // On the title line, in the time's place, on the row's own background.
+            className="pointer-events-none absolute top-2 right-1.5 m-0 flex items-center border-0 p-0 gap-0.5 opacity-0 pointer-coarse:hidden group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
           >
             <RowAction
               label={m.unread ? vc.markRead : vc.markUnread}
@@ -606,7 +589,9 @@ export function Mailbox({
   ) : (
     <div className="flex flex-1 flex-col items-center justify-center gap-1 py-16 text-center">
       <p className="font-medium text-aui-fg text-aui-sm">{copy.mailbox.pick}</p>
-      <p className="text-aui-muted text-aui-xs">{copy.mailbox.pickHint}</p>
+      <p className="text-aui-muted text-aui-xs">
+        {views && onMark ? copy.mailbox.shortcuts : copy.mailbox.pickHint}
+      </p>
     </div>
   );
 
@@ -618,7 +603,7 @@ export function Mailbox({
         <button
           key={v.id}
           type="button"
-          aria-pressed={view === v.id}
+          aria-pressed={view === v.id || (v.id === "inbox" && view === "unread")}
           onClick={() => onView?.(v.id)}
           className="inline-flex h-7 pointer-coarse:h-11 pointer-coarse:min-w-11 items-center gap-1.5 rounded-aui-sm px-2.5 text-aui-muted text-aui-xs transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-subtle aria-pressed:text-aui-fg motion-reduce:transition-none"
         >
@@ -636,9 +621,12 @@ export function Mailbox({
       aria-label={vc.bulk}
       className="flex min-h-11 min-w-0 flex-wrap items-center gap-x-1 gap-y-1"
     >
-      <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 pr-2 pl-2.5 text-aui-xs text-aui-muted">
+      <label
+        className={`inline-flex min-h-11 cursor-pointer items-center gap-2 pr-2 pl-2.5 text-aui-xs text-aui-muted ${choosing ? "" : "opacity-0 focus-within:opacity-100 group-hover/mailbox:opacity-100"}`}
+      >
         <input
           type="checkbox"
+          aria-label={vc.selectAll}
           checked={ordered.length > 0 && chosen.length === ordered.length}
           ref={(el) => {
             if (el) el.indeterminate = chosen.length > 0 && chosen.length < ordered.length;
@@ -680,19 +668,7 @@ export function Mailbox({
             {vc.clear}
           </button>
         </>
-      ) : (
-        onReadAll && (
-          <button
-            type="button"
-            className={`${headerButton} ml-auto`}
-            disabled={!ordered.some((m) => m.unread)}
-            onClick={onReadAll}
-          >
-            <CheckIcon size={16} />
-            {vc.markAllRead}
-          </button>
-        )
-      )}
+      ) : null}
     </div>
   );
   const showControl = (
@@ -721,7 +697,27 @@ export function Mailbox({
   return (
     <section
       aria-label={copy.inbox}
-      className={`@container flex min-h-0 min-w-0 flex-col ${className ?? ""}`}
+      onKeyDown={(e) => {
+        const target = e.target as HTMLElement;
+        if (
+          e.altKey ||
+          e.ctrlKey ||
+          e.metaKey ||
+          target.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')
+        )
+          return;
+        if (e.key === "j" || e.key === "k") {
+          e.preventDefault();
+          const index = ordered.findIndex((m) => m.id === current);
+          const next =
+            ordered[Math.max(0, Math.min(ordered.length - 1, index + (e.key === "j" ? 1 : -1)))];
+          if (next) select(next.id);
+        } else if (selected && onMark && (e.key === "e" || e.key === "u")) {
+          e.preventDefault();
+          onMark([selected.id], e.key === "e" ? "hide" : "unread");
+        }
+      }}
+      className={`@container group/mailbox flex min-h-0 min-w-0 flex-col ${className ?? ""}`}
     >
       {heading !== false && (
         <header className="flex flex-wrap items-center gap-x-3 gap-y-2 pb-3">
@@ -734,27 +730,29 @@ export function Mailbox({
           {showControl}
         </header>
       )}
-      {heading === false
-        ? // With no title of its own, the show control sits at the end of the filters' row.
-          (toolbar || show || views) &&
-          (views ? (
-            // The views lead their own row, under the search, so they fit a phone.
-            <div className="flex min-w-0 flex-col gap-2 pb-2">
-              {toolbar && <div className="min-w-0">{toolbar}</div>}
-              <div className="flex min-w-0 flex-wrap items-center gap-2">{viewControl}</div>
-            </div>
-          ) : (
-            <div className="flex min-w-0 flex-wrap items-center gap-2 pb-2">
-              <div className="min-w-0 flex-1">{toolbar}</div>
-              {showControl}
-            </div>
-          ))
-        : toolbar && <div className="min-w-0 pb-2">{toolbar}</div>}
+      {(toolbar || (heading === false && (show || views)) || onReadAll) && (
+        <div className="flex min-w-0 flex-wrap items-center gap-2 pb-3">
+          {toolbar && (
+            <div className="min-w-0 basis-full @2xl:basis-auto @2xl:flex-1">{toolbar}</div>
+          )}
+          {heading === false && showControl}
+          {onReadAll && (
+            <button
+              type="button"
+              className="ml-auto inline-flex h-9 items-center rounded-aui px-2 text-aui-sm text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-40 motion-reduce:transition-none"
+              disabled={!ordered.some((m) => m.unread)}
+              onClick={onReadAll}
+            >
+              {vc.markAllRead}
+            </button>
+          )}
+        </div>
+      )}
       <div className="flex min-h-0 min-w-0 flex-1 border-aui-border border-t">
         <div
-          className={`min-h-0 w-full min-w-0 flex-col @2xl:flex @2xl:w-[22rem] @2xl:shrink-0 @2xl:border-aui-border @2xl:border-r @2xl:pr-2 @5xl:w-[26rem] ${selected ? "hidden" : "flex"}`}
+          className={`min-h-0 w-full min-w-0 flex-col @2xl:flex @2xl:w-[23.75rem] @2xl:shrink-0 @2xl:border-aui-border @2xl:border-r @2xl:pr-2 ${selected ? "hidden" : "flex"}`}
         >
-          {bulk && ordered.length > 0 && <div className="border-aui-border border-b">{bulk}</div>}
+          {bulk && choosing && <div className="border-aui-border border-b">{bulk}</div>}
           {ordered.length === 0 ? (
             <div className="flex flex-col items-center gap-1.5 px-4 py-14 text-center">
               <CheckCircleIcon size={22} className="text-aui-ok" />
@@ -820,7 +818,7 @@ function RowAction({
       onClick={onClick}
       title={label}
       aria-label={`${label}: ${subject}`}
-      className="inline-flex size-7 pointer-coarse:size-11 items-center justify-center rounded-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+      className="inline-flex size-6 pointer-coarse:size-11 items-center justify-center rounded-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
     >
       {children}
     </button>
@@ -891,13 +889,9 @@ function ReadingPane({
         {onMark && (
           <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-2">
             {/* Opening marks it read, so the first control undoes that. */}
-            <button
-              type="button"
-              onClick={() => onMark(message.unread ? "read" : "unread")}
-              className={headerButton}
-            >
-              {message.unread ? <CheckIcon size={16} /> : <CircleIcon size={16} />}
-              {message.unread ? vc.markRead : vc.markUnread}
+            <button type="button" onClick={() => onMark("unread")} className={headerButton}>
+              <CircleIcon size={16} />
+              {vc.markUnread}
             </button>
             <button
               type="button"
@@ -946,23 +940,16 @@ function ReadingPane({
       <div className="aui-scroll min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-4">
         <header className="flex min-w-0 flex-col gap-4 pb-6">
           <h3 className="break-words font-semibold text-[1.25rem] text-aui-fg leading-snug">
-            {message.subject}
+            {notificationTitle(message)}
           </h3>
           <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-2">
-            <TemplateMark message={message} size="lg" />
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <span className="flex min-w-0 items-center gap-1.5">
-                {renderSender?.(message.from)}
-                <span className="min-w-0 break-words font-medium text-aui-fg text-aui-sm">
-                  {message.from.name}
-                </span>
-              </span>
-              <TemplateTag message={message} />
-            </div>
-            <time
-              dateTime={message.at}
-              className="basis-full pt-1 pl-12 text-aui-muted text-aui-xs tabular-nums @md:basis-auto @md:pl-0"
-            >
+            {(message.from.kind === "agent" && renderSender?.(message.from)) || (
+              <TemplateMark message={message} size="lg" />
+            )}
+            <span className="min-w-0 break-words font-medium text-aui-fg text-aui-sm">
+              {message.from.name}
+            </span>
+            <time dateTime={message.at} className="text-aui-muted text-aui-xs tabular-nums">
               {fullWhen(message.at)}
             </time>
           </div>

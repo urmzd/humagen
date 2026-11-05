@@ -1,5 +1,5 @@
 import { defaultCopy } from "@humagen/components";
-import { RefreshIcon } from "@humagen/render-web";
+import { PlayIcon } from "@humagen/render-web";
 import { messageActionButton } from "@humagen/web";
 import { useState } from "react";
 import { replayText, replayWith } from "./replay.ts";
@@ -49,7 +49,7 @@ export function ReplayMenu({
         label={words.replay}
         tooltip={words.replay}
         className={messageActionButton}
-        button={<RefreshIcon size={16} className={busy ? "opacity-50" : ""} />}
+        button={<PlayIcon size={16} className={busy ? "opacity-50" : ""} />}
       >
         {(close) => (
           <div

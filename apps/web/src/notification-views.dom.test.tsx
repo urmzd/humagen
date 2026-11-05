@@ -129,7 +129,7 @@ test("a mark leaves the view it takes a message out of, and nothing else", () =>
   assert.equal(marked(marked(m, "delete"), "restore").deleted, false);
 });
 
-test("the Inbox is the default view, each view says its count, and the view is the host's to keep", async () => {
+test("the Inbox alone shows the unread count, and the view is the host's to keep", async () => {
   net = stubFetch({});
   const box = inbox([
     message("m1", "Signups published"),
@@ -152,9 +152,9 @@ test("the Inbox is the default view, each view says its count, and the view is t
   const segment = (name: string) =>
     within(views()).getByRole("button", { name: new RegExp(`^${name}`) });
   assert.equal(segment(vc.inbox).getAttribute("aria-pressed"), "true");
-  assert.match(segment(vc.inbox).textContent ?? "", /2$/);
-  assert.match(segment(vc.unread).textContent ?? "", /1$/);
-  assert.match(segment(vc.hidden).textContent ?? "", /1$/);
+  assert.match(segment(vc.inbox).textContent ?? "", /1$/);
+  assert.equal(within(views()).queryByRole("button", { name: vc.unread }), null);
+  assert.equal(segment(vc.hidden).textContent, vc.hidden);
   assert.equal(row("m3"), null, "what the reader hid is not in their Inbox");
   // Unread rows are marked in words, beside the dot, and read rows are not.
   assert.ok(within(row("m1") as HTMLElement).getByText(defaultCopy.mailbox.unread));
@@ -224,8 +224,9 @@ test("rows are selected to mark many at once, by click or with x, and Mark All R
   ]);
   render(<InboxPage signal={0} onOpen={() => {}} openId={null} via={box.via} />);
   await waitFor(() => assert.ok(row("m3")));
-  const bulk = screen.getByRole("toolbar", { name: vc.bulk });
+  assert.equal(screen.queryByRole("checkbox", { name: vc.selectAll }), null);
   fireEvent.click(screen.getByRole("checkbox", { name: vc.select("Signups published") }));
+  const bulk = screen.getByRole("toolbar", { name: vc.bulk });
   // x on a focused row picks it too.
   fireEvent.click(row("m2") as HTMLElement);
   fireEvent.keyDown(row("m2") as HTMLElement, { key: "x" });
@@ -236,11 +237,7 @@ test("rows are selected to mark many at once, by click or with x, and Mark All R
   assert.equal(row("m2"), null);
   assert.ok(row("m3"));
   // With nothing picked, the toolbar offers Mark All Read for the view.
-  fireEvent.click(
-    within(screen.getByRole("toolbar", { name: vc.bulk })).getByRole("button", {
-      name: vc.markAllRead,
-    }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: vc.markAllRead }));
   await waitFor(() => assert.deepEqual(box.readAll, ["inbox"]));
   await screen.findByText(vc.readAllDone(1));
 });
@@ -268,8 +265,8 @@ test("a new view starts with nothing picked", () => {
   assert.ok(within(bulk()).getByText(vc.selected(1)));
   // The same mailbox, kept mounted, shown another view.
   rerender(at("unread"));
-  assert.equal(within(bulk()).queryByText(vc.selected(1)), null);
-  assert.ok(within(bulk()).getByText(vc.selectAll));
+  assert.equal(screen.queryByRole("toolbar", { name: vc.bulk }), null);
+  assert.equal(screen.queryByRole("checkbox", { name: vc.selectAll }), null);
 });
 
 test("a row in a view says no state word: Hidden and Done are views, not labels", async () => {
@@ -334,7 +331,7 @@ test("the badge says what the Unread view says: unread announcements and notices
     />,
   );
   await waitFor(() => assert.ok(row("n2")));
-  const unread = within(views()).getByRole("button", { name: new RegExp(`^${vc.unread}`) });
+  const unread = within(views()).getByRole("button", { name: new RegExp(`^${vc.inbox}`) });
   assert.match(unread.textContent ?? "", /3$/);
   await waitFor(() => assert.equal(unreadBadge(reported.at(-1) ?? { unread: 0 }), 3));
   // The sidebar draws exactly that number.
@@ -349,4 +346,75 @@ test("the badge says what the Unread view says: unread announcements and notices
     container.querySelector("button")?.getAttribute("aria-label"),
     "Open sidebar, 3 unread",
   );
+});
+
+test("notification rows lead with the title and agent initials, without a kind chip or duplicate sender", async () => {
+  net = stubFetch({});
+  const box = inbox([message("m1", "lead published signups.csv")]);
+  render(<InboxPage signal={0} onOpen={() => {}} openId={null} via={box.via} />);
+  await waitFor(() => assert.ok(row("m1")));
+  const item = row("m1")!;
+  assert.ok(within(item).getByText("Published signups.csv"));
+  assert.equal(within(item).queryByText("lead published signups.csv"), null);
+  assert.equal(item.querySelector('[data-aui="kind"]'), null);
+  assert.equal(item.querySelector('[data-aui="template-mark"]'), null);
+  assert.match(item.textContent ?? "", /lead · lead published signups.csv body/);
+  assert.equal(screen.queryByText(/2 open|1 open/), null);
+  assert.equal(box.reads.length, 0, "an empty pane never silently reads a preview");
+  assert.ok(screen.getByText(defaultCopy.mailbox.pick));
+  assert.ok(screen.getByText(defaultCopy.mailbox.shortcuts));
+});
+
+test("the legacy unread view is an Inbox filter and keeps a selected message readable", async () => {
+  net = stubFetch({});
+  const box = inbox([message("m1", "One"), message("m2", "Two", { unread: false })]);
+  render(<InboxPage signal={0} onOpen={() => {}} openId={null} via={box.via} view="unread" />);
+  await waitFor(() => assert.ok(row("m1")));
+  assert.equal(row("m2"), null);
+  const unread = screen.getByRole("button", { name: vc.unread, pressed: true });
+  assert.ok(within(views()).getByRole("button", { name: /^Inbox/, pressed: true }));
+  fireEvent.click(row("m1")!);
+  await waitFor(() => assert.deepEqual(box.reads, ["m1"]));
+  assert.ok(
+    within(screen.getByRole("region", { name: defaultCopy.mailbox.reading })).getByText(
+      "One body.",
+    ),
+  );
+  fireEvent.click(unread);
+  await waitFor(() => assert.ok(row("m2")));
+  assert.equal(
+    screen.getByRole("button", { name: vc.unread }).getAttribute("aria-pressed"),
+    "false",
+  );
+  assert.equal(box.asked.at(-1), "inbox");
+});
+
+test("j/k navigate, u marks unread, e hides with Undo, and typing never triggers shortcuts", async () => {
+  net = stubFetch({});
+  const box = inbox([message("m1", "One"), message("m2", "Two")]);
+  render(<InboxPage signal={0} onOpen={() => {}} openId={null} via={box.via} />);
+  await waitFor(() => assert.ok(row("m1")));
+  const search = screen.getByRole("searchbox", { name: defaultCopy.inboxControls.search });
+  for (const key of ["j", "k", "e", "u"]) fireEvent.keyDown(search, { key });
+  assert.deepEqual(box.reads, []);
+  assert.deepEqual(box.calls, []);
+  fireEvent.keyDown(row("m1")!, { key: "j" });
+  await waitFor(() => assert.deepEqual(box.reads, ["m1"]));
+  fireEvent.keyDown(row("m1")!, { key: "j" });
+  await waitFor(() => assert.deepEqual(box.reads, ["m1", "m2"]));
+  fireEvent.keyDown(row("m2")!, { key: "k" });
+  fireEvent.keyDown(row("m1")!, { key: "u" });
+  await waitFor(() => assert.deepEqual(box.calls.at(-1), { ids: ["m1"], mark: "unread" }));
+  const pane = screen.getByRole("region", { name: defaultCopy.mailbox.reading });
+  assert.equal(within(pane).queryByRole("button", { name: vc.markRead }), null);
+  fireEvent.click(within(pane).getByRole("button", { name: defaultCopy.mailbox.back }));
+  fireEvent.click(row("m1")!);
+  await waitFor(() => assert.deepEqual(box.reads, ["m1", "m2", "m1"]));
+  fireEvent.keyDown(row("m1")!, { key: "e" });
+  await waitFor(() => assert.equal(row("m1"), null));
+  assert.deepEqual(box.calls.at(-1), { ids: ["m1"], mark: "hide" });
+  fireEvent.click(
+    within(await screen.findByTestId("undo-toast")).getByRole("button", { name: vc.undo }),
+  );
+  await waitFor(() => assert.ok(row("m1")));
 });

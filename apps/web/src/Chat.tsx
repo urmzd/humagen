@@ -272,6 +272,7 @@ export const STARTERS: Starter[] = [
   },
   { agent: "humagen-builder", label: "Build an agent", text: "Help me build an agent that " },
   { agent: "humagen-writer", label: "Write a report", text: "Write a one-page report on " },
+  { agent: "code-reviewer", label: "Review a pull request", text: "Review the pull request " },
 ];
 
 /**
@@ -1047,6 +1048,8 @@ export function Chat({
         agents={summary?.agents ?? [...new Set(turns.map((t) => t.agent))]}
         people={room?.thread.participants?.filter((p) => p.kind === "person").map((p) => p.name)}
         onPanel={(next) => openPanel(next)}
+        panel={shownView.panel}
+        onClosePanel={() => openPanel()}
         onArtifact={(id) =>
           openPanel("workspace", openPane(shownView, { kind: "artifact", ref: id }))
         }
@@ -1166,6 +1169,8 @@ export function Chat({
       </ConversationPage>
       {room && (
         <ConversationInfo
+          runs={turns}
+          view={shownView}
           panel={shownView.panel}
           contextTab={shownView.contextTab}
           onContextTab={(contextTab) => openPanel("context", { contextTab })}

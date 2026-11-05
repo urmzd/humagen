@@ -358,7 +358,7 @@ test("keyboard project pinning moves focus to its shortcut and unpinning returns
   assert.deepEqual(stored.pinned, [], "project pinning leaves conversation pins unchanged");
 });
 
-test("keyboard unpinning a project without recent conversations returns focus to Projects", async () => {
+test("keyboard unpinning a project without recent conversations returns focus to More, where Projects lives", async () => {
   let stored: Preferences = { ...saved, pinned: [], pinned_projects: ["Launch"] };
   net = stubFetch({
     "GET /api/preferences": () => stored,
@@ -367,7 +367,7 @@ test("keyboard unpinning a project without recent conversations returns focus to
   });
   render(<Pins />);
   const unpin = await screen.findByRole("button", { name: "Unpin project Launch" });
-  const projects = screen.getByRole("link", { name: "Projects" });
+  const projects = screen.getByRole("button", { name: "More" });
   unpin.focus();
   fireEvent.click(unpin, { detail: 0 });
   await waitFor(() => assert.equal(document.activeElement === projects, true));
@@ -423,7 +423,7 @@ test("overlapping project and conversation saves keep both lists", async () => {
   assert.deepEqual(result.current.prefs.pinned, ["t1", "t0"]);
 });
 
-test("a conversation row is its title, project and age: who took part is in the conversation, not the list", async () => {
+test("a conversation row is its title alone: who took part, its project and its age are in the conversation, not the list", async () => {
   const conversation = {
     ...task("t1", "Launch checklist"),
     agents: ["lead", "helper"],
@@ -437,7 +437,11 @@ test("a conversation row is its title, project and age: who took part is in the 
   const row = await screen.findByRole("button", { name: /^Launch checklist/ });
   assert.match(row.textContent ?? "", /^Launch checklist/);
   assert.doesNotMatch(row.textContent ?? "", /lead|helper|ada|mira/);
-  assert.ok(row.querySelector("[data-row-age]")?.textContent, "the row says how long ago it moved");
+  assert.equal(
+    row.querySelector("[data-row-age]")?.textContent,
+    "",
+    "the day heading says when, not each row",
+  );
   assert.equal(screen.queryByRole("group", { name: /^Agents:|^People:/ }), null);
 });
 

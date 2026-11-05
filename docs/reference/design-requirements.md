@@ -26,6 +26,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 | ID | Requirement | Status |
 | --- | --- | --- |
+| DES-067 | Conversation overview and visible work controls | Implemented: Overview, Workspace, Context and Activity header controls collapse into the menu below the conversation's 3xl breakpoint. The addressed overview folds environment, latest context, agents and run changes from existing APIs; delegated transcript calls share one collapsed disclosure. Evidence: `conversation-overview.dom.test.tsx`, `timeline.dom.test.tsx` and route round-trip tests. Live browser verification unavailable in this session. |
 | DES-059 | PR review evidence in two panes, with GitHub issue and pull request Workspace tabs | Implemented: `GitHubTab.tsx`, `github-ref.ts`, tenant-scoped `GET /api/github/pull` and `/api/github/issue`, bounded repository/SHA patch cache, workflow status, labels and comments; unit, DOM and endpoint regressions added; `conversation-review-workspace` screen registered for CI. |
 | DES-061 | Automations gather schedules and signed GitHub event rules with agent instructions | Implemented; focused Go/DOM tests and phone/desktop screen definitions; CI screens pending |
 | DES-001 | Integration controls use the existing system and report real results | Slack/GitHub configuration form implemented; automated checks pass; live delivery pending |
@@ -374,7 +375,9 @@ DES-004 have been implemented or live-validated.
 ### Built-in handles and Slack conversation navigation
 
 New agent choices and starter actions use `humagen-analyst`, `humagen-writer`
-and `humagen-builder`. Compatibility registry definitions preserve saved
+and `humagen-builder`. The directory also provides `code-reviewer`,
+`security-reviewer`, `architect-reviewer` and `qa-reviewer` for reviews in an
+ordinary conversation. Compatibility registry definitions preserve saved
 revisions, old schedules and existing grants. The `humagen-builtins` screen
 checks all three names at phone and desktop widths.
 

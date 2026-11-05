@@ -294,7 +294,9 @@ test("one Notifications feed opens original work and keeps preferences separate"
   fireEvent.click(row);
   const reader = await screen.findByRole("region", { name: "Message" });
   assert.ok(within(reader).getByText("The release is ready for review."));
-  fireEvent.click(within(reader).getByRole("button", { name: "Release conversation" }));
+  fireEvent.click(
+    within(reader).getByRole("button", { name: defaultCopy.notifications.openSource.thread }),
+  );
   const preferences = screen.getByRole("link", { name: defaultCopy.notifications.settings });
   assert.equal(preferences.getAttribute("href"), "/you/notifications");
   fireEvent.click(preferences);
@@ -395,20 +397,9 @@ test("the views replace the status filter, the Inbox is the default, and the typ
   assert.equal(queries.at(-1)?.view, "inbox", "the Inbox is the first view");
   assert.equal(queries.at(-1)?.state, undefined);
   assert.equal(screen.queryAllByRole("button", { name: "Open" }).length, 0);
-  assert.equal(screen.queryAllByRole("combobox").length, 0, "filters stay behind one trigger");
-  const trigger = screen.getByRole("button", {
-    name: defaultCopy.inboxControls.notificationFilter,
-  });
-  fireEvent.click(trigger);
-  const panel = screen.getByRole("dialog", { name: defaultCopy.inboxControls.notificationFilter });
-  assert.equal(
-    within(panel).queryByRole("combobox", { name: "Status" }),
-    null,
-    "which view is shown says the status",
-  );
-  fireEvent.change(within(panel).getByRole("combobox", { name: "Type" }), {
-    target: { value: "alert" },
-  });
+  assert.equal(screen.queryAllByRole("combobox").length, 1);
+  assert.equal(screen.queryByRole("combobox", { name: "Status" }), null);
+  fireEvent.change(screen.getByRole("combobox", { name: "Type" }), { target: { value: "alert" } });
   await waitFor(() => assert.equal(queries.at(-1)?.kind, "alert"));
   await waitFor(() => assert.equal(!!document.querySelector('[data-message="in-one"]'), false));
   assert.ok(
@@ -416,14 +407,11 @@ test("the views replace the status filter, the Inbox is the default, and the typ
       "The release is ready for review.",
     ),
   );
-  fireEvent.click(within(panel).getByRole("button", { name: "Reset" }));
+  fireEvent.change(screen.getByRole("combobox", { name: "Type" }), { target: { value: "" } });
   await waitFor(() => {
     assert.equal(queries.at(-1)?.view, "inbox");
     assert.equal(queries.at(-1)?.kind, undefined);
   });
-  fireEvent.keyDown(panel, { key: "Escape" });
-  assert.equal(trigger.getAttribute("aria-expanded"), "false");
-  assert.equal(document.activeElement === trigger, true);
 });
 
 test("notification preferences do not mount a second delivery feed", async () => {
@@ -533,13 +521,7 @@ test("notification selection, filters and copied links share one route and bare 
       "selection replaces its address without adding another page",
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: defaultCopy.inboxControls.notificationFilter }),
-    );
-    const filters = screen.getByRole("dialog", {
-      name: defaultCopy.inboxControls.notificationFilter,
-    });
-    fireEvent.change(within(filters).getByRole("combobox", { name: "Type" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Type" }), {
       target: { value: "alert" },
     });
     await waitFor(() => assert.equal(queries.at(-1)?.kind, "alert"));
@@ -549,7 +531,6 @@ test("notification selection, filters and copied links share one route and bare 
     assert.equal(copied.searchParams.get("message"), second.id);
     assert.equal(copied.searchParams.get("kind"), "alert");
     assert.equal(routeAddress, copied.pathname + copied.search);
-    fireEvent.keyDown(filters, { key: "Escape" });
 
     fireEvent.click(screen.getByRole("link", { name: "Notifications" }));
     await waitFor(() =>
@@ -570,5 +551,53 @@ test("notification selection, filters and copied links share one route and bare 
     assert.equal(new URL(window.location.href).searchParams.get("message"), second.id);
   } finally {
     window.history.replaceState(null, "", previousAddress);
+  }
+});
+
+test("Alert Rules is a quiet page action beside notification settings", async () => {
+  net = stubFetch({});
+  render(
+    <NotificationsPage signal={0} onGo={() => {}} onOpen={() => {}} openId={null} via={feed} />,
+  );
+  const rules = screen.getByRole("link", { name: defaultCopy.notifications.alertRules });
+  assert.equal(rules.getAttribute("href"), "/monitor/rules");
+  assert.equal(
+    rules.closest("header"),
+    screen.getByRole("link", { name: defaultCopy.notifications.settings }).closest("header"),
+  );
+  assert.equal(screen.getAllByRole("heading", { level: 1 }).length, 1);
+});
+
+test("notification detail offers the source as a primary next step", async () => {
+  net = stubFetch({});
+  const sources: PlatformMessage["about"] = [
+    { kind: "artifact", id: "file-one", label: "signups.csv" },
+    { kind: "thread", id: "conversation-one", label: "Launch" },
+    { kind: "run", id: "run-one", label: "Publication" },
+  ];
+  for (const source of sources) {
+    const opened: PlatformMessage["about"] = [];
+    const msg = { ...original, about: [source] };
+    const via: Transport = {
+      ...feed,
+      list: async () => ({ messages: [msg], next: null, open: 1, unread: 0 }),
+      get: async () => msg,
+    };
+    const mounted = render(
+      <NotificationsPage
+        signal={0}
+        onGo={() => {}}
+        onOpen={(value) => opened.push(value)}
+        openId={msg.id}
+        via={via}
+      />,
+    );
+    const next = await screen.findByRole("button", {
+      name: defaultCopy.notifications.openSource[source.kind],
+    });
+    assert.equal(next.getAttribute("data-variant"), "default");
+    fireEvent.click(next);
+    assert.deepEqual(opened, [source]);
+    mounted.unmount();
   }
 });

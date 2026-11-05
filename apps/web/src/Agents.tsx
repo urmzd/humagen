@@ -4,17 +4,15 @@ import type { Run } from "./adapter.ts";
 import { type AgentControl, api, type Group, type Revision } from "./api.ts";
 import {
   AgentMark,
-  button,
-  Chip,
   Empty,
   field,
-  Label,
   longest,
   Page,
+  Popover,
   Problem,
   primary,
   rows,
-  Stroke,
+  SearchField,
   Tape,
   took,
 } from "./ui.tsx";
@@ -87,7 +85,7 @@ export function Agents({
       active = false;
       clearInterval(timer);
     };
-  }, [names, operational]);
+  }, [names, operational, words.failed]);
   const pauseAll = async () => {
     if (!workspace || busyPause) return;
     setBusyPause(true);
@@ -128,25 +126,46 @@ export function Agents({
       lede="An agent is a prompt with a model, the agents it may call, and the context it reads. Open one to change it, test it, and watch it."
       actions={
         canWrite || onBuild ? (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex max-w-full flex-wrap items-center gap-3">
             {operational && canWrite && (
-              <button
-                type="button"
-                className={button}
-                disabled={!workspace || busyPause}
-                onClick={() => void pauseAll()}
+              <Popover
+                label={words.more}
+                button={
+                  <span aria-hidden className="text-aui-lg">
+                    ⋯
+                  </span>
+                }
+                className="inline-flex size-9 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                align="right"
+                narrow
               >
-                {workspace?.paused ? words.resumeAll : words.pauseAll}
-              </button>
+                {(close) => (
+                  <button
+                    type="button"
+                    className="min-h-9 w-full rounded-aui px-2.5 text-left text-aui-sm text-aui-bad hover:bg-aui-hover disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-aui-accent"
+                    disabled={!workspace || busyPause}
+                    onClick={() => {
+                      close();
+                      void pauseAll();
+                    }}
+                  >
+                    {workspace?.paused ? words.resumeAll : words.pauseAll}
+                  </button>
+                )}
+              </Popover>
             )}
             {onBuild && (
-              <button type="button" className={canWrite ? button : primary} onClick={onBuild}>
-                Build with the Builder
+              <button
+                type="button"
+                className="min-h-9 rounded-aui text-aui-sm text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                onClick={onBuild}
+              >
+                {words.build}
               </button>
             )}
             {canWrite && (
               <button type="button" className={primary} onClick={onNew}>
-                New Agent
+                {words.newAgent}
               </button>
             )}
           </div>
@@ -156,34 +175,31 @@ export function Agents({
       <Problem message={problem} />
       {/* Filters share one row; the header keeps only actions. */}
       {(operational || agents.length > 6) && (
-        <div className="flex flex-wrap items-end gap-3">
-          {operational && (
-            <Label text={words.filter}>
-              <select
-                className={`${field} h-9 w-56`}
-                value={state}
-                onChange={(event) => setState(event.target.value)}
-              >
-                <option value="">{words.all}</option>
-                <option value="draft">{words.reviewDrafts}</option>
-                {Object.entries(words.states).map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </Label>
-          )}
-          {/* A long list is found by name, not by scrolling. */}
+        <div className="flex min-w-0 items-center gap-2">
           {agents.length > 6 && (
-            <input
-              type="search"
-              aria-label="Find an agent"
-              placeholder={`Find among ${agents.length} agents`}
-              className={`${field} h-9 min-w-0 max-w-sm flex-1 basis-56`}
+            <SearchField
+              label={words.search}
+              placeholder={words.searchAmong(agents.length)}
+              className="min-w-0 max-w-sm flex-1 pointer-coarse:min-h-11"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={setQuery}
             />
+          )}
+          {operational && (
+            <select
+              aria-label={words.filter}
+              className={`${field} h-8! w-36! shrink-0 py-0! text-aui-sm`}
+              value={state}
+              onChange={(event) => setState(event.target.value)}
+            >
+              <option value="">{words.all}</option>
+              <option value="draft">{words.reviewDrafts}</option>
+              {Object.entries(words.directoryStates).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
           )}
         </div>
       )}
@@ -201,78 +217,92 @@ export function Agents({
             const ended = g ? g.completed + g.failed : 0;
             const own = runs.filter((r) => r.agent === name);
             const busy = own.some((r) => r.status === "running" || r.status === "accepted");
-            const waiting = own.some((r) => r.status === "parked");
+            const status = operational ? roster[name]?.state : undefined;
+            const description = a.spec.description || a.spec.system_prompt || words.noDescription;
             const figures: [string, string][] =
               g && g.runs > 0
                 ? [
-                    ["Runs, 24h", String(g.runs)],
-                    ["Success", ended ? `${Math.round((100 * g.completed) / ended)}%` : "No data"],
-                    ["Median", g.p50_ms ? took(g.p50_ms) : "–"],
+                    [words.runs, String(g.runs)],
+                    [words.success, ended ? `${Math.round((100 * g.completed) / ended)}%` : "–"],
+                    [words.median, g.p50_ms ? took(g.p50_ms) : "–"],
                   ]
-                : [];
+                : [
+                    [words.runs, "–"],
+                    [words.success, "–"],
+                    [words.median, "–"],
+                  ];
             return (
               <li key={name} className="humagen-enter">
-                <Stroke agent={name} state={waiting ? "waiting" : busy ? "working" : "idle"}>
-                  <button
-                    type="button"
-                    onClick={() => onOpen(name)}
-                    className="grid w-full grid-cols-1 items-center gap-x-8 gap-y-3 py-4 pr-1 pl-4 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent focus-visible:-outline-offset-2 @4xl:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_15rem]"
-                  >
-                    <span className="flex min-w-0 items-start gap-3">
-                      <span className="pt-0.5">
-                        <AgentMark name={name} size={24} state={busy ? "thinking" : "idle"} />
+                <button
+                  type="button"
+                  onClick={() => onOpen(name)}
+                  className="grid w-full min-w-0 grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 gap-y-3 py-4 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent focus-visible:-outline-offset-2 @xl:grid-cols-[28px_minmax(0,1fr)_12rem] @4xl:grid-cols-[28px_minmax(0,1fr)_8rem_12rem] @xl:items-center"
+                >
+                  <span className="self-start">
+                    <AgentMark name={name} size={28} state={busy ? "thinking" : "idle"} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="flex h-7 min-w-0 items-center gap-2 whitespace-nowrap">
+                      <span
+                        className="humagen-display min-w-0 truncate text-aui-lg font-semibold text-aui-fg"
+                        title={name}
+                      >
+                        {name}
                       </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <span className="humagen-display truncate text-aui-lg font-semibold text-aui-fg">
-                            {name}
-                          </span>
-                          {operational && roster[name]?.state && (
-                            <Chip>{words.states[roster[name].state!]}</Chip>
-                          )}
-                          {name === workspaceDefault && <Chip>{defaultCopy.workspaceDefault}</Chip>}
-                          {homes[name] && (
-                            <Chip>
-                              {defaultCopy.agentPlace.livesIn(
-                                homes[name] === "~"
-                                  ? defaultCopy.projects.companyName
-                                  : homes[name],
-                              )}
-                            </Chip>
-                          )}
-                          {builtin.includes(name) && <Chip>Built in, read only</Chip>}
+                      {builtin.includes(name) && (
+                        <span className="shrink-0 text-aui-xs text-aui-muted">{words.builtin}</span>
+                      )}
+                      {status && status !== "ready" && (
+                        <span
+                          className={`flex min-w-0 items-center gap-1 text-aui-xs ${status === "failed" ? "text-aui-bad" : status === "needs_review" || status === "waiting_on_people" ? "text-aui-warn" : "text-aui-muted"}`}
+                        >
+                          <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-current" />
+                          <span className="truncate">{words.directoryStates[status]}</span>
                         </span>
-                        <span className="line-clamp-1 text-aui-sm text-aui-muted">
-                          {a.spec.description ||
-                            a.spec.system_prompt ||
-                            "No description or prompt yet."}
+                      )}
+                      {name === workspaceDefault && (
+                        <span
+                          className="min-w-0 truncate text-aui-xs text-aui-muted"
+                          title={defaultCopy.workspaceDefault}
+                        >
+                          {words.workspaceDefault}
                         </span>
-                        <span className="block pt-0.5 text-aui-xs text-aui-muted">
-                          Revision {a.rev}, {a.spec.provider} / {a.spec.model}
+                      )}
+                      {homes[name] && homes[name] !== "~" && (
+                        <span
+                          className="min-w-0 truncate text-aui-xs text-aui-muted"
+                          title={defaultCopy.agentPlace.livesIn(homes[name])}
+                        >
+                          {defaultCopy.agentPlace.livesIn(homes[name])}
                         </span>
-                      </span>
+                      )}
                     </span>
-
-                    <Tape runs={own} slots={36} scale={scale} />
-
-                    {figures.length > 0 ? (
-                      <span className="grid grid-cols-3 gap-4">
-                        {figures.map(([label, value]) => (
-                          <span key={label} className="flex min-w-0 flex-col">
-                            <span className="humagen-display text-aui-lg font-semibold text-aui-fg">
-                              {value}
-                            </span>
-                            <span className="truncate text-aui-2xs text-aui-muted">{label}</span>
-                          </span>
-                        ))}
+                    <span className="block truncate text-aui-sm text-aui-muted" title={description}>
+                      {description}
+                    </span>
+                    <span
+                      className="block truncate pt-0.5 text-aui-xs text-aui-muted"
+                      title={`Revision ${a.rev} · ${a.spec.provider} / ${a.spec.model}`}
+                    >
+                      Revision {a.rev} · {a.spec.provider} / {a.spec.model}
+                    </span>
+                  </span>
+                  <span className="hidden w-32 self-center @4xl:block">
+                    {own.length > 0 && <Tape runs={own} slots={20} scale={scale} />}
+                  </span>
+                  <span className="col-start-2 grid w-48 grid-cols-3 gap-3 self-center justify-self-end text-right @xl:col-start-auto">
+                    {figures.map(([label, value]) => (
+                      <span key={label} className="flex min-w-0 flex-col">
+                        <span
+                          className={`humagen-display text-aui-lg font-semibold ${value === "–" ? "text-aui-muted" : "text-aui-fg"}`}
+                        >
+                          {value}
+                        </span>
+                        <span className="text-aui-2xs text-aui-muted">{label}</span>
                       </span>
-                    ) : (
-                      <span className="text-aui-xs text-aui-muted">
-                        No runs in the last 24 hours
-                      </span>
-                    )}
-                  </button>
-                </Stroke>
+                    ))}
+                  </span>
+                </button>
               </li>
             );
           })}

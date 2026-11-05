@@ -784,6 +784,8 @@ export function ThreadRoom({
               : undefined
         }
         onPanel={(next) => openPanel(next)}
+        panel={shownView.panel}
+        onClosePanel={() => openPanel()}
         onArtifact={(id) =>
           openPanel("workspace", openPane(shownView, { kind: "artifact", ref: id }))
         }
@@ -1082,6 +1084,8 @@ export function ThreadRoom({
         </div>
       </ConversationPage>
       <ConversationInfo
+        runs={turns.flatMap((turn) => (turn.run ? [turn.run] : []))}
+        view={shownView}
         panel={shownView.panel}
         contextTab={shownView.contextTab}
         onContextTab={(contextTab) => openPanel("context", { contextTab })}

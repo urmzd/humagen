@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AgentDetail, BUILTIN_LOCKED, type Tab } from "./AgentDetail.tsx";
-import type { Note, ProjectView, Revision } from "./api.ts";
+import { Agents } from "./Agents.tsx";
+import type { Group, Note, ProjectView, Revision } from "./api.ts";
 import { policyWords } from "./Governance.tsx";
 
 const writer: Revision = {
@@ -209,4 +210,49 @@ test("a call policy reads as a sentence about who may call and who approves", ()
     }),
     "Any agent that lists it may call it. A call from anyone but lead waits for a manager or an admin to approve it, for up to 1 day.",
   );
+});
+
+test("the directory keeps empty and populated statistics in the same three fields", () => {
+  const group: Group = {
+    name: writer.spec.name,
+    runs: 4,
+    completed: 3,
+    failed: 1,
+    stopped: 0,
+    active: 0,
+    completed_alone: 3,
+    needed_person: 0,
+    human_help_unknown: 0,
+    avg_ms: 2000,
+    handoffs_out: 0,
+    p50_ms: 2000,
+    p95_ms: 3000,
+  };
+  const directory = (stats: Map<string, Group>) =>
+    renderToStaticMarkup(
+      <Agents
+        agents={[writer]}
+        stats={stats}
+        builtin={[writer.spec.name]}
+        homes={{ [writer.spec.name]: "~" }}
+        canWrite
+        onOpen={noop}
+        onNew={noop}
+      />,
+    );
+  const empty = directory(new Map());
+  const active = directory(new Map([[writer.spec.name, group]]));
+  for (const html of [empty, active]) {
+    assert.match(html, /Runs \(24h\)/);
+    assert.match(html, />Success</);
+    assert.match(html, />Median</);
+    assert.match(html, /Built-in/);
+    assert.match(html, /Revision 2 · offline \/ offline/);
+    assert.match(html, /class="block truncate[^" ]*[^"]*" title="Writes a document\."/);
+    assert.doesNotMatch(html, /Lives in Company|Built in, read only|No runs in the last/);
+    assert.doesNotMatch(html, /humagen-tape|humagen-stroke/);
+  }
+  assert.equal((empty.match(/>–</g) ?? []).length, 3);
+  assert.match(active, /75%/);
+  assert.match(active, /2\.0s/);
 });

@@ -106,8 +106,15 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   "deletions",
 ];
 
-export type ConversationPanel = "activity" | "context" | "people" | "deliverables" | "workspace";
+export type ConversationPanel =
+  | "overview"
+  | "activity"
+  | "context"
+  | "people"
+  | "deliverables"
+  | "workspace";
 const CONVERSATION_PANELS: ConversationPanel[] = [
+  "overview",
   "activity",
   "context",
   "people",
@@ -161,15 +168,17 @@ export const NOTIFICATION_VIEWS = ["unread", "hidden", "done"] as const;
 export type NotificationView = (typeof NOTIFICATION_VIEWS)[number];
 
 export type YouSection = "profile" | "notifications" | "privacy" | "agents" | "connections";
+/** Where a conversation came from, as History filters it. */
+export type HistorySource = "all" | "chat" | "github" | "slack" | "scheduled" | "assignments";
+/** What History keeps by what a conversation is doing. */
+export type HistoryStatus = "needs" | "running" | "failed";
 export type CustomizeSection = "agents" | "skills" | "connections" | "tools";
 export type Route =
   | {
-      page: "pull-requests";
+      page: "history";
       q?: string;
-      repo?: string;
-      agent?: string;
-      status?: "running" | "waiting" | "done";
-      display?: "list";
+      source?: HistorySource;
+      status?: HistoryStatus;
     }
   | {
       page: "customize";
@@ -272,7 +281,7 @@ const pick = <T extends string>(value: string | undefined, allowed: readonly T[]
   oneOf(value, allowed) ?? fallback;
 
 const PAGE_TITLES: Record<Page, string> = {
-  "pull-requests": defaultCopy.pullRequests.title,
+  history: defaultCopy.history.title,
   customize: "Customize",
   library: "Library",
   operations: "Operations",
@@ -342,11 +351,10 @@ export function documentTitle(r: Route, unread = 0, product = "Humagen"): string
 /** The address of a route, path and query. */
 export function href(r: Route): string {
   switch (r.page) {
-    case "pull-requests": {
+    case "history": {
       const q = new URLSearchParams();
-      for (const key of ["q", "repo", "agent", "status", "display"] as const)
-        if (r[key]) q.set(key, r[key]);
-      return `/pull-requests${q.size ? `?${q}` : ""}`;
+      for (const key of ["q", "source", "status"] as const) if (r[key]) q.set(key, r[key]);
+      return `/history${q.size ? `?${q}` : ""}`;
     }
     case "library": {
       const q = new URLSearchParams();
@@ -463,7 +471,7 @@ export function href(r: Route): string {
     case "channel":
       return `/projects/${r.project === "" ? "~" : enc(r.project)}/channels/${enc(r.channel)}`;
     case "automations":
-      return "/automations";
+      return "/scheduled";
     case "schedules":
       return r.name ? `/schedules/${enc(r.name)}` : "/schedules";
     case "monitor":
@@ -582,15 +590,22 @@ function read(pathname: string, search: string): Route {
   const parts = pathname.split("/").filter(Boolean).map(dec);
   const [head, a, b, c] = parts;
   switch (head) {
-    case "pull-requests":
+    case "history":
       return {
-        page: "pull-requests",
+        page: "history",
         q: queryText(q, "q", 200),
-        repo: queryText(q, "repo", 200),
-        agent: queryText(q, "agent", 160),
-        status: oneOf(q.get("status"), ["running", "waiting", "done"] as const),
-        display: oneOf(q.get("display"), ["list"] as const),
+        source: oneOf(q.get("source"), [
+          "chat",
+          "github",
+          "slack",
+          "scheduled",
+          "assignments",
+        ] as const),
+        status: oneOf(q.get("status"), ["needs", "running", "failed"] as const),
       };
+    // The old Pull requests page is History's GitHub source.
+    case "pull-requests":
+      return { page: "history", source: "github", q: queryText(q, "q", 200) };
     case "notifications":
       return {
         page: "notifications",
@@ -754,10 +769,12 @@ function read(pathname: string, search: string): Route {
         message: tab === "inbox" ? (q.get("message") ?? undefined) : undefined,
       };
     }
+    // Scheduled was called Automations; a schedule without a name is the list.
+    case "scheduled":
     case "automations":
       return { page: "automations" };
     case "schedules":
-      return { page: "schedules", name: a };
+      return a ? { page: "schedules", name: a } : { page: "automations" };
     case "monitor":
       return { page: "monitor", tab: pick(a, MONITOR_TABS, "overview") };
     // Alerts became Monitor. Its rules and overview moved there; what fired is in the inbox.

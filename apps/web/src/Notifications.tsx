@@ -1,5 +1,5 @@
 import { defaultCopy } from "@humagen/components";
-import { SettingsIcon, XIcon } from "@humagen/render-web";
+import { XIcon } from "@humagen/render-web";
 import type { ComponentProps, MouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NativeNotification } from "../../../packages/client/src/generated/types.ts";
@@ -131,14 +131,22 @@ export function NotificationsPage({
     <InboxPage
       {...inbox}
       actions={
-        <NotificationLink
-          to={{ page: "you", section: "notifications" }}
-          onGo={onGo}
-          className={`${textAction} inline-flex min-h-11 items-center gap-2`}
-        >
-          <SettingsIcon />
-          {c.settings}
-        </NotificationLink>
+        <>
+          <NotificationLink
+            to={{ page: "monitor", tab: "rules" }}
+            onGo={onGo}
+            className={`${textAction} inline-flex min-h-11 items-center`}
+          >
+            {c.alertRules}
+          </NotificationLink>
+          <NotificationLink
+            to={{ page: "you", section: "notifications" }}
+            onGo={onGo}
+            className={`${textAction} inline-flex min-h-11 items-center`}
+          >
+            {c.settings}
+          </NotificationLink>
+        </>
       }
       notice={
         notifications?.failed && (

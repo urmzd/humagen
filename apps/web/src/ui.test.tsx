@@ -82,20 +82,16 @@ function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
   );
 }
 
-test("the sidebar groups readable work under Projects Library and Operations", () => {
+test("the sidebar keeps daily work in view and the rest under More, each with its own icon", () => {
   const out = sidebar();
-  for (const group of ["Projects", "Library", "Operations"])
-    assert.match(out, new RegExp(`aria-label="${group}"`));
+  for (const group of ["Work", "More"]) assert.match(out, new RegExp(`aria-label="${group}"`));
+  for (const route of ["/", "/history", "/scheduled", "/notifications", "/customize/agents"])
+    assert.ok(out.includes(`href="${route}"`), route);
+  // Projects, Library, People and Operations open from the More menu, not the list.
   for (const route of [
-    "/",
     "/projects",
     "/library/sources",
-    "/notifications",
-    "/customize/agents",
     "/operations/context",
-  ])
-    assert.ok(out.includes(`href="${route}"`), route);
-  for (const route of [
     "/library/skills",
     "/library/memory",
     "/assignments",
@@ -104,6 +100,19 @@ test("the sidebar groups readable work under Projects Library and Operations", (
   ])
     assert.ok(!out.includes(`href="${route}"`), route);
   assert.match(out, /href="\/" aria-current="page"/);
+  // No two places in the list share a glyph.
+  const nav = out.slice(
+    out.indexOf('aria-label="Sections"'),
+    out.indexOf('aria-label="Conversations"'),
+  );
+  const glyphs = [...nav.matchAll(/<a [^>]*>(<svg[\s\S]*?<\/svg>)/g)].map((m) => m[1]);
+  assert.ok(glyphs.length >= 5);
+  assert.equal(new Set(glyphs).size, glyphs.length, "two sidebar items share an icon");
+  // A page under More shows itself in the More row while it is open.
+  assert.match(
+    sidebar({ route: { page: "library", section: "sources" } }),
+    /aria-label="More"[^>]*>[\s\S]*?Library<\/span>/,
+  );
   assert.match(
     sidebar({ route: { page: "agent", name: "lead", tab: "model" } }),
     /href="\/customize\/agents" aria-current="page"/,

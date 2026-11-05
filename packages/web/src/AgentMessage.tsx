@@ -487,6 +487,7 @@ export function AgentMessage({
     lastThought?.at === turn.text.length &&
     lastThought.after === turn.tasks.length;
   const [traceOpen, setTraceOpen] = useState(true);
+  const calls = [...blocks, ...rest].filter((b) => b.kind === "call");
   // A review's Ask Follow-up writes in the composer, which a host that may ask this agent has.
   const followUp = capabilities?.followUp ?? onAskAgent !== undefined;
   const block = (b: Block) =>
@@ -505,11 +506,29 @@ export function AgentMessage({
       <Reasoning key={b.key} text={b.text} streaming={thinkingNow && b.last} />
     ) : b.kind === "tools" ? (
       <StepGroup key={b.key} turn={turn} tasks={b.tasks} copy={copy} />
-    ) : (
-      <ul key={b.key} aria-label="Agent calls" className="flex min-w-0 flex-col">
-        <AgentCall task={b.task} caller={turn.agent.name} turnId={turn.id} copy={copy} />
-      </ul>
-    );
+    ) : b.key === calls[0]?.key ? (
+      <details key={b.key} className="min-w-0 py-1">
+        <summary className="flex min-h-7 cursor-pointer list-none items-center gap-1.5 text-aui-xs text-aui-muted [&::-webkit-details-marker]:hidden group">
+          {copy.conversation.askedAgents([
+            ...new Set(calls.map((call) => call.task.subagent?.name ?? call.task.title)),
+          ])}
+          <span aria-hidden className="group-open:rotate-90">
+            ▸
+          </span>
+        </summary>
+        <ul aria-label="Agent calls" className="flex min-w-0 flex-col gap-2 pt-2">
+          {calls.map((call) => (
+            <AgentCall
+              key={call.key}
+              task={call.task}
+              caller={turn.agent.name}
+              turnId={turn.id}
+              copy={copy}
+            />
+          ))}
+        </ul>
+      </details>
+    ) : null;
 
   return (
     <article
@@ -519,13 +538,14 @@ export function AgentMessage({
       data-aui-still={turn.detached || undefined}
       // A tap focuses the message, which shows its actions (theme.css).
       tabIndex={-1}
-      className="group/message aui-fade-up grid min-w-0 scroll-mt-4 grid-cols-[1.75rem_minmax(0,1fr)] gap-x-2.5"
+      // Flat: the reply runs the full width of the column, under one quiet line naming who said it.
+      className="group/message aui-fade-up flex min-w-0 scroll-mt-4 flex-col gap-2"
     >
-      <StoppableMark agent={turn.agent.name} state={orb} stop={stop} copy={copy}>
-        <AgentAvatar agent={turn.agent} state={orb} />
-      </StoppableMark>
       <div className="flex min-w-0 flex-col gap-2">
         <header className="flex min-h-7 min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-aui-sm">
+          <StoppableMark agent={turn.agent.name} state={orb} stop={stop} copy={copy}>
+            <AgentAvatar agent={turn.agent} state={orb} />
+          </StoppableMark>
           {onAskAgent ? (
             <button
               type="button"
@@ -550,7 +570,11 @@ export function AgentMessage({
               </>
             ) : null}
           </span>
-          {timestamp && <span className="text-aui-xs text-aui-muted">{timestamp}</span>}
+          {timestamp && (
+            <span className="text-aui-xs text-aui-muted opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 motion-reduce:transition-none pointer-coarse:opacity-100">
+              {timestamp}
+            </span>
+          )}
           {/* Announce state changes, not every streamed token. */}
           <output className="sr-only">{copy.status[turn.status]}</output>
         </header>

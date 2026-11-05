@@ -83,7 +83,7 @@ const view = async (name: "Recents" | "Projects" | RegExp) => {
   fireEvent.click(await screen.findByRole("button", { name }));
 };
 
-test("Recents lists every project newest first, each row with its project, age, and one dot", async () => {
+test("Recents lists every project newest first, each row one line with one dot", async () => {
   const since = new Date(Date.now() - 24 * hour).toISOString();
   const marks: Marks = { archived: [], read: {}, tips: [], since };
   net = stubFetch({
@@ -101,7 +101,7 @@ test("Recents lists every project newest first, each row with its project, age, 
   render(<Bar projects={[{ name: "Launch", title: "Spring launch" } as ProjectView]} />);
   const list = within(await screen.findByRole("list", { name: "Recents" }));
   const waiting = await list.findByRole("button", { name: /^Waiting on me/ });
-  assert.match(waiting.textContent ?? "", /Spring launch/);
+  assert.doesNotMatch(waiting.textContent ?? "", /Spring launch/);
   assert.match(waiting.textContent ?? "", /Needs you/);
   assert.equal(
     waiting.querySelector("[data-standing]")?.getAttribute("data-standing"),
@@ -123,7 +123,7 @@ test("Recents lists every project newest first, each row with its project, age, 
     ),
   );
   const quiet = list.getByRole("button", { name: /^Quiet/ });
-  assert.match(quiet.querySelector("[data-row-age]")?.textContent ?? "", /^\d+(mo|y|w|d)$/);
+  assert.equal(quiet.querySelector("[data-row-age]")?.textContent, "");
   assert.equal(quiet.querySelector("[data-standing]"), null);
 });
 
@@ -199,7 +199,7 @@ test("opening a conversation marks it read", async () => {
   );
 });
 
-test("the search tip shows once marks are read, and Dismiss keeps it away for the person", async () => {
+test("search has one way in: the Search row, with no tip card repeating it", async () => {
   let marks: Marks = { archived: [], read: {}, tips: [] };
   net = stubFetch({
     "GET /api/marks": () => marks,
@@ -229,17 +229,8 @@ test("the search tip shows once marks are read, and Dismiss keeps it away for th
     />
   );
   render(bar());
-  const tip = await screen.findByRole("complementary", { name: "Search across conversations" });
-  fireEvent.click(within(tip).getByRole("button", { name: "Dismiss" }));
-  await waitFor(() => assert.deepEqual(marks.tips, ["search"]));
-  assert.equal(screen.queryByRole("complementary", { name: "Search across conversations" }), null);
-  cleanup();
-  render(bar());
   await screen.findByRole("list", { name: "Recents" });
   await new Promise((r) => setTimeout(r, 20));
-  assert.equal(
-    screen.queryByRole("complementary", { name: "Search across conversations" }),
-    null,
-    "a dismissed tip stays dismissed",
-  );
+  assert.equal(screen.queryByRole("complementary", { name: "Search across conversations" }), null);
+  assert.ok(screen.getByRole("button", { name: "Search" }));
 });

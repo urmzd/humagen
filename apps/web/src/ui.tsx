@@ -10,6 +10,7 @@ import {
   XIcon,
 } from "@humagen/render-web";
 import { AgentInitials, AgentOrb, type OrbState, usePresence } from "@humagen/web";
+import { createPortal } from "react-dom";
 import { agentHue, requestAgentHue, subscribeHues } from "./agentHues.ts";
 import { builtinAgentKey } from "./legacy.ts";
 
@@ -1362,7 +1363,9 @@ export function Popover({
   useEffect(() => {
     if (!open) return;
     const away = (e: MouseEvent) => {
-      if (root.current && !root.current.contains(e.target as Node)) setOpen(false);
+      const at = e.target as Node;
+      if (root.current && !root.current.contains(at) && !panel.current?.contains(at))
+        setOpen(false);
     };
     document.addEventListener("mousedown", away);
     return () => document.removeEventListener("mousedown", away);
@@ -1400,6 +1403,31 @@ export function Popover({
       {trigger}
     </button>
   );
+  const flyoutPanel = (
+    <div
+      ref={panel}
+      id={id}
+      role="dialog"
+      aria-label={label}
+      data-leaving={present.leaving}
+      style={
+        {
+          ...(side === "right" ? flyout : {}),
+          ...(shift ? { translate: `${shift}px 0` } : {}),
+          "--humagen-pop-origin":
+            side === "right" ? "top left" : `${up ? "bottom" : "top"} ${align}`,
+        } as CSSProperties
+      }
+      className={`humagen-glass-pop humagen-pop ${side === "right" ? "fixed" : "absolute"} z-40 max-w-[calc(100vw-2rem)] rounded-aui-lg p-1.5 ${narrow ? "w-56" : "w-80"} ${
+        side === "right" ? "" : align === "right" ? "right-0" : "left-0"
+      } ${side === "right" ? "" : up ? "bottom-full mb-2" : "top-full mt-2"}`}
+    >
+      {children(() => {
+        setOpen(false);
+        root.current?.querySelector<HTMLButtonElement>("button")?.focus();
+      })}
+    </div>
+  );
   return (
     <div
       ref={root}
@@ -1413,31 +1441,9 @@ export function Popover({
       }}
     >
       {tooltip ? <Tooltip label={tooltip}>{triggerButton}</Tooltip> : triggerButton}
-      {present.mounted && (
-        <div
-          ref={panel}
-          id={id}
-          role="dialog"
-          aria-label={label}
-          data-leaving={present.leaving}
-          style={
-            {
-              ...(side === "right" ? flyout : {}),
-              ...(shift ? { translate: `${shift}px 0` } : {}),
-              "--humagen-pop-origin":
-                side === "right" ? "top left" : `${up ? "bottom" : "top"} ${align}`,
-            } as CSSProperties
-          }
-          className={`humagen-glass-pop humagen-pop ${side === "right" ? "fixed" : "absolute"} z-40 max-w-[calc(100vw-2rem)] rounded-aui-lg p-1.5 ${narrow ? "w-56" : "w-80"} ${
-            side === "right" ? "" : align === "right" ? "right-0" : "left-0"
-          } ${side === "right" ? "" : up ? "bottom-full mb-2" : "top-full mt-2"}`}
-        >
-          {children(() => {
-            setOpen(false);
-            root.current?.querySelector<HTMLButtonElement>("button")?.focus();
-          })}
-        </div>
-      )}
+      {present.mounted &&
+        // A flyout leaves its column: a scrolling or blurred ancestor would clip it.
+        (side === "right" ? createPortal(flyoutPanel, document.body) : flyoutPanel)}
     </div>
   );
 }
