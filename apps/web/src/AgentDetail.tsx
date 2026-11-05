@@ -1,5 +1,6 @@
 import { defaultCopy } from "@humagen/components";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { AgentChoicesEditor, choicesProblem, cleanChoices } from "./AgentChoicesEditor.tsx";
 import { AgentDefaultSkills } from "./AgentDefaultSkills.tsx";
 import {
   type AgentPlace,
@@ -330,6 +331,11 @@ function ModelTab({
           </>
         )}
       </Section>
+      <AgentChoicesEditor
+        choices={spec.choices}
+        editable={editable}
+        onChange={(choices) => onChange({ choices })}
+      />
       <p className="text-aui-xs text-aui-muted">
         Each call is billed at the price of the model that answered it. Temperature, token limits
         and step limits are not settings yet: the agent spec this platform runs on has no fields for
@@ -542,9 +548,10 @@ export function AgentDetail({
     setSaving(true);
     setProblem(null);
     try {
+      const draft = { ...spec, choices: cleanChoices(spec.choices) };
       const next = revision
-        ? await api.reviseAgent(spec, revision.rev)
-        : await api.createAgent(spec);
+        ? await api.reviseAgent(draft, revision.rev)
+        : await api.createAgent(draft);
       onChanged(next.spec.name);
     } catch (e) {
       setProblem(e instanceof ApiError ? e.message : "The agent could not be saved.");
@@ -625,7 +632,12 @@ export function AgentDetail({
             <button
               type="button"
               className={primary}
-              disabled={!dirty || saving || policyProblem(spec, policies) !== null}
+              disabled={
+                !dirty ||
+                saving ||
+                policyProblem(spec, policies) !== null ||
+                choicesProblem(spec.choices) !== null
+              }
               onClick={save}
             >
               {revision ? `Save as Revision ${revision.rev + 1}` : "Create Agent"}

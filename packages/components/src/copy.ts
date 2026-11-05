@@ -2396,6 +2396,18 @@ export const defaultCopy = {
     hint: "Applies to this message only, for agents that offer it.",
     effort: (effort: string) => effort.charAt(0).toUpperCase() + effort.slice(1),
   },
+  agentChoices: {
+    title: "Message choices",
+    hint: "Let people choose a model or reasoning effort for each message. Leave both lists empty to use only this agent's model and default effort.",
+    models: "Allowed models",
+    modelsHint:
+      "One provider/model per line. The agent's own model is always available. Only configured providers can be saved.",
+    efforts: "Allowed reasoning efforts",
+    effortsHint:
+      "One effort per line, such as low, medium or high. Choose efforts supported by the models you offer; unsupported efforts fail before a model call.",
+    modelProblem: "Enter each model as provider/model, with no spaces.",
+    effortProblem: "Enter each effort as a word, such as low or high, with no spaces.",
+  },
   /** Over Home's chat bar: the person's own project, where a conversation in no project is filed (DES-057). */
   noProject: "No project",
   /**

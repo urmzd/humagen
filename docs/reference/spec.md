@@ -768,6 +768,9 @@ saige's format does not: `approvers`, `self_approval`, `answerers`,
 tools it may call), `knowledge`, `fallback_on` and `choices`. Left out, it grants
 nothing beyond the file.
 
+The console edits an agent's `choices` on its Model tab and saves them as a new
+revision. Empty lists remove the choices.
+
 `choices` (in a spec or a policy) is what a person may pick for one message
 in place of the agent's model and reasoning effort: `models`, each
 `provider/model`, and `efforts`, such as `low` and `high`. Left out, nothing
