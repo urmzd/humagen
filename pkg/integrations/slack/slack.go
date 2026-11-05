@@ -15,6 +15,7 @@ import (
 	"github.com/urmzd/orchagent/flow/connectors"
 	"github.com/urmzd/orchagent/flow/connectors/mention"
 	transport "github.com/urmzd/orchagent/flow/connectors/slack"
+	"github.com/urmzd/orchagent/flow/deliverystate"
 	"github.com/urmzd/orchagent/flow/event"
 
 	"github.com/urmzd/humagen/internal/wire"
@@ -39,6 +40,10 @@ type Config struct {
 	Sessions bool
 	Commands []transport.Command
 	Log      *slog.Logger
+	// DeliveryState and DeliveryScope keep this installation's messages
+	// through connector rebuilds. Replicas must share both.
+	DeliveryState deliverystate.Store
+	DeliveryScope string
 }
 type Connector struct {
 	*transport.Connector
@@ -62,6 +67,7 @@ func New(cfg Config) (*Connector, error) {
 	c := &Connector{cfg: cfg, offered: offered{seen: map[string]bool{}}, statusSeq: map[string]uint64{}}
 	c.live.open, c.live.asked = map[string]session{}, map[string]bool{}
 	base := transport.Config{Tenant: cfg.Tenant, Files: cfg.Files, FileToken: cfg.FileToken, AppID: cfg.AppID, API: cfg.API, Verifier: cfg.Verifier, Team: cfg.Team, Bots: cfg.Bots, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
+	base.DeliveryState, base.DeliveryScope = cfg.DeliveryState, cfg.DeliveryScope
 	base.Prepare = func(_ context.Context, tag *event.Envelope) error {
 		if cfg.Agents != nil && wire.AgentOf(*tag) == "" {
 			if agent, stripped, ok := mention.Find(wire.TextOf(*tag), cfg.Agents); ok {

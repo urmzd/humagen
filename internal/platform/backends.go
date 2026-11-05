@@ -10,6 +10,7 @@ import (
 	"github.com/urmzd/orchagent/durable/ledger"
 	dqueue "github.com/urmzd/orchagent/durable/queue"
 	"github.com/urmzd/orchagent/flow/bus"
+	"github.com/urmzd/orchagent/flow/deliverystate"
 	"github.com/urmzd/orchagent/flow/runschema"
 
 	"github.com/urmzd/humagen/internal/legacy"
@@ -89,6 +90,10 @@ type Backends struct {
 	// readers woken by LISTEN/NOTIFY. Nil means none was opened; the bus is
 	// then whatever Config.Bus says.
 	Bus bus.Bus
+	// DeliveryState keeps connector message handles and accumulated rendering
+	// across client rebuilds and replica changes. Nil keeps it in this platform.
+	// Embedding programs can pass it to their own connectors' Config as well.
+	DeliveryState deliverystate.Store
 	// Counters are the usage ledger's admission and spend counts in the
 	// database State is on, shared by every process that opens it. Nil
 	// keeps them in this process, which is right for one process only.
@@ -149,6 +154,10 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 	if err := events.Migrate(ctx); err != nil {
 		return Backends{}, nil, err
 	}
+	delivery := deliverystate.NewPostgres(pool)
+	if err := delivery.Migrate(ctx); err != nil {
+		return Backends{}, nil, err
+	}
 	counters, err := usage.OpenCounters(ctx, pool)
 	if err != nil {
 		return Backends{}, nil, err
@@ -157,7 +166,7 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 	if err != nil {
 		return Backends{}, nil, err
 	}
-	return Backends{State: st, Shared: shared, Agents: defs, Ledger: l, Queue: q, Bus: events, Counters: counters, RoomCounters: roomCounters, Notices: bus.NewNotices(pool)}, st.Close, nil
+	return Backends{State: st, Shared: shared, Agents: defs, Ledger: l, Queue: q, Bus: events, DeliveryState: delivery, Counters: counters, RoomCounters: roomCounters, Notices: bus.NewNotices(pool)}, st.Close, nil
 }
 
 func (b Backends) check() error {
@@ -173,6 +182,9 @@ func (b Backends) check() error {
 // openStores builds humagen's own stores on st, reading back what it holds. A
 // nil st builds them in memory.
 func (p *Platform) openStores(cfg Config) error {
+	if p.cfg.Backends.DeliveryState == nil {
+		p.cfg.Backends.DeliveryState = deliverystate.NewMemory()
+	}
 	st := cfg.Backends.State
 	var errs []error
 	keep := func(what string, err error) {

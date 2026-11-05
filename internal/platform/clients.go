@@ -109,10 +109,9 @@ func (p *Platform) create(tenant, by string, in ClientInput) (clients.Client, er
 	return saved, nil
 }
 
-// UpdateClient replaces a client's record. Its connector is rebuilt, so the
-// runs it was carrying lose their place on the surface: a Slack session's stop
-// button no longer finds them, and an answer still streaming starts a new
-// message.
+// UpdateClient replaces a client's record and rebuilds its connector. The
+// run's message handle and accumulated answer survive in DeliveryState. A
+// Slack session's local stop tracking is rebuilt by subsequent events.
 func (p *Platform) UpdateClient(_ context.Context, tenant, id, by string, in ClientInput) (clients.Client, error) {
 	p.clientsMu.Lock()
 	defer p.clientsMu.Unlock()
@@ -418,6 +417,7 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 			Tenant: c.Tenant, Files: connectors.Files{Store: p.files, Log: p.log}, FileToken: secrets.token,
 			Bots: c.Bots, Agents: agents,
 			Interval: p.cfg.ClientInterval, Log: p.log,
+			DeliveryState: p.cfg.Backends.DeliveryState, DeliveryScope: clientDeliveryScope(c),
 		}
 		if c.Slack != nil {
 			cfg.Sessions = c.Slack.Sessions
@@ -457,6 +457,7 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 			// webhook secret, so one client's grant is worth nothing to another.
 			MutationSecret: []byte(secrets.signing),
 			Tenant:         c.Tenant,
+			DeliveryState:  p.cfg.Backends.DeliveryState, DeliveryScope: clientDeliveryScope(c),
 		}
 		// A comment that mentions the app and names no agent is raised
 		// naming none, and stamp decides who answers it where it is filed.
@@ -475,6 +476,13 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		return st, nil
 	}
 	return nil, fmt.Errorf("%w: unknown surface %q", clients.ErrInvalid, c.Surface)
+}
+
+// Recovery lists pending messages by scope, so the scope names the tenant as
+// well as the installation. JSON preserves boundaries even in unusual IDs.
+func clientDeliveryScope(c clients.Client) string {
+	key, _ := json.Marshal([3]string{c.Tenant, string(c.Surface), c.ID})
+	return string(key)
 }
 
 // clientAgents is the agents a client may name in text: those in its tenant's
