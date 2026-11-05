@@ -605,23 +605,31 @@ func New(cfg Config) (*Platform, error) {
 		_ = p.Close()
 		return nil, err
 	}
+	opts := []runtime.Option{}
+	// A run's ledger row and its accepted event commit together when both
+	// are on the database the outbox writes to.
+	if o := cfg.Backends.Outbox; o != nil && p.broker == cfg.Backends.Bus && p.ledger == cfg.Backends.Ledger {
+		opts = append(opts, runtime.WithOutbox(o))
+	}
 	rt, err := runtime.New(
 		durable.New(p.ledger, p.queue),
 		p.Agents.Resolver(),
 		p.broker,
-		runtime.WithRuntime(exec),
-		runtime.WithLogger(log),
-		runtime.WithStopGrace(cfg.StopGrace),
-		// The ledger is where a stop is recorded, so a request made while a
-		// run waits in the queue or between attempts is honoured however long
-		// it waits. It is the same ledger the runs execute from.
-		runtime.WithStopLedger(p.ledger),
-		// A run parked on a person is woken through the queue as soon as
-		// it is answered or stopped, not at the worker's next poll.
-		runtime.WithWaker(p.queue),
-		// A spec's approvers and answerers may name this workspace's roles.
-		runtime.WithRoles(p.rolesOf),
-		runtime.WithQuestionTTL(cfg.QuestionTTL),
+		append(opts,
+			runtime.WithRuntime(exec),
+			runtime.WithLogger(log),
+			runtime.WithStopGrace(cfg.StopGrace),
+			// The ledger is where a stop is recorded, so a request made while a
+			// run waits in the queue or between attempts is honoured however long
+			// it waits. It is the same ledger the runs execute from.
+			runtime.WithStopLedger(p.ledger),
+			// A run parked on a person is woken through the queue as soon as
+			// it is answered or stopped, not at the worker's next poll.
+			runtime.WithWaker(p.queue),
+			// A spec's approvers and answerers may name this workspace's roles.
+			runtime.WithRoles(p.rolesOf),
+			runtime.WithQuestionTTL(cfg.QuestionTTL),
+		)...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("platform: runtime: %w", err)
