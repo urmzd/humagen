@@ -42,7 +42,8 @@ export function workspaceScreens(call: Call): Screen[] {
       await input.fill("");
       const suggestions = page.getByRole("list", { name: defaultCopy.chat.suggestions });
       await suggestions.waitFor();
-      assert.equal(await suggestions.getByRole("button").count(), 3);
+      // Analyst, builder, writer and code reviewer.
+      assert.equal(await suggestions.getByRole("button").count(), 4);
       const beforeTyping = await suggestions.boundingBox();
       await input.fill("Prepare the launch brief.");
       const afterTyping = await suggestions.boundingBox();
