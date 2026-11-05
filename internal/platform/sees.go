@@ -1,7 +1,9 @@
 package platform
 
 import (
+	"context"
 	"slices"
+	"time"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/orchagent/flow/event"
@@ -470,6 +472,33 @@ func (p *Platform) placeAdmitted(tag event.Envelope, edge call.Edge, runID, proj
 
 // placeOfRunID is where the run an id names lives: from the index, or from
 // its admission while it is not recorded yet.
+// AwaitRunRecord reports whether a run is known here, its record read or
+// its admission in this process, waiting up to d for it. A run's first
+// events are published before its record is written, so a reader on another
+// replica can hear of a run that this process cannot place yet.
+func (p *Platform) AwaitRunRecord(ctx context.Context, tenant, id string, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	tick := time.NewTicker(runRecordPoll)
+	defer tick.Stop()
+	for {
+		if _, ok := p.placeOfRunID(tenant, id); ok {
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-t.C:
+			_, ok := p.placeOfRunID(tenant, id)
+			return ok
+		case <-tick.C:
+		}
+	}
+}
+
+// runRecordPoll is how often AwaitRunRecord reads a run's record.
+const runRecordPoll = 25 * time.Millisecond
+
 func (p *Platform) placeOfRunID(tenant, id string) (Place, bool) {
 	if r, err := p.Runs.Get(tenant, id); err == nil {
 		return placeOfRun(r), true
