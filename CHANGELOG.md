@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.84.0 (2026-11-05)
+
+### Features
+
+- **helm**: let KEDA read a passwordless Postgres URL from the worker's env (#213) ([37e24c6](https://github.com/urmzd/humagen/commit/37e24c653688cfd0b0bd572117a17900c1e29983))
+
+### Bug Fixes
+
+- **github**: let installations grant CI status and file reads as read context (#214) ([8efc626](https://github.com/urmzd/humagen/commit/8efc626268146b9afc962dc03c834bddc78492f5))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.83.1...v0.84.0)
+
+
 ## 0.83.0 (2026-11-04)
 
 ### Features
