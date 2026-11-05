@@ -460,10 +460,8 @@ export function Chat({
     );
   };
   const [draft, setDraft] = useState("");
-  // The model and effort picked for the next message alone (DES-067), and
-  // each sent message's pick by its text until it starts.
+  // The model and effort picked for the next message alone (DES-067).
   const [pick, setPick] = useState<MessagePick>({});
-  const picked = useRef(new Map<string, MessagePick>());
   // The agents that can answer in the picked project, once read.
   const [offered, setOffered] = useState<Set<string> | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -589,8 +587,7 @@ export function Chat({
   const queue = useQueue({
     onStart: (m) => {
       setProblem(null);
-      const chosen = picked.current.get(m.text) ?? {};
-      picked.current.delete(m.text);
+      const chosen = m.pick ?? {};
       replying.current = { ids: [], stop: false };
       const done = (runs: Run[] = []) => {
         onChanged();
@@ -609,6 +606,7 @@ export function Chat({
         if (!threadId) {
           queue.clear();
           setSeed({ text: m.text });
+          setPick(chosen);
         }
       };
       // Home starts a private conversation in the picked project, or a
@@ -791,19 +789,15 @@ export function Chat({
   const shownPick = keptPick(pick, offers);
   // Sending records the pick with the message and resets it: it is for
   // this message alone.
-  const remember = (text: string) => {
-    if (shownPick.model || shownPick.effort) picked.current.set(text, shownPick);
-    setPick({});
-  };
   const sending: typeof queue = {
     ...queue,
     send: (text) => {
-      remember(text);
-      queue.send(text);
+      queue.send(text, shownPick);
+      setPick({});
     },
     sendNow: (text) => {
-      remember(text);
-      queue.sendNow(text);
+      queue.sendNow(text, shownPick);
+      setPick({});
     },
   };
   const modelPicker = <ModelPicker offers={offers} pick={shownPick} onPick={setPick} />;
