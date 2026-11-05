@@ -1242,6 +1242,25 @@ func (p *Platform) Run(ctx context.Context) error {
 		loop("observer "+tenant, func() error { return p.observeTenant(ctx, sub, observed) })
 		loop("egress "+tenant, func() error { return p.deliver.Run(ctx, tenant) })
 	})
+	// A run another replica admitted is not watched here, and when that
+	// replica stops, its tenant's observer and egress would have no member
+	// left until a run is admitted again: the run goes on here (the queue
+	// hands it over) while its events reach neither the index nor its
+	// surfaces. So every replica joins the tenants with runs not yet ended.
+	loop("watch unfinished", func() error {
+		tick := time.NewTicker(unfinishedScan)
+		defer tick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-tick.C:
+			}
+			for _, run := range p.Runs.Unfinished() {
+				p.watch(run.Tenant)
+			}
+		}
+	})
 	// A change to the inbox or the threads made on another process reaches
 	// this process's watchers, and this process's reach theirs.
 	if r := p.cfg.Backends.Notices; r != nil {
@@ -1477,6 +1496,10 @@ type tenants struct {
 	start   func(tenant string)
 	ended   bool
 }
+
+// unfinishedScan is how often a process looks for tenants with runs not yet
+// ended that it does not watch yet.
+var unfinishedScan = 5 * time.Second
 
 // watch has the platform observe and deliver a tenant's events, once. Before
 // Run it is remembered and started when Run begins.
