@@ -101,19 +101,30 @@ func KnownProviders() []string {
 	return []string{ProviderAnthropic, ProviderOffline, ProviderOpenAI}
 }
 
-// AgentSpec is what an agent IS.
-//
-// It mirrors pkg/agentrt.Spec field for field, so adaptation between them is
-// assignment.
+// PackageBase identifies the package version a revision is based on.
+type PackageBase struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
+// AgentPackage includes the currently available package version.
+type AgentPackage struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Latest  string `json:"latest"`
+}
+
+// AgentSpec is an agent definition and its package provenance.
 type AgentSpec struct {
-	Name         string   `json:"name"`
-	Description  string   `json:"description,omitempty"`
-	Model        string   `json:"model"`
-	Provider     string   `json:"provider"`
-	SystemPrompt string   `json:"system_prompt"`
-	Tools        []string `json:"tools,omitempty"`
-	Sources      []Source `json:"sources,omitempty"`
-	Access       Access   `json:"access,omitzero"`
+	Package      *PackageBase `json:"package,omitempty"`
+	Name         string       `json:"name"`
+	Description  string       `json:"description,omitempty"`
+	Model        string       `json:"model"`
+	Provider     string       `json:"provider"`
+	SystemPrompt string       `json:"system_prompt"`
+	Tools        []string     `json:"tools,omitempty"`
+	Sources      []Source     `json:"sources,omitempty"`
+	Access       Access       `json:"access,omitzero"`
 	// Fallbacks are the models tried, in order, when a model call to the
 	// primary (Provider and Model) fails with an error another model could
 	// fix: an outage, a rate limit, a refused credential. A request the
@@ -216,11 +227,14 @@ type Access struct {
 // Revision is one immutable version of an agent: the definition, which version
 // it is, and the evidence that it has not changed since.
 type Revision struct {
-	Spec      AgentSpec `json:"spec"`
-	Rev       int       `json:"rev"`
-	Hash      string    `json:"hash"`
-	CreatedAt time.Time `json:"created_at"`
-	CreatedBy string    `json:"created_by"`
+	Package         *AgentPackage `json:"package,omitempty"`
+	Customized      bool          `json:"customized"`
+	UpdateAvailable bool          `json:"update_available"`
+	Spec            AgentSpec     `json:"spec"`
+	Rev             int           `json:"rev"`
+	Hash            string        `json:"hash"`
+	CreatedAt       time.Time     `json:"created_at"`
+	CreatedBy       string        `json:"created_by"`
 }
 
 // NewRevision canonicalizes spec, validates it, and stamps it as revision rev.
@@ -244,11 +258,12 @@ func NewRevisionWith(spec AgentSpec, rev int, by string, at time.Time, providers
 		return Revision{}, err
 	}
 	return Revision{
-		Spec:      canonical,
-		Rev:       rev,
-		Hash:      canonical.Hash(),
-		CreatedAt: at.UTC(),
-		CreatedBy: by,
+		Spec:       canonical,
+		Rev:        rev,
+		Hash:       canonical.Hash(),
+		CreatedAt:  at.UTC(),
+		CreatedBy:  by,
+		Customized: by != "platform",
 	}, nil
 }
 
@@ -277,12 +292,20 @@ func (r Revision) Validate() error {
 // one to a caller without copying would let that caller edit a store's
 // immutable history by accident.
 func (r Revision) Clone() Revision {
+	if r.Package != nil {
+		pkg := *r.Package
+		r.Package = &pkg
+	}
 	r.Spec = r.Spec.Clone()
 	return r
 }
 
 // Clone returns a deep copy of the definition.
 func (s AgentSpec) Clone() AgentSpec {
+	if s.Package != nil {
+		base := *s.Package
+		s.Package = &base
+	}
 	s.Tools = slices.Clone(s.Tools)
 	s.Fallbacks = slices.Clone(s.Fallbacks)
 	s.FallbackOn = slices.Clone(s.FallbackOn)
@@ -325,6 +348,7 @@ func NormalizeName(name string) string {
 // leaves an operator wondering where their tool went.
 func (s AgentSpec) Normalize() AgentSpec {
 	out := AgentSpec{
+		Package:      s.Clone().Package,
 		Name:         NormalizeName(s.Name),
 		Description:  strings.TrimSpace(s.Description),
 		Model:        strings.TrimSpace(s.Model),

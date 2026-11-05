@@ -2,12 +2,15 @@ package platform
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/auth"
 )
 
 // Agents the platform provides.
@@ -15,8 +18,8 @@ import (
 // A built-in is an ordinary agent revision that the platform writes instead of
 // a person. It runs like any other agent, in a sandbox, under the same limits,
 // and another agent reaches it the way it reaches any agent: by naming it in
-// its spawn allowlist. What sets it apart is only that nobody edits it, so
-// every workspace has the same one.
+// its spawn allowlist. Workspaces may customize package agents; only revisions
+// last written by the platform receive automatic upgrades.
 //
 // A built-in needs a model to be of any use, so none exists until the server
 // is told which provider and model to give them.
@@ -125,7 +128,7 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 	if p.cfg.BuiltinProvider == "" || p.cfg.BuiltinModel == "" {
 		return nil
 	}
-	return []wire.AgentSpec{{
+	specs := []wire.AgentSpec{{
 		Name:         BuiltinWriter,
 		Description:  "Writes documents, reports and tables, and publishes them as files",
 		Provider:     p.cfg.BuiltinProvider,
@@ -181,6 +184,20 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 		SystemPrompt: qaReviewerPrompt,
 		Tools:        reviewTools(),
 	}}
+	// Hash each complete package before adding provenance.
+	for _, group := range []struct {
+		name       string
+		start, end int
+	}{
+		{"humagen/core", 0, 3}, {"humagen/review", 3, 7},
+	} {
+		raw, _ := json.Marshal(specs[group.start:group.end])
+		version := fmt.Sprintf("sha256:%x", sha256.Sum256(raw))
+		for i := group.start; i < group.end; i++ {
+			specs[i].Package = &wire.PackageBase{Name: group.name, Version: version}
+		}
+	}
+	return specs
 }
 
 // EnsureBuiltins makes sure a tenant has the platform's agents, at the
@@ -224,12 +241,7 @@ func (p *Platform) EnsureBuiltins(ctx context.Context, tenant string) error {
 			}
 		case err != nil:
 			return err
-		case have.Spec.Provider != want.Provider || have.Spec.Model != want.Model || have.Spec.SystemPrompt != want.SystemPrompt ||
-			have.Spec.Description != want.Description || !slices.Equal(have.Spec.Tools, want.Tools) ||
-			!slices.Equal(have.Spec.Access.Spawn, want.Access.Spawn) ||
-			!slices.Equal(have.Spec.Access.WorkspaceAreas, want.Access.WorkspaceAreas) ||
-			!slices.Equal(have.Spec.Approvals, want.Approvals) || !slices.Equal(have.Spec.Approvers, want.Approvers) ||
-			have.Spec.SelfApproval != want.SelfApproval:
+		case have.CreatedBy == "platform" && (!have.Spec.SameContent(want) || have.Spec.Package == nil || *have.Spec.Package != *want.Package):
 			if _, err := p.Agents.Revise(ctx, tenant, want, have.Rev, "platform"); err != nil && !errors.Is(err, wire.ErrConflict) {
 				return fmt.Errorf("platform: built-in %s: %w", want.Name, err)
 			}
@@ -268,6 +280,9 @@ func (p *Platform) EnsureAgentHomes(ctx context.Context, tenant string) error {
 // registry for direct reads, historical revisions and existing routing grants.
 func (p *Platform) AgentDirectory(ctx context.Context, tenant string, page wire.Page) ([]wire.Revision, string, error) {
 	rows, next, err := p.Catalog().List(ctx, tenant, page)
+	for i := range rows {
+		rows[i] = p.PackageRevision(rows[i])
+	}
 	return slices.DeleteFunc(rows, func(r wire.Revision) bool { return legacy.IsBuiltinAgent(r.Spec.Name) }), next, err
 }
 
@@ -310,4 +325,59 @@ func CurrentAgentNames(names []string) []string {
 
 func (p *Platform) CurrentAgentHomes(tenant, project string) []string {
 	return CurrentAgentNames(p.ProjectTree(tenant).Homes(project))
+}
+
+// PackageRevision annotates a saved revision with the deployment's latest package.
+func (p *Platform) PackageRevision(r wire.Revision) wire.Revision {
+	for _, spec := range p.builtinSpecs() {
+		if legacy.BuiltinAgent(r.Spec.Name) != spec.Name {
+			continue
+		}
+		base := r.Spec.Package
+		version := ""
+		if base != nil {
+			version = base.Version
+		}
+		r.Package = &wire.AgentPackage{Name: spec.Package.Name, Version: version, Latest: spec.Package.Version}
+		r.Customized = r.CreatedBy != "platform"
+		r.UpdateAvailable = r.Customized && version != spec.Package.Version
+		break
+	}
+	return r
+}
+
+// ResetAgent restores a package's current specification as a platform revision.
+func (p *Platform) ResetAgent(ctx context.Context, who auth.Principal, name string, expectedRev int) (wire.Revision, error) {
+	name = wire.NormalizeName(name)
+	if !who.Can(auth.AgentsWrite) {
+		return wire.Revision{}, auth.ErrForbidden
+	}
+	unlock, err := p.lockSetupRevision(who.Tenant, name)
+	if err != nil {
+		return wire.Revision{}, err
+	}
+	defer unlock()
+	p.skillDefaultsMu.Lock()
+	defer p.skillDefaultsMu.Unlock()
+	have, err := p.Catalog().Get(ctx, who.Tenant, name, 0)
+	if err != nil {
+		return wire.Revision{}, err
+	}
+	if err := p.OwnsHome(who, name); err != nil {
+		return wire.Revision{}, err
+	}
+	if expectedRev != 0 && expectedRev != have.Rev {
+		return wire.Revision{}, wire.ErrConflict
+	}
+	for _, spec := range p.builtinSpecs() {
+		if legacy.BuiltinAgent(name) == spec.Name {
+			if err := p.checkBuiltinOwner(ctx, who.Tenant, have); err != nil {
+				return wire.Revision{}, err
+			}
+			spec.Name = have.Spec.Name
+			r, err := p.Agents.Revise(ctx, who.Tenant, spec, have.Rev, "platform")
+			return p.PackageRevision(r), err
+		}
+	}
+	return wire.Revision{}, fmt.Errorf("%w: agent has no available package to reset", wire.ErrInvalidAgent)
 }

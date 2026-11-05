@@ -125,6 +125,11 @@ func (s AgentSpec) HashIn(domain string) string {
 		writeStrings(h, ch.Models)
 		writeStrings(h, ch.Efforts)
 	}
+	if c.Package != nil {
+		writeString(h, "package")
+		writeString(h, c.Package.Name)
+		writeString(h, c.Package.Version)
+	}
 	return HashAlgorithm + ":" + hex.EncodeToString(h.Sum(nil))
 }
 

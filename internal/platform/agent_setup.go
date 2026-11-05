@@ -180,9 +180,6 @@ func (p *Platform) checkSetupSpec(ctx context.Context, who auth.Principal, spec 
 	if !who.Can(auth.AgentsWrite) {
 		return wire.AgentSpec{}, auth.ErrForbidden
 	}
-	if IsBuiltin(spec.Name) {
-		return wire.AgentSpec{}, auth.ErrForbidden
-	}
 	if err := p.CheckAgentName(who.Tenant, spec.Name); err != nil {
 		return wire.AgentSpec{}, err
 	}

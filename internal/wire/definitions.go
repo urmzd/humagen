@@ -118,6 +118,9 @@ func RevisionOf(rec definition.Record, rev int) (Revision, error) {
 	if c := p.Choices; c != nil {
 		spec.Choices = &Choices{Models: slices.Clone(c.Models), Efforts: slices.Clone(c.Efforts)}
 	}
+	if name := d.Metadata["humagen_package"]; name != "" {
+		spec.Package = &PackageBase{Name: name, Version: d.Metadata["humagen_package_version"]}
+	}
 	if d.Model != nil {
 		spec.Provider, spec.Model, _ = strings.Cut(d.Model.Use, "/")
 		for _, f := range d.Model.Fallback {
@@ -140,7 +143,11 @@ func RevisionOf(rec definition.Record, rev int) (Revision, error) {
 	for _, k := range p.Knowledge {
 		spec.Sources = append(spec.Sources, Source{Name: k.Name, URI: k.URI, Options: k.Options})
 	}
-	return Revision{Spec: spec.Normalize(), Rev: rev, Hash: rec.Digest, CreatedAt: rec.CreatedAt, CreatedBy: rec.CreatedBy}, nil
+	r := Revision{Spec: spec.Normalize(), Rev: rev, Hash: rec.Digest, CreatedAt: rec.CreatedAt, CreatedBy: rec.CreatedBy, Customized: rec.CreatedBy != "platform"}
+	if spec.Package != nil {
+		r.Package = &AgentPackage{Name: spec.Package.Name, Version: spec.Package.Version, Latest: spec.Package.Version}
+	}
+	return r, nil
 }
 
 // DefinitionPolicy is the sidecar an .agent.md file is read with: what saige's

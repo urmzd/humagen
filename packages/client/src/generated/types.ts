@@ -640,8 +640,22 @@ export interface AgentSetup {
   updated_at: string;
 }
 
+/** Server-maintained package provenance, inherited when customizing a revision. */
+export interface PackageBase {
+  name: string;
+  version: string;
+}
+
+/** The package version this revision is based on and the latest available version. */
+export interface AgentPackage {
+  name: string;
+  version: string;
+  latest: string;
+}
+
 /** An agent's definition. */
 export interface AgentSpec {
+  package?: PackageBase;
   name: string;
   description?: string;
   model: string;
@@ -710,6 +724,11 @@ export interface ModelRef {
 
 /** One immutable revision of an agent. */
 export interface Revision {
+  package?: AgentPackage;
+  /** This revision was written by someone other than platform. */
+  customized: boolean;
+  /** A customization is based on a different package version than latest. */
+  update_available: boolean;
   spec: AgentSpec;
   rev: number;
   /** The hash of the definition, or when an agent is left out of `spec` for the caller, the hash of what they are shown. */
@@ -4704,6 +4723,10 @@ export interface ListAgentsResponse {
 
 export interface ReviseAgentBody {
   spec: AgentSpec;
+  expected_rev: number;
+}
+
+export interface ResetAgentBody {
   expected_rev: number;
 }
 

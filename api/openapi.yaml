@@ -1249,6 +1249,36 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/agents/{name}/reset:
+    post:
+      operationId: resetAgent
+      tags: [agents]
+      summary: Reset a package agent to its current package specification
+      x-permission: agents:write
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expected_rev]
+              properties:
+                expected_rev: {type: integer, minimum: 0}
+      responses:
+        "200":
+          description: The restored platform revision.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Revision"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/agents/{name}/home:
     put:
       operationId: setAgentHome
@@ -9364,11 +9394,27 @@ components:
         skill_bindings_version: {type: integer, minimum: 0}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+    PackageBase:
+      description: Server-maintained package provenance, inherited when customizing a revision.
+      type: object
+      required: [name, version]
+      properties:
+        name: {type: string}
+        version: {type: string}
+    AgentPackage:
+      description: The package version this revision is based on and the latest available version.
+      type: object
+      required: [name, version, latest]
+      properties:
+        name: {type: string}
+        version: {type: string}
+        latest: {type: string}
     AgentSpec:
       description: An agent's definition.
       type: object
       required: [name, model, provider, system_prompt]
       properties:
+        package: {$ref: "#/components/schemas/PackageBase"}
         name: {type: string}
         description: {type: string}
         model: {type: string}
@@ -9470,8 +9516,15 @@ components:
     Revision:
       description: One immutable revision of an agent.
       type: object
-      required: [spec, rev, hash, created_at, created_by]
+      required: [spec, rev, hash, created_at, created_by, customized, update_available]
       properties:
+        package: {$ref: "#/components/schemas/AgentPackage"}
+        customized:
+          description: This revision was written by someone other than platform.
+          type: boolean
+        update_available:
+          description: A customization is based on a different package version than latest.
+          type: boolean
         spec: {$ref: "#/components/schemas/AgentSpec"}
         rev: {type: integer}
         hash:

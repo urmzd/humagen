@@ -332,9 +332,6 @@ func (p *Platform) agentsReport(ctx context.Context, tenant, own string) (string
 // agent's name is held to what the agents route holds it to.
 func (p *Platform) saveAgent(ctx context.Context, tenant string, args map[string]any) (wire.Revision, bool, error) {
 	name := strings.TrimSpace(arg(args, "name"))
-	if IsBuiltin(name) {
-		return wire.Revision{}, false, fmt.Errorf("%w: %s belongs to the platform", ErrBuilder, name)
-	}
 	if home, homed := p.ProjectTree(tenant).Home(wire.NormalizeName(name)); homed && home != projects.Root {
 		return wire.Revision{}, false, fmt.Errorf("%w: %s lives in a project, so only that project's owners change it", ErrBuilder, name)
 	}

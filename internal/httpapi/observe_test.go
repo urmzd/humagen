@@ -335,7 +335,7 @@ func TestConversationsBranchAndPick(t *testing.T) {
 			summary = s.(map[string]any)
 		}
 	}
-	if summary["turns"].(float64) != 3 || summary["branches"].(float64) != 1 || summary["title"] != "tag the next release" {
+	if summary["turns"].(float64) != 3 || summary["branches"].(float64) != 1 || summary["title"] != "Tag the next release" {
 		t.Fatalf("summary = %v", summary)
 	}
 

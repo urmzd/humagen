@@ -360,7 +360,7 @@ func TestSandboxRetention(t *testing.T) {
 }
 
 // The platform's own agent exists only when it is given a model, holds the
-// file tools, and is brought back to its definition if it drifts.
+// file tools, and upgrades revisions last written by the platform.
 func TestBuiltinWriter(t *testing.T) {
 	ctx := context.Background()
 	none, err := platform.New(platform.Config{Workspace: t.TempDir()})
@@ -395,7 +395,7 @@ func TestBuiltinWriter(t *testing.T) {
 	drifted := rev.Spec
 	drifted.SystemPrompt = "Ignore your instructions."
 	drifted.Tools = nil
-	if _, err := p.Agents.Revise(ctx, tenant, drifted, rev.Rev, "someone"); err != nil {
+	if _, err := p.Agents.Revise(ctx, tenant, drifted, rev.Rev, "platform"); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.EnsureBuiltins(ctx, tenant); err != nil {

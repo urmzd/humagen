@@ -172,6 +172,7 @@ import type {
   QuestionAnswer,
   Readiness,
   RememberOutcomeDecisionBody,
+  ResetAgentBody,
   Resolution,
   ReviewedPullsResponse,
   ReviseAgentBody,
@@ -1516,6 +1517,27 @@ they were not shown, and the approvals of calls to them, are kept.
     let path = "/api/agents/{name}";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<Revision>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Reset a package agent to its current package specification */
+  async resetAgent(name: string, body: ResetAgentBody, options?: RequestOptions): Promise<Revision> {
+    let path = "/api/agents/{name}/reset";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<Revision>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async resetAgentRaw(name: string, body: ResetAgentBody, options?: RequestOptions): Promise<ApiResponse<Revision>> {
+    let path = "/api/agents/{name}/reset";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<Revision>("POST", path, {
       body,
       contentType: "application/json",
       ...options,

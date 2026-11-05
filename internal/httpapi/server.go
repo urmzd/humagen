@@ -146,6 +146,7 @@ func (s *Server) Handler() http.Handler {
 	s.agentSetupRoutes(mux)
 	s.outcomeLearningRoutes(mux)
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
+	mux.HandleFunc("POST /api/agents/{name}/reset", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.resetAgent))))
 	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.reviseAgent))))
 	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentHome))))
 	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.agentHistory))))
@@ -380,7 +381,7 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Pri
 		}
 		enabled[name] = slices.DeleteFunc(place.EnabledIn, func(p string) bool { return !seer.Project(projects.NameOf(p)) })
 	}
-	ok(w, http.StatusOK, map[string]any{"agents": viewRevisions(s.P.Names(who.Tenant), seer.Revisions(all)), "builtin": platform.Builtins(), "homes": homes, "enabled_in": enabled, "hues": hues})
+	ok(w, http.StatusOK, map[string]any{"agents": s.viewRevisions(s.P.Names(who.Tenant), seer.Revisions(all)), "builtin": platform.Builtins(), "homes": homes, "enabled_in": enabled, "hues": hues})
 }
 
 // revisionView is an agent's revision and what the person who saved it is
@@ -390,10 +391,10 @@ type revisionView struct {
 	CreatedByName string `json:"created_by_name,omitempty"`
 }
 
-func viewRevisions(names platform.Names, revs []wire.Revision) []revisionView {
+func (s *Server) viewRevisions(names platform.Names, revs []wire.Revision) []revisionView {
 	out := make([]revisionView, len(revs))
 	for i, rev := range revs {
-		out[i] = revisionView{Revision: rev, CreatedByName: names.Of(rev.CreatedBy)}
+		out[i] = revisionView{Revision: s.P.PackageRevision(rev), CreatedByName: names.Of(rev.CreatedBy)}
 	}
 	return out
 }
@@ -401,10 +402,6 @@ func viewRevisions(names platform.Names, revs []wire.Revision) []revisionView {
 func (s *Server) createAgent(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var spec wire.AgentSpec
 	if !decode(w, r, &spec) {
-		return
-	}
-	if platform.IsBuiltin(spec.Name) {
-		fail(w, http.StatusForbidden, "that name belongs to an agent the platform provides")
 		return
 	}
 	// A tag names an agent or a person, so a new agent cannot take a name a
@@ -428,14 +425,10 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, viewRevisions(s.P.Names(who.Tenant), []wire.Revision{s.P.Seer(who).Revision(rev)})[0])
+	ok(w, http.StatusCreated, s.viewRevisions(s.P.Names(who.Tenant), []wire.Revision{s.P.Seer(who).Revision(rev)})[0])
 }
 
 func (s *Server) reviseAgent(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	if platform.IsBuiltin(r.PathValue("name")) {
-		fail(w, http.StatusForbidden, "this agent is provided by the platform and cannot be edited")
-		return
-	}
 	// One that is not there is said so before the body is read, as one the
 	// caller may not see is, so neither tells them apart.
 	if _, err := s.P.Catalog().Get(r.Context(), who.Tenant, r.PathValue("name"), 0); err != nil {
@@ -451,10 +444,6 @@ func (s *Server) reviseAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 	}
 	if body.Spec.Name != r.PathValue("name") {
 		fail(w, http.StatusBadRequest, "the spec's name must match the agent being revised")
-		return
-	}
-	if platform.IsBuiltin(body.Spec.Name) {
-		fail(w, http.StatusForbidden, "this agent is provided by the platform and cannot be edited")
 		return
 	}
 	// An agent that lives in a project is that project's to change.
@@ -473,7 +462,7 @@ func (s *Server) reviseAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, viewRevisions(s.P.Names(who.Tenant), []wire.Revision{s.P.Seer(who).Revision(rev)})[0])
+	ok(w, http.StatusOK, s.viewRevisions(s.P.Names(who.Tenant), []wire.Revision{s.P.Seer(who).Revision(rev)})[0])
 }
 
 // agentHistory returns every revision of an agent, newest first.
@@ -484,7 +473,7 @@ func (s *Server) agentHistory(w http.ResponseWriter, r *http.Request, who auth.P
 		return
 	}
 	slices.SortFunc(revs, func(a, b wire.Revision) int { return b.Rev - a.Rev })
-	ok(w, http.StatusOK, map[string]any{"revisions": viewRevisions(s.P.Names(who.Tenant), s.P.Seer(who).Revisions(revs))})
+	ok(w, http.StatusOK, map[string]any{"revisions": s.viewRevisions(s.P.Names(who.Tenant), s.P.Seer(who).Revisions(revs))})
 }
 
 // agentOwner resolves the agent in the path to its memory owner, or answers
@@ -1404,4 +1393,23 @@ func APITagID(subject, key string) string {
 
 func (s *Server) modelProviders(w http.ResponseWriter, _ *http.Request, _ auth.Principal) {
 	ok(w, http.StatusOK, map[string]any{"providers": s.P.ModelProviderChoices()})
+}
+
+func (s *Server) resetAgent(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	if _, err := s.P.Catalog().Get(r.Context(), who.Tenant, r.PathValue("name"), 0); err != nil {
+		s.problem(w, err)
+		return
+	}
+	var body struct {
+		ExpectedRev int `json:"expected_rev"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	rev, err := s.P.ResetAgent(r.Context(), who, r.PathValue("name"), body.ExpectedRev)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, s.viewRevisions(s.P.Names(who.Tenant), []wire.Revision{s.P.Seer(who).Revision(rev)})[0])
 }
