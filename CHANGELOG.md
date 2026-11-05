@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.86.0 (2026-11-05)
+
+### Features
+
+- model and effort override per message (#216) ([4162ae7](https://github.com/urmzd/humagen/commit/4162ae71edbaba456694776a30e409c8eedb743c))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.85.0...v0.86.0)
+
+
 ## 0.85.0 (2026-11-05)
 
 ### Features
