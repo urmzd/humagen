@@ -134,6 +134,13 @@ planned collections, browser, protocol and improvement work from this UI pass.
   boundary, including a saved success, a visible failure, and denied access.
   Distinguish automated or simulated API checks from a live external-service
   trial. Record which services and actions were actually verified.
+- Managed Slack and GitHub delivery now retain message handles, accumulated
+  answers and sequence cursors across client rebuilds and replica takeover.
+  `TestClientDeliverySurvivesReseatingAndReplicaChanges` passes with the race
+  detector on memory and two Postgres pools, using simulated Slack/GitHub APIs.
+  It checks full-answer recovery, duplicate events and tenant/client isolation.
+  Live external failover remains unverified; an external create followed by a
+  crash before the database commit can still duplicate a new message.
 
 ### DES-002: No dots between words
 
