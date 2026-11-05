@@ -233,6 +233,10 @@ func boundRunContext(req runtime.Request) (runtime.Request, error) {
 		if len(chain) == 0 {
 			return req, fmt.Errorf("%w: agent %q runs on %s/%s, which this run's settings do not allow, and has no allowed fallback", ErrRunContext, spec.Name, spec.Provider, spec.Model)
 		}
+		if chain[0] != (native.ModelRef{Provider: spec.Provider, Model: spec.Model}) {
+			// The effort was picked for the model the ceilings took away.
+			spec.Effort = ""
+		}
 		spec.Provider, spec.Model = chain[0].Provider, chain[0].Model
 		spec.Fallbacks = nil
 		if len(chain) > 1 {

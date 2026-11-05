@@ -111,3 +111,46 @@ func TestDefinitionCatalogReadsWhatTheRegistryHeld(t *testing.T) {
 		t.Errorf("bad token = %v", err)
 	}
 }
+
+// An agent's choices survive the store, change its hash, normalize to a set,
+// and are refused when they name what this deployment cannot run.
+func TestAgentChoicesRoundTrip(t *testing.T) {
+	spec := AgentSpec{
+		Name: "picker", Provider: "anthropic", Model: "claude", SystemPrompt: "Answer.",
+		Choices: &Choices{Models: []string{"openai/gpt", "anthropic/opus"}, Efforts: []string{"High", "low"}},
+	}
+	plain := spec
+	plain.Choices = nil
+	if spec.Hash() == plain.Hash() {
+		t.Fatal("choices kept the hash")
+	}
+	if empty := plain; func() bool { empty.Choices = &Choices{}; return empty.Hash() != plain.Hash() }() {
+		t.Fatal("choices that offer nothing changed the hash")
+	}
+	rec, err := RecordOf(spec.Normalize(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev, err := RevisionOf(rec, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &Choices{Models: []string{"anthropic/opus", "openai/gpt"}, Efforts: []string{"high", "low"}}
+	if !reflect.DeepEqual(rev.Spec.Choices, want) {
+		t.Fatalf("read back choices %+v, want %+v", rev.Spec.Choices, want)
+	}
+	if err := spec.Validate(); err != nil {
+		t.Fatalf("valid choices refused: %v", err)
+	}
+	for name, c := range map[string]Choices{
+		"unknown provider": {Models: []string{"nowhere/x"}},
+		"bare model":       {Models: []string{"gpt"}},
+		"odd effort":       {Efforts: []string{"very-high"}},
+	} {
+		bad := spec
+		bad.Choices = &c
+		if err := bad.Validate(); !errors.Is(err, ErrInvalidAgent) {
+			t.Errorf("%s: Validate = %v, want ErrInvalidAgent", name, err)
+		}
+	}
+}

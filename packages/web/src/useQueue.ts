@@ -9,18 +9,23 @@ import {
 import { useCallback, useMemo, useRef, useState } from "react";
 
 let seq = 0;
-function message(text: string): QueuedMessage {
+function message(text: string, pick?: QueuedMessage["pick"]): QueuedMessage {
   seq += 1;
-  return { id: `q${Date.now().toString(36)}${seq}`, text, queuedAt: new Date().toISOString() };
+  return {
+    id: `q${Date.now().toString(36)}${seq}`,
+    text,
+    queuedAt: new Date().toISOString(),
+    ...(pick ? { pick: { ...pick } } : {}),
+  };
 }
 
 export interface QueueControls {
   state: QueueState;
   dispatch: (action: QueueAction) => void;
   /** Start now if idle, else queue behind the running turn. */
-  send: (text: string) => void;
+  send: (text: string, pick?: QueuedMessage["pick"]) => void;
   /** Interrupt the running turn and run this next. */
-  sendNow: (text: string) => void;
+  sendNow: (text: string, pick?: QueuedMessage["pick"]) => void;
   promote: (id: string) => void;
   edit: (id: string, text: string) => void;
   remove: (id: string) => void;
@@ -72,8 +77,8 @@ export function useQueue({
     () => ({
       state,
       dispatch,
-      send: (text) => dispatch({ type: "send", message: message(text) }),
-      sendNow: (text) => dispatch({ type: "sendNow", message: message(text) }),
+      send: (text, pick) => dispatch({ type: "send", message: message(text, pick) }),
+      sendNow: (text, pick) => dispatch({ type: "sendNow", message: message(text, pick) }),
       promote: (id) => dispatch({ type: "promote", id }),
       edit: (id, text) => dispatch({ type: "edit", id, text }),
       remove: (id) => dispatch({ type: "remove", id }),

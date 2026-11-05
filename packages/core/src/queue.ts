@@ -12,6 +12,8 @@ export interface QueuedMessage {
   id: string;
   text: string;
   queuedAt: string;
+  /** The choices for this message, retained through editing and retry. */
+  pick?: { model?: string; effort?: string };
 }
 
 /** When a turn ends, send the next queued message automatically or wait for the user. */

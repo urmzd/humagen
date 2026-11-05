@@ -120,6 +120,11 @@ func (s AgentSpec) HashIn(domain string) string {
 		writeString(h, "fallback_on")
 		writeStrings(h, c.FallbackOn)
 	}
+	if ch := c.Choices; ch != nil {
+		writeString(h, "choices")
+		writeStrings(h, ch.Models)
+		writeStrings(h, ch.Efforts)
+	}
 	return HashAlgorithm + ":" + hex.EncodeToString(h.Sum(nil))
 }
 

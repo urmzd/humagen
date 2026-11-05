@@ -765,8 +765,17 @@ Review the change and list what is risky.
 `policy` goes beside an `.agent.md` file, and only there. It holds what
 saige's format does not: `approvers`, `self_approval`, `answerers`,
 `tagged_only`, `workspace_areas`, `mcp_write` (the MCP servers whose write
-tools it may call), `knowledge` and `fallback_on`. Left out, it grants
-nothing beyond the file. `subscriptions` is refused: the platform decides
+tools it may call), `knowledge`, `fallback_on` and `choices`. Left out, it grants
+nothing beyond the file.
+
+`choices` (in a spec or a policy) is what a person may pick for one message
+in place of the agent's model and reasoning effort: `models`, each
+`provider/model`, and `efforts`, such as `low` and `high`. Left out, nothing
+is offered and every message runs on the agent's own model at its default
+effort. A pick the agent does not offer is passed over, the run's model
+ceilings still apply, and an effort the model does not take fails the run
+before any model call. For example
+`choices: {models: [anthropic/YOUR_LARGER_MODEL], efforts: [low, high]}`. `subscriptions` is refused: the platform decides
 what wakes an agent. saige checks the file at start, then the platform's
 own rules apply as to any spec. The file's `version` is not kept: the store
 numbers each change, and a run pins the version, digest and policy it
