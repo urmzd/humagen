@@ -29,7 +29,7 @@ const maxAgentList = 64
 // BuiltinAgents are the platform's own agents, which a file may name without
 // declaring and which live in no project. A test holds them to the
 // platform's.
-var BuiltinAgents = []string{"humagen-writer", "humagen-analyst", "humagen-builder"}
+var BuiltinAgents = []string{"humagen-writer", "humagen-analyst", "humagen-builder", "code-reviewer", "security-reviewer", "architect-reviewer", "qa-reviewer"}
 
 // level is one place an agent list is set: the workspace or a project.
 type level struct {
