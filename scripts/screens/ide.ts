@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import type { Page } from "playwright-core";
 import { defaultCopy } from "../../packages/components/src/copy.ts";
+import { revealConversationControls } from "./conversation-controls.ts";
 
 type Call = <T>(method: string, path: string, body?: unknown) => Promise<T>;
 type Screen = {
@@ -11,9 +12,9 @@ type Screen = {
 type File = { path: string; content: string; revision: string };
 
 const copy = defaultCopy.workspaceFiles;
-/** The Workspace opens from Conversation Settings. */
+/** Open Workspace from the header or its compact menu. */
 const openWorkspace = async (page: Page) => {
-  await page.getByRole("button", { name: defaultCopy.conversation.settings, exact: true }).click();
+  await revealConversationControls(page);
   await page.getByRole("button", { name: defaultCopy.workspace.menu, exact: true }).click();
 };
 const greeting = 'export function greeting(name: string) {\n  return "Hello, " + name;\n}\n';

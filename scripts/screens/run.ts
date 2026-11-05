@@ -39,6 +39,7 @@ import { type Browser, chromium, type Page } from "playwright-core";
 import { defaultCopy } from "../../packages/components/src/copy.ts";
 import { automationScreens } from "./automations.ts";
 import { collect, DESKTOP, judge, LANDSCAPE, PHONE, type Problem, type Rules } from "./checks.ts";
+import { revealConversationControls } from "./conversation-controls.ts";
 import { conversationDeletions } from "./deletions.ts";
 import { emailScreens, notificationEmailFixture } from "./email.ts";
 import { ideScreens } from "./ide.ts";
@@ -129,7 +130,10 @@ interface Ids {
 
 /** Opens a page's More menu. */
 const more = (page: Page) =>
-  page.getByRole("button", { name: "More", exact: true }).click({ timeout: 5_000 });
+  page
+    .getByRole("main")
+    .getByRole("button", { name: "More", exact: true })
+    .click({ timeout: 5_000 });
 
 /** The chat bar's textarea. */
 const bar = (page: Page) => page.locator("form[aria-label='Message'] textarea");
@@ -184,12 +188,10 @@ async function mentioned(page: Page, text: string): Promise<void> {
  * routed to.
  */
 /**
- * Opens a conversation's Context: from its header, or on a phone, where the
- * header is one line, from its menu.
+ * Opens Context from the header or its compact menu.
  */
 async function openContext(page: Page): Promise<void> {
-  // Context is in Conversation Settings at every width.
-  await page.getByRole("button", { name: defaultCopy.conversation.settings, exact: true }).click();
+  await revealConversationControls(page);
   await page.getByRole("button", { name: defaultCopy.conversation.context, exact: true }).click();
 }
 
@@ -454,20 +456,22 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       },
     },
     {
-      // The conversation header alone: who is in it, Share and Conversation Settings.
+      // Panel actions remain accessible in the header or its compact menu.
       name: "conversation-header",
       path: `/conversations/${ids.privateChat}`,
       act: async (page) => {
         await page.getByRole("heading", { level: 1 }).first().waitFor();
+        await revealConversationControls(page);
+        for (const name of ["Overview", "Workspace", "Context", "Activity"])
+          await page.getByRole("button", { name, exact: true }).waitFor();
+        await page.keyboard.press("Escape");
       },
     },
     {
       name: "workspace-menu",
       path: `/conversations/${ids.nativeThread}`,
       act: async (page) => {
-        await page
-          .getByRole("button", { name: defaultCopy.conversation.settings, exact: true })
-          .click();
+        await revealConversationControls(page);
         for (const name of [
           defaultCopy.workspace.menu,
           defaultCopy.conversation.context,
@@ -729,7 +733,7 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       name: "conversation-settings",
       path: `/conversations/${ids.privateChat}`,
       act: async (page) => {
-        await page.getByRole("button", { name: "Conversation Settings", exact: true }).click();
+        await revealConversationControls(page);
         await page.getByRole("button", { name: "Activity", exact: true }).waitFor();
       },
     },
@@ -777,7 +781,7 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       act: async (page) => {
         await artifactFixtures(page, ids.privateChat);
         await bar(page).fill("Make the owner clear.");
-        await page.getByRole("button", { name: "Conversation Settings", exact: true }).click();
+        await revealConversationControls(page);
         await page.getByRole("button", { name: defaultCopy.workspace.menu, exact: true }).click();
         await page
           .getByRole("button", { name: defaultCopy.workspace.pane.open, exact: true })
@@ -1207,39 +1211,22 @@ function screens(ids: Ids, call: Call): Screen[] {
         await page.emulateMedia({ colorScheme: "dark" });
         const agent = page.getByRole("button", { name: /^humagen-analyst(?:\s|$)/ });
         await agent.waitFor();
-        await agent.getByText("Workspace Default", { exact: true }).waitFor();
-        const badges = agent.locator("span.rounded-full");
-        const labels = await badges.allTextContents();
-        assert.ok(
-          labels.includes("Workspace Default"),
-          "The default agent identifies its workspace role",
-        );
-        assert.ok(
-          labels.includes("Built in, read only"),
-          "The built-in identifies its edit restriction",
-        );
-        // Enlarged text must remain inside the badge outline, too.
-        await badges.evaluateAll((items) => {
+        await agent.getByText("Workspace default", { exact: true }).waitFor();
+        const packageLabel = agent.getByText("humagen/core", { exact: true });
+        await packageLabel.waitFor();
+        const labels = packageLabel.or(agent.getByText("Workspace default", { exact: true }));
+        // The row now uses muted labels rather than outlined status badges.
+        await labels.evaluateAll((items) => {
           for (const item of items) {
             (item as HTMLElement).style.fontSize = "20px";
             (item as HTMLElement).style.lineHeight = "28px";
           }
         });
-        const escaped = await badges.evaluateAll((items) =>
-          items.flatMap((item) => {
-            const box = item.getBoundingClientRect();
-            const range = document.createRange();
-            range.selectNodeContents(item);
-            const text = range.getBoundingClientRect();
-            return text.top < box.top - 1 ||
-              text.bottom > box.bottom + 1 ||
-              text.left < box.left - 1 ||
-              text.right > box.right + 1
-              ? [item.textContent]
-              : [];
-          }),
+        assert.equal(
+          await agent.evaluate((el) => el.scrollWidth <= el.clientWidth),
+          true,
+          "Enlarged package and workspace labels stay within the agent row",
         );
-        assert.deepEqual(escaped, [], "Status text must fit within each badge outline");
       },
       after: async () => {
         if (badgeDefault) {

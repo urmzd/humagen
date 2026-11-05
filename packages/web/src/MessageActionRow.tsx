@@ -30,7 +30,7 @@ export function MessageActionRow({
     <div
       role="toolbar"
       aria-label={copy.conversation.messageActions}
-      className="aui-message-actions -ml-2.5 mt-1 flex min-w-0 flex-wrap items-center gap-1 transition-opacity focus-within:opacity-100 has-[[aria-pressed=true]]:opacity-100 pointer-fine:opacity-40 pointer-fine:group-focus-within/message:opacity-100 pointer-fine:group-hover/message:opacity-100 motion-reduce:transition-none"
+      className="aui-message-actions mt-1 md:-ml-2.5 flex min-w-0 flex-wrap items-center gap-1 transition-opacity focus-within:opacity-100 has-[[aria-pressed=true]]:opacity-100 pointer-fine:opacity-40 pointer-fine:group-focus-within/message:opacity-100 pointer-fine:group-hover/message:opacity-100 motion-reduce:transition-none"
     >
       {text && (copyControl ?? <CopyButton text={text} label={copyLabel} note="above" />)}
       {onReply && (

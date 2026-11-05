@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import type { Page } from "playwright-core";
 
 /**
- * The sidebar's conversation list (DES-054): Recents with each row's dot and
- * age, its hover actions, the Projects view and Archived. The seeded rows are
+ * The sidebar's conversation list (DES-054): Recents grouped by day with each
+ * row's dot, its hover actions, the Projects view and Archived. The seeded rows are
  * dressed, in the browser only, with the states a live workspace has: one
  * waiting on a person, one running and one with an unread answer.
  */
@@ -101,7 +101,7 @@ export function sidebarViews(): Scene[] {
       await dress(page, tips);
       await page.reload();
       // Nothing hovered or focused from the screen before: a row's hover
-      // actions would hide its age and dot.
+      // actions would hide its dot.
       const vp = page.viewportSize();
       await page.mouse.move((vp?.width ?? 800) - 4, (vp?.height ?? 600) - 4);
       await act(page);
@@ -109,18 +109,17 @@ export function sidebarViews(): Scene[] {
     after: release,
   });
   return [
-    // DES-056: the one-time search tip, before it is dismissed.
-    scene(
-      "sidebar-tip",
-      async (page) => {
-        const nav = await openSidebar(page);
-        await nav
-          .getByRole("complementary", { name: "Search across conversations" })
-          .getByRole("button", { name: "Dismiss" })
-          .waitFor();
-      },
-      [],
-    ),
+    scene("sidebar-search", async (page) => {
+      const nav = await openSidebar(page);
+      await nav.getByRole("button", { name: "Search", exact: true }).waitFor();
+      const sections = nav.getByRole("navigation", { name: "Sections" });
+      for (const name of ["New", "Notifications", "History", "Scheduled", "Customize"])
+        await sections.getByRole("link", { name: new RegExp(`^${name}\\b`) }).waitFor();
+      await sections.getByRole("button", { name: "More", exact: true }).click();
+      for (const name of ["Projects", "People", "Library", "Operations"])
+        await page.getByRole("link", { name, exact: true }).waitFor();
+      await page.keyboard.press("Escape");
+    }),
     // DES-055: a row's preview, on hover with a mouse and a long press on a phone.
     scene("sidebar-preview", async (page) => {
       const nav = await openSidebar(page);
@@ -143,7 +142,7 @@ export function sidebarViews(): Scene[] {
       const list = nav.getByRole("list", { name: "Recents" });
       await list.locator("[data-standing='needs']").first().waitFor();
       await list.locator("[data-standing='running']").first().waitFor();
-      await list.locator("[data-row-age] [data-standing='unread']").first().waitFor();
+      await list.locator("[data-standing='unread']").first().waitFor();
       assert.equal(
         await list
           .locator("[data-standing='needs']")
@@ -155,7 +154,10 @@ export function sidebarViews(): Scene[] {
     }),
     scene("sidebar-row-actions", async (page) => {
       const nav = await openSidebar(page);
-      const row = nav.getByRole("list", { name: "Recents" }).locator("li").first();
+      const row = nav
+        .getByRole("list", { name: "Recents" })
+        .locator("li:has(> [data-thread-row])")
+        .first();
       if ((page.viewportSize()?.width ?? 0) >= 768) {
         await row.hover();
         await row.getByRole("button", { name: /^Pin / }).waitFor();

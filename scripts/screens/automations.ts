@@ -4,17 +4,17 @@ import type { Page } from "playwright-core";
 export function automationScreens() {
   return [
     {
-      name: "automations",
-      path: "/automations",
+      name: "scheduled",
+      path: "/scheduled",
       act: async (page: Page) => {
-        await page.getByRole("heading", { name: "Automations", exact: true }).waitFor();
+        await page.getByRole("heading", { name: "Scheduled", exact: true }).waitFor();
         await page.getByRole("heading", { name: "Schedules", exact: true }).waitFor();
         await page.getByRole("heading", { name: "GitHub triggers", exact: true }).waitFor();
       },
     },
     {
       name: "automation-builder",
-      path: "/automations",
+      path: "/scheduled",
       act: async (page: Page) => {
         await page.getByRole("button", { name: "New GitHub Automation" }).click();
         await page.getByLabel("Name", { exact: true }).fill("Investigate failed checks");

@@ -41,7 +41,10 @@ var createRepo = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 func parseCreate(args []string, out io.Writer) (createOptions, error) {
 	var c createOptions
 	if len(args) == 0 {
-		return c, errors.New(createUsage)
+		if _, err := fmt.Fprintln(out, createUsage); err != nil {
+			return c, err
+		}
+		return c, errors.New("humagen create needs a kind: github or slack")
 	}
 	switch args[0] {
 	case "help", "-h", "-help", "--help":

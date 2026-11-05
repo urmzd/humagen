@@ -84,10 +84,10 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-051 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
 | DES-052 | Conversation files, scratchpads, code editing, change review and artifact publication, in one Workspace panel opened from Conversation Settings beside a compact header | Implemented: `WorkspaceFiles.tsx`, `Workspace.tsx`, `ConversationShell.tsx`, `/api/threads/{id}/files`, `GET /api/threads/{id}/sandboxes`; web, route, Go race and confinement suites pass; `conversation-header`, `workspace-*` and `ide-*` screens pass at 390x844 and 1280x800 |
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
-| DES-060 | Pull requests across workspace repositories, with board/list views and filters | Implemented; `pull_requests.go`, `PullRequests.tsx`, endpoint and DOM tests; board/list screens registered for CI |
+| DES-060 | Pull requests across workspace repositories, with board/list views and filters | Implemented; `pull_requests.go`, `History.tsx`, endpoint and DOM tests; `history-all` and `history-github` screens registered for CI |
 | DES-054 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row says its project, its age or an unread dot, and whether it waits on a person, runs or failed | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
 | DES-055 | A sidebar row previews itself on hover or a long press, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview`, `conversation-wave-preview`) at 390x844 and 1280x800 |
-| DES-056 | A one-time tip teaches search, dismissed once per person | Implemented: `Sidebar.tsx`, `POST /api/marks/tips`; DOM test and `sidebar-tip` screens pass |
+| DES-056 | A one-time tip teaches search, dismissed once per person | Evidence: `sidebar-search` checks the replacement Search navigation button; the tip card was removed |
 | DES-057 | Home files a new conversation from over its chat bar; a conversation's approval mode is a text control under the composer, Default or Approve for Me, within policy and audited | Implemented: `ApprovalModePicker.tsx`, `HomePage.tsx`, `pkg/threads/approval.go`, `internal/platform/approval_mode.go`, `PUT /api/threads/{id}/approval`; Go, DOM and screens pass (`home-project-above`, `composer-approval-mode`). The model and effort picker is not built: no agent spec allows an override yet |
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
 | DES-050 | The Workspace is a pane of tabs beside the conversation: + opens items, tabs close, Expand and Show Two Tabs, tabs in the address, a full-screen sheet on a phone | Implemented: `Workspace.tsx`, `pane.ts`, `Inspector` `expanded`; web, pane and route tests pass; `workspace-pane-split`, `workspace-pane-expanded` and the other Workspace screens pass at 390x844 and 1280x800 |
@@ -1526,8 +1526,8 @@ Rules:
   never flashes in, and once dismissed it stays away on every device:
   `POST /api/marks/tips` keeps the name in the person's marks (DES-054).
 
-Evidence: `sidebar-views.dom.test.tsx` (the tip test); `make screens` with
-`sidebar-tip`.
+Evidence: `sidebar-search` checks the replacement Search navigation button and
+sidebar destinations; the tip card was removed.
 
 ### DES-048: A turn as a transcript
 
@@ -1646,8 +1646,8 @@ reader in the last 30 days. Board and list views preserve search, status,
 repository and agent filters in the route. Cards open the conversation with
 its pull tab selected, using the DES-059 tab reference.
 
-Evidence: `PullRequests.tsx`, `pull_requests.go`, scoped endpoint and DOM tests;
-`pull-requests-board` and `pull-requests-list` screens are registered for CI.
+Evidence: `History.tsx`, `pull_requests.go`, scoped endpoint and DOM tests;
+`history-all` and `history-github` check the History heading and review row link.
 
 ### DES-059: Review GitHub changes in context
 
@@ -1703,7 +1703,7 @@ Evidence: `replay.test.ts`, `replay.dom.test.tsx`; the phone and desktop
   accompany instructions; webhook body text is never injected into prompts.
 - Evidence: `TestAutomationsMatchOnlyTheirInstallationConditions`,
   `TestAutomationBoundsAndCopies`, `automations.dom.test.tsx`, route round-trip
-  tests and the `automations` and `automation-builder` screen definitions.
+  tests and the `scheduled` and `automation-builder` screen definitions.
   Full screens run in CI.
 
 ### DES-062: Customize and personal tool servers

@@ -133,7 +133,7 @@ export function NotificationFilters({
               aria-label={c.type}
               value={kind}
               onChange={(event) => onKind(event.target.value)}
-              className="h-9 !text-aui-sm"
+              className="h-9 md:!text-aui-sm"
             >
               {[{ id: "", label: c.all }, ...kinds].map((item) => (
                 <option key={item.id} value={item.id}>

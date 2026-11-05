@@ -457,7 +457,7 @@ export function Mailbox({
           // Picking is its own control beside the row, never inside its button.
           <label
             // It takes the sender mark's own slot (px-2, size-8), so nothing shifts or overlaps.
-            className={`absolute top-2.5 left-2 z-10 flex size-8 cursor-pointer items-center justify-center pointer-coarse:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 has-[:focus-visible]:opacity-100 ${choosing || on ? "opacity-100" : "opacity-0"}`}
+            className={`absolute top-2.5 left-2 z-10 flex size-8 cursor-pointer items-center justify-center pointer-coarse:top-1 pointer-coarse:left-0.5 pointer-coarse:size-11 pointer-coarse:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 has-[:focus-visible]:opacity-100 ${choosing || on ? "opacity-100" : "opacity-0"}`}
           >
             <input
               type="checkbox"
@@ -477,7 +477,7 @@ export function Mailbox({
           className={`flex w-full min-w-0 items-start gap-3 rounded-aui py-2.5 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent focus-visible:-outline-offset-2 aria-[current]:bg-aui-accent-soft motion-reduce:transition-none px-2 ${on ? "bg-aui-subtle" : ""}`}
         >
           <span
-            className={`inline-flex size-8 shrink-0 items-center justify-center ${onMark ? `group-focus-within:invisible group-hover:invisible pointer-coarse:visible ${choosing || on ? "invisible" : ""}` : ""}`}
+            className={`inline-flex size-8 shrink-0 items-center justify-center ${onMark ? `group-focus-within:invisible group-hover:invisible pointer-coarse:invisible ${choosing || on ? "invisible" : ""}` : ""}`}
           >
             {(m.from.kind === "agent" && renderSender?.(m.from)) || <TemplateMark message={m} />}
           </span>
