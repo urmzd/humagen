@@ -245,7 +245,7 @@ func (p *Platform) delegateTool(req runtime.Request, action func(event.Action) e
 }
 
 // cascade is what the ending of one run does to the runs around it.
-func (p *Platform) cascade(ctx context.Context, run runs.Run) {
+func (p *Platform) cascade(ctx context.Context, run runs.Run) error {
 	// A run that failed or was stopped takes what is attached to it along,
 	// through the runtime, so each of them keeps what it had said. What it
 	// delegated is not attached, and carries on.
@@ -254,28 +254,43 @@ func (p *Platform) cascade(ctx context.Context, run runs.Run) {
 		if run.Status == runs.Stopped {
 			why = "stopped"
 		}
-		for _, child := range p.Runs.AttachedTo(run.Tenant, run.ID) {
+		children, err := p.Runs.ReadAttached(run.Tenant, run.ID)
+		if err != nil {
+			return err
+		}
+		for _, child := range children {
 			if err := p.requestStop(ctx, child.Tenant, child.ID, attachedCause(why, run), "system"); err != nil {
-				p.log.Warn("platform: an attached run could not be asked to stop", "tenant", child.Tenant, "run", child.ID, "error", err)
+				return err
 			}
 		}
 	}
 	// A caller that had answered and was waiting on this run may be done now.
 	if run.Parent != "" && run.Lifecycle == runs.Attached {
-		if parent, done := p.over(func() (runs.Run, bool) { return p.Runs.Settle(run.Tenant, run.Parent, p.now()) }); done {
+		var settleErr error
+		parent, done := p.over(func() (runs.Run, bool) {
+			var parent runs.Run
+			var done bool
+			parent, done, settleErr = p.Runs.SettleChecked(run.Tenant, run.Parent, p.now())
+			return parent, done
+		})
+		if settleErr != nil {
+			return settleErr
+		}
+		if done {
 			p.ended(ctx, parent)
 		}
 	}
 	// A delegated run's caller is not waiting and may be gone, so its answer
 	// goes where a person will find it.
 	if run.Lifecycle == runs.Delegated && run.Status == runs.Completed {
-		p.raiseInbox(run.Tenant, "result:"+run.ID, inbox.Message{
+		return p.completionInbox(run.Tenant, "result:"+run.ID, inbox.Message{
 			Kind: inbox.KindResult, Subject: run.Agent + " finished: " + oneLine(run.Text, 80),
 			From: inbox.From{Kind: "agent", Name: run.Agent}, Severity: inbox.Info,
 			Source: inbox.Source{Run: run.ID, Thread: run.Thread, Agent: run.Agent, Project: run.Project},
 			Parts:  []inbox.Part{{Type: inbox.PartText, State: inbox.PartInfo, Text: clip(run.Answer, 4000)}},
 		}, run.UpdatedAt)
 	}
+	return nil
 }
 
 // attachedCause says why an attached run was stopped: what became of the run

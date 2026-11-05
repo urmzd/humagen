@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
 )
 
@@ -52,23 +54,82 @@ const memoryPrompt = "Below is one exchange between a person and the agent %q. "
 	"Leave out anything that only mattered in this exchange. Reply NONE if there is nothing.\n\n" +
 	"Person: %s\n%s: %s"
 
-// ended is called exactly once for every run that ends.
+// ended resumes the durable completion actions for a terminal run.
 func (p *Platform) ended(ctx context.Context, run runs.Run) {
-	if err := p.Operations.Settle(run.Tenant, run.ID, run.Status == runs.Completed, p.now()); err != nil {
-		p.log.Error("platform: operation outcome could not be kept", "error", err)
+	completion, err := p.Runs.ClaimCompletion(ctx, run, p.now())
+	if err != nil {
+		p.log.Error("platform: completion could not be claimed", "run", run.ID, "error", err)
+		return
 	}
-	p.settleUsage(ctx, run)
-	p.raise(run)
-	// A question nobody answered is not waiting any more.
-	p.settleQuestionsOf(run)
+	if completion == nil {
+		return
+	}
+	finished := false
+	defer func() {
+		if !finished {
+			release, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = completion.Release(release)
+		}
+	}()
+	steps := []struct {
+		name  string
+		apply func() error
+	}{
+		{"release", func() error {
+			if run.Parent == "" {
+				if err := p.roomGate.Release(run.Tenant, personOfTag(run.Tag()), run.ID); err != nil {
+					return err
+				}
+			}
+			if run.Origin != runs.OriginSystem {
+				_, _, err := p.Usage.Record(usage.Entry{Kind: usage.Ended, Tenant: run.Tenant, RunID: run.ID, At: run.UpdatedAt})
+				return err
+			}
+			return nil
+		}},
+		{"operation", func() error { return p.Operations.Settle(run.Tenant, run.ID, run.Status == runs.Completed, p.now()) }},
+		{"usage", func() error { return p.settleUsage(ctx, run) }},
+		{"alerts", func() error { return p.raise(run) }},
+		{"questions", func() error { return p.settleQuestionsOf(run) }},
+		{"cascade", func() error { return p.cascade(ctx, run) }},
+		{"answer", func() error { return p.deliverAnswer(ctx, run) }},
+		{"housekeeping", func() error {
+			switch {
+			case run.Origin == runs.OriginSystem:
+				return p.fileHook(run)
+			case run.Origin == runs.OriginAPI && run.Parent == "" && run.Status == runs.Completed:
+				return p.afterTurn(ctx, run)
+			}
+			return nil
+		}},
+	}
 	p.forgetApprovedCalls(run.Tenant, run.ID)
-	p.cascade(ctx, run)
-	p.deliverAnswer(ctx, run)
-	switch {
-	case run.Origin == runs.OriginSystem:
-		p.fileHook(run)
-	case run.Origin == runs.OriginAPI && run.Parent == "" && run.Status == runs.Completed:
-		p.afterTurn(ctx, run)
+	failed := false
+	for _, step := range steps {
+		if completion.Done(step.name) {
+			continue
+		}
+		if err := completion.Renew(ctx, p.now()); err != nil {
+			p.log.Error("platform: completion lease could not be renewed", "run", run.ID, "error", err)
+			return
+		}
+		if err := step.apply(); err != nil {
+			p.log.Error("platform: completion action will retry", "run", run.ID, "action", step.name, "error", err)
+			failed = true
+			continue
+		}
+		if err := completion.Ack(ctx, step.name); err != nil {
+			p.log.Error("platform: completion action could not be acknowledged", "run", run.ID, "action", step.name, "error", err)
+			return
+		}
+	}
+	if !failed {
+		if err := completion.Finish(ctx); err != nil {
+			p.log.Error("platform: completion could not be finished", "run", run.ID, "error", err)
+			return
+		}
+		finished = true
 	}
 }
 
@@ -94,39 +155,72 @@ func (p *Platform) free(run runs.Run) {
 }
 
 // afterTurn starts the housekeeping a finished turn calls for.
-func (p *Platform) afterTurn(ctx context.Context, run runs.Run) {
-	cfg := p.Settings(run.Tenant)
+func (p *Platform) afterTurn(ctx context.Context, run runs.Run) error {
+	cfg, err := p.settings.get(run.Tenant)
+	if err != nil {
+		return err
+	}
+	cfg = cfg.withDefaults()
+	private := false
+	if cfg.MemoryAgent != "" {
+		thread, err := p.Threads.Get(run.Tenant, run.Thread)
+		if err != nil && !errors.Is(err, threads.ErrNotFound) {
+			return err
+		}
+		private = err == nil && thread.Visibility == threads.Private
+	}
+	remember := false
+	if cfg.MemoryAgent != "" && private && run.Actor.User != "" && !run.Actor.Bot {
+		pref, err := p.Prefs.Get(run.Tenant, run.Actor.User)
+		if err != nil {
+			return err
+		}
+		remember = pref.Personal.Remember
+	}
+	tree, err := p.Projects.Read(run.Tenant)
+	if err != nil {
+		return err
+	}
 	if cfg.TitleAgent != "" && run.Prev == "" {
-		p.startHook(ctx, run, cfg.TitleAgent, hookTitle, run.Thread, fmt.Sprintf(titlePrompt, clip(run.Text, 2000)))
+		if err := p.startHook(ctx, run, cfg.TitleAgent, hookTitle, run.Thread, fmt.Sprintf(titlePrompt, clip(run.Text, 2000))); err != nil {
+			return err
+		}
 	}
 	// A person's opt-in to remember how they work creates private proposals,
 	// never shared project memory. Review is still required.
-	if cfg.MemoryAgent != "" && run.Actor.User != "" && !run.Actor.Bot && p.privateThread(run.Tenant, run.Thread) && p.PreferencesOf(run.Tenant, run.Actor.User).Personal.Remember {
-		p.startHook(ctx, run, cfg.MemoryAgent, hookMemory, memory.PersonalOwner(run.Actor.User), fmt.Sprintf(memoryPrompt, run.Agent, clip(run.Text, 4000), run.Agent, clip(run.Answer, 4000)))
+	if cfg.MemoryAgent != "" && run.Actor.User != "" && !run.Actor.Bot && private && remember {
+		if err := p.startHook(ctx, run, cfg.MemoryAgent, hookMemory, memory.PersonalOwner(run.Actor.User), fmt.Sprintf(memoryPrompt, run.Agent, clip(run.Text, 4000), run.Agent, clip(run.Answer, 4000))); err != nil {
+			return err
+		}
 	}
 	// What is said in a private thread is its participants' alone: nothing
 	// in it becomes a note anyone else would be sent.
-	if cfg.MemoryAgent != "" && !p.privateThread(run.Tenant, run.Thread) {
+	if cfg.MemoryAgent != "" && !private {
 		// Every note is sent to other people's runs, so what a person's
 		// own credential reached is not taught at all.
-		if p.mayCarryPersonData(ctx, run) {
+		sensitive, err := p.completionPersonData(ctx, run)
+		if err != nil {
+			return err
+		}
+		if sensitive {
 			p.log.Info("platform: the memory agent is not asked about a turn that may carry what a person's own credential reached",
 				"tenant", run.Tenant, "run", run.ID)
-			return
+			return nil
 		}
 		// In a project, what is learned is the project's: every agent and
 		// every conversation there shares it. Outside one, it is the agent's.
 		owner := run.Agent
 		meta := map[string]string{}
-		if run.Project != "" && p.HasProject(run.Tenant, run.Project) {
+		if run.Project != "" && tree.Has(run.Project) {
 			owner = memory.ProjectOwner(run.Project)
 			if keeps := wire.Meta(run.Tag())[metaKeepsNotes]; keeps != "" {
 				meta[metaKeepsNotes] = keeps
 			}
 		}
-		p.startHook(ctx, run, cfg.MemoryAgent, hookMemory, owner,
+		return p.startHook(ctx, run, cfg.MemoryAgent, hookMemory, owner,
 			fmt.Sprintf(memoryPrompt, run.Agent, clip(run.Text, 4000), run.Agent, clip(run.Answer, 4000)), meta)
 	}
+	return nil
 }
 
 // mayCarryPersonData reports whether a turn's answer may carry what a
@@ -148,17 +242,33 @@ func (p *Platform) afterTurn(ctx context.Context, run runs.Run) {
 // index no longer holds, a revision or a granted provider that cannot be
 // found, and a provider changed since the turn, whose scope then is not kept.
 func (p *Platform) mayCarryPersonData(ctx context.Context, run runs.Run) bool {
+	sensitive, err := p.completionPersonData(ctx, run)
+	return sensitive || err != nil
+}
+
+// completionPersonData retains uncertainty as an error for durable work. It
+// sends nothing while metadata is unavailable and retries after recovery.
+func (p *Platform) completionPersonData(ctx context.Context, run runs.Run) (bool, error) {
 	path, err := p.Runs.Path(run.Tenant, run.ID)
-	if err != nil || len(path) == 0 {
-		return true
+	if err != nil {
+		if errors.Is(err, runs.ErrNotFound) {
+			return true, nil
+		}
+		return true, err
+	}
+	if len(path) == 0 {
+		return true, nil
 	}
 	if head := path[0]; head.Prev != "" {
 		if !strings.HasPrefix(head.Prev, "m-") {
-			return true
+			return true, nil
 		}
 		room, err := p.Runs.Conversation(run.Tenant, head.Thread)
 		if err != nil {
-			return true
+			if errors.Is(err, runs.ErrNotFound) {
+				return true, nil
+			}
+			return true, err
 		}
 		for _, r := range room {
 			if r.CreatedAt.Before(run.CreatedAt) {
@@ -182,11 +292,18 @@ func (p *Platform) mayCarryPersonData(ctx context.Context, run runs.Run) bool {
 		}
 		checked[key] = true
 		rev, err := p.Catalog().Get(ctx, turn.Tenant, turn.Agent, turn.Rev)
-		if err != nil || p.grantsPersonScoped(ctx, turn.Tenant, rev.Spec.Tools, turn.CreatedAt) {
-			return true
+		if err != nil {
+			if errors.Is(err, wire.ErrNotFound) {
+				return true, nil
+			}
+			return true, err
+		}
+		sensitive, err := p.completionPersonGrant(ctx, turn.Tenant, rev.Spec.Tools, turn.CreatedAt)
+		if err != nil || sensitive {
+			return sensitive, err
 		}
 	}
-	return false
+	return false, nil
 }
 
 // grantsPersonScoped reports whether tools grant a provider that takes each
@@ -194,9 +311,14 @@ func (p *Platform) mayCarryPersonData(ctx context.Context, run runs.Run) bool {
 // one, and so does one changed after since, when since is set, whose scope
 // then is not kept.
 func (p *Platform) grantsPersonScoped(ctx context.Context, tenant string, tools []string, since time.Time) bool {
+	sensitive, err := p.completionPersonGrant(ctx, tenant, tools, since)
+	return sensitive || err != nil
+}
+
+func (p *Platform) completionPersonGrant(ctx context.Context, tenant string, tools []string, since time.Time) (bool, error) {
 	for _, grant := range tools {
 		if grant == ToolSourceSearch {
-			return true
+			return true, nil
 		}
 		// As fiber expands a grant: anything else is not a provider's.
 		parsed, ok, err := wire.ParseMCPGrant(grant)
@@ -204,21 +326,30 @@ func (p *Platform) grantsPersonScoped(ctx context.Context, tenant string, tools 
 			continue
 		}
 		prov, err := p.ToolProviders.GetProvider(ctx, tenant, parsed.Provider)
-		if err != nil || prov.Scope() == toolprovider.ScopePerson || (!since.IsZero() && prov.UpdatedAt.After(since)) {
-			return true
+		if err != nil {
+			if errors.Is(err, toolprovider.ErrNotFound) {
+				return true, nil
+			}
+			return true, err
+		}
+		if prov.Scope() == toolprovider.ScopePerson || (!since.IsZero() && prov.UpdatedAt.After(since)) {
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
-func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, target, prompt string, extra ...map[string]string) {
+func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, target, prompt string, extra ...map[string]string) error {
 	rev, err := p.Catalog().Get(ctx, turn.Tenant, agent, 0)
 	if err != nil {
+		if !errors.Is(err, wire.ErrNotFound) {
+			return err
+		}
 		p.log.Warn("platform: housekeeping agent is missing", "hook", hook, "agent", agent)
-		return
+		return nil
 	}
 	if rev.Spec.Provider == "offline" && !p.cfg.OfflineHooks {
-		return
+		return nil
 	}
 	// The run is read where the turn is, so an agent that lives in a project
 	// is asked only about the turns there and below. Everyone who reads such
@@ -226,9 +357,12 @@ func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, ta
 	// to someone who may not read the agent. It runs as the agent's own name,
 	// whatever spelling the settings hold.
 	agent = rev.Spec.Name
-	tree := p.Projects.Tree(turn.Tenant)
+	tree, err := p.Projects.Read(turn.Tenant)
+	if err != nil {
+		return err
+	}
 	if home, homed := tree.Home(agent); homed && home != projects.Root && !onChain(tree, turn.Project, home) {
-		return
+		return nil
 	}
 	contextMeta := map[string]string{}
 
@@ -252,9 +386,7 @@ func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, ta
 		Context: hookMeta(hook, target, append([]map[string]string{{metaPlaceProject: turn.Project, metaPlaceThread: turn.Thread}, contextMeta}, extra...)...),
 		Text:    prompt,
 	}))
-	if err != nil {
-		p.log.Warn("platform: housekeeping run could not start", "hook", hook, "error", err)
-	}
+	return err
 }
 
 // hookMeta is what a housekeeping run carries: which hook it is, what it is
@@ -273,23 +405,27 @@ func hookMeta(hook, target string, extra ...map[string]string) map[string]string
 // model's words about text a person supplied, so it is treated as untrusted:
 // trimmed to one line, bounded, and stored only as a title or as notes people
 // can read and remove.
-func (p *Platform) fileHook(run runs.Run) {
+func (p *Platform) fileHook(run runs.Run) error {
 	if run.Status != runs.Completed {
-		return
+		return nil
 	}
 	meta := wire.Meta(run.Tag())
 	target := meta[metaFor]
 	switch meta[metaHook] {
 	case hookTitle:
 		if title := oneLine(run.Answer, maxTitle); title != "" {
-			p.Runs.SetTitle(run.Tenant, target, title)
+			return p.Runs.SetTitleChecked(run.Tenant, target, title)
 		}
 	case hookMemory:
 		kept := 0
 		var proposed []memory.Note
 		_, personal := memory.OwnerPerson(target)
 		_, projectMemory := memory.OwnerProject(target)
-		unasked := !personal && !projectMemory && p.Settings(run.Tenant).MemoryAutoApprove && p.mayKeepUnasked(run.Tenant, target, meta[metaKeepsNotes])
+		cfg, err := p.settings.get(run.Tenant)
+		if err != nil {
+			return err
+		}
+		unasked := !personal && !projectMemory && cfg.withDefaults().MemoryAutoApprove && p.mayKeepUnasked(run.Tenant, target, meta[metaKeepsNotes])
 		for _, line := range strings.Split(run.Answer, "\n") {
 			line = strings.TrimSpace(line)
 			if line == "" || strings.EqualFold(strings.Trim(line, ".-* "), "none") || kept == 3 {
@@ -313,13 +449,17 @@ func (p *Platform) fileHook(run runs.Run) {
 					proposed = append(proposed, note)
 				}
 			} else {
+				if !errors.Is(err, memory.ErrInvalid) && !errors.Is(err, memory.ErrSensitive) {
+					return err
+				}
 				p.log.Info("platform: a proposed memory was not kept", "agent", target, "reason", err)
 			}
 		}
 		if !personal {
-			p.inboxMemory(run, target, proposed)
+			return p.inboxMemoryCompletion(run, target, proposed)
 		}
 	}
+	return nil
 }
 
 // oneLine reduces text to its first line, without wrapping quotes, bounded.
