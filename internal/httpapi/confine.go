@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/alerts"
@@ -147,14 +149,38 @@ type inboxNotice struct {
 type runGate struct {
 	p   *platform.Platform
 	who auth.Principal
+	ctx context.Context
+	// recorded are runs whose record was read once: a record, once written,
+	// stays, so a run in it is never waited for again. missing are runs
+	// whose record did not appear within runRecordWait.
+	recorded, missing map[string]bool
 }
 
-func newRunGate(p *platform.Platform, who auth.Principal) *runGate {
-	return &runGate{p: p, who: who}
+// runRecordWait is how long a stream waits for the record of a run it hears
+// of before the run is recorded. A run's first event is published before its
+// record is written (Platform.Invoke), and the replica admitting it is the
+// only one that knows its place meanwhile, so a reader on another replica
+// waits this long rather than drop the run's first events.
+const runRecordWait = 2 * time.Second
+
+func newRunGate(ctx context.Context, p *platform.Platform, who auth.Principal) *runGate {
+	return &runGate{p: p, who: who, ctx: ctx, recorded: map[string]bool{}, missing: map[string]bool{}}
 }
 
 func (g *runGate) seen(run string) bool {
 	// Placement and private participants can change during a subscription. An
 	// earlier verdict must never authorize an event after that audience changes.
+	if g.p.Seer(g.who).RunID(run) {
+		g.recorded[run] = true
+		return true
+	}
+	if g.recorded[run] || g.missing[run] {
+		return false
+	}
+	if !g.p.AwaitRunRecord(g.ctx, g.who.Tenant, run, runRecordWait) {
+		g.missing[run] = true
+		return false
+	}
+	g.recorded[run] = true
 	return g.p.Seer(g.who).RunID(run)
 }

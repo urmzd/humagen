@@ -309,7 +309,11 @@ otherwise. Off by default.
 
 `worker.keda.enabled` adds a KEDA ScaledObject for the worker with a
 `postgresql` trigger, reading the connection string from `existingSecret`'s
-`HUMAGEN_POSTGRES_URL` through a TriggerAuthentication. Its default query
+`HUMAGEN_POSTGRES_URL` through a TriggerAuthentication. With
+`worker.keda.connectionFromEnv` set to a variable of the worker container,
+such as a passwordless `HUMAGEN_POSTGRES_URL` in `extraEnv` for IAM sign-in
+through the Cloud SQL Auth Proxy, KEDA reads that instead and neither the
+TriggerAuthentication nor `existingSecret` is needed. Its default query
 counts the runs in `fiber_run_queue` that are due to be claimed or held by a
 live lease; `targetQueryValue` is the rows per worker, best set to
 `execution.concurrency`. It needs KEDA installed in the cluster.

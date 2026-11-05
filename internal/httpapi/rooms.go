@@ -38,7 +38,7 @@ func (s *Server) roomEvents(w http.ResponseWriter, r *http.Request, who auth.Pri
 	w.WriteHeader(http.StatusOK)
 	_ = rc.Flush()
 
-	gate := newRunGate(s.P, who)
+	gate := newRunGate(r.Context(), s.P, who)
 	tick := time.NewTicker(heartbeat)
 	defer tick.Stop()
 	for {

@@ -153,6 +153,19 @@ func TestNativeGitHubAndSlackEffectsRespectExternalMessagesPolicy(t *testing.T) 
 	}
 }
 
+// A review agent reads CI status as context: a workspace that asks before
+// "other" actions must not stall a GitHub review on its status reads.
+func TestGitHubReadActionsAreReadContext(t *testing.T) {
+	for _, name := range []string{"github_read_context", "github_read_file", "github_workflow_status"} {
+		if got := categoryOf(name); got != operations.ReadContext {
+			t.Fatal(name, got)
+		}
+	}
+	if got := categoryOf("github_run_checks"); got == operations.ReadContext {
+		t.Fatal("rerun classified as a read")
+	}
+}
+
 func TestGitHubPersonUsesOnlyExactVerifiedInstallationMapping(t *testing.T) {
 	p, err := New(Config{Workspace: t.TempDir()})
 	if err != nil {

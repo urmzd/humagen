@@ -345,7 +345,8 @@ worker:
   # A KEDA ScaledObject that scales the worker on the queue: KEDA runs
   # `query` against Postgres and keeps about one worker per targetQueryValue
   # rows. Needs KEDA in the cluster and existingSecret, whose
-  # connectionSecretKey KEDA reads through a TriggerAuthentication.
+  # connectionSecretKey KEDA reads through a TriggerAuthentication, or
+  # connectionFromEnv instead.
   keda:
     enabled: false
     minReplicaCount: 0
@@ -356,6 +357,12 @@ worker:
     # process runs at once.
     targetQueryValue: 4
     connectionSecretKey: HUMAGEN_POSTGRES_URL
+    # The worker container's variable that holds the connection string,
+    # such as HUMAGEN_POSTGRES_URL set in extraEnv. KEDA reads it from the
+    # Deployment, and no TriggerAuthentication or existingSecret is needed.
+    # For a URL with no password only (IAM sign-in through the Cloud SQL
+    # Auth Proxy): a value in extraEnv is in plain sight in the pod spec.
+    connectionFromEnv: ""
     # Runs due to be claimed (ready_at reached, or a lease that lapsed) plus
     # runs a live lease holds, so busy workers are not scaled away.
     query: >-
