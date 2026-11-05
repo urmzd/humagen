@@ -362,7 +362,7 @@ spec:
 	t.Cleanup(func() {
 		if r.cmd != nil && r.cmd.ProcessState == nil {
 			_ = r.cmd.Process.Signal(syscall.SIGKILL)
-			<-r.exited
+			_ = r.wait(30 * time.Second)
 		}
 		if t.Failed() {
 			t.Logf("replica %s log:\n%s", r.name, r.log.String())
@@ -552,7 +552,7 @@ func freePort(t *testing.T) int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	return ln.Addr().(*net.TCPAddr).Port
 }
 
@@ -565,7 +565,7 @@ func freshDatabase(t *testing.T, admin string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close(ctx)
+	defer func() { _ = conn.Close(ctx) }()
 	name := fmt.Sprintf("humagen_e2e_%d", time.Now().UnixNano())
 	if _, err := conn.Exec(ctx, "CREATE DATABASE "+name); err != nil {
 		t.Fatal(err)
