@@ -176,6 +176,20 @@ export interface AgentSpec {
   tagged_only?: boolean;
   /** When set, the only people who may answer a question the agent asks. */
   answerers?: string[];
+  /** What a person may pick for one message in place of the agent's model and effort. Absent offers nothing. */
+  choices?: AgentChoices;
+}
+
+/** The models (`provider/model`) and reasoning efforts an agent offers per message. */
+export interface AgentChoices {
+  models?: string[];
+  efforts?: string[];
+}
+
+/** One message's model and effort, used where the agents it starts offer them. */
+export interface MessagePick {
+  model?: string;
+  effort?: string;
 }
 
 export interface Revision {
@@ -1940,15 +1954,17 @@ export const coworking = {
    * the people in it alone until it is shared. A message starts a run only
    * for the agents it tags.
    */
-  start: (t: {
-    project: string;
-    channel: string;
-    text: string;
-    title?: string;
-    visibility?: "shared" | "private";
-    agents?: string[];
-    mode?: "join" | "all";
-  }) => call<ThreadPosted>("POST", "/api/threads", { visibility: "private", ...t }),
+  start: (
+    t: {
+      project: string;
+      channel: string;
+      text: string;
+      title?: string;
+      visibility?: "shared" | "private";
+      agents?: string[];
+      mode?: "join" | "all";
+    } & MessagePick,
+  ) => call<ThreadPosted>("POST", "/api/threads", { visibility: "private", ...t }),
   /**
    * Shares a private thread in a project's channel (general unless named)
    * and adds people by handle. The project may change only while the thread
@@ -1987,7 +2003,7 @@ export const coworking = {
     ).then((r) => r.items ?? []),
   post: (
     id: string,
-    m: { text: string; after?: string; answers?: { run: string; question: string } },
+    m: { text: string; after?: string; answers?: { run: string; question: string } } & MessagePick,
   ) => call<ThreadPosted>("POST", `${threadPath(id)}/messages`, m),
   /** Changes a thread's record: its title, visibility, default, the agents it routes to and how, and while it has no runs, where it lives. */
   update: (

@@ -2383,6 +2383,19 @@ export const defaultCopy = {
     autoFor: (name: string) => `Approved for ${name}`,
     failed: "Could not change approvals. Try again.",
   },
+  /**
+   * Under the composer: the model and reasoning effort for the next message
+   * alone, from what the agents it may start offer (DES-067).
+   */
+  pick: {
+    label: "Model and effort for this message",
+    agentModel: "Agent's model",
+    agentEffort: "Default effort",
+    models: "Model",
+    efforts: "Effort",
+    hint: "Applies to this message only, for agents that offer it.",
+    effort: (effort: string) => effort.charAt(0).toUpperCase() + effort.slice(1),
+  },
   /** Over Home's chat bar: the person's own project, where a conversation in no project is filed (DES-057). */
   noProject: "No project",
   /**

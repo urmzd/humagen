@@ -11,6 +11,7 @@ import {
   ApiError,
   api,
   coworking,
+  type MessagePick,
   type ProjectView,
   type Revision,
   type ThreadAsk,
@@ -29,6 +30,8 @@ import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { type HomeAnnouncement, HomePage } from "./HomePage.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { MessageTime } from "./MessageTime.tsx";
+import { ModelPicker } from "./ModelPicker.tsx";
+import { keptPick, namedIn, offersFor } from "./modelPick.ts";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { emptySelection, mentionPicks, PlusMenu, type Selection, SelectionChips } from "./Plus.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
@@ -457,6 +460,10 @@ export function Chat({
     );
   };
   const [draft, setDraft] = useState("");
+  // The model and effort picked for the next message alone (DES-067), and
+  // each sent message's pick by its text until it starts.
+  const [pick, setPick] = useState<MessagePick>({});
+  const picked = useRef(new Map<string, MessagePick>());
   // The agents that can answer in the picked project, once read.
   const [offered, setOffered] = useState<Set<string> | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -582,6 +589,8 @@ export function Chat({
   const queue = useQueue({
     onStart: (m) => {
       setProblem(null);
+      const chosen = picked.current.get(m.text) ?? {};
+      picked.current.delete(m.text);
       replying.current = { ids: [], stop: false };
       const done = (runs: Run[] = []) => {
         onChanged();
@@ -612,6 +621,7 @@ export function Chat({
             channel: selection.channel,
             text: m.text,
             visibility: startChannel ? "shared" : "private",
+            ...chosen,
           })
           .then((p) => {
             onThread(p.thread.id);
@@ -623,7 +633,7 @@ export function Chat({
       // A conversation of runs takes the message after the turn on screen.
       // Posted, it is a room: the message, and any run its tags started.
       coworking
-        .post(threadId, { text: m.text, ...(tail ? { after: tail.id } : {}) })
+        .post(threadId, { text: m.text, ...(tail ? { after: tail.id } : {}), ...chosen })
         .then((p) => {
           setRoom((r) =>
             r
@@ -770,6 +780,33 @@ export function Chat({
       }
     />
   );
+  // What the next message may pick: what the agents it tags offer, or
+  // with none tagged, the conversation's selected agents and default.
+  const targets = namedIn(draft, agents);
+  if (targets.length === 0 && room?.thread) {
+    targets.push(...(room.thread.agents ?? []));
+    if (room.thread.default) targets.push(room.thread.default);
+  }
+  const offers = offersFor(agents, targets);
+  const shownPick = keptPick(pick, offers);
+  // Sending records the pick with the message and resets it: it is for
+  // this message alone.
+  const remember = (text: string) => {
+    if (shownPick.model || shownPick.effort) picked.current.set(text, shownPick);
+    setPick({});
+  };
+  const sending: typeof queue = {
+    ...queue,
+    send: (text) => {
+      remember(text);
+      queue.send(text);
+    },
+    sendNow: (text) => {
+      remember(text);
+      queue.sendNow(text);
+    },
+  };
+  const modelPicker = <ModelPicker offers={offers} pick={shownPick} onPick={setPick} />;
   const composer = canRun && agents.length > 0 && (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
       <Problem message={problem} />
@@ -788,14 +825,17 @@ export function Chat({
               : defaultCopy.chat.placeholder
             : words.message
         }
-        queue={queue}
+        queue={sending}
         autoFocus={!threadId}
         seed={seed}
         onDraft={setDraft}
         trailing={
-          threadId && room?.thread ? (
-            <ApprovalModePicker thread={room.thread} me={handle || me} />
-          ) : undefined
+          <>
+            {modelPicker}
+            {threadId && room?.thread && (
+              <ApprovalModePicker thread={room.thread} me={handle || me} />
+            )}
+          </>
         }
         // An agent the project picked does not offer is not kept for it.
         onAvailable={

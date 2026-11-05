@@ -304,6 +304,28 @@ planned collections, browser, protocol and improvement work from this UI pass.
   and how many more there are.
 - Evidence: web typecheck and the console suite. Screens are not yet captured.
 
+### DES-067: Model and effort for one message
+
+- Under the composer, beside Approvals, a text control picks the model and
+  reasoning effort for the next message alone: "Agent's model · Default
+  effort" until something is picked. It offers what the agents the message
+  may start offer (`choices` on their spec): those the draft tags, else the
+  conversation's selected agents and default. With nothing offered it is
+  not shown.
+- Sending carries the pick with that message (`model`, `effort` on
+  `POST /api/threads` and `/api/threads/{id}/messages`) and resets the
+  control. A queued message keeps the pick it was sent with.
+- Each run applies only what its agent offers, after the run's preferred
+  model and before its model policy and ceilings. A ceiling that moves the
+  run off the picked model drops the effort. An effort the model does not
+  take fails the run before any model call.
+- Evidence: `model-picker.dom.test.tsx`, `modelPick.test.ts`,
+  `TestAMessagePicksItsRunsModelAndEffort`,
+  `TestAMessageChoiceAppliesWhereTheAgentOffersIt`,
+  `TestAgentChoicesRoundTrip`, and orchagent's `TestEffortReachesThePrimaryOnly`
+  and `TestAnthropicEffortIsSentOrRefused`. The agent editor does not yet edit
+  `choices`; a spec or the API sets them. Screens are not yet captured.
+
 ## Review and implementation evidence
 
 The approved implementation pass covers supported Slack and GitHub workspace
