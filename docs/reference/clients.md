@@ -334,9 +334,9 @@ curl -X PUT "$HUMAGEN/api/policies" -H "Authorization: Bearer $TOKEN" -d '{
 }'
 ```
 
-`PUT` replaces the record. Changing a client rebuilds its connector, so the
-runs it was carrying lose their place on the surface: a Slack session's stop
-button no longer finds them, and an answer still streaming starts a new message.
+`PUT` replaces the record. Changing a client rebuilds its connector. Its native
+message handle and accumulated answer survive the rebuild in delivery state.
+Slack's local session stop tracking is rebuilt by subsequent events.
 Deleting a client removes its secrets and its policy. Runs it raised keep their
 record of it.
 
@@ -363,8 +363,22 @@ time, through egress's consumer group. A client created, changed, turned off or
 deleted through one replica is seated the same way on the others within 2
 seconds (`clients.Generations`, a change count every replica reads), and a
 webhook or an event no seat on a replica matches makes that replica look at
-once, at most every 250ms. A message a connector was streaming when its client
-was reseated starts a new message.
+once, at most every 250ms. Managed Slack and GitHub connectors keep the native
+message handle, rendered answer and sequence cursor in `Backends.DeliveryState`.
+`OpenPostgres` opens and migrates orchagent's shared delivery store, so a new
+replica edits the existing message with the full answer. A default in-memory
+platform shares this state across client rebuilds within that process.
+
+Delivery keys include the tenant, surface, client ID, run and destination.
+Two installations cannot edit each other's messages even if their run and
+destination names match. Embedding programs that construct their own connectors
+through `Connection` must pass `Backends.DeliveryState` and a stable
+`DeliveryScope` to their connector configuration.
+
+The surface API and database are not one transaction. A crash after creating
+an external message but before committing its handle can still duplicate that
+message. Existing messages resume safely once their state is committed. Retain
+delivery state for as long as the deployment may replay its events.
 
 The Socket Mode Slack app a Platform document runs (`surfaces.slack`) holds
 one connection per deployment: it runs on the replica that holds its lease

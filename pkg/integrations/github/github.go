@@ -17,6 +17,7 @@ import (
 	"github.com/urmzd/orchagent/flow/connector"
 	transport "github.com/urmzd/orchagent/flow/connectors/github"
 	"github.com/urmzd/orchagent/flow/connectors/mention"
+	"github.com/urmzd/orchagent/flow/deliverystate"
 	"github.com/urmzd/orchagent/flow/event"
 )
 
@@ -44,6 +45,10 @@ type Config struct {
 	// from the tenant and the tag id together, so the grant cannot be signed
 	// without it. Mutations without a Tenant are refused by New.
 	Tenant string
+	// DeliveryState and DeliveryScope keep this installation's messages
+	// through connector rebuilds. Replicas must share both.
+	DeliveryState deliverystate.Store
+	DeliveryScope string
 }
 
 // Connector decorates the transport without introducing another execution path.
@@ -92,6 +97,7 @@ func New(cfg Config) (*Connector, error) {
 		}
 	}
 	base := transport.Config{API: cfg.API, Verifier: cfg.Verifier, Owners: cfg.Owners, ReadRepositories: cfg.ReadRepositories, Bots: cfg.Bots, Agents: cfg.Agents, Login: cfg.Login, Checks: cfg.Checks, Tenant: cfg.Tenant, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
+	base.DeliveryState, base.DeliveryScope = cfg.DeliveryState, cfg.DeliveryScope
 	base.Automation = func(h transport.Hook) (string, bool) {
 		_, text, ok := c.automatic(h)
 		return text, ok

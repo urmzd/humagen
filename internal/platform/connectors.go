@@ -772,7 +772,13 @@ func (p *Platform) flushConnections(ctx context.Context) error {
 		case <-tick.C:
 			for name, s := range p.surfaces {
 				for _, st := range s.all() {
-					if err := st.peer.Flush(ctx); err != nil && !errors.Is(err, context.Canceled) {
+					// Durable delivery holds a database row lock through the
+					// surface request. Bound each flush so a stalled API releases
+					// its connection and lets the next client make progress.
+					flushCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+					err := st.peer.Flush(flushCtx)
+					cancel()
+					if err != nil && !errors.Is(err, context.Canceled) {
 						p.log.Warn("connector flush", "connector", name, "client", st.client.ID, "error", err)
 					}
 				}

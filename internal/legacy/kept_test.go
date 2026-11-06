@@ -90,6 +90,7 @@ var keptFiberTables = []string{
 	"fiber_run_queue",
 	"fiber_run_records",
 	"fiber_runs",
+	"fiber_sink_state",
 	"fiber_thread_entries",
 	"fiber_threads",
 	"fiber_tool_providers",
