@@ -3,12 +3,17 @@ import {
   ArchiveIcon,
   BellIcon,
   BotIcon,
+  CalendarIcon,
   CheckIcon,
+  CodeIcon,
+  EllipsisIcon,
   EllipsisVerticalIcon,
   FolderIcon,
   FolderOpenIcon,
+  HistoryIcon,
   LayersIcon,
   LogOutIcon,
+  MessageSquareIcon,
   MonitorIcon,
   MoonIcon,
   PanelLeftCloseIcon,
@@ -46,6 +51,7 @@ import {
   type RowStanding,
   standingOf,
 } from "./conversationList.ts";
+import { dayOf, sourceOf } from "./History.tsx";
 import { useMarks } from "./marks.ts";
 import { ConversationPeek, PeekCard, usePeek } from "./RowPreview.tsx";
 import { type Standing, useRecents } from "./recents.ts";
@@ -229,7 +235,6 @@ function ProjectGroup({
 }
 
 /** The one-time tip that teaches search; dismissed once per person (pkg/marks). */
-const SEARCH_TIP = "search";
 
 /** A quiet icon button in a row's hover actions. */
 const rowAction =
@@ -242,6 +247,36 @@ const rowAction =
  * a reply failed. Hover or focus trades the age for Pin, Archive and the ⋮
  * menu; on a touch screen the ⋮ menu stays and holds them all.
  */
+/** A row's mark for where a conversation started; the chat itself has none. */
+function sourceGlyph(origin: string): ReactNode {
+  const source = sourceOf(origin);
+  const icon =
+    source === "github" ? (
+      <CodeIcon size={13} />
+    ) : source === "slack" ? (
+      <MessageSquareIcon size={13} />
+    ) : source === "scheduled" ? (
+      <CalendarIcon size={13} />
+    ) : null;
+  return icon ? (
+    <span className="mt-0.5 block" title={defaultCopy.history.sources[source]}>
+      {icon}
+    </span>
+  ) : undefined;
+}
+
+/** Conversations under Today, Yesterday, This week and each month, newest first. */
+function byDay(rows: ThreadSummary[], now: Date): { day: string; items: ThreadSummary[] }[] {
+  const out: { day: string; items: ThreadSummary[] }[] = [];
+  for (const t of rows) {
+    const day = dayOf(t.updated_at, now);
+    const last = out.at(-1);
+    if (last?.day === day) last.items.push(t);
+    else out.push({ day, items: [t] });
+  }
+  return out;
+}
+
 function TaskRow({
   task,
   projectLabel,
@@ -251,6 +286,7 @@ function TaskRow({
   archived = false,
   standing = "",
   ageText = "",
+  glyph,
   onSelect,
   onPin,
   onRename,
@@ -268,6 +304,8 @@ function TaskRow({
   archived?: boolean;
   standing?: RowStanding;
   ageText?: string;
+  /** Where it came from, when not the chat itself: a small mark on the right. */
+  glyph?: ReactNode;
   onSelect: () => void;
   onPin?: (button: HTMLButtonElement) => void;
   onRename?: (title: string) => void;
@@ -357,7 +395,7 @@ function TaskRow({
             {standing === "unread" ? (
               <span aria-hidden data-standing="unread" className="humagen-row-dot mt-1 block" />
             ) : (
-              ageText
+              (glyph ?? ageText)
             )}
           </span>
           {said && <span className="sr-only">, {said}</span>}
@@ -729,8 +767,8 @@ export function Sidebar({
     // An unpinned row may leave the current group or loaded page.
     // Keep focus at its remaining control or a stable navigation target.
     const fallback = projects
-      ? sidebar.current?.querySelector<HTMLAnchorElement>(
-          'nav[aria-label="Sections"] a[href="/projects"]',
+      ? sidebar.current?.querySelector<HTMLElement>(
+          'nav[aria-label="Sections"] a[href="/projects"], nav[aria-label="Sections"] button[aria-label="More"]',
         )
       : sidebar.current?.querySelector<HTMLButtonElement>(
           'section[aria-label="Conversations"] button',
@@ -778,6 +816,7 @@ export function Sidebar({
   const libraryTabs = hubTabs("library", route, can);
   const customizeTabs = hubTabs("customize", route, can);
   const operationTabs = hubTabs("operations", route, can);
+  // The few places people go every day stay in view; the rest wait under More.
   const entries: {
     to: Route;
     label: string;
@@ -785,15 +824,23 @@ export function Sidebar({
     show: boolean;
     active: boolean;
     badge?: number;
-    group: "projects" | "library" | "operations";
+    group: "work" | "build" | "more";
   }[] = [
     {
-      to: { page: "pull-requests" },
-      label: defaultCopy.pullRequests.title,
-      icon: <ProjectIcon />,
+      to: { page: "history" },
+      label: defaultCopy.history.title,
+      icon: <HistoryIcon />,
       show: can("runs:read"),
-      active: here("pull-requests"),
-      group: "projects",
+      active: here("history"),
+      group: "work",
+    },
+    {
+      to: { page: "automations" },
+      label: defaultCopy.automations.title,
+      icon: <CalendarIcon />,
+      show: can("schedules:read") || can("clients:read"),
+      active: here("automations", "schedules"),
+      group: "work",
     },
     {
       to: { page: "projects" },
@@ -801,23 +848,7 @@ export function Sidebar({
       icon: <ProjectIcon />,
       show: can("projects:read"),
       active: here("projects", "project", "channel"),
-      group: "projects",
-    },
-    {
-      to: { page: "directory", tab: "people" },
-      label: nav.people,
-      icon: <UsersIcon />,
-      show: can("people:read"),
-      active: here("directory"),
-      group: "projects",
-    },
-    {
-      to: libraryTabs[0]?.route ?? { page: "library", section: "sources" },
-      label: nav.library,
-      icon: <LayersIcon />,
-      show: libraryTabs.length > 0,
-      active: hub === "library",
-      group: "library",
+      group: "more",
     },
     {
       to: customizeTabs[0]?.route ?? { page: "customize", section: "agents" },
@@ -825,7 +856,23 @@ export function Sidebar({
       icon: <BotIcon />,
       show: customizeTabs.length > 0,
       active: hub === "customize" || hub === "agents",
-      group: "operations",
+      group: "build",
+    },
+    {
+      to: { page: "directory", tab: "people" },
+      label: nav.people,
+      icon: <UsersIcon />,
+      show: can("people:read"),
+      active: here("directory"),
+      group: "more",
+    },
+    {
+      to: libraryTabs[0]?.route ?? { page: "library", section: "sources" },
+      label: nav.library,
+      icon: <LayersIcon />,
+      show: libraryTabs.length > 0,
+      active: hub === "library",
+      group: "more",
     },
     {
       to: operationTabs[0]?.route ?? { page: "operations", section: "context" },
@@ -833,29 +880,13 @@ export function Sidebar({
       icon: <SlidersIcon />,
       show: operationTabs.length > 0,
       active: hub === "operations",
-      group: "operations",
-    },
-    {
-      to: { page: "automations" },
-      label: defaultCopy.automations.title,
-      icon: <SlidersIcon />,
-      show: can("schedules:read") || can("clients:read"),
-      active: here("automations"),
-      group: "operations",
+      group: "more",
     },
   ];
 
   // Archived here is the reader's own: the conversation leaves their lists
   // and stays for everyone else. Delete still asks an admin.
-  const {
-    marks,
-    loaded: marksRead,
-    archive: setArchivedMark,
-    read: markRead,
-    dismissTip,
-  } = useMarks(can("runs:read"));
-  const tip = defaultCopy.sidebar.searchTip;
-  const showTip = open && onSearch && marksRead && !marks.tips.includes(SEARCH_TIP);
+  const { marks, archive: setArchivedMark, read: markRead } = useMarks(can("runs:read"));
   const [view, setView] = useState<ListView>("recents");
   const [note, setNote] = useState<{ id: string; archived: boolean } | null>(null);
   const [gone, setGone] = useState<Set<string>>(() => new Set());
@@ -968,13 +999,14 @@ export function Sidebar({
     <TaskRow
       key={t.id}
       task={t}
-      projectLabel={opts.label ? projectTitle(t.project) : undefined}
+      projectLabel={undefined}
+      glyph={sourceGlyph(t.origin)}
       projectTitle={projectTitle(t.project)}
       current={isCurrent(t)}
       pinned={opts.pinned ?? false}
       archived={archivedSet.has(t.id)}
       standing={standingOf(t, marks)}
-      ageText={age(t.updated_at, now)}
+      ageText=""
       onSelect={() => go({ page: "conversation", id: t.id })}
       onPin={
         canPin && !archivedSet.has(t.id)
@@ -988,11 +1020,13 @@ export function Sidebar({
     />
   );
   const viewTitle =
-    view === "projects"
-      ? defaultCopy.sidebar.projects
-      : view === "archived"
-        ? defaultCopy.sidebar.archived
-        : defaultCopy.sidebar.recents;
+    view === "recents" && unpinned.length > 0
+      ? (byDay(unpinned, new Date(now))[0]?.day ?? defaultCopy.sidebar.recents)
+      : view === "projects"
+        ? defaultCopy.sidebar.projects
+        : view === "archived"
+          ? defaultCopy.sidebar.archived
+          : defaultCopy.sidebar.recents;
 
   const clear = () => {
     setStanding("");
@@ -1081,13 +1115,15 @@ export function Sidebar({
                 type="button"
                 onClick={onSearch}
                 aria-label={nav.search}
-                className={`flex h-9 pointer-coarse:h-11 items-center gap-2.5 rounded-aui text-aui-sm text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent ${open ? "px-2.5" : "w-9 justify-center"}`}
+                className={`group/search flex h-9 pointer-coarse:h-11 items-center gap-2.5 rounded-aui text-aui-sm text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent ${open ? "px-2.5" : "w-9 justify-center"}`}
               >
                 <SearchIcon size={18} />
                 {open && (
                   <>
                     <span className="humagen-sidebar-reveal flex-1 text-left">{nav.search}</span>
-                    <kbd className="humagen-sidebar-reveal text-aui-2xs">⌘ K</kbd>
+                    <kbd className="humagen-sidebar-reveal text-aui-2xs opacity-0 transition-opacity group-hover/search:opacity-100 group-focus-visible/search:opacity-100 motion-reduce:transition-none">
+                      ⌘ K
+                    </kbd>
                   </>
                 )}
               </button>
@@ -1109,71 +1145,82 @@ export function Sidebar({
                 }
               />
             )}
-            {(["projects", "library", "operations"] as const).map((group) => {
+            {(["work", "build"] as const).map((group) => {
               const shown = entries.filter((entry) => entry.group === group && entry.show);
               return (
                 shown.length > 0 && (
-                  <section
+                  <ul
                     key={group}
-                    aria-label={nav[group]}
-                    className={group === "library" ? "" : "mt-2"}
+                    aria-label={nav.groups[group]}
+                    className={`flex flex-col gap-0.5 ${open ? "" : "items-center"}`}
                   >
-                    {group !== "library" && <Separator className="mb-3" />}
-                    <ul className={`flex flex-col gap-0.5 ${open ? "" : "items-center"}`}>
-                      {shown.map((entry) => (
-                        <li key={entry.label}>
-                          <Item
-                            icon={entry.icon}
-                            label={entry.label}
-                            href={href(entry.to)}
-                            open={open}
-                            active={entry.active}
-                            badge={entry.badge}
-                            onClick={() => go(entry.to)}
-                          />
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
+                    {shown.map((entry) => (
+                      <li key={entry.label}>
+                        <Item
+                          icon={entry.icon}
+                          label={entry.label}
+                          href={href(entry.to)}
+                          open={open}
+                          active={entry.active}
+                          badge={entry.badge}
+                          onClick={() => go(entry.to)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
                 )
               );
             })}
+            {(() => {
+              const more = entries.filter((entry) => entry.group === "more" && entry.show);
+              if (more.length === 0) return null;
+              const current = more.find((entry) => entry.active);
+              return (
+                <Popover
+                  label={nav.more}
+                  narrow
+                  side="right"
+                  tooltip={open ? undefined : nav.more}
+                  className={`flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:size-[18px] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg ${
+                    current ? "bg-aui-hover font-medium text-aui-fg" : ""
+                  } ${open ? "w-full px-2.5" : "w-9 justify-center"}`}
+                  button={
+                    <>
+                      {current ? current.icon : <EllipsisIcon />}
+                      {open && (
+                        <span className="humagen-sidebar-reveal flex-1 truncate text-left">
+                          {current ? current.label : nav.more}
+                        </span>
+                      )}
+                    </>
+                  }
+                >
+                  {(close) => (
+                    <ul className="flex min-w-44 flex-col gap-0.5 p-1">
+                      {more.map((entry) => (
+                        <li key={entry.label}>
+                          <a
+                            href={href(entry.to)}
+                            aria-current={entry.active ? "page" : undefined}
+                            onClick={(e) => {
+                              if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+                              e.preventDefault();
+                              close();
+                              go(entry.to);
+                            }}
+                            className="flex h-9 pointer-coarse:h-11 items-center gap-2.5 rounded-aui px-2.5 text-aui-sm text-aui-muted [&>svg]:size-[18px] hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:text-aui-fg aria-[current=page]:font-medium"
+                          >
+                            {entry.icon}
+                            {entry.label}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </Popover>
+              );
+            })()}
           </nav>
-
-          {showTip && (
-            <aside
-              aria-label={tip.title}
-              data-tip={SEARCH_TIP}
-              className="humagen-sidebar-reveal mx-2 mt-4 flex flex-col gap-1 rounded-aui border border-[var(--humagen-rule)] px-3 py-2.5 text-aui-xs"
-            >
-              <p className="flex items-center gap-1.5 font-medium text-aui-fg">
-                <SearchIcon size={13} />
-                {tip.title}
-              </p>
-              <p className="text-aui-muted">
-                {tip.body} <kbd className="text-aui-2xs">⌘ K</kbd>
-              </p>
-              <div className="mt-0.5 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    dismissTip(SEARCH_TIP);
-                    onSearch?.();
-                  }}
-                  className="inline-flex h-6 pointer-coarse:h-11 items-center text-aui-fg underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
-                >
-                  {tip.open}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => dismissTip(SEARCH_TIP)}
-                  className="inline-flex h-6 pointer-coarse:h-11 items-center text-aui-muted underline-offset-2 hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
-                >
-                  {tip.dismiss}
-                </button>
-              </div>
-            </aside>
-          )}
 
           {open && (pinnedRows.length > 0 || readableProjectPins.length > 0) && (
             <section
@@ -1342,7 +1389,11 @@ export function Sidebar({
                   </button>
                 </p>
               )}
-              <ul className="px-2 pb-3" aria-label={viewTitle} aria-busy={loading !== null}>
+              <ul
+                className="px-2 pb-3"
+                aria-label={view === "recents" ? defaultCopy.sidebar.recents : viewTitle}
+                aria-busy={loading !== null}
+              >
                 {noConversations && loading === "first" && (
                   <li className="px-2.5">
                     <SkeletonRows count={5} height="1.25rem" />
@@ -1367,7 +1418,13 @@ export function Sidebar({
                       : "Your conversations appear here. Start with New."}
                   </li>
                 )}
-                {view === "recents" && unpinned.map((t) => row(t, { label: true }))}
+                {view === "recents" &&
+                  byDay(unpinned, new Date(now)).map((g, i) => (
+                    <li key={g.day} className={i === 0 ? "" : "pt-3"}>
+                      {i > 0 && <p className="px-2.5 pb-1 text-aui-xs text-aui-muted">{g.day}</p>}
+                      <ul>{g.items.map((t) => row(t, { label: true }))}</ul>
+                    </li>
+                  ))}
                 {view === "archived" &&
                   (lists.archived.length === 0 && loading !== "first" ? (
                     <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
@@ -1490,9 +1547,11 @@ export function Sidebar({
                 <>
                   <Avatar name={name} prefs={prefs} size={26} />
                   {open && (
-                    <span className="humagen-sidebar-reveal min-w-0 flex-1">
-                      <span className="block truncate text-aui-sm text-aui-fg">{name}</span>
-                      <span className="block truncate text-aui-2xs text-aui-muted">{subtitle}</span>
+                    <span className="humagen-sidebar-reveal flex min-w-0 flex-1 items-baseline gap-1.5 truncate">
+                      <span className="truncate text-aui-sm text-aui-fg">{name}</span>
+                      {subtitle && (
+                        <span className="truncate text-aui-xs text-aui-muted">· {subtitle}</span>
+                      )}
                     </span>
                   )}
                 </>

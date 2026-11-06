@@ -129,7 +129,6 @@ func TestSaveAgentTool(t *testing.T) {
 	}
 
 	for name, args := range map[string]map[string]any{
-		"a built-in":         {"name": platform.BuiltinWriter, "description": "x", "system_prompt": "x"},
 		"its own tool":       {"name": "sneaky", "description": "x", "system_prompt": "x", "tools": platform.ToolSaveAgent},
 		"the analyst's tool": {"name": "sneaky", "description": "x", "system_prompt": "x", "tools": platform.ToolRunsSummary},
 		"no prompt":          {"name": "empty", "description": "x"},
@@ -137,6 +136,16 @@ func TestSaveAgentTool(t *testing.T) {
 		if _, err := save(req, args); !errors.Is(err, platform.ErrBuilder) {
 			t.Fatalf("%s: err = %v", name, err)
 		}
+	}
+	if _, err := save(req, map[string]any{"name": platform.BuiltinWriter, "description": "Workspace writer", "system_prompt": "Use workspace style."}); err != nil {
+		t.Fatalf("customizing a package agent: %v", err)
+	}
+	if err := p.EnsureBuiltins(ctx, tenant); err != nil {
+		t.Fatal(err)
+	}
+	writer, err := p.Agents.Get(ctx, tenant, platform.BuiltinWriter, 0)
+	if err != nil || writer.Spec.SystemPrompt != "Use workspace style." || writer.Spec.Package == nil {
+		t.Fatalf("builder customization lost: %+v %v", writer, err)
 	}
 	// Only the builder saves agents, whoever else is granted the tool.
 	if _, err := save(as(run, "lead"), map[string]any{"name": "x", "description": "x", "system_prompt": "x"}); !errors.Is(err, platform.ErrBuilder) {

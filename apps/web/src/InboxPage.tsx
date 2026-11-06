@@ -102,7 +102,11 @@ export function NotificationFilters({
   onKind,
   show,
   onShow,
+  unread,
+  onUnread,
 }: {
+  unread?: boolean;
+  onUnread?: () => void;
   query: string;
   onQuery: (query: string) => void;
   kind: string;
@@ -115,81 +119,114 @@ export function NotificationFilters({
   const count = Number(Boolean(kind)) + Number(show !== undefined && show !== "all");
   return (
     <div role="group" aria-label={c.filters} className="flex min-w-0 items-center gap-2">
-      <SearchField label={c.search} value={query} onChange={onQuery} className="min-w-0 flex-1" />
-      <Popover
-        label={c.notificationFilter}
-        align="right"
-        className={`${button} shrink-0 gap-2`}
-        button={
-          <>
-            <SlidersIcon size={16} />
-            <span>{c.filterButton}</span>
-            {count > 0 && (
-              <span className="rounded-aui-sm bg-aui-subtle px-1.5 text-aui-xs tabular-nums">
-                {count}
-              </span>
-            )}
-          </>
-        }
-      >
-        {(close) => (
-          <div className="flex flex-col gap-4 p-1">
-            {show !== undefined && onShow && (
+      <SearchField
+        label={c.search}
+        value={query}
+        onChange={onQuery}
+        className="h-9 min-w-0 flex-1"
+      />
+      {onUnread ? (
+        <>
+          {/* The select's own wrapper fills its row; a fixed box keeps it beside the search. */}
+          <div className="w-36 shrink-0">
+            <NativeSelect
+              aria-label={c.type}
+              value={kind}
+              onChange={(event) => onKind(event.target.value)}
+              className="h-9 md:!text-aui-sm"
+            >
+              {[{ id: "", label: c.all }, ...kinds].map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+          <button
+            type="button"
+            aria-pressed={unread}
+            onClick={onUnread}
+            className={`${button} h-9 shrink-0 font-normal text-aui-sm text-aui-muted aria-pressed:bg-aui-accent-soft aria-pressed:text-aui-fg`}
+          >
+            {defaultCopy.inboxViews.unread}
+          </button>
+        </>
+      ) : (
+        <Popover
+          label={c.notificationFilter}
+          align="right"
+          className={`${button} shrink-0 gap-2`}
+          button={
+            <>
+              <SlidersIcon size={16} />
+              <span>{c.filterButton}</span>
+              {count > 0 && (
+                <span className="rounded-aui-sm bg-aui-subtle px-1.5 text-aui-xs tabular-nums">
+                  {count}
+                </span>
+              )}
+            </>
+          }
+        >
+          {(close) => (
+            <div className="flex flex-col gap-4 p-1">
+              {show !== undefined && onShow && (
+                <label className="flex flex-col gap-1.5 text-aui-sm">
+                  {c.status}
+                  <NativeSelect
+                    aria-label={c.status}
+                    value={show}
+                    onChange={(event) => onShow(event.target.value as MailboxShow)}
+                  >
+                    {(["all", "open", "resolved"] as const).map((state) => (
+                      <option key={state} value={state}>
+                        {defaultCopy.show[state]}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </label>
+              )}
               <label className="flex flex-col gap-1.5 text-aui-sm">
-                {c.status}
+                {c.type}
                 <NativeSelect
-                  aria-label={c.status}
-                  value={show}
-                  onChange={(event) => onShow(event.target.value as MailboxShow)}
+                  aria-label={c.type}
+                  value={kind}
+                  onChange={(event) => onKind(event.target.value)}
                 >
-                  {(["all", "open", "resolved"] as const).map((state) => (
-                    <option key={state} value={state}>
-                      {defaultCopy.show[state]}
+                  {[{ id: "", label: c.all }, ...kinds].map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
                     </option>
                   ))}
                 </NativeSelect>
               </label>
-            )}
-            <label className="flex flex-col gap-1.5 text-aui-sm">
-              {c.type}
-              <NativeSelect
-                aria-label={c.type}
-                value={kind}
-                onChange={(event) => onKind(event.target.value)}
-              >
-                {[{ id: "", label: c.all }, ...kinds].map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </NativeSelect>
-            </label>
-            <div className="flex items-center justify-between gap-3">
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={count === 0}
-                onClick={() => {
-                  onKind("");
-                  onShow?.("all");
-                }}
-              >
-                {c.reset}
-              </Button>
-              <Button variant="outline" size="sm" onClick={close}>
-                {c.done}
-              </Button>
+              <div className="flex items-center justify-between gap-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={count === 0}
+                  onClick={() => {
+                    onKind("");
+                    onShow?.("all");
+                  }}
+                >
+                  {c.reset}
+                </Button>
+                <Button variant="outline" size="sm" onClick={close}>
+                  {c.done}
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
-      </Popover>
+          )}
+        </Popover>
+      )}
     </div>
   );
 }
 
 /** An agent is told apart by its color, beside its name; rules and the system need no mark. */
 const senderMark = (from: InboxMessage["from"]) =>
-  from.kind === "agent" ? <AgentMark name={from.name} size={12} /> : null;
+  from.kind === "agent" ? <AgentMark name={from.name} size={28} /> : null;
 
 /**
  * humagen's mailbox with the platform's own pieces on it: the parts it draws
@@ -285,6 +322,27 @@ export function MailboxView({
       renderFrame={(message, children) => {
         const edge = edgeOf(message);
         const sources = shownAbout((message as PlatformMessage).about ?? []);
+        const primary =
+          ((message as PlatformMessage).kind === "artifact"
+            ? sources.find((source) => source.kind === "artifact")
+            : undefined) ??
+          sources.find((source) => source.kind === "thread") ??
+          sources.find((source) => source.kind === "artifact") ??
+          sources.find((source) => source.kind === "run") ??
+          sources[0];
+        if (views)
+          return (
+            <>
+              {children}
+              {primary && (
+                <div className="shrink-0 border-t border-aui-border py-4">
+                  <Button onClick={() => onOpen(primary)}>
+                    {defaultCopy.notifications.openSource[primary.kind]}
+                  </Button>
+                </div>
+              )}
+            </>
+          );
         return (
           <Stroke
             agent={edge.agent}
@@ -434,10 +492,10 @@ export function InboxPage({
     const done = await inbox.readAll();
     if (done) setUndo({ text: vc.readAllDone(done.marked), ids: [], back: null });
   }
+  // Keep the legacy unread address as the Inbox's server-backed filter.
   const views = [
-    { id: "inbox", label: vc.inbox, count: inbox.counts.inbox },
-    { id: "unread", label: vc.unread, count: unreadBadge(inbox.counts) },
-    { id: "hidden", label: vc.hidden, count: inbox.counts.hidden },
+    { id: "inbox", label: vc.inbox, count: unreadBadge(inbox.counts) },
+    { id: "hidden", label: vc.hidden },
     { id: "done", label: vc.done },
   ];
   const [emptyTitle, emptyHint] = vc.empty[view];
@@ -451,15 +509,8 @@ export function InboxPage({
   }
 
   return (
-    <Page
-      title={defaultCopy.notifications.title}
-      actions={actions}
-      meta={open > 0 ? <span>{defaultCopy.mailbox.openCount(open)}</span> : undefined}
-    >
+    <Page title={defaultCopy.notifications.title} actions={actions}>
       <div data-testid="inbox" className="flex min-h-0 flex-1 flex-col gap-3">
-        <p className="sr-only" aria-live="polite">
-          {open === 0 ? "Nothing is waiting on you." : `${open} open, ${unread} unread.`}
-        </p>
         <Problem message={inbox.problem} />
         {notice}
         {selected && missing && (
@@ -467,7 +518,6 @@ export function InboxPage({
         )}
 
         {skipped && <Problem message={skipped} />}
-        <NotificationFilters query={query} onQuery={setQuery} kind={kind} onKind={setKind} />
         {query.trim() && inbox.hasMore && (
           <p className="text-aui-xs text-aui-muted">{defaultCopy.inboxControls.loadedHint}</p>
         )}
@@ -481,7 +531,16 @@ export function InboxPage({
           <MailboxView
             heading={false}
             groupByAction={false}
-            previewFirst
+            toolbar={
+              <NotificationFilters
+                query={query}
+                onQuery={setQuery}
+                kind={kind}
+                onKind={setKind}
+                unread={view === "unread"}
+                onUnread={() => setView(view === "unread" ? "inbox" : "unread")}
+              />
+            }
             query={query}
             messages={inbox.messages}
             selectedId={selected}

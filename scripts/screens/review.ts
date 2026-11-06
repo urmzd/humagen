@@ -139,22 +139,34 @@ export function reviewScreens(call: Call): Screen[] {
   };
   return [
     {
-      name: "pull-requests-board",
-      path: "/pull-requests",
+      name: "history-all",
+      path: "/history",
       act: async (page) => {
         await thread();
-        await page.goto(new URL("/pull-requests", page.url()).href);
-        await page.getByRole("heading", { name: "Pull requests", exact: true }).waitFor();
+        await page.goto(new URL("/history", page.url()).href);
+        await page.getByRole("heading", { name: "History", exact: true }).waitFor();
         await page.getByRole("link", { name: /urmzd\/humagen #212/ }).waitFor();
       },
     },
     {
-      name: "pull-requests-list",
-      path: "/pull-requests?display=list",
+      name: "history-github",
+      path: "/history?source=github",
       act: async (page) => {
-        await thread();
-        await page.goto(new URL("/pull-requests?display=list", page.url()).href);
-        await page.getByRole("heading", { name: "Pull requests", exact: true }).waitFor();
+        const id = await thread();
+        // The local model review is posted through the API. Present that real
+        // conversation as GitHub-originated without requiring a live webhook.
+        await page.route(/\/api\/threads(?:\?|$)/, async (route) => {
+          const url = new URL(route.request().url());
+          url.searchParams.delete("origin");
+          const response = await route.fetch({ url: url.href });
+          const body = await response.json();
+          body.threads = body.threads
+            .filter((row: { id: string }) => row.id === id)
+            .map((row: Record<string, unknown>) => ({ ...row, origin: "github" }));
+          await route.fulfill({ response, json: body });
+        });
+        await page.goto(new URL("/history?source=github", page.url()).href);
+        await page.getByRole("heading", { name: "History", exact: true }).waitFor();
         await page.getByRole("link", { name: /urmzd\/humagen #212/ }).waitFor();
       },
     },

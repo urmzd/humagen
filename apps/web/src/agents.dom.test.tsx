@@ -208,6 +208,8 @@ test("the agent directory filters authoritative operational states and saves a v
       onNew={() => {}}
     />,
   );
+  assert.ok(!screen.queryByRole("button", { name: defaultCopy.agentOperations.pauseAll }));
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.agentOperations.more }));
   await waitFor(() =>
     assert.ok(
       !(
@@ -222,6 +224,8 @@ test("the agent directory filters authoritative operational states and saves a v
   });
   assert.ok(screen.getByRole("button", { name: /humagen-writer/ }));
   fireEvent.click(screen.getByRole("button", { name: defaultCopy.agentOperations.pauseAll }));
+  await waitFor(() => assert.ok(!screen.queryByRole("dialog")));
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.agentOperations.more }));
   await screen.findByRole("button", { name: defaultCopy.agentOperations.resumeAll });
   assert.deepEqual(saved, { version: 3, paused: true });
 });
@@ -261,7 +265,17 @@ test("the roster filters Needs Review without presenting stale skill bindings as
       onNew={() => {}}
     />,
   );
-  await screen.findByRole("option", { name: "Needs Review" });
+  await screen.findByRole("option", { name: "Needs review" });
+  await waitFor(() =>
+    assert.match(
+      screen.getByRole("button", { name: /humagen-writer/ }).textContent ?? "",
+      /Needs review/,
+    ),
+  );
+  assert.doesNotMatch(
+    screen.getByRole("button", { name: /ready-agent/ }).textContent ?? "",
+    /Ready/,
+  );
   fireEvent.change(screen.getByLabelText(defaultCopy.agentOperations.filter), {
     target: { value: "needs_review" },
   });
@@ -298,4 +312,45 @@ test("agent detail offers Context review for native skill audience review even w
   const review = await screen.findByRole("link", { name: "Review Default Skills" });
   assert.equal(review.getAttribute("href"), "/agents/humagen-writer/context");
   assert.ok(screen.getByText("Needs Review"));
+});
+
+test("directory search and quiet builder preserve opening and creation permissions", async () => {
+  const { Agents } = await import("./Agents.tsx");
+  const agents = Array.from({ length: 7 }, (_, i) => ({
+    ...writer,
+    spec: { ...writer.spec, name: `writer-${i}`, description: `Document ${i}` },
+  }));
+  let opened = "";
+  let built = 0;
+  let created = 0;
+  const props = {
+    agents,
+    stats: new Map(),
+    onOpen: (name: string) => {
+      opened = name;
+    },
+    onBuild: () => {
+      built++;
+    },
+    onNew: () => {
+      created++;
+    },
+  };
+  const view = render(<Agents {...props} canWrite />);
+  fireEvent.change(screen.getByRole("searchbox", { name: "Find an agent" }), {
+    target: { value: "Document 3" },
+  });
+  assert.ok(!screen.queryByRole("button", { name: /writer-2/ }));
+  fireEvent.click(screen.getByRole("button", { name: /writer-3/ }));
+  assert.equal(opened, "writer-3");
+  fireEvent.click(screen.getByRole("button", { name: "Build With the Builder" }));
+  fireEvent.click(screen.getByRole("button", { name: "New Agent" }));
+  assert.equal(built, 1);
+  assert.equal(created, 1);
+  fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+  assert.ok(screen.getByRole("button", { name: /writer-2/ }));
+  view.rerender(<Agents {...props} canWrite={false} />);
+  assert.ok(!screen.queryByRole("button", { name: "New Agent" }));
+  assert.ok(!screen.queryByRole("button", { name: "Agent actions" }));
+  assert.ok(screen.getByRole("button", { name: "Build With the Builder" }));
 });

@@ -69,7 +69,7 @@ func TestCompanyRowsOfferOnlyCurrentBuiltinNames(t *testing.T) {
 			t.Fatalf("compatibility alias offered in Company marks: %v", row["row_agents"])
 		}
 	}
-	if got := len(row["row_agents"].([]any)); got != 3 {
+	if got := len(row["row_agents"].([]any)); got != len(platform.Builtins()) {
 		t.Fatalf("duplicate or missing Company builtin marks: %v", row["row_agents"])
 	}
 	choices := want(t, f, token, "GET", "/api/projects/~/agents", "", http.StatusOK)

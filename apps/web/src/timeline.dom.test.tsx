@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import type { Turn } from "@humagen/core";
-import { multiStepTurn } from "@humagen/core/fixtures";
+import { delegatingTurn, multiStepTurn } from "@humagen/core/fixtures";
 import { WebSurface } from "@humagen/render-web";
 import { AgentMessage, FileLinkContext } from "@humagen/web";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -29,6 +29,17 @@ function show(turn: Turn, opened: string[] = []) {
     </FileLinkContext.Provider>,
   );
 }
+
+test("delegated calls share one collapsed line and expand to their agent rows", () => {
+  show(delegatingTurn);
+  const calls = screen.getByRole("article").querySelector('ul[aria-label="Agent calls"]')!;
+  const group = calls.closest("details")!;
+  assert.equal(group.open, false);
+  const names = delegatingTurn.tasks.flatMap((task) => (task.subagent ? [task.subagent.name] : []));
+  assert.equal(group.querySelector("summary")?.textContent, `Asked ${names.join(", ")}▸`);
+  fireEvent.click(group.querySelector("summary")!);
+  assert.equal(calls.children.length, names.length);
+});
 
 test("a turn reads as its words and runs of steps, in the order they came", () => {
   show(multiStepTurn);

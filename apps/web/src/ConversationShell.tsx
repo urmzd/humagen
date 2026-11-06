@@ -4,6 +4,7 @@ import {
   EllipsisIcon,
   FolderIcon,
   HistoryIcon,
+  InfoIcon,
   LayersIcon,
   ProjectIcon,
   ShareIcon,
@@ -11,6 +12,7 @@ import {
 } from "@humagen/render-web";
 import { Inspector } from "@humagen/web";
 import { type ReactNode, type RefObject, useEffect, useState } from "react";
+import type { Run } from "./adapter.ts";
 import {
   api,
   coworking,
@@ -20,10 +22,11 @@ import {
   type Thread,
 } from "./api.ts";
 import { ConversationAccess } from "./ConversationAccess.tsx";
+import { ConversationOverview } from "./ConversationOverview.tsx";
 import { ForkContext } from "./ForkConversation.tsx";
 import { PersonMark } from "./PersonMark.tsx";
 import { ProjectContextPreview } from "./ProjectContextPreview.tsx";
-import { type ConversationPanel, href } from "./route.ts";
+import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { AgentMark, Page, Popover, Problem, SkeletonRows, Tabs } from "./ui.tsx";
 
 const words = defaultCopy.conversation;
@@ -34,6 +37,12 @@ const control = `inline-flex min-h-9 pointer-coarse:min-h-11 items-center gap-2 
 /** Header actions are dense, like the console's other headers: icon-sized, one 4px gap, no side padding. */
 const headerIcon = `inline-flex size-9 shrink-0 pointer-coarse:size-11 items-center justify-center ${focus}`;
 const headerLabeled = `inline-flex h-9 min-w-9 shrink-0 pointer-coarse:h-11 pointer-coarse:min-w-11 items-center justify-center gap-1.5 px-1.5 text-aui-xs ${focus}`;
+const panelActions = [
+  { panel: "overview", label: words.overview, Icon: InfoIcon },
+  { panel: "workspace", label: defaultCopy.workspace.menu, Icon: FolderIcon },
+  { panel: "context", label: words.context, Icon: LayersIcon },
+  { panel: "activity", label: words.activity, Icon: HistoryIcon },
+] as const;
 
 /**
  * Who took part, at a glance: the first few agents by mark and name, then how
@@ -88,12 +97,12 @@ export function ConversationPage({
   title,
   project,
   private: personal,
-  agents,
-  people = [],
   location,
   onProject,
   projectRef,
   onPanel,
+  panel: activePanel,
+  onClosePanel,
   onArtifact,
   children,
 }: {
@@ -106,7 +115,9 @@ export function ConversationPage({
   location?: ReactNode;
   onProject?: () => void;
   projectRef?: RefObject<HTMLButtonElement | null>;
+  panel?: ConversationPanel;
   onPanel: (panel: ConversationPanel) => void;
+  onClosePanel?: () => void;
   onArtifact?: (id: string) => void;
   children: ReactNode;
 }) {
@@ -117,20 +128,28 @@ export function ConversationPage({
       <Page
         layout="conversation"
         title={title}
-        start={
-          <span className="inline-flex min-w-0 max-w-full items-center gap-1.5" title={project}>
-            <ProjectIcon size={14} />
-            <span className="max-w-48 truncate">{project}</span>
-          </span>
-        }
         meta={
-          <span className="inline-flex flex-wrap items-center gap-x-3">
-            {location}
-            {agents.length > 0 && <Involved agents={[...new Set(agents)]} />}
-          </span>
+          location ? (
+            <span className="inline-flex flex-wrap items-center gap-x-3">{location}</span>
+          ) : undefined
         }
         actions={
           <>
+            <div className="hidden items-center gap-1 @3xl/conversation:flex">
+              {panelActions.map(({ panel, label, Icon }) => (
+                <button
+                  key={panel}
+                  type="button"
+                  className={`${headerIcon} aria-pressed:bg-aui-hover aria-pressed:text-aui-fg`}
+                  aria-label={label}
+                  title={label}
+                  aria-pressed={activePanel === panel}
+                  onClick={() => (activePanel === panel ? onClosePanel?.() : onPanel(panel))}
+                >
+                  <Icon size={18} />
+                </button>
+              ))}
+            </div>
             {/* One control for who is in it: Share where it can be shared, else People & Access. Both open the same panel. */}
             {personal && onProject ? (
               <button
@@ -141,25 +160,24 @@ export function ConversationPage({
                 title={defaultCopy.threads.share}
                 onClick={onProject}
               >
-                <Faces people={people} />
                 <ShareIcon size={18} />
                 <span className="hidden @3xl/conversation:inline">{defaultCopy.threads.share}</span>
               </button>
             ) : (
               <button
                 type="button"
-                className={people.length > 0 ? headerLabeled : headerIcon}
+                className={headerIcon}
                 aria-label={words.people}
                 title={words.people}
                 onClick={() => onPanel("people")}
               >
-                {people.length > 0 ? <Faces people={people} /> : <UsersIcon size={18} />}
+                <UsersIcon size={18} />
               </button>
             )}
             <Popover
               label={words.settings}
               button={<EllipsisIcon size={18} />}
-              className={headerIcon}
+              className={`${headerIcon} @3xl/conversation:hidden`}
               align="right"
               narrow
             >
@@ -172,27 +190,24 @@ export function ConversationPage({
                       <span className="truncate">{project}</span>
                     </span>
                     {location}
-                    {agents.length > 0 && <Involved agents={[...new Set(agents)]} />}
                   </div>
                   {/* The conversation's own items: its Workspace, its Context and its Activity. */}
-                  {(["workspace", "context", "activity"] as const).map((panel) => (
+                  {panelActions.map(({ panel, label, Icon }) => (
                     <button
                       key={panel}
                       type="button"
                       className={`${control} justify-start`}
+                      aria-label={label}
+                      title={label}
+                      aria-pressed={activePanel === panel}
                       onClick={() => {
                         close();
-                        onPanel(panel);
+                        if (activePanel === panel) onClosePanel?.();
+                        else onPanel(panel);
                       }}
                     >
-                      {panel === "workspace" ? (
-                        <FolderIcon size={16} />
-                      ) : panel === "context" ? (
-                        <LayersIcon size={16} />
-                      ) : (
-                        <HistoryIcon size={16} />
-                      )}
-                      {panel === "workspace" ? defaultCopy.workspace.menu : words[panel]}
+                      <Icon size={16} />
+                      {label}
                     </button>
                   ))}
                 </div>
@@ -368,6 +383,8 @@ function SourceCard({ source }: { source: Source }) {
 }
 
 export function ConversationInfo({
+  runs = [],
+  view = {},
   contextTab,
   onContextTab,
   panel,
@@ -375,6 +392,8 @@ export function ConversationInfo({
   project,
   onClose,
 }: {
+  runs?: Run[];
+  view?: ConversationView;
   panel?: ConversationPanel;
   contextTab?: "sources" | "instructions";
   onContextTab?: (tab: "sources" | "instructions") => void;
@@ -388,11 +407,13 @@ export function ConversationInfo({
     onContextTab ? onContextTab(next) : setOwnTab(next);
   return (
     <Inspector
-      open={panel === "context" || panel === "people"}
-      title={words[panel === "people" ? "people" : "context"]}
+      open={panel === "overview" || panel === "context" || panel === "people"}
+      title={words[panel === "overview" ? "overview" : panel === "people" ? "people" : "context"]}
       onClose={onClose}
     >
-      {panel === "context" ? (
+      {panel === "overview" ? (
+        <ConversationOverview thread={thread} project={project} runs={runs} view={view} />
+      ) : panel === "context" ? (
         <div className="flex flex-col gap-6">
           <ForkContext thread={thread} />
           <Tabs

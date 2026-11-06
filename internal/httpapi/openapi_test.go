@@ -604,7 +604,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 	}
 	shapes := map[string]shape{
 		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: wire.AgentSpec{}}, "AgentSource": {typ: wire.Source{}},
-		"AgentAccess": {typ: wire.Access{}}, "Revision": {typ: revisionView{}}, "JoinDecision": {typ: join.Decision{}},
+		"PackageBase": {typ: wire.PackageBase{}}, "AgentPackage": {typ: wire.AgentPackage{}}, "AgentAccess": {typ: wire.Access{}}, "Revision": {typ: revisionView{}}, "JoinDecision": {typ: join.Decision{}},
 		"Note": {typ: noteView{}}, "DriveTree": {typ: drive.Tree{}}, "DriveEntry": {typ: drive.Entry{}}, "DriveChange": {typ: drive.Change{}}, "DriveProposal": {typ: drive.Proposal{}}, "DriveVersion": {typ: drive.Version{}}, "DriveHit": {typ: drive.Hit{}}, "MemoryFiles": {typ: memoryTree{}}, "MemoryFile": {typ: memoryFile{}}, "MemoryRestoreInput": {typ: memoryRestore{}, written: true}, "MemoryDecisionInput": {typ: memoryDecision{}, written: true}, "LibraryScope": {typ: library.Scope{}}, "MemoryFolder": {typ: platform.MemoryFolder{}}, "LibrarySkillFile": {typ: library.File{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: event.Actor{}}, "Run": {typ: runs.Run{}},
 
 		"SourceDependency": {typ: platform.SourceDependency{}}, "SourceDependencies": {typ: platform.SourceDependencies{}},
@@ -980,7 +980,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	})
 	notesServer := httptest.NewTLSServer(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return notes }, nil))
 	t.Cleanup(notesServer.Close)
-	f := newFixtureWith(t, platform.Config{PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
+	f := newFixtureWith(t, platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
 		native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
 		}),
@@ -1225,6 +1225,14 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(ana, "POST", "/api/memory/promote", "/api/memory/promote", promotionBody, http.StatusBadRequest)
 	c.call(ana, "POST", "/api/memory/promote", "/api/memory/promote", `{"scope":"personal","id":"missing","destination":"~"}`, http.StatusNotFound)
 	// Agents, revisions and what they remember.
+	if err := f.p.EnsureBuiltins(t.Context(), "acme"); err != nil {
+		t.Fatal(err)
+	}
+	c.call(acme, "POST", "/api/agents/{name}/reset", "/api/agents/humagen-writer/reset", `{"expected_rev":0}`, http.StatusOK)
+	c.call(acme, "POST", "/api/agents/{name}/reset", "/api/agents/humagen-writer/reset", `{"expected_rev":999}`, http.StatusConflict)
+	c.call(acme, "POST", "/api/agents/{name}/reset", "/api/agents/humagen-writer/reset", `{"expected_rev":"bad"}`, http.StatusBadRequest)
+	c.call(acme, "POST", "/api/agents/{name}/reset", "/api/agents/ghost/reset", `{"expected_rev":0}`, http.StatusNotFound)
+
 	c.call(acme, "GET", "/api/agent-hues", "/api/agent-hues?names=missing", "", http.StatusOK)
 	c.call(acme, "GET", "/api/project-agent-hues", "/api/project-agent-hues?names=missing", "", http.StatusOK)
 	c.call(acme, "GET", "/api/project-agent-hues", "/api/project-agent-hues?names="+strings.Repeat("x,", 100)+"x", "", http.StatusBadRequest)

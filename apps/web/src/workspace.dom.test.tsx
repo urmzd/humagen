@@ -154,12 +154,10 @@ test("conversation settings holds Workspace, Context and Activity around one pag
     </ConversationPage>,
   );
   assert.equal(screen.getAllByRole("heading", { level: 1 }).length, 1);
-  // The header keeps only who is in it and the settings menu.
-  assert.equal(screen.queryByRole("button", { name: words.context }), null);
-  assert.equal(screen.queryByRole("button", { name: defaultCopy.workspace.menu }), null);
+  assert.ok(screen.getByRole("button", { name: words.overview }));
   for (const name of [defaultCopy.workspace.menu, words.context, words.activity]) {
     fireEvent.click(screen.getByRole("button", { name: words.settings }));
-    fireEvent.click(screen.getByRole("button", { name }));
+    fireEvent.click(screen.getAllByRole("button", { name }).at(-1)!);
   }
   assert.deepEqual(chosen, ["workspace", "context", "activity"]);
   assert.equal(screen.queryByText("Execution history"), null);

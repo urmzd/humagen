@@ -43,6 +43,7 @@ import { CONNECT_PERMISSION } from "./connections.ts";
 import { DirectoryPage } from "./Directory.tsx";
 import { ForkProject } from "./ForkProject.tsx";
 import { Health } from "./Health.tsx";
+import { History } from "./History.tsx";
 import { type HomeAnnouncement, HomeBoxes, type Loaded } from "./HomePage.tsx";
 import { Integrations } from "./Integrations.tsx";
 import { unreadBadge } from "./inbox.ts";
@@ -54,7 +55,6 @@ import { type Source as About, transport as mail, type PlatformMessage } from ".
 import { NotificationsPage, useNotifications } from "./Notifications.tsx";
 import { PersonalPreferences } from "./PersonalPreferences.tsx";
 import { ProjectPage, ProjectsPage } from "./Projects.tsx";
-import { PullRequests } from "./PullRequests.tsx";
 import { usePreferences } from "./preferences.ts";
 import { QuickSwitcher } from "./QuickSwitcher.tsx";
 import { ChannelPage } from "./Room.tsx";
@@ -792,7 +792,7 @@ function Console({
                 <Problem message={defaultCopy.noPermission} />
               </Page>
             ))}
-          {route.page === "pull-requests" && <PullRequests route={route} go={go} />}
+          {route.page === "history" && <History route={route} go={go} />}
           {route.page === "assignments" &&
             (can("runs:read") ? (
               <Assignments
@@ -1188,7 +1188,7 @@ function Console({
               agents={agents}
               projects={projects ?? []}
               selected={route.name ?? null}
-              onSelect={(name) => go({ page: "schedules", name: name ?? undefined })}
+              onSelect={(name) => go(name ? { page: "schedules", name } : { page: "automations" })}
               canWrite={can("schedules:write")}
               onChanged={loadSchedules}
               onOpenRun={openRun}

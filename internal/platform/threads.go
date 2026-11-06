@@ -2185,7 +2185,7 @@ func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, keep func(Threa
 		sum, ok := byID[rec.ID]
 		if !ok {
 			sum = &ThreadSummary{ThreadSummary: runs.ThreadSummary{
-				ID: rec.ID, Title: rec.First, Origin: runs.OriginAPI, Agents: []string{}, People: []string{}, CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt,
+				ID: rec.ID, Title: runs.DeriveTitle(rec.First), Origin: runs.OriginAPI, Agents: []string{}, People: []string{}, CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt,
 			}}
 			byID[rec.ID] = sum
 			order = append(order, sum)

@@ -15,7 +15,7 @@ test("Customize sections follow existing read permissions", () => {
   assert.equal(hubTabs("customize", route, () => false).length, 0);
   assert.deepEqual(
     hubTabs("customize", route, (p) => p === "runs:read").map((t) => t.label),
-    ["Connected Accounts", "Your tool servers"],
+    ["Connected Accounts", "Tool Servers"],
   );
 });
 

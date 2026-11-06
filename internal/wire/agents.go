@@ -108,6 +108,9 @@ func (a *Agents) Create(ctx context.Context, tenant string, spec AgentSpec, by s
 	if tenant == "" {
 		return Revision{}, fmt.Errorf("%w: no tenant", ErrInvalidAgent)
 	}
+	if by != "platform" {
+		spec.Package = nil
+	}
 	spec = spec.Normalize()
 	all, err := a.src.Versions(ctx, tenant, spec.Name)
 	if err != nil && !errors.Is(err, definition.ErrNotFound) {
@@ -144,6 +147,13 @@ func (a *Agents) Revise(ctx context.Context, tenant string, spec AgentSpec, expe
 	if expectedRev != 0 && expectedRev != len(all) {
 		return Revision{}, fmt.Errorf("%w: agent %q is at revision %d, not %d; re-read it and reapply the change", ErrConflict, spec.Name, len(all), expectedRev)
 	}
+	if by != "platform" && len(all) > 0 {
+		previous, err := RevisionOf(all[len(all)-1], len(all))
+		if err != nil {
+			return Revision{}, err
+		}
+		spec.Package = previous.Spec.Package
+	}
 	return a.write(ctx, tenant, spec, all, by)
 }
 
@@ -157,7 +167,7 @@ func (a *Agents) write(ctx context.Context, tenant string, spec AgentSpec, held 
 	}
 	if n := len(held); n > 0 {
 		last, err := RevisionOf(held[n-1], n)
-		if err == nil && last.Spec.SameContent(canonical.Spec) {
+		if err == nil && last.Spec.SameContent(canonical.Spec) && (canonical.Spec.Package == nil || last.CreatedBy == by) && samePackage(last.Spec.Package, canonical.Spec.Package) {
 			return last, nil
 		}
 	}
@@ -213,7 +223,20 @@ func RecordOf(spec AgentSpec, rev int) (definition.Record, error) {
 		}
 		return definition.Record{}, fmt.Errorf("%w: %w", ErrInvalidAgent, err)
 	}
+	if spec.Package != nil {
+		// Use saige's metadata extension without rewriting pre-package files.
+		metadata, _ := json.Marshal(spec.Package.Name)
+		version, _ := json.Marshal(spec.Package.Version)
+		rec.Content = strings.Replace(rec.Content, "---\n", "---\nmetadata:\n  humagen_package: "+string(metadata)+"\n  humagen_package_version: "+string(version)+"\n", 1)
+	}
 	return rec, nil
+}
+
+func samePackage(a, b *PackageBase) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // Policy is what a definition says about who it calls and who acts for it.

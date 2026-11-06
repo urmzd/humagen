@@ -21,9 +21,10 @@ import { loadTests } from "./testload.ts";
 GlobalRegistrator.register({ url: "http://localhost:5173/" });
 await loadTests([
   "/src/agent-choices.dom.test.tsx",
+  "/src/conversation-overview.dom.test.tsx",
   "/src/github-tab.dom.test.tsx",
   "/src/model-picker.dom.test.tsx",
-  "/src/pull-requests.dom.test.tsx",
+  "/src/history.dom.test.tsx",
   "/src/voice-notes.dom.test.tsx",
   "/src/automations.dom.test.tsx",
   "/src/catalog.dom.test.tsx",

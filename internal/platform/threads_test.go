@@ -1049,7 +1049,7 @@ func TestAThreadNoAgentAnsweredIsListedInItsChannel(t *testing.T) {
 	if got := in("Field", "releases"); !slices.Equal(got, []string{"Ship notes"}) {
 		t.Fatalf("#releases lists %v", got)
 	}
-	if got := in("Field", projects.General); !slices.Equal(got, []string{"hello"}) {
+	if got := in("Field", projects.General); !slices.Equal(got, []string{"Hello"}) {
 		t.Fatalf("#general lists %v", got)
 	}
 	if got := in("Globex", ""); len(got) != 0 {

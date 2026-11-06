@@ -42,7 +42,8 @@ export function workspaceScreens(call: Call): Screen[] {
       await input.fill("");
       const suggestions = page.getByRole("list", { name: defaultCopy.chat.suggestions });
       await suggestions.waitFor();
-      assert.equal(await suggestions.getByRole("button").count(), 3);
+      // Analyst, builder, writer and code reviewer.
+      assert.equal(await suggestions.getByRole("button").count(), 4);
       const beforeTyping = await suggestions.boundingBox();
       await input.fill("Prepare the launch brief.");
       const afterTyping = await suggestions.boundingBox();
@@ -432,6 +433,10 @@ export function workspaceScreens(call: Call): Screen[] {
       path: "/agents",
       act: async (page) => {
         await page.getByLabel(defaultCopy.agentOperations.filter).waitFor();
+        // Pause All is rare and wide in effect, so it waits under the page's actions menu.
+        await page
+          .getByRole("button", { name: defaultCopy.agentOperations.more, exact: true })
+          .click();
         await page
           .getByRole("button", { name: defaultCopy.agentOperations.pauseAll, exact: true })
           .waitFor();

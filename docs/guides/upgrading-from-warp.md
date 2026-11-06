@@ -320,7 +320,9 @@ Fiber's own earlier names are in [renaming.md](renaming.md#fiber).
 These are the defaults this release takes. Each can change in a later release.
 
 - **Built-in agent handles** are `humagen-writer`, `humagen-analyst` and
-  `humagen-builder`. The directory lists these new handles. Compatibility
+  `humagen-builder`, plus `code-reviewer`, `security-reviewer`,
+  `architect-reviewer` and `qa-reviewer` for code reviews in ordinary chat.
+  The directory lists these handles. Compatibility
   definitions remain under `warp-writer`, `warp-analyst` and `warp-builder`,
   protected from edits like the new ones and updated to the configured provider
   and model. They keep the original keys and revision hashes: old runs,

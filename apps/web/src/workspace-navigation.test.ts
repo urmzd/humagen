@@ -57,36 +57,18 @@ test("consolidated tabs retain native permissions and alert rule discovery", () 
   );
 });
 
-test("Notifications has one feed with permission-aware Alert Rules beside it", () => {
-  const canReadRuns = (permission: string) => permission === "runs:read";
+test("Notifications is one page with one title: no tab strip above it", () => {
   for (const route of [
     { page: "inbox", message: "review-one" },
     { page: "notifications" },
+    { page: "monitor", tab: "rules" },
   ] as const) {
     assert.equal(workspaceHub(route), "notifications");
     const link = new URL(href(route), "http://localhost");
     assert.deepEqual(parse(link.pathname, link.search), route);
-    const tabs = hubTabs("notifications", route, canReadRuns);
     assert.deepEqual(
-      tabs.map((tab) => ({ label: tab.label, href: href(tab.route), active: tab.active })),
-      [{ label: "Notifications", href: "/notifications", active: true }],
+      hubTabs("notifications", route, () => true),
+      [],
     );
   }
-  const rules: Route = { page: "monitor", tab: "rules" };
-  assert.equal(workspaceHub(rules), "notifications");
-  assert.deepEqual(
-    hubTabs("notifications", rules, (permission) => permission === "alerts:read").map((tab) => ({
-      label: tab.label,
-      active: tab.active,
-    })),
-    [{ label: "Alert Rules", active: true }],
-  );
-  assert.deepEqual(
-    hubTabs("notifications", rules, () => true).map((tab) => tab.label),
-    ["Notifications", "Alert Rules"],
-  );
-  assert.deepEqual(
-    hubTabs("notifications", { page: "inbox" }, () => false),
-    [],
-  );
 });

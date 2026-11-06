@@ -47,7 +47,8 @@ func TestStoredNamesAreKept(t *testing.T) {
 	if got := legacy.WorkspaceDir("/cache"); got != filepath.Join("/cache", "warp", "workspace") {
 		t.Errorf("WorkspaceDir = %q", got)
 	}
-	if !slices.Equal(spec.BuiltinAgents, []string{"humagen-writer", "humagen-analyst", "humagen-builder"}) {
+	// The first three are stored names; agents added later come after them.
+	if len(spec.BuiltinAgents) < 3 || !slices.Equal(spec.BuiltinAgents[:3], []string{"humagen-writer", "humagen-analyst", "humagen-builder"}) {
 		t.Errorf("spec.BuiltinAgents = %q", spec.BuiltinAgents)
 	}
 }

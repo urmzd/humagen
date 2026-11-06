@@ -211,6 +211,8 @@ func (s storedThread) summary() ThreadSummary {
 	}
 	if s.Name != "" {
 		out.Title, out.Named = s.Name, true
+	} else {
+		out.Title = DeriveTitle(out.Title)
 	}
 	return out
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 )
 
@@ -111,7 +112,7 @@ func (p *Platform) DeletionQueue(who auth.Principal) ([]Deletion, error) {
 		a := r.Archive
 		title := r.Title
 		if title == "" {
-			title = r.First
+			title = runs.DeriveTitle(r.First)
 		}
 		if title == "" {
 			title = p.threadTitle(who.Tenant, r.Thread)

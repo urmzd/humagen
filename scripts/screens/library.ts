@@ -695,7 +695,9 @@ export function libraryScreens(call: Call): Screen[] {
           }
           await page.reload();
           await heading(page, "Notifications");
-          await page.getByRole("link", { name: "Notification Preferences", exact: true }).waitFor();
+          await page
+            .getByRole("link", { name: defaultCopy.notifications.settings, exact: true })
+            .waitFor();
           if (failed) await page.getByRole("button", { name: "Try Again", exact: true }).waitFor();
           else await page.getByText(views.empty.inbox[0], { exact: true }).waitFor();
         },
@@ -706,17 +708,11 @@ export function libraryScreens(call: Call): Screen[] {
       path: "/notifications",
       act: async (page) => {
         await heading(page, "Notifications");
-        const navigation = page.getByRole("navigation", { name: "Notifications", exact: true });
-        const feed = navigation.getByRole("link", {
-          name: defaultCopy.navigation.notifications,
+        assert.equal(await page.getByRole("tablist").count(), 0);
+        const rules = page.getByRole("link", {
+          name: defaultCopy.notifications.alertRules,
           exact: true,
         });
-        const rules = navigation.getByRole("link", {
-          name: defaultCopy.navigation.alertRules,
-          exact: true,
-        });
-        assert.equal(await feed.getAttribute("href"), "/notifications");
-        assert.equal(await feed.getAttribute("aria-current"), "page");
         assert.equal(await rules.getAttribute("href"), "/monitor/rules");
         const sidebar = page.getByRole("complementary", { name: "Navigation", exact: true });
         if (!(await sidebar.isVisible()))
@@ -736,16 +732,9 @@ export function libraryScreens(call: Call): Screen[] {
         await page.waitForURL(/\/notifications$/);
         await rules.click();
         await page.waitForURL(/\/monitor\/rules$/);
-        assert.equal(await rules.getAttribute("aria-current"), "page");
-        await feed.click();
-        await page.waitForURL(/\/notifications$/);
         await page.goto(new URL("/inbox", page.url()).href);
         await heading(page, "Notifications");
-        assert.equal(
-          await feed.getAttribute("aria-current"),
-          "page",
-          "Legacy inbox links reach the unified feed",
-        );
+        await rules.waitFor();
         const query = page.getByRole("searchbox", {
           name: defaultCopy.inboxControls.search,
           exact: true,
@@ -754,36 +743,13 @@ export function libraryScreens(call: Call): Screen[] {
         assert.equal(await query.inputValue(), "No matching update in this collection");
         await page.getByText(defaultCopy.mailbox.empty, { exact: true }).waitFor();
         await query.fill("");
-        const filter = page.getByRole("button", {
-          name: defaultCopy.inboxControls.notificationFilter,
+        const type = page.getByRole("combobox", {
+          name: defaultCopy.inboxControls.type,
           exact: true,
         });
-        await filter.click();
-        const panel = page.getByRole("dialog", {
-          name: defaultCopy.inboxControls.notificationFilter,
-          exact: true,
-        });
-        // The views say the status, so the panel holds only the type.
-        assert.equal(await panel.getByLabel(defaultCopy.inboxControls.status).count(), 0);
-        await panel
-          .getByLabel(defaultCopy.inboxControls.type, { exact: true })
-          .selectOption("failure");
-        await panel
-          .getByRole("button", { name: defaultCopy.inboxControls.done, exact: true })
-          .click();
-        await page.waitForFunction(
-          (label) => document.activeElement?.getAttribute("aria-label") === label,
-          defaultCopy.inboxControls.notificationFilter,
-          { timeout: 1000 },
-        );
+        await type.selectOption("failure");
         assert.equal(new URL(page.url()).searchParams.get("kind"), "failure");
-        await filter.click();
-        await panel
-          .getByRole("button", { name: defaultCopy.inboxControls.reset, exact: true })
-          .click();
-        await panel
-          .getByRole("button", { name: defaultCopy.inboxControls.done, exact: true })
-          .click();
+        await type.selectOption("");
         assert.equal(new URL(page.url()).searchParams.get("kind"), null);
       },
     },
@@ -795,8 +761,15 @@ export function libraryScreens(call: Call): Screen[] {
         const control = page.getByRole("group", { name: views.label, exact: true });
         const inbox = control.getByRole("button", { name: new RegExp(`^${views.inbox}`) });
         assert.equal(await inbox.getAttribute("aria-pressed"), "true", "the Inbox is the default");
-        for (const name of [views.unread, views.hidden, views.done])
+        for (const name of [views.hidden, views.done])
           await control.getByRole("button", { name: new RegExp(`^${name}`) }).waitFor();
+        const unread = page.getByRole("button", { name: views.unread, exact: true });
+        assert.equal(await unread.getAttribute("aria-pressed"), "false");
+        await unread.click();
+        assert.equal(await unread.getAttribute("aria-pressed"), "true");
+        assert.equal(new URL(page.url()).searchParams.get("view"), "unread");
+        await unread.click();
+        assert.equal(await unread.getAttribute("aria-pressed"), "false");
         await page.locator("main [data-message]").first().waitFor();
         // A row in a view carries no state word: the view says it.
         const words = await page.locator("main [data-message]").allTextContents();

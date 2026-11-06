@@ -881,7 +881,9 @@ key it is, left out of the directory, and subjects are never searched.
 
 - **A Company agent** has an explicit root home. It is available in
   a project when the project or an ancestor enables it. Every existing agent,
-  and the built-ins `humagen-writer`, `humagen-analyst` and `humagen-builder`, has a Company home.
+  and the built-ins `humagen-writer`, `humagen-analyst`, `humagen-builder`,
+  `code-reviewer`, `security-reviewer`, `architect-reviewer` and `qa-reviewer`,
+  has a Company home.
 - **A project agent** lives in one project (its home): it is available there
   and in every descendant, and nowhere else. `*` never reaches it, and it is
   not available at the root, so a conversation in Company cannot reach it.

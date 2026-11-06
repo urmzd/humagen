@@ -20,9 +20,7 @@ export function workspaceHub(route: Route): WorkspaceHub | null {
     )
   )
     return "agents";
-  if (
-    ["operations", "action-policy", "schedules", "usage", "monitor", "audit"].includes(route.page)
-  )
+  if (["operations", "action-policy", "usage", "monitor", "audit"].includes(route.page))
     return "operations";
   return null;
 }
@@ -40,7 +38,7 @@ export function hubTabs(
         ["agents", nav.agents, can("agents:read")],
         ["skills", nav.skills, can("projects:read")],
         ["connections", nav.connections, can("runs:read")],
-        ["tools", "Your tool servers", can("runs:read")],
+        ["tools", "Tool Servers", can("runs:read")],
       ] as const
     )
       .filter(([, , visible]) => visible)
@@ -53,20 +51,7 @@ export function hubTabs(
 
   const rows: (HubTab & { visible: boolean })[] =
     hub === "notifications"
-      ? [
-          {
-            label: nav.notifications,
-            route: { page: "notifications" },
-            active: route.page === "inbox" || route.page === "notifications",
-            visible: can("runs:read"),
-          },
-          {
-            label: nav.alertRules,
-            route: { page: "monitor", tab: "rules" },
-            active: route.page === "monitor" && route.tab === "rules",
-            visible: can("alerts:read"),
-          },
-        ]
+      ? []
       : hub === "library"
         ? [
             {
@@ -149,12 +134,6 @@ export function hubTabs(
                 route: { page: "action-policy" },
                 active: route.page === "action-policy",
                 visible: can("agents:read"),
-              },
-              {
-                label: nav.schedules,
-                route: { page: "schedules" },
-                active: route.page === "schedules",
-                visible: can("schedules:read"),
               },
               {
                 label: nav.usage,
