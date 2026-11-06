@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.88.0 (2026-11-06)
+
+### Features
+
+- preserve connector delivery across replica changes (#221) ([9be066e](https://github.com/urmzd/humagen/commit/9be066e369271c131c12a9b1078d7a141832b146))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.87.0...v0.88.0)
+
+
 ## 0.87.0 (2026-11-05)
 
 ### Features
