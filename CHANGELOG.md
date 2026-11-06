@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.89.0 (2026-11-06)
+
+### Features
+
+- one chat for all work, built-in reviewers, agent packages and humagen create (#218) ([b2cd619](https://github.com/urmzd/humagen/commit/b2cd619dd572bcecb765e55ed6c27f1f665a1112))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.88.0...v0.89.0)
+
+
 ## 0.88.0 (2026-11-06)
 
 ### Features
