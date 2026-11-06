@@ -1,4 +1,5 @@
 import { defaultCopy } from "@humagen/components";
+import { EllipsisIcon } from "@humagen/render-web";
 import { useEffect, useState } from "react";
 import type { Run } from "./adapter.ts";
 import { type AgentControl, api, type Group, type Revision } from "./api.ts";
@@ -130,11 +131,7 @@ export function Agents({
             {operational && canWrite && (
               <Popover
                 label={words.more}
-                button={
-                  <span aria-hidden className="text-aui-lg">
-                    ⋯
-                  </span>
-                }
+                button={<EllipsisIcon size={18} />}
                 className="inline-flex size-9 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
                 align="right"
                 narrow

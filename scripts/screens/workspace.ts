@@ -433,6 +433,10 @@ export function workspaceScreens(call: Call): Screen[] {
       path: "/agents",
       act: async (page) => {
         await page.getByLabel(defaultCopy.agentOperations.filter).waitFor();
+        // Pause All is rare and wide in effect, so it waits under the page's actions menu.
+        await page
+          .getByRole("button", { name: defaultCopy.agentOperations.more, exact: true })
+          .click();
         await page
           .getByRole("button", { name: defaultCopy.agentOperations.pauseAll, exact: true })
           .waitFor();
