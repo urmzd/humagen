@@ -1494,7 +1494,7 @@ export function SearchField({
           type="button"
           aria-label="Clear search"
           onClick={() => onChange("")}
-          className="-mr-1 inline-flex size-5 items-center justify-center rounded-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+          className="-mr-1.5 inline-flex size-6 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
         >
           <XIcon size={12} />
         </button>

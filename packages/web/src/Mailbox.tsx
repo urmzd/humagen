@@ -882,7 +882,7 @@ function ReadingPane({
     >
       {/* On a narrow pane the controls wrap under Back rather than run off the edge. */}
       <div className="flex min-w-0 flex-wrap items-center gap-2 py-3">
-        <button type="button" onClick={onBack} className={`${headerButton} -ml-2 @2xl:hidden`}>
+        <button type="button" onClick={onBack} className={`${headerButton} @2xl:hidden`}>
           <ChevronRightIcon size={16} className="rotate-180" />
           {copy.mailbox.back}
         </button>
