@@ -83,7 +83,19 @@ test("overview reads environment, latest context, delegated agents and changes w
   assert.ok(link.getAttribute("href")?.includes("pull%3Aacme%2Fapi%2312"));
   const context = screen.getByRole("heading", { name: "Context" }).closest("details")!;
   fireEvent.click(within(context).getByText("Context"));
-  assert.ok(within(context).getByText("44%"));
+  assert.equal(within(context).getAllByText("44%").length, 1);
+  assert.ok(within(context).getByText("44 of 100 tokens"));
+  const environment = screen.getByRole("heading", { name: "Environment" }).closest("details")!;
+  assert.equal(
+    within(environment).queryByText(defaultCopy.conversation.overviewSections.sandbox),
+    null,
+  );
+  const agents = screen.getByRole("heading", { name: "Agents" }).closest("details")!;
+  const workspace = within(agents).getByRole("link", {
+    name: defaultCopy.conversation.overviewSections.sandbox,
+  });
+  assert.ok(workspace.getAttribute("href")?.endsWith("/workspace/sandboxes/r1"));
+  assert.equal(screen.queryByText("r1", { exact: true }), null);
 });
 
 test("overview shows calm empty states and retries failed reads", async () => {

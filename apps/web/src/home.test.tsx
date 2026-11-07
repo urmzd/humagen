@@ -255,3 +255,16 @@ test("retained Company announcement sits above the greeting and uses one page he
   assert.match(html, /Hide for Me/);
   assert.doesNotMatch(html, /Mark as Read|role="alert"|animate/);
 });
+
+test("Home keeps starters after the input and the disclaimer after page content", () => {
+  const html = renderToStaticMarkup(
+    <HomePage greeting="Hello" canRun hasAgents below={<div>Updates fixture</div>}>
+      {prompt}
+      <div>Starter fixture</div>
+    </HomePage>,
+  );
+  assert.ok(html.indexOf("</form>") < html.indexOf("Starter fixture"));
+  assert.ok(html.indexOf("Starter fixture") < html.indexOf("Updates fixture"));
+  assert.ok(html.indexOf("Updates fixture") < html.indexOf("humagen-disclaimer"));
+  assert.doesNotMatch(html, /flex-col-reverse/);
+});

@@ -244,6 +244,8 @@ test("the directory keeps empty and populated statistics in the same three field
   const active = directory(new Map([[writer.spec.name, group]]));
   for (const html of [empty, active]) {
     assert.match(html, /Runs \(24h\)/);
+    assert.equal((html.match(/<span>Runs \(24h\)<\/span>/g) ?? []).length, 1);
+    assert.match(html, /class="sr-only">Runs \(24h\)/);
     assert.match(html, />Success</);
     assert.match(html, />Median</);
     assert.match(html, /Built-in/);

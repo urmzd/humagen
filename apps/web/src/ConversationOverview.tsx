@@ -270,27 +270,6 @@ export function ConversationOverview({
         ) : (
           <p className={empty}>{w.noRepos}</p>
         )}
-        {data.sandboxes.runs.map((r) => (
-          <a
-            key={r.run}
-            className={row}
-            href={href({
-              page: "conversation",
-              id: thread.id,
-              panel: "workspace",
-              workspaceSection: "sandboxes",
-              sandbox: r.run,
-            })}
-          >
-            <FolderIcon size={14} />
-            <span className="truncate">
-              {w.sandbox}: {r.agent}
-            </span>
-            <span className="ml-auto max-w-28 truncate text-aui-muted" title={r.run}>
-              {r.run}
-            </span>
-          </a>
-        ))}
         {data.pulls
           .filter((p) => p.value?.subject.head?.ref)
           .map(({ ref, value }) => (
@@ -310,19 +289,39 @@ export function ConversationOverview({
           ) : undefined
         }
       >
-        <p className={empty}>{fill ? contextWords(runs.at(-1)?.usage) : w.noContext}</p>
+        <p className={empty}>{fill ? contextWords(runs.at(-1)?.usage, false) : w.noContext}</p>
       </Section>
       <Section title={w.agents} summary={agents.size || undefined}>
         {agents.size ? (
           [...agents].map(([name, status]) => (
-            <div key={name} className={row}>
-              <AgentMark name={name} size={18} />
-              <span className="truncate">{name}</span>
-              <span
-                className={`ml-auto ${status === "failed" ? "text-aui-bad" : "text-aui-muted"}`}
-              >
-                {w.status[status]}
-              </span>
+            <div key={name}>
+              <div className={row}>
+                <AgentMark name={name} size={18} />
+                <span className="truncate">{name}</span>
+                <span
+                  className={`ml-auto ${status === "failed" ? "text-aui-bad" : "text-aui-muted"}`}
+                >
+                  {w.status[status]}
+                </span>
+              </div>
+              {data.sandboxes.runs
+                .filter((r) => r.agent === name)
+                .map((r) => (
+                  <a
+                    key={r.run}
+                    className="ml-7 mb-2 inline-flex min-h-9 pointer-coarse:min-h-11 items-center gap-1 rounded-full bg-aui-muted/10 px-2 py-0.5 text-aui-xs text-aui-muted underline"
+                    href={href({
+                      page: "conversation",
+                      id: thread.id,
+                      panel: "workspace",
+                      workspaceSection: "sandboxes",
+                      sandbox: r.run,
+                    })}
+                  >
+                    <FolderIcon size={12} />
+                    {w.sandbox}
+                  </a>
+                ))}
             </div>
           ))
         ) : (

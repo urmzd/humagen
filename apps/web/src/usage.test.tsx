@@ -93,6 +93,7 @@ test("usage words: cost in its own currency, never converted, and calls with no 
 test("context fill: the latest call's prompt against the model's window, and nothing invented without a window", () => {
   assert.deepEqual(contextFill(usage), { used: 48_000, limit: 200_000 });
   assert.equal(contextWords(usage), "48,000 of 200,000 tokens, 24%");
+  assert.equal(contextWords(usage, false), "48,000 of 200,000 tokens");
   const noWindow: RunUsage = { ...usage, context: { model: "local", tokens: 900 } };
   assert.equal(contextFill(noWindow), undefined);
   assert.match(contextWords(noWindow), /900 tokens\. The model's window is not in the catalog/);

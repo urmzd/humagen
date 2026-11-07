@@ -82,24 +82,30 @@ export function Thread({
       >
         <div
           ref={content}
-          className={`aui-thread-turns flex flex-col gap-5 py-4 ${column ?? "px-1"}`}
+          className={`aui-thread-turns flex flex-col gap-5 pt-4 pb-12 ${column ?? "px-1"}`}
         >
           {children}
         </div>
       </div>
       {!atBottom && (
-        <button
-          type="button"
-          data-layer="thread-jump"
-          onClick={() => {
-            stuck.current = true;
-            toBottom(true);
-          }}
-          className="aui-pop-in absolute bottom-3 left-1/2 z-10 inline-flex h-7 -translate-x-1/2 items-center gap-1.5 rounded-full border border-aui-border bg-aui-bg px-3 text-aui-fg text-aui-xs shadow-md transition-colors hover:bg-aui-surface focus-visible:outline-2 focus-visible:outline-aui-accent"
-        >
-          <ArrowDownIcon size={13} />
-          Jump to latest
-        </button>
+        <>
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-aui-bg via-aui-bg/90 to-transparent"
+          />
+          <button
+            type="button"
+            data-layer="thread-jump"
+            onClick={() => {
+              stuck.current = true;
+              toBottom(true);
+            }}
+            className="aui-pop-in absolute bottom-3 left-1/2 z-10 inline-flex h-7 -translate-x-1/2 items-center gap-1.5 rounded-full border border-aui-border bg-aui-bg px-3 text-aui-fg text-aui-xs shadow-md transition-colors hover:bg-aui-surface focus-visible:outline-2 focus-visible:outline-aui-accent"
+          >
+            <ArrowDownIcon size={13} />
+            Jump to latest
+          </button>
+        </>
       )}
     </div>
   );
