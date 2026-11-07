@@ -117,6 +117,9 @@ func loadSpec(t *testing.T) *apiSpec {
 	if err := yaml.Unmarshal(raw, &viaYAML); err != nil {
 		t.Fatalf("the spec is not YAML: %v", err)
 	}
+	if err := specJSONKeys(viaYAML, "openapi"); err != nil {
+		t.Fatalf("the spec must use JSON mapping keys: %v", err)
+	}
 	// Through JSON, so every value is one the schema compiler expects.
 	asJSON, err := json.Marshal(viaYAML)
 	if err != nil {

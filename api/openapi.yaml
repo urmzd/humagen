@@ -123,21 +123,21 @@ paths:
         - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
         - {"name": "Last-Event-ID", "in": "header", "required": false, "schema": {"type": "string"}}
       responses:
-        200:
+        "200":
           description: "Session snapshots and run events; reconnect using the last event ID."
           content:
             text/event-stream:
               schema:
                 type: "string"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        403:
+        "403":
           $ref: "#/components/responses/Forbidden"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/ServerError"
   /api/sessions/{id}/messages/{mid}/feedback:
     put:
@@ -171,23 +171,23 @@ paths:
                   type: "string"
                   maxLength: 4000
       responses:
-        200:
+        "200":
           description: "Successful session operation"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/RunFeedback"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        403:
+        "403":
           $ref: "#/components/responses/Forbidden"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        409:
+        "409":
           $ref: "#/components/responses/Conflict"
-        500:
+        "500":
           $ref: "#/components/responses/ServerError"
     delete:
       operationId: "deleteSessionFeedback"
@@ -200,15 +200,15 @@ paths:
         - {"name": "mid", "in": "path", "required": true, "schema": {"type": "string"}}
         - {"name": "finding_id", "in": "query", "required": false, "schema": {"type": "string"}}
       responses:
-        204:
+        "204":
           description: "Successful session operation"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        403:
+        "403":
           $ref: "#/components/responses/Forbidden"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/ServerError"
   /api/sessions/{id}/links:
     post:
@@ -237,17 +237,17 @@ paths:
                     - "context"
                     - "evidence"
       responses:
-        204:
+        "204":
           description: "Successful session operation"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        403:
+        "403":
           $ref: "#/components/responses/Forbidden"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/ServerError"
   /api/sessions/{id}/people:
     post:
@@ -271,23 +271,23 @@ paths:
                 person:
                   type: "string"
       responses:
-        200:
+        "200":
           description: "Successful session operation"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentSession"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        403:
+        "403":
           $ref: "#/components/responses/Forbidden"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        409:
+        "409":
           $ref: "#/components/responses/Conflict"
-        500:
+        "500":
           $ref: "#/components/responses/ServerError"
   /api/sessions/{id}/stop:
     post:
@@ -309,17 +309,17 @@ paths:
                 children:
                   type: "boolean"
       responses:
-        204:
+        "204":
           description: "Successful session operation"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        403:
+        "403":
           $ref: "#/components/responses/Forbidden"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/ServerError"
   /api/sessions/{id}/messages:
     post:
@@ -337,23 +337,23 @@ paths:
             schema:
               $ref: "#/components/schemas/SessionPostInput"
       responses:
-        201:
+        "201":
           description: "Successful session operation"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentSession"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        403:
+        "403":
           $ref: "#/components/responses/Forbidden"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        409:
+        "409":
           $ref: "#/components/responses/Conflict"
-        500:
+        "500":
           $ref: "#/components/responses/ServerError"
   /api/sessions/{id}:
     get:
@@ -369,21 +369,21 @@ paths:
         - {"name": "around", "in": "query", "required": false, "description": "Return at most 200 turns around this message or run ID. Cannot be combined with since or before. Unknown anchors return 404; next pages toward older turns.", "schema": {"type": "string", "maxLength": 200}}
         - {"name": "summary", "in": "query", "required": false, "schema": {"type": "boolean"}}
       responses:
-        200:
+        "200":
           description: "Successful session operation"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentSession"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        403:
+        "403":
           $ref: "#/components/responses/Forbidden"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/ServerError"
   /api/sessions:
     get:
@@ -402,7 +402,7 @@ paths:
         - {"name": "after", "in": "query", "required": false, "schema": {"type": "string"}}
         - {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200}}
       responses:
-        200:
+        "200":
           description: "Successful session operation"
           content:
             application/json:
@@ -419,15 +419,15 @@ paths:
                       $ref: "#/components/schemas/AgentSessionSummary"
                   next:
                     type: "string"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        403:
+        "403":
           $ref: "#/components/responses/Forbidden"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/ServerError"
     post:
       operationId: "startSession"
@@ -442,23 +442,23 @@ paths:
             schema:
               $ref: "#/components/schemas/SessionInput"
       responses:
-        201:
+        "201":
           description: "Successful session operation"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentSession"
-        400:
+        "400":
           $ref: "#/components/responses/BadRequest"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        403:
+        "403":
           $ref: "#/components/responses/Forbidden"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        409:
+        "409":
           $ref: "#/components/responses/Conflict"
-        500:
+        "500":
           $ref: "#/components/responses/ServerError"
   /api/pull-requests:
     get:
@@ -2631,15 +2631,15 @@ paths:
         - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
         - {"name": "finding_id", "in": "query", "required": false, "schema": {"type": "string"}}
       responses:
-        204:
+        "204":
           description: "Successful session operation"
-        401:
+        "401":
           $ref: "#/components/responses/Unauthorized"
-        403:
+        "403":
           $ref: "#/components/responses/Forbidden"
-        404:
+        "404":
           $ref: "#/components/responses/NotFound"
-        500:
+        "500":
           $ref: "#/components/responses/ServerError"
     put:
       operationId: saveRunFeedback
