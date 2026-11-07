@@ -180,7 +180,9 @@ test("a shared thread shows people by name and agents by theirs and where it is 
   const own = await screen.findByRole("article", { name: "Message from Ana" });
   assert.equal(own.getAttribute("data-side"), "mine");
   // The thread is untitled, so its first message is its title as well.
-  assert.equal(screen.getAllByText("@helper when does Globex renew?").length, 2);
+  // The message once in the thread; the title is derived from it, without the tag.
+  assert.equal(screen.getAllByText("@helper when does Globex renew?").length, 1);
+  assert.ok(screen.getByRole("heading", { name: "When does Globex renew?" }));
   assert.ok(screen.getByText("It renews on May 3."));
   const where = screen.getByRole("button", {
     name: words.sharedIn(globex.title ?? "Globex", "renewals"),
@@ -1031,7 +1033,7 @@ test("a recap's announcement is the agent's, and a withdrawn one says only that"
   });
   assert.ok(gone.textContent?.includes(defaultCopy.announcements.seedWithdrawn));
   assert.ok(
-    screen.getByRole("heading", { name: "what does it mean for renewals?" }),
+    screen.getByRole("heading", { name: "What does it mean for renewals?" }),
     "a withdrawn subject is not the title",
   );
 });
