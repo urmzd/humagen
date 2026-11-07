@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -131,11 +133,7 @@ func (s *Store) Link(ctx context.Context, tenant, id string, l session.Link) err
 		return fmt.Errorf("%w: a session cannot link itself", session.ErrInvalid)
 	}
 	l.CreatedAt = time.Now().UTC()
-	err := s.state.Write(ctx, namespace, put(tenant, "l:"+id+":"+l.Target, l, state.Missing))
-	if errors.Is(err, state.ErrConflict) {
-		return nil
-	}
-	return err
+	return s.appendOnce(ctx, tenant, "lh:"+id, "l:"+id+":"+l.Target+":"+l.Kind, "ls:"+id+":", l)
 }
 func (s *Store) Links(ctx context.Context, tenant, id string, limit int) ([]session.Link, error) {
 	if _, err := s.Get(ctx, tenant, id); err != nil {
@@ -144,7 +142,7 @@ func (s *Store) Links(ctx context.Context, tenant, id string, limit int) ([]sess
 	if limit <= 0 || limit > session.MaxPage {
 		limit = session.MaxPage
 	}
-	rows, _, err := s.state.List(ctx, namespace, tenant, state.Query{Prefix: "l:" + id + ":", Limit: limit})
+	rows, _, err := s.state.List(ctx, namespace, tenant, state.Query{Prefix: "ls:" + id + ":", Limit: limit})
 	if err != nil {
 		return nil, err
 	}
@@ -165,12 +163,43 @@ func (s *Store) BindRun(ctx context.Context, tenant, id, run string) error {
 	if _, err := s.Get(ctx, tenant, id); err != nil {
 		return err
 	}
-	err := s.state.Write(ctx, namespace, put(tenant, "r:"+id+":"+run, run, state.Missing))
-	if errors.Is(err, state.ErrConflict) {
-		return nil
-	}
-	return err
+	return s.appendOnce(ctx, tenant, "rh:"+id, "r:"+id+":"+run, "rs:"+id+":", run)
 }
+
+// appendOnce keeps identity and insertion order in the same atomic write.
+func (s *Store) appendOnce(ctx context.Context, tenant, head, marker, prefix string, value any) error {
+	// The duplicate marker, sequence and ordered index commit together.
+	// A retry neither consumes a position nor moves an earlier binding.
+	return state.Retry(func() error {
+		if _, err := s.state.Lookup(ctx, namespace, tenant, marker); err == nil {
+			return nil
+		} else if !errors.Is(err, state.ErrNotFound) {
+			return err
+		}
+		row, err := s.state.Lookup(ctx, namespace, tenant, head)
+		var position int64
+		version := state.Missing
+		if err == nil {
+			if err := json.Unmarshal(row.Value, &position); err != nil {
+				return err
+			}
+			version = row.Version
+		} else if !errors.Is(err, state.ErrNotFound) {
+			return err
+		}
+		if position < 0 || position == math.MaxInt64 {
+			return fmt.Errorf("%w: session relationship position is exhausted", session.ErrInvalid)
+		}
+		position++
+		return s.state.Write(ctx, namespace,
+			put(tenant, head, position, version),
+			put(tenant, marker, value, state.Missing),
+			put(tenant, prefix+state.Seq(position), value, state.Missing),
+		)
+	})
+}
+
+// Runs returns the newest binding window, oldest first, regardless of run IDs.
 func (s *Store) Runs(ctx context.Context, tenant, id string, limit int) ([]string, error) {
 	if _, err := s.Get(ctx, tenant, id); err != nil {
 		return nil, err
@@ -178,7 +207,7 @@ func (s *Store) Runs(ctx context.Context, tenant, id string, limit int) ([]strin
 	if limit <= 0 || limit > session.MaxPage {
 		limit = session.MaxPage
 	}
-	rows, _, err := s.state.List(ctx, namespace, tenant, state.Query{Prefix: "r:" + id + ":", Limit: limit})
+	rows, _, err := s.state.List(ctx, namespace, tenant, state.Query{Prefix: "rs:" + id + ":", Limit: limit, Desc: true})
 	if err != nil {
 		return nil, err
 	}
@@ -190,5 +219,7 @@ func (s *Store) Runs(ctx context.Context, tenant, id string, limit int) ([]strin
 		}
 		out = append(out, id)
 	}
+	// Select the newest bindings, then replay that window oldest first.
+	slices.Reverse(out)
 	return out, nil
 }
