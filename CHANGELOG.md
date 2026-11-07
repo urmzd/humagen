@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.89.1 (2026-11-07)
+
+### Bug Fixes
+
+- **console**: titles and project picking in every conversation (#223) ([f16ffe3](https://github.com/urmzd/humagen/commit/f16ffe316911d21d91292ee4356cab59985e9033))
+
+### Misc
+
+- preserve public host in forwarded replica checks (#222) ([6c1cfb8](https://github.com/urmzd/humagen/commit/6c1cfb88f06df319fa65d6d485d9e9936685520d))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.89.0...v0.89.1)
+
+
 ## 0.89.0 (2026-11-06)
 
 ### Features
