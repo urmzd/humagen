@@ -290,6 +290,14 @@ shutdown:
 # with the defaults); the chart refuses a value that does not.
 terminationGracePeriodSeconds: 45
 
+# How the server Deployment replaces its pods. The default replaces one at a
+# time and adds none first, which a ReadWriteOnce workspace volume (disk
+# blobs) needs. With object-store blobs (s3, gcs), set maxSurge: 1 and
+# maxUnavailable: 0 so the old pod serves until the new one is ready.
+rollout:
+  maxSurge: 0
+  maxUnavailable: 1
+
 # -- A PodDisruptionBudget for the server (and one for the worker, under
 # worker.podDisruptionBudget). maxUnavailable: 1, not minAvailable: 1, because
 # with one replica minAvailable would block every node drain; maxUnavailable
