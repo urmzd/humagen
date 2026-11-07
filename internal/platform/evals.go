@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -9,12 +10,15 @@ import (
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/evals"
+	"github.com/urmzd/humagen/pkg/prompts"
 	"github.com/urmzd/humagen/pkg/runs"
 )
 
 // OriginEval marks a run raised by an eval, so it can be told apart from work
 // a person or a schedule asked for.
 const OriginEval = runs.OriginEval
+const metaEvalRevision = "_humagen.eval_revision"
+const metaEvalPrefix = "_humagen.eval_prefix"
 
 // caseTimeout bounds one agent case. A case that outlives it fails, which is a
 // result, rather than holding the suite open.
@@ -27,7 +31,12 @@ func (p *Platform) StartEval(ctx context.Context, tenant, name, by string) (eval
 	if err != nil {
 		return evals.Run{}, err
 	}
+	if err := p.checkEvalReplayAccess(tenant, suite, by); err != nil {
+		return evals.Run{}, err
+	}
 	rev := 0
+	var definition wire.Revision
+	var prefix prompts.Snapshot
 	switch suite.Target {
 	case evals.Agent:
 		// Pin the revision now, so the run records what it actually tested
@@ -37,6 +46,12 @@ func (p *Platform) StartEval(ctx context.Context, tenant, name, by string) (eval
 			return evals.Run{}, fmt.Errorf("the suite's agent: %w", err)
 		}
 		rev = r.Rev
+		definition = r
+		project, _ := p.ProjectTree(tenant).Home(suite.Subject)
+		prefix, err = p.promptLayers(tenant, project)
+		if err != nil {
+			return evals.Run{}, err
+		}
 	case evals.Knowledge:
 		if _, err := p.Knowledge.Documents(tenant, suite.Subject); err != nil {
 			return evals.Run{}, fmt.Errorf("the suite's source: %w", err)
@@ -56,7 +71,7 @@ func (p *Platform) StartEval(ctx context.Context, tenant, name, by string) (eval
 		var results []evals.Result
 		var metrics map[string]float64
 		if suite.Target == evals.Agent {
-			results = p.evalAgent(bg, tenant, suite, &run)
+			results = p.evalAgent(bg, tenant, suite, &run, definition, prefix)
 		} else {
 			results, metrics = p.evalKnowledge(tenant, suite)
 		}
@@ -79,10 +94,34 @@ func (p *Platform) StartEval(ctx context.Context, tenant, name, by string) (eval
 
 // evalAgent sends each case to the agent as a real run and checks its answer.
 // Cases run one after another, so a suite cannot flood the agent it measures.
-func (p *Platform) evalAgent(ctx context.Context, tenant string, suite evals.Suite, run *evals.Run) []evals.Result {
+func (p *Platform) evalAgent(ctx context.Context, tenant string, suite evals.Suite, run *evals.Run, definition wire.Revision, prefix prompts.Snapshot) []evals.Result {
 	results := make([]evals.Result, 0, len(suite.Cases))
 	for _, c := range suite.Cases {
-		res := p.evalCase(ctx, tenant, suite, run.ID, c)
+		var res evals.Result
+		if c.Trace != nil {
+			began := p.now()
+			current := suite
+			current.Cases = []evals.Case{c}
+			var text string
+			err := p.checkEvalReplayAccess(tenant, current, run.StartedBy)
+			if err == nil {
+				text, err = p.evaluateCandidate(ctx, tenant, definition.Spec, prefix)(ctx, c)
+			}
+			if err == nil {
+				err = p.checkEvalReplayAccess(tenant, current, run.StartedBy)
+			}
+			if err != nil {
+				res = evals.Result{CaseID: c.ID, Input: c.Input, RunID: c.Trace.Run, Error: err.Error()}
+			} else {
+				res, err = evals.ScoreAnswer(ctx, c, text, p.now().Sub(began))
+				res.RunID = c.Trace.Run
+				if err != nil {
+					res.Error = err.Error()
+				}
+			}
+		} else {
+			res = p.evalCase(ctx, tenant, suite, run.ID, c, definition.Rev, prefix)
+		}
 		results = append(results, res)
 		// Publish progress, so the console can show cases as they land.
 		run.Results = results
@@ -93,14 +132,15 @@ func (p *Platform) evalAgent(ctx context.Context, tenant string, suite evals.Sui
 	return results
 }
 
-func (p *Platform) evalCase(ctx context.Context, tenant string, suite evals.Suite, evalID string, c evals.Case) evals.Result {
+func (p *Platform) evalCase(ctx context.Context, tenant string, suite evals.Suite, evalID string, c evals.Case, rev int, prefix prompts.Snapshot) evals.Result {
 	failed := func(msg string, r runs.Run) evals.Result {
 		return evals.Result{
 			CaseID: c.ID, Input: c.Input, RunID: r.ID, Error: msg,
 			DurationMs: r.UpdatedAt.Sub(r.CreatedAt).Milliseconds(),
 		}
 	}
-	meta := map[string]string{"eval_suite": suite.Name, "eval_case": c.ID}
+	rawPrefix, _ := json.Marshal(prefix)
+	meta := map[string]string{"eval_suite": suite.Name, "eval_case": c.ID, metaEvalRevision: wire.VersionOf(rev), metaEvalPrefix: string(rawPrefix)}
 	// An eval tries an agent where it lives, as any run of it would be: a
 	// project agent's case is filed in its home, under the home's limits
 	// and allow lists, and so are the runs it calls. A platform agent's is

@@ -462,6 +462,11 @@ func (p *Platform) applySetupAmendment(ctx context.Context, who auth.Principal, 
 	if !reflect.DeepEqual(plan, currentPlan) {
 		return operations.ErrConflict
 	}
+	if before, lookupErr := p.Catalog().Get(ctx, who.Tenant, record.Name, 0); lookupErr == nil && !before.Spec.SameContent(plan.Spec) {
+		if _, err := p.checkAgentEvals(ctx, who.Tenant, before.Spec, plan.Spec); err != nil {
+			return err
+		}
+	}
 	record.Plan = plan
 	if home, ok := p.Projects.Tree(who.Tenant).Home(record.Name); ok && home != record.Plan.Project {
 		return operations.ErrConflict
@@ -771,9 +776,16 @@ func (p *Platform) TestAgentSetup(ctx context.Context, who auth.Principal, name,
 	if err := p.saveSetup(who.Tenant, &record, "configured"); err != nil {
 		return AgentSetup{}, err
 	}
-	_, err = p.Converse(ctx, who.Tenant, Turn{ID: record.TestTag, Agent: name, Project: record.Plan.Project, Text: text, Actor: event.Actor{ID: who.Subject, User: who.Subject, Display: p.NameOf(who.Tenant, who.Subject)}, ForceAsk: true, Sees: p.Seer(who).Agent})
+	started, err := p.Converse(ctx, who.Tenant, Turn{DryRun: true, ID: record.TestTag, Agent: name, Project: record.Plan.Project, Text: text, Actor: event.Actor{ID: who.Subject, User: who.Subject, Display: p.NameOf(who.Tenant, who.Subject)}, ForceAsk: true, Sees: p.Seer(who).Agent})
 	if err != nil {
-		return p.failSetup(who.Tenant, record, err)
+		failed, saveErr := p.failSetup(who.Tenant, record, err)
+		if saveErr != nil {
+			return failed, saveErr
+		}
+		return failed, err
+	}
+	if started.ID != record.TestRun {
+		return AgentSetup{}, fmt.Errorf("setup test admitted %q but reserved %q", started.ID, record.TestRun)
 	}
 	record.TestTag = ""
 	return record, nil

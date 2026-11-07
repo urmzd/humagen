@@ -64,9 +64,11 @@ import (
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/prompts"
 	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/settings"
+	"github.com/urmzd/humagen/pkg/signals"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/speech"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -666,6 +668,8 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"AnalyticsGroup": {typ: runs.Group{}}, "AnalyticsBucket": {typ: runs.Bucket{}}, "Summary": {typ: runs.Summary{}},
 		"JournalEntry": {typ: journal.Entry{}}, "Span": {typ: journal.Span{}},
 		"AlertRule": {typ: ruleView{}}, "Alert": {typ: alertView{}},
+
+		"AgentEvaluationHealth": {typ: platform.AgentEvaluationHealth{}}, "OnlineEvaluation": {typ: evals.Online{}}, "EvaluationSignals": {typ: signals.Record{}}, "EvaluationLimits": {typ: evals.Limits{}}, "AgentChangeScore": {typ: evals.ChangeScore{}}, "AgentChange": {typ: evals.Change{}}, "PromptLayers": {typ: prompts.Config{}},
 		"EvalCheck": {typ: evals.Check{}}, "EvalCase": {typ: evals.Case{}}, "EvalSuite": {typ: evals.Suite{}, written: true},
 		"EvalVerdict": {typ: evals.Verdict{}}, "EvalHit": {typ: evals.Hit{}}, "EvalResult": {typ: evals.Result{}},
 		"EvalRun": {typ: evals.Run{}}, "EvalSuiteView": {typ: suiteView{}, written: true},
@@ -1029,6 +1033,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		Speech:    contractSpeech{},
 	})
 	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
+	exerciseEvaluationPolicyContract(t, c)
 	sessionContract := exerciseSessionContract(t, c)
 	contractSource(t, f, c, sourceFake)
 	contractGitHubItems(t, f, c, sourceFake)

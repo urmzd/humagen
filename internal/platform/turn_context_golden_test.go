@@ -13,6 +13,7 @@ import (
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/prefs"
+	"github.com/urmzd/humagen/pkg/prompts"
 	"github.com/urmzd/humagen/pkg/runs"
 )
 
@@ -64,7 +65,12 @@ func TestTheComposedTurnMatchesItsGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := wire.TextOf(await(t, p, r.ID, runs.Completed).Tag())
+	completed := await(t, p, r.ID, runs.Completed)
+	pin, ok, err := prompts.Read(wire.Meta(completed.Tag()))
+	if err != nil || !ok {
+		t.Fatalf("prompt snapshot: %v %v", ok, err)
+	}
+	got := "[SYSTEM]\n" + pin.System("") + "[USER]\n" + wire.TextOf(completed.Tag())
 	golden := filepath.Join("testdata", "turn_context.golden")
 	if *update {
 		if err := os.WriteFile(golden, []byte(got), 0o644); err != nil {

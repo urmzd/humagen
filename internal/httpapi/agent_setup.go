@@ -17,7 +17,7 @@ func (s *Server) agentSetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/agent-setups/{name}/activate", s.authed(auth.AgentsWrite, s.activateAgentSetup))
 }
 func (s *Server) getAgentSetup(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	record, err := s.P.AgentSetup(who, r.PathValue("name"))
+	record, err := s.P.AgentSetupView(who, r.PathValue("name"))
 	if err != nil {
 		s.problem(w, err)
 		return

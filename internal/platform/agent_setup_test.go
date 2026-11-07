@@ -19,6 +19,7 @@ import (
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/operations"
@@ -246,10 +247,25 @@ func TestAgentSetupDryRunUsesRealAdapterAndApprovalBeforeActivation(t *testing.T
 	if _, err := os.Stat(filepath.Join(p.SandboxDir(tenant, parked.Thread), "draft.md")); err == nil {
 		t.Fatal("unapproved test tool executed")
 	}
+	if _, err := p.AnswerQuestion(t.Context(), admin, parked.ID, parked.Question.ID, platform.QuestionAnswer{Action: platform.ActApprove}); err == nil {
+		t.Fatal("setup owner approved their own test tool")
+	}
 	reviewer := auth.Principal{Tenant: tenant, Subject: "ben", Kind: auth.User, Roles: []auth.Role{auth.Admin}}
 	if _, err := p.AnswerQuestion(t.Context(), reviewer, parked.ID, parked.Question.ID, platform.QuestionAnswer{Action: platform.ActApprove}); err != nil {
 		t.Fatal(err)
 	}
+	for _, kind := range []inbox.Kind{inbox.KindApproval, inbox.KindClarification, inbox.KindFailure} {
+		if messages := p.Inbox.OpenOf(tenant, kind); len(messages) != 0 {
+			t.Fatalf("setup validation notified people: %+v", messages)
+		}
+	}
+	if page, _, err := p.ThreadPage(tenant, runs.ThreadQuery{}); err != nil || len(page) != 0 {
+		t.Fatalf("setup validation entered ordinary history: %+v %v", page, err)
+	}
+	if alerts, err := p.Alerts.Alerts(tenant); err != nil || len(alerts) != 0 {
+		t.Fatalf("setup validation raised alerts: %+v %v", alerts, err)
+	}
+
 	completed := await(t, p, tested.TestRun, runs.Completed)
 	if completed.Answer == "" || requests.Load() < 2 || !skillSeen.Load() {
 		t.Fatal("native adapter did not complete the real approved tool round trip")

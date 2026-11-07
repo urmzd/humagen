@@ -1292,3 +1292,12 @@ servers and reviews their tool lists in Customize. Changes to schemas,
 metadata or read-only hints require another review; every write tool asks
 that person for approval. MCP clients and credential resolution run in the
 trusted worker, outside the agent sandbox.
+
+### Prompt and evaluation policy
+
+`Platform.spec.workspace.prompts` configures the stable platform and workspace
+instruction prefix and the Slack word budget. `workspace.eval_limits` bounds
+online execution cost, duration, and evidence checks. Zero cost or duration limits
+leave those optional checks disabled; changing shared instructions requires the sampled eval gate. Existing
+runs retain their admitted prompt versions. See [Prompt and evaluation policy](prompt-evaluations.md)
+for fields, deterministic checks, and approved regression overrides.
