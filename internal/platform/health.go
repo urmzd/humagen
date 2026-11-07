@@ -101,7 +101,7 @@ func (p *Platform) providerHealth(ctx context.Context) []HealthComponent {
 		// Nothing calls a model: say it as an outage, not an empty list.
 		return []HealthComponent{{
 			ID: "provider:none", Name: "Model providers", Group: "Model providers", Status: HealthDown,
-			Detail: "None set up, so agents cannot answer. Declare one under models in the spec (docs/spec.md).",
+			Detail: "No model provider is configured, so agents cannot answer. Ask a workspace administrator to configure a provider, then review Models in Settings.",
 		}}
 	}
 	out := make([]HealthComponent, len(names), len(names)+1)

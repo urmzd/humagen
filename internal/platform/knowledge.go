@@ -81,6 +81,10 @@ func (p *Platform) sourcesFor(tag event.Envelope, edge call.Edge, project string
 // was told to use, ahead of its text (withSkills). The pinned definition
 // itself is never changed.
 func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error) {
+	var promptErr error
+	if req, promptErr = withPromptLayers(req); promptErr != nil {
+		return req, promptErr
+	}
 	if err := p.checkAgentSkillDefaults(req); err != nil {
 		return req, err
 	}

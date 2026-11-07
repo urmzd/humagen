@@ -47,6 +47,10 @@ func (s *Server) putFeedback(w http.ResponseWriter, r *http.Request, who auth.Pr
 		s.problem(w, err)
 		return
 	}
+	if err := s.P.RecordFeedbackCandidate(who.Tenant, record); err != nil {
+		s.problem(w, err)
+		return
+	}
 	ok(w, http.StatusOK, s.shownFeedback(who, actor.Subject, []feedback.Record{record})[0])
 }
 

@@ -16,9 +16,11 @@ import (
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/prompts"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -56,6 +58,8 @@ const (
 
 // Settings is what a tenant has chosen for itself.
 type Settings struct {
+	EvalLimits evals.Limits   `json:"eval_limits,omitzero"`
+	Prompts    prompts.Config `json:"prompts,omitzero"`
 	// History and HistoryLimit decide how much of a conversation is replayed
 	// to the agent answering the next turn.
 	History      History `json:"history"`
@@ -267,12 +271,23 @@ func (p *Platform) SetSettings(ctx context.Context, tenant string, next Settings
 // reports, nil for every agent: a refusal names no other.
 func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings, shown func(string) bool) error {
 	next = next.withDefaults()
+	if err := next.EvalLimits.Validate(); err != nil {
+		return err
+	}
+	if err := next.Prompts.Validate(); err != nil {
+		return fmt.Errorf("%w: %w", ErrSettings, err)
+	}
 	// Who set the workspace up, and when, is the server's to say.
 	raw, err := p.settings.get(tenant)
 	if err != nil {
 		return err
 	}
 	stored := raw.withDefaults()
+	if next.Prompts != stored.Prompts {
+		if err := p.checkSharedPromptEvals(ctx, tenant, next.Prompts, shown); err != nil {
+			return err
+		}
+	}
 	next.SetupAt, next.SetupBy = stored.SetupAt, stored.SetupBy
 	next.WorkspaceName = strings.TrimSpace(next.WorkspaceName)
 	if len(next.WorkspaceName) > 80 || strings.ContainsAny(next.WorkspaceName, "\r\n\t<>") {
@@ -313,6 +328,9 @@ func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings
 		}
 	}
 	return p.settings.update(tenant, func(v *storedSettings) error {
+		if next.Prompts != stored.Prompts && v.Prompts != stored.Prompts {
+			return wire.ErrConflict
+		}
 		next.SetupAt, next.SetupBy = v.SetupAt, v.SetupBy
 		v.Settings = next
 		return nil
@@ -357,6 +375,8 @@ func (p *Platform) MarkSetup(tenant, by string) (Settings, error) {
 
 // Turn is one message a person sends.
 type Turn struct {
+	// DryRun is set only by the server for setup validation.
+	DryRun bool
 	// TestSkill is a server-selected immutable draft. It grants no tools.
 	TestSkill *library.Revision
 	// ForceAsk tightens every action to require a recorded approval. It grants no tools.
@@ -487,6 +507,9 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 	}
 	if t.AssignmentID != "" {
 		meta[metaAssignment] = t.AssignmentID
+	}
+	if t.DryRun {
+		meta[metaDryRun] = "true"
 	}
 	if t.ForceAsk {
 		meta[operations.MetaForceAsk] = "true"

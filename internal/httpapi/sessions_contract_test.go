@@ -54,6 +54,8 @@ func exerciseSessionContract(t *testing.T, c *contract) map[string]string {
 	c.call(token, "PUT", "/api/sessions/{id}/messages/{mid}/feedback", fpath, `{"rating":"up"}`, 200)
 	c.call(token, "DELETE", "/api/sessions/{id}/messages/{mid}/feedback", fpath, "", 204)
 	c.call(token, "DELETE", "/api/runs/{id}/feedback", "/api/runs/"+runID+"/feedback", "", 204)
+	c.call(token, "GET", "/api/agents/{name}/health", "/api/agents/helper/health", "", 200)
+	c.call(token, "GET", "/api/agents/{name}/changes", "/api/agents/helper/changes", "", 200)
 	alert := c.call(token, "POST", "/api/sessions/{id}/alerts", path+"/alerts", `{"title":"Service needs review","priority":"normal"}`, 201)
 	c.call(token, "PATCH", "/api/alerts/{id}", "/api/alerts/"+alert.str("id"), `{"state":"resolved"}`, 200)
 	c.call(token, "POST", "/api/sessions/{id}/stop", path+"/stop", `{"children":true}`, 204)

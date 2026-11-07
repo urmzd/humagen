@@ -43,14 +43,26 @@ const (
 func AnalystTools() []string { return []string{ToolRunsSummary, ToolListAlerts, ToolProjectChanges} }
 
 // BuilderTools are the tools for reading and changing agents.
-func BuilderTools() []string { return []string{ToolListAgents, ToolReadAgent, ToolSaveAgent} }
+func BuilderTools() []string {
+	return []string{ToolListAgents, ToolReadAgent, ToolSaveAgent, ToolPauseAgent, ToolRetireAgent, ToolWriteEval, ToolRunEval, ToolReadEvals, ToolPreviewChange, ToolApplyChange, ToolRecordEval, ToolWorkspacePrompt, ToolPreviewWorkspacePrompt, ToolApplyWorkspacePrompt}
+}
 
 // toolAskPerson is the runtime's tool for asking a person something.
 const toolAskPerson = "ask_person"
 
-// grantable is what the builder may give an agent it writes: files and
-// asking a person. Never its own tools, the analyst's, or calls to agents.
-func grantable() []string { return append(FileTools(), toolAskPerson) }
+// grantable is what the builder may propose for human approval. Personal
+// tools still require the initiating person's reviewed connection and policy.
+// Never grant the builder's own tools, the analyst's, or calls to agents.
+func grantable() []string { return append(FileTools(), toolAskPerson, "person_tools") }
+
+func builderGrantable(name string) bool {
+	return name == personToolsGrant || slices.Contains(grantable(), name)
+}
+
+func builderProtectedAgent(name string) bool {
+	name = legacy.BuiltinAgent(wire.NormalizeName(name))
+	return name == BuiltinBuilder || name == BuiltinAnalyst
+}
 
 // MaxSummaryHours bounds how far back runs_summary looks.
 const MaxSummaryHours = 30 * 24
@@ -85,10 +97,21 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 				}
 				return p.runsSummary(req.Tenant, time.Duration(hours)*time.Hour, strings.TrimSpace(arg(args, "agent")), scope)
 			}),
-		ToolAlertCreate:    p.sessionAlertCreateTool(req),
-		ToolAlertResolve:   p.sessionAlertResolveTool(req),
-		ToolProjectChanges: p.projectChangesTool(req),
-		ToolMemorySearch:   p.memorySearchTool(req),
+		ToolProjectChanges:         p.projectChangesTool(req),
+		ToolPreviewChange:          p.builderPreviewChangeTool(req),
+		ToolApplyChange:            p.builderApplyChangeTool(req),
+		ToolRecordEval:             p.builderRecordEvalTool(req),
+		ToolWorkspacePrompt:        p.builderWorkspacePromptTool(req),
+		ToolPreviewWorkspacePrompt: p.builderPreviewWorkspacePromptTool(req),
+		ToolApplyWorkspacePrompt:   p.builderApplyWorkspacePromptTool(req),
+		ToolAlertCreate:            p.sessionAlertCreateTool(req),
+		ToolAlertResolve:           p.sessionAlertResolveTool(req),
+		ToolPauseAgent:             p.builderLifecycleTool(req, false),
+		ToolRetireAgent:            p.builderLifecycleTool(req, true),
+		ToolWriteEval:              p.builderWriteEvalTool(req),
+		ToolRunEval:                p.builderRunEvalTool(req),
+		ToolReadEvals:              p.builderReadEvalsTool(req),
+		ToolMemorySearch:           p.memorySearchTool(req),
 		ToolListAlerts: tool(ToolListAlerts,
 			"List the alert rules the workspace has, what each watches for, and the alerts that are still open.",
 			schema(nil, nil),
@@ -351,57 +374,79 @@ func (p *Platform) agentsReport(ctx context.Context, tenant, own string) (string
 // home's owners' to change, in its own routes, so the builder, whose save a
 // manager approves without owning anything, never revises one; and a new
 // agent's name is held to what the agents route holds it to.
-func (p *Platform) saveAgent(ctx context.Context, tenant string, args map[string]any) (wire.Revision, bool, error) {
+func (p *Platform) prepareBuilderAgent(ctx context.Context, tenant string, args map[string]any) (wire.AgentSpec, wire.Revision, bool, error) {
 	name := strings.TrimSpace(arg(args, "name"))
+	if builderProtectedAgent(name) {
+		return wire.AgentSpec{}, wire.Revision{}, false, ErrBuilder
+	}
 	if home, homed := p.ProjectTree(tenant).Home(wire.NormalizeName(name)); homed && home != projects.Root {
-		return wire.Revision{}, false, fmt.Errorf("%w: %s lives in a project, so only that project's owners change it", ErrBuilder, name)
+		return wire.AgentSpec{}, wire.Revision{}, false, fmt.Errorf("%w: %s lives in a project, so only that project's owners change it", ErrBuilder, name)
 	}
 	var tools []string
 	for t := range strings.SplitSeq(arg(args, "tools"), ",") {
 		t = strings.TrimSpace(t)
+		if t == personToolsGrant {
+			t = "person_tools"
+		}
 		if t == "" || slices.Contains(tools, t) {
 			continue
 		}
 		if !slices.Contains(grantable(), t) {
-			return wire.Revision{}, false, fmt.Errorf("%w: %q cannot be granted; choose from %s", ErrBuilder, t, strings.Join(grantable(), ", "))
+			return wire.AgentSpec{}, wire.Revision{}, false, fmt.Errorf("%w: %q cannot be granted; choose from %s", ErrBuilder, t, strings.Join(grantable(), ", "))
 		}
 		tools = append(tools, t)
 	}
 	description := strings.TrimSpace(arg(args, "description"))
 	prompt := strings.TrimSpace(arg(args, "system_prompt"))
 	if prompt == "" {
-		return wire.Revision{}, false, fmt.Errorf("%w: a system prompt is required", ErrBuilder)
+		return wire.AgentSpec{}, wire.Revision{}, false, fmt.Errorf("%w: a system prompt is required", ErrBuilder)
 	}
 
 	have, err := p.Catalog().Get(ctx, tenant, name, 0)
 	switch {
 	case errors.Is(err, wire.ErrNotFound):
 		if err := p.CheckAgentName(tenant, name); err != nil {
-			return wire.Revision{}, false, fmt.Errorf("%w: %w", ErrBuilder, err)
+			return wire.AgentSpec{}, wire.Revision{}, false, fmt.Errorf("%w: %w", ErrBuilder, err)
 		}
 		spec := wire.AgentSpec{
 			Name: name, Description: description, SystemPrompt: prompt, Tools: tools,
 			Provider: p.cfg.BuiltinProvider, Model: p.cfg.BuiltinModel,
 		}
 		if err := p.CheckAgentModel(tenant, spec); err != nil {
-			return wire.Revision{}, false, err
+			return wire.AgentSpec{}, wire.Revision{}, false, err
 		}
-		rev, err := p.Agents.Create(ctx, tenant, spec, "agent:"+BuiltinBuilder)
-		return rev, err == nil, err
+		return spec, wire.Revision{}, true, nil
 	case err != nil:
-		return wire.Revision{}, false, err
+		return wire.AgentSpec{}, wire.Revision{}, false, err
 	}
 	spec := have.Spec
 	spec.Description, spec.SystemPrompt = description, prompt
 	// Tools the builder cannot grant stay; the grantable ones are what was asked.
-	kept := slices.DeleteFunc(slices.Clone(spec.Tools), func(t string) bool { return slices.Contains(grantable(), t) })
+	kept := slices.DeleteFunc(slices.Clone(spec.Tools), builderGrantable)
 	spec.Tools = append(kept, tools...)
 	// An approval of a tool the agent no longer holds would stop it from starting.
 	spec.Approvals = slices.DeleteFunc(slices.Clone(spec.Approvals), func(t string) bool {
-		return slices.Contains(grantable(), t) && !slices.Contains(tools, t)
+		return builderGrantable(t) && !slices.Contains(tools, t)
 	})
 	if len(spec.Approvals) == 0 {
 		spec.Approvers, spec.SelfApproval = nil, false
+	}
+	return spec, have, false, nil
+}
+
+func (p *Platform) saveAgent(ctx context.Context, tenant string, args map[string]any) (wire.Revision, bool, error) {
+	spec, have, created, err := p.prepareBuilderAgent(ctx, tenant, args)
+	if err != nil {
+		return wire.Revision{}, false, err
+	}
+	if !created && !have.Spec.SameContent(spec) {
+		if _, err := p.checkAgentEvals(ctx, tenant, have.Spec, spec); err != nil {
+			return wire.Revision{}, false, err
+		}
+	}
+	if created {
+		rev, err := p.Agents.Create(ctx, tenant, spec, "agent:"+BuiltinBuilder)
+		return rev, err == nil, err
 	}
 	rev, err := p.Agents.Revise(ctx, tenant, spec, have.Rev, "agent:"+BuiltinBuilder)
 	return rev, false, err

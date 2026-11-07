@@ -125,7 +125,10 @@ func (p *Platform) pinRunContext(tag event.Envelope, edge call.Edge, project str
 		runctx.Unpin(m)
 		err = runctx.Pin(m, c)
 	})
-	return tag, err
+	if err != nil {
+		return tag, err
+	}
+	return p.pinPromptLayers(tag, project)
 }
 
 func (p *Platform) personContext(tenant, person string) (personctx.Context, error) {

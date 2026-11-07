@@ -4,8 +4,10 @@ import type {
   ActionPolicy,
   ActionPolicyInput,
   AddKnowledgeDocumentBody,
+  AgentChange,
   AgentControl,
   AgentControlInput,
+  AgentEvaluationHealth,
   AgentHome,
   AgentNetwork,
   AgentSession,
@@ -7462,6 +7464,40 @@ owns cannot be changed here and answers 409.
     return this.rawRequest<Alert>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** listAgentChanges */
+  async listAgentChanges(name: string, options?: RequestOptions): Promise<AgentChange[]> {
+    let path = "/api/agents/{name}/changes";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentChange[]>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listAgentChangesRaw(name: string, options?: RequestOptions): Promise<ApiResponse<AgentChange[]>> {
+    let path = "/api/agents/{name}/changes";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentChange[]>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** getAgentHealth */
+  async getAgentHealth(name: string, options?: RequestOptions): Promise<AgentEvaluationHealth> {
+    let path = "/api/agents/{name}/health";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentEvaluationHealth>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getAgentHealthRaw(name: string, options?: RequestOptions): Promise<ApiResponse<AgentEvaluationHealth>> {
+    let path = "/api/agents/{name}/health";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentEvaluationHealth>("GET", path, {
       ...options,
     });
   }

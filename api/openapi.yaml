@@ -3959,6 +3959,8 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /api/schedules:
     get:
@@ -8592,6 +8594,64 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/ServerError"
+  /api/agents/{name}/changes:
+    get:
+      operationId: listAgentChanges
+      tags:
+        - agents
+      summary: listAgentChanges
+      x-permission: agents:read
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentChange"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/agents/{name}/health:
+    get:
+      operationId: getAgentHealth
+      tags:
+        - agents
+      summary: getAgentHealth
+      x-permission: agents:read
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentEvaluationHealth"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
 components:
   securitySchemes:
     bearerToken:
@@ -11877,20 +11937,46 @@ components:
     ContextLayer:
       type: object
       additionalProperties: false
-      required: [kind, from, text, budget, used, omitted, preview_omitted, sent, unit]
+      required:
+        - kind
+        - from
+        - text
+        - budget
+        - used
+        - omitted
+        - preview_omitted
+        - sent
+        - unit
       properties:
-        kind: {type: string}
-        from: {type: string}
-        text: {type: string}
-        budget: {type: integer, minimum: 0}
-        used: {type: integer, minimum: 0}
-        omitted: {type: integer, minimum: 0}
-        preview_omitted:
-          description: Content shortened only in this preview, using the layer's unit. Runtime composition is unchanged.
+        kind:
+          type: string
+        from:
+          type: string
+        text:
+          type: string
+        budget:
           type: integer
           minimum: 0
-        sent: {type: boolean}
-        unit: {type: string, enum: [characters, items]}
+        used:
+          type: integer
+          minimum: 0
+        omitted:
+          type: integer
+          minimum: 0
+        preview_omitted:
+          description: Content shortened only in this preview, using the layer's unit. Runtime composition is
+            unchanged.
+          type: integer
+          minimum: 0
+        sent:
+          type: boolean
+        unit:
+          type: string
+          enum:
+            - characters
+            - items
+        version:
+          type: string
 
     ProjectKnowledge:
       description: The knowledge sources a project names, at the project's version, and what a run filed in it is grounded in.
@@ -12736,21 +12822,35 @@ components:
         message that tags none, is the root's `default`
         (`GET /api/projects/~/agents`).
       type: object
-      required: [history, history_limit, title_agent, memory_agent, memory_auto_approve, workspace_name, model_policies, router]
+      required:
+        - history
+        - history_limit
+        - title_agent
+        - memory_agent
+        - memory_auto_approve
+        - workspace_name
+        - model_policies
+        - router
       properties:
         history:
           description: Whether an agent is sent the conversation so far.
           type: string
-          enum: [recent, none]
-        history_limit: {type: integer}
+          enum:
+            - recent
+            - none
+        history_limit:
+          type: integer
         title_agent:
-          description: Names conversations after their first turn. Empty when none is set, or when it lives in a project the caller may not read.
+          description: Names conversations after their first turn. Empty when none is set, or when it lives in
+            a project the caller may not read.
           type: string
         memory_agent:
           description: Writes notes after a turn. Empty as `title_agent` is.
           type: string
-        memory_auto_approve: {type: boolean}
-        workspace_name: {type: string}
+        memory_auto_approve:
+          type: boolean
+        workspace_name:
+          type: string
         model_policies:
           description: |
             Named, ordered lists of models with the errors that move a call from
@@ -12760,14 +12860,20 @@ components:
             cannot be removed (409).
           type: array
           maxItems: 32
-          items: {$ref: "#/components/schemas/ModelPolicy"}
+          items:
+            $ref: "#/components/schemas/ModelPolicy"
         router:
           $ref: "#/components/schemas/RouterSettings"
         setup_at:
           description: Set once by the server when an admin first saves settings.
           type: string
           format: date-time
-        setup_by: {type: string}
+        setup_by:
+          type: string
+        eval_limits:
+          $ref: "#/components/schemas/EvaluationLimits"
+        prompts:
+          $ref: "#/components/schemas/PromptLayers"
     Accent:
       description: The caller's interaction accent. Existing saved choices remain supported. workspace is the workspace's branded accent, red when its branding sets none.
       type: string
@@ -13812,34 +13918,54 @@ components:
         value: {type: string}
     EvalCase:
       type: object
-      required: [id, input]
+      required:
+        - id
+        - input
       properties:
-        trace: {$ref: "#/components/schemas/EvalTrace"}
-        id: {type: string}
-        input: {type: string}
+        trace:
+          $ref: "#/components/schemas/EvalTrace"
+        id:
+          type: string
+        input:
+          type: string
         checks:
           type: array
-          items: {$ref: "#/components/schemas/EvalCheck"}
+          items:
+            $ref: "#/components/schemas/EvalCheck"
         expect:
           description: For a knowledge suite, the titles a search should return.
           type: array
-          items: {type: string}
+          items:
+            type: string
     EvalSuite:
       type: object
-      required: [name, target, subject, cases]
+      required:
+        - name
+        - target
+        - subject
+        - cases
       properties:
-        every_seconds: {type: integer, minimum: 0, maximum: 2592000}
-        name: {type: string}
-        description: {type: string}
-        target: {$ref: "#/components/schemas/EvalTarget"}
+        every_seconds:
+          type: integer
+          minimum: 0
+          maximum: 2592000
+        name:
+          type: string
+        description:
+          type: string
+        target:
+          $ref: "#/components/schemas/EvalTarget"
         subject:
           description: The agent or knowledge source the suite tests.
           type: string
         cases:
           type: array
-          items: {$ref: "#/components/schemas/EvalCase"}
-        k: {type: integer}
-        pass_rate: {type: number}
+          items:
+            $ref: "#/components/schemas/EvalCase"
+        k:
+          type: integer
+        pass_rate:
+          type: number
         created_by:
           description: Set by the server.
           type: string
@@ -13908,12 +14034,18 @@ components:
       allOf:
         - $ref: "#/components/schemas/EvalSuite"
         - type: object
-          required: [runs]
+          required:
+            - runs
           properties:
-            every_seconds: {type: integer, minimum: 0, maximum: 2592000}
+            every_seconds:
+              type: integer
+              minimum: 0
+              maximum: 2592000
             runs:
               type: array
-              items: {$ref: "#/components/schemas/EvalRun"}
+              items:
+                $ref: "#/components/schemas/EvalRun"
+      properties: {}
 
     KnowledgeVariant:
       description: A saved view of a source, which leaves some documents out.
@@ -16035,3 +16167,210 @@ components:
         section_uuid: {type: string}
         section_heading: {type: string}
         section_index: {type: integer}
+    PromptLayers:
+      type: object
+      additionalProperties: false
+      properties:
+        platform:
+          type: string
+          maxLength: 16000
+        workspace:
+          type: string
+          maxLength: 16000
+        slack_word_budget:
+          type: integer
+          minimum: 0
+          maximum: 2000
+    EvaluationLimits:
+      type: object
+      properties:
+        max_spend:
+          type: integer
+          minimum: 0
+        max_duration_ms:
+          type: integer
+          minimum: 0
+        require_evidence:
+          type: boolean
+    EvaluationSignals:
+      type: object
+      properties:
+        spend:
+          type: integer
+        model_calls:
+          type: integer
+        tokens:
+          type: integer
+        unpriced_calls:
+          type: integer
+        latency_ms:
+          type: integer
+        waiting_ms:
+          type: integer
+        tool_calls:
+          type: integer
+        tool_errors:
+          type: integer
+        attempts:
+          type: integer
+        retries:
+          type: integer
+        up:
+          type: integer
+        down:
+          type: integer
+        run:
+          type: string
+        rating:
+          type: string
+      required:
+        - spend
+        - model_calls
+        - tokens
+        - unpriced_calls
+        - latency_ms
+        - waiting_ms
+        - tool_calls
+        - tool_errors
+        - attempts
+        - retries
+        - up
+        - down
+        - run
+    OnlineEvaluation:
+      type: object
+      properties:
+        agent:
+          type: string
+        run:
+          type: string
+        version:
+          type: integer
+        passed:
+          type: boolean
+        words:
+          type: integer
+        word_budget:
+          type: integer
+        verdicts:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalVerdict"
+        at:
+          type: string
+          format: date-time
+        signals:
+          $ref: "#/components/schemas/EvaluationSignals"
+      required:
+        - agent
+        - run
+        - version
+        - passed
+        - words
+        - word_budget
+        - verdicts
+        - at
+        - signals
+    AgentEvaluationHealth:
+      type: object
+      properties:
+        agent:
+          type: string
+        status:
+          type: string
+          enum:
+            - untested
+            - healthy
+            - needs_review
+        samples:
+          type: integer
+        passed:
+          type: integer
+        pass_rate:
+          type: number
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/OnlineEvaluation"
+      required:
+        - agent
+        - status
+        - samples
+        - passed
+        - pass_rate
+        - results
+    AgentChangeScore:
+      type: object
+      properties:
+        suite:
+          type: string
+        suite_hash:
+          type: string
+        before:
+          type: number
+        after:
+          type: number
+        passed:
+          type: boolean
+        results:
+          type:
+            - array
+            - "null"
+          items:
+            $ref: "#/components/schemas/EvalResult"
+      required:
+        - suite
+        - suite_hash
+        - before
+        - after
+        - passed
+        - results
+    AgentChange:
+      type: object
+      properties:
+        id:
+          type: string
+        agent:
+          type: string
+        kind:
+          type: string
+        context_hash:
+          type: string
+        before_hash:
+          type: string
+        after_hash:
+          type: string
+        candidate:
+          type: object
+          additionalProperties: true
+        scores:
+          type:
+            - array
+            - "null"
+          items:
+            $ref: "#/components/schemas/AgentChangeScore"
+        evaluated:
+          type: boolean
+        passed:
+          type: boolean
+        at:
+          type: string
+          format: date-time
+        error:
+          type: string
+        override_by:
+          type: string
+        override_reason:
+          type: string
+      required:
+        - id
+        - agent
+        - kind
+        - context_hash
+        - before_hash
+        - after_hash
+        - candidate
+        - scores
+        - evaluated
+        - passed
+        - at

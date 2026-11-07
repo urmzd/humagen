@@ -2178,7 +2178,10 @@ func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, keep func(Threa
 	byID := map[string]*ThreadSummary{}
 	var order []*ThreadSummary
 	for _, s := range p.Runs.Threads(tenant, 0) {
-		if elsewhere[s.ID] {
+		if elsewhere[s.ID] || s.Origin == OriginEval {
+			continue
+		}
+		if first, err := p.Runs.Get(tenant, s.ID); err == nil && IsEvaluation(first) {
 			continue
 		}
 		sum := &ThreadSummary{ThreadSummary: s, Visibility: threads.Shared}
@@ -2186,6 +2189,9 @@ func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, keep func(Threa
 		order = append(order, sum)
 	}
 	for _, rec := range recs {
+		if first, err := p.Runs.Get(tenant, rec.ID); err == nil && IsEvaluation(first) {
+			continue
+		}
 		sum, ok := byID[rec.ID]
 		if !ok {
 			sum = &ThreadSummary{ThreadSummary: runs.ThreadSummary{
