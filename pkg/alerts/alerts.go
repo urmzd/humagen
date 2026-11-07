@@ -36,8 +36,8 @@ var (
 	ErrNotFound = errors.New("alerts: not found")
 )
 
-// Bounds. maxAlerts is what a tenant keeps, the oldest dropped first. The
-// rest bound what one rule may ask for.
+// Bounds. maxAlerts is what a tenant keeps. Only resolved history is evicted;
+// a full set of unresolved alerts refuses new ones instead of losing attention.
 const (
 	maxAlerts      = 1000
 	maxRules       = 200
@@ -238,11 +238,21 @@ func (r Rule) scope() string {
 
 // Alert is one firing of a rule.
 type Alert struct {
-	ID       string   `json:"id"`
-	Rule     string   `json:"rule"`
-	Kind     Kind     `json:"kind"`
-	Severity Severity `json:"severity"`
-	Agent    string   `json:"agent,omitempty"`
+	ID           string     `json:"id"`
+	Session      string     `json:"session,omitempty"`
+	Message      string     `json:"message,omitempty"`
+	Priority     Priority   `json:"priority,omitempty"`
+	State        AlertState `json:"state,omitempty"`
+	SnoozedUntil time.Time  `json:"snoozed_until,omitzero"`
+	ResolvedBy   string     `json:"resolved_by,omitempty"`
+	ResolvedAt   time.Time  `json:"resolved_at,omitzero"`
+	Action       string     `json:"action,omitempty"`
+	ResolveWhen  string     `json:"resolve_when,omitempty"`
+	Who          []string   `json:"who,omitempty"`
+	Rule         string     `json:"rule"`
+	Kind         Kind       `json:"kind"`
+	Severity     Severity   `json:"severity"`
+	Agent        string     `json:"agent,omitempty"`
 	// Project is the project of the run that raised the alert, if any.
 	Project string `json:"project,omitempty"`
 	RunID   string `json:"run_id,omitempty"`
@@ -260,7 +270,7 @@ type Alert struct {
 }
 
 // Open reports whether nobody has acknowledged the alert.
-func (a Alert) Open() bool { return a.AckedBy == "" }
+func (a Alert) Open() bool { return a.State != Resolved && a.AckedBy == "" }
 
 // Engine keeps every tenant's rules and alerts in a state.Store.
 type Engine struct {
@@ -277,7 +287,7 @@ type Engine struct {
 //	                       raises, that stays quiet while one is open
 //
 // A scope and an agent are hashed: either may hold a "/". At most maxAlerts
-// alerts are kept: raising alert n drops alert n-maxAlerts.
+// alerts are kept: raising an alert at capacity drops the oldest resolved one.
 //
 // A release before open keys kept only the alerts. Their open keys are added
 // the first time any process opens the engine, and converted, in the tenant
@@ -575,6 +585,8 @@ func (e *Engine) Ack(tenantName, id, by string, at time.Time) (Alert, error) {
 			return nil
 		}
 		a.AckedBy, a.AckedAt = by, at
+		a.State, a.ResolvedBy, a.ResolvedAt = Resolved, by, at
+		a.SnoozedUntil = time.Time{}
 		b := e.kept.Batch()
 		b.PutAt(tenantName, key, stored{Alert: &a}, cur.Version)
 		if err := e.release(b, tenantName, a); err != nil {
@@ -629,6 +641,8 @@ type raising struct {
 	completion string
 	b          *state.Batch[stored]
 	raised     []Alert
+	retained   []state.Item[stored]
+	dropped    map[string]bool
 }
 
 func (e *Engine) raising(tenantName string) (*raising, error) {
@@ -661,9 +675,37 @@ func (w *raising) fired(r Rule, a Alert) error {
 	return w.add(a, scope)
 }
 
-// add numbers an alert, holds its open key when it has one, and drops the
-// alert maxAlerts before it.
+// makeRoom prunes resolved history within the same conditional batch. Pending
+// attention, including snoozed alerts, is never silently evicted.
+func (w *raising) makeRoom() error {
+	if w.t.Next < maxAlerts {
+		return nil
+	}
+	if w.dropped == nil {
+		items, _, err := w.e.kept.List(w.tenant, state.Query{Prefix: alertPrefix, Limit: maxAlerts})
+		if err != nil {
+			return err
+		}
+		w.retained, w.dropped = items, map[string]bool{}
+	}
+	if len(w.retained)+len(w.raised)-len(w.dropped) < maxAlerts {
+		return nil
+	}
+	for _, item := range w.retained {
+		if !w.dropped[item.Key] && item.Value.Alert != nil && !item.Value.Alert.Open() {
+			w.b.DeleteAt(w.tenant, item.Key, item.Version)
+			w.dropped[item.Key] = true
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: at most %d unresolved alerts; resolve an alert before raising another", ErrInvalid, maxAlerts)
+}
+
+// add numbers an alert and holds its open key when it has one.
 func (w *raising) add(a Alert, scope string) error {
+	if err := w.makeRoom(); err != nil {
+		return err
+	}
 	w.t.Next++
 	a.ID = "al-" + strconv.Itoa(w.t.Next)
 	w.b.Create(w.tenant, alertKey(a.ID), stored{Alert: &storedAlert{Alert: a, Notify: a.Notify, Scope: scope}})
@@ -671,20 +713,6 @@ func (w *raising) add(a Alert, scope string) error {
 		w.b.Create(w.tenant, scope, stored{Open: a.ID})
 	}
 	w.raised = append(w.raised, a)
-	if n := w.t.Next - maxAlerts; n > 0 {
-		key := alertPrefix + state.Seq(int64(n))
-		old, err := w.e.kept.Lookup(w.tenant, key)
-		if errors.Is(err, state.ErrNotFound) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		w.b.DeleteAt(w.tenant, key, old.Version)
-		if old.Value.Alert != nil && old.Value.Alert.Open() {
-			return w.e.release(w.b, w.tenant, *old.Value.Alert)
-		}
-	}
 	return nil
 }
 

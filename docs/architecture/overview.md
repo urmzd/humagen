@@ -832,3 +832,8 @@ an explicit credential reference; object catalog crawling never reads content.
 
 Library > Catalog browses and searches connector metadata, expands table
 columns, and exposes crawl, publish and withdraw actions to connector owners.
+
+Session alert state now persists priority, resolution, snooze, and Undo in the
+existing alert engine. Lifecycle receipts are idempotent across restart. Retention
+prunes resolved history and refuses new alerts when all retained alerts still
+need attention. Session API and projection wiring follow in the next layers.
