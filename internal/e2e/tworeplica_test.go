@@ -10,7 +10,8 @@
 // replicas already running (a port-forward to each server pod) with the
 // agent HUMAGEN_E2E_AGENT and that agent's real model: a run started on A
 // streams to B, once. HUMAGEN_E2E_LOGIN, when set, is sent as
-// Tailscale-User-Login, which a pod's loopback trusts.
+// Tailscale-User-Login, which a pod's loopback trusts. HUMAGEN_E2E_HOST
+// optionally sets the HTTP Host expected by that deployment through port forwards.
 package e2e
 
 import (
@@ -213,12 +214,8 @@ func running(t *testing.T, aURL, bURL string) {
 	if agent == "" {
 		t.Fatal("HUMAGEN_E2E_AGENT names the agent to run on the running replicas")
 	}
-	header := http.Header{}
-	if login := os.Getenv("HUMAGEN_E2E_LOGIN"); login != "" {
-		header.Set("Tailscale-User-Login", login)
-	}
-	a := &replica{t: t, name: "a", url: strings.TrimRight(aURL, "/"), header: header, log: &lockedBuffer{}}
-	b := &replica{t: t, name: "b", url: strings.TrimRight(bURL, "/"), header: header, log: &lockedBuffer{}}
+	a := externalReplica(t, "a", aURL)
+	b := externalReplica(t, "b", bURL)
 	for _, r := range []*replica{a, b} {
 		if code := r.readyz(); code != http.StatusOK {
 			t.Fatalf("replica %s at %s: /readyz = %d", r.name, r.url, code)
@@ -243,6 +240,15 @@ func running(t *testing.T, aURL, bURL string) {
 		t.Errorf("the replicas streamed different events:\nA %v\nB %v", ids(gotA), ids(gotB))
 	}
 	persisted(t, b, run.ID)
+}
+
+// externalReplica keeps the dial URL separate from the deployment's HTTP Host.
+func externalReplica(t *testing.T, name, baseURL string) *replica {
+	header := http.Header{}
+	if login := os.Getenv("HUMAGEN_E2E_LOGIN"); login != "" {
+		header.Set("Tailscale-User-Login", login)
+	}
+	return &replica{t: t, name: name, url: strings.TrimRight(baseURL, "/"), host: os.Getenv("HUMAGEN_E2E_HOST"), header: header, log: &lockedBuffer{}}
 }
 
 // runView is the part of a run the test reads.
@@ -336,6 +342,7 @@ type replica struct {
 	t                   *testing.T
 	name, bin, dir, db  string
 	modelURL, spec, url string
+	host                string
 	port                int
 	header              http.Header
 	log                 *lockedBuffer
@@ -419,6 +426,7 @@ func (r *replica) leading() int {
 func (r *replica) readyz() int {
 	req, _ := http.NewRequest(http.MethodGet, r.url+"/readyz", nil)
 	req.Header = r.header.Clone()
+	req.Host = r.host
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return 0
@@ -434,6 +442,7 @@ func (r *replica) do(method, path, body string, want int, out any) {
 		r.t.Fatal(err)
 	}
 	req.Header = r.header.Clone()
+	req.Host = r.host
 	req.Header.Set("Content-Type", "application/json")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -465,6 +474,7 @@ func (r *replica) stream(t *testing.T) *stream {
 	t.Cleanup(cancel)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, r.url+"/api/events?"+url.Values{"from": {"0"}}.Encode(), nil)
 	req.Header = r.header.Clone()
+	req.Host = r.host
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
