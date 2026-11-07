@@ -31,13 +31,16 @@ spec:
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   # The stores read and write the database per request and take no lock, so
-  # pods are replaced one at a time. None is added before one is taken away:
-  # with disk blobs the workspace volume is ReadWriteOnce.
+  # pods are replaced one at a time. By default none is added before one is
+  # taken away: with disk blobs the workspace volume is ReadWriteOnce. With
+  # object-store blobs, rollout.maxSurge 1 and maxUnavailable 0 keep the old
+  # pod serving until the new one is ready.
+  {{- $r := .Values.rollout | default dict }}
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 0
-      maxUnavailable: 1
+      maxSurge: {{ $r.maxSurge | default 0 }}
+      maxUnavailable: {{ if hasKey $r "maxUnavailable" }}{{ $r.maxUnavailable }}{{ else }}1{{ end }}
   selector:
     matchLabels:
       {{- include "humagen.selectorLabels" . | nindent 6 }}
