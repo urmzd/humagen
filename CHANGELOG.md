@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.90.0 (2026-11-07)
+
+### Features
+
+- **helm**: configurable server rollout, so object-store deploys keep a pod serving (#225) ([6fdb095](https://github.com/urmzd/humagen/commit/6fdb095687b33f21c0defd2fceaf4cf7ba2583c0))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.89.2...v0.90.0)
+
+
 ## 0.89.2 (2026-11-07)
 
 ### Bug Fixes
