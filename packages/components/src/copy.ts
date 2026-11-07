@@ -1434,7 +1434,7 @@ export const defaultCopy = {
       partial:
         "Showing available evidence. More files or runs may be available in Workspace and Activity.",
       partialCounts: "Totals cover files with reported line counts.",
-      sandbox: "Sandbox",
+      sandbox: "sandbox available",
       failed: "Could not load the conversation overview.",
       retry: "Retry",
       status: { working: "working", done: "done", failed: "failed", waiting: "waiting" },

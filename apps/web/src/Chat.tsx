@@ -755,8 +755,7 @@ export function Chat({
       agents.some((a) => a.spec.name === st.agent) && offered !== null && offered.has(st.agent),
   );
 
-  // Where a new conversation is filed: in the bar on a phone, over it on a
-  // wide screen, where the person's own project reads as No project (DES-057).
+  // Where a new conversation is filed, in the toolbar at every width (DES-057).
   const homeChips = (
     <SelectionChips
       personalProject={personalProject}
@@ -820,6 +819,7 @@ export function Chat({
               : defaultCopy.chat.placeholder
             : words.message
         }
+        disclaimer={!threadId || path.length === 0 ? null : undefined}
         queue={sending}
         autoFocus={!threadId}
         seed={seed}
@@ -955,8 +955,7 @@ export function Chat({
                     }
                   />
                 ),
-                // On a wide screen Home holds the project over the chat bar instead.
-                chips: wide ? undefined : homeChips,
+                chips: homeChips,
               })
         }
       />
@@ -1027,7 +1026,6 @@ export function Chat({
         canRun={canRun}
         hasAgents={!agentsRead || agents.length > 0}
         below={home}
-        above={wide && homeChips}
       >
         {composer}
         {/*

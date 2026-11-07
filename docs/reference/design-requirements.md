@@ -1594,9 +1594,9 @@ Antigravity and ChatGPT show them.
 
 Rules:
 
-- On a wide screen Home holds where a new conversation is filed over its
-  chat bar; the person's own project reads **No project**. On a phone it
-  stays in the bar as its folder (DES-045). One picker is drawn at a time.
+- Home holds its project picker in the composer toolbar at every width. The
+  person's own project reads **No project** on desktop and uses its folder on
+  a phone (DES-045). One picker is drawn at a time.
 - A conversation's composer has **Approvals: Default** or **Approve for Me**,
   a text control before Send. Its menu says what each does. Someone else's
   choice reads "Approved for <name>". A refused change puts it back and says
@@ -1762,3 +1762,20 @@ clearing, errors and read-only access. Console typecheck passes. Lightweight
 native browser checks of the actual editor with fixture data pass at 320, 390
 and 1280 pixels, including overflow, invalid save and discard. Live provider
 compatibility was not exercised.
+
+### November 7 console design review
+
+DES-017 and DES-062 retain page h1 headings across Customize, Library and
+Operations; the current hub link is visually hidden until focused, retaining
+its accessible name and destination. Agent metrics have one shared header.
+DES-013 and DES-057 keep starters immediately after the composer, with the
+disclaimer at Home's bottom and the project picker inside the toolbar.
+DES-069 groups sandbox workspace links under each agent without raw IDs and
+shows context percentage once. Thread content reserves space beneath the
+jump control and its gradient scrim. Evidence: console DOM and usage tests,
+hub title regression; console typecheck and 883 tests pass. Seven focused screens
+pass at phone and desktop widths (14 captures): `customize-agents`,
+`library-catalog`, `operations-context-health`, `home-project-above`,
+`home-project-picker`, `conversation-overview` and `conversation-jump-latest`.
+Overview captures Environment, Context and Agents with Changes collapsed;
+its existing small file-link target remains outside this review's fixes.

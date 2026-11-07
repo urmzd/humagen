@@ -456,6 +456,31 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       },
     },
     {
+      name: "conversation-overview",
+      path: `/conversations/${ids.nativeThread}`,
+      act: async (page) => {
+        await revealConversationControls(page);
+        await page.getByRole("button", { name: "Overview", exact: true }).click();
+        await page.getByRole("heading", { name: "Environment", exact: true }).waitFor();
+        await page.getByRole("heading", { name: "Agents", exact: true }).waitFor();
+        // This capture covers environment, context and agent status from the review.
+        await page.getByRole("heading", { name: "Changes", exact: true }).locator("..").click();
+      },
+    },
+    {
+      name: "conversation-jump-latest",
+      path: `/conversations/${ids.timelineThread}`,
+      act: async (page) => {
+        const log = page.getByRole("log").first();
+        await log.waitFor();
+        await log.evaluate((node) => {
+          node.scrollTop = 0;
+          node.dispatchEvent(new Event("scroll"));
+        });
+        await page.getByRole("button", { name: "Jump to latest", exact: true }).waitFor();
+      },
+    },
+    {
       // Panel actions remain accessible in the header or its compact menu.
       name: "conversation-header",
       path: `/conversations/${ids.privateChat}`,

@@ -274,6 +274,9 @@ export const pageTitle =
   "humagen-display truncate text-[1.875rem] leading-[1.15] font-semibold text-aui-fg";
 export const pageLede = "max-w-[62ch] pt-1.5 text-aui-sm text-aui-muted";
 
+/** The label of the hub tab that is open, when a hub's tabs head the page. */
+export const HubTabLabel = createContext<string | undefined>(undefined);
+
 export function Page({
   title,
   lede,
@@ -314,6 +317,7 @@ export function Page({
   wide?: boolean;
   children: ReactNode;
 }) {
+  const hubLabel = useContext(HubTabLabel);
   if (layout === "conversation") {
     return (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -362,7 +366,9 @@ export function Page({
             <div className="flex min-w-0 items-center gap-3">
               {icon}
               <div className="min-w-0">
-                <h1 className={pageTitle}>{title}</h1>
+                {/* Under a hub's tabs the active tab already names the page: the heading stays for
+                    assistive technology and leaves the screen, so the title is said once. */}
+                <h1 className={title === hubLabel ? "sr-only" : pageTitle}>{title}</h1>
                 {meta && (
                   <div className="flex flex-wrap items-center gap-x-3 pt-1 text-aui-xs text-aui-muted">
                     {meta}

@@ -2250,3 +2250,21 @@ test("a run held at a limit reads in the mailbox as a grant or a stop, with the 
   assert.doesNotMatch(other, />Grant /, "a reader without billing:write is offered no grant");
   assert.doesNotMatch(other, />Stop Run</);
 });
+
+test("under a hub's tabs, a page whose title repeats the open tab says it once", async () => {
+  const { HubTabLabel, Page } = await import("./ui.tsx");
+  const hub = renderToStaticMarkup(
+    <HubTabLabel.Provider value="Agents">
+      <Page title="Agents">body</Page>
+    </HubTabLabel.Provider>,
+  );
+  assert.match(hub, /<h1 class="sr-only">Agents<\/h1>/);
+  // A page inside the hub with its own name keeps its visible title.
+  const detail = renderToStaticMarkup(
+    <HubTabLabel.Provider value="Agents">
+      <Page title="lead">body</Page>
+    </HubTabLabel.Provider>,
+  );
+  assert.doesNotMatch(detail, /class="sr-only">lead/);
+  assert.match(detail, />lead<\/h1>/);
+});

@@ -56,11 +56,11 @@ export function contextFill(u: RunUsage | undefined): Fill | undefined {
 }
 
 /** A context fill in words: "48,000 of 200,000 tokens, 24%". */
-export function contextWords(u: RunUsage | undefined): string {
+export function contextWords(u: RunUsage | undefined, showPercentage = true): string {
   const fill = contextFill(u);
   if (!fill)
     return u?.context?.tokens
       ? `${count(u.context.tokens)} tokens. The model's window is not in the catalog.`
       : "Not reported yet";
-  return `${count(fill.used)} of ${count(fill.limit)} tokens, ${Math.round((100 * fill.used) / fill.limit)}%`;
+  return `${count(fill.used)} of ${count(fill.limit)} tokens${showPercentage ? `, ${Math.round((100 * fill.used) / fill.limit)}%` : ""}`;
 }

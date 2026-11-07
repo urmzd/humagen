@@ -207,116 +207,132 @@ export function Agents({
       ) : shown.length === 0 ? (
         <p className="text-aui-sm text-aui-muted">No agent matches “{query}”.</p>
       ) : (
-        <ul className={rows}>
-          {shown.map((a) => {
-            const name = a.spec.name;
-            const g = stats.get(name);
-            const ended = g ? g.completed + g.failed : 0;
-            const own = runs.filter((r) => r.agent === name);
-            const busy = own.some((r) => r.status === "running" || r.status === "accepted");
-            const status = operational ? roster[name]?.state : undefined;
-            const description = a.spec.description || a.spec.system_prompt || words.noDescription;
-            const figures: [string, string][] =
-              g && g.runs > 0
-                ? [
-                    [words.runs, String(g.runs)],
-                    [words.success, ended ? `${Math.round((100 * g.completed) / ended)}%` : "–"],
-                    [words.median, g.p50_ms ? took(g.p50_ms) : "–"],
-                  ]
-                : [
-                    [words.runs, "–"],
-                    [words.success, "–"],
-                    [words.median, "–"],
-                  ];
-            return (
-              <li key={name} className="humagen-enter">
-                <button
-                  type="button"
-                  onClick={() => onOpen(name)}
-                  className="grid w-full min-w-0 grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 gap-y-3 py-4 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent focus-visible:-outline-offset-2 @xl:grid-cols-[28px_minmax(0,1fr)_12rem] @4xl:grid-cols-[28px_minmax(0,1fr)_8rem_12rem] @xl:items-center"
-                >
-                  <span className="self-start">
-                    <AgentMark name={name} size={28} state={busy ? "thinking" : "idle"} />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="flex h-7 min-w-0 items-center gap-2 whitespace-nowrap">
-                      <span
-                        className="humagen-display min-w-0 truncate text-aui-lg font-semibold text-aui-fg"
-                        title={name}
-                      >
-                        {name}
-                      </span>
-                      {a.package ? (
-                        // A package agent is maintained by the platform and may be customized here.
-                        <span className="flex shrink-0 items-center gap-1.5 text-aui-xs text-aui-muted">
-                          <span title={words.packageHint}>{a.package.name}</span>
-                          {a.customized && <span>· {words.customized}</span>}
-                          {a.update_available && (
-                            <span className="text-aui-accent">· {words.updateAvailable}</span>
-                          )}
+        <div>
+          <div
+            aria-hidden="true"
+            className="ml-auto grid w-48 grid-cols-3 gap-3 pb-2 text-right text-aui-2xs text-aui-muted"
+          >
+            {[words.runs, words.success, words.median].map((label) => (
+              <span key={label}>{label}</span>
+            ))}
+          </div>
+          <ul className={rows}>
+            {shown.map((a) => {
+              const name = a.spec.name;
+              const g = stats.get(name);
+              const ended = g ? g.completed + g.failed : 0;
+              const own = runs.filter((r) => r.agent === name);
+              const busy = own.some((r) => r.status === "running" || r.status === "accepted");
+              const status = operational ? roster[name]?.state : undefined;
+              const description = a.spec.description || a.spec.system_prompt || words.noDescription;
+              const figures: [string, string][] =
+                g && g.runs > 0
+                  ? [
+                      [words.runs, String(g.runs)],
+                      [words.success, ended ? `${Math.round((100 * g.completed) / ended)}%` : "–"],
+                      [words.median, g.p50_ms ? took(g.p50_ms) : "–"],
+                    ]
+                  : [
+                      [words.runs, "–"],
+                      [words.success, "–"],
+                      [words.median, "–"],
+                    ];
+              return (
+                <li key={name} className="humagen-enter">
+                  <button
+                    type="button"
+                    onClick={() => onOpen(name)}
+                    className="grid w-full min-w-0 grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 gap-y-3 py-4 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent focus-visible:-outline-offset-2 @xl:grid-cols-[28px_minmax(0,1fr)_12rem] @4xl:grid-cols-[28px_minmax(0,1fr)_8rem_12rem] @xl:items-center"
+                  >
+                    <span className="self-start">
+                      <AgentMark name={name} size={28} state={busy ? "thinking" : "idle"} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="flex h-7 min-w-0 items-center gap-2 whitespace-nowrap">
+                        <span
+                          className="humagen-display min-w-0 truncate text-aui-lg font-semibold text-aui-fg"
+                          title={name}
+                        >
+                          {name}
                         </span>
-                      ) : (
-                        builtin.includes(name) && (
-                          <span className="shrink-0 text-aui-xs text-aui-muted">
-                            {words.builtin}
+                        {a.package ? (
+                          // A package agent is maintained by the platform and may be customized here.
+                          <span className="flex shrink-0 items-center gap-1.5 text-aui-xs text-aui-muted">
+                            <span title={words.packageHint}>{a.package.name}</span>
+                            {a.customized && <span>· {words.customized}</span>}
+                            {a.update_available && (
+                              <span className="text-aui-accent">· {words.updateAvailable}</span>
+                            )}
                           </span>
-                        )
-                      )}
-                      {status && status !== "ready" && (
-                        <span
-                          className={`flex min-w-0 items-center gap-1 text-aui-xs ${status === "failed" ? "text-aui-bad" : status === "needs_review" || status === "waiting_on_people" ? "text-aui-warn" : "text-aui-muted"}`}
-                        >
-                          <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-current" />
-                          <span className="truncate">{words.directoryStates[status]}</span>
-                        </span>
-                      )}
-                      {name === workspaceDefault && (
-                        <span
-                          className="min-w-0 truncate text-aui-xs text-aui-muted"
-                          title={defaultCopy.workspaceDefault}
-                        >
-                          {words.workspaceDefault}
-                        </span>
-                      )}
-                      {homes[name] && homes[name] !== "~" && (
-                        <span
-                          className="min-w-0 truncate text-aui-xs text-aui-muted"
-                          title={defaultCopy.agentPlace.livesIn(homes[name])}
-                        >
-                          {defaultCopy.agentPlace.livesIn(homes[name])}
-                        </span>
-                      )}
-                    </span>
-                    <span className="block truncate text-aui-sm text-aui-muted" title={description}>
-                      {description}
-                    </span>
-                    <span
-                      className="block truncate pt-0.5 text-aui-xs text-aui-muted"
-                      title={`Revision ${a.rev} · ${a.spec.provider} / ${a.spec.model}`}
-                    >
-                      Revision {a.rev} · {a.spec.provider} / {a.spec.model}
-                    </span>
-                  </span>
-                  <span className="hidden w-32 self-center @4xl:block">
-                    {own.length > 0 && <Tape runs={own} slots={20} scale={scale} />}
-                  </span>
-                  <span className="col-start-2 grid w-48 grid-cols-3 gap-3 self-center justify-self-end text-right @xl:col-start-auto">
-                    {figures.map(([label, value]) => (
-                      <span key={label} className="flex min-w-0 flex-col">
-                        <span
-                          className={`humagen-display text-aui-lg font-semibold ${value === "–" ? "text-aui-muted" : "text-aui-fg"}`}
-                        >
-                          {value}
-                        </span>
-                        <span className="text-aui-2xs text-aui-muted">{label}</span>
+                        ) : (
+                          builtin.includes(name) && (
+                            <span className="shrink-0 text-aui-xs text-aui-muted">
+                              {words.builtin}
+                            </span>
+                          )
+                        )}
+                        {status && status !== "ready" && (
+                          <span
+                            className={`flex min-w-0 items-center gap-1 text-aui-xs ${status === "failed" ? "text-aui-bad" : status === "needs_review" || status === "waiting_on_people" ? "text-aui-warn" : "text-aui-muted"}`}
+                          >
+                            <span
+                              aria-hidden
+                              className="size-1.5 shrink-0 rounded-full bg-current"
+                            />
+                            <span className="truncate">{words.directoryStates[status]}</span>
+                          </span>
+                        )}
+                        {name === workspaceDefault && (
+                          <span
+                            className="min-w-0 truncate text-aui-xs text-aui-muted"
+                            title={defaultCopy.workspaceDefault}
+                          >
+                            {words.workspaceDefault}
+                          </span>
+                        )}
+                        {homes[name] && homes[name] !== "~" && (
+                          <span
+                            className="min-w-0 truncate text-aui-xs text-aui-muted"
+                            title={defaultCopy.agentPlace.livesIn(homes[name])}
+                          >
+                            {defaultCopy.agentPlace.livesIn(homes[name])}
+                          </span>
+                        )}
                       </span>
-                    ))}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+                      <span
+                        className="block truncate text-aui-sm text-aui-muted"
+                        title={description}
+                      >
+                        {description}
+                      </span>
+                      <span
+                        className="block truncate pt-0.5 text-aui-xs text-aui-muted"
+                        title={`Revision ${a.rev} · ${a.spec.provider} / ${a.spec.model}`}
+                      >
+                        Revision {a.rev} · {a.spec.provider} / {a.spec.model}
+                      </span>
+                    </span>
+                    <span className="hidden w-32 self-center @4xl:block">
+                      {own.length > 0 && <Tape runs={own} slots={20} scale={scale} />}
+                    </span>
+                    <span className="col-start-2 grid w-48 grid-cols-3 gap-3 self-center justify-self-end text-right @xl:col-start-auto">
+                      {figures.map(([label, value]) => (
+                        <span key={label} className="flex min-w-0 flex-col">
+                          <span
+                            className={`humagen-display text-aui-lg font-semibold ${value === "–" ? "text-aui-muted" : "text-aui-fg"}`}
+                          >
+                            {value}
+                          </span>
+                          <span className="sr-only">{label}</span>
+                        </span>
+                      ))}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
     </Page>
   );
