@@ -3,6 +3,7 @@ package platform
 import (
 	"context"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/urmzd/humagen/internal/wire"
@@ -150,7 +151,40 @@ func (s *Seer) Place(at Place) bool {
 	if s.tree.PendingFork(s.p.CurrentPlace(s.who.Tenant, at).Project) {
 		return false
 	}
-	return s.forkSourcesVisible(at, s.placeDirect) && s.placeDirect(at)
+	return s.sessionAncestorsVisible(at.Thread) && s.forkSourcesVisible(at, s.placeDirect) && s.placeDirect(at)
+}
+
+// Session descendants retain their original participants for continuity, but
+// access to inherited context follows the current ancestor permissions. This
+// lives at Place so compatibility thread/run routes and global streams enforce
+// exactly the same rule as canonical session endpoints.
+func (s *Seer) sessionAncestorsVisible(id string) bool {
+	for depth := 0; depth <= 64; depth++ {
+		th, err := s.p.Threads.Get(s.who.Tenant, id)
+		if err != nil {
+			return !strings.HasPrefix(id, "s_")
+		}
+		if th.Session == nil {
+			return true
+		}
+		if !s.Agent(th.Session.Agent) {
+			return false
+		}
+		parent := th.Session.Parent
+		if !strings.HasPrefix(parent, "s_") {
+			return true
+		}
+		p, err := s.p.Threads.Get(s.who.Tenant, parent)
+		if err != nil {
+			return false
+		}
+		at := Place{Project: p.Project, Thread: p.ID}
+		if s.p.threadGone(s.who.Tenant, parent) || !s.forkSourcesVisible(at, s.placeDirect) || !s.placeDirect(at) {
+			return false
+		}
+		id = parent
+	}
+	return false
 }
 
 func (s *Seer) placeDirect(at Place) bool {

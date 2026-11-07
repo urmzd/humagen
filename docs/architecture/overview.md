@@ -837,3 +837,9 @@ Session alert state now persists priority, resolution, snooze, and Undo in the
 existing alert engine. Lifecycle receipts are idempotent across restart. Retention
 prunes resolved history and refuses new alerts when all retained alerts still
 need attention. Session API and projection wiring follow in the next layers.
+
+Canonical session routes now start or continue an agent, post messages, read
+transcripts and children, invite people, link evidence, and stop a subtree.
+Reads and streams recheck ancestor visibility. SSE resumes by per-run cursors
+and sends an authoritative reset when the retained cursor window fills.
+Native child calls use the existing governed call path and shared session stores.

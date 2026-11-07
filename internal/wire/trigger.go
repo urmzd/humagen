@@ -328,3 +328,6 @@ func Clone(e event.Envelope) event.Envelope {
 	e.Private = priv
 	return e
 }
+
+// MetaSession is pinned by platform admission, never accepted from ingress.
+const MetaSession = "_humagen.session"

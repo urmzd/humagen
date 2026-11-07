@@ -36,6 +36,8 @@ servers:
   - url: http://127.0.0.1:8080
     description: A local server started with `make dev`.
 tags:
+  - name: sessions
+    description: Continuing conversations with one agent and their child sessions.
   - name: health
     description: Liveness.
   - name: auth
@@ -105,6 +107,359 @@ security:
   - bearerToken: []
   - sessionCookie: []
 paths:
+  /api/sessions/{id}/stream:
+    get:
+      operationId: "streamSession"
+      tags:
+        - "sessions"
+      summary: "Stream session"
+      description: |
+        Emits session snapshots and run events. Resume with Last-Event-ID.
+        A session-reset event carries an authoritative AgentSession snapshot
+        when the bounded cursor compacts. Clear transient deltas and reload
+        visible older history pages on reset.
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "Last-Event-ID", "in": "header", "required": false, "schema": {"type": "string"}}
+      responses:
+        200:
+          description: "Session snapshots and run events; reconnect using the last event ID."
+          content:
+            text/event-stream:
+              schema:
+                type: "string"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/ServerError"
+  /api/sessions/{id}/messages/{mid}/feedback:
+    put:
+      operationId: "saveSessionFeedback"
+      tags:
+        - "sessions"
+      summary: "Save session feedback"
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "mid", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              additionalProperties: false
+              required:
+                - "rating"
+              properties:
+                rating:
+                  type: "string"
+                  enum:
+                    - "up"
+                    - "down"
+                reason:
+                  type: "string"
+                  maxLength: 80
+                comment:
+                  type: "string"
+                  maxLength: 4000
+      responses:
+        200:
+          description: "Successful session operation"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunFeedback"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        500:
+          $ref: "#/components/responses/ServerError"
+    delete:
+      operationId: "deleteSessionFeedback"
+      tags:
+        - "sessions"
+      summary: "Delete session feedback"
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "mid", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "finding_id", "in": "query", "required": false, "schema": {"type": "string"}}
+      responses:
+        204:
+          description: "Successful session operation"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/ServerError"
+  /api/sessions/{id}/links:
+    post:
+      operationId: "linkSession"
+      tags:
+        - "sessions"
+      summary: "Link session"
+      x-permission: "runs:write"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              additionalProperties: false
+              required:
+                - "target"
+              properties:
+                target:
+                  type: "string"
+                kind:
+                  type: "string"
+                  enum:
+                    - "context"
+                    - "evidence"
+      responses:
+        204:
+          description: "Successful session operation"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/ServerError"
+  /api/sessions/{id}/people:
+    post:
+      operationId: "inviteSessionPerson"
+      tags:
+        - "sessions"
+      summary: "Invite session person"
+      x-permission: "runs:write"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              additionalProperties: false
+              required:
+                - "person"
+              properties:
+                person:
+                  type: "string"
+      responses:
+        200:
+          description: "Successful session operation"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSession"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        500:
+          $ref: "#/components/responses/ServerError"
+  /api/sessions/{id}/stop:
+    post:
+      operationId: "stopSession"
+      tags:
+        - "sessions"
+      summary: "Stop session"
+      x-permission: "runs:write"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              additionalProperties: false
+              properties:
+                children:
+                  type: "boolean"
+      responses:
+        204:
+          description: "Successful session operation"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/ServerError"
+  /api/sessions/{id}/messages:
+    post:
+      operationId: "postSessionMessage"
+      tags:
+        - "sessions"
+      summary: "Post session message"
+      x-permission: "runs:write"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionPostInput"
+      responses:
+        201:
+          description: "Successful session operation"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSession"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        500:
+          $ref: "#/components/responses/ServerError"
+  /api/sessions/{id}:
+    get:
+      operationId: "getSession"
+      tags:
+        - "sessions"
+      summary: "Get session"
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "since", "in": "query", "required": false, "description": "Opaque cursor for changed messages, ordered by update time. While more is true, request the returned cursor to continue. Cannot be combined with before or around.", "schema": {"type": "string"}}
+        - {"name": "before", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "around", "in": "query", "required": false, "description": "Return at most 200 turns around this message or run ID. Cannot be combined with since or before. Unknown anchors return 404; next pages toward older turns.", "schema": {"type": "string", "maxLength": 200}}
+        - {"name": "summary", "in": "query", "required": false, "schema": {"type": "boolean"}}
+      responses:
+        200:
+          description: "Successful session operation"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSession"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/ServerError"
+  /api/sessions:
+    get:
+      operationId: "listSessions"
+      tags:
+        - "sessions"
+      summary: "List sessions"
+      x-permission: "runs:read"
+      parameters:
+        - {name: roots, in: query, required: false, schema: {type: boolean}}
+        - {name: mine, in: query, required: false, schema: {type: boolean}}
+        - {"name": "status", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "agent", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "project", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "parent", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "after", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200}}
+      responses:
+        200:
+          description: "Successful session operation"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                additionalProperties: false
+                required:
+                  - "sessions"
+                  - "next"
+                properties:
+                  sessions:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/AgentSessionSummary"
+                  next:
+                    type: "string"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/ServerError"
+    post:
+      operationId: "startSession"
+      tags:
+        - "sessions"
+      summary: "Start session"
+      x-permission: "runs:write"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionInput"
+      responses:
+        201:
+          description: "Successful session operation"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSession"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        500:
+          $ref: "#/components/responses/ServerError"
   /api/pull-requests:
     get:
       operationId: reviewedPulls
@@ -2266,6 +2621,26 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/runs/{id}/feedback:
+    delete:
+      operationId: "deleteRunFeedback"
+      tags:
+        - "sessions"
+      summary: "Delete run feedback"
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "finding_id", "in": "query", "required": false, "schema": {"type": "string"}}
+      responses:
+        204:
+          description: "Successful session operation"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/ServerError"
     put:
       operationId: saveRunFeedback
       tags: [runs]
@@ -14728,6 +15103,7 @@ components:
       type: object
       required: [id, source, type, channel, time, hops]
       properties:
+        session: {type: string}
         id:
           description: Unique per source. A redelivery keeps it.
           type: string
@@ -15246,4 +15622,260 @@ components:
         parent:
           type: "string"
         label:
+          type: "string"
+    SessionInput:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "text"
+      properties:
+        text:
+          type: "string"
+        agent:
+          type: "string"
+        parent:
+          type: "string"
+        label:
+          type: "string"
+        fresh:
+          type: "boolean"
+        project:
+          type: "string"
+        model:
+          type: "string"
+        effort:
+          type: "string"
+    SessionPostInput:
+      description: A session message with optional routing to a mentioned agent.
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text: {type: string, maxLength: 8000}
+        after:
+          description: The turn it follows. Empty follows the latest.
+          type: string
+        post_only: {type: boolean}
+        model:
+          description: "A model, `provider/model`, the runs this message starts use in place of their agent's own. Applied only for an agent whose `choices.models` offers it; any other runs on its own model. The run's model ceilings still apply."
+          type: string
+          maxLength: 200
+        effort:
+          description: "A reasoning effort, such as `low` or `high`, the runs this message starts use. Applied only for an agent whose `choices.efforts` offers it. A model that does not take it fails the run before any model call."
+          type: string
+          maxLength: 32
+          pattern: "^[a-z]+$"
+        answers: {$ref: "#/components/schemas/ThreadAnswerRef"}
+        act_as: {$ref: "#/components/schemas/ActAs"}
+        surface: {$ref: "#/components/schemas/SurfaceRef"}
+        agent: {type: string, description: "The @agent in text whose child receives this request."}
+        fresh: {type: boolean, description: "Start an independent child instead of continuing its existing session."}
+        label: {type: string}
+    AgentSessionSummary:
+      type: "object"
+      additionalProperties: false
+      required:
+        - conversation
+        - "id"
+        - "agent"
+        - "parent"
+        - "project"
+        - "title"
+        - "status"
+        - "updated_at"
+      properties:
+        conversation: {$ref: "#/components/schemas/ThreadSummary"}
+        id:
+          type: "string"
+        agent:
+          type: "string"
+        parent:
+          type: "string"
+        label:
+          type: "string"
+        project:
+          type: "string"
+        title:
+          type: "string"
+        status:
+          type: "string"
+          enum:
+            - "working"
+            - "waiting"
+            - "done"
+            - "failed"
+            - "stopped"
+        updated_at:
+          type: "string"
+          format: "date-time"
+    SessionAuthor:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "kind"
+        - "name"
+      properties:
+        kind:
+          type: "string"
+        name:
+          type: "string"
+        version:
+          type: "string"
+    SessionPart:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "type"
+      properties:
+        type:
+          type: "string"
+        text:
+          type: "string"
+        session:
+          type: "string"
+        agent:
+          type: "string"
+        status:
+          type: "string"
+    SessionFeedback:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "rating"
+      properties:
+        rating:
+          type: "string"
+          enum:
+            - "up"
+            - "down"
+        reason:
+          type: "string"
+          maxLength: 80
+        comment:
+          type: "string"
+          maxLength: 4000
+        finding_id:
+          type: "string"
+          maxLength: 200
+    SessionMessage:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "id"
+        - "session"
+        - "author"
+        - "status"
+        - "parts"
+        - "at"
+      properties:
+        finding_feedback: {type: array, items: {$ref: "#/components/schemas/SessionFeedback"}}
+        message: {$ref: "#/components/schemas/ThreadMessage"}
+        id:
+          type: "string"
+        session:
+          type: "string"
+        author:
+          $ref: "#/components/schemas/SessionAuthor"
+        status:
+          type: "string"
+        parts:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SessionPart"
+        at:
+          type: "string"
+          format: "date-time"
+        run:
+          $ref: "#/components/schemas/Run"
+        ask:
+          $ref: "#/components/schemas/ThreadAsk"
+        feedback:
+          $ref: "#/components/schemas/SessionFeedback"
+    SessionLink:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "target"
+        - "kind"
+        - "created_at"
+      properties:
+        target:
+          type: "string"
+        kind:
+          type: "string"
+          enum:
+            - "context"
+            - "evidence"
+        created_at:
+          type: "string"
+          format: "date-time"
+    AgentSession:
+      type: "object"
+      additionalProperties: false
+      required:
+        - conversation
+        - "id"
+        - "agent"
+        - "parent"
+        - "project"
+        - "title"
+        - "status"
+        - "updated_at"
+        - "messages"
+        - "children"
+        - "links"
+        - "people"
+        - "cursor"
+        - "thread"
+      properties:
+        more:
+          type: boolean
+          description: More changed messages remain after cursor; continue with since until false.
+        usage: {$ref: "#/components/schemas/RunUsage"}
+        conversation: {$ref: "#/components/schemas/ThreadSummary"}
+        thread: {$ref: "#/components/schemas/Thread"}
+        id:
+          type: "string"
+        agent:
+          type: "string"
+        parent:
+          type: "string"
+        label:
+          type: "string"
+        project:
+          type: "string"
+        title:
+          type: "string"
+        status:
+          type: "string"
+          enum:
+            - "working"
+            - "waiting"
+            - "done"
+            - "failed"
+            - "stopped"
+        updated_at:
+          type: "string"
+          format: "date-time"
+        messages:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SessionMessage"
+        children:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AgentSessionSummary"
+        links:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SessionLink"
+        people:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/ThreadParticipant"
+        next:
+          type: "string"
+        cursor:
+          type: "string"
+        summary:
           type: "string"

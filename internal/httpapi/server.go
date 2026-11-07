@@ -56,6 +56,7 @@ import (
 	"github.com/urmzd/orchagent/flow/bus"
 	"github.com/urmzd/orchagent/flow/connectors/cron"
 	"github.com/urmzd/orchagent/flow/event"
+	orchsession "github.com/urmzd/orchagent/flow/session"
 )
 
 // maxBody bounds every request body. Nothing this API accepts is large.
@@ -143,6 +144,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/project-agent-hues", s.authed(auth.ProjectsRead, s.agentHues))
 	mux.HandleFunc("GET /api/model-providers", s.authed(auth.AgentsRead, s.modelProviders))
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
+	s.sessionRoutes(mux)
 	s.agentSetupRoutes(mux)
 	s.outcomeLearningRoutes(mux)
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
@@ -202,6 +204,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/github/pull", s.authed(auth.RunsRead, s.getGitHubPull))
 	mux.HandleFunc("GET /api/github/issue", s.authed(auth.RunsRead, s.getGitHubIssue))
 	mux.HandleFunc("PUT /api/runs/{id}/feedback", s.authed(auth.RunsRead, s.seenRun(s.putFeedback)))
+	mux.HandleFunc("DELETE /api/runs/{id}/feedback", s.authed(auth.RunsRead, s.seenRun(s.deleteFeedback)))
 	mux.HandleFunc("GET /api/runs/{id}/feedback", s.authed(auth.RunsRead, s.seenRun(s.listFeedback)))
 	mux.HandleFunc("GET /api/runs/{id}/tree", s.authed(auth.RunsRead, s.seenRun(s.runTree)))
 	mux.HandleFunc("POST /api/runs/{id}/calls", s.authed(auth.RunsWrite, s.seenRun(s.createCall)))
@@ -1134,6 +1137,12 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, orchsession.ErrNotFound):
+		notFound(w)
+	case errors.Is(err, orchsession.ErrInvalid):
+		fail(w, 400, err.Error())
+	case errors.Is(err, orchsession.ErrDenied):
+		fail(w, 403, "session call denied")
 	case errors.Is(err, notifications.ErrNotFound):
 		notFound(w)
 	case errors.Is(err, notifications.ErrCapacity):

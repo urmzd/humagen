@@ -199,3 +199,15 @@ resumed. A run stopped elsewhere ends it with `StreamEndedError` and `reason`
 `stopped`. `getRun` is the authority on whether a run is over. A refusal by a
 limit throws from `createRun`: `failureOf(error).refusal` names the limit, the
 policy and when the count resets.
+
+## Agent sessions
+
+`POST /api/sessions` starts or continues one agent's session. The list and detail
+routes return its real conversation metadata, messages, children, evidence links,
+and usage. Post to `/api/sessions/{id}/messages` to continue it, or select an agent
+and `fresh` to start an independent child. People, links, stop, and feedback routes
+share the same ancestor-aware access checks as transcript reads.
+
+`GET /api/sessions/{id}/stream` supports `Last-Event-ID` with one cursor per run.
+A `session-reset` event supplies the authoritative snapshot when completed run
+cursors are compacted; clients replace transient stream state with that snapshot.

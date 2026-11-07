@@ -16,6 +16,7 @@ import (
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/internal/wire/sessionstate"
 	"github.com/urmzd/humagen/pkg/agentcolors"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
@@ -204,6 +205,7 @@ func (p *Platform) openStores(cfg Config) error {
 	if perRequest == nil {
 		perRequest = st
 	}
+	p.Sessions = sessionstate.New(perRequest)
 	var err error
 	p.AgentColors, err = agentcolors.Open(perRequest)
 	keep("agent colors", err)

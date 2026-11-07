@@ -8,6 +8,7 @@ import type {
   AgentControlInput,
   AgentHome,
   AgentNetwork,
+  AgentSession,
   AgentSetup,
   AgentSetupPlan,
   AgentSetupTest,
@@ -71,12 +72,14 @@ import type {
   InboxDeliveryInput,
   InboxMessage,
   InstallationCapabilities,
+  InviteSessionPersonBody,
   KnowledgeAttachment,
   KnowledgeDocument,
   KnowledgeSource,
   KnowledgeSourceConfig,
   KnowledgeVariant,
   LibrarySkill,
+  LinkSessionBody,
   ListAgentRevisionsResponse,
   ListAgentsResponse,
   ListAlertRulesResponse,
@@ -113,6 +116,7 @@ import type {
   ListRunEventsResponse,
   ListRunFeedbackResponse,
   ListSchedulesResponse,
+  ListSessionsResponse,
   ListSkillsResponse,
   ListSourceLinkSuggestionsResponse,
   ListThreadsResponse,
@@ -182,6 +186,7 @@ import type {
   RunList,
   SaveKnowledgeVariantBody,
   SaveRunFeedbackBody,
+  SaveSessionFeedbackBody,
   Schedule,
   ScheduleView,
   Scratchpad,
@@ -189,6 +194,8 @@ import type {
   ScratchpadList,
   SearchKnowledgeResponse,
   SearchMemoryResponse,
+  SessionInput,
+  SessionPostInput,
   SetAgentHomeBody,
   SetApprovalModeBody,
   SetKnowledgeDocumentExcludedBody,
@@ -202,6 +209,7 @@ import type {
   SourceLinkRule,
   SourceLinkRuleInput,
   SourceLinkSuggestion,
+  StopSessionBody,
   StorageUsage,
   StreamEventsStreamEvent,
   Summary,
@@ -553,6 +561,246 @@ export class ApiClient {
       );
     }
     return response.data;
+  }
+
+  /** Emits session snapshots and run events. Resume with Last-Event-ID.
+A session-reset event carries an authoritative AgentSession snapshot
+when the bounded cursor compacts. Clear transient deltas and reload
+visible older history pages on reset.
+ */
+  async *streamSession(id: string, lastEventId?: string, options?: SSEOptions): AsyncGenerator<SSEEvent<string>> {
+    let path = "/api/sessions/{id}/stream";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    let url = `${this.baseUrl}${path}`;
+    const _hdr: Record<string, string> = {};
+    for (const [k, v] of Object.entries({ "Last-Event-ID": lastEventId })) {
+      if (v !== undefined && v !== null) _hdr[k] = String(v);
+    }
+    yield* streamSse<string>(url, {
+      method: "GET",
+      headers: { ...this.headers, ..._hdr, ...options?.headers },
+    }, options, this.requestInterceptor, this.fetchFn);
+  }
+
+  /** Save session feedback */
+  async saveSessionFeedback(id: string, mid: string, body: SaveSessionFeedbackBody, options?: RequestOptions): Promise<RunFeedback> {
+    let path = "/api/sessions/{id}/messages/{mid}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{mid}", encodeURIComponent(String(mid)));
+    return this.request<RunFeedback>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async saveSessionFeedbackRaw(id: string, mid: string, body: SaveSessionFeedbackBody, options?: RequestOptions): Promise<ApiResponse<RunFeedback>> {
+    let path = "/api/sessions/{id}/messages/{mid}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{mid}", encodeURIComponent(String(mid)));
+    return this.rawRequest<RunFeedback>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Delete session feedback */
+  async deleteSessionFeedback(id: string, mid: string, findingId?: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/sessions/{id}/messages/{mid}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{mid}", encodeURIComponent(String(mid)));
+    const _q = new URLSearchParams();
+    if (findingId !== undefined && findingId !== null) _q.set("finding_id", String(findingId));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteSessionFeedbackRaw(id: string, mid: string, findingId?: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/sessions/{id}/messages/{mid}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{mid}", encodeURIComponent(String(mid)));
+    const _q = new URLSearchParams();
+    if (findingId !== undefined && findingId !== null) _q.set("finding_id", String(findingId));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Link session */
+  async linkSession(id: string, body: LinkSessionBody, options?: RequestOptions): Promise<void> {
+    let path = "/api/sessions/{id}/links";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    await this.request<void>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async linkSessionRaw(id: string, body: LinkSessionBody, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/sessions/{id}/links";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<void>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Invite session person */
+  async inviteSessionPerson(id: string, body: InviteSessionPersonBody, options?: RequestOptions): Promise<AgentSession> {
+    let path = "/api/sessions/{id}/people";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<AgentSession>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async inviteSessionPersonRaw(id: string, body: InviteSessionPersonBody, options?: RequestOptions): Promise<ApiResponse<AgentSession>> {
+    let path = "/api/sessions/{id}/people";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<AgentSession>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Stop session */
+  async stopSession(id: string, body: StopSessionBody, options?: RequestOptions): Promise<void> {
+    let path = "/api/sessions/{id}/stop";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    await this.request<void>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async stopSessionRaw(id: string, body: StopSessionBody, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/sessions/{id}/stop";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<void>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Post session message */
+  async postSessionMessage(id: string, body: SessionPostInput, options?: RequestOptions): Promise<AgentSession> {
+    let path = "/api/sessions/{id}/messages";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<AgentSession>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async postSessionMessageRaw(id: string, body: SessionPostInput, options?: RequestOptions): Promise<ApiResponse<AgentSession>> {
+    let path = "/api/sessions/{id}/messages";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<AgentSession>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Get session */
+  async getSession(id: string, since?: string, before?: string, around?: string, summary?: boolean, options?: RequestOptions): Promise<AgentSession> {
+    let path = "/api/sessions/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (since !== undefined && since !== null) _q.set("since", String(since));
+    if (before !== undefined && before !== null) _q.set("before", String(before));
+    if (around !== undefined && around !== null) _q.set("around", String(around));
+    if (summary !== undefined && summary !== null) _q.set("summary", String(summary));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<AgentSession>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getSessionRaw(id: string, since?: string, before?: string, around?: string, summary?: boolean, options?: RequestOptions): Promise<ApiResponse<AgentSession>> {
+    let path = "/api/sessions/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (since !== undefined && since !== null) _q.set("since", String(since));
+    if (before !== undefined && before !== null) _q.set("before", String(before));
+    if (around !== undefined && around !== null) _q.set("around", String(around));
+    if (summary !== undefined && summary !== null) _q.set("summary", String(summary));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<AgentSession>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** List sessions */
+  async listSessions(roots?: boolean, mine?: boolean, status?: string, agent?: string, project?: string, parent?: string, after?: string, limit?: number, options?: RequestOptions): Promise<ListSessionsResponse> {
+    let path = "/api/sessions";
+    const _q = new URLSearchParams();
+    if (roots !== undefined && roots !== null) _q.set("roots", String(roots));
+    if (mine !== undefined && mine !== null) _q.set("mine", String(mine));
+    if (status !== undefined && status !== null) _q.set("status", String(status));
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (parent !== undefined && parent !== null) _q.set("parent", String(parent));
+    if (after !== undefined && after !== null) _q.set("after", String(after));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListSessionsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listSessionsRaw(roots?: boolean, mine?: boolean, status?: string, agent?: string, project?: string, parent?: string, after?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<ListSessionsResponse>> {
+    let path = "/api/sessions";
+    const _q = new URLSearchParams();
+    if (roots !== undefined && roots !== null) _q.set("roots", String(roots));
+    if (mine !== undefined && mine !== null) _q.set("mine", String(mine));
+    if (status !== undefined && status !== null) _q.set("status", String(status));
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (parent !== undefined && parent !== null) _q.set("parent", String(parent));
+    if (after !== undefined && after !== null) _q.set("after", String(after));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListSessionsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Start session */
+  async startSession(body: SessionInput, options?: RequestOptions): Promise<AgentSession> {
+    const path = "/api/sessions";
+    return this.request<AgentSession>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async startSessionRaw(body: SessionInput, options?: RequestOptions): Promise<ApiResponse<AgentSession>> {
+    const path = "/api/sessions";
+    return this.rawRequest<AgentSession>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
   }
 
   /** Up to 100 reviews from the newest 1000 runs in the last 30 days. */
@@ -2501,6 +2749,31 @@ agents answering the next message are sent.
     return this.rawRequest<RunFeedback>("PUT", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Delete run feedback */
+  async deleteRunFeedback(id: string, findingId?: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/runs/{id}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (findingId !== undefined && findingId !== null) _q.set("finding_id", String(findingId));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteRunFeedbackRaw(id: string, findingId?: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/runs/{id}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (findingId !== undefined && findingId !== null) _q.set("finding_id", String(findingId));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<void>("DELETE", path, {
       ...options,
     });
   }
