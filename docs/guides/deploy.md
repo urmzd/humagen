@@ -349,6 +349,28 @@ installed keeps its Deployment, Service and volume only with
 `humagen deploy` sets it for such a release on every deploy. See
 [upgrading-from-warp.md](upgrading-from-warp.md#kubernetes).
 
+### Check two running replicas
+
+Port-forward each server pod to a separate local port, then run the existing
+replica check with an agent and an authorized tailnet login:
+
+```sh
+HUMAGEN_E2E_A_URL=http://127.0.0.1:18081 \
+HUMAGEN_E2E_B_URL=http://127.0.0.1:18082 \
+HUMAGEN_E2E_AGENT=lead \
+HUMAGEN_E2E_LOGIN=you@example.com \
+HUMAGEN_E2E_HOST=platform.withhumagen.com \
+scripts/two-replica.sh
+```
+
+`HUMAGEN_E2E_HOST` is optional. Set it to the authority in the deployment's
+`public_url` (hostname and port when present) when authentication checks the
+HTTP Host. The readiness probe, API calls and event streams use this Host
+while still connecting to the local port forwards. Without it, each request
+uses its URL's host. `HUMAGEN_E2E_LOGIN` supplies `Tailscale-User-Login` for a
+pod's trusted loopback connection. The check starts a real model run and
+compares both replicas' live and stored events; it does not stop either pod.
+
 ## Flux
 
 [`deploy/flux`](../../deploy/flux) deploys the chart straight from this repository.

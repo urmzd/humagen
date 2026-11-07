@@ -11,7 +11,10 @@
 # Against two running replicas instead (a port-forward to each pod), no
 # Docker or build:
 #   HUMAGEN_E2E_A_URL=http://127.0.0.1:18081 HUMAGEN_E2E_B_URL=http://127.0.0.1:18082 \
-#   HUMAGEN_E2E_AGENT=<agent> HUMAGEN_E2E_LOGIN=<tailnet login> scripts/two-replica.sh
+#   HUMAGEN_E2E_AGENT=<agent> HUMAGEN_E2E_LOGIN=<tailnet login> \
+#   HUMAGEN_E2E_HOST=platform.withhumagen.com scripts/two-replica.sh
+# HUMAGEN_E2E_HOST is optional: use the public_url authority when authentication
+# checks Host. Requests still connect to the port-forward URLs above.
 set -eu
 cd "$(dirname "$0")/.."
 GO=${GO:-go}
