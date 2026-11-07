@@ -1416,6 +1416,7 @@ visibility and an optional default agent. Its turns are its people's
 messages and its agents' runs.
  */
 export interface Thread {
+  session?: SessionIdentity;
   /** A saved project-fork archive. Its passive history is immutable and it accepts no messages or runs. */
   read_only?: boolean;
   /** Number of committed placement changes, without former audience identities. */
@@ -4469,6 +4470,12 @@ export interface Manifest {
   root: string;
   runs: ManifestRun[];
   usage: ManifestUsage;
+}
+
+export interface SessionIdentity {
+  agent: string;
+  parent: string;
+  label?: string;
 }
 
 export interface GitHubSubjectPullRequest {

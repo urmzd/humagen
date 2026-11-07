@@ -10508,6 +10508,8 @@ components:
       type: object
       required: [id, project, channel, visibility, participants, version, created_by, created_at, updated_at]
       properties:
+        session:
+          $ref: "#/components/schemas/SessionIdentity"
         read_only:
           description: A saved project-fork archive. Its passive history is immutable and it accepts no messages or runs.
           type: boolean
@@ -15200,3 +15202,16 @@ components:
             total:
               description: Every run's own calls in the tree, once each, attached and delegated runs alike.
               $ref: "#/components/schemas/Usage"
+    SessionIdentity:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "agent"
+        - "parent"
+      properties:
+        agent:
+          type: "string"
+        parent:
+          type: "string"
+        label:
+          type: "string"

@@ -202,8 +202,16 @@ type Participant struct {
 	At      time.Time `json:"at"`
 }
 
-// Thread is one shared thread's record.
+// SessionIdentity pins the agent and parent that own a session.
+type SessionIdentity struct {
+	Agent  string `json:"agent"`
+	Parent string `json:"parent"`
+	Label  string `json:"label,omitempty"`
+}
+
+// Thread retains storage compatibility while sessions have one immutable agent.
 type Thread struct {
+	Session *SessionIdentity `json:"session,omitempty"`
 	// ID is the conversation's id: its first run's, for a conversation from
 	// before threads, or "th-" and 16 hex digits.
 	ID string `json:"id"`
@@ -351,6 +359,10 @@ func (t Thread) clone() Thread {
 	copy(ps, t.Participants)
 	t.Participants = ps
 	t.Agents = slices.Clone(t.Agents)
+	if t.Session != nil {
+		identity := *t.Session
+		t.Session = &identity
+	}
 	t.Fork = t.Fork.clone()
 	t.Archive = t.Archive.clone()
 	t.Approval = t.Approval.clone()
@@ -372,7 +384,7 @@ func (t Thread) has(kind, name string) bool {
 }
 
 var (
-	validID = regexp.MustCompile(`^(th-[0-9a-f]{16}|r[0-9a-f]{32})$`)
+	validID = regexp.MustCompile(`^(th-[0-9a-f]{16}|r[0-9a-f]{32}|s_[0-9a-f]{32})$`)
 	// validRun is a run's id, as a message's Prev or an answer names it.
 	validRun = regexp.MustCompile(`^r[0-9a-f]{32}$`)
 	// validVia is a client's id.
@@ -425,6 +437,8 @@ func (t Thread) validate() error {
 		return fmt.Errorf("%w: an archive holds passive fork context only", ErrInvalid)
 	}
 	switch {
+	case t.Session != nil && (t.Session.Agent == "" || t.Session.Parent == "" || len(t.Session.Label) > 128 || t.Default != t.Session.Agent || len(t.Agents) != 1 || t.Agents[0] != t.Session.Agent):
+		return fmt.Errorf("%w: a session belongs to one immutable agent", ErrInvalid)
 	case !ValidID(t.ID):
 		return fmt.Errorf("%w: a thread's id is th- and 16 hex digits, or a run's id", ErrInvalid)
 	case t.Project != projects.Root && !projects.ValidName(t.Project):
