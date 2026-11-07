@@ -434,11 +434,17 @@ func audienceOf(allowed []string, q event.Question) (audience []string) {
 // not the run that asked. A question no person answers is inbox.ErrNotFound,
 // and a message the inbox could not keep is the inbox's error.
 func (p *Platform) raiseQuestion(ctx context.Context, run runs.Run, q event.Question, via string) (inbox.Message, error) {
+	if IsEvaluation(run) {
+		return inbox.Message{}, fmt.Errorf("%w: evaluation questions cannot notify people", inbox.ErrNotFound)
+	}
 	if _, _, ok := questionParts(partKind(q)); !ok || q.ID == "" {
 		return inbox.Message{}, fmt.Errorf("%w: question %q is not one a person answers", inbox.ErrNotFound, q.ID)
 	}
 	key := questionKey(run.ID, q.ID)
 	if m, ok := p.Inbox.ByKey(run.Tenant, key); ok {
+		if err := p.projectSessionAlert(run.Tenant, key, m, m.At); err != nil {
+			return inbox.Message{}, err
+		}
 		return m, nil
 	}
 	msg, _ := p.questionMessage(ctx, run, q, via)
@@ -453,6 +459,9 @@ func (p *Platform) raiseQuestion(ctx context.Context, run runs.Run, q event.Ques
 	// answer given before the event was folded in. A question answered and
 	// settled before the other arrives is not raised again.
 	m, raised, err := p.Inbox.RaiseOnce(run.Tenant, key, msg, at)
+	if err == nil {
+		err = p.projectSessionAlert(run.Tenant, key, m, at)
+	}
 	if err != nil {
 		p.log.Error("platform: inbox message could not be kept", "tenant", run.Tenant, "key", key, "error", err)
 		return inbox.Message{}, fmt.Errorf("platform: the question's message could not be kept: %w", err)
@@ -484,6 +493,17 @@ func (p *Platform) askedMessage(ctx context.Context, run runs.Run, questionID st
 	}
 	if !pending || q.ID != questionID {
 		return inbox.Message{}, fmt.Errorf("%w: run %q has no question %q", inbox.ErrNotFound, run.ID, questionID)
+	}
+	if IsEvaluation(run) {
+		// Setup validation is answered in its own run view. It keeps native
+		// approval checks and records, but creates no notification record.
+		message, _ := p.questionMessage(ctx, run, q, "")
+		message.State, message.At = inbox.Open, q.At
+		for i := range message.Parts {
+			message.Parts[i].ID = q.ID
+			message.Parts[i].State = inbox.PartOpen
+		}
+		return message, nil
 	}
 	// Raised as the run's event would raise it, whatever becomes of the
 	// request that got here first: a message is addressed once, and one
@@ -671,6 +691,11 @@ func (p *Platform) observeQuestion(ctx context.Context, e event.Envelope) {
 			return
 		}
 		p.settleQuestion(e.Tenant, e.Run, body.Answer.QuestionID, outcomeOf(*body.Answer, p.now()), "")
+		if run, err := p.Runs.Get(e.Tenant, e.Run); err == nil {
+			if err = p.settleSessionAlerts(e.Tenant, run.Thread); err != nil {
+				p.log.Error("session alerts could not be settled", "error", err)
+			}
+		}
 	}
 }
 
@@ -721,7 +746,10 @@ func (p *Platform) settleQuestion(tenant, runID, questionID string, o inbox.Outc
 	}
 	for _, part := range m.Parts {
 		if part.Question != nil && part.State == inbox.PartOpen {
-			if _, changed, _ := p.Inbox.Resolve(tenant, m.ID, part.ID, o); changed {
+			if settled, changed, err := p.Inbox.Resolve(tenant, m.ID, part.ID, o); err == nil && changed {
+				if err := p.projectSessionAlert(tenant, m.Key, settled, m.At); err != nil {
+					p.log.Error("session alert answer could not be projected", "error", err)
+				}
 				p.log.Info("platform: question settled", "tenant", tenant, "run", runID, "question", questionID,
 					"outcome", o.Action, "by", o.By, "message", m.ID)
 			}
@@ -1005,6 +1033,12 @@ func (p *Platform) answerFirst(ctx context.Context, who auth.Principal, m inbox.
 		return inbox.Message{}, false, err
 	}
 	viewAs := func(recorded bool) (inbox.Message, bool, error) {
+		if m.ID == "" {
+			if !who.Can(reads(m.Kind)) || !p.readerSeer(who, reader).Message(m) {
+				return inbox.Message{}, false, inbox.ErrNotFound
+			}
+			return p.seenBy(p.Projects.Tree(who.Tenant), p.Names(who.Tenant), m, who), recorded, nil
+		}
 		got, err := p.inboxGetAs(who, reader, m.ID)
 		return got, recorded && err == nil, err
 	}
@@ -1087,6 +1121,11 @@ func (p *Platform) answerFirst(ctx context.Context, who auth.Principal, m inbox.
 		// Someone got there first. The message says what they decided.
 		p.settleQuestion(who.Tenant, q.Run, q.ID, o, "")
 	}
-	p.audit(who, m, part.ID, a.Action, fmt.Sprintf("by=%s via=%s first=%t recorded=%s", reader.Subject, via, first, o.Action))
+	if m.ID == "" {
+		m.State = inbox.Resolved
+		m.Parts[i].State, m.Parts[i].Outcome = inbox.PartResolved, &o
+	} else {
+		p.audit(who, m, part.ID, a.Action, fmt.Sprintf("by=%s via=%s first=%t recorded=%s", reader.Subject, via, first, o.Action))
+	}
 	return viewAs(first)
 }

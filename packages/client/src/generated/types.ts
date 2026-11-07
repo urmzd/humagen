@@ -2562,6 +2562,7 @@ export interface PersonalPreferences {
   /** Opt in to the configured email relay using the same event preferences and quiet hours. */
   email?: boolean;
   briefing: string;
+  /** Per-event delivery preferences. Session alert priorities use urgent, normal and low keys; unset priorities are off. Earlier event-kind keys remain supported. */
   notifications: Record<string, "immediate" | "digest" | "off">;
   quiet_start: string;
   quiet_end: string;
@@ -3218,7 +3219,7 @@ export interface Span {
 /** `budget` is raised by a billing policy, never by a rule, and a rule
 cannot be created with it.
  */
-export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "spend" | "budget";
+export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "spend" | "budget" | "session" | "mention" | "source" | "approval" | "clarification" | "failure" | "operation" | "alert" | "connection";
 
 export type AlertSeverity = "warning" | "critical";
 
@@ -5289,6 +5290,21 @@ export interface ListClientBindingsResponse {
 export interface GetAgentRosterResponse {
   controls: Record<string, AgentControl>;
   window_days: 31;
+}
+
+export interface ChangeAlertStateBody {
+  state: "open" | "snoozed" | "resolved";
+  snoozed_until?: string;
+}
+
+export interface CreateSessionAlertBody {
+  title: string;
+  body?: string;
+  priority: "urgent" | "normal" | "low";
+  message?: string;
+  who?: string[];
+  action?: string;
+  resolve_when?: string;
 }
 
 /** SSE event union type for streaming responses. */

@@ -54,6 +54,8 @@ func exerciseSessionContract(t *testing.T, c *contract) map[string]string {
 	c.call(token, "PUT", "/api/sessions/{id}/messages/{mid}/feedback", fpath, `{"rating":"up"}`, 200)
 	c.call(token, "DELETE", "/api/sessions/{id}/messages/{mid}/feedback", fpath, "", 204)
 	c.call(token, "DELETE", "/api/runs/{id}/feedback", "/api/runs/"+runID+"/feedback", "", 204)
+	alert := c.call(token, "POST", "/api/sessions/{id}/alerts", path+"/alerts", `{"title":"Service needs review","priority":"normal"}`, 201)
+	c.call(token, "PATCH", "/api/alerts/{id}", "/api/alerts/"+alert.str("id"), `{"state":"resolved"}`, 200)
 	c.call(token, "POST", "/api/sessions/{id}/stop", path+"/stop", `{"children":true}`, 204)
 	// Streaming bodies have their own reconnect test. Validate the first real
 	// session event here so success coverage still requires a live response.
@@ -65,7 +67,7 @@ func exerciseSessionContract(t *testing.T, c *contract) map[string]string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != 200 {
 		t.Fatalf("session stream: %d", res.StatusCode)
 	}
@@ -91,5 +93,5 @@ func exerciseSessionContract(t *testing.T, c *contract) map[string]string {
 	if err := scan.Err(); err != nil {
 		t.Fatal(err)
 	}
-	return map[string]string{"token": token, "id": id, "run": runID}
+	return map[string]string{"token": token, "id": id, "run": runID, "alert": alert.str("id")}
 }
