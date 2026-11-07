@@ -92,7 +92,8 @@ type Check struct {
 
 // Case is one input and what a good result looks like.
 type Case struct {
-	ID string `json:"id"`
+	Trace *Trace `json:"trace,omitempty"`
+	ID    string `json:"id"`
 	// Input is the request sent to an agent, or the query sent to a source.
 	Input string `json:"input"`
 	// Checks apply to an agent's answer. Every one must pass.
@@ -104,9 +105,10 @@ type Case struct {
 
 // Suite is a named list of cases against one target.
 type Suite struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Target      Target `json:"target"`
+	EverySeconds int    `json:"every_seconds,omitempty"`
+	Name         string `json:"name"`
+	Description  string `json:"description,omitempty"`
+	Target       Target `json:"target"`
 	// Subject is the agent's name or the knowledge source's name.
 	Subject string `json:"subject"`
 	Cases   []Case `json:"cases"`
@@ -129,6 +131,9 @@ func (s Suite) Threshold() float64 {
 
 // Validate checks a suite before it is stored.
 func (s Suite) Validate() error {
+	if s.EverySeconds != 0 && (s.EverySeconds < 3600 || s.EverySeconds > 30*24*3600) {
+		return fmt.Errorf("%w: eval schedule is one hour to thirty days", ErrInvalid)
+	}
 	switch {
 	case !validName.MatchString(s.Name):
 		return fmt.Errorf("%w: a suite name is lowercase letters, digits and dashes", ErrInvalid)
@@ -153,6 +158,11 @@ func (s Suite) Validate() error {
 			return fmt.Errorf("%w: case %d needs an id no other case has", ErrInvalid, n)
 		case strings.TrimSpace(c.Input) == "":
 			return fmt.Errorf("%w: case %d has no input", ErrInvalid, n)
+		}
+		if c.Trace != nil {
+			if err := c.Trace.Validate(); err != nil {
+				return err
+			}
 		}
 		seen[c.ID] = true
 		if s.Target == Knowledge {
@@ -406,7 +416,13 @@ func (r *Run) Finish(results []Result, metrics map[string]float64, at time.Time)
 
 // Store keeps every tenant's suites and runs in a state.Store.
 type Store struct {
-	kept *state.Table[stored]
+	tenants     *state.Tenants
+	retrievals  *state.Table[Retrieval]
+	changes     *state.Table[Change]
+	onlineAgent *state.Table[Online]
+	online      *state.Table[Online]
+	candidates  *state.Table[Candidate]
+	kept        *state.Table[stored]
 	// now is the clock a run's heartbeat is read and written by.
 	now func() time.Time
 }
@@ -477,7 +493,11 @@ func Open(st state.Store) (*Store, error) {
 	if st == nil {
 		st = state.NewMemory()
 	}
-	return &Store{kept: state.NewTable[stored](st, namespace), now: time.Now}, nil
+	tenants, err := state.OpenTenants(st, namespace)
+	if err != nil {
+		return nil, err
+	}
+	return &Store{tenants: tenants, retrievals: state.NewTable[Retrieval](st, "evals.retrievals"), changes: state.NewTable[Change](st, "evals.changes"), onlineAgent: state.NewTable[Online](st, "evals.agent_online"), kept: state.NewTable[stored](st, namespace), online: state.NewTable[Online](st, "evals.online"), candidates: state.NewTable[Candidate](st, "evals.candidates"), now: time.Now}, nil
 }
 
 // stale reports whether a running run has gone unwritten so long that
@@ -505,6 +525,9 @@ func wrap(err error) error {
 
 // Put creates a suite, or replaces one when replace is set.
 func (s *Store) Put(tenantName string, suite Suite, replace bool) error {
+	if err := s.tenants.Mark(tenantName); err != nil {
+		return err
+	}
 	if err := suite.Validate(); err != nil {
 		return err
 	}
