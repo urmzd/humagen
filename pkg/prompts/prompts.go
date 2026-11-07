@@ -12,11 +12,13 @@ import (
 )
 
 const (
-	MaxLayerChars     = 16000
-	MaxPrefixChars    = 64000
-	DefaultSlackWords = 120
-	PlatformVersion   = "humagen.sessions.v1"
-	MetaSnapshot      = "_humagen.prompts"
+	MaxLayerChars      = 16000
+	MaxPrefixChars     = 64000
+	MaxLayerLabelChars = 256
+	MaxSnapshotBytes   = MaxPrefixChars*6 + 16384
+	DefaultSlackWords  = 120
+	PlatformVersion    = "humagen.sessions.v1"
+	MetaSnapshot       = "_humagen.prompts"
 )
 
 const Platform = `You are an agent in humagen. You work in a session: one conversation with you, started wherever a person is (Slack, GitHub, the console), answered there.
@@ -96,14 +98,25 @@ func (s Snapshot) Validate() error {
 	}
 	total := 0
 	for _, l := range s.Layers {
+		for _, label := range []string{l.Kind, l.From} {
+			if !utf8.ValidString(label) || utf8.RuneCountInString(label) > MaxLayerLabelChars || strings.ContainsRune(label, 0) {
+				return fmt.Errorf("%w: instruction layer labels must be text of at most %d characters", ErrInvalid, MaxLayerLabelChars)
+			}
+		}
 		n := utf8.RuneCountInString(l.Text)
-		if !utf8.ValidString(l.Text) || n > MaxLayerChars || l != NewLayer(l.Kind, l.From, l.Text) {
+		if !utf8.ValidString(l.Text) || strings.ContainsRune(l.Text, 0) || n > MaxLayerChars || l != NewLayer(l.Kind, l.From, l.Text) {
 			return fmt.Errorf("%w: instruction layer failed its version check", ErrInvalid)
 		}
 		total += n
 	}
 	if total > MaxPrefixChars {
 		return fmt.Errorf("%w: instruction prefix exceeds %d characters", ErrInvalid, MaxPrefixChars)
+	}
+	// JSON escaping and label metadata count toward the same limit Read uses.
+	// Every accepted snapshot must survive its own persisted roundtrip.
+	raw, err := json.Marshal(s)
+	if err != nil || len(raw) > MaxSnapshotBytes {
+		return fmt.Errorf("%w: encoded instruction snapshot exceeds %d bytes", ErrInvalid, MaxSnapshotBytes)
 	}
 	return nil
 }
@@ -127,7 +140,7 @@ func Read(meta map[string]string) (Snapshot, bool, error) {
 	if !ok {
 		return Snapshot{}, false, nil
 	}
-	if len(raw) > MaxPrefixChars*6+16384 {
+	if len(raw) > MaxSnapshotBytes {
 		return Snapshot{}, true, ErrInvalid
 	}
 	var s Snapshot

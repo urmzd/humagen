@@ -444,7 +444,10 @@ const namespace = "evals"
 type stored struct {
 	Suite *Suite `json:"suite,omitempty"`
 	Run   *Run   `json:"run,omitempty"`
-	Next  int    `json:"next,omitempty"`
+	// Access is captured with the run, never inferred from an edited suite.
+	// Nil marks old records whose original replay dependencies are unknown.
+	Access *RunAccess `json:"access,omitempty"`
+	Next   int        `json:"next,omitempty"`
 	// Beat is when a run was last written by what carries it out.
 	Beat time.Time `json:"beat,omitzero"`
 }
@@ -692,7 +695,9 @@ func (s *Store) Begin(tenantName string, suite Suite, rev int, by string, at tim
 				return fmt.Errorf("%w: %q", ErrBusy, suite.Name)
 			}
 			left := s.shown(runs[0].Value)
-			b.PutAt(tenantName, runs[0].Key, stored{Run: &left}, runs[0].Version)
+			previous := runs[0].Value
+			previous.Run = &left
+			b.PutAt(tenantName, runs[0].Key, previous, runs[0].Version)
 		}
 		next, err := s.counter(b, tenantName, 1)
 		if err != nil {
@@ -708,7 +713,7 @@ func (s *Store) Begin(tenantName string, suite Suite, rev int, by string, at tim
 			Rev: rev, Status: Running, Total: len(suite.Cases), Threshold: suite.Threshold(),
 			Results: []Result{}, StartedBy: by, StartedAt: at,
 		}
-		b.Create(tenantName, runKey(run), stored{Run: &run, Beat: s.now()})
+		b.Create(tenantName, runKey(run), stored{Run: &run, Access: accessFor(suite), Beat: s.now()})
 		if len(runs) >= maxRuns {
 			for _, old := range runs[maxRuns-1:] {
 				b.DeleteAt(tenantName, old.Key, old.Version)
@@ -733,7 +738,8 @@ func (s *Store) Save(tenantName string, run Run) error {
 		if !ok || v.Run == nil || v.Run.ID != run.ID {
 			return v, state.ErrUnchanged
 		}
-		return stored{Run: &run, Beat: s.now()}, nil
+		v.Run, v.Beat = &run, s.now()
+		return v, nil
 	})
 	return wrap(err)
 }
