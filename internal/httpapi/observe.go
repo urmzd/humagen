@@ -337,7 +337,24 @@ func viewRule(names platform.Names, r alerts.Rule) ruleView {
 	return ruleView{Rule: r, CreatedByName: names.Of(r.CreatedBy)}
 }
 
-func (s *Server) listAlerts(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
+func (s *Server) listAlerts(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	q := r.URL.Query()
+	if v := q.Get("state"); v != "" && v != "open" && v != "snoozed" && v != "resolved" {
+		fail(w, http.StatusBadRequest, "unknown alert state")
+		return
+	}
+	if v := q.Get("priority"); v != "" && v != "urgent" && v != "normal" && v != "low" {
+		fail(w, http.StatusBadRequest, "unknown alert priority")
+		return
+	}
+	if v := q.Get("source"); len(v) > 64 || strings.ContainsAny(v, "\x00\r\n") {
+		fail(w, http.StatusBadRequest, "invalid alert source")
+		return
+	}
+	if v := q.Get("mine"); v != "" && v != "true" && v != "false" {
+		fail(w, http.StatusBadRequest, "mine must be true or false")
+		return
+	}
 	seer := s.P.Seer(who)
 	names := s.P.Names(who.Tenant)
 	out := []alertView{}
@@ -347,10 +364,37 @@ func (s *Server) listAlerts(w http.ResponseWriter, _ *http.Request, who auth.Pri
 		return
 	}
 	for _, a := range all {
+		a = a.View(time.Now().UTC())
+		if v := q.Get("state"); v != "" && string(a.State) != v {
+			continue
+		}
+		if v := q.Get("priority"); v != "" && string(a.Priority) != v {
+			continue
+		}
+		if v := q.Get("source"); v != "" && string(a.Kind) != v {
+			continue
+		}
+		if v := q.Get("session"); v != "" && a.Session != v {
+			continue
+		}
+		if q.Get("mine") == "true" && !alertFor(a, who) {
+			continue
+		}
 		if seer.Alert(a) {
-			out = append(out, alertView{Alert: a, AckedByName: names.Of(a.AckedBy)})
+			out = append(out, viewAlert(names, a))
 		}
 	}
+	rank := func(p alerts.Priority) int {
+		switch p {
+		case alerts.Urgent:
+			return 0
+		case alerts.Normal:
+			return 1
+		default:
+			return 2
+		}
+	}
+	slices.SortStableFunc(out, func(a, b alertView) int { return rank(a.Priority) - rank(b.Priority) })
 	ok(w, http.StatusOK, map[string]any{"alerts": out})
 }
 
@@ -360,7 +404,7 @@ func (s *Server) ackAlert(w http.ResponseWriter, r *http.Request, who auth.Princ
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, alertView{Alert: a, AckedByName: s.P.NameOf(who.Tenant, a.AckedBy)})
+	ok(w, http.StatusOK, viewAlert(s.P.Names(who.Tenant), a.View(time.Now().UTC())))
 }
 
 func (s *Server) listRules(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
@@ -828,4 +872,8 @@ func sourceConfigOf(src knowledge.Source) *knowledge.SourceConfig {
 	}
 	cfg := src.Lifecycle.SourceConfig
 	return &cfg
+}
+
+func viewAlert(names platform.Names, a alerts.Alert) alertView {
+	return alertView{Alert: names.Alert(a), AckedByName: names.Of(a.AckedBy)}
 }

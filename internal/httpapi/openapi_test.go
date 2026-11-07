@@ -1752,6 +1752,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/alert-rules/{name}", "/api/alert-rules/spend", `{"kind":"spend","window_seconds":86400,"severity":"critical"}`, http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/alert-rules/{name}", "/api/alert-rules/ghost", `{"kind":"run_failed","severity":"critical"}`, http.StatusNotFound)
 	alertList := c.call(acme, "GET", "/api/alerts", "/api/alerts", "", http.StatusOK)
+	c.call(acme, "GET", "/api/alerts", "/api/alerts?source=budget", "", http.StatusOK)
+	c.call(acme, "GET", "/api/alerts", "/api/alerts?source="+strings.Repeat("x", 65), "", http.StatusBadRequest)
 	if fired := sliceOf(alertList.field("alerts")); len(fired) > 0 {
 		c.call(acme, "POST", "/api/alerts/{id}/ack", "/api/alerts/"+obj(fired[0])["id"].(string)+"/ack", "", http.StatusOK)
 	}
@@ -2495,6 +2497,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/sessions/{id}/stop":                    {"id": sessionContract["id"]},
 		"/api/sessions/{id}/people":                  {"id": sessionContract["id"]},
 		"/api/sessions/{id}/links":                   {"id": sessionContract["id"]},
+		"/api/sessions/{id}/alerts":                  {"id": sessionContract["id"]},
+		"/api/alerts/{id}":                           {"id": sessionContract["alert"]},
 		"/api/sessions/{id}/messages/{mid}/feedback": {"id": sessionContract["id"], "mid": sessionContract["run"]},
 
 		"/api/threads/{id}/files":                             {"id": workspaceID},
@@ -2608,7 +2612,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}
 		if refusesUnknownFields(op) {
 			caller := acme
-			if strings.HasPrefix(op.path, "/api/sessions/") {
+			if strings.HasPrefix(op.path, "/api/sessions/") || op.path == "/api/alerts/{id}" {
 				caller = sessionContract["token"]
 			}
 			if strings.HasPrefix(op.path, "/api/me/memory") || strings.HasPrefix(op.path, "/api/agent-setups/") || strings.HasSuffix(op.path, "/skill-draft") || strings.HasSuffix(op.path, "/decision-memory") {
@@ -2698,6 +2702,7 @@ var unexercised = map[string]string{
 	"POST /api/sessions 409":                             "governed admission to a deleted project uses the same path tested by POST /api/runs deleted-project response",
 	"POST /api/sessions/{id}/messages 409":               "deleted-project admission uses the same PostMessage path tested by thread/run responses",
 	"POST /api/sessions/{id}/people 409":                 "concurrent participant changes fail thread version CAS covered by participant race tests",
+	"POST /api/sessions/{id}/alerts 409":                 "random alert identity collision fails CreateSession CAS; callers cannot supply the ID",
 	"PUT /api/sessions/{id}/messages/{mid}/feedback 409": "same putFeedback handler unfinished-run409 is exercised via legacy feedback route",
 
 	"POST /api/voice/transcriptions 404":            "a deployment with speech left out, covered by TestWithoutSpeechTheConsoleHasNoVoiceNotes",

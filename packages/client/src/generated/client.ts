@@ -32,6 +32,7 @@ import type {
   CallPolicyInput,
   CatalogConnector,
   CatalogPage,
+  ChangeAlertStateBody,
   ChannelInput,
   ChannelUpdate,
   ChannelView,
@@ -45,6 +46,7 @@ import type {
   CreateCallRequest,
   CreateKnowledgeSourceBody,
   CreateRunRequest,
+  CreateSessionAlertBody,
   DecideSourceLinkSuggestionBody,
   DiscoverWorkspaceResponse,
   DismissTipBody,
@@ -4767,15 +4769,31 @@ Does not publish a new version or run an agent.
   }
 
   /** List fired alerts */
-  async listAlerts(options?: RequestOptions): Promise<ListAlertsResponse> {
-    const path = "/api/alerts";
+  async listAlerts(state?: "open" | "snoozed" | "resolved", priority?: "urgent" | "normal" | "low", session?: string, mine?: boolean, source?: string, options?: RequestOptions): Promise<ListAlertsResponse> {
+    let path = "/api/alerts";
+    const _q = new URLSearchParams();
+    if (state !== undefined && state !== null) _q.set("state", String(state));
+    if (priority !== undefined && priority !== null) _q.set("priority", String(priority));
+    if (session !== undefined && session !== null) _q.set("session", String(session));
+    if (mine !== undefined && mine !== null) _q.set("mine", String(mine));
+    if (source !== undefined && source !== null) _q.set("source", String(source));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.request<ListAlertsResponse>("GET", path, {
       ...options,
     });
   }
 
-  async listAlertsRaw(options?: RequestOptions): Promise<ApiResponse<ListAlertsResponse>> {
-    const path = "/api/alerts";
+  async listAlertsRaw(state?: "open" | "snoozed" | "resolved", priority?: "urgent" | "normal" | "low", session?: string, mine?: boolean, source?: string, options?: RequestOptions): Promise<ApiResponse<ListAlertsResponse>> {
+    let path = "/api/alerts";
+    const _q = new URLSearchParams();
+    if (state !== undefined && state !== null) _q.set("state", String(state));
+    if (priority !== undefined && priority !== null) _q.set("priority", String(priority));
+    if (session !== undefined && session !== null) _q.set("session", String(session));
+    if (mine !== undefined && mine !== null) _q.set("mine", String(mine));
+    if (source !== undefined && source !== null) _q.set("source", String(source));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListAlertsResponse>("GET", path, {
       ...options,
     });
@@ -7402,6 +7420,48 @@ owns cannot be changed here and answers 409.
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<GetAgentRosterResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Change alert state */
+  async changeAlertState(id: string, body: ChangeAlertStateBody, options?: RequestOptions): Promise<Alert> {
+    let path = "/api/alerts/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Alert>("PATCH", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async changeAlertStateRaw(id: string, body: ChangeAlertStateBody, options?: RequestOptions): Promise<ApiResponse<Alert>> {
+    let path = "/api/alerts/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Alert>("PATCH", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Create session alert */
+  async createSessionAlert(id: string, body: CreateSessionAlertBody, options?: RequestOptions): Promise<Alert> {
+    let path = "/api/sessions/{id}/alerts";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Alert>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async createSessionAlertRaw(id: string, body: CreateSessionAlertBody, options?: RequestOptions): Promise<ApiResponse<Alert>> {
+    let path = "/api/sessions/{id}/alerts";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Alert>("POST", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }

@@ -27,6 +27,8 @@ func (s *Server) sessionRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/sessions/{id}/links", s.authed(auth.RunsWrite, s.seenSession(s.linkSession)))
 	mux.HandleFunc("PUT /api/sessions/{id}/messages/{mid}/feedback", s.authed(auth.RunsRead, s.seenSession(s.sessionFeedback)))
 	mux.HandleFunc("DELETE /api/sessions/{id}/messages/{mid}/feedback", s.authed(auth.RunsRead, s.seenSession(s.deleteSessionFeedback)))
+	mux.HandleFunc("POST /api/sessions/{id}/alerts", s.authed(auth.AlertsWrite, s.seenSession(s.createSessionAlert)))
+	mux.HandleFunc("PATCH /api/alerts/{id}", s.authed(auth.AlertsWrite, s.seenAlert(s.patchAlert)))
 }
 func (s *Server) seenSession(next handler) handler {
 	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {

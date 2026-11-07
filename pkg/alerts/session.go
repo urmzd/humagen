@@ -220,7 +220,10 @@ func (e *Engine) AttachSession(tenant, id, session, action string) (Alert, error
 		if a.Session != "" && a.Session != session {
 			return s, fmt.Errorf("%w: alert already belongs to another session", ErrInvalid)
 		}
-		a.Session, a.Action = session, action
+		a.Session = session
+		if action != "" {
+			a.Action = action
+		}
 		s.Alert = &a
 		out = a.alert()
 		return s, nil

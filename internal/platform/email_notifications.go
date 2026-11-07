@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/urmzd/humagen/pkg/auth"
-	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/notifications"
 	"github.com/urmzd/humagen/pkg/prefs"
 )
@@ -131,11 +130,15 @@ func (p *Platform) DeliverEmailNotifications(ctx context.Context) (int, error) {
 				continue
 			}
 			reader := p.inboxReader(p.Projects.Tree(r.tenant), fresh)
-			seer := p.Seer(fresh)
+			attention, err := p.sessionAlertDeliveries(fresh, p.now())
+			if err != nil {
+				return sent, err
+			}
 			visible := func(id string) bool {
 				m, err := p.Inbox.GetAs(r.tenant, id, reader)
-				mode := dispatch.NotificationDelivery(string(m.Kind), p.now())
-				return err == nil && mode != prefs.Off && (mode != prefs.Digest || delivery.Mode != prefs.Immediate) && fresh.Can(reads(m.Kind)) && seer.Message(m) && m.Unread && !m.Hidden && m.State == inbox.Open
+				kind, allowed := p.notificationPolicy(fresh, m, p.now(), attention)
+				mode := dispatch.NotificationDelivery(kind, p.now())
+				return err == nil && allowed && mode != prefs.Off && (mode != prefs.Digest || delivery.Mode != prefs.Immediate)
 			}
 			count := 0
 			for _, item := range delivery.Items {
@@ -147,7 +150,7 @@ func (p *Platform) DeliverEmailNotifications(ctx context.Context) (int, error) {
 				continue
 			}
 			w := p.wording(r.tenant)
-			message := notifications.EmailMessage{ID: delivery.ID, To: r.address, Subject: w.EmailSubject, Body: fmt.Sprintf("%s\n\n%s/inbox\n\n%s", emailIntro(w, count), strings.TrimRight(p.cfg.Email.PublicURL, "/"), w.EmailFooter)}
+			message := notifications.EmailMessage{ID: delivery.ID, To: r.address, Subject: w.EmailSubject, Body: fmt.Sprintf("%s\n\n%s/alerts\n\n%s", emailIntro(w, count), strings.TrimRight(p.cfg.Email.PublicURL, "/"), w.EmailFooter)}
 			if err := p.cfg.Email.Sender.Send(ctx, message); err != nil {
 				return sent, err
 			}

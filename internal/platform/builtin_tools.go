@@ -18,6 +18,7 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // The tools behind the platform's analyst and builder.
@@ -84,6 +85,8 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 				}
 				return p.runsSummary(req.Tenant, time.Duration(hours)*time.Hour, strings.TrimSpace(arg(args, "agent")), scope)
 			}),
+		ToolAlertCreate:    p.sessionAlertCreateTool(req),
+		ToolAlertResolve:   p.sessionAlertResolveTool(req),
 		ToolProjectChanges: p.projectChangesTool(req),
 		ToolMemorySearch:   p.memorySearchTool(req),
 		ToolListAlerts: tool(ToolListAlerts,
@@ -253,6 +256,21 @@ func (p *Platform) alertsReport(tenant, own string) (string, error) {
 		home, homed := tree.Home(name)
 		return name == "" || !homed || open(home)
 	}
+	// A person-created alert need not have a run. Its session and every
+	// context-bearing parent must be readable by the answer's whole audience.
+	sessionOpen := func(id string) bool {
+		for depth := 0; depth <= 64; depth++ {
+			th, err := p.Threads.Get(tenant, id)
+			if err != nil || th.Session == nil || th.Visibility != threads.Shared || !open(th.Project) || tree.PendingFork(th.Project) || !agentOpen(th.Session.Agent) {
+				return false
+			}
+			if !strings.HasPrefix(th.Session.Parent, "s_") {
+				return true
+			}
+			id = th.Session.Parent
+		}
+		return false
+	}
 	rules, err := p.Alerts.Rules(tenant)
 	if err != nil {
 		return "", err
@@ -269,6 +287,9 @@ func (p *Platform) alertsReport(tenant, own string) (string, error) {
 	for i := len(all) - 1; i >= 0 && len(out.Open) < 50; i-- {
 		a := all[i]
 		if !a.Open() || !open(a.Project) || !agentOpen(a.Agent) {
+			continue
+		}
+		if a.Session != "" && !sessionOpen(a.Session) {
 			continue
 		}
 		if at, ok := p.placeOfRunID(tenant, a.RunID); a.RunID != "" && ok && (!open(at.Project) || p.privateThread(tenant, at.Thread)) {

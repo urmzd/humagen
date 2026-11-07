@@ -395,6 +395,9 @@ func (s *Seer) Suite(suite evals.Suite) bool {
 // where it lives, when the index holds it, else its project; and its agent.
 // A run's alert in a private thread is its participants'.
 func (s *Seer) Alert(a alerts.Alert) bool {
+	if a.Session != "" && !s.p.SeesSession(s.who, a.Session) {
+		return false
+	}
 	if a.Agent != "" && !s.Agent(a.Agent) {
 		return false
 	}
