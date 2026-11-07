@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.89.2 (2026-11-07)
+
+### Bug Fixes
+
+- **console**: design review fixes from an independent pass (#224) ([1f660c2](https://github.com/urmzd/humagen/commit/1f660c275866b797a874ed4c26f8f205b401ad9e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.89.1...v0.89.2)
+
+
 ## 0.89.1 (2026-11-07)
 
 ### Bug Fixes
