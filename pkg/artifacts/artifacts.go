@@ -473,6 +473,40 @@ func (x *Index) NextID(string) string {
 // Publish records an artifact under an id from NextID. A file with a title
 // already published in the same conversation is the next version of it.
 func (x *Index) Publish(tenantName string, a Artifact) (Artifact, error) {
+	return x.publish(tenantName, a, "")
+}
+
+// Saved returns the live artifact previously published for a source identity.
+// The identity is scoped to one tenant; a deleted artifact is not returned.
+func (x *Index) Saved(tenantName, identity string) (Artifact, error) {
+	ctx, cancel := ctxTimeout()
+	defer cancel()
+	var id string
+	if v, err := x.read(ctx, tenantName, saveKey(identity), &id); err != nil {
+		return Artifact{}, err
+	} else if v == state.Missing {
+		return Artifact{}, ErrNotFound
+	}
+	a, _, _, err := x.lookup(ctx, tenantName, id)
+	return a, err
+}
+
+func saveKey(identity string) string {
+	h := sha256.Sum256([]byte(identity))
+	return "saved/" + hex.EncodeToString(h[:])
+}
+
+// PublishOnce atomically publishes one artifact for a source identity. A retry,
+// including from another process, returns the existing live artifact. Callers
+// must discard their uploaded blob when the returned ID differs from a.ID.
+func (x *Index) PublishOnce(tenantName string, a Artifact, identity string) (Artifact, error) {
+	if identity == "" {
+		return Artifact{}, fmt.Errorf("%w: a saved artifact needs a source identity", ErrInvalid)
+	}
+	return x.publish(tenantName, a, identity)
+}
+
+func (x *Index) publish(tenantName string, a Artifact, identity string) (Artifact, error) {
 	if a.ID == "" || a.Key == "" || a.Thread == "" || a.Title == "" {
 		return Artifact{}, fmt.Errorf("%w: an artifact needs an id, a key, a conversation and a title", ErrInvalid)
 	}
@@ -487,6 +521,23 @@ func (x *Index) Publish(tenantName string, a Artifact) (Artifact, error) {
 	defer cancel()
 	var out Artifact
 	err := state.Retry(func() error {
+		var saveVersion int64
+		if identity != "" {
+			var previous string
+			var err error
+			saveVersion, err = x.read(ctx, tenantName, saveKey(identity), &previous)
+			if err != nil {
+				return err
+			}
+			if saveVersion != state.Missing {
+				if prior, _, _, err := x.lookup(ctx, tenantName, previous); err == nil {
+					out = prior
+					return nil
+				} else if !errors.Is(err, ErrNotFound) {
+					return err
+				}
+			}
+		}
 		var used idEntry
 		if v, err := x.read(ctx, tenantName, idKey(a.ID), &used); err != nil {
 			return err
@@ -527,6 +578,9 @@ func (x *Index) Publish(tenantName string, a Artifact) (Artifact, error) {
 			legacyMax = max(legacyMax, n)
 		}
 		var ops []state.Op
+		if identity != "" {
+			ops = append(ops, put(tenantName, saveKey(identity), b.ID, saveVersion))
+		}
 		if len(file.Versions) > 0 {
 			// The newest live version is hidden by this one.
 			prevKey := recordKey(file.Versions[len(file.Versions)-1].Order)

@@ -338,6 +338,8 @@ type Publication struct {
 	Title       string
 	Kind        string
 	Description string
+	// saveIdentity is set only by SaveArtifact after source authorization.
+	saveIdentity string
 }
 
 // Publish copies a file out of a conversation's sandbox into storage.
@@ -380,6 +382,13 @@ func (p *Platform) publishFrom(ctx context.Context, area fileArea, pub Publicati
 	// under a limit only one of them fits under.
 	p.publishing.Lock()
 	defer p.publishing.Unlock()
+	if pub.saveIdentity != "" {
+		if saved, err := p.Artifacts.Saved(pub.Tenant, pub.saveIdentity); err == nil {
+			return saved, nil
+		} else if !errors.Is(err, artifacts.ErrNotFound) {
+			return artifacts.Artifact{}, err
+		}
+	}
 	// A project the tree no longer holds has no ancestors to read, and a
 	// file filed there would count toward none of their limits.
 	tree := p.Projects.Tree(pub.Tenant)
@@ -410,10 +419,19 @@ func (p *Platform) publishFrom(ctx context.Context, area fileArea, pub Publicati
 			a.SearchText = clip(extracted, textindex.MaxText)
 		}
 	}
-	saved, err := p.Artifacts.Publish(pub.Tenant, a)
+	var saved artifacts.Artifact
+	if pub.saveIdentity != "" {
+		saved, err = p.Artifacts.PublishOnce(pub.Tenant, a, pub.saveIdentity)
+	} else {
+		saved, err = p.Artifacts.Publish(pub.Tenant, a)
+	}
 	if err != nil {
 		_ = p.Blobs.Delete(ctx, dirName(pub.Tenant), key)
 		return artifacts.Artifact{}, err
+	}
+	if saved.ID != a.ID {
+		_ = p.Blobs.Delete(ctx, dirName(pub.Tenant), key)
+		return saved, nil
 	}
 	p.log.Info("platform: artifact published", "tenant", pub.Tenant, "artifact", saved.ID, "title", saved.Title, "version", saved.Version,
 		"size", saved.Size, "sha256", saved.SHA256, "run", saved.Run, "agent", saved.Agent, "by", saved.CreatedBy)
