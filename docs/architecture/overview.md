@@ -843,3 +843,9 @@ transcripts and children, invite people, link evidence, and stop a subtree.
 Reads and streams recheck ancestor visibility. SSE resumes by per-run cursors
 and sends an authoritative reset when the retained cursor window fills.
 Native child calls use the existing governed call path and shared session stores.
+
+Evaluation persistence now retains deterministic online checks, version change
+scorecards, feedback candidates, and exact tool/retrieval replay receipts. Shared
+prompt snapshots enforce content hashes and bounded layers. Public suite reads
+hide retained source bytes and recheck the original run and current source access.
+Builder policy, prompt admission, and scheduled execution follow in later layers.

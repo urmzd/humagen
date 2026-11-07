@@ -3310,6 +3310,7 @@ export interface EvalCheck {
 }
 
 export interface EvalCase {
+  trace?: EvalTrace;
   id: string;
   input: string;
   checks?: EvalCheck[];
@@ -3318,6 +3319,7 @@ export interface EvalCase {
 }
 
 export interface EvalSuite {
+  every_seconds?: number;
   name: string;
   description?: string;
   target: EvalTarget;
@@ -3377,7 +3379,7 @@ export interface EvalRun {
 }
 
 /** A suite with its most recent runs, newest first. */
-export type EvalSuiteView = EvalSuite & { runs: EvalRun[] };
+export type EvalSuiteView = EvalSuite & { every_seconds?: number; runs: EvalRun[] };
 
 /** A saved view of a source, which leaves some documents out. */
 export interface KnowledgeVariant {
@@ -4594,6 +4596,43 @@ export interface AgentSession {
   next?: string;
   cursor: string;
   summary?: string;
+}
+
+export interface EvalTrace {
+  run: string;
+  tools: EvalToolOutcome[];
+  retrieval?: EvalRetrieval;
+}
+
+export interface EvalToolOutcome {
+  name: string;
+  arguments: Record<string, unknown>;
+  result?: string;
+  error?: string;
+}
+
+export interface EvalRetrieval {
+  input: string;
+  query: string;
+  sources: string[];
+  prompt: string;
+  blocks: EvalContextBlock[];
+  digest: string;
+}
+
+export interface EvalContextBlock {
+  text: string;
+  citation: string;
+  provenance: EvalProvenance;
+}
+
+export interface EvalProvenance {
+  document_uuid?: string;
+  document_title?: string;
+  source_uri?: string;
+  section_uuid?: string;
+  section_heading?: string;
+  section_index?: number;
 }
 
 export interface GitHubSubjectPullRequest {

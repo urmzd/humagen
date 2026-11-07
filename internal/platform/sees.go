@@ -382,6 +382,9 @@ func (s *Seer) Notice(e usage.Entry) bool {
 // Suite reports whether the reader sees an eval suite: one that tests an
 // agent where they see the agent.
 func (s *Seer) Suite(suite evals.Suite) bool {
+	if !s.p.EvalSuiteSourcesVisible(s.who, suite) {
+		return false
+	}
 	if suite.Target == evals.Knowledge {
 		return s.p.SourceVisible(s.who, suite.Subject)
 	}
