@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type { Marks, ThreadSummary } from "./api.ts";
 import {
   age,
+  deriveTitle,
   isUnread,
   NO_MARKS,
   partition,
@@ -97,4 +98,22 @@ test("archived are listed only under Archived, pinned only under Pinned", () => 
 test("projects with conversations come first, then the empty ones", () => {
   const rows = [t("a", { project: "Launch" }), t("b"), t("c", { project: "Launch" })];
   assert.deepEqual(projectOrder(rows, ["Ops", "Launch", "~"]), ["Launch", "~", "Ops"]);
+});
+
+test("an unnamed conversation is titled from its first message, as the server titles it", () => {
+  const cases: [string, string][] = [
+    [
+      "@code-reviewer Review the pull request urmzd/humagen#210",
+      "Review the pull request urmzd/humagen#210",
+    ],
+    ["@a @b  fix the build\nmore detail", "Fix the build"],
+    ["@code-reviewer", "@code-reviewer"],
+    ["   ", ""],
+    ["draft the launch checklist:", "Draft the launch checklist"],
+    [
+      "summarize every incident from last quarter and group them by service owner please",
+      "Summarize every incident from last quarter and group them…",
+    ],
+  ];
+  for (const [input, want] of cases) assert.equal(deriveTitle(input), want, input);
 });

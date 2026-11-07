@@ -38,6 +38,7 @@ import { Composer, type ComposerSeed } from "./Composer.tsx";
 import { type ConversationForkActions, ConversationForkPanels } from "./ConversationForkPanels.tsx";
 import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
+import { deriveTitle } from "./conversationList.ts";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
 import { ForkContext } from "./ForkConversation.tsx";
 import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
@@ -47,6 +48,7 @@ import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { PersonMark } from "./PersonMark.tsx";
 import { mentionPicks, PlusMenu, SelectionChips } from "./Plus.tsx";
+import { ProjectPicker } from "./ProjectPicker.tsx";
 import { openPane } from "./pane.ts";
 import { ReplayMenu } from "./ReplayMenu.tsx";
 import { useRunStop } from "./RunStop.tsx";
@@ -691,11 +693,11 @@ export function ThreadRoom({
     if (sharing && !shareable) onSharing?.(false);
   }, [sharing, shareable, onSharing]);
   const answering = th.participants.filter((p) => p.kind === "agent").map((p) => p.name);
+  // Unnamed, a conversation is titled from its first message as the server titles it.
   const title =
     th.title ||
     turns.find((t) => t.announcement)?.announcement?.subject ||
-    turns.find((t) => t.message)?.message?.text ||
-    turns[0]?.run?.text ||
+    deriveTitle(turns.find((t) => t.message)?.message?.text || turns[0]?.run?.text || "") ||
     words.channel(th.channel);
   const last = turns[turns.length - 1];
   // A run a message in the room answers asked someone something: its steps
@@ -1059,6 +1061,27 @@ export function ThreadRoom({
                     workspace={workspaceName}
                     onChange={select}
                     projectFixed
+                    // The prompt bar is where a conversation's project is chosen and changed.
+                    projectControl={
+                      <ProjectPicker
+                        projects={projects}
+                        kinds={root?.kinds}
+                        value={th.project}
+                        personalProject={personalProject}
+                        channel={th.channel}
+                        onCreated={() => onChanged()}
+                        onChange={(next) => {
+                          if (next === th.project) return;
+                          coworking.move(th.id, next).then(
+                            (t) => {
+                              setPage((p) => ({ ...p, thread: t }));
+                              onChanged();
+                            },
+                            (e) => setProblem(e instanceof Error ? e.message : String(e)),
+                          );
+                        }}
+                      />
+                    }
                   />
                 ),
               }}

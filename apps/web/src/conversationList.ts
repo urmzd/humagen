@@ -83,3 +83,26 @@ export function projectOrder(rows: ThreadSummary[], others: string[]): string[] 
   const seen = [...new Set(rows.map((t) => t.project || "~"))];
   return [...seen, ...others.filter((p) => !seen.includes(p))];
 }
+
+/**
+ * The title the system gives a conversation from its first message until it
+ * is named, the same as the server's runs.DeriveTitle: the first line without
+ * the agents it tags at the start, capitalized, cut at a word under 60
+ * characters.
+ */
+export function deriveTitle(first: string): string {
+  const line = first.trim().split("\n")[0] ?? "";
+  let words = line.split(/\s+/).filter(Boolean);
+  while (words.length > 1 && words[0]!.startsWith("@")) words = words.slice(1);
+  if (words.length === 0) return "";
+  if (words.length === 1 && words[0]!.startsWith("@")) return words[0]!;
+  let title = words.join(" ").replace(/[ ,;:-]+$/, "");
+  const runes = [...title];
+  if (runes.length > 60) {
+    let cut = runes.slice(0, 60).join("");
+    const i = cut.lastIndexOf(" ");
+    if (i > 30) cut = cut.slice(0, i);
+    title = `${cut.replace(/[ ,;:.-]+$/, "")}…`;
+  }
+  return title.charAt(0).toUpperCase() + title.slice(1);
+}
