@@ -45,3 +45,54 @@ func TestSharedInstructionsAreBoundedAndUnicodeAware(t *testing.T) {
 		t.Fatal("version does not identify layer content and origin")
 	}
 }
+
+func TestLayerLabelsAndEncodedSnapshotsAreBounded(t *testing.T) {
+	for _, field := range []string{"kind", "from"} {
+		for _, value := range []string{strings.Repeat("x", 600000), strings.Repeat("界", MaxLayerLabelChars+1), "invalid\xff", "nul\x00label"} {
+			t.Run(field+"/"+strings.ReplaceAll(value[:min(len(value), 12)], "\x00", "nul"), func(t *testing.T) {
+				kind, from := "project", "docs"
+				if field == "kind" {
+					kind = value
+				} else {
+					from = value
+				}
+				if _, err := Compose(Config{}, []Layer{NewLayer(kind, from, "small")}); !errors.Is(err, ErrInvalid) {
+					t.Fatalf("invalid %s accepted: %v", field, err)
+				}
+			})
+		}
+	}
+	// Text and labels can independently fit their character limits while JSON
+	// escaping makes their aggregate exceed the persisted-reader byte limit.
+	escaped := strings.Repeat("\x01", MaxLayerChars)
+	projects := []Layer{NewLayer("project", "one", escaped), NewLayer("project", "two", escaped)}
+	for len(projects) < 62 {
+		label := strings.Repeat("\x01", MaxLayerLabelChars)
+		projects = append(projects, NewLayer(label, label, ""))
+	}
+	if _, err := Compose(Config{Platform: escaped, Workspace: escaped}, projects); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("encoded snapshot overflow accepted: %v", err)
+	}
+	if _, err := Compose(Config{}, []Layer{NewLayer("project", "docs", "nul\x00text")}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("project NUL text accepted: %v", err)
+	}
+}
+
+func TestBoundedSnapshotsAlwaysRoundtripIncludingEmptyWorkspaceOrigin(t *testing.T) {
+	escaped := strings.Repeat("\x01", MaxLayerChars)
+	label := strings.Repeat("界", MaxLayerLabelChars)
+	s, err := Compose(Config{Platform: escaped, Workspace: escaped}, []Layer{
+		NewLayer(label, label, escaped), NewLayer("workspace", "", escaped),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta := map[string]string{}
+	if err := s.Pin(meta); err != nil {
+		t.Fatal(err)
+	}
+	got, found, err := Read(meta)
+	if err != nil || !found || got.System("agent") != s.System("agent") {
+		t.Fatalf("accepted snapshot failed roundtrip: found=%t error=%v", found, err)
+	}
+}

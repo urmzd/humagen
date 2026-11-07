@@ -656,7 +656,7 @@ func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Pri
 		if !seer.Suite(suite) {
 			continue
 		}
-		runs, _ := s.P.Evals.Runs(who.Tenant, suite.Name)
+		runs, _ := s.P.EvalRunsView(who, suite.Name)
 		if len(runs) > 20 {
 			runs = runs[:20]
 		}
@@ -754,7 +754,7 @@ func (s *Server) runSuite(w http.ResponseWriter, r *http.Request, who auth.Princ
 }
 
 func (s *Server) suiteRuns(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	runs, err := s.P.Evals.Runs(who.Tenant, r.PathValue("name"))
+	runs, err := s.P.EvalRunsView(who, r.PathValue("name"))
 	if err != nil {
 		s.problem(w, err)
 		return

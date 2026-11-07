@@ -112,3 +112,121 @@ func TestToolOnlyEvalTraceRequiresCurrentOriginalRunAccess(t *testing.T) {
 		t.Fatal("plain manually authored case acquired a run dependency")
 	}
 }
+
+func TestEvalHistoryRetainsOriginalAccessAfterCasesRemovedOrReplaced(t *testing.T) {
+	for _, replacement := range []bool{false, true} {
+		t.Run(map[bool]string{false: "removed", true: "replaced"}[replacement], func(t *testing.T) {
+			p, err := New(Config{Workspace: t.TempDir()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = p.Close() }()
+			privateEvalTraceRun(t, p, "original", "ana")
+			suite := evalHistorySuite()
+			if err := p.Evals.Put("acme", suite, false); err != nil {
+				t.Fatal(err)
+			}
+			finishEvalHistory(t, p, suite, "PRIVATE TOOL RESULT")
+			owner := auth.Principal{Tenant: "acme", Subject: "ana", Kind: auth.User, Roles: []auth.Role{auth.Admin}}
+			stranger := auth.Principal{Tenant: "acme", Subject: "bob", Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+			suite.Cases[0].Trace = nil
+			if replacement {
+				tag := wire.NewEvent(wire.Raise{ID: "public", Origin: runs.OriginAPI, Tenant: "acme", Agent: BuiltinBuilder, At: time.Now()})
+				if err := p.Runs.Record("public", tag, 1); err != nil {
+					t.Fatal(err)
+				}
+				suite.Cases[0].Trace = &evals.Trace{Run: "public"}
+			}
+			if err := p.Evals.Put("acme", suite, true); err != nil {
+				t.Fatal(err)
+			}
+			finishEvalHistory(t, p, suite, "public answer")
+			if !p.Seer(stranger).Suite(suite) {
+				t.Fatal("replacement suite is not public")
+			}
+			owned, err := p.EvalRunsView(owner, suite.Name)
+			if err != nil || len(owned) != 2 {
+				t.Fatalf("owner history = %+v %v", owned, err)
+			}
+			visible, err := p.EvalRunsView(stranger, suite.Name)
+			if err != nil || len(visible) != 1 || visible[0].Results[0].Output != "public answer" {
+				t.Fatalf("old private result declassified: %+v %v", visible, err)
+			}
+			other := owner
+			other.Tenant = "other"
+			if _, err := p.EvalRunsView(other, suite.Name); !errors.Is(err, evals.ErrNotFound) {
+				t.Fatalf("history crossed tenants: %v", err)
+			}
+		})
+	}
+}
+
+func TestEvalHistoryRechecksOriginalRunAndSourceAccess(t *testing.T) {
+	p, err := New(Config{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = p.Close() }()
+	privateEvalTraceRun(t, p, "original", "ana")
+	thread, err := p.Threads.Get("acme", "th-1234567890abcdef")
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err = p.Threads.Participants("acme", thread.ID, thread.Version, []threads.Participant{{Kind: threads.Person, Name: "bob"}}, nil, nil, "ana", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Knowledge.Create("acme", "manual", "", "test", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	r := evals.Retrieval{Input: "query", Sources: []string{"manual"}, Prompt: "retained empty result"}.Seal()
+	suite := evalHistorySuite()
+	suite.Cases[0].Trace.Retrieval = &r
+	if err := p.Evals.Put("acme", suite, false); err != nil {
+		t.Fatal(err)
+	}
+	finishEvalHistory(t, p, suite, "PRIVATE PASSAGE")
+	suite.Cases[0].Trace = nil
+	if err := p.Evals.Put("acme", suite, true); err != nil {
+		t.Fatal(err)
+	}
+	bob := auth.Principal{Tenant: "acme", Subject: "bob", Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	if history, err := p.EvalRunsView(bob, suite.Name); err != nil || len(history) != 1 {
+		t.Fatalf("authorized history = %+v %v", history, err)
+	}
+	if _, err := p.Threads.Participants("acme", thread.ID, thread.Version, nil, []string{"bob"}, nil, "ana", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if history, err := p.EvalRunsView(bob, suite.Name); err != nil || len(history) != 0 {
+		t.Fatalf("revoked session still readable: %+v %v", history, err)
+	}
+	owner := auth.Principal{Tenant: "acme", Subject: "ana", Kind: auth.User, Roles: []auth.Role{auth.Admin}}
+	if history, err := p.EvalRunsView(owner, suite.Name); err != nil || len(history) != 1 {
+		t.Fatalf("owner lost source access: %+v %v", history, err)
+	}
+	if err := p.Knowledge.Delete("acme", "manual"); err != nil {
+		t.Fatal(err)
+	}
+	if history, err := p.EvalRunsView(owner, suite.Name); err != nil || len(history) != 0 {
+		t.Fatalf("missing source still readable: %+v %v", history, err)
+	}
+	if p.evalRunVisible(owner, evals.RunRecord{Run: evals.Run{Target: evals.Agent, Subject: BuiltinBuilder}}) {
+		t.Fatal("unknown legacy provenance granted history access")
+	}
+}
+
+func evalHistorySuite() evals.Suite {
+	return evals.Suite{Name: "history", Target: evals.Agent, Subject: BuiltinBuilder, Cases: []evals.Case{{ID: "case", Input: "query", Checks: []evals.Check{{Kind: evals.Contains, Value: "answer"}}, Trace: &evals.Trace{Run: "original", Tools: []evals.ToolResult{{Name: "lookup", Arguments: json.RawMessage(`{}`), Result: "PRIVATE TOOL RESULT"}}}}}}
+}
+
+func finishEvalHistory(t *testing.T, p *Platform, suite evals.Suite, output string) {
+	t.Helper()
+	run, err := p.Evals.Begin("acme", suite, 1, "ana", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	run.Finish([]evals.Result{{CaseID: "case", Output: output, Passed: true}}, nil, time.Now())
+	if err := p.Evals.Save("acme", run); err != nil {
+		t.Fatal(err)
+	}
+}
