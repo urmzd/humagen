@@ -619,7 +619,7 @@ func New(cfg Config) (*Platform, error) {
 		opts = append(opts, runtime.WithOutbox(o))
 	}
 	flowOptions := []flow.Option{
-		flow.WithDefinitions(p.Agents.Resolver().Source()),
+		flow.WithDefinitionResolver(p.Agents.Resolver()),
 		flow.WithDurable(p.ledger, p.queue), flow.WithBus(p.broker),
 		flow.WithSessions(p.Sessions), flow.WithThreads(sessionstate.NewJournal(p.sharedState())),
 		flow.WithWorkspace(p.dir), flow.WithTurnRuntime(exec),
@@ -775,7 +775,9 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 		meta[wire.MetaSession] = child.call.Session.ID
 		wire.SetContext(&tag, meta)
 		acc, err = p.rt.AcceptOwnSessionChild(ctx, tag, agent, child.call.Session, child.parent, child.call.QuestionID)
-
+	} else if edge.Parent != "" {
+		// Legacy edges name trigger tags; the durable parent is tenant-bound.
+		acc, err = p.rt.AcceptOwnChild(ctx, tag, agent, runtime.RunID(tag.Tenant, edge.Parent))
 	} else if th, thErr := p.Threads.Get(tag.Tenant, wire.Meta(tag)[runs.MetaThread]); thErr == nil && th.Session != nil {
 		rec, lookupErr := p.Sessions.Get(ctx, tag.Tenant, th.ID)
 		if lookupErr != nil {

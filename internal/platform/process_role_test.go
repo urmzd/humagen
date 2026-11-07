@@ -22,6 +22,7 @@ import (
 // shared stands in for one database under processes of different roles: the
 // agents, the run ledger, the queue and the bus are the same objects.
 type shared struct {
+	state  state.Store
 	agents wire.AgentStore
 	ledger platform.Ledger
 	queue  dqueue.Queue
@@ -30,7 +31,7 @@ type shared struct {
 
 func newShared(t *testing.T) shared {
 	t.Helper()
-	s := shared{agents: wire.NewMemoryAgents(), ledger: ledger.NewMemory(), queue: dqueue.NewMemory(), bus: bus.NewMemory()}
+	s := shared{state: state.NewMemory(), agents: wire.NewMemoryAgents(), ledger: ledger.NewMemory(), queue: dqueue.NewMemory(), bus: bus.NewMemory()}
 	for _, spec := range []wire.AgentSpec{
 		{Name: "lead", Model: "offline", Provider: "offline", SystemPrompt: "Lead."},
 	} {
@@ -44,7 +45,7 @@ func newShared(t *testing.T) shared {
 func (s shared) config(role platform.ProcessRole) platform.Config {
 	return platform.Config{
 		Role: role, Bus: s.bus,
-		Backends: platform.Backends{State: state.NewMemory(), Agents: s.agents, Ledger: s.ledger, Queue: s.queue},
+		Backends: platform.Backends{State: s.state, Agents: s.agents, Ledger: s.ledger, Queue: s.queue},
 	}
 }
 
