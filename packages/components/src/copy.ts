@@ -797,8 +797,7 @@ export const defaultCopy = {
     failed: "That did not work. Try again.",
     notFound: (name: string) => `No corpus named ${name}`,
     back: "Knowledge",
-    unfiled: (n: number) =>
-      `${n} ${n === 1 ? "source is" : "sources are"} not in a corpus`,
+    unfiled: (n: number) => `${n} ${n === 1 ? "source is" : "sources are"} not in a corpus`,
     form: {
       newTitle: "New corpus",
       editTitle: (name: string) => `Edit ${name}`,
@@ -833,6 +832,7 @@ export const defaultCopy = {
     hidden: "A source you cannot see",
     remove: "Remove",
     removed: (name: string) => `${name} removed`,
+    undo: "Undo",
     added: (name: string) => `${name} added`,
     add: {
       title: "Add source",
@@ -840,7 +840,7 @@ export const defaultCopy = {
       new: "New",
       addOne: "Add",
       addTo: (name: string) => `Add ${name}`,
-      upload: "Upload files",
+      upload: "Upload Files",
       comingSoon: "Coming soon",
       back: "Back",
       files: "Files",
@@ -872,6 +872,8 @@ export const defaultCopy = {
       sources: "Sources",
       action: "Add to Corpus",
       noCorpus: "You own no corpus yet.",
+      filed: (n: number, corpus: string) =>
+        `${n} ${n === 1 ? "source" : "sources"} added to ${corpus}`,
     },
   },
   projectWork: {

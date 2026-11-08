@@ -18,11 +18,14 @@ export function BigQueryConnection({
   onCancel,
   onVerified,
   onAuthorize,
+  onSaved,
 }: {
   canWrite: boolean;
   onCancel: () => void;
   onVerified?: () => void;
   onAuthorize?: () => void;
+  /** A new connection was saved, by its connector's name: a corpus adds it as a member. */
+  onSaved?: (name: string) => void;
 }) {
   const [draft, setDraft] = useState(initialBigQueryDraft);
   const [setup, setSetup] = useState<BigQuerySetupView | null>(null);
@@ -115,6 +118,7 @@ export function BigQueryConnection({
       ]);
       setSelected(created.name);
       setNotice(copy.saved);
+      onSaved?.(created.name);
     } catch {
       if (request === epoch.current) setFormError(copy.saveFailed);
     } finally {

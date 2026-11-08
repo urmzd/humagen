@@ -538,9 +538,7 @@ export function href(r: Route): string {
     case "knowledge":
       return "/knowledge";
     case "corpus":
-      return r.tab === "access"
-        ? `/knowledge/${enc(r.name)}/access`
-        : `/knowledge/${enc(r.name)}`;
+      return r.tab === "access" ? `/knowledge/${enc(r.name)}/access` : `/knowledge/${enc(r.name)}`;
     case "context": {
       if (!r.source) return r.corpus ? `/knowledge/${enc(r.corpus)}` : "/knowledge";
       const tab = !r.tab || r.tab === "documents" ? "" : `/${r.tab}`;
@@ -923,7 +921,12 @@ function read(pathname: string, search: string): Route {
     case "knowledge":
       if (!a) return { page: "knowledge" };
       if (b === "sources" && c)
-        return { page: "context", corpus: a, source: c, tab: pick(parts[4], SOURCE_TABS, "documents") };
+        return {
+          page: "context",
+          corpus: a,
+          source: c,
+          tab: pick(parts[4], SOURCE_TABS, "documents"),
+        };
       if (oneOf(b, SOURCE_TABS)) return { page: "context", source: a, tab: b as SourceTab };
       return { page: "corpus", name: a, tab: pick(b, CORPUS_TABS, "sources") };
     case "agents":

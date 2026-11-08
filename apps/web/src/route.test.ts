@@ -370,3 +370,63 @@ test("Connections is a section of your settings with an address of its own; old 
     provider: "notion",
   });
 });
+
+test("Knowledge and each corpus have addresses, with tabs as paths, and old links still open", () => {
+  const routes: Route[] = [
+    { page: "knowledge" },
+    { page: "corpus", name: "hr-policies", tab: "sources" },
+    { page: "corpus", name: "hr-policies", tab: "access" },
+    { page: "context", corpus: "hr-policies", source: "handbook", tab: "documents" },
+    { page: "context", corpus: "hr-policies", source: "handbook", tab: "search" },
+    { page: "context", source: "handbook", tab: "evals" },
+  ];
+  for (const route of routes) assert.deepEqual(at(href(route)), route, href(route));
+  // A reload of the Knowledge tab stays on Knowledge, never Connections.
+  assert.equal(href({ page: "knowledge" }), "/knowledge");
+  assert.equal(href({ page: "context" }), "/knowledge");
+  assert.equal(
+    href({ page: "corpus", name: "hr-policies", tab: "sources" }),
+    "/knowledge/hr-policies",
+  );
+  assert.equal(
+    href({ page: "corpus", name: "hr-policies", tab: "access" }),
+    "/knowledge/hr-policies/access",
+  );
+  assert.equal(
+    href({ page: "context", corpus: "hr-policies", source: "handbook" }),
+    "/knowledge/hr-policies/sources/handbook",
+  );
+  assert.equal(href({ page: "context", corpus: "hr-policies" }), "/knowledge/hr-policies");
+  const links: [string, Route][] = [
+    ["/knowledge", { page: "knowledge" }],
+    ["/context", { page: "knowledge" }],
+    ["/?view=knowledge", { page: "knowledge" }],
+    ["/?view=context", { page: "knowledge" }],
+    ["/context/handbook", { page: "context", source: "handbook", tab: "documents" }],
+    ["/context/handbook/variants", { page: "context", source: "handbook", tab: "variants" }],
+    // Before corpora, `/knowledge/{source}/{tab}` was a source's tab.
+    ["/knowledge/handbook/search", { page: "context", source: "handbook", tab: "search" }],
+    ["/connections/sources/handbook", { page: "context", source: "handbook", tab: "documents" }],
+    ["/knowledge/hr-policies/sources", { page: "corpus", name: "hr-policies", tab: "sources" }],
+    ["/knowledge/hr-policies/bogus", { page: "corpus", name: "hr-policies", tab: "sources" }],
+    [
+      "/knowledge/hr-policies/sources/handbook/evals",
+      { page: "context", corpus: "hr-policies", source: "handbook", tab: "evals" },
+    ],
+  ];
+  for (const [url, route] of links) assert.deepEqual(at(url), route, url);
+  assert.equal(documentTitle({ page: "knowledge" }), "Knowledge - Humagen");
+  assert.equal(
+    documentTitle({ page: "corpus", name: "hr-policies", tab: "access" }),
+    "hr-policies - Humagen",
+  );
+  // A corpus is a screen of its own; its tabs change in place.
+  assert.notEqual(
+    screenOf({ page: "corpus", name: "a", tab: "sources" }),
+    screenOf({ page: "corpus", name: "b", tab: "sources" }),
+  );
+  assert.equal(
+    screenOf({ page: "corpus", name: "a", tab: "sources" }),
+    screenOf({ page: "corpus", name: "a", tab: "access" }),
+  );
+});
