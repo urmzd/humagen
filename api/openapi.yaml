@@ -15167,6 +15167,7 @@ components:
           required: [owner_state]
           properties:
             owner: {type: string}
+            owner_name: {type: string, description: "What the owner is called, as the console names people; never a subject that holds an address."}
             owner_state: {type: string, enum: ["", suggested, confirmed, unowned], description: "Empty for people, teams and projects."}
             staleness: {$ref: "#/components/schemas/GraphStaleness"}
     GraphHealth:
