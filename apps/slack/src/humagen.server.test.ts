@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer as createHTTPServer, type Server } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,17 +15,70 @@ import { runId, threadKey } from "./keys.ts";
 
 /**
  * The stand-in client and the app against the real humagen server, built
- * from this checkout and started with dev auth on loopback and its offline
- * example agents. No model is called: the server is started without any
- * provider key in its environment. Slack is the fake.
+ * from this checkout and started with dev auth on loopback. There is no
+ * built-in model, so its agents, lead and helper, run on a stand-in model
+ * served here: an OpenAI-compatible server that answers every call with
+ * REPLY. No provider key is in its environment. Slack is the fake.
  *
  * Run with `pnpm test:server`. It needs Go.
  */
 const enabled = process.env.HUMAGEN_SERVER_TEST === "1";
 const root = new URL("../../..", import.meta.url).pathname;
 let server: ChildProcess | undefined;
+let model: Server | undefined;
 let dir = "";
 let base = "";
+
+/** What the stand-in model answers every call with. */
+const REPLY = "Answered by the stand-in model.";
+
+/** An OpenAI-compatible chat completions server that streams REPLY. */
+async function standInModel(): Promise<{ server: Server; base: string }> {
+  const s = createHTTPServer(async (req, res) => {
+    for await (const _ of req) {
+      // The request is read and not looked at.
+    }
+    if (req.method !== "POST" || !req.url?.endsWith("/chat/completions")) {
+      res.writeHead(404).end();
+      return;
+    }
+    const chunk = (delta: unknown, finish_reason?: string) =>
+      `data: ${JSON.stringify({ id: "stand-in", object: "chat.completion.chunk", model: "stand-in", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
+    res.writeHead(200, { "Content-Type": "text/event-stream" });
+    res.write(chunk({ role: "assistant", content: REPLY }));
+    res.write(chunk({}, "stop"));
+    res.end("data: [DONE]\n\n");
+  });
+  await new Promise<void>((resolve) => s.listen(0, "127.0.0.1", resolve));
+  return { server: s, base: `http://127.0.0.1:${(s.address() as { port: number }).port}/v1` };
+}
+
+/** The spec the server starts with: the stand-in model, lead and helper, and lead as the default. */
+const specFor = (modelBase: string) => `api_version: humagen/v1
+kind: Platform
+metadata: {name: default}
+spec:
+  models:
+    - name: stand-in
+      kind: openai
+      openai: {base_url: "${modelBase}"}
+  workspace:
+    agents: {enable: ["*"], default: lead}
+  agents:
+    - spec:
+        name: lead
+        description: Takes a request and may call the helper.
+        provider: stand-in
+        model: stand-in
+        system_prompt: Take the request and answer it.
+        access: {spawn: [helper]}
+    - spec:
+        name: helper
+        description: Does one piece of work for the lead.
+        provider: stand-in
+        model: stand-in
+        system_prompt: Do the one piece of work you are given.
+`;
 
 const freePort = () =>
   new Promise<number>((resolve, reject) => {
@@ -43,6 +97,10 @@ before(async () => {
   execFileSync("go", ["build", "-o", bin, "./cmd/humagen"], { cwd: root, stdio: "inherit" });
   const port = await freePort();
   base = `http://127.0.0.1:${port}`;
+  const stand = await standInModel();
+  model = stand.server;
+  const spec = join(dir, "humagen.yaml");
+  writeFileSync(spec, specFor(stand.base));
   // Only what the server needs to start. No provider key is passed on; the
   // openai provider points at a local model server, as Ollama serves it.
   const env = {
@@ -56,7 +114,8 @@ before(async () => {
     [
       "serve",
       "-auth=dev",
-      "-seed",
+      "-f",
+      spec,
       "-sandbox=unisolated",
       "-workspace",
       join(dir, "workspace"),
@@ -86,6 +145,7 @@ before(async () => {
 
 after(() => {
   server?.kill();
+  model?.close();
   if (dir) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -131,12 +191,12 @@ test("the stand-in client against the real routes", { skip: !enabled }, async ()
   assert.equal(kinds[0], "run.accepted.v1");
   assert.equal(kinds.at(-1), "run.completed.v1");
   assert.equal(turn.status, "done");
-  assert.match(turn.text, /offline provider/);
+  assert.equal(turn.text, REPLY);
 
   const next = await c.createRun({ agent: "", text: "and then?", after: run.id }, `${key}-2`);
   assert.equal(next.thread, run.id);
   assert.equal(next.prev, run.id);
-  // -seed makes the lead the Workspace Default: it answers what tags no agent.
+  // The spec makes the lead the Workspace Default: it answers what tags no agent.
   assert.equal(next.agent, "lead", "an empty agent is the default the workspace sets");
   assert.ok(!next.picked, "a default that names an agent picks nothing");
   await finish(c, next);
@@ -206,7 +266,7 @@ test(
       threadKey({ team: TEAM, channel: CHANNEL, threadTs: ts }),
     );
     assert.equal((await c.getRun(id))?.status, "completed");
-    assert.match(slack.streamed, /offline provider/);
+    assert.ok(slack.streamed.includes(REPLY), slack.streamed);
     assert.deepEqual(slack.statuses, ["processing", "active"]);
     assert.equal(slack.of("reactions.add").at(-1)?.name, "white_check_mark");
 

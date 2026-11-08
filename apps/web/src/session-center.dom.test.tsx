@@ -185,7 +185,7 @@ test("Sessions fetches mine roots and expands children beneath their parent", as
   assert.equal(screen.queryByRole("link", { name: /Work s_child/ }), null);
   fireEvent.click(screen.getByRole("button", { name: "Show children of Work s_root" }));
   const child = await screen.findByRole("link", { name: /Work s_child/ });
-  assert.equal(child.getAttribute("href"), "/sessions/s_child");
+  assert.equal(child.getAttribute("href"), "/messages/s_child");
   assert.ok(child.closest("ul")?.closest("li")?.textContent?.includes("Work s_root"));
   assert.ok(net.seen.some((r) => r.path.includes("roots=true") && r.path.includes("mine=true")));
 });

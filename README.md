@@ -60,7 +60,7 @@ pnpm --filter @humagen/console build
 go run ./cmd/humagen start
 ```
 
-Open <http://127.0.0.1:8080>. `humagen start` runs everything in one process: loopback sign-in, in-memory stores, seeded example agents on an offline provider, and the console. No model key needed.
+Open <http://127.0.0.1:8080>. `humagen start` runs everything in one process: loopback sign-in, in-memory stores, an example project, and the console. Agents need a model: enable a provider in Settings, under Model providers (an Anthropic, OpenAI or Google key, Vertex AI, or an OpenAI-compatible server such as Ollama). The built-in agents run as soon as one their models name is enabled.
 
 On a terminal, the first start asks a few questions (name, model providers, MCP tools, sign-in, Slack) and writes `humagen.yaml` to your config directory.
 
@@ -85,7 +85,7 @@ On a terminal, the first start asks a few questions (name, model providers, MCP 
 
 `POST /api/runs` takes `agent`, `text`, and optionally `after` and `project`.
 
-- `agent` names who answers, or `*` to ask every available agent whether to join; each that does answers in the same conversation (the first run is returned), and with none the answer is 409. The workspace's `router` setting turns this on and names the model that asks.
+- `agent` names who answers, or `*` to ask every available agent whether to join; each that does answers in the same conversation (the first run is returned), and with none the answer is 409. Routing is the entry agent's: until it lands, `*` asks agents only where a program built on Humagen supplies its own asker.
 - Leave `agent` out and the nearest default answers: the project's, its ancestors', then the workspace's. With none set, the answer is 409.
 - `after` names the turn the message follows. Naming a turn that already has a reply starts a branch.
 
