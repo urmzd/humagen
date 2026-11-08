@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.94.0 (2026-11-08)
+
+### Features
+
+- **knowledge**: corpora, named bodies of knowledge that hold sources (#244) ([bb20d08](https://github.com/urmzd/humagen/commit/bb20d089e670bf978f10b33adefe11e414f52e83))
+- **projects**: each scheduled run is a session in its project (#257) ([4823b6d](https://github.com/urmzd/humagen/commit/4823b6d54bd52739dafff564a53e8677fe95dfe3))
+- **join**: find agents by searching their prompts (#246) ([ff9886b](https://github.com/urmzd/humagen/commit/ff9886b327a89f917e37cec802a54885061274a2))
+- **github**: agents never approve; each finding names who found it (#258) ([38e115d](https://github.com/urmzd/humagen/commit/38e115d458ffabb6068483e565ea2fadc1e05b65))
+- **console**: tabs head their pages, Connections in Settings, Appearance is the theme (#243) ([021b391](https://github.com/urmzd/humagen/commit/021b391850adc67b438bfdb546a5131cf5770198))
+
+### Bug Fixes
+
+- **console**: Fork sits in the answer's row; More actions only holds two or more (#250) ([dd3d0b8](https://github.com/urmzd/humagen/commit/dd3d0b8d0e0e50a6ec7974d16ff796d12884d1be))
+- **console**: Connections is Apps and MCPs, never tool server (#245) ([1ff0e9a](https://github.com/urmzd/humagen/commit/1ff0e9ad07d2715ed6f8a9ee3fb971eef648b502))
+
+### Misc
+
+- **deps**: pin orchagent v0.5.0 (#242) ([110a39c](https://github.com/urmzd/humagen/commit/110a39ce1a9a614d5d8987fb01c63f50722be311))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.93.0...v0.94.0)
+
+
 ## 0.93.0 (2026-11-08)
 
 ### Features
