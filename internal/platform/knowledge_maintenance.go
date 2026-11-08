@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -79,7 +80,7 @@ func (p *Platform) failingMembers(tenant string, c corpora.Corpus) []string {
 				continue
 			}
 			if lc := src.Lifecycle; lc.Status == knowledge.NeedsAttention || lc.Cause == knowledge.Stale {
-				out = append(out, fmt.Sprintf("%s (%s)", m.Name, cmpOr(string(lc.Cause), "needs attention")))
+				out = append(out, fmt.Sprintf("%s (%s)", m.Name, cmp.Or(string(lc.Cause), "needs attention")))
 			}
 		case corpora.Catalog:
 			d, ok := p.declaredConnector(tenant, m.Name)
@@ -124,13 +125,6 @@ func hasHave(n int) string {
 		return "has"
 	}
 	return "have"
-}
-
-func cmpOr(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
 }
 
 // maintainCorpus is what one corpus needs of people now.

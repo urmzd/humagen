@@ -79,7 +79,7 @@ type corpusAudience struct {
 
 func (a corpusAudience) direct() bool { return a.kind == AudienceDirect }
 
-func (p *Platform) audienceOf(req runtime.Request) (corpusAudience, error) {
+func (p *Platform) corpusAudienceOf(req runtime.Request) (corpusAudience, error) {
 	if _, person, err := p.ownPrivateConversation(req); err == nil {
 		return p.directAudience(req.Tenant, person), nil
 	}

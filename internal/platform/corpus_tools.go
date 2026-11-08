@@ -36,7 +36,7 @@ func (p *Platform) corpusTools(req runtime.Request) map[string]saigetypes.Tool {
 				"sql":       "One SELECT statement in the warehouse's own dialect",
 			})},
 		Fn: func(ctx context.Context, args map[string]any) (string, error) {
-			a, err := p.audienceOf(req)
+			a, err := p.corpusAudienceOf(req)
 			if err != nil {
 				return "", err
 			}
@@ -85,7 +85,7 @@ func (p *Platform) corpusGraphTool(req runtime.Request) saigetypes.Tool {
 			if q == "" || len(q) > maxCorpusQuery {
 				return "", fmt.Errorf("%w: a query is 1 to %d bytes", corpora.ErrInvalid, maxCorpusQuery)
 			}
-			a, err := p.audienceOf(req)
+			a, err := p.corpusAudienceOf(req)
 			if err != nil {
 				return "", err
 			}
