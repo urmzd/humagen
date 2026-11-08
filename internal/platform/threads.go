@@ -1229,6 +1229,15 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 // answerDirect is answerMessage once who answers is settled: agent itself,
 // or for Open each agent that joins.
 func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, routed string, actor event.Actor, tagID string, keeps bool, sees func(string) bool) ([]runs.Run, error) {
+	surface, surfaced := deliveryOf(ctx)
+	if surfaced {
+		// A surface's message answers where it was asked, through its client,
+		// which holds the run to the agents it routes to.
+		via = cmp.Or(via, surface.client)
+		if surface.user != "" {
+			actor.ID = surface.user
+		}
+	}
 	meta := map[string]string{
 		runs.MetaAsk: m.Text, runs.MetaThread: th.ID, runs.MetaPrev: m.ID, runs.MetaMessage: m.ID,
 		runs.MetaChannel: th.Channel, runs.MetaProject: th.Project,
@@ -1286,8 +1295,12 @@ func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.T
 			mt = maps.Clone(meta)
 			mt[runs.MetaPicked] = a.picked
 		}
+		if surfaced {
+			mt = maps.Clone(mt)
+			mt[runs.MetaClient] = surface.client
+		}
 		run, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{
-			ID: a.tag, Tenant: tenant, Agent: a.agent, Origin: runs.OriginAPI,
+			ID: a.tag, Tenant: tenant, Agent: a.agent, Origin: runs.OriginAPI, Channel: surface.channel,
 			Attachments: m.Attachments, Actor: actor, Context: mt,
 			Text: p.turnContext(tenant, th.Project, th.Channel, a.agent, actor.User, text, mt),
 		}))

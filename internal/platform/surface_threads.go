@@ -47,7 +47,8 @@ type SurfaceRef struct {
 	// message reaches the app and is not a tag.
 	AppUser string `json:"app_user,omitempty"`
 	// Audience is who is in the conversation the message was asked in, which
-	// a root session's audience follows. Nil is read from the channel id.
+	// a root session's audience follows. Nil is a direct message for a D
+	// channel, and otherwise private to the person asking.
 	Audience *SurfaceAudience `json:"audience,omitempty"`
 	// ActionToken is Slack's short-lived token for acting on the person's
 	// behalf in this turn. It is accepted and never kept or passed on.

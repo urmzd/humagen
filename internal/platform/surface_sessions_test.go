@@ -19,7 +19,7 @@ func slackSession(channel, ts, message, text string) platform.SessionInput {
 
 func TestASlackThreadHasOneRootSessionFoundByItsPlace(t *testing.T) {
 	p, machine := slackRoom(t, nil)
-	first, started, err := p.StartSurfaceSession(t.Context(), machine, slackSession("C01RENEW", "1700000000.000100", "", "<@UAPP> what changed in the renewal?"))
+	first, started, err := p.StartSurfaceSession(t.Context(), machine, withAudience(slackSession("C01RENEW", "1700000000.000100", "", "<@UAPP> what changed in the renewal?"), platform.ChannelPublic))
 	if err != nil || !started {
 		t.Fatalf("first message = %v, started %v", err, started)
 	}
@@ -34,7 +34,7 @@ func TestASlackThreadHasOneRootSessionFoundByItsPlace(t *testing.T) {
 	if len(first.Messages) == 0 || first.Messages[0].Message == nil || first.Messages[0].Message.By != "ana" || first.Messages[0].Message.Text != "what changed in the renewal?" {
 		t.Fatalf("the first message = %+v", first.Messages)
 	}
-	again, started, err := p.StartSurfaceSession(t.Context(), machine, slackSession("C01RENEW", "1700000000.000100", "", "<@UAPP> what changed in the renewal?"))
+	again, started, err := p.StartSurfaceSession(t.Context(), machine, withAudience(slackSession("C01RENEW", "1700000000.000100", "", "<@UAPP> what changed in the renewal?"), platform.ChannelPublic))
 	if err != nil || started || again.ID != first.ID || len(again.Messages) != len(first.Messages) {
 		t.Fatalf("the same message sent again = %+v, started %v, %v", again.Messages, started, err)
 	}
@@ -154,14 +154,14 @@ func TestASlackRootIsReadByThePlacesAudience(t *testing.T) {
 
 func TestASurfaceMessageSaysWhatItStartedAndStartsNothingTwice(t *testing.T) {
 	p, machine := slackRoom(t, nil)
-	first, _, err := p.StartSurfaceSession(t.Context(), machine, slackSession("C01RENEW", "1700000000.000100", "", "<@UAPP> @lead plan it"))
+	first, _, err := p.StartSurfaceSession(t.Context(), machine, withAudience(slackSession("C01RENEW", "1700000000.000100", "", "<@UAPP> @lead plan it"), platform.ChannelPublic))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(first.Posted.Runs) != 1 || first.Posted.Runs[0].Agent != "lead" || first.Posted.Message.Text != "@lead plan it" || first.Posted.Repeated {
 		t.Fatalf("posted = %+v", first.Posted)
 	}
-	again, _, err := p.StartSurfaceSession(t.Context(), machine, slackSession("C01RENEW", "1700000000.000100", "", "<@UAPP> @lead plan it"))
+	again, _, err := p.StartSurfaceSession(t.Context(), machine, withAudience(slackSession("C01RENEW", "1700000000.000100", "", "<@UAPP> @lead plan it"), platform.ChannelPublic))
 	if err != nil || !again.Posted.Repeated || len(again.Children) != 1 {
 		t.Fatalf("sent again = %+v, children %d, %v", again.Posted, len(again.Children), err)
 	}
@@ -170,5 +170,20 @@ func TestASurfaceMessageSaysWhatItStartedAndStartsNothingTwice(t *testing.T) {
 	got, _, err := p.StartSurfaceSession(t.Context(), machine, quiet)
 	if err != nil || len(got.Posted.Runs) != 0 || got.Posted.Message.ID == "" {
 		t.Fatalf("a post-only message = %+v, %v", got.Posted, err)
+	}
+}
+
+func TestAChannelWithNoReportedAudienceIsPrivateToTheAsker(t *testing.T) {
+	p, machine := slackRoom(t, nil)
+	v, _, err := p.StartSurfaceSession(t.Context(), machine, slackSession("C01RENEW", "1700000000.000700", "", "<@UAPP> status?"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	vic := auth.Principal{Subject: "vic", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Viewer}}
+	if v.Thread.Visibility != threads.Private || p.SeesSession(vic, v.ID) {
+		t.Fatalf("a channel with no reported audience = %s, read by another member: %v", v.Thread.Visibility, p.SeesSession(vic, v.ID))
+	}
+	if a, _ := p.SessionAudience(tenant, v.ID); a.Kind != "private" || len(a.Members) != 1 || a.Members[0] != "ana" {
+		t.Fatalf("audience = %+v, want private to ana", a)
 	}
 }
