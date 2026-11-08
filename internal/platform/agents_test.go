@@ -60,25 +60,19 @@ func setAgents(t *testing.T, p *platform.Platform, project string, in platform.A
 	}
 }
 
-func TestAnAgentThatLivesInAProjectRunsOnlyThereAndBelow(t *testing.T) {
+// Agents are independent of projects: an agent with a home runs in every
+// project, and only an allow list refuses it, saying so.
+func TestAnAgentWithAHomeRunsInEveryProject(t *testing.T) {
 	p := start(t, call.Limits{})
 	globexHelper(t, p)
-	for _, c := range []struct {
-		project string
-		ok      bool
-	}{
-		{"Globex", true}, {"Renewals", true}, {"Initech", false}, {"Field", false}, {"", false},
-	} {
-		_, err := p.Invoke(t.Context(), inProject("in-"+c.project, "globex-helper", c.project))
-		switch {
-		case c.ok && err != nil:
-			t.Fatalf("in %q: %v", c.project, err)
-		case !c.ok && !errors.Is(err, platform.ErrNotAvailable):
-			t.Fatalf("in %q = %v, want ErrNotAvailable", c.project, err)
+	for _, project := range []string{"Globex", "Renewals", "Initech", "Field", ""} {
+		if _, err := p.Invoke(t.Context(), inProject("in-"+project, "globex-helper", project)); err != nil {
+			t.Fatalf("in %q: %v", project, err)
 		}
 	}
+	setAgents(t, p, "Initech", platform.AgentsInput{Enable: []string{}, Allow: []string{"lead"}})
 	_, err := p.Invoke(t.Context(), inProject("initech", "globex-helper", "Initech"))
-	if want := "globex-helper is not available in Initech"; err == nil || !strings.Contains(err.Error(), want) {
+	if want := "globex-helper is not allowed in Initech"; !errors.Is(err, platform.ErrNotAvailable) || !strings.Contains(err.Error(), want) {
 		t.Fatalf("the refusal says %v, want it to say %q", err, want)
 	}
 }
@@ -86,6 +80,7 @@ func TestAnAgentThatLivesInAProjectRunsOnlyThereAndBelow(t *testing.T) {
 func TestARefusedRunIsNeitherCountedNorRecorded(t *testing.T) {
 	p := start(t, call.Limits{})
 	globexHelper(t, p)
+	setAgents(t, p, "Initech", platform.AgentsInput{Enable: []string{}, Allow: []string{"lead"}})
 	if _, err := p.Invoke(t.Context(), inProject("x", "globex-helper", "Initech")); !errors.Is(err, platform.ErrNotAvailable) {
 		t.Fatal(err)
 	}
@@ -160,7 +155,7 @@ func TestAScheduleWhoseAgentStoppedBeingAvailableIsRefusedAndRaisedOnce(t *testi
 			open = append(open, a)
 		}
 	}
-	if len(open) != 1 || !strings.Contains(open[0].Title, "nightly") || !strings.Contains(open[0].Title, "helper is not available in Initech") {
+	if len(open) != 1 || !strings.Contains(open[0].Title, "nightly") || !strings.Contains(open[0].Title, "helper is not allowed in Initech") {
 		t.Fatalf("open alerts = %+v, want one about nightly", open)
 	}
 }
@@ -254,26 +249,28 @@ func TestAnEvalIsHeldByTheLimitsWhereItsAgentLives(t *testing.T) {
 	}
 }
 
-func TestATurnThatTagsNoAgentGoesToTheDefaultItInherits(t *testing.T) {
+// An untagged turn goes to the workspace default wherever it is posted: a
+// project chooses no default, and one written before that is not read.
+func TestATurnThatTagsNoAgentGoesToTheWorkspaceDefault(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
 	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "lead"})
 	setAgents(t, p, "Globex", platform.AgentsInput{Enable: []string{}, Default: "helper"})
-	for _, c := range []struct{ project, want string }{{"", "lead"}, {"Initech", "lead"}, {"Globex", "helper"}, {"Renewals", "helper"}} {
-		r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t-" + c.project, Text: "hello", Project: c.project})
+	for _, project := range []string{"", "Initech", "Globex", "Renewals"} {
+		r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t-" + project, Text: "hello", Project: project})
 		if err != nil {
-			t.Fatalf("in %q: %v", c.project, err)
+			t.Fatalf("in %q: %v", project, err)
 		}
-		if r.Agent != c.want || r.Picked != "" {
-			t.Fatalf("in %q, %s answered (picked %q), want %s", c.project, r.Agent, r.Picked, c.want)
+		if r.Agent != "lead" || r.Picked != "" {
+			t.Fatalf("in %q, %s answered (picked %q), want lead", project, r.Agent, r.Picked)
 		}
 	}
-	if d := p.DefaultAt(tenant, platform.Place{Project: "Renewals"}); d != (platform.Nearer{Agent: "helper", From: "project:Globex"}) {
+	if d := p.DefaultAt(tenant, platform.Place{Project: "Renewals"}); d != (platform.Nearer{Agent: "lead", From: "project:~"}) {
 		t.Fatalf("the default in Renewals = %+v", d)
 	}
-	// A nearer default, a thread's or a channel's, comes first.
-	if d := p.DefaultAt(tenant, platform.Place{Project: "Renewals", Nearer: []platform.Nearer{{}, {Agent: "lead", From: "channel"}}}); d.Agent != "lead" || d.From != "channel" {
-		t.Fatalf("with a channel's default = %+v", d)
+	// A nearer default, a thread's or a client's, comes first.
+	if d := p.DefaultAt(tenant, platform.Place{Project: "Renewals", Nearer: []platform.Nearer{{}, {Agent: "helper", From: "client"}}}); d.Agent != "helper" || d.From != "client" {
+		t.Fatalf("with a client's default = %+v", d)
 	}
 }
 
@@ -289,19 +286,18 @@ func TestATurnThatTagsNoAgentWhereNothingAnswersStartsNothing(t *testing.T) {
 	}
 }
 
-func TestADefaultThatStoppedBeingAvailableIsNotPassedOver(t *testing.T) {
+func TestADefaultThatIsNotAllowedIsNotPassedOver(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
 	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "lead"})
-	setAgents(t, p, "Field", platform.AgentsInput{Enable: []string{}, Default: "helper"})
-	setAgents(t, p, "Globex", platform.AgentsInput{Enable: []string{}, Allow: []string{"lead"}})
+	setAgents(t, p, "Globex", platform.AgentsInput{Enable: []string{}, Allow: []string{"helper"}})
 	_, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t1", Text: "hello", Project: "Globex"})
-	if !errors.Is(err, platform.ErrNotAvailable) || !strings.Contains(err.Error(), "@helper answers untagged messages in Globex") {
-		t.Fatalf("a default that stopped being available = %v", err)
+	if !errors.Is(err, platform.ErrNotAvailable) || !strings.Contains(err.Error(), "@lead answers untagged messages in Globex") {
+		t.Fatalf("a default its project's allow list leaves out = %v", err)
 	}
 }
 
-func TestOnlyAgentsAvailableWhereAMessageIsPostedAreAskedToJoin(t *testing.T) {
+func TestOnlyAgentsAllowedWhereAMessageIsPostedAreAskedToJoin(t *testing.T) {
 	p := start(t, call.Limits{})
 	globexHelper(t, p)
 	for _, spec := range []wire.AgentSpec{
@@ -311,13 +307,16 @@ func TestOnlyAgentsAvailableWhereAMessageIsPostedAreAskedToJoin(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// In Globex, globex-helper lives there and joins; outside, it is never
-	// asked, and biller is.
-	ds, err := p.Route(t.Context(), tenant, "Globex", "the Globex renewals")
-	if err != nil || len(join.Joined(ds)) != 1 || join.Joined(ds)[0].Agent != "globex-helper" {
-		t.Fatalf("in Globex = %+v, %v", ds, err)
+	// globex-helper joins wherever it is allowed, its home or not.
+	for _, project := range []string{"Globex", "Initech"} {
+		ds, err := p.Route(t.Context(), tenant, project, "the Globex renewals")
+		if err != nil || len(join.Joined(ds)) != 1 || join.Joined(ds)[0].Agent != "globex-helper" {
+			t.Fatalf("in %s = %+v, %v", project, ds, err)
+		}
 	}
-	ds, _ = p.Route(t.Context(), tenant, "Initech", "the Globex renewals")
+	// Where an allow list leaves it out, it is never asked, and biller is.
+	setAgents(t, p, "Initech", platform.AgentsInput{Enable: []string{}, Allow: []string{"biller", "lead"}})
+	ds, _ := p.Route(t.Context(), tenant, "Initech", "the Globex renewals")
 	if slices.ContainsFunc(ds, func(d join.Decision) bool { return d.Agent == "globex-helper" }) || len(join.Joined(ds)) != 0 {
 		t.Fatalf("in Initech, globex-helper was asked or someone joined: %+v", ds)
 	}
@@ -368,38 +367,18 @@ func TestATaggedOnlyAgentIsNeverAskedToJoin(t *testing.T) {
 	}
 }
 
-func TestHomingAnAgentIsRefusedWhileSomethingElsewhereUsesIt(t *testing.T) {
+// A home says only who sees an agent, so what runs the agent elsewhere holds
+// no home change back, and still runs it after.
+func TestAHomeChangeIsNotHeldBackByWhatRunsTheAgent(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
-	setAgents(t, p, "Initech", platform.AgentsInput{Enable: []string{}, Default: "helper"})
 	if err := p.Schedules.Add(cron.Schedule{Name: "nightly", Expression: "0 3 * * *", Agent: "helper", Text: "sum", Tenant: tenant,
-		Context: map[string]string{runs.MetaProject: "Field"}}, platform.About{}); err != nil {
+		Context: map[string]string{runs.MetaProject: "Initech"}}, platform.About{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.Alerts.AddRule(tenant, alerts.Rule{Name: "slow-helper", Kind: alerts.RunFailed, Severity: alerts.Warning, Agent: "helper", Project: "Initech", CreatedBy: "ada"}); err != nil {
 		t.Fatal(err)
 	}
-	err := p.SetAgentHome(t.Context(), tenant, "helper", "Globex", ada)
-	if !errors.Is(err, projects.ErrInUse) {
-		t.Fatalf("homing helper in Globex = %v, want ErrInUse", err)
-	}
-	for _, want := range []string{"the default of Initech", "the schedule nightly", "the alert rule slow-helper"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("the refusal %q does not name %s", err, want)
-		}
-	}
-	if home, homed := p.ProjectTree(tenant).Home("helper"); !homed || home != projects.Root {
-		t.Fatal("a refused move changed the Company home")
-	}
-	// Everything that uses it is in Field's subtree, so nothing is lost.
-	if err := p.SetAgentHome(t.Context(), tenant, "helper", "Field", ada); err != nil {
-		t.Fatalf("homing helper in Field, where everything that uses it is: %v", err)
-	}
-}
-
-func TestAClientThatRoutesToAnAgentKeepsItFromLeavingTheRoot(t *testing.T) {
-	p := start(t, call.Limits{})
-	field(t, p)
 	if _, err := p.CreateClient(t.Context(), tenant, "ada", platform.ClientInput{
 		Client: clients.Client{ID: "docs", Name: "docs", Surface: clients.Slack, Enabled: true,
 			Identity: clients.Identity{AppID: "A0DOCS", Team: "T01ACME"}, DefaultAgent: "helper"},
@@ -407,8 +386,16 @@ func TestAClientThatRoutesToAnAgentKeepsItFromLeavingTheRoot(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.SetAgentHome(t.Context(), tenant, "helper", "Globex", ada); !errors.Is(err, projects.ErrInUse) || !strings.Contains(err.Error(), "the client docs") {
-		t.Fatalf("homing an agent a client defaults to = %v", err)
+	if err := p.SetAgentHome(t.Context(), tenant, "helper", "Globex", ada); err != nil {
+		t.Fatalf("homing helper in Globex = %v", err)
+	}
+	if home, _ := p.ProjectTree(tenant).Home("helper"); home != "Globex" {
+		t.Fatalf("helper's home = %q", home)
+	}
+	for _, project := range []string{"Initech", ""} {
+		if err := p.Available(tenant, project, "helper"); err != nil {
+			t.Fatalf("helper in %q after the change = %v", project, err)
+		}
 	}
 }
 
@@ -456,26 +443,28 @@ func TestAProjectsAgentsNameAgentsTheWorkspaceHas(t *testing.T) {
 	}
 }
 
-func TestAProjectsAgentsSayWhereEachComesFrom(t *testing.T) {
+// A project's agents read as projects now are: no offers and no enable lists,
+// what the allow lists permit, and the workspace default.
+func TestAProjectsAgentsAreItsAllowListAndTheWorkspaceDefault(t *testing.T) {
 	p := start(t, call.Limits{})
 	globexHelper(t, p)
-	setAgents(t, p, "Field", platform.AgentsInput{Enable: []string{"lead"}, Allow: []string{"lead", "globex-helper"}, Default: "lead"})
+	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "lead"})
+	setAgents(t, p, "Field", platform.AgentsInput{Enable: []string{"lead"}, Allow: []string{"lead", "globex-helper"}, Default: "helper"})
 	got, err := p.ProjectAgentsOf(tenant, "Renewals")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []platform.Offer{{Agent: "globex-helper", From: "Globex", Home: true}, {Agent: "lead", From: "Field"}}
-	if got.Available.All || len(got.Offers) != len(want) || got.Offers[0] != want[0] || got.Offers[1] != want[1] {
-		t.Fatalf("offers in Renewals = %+v (available %+v)", got.Offers, got.Available)
+	if got.Available.All || !slices.Equal(got.Available.Names, []string{"globex-helper", "lead"}) || len(got.Offers) != 0 {
+		t.Fatalf("Renewals = available %+v, offers %+v", got.Available, got.Offers)
 	}
-	if got.DefaultResolved == nil || *got.DefaultResolved != (platform.Nearer{Agent: "lead", From: "project:Field"}) {
+	if got.DefaultResolved == nil || *got.DefaultResolved != (platform.Nearer{Agent: "lead", From: "project:~"}) {
 		t.Fatalf("the default in Renewals = %+v", got.DefaultResolved)
 	}
-	places := p.AgentPlaces(tenant, []string{"lead", "globex-helper", "helper"})
+	places := p.AgentPlaces(tenant, []string{"lead", "globex-helper"})
 	if g := places["globex-helper"]; g.Home != "Globex" || len(g.EnabledIn) != 0 {
 		t.Fatalf("globex-helper's place = %+v", g)
 	}
-	if l := places["lead"]; l.Home != "~" || len(l.EnabledIn) != 2 || l.EnabledIn[0] != "~" || l.EnabledIn[1] != "Field" {
+	if l := places["lead"]; len(l.EnabledIn) != 0 {
 		t.Fatalf("lead's place = %+v", l)
 	}
 }
@@ -833,6 +822,8 @@ func TestAMoveNeverLeavesWhatItsProjectsRunWithoutTheirAgent(t *testing.T) {
 	if _, err := p.SetProjectAgents(ctx, tenant, "B", w, platform.AgentsInput{Version: b.Version, Enable: []string{}, Allow: []string{"helper"}}); err != nil {
 		t.Fatal(err)
 	}
+	// A channel's default and an agent's home hold no move back: neither
+	// decides where an agent answers.
 	if _, err := p.CreateChannel(ctx, tenant, "X", w, platform.ChannelInput{Name: "c", Default: "lead"}); err != nil {
 		t.Fatal(err)
 	}
@@ -867,13 +858,6 @@ func TestAMoveNeverLeavesWhatItsProjectsRunWithoutTheirAgent(t *testing.T) {
 		}
 	}
 
-	move("the default of #c in X, lead, would not be available", "scout, which lives in X, would not be available there")
-	if _, err := p.ArchiveChannel(tenant, "X", "c", w); err != nil {
-		t.Fatal(err)
-	}
-	if err := p.SetAgentHome(ctx, tenant, "scout", "", w); err != nil {
-		t.Fatal(err)
-	}
 	move("the schedule nightly, which runs lead in X, would be refused every time",
 		fmt.Sprintf(`the default of the thread "Renewal" (%s) in X, lead, would not be available`, th.ID))
 	if err := p.Schedules.Remove(tenant, "nightly"); err != nil {

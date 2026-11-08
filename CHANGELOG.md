@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.95.0 (2026-11-08)
+
+### Breaking
+
+- **projects**: agents are independent of projects (#251) ([6756c49](https://github.com/urmzd/humagen/commit/6756c492d876f35e3acb9ebd5c5a859a9f3d0944))
+
+### Features
+
+- **projects**: a project's context is the corpora it attaches (#262) ([ffe374c](https://github.com/urmzd/humagen/commit/ffe374cd56db851d2b4468ae23b50a1fa3e1c5b3))
+- **console**: Projects is a grid of cards with search, sort and pins (#268) ([33aeb44](https://github.com/urmzd/humagen/commit/33aeb44285156db16eea063881a847f9b9a861fc))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.94.0...v0.95.0)
+
+
 ## 0.93.0 (2026-11-08)
 
 ### Features

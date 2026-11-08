@@ -60,7 +60,7 @@ func TestProjectRowsCountOnlyTheReadersVisibleUnreadUpdates(t *testing.T) {
 }
 
 func TestCompanyRowsOfferOnlyCurrentBuiltinNames(t *testing.T) {
-	f := newFixtureWith(t, platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline"})
+	f := newFixtureWith(t, platform.Config{TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	token := f.machine(t, "acme", everything...)
 	want(t, f, token, "GET", "/api/agents", "", http.StatusOK)
 	row := want(t, f, token, "GET", "/api/projects/~", "", http.StatusOK)["project"].(map[string]any)
@@ -69,7 +69,7 @@ func TestCompanyRowsOfferOnlyCurrentBuiltinNames(t *testing.T) {
 			t.Fatalf("compatibility alias offered in Company marks: %v", row["row_agents"])
 		}
 	}
-	if got := len(row["row_agents"].([]any)); got != len(platform.Builtins()) {
+	if got := len(row["row_agents"].([]any)); got != len(platform.Builtins())+1 { // and the entry agent
 		t.Fatalf("duplicate or missing Company builtin marks: %v", row["row_agents"])
 	}
 	choices := want(t, f, token, "GET", "/api/projects/~/agents", "", http.StatusOK)

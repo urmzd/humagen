@@ -102,6 +102,16 @@ and evidence when implementing a requirement.
 - Tests run with `-race`.
 - No em dashes in docs or comments.
 
+## Console patterns
+
+New console pages use these and never hand-roll them:
+
+- **Cards are `ItemCard`** (`apps/web/src/cards.tsx`), in the `itemGrid` grid. The whole card is its link; there is no Open button. Slots: a leading mark, the title, one status at the top right (a Pill or a dot, never empty), a one-line description, a facts row, and a ⋯ menu.
+- **References are `Reference`** (`apps/web/src/cards.tsx`): an origin, a source an agent pulled in, an item or backlink, a knowledge source, a search hit, a child session. A leading mark, a label, an optional count, and a link when it has a target.
+- **Status is a `Pill` or a dot.** Pills are for state only, never for references.
+- **Menus use the shared rows**: `MoreMenu`, or `menuRow` and `MenuSeparator` from `apps/web/src/ui.tsx` inside a `Popover`. Plain rows, an optional leading icon, destructive rows last after a separator.
+- **The composer is `Composer`** (`apps/web/src/Composer.tsx`).
+
 ## Shared presentation
 
 - `packages/core`: UI types, reducers, actions, queue, session, inbox and fixtures. No React.
