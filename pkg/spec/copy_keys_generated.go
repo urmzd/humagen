@@ -1723,6 +1723,7 @@ var copyKeyList = []string{
 	"projects.page.visibility.title",
 	"projects.page.visibility.workspace",
 	"projects.personalTitle",
+	"projects.pinned",
 	"projects.private",
 	"projects.saveChanges",
 	"projects.saving",

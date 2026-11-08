@@ -31,10 +31,10 @@ export function view(
     ...(opts.parent?.path ?? []),
     { name, kind, ...(opts.title ? { title: opts.title } : {}) },
   ];
+  // No visibility: a project's is read from its entries, as an older server's is.
   return {
     name,
     kind,
-    visibility: "workspace",
     ...(opts.title ? { title: opts.title } : {}),
     ...(opts.description ? { description: opts.description } : {}),
     ...(opts.parent ? { parent: opts.parent.name } : {}),
@@ -73,7 +73,7 @@ export function view(
     proposed: 0,
     unread: 0,
     row_agents: [],
-  };
+  } as unknown as ProjectView;
 }
 
 /** The workspace itself, as GET /api/projects/~ reads it. */

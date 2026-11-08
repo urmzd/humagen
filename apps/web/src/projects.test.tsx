@@ -183,13 +183,12 @@ test("a card is its title, when it last changed and a pin: no agents, counts or 
   assert.doesNotMatch(out, /animate-/);
 });
 
-test("a pin says what it does to which project, and shows once pinned", () => {
+test("a pinned project shows its pin and comes first; a card has a ⋯ menu only with a way to save pins", () => {
   const out = page({ pinned: ["Globex"], onPin: async () => {} });
-  assert.match(out, /aria-pressed="true" aria-label="Unpin project Globex"/);
-  assert.match(out, /aria-pressed="false" aria-label="Pin project Platform"/);
-  assert.equal((out.match(/aria-pressed="true"/g) ?? []).length, 1);
+  assert.equal((out.match(/aria-label="Pinned"/g) ?? []).length, 1);
   assert.equal(cardsIn(out)[0]?.[0], "Globex", "pinned first");
-  assert.doesNotMatch(page(), /aria-pressed/, "no pins without a way to save them");
+  assert.match(out, /aria-label="More"/);
+  assert.doesNotMatch(page(), /aria-label="More"/, "no menu without a way to save pins");
 });
 
 test("a private project says so on its card; a workspace one and the reader's Personal project do not", () => {
