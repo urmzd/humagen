@@ -25,16 +25,32 @@ const MaxResultBytes = 256 << 10
 var identifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,254}$`)
 var account = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.-]{0,200}$`)
 
-// Config uses an OAuth token reference belonging to this connector's owner.
-// Role must have read-only grants. No default credential chain is used.
+// Token types the SQL API accepts as a bearer token.
+const (
+	TokenOAuth = "OAUTH"
+	// TokenProgrammatic is a Snowflake programmatic access token.
+	TokenProgrammatic = "PROGRAMMATIC_ACCESS_TOKEN"
+)
+
+// Config reaches Snowflake with exactly one token: Credential, a reference
+// to a token belonging to this connector's owner, or TokenSource, which
+// supplies one per call, such as the reader's own, so the reader's grants,
+// row access and masking policies apply. No default credential chain is
+// used. Role must have read-only grants. It may be empty only with a
+// TokenSource, and then the user's DEFAULT_ROLE (or the token's role
+// restriction) applies.
 type Config struct {
-	Account    string        `json:"account"`
-	Database   string        `json:"database"`
-	Warehouse  string        `json:"warehouse"`
-	Role       string        `json:"role"`
-	Credential string        `json:"credential"`
-	MaxRows    int           `json:"max_rows,omitempty"`
-	Timeout    time.Duration `json:"-"`
+	Account    string `json:"account"`
+	Database   string `json:"database"`
+	Warehouse  string `json:"warehouse"`
+	Role       string `json:"role"`
+	Credential string `json:"credential"`
+	// TokenSource is called with each call's context for a bearer token.
+	TokenSource func(context.Context) (string, error) `json:"-"`
+	// TokenType is TokenOAuth (the default) or TokenProgrammatic.
+	TokenType string        `json:"token_type,omitempty"`
+	MaxRows   int           `json:"max_rows,omitempty"`
+	Timeout   time.Duration `json:"-"`
 }
 
 type Connector struct {
@@ -43,8 +59,15 @@ type Connector struct {
 }
 
 func New(c Config) (*Connector, error) {
-	if !account.MatchString(c.Account) || strings.Contains(c.Account, "..") || !identifier.MatchString(c.Database) || !identifier.MatchString(c.Warehouse) || !identifier.MatchString(c.Role) || c.Credential == "" {
-		return nil, errors.New("snowflake: account, database, warehouse, read-only role and credential reference are required")
+	role := identifier.MatchString(c.Role) || c.Role == "" && c.TokenSource != nil
+	if !account.MatchString(c.Account) || strings.Contains(c.Account, "..") || !identifier.MatchString(c.Database) || !identifier.MatchString(c.Warehouse) || !role || (c.Credential == "") == (c.TokenSource == nil) {
+		return nil, errors.New("snowflake: account, database, warehouse, read-only role and exactly one of a credential reference or token source are required")
+	}
+	if c.TokenType == "" {
+		c.TokenType = TokenOAuth
+	}
+	if c.TokenType != TokenOAuth && c.TokenType != TokenProgrammatic {
+		return nil, errors.New("snowflake: token type is OAUTH or PROGRAMMATIC_ACCESS_TOKEN")
 	}
 	if c.MaxRows == 0 {
 		c.MaxRows = 200
@@ -73,11 +96,15 @@ type response struct {
 func (c *Connector) execute(ctx context.Context, sql string, limit int) (catalog.Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
-	token, err := credref.Default.Resolve(ctx, c.cfg.Credential)
+	token, err := c.token(ctx)
 	if err != nil {
 		return catalog.Result{}, err
 	}
-	body, _ := json.Marshal(map[string]any{"statement": sql, "database": c.cfg.Database, "warehouse": c.cfg.Warehouse, "role": c.cfg.Role, "timeout": int(c.cfg.Timeout.Seconds()), "parameters": map[string]string{"MULTI_STATEMENT_COUNT": "1", "QUERY_TAG": "humagen_catalog"}})
+	statement := map[string]any{"statement": sql, "database": c.cfg.Database, "warehouse": c.cfg.Warehouse, "timeout": int(c.cfg.Timeout.Seconds()), "parameters": map[string]string{"MULTI_STATEMENT_COUNT": "1", "QUERY_TAG": "humagen_catalog"}}
+	if c.cfg.Role != "" {
+		statement["role"] = c.cfg.Role
+	}
+	body, _ := json.Marshal(statement)
 	base := "https://" + c.cfg.Account + ".snowflakecomputing.com/api/v2/statements"
 	method, address := http.MethodPost, base
 	var result response
@@ -91,7 +118,7 @@ func (c *Connector) execute(ctx context.Context, sql string, limit int) (catalog
 			return catalog.Result{}, err
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("X-Snowflake-Authorization-Token-Type", "OAUTH")
+		req.Header.Set("X-Snowflake-Authorization-Token-Type", c.cfg.TokenType)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
 		res, err := c.client.Do(req)
@@ -144,6 +171,21 @@ func (c *Connector) execute(ctx context.Context, sql string, limit int) (catalog
 	}
 	out.Truncated = out.Truncated || result.Metadata.Rows > len(out.Rows) || len(result.Metadata.Partitions) > 1
 	return out, nil
+}
+
+// token reads the call's bearer token, failing closed on an empty one.
+func (c *Connector) token(ctx context.Context) (string, error) {
+	if c.cfg.TokenSource == nil {
+		return credref.Default.Resolve(ctx, c.cfg.Credential)
+	}
+	token, err := c.cfg.TokenSource(ctx)
+	if err != nil {
+		return "", fmt.Errorf("snowflake: token: %w", err)
+	}
+	if token == "" {
+		return "", errors.New("snowflake: token source returned no token")
+	}
+	return token, nil
 }
 
 // Query accepts only a single SELECT without comments, dollar strings, or
