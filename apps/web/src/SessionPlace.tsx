@@ -46,7 +46,7 @@ export function usePlace(thread: ThreadPlace | undefined): Place | undefined {
 /** A schedule opens on its own page here; Slack and GitHub open where they live. */
 function withScheduleLink(place: Place): Place {
   if (place.kind !== "schedule" || !place.origin) return place;
-  const name = place.origin.slice("schedule://".length);
+  const name = place.origin.slice("schedule://".length).split("/")[0] ?? "";
   return { ...place, url: `/schedules/${encodeURIComponent(name)}` };
 }
 

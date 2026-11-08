@@ -389,8 +389,9 @@ export function referenceOf(ref: string): Reference {
       url: `https://github.com/${owner}/${name}`,
     };
   }
+  // `schedule://<name>`, or `schedule://<name>/<occurrence>` for one run of it.
   if (ref.startsWith("schedule://"))
-    return { kind: "schedule", label: `Schedule ${ref.slice("schedule://".length)}` };
+    return { kind: "schedule", label: `Schedule ${ref.slice("schedule://".length).split("/")[0]}` };
   if (/^https?:\/\//.test(ref)) {
     try {
       const u = new URL(ref);

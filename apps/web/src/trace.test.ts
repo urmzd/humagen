@@ -214,6 +214,7 @@ test("references read as places with links back", () => {
     "https://github.com/urmzd/humagen/issues/9",
   );
   assert.equal(referenceOf("schedule://nightly").label, "Schedule nightly");
+  assert.equal(referenceOf("schedule://nightly/2026-11-07T02:00").label, "Schedule nightly");
   assert.equal(referenceOf("https://example.com/a/b").label, "example.com/a/b");
   assert.equal(referenceOf("corpus:hr/doc-1").kind, "other");
   assert.equal(slackUrl("", "C1", "1"), "https://slack.com/app_redirect?channel=C1");
