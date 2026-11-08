@@ -1000,7 +1000,6 @@ function Console({
                         `new:${route.page === "new" ? JSON.stringify([route.project, route.channel, route.agent, route.ask]) : ""}`
                       }
                       threadId={thread}
-                      messageChoices={workspace?.message_choices}
                       starters={hasSessions === false ? branding.starters : []}
                       me={me.principal.subject}
                       handle={me.handle ?? ""}

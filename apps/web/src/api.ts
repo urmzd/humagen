@@ -179,20 +179,6 @@ export interface AgentSpec {
   tagged_only?: boolean;
   /** When set, the only people who may answer a question the agent asks. */
   answerers?: string[];
-  /** What a person may pick for one message in place of the agent's model and effort. Absent offers nothing. */
-  choices?: AgentChoices;
-}
-
-/** The models (`provider/model`) and reasoning efforts an agent offers per message. */
-export interface AgentChoices {
-  models?: string[];
-  efforts?: string[];
-}
-
-/** One message's model and effort, used where the agents it starts offer them. */
-export interface MessagePick {
-  model?: string;
-  effort?: string;
 }
 
 export interface Revision {
@@ -471,12 +457,6 @@ export interface Marks {
   since?: string;
 }
 
-/** The models ("provider/model") and reasoning efforts a person may pick for one message. */
-export interface MessageChoices {
-  models?: string[];
-  efforts?: string[];
-}
-
 /** A provider kind an administrator may set up. */
 export type ModelProviderKind = "anthropic" | "google" | "openai";
 
@@ -567,8 +547,6 @@ export interface Settings {
   router: RouterSettings;
   /** The model providers the workspace's administrators set up, with no key. */
   model_providers?: ModelProvider[];
-  /** What a person may pick for one message, for every agent it starts. Absent offers none. */
-  message_choices?: MessageChoices;
   /** Set once by the server when an admin first saves settings. */
   setup_at?: string;
   setup_by?: string;
@@ -2048,25 +2026,21 @@ export const coworking = {
    * the people in it alone until it is shared. A message starts a run only
    * for the agents it tags.
    */
-  start: (
-    t: {
-      project: string;
-      channel: string;
-      text: string;
-      title?: string;
-      visibility?: "shared" | "private";
-      agents?: string[];
-      mode?: "join" | "all";
-    } & MessagePick,
-  ) =>
+  start: (t: {
+    project: string;
+    channel: string;
+    text: string;
+    title?: string;
+    visibility?: "shared" | "private";
+    agents?: string[];
+    mode?: "join" | "all";
+  }) =>
     t.visibility === "shared"
       ? call<ThreadPosted>("POST", "/api/threads", t)
       : call<AgentSession>("POST", "/api/sessions", {
           text: t.text,
           project: t.project,
           agent: t.agents?.[0],
-          model: t.model,
-          effort: t.effort,
         }).then(sessionPosted),
   /**
    * Shares a private thread in a project's channel (general unless named)

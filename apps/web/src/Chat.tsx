@@ -11,8 +11,6 @@ import {
   ApiError,
   api,
   coworking,
-  type MessageChoices,
-  type MessagePick,
   type ProjectView,
   type Revision,
   type ThreadAsk,
@@ -31,8 +29,6 @@ import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { type HomeAnnouncement, HomePage } from "./HomePage.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { MessageTime } from "./MessageTime.tsx";
-import { ModelPicker } from "./ModelPicker.tsx";
-import { keptPick, namedIn, offersFor } from "./modelPick.ts";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { emptySelection, mentionPicks, PlusMenu, type Selection, SelectionChips } from "./Plus.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
@@ -353,7 +349,6 @@ export function Chat({
   summary,
   tick,
   agents,
-  messageChoices,
   agentsRead = true,
   homes = {},
   projects,
@@ -408,8 +403,6 @@ export function Chat({
   /** Changes whenever any run starts or ends. */
   tick: number;
   agents: Revision[];
-  /** What the workspace lets a person pick for one message, for every agent. */
-  messageChoices?: MessageChoices;
   /** Whether the agents have been read. Until they are, Home holds the composer's place rather than saying none are set up. */
   agentsRead?: boolean;
   /** Where each agent that lives in a project lives, so completion offers only what may answer here. */
@@ -471,8 +464,6 @@ export function Chat({
     );
   };
   const [draft, setDraft] = useState("");
-  // The model and effort picked for the next message alone (DES-067).
-  const [pick, setPick] = useState<MessagePick>({});
   // The agents that can answer in the picked project, once read.
   const [offered, setOffered] = useState<Set<string> | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -608,7 +599,6 @@ export function Chat({
   const queue = useQueue({
     onStart: (m) => {
       setProblem(null);
-      const chosen = m.pick ?? {};
       replying.current = { ids: [], stop: false };
       const done = (runs: Run[] = []) => {
         onChanged();
@@ -627,7 +617,6 @@ export function Chat({
         if (!threadId) {
           queue.clear();
           setSeed({ text: m.text });
-          setPick(chosen);
         }
       };
       // Home starts a private conversation in the picked project, or a
@@ -640,7 +629,6 @@ export function Chat({
             channel: selection.channel,
             text: m.text,
             visibility: startChannel ? "shared" : "private",
-            ...chosen,
           })
           .then((p) => {
             onThread(p.thread.id);
@@ -652,7 +640,7 @@ export function Chat({
       // A conversation of runs takes the message after the turn on screen.
       // Posted, it is a room: the message, and any run its tags started.
       coworking
-        .post(threadId, { text: m.text, ...(tail ? { after: tail.id } : {}), ...chosen })
+        .post(threadId, { text: m.text, ...(tail ? { after: tail.id } : {}) })
         .then((p) => {
           setRoom((r) =>
             r
@@ -799,29 +787,13 @@ export function Chat({
       }
     />
   );
-  // What the next message may pick: what the agents it tags offer, or
-  // with none tagged, the conversation's selected agents and default.
-  const targets = namedIn(draft, agents);
-  if (targets.length === 0 && room?.thread) {
-    targets.push(...(room.thread.agents ?? []));
-    if (room.thread.default) targets.push(room.thread.default);
-  }
-  const offers = offersFor(agents, targets, messageChoices);
-  const shownPick = keptPick(pick, offers);
-  // Sending records the pick with the message and resets it: it is for
-  // this message alone.
+  // A message here is its text alone: the agent it goes to is the one its
+  // tags or the conversation name, never a pick the composer carries.
   const sending: typeof queue = {
     ...queue,
-    send: (text) => {
-      queue.send(text, shownPick);
-      setPick({});
-    },
-    sendNow: (text) => {
-      queue.sendNow(text, shownPick);
-      setPick({});
-    },
+    send: (text) => queue.send(text),
+    sendNow: (text) => queue.sendNow(text),
   };
-  const modelPicker = <ModelPicker offers={offers} pick={shownPick} onPick={setPick} />;
   const composer = canRun && agents.length > 0 && (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
       <Problem message={problem} />
@@ -846,12 +818,7 @@ export function Chat({
         seed={seed}
         onDraft={setDraft}
         trailing={
-          <>
-            {modelPicker}
-            {threadId && room?.thread && (
-              <ApprovalModePicker thread={room.thread} me={handle || me} />
-            )}
-          </>
+          threadId && room?.thread && <ApprovalModePicker thread={room.thread} me={handle || me} />
         }
         // An agent the project picked does not offer is not kept for it.
         onAvailable={

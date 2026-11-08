@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/orchagent/flow/definition"
 	"github.com/urmzd/orchagent/flow/runtime"
 )
 
@@ -164,35 +163,6 @@ type AgentSpec struct {
 	// untagged message never asks this one, so it runs only when a person,
 	// a default or another agent names it. Off by default.
 	TaggedOnly bool `json:"tagged_only,omitempty"`
-	// Choices are what a person may pick for one message in place of the
-	// agent's model and reasoning effort. Nil, the default, offers nothing:
-	// every message runs on the agent's own model at its default effort.
-	Choices *Choices `json:"choices,omitempty"`
-}
-
-// Choices is what a person may pick, for one message, in place of an agent's
-// model and reasoning effort. It mirrors orchagent's definition.Choices,
-// where it is stored with the agent's policy.
-type Choices struct {
-	// Models are the models offered, each "provider/model". The agent's own
-	// model needs no listing: choosing nothing runs it.
-	Models []string `json:"models,omitempty"`
-	// Efforts are the reasoning efforts offered, such as "low" and "high".
-	// Whether a model takes one is checked when a turn builds it.
-	Efforts []string `json:"efforts,omitempty"`
-}
-
-// normalize sorts both lists, lower-cases efforts, and collapses choices
-// that offer nothing to nil.
-func (c *Choices) normalize() *Choices {
-	if c == nil {
-		return nil
-	}
-	out := &Choices{Models: normalizeSet(c.Models, false), Efforts: normalizeSet(c.Efforts, true)}
-	if out.Models == nil && out.Efforts == nil {
-		return nil
-	}
-	return out
 }
 
 // ModelRef names one model behind one provider: a fallback for the agent's
@@ -320,9 +290,6 @@ func (s AgentSpec) Clone() AgentSpec {
 	s.Answerers = slices.Clone(s.Answerers)
 	s.Access.Spawn = slices.Clone(s.Access.Spawn)
 	s.Access.WorkspaceAreas = slices.Clone(s.Access.WorkspaceAreas)
-	if s.Choices != nil {
-		s.Choices = &Choices{Models: slices.Clone(s.Choices.Models), Efforts: slices.Clone(s.Choices.Efforts)}
-	}
 	if s.Sources != nil {
 		sources := make([]Source, len(s.Sources))
 		for i, src := range s.Sources {
@@ -368,7 +335,6 @@ func (s AgentSpec) Normalize() AgentSpec {
 		SelfApproval: s.SelfApproval,
 		Answerers:    normalizeSet(s.Answerers, false),
 		TaggedOnly:   s.TaggedOnly,
-		Choices:      s.Choices.normalize(),
 		Access: Access{
 			Spawn:          normalizeSet(s.Access.Spawn, true),
 			WorkspaceAreas: normalizeSet(s.Access.WorkspaceAreas, false),
@@ -451,9 +417,6 @@ func (s AgentSpec) ValidateAccepting(providers []string, accept func(string) boo
 	if err := validFallbacks(c, providers, has); err != nil {
 		return err
 	}
-	if err := validChoices(c, providers, has); err != nil {
-		return err
-	}
 	if err := uniqueNonEmpty("tool", c.Name, c.Tools); err != nil {
 		return err
 	}
@@ -527,25 +490,6 @@ func (s AgentSpec) ValidateAccepting(providers []string, accept func(string) boo
 			return fmt.Errorf("%w: agent %q declares source %q twice; a source name is how the agent refers to a corpus and two corpora cannot answer to one name", ErrInvalidAgent, c.Name, src.Name)
 		}
 		seen[src.Name] = struct{}{}
-	}
-	return nil
-}
-
-// validChoices holds the models and efforts a person may pick to the rules
-// orchagent stores them under, and each model to a provider this deployment
-// knows. c is canonical.
-func validChoices(c AgentSpec, providers []string, has func(string) bool) error {
-	if c.Choices == nil {
-		return nil
-	}
-	if err := (definition.Policy{Choices: &definition.Choices{Models: c.Choices.Models, Efforts: c.Choices.Efforts}}).Validate(); err != nil {
-		return fmt.Errorf("%w: agent %q: %w", ErrInvalidAgent, c.Name, err)
-	}
-	for _, m := range c.Choices.Models {
-		provider, _, _ := strings.Cut(m, "/")
-		if !has(provider) {
-			return fmt.Errorf("%w: agent %q offers model %q; this deployment knows %s", ErrInvalidAgent, c.Name, m, list(providers))
-		}
 	}
 	return nil
 }
