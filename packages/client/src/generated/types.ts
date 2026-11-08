@@ -3452,6 +3452,10 @@ export interface Corpus {
   members: CorpusMember[];
   /** The agents granted it that the reader can see. A run of one reads only as the person it acts for, who must be a reader too. */
   agents: string[];
+  /** A JSON Schema (2020-12) of the types it adds to the graph: $defs, x-relations, x-metadata. */
+  ontology?: Record<string, unknown>;
+  /** An inferred ontology waiting for its owner to accept it. */
+  proposed_ontology?: Record<string, unknown>;
   /** Adds the workspace graph to its search. */
   graph_search?: boolean;
   /** Whether its graph links to other shared corpora. Isolated by default. */
@@ -3557,6 +3561,7 @@ export interface CorpusCreate {
   readers?: CorpusReader[];
   members?: CorpusMemberRef[];
   agents?: string[];
+  ontology?: Record<string, unknown>;
   /** Adds the workspace graph to its search. */
   graph_search?: boolean;
   links?: "isolated" | "shared";
@@ -3567,6 +3572,8 @@ export interface CorpusChange {
   description?: string;
   readers?: CorpusReader[];
   members?: CorpusMemberRef[];
+  /** Replaces its declared ontology; {} clears it. */
+  ontology?: Record<string, unknown>;
   /** Adds the workspace graph to its search. */
   graph_search?: boolean;
   links?: "isolated" | "shared";
@@ -5558,6 +5565,10 @@ export interface ListEvalRunsResponse {
 
 export interface ListCorporaResponse {
   corpora: Corpus[];
+}
+
+export interface AcceptCorpusOntologyBody {
+  types?: string[];
 }
 
 export interface ListKnowledgeSourcesResponse {

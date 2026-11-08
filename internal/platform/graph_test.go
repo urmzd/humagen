@@ -166,3 +166,40 @@ func TestGraphRetrievalNamesOwnersAndStaleness(t *testing.T) {
 	}
 	_ = knowledge.Indexed
 }
+
+// An ontology inferred from the warehouse, once accepted, types its tables
+// in the graph and joins them by its relations.
+func TestAnAcceptedOntologyTypesTheGraph(t *testing.T) {
+	f := graphFixture(t)
+	f.mine.entries = []catalog.Entry{
+		{System: "bigquery", Kind: "table", Path: "acme.sales.customers", Schema: []catalog.Column{{Name: "id", Type: "INT64"}}},
+		{System: "bigquery", Kind: "table", Path: "acme.sales.orders", Schema: []catalog.Column{{Name: "id", Type: "INT64"}, {Name: "customer_id", Type: "INT64"}}},
+	}
+	owner := f.p.invitationReader("tenant", "owner")
+	owner.Scopes = append(owner.Scopes, auth.KnowledgeWrite)
+	if _, err := f.p.CrawlConnector(t.Context(), owner, "mine"); err != nil {
+		t.Fatal(err)
+	}
+	proposed, err := f.p.InferOntology(owner, "hr")
+	if err != nil || !strings.Contains(string(proposed.Proposed), `"Order"`) || len(proposed.Ontology) != 0 {
+		t.Fatalf("proposed %s, %v", proposed.Proposed, err)
+	}
+	accepted, err := f.p.AcceptOntology(owner, "hr", nil)
+	if err != nil || len(accepted.Proposed) != 0 || !strings.Contains(string(accepted.Ontology), `"customer"`) {
+		t.Fatalf("accepted %s, %v", accepted.Ontology, err)
+	}
+	view, err := f.p.RebuildCorpusGraph(owner, "hr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	orders, customers := node(t, view, "acme.sales.orders"), node(t, view, "acme.sales.customers")
+	if orders.Props["entity_type"] != "Order" || customers.Props["entity_type"] != "Customer" {
+		t.Fatalf("types: %v, %v", orders.Props, customers.Props)
+	}
+	if !slices.ContainsFunc(view.Edges, func(e graph.Edge) bool { return e.From == orders.ID && e.To == customers.ID && e.Type == "customer" }) {
+		t.Fatalf("no customer relation among %+v", view.Edges)
+	}
+	if _, err := f.p.InferOntology(f.p.invitationReader("tenant", "ana"), "hr"); err == nil {
+		t.Fatal("a reader who is not the owner proposed an ontology")
+	}
+}

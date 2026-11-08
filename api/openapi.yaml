@@ -5907,6 +5907,79 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/corpora/{name}/ontology/infer:
+    post:
+      operationId: inferCorpusOntology
+      tags: [knowledge]
+      summary: Propose an ontology from the warehouse tables a corpus holds
+      description: |
+        A type per table, its columns as properties, and a relation for each
+        column that names another table's type with _id. No model calls. The
+        proposal is kept as `proposed_ontology` and adds nothing until its owner
+        accepts it. Only the owner asks.
+      x-permission: knowledge:write
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+      responses:
+        "200":
+          description: The corpus with its proposal.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Corpus"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/corpora/{name}/ontology/accept:
+    post:
+      operationId: acceptCorpusOntology
+      tags: [knowledge]
+      summary: Accept proposed types into a corpus's ontology
+      description: Adds the types named in `types`, or all of them, and the relations between accepted types. A type declared already keeps its declaration. The proposal is cleared.
+      x-permission: knowledge:write
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                types: {type: array, maxItems: 100, items: {type: string}}
+      responses:
+        "200":
+          description: The corpus with its ontology.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Corpus"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/corpora/{name}/ontology/discard:
+    post:
+      operationId: discardCorpusOntology
+      tags: [knowledge]
+      summary: Drop a corpus's proposed ontology
+      x-permission: knowledge:write
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+      responses:
+        "200":
+          description: The corpus.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Corpus"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/knowledge:
     get:
       operationId: listKnowledgeSources
@@ -15029,6 +15102,8 @@ components:
           maxItems: 50
           description: The agents granted it that the reader can see. A run of one reads only as the person it acts for, who must be a reader too.
           items: {type: string}
+        ontology: {type: object, additionalProperties: true, description: "A JSON Schema (2020-12) of the types it adds to the graph: $defs, x-relations, x-metadata."}
+        proposed_ontology: {type: object, additionalProperties: true, description: "An inferred ontology waiting for its owner to accept it."}
         graph_search: {type: boolean, description: "Adds the workspace graph to its search."}
         links:
           type: string
@@ -15161,6 +15236,7 @@ components:
           type: array
           maxItems: 50
           items: {type: string}
+        ontology: {type: object, additionalProperties: true}
         graph_search: {type: boolean, description: "Adds the workspace graph to its search."}
         links: {type: string, enum: [isolated, shared]}
     CorpusChange:
@@ -15176,6 +15252,7 @@ components:
           type: array
           maxItems: 50
           items: {$ref: "#/components/schemas/CorpusMemberRef"}
+        ontology: {type: object, additionalProperties: true, description: "Replaces its declared ontology; {} clears it."}
         graph_search: {type: boolean, description: "Adds the workspace graph to its search."}
         links: {type: string, enum: [isolated, shared]}
         agents:

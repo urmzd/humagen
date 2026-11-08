@@ -25,6 +25,42 @@ func (s *Server) corpusRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/corpora/{name}/graph/build", s.authed(auth.KnowledgeWrite, s.buildCorpusGraph))
 	mux.HandleFunc("GET /api/graph", s.authed(auth.KnowledgeRead, s.workspaceGraph))
 	mux.HandleFunc("PUT /api/graph/nodes/{id}/owner", s.authed(auth.KnowledgeRead, s.decideOwner))
+	mux.HandleFunc("POST /api/corpora/{name}/ontology/infer", s.authed(auth.KnowledgeWrite, s.inferOntology))
+	mux.HandleFunc("POST /api/corpora/{name}/ontology/accept", s.authed(auth.KnowledgeWrite, s.acceptOntology))
+	mux.HandleFunc("POST /api/corpora/{name}/ontology/discard", s.authed(auth.KnowledgeWrite, s.discardOntology))
+}
+
+func (s *Server) inferOntology(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	c, err := s.P.InferOntology(who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, c)
+}
+
+func (s *Server) acceptOntology(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body struct {
+		Types []string `json:"types"`
+	}
+	if r.ContentLength != 0 && !decode(w, r, &body) {
+		return
+	}
+	c, err := s.P.AcceptOntology(who, r.PathValue("name"), body.Types)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, c)
+}
+
+func (s *Server) discardOntology(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	c, err := s.P.DiscardOntology(who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, c)
 }
 
 func (s *Server) corpusGraph(w http.ResponseWriter, r *http.Request, who auth.Principal) {

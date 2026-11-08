@@ -92,6 +92,20 @@ func (p *Platform) buildCorpusGraph(tenant string, c corpora.Corpus) graph.Slice
 		}
 		sl.Edges = append(sl.Edges, graph.Edge{From: from, To: to, Type: typ})
 	}
+	o := ontologyOf(c)
+	// typed tags a node with the ontology type its name matches, and that
+	// type's half-life.
+	typed := func(n *graph.Node, name string) string {
+		typ := o.TypeOf(name)
+		if typ == "" {
+			return ""
+		}
+		n.Props["entity_type"] = typ
+		if days := o.Types[typ].HalfLife; days > 0 {
+			n.Props["half_life_days"] = strconv.Itoa(days)
+		}
+		return typ
+	}
 	person := func(subject string) (graph.Node, bool) {
 		if subject == "" {
 			return graph.Node{}, false
@@ -124,6 +138,7 @@ func (p *Platform) buildCorpusGraph(tenant string, c corpora.Corpus) graph.Slice
 				n := graph.NewNode(graph.Document, scoped("document:source/"+m.Name+"/"+d.ID), d.Title)
 				n.URI, n.Member, n.OutOfDate = d.URI, memberKey(m), outOfDate
 				n.Props = map[string]string{"holds": HoldsFiles}
+				typed(&n, d.Title)
 				at := d.AddedAt
 				n.ChangedAt = &at
 				n.Suggested = cmp.Or(d.AddedBy, owner)
@@ -152,10 +167,14 @@ func (p *Platform) buildCorpusGraph(tenant string, c corpora.Corpus) graph.Slice
 			if err != nil {
 				continue
 			}
+			byType := map[string][]string{}
 			for _, e := range entries {
 				n := graph.NewNode(graph.Document, scoped("document:catalog/"+m.Name+"/"+e.Path), e.Path)
 				n.Member, n.Suggested = memberKey(m), conn.Owner
 				n.Props = map[string]string{"holds": HoldsRecords, "kind": e.Kind}
+				if typ := typed(&n, e.Path); typ != "" {
+					byType[typ] = append(byType[typ], n.ID)
+				}
 				if e.Title != "" {
 					n.Props["title"] = e.Title
 				}
@@ -167,6 +186,15 @@ func (p *Platform) buildCorpusGraph(tenant string, c corpora.Corpus) graph.Slice
 					break
 				}
 				link(n.ID, sys.ID, graph.PartOf)
+			}
+			// The ontology's relations between this warehouse's typed
+			// tables, such as an Order table's customer.
+			for _, r := range o.Relations {
+				for _, from := range byType[r.From] {
+					for _, to := range byType[r.To] {
+						link(from, to, r.Name)
+					}
+				}
 			}
 		}
 	}
@@ -357,6 +385,9 @@ func (p *Platform) graphView(tenant string, g graph.Graph, slices_ []graph.Slice
 			half := fileHalfLife
 			if n.Props["holds"] == HoldsRecords {
 				half = recordHalfLife
+			}
+			if days, err := strconv.Atoi(n.Props["half_life_days"]); err == nil && days > 0 {
+				half = time.Duration(days) * 24 * time.Hour
 			}
 			s := graph.StalenessOf(n, v.OwnerState != OwnerUnowned, superseded[n.ID], half, p.now())
 			v.Staleness = &s

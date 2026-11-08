@@ -264,9 +264,31 @@ agent in the reader's own private conversation. A corpus with `graph_search`
 adds graph retrieval to its search: documents whose names, owners or systems
 hold the query's words, with their owner and staleness, fresh before stale.
 
-Not built yet: corpus ontologies, the semantic layer (topics, mentions,
-contradictions), the maintenance agent, freshness alerts and sensitivity
-labels.
+### Ontologies
+
+A corpus's ontology is the types it adds to the workspace graph, written as a
+JSON Schema (2020-12): each entity type is an object schema under `$defs`,
+with its properties and required fields. Three extensions say what plain JSON
+Schema cannot: `x-relations` (a name, the two types it joins and one or many),
+`x-metadata` (passage fields search can filter on), and, on a type,
+`x-matches` (table names or title words of that type) and `x-half-life-days`.
+A corpus extends the core types and never redefines them; an unknown keyword
+is an error, not a silently ignored rule.
+
+| Mode | How |
+| --- | --- |
+| Declared | `PATCH /api/corpora/{name}` with `ontology`; `{}` clears it |
+| Inferred | `POST /api/corpora/{name}/ontology/infer`: from the warehouse tables the corpus holds, with no model calls, a type per table, its columns as properties, and a relation for each column that names another table's type with `_id`. Kept as `proposed_ontology`; it adds nothing until accepted |
+| Hybrid | `POST /api/corpora/{name}/ontology/accept` adds the proposed types (all, or those named) to the declared ones; a declared type keeps its declaration. `.../discard` drops the proposal |
+
+The graph builder types what an ontology names: a table or a document title
+that matches a type gets `entity_type` and that type's half-life, and the
+ontology's relations join the typed tables of one warehouse (an Order table's
+`customer`). Only the owner changes, infers, accepts or discards.
+
+Not built yet: the semantic layer (content extraction against the ontology:
+topics, mentions, contradictions, metadata filters), the maintenance agent,
+freshness alerts and sensitivity labels.
 
 ## Proposed versioned source files
 

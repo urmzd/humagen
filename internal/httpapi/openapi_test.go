@@ -1939,6 +1939,16 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(ana, "PUT", "/api/graph/nodes/{id}/owner", "/api/graph/nodes/"+leave+"/owner", `{"action":"confirm"}`, http.StatusOK)
 	c.call(ana, "PUT", "/api/graph/nodes/{id}/owner", "/api/graph/nodes/"+leave+"/owner", `{"action":"hand_off","to":"nobody"}`, http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/graph/nodes/{id}/owner", "/api/graph/nodes/"+leave+"/owner", `{"action":"confirm"}`, http.StatusNotFound)
+	// An ontology is declared, inferred from a warehouse, accepted or discarded.
+	const infer, accept, discard = "/api/corpora/{name}/ontology/infer", "/api/corpora/{name}/ontology/accept", "/api/corpora/{name}/ontology/discard"
+	c.call(ana, "POST", "/api/corpora", "/api/corpora", `{"name":"ledger","members":[{"kind":"catalog","name":"finance"}],"ontology":{"$defs":{"Invoice":{"type":"object"}}}}`, http.StatusCreated)
+	c.call(ana, "POST", accept, "/api/corpora/ledger/ontology/accept", "", http.StatusBadRequest)
+	c.call(ana, "POST", infer, "/api/corpora/ledger/ontology/infer", "", http.StatusOK)
+	c.call(ana, "POST", accept, "/api/corpora/ledger/ontology/accept", `{"types":["Invoice"]}`, http.StatusOK)
+	c.call(ana, "POST", infer, "/api/corpora/ana-docs/ontology/infer", "", http.StatusBadRequest)
+	c.call(ana, "POST", discard, "/api/corpora/ledger/ontology/discard", "", http.StatusOK)
+	c.call(ana, "PATCH", "/api/corpora/{name}", "/api/corpora/ledger", `{"ontology":{"$defs":{"Person":{"type":"object"}}}}`, http.StatusBadRequest)
+	c.call(ana, "PATCH", "/api/corpora/{name}", "/api/corpora/ledger", `{"ontology":{}}`, http.StatusOK)
 	c.call(acme, "DELETE", "/api/corpora/{name}", "/api/corpora/policies?version=x", "", http.StatusBadRequest)
 
 	c.call(acme, "POST", "/api/evals", "/api/evals", `{"name":"smoke","target":"agent","subject":"helper","cases":[{"id":"says-offline","input":"hello","checks":[{"kind":"contains","value":"offline provider"}]}]}`, http.StatusCreated)
@@ -2614,7 +2624,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/evals/{name}/run": {"name": "smoke"}, "/api/knowledge/{name}": {"name": "handbook"},
 		"/api/knowledge/{name}/resources": {"name": "handbook"}, "/api/knowledge/{name}/snapshot": {"name": "handbook"}, "/api/knowledge/{name}/replace": {"name": "handbook"}, "/api/knowledge/{name}/sync-settings": {"name": "handbook"},
 		"/api/knowledge/{name}/dependencies": {"name": "handbook"},
-		"/api/corpora/{name}":                {"name": "policies"}, "/api/corpora/{name}/members": {"name": "policies"}, "/api/corpora/{name}/search": {"name": "policies"}, "/api/corpora/{name}/graph": {"name": "policies"}, "/api/corpora/{name}/graph/build": {"name": "policies"},
+		"/api/corpora/{name}":                {"name": "policies"}, "/api/corpora/{name}/members": {"name": "policies"}, "/api/corpora/{name}/search": {"name": "policies"}, "/api/corpora/{name}/graph": {"name": "policies"}, "/api/corpora/{name}/graph/build": {"name": "policies"}, "/api/corpora/{name}/ontology/infer": {"name": "policies"}, "/api/corpora/{name}/ontology/accept": {"name": "policies"}, "/api/corpora/{name}/ontology/discard": {"name": "policies"},
 		"/api/corpora/{name}/members/{kind}/{member}": {"name": "policies", "kind": "source", "member": "handbook"},
 		"/api/knowledge/{name}/configuration":         {"name": "handbook"}, "/api/knowledge/{name}/credential": {"name": "handbook"}, "/api/knowledge/{name}/sync": {"name": "handbook"},
 		"/api/knowledge/{name}/documents": {"name": "handbook"}, "/api/knowledge/{name}/documents/{id}": {"name": "handbook", "id": doc.str("id")},
@@ -2796,6 +2806,9 @@ var unexercised = map[string]string{
 
 	"POST /api/voice/transcriptions 404":            "a deployment with speech left out, covered by TestWithoutSpeechTheConsoleHasNoVoiceNotes",
 	"POST /api/catalog/connectors/{name}/crawl 409": "a crawl asked for while another of the same connector runs; the guard is in platform.crawl",
+	"POST /api/corpora/{name}/ontology/infer 409":   "the corpus changed between its owner check and the write; the store's version check, covered in pkg/corpora",
+	"POST /api/corpora/{name}/ontology/accept 409":  "the corpus changed between its owner check and the write; the store's version check, covered in pkg/corpora",
+	"POST /api/corpora/{name}/ontology/discard 409": "the corpus changed between its owner check and the write; the store's version check, covered in pkg/corpora",
 	"PUT /api/graph/nodes/{id}/owner 429":           "MaxDecisions owner decisions per workspace, a bound in pkg/graph",
 	"POST /api/corpora 429":                         "MaxCorpora per workspace, covered by TestTwoProcessesAgreeOnCorpora in pkg/corpora",
 	// The atomic source configuration race is covered by TestPromotionGuardAndProvenanceSurviveRestart.
