@@ -66,6 +66,7 @@ export function ReviewCard({
     const text = reviewFollowUp(agent, f.prompt);
     groups[REVIEW_SEVERITIES.indexOf(f.severity)]?.findings.push({
       title: f.title,
+      ...(f.found_by ? { foundBy: w.foundBy(f.found_by) } : {}),
       ...(f.location
         ? {
             location: {

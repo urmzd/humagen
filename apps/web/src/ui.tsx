@@ -348,6 +348,7 @@ export function Page({
     );
   }
   const width = narrow ? "max-w-3xl" : wide ? "max-w-[82rem]" : "max-w-[68rem]";
+  const tabbed = !!tabs || title === hubLabel;
   return (
     <div className="humagen-page aui-scroll min-h-0 flex-1 overflow-y-auto">
       {/* Every page is one centered column, so a wide window never strands the content against the sidebar. */}
@@ -370,14 +371,16 @@ export function Page({
               <div className="min-w-0">
                 {/* Under a hub's tabs the active tab already names the page: the heading stays for
                     assistive technology and leaves the screen, so the title is said once. */}
-                <h1 className={title === hubLabel ? "sr-only" : pageTitle}>{title}</h1>
+                {/* A page with tabs is headed by its tabs: the title stays for assistive
+                    technology only, and there is no lede under it. */}
+                <h1 className={tabbed ? "sr-only" : pageTitle}>{title}</h1>
                 {meta && (
                   <div className="flex flex-wrap items-center gap-x-3 pt-1 text-aui-xs text-aui-muted">
                     {meta}
                   </div>
                 )}
                 {crumbs && <div className="pt-1.5">{crumbs}</div>}
-                {lede && <p className={pageLede}>{lede}</p>}
+                {lede && !tabbed && <p className={pageLede}>{lede}</p>}
               </div>
             </div>
             {/* The actions may shrink to the column, so on a narrow screen they wrap onto more lines instead of running off it. */}

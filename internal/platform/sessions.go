@@ -396,11 +396,14 @@ func (p *Platform) sessionSummary(who auth.Principal, th threads.Thread) Session
 	return SessionSummary{Conversation: conversation, ID: th.ID, Agent: th.Session.Agent, Parent: th.Session.Parent, Label: th.Session.Label, Project: th.Project, Title: th.Title, Status: sessionStatus(rr), UpdatedAt: at}
 }
 func (p *Platform) ListSessions(ctx context.Context, who auth.Principal, parent, agent, project, status string) ([]SessionSummary, error) {
-	if parent != "" && !p.SeesSession(who, parent) {
+	if parent != "" && !p.seesParent(who, parent) {
 		return nil, threads.ErrNotFound
 	}
+	// project "" is any project; "~" names the workspace itself.
+	inProject := project != ""
+	project = projects.NameOf(project)
 	records, err := p.Threads.Records(who.Tenant, func(th threads.Thread) bool {
-		return th.Session != nil && th.Archive == nil && (parent == "" || th.Session.Parent == parent) && (agent == "" || th.Session.Agent == agent) && (project == "" || th.Project == project)
+		return th.Session != nil && th.Archive == nil && (parent == "" || th.Session.Parent == parent) && (agent == "" || th.Session.Agent == agent) && (!inProject || th.Project == project)
 	})
 	if err != nil {
 		return nil, err
@@ -736,4 +739,15 @@ func (p *Platform) EnsureAlertSessionFromThread(ctx context.Context, tenant, thr
 		err = nil
 	}
 	return rec.ID, err
+}
+
+// seesParent reports whether a reader may list the sessions under a parent:
+// a session they may read, or a schedule (ScheduleParent) filed where they
+// may read. Each session listed is still one they may read.
+func (p *Platform) seesParent(who auth.Principal, parent string) bool {
+	if name, ok := strings.CutPrefix(parent, ScheduleParent("")); ok {
+		sc, _, err := p.Schedules.Get(who.Tenant, name)
+		return err == nil && p.Seer(who).Project(sc.Context[runs.MetaProject])
+	}
+	return p.SeesSession(who, parent)
 }
