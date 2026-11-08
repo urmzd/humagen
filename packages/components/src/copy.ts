@@ -2255,6 +2255,7 @@ export const defaultCopy = {
     followUp: "Ask Follow-up",
     followUpLabel: (title: string) => `Ask a follow-up about ${title}`,
     noFindings: "No findings reported. See the summary and notes for the review's scope.",
+    foundBy: (agent: string) => `Found by ${agent}`,
     comments: "Notes",
     related: "Related",
     summary: "Summary",

@@ -28,22 +28,18 @@ type Config struct {
 	AuthorizeFixPull func(context.Context, transport.Ref) error
 	FixPullContext   func(context.Context, transport.Ref) (transport.FixPullContext, error)
 	ObserveDelivery  connectors.DeliveryObserver
-	ReviewApproval   func(transport.View) bool
 	// ReviewText verifies host provenance before native and comment rendering.
 	ReviewText         func(transport.View) (string, error)
 	Feedback           connectors.FeedbackHandler
 	ContinueThread     func(address.Address) bool
 	StatusReactions    bool
 	ActionRepositories []string
-	// AllowReviewApproval must explicitly grant approval for the project behind a PR.
-	// Nil permits comments and change requests only.
-	AllowReviewApproval func(context.Context, transport.Ref) bool
-	API                 transport.API
-	Verifier            transport.Verifier
-	Owners              []string
-	ReadRepositories    []string
-	Bots                map[string]string
-	Agents              mention.Set
+	API                transport.API
+	Verifier           transport.Verifier
+	Owners             []string
+	ReadRepositories   []string
+	Bots               map[string]string
+	Agents             mention.Set
 	// Login is the app's own login. A comment that mentions it and names
 	// no agent is raised naming none, and the host chooses who answers.
 	Login          string
@@ -117,9 +113,6 @@ func New(cfg Config) (*Connector, error) {
 	base.FixPullContext = cfg.FixPullContext
 	base.Feedback, base.ContinueThread, base.StatusReactions, base.ActionRepositories = cfg.Feedback, cfg.ContinueThread, cfg.StatusReactions, cfg.ActionRepositories
 	base.ObserveDelivery = cfg.ObserveDelivery
-	if cfg.ReviewApproval != nil {
-		base.AllowReviewApprovalFor = func(_ context.Context, v transport.View, _ transport.Ref) bool { return cfg.ReviewApproval(v) }
-	}
 	base.Automation = func(h transport.Hook) (string, bool) {
 		_, text, ok := c.automatic(h)
 		return text, ok
@@ -142,7 +135,6 @@ func New(cfg Config) (*Connector, error) {
 		}
 		return presentation.RenderReview(v)
 	}
-	base.AllowReviewApproval = cfg.AllowReviewApproval
 	if _, ok := cfg.API.(transport.ReviewAPI); ok && cfg.Login != "" {
 		if _, ok := cfg.API.(transport.ReviewHistoryAPI); ok {
 			if _, ok := cfg.API.(transport.ContextAPI); ok {
@@ -158,22 +150,11 @@ func New(cfg Config) (*Connector, error) {
 					if err := json.Unmarshal([]byte(presentation.ReviewJSON(v.Text)), &report); err != nil || report.Format != presentation.ReviewFormatV2 {
 						return transport.Review{}, false, nil
 					}
-					allow := false
-					if cfg.ReviewApproval != nil {
-						allow = cfg.ReviewApproval(v)
-					}
-					if cfg.ReviewApproval == nil && cfg.AllowReviewApproval != nil {
-						if a, err := address.Parse(v.Channel); err == nil {
-							if ref, err := c.Reference(a); err == nil {
-								allow = cfg.AllowReviewApproval(context.Background(), ref)
-							}
-						}
-					}
-					review, err := presentation.NativeReview(report, files, allow)
+					review, err := presentation.NativeReview(report, files)
 					return review, true, err
 				}
 				// The transport calls this only after verifying an existing app-authored
-				// review's immutable payload digest. Historical approval reproduces its
+				// review's immutable payload digest. A historical approval reproduces its
 				// body; it grants no new submission and keeps current evidence checks.
 				base.RecoverReview = func(v transport.View, files []transport.ContextFile, disposition string) (transport.Review, bool, error) {
 					if cfg.ReviewText != nil {
@@ -187,7 +168,7 @@ func New(cfg Config) (*Connector, error) {
 					if err := json.Unmarshal([]byte(presentation.ReviewJSON(v.Text)), &report); err != nil || report.Format != presentation.ReviewFormatV2 {
 						return transport.Review{}, false, nil
 					}
-					review, err := presentation.NativeReview(report, files, disposition == "APPROVE")
+					review, err := presentation.RecoveredReview(report, files, disposition)
 					return review, true, err
 				}
 			}
