@@ -341,11 +341,11 @@ Managed installations submit validated `humagen.review.v2` results as native
 reviews when `github.login` is configured. The reviewed head is pinned; a moved
 head refuses publication. Each applicable finding gets a line comment and an
 optional committable suggestion. Missing diff locations become review-body text.
-Approval additionally requires `approve_reviews: true` on the destination
-repository's currently linked project, or the installation's configured home
-when no link exists. Ambiguous or unavailable placement denies approval, even
-when a cross-repository action grant permits posting. The default emits comments
-and change requests. Review recovery uses
+Each finding may name the agent that found it (`found_by`, such as
+`security-reviewer` or `security-reviewer#a`), shown on its line comment and in
+the findings table. Agents never approve (RFC 0009): an `approve` verdict is
+posted as a comment, `request_changes` as a change request, and a person
+approves and merges. Review recovery uses
 an app-owned marker and the durable delivery store to avoid duplicate reviews.
 
 The host verifies evidence references against recorded tool results and session

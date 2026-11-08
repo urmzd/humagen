@@ -310,24 +310,31 @@ and facts retired with their source are applied as the graph rebuilds.
 Every corpus has a label: `public`, `internal` (the default), `confidential`
 or `restricted` (pay, health, performance, investigations, personal records).
 
-| Where a corpus tool runs | It may show |
-| --- | --- |
-| The reader's own private conversation | Every corpus granted to the agent that the reader may read, at any label |
-| A shared conversation | Public and internal corpora that every person in it may read, and only members every one of them may see |
-| A Slack or GitHub thread, whose audience cannot be listed | Public and internal corpora the whole workspace reads |
+An answer stays where it was asked, so a corpus tool uses only what everyone
+that place reaches may read, checked each time the tool runs (people join
+channels):
 
-- Confidential and restricted content never leaves its reader's private
-  conversation. A run that reads there is marked private, so what it posts to
-  Slack or GitHub is a pointer back to the session, and nothing it read goes
-  into shared agent memory.
+| Where the question is | Audience | A corpus is used when |
+| --- | --- | --- |
+| The person's own private conversation in the console, or their DM with the app | The person | They may read it, at any label; live references and their own warehouse logins too |
+| A shared conversation in the console, or a Slack private channel or group DM | Its current members | Every member reads it, at any label, and only members every one of them may see; a Slack member the workspace cannot map to a person fails it |
+| A Slack public channel, or a Slack thread whose audience is not known | The workspace | The workspace reads it and it is public or internal |
+| A GitHub thread | Possibly beyond the workspace | The workspace reads it and it is public |
+
+- What a tool holds back, it says (`held_back`), so the agent tells the person
+  the data can't be used here and suggests a direct message, or a private
+  channel whose members may all read it.
+- A Slack conversation's audience is what the Slack app last reported with a
+  message (`SurfaceAudience`: kind, members as people, unmapped members),
+  read through the session API (`Platform.audienceSource`).
+- A direct answer marks its run private, so nothing it read goes into shared
+  agent memory or out to another place.
 - Every read of a confidential or restricted corpus is audited (`corpus.read`,
-  with the agent, the conversation and the corpus's purpose).
+  with the agent, the conversation, the audience and the corpus's purpose).
 - Granting a restricted corpus to an agent, or restricting one that agents
   are granted, takes a workspace admin (`clients:write`) and a stated
   `purpose`.
-- Live references and warehouse rows are read with the reader's own access,
-  so they are only ever searched or queried in the reader's private
-  conversation.
+- Warehouse rows (`corpus_query`) are answered only in a direct conversation.
 
 Not built yet: labels read from the sources themselves (Drive labels,
 Snowflake and BigQuery policy tags) and per document, self access to records

@@ -40,7 +40,7 @@ and evidence when implementing a requirement.
 - **The ledger decides whether a run is over.** Events report attempts. Do not infer an ending from silence.
 - **Bound every query.** A window, a row cap and a bucket cap, enforced on the server.
 - **Evals are deterministic.** A check is a pure function of the output. Do not add a model as a judge without saying so in the suite.
-- **One title per screen, on the page.** There is no top bar. Every page uses `Page` from `apps/web/src/ui.tsx`. What is running shows in the sidebar's Conversations, and a conversation holds the history of every run in it.
+- **A page is headed by its tabs, or else by one title.** Every page uses `Page` from `apps/web/src/ui.tsx`, which does this: a page with tabs (its own, or a hub's) shows the tab row as its header, with no visible title and no lede (the title stays for assistive technology); a page without tabs shows one title. Page actions sit at the right of the header. Do not add explanatory paragraphs to pages; an empty state is a title and one action. Settings (yours, and the workspace's) open from the account row, and Connections is a section of your settings at `/settings/connections`.
 - **Every place has an address.** Pages, tabs and selections are paths in `apps/web/src/route.ts`. A new page or tab adds its route there, with a test.
 - **An agent is its initials in its color, in a thin ring.** Use `AgentMark` (or `AgentInitials` in shared packages): the ring tells an agent from a person, the orb on its corner shows it working. Controls under the composer are text, not boxes.
 - **The API has one contract.** A route, a handler's answer or a type's JSON
