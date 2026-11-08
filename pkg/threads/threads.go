@@ -346,9 +346,6 @@ type Followup struct {
 	// Handled is set once it was carried out: what it calls for was
 	// started, or it was a stop.
 	Handled bool `json:"handled,omitempty"`
-	// Model and Effort are the poster's choice for the runs it starts.
-	Model  string `json:"model,omitempty"`
-	Effort string `json:"effort,omitempty"`
 }
 
 func (f *Followup) validate() error {
@@ -360,8 +357,6 @@ func (f *Followup) validate() error {
 		return fmt.Errorf("%w: a follow-up's reason is one line of at most %d characters", ErrInvalid, MaxFollowupReason)
 	case len(f.Waiting) == 0 || len(f.Waiting) > MaxFollowupWaiting:
 		return fmt.Errorf("%w: a follow-up waits on 1 to %d runs", ErrInvalid, MaxFollowupWaiting)
-	case chars(f.Model) > MaxName || !oneLine(f.Model) || chars(f.Effort) > 32 || !oneLine(f.Effort):
-		return fmt.Errorf("%w: a follow-up's model or effort is too long", ErrInvalid)
 	}
 	for _, r := range f.Waiting {
 		if r == "" || len(r) > MaxName || strings.ContainsFunc(r, func(c rune) bool { return unicode.IsSpace(c) || unicode.IsControl(c) }) {

@@ -1586,10 +1586,6 @@ export interface ThreadFollowup {
   waiting: string[];
   /** It was carried out. A queue or a replace started what it calls for; a stop is handled as it is posted. */
   handled?: boolean;
-  /** The model the poster chose for the runs it starts. */
-  model?: string;
-  /** The reasoning effort the poster chose for the runs it starts. */
-  effort?: string;
 }
 
 /** A person's turn in a thread. It starts no run of its own. Its author is always a person. */

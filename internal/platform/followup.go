@@ -70,7 +70,7 @@ func forcesStop(text string) bool {
 // may stop is working there: the message is then carried out at once, as
 // any is. A run its poster may not stop is neither waited on nor
 // interrupted.
-func (p *Platform) followupOf(ctx context.Context, person auth.Principal, th threads.Thread, text string, choice messageChoice) (*threads.Followup, error) {
+func (p *Platform) followupOf(ctx context.Context, person auth.Principal, th threads.Thread, text string) (*threads.Followup, error) {
 	turns, err := p.Runs.Conversation(person.Tenant, th.ID)
 	if errors.Is(err, runs.ErrNotFound) {
 		return nil, nil
@@ -98,7 +98,6 @@ func (p *Platform) followupOf(ctx context.Context, person auth.Principal, th thr
 		Outcome: d.Outcome, Reason: d.Reason, Waiting: waiting,
 		// A stop is carried out as it is posted: there is nothing to release.
 		Handled: d.Outcome == join.FollowupStop,
-		Model:   choice.Model, Effort: choice.Effort,
 	}, nil
 }
 
@@ -271,10 +270,6 @@ func (p *Platform) startFollowup(ctx context.Context, tenant string, th threads.
 	if err != nil {
 		return nil, err
 	}
-	choice, err := checkMessageChoice(m.Followup.Model, m.Followup.Effort)
-	if err != nil {
-		choice = messageChoice{}
-	}
 	ask := m
 	if f, ok := join.Forced(m.Text); ok && f.Outcome == m.Followup.Outcome {
 		ask.Text = f.Text
@@ -283,7 +278,7 @@ func (p *Platform) startFollowup(ctx context.Context, tenant string, th threads.
 	if via == threads.ViaConsole {
 		via = ""
 	}
-	out, err := p.carryOut(withMessageChoice(ctx, choice), who, tenant, p.Projects.Tree(tenant), th, ask, via, false, false, keeps, p.Seer(who).Agent)
+	out, err := p.carryOut(ctx, who, tenant, p.Projects.Tree(tenant), th, ask, via, false, false, keeps, p.Seer(who).Agent)
 	if deniedPost(err) {
 		return refused(err)
 	}

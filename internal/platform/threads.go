@@ -911,7 +911,7 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	// agents work in the thread is a follow-up: queued, replacing that work
 	// or stopping it.
 	if !in.PostOnly && in.Answers == nil && !in.reply && (forcesStop(msg.Text) || p.startsWork(who.Tenant, th, msg.Mentions, clientOf(in.ActAs), sees)) {
-		if msg.Followup, err = p.followupOf(ctx, person, th, msg.Text, choice); err != nil {
+		if msg.Followup, err = p.followupOf(ctx, person, th, msg.Text); err != nil {
 			return Posted{}, err
 		}
 	}
@@ -933,12 +933,13 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		again.Repeated = true
 		return again, nil
 	}
-	p.repliedTo(who.Tenant, th.ID, m)
 	if m.Followup != nil {
+		p.repliedTo(who.Tenant, th.ID, m)
 		out, err := p.followThrough(ctx, person, tree, th, m, false)
 		out.Refused = append(out.Refused, unmapped...)
 		return out, err
 	}
+	p.repliedTo(who.Tenant, th.ID, m)
 	out, err := p.carryOut(withMessageChoice(ctx, choice), person, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, in.Answers != nil || in.reply, keeps, sees)
 	out.Refused = append(out.Refused, unmapped...)
 	return out, err

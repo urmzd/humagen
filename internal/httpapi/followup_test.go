@@ -55,12 +55,12 @@ func TestAMessagePostedWhileARunWorksCarriesItsFollowup(t *testing.T) {
 	thread := started["thread"].(map[string]any)["id"].(string)
 	first := started["runs"].([]any)[0].(map[string]any)["id"].(string)
 
-	res, posted := f.do(t, nil, "POST", "/api/threads/"+thread+"/messages", ana, `{"text":"@slow and the appendix","effort":"low"}`)
+	res, posted := f.do(t, nil, "POST", "/api/threads/"+thread+"/messages", ana, `{"text":"@slow and the appendix"}`)
 	if res.StatusCode != http.StatusCreated || posted["rule"] != "followup" || len(posted["runs"].([]any)) != 0 {
 		t.Fatalf("posting = %d %v", res.StatusCode, posted)
 	}
 	fu, _ := posted["message"].(map[string]any)["followup"].(map[string]any)
-	if fu["outcome"] != "queue" || fu["handled"] != nil || fu["effort"] != "low" || fu["reason"] == "" {
+	if fu["outcome"] != "queue" || fu["handled"] != nil || fu["reason"] == "" {
 		t.Fatalf("follow-up = %v", fu)
 	}
 	if waiting, _ := fu["waiting"].([]any); len(waiting) != 1 || waiting[0] != first {

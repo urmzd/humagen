@@ -23,7 +23,7 @@ func TestAFollowupIsPendingUntilHandled(t *testing.T) {
 			t.Fatal(err)
 		}
 		th, _ := start(t, s, "acme", shared("Globex", "renewals"), msg("dana", "@ignite renew it"))
-		queued := threads.Followup{Outcome: threads.FollowupQueue, Reason: "Adds a detail.", Waiting: []string{run}, Model: "anthropic/claude", Effort: "low"}
+		queued := threads.Followup{Outcome: threads.FollowupQueue, Reason: "Adds a detail.", Waiting: []string{run}}
 		q := post(t, s, "acme", th.ID, threads.Message{By: "dana", Text: "and the invoice", Followup: &queued}, t0.Add(time.Minute))
 		stopped := threads.Followup{Outcome: threads.FollowupStop, Reason: "not needed", Waiting: []string{run}, Handled: true}
 		post(t, s, "acme", th.ID, threads.Message{By: "ana", Text: "stop: not needed", Followup: &stopped}, t0.Add(2*time.Minute))
@@ -39,7 +39,7 @@ func TestAFollowupIsPendingUntilHandled(t *testing.T) {
 		if err != nil || len(pending) != 2 || pending[0].ID != q.ID || pending[1].ID != r.ID {
 			t.Fatalf("pending = %+v, %v", pending, err)
 		}
-		if f := pending[0].Followup; f.Model != "anthropic/claude" || f.Effort != "low" || f.Waiting[0] != run {
+		if f := pending[0].Followup; f.Waiting[0] != run {
 			t.Fatalf("the follow-up read back = %+v", f)
 		}
 		handled, err := again.HandleFollowup("acme", th.ID, q.ID)
@@ -76,13 +76,12 @@ func TestFollowupRules(t *testing.T) {
 		long[i] = run
 	}
 	for name, f := range map[string]threads.Followup{
-		"an unknown outcome":     {Outcome: "pause", Reason: "x", Waiting: []string{run}},
-		"waiting on nothing":     {Outcome: threads.FollowupQueue, Reason: "x"},
-		"waiting on too many":    {Outcome: threads.FollowupQueue, Reason: "x", Waiting: long},
-		"a reason of two lines":  {Outcome: threads.FollowupStop, Reason: "a\nb", Waiting: []string{run}},
-		"a run id with a space":  {Outcome: threads.FollowupStop, Reason: "x", Waiting: []string{"r 1"}},
-		"an empty run id":        {Outcome: threads.FollowupStop, Reason: "x", Waiting: []string{""}},
-		"an effort that is long": {Outcome: threads.FollowupQueue, Reason: "x", Waiting: []string{run}, Effort: string(make([]byte, 40))},
+		"an unknown outcome":    {Outcome: "pause", Reason: "x", Waiting: []string{run}},
+		"waiting on nothing":    {Outcome: threads.FollowupQueue, Reason: "x"},
+		"waiting on too many":   {Outcome: threads.FollowupQueue, Reason: "x", Waiting: long},
+		"a reason of two lines": {Outcome: threads.FollowupStop, Reason: "a\nb", Waiting: []string{run}},
+		"a run id with a space": {Outcome: threads.FollowupStop, Reason: "x", Waiting: []string{"r 1"}},
+		"an empty run id":       {Outcome: threads.FollowupStop, Reason: "x", Waiting: []string{""}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, _, err := s.Post("acme", th.ID, threads.Message{By: "dana", Text: "x", Followup: &f}, t0); !errors.Is(err, threads.ErrInvalid) {

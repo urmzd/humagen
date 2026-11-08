@@ -100,7 +100,7 @@ func (b *followupBench) members(t *testing.T, who ...string) {
 
 func (b *followupBench) post(t *testing.T, who auth.Principal, text string) Posted {
 	t.Helper()
-	out, err := b.p.PostMessage(b.ctx, who, b.thread, MessageInput{Text: text, Model: "anthropic/claude", Effort: "low"})
+	out, err := b.p.PostMessage(b.ctx, who, b.thread, MessageInput{Text: text})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestAQueuedFollowupStartsOnceTheRunSettles(t *testing.T) {
 	b := newFollowupBench(t, followupModel(join.FollowupQueue))
 	posted := b.post(t, b.ana, "@helper and add the appendix")
 	f := posted.Message.Followup
-	if f == nil || f.Outcome != threads.FollowupQueue || f.Handled || !slices.Equal(f.Waiting, []string{b.first.ID}) || f.Model != "anthropic/claude" || f.Effort != "low" {
+	if f == nil || f.Outcome != threads.FollowupQueue || f.Handled || !slices.Equal(f.Waiting, []string{b.first.ID}) {
 		t.Fatalf("follow-up = %+v", f)
 	}
 	if len(posted.Runs) != 0 || posted.Rule != threads.RuleFollowup || len(b.stopped()) != 0 {
@@ -170,9 +170,6 @@ func TestAQueuedFollowupStartsOnceTheRunSettles(t *testing.T) {
 	rr := b.turns(t)
 	if len(rr) != 2 || rr[1].Message != posted.Message.ID || rr[1].Text != "@helper and add the appendix" || rr[1].Agent != "helper" {
 		t.Fatalf("turns = %+v", rr)
-	}
-	if meta := wire.Meta(rr[1].Tag()); meta[metaChoiceModel] != "anthropic/claude" || meta[metaChoiceEffort] != "low" {
-		t.Fatalf("the poster's choice was not kept: %v", meta)
 	}
 	if m := b.message(t, posted.Message.ID); !m.Followup.Handled || m.Followup.Outcome != threads.FollowupQueue {
 		t.Fatalf("message = %+v", m.Followup)
@@ -295,7 +292,7 @@ func TestAPosterWhoMayNotStopTheRunCannotInterruptIt(t *testing.T) {
 	b := newFollowupBench(t, followupModel(join.FollowupStop))
 	vic := auth.Principal{Tenant: b.tenantID, Subject: "vic", Name: "Vic", Kind: auth.User, Roles: []auth.Role{auth.Operator}}
 	th, _ := b.p.Threads.Get(b.tenantID, b.thread)
-	if f, err := b.p.followupOf(b.ctx, vic, th, "stop", messageChoice{}); err != nil || f != nil {
+	if f, err := b.p.followupOf(b.ctx, vic, th, "stop"); err != nil || f != nil {
 		t.Fatalf("a follow-up for someone who may not stop the run = %+v, %v", f, err)
 	}
 	m := threads.Message{ID: "m-9", By: "vic", Followup: &threads.Followup{Outcome: threads.FollowupStop, Waiting: []string{b.first.ID}, Handled: true}}

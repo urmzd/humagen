@@ -11979,12 +11979,6 @@ components:
         handled:
           description: It was carried out. A queue or a replace started what it calls for; a stop is handled as it is posted.
           type: boolean
-        model:
-          description: The model the poster chose for the runs it starts.
-          type: string
-        effort:
-          description: The reasoning effort the poster chose for the runs it starts.
-          type: string
     ThreadMessage:
       description: A person's turn in a thread. It starts no run of its own. Its author is always a person.
       type: object
