@@ -2219,7 +2219,6 @@ change in the project's history records them the same way.
   updated_by?: string;
   /** When the record last changed. What happened in it is `active_at` on a view. */
   updated_at: string;
-  approve_reviews?: boolean;
 }
 
 /** One project on the way down to another. */
@@ -2230,7 +2229,7 @@ export interface ProjectStep {
 }
 
 /** A project, where it sits, and what is in it. */
-export type ProjectView = Project & { unread: number; row_agents: string[]; depth: number; path: ProjectStep[]; children: number; conversations: number; active: number; active_at?: string; schedules: number; notes: number; proposed: number; access: ProjectAccess; actions: ("create" | "propose" | "notes" | "edit" | "move" | "archive" | "delete" | "limits" | "announce")[]; mine: boolean };
+export type ProjectView = Project & { visibility: "private" | "shared" | "workspace"; unread: number; row_agents: string[]; depth: number; path: ProjectStep[]; children: number; conversations: number; active: number; active_at?: string; schedules: number; notes: number; proposed: number; access: ProjectAccess; actions: ("create" | "propose" | "notes" | "edit" | "move" | "archive" | "delete" | "limits" | "announce")[]; mine: boolean };
 
 /** A limit a run filed in the project falls under for being there, and
 the project it is set on. What the limit allows is read from
@@ -2295,7 +2294,6 @@ export interface ProjectUpdate {
   kinds?: ProjectKindSpec[];
   /** What a scheduled agent's announcement here does, `publish` or `review`. Empty takes the kind's default. */
   agent_posts?: "" | "publish" | "review";
-  approve_reviews?: boolean;
 }
 
 /** A caller's role in a project, where it comes from, and the entry or rule that gave it. */
@@ -3407,6 +3405,76 @@ export type EvalSuiteView = EvalSuite & { every_seconds?: number; runs: EvalRun[
 export interface KnowledgeVariant {
   name: string;
   excluded: string[];
+}
+
+/** A source or catalog connector a corpus holds, by kind and name. */
+export interface CorpusMemberRef {
+  /** `source` is a knowledge source; `catalog` is a catalog connector (a warehouse). */
+  kind: "source" | "catalog";
+  name: string;
+}
+
+/** A member as the reader sees it. One the reader may not see has
+status `hidden` and no name, except to the corpus's owner, who sees its
+name so they can remove it; one whose source was deleted is `missing`.
+ */
+export interface CorpusMember {
+  kind: "source" | "catalog";
+  name: string;
+  /** files are indexed text; references are searched live at the
+source; records are warehouse tables kept as schema only and
+queried live.
+ */
+  holds?: "files" | "references" | "records";
+  /** manual, drive, notion, s3, gcs, bigquery, snowflake and so on. */
+  provider?: string;
+  /** Indexed documents, or the tables and views a warehouse lists. */
+  items: number;
+  status: "ready" | "syncing" | "failed" | "missing" | "hidden";
+}
+
+export interface CorpusReader {
+  kind: "person" | "project" | "workspace";
+  /** A person's subject or a project's name; none for the workspace. */
+  name?: string;
+}
+
+export interface Corpus {
+  name: string;
+  /** What people call it, such as HR policies. Absent shows the name. */
+  title?: string;
+  description?: string;
+  /** The subject of the person who manages it. */
+  owner: string;
+  readers: CorpusReader[];
+  members: CorpusMember[];
+  /** Whether its graph links to other shared corpora. Isolated by default. */
+  links: "isolated" | "shared";
+  created_at: string;
+  updated_at: string;
+  version: number;
+  /** Set for its owner, who alone changes it. */
+  mine: boolean;
+}
+
+export interface CorpusCreate {
+  name: string;
+  title?: string;
+  description?: string;
+  readers?: CorpusReader[];
+  members?: CorpusMemberRef[];
+  links?: "isolated" | "shared";
+}
+
+export interface CorpusChange {
+  title?: string;
+  description?: string;
+  readers?: CorpusReader[];
+  members?: CorpusMemberRef[];
+  links?: "isolated" | "shared";
+  /** Hands the corpus to another person. */
+  owner?: string;
+  version?: number;
 }
 
 export interface KnowledgeSource {
@@ -5360,6 +5428,10 @@ export interface ListEvalSuitesResponse {
 
 export interface ListEvalRunsResponse {
   runs: EvalRun[];
+}
+
+export interface ListCorporaResponse {
+  corpora: Corpus[];
 }
 
 export interface ListKnowledgeSourcesResponse {
