@@ -376,6 +376,9 @@ func (p *Platform) ListSessions(ctx context.Context, who auth.Principal, parent,
 		}
 		return strings.Compare(a.ID, b.ID)
 	})
+	if err := p.prioritizeSessions(who, out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 func sessionCursor(at time.Time) string {
@@ -592,4 +595,84 @@ func (p *Platform) sharedState() state.Store {
 		return p.cfg.Backends.Shared
 	}
 	return p.cfg.Backends.State
+}
+
+// EnsureAlertSession gives a system problem a durable reply place without calling a model.
+func (p *Platform) EnsureAlertSession(ctx context.Context, tenant, agent, project, owner, title string) (string, error) {
+	if agent == "" || agent == Open {
+		return "", fmt.Errorf("%w: an alert session needs one agent", threads.ErrInvalid)
+	}
+	visibility := threads.Private
+	var ch projects.Channel
+	var err error
+	if owner == "" {
+		visibility = threads.Shared
+		project = projects.NameOf(project)
+		if !p.HasProject(tenant, project) {
+			return "", projects.ErrNotFound
+		}
+		ch, err = p.Projects.Channel(tenant, project, projects.General)
+		if err != nil {
+			return "", err
+		}
+		if ch.Archived {
+			return "", projects.ErrInvalid
+		}
+		if err = p.checkDefault(ctx, tenant, project, agent, nil); err != nil {
+			return "", err
+		}
+	} else {
+		who := p.byPolicy(tenant, owner)
+		if project == "" {
+			pr, e := p.PersonalProject(who)
+			if e != nil {
+				return "", e
+			}
+			project = pr.Name
+		}
+		project, ch, err = p.placeFor(who, project, "")
+		if err != nil {
+			return "", err
+		}
+		if err = p.checkDefault(ctx, tenant, project, agent, p.Seer(who).Agent); err != nil {
+			return "", err
+		}
+	}
+	rec, err := p.Sessions.Open(ctx, tenant, session.Open{Parent: "system://alerts/" + owner + "/" + project, Agent: agent, Channel: wire.Channel(tenant)})
+	if err != nil {
+		return "", err
+	}
+	_, err = p.Threads.Create(tenant, threads.Thread{ID: rec.ID, Project: project, Channel: ch.Name, Title: firstWords(title, threads.MaxTitle), Visibility: visibility, CreatedBy: owner, Default: agent, Agents: []string{agent}, Session: &threads.SessionIdentity{Agent: agent, Parent: rec.Key.Parent, Label: rec.Key.Label}}, p.now())
+	if errors.Is(err, threads.ErrExists) {
+		err = nil
+	}
+	return rec.ID, err
+}
+
+// EnsureAlertSessionFromThread gives a legacy conversation a canonical reply
+// place with the same audience. Only trusted attention projection calls it;
+// an API caller cannot nominate another thread or manufacture participants.
+func (p *Platform) EnsureAlertSessionFromThread(ctx context.Context, tenant, threadID, agent, title string) (string, error) {
+	th, err := p.ThreadRecord(tenant, threadID)
+	if err != nil {
+		return "", err
+	}
+	if th.Session != nil {
+		return th.ID, nil
+	}
+	if agent == "" || agent == Open {
+		return "", threads.ErrInvalid
+	}
+	if err = p.checkDefault(ctx, tenant, th.Project, agent, nil); err != nil {
+		return "", err
+	}
+	rec, err := p.Sessions.Open(ctx, tenant, session.Open{Parent: "legacy://" + th.ID, Agent: agent, Channel: wire.Channel(tenant)})
+	if err != nil {
+		return "", err
+	}
+	_, err = p.Threads.Create(tenant, threads.Thread{ID: rec.ID, Project: th.Project, Channel: th.Channel, Title: firstWords(title, threads.MaxTitle), Visibility: th.Visibility, CreatedBy: th.CreatedBy, Participants: slices.Clone(th.Participants), Default: agent, Agents: []string{agent}, Session: &threads.SessionIdentity{Agent: agent, Parent: rec.Key.Parent, Label: rec.Key.Label}}, p.now())
+	if errors.Is(err, threads.ErrExists) {
+		err = nil
+	}
+	return rec.ID, err
 }

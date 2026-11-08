@@ -38,8 +38,11 @@ func (p *Platform) notificationsFor(who auth.Principal, deliveries *notification
 	}
 	tree := p.Projects.Tree(who.Tenant)
 	reader := p.inboxReader(tree, who)
-	seer := p.Seer(who)
 	now := p.now()
+	attention, err := p.sessionAlertDeliveries(who, now)
+	if err != nil {
+		return nil, err
+	}
 	cut := now.Add(-p.inboxRetention(who.Tenant))
 	cache := map[string]inbox.Message{}
 	lookup := func(id string) (notifications.Candidate, bool) {
@@ -56,17 +59,24 @@ func (p *Platform) notificationsFor(who auth.Principal, deliveries *notification
 			m.State, m.Hidden = inbox.Open, false
 			cache[id] = m
 		}
-		if !who.Can(reads(m.Kind)) || !seer.Message(m) || !m.Unread || m.Hidden || m.State != inbox.Open {
+		kind, visible := p.notificationPolicy(who, m, now, attention)
+		if !visible {
 			return notifications.Candidate{}, false
 		}
 		stamp := m.UpdatedAt
 		if stamp.IsZero() {
 			stamp = m.At
 		}
+		if a, canonical := attention[id]; canonical {
+			stamp = a.At
+			if !now.Before(a.SnoozedUntil) && a.SnoozedUntil.After(stamp) {
+				stamp = a.SnoozedUntil
+			}
+		}
 		if stamp.Before(cut) {
 			return notifications.Candidate{}, false
 		}
-		return notifications.Candidate{Message: id, Kind: string(m.Kind), Stamp: stamp}, true
+		return notifications.Candidate{Message: id, Kind: kind, Stamp: stamp}, true
 	}
 	candidates := []notifications.Candidate{}
 	seen := map[string]bool{}
@@ -89,7 +99,7 @@ func (p *Platform) notificationsFor(who auth.Principal, deliveries *notification
 		if page > 0 && before == "" {
 			break
 		}
-		query := p.inboxQuery(tree, who, inbox.Query{Unread: true, Limit: 100, Before: before})
+		query := p.inboxQuery(tree, who, inbox.Query{Limit: 100, Before: before})
 		rows, next, err := p.Inbox.Page(who.Tenant, query)
 		if err != nil {
 			return nil, err
@@ -127,7 +137,7 @@ func (p *Platform) notificationsFor(who auth.Principal, deliveries *notification
 			}
 			m := cache[id]
 			place := p.CurrentPlace(who.Tenant, Place{Project: m.Source.Project, Thread: m.Source.Thread})
-			if m.Source.Run != "" {
+			if m.Source.Run != "" && attention[id].Session == "" {
 				if run, err := p.Runs.Get(who.Tenant, m.Source.Run); err == nil {
 					place = p.RunPlace(who.Tenant, run)
 				}

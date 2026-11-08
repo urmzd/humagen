@@ -851,3 +851,8 @@ scorecards, feedback candidates, and exact tool/retrieval replay receipts. Share
 prompt snapshots enforce content hashes and bounded layers. Public suite reads
 hide retained source bytes and recheck the original run and current source access.
 Builder policy, prompt admission, and scheduled execution follow in later layers.
+
+Session alerts now project authoritative question outcomes, retain private reconnect
+attention, and use explicit priority preferences for delivery. Reads never resolve
+attention; visible open alerts determine session ordering. See
+[session alerts](../guides/session-alerts.md).

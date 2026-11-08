@@ -238,6 +238,8 @@ func (r Rule) scope() string {
 
 // Alert is one firing of a rule.
 type Alert struct {
+	// Projection identifies the authoritative internal attention record, never a public message anchor.
+	Projection   string     `json:"-"`
 	ID           string     `json:"id"`
 	Session      string     `json:"session,omitempty"`
 	Message      string     `json:"message,omitempty"`
@@ -309,7 +311,8 @@ type stored struct {
 // storedAlert is an alert with what its wire form leaves out.
 type storedAlert struct {
 	Alert
-	Notify []string `json:"notify,omitempty"`
+	Projection string   `json:"projection,omitempty"`
+	Notify     []string `json:"notify,omitempty"`
 	// Scope is the open key the alert holds until it is acknowledged, ""
 	// when it holds none.
 	Scope string `json:"scope,omitempty"`
@@ -317,7 +320,7 @@ type storedAlert struct {
 
 func (a *storedAlert) alert() Alert {
 	out := a.Alert
-	out.Notify = a.Notify
+	out.Notify, out.Projection = a.Notify, a.Projection
 	return out
 }
 
@@ -708,7 +711,7 @@ func (w *raising) add(a Alert, scope string) error {
 	}
 	w.t.Next++
 	a.ID = "al-" + strconv.Itoa(w.t.Next)
-	w.b.Create(w.tenant, alertKey(a.ID), stored{Alert: &storedAlert{Alert: a, Notify: a.Notify, Scope: scope}})
+	w.b.Create(w.tenant, alertKey(a.ID), stored{Alert: &storedAlert{Alert: a, Notify: a.Notify, Scope: scope, Projection: a.Projection}})
 	if scope != "" {
 		w.b.Create(w.tenant, scope, stored{Open: a.ID})
 	}

@@ -1,26 +1,27 @@
 # Native console notifications
 
-Notifications is a top-level console destination at `/notifications`, reached
-through the bell in navigation, including the collapsed rail. Its live badge
-counts delivered notifications, separate from the operational Needs You count.
-The page is a delivery projection of a person's authoritative inbox. Dismissing
-a notification does not read, resolve or remove its inbox message.
+The alert center at `/alerts` holds actionable attention on sessions. Its badge
+counts the reader's open Urgent and Normal alerts. Native notifications are a
+delivery projection; acknowledging a delivery does not resolve its alert or
+mark a session read. Compatibility inbox rows carry transport receipts while
+canonical alert state decides whether attention remains open.
 
-One console-level poll keeps the badge and page in sync while navigation is
-closed or another page is open. Only authenticated humans with `runs:read`
-load it. Reader changes and revoked access clear the projection; stale read
-responses cannot restore a dismissed delivery. Loading, empty and failed
-reads have distinct states, with retry on failure. `/you/notifications` holds
-delivery preferences and links from the page stay within the console.
+The authenticated console worker polls deliveries while the console is open.
+Reader changes and revoked access clear the projection. Loading, empty and
+failed reads have distinct states, with retry on failure. Personal notification
+settings choose delivery and quiet hours.
 
-Each event kind has Immediately, Digest or Off. A new person defaults to Off.
+Session alerts select Immediately, Digest or Off by priority (Urgent, Normal,
+Low). Older transport-only rows keep their per-kind setting during migration.
+A new person defaults to Off. See [session alerts](../guides/session-alerts.md).
 Immediate updates appear on the next authenticated console poll, every five
 seconds while the console is open. Digests release on the next hourly boundary.
 Quiet hours defer both until the configured local quiet period ends, using the
-person's IANA time zone. Email is explicitly unavailable.
+person's IANA time zone. [Email](../guides/email-notifications.md) additionally
+requires operator configuration and explicit personal opt-in.
 
 `GET /api/me/notifications` runs the bounded delivery worker with the current
-human Principal. It discovers at most 500 visible unread inbox references per
+human Principal. It discovers at most 500 visible transport references per
 pass, checking a newest page and advancing a durable backfill cursor. Before
 release and every render, it checks current addressing, permissions and `p.Seer`.
 It never reconstructs permissions from a directory record or stored sign-in roles.
@@ -36,7 +37,8 @@ persistence failures fail closed, leaving authoritative inbox history intact.
 `POST /api/me/notifications/{id}/ack` acknowledges only the caller's currently
 visible delivery. A hidden or another person's delivery answers like a missing
 one. A pending item loses delivery eligibility when access is revoked, it is
-read, it is resolved or its mode is Off.
+resolved or its mode is Off. Reading suppresses legacy transport-only rows;
+canonical session alerts remain eligible until resolved or snoozed.
 
 Console polling evaluates timing only while that person is authenticated. A
 digest that became due while the console was closed appears on the next poll.

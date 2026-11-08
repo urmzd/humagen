@@ -5194,6 +5194,12 @@ paths:
       tags: [alerts]
       summary: List fired alerts
       x-permission: alerts:read
+      parameters:
+        - {"name": "state", "in": "query", "required": false, "schema": {"type": "string", "enum": [open, snoozed, resolved]}}
+        - {"name": "priority", "in": "query", "required": false, "schema": {"type": "string", "enum": [urgent, normal, low]}}
+        - {"name": "session", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "mine", "in": "query", "required": false, "schema": {"type": "boolean"}}
+        - {name: source, in: query, description: Exact alert kind that produced the notice., schema: {type: string, maxLength: 64}}
       responses:
         "200":
           description: The alerts.
@@ -5206,6 +5212,7 @@ paths:
                   alerts:
                     type: array
                     items: {$ref: "#/components/schemas/Alert"}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/ServerError"}
@@ -8481,6 +8488,110 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/alerts/{id}:
+    patch:
+      operationId: "changeAlertState"
+      tags:
+        - "sessions"
+      summary: "Change alert state"
+      x-permission: "alerts:write"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              additionalProperties: false
+              required:
+                - "state"
+              properties:
+                state:
+                  type: "string"
+                  enum:
+                    - "open"
+                    - "snoozed"
+                    - "resolved"
+                snoozed_until:
+                  type: "string"
+                  format: "date-time"
+      responses:
+        "200":
+          description: "Successful session operation"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/sessions/{id}/alerts:
+    post:
+      operationId: "createSessionAlert"
+      tags:
+        - "sessions"
+      summary: "Create session alert"
+      x-permission: "alerts:write"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              additionalProperties: false
+              required:
+                - "title"
+                - "priority"
+              properties:
+                title:
+                  type: "string"
+                body:
+                  type: "string"
+                priority:
+                  type: "string"
+                  enum:
+                    - "urgent"
+                    - "normal"
+                    - "low"
+                message:
+                  type: "string"
+                who:
+                  type: "array"
+                  items:
+                    type: "string"
+                action:
+                  type: "string"
+                resolve_when:
+                  type: "string"
+      responses:
+        "201":
+          description: "Successful session operation"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/ServerError"
 components:
   securitySchemes:
     bearerToken:
@@ -12674,7 +12785,8 @@ components:
         briefing: {type: string, maxLength: 500}
         notifications:
           type: object
-          maxProperties: 10
+          description: Per-event delivery preferences. Session alert priorities use urgent, normal and low keys; unset priorities are off. Earlier event-kind keys remain supported.
+          maxProperties: 13
           additionalProperties: {type: string, enum: [immediate, digest, off]}
         quiet_start: {type: string}
         quiet_end: {type: string}
@@ -13558,7 +13670,7 @@ components:
       description: |
         `budget` is raised by a billing policy, never by a rule, and a rule
         cannot be created with it.
-      enum: [run_failed, failure_rate, slow_run, eval_below, spend, budget]
+      enum: [run_failed, failure_rate, slow_run, eval_below, spend, budget, session, mention, source, approval, clarification, failure, operation, alert, connection]
     AlertSeverity:
       type: string
       enum: [warning, critical]
