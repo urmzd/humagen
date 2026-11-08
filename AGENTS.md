@@ -2,9 +2,9 @@
 
 ## What this is
 
-A Go module that composes saige and orchagent into one agent platform and its
-web and Slack presentation in one repository. orchagent
-(`github.com/urmzd/orchagent`) is one module holding `flow` (the transport,
+A Go module that composes saige into one agent platform and its web and Slack
+presentation in one repository. saige (`github.com/urmzd/saige`) is the one
+SDK underneath: the agent loop and providers, and `flow` (the transport,
 formerly fiber), `durable` (formerly anchor) and `sandbox` (formerly
 playscape). The design is in
 [docs/architecture/overview.md](docs/architecture/overview.md). Current console design requirements
@@ -16,16 +16,16 @@ and evidence when implementing a requirement.
 
 - **Every choice is a file or an interface, never a fork.** A new backend is a kind in a spec slot (`pkg/spec`, `humagen.WithKind`); a new setting is a spec field with a default, documented in docs/reference/spec.md, whose examples are tested.
 
-- **Compose, don't reimplement.** If saige or orchagent (`flow`, `durable`,
-  `sandbox`) owns a concern, use it or change it upstream in that repository.
-  The ledger and queue open only through `flow/runschema`, which keeps the
+- **Compose, don't reimplement.** If saige (including its `flow`, `durable`
+  and `sandbox`) owns a concern, use it or change it upstream in saige.
+  The ledger and queue open only through `internal/runschema`, which keeps the
   stored `fiber_*` table names.
 - **One way to call an agent.** Subagents, handoffs and delegations all go
   through `pkg/call`. Do not add a second path.
 - **Default deny.** A zero value grants nothing: no calls, no budget, no access.
 - **Fail closed.** A missing or malformed edge on an agent's tag is an error.
 - **Every event type has a renderer and an OpenAPI mapping.** A type is
-  registered once in flow's catalog (`orchagent/flow/event`) with its body, its
+  registered once in flow's catalog (`saige/flow/event`) with its body, its
   renderer and its sensitivity; `TestCatalogComplete` fails without a
   renderer. A `run.*` type also needs its `RunEvent` variant in
   `api/openapi.yaml`, which `TestSpecSchemasHaveTheFieldsTheGoTypesMarshal`
@@ -63,11 +63,12 @@ and evidence when implementing a requirement.
 - `pkg/clients`: the Slack apps and GitHub installations a workspace answers through. `internal/platform/connectors.go`: one surface per scheme, fanning in and out to them.
 - `pkg/evals`: suites and runs, scored by saige. `pkg/signals`: one run's signals, folded from its events and ratings. `pkg/join`: whether each agent takes a message that names none (the dynamic router). `pkg/prefs`: a person's own settings. `pkg/marks`: what a person marked on conversations (archived for them alone, when last read, dismissed tips).
 - `pkg/state`: the record store every Humagen store writes through, in memory or in Postgres, with the `statetest` suite. A store keeps its logic in memory and gains `Open(state.Store)`, or reads and writes per request (`Lookup`, `List`, versioned ops) with the tenant as its shard key (docs/architecture/overview.md#storage); `internal/platform/backends.go` chooses the backends. `pkg/notice`: a store's change notices (`Watch`) to its watchers in every process, relayed by flow's `bus.Notices` on Postgres.
-- orchagent, imported as `github.com/urmzd/orchagent/...` (not in this repository):
+- saige's runtime layers, imported as `github.com/urmzd/saige/...` (not in this repository):
   - `flow/event`: the envelope, the sealed bodies and the catalog. `flow/bus`: the bus, by channel and type prefix. `flow/egress`: delivery of a run's events to its channel's sink.
   - `flow/definition`: saige definitions plus a policy, and the pin a run carries. `flow/turn`: the `Runtime` interface, with `turn/native` (saige) and `turn/sandbox` (a sandbox around any Runtime).
-  - `flow/runtime` and `flow/runschema`: durable runs on `durable`, and the `fiber_*` tables they are stored in. `flow/membership`, `flow/dispatch`: channel membership and dispatch. `flow/connectors`: Slack, GitHub, Jira, cron and webhook adapters.
+  - `flow/runtime`: durable runs on `durable`, composed in `internal/platform` with `runtime.New`. `flow/membership`: channel membership. `flow/connectors`: Slack, GitHub, cron and mention adapters. `flow/credential`: the seam a connector's API client takes its token through.
   - `durable`: the run ledger, queue, worker and replay. `sandbox`: isolated instances, workspaces, NGAC, the egress gate.
+- `internal/runschema`: the `fiber_*` tables the run ledger and queue are stored in. `internal/toolprovider`: the MCP servers a tenant may reach and the tools an admin accepted. `internal/mcptools`: connects to them with person or shared credentials and grants their tools to a run. `pkg/dense`: the embedders (Hashing, HTTP, Vertex).
 - `pkg/agents`: each tenant's agent definitions on `pkg/state`, a `definition.Source`. `internal/legacy` moves the old registry into it once.
 - `internal/wire`: the one seam onto flow's run model: a trigger's request and context, connector meta keys, event types and bodies, and agent definitions (`AgentCatalog`). Nothing else touches them; `TestSeam` checks.
 - `internal/platform`: the composition root. `pkg/leader`: the one process per database that runs the singleton loops (`internal/platform/process_role.go`: process roles and leadership). `internal/httpapi`: routes, sessions, event stream.

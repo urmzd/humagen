@@ -289,7 +289,7 @@ this:
   /api/journal?kind=` is read as a type. Both are deprecated; a client
   regenerated from `api/openapi.yaml` uses `channel`, `type` and `run`.
 - **A program on the `humagen` package** imports fiber from
-  `github.com/urmzd/orchagent/flow/...` ([spec](../reference/spec.md#since-fiber-moved-into-this-repository)).
+  `github.com/urmzd/saige/flow/...` ([spec](../reference/spec.md#since-orchagent-moved-into-saige)).
 
 ## Kept names
 
@@ -307,7 +307,7 @@ this:
 | System `metadata.name` default and `humagen deploy`'s namespace default, `warp` | They name existing compose projects, Helm releases and their `<release>-env` Secrets |
 | Flux namespace, `HelmRelease`, `GitRepository`, `Kustomization` and `warp-env` Secret | The example prunes |
 | A warp chart release's resource names (`nameOverride: warp`) | Its volume and selector |
-| Fiber's Postgres tables `fiber_definitions`, `fiber_definition_retirements`, `fiber_events`, `fiber_event_runs`, `fiber_memberships`, `fiber_runs`, `fiber_run_records`, `fiber_run_queue`, `fiber_threads`, `fiber_thread_entries`, `fiber_knowledge_documents`, `fiber_knowledge_chunks`, `fiber_tool_providers`, `fiber_tool_snapshots`, the bus's consumer group tables added later (`fiber_event_tenants`, `fiber_consumers`, `fiber_dispatch_runs`), durable connector delivery state (`fiber_sink_state`), and session state (`fiber_sessions`, `fiber_session_runs`, `fiber_session_links`, `fiber_session_grants`, `fiber_session_budgets`, `fiber_session_reservations`, `fiber_session_totals`, `fiber_session_usage_ids`), with their indexes | Fiber now lives in `github.com/urmzd/orchagent/flow`, whose `runschema` maps the run ledger and queue onto these tables; its stores keep their rows across the move |
+| Fiber's Postgres tables `fiber_definitions`, `fiber_definition_retirements`, `fiber_events`, `fiber_event_runs`, `fiber_memberships`, `fiber_runs`, `fiber_run_records`, `fiber_run_queue`, `fiber_threads`, `fiber_thread_entries`, `fiber_tool_providers`, `fiber_tool_snapshots`, the bus's consumer group tables added later (`fiber_event_tenants`, `fiber_consumers`), durable connector delivery state (`fiber_sink_state`), and session state (`fiber_sessions`, `fiber_session_runs`, `fiber_session_links`, `fiber_session_grants`, `fiber_session_budgets`, `fiber_session_reservations`, `fiber_session_totals`, `fiber_session_usage_ids`), with their indexes | Fiber now lives in `github.com/urmzd/saige/flow`, and Humagen's `internal/runschema` maps the run ledger and queue onto these tables; its stores keep their rows across the move. `fiber_knowledge_documents`, `fiber_knowledge_chunks` and `fiber_dispatch_runs` are no longer read |
 | Durable activity names `fiber.turn.v2`, `fiber.turn.agent.v2`, `fiber.turn.resume.v2`, and the v1 names `fiber.turn`, `fiber.turn.agent`, `fiber.turn.resume` | The durable ledger (formerly anchor's) stores runs under them. A run under a v1 name fails terminally with a reason instead of replaying |
 | Run record keys `fiber.stop`, `fiber.question.`, `fiber.answer.`, `fiber.child.`, `fiber.usage.a` | A run in flight reads its records back by these names |
 

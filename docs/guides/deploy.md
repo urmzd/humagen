@@ -118,7 +118,7 @@ spec you give it: set `sandbox` there for compose and kubernetes targets too.
 
 ### Upgrading: runc is refused by default
 
-orchagent's sandbox (playscape v0.10.0 and later) refuses a runtime that shares the host's kernel. A spec
+saige's sandbox (playscape v0.10.0 and later) refuses a runtime that shares the host's kernel. A spec
 with `sandbox.docker.runtime: runc` now logs `sandbox: docker is unavailable`
 and every tool that needs an instance refuses, until it also sets
 `insecure_development_runtime: true` (or the server gets

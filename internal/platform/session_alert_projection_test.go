@@ -8,7 +8,7 @@ import (
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/state"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/event"
 )
 
 func TestSessionAlertResolutionRequiresRecordedAnswer(t *testing.T) {

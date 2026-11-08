@@ -103,16 +103,16 @@ Run the same config on your own infrastructure with compose, Helm or Flux. Point
 
 ## How it works
 
-One repository holds the platform. [saige](https://github.com/urmzd/saige) and [orchagent](https://github.com/urmzd/orchagent) are dependencies: orchagent's `flow` is the transport (formerly fiber), `durable` keeps runs durable (formerly anchor) and `sandbox` confines them (formerly playscape).
+One repository holds the platform. [saige](https://github.com/urmzd/saige) is its one dependency for agents: its `flow` is the transport (formerly fiber), `durable` keeps runs durable (formerly anchor) and `sandbox` confines them (formerly playscape).
 
 | Concept | What it is |
 |---------|------------|
 | **Event** | One envelope (`id`, `source`, `type`, `channel`, `time`, `hops`, `data`). `type` is the only discriminator and carries the version, such as `message.posted.v1` or `run.completed.v1`. A type this build does not know is kept as raw bytes, never guessed |
 | **Channel** | Where an event is published, such as `slack://T01/C02`. One bus carries every event; a subscriber names channels and type prefixes, and an empty subscription receives nothing |
 | **Definition** | An agent is a saige definition, stored per workspace and versioned. A run pins its name, version and digest, and fails rather than replay a prompt that moved |
-| **Runtime** | One turn of a run. The default wraps saige inside an orchagent sandbox; `humagen.WithRuntime` plugs in another. orchagent's `durable` keeps runs durable |
+| **Runtime** | One turn of a run. The default wraps saige's agent loop inside saige's sandbox; `humagen.WithRuntime` plugs in another. saige's `durable` keeps runs durable |
 
-A message in the console, Slack or GitHub is an event, the agent's answer streams back as `run.*` events on the same channel, and each surface renders them. See [architecture](docs/architecture/overview.md) and [flow's event design](https://github.com/urmzd/orchagent/blob/main/flow/docs/architecture/events.md).
+A message in the console, Slack or GitHub is an event, the agent's answer streams back as `run.*` events on the same channel, and each surface renders them. See [architecture](docs/architecture/overview.md) and [flow's event design](https://github.com/urmzd/saige/blob/main/docs/architecture/flow-events.md).
 
 ## Configuration
 
@@ -184,7 +184,7 @@ make tilt
 - [Architecture and status](docs/architecture/overview.md)
 - [API contract and events](docs/reference/api.md)
 - [The spec](docs/reference/spec.md)
-- [orchagent flow: events, channels, definitions and the Runtime](https://github.com/urmzd/orchagent/blob/main/flow/docs/architecture/events.md)
+- [saige flow: events, channels, definitions and the Runtime](https://github.com/urmzd/saige/blob/main/docs/architecture/flow-events.md)
 - [Projects](docs/architecture/projects.md)
 - [Agent calls](docs/architecture/agent-calls.md)
 - [Authorization](docs/reference/authorization.md)

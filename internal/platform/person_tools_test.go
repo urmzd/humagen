@@ -4,18 +4,18 @@ import (
 	"context"
 	"errors"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/urmzd/humagen/internal/mcptools"
 	runsettings "github.com/urmzd/humagen/pkg/settings"
-	"github.com/urmzd/orchagent/flow/mcptools"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/urmzd/humagen/internal/toolprovider"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/personctx"
 	"github.com/urmzd/humagen/pkg/runctx"
-	"github.com/urmzd/orchagent/flow/toolprovider"
-	"github.com/urmzd/orchagent/flow/turn/native/saigetypes"
+	saigetypes "github.com/urmzd/saige/agent/types"
 )
 
 func TestPersonToolsRequireExplicitGrant(t *testing.T) {

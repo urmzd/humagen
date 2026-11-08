@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	dqueue "github.com/urmzd/orchagent/durable/queue"
+	dqueue "github.com/urmzd/saige/durable/queue"
 )
 
 func claimWithin(t *testing.T, q dqueue.Queue, d time.Duration) (dqueue.Item, error) {

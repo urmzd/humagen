@@ -4310,6 +4310,22 @@ export interface EventRequest {
   attachments?: Attachment[];
   /** Host context shown to the model next to the body's own fields. */
   context?: Record<string, string>;
+  /** The agents, people, places and links the request's text refers to, in the order they appear. */
+  references?: EventReference[];
+}
+
+/** Something an ingress request's text refers to. */
+export interface EventReference {
+  /** An agent, a person, a place named without a URL (a channel, `#12`), or a link. */
+  kind: "agent" | "person" | "place" | "link";
+  /** What a person saw in the text, such as `@ada`, `#general` or a link's label; for an agent, its name. */
+  name?: string;
+  /** The native id on the surface the event came from, such as a Slack user or channel id or a GitHub login. */
+  id?: string;
+  /** The canonical address of what is referred to, when known, such as `slack://T01/C02`. */
+  address?: string;
+  /** The link exactly as it was written. */
+  url?: string;
 }
 
 /** Where in Slack a message was posted. */

@@ -20,9 +20,9 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/integrations/github"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/turn/native"
 	"github.com/urmzd/saige/agent/agenttest"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/turn/native"
 )
 
 const reviewHead = "316c56f81540c3eaca02184173df322a48aebdd9"

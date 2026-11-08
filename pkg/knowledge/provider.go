@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/orchagent/flow/mcptools"
+	"github.com/urmzd/humagen/internal/mcptools"
 )
 
 // Provider imports one explicitly selected resource with the current reader's credential.

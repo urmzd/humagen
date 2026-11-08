@@ -119,11 +119,11 @@ endpoint also accepts the structured contract under `input`.
 
 ## Runtime dependency
 
-fiber is `orchagent/flow`, pinned with the rest of orchagent in `go.mod`
-(`github.com/urmzd/orchagent`). It carries:
+fiber is `saige/flow`, pinned with the rest of saige in `go.mod`
+(`github.com/urmzd/saige`). It carries:
 - the call extension;
 - model fallbacks with `fallback_on`, and per-call approvals through
-  `native.Approving` (`github.com/urmzd/orchagent/flow/turn/native`);
+  `native.Approving` (`github.com/urmzd/saige/flow/turn/native`);
 - `mcp:<provider>[:write]` grants from the tool provider store;
 - unavailable tools and tool groups dropped with a warning rather than
   failing the run.
