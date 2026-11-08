@@ -344,15 +344,15 @@ type Message struct {
 }
 
 func (m Message) clone() Message {
-	if m.EditedAt != nil {
-		at := *m.EditedAt
-		m.EditedAt = &at
-	}
 	m.Attachments = slices.Clone(m.Attachments)
 	m.Mentions = cloneMentions(m.Mentions)
 	if m.Answers != nil {
 		a := *m.Answers
 		m.Answers = &a
+	}
+	if m.EditedAt != nil {
+		at := *m.EditedAt
+		m.EditedAt = &at
 	}
 	return m
 }
