@@ -239,13 +239,14 @@ function useAppearance(prefs: Preferences | null) {
     const apply = () => {
       const theme = prefs?.theme ?? "system";
       root.dataset.theme = theme === "system" ? (media.matches ? "dark" : "light") : theme;
-      root.dataset.accent = accentAttribute(prefs?.accent);
+      // One accent, the workspace's brand: there are no personal accent presets.
+      root.dataset.accent = accentAttribute();
       syncThemeColor(document, root.dataset.theme === "dark" ? "dark" : "light");
     };
     apply();
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
-  }, [prefs?.theme, prefs?.accent]);
+  }, [prefs?.theme]);
 }
 
 function Console({
