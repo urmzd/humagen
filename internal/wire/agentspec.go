@@ -250,11 +250,17 @@ func NewRevision(spec AgentSpec, rev int, by string, at time.Time) (Revision, er
 // NewRevisionWith is NewRevision for a deployment whose provider table is not
 // the built-in one.
 func NewRevisionWith(spec AgentSpec, rev int, by string, at time.Time, providers []string) (Revision, error) {
+	return NewRevisionAccepting(spec, rev, by, at, providers, nil)
+}
+
+// NewRevisionAccepting is NewRevisionWith that also admits any provider
+// accept reports, such as one an administrator added while the server runs.
+func NewRevisionAccepting(spec AgentSpec, rev int, by string, at time.Time, providers []string, accept func(string) bool) (Revision, error) {
 	if rev < FirstRev {
 		return Revision{}, fmt.Errorf("%w: revision number %d is below %d; revisions count from %d", ErrInvalidAgent, rev, FirstRev, FirstRev)
 	}
 	canonical := spec.Normalize()
-	if err := canonical.ValidateWith(providers); err != nil {
+	if err := canonical.ValidateAccepting(providers, accept); err != nil {
 		return Revision{}, err
 	}
 	return Revision{
@@ -404,7 +410,15 @@ func (s AgentSpec) Validate() error { return s.ValidateWith(KnownProviders()) }
 // not resolve tools or sources: whether a tool is loaded is a property of a
 // process, not of a definition, and a control plane that rejected a spec
 // because one node had not been restarted yet would be enforcing an accident.
-func (s AgentSpec) ValidateWith(providers []string) error {
+func (s AgentSpec) ValidateWith(providers []string) error { return s.ValidateAccepting(providers, nil) }
+
+// ValidateAccepting is ValidateWith that also admits any provider accept
+// reports. Nil accept admits only providers.
+func (s AgentSpec) ValidateAccepting(providers []string, accept func(string) bool) error {
+	has := func(name string) bool {
+		return slices.ContainsFunc(providers, func(p string) bool { return strings.EqualFold(p, name) }) ||
+			(accept != nil && accept(name))
+	}
 	c := s.Normalize()
 	switch {
 	case c.Name == "":
@@ -431,13 +445,13 @@ func (s AgentSpec) ValidateWith(providers []string) error {
 	if c.Name == runtime.ReservedName {
 		return fmt.Errorf("%w: agent name %q is reserved for control topics", ErrInvalidAgent, c.Name)
 	}
-	if !slices.ContainsFunc(providers, func(p string) bool { return strings.EqualFold(p, c.Provider) }) {
+	if !has(c.Provider) {
 		return fmt.Errorf("%w: agent %q names provider %q; this deployment knows %s", ErrInvalidAgent, c.Name, c.Provider, list(providers))
 	}
-	if err := validFallbacks(c, providers); err != nil {
+	if err := validFallbacks(c, providers, has); err != nil {
 		return err
 	}
-	if err := validChoices(c, providers); err != nil {
+	if err := validChoices(c, providers, has); err != nil {
 		return err
 	}
 	if err := uniqueNonEmpty("tool", c.Name, c.Tools); err != nil {
@@ -520,7 +534,7 @@ func (s AgentSpec) ValidateWith(providers []string) error {
 // validChoices holds the models and efforts a person may pick to the rules
 // orchagent stores them under, and each model to a provider this deployment
 // knows. c is canonical.
-func validChoices(c AgentSpec, providers []string) error {
+func validChoices(c AgentSpec, providers []string, has func(string) bool) error {
 	if c.Choices == nil {
 		return nil
 	}
@@ -529,7 +543,7 @@ func validChoices(c AgentSpec, providers []string) error {
 	}
 	for _, m := range c.Choices.Models {
 		provider, _, _ := strings.Cut(m, "/")
-		if !slices.ContainsFunc(providers, func(p string) bool { return strings.EqualFold(p, provider) }) {
+		if !has(provider) {
 			return fmt.Errorf("%w: agent %q offers model %q; this deployment knows %s", ErrInvalidAgent, c.Name, m, list(providers))
 		}
 	}
@@ -541,7 +555,7 @@ func validChoices(c AgentSpec, providers []string) error {
 // refuses a repeat: a fallback identical to the primary or to an earlier
 // fallback would only send the same failing request again, which is the retry
 // decorator's job, not the policy's. c is canonical.
-func validFallbacks(c AgentSpec, providers []string) error {
+func validFallbacks(c AgentSpec, providers []string, has func(string) bool) error {
 	if len(c.Fallbacks) > MaxFallbacks {
 		return fmt.Errorf("%w: agent %q names %d fallback models, the limit is %d", ErrInvalidAgent, c.Name, len(c.Fallbacks), MaxFallbacks)
 	}
@@ -569,7 +583,7 @@ func validFallbacks(c AgentSpec, providers []string) error {
 		case fb.Model == "":
 			return fmt.Errorf("%w: agent %q fallback %d (provider %q) names no model", ErrInvalidAgent, c.Name, n, fb.Provider)
 		}
-		if !slices.ContainsFunc(providers, func(p string) bool { return strings.EqualFold(p, fb.Provider) }) {
+		if !has(fb.Provider) {
 			return fmt.Errorf("%w: agent %q fallback %d names provider %q; this deployment knows %s", ErrInvalidAgent, c.Name, n, fb.Provider, list(providers))
 		}
 		if prev, dup := seen[fb]; dup {

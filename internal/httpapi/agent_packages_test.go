@@ -5,13 +5,15 @@ import (
 	"fmt"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/auth"
 	"net/http"
 	"testing"
 )
 
 func TestPackageAgentsCanBeCustomizedAndReset(t *testing.T) {
-	f := newFixtureWith(t, platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline"})
+	f := newFixtureWith(t, platform.Config{})
 	admin := f.machine(t, "acme", everything...)
+	installPackages(t, f, "acme")
 	if err := f.p.EnsureBuiltins(t.Context(), "acme"); err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +83,7 @@ func TestPackageUpdateAvailableInAPI(t *testing.T) {
 	if _, err := store.Revise(t.Context(), "acme", spec, base.Rev, "ana"); err != nil {
 		t.Fatal(err)
 	}
-	f := newFixtureWith(t, platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline", Backends: platform.Backends{Agents: store}})
+	f := newFixtureWith(t, platform.Config{Backends: platform.Backends{Agents: store}})
 	admin := f.machine(t, "acme", everything...)
 	res, history := f.do(t, nil, "GET", "/api/agents/humagen-writer/history", admin, "")
 	if res.StatusCode != http.StatusOK {
@@ -91,5 +93,18 @@ func TestPackageUpdateAvailableInAPI(t *testing.T) {
 	pkg := current["package"].(map[string]any)
 	if current["customized"] != true || current["update_available"] != true || pkg["version"] != "previous-version" || pkg["latest"] == "previous-version" {
 		t.Fatalf("update: %v", current)
+	}
+}
+
+// installPackages installs every package of the platform's agents in
+// tenant's workspace on the offline model, as an administrator would on a
+// real one.
+func installPackages(t *testing.T, f *fixture, tenant string) {
+	t.Helper()
+	admin := auth.Principal{Tenant: tenant, Subject: "admin", Roles: []auth.Role{auth.Admin}}
+	for _, name := range []string{"core", "review"} {
+		if _, err := f.p.InstallPackage(t.Context(), admin, name, wire.ModelRef{Provider: "offline", Model: "offline"}); err != nil {
+			t.Fatalf("install %s: %v", name, err)
+		}
 	}
 }

@@ -8,11 +8,12 @@ import (
 
 func TestAgentPackageUpgradeCustomizeReset(t *testing.T) {
 	ctx := t.Context()
-	p, err := New(Config{Workspace: t.TempDir(), BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p, err := New(Config{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = p.Close() })
+	InstallPackagesForTest(t, p, "acme")
 	if err := p.EnsureBuiltins(ctx, "acme"); err != nil {
 		t.Fatal(err)
 	}

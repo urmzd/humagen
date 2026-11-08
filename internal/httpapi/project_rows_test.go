@@ -60,7 +60,8 @@ func TestProjectRowsCountOnlyTheReadersVisibleUnreadUpdates(t *testing.T) {
 }
 
 func TestCompanyRowsOfferOnlyCurrentBuiltinNames(t *testing.T) {
-	f := newFixtureWith(t, platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline"})
+	f := newFixtureWith(t, platform.Config{})
+	installPackages(t, f, "acme")
 	token := f.machine(t, "acme", everything...)
 	want(t, f, token, "GET", "/api/agents", "", http.StatusOK)
 	row := want(t, f, token, "GET", "/api/projects/~", "", http.StatusOK)["project"].(map[string]any)

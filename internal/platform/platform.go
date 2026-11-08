@@ -243,10 +243,19 @@ type Config struct {
 	// OfflineHooks lets housekeeping run on the offline provider. It exists
 	// for tests: an offline answer is a notice, not a title or a fact.
 	OfflineHooks bool
-	// BuiltinProvider and BuiltinModel are what the platform's own agents
-	// run on. With either empty there are no built-in agents.
-	BuiltinProvider string
-	BuiltinModel    string
+	// ConfiguredModelsOnly holds agents to the providers someone set up:
+	// those the deployment declares (Ext.Providers) and each workspace's
+	// own (ModelProviders). The runtime's own offline, anthropic and openai
+	// are refused, so nothing runs on a stand-in or on a key nobody chose
+	// for it. The server sets it; a test that scripts the offline provider
+	// leaves it off.
+	ConfiguredModelsOnly bool
+	// ModelKinds builds the providers workspaces set up. With Build nil no
+	// workspace provider can run.
+	ModelKinds ModelKinds
+	// DeclaredKinds is the kind of each provider the deployment declares,
+	// by name, so the console can show its logo. A name with none is plain.
+	DeclaredKinds map[string]string
 	// AgentOptions are passed to every agent the sandbox builds. A test
 	// uses them to script a model.
 	AgentOptions []native.Option
@@ -516,7 +525,7 @@ func New(cfg Config) (*Platform, error) {
 		queue:  cfg.Backends.Queue,
 	}
 	if p.Agents == nil {
-		p.Agents = wire.NewMemoryAgents(append(providers(), cfg.Ext.ProviderNames()...)...)
+		p.Agents = wire.NewMemoryAgentsAccepting(acceptProviderName, append(providers(), cfg.Ext.ProviderNames()...)...)
 	}
 	if p.ledger == nil {
 		p.ledger, p.queue = ledger.NewMemory(), dqueue.NewMemory()
@@ -649,6 +658,9 @@ func New(cfg Config) (*Platform, error) {
 	for name, provider := range cfg.Ext.Providers {
 		flowOptions = append(flowOptions, flow.WithModelProvider(name, provider))
 	}
+	// A workspace's own providers are found when a turn runs: resolveModel
+	// names each by its workspaceRef, and resolveProvider builds it.
+	flowOptions = append(flowOptions, flow.WithModelProviderResolver(acceptProviderName, p.resolveProvider))
 	app, err := flow.New(startup, flowOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("platform: flow: %w", err)
@@ -703,7 +715,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error
 		// A run waiting on an attached run of the same agent holds one of
 		// that agent's nodes, so there are as many as there are places.
 		runtime.WithReplicas(p.slots()),
-		runtime.WithAgentOptions(slices.Concat(p.cfg.Ext.agentOptions(), p.cfg.AgentOptions, []native.Option{native.WithAttachments(resolve.New(p.files))})...),
+		runtime.WithAgentOptions(slices.Concat(p.nativeOptions(), p.cfg.AgentOptions, []native.Option{native.WithAttachments(resolve.New(p.files))})...),
 		runtime.WithSandboxLogger(p.log),
 	)
 	if err != nil {

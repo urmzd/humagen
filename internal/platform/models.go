@@ -70,6 +70,12 @@ func (m ModelPolicy) spec(agent string) wire.AgentSpec {
 // providers this deployment has: fiber's built-in ones and every model the
 // spec names, such as a second OpenAI-compatible server.
 func checkModelPolicies(list []ModelPolicy, known ...string) error {
+	return checkPoliciesAgainst(list, append(wire.KnownProviders(), known...))
+}
+
+// checkPoliciesAgainst checks each policy against exactly the providers
+// named, with none of fiber's built-ins added.
+func checkPoliciesAgainst(list []ModelPolicy, providers []string) error {
 	if len(list) > MaxModelPolicies {
 		return fmt.Errorf("%w: a workspace keeps at most %d model policies", ErrModelPolicy, MaxModelPolicies)
 	}
@@ -92,7 +98,7 @@ func checkModelPolicies(list []ModelPolicy, known ...string) error {
 		}
 		seen[m.Name] = true
 		// A policy is checked exactly as fiber checks the agent fields it becomes.
-		if err := m.spec("policy-" + m.Name).ValidateWith(append(wire.KnownProviders(), known...)); err != nil {
+		if err := m.spec("policy-" + m.Name).ValidateWith(providers); err != nil {
 			return fmt.Errorf("%w: %q: %v", ErrModelPolicy, m.Name, err)
 		}
 	}
@@ -151,37 +157,52 @@ func (p *Platform) policyUsers(ctx context.Context, tenant, name string) []strin
 // agent names, for one call. The pinned revision is not changed: the policy
 // is read as it stands when the call starts, which is what lets a workspace
 // move every agent off a failing provider at once.
+//
+// It then names each workspace provider the call runs on by its
+// workspaceRef, which carries the workspace, so the runtime builds it with
+// that workspace's key (resolveProvider). A declared provider keeps its name.
 func (p *Platform) resolveModel(req runtime.Request) (runtime.Request, error) {
 	spec := req.Definition.Spec
-	if spec.Provider != PolicyProvider {
-		return req, nil
+	if spec.Provider == PolicyProvider {
+		m, ok := policyIn(p.Settings(req.Tenant).ModelPolicies, spec.Model)
+		if !ok {
+			return req, fmt.Errorf("%w: agent %q runs on the model policy %q, which the workspace no longer has", ErrModelPolicy, spec.Name, spec.Model)
+		}
+		resolved := m.spec(spec.Name)
+		spec.Provider, spec.Model, spec.FallbackOn = resolved.Provider, resolved.Model, resolved.FallbackOn
+		spec.Fallbacks = make([]native.ModelRef, 0, len(resolved.Fallbacks))
+		for _, f := range resolved.Fallbacks {
+			spec.Fallbacks = append(spec.Fallbacks, native.ModelRef{Provider: f.Provider, Model: f.Model})
+		}
+		if len(spec.Fallbacks) == 0 {
+			spec.Fallbacks = nil
+		}
 	}
-	m, ok := policyIn(p.Settings(req.Tenant).ModelPolicies, spec.Model)
-	if !ok {
-		return req, fmt.Errorf("%w: agent %q runs on the model policy %q, which the workspace no longer has", ErrModelPolicy, spec.Name, spec.Model)
-	}
-	resolved := m.spec(spec.Name)
-	spec.Provider, spec.Model, spec.FallbackOn = resolved.Provider, resolved.Model, resolved.FallbackOn
-	spec.Fallbacks = make([]native.ModelRef, 0, len(resolved.Fallbacks))
-	for _, f := range resolved.Fallbacks {
-		spec.Fallbacks = append(spec.Fallbacks, native.ModelRef{Provider: f.Provider, Model: f.Model})
-	}
-	if len(spec.Fallbacks) == 0 {
-		spec.Fallbacks = nil
+	spec.Provider = p.runName(req.Tenant, spec.Provider)
+	if len(spec.Fallbacks) > 0 {
+		spec.Fallbacks = slices.Clone(spec.Fallbacks)
+		for i := range spec.Fallbacks {
+			spec.Fallbacks[i].Provider = p.runName(req.Tenant, spec.Fallbacks[i].Provider)
+		}
 	}
 	req.Definition.Spec = spec
 	return req, nil
 }
 
 // ModelProviderChoice describes configuration names, never credential values.
-// Declared records a host registration; actual connectivity requires a run.
+// Declared records that someone set it up: the deployment, or the
+// workspace's administrators (Source). Actual connectivity requires a run.
 type ModelProviderChoice struct {
 	Name     string `json:"name"`
 	Declared bool   `json:"declared"`
+	// Kind is anthropic, google or openai, where it is known.
+	Kind string `json:"kind,omitempty"`
+	// Source is "deployment" or "workspace" for a declared provider.
+	Source string `json:"source,omitempty"`
 }
 
-func (p *Platform) ModelProviderChoices() []ModelProviderChoice {
-	names := p.agentProviders()
+func (p *Platform) ModelProviderChoices(tenant string) []ModelProviderChoice {
+	names := p.agentProviders(tenant)
 	slices.Sort(names)
 	names = slices.Compact(names)
 	out := []ModelProviderChoice{}
@@ -189,7 +210,13 @@ func (p *Platform) ModelProviderChoices() []ModelProviderChoice {
 		if name == PolicyProvider {
 			continue
 		}
-		out = append(out, ModelProviderChoice{Name: name, Declared: p.cfg.Ext.Providers[name] != nil || (name != "offline" && p.cfg.BuiltinProvider == name)})
+		c := ModelProviderChoice{Name: name}
+		if p.cfg.Ext.Providers[name] != nil {
+			c.Declared, c.Source, c.Kind = true, "deployment", p.cfg.DeclaredKinds[name]
+		} else if m, ok := p.workspaceProvider(tenant, name); ok {
+			c.Declared, c.Source, c.Kind = true, "workspace", m.Kind
+		}
+		out = append(out, c)
 		if len(out) >= 100 {
 			break
 		}

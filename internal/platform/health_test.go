@@ -11,8 +11,10 @@ import (
 	saigetypes "github.com/urmzd/saige/agent/types"
 )
 
+// A workspace with no provider, declared or its own, is told so as an
+// outage: none of its agents can answer.
 func TestHealthSaysAnOutageWithNoModelProvider(t *testing.T) {
-	h := start(t, call.Limits{}).Health(t.Context())
+	h := start(t, call.Limits{}).HealthFor(t.Context(), "acme")
 	if h.Status != platform.HealthDown {
 		t.Fatalf("status = %s", h.Status)
 	}

@@ -10,6 +10,7 @@ import type {
   AgentEvaluationHealth,
   AgentHome,
   AgentNetwork,
+  AgentPackageListing,
   AgentSession,
   AgentSetup,
   AgentSetupPlan,
@@ -79,6 +80,7 @@ import type {
   HandoffContract,
   HandoffUpdate,
   Health,
+  HealthComponent,
   InboxCounts,
   InboxDeliveryInput,
   InboxMessage,
@@ -91,6 +93,7 @@ import type {
   KnowledgeVariant,
   LibrarySkill,
   LinkSessionBody,
+  ListAgentPackagesResponse,
   ListAgentRevisionsResponse,
   ListAgentsResponse,
   ListAlertRulesResponse,
@@ -145,6 +148,8 @@ import type {
   MemoryFile,
   MemoryFiles,
   MemoryRestoreInput,
+  ModelProvider,
+  ModelRef,
   Note,
   NoteInput,
   NoteList,
@@ -211,6 +216,7 @@ import type {
   SetApprovalModeBody,
   SetKnowledgeDocumentExcludedBody,
   SetKnowledgeSyncSettingsBody,
+  SetModelProviderBody,
   Settings,
   SkillUsage,
   SnoozeInboxMessageBody,
@@ -1700,7 +1706,14 @@ model provider set up, a `provider:none` component is down.
     });
   }
 
-  /** Names are runtime configuration metadata, never keys or credential references. Declared does not mean a live call has been verified; a dry run checks the actual adapter and credential. */
+  /** The providers an agent, a model policy or routing may name in the
+caller's workspace: those the deployment declares and those the
+workspace's administrators set up. There is no built-in model and no
+stand-in. Names are configuration, never keys. Declared does not mean a
+live call has been verified. A caller who may manage the workspace's
+providers (clients:write) also reads how each of its own is set up,
+with no key.
+ */
   async listModelProviders(options?: RequestOptions): Promise<ListModelProvidersResponse> {
     const path = "/api/model-providers";
     return this.request<ListModelProvidersResponse>("GET", path, {
@@ -1711,6 +1724,106 @@ model provider set up, a `provider:none` component is down.
   async listModelProvidersRaw(options?: RequestOptions): Promise<ApiResponse<ListModelProvidersResponse>> {
     const path = "/api/model-providers";
     return this.rawRequest<ListModelProvidersResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** A key is given as a value, kept in the secret store and never
+returned, or as `key_ref`, an `env:NAME` the server's configuration
+gives this workspace. With neither, a replaced provider keeps its key.
+A google provider may instead run on Vertex AI with the server's own
+credentials. A name the deployment declares, `policy`, `offline` and
+names starting `ws-` are refused.
+ */
+  async setModelProvider(name: string, body: SetModelProviderBody, options?: RequestOptions): Promise<ModelProvider> {
+    let path = "/api/model-providers/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ModelProvider>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setModelProviderRaw(name: string, body: SetModelProviderBody, options?: RequestOptions): Promise<ApiResponse<ModelProvider>> {
+    let path = "/api/model-providers/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ModelProvider>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Refused (409) while an agent, a model policy or routing runs on it; the refusal names each. */
+  async deleteModelProvider(name: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/model-providers/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteModelProviderRaw(name: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/model-providers/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Lists the provider's models, spending no tokens. Vertex AI has no check. */
+  async checkModelProvider(name: string, options?: RequestOptions): Promise<HealthComponent> {
+    let path = "/api/model-providers/{name}/check";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<HealthComponent>("POST", path, {
+      ...options,
+    });
+  }
+
+  async checkModelProviderRaw(name: string, options?: RequestOptions): Promise<ApiResponse<HealthComponent>> {
+    let path = "/api/model-providers/{name}/check";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<HealthComponent>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** List the platform's agent packages and what the workspace installed */
+  async listAgentPackages(options?: RequestOptions): Promise<ListAgentPackagesResponse> {
+    const path = "/api/agent-packages";
+    return this.request<ListAgentPackagesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listAgentPackagesRaw(options?: RequestOptions): Promise<ApiResponse<ListAgentPackagesResponse>> {
+    const path = "/api/agent-packages";
+    return this.rawRequest<ListAgentPackagesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** The platform's agents run only once installed: there is no built-in
+model. The model is one of the workspace's providers. An agent of the
+package the workspace already has keeps its own model.
+ */
+  async installAgentPackage(name: string, body: ModelRef, options?: RequestOptions): Promise<AgentPackageListing> {
+    let path = "/api/agent-packages/{name}/install";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentPackageListing>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async installAgentPackageRaw(name: string, body: ModelRef, options?: RequestOptions): Promise<ApiResponse<AgentPackageListing>> {
+    let path = "/api/agent-packages/{name}/install";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentPackageListing>("POST", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }

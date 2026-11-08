@@ -15,11 +15,12 @@ func TestBuiltinNamesAndReviewGrants(t *testing.T) {
 	if !slices.Equal(platform.Builtins(), want) {
 		t.Fatalf("builtins = %v, want %v", platform.Builtins(), want)
 	}
-	p, err := platform.New(platform.Config{Workspace: t.TempDir(), BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p, err := platform.New(platform.Config{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = p.Close() })
+	platform.InstallPackagesForTest(t, p, "acme")
 	if err := p.EnsureBuiltins(context.Background(), "acme"); err != nil {
 		t.Fatal(err)
 	}
@@ -72,11 +73,12 @@ func TestBuiltinNamesAndReviewGrants(t *testing.T) {
 // Platform-owned review grants are restored, while unchanged specs stay pinned.
 func TestBuiltinReviewGrantsFollowThePlatform(t *testing.T) {
 	ctx := context.Background()
-	p, err := platform.New(platform.Config{Workspace: t.TempDir(), BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p, err := platform.New(platform.Config{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = p.Close() })
+	platform.InstallPackagesForTest(t, p, "acme")
 	if err := p.EnsureBuiltins(ctx, "acme"); err != nil {
 		t.Fatal(err)
 	}
@@ -128,10 +130,11 @@ func TestBuiltinCompatibilitySurvivesRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		p, err := platform.New(platform.Config{Backends: first, Workspace: t.TempDir(), BuiltinProvider: "offline", BuiltinModel: "offline"})
+		p, err := platform.New(platform.Config{Backends: first, Workspace: t.TempDir()})
 		if err != nil {
 			t.Fatal(err)
 		}
+		platform.InstallPackagesForTest(t, p, "acme")
 		if err := p.EnsureBuiltins(ctx, "acme"); err != nil {
 			t.Fatal(err)
 		}
@@ -142,7 +145,7 @@ func TestBuiltinCompatibilitySurvivesRestart(t *testing.T) {
 		if err := p.Close(); err != nil {
 			t.Fatal(err)
 		}
-		p, err = platform.New(platform.Config{Backends: again(), Workspace: t.TempDir(), BuiltinProvider: "offline", BuiltinModel: "offline"})
+		p, err = platform.New(platform.Config{Backends: again(), Workspace: t.TempDir()})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -174,7 +177,7 @@ func TestBuiltinRenameNeverOverwritesACustomAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := platform.New(platform.Config{Backends: platform.Backends{Agents: store}, Workspace: t.TempDir(), BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p, err := platform.New(platform.Config{Backends: platform.Backends{Agents: store}, Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,11 +193,12 @@ func TestBuiltinRenameNeverOverwritesACustomAgent(t *testing.T) {
 
 func TestBuiltinCompatibilityKeepsAnOldProjectRoutingGrant(t *testing.T) {
 	ctx := context.Background()
-	p, err := platform.New(platform.Config{Workspace: t.TempDir(), BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p, err := platform.New(platform.Config{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = p.Close() })
+	platform.InstallPackagesForTest(t, p, "acme")
 	_, err = p.SetProjectAgents(ctx, "acme", "~", projects.Writer{By: "ada", Govern: true}, platform.AgentsInput{Enable: []string{"warp-analyst"}, Allow: []string{"warp-analyst"}})
 	if err != nil {
 		t.Fatal(err)

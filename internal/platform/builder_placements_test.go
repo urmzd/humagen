@@ -28,11 +28,12 @@ func placementFixture(t *testing.T) (*Platform, runtime.Request, wire.AgentSpec)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := New(Config{Workspace: t.TempDir(), Policy: policy, BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p, err := New(Config{Workspace: t.TempDir(), Policy: policy})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = p.Close() })
+	InstallPackagesForTest(t, p, "t")
 	spec := wire.AgentSpec{Name: "writer", Provider: "offline", Model: "offline", SystemPrompt: "Write clearly", Tools: []string{personToolsGrant}}
 	if _, err = p.Agents.Create(t.Context(), "t", spec, "test"); err != nil {
 		t.Fatal(err)

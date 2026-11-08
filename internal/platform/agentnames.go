@@ -508,7 +508,7 @@ func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *w
 		}
 		shown[a] = true
 	}
-	if err := spec.Normalize().ValidateWith(p.agentProviders()); err != nil {
+	if err := spec.Normalize().ValidateWith(p.agentProviders(who.Tenant)); err != nil {
 		return wire.AgentSpec{}, err
 	}
 	if len(hidden) == 0 {
@@ -534,16 +534,31 @@ func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *w
 		spec.Approvers, spec.SelfApproval = slices.Clone(old.Spec.Approvers), old.Spec.SelfApproval
 	}
 	// The spec as written held on its own; the spec as kept must too.
-	if err := spec.Normalize().ValidateWith(p.agentProviders()); err != nil {
+	if err := spec.Normalize().ValidateWith(p.agentProviders(who.Tenant)); err != nil {
 		return wire.AgentSpec{}, err
 	}
 	return spec, nil
 }
 
-// agentProviders are the providers an agent's spec may name here, as the
-// registry holds it to them.
-func (p *Platform) agentProviders() []string {
-	return append(providers(), p.cfg.Ext.ProviderNames()...)
+// agentProviders are the providers an agent's spec may name in tenant's
+// workspace: those the deployment declares, the workspace's own, and a model
+// policy. Fiber's built-in offline, anthropic and openai count only when the
+// platform is not held to configured models (Config.ConfiguredModelsOnly).
+func (p *Platform) agentProviders(tenant string) []string {
+	out := append([]string{PolicyProvider}, p.cfg.Ext.ProviderNames()...)
+	if !p.cfg.ConfiguredModelsOnly {
+		out = append(out, wire.KnownProviders()...)
+	}
+	for _, m := range p.Settings(tenant).ModelProviders {
+		out = append(out, m.Name)
+	}
+	return out
+}
+
+// modelNames are the providers a model policy or routing may name in
+// tenant's workspace: agentProviders without the policy provider.
+func (p *Platform) modelNames(tenant string) []string {
+	return slices.DeleteFunc(p.agentProviders(tenant), func(n string) bool { return n == PolicyProvider })
 }
 
 // CallPolicy is an agent's call policy as the reader is shown it: every agent

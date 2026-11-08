@@ -503,8 +503,9 @@ func TestTheWriterPublishesAFile(t *testing.T) {
 			"lead":                 {tagging(platform.BuiltinWriter, "Write the launch plan"), say("The plan is published.")},
 		},
 		spawn: map[string][]string{"lead": {platform.BuiltinWriter}},
-	}, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}, BuiltinProvider: "offline", BuiltinModel: "offline"})
+	}, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
 	ctx := t.Context()
+	platform.InstallPackagesForTest(t, p, tenant)
 	if err := p.EnsureBuiltins(ctx, tenant); err != nil {
 		t.Fatal(err)
 	}

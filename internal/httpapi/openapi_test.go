@@ -1011,7 +1011,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}
 		return time.Now()
 	}
-	f := newFixtureWith(t, platform.Config{Now: now, BuiltinProvider: "offline", BuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
+	f := newFixtureWith(t, platform.Config{Now: now, PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
 		native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
 		}),
@@ -1263,6 +1263,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(ana, "POST", "/api/memory/promote", "/api/memory/promote", promotionBody, http.StatusBadRequest)
 	c.call(ana, "POST", "/api/memory/promote", "/api/memory/promote", `{"scope":"personal","id":"missing","destination":"~"}`, http.StatusNotFound)
 	// Agents, revisions and what they remember.
+	installPackages(t, f, "acme")
 	if err := f.p.EnsureBuiltins(t.Context(), "acme"); err != nil {
 		t.Fatal(err)
 	}
@@ -2603,6 +2604,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/runs/{id}/calls":                       `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
 		"/api/runs/{id}/questions/{question}/answer": `{"action":"choose","choice":"red"}`,
 		"/api/alert-rules/{name}":                    `{"kind":"run_failed","severity":"critical"}`,
+		"/api/agent-packages/{name}/install":         `{"provider":"offline","model":"offline"}`,
+		"/api/model-providers/{name}":                `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`,
 		"/api/schedules/{name}":                      `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
 		"/api/me/credentials/{provider}":             `{"ref":"op://People/svc/issues"}`,
 		"/api/projects/{name}/channels":              `{"name":"x"}`, "/api/projects/{name}/channels/{channel}": `{"version":1}`,
@@ -2648,6 +2651,16 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 
 	c.call(acme, "DELETE", "/api/artifacts/{id}", artifactPath, "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/artifacts/{id}", artifactPath, "", http.StatusNotFound)
+	// A workspace's own model provider: set up, checked, in use, removed.
+	c.call(acme, "PUT", "/api/model-providers/{name}", "/api/model-providers/house", `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`, http.StatusOK)
+	c.call(acme, "POST", "/api/model-providers/{name}/check", "/api/model-providers/house/check", "", http.StatusOK)
+	c.call(acme, "POST", "/api/model-providers/{name}/check", "/api/model-providers/nowhere/check", "", http.StatusBadRequest)
+	c.call(acme, "POST", "/api/agent-packages/{name}/install", "/api/agent-packages/review/install", `{"provider":"house","model":"llama3.2"}`, http.StatusOK)
+	c.call(acme, "POST", "/api/agents", "/api/agents", `{"name":"house-agent","provider":"house","model":"llama3.2","system_prompt":"Answer."}`, http.StatusCreated)
+	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/house", "", http.StatusConflict)
+	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/nowhere", "", http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/model-providers/{name}", "/api/model-providers/spare", `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`, http.StatusOK)
+	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/spare", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/clients/{id}", "/api/clients/support", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/clients/{id}", "/api/clients/support", "", http.StatusNotFound)
 	c.call(acme, "DELETE", "/api/evals/{name}", "/api/evals/smoke", "", http.StatusNoContent)

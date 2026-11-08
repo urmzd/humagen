@@ -61,7 +61,10 @@ type Agents struct {
 	*DefinitionCatalog
 	src       *agents.Store
 	providers []string
-	now       func() time.Time
+	// accept admits a provider outside providers: one added while the
+	// server runs. Nil admits none.
+	accept func(string) bool
+	now    func() time.Time
 }
 
 var _ AgentStore = (*Agents)(nil)
@@ -75,23 +78,37 @@ func NewAgents(src *agents.Store, providers ...string) *Agents {
 }
 
 // NewMemoryAgents is an agent store held in memory.
-func NewMemoryAgents(providers ...string) *Agents {
+func NewMemoryAgents(providers ...string) *Agents { return NewMemoryAgentsAccepting(nil, providers...) }
+
+// NewMemoryAgentsAccepting is NewMemoryAgents that also admits any provider
+// accept reports, such as one an administrator adds while the server runs.
+func NewMemoryAgentsAccepting(accept func(string) bool, providers ...string) *Agents {
 	if len(providers) == 0 {
 		providers = KnownProviders()
 	}
-	return NewAgents(agents.New(agents.WithChecks(definition.Checks{Providers: providers})), providers...)
+	a := NewAgents(agents.New(agents.WithChecks(definition.Checks{Providers: providers, Accept: accept})), providers...)
+	a.accept = accept
+	return a
 }
 
 // OpenAgents is an agent store kept in st that accepts the named providers.
 func OpenAgents(st state.Store, providers ...string) (*Agents, error) {
+	return OpenAgentsAccepting(st, nil, providers...)
+}
+
+// OpenAgentsAccepting is OpenAgents that also admits any provider accept
+// reports.
+func OpenAgentsAccepting(st state.Store, accept func(string) bool, providers ...string) (*Agents, error) {
 	if len(providers) == 0 {
 		providers = KnownProviders()
 	}
-	src, err := agents.Open(st, agents.WithChecks(definition.Checks{Providers: providers}))
+	src, err := agents.Open(st, agents.WithChecks(definition.Checks{Providers: providers, Accept: accept}))
 	if err != nil {
 		return nil, err
 	}
-	return NewAgents(src, providers...), nil
+	a := NewAgents(src, providers...)
+	a.accept = accept
+	return a, nil
 }
 
 // Source is the definition source the store writes, which a runtime resolves
@@ -100,7 +117,7 @@ func (a *Agents) Source() *agents.Store { return a.src }
 
 // Resolver pins definitions from the store, checked against its providers.
 func (a *Agents) Resolver() *definition.Resolver {
-	return definition.NewResolver(a.src, definition.Checks{Providers: a.providers})
+	return definition.NewResolver(a.src, definition.Checks{Providers: a.providers, Accept: a.accept})
 }
 
 // Create implements AgentStore.
@@ -161,7 +178,7 @@ func (a *Agents) Revise(ctx context.Context, tenant string, spec AgentSpec, expe
 // content again, which is no new revision.
 func (a *Agents) write(ctx context.Context, tenant string, spec AgentSpec, held []definition.Record, by string) (Revision, error) {
 	rev := len(held) + 1
-	canonical, err := NewRevisionWith(spec, rev, by, a.now(), a.providers)
+	canonical, err := NewRevisionAccepting(spec, rev, by, a.now(), a.providers, a.accept)
 	if err != nil {
 		return Revision{}, err
 	}

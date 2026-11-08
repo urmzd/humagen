@@ -21,11 +21,12 @@ func TestBuilderScorecardRequiresExplicitRegressionOverrideAndRejectsStaleCard(t
 		}
 		return turn.Result{Text: "evidence"}, nil
 	})
-	p, err := New(Config{Workspace: t.TempDir(), Runtime: engine, BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p, err := New(Config{Workspace: t.TempDir(), Runtime: engine})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = p.Close() }()
+	InstallPackagesForTest(t, p, "acme")
 	_, err = p.Agents.Create(t.Context(), "acme", wire.AgentSpec{Name: "writer", Provider: "offline", Model: "offline", SystemPrompt: "cite evidence"}, "test")
 	if err != nil {
 		t.Fatal(err)
