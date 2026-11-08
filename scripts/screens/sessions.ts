@@ -166,15 +166,14 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: "/connections",
       act: async (page) => {
         await page.getByRole("heading", { name: "Connections", exact: true }).waitFor();
-        await page.getByRole("tablist", { name: "Connection kinds" }).waitFor();
+        await page.getByRole("list", { name: "Apps", exact: true }).waitFor();
       },
     },
     {
-      name: "connections-knowledge",
+      name: "connections-mcps",
       path: "/connections",
       act: async (page) => {
-        await page.getByRole("tab", { name: "Data sources", exact: true }).click();
-        await page.getByRole("heading", { name: "BigQuery", exact: true }).first().waitFor();
+        await page.getByRole("list", { name: "MCPs", exact: true }).waitFor();
       },
     },
     {

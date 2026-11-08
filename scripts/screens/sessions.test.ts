@@ -127,17 +127,16 @@ test("navigation checks every current destination as a real link", async () => {
   );
 });
 
-test("artifacts waits for loaded content and Data sources keeps its stable capture name", async () => {
+test("artifacts waits for loaded content and Connections waits for its MCPs", async () => {
   const { page, calls } = recorder();
   const screens = sessionScreens(ids);
   await screens.find((screen) => screen.name === "artifacts")?.act?.(page);
-  await screens.find((screen) => screen.name === "connections-knowledge")?.act?.(page);
+  await screens.find((screen) => screen.name === "connections-mcps")?.act?.(page);
   assert.deepEqual(calls, [
     { action: "wait", selector: "heading:Deliverables" },
     { action: "wait", selector: "searchbox:Search artifacts" },
     { action: "wait", selector: "list:Artifacts|heading:No artifacts yet" },
-    { action: "click", selector: "tab:Data sources" },
-    { action: "wait", selector: "heading:BigQuery" },
+    { action: "wait", selector: "list:MCPs" },
   ]);
 });
 
