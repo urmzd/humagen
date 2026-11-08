@@ -15,6 +15,7 @@ import (
 	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/graph"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // The workspace graph's structural layer: built from what each corpus's
@@ -36,6 +37,12 @@ const (
 	// maxGraphView bounds how many nodes one answer shows.
 	maxGraphView = 1000
 )
+
+// GraphStore keeps each workspace's knowledge graph (pkg/graph).
+type GraphStore = graph.Store
+
+// openGraph opens the workspace graph on a state store.
+func openGraph(st state.Store) (*GraphStore, error) { return graph.Open(st) }
 
 // Owner states a node shows.
 const (

@@ -33,7 +33,6 @@ import (
 	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
-	"github.com/urmzd/humagen/pkg/graph"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
@@ -232,7 +231,7 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("catalog", err)
 	p.Corpora, err = corpora.Open(perRequest)
 	keep("corpora", err)
-	p.Graph, err = graph.Open(perRequest)
+	p.Graph, err = openGraph(perRequest)
 	keep("knowledge graph", err)
 	p.SourceEvidence, err = knowledge.OpenEvidenceStore(perRequest)
 	keep("source citation evidence", err)

@@ -71,7 +71,6 @@ import (
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
 	"github.com/urmzd/humagen/pkg/githubinstall"
-	"github.com/urmzd/humagen/pkg/graph"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/integrations/slack"
@@ -313,7 +312,7 @@ type Platform struct {
 	// connectors (docs/architecture/sources.md#corpora).
 	Corpora *corpora.Store
 	// Graph is each workspace's knowledge graph, one slice per corpus.
-	Graph       *graph.Store
+	Graph       *GraphStore
 	SourceLinks *sourcelinks.Store
 	Evals       *evals.Store
 	Feedback    *feedback.Store
