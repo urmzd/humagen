@@ -346,7 +346,7 @@ func (p *Platform) corpusSearchTool(req runtime.Request) saigetypes.Tool {
 			if err != nil {
 				return "", err
 			}
-			a, err := p.audienceOf(req)
+			a, err := p.corpusAudienceOf(req)
 			if err != nil {
 				return "", err
 			}
