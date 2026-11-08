@@ -146,7 +146,8 @@ test("a mention becomes one run, streamed natively, with the session kept in ste
   const final = blocksOf(w.slack.of("chat.stopStream")[0]);
   assert.ok(final.length > 0, "the stream stops with the final blocks");
   assert.match(textIn(final), new RegExp(defaultCopy.helpful));
-  assert.match(textIn(final), /lead is AI/);
+  // Slack marks the app's messages with its AGENT badge: no disclaimer line.
+  assert.doesNotMatch(textIn(final), /is AI and can make mistakes/);
   collect("streamed answer", w.slack);
 });
 
