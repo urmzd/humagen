@@ -1082,17 +1082,20 @@ function Console({
                     <ProjectsPage
                       projects={projects}
                       root={root}
-                      workspaceName={workspaceName}
                       q={route.q ?? ""}
                       kind={route.kind}
-                      onFilter={(q, kind) =>
+                      sort={route.sort}
+                      onFilter={({ q, kind, sort }) =>
                         go(
-                          { page: "projects", q: q || undefined, kind: kindParam(kind) },
+                          { page: "projects", q: q || undefined, kind: kindParam(kind), sort },
                           { replace: true },
                         )
                       }
                       canCreate={can("projects:write")}
                       canGovern={can("projects:govern")}
+                      me={me.principal.subject}
+                      pinned={prefs.pinned_projects ?? []}
+                      onPin={pinProject}
                       onOpen={openProject}
                       onCreated={(project) => {
                         loadProjects();

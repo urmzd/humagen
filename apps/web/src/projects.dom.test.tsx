@@ -15,10 +15,12 @@ import {
   globexKnowledge,
   knowledgeSources,
   platform,
+  projectView,
   renewals,
   retail,
   stores,
   tree,
+  view,
   workspace,
 } from "./projects.fixtures.ts";
 import type { ProjectTab } from "./route.ts";
@@ -534,42 +536,217 @@ test("a project that is not there says so, as one page", async () => {
   assert.ok(await screen.findByRole("heading", { level: 1, name: "No project named Gone" }));
 });
 
-test("New Project offers company-wide only to those who govern, and puts the project where it was chosen", async () => {
-  const posts: unknown[] = [];
-  net = stubFetch({ "POST /api/projects": (body) => (posts.push(body), globex) });
+type Listing = Parameters<typeof ProjectsPage>[0];
+
+/** The Projects page as App draws it, its filters held as the address holds them. */
+function list(over: Partial<Listing> = {}) {
+  const filters: Parameters<Listing["onFilter"]>[0][] = [];
   const made: string[] = [];
-  render(
-    <ProjectsPage
-      projects={tree}
-      root={workspace}
-      workspaceName="Acme"
-      onFilter={() => {}}
-      canCreate
-      canGovern={false}
-      narrow={false}
-      onOpen={() => {}}
-      onCreated={(p) => made.push(p.name)}
-    />,
-  );
+  const opened: string[] = [];
+  const props: Listing = {
+    projects: tree,
+    root: workspace,
+    canCreate: true,
+    canGovern: false,
+    me: "ada",
+    onFilter: (next) => filters.push(next),
+    onOpen: (name) => opened.push(name),
+    onCreated: (p) => made.push(p.name),
+    ...over,
+  };
+  const drawn = render(<ProjectsPage {...props} />);
+  return {
+    filters,
+    made,
+    opened,
+    rerender: (more: Partial<Listing>) => drawn.rerender(<ProjectsPage {...props} {...more} />),
+  };
+}
+const cardTitles = () =>
+  within(screen.getByRole("list", { name: "Projects" }))
+    .getAllByRole("link")
+    .map((a) => a.textContent);
+const newProject = () => {
   fireEvent.click(screen.getByRole("button", { name: "New Project" }));
-  const form = screen.getByRole("form", { name: "New project" });
-  assert.ok(within(form).getByText("Only those who govern projects make company-wide ones."));
-  assert.ok(!within(form).queryByRole("button", { name: "Company-wide" }));
-  fireEvent.click(within(form).getByRole("button", { name: "Account" }));
-  fireEvent.change(within(form).getByRole("textbox", { name: /^Title/ }), {
-    target: { value: "Hooli" },
+  return screen.getByRole("form", { name: "New project" });
+};
+
+test("the Projects page is a grid of cards, pinned first, each opening its project in place", async () => {
+  const { opened } = list({ pinned: ["Platform"], onPin: async () => {} });
+  const titles = cardTitles();
+  assert.equal(titles[0], "Platform", "pinned first");
+  assert.equal(titles.length, tree.length, "every project but the workspace");
+  assert.ok(!screen.queryByRole("heading", { level: 2 }), "no groups");
+  const globexLink = screen.getByRole("link", { name: "Globex" });
+  assert.equal(globexLink.getAttribute("href"), "/projects/Globex/context");
+  fireEvent.click(globexLink);
+  assert.deepEqual(opened, ["Globex"]);
+  // A modified click is the browser's: a new tab, not a move in place.
+  fireEvent.click(globexLink, { metaKey: true });
+  assert.deepEqual(opened, ["Globex"]);
+  const card = globexLink.closest("article") as HTMLElement;
+  assert.ok(within(card).getByText(/^Updated /));
+  assert.equal(within(card).getAllByRole("button").length, 1, "the pin is its one control");
+});
+
+test("a card's pin pins and unpins its project, and says so when that fails", async () => {
+  const calls: unknown[] = [];
+  list({
+    pinned: ["Globex"],
+    onPin: async (project, pinned) => {
+      calls.push([project, pinned]);
+      if (project === "Globex") throw new Error("refused");
+    },
   });
-  fireEvent.change(within(form).getByRole("textbox", { name: /^Customer/ }), {
-    target: { value: "Hooli Inc" },
+  const pin = screen.getByRole("button", { name: "Pin project Platform" });
+  assert.equal(pin.getAttribute("aria-pressed"), "false");
+  fireEvent.click(pin);
+  const unpin = screen.getByRole("button", { name: "Unpin project Globex" });
+  assert.equal(unpin.getAttribute("aria-pressed"), "true");
+  fireEvent.click(unpin);
+  assert.deepEqual(calls, [
+    ["Platform", true],
+    ["Globex", false],
+  ]);
+  await screen.findByText("Could not unpin. Try again.");
+});
+
+test("the search and sort go to the address together, and the cards follow them", () => {
+  const { filters, rerender } = list({ sort: "name" });
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search projects" }), {
+    target: { value: "globex" },
+  });
+  assert.deepEqual(filters.at(-1), { q: "globex", kind: undefined, sort: "name" });
+  rerender({ q: "globex", sort: "name" });
+  assert.deepEqual(cardTitles(), ["Globex", "Globex renewals"]);
+  rerender({ q: "nothing like it" });
+  assert.ok(screen.getByText("No project matches."));
+  assert.ok(!screen.queryByRole("list", { name: "Projects" }));
+  const dated = (name: string, created: string, active: string) =>
+    projectView({ name, created_at: created, updated_at: created, active_at: active });
+  const old = dated("Old", "2026-01-01T00:00:00Z", "2026-10-06T00:00:00Z");
+  const fresh = dated("Fresh", "2026-09-01T00:00:00Z", "2026-09-02T00:00:00Z");
+  const middle = dated("Middle", "2026-05-01T00:00:00Z", "2026-10-01T00:00:00Z");
+  const projects = [middle, fresh, old];
+  rerender({ projects, q: "" });
+  assert.deepEqual(cardTitles(), ["Fresh", "Middle", "Old"], "by name");
+  rerender({ projects, q: "", sort: undefined });
+  assert.deepEqual(cardTitles(), ["Old", "Middle", "Fresh"], "by last activity, the default");
+  rerender({ projects, q: "", sort: "created" });
+  assert.deepEqual(cardTitles(), ["Fresh", "Middle", "Old"], "newest made first");
+});
+
+test("no kind filter shows unless the workspace defines kinds, and then it narrows the cards", () => {
+  const { filters, rerender } = list();
+  assert.ok(!screen.queryByRole("combobox", { name: "Kind" }));
+  assert.ok(screen.getByRole("combobox", { name: "Sort by" }));
+  const reseller = view("Reseller", { kind: "partner", parent: field });
+  const root = {
+    ...workspace,
+    kinds: [{ name: "partner", title: "Partners", like: "account" as const }],
+  };
+  rerender({ projects: [...tree, reseller], root });
+  assert.ok(screen.getByRole("combobox", { name: "Kind" }));
+  rerender({ projects: [...tree, reseller], root, kind: "partner" });
+  assert.deepEqual(cardTitles(), ["Reseller"]);
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search projects" }), {
+    target: { value: "re" },
+  });
+  assert.deepEqual(filters.at(-1), { q: "re", kind: "partner", sort: undefined });
+});
+
+test("New Project makes a private project, owned by the one who makes it, then opens it", async () => {
+  const posts: unknown[] = [];
+  net = stubFetch({
+    "POST /api/projects": (body) => (posts.push(body), view("Q4 launch", { title: "Q4: launch!" })),
+  });
+  const { made } = list();
+  const form = newProject();
+  assert.ok(!within(form).queryByRole("combobox", { name: "Kind" }), "no kinds of its own");
+  assert.ok(!within(form).queryByText(/Start From|Inside/), "no template or parent to pick");
+  const isPrivate = within(form).getByRole("radio", { name: /^Private/ }) as HTMLInputElement;
+  assert.ok(isPrivate.checked, "private is the default");
+  fireEvent.change(within(form).getByRole("textbox", { name: "Name" }), {
+    target: { value: "Q4: launch!" },
+  });
+  fireEvent.change(within(form).getByRole("textbox", { name: "Description (optional)" }), {
+    target: { value: "The fourth quarter's launch." },
   });
   fireEvent.click(within(form).getByRole("button", { name: "Create Project" }));
   await waitFor(() => assert.equal(posts.length, 1));
   assert.deepEqual(posts[0], {
-    name: "Hooli",
-    kind: "account",
-    account: { customer: "Hooli Inc" },
+    name: "Q4 launch",
+    title: "Q4: launch!",
+    description: "The fourth quarter's launch.",
+    members: [{ who: "ada", role: "owner" }],
   });
-  await waitFor(() => assert.deepEqual(made, ["Globex"]));
+  await waitFor(() => assert.deepEqual(made, ["Q4 launch"]));
+  await waitFor(() => assert.ok(!screen.queryByRole("form", { name: "New project" })));
+});
+
+test("New Project for the workspace leaves its members to the platform's default", async () => {
+  const posts: unknown[] = [];
+  net = stubFetch({ "POST /api/projects": (body) => (posts.push(body), view("Roadmap")) });
+  const { made } = list();
+  const form = newProject();
+  fireEvent.click(within(form).getByRole("radio", { name: /^Workspace/ }));
+  fireEvent.change(within(form).getByRole("textbox", { name: "Name" }), {
+    target: { value: "Roadmap" },
+  });
+  fireEvent.click(within(form).getByRole("button", { name: "Create Project" }));
+  await waitFor(() => assert.equal(posts.length, 1));
+  assert.deepEqual(posts[0], { name: "Roadmap" });
+  await waitFor(() => assert.deepEqual(made, ["Roadmap"]));
+});
+
+test("New Project asks for a kind only where the workspace defines its own, and says what it could not do", async () => {
+  const posts: unknown[] = [];
+  net = stubFetch({
+    "POST /api/projects": (body) => (
+      posts.push(body),
+      new Response(JSON.stringify({ error: 'project "Acme partners" exists' }), { status: 409 })
+    ),
+  });
+  const root = {
+    ...workspace,
+    kinds: [{ name: "partner", title: "Partners", like: "account" as const }],
+  };
+  const { made } = list({ root });
+  const form = newProject();
+  const kind = within(form).getByRole("combobox", { name: "Kind" }) as HTMLSelectElement;
+  assert.deepEqual(
+    [...kind.options].map((o) => o.textContent),
+    ["Team", "Account", "Partners"],
+    "company-wide only for those who govern",
+  );
+  assert.equal(kind.value, "team");
+  fireEvent.change(kind, { target: { value: "partner" } });
+  // A name with nothing a project's name can hold is caught before it is sent.
+  fireEvent.change(within(form).getByRole("textbox", { name: "Name" }), {
+    target: { value: "!!!" },
+  });
+  fireEvent.click(within(form).getByRole("button", { name: "Create Project" }));
+  assert.ok(await within(form).findByText("Use at least one letter or digit."));
+  assert.equal(posts.length, 0);
+  fireEvent.change(within(form).getByRole("textbox", { name: "Name" }), {
+    target: { value: "Acme partners" },
+  });
+  fireEvent.click(within(form).getByRole("button", { name: "Create Project" }));
+  await waitFor(() => assert.equal(posts.length, 1));
+  assert.deepEqual(posts[0], {
+    name: "Acme partners",
+    kind: "partner",
+    members: [{ who: "ada", role: "owner" }],
+  });
+  assert.ok(await within(form).findByRole("alert"));
+  assert.deepEqual(made, []);
+});
+
+test("with no projects the page is a title and one New Project", () => {
+  list({ projects: [] });
+  assert.ok(screen.getByText("No projects yet"));
+  assert.equal(screen.getAllByRole("button", { name: "New Project" }).length, 1);
+  assert.ok(!screen.queryByRole("searchbox"));
 });
 
 test("an old project schedules selection shows its context bundle", async () => {

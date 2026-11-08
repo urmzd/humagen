@@ -72,6 +72,10 @@ const KIND_SHAPE = /^[a-z][a-z0-9-]{0,31}$/;
 export const kindParam = (value: string | null | undefined): ProjectKindFilter | undefined =>
   value && KIND_SHAPE.test(value) ? value : undefined;
 
+/** How the Projects page orders its cards besides last activity, the default, which the address leaves out. */
+export type ProjectSort = "name" | "created";
+export const PROJECT_SORTS: ProjectSort[] = ["name", "created"];
+
 export type SettingsSection =
   | "notifications"
   | "profile"
@@ -247,8 +251,8 @@ export type Route =
       fork?: string;
       bringBack?: string;
     } & ConversationView)
-  /** Every project, searched with `q` and narrowed to one kind. */
-  | { page: "projects"; q?: string; kind?: ProjectKindFilter }
+  /** Every project, searched with `q`, narrowed to one kind and ordered by `sort`, last activity when absent. */
+  | { page: "projects"; q?: string; kind?: ProjectKindFilter; sort?: ProjectSort }
   /** One project at a tab, and in its inbox, at a message. The workspace itself is the project named "", written `~`. */
   | { page: "project"; name: string; tab: ProjectTab; message?: string; fork?: boolean }
   /** One of a project's channels, with its shared threads. */
@@ -492,6 +496,7 @@ export function href(r: Route): string {
       const q = new URLSearchParams();
       if (r.q) q.set("q", r.q);
       if (r.kind) q.set("kind", r.kind);
+      if (r.sort) q.set("sort", r.sort);
       const query = q.toString();
       return query ? `/projects?${query}` : "/projects";
     }
@@ -854,7 +859,12 @@ function read(pathname: string, search: string): Route {
       return { page: "conversation", id: a, message: q.get("message") || undefined };
     case "projects": {
       if (!a)
-        return { page: "projects", q: q.get("q") || undefined, kind: kindParam(q.get("kind")) };
+        return {
+          page: "projects",
+          q: q.get("q") || undefined,
+          kind: kindParam(q.get("kind")),
+          sort: oneOf(q.get("sort"), PROJECT_SORTS),
+        };
       if (b === "fork")
         return { page: "project", name: a === "~" ? "" : a, tab: "inbox", fork: true };
       // A channel is a page of its own, under the project's Channels tab.

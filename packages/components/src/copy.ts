@@ -3189,18 +3189,29 @@ export const defaultCopy = {
     personalTitle: "Personal",
     companyStart: "Start in the workspace",
     unreadUpdates: "Unread updates",
+    loading: "Loading projects",
     title: "Projects",
-    lede: "Where work belongs. A project's instructions, notes and limits reach everything below it.",
     /** A kind in words, on a row and in a project's meta line. */
     kind: { company: "Company-wide", team: "Team", account: "Account" } as Record<string, string>,
-    /** The Projects page's groups, in the order they are shown. */
+    /** Projects of a kind, as the Projects page's kind filter names them. */
     group: { company: "Company-wide", team: "Teams", account: "Accounts" } as Record<
       string,
       string
     >,
-    anyKind: "All",
+    anyKind: "All kinds",
     kindFilter: "Kind",
     search: "Search projects",
+    /** How the Projects page orders its cards. Pinned ones come first in any order. */
+    sort: {
+      label: "Sort by",
+      activity: "Last activity",
+      name: "Name",
+      created: "Created",
+    },
+    /** A card's last activity: "Updated 2 days ago". */
+    updated: (when: string) => `Updated ${when}`,
+    /** On a card whose project only its members read. */
+    private: "Private",
     details: "Details",
     moreAgents: (count: number) => `+${count} more agents`,
     /** The workspace is the root of the tree. */
@@ -3208,8 +3219,7 @@ export const defaultCopy = {
     workspaceHint: "Holds every project. Its instructions and notes reach every agent.",
     /** Where a row sits when the row above it is not its parent: "in Field › Globex". */
     within: (path: string[]) => `in ${path.join(" › ")}`,
-    empty: "No projects yet.",
-    emptyCreate: "No projects yet. Make one to keep related conversations together.",
+    empty: "No projects yet",
     noMatch: "No project matches.",
     allProjects: "All projects",
     /** Before the agent that answers a project's untagged Slack and GitHub messages, in its meta line: "Lead globex-helper". */
@@ -3241,6 +3251,14 @@ export const defaultCopy = {
       externalId: "Customer id elsewhere (optional)",
       url: "Link to the customer's record (optional)",
       governed: "Only those who govern projects make company-wide ones.",
+      /** Who reads a project made from the Projects page. */
+      access: "Access",
+      accessPrivate: "Private",
+      accessPrivateHint: "You and the people you add",
+      accessWorkspace: "Workspace",
+      accessWorkspaceHint: "Everyone in the workspace",
+      /** A name with nothing in it a project's name can hold. */
+      nameNeeded: "Use at least one letter or digit.",
       /** Under the kind, for an account: who sees it. */
       accountMembersOnly:
         "Accounts are members only: you, the people you add and the owners above see it. Under a project everyone owns, everyone sees it.",
