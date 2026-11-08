@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/urmzd/orchagent/flow/address"
@@ -94,6 +95,9 @@ type seat struct {
 
 	cancel context.CancelFunc
 	done   chan struct{}
+	// raised counts the requests this seat's connector raised, so a delivery
+	// can say whether it became one (logDelivery).
+	raised atomic.Int64
 }
 
 // surface is every client of one address scheme, in every tenant. It is the
@@ -168,6 +172,7 @@ func (st *seat) stop() {
 func (s *surface) pump(ctx context.Context, st *seat, publish connector.Publish) {
 	defer close(st.done)
 	err := st.peer.Ingest(ctx, func(ctx context.Context, e event.Envelope) error {
+		st.raised.Add(1)
 		for _, t := range s.stamp(ctx, st, e) {
 			if err := publish(ctx, t); err != nil {
 				return err
@@ -547,8 +552,10 @@ func (s *surface) route(w http.ResponseWriter, r *http.Request, body []byte, ref
 	case offered == 0 && refresh && s.p.refreshClients(true):
 		s.route(w, r, body, false)
 	case offered == 0:
+		s.logIgnored(r, body, nil, http.StatusNotFound, fmt.Sprintf("no client claims it (app %q, installation %q, account %q)", claim.AppID, claim.Installation, claim.Owner))
 		http.NotFound(w, r)
 	default:
+		s.logIgnored(r, body, nil, http.StatusUnauthorized, fmt.Sprintf("its signature matches the secret of none of the %d clients that claim it", offered))
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 	}
 }
@@ -569,10 +576,12 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 	if st.verifier != nil {
 		current, enabled := s.p.currentInstallation(st.client)
 		if !enabled {
+			s.logIgnored(r, body, &current, http.StatusNotFound, "its client is disabled")
 			http.NotFound(w, r)
 			return
 		}
 		if event := webhookEvent(current.Surface, r, body); event != "" && !current.AllowsEvent(event) {
+			s.logIgnored(r, body, &current, http.StatusOK, "its client's capabilities do not take "+event)
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -602,7 +611,10 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 	r = r.Clone(r.Context())
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	r.ContentLength = int64(len(body))
-	st.peer.ServeHTTP(w, r)
+	before := st.raised.Load()
+	rec := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+	st.peer.ServeHTTP(rec, r)
+	s.logDelivery(r, body, st.client, rec.status, st.raised.Load()-before)
 }
 
 // Deliver gives a run's event to the client that carries it.
