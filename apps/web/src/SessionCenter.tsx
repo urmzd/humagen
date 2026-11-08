@@ -607,19 +607,21 @@ export function AlertsPage({
                   className="flex flex-wrap items-center gap-3 border-b border-aui-border py-3"
                 >
                   {canWrite && (
-                    <input
-                      type="checkbox"
-                      aria-label={`Select ${a.title}`}
-                      checked={selected.has(a.id)}
-                      onChange={(e) =>
-                        setSelected((old) => {
-                          const next = new Set(old);
-                          if (e.target.checked) next.add(a.id);
-                          else next.delete(a.id);
-                          return next;
-                        })
-                      }
-                    />
+                    <label className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center pointer-coarse:size-11">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${a.title}`}
+                        checked={selected.has(a.id)}
+                        onChange={(e) =>
+                          setSelected((old) => {
+                            const next = new Set(old);
+                            if (e.target.checked) next.add(a.id);
+                            else next.delete(a.id);
+                            return next;
+                          })
+                        }
+                      />
+                    </label>
                   )}
                   <AlertMark alert={a} />
                   <a
@@ -761,7 +763,7 @@ export function HomeSessionGlance({
               <li key={a.id} className="flex items-center gap-3 py-2">
                 <AlertMark alert={a} />
                 <button
-                  className="min-w-0 flex-1 truncate text-left text-aui-sm hover:underline"
+                  className="min-h-6 min-w-0 flex-1 truncate text-left text-aui-sm hover:underline pointer-coarse:min-h-11"
                   type="button"
                   onClick={() => go({ page: "conversation", id: a.session!, message: a.message })}
                 >

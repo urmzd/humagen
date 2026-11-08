@@ -11,6 +11,13 @@ actual parked approval and a review v2 answer. A child session, alert and
 scratchpad files are created through the real session APIs. Details assertions
 check modal behavior below 1024 and composer reflow beside the desktop pane.
 
+The session suite builds `fixture-host`, which runs the normal Humagen serve and
+development-auth path with the existing in-memory GitHub API. One client grants
+only `github_read_context` for the fixture repository. The reviewer reads that
+context through the actual runtime before returning v2 with its pinned commit;
+seeding refuses a host-rejected review or a missing recorded evidence step.
+The fake is confined to this executable and never changes production provenance.
+
 Artifacts are named `console-screens-light` and `console-screens-dark`. Each
 contains its theme directory with:
 
@@ -20,6 +27,9 @@ contains its theme directory with:
   captured count, completion and pass flags.
 - `<WIDTH>x<HEIGHT>/<state>.png`, plus optional `.full.png`.
 - A `.failure.png` and `.failure.json` when a scripted interaction fails.
+
+Relative `SCREENS_OUT` paths resolve from the repository root, matching the CI
+upload location even when `pnpm --filter` runs the script from this package.
 
 Reports update after every state. A partial artifact is diagnostic evidence;
 acceptance requires `complete: true`, `passed: true`, the expected count for all
@@ -37,4 +47,5 @@ Offline script validation, without launching a browser:
 ```sh
 pnpm --filter @humagen/screens typecheck
 pnpm --filter @humagen/screens test
+go test ./scripts/screens/fixture-host
 ```

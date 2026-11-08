@@ -49,6 +49,7 @@ import { ideScreens } from "./ide.ts";
 import { libraryScreens } from "./library.ts";
 import { startNativeModel } from "./native.ts";
 import { usageScreens } from "./observability.ts";
+import { screenOutput } from "./output.ts";
 import { replayScreens } from "./replay.ts";
 import { reviewScreens } from "./review.ts";
 import { seedSessionFixtures } from "./session-fixtures.ts";
@@ -63,7 +64,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
 const bin = resolve(process.env.HUMAGEN_BIN ?? join(repo, "bin/humagen"));
 const web = resolve(process.env.HUMAGEN_WEB ?? join(repo, "apps/web/dist"));
-const out = resolve(process.env.SCREENS_OUT ?? join(repo, ".screens"));
+const out = screenOutput(repo, process.env.SCREENS_OUT);
 const showcaseOnly = process.env.SCREENS_SHOWCASE_ONLY === "1";
 const showcase = process.env.SCREENS_SHOWCASE === "1" || showcaseOnly;
 const only = (process.env.SCREENS_ONLY ?? "").split(",").filter(Boolean);
@@ -1447,6 +1448,15 @@ async function startHumagen(
       `No built console at ${web}. Run pnpm --filter @humagen/console build, or set HUMAGEN_WEB.`,
     );
   const dir = mkdtempSync(join(tmpdir(), "humagen-screens-"));
+  // The canonical review fixture uses the normal host with an in-memory GitHub
+  // API seam. Its tool result still passes through grants, the runtime journal
+  // and production provenance projection. No live provider is contacted.
+  const host = suite === "sessions" ? join(dir, "humagen-screens-host") : bin;
+  if (suite === "sessions")
+    execFileSync("go", ["build", "-p", "2", "-o", host, "./scripts/screens/fixture-host"], {
+      cwd: repo,
+      stdio: "inherit",
+    });
   const model = await startNativeModel();
   const email = await notificationEmailFixture(dir, `http://127.0.0.1:${port}`, "default", "dev");
   const spec = join(dir, "screens-native.yaml");
@@ -1469,7 +1479,7 @@ spec:
   // A model key would let the agents seeded to fail succeed.
   for (const k of Object.keys(env)) if (/_API_KEY$/.test(k)) delete env[k];
   const proc = spawn(
-    bin,
+    host,
     [
       "serve",
       "-f",

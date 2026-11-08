@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { REVIEW_ANSWER, REVIEW_ASK } from "./review.ts";
 import {
+  REVIEW_CONTEXT,
+  REVIEW_STEP,
   REVIEW_ANSWER as SESSION_REVIEW_ANSWER,
   REVIEW_ASK as SESSION_REVIEW_ASK,
 } from "./session-fixtures.ts";
@@ -119,8 +121,31 @@ export function fixtureResponse(request: ModelRequest) {
   const current = request.messages.slice(lastUser + 1);
   const asks = plain(request.messages[lastUser]?.content);
   // The review card's agent answers at once with its structured review (review.ts).
-  if (asks.includes(SESSION_REVIEW_ASK))
+  if (asks.includes(SESSION_REVIEW_ASK)) {
+    const evidence = current.findLast((message) => message.role === "tool");
+    if (!evidence)
+      return {
+        delta: {
+          role: "assistant",
+          tool_calls: [
+            {
+              index: 0,
+              id: REVIEW_STEP,
+              type: "function",
+              function: {
+                name: "github_read_context",
+                arguments: JSON.stringify({ address: REVIEW_CONTEXT.context.subject.html_url }),
+              },
+            },
+          ],
+        },
+        finish: "tool_calls",
+      };
+    const recorded = JSON.parse(plain(evidence.content));
+    assert.equal(recorded.subject?.head?.sha, REVIEW_CONTEXT.context.subject.head.sha);
+    assert.ok(recorded.files?.some((file: { filename?: string }) => file.filename === "plan.md"));
     return { delta: { role: "assistant", content: SESSION_REVIEW_ANSWER }, finish: "stop" };
+  }
   if (asks.includes(REVIEW_ASK))
     return { delta: { role: "assistant", content: REVIEW_ANSWER }, finish: "stop" };
   const revising = /Requested changes:|please revise/i.test(asks);
