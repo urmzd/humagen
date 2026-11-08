@@ -61,6 +61,12 @@ func (p *Platform) entrySpec(base wire.AgentSpec) wire.AgentSpec {
 // base's models, in a package of its own whose version is its content's hash.
 func (p *Platform) entryBuiltin(base wire.AgentSpec) wire.AgentSpec {
 	spec := p.entrySpec(base)
+	// Routing rests on this agent, so it falls back only to providers its
+	// definition can name here: one this deployment does not know would stop
+	// it pinning at all, and every message would fall back to search.
+	if known, ok := p.Agents.(interface{ Knows(string) bool }); ok {
+		spec.Fallbacks = slices.DeleteFunc(spec.Fallbacks, func(m wire.ModelRef) bool { return !known.Knows(m.Provider) })
+	}
 	raw, _ := json.Marshal([]wire.AgentSpec{spec})
 	spec.Package = &wire.PackageBase{Name: "humagen/entry", Version: fmt.Sprintf("sha256:%x", sha256.Sum256(raw))}
 	return spec
