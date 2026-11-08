@@ -2019,6 +2019,7 @@ export interface ContextLayer {
   preview_omitted: number;
   sent: boolean;
   unit: "characters" | "items";
+  version?: string;
 }
 
 /** The knowledge sources a project names, at the project's version, and what a run filed in it is grounded in. */
@@ -2549,6 +2550,8 @@ cannot be removed (409).
   /** Set once by the server when an admin first saves settings. */
   setup_at?: string;
   setup_by?: string;
+  eval_limits?: EvaluationLimits;
+  prompts?: PromptLayers;
 }
 
 /** The caller's interaction accent. Existing saved choices remain supported. workspace is the workspace's branded accent, red when its branding sets none. */
@@ -4634,6 +4637,82 @@ export interface EvalProvenance {
   section_uuid?: string;
   section_heading?: string;
   section_index?: number;
+}
+
+export interface PromptLayers {
+  platform?: string;
+  workspace?: string;
+  slack_word_budget?: number;
+}
+
+export interface EvaluationLimits {
+  max_spend?: number;
+  max_duration_ms?: number;
+  require_evidence?: boolean;
+}
+
+export interface EvaluationSignals {
+  spend: number;
+  model_calls: number;
+  tokens: number;
+  unpriced_calls: number;
+  latency_ms: number;
+  waiting_ms: number;
+  tool_calls: number;
+  tool_errors: number;
+  attempts: number;
+  retries: number;
+  up: number;
+  down: number;
+  run: string;
+  rating?: string;
+}
+
+export interface OnlineEvaluation {
+  agent: string;
+  run: string;
+  version: number;
+  passed: boolean;
+  words: number;
+  word_budget: number;
+  verdicts: EvalVerdict[];
+  at: string;
+  signals: EvaluationSignals;
+}
+
+export interface AgentEvaluationHealth {
+  agent: string;
+  status: "untested" | "healthy" | "needs_review";
+  samples: number;
+  passed: number;
+  pass_rate: number;
+  results: OnlineEvaluation[];
+}
+
+export interface AgentChangeScore {
+  suite: string;
+  suite_hash: string;
+  before: number;
+  after: number;
+  passed: boolean;
+  results: EvalResult[] | null;
+}
+
+export interface AgentChange {
+  id: string;
+  agent: string;
+  kind: string;
+  context_hash: string;
+  before_hash: string;
+  after_hash: string;
+  candidate: Record<string, unknown>;
+  scores: AgentChangeScore[] | null;
+  evaluated: boolean;
+  passed: boolean;
+  at: string;
+  error?: string;
+  override_by?: string;
+  override_reason?: string;
 }
 
 export interface GitHubSubjectPullRequest {

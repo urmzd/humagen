@@ -22,10 +22,21 @@ func TestContextPreviewUsesTurnLayersAndConfinesReads(t *testing.T) {
 	want(t, f, owner, "POST", "/api/projects", `{"name":"Field","instructions":"FOLLOW-FIELD","members":[{"who":"svc-acme","role":"owner"}]}`, http.StatusCreated)
 	out := want(t, f, owner, "GET", "/api/projects/Field/context?agent=helper", "", http.StatusOK)
 	layers := out["layers"].([]any)
-	if len(layers) < 2 || !strings.Contains(layers[1].(map[string]any)["text"].(string), "FOLLOW-FIELD") {
+	find := func(kind, from string) map[string]any {
+		t.Helper()
+		for _, layer := range layers {
+			item := layer.(map[string]any)
+			if item["kind"] == kind && item["from"] == from {
+				return item
+			}
+		}
+		t.Fatalf("preview is missing %s from %s", kind, from)
+		return nil
+	}
+	if !strings.Contains(find("project_instructions", "Field")["text"].(string), "FOLLOW-FIELD") {
 		t.Fatal("preview omits real instructions")
 	}
-	system := layers[0].(map[string]any)
+	system := find("agent_instructions", "helper")
 	if system["kind"] != "agent_instructions" || system["budget"] != float64(0) || system["preview_omitted"] != float64(1) || utf8.RuneCountInString(system["text"].(string)) != 32000 {
 		t.Fatal("system prompt must use its real cap and distinguish preview shortening")
 	}

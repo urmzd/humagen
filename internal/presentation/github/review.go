@@ -15,17 +15,20 @@ import (
 // ReviewFormat identifies a structured final answer, distinct from ordinary text.
 const ReviewFormat = "humagen.github.review.v1"
 
+// ReviewFormatV2 adds native review locations, suggestions and provenance.
+const ReviewFormatV2 = "humagen.review.v2"
+
 // IsReviewFormat reports whether format names a review: ReviewFormat, or the
 // id it had before the rename, which agents' instructions written then still
 // ask for.
 func IsReviewFormat(format string) bool {
-	return format == ReviewFormat || format == legacy.ReviewFormat
+	return format == ReviewFormatV2 || format == ReviewFormat || format == legacy.ReviewFormat
 }
 
 // NamesReviewFormat reports whether text mentions either id of the format,
 // as a review still streaming does.
 func NamesReviewFormat(text string) bool {
-	return strings.Contains(text, ReviewFormat) || strings.Contains(text, legacy.ReviewFormat)
+	return strings.Contains(text, ReviewFormatV2) || strings.Contains(text, ReviewFormat) || strings.Contains(text, legacy.ReviewFormat)
 }
 
 // ReviewJSON returns the agent's answer with surrounding space and one
@@ -49,6 +52,9 @@ func ReviewJSON(text string) string {
 // from findings, never supplied by the model. Evidence is cited, not verified
 // by the formatter; the agent must obtain it from tools before making claims.
 type ReviewReport struct {
+	Title    string          `json:"title,omitempty"`
+	Verdict  string          `json:"verdict,omitempty"`
+	Scope    *ReviewScope    `json:"scope,omitempty"`
 	Format   string          `json:"format"`
 	Summary  string          `json:"summary"`
 	Comments []string        `json:"comments,omitempty"`
@@ -58,6 +64,9 @@ type ReviewReport struct {
 
 // ReviewFinding couples a severity and suggestion to inspectable evidence.
 type ReviewFinding struct {
+	ID         string           `json:"id,omitempty"`
+	Location   *ReviewLocation  `json:"location,omitempty"`
+	Change     *string          `json:"change,omitempty"`
 	Severity   string           `json:"severity"`
 	Title      string           `json:"title"`
 	Suggestion string           `json:"suggestion"`
@@ -68,6 +77,8 @@ type ReviewFinding struct {
 // ReviewEvidence contains an observed fact and a source pointer. Source can be
 // an HTTPS permalink or a concrete local location, such as a test command.
 type ReviewEvidence struct {
+	Step        string `json:"step,omitempty"`
+	Session     string `json:"session,omitempty"`
 	Observation string `json:"observation"`
 	Source      string `json:"source"`
 }
@@ -85,6 +96,11 @@ func FormatReview(report ReviewReport) (string, error) {
 	if !IsReviewFormat(report.Format) || strings.TrimSpace(report.Summary) == "" {
 		return "", fmt.Errorf("github: review needs format %q and a summary", ReviewFormat)
 	}
+	if report.Format == ReviewFormatV2 {
+		if err := validateV2(report); err != nil {
+			return "", err
+		}
+	}
 	counts := map[string]int{"error": 0, "warning": 0, "info": 0}
 	for i, f := range report.Findings {
 		if _, ok := counts[f.Severity]; !ok {
@@ -94,13 +110,16 @@ func FormatReview(report ReviewReport) (string, error) {
 			return "", fmt.Errorf("github: finding %d needs a title, suggestion, evidence and prompt", i+1)
 		}
 		for _, e := range f.Evidence {
-			if strings.TrimSpace(e.Observation) == "" || strings.TrimSpace(e.Source) == "" {
+			if strings.TrimSpace(e.Observation) == "" || (strings.TrimSpace(e.Source) == "" && (report.Format != ReviewFormatV2 || e.Step == "" && e.Session == "")) {
 				return "", fmt.Errorf("github: finding %d has incomplete evidence", i+1)
 			}
 		}
 		counts[f.Severity]++
 	}
 	var b strings.Builder
+	if report.Title != "" {
+		fmt.Fprintf(&b, "## %s\n\n", reviewText(report.Title))
+	}
 	errorLabel, warningLabel := "errors", "warnings"
 	if counts["error"] == 1 {
 		errorLabel = "error"
@@ -121,7 +140,17 @@ func FormatReview(report ReviewReport) (string, error) {
 		for _, f := range report.Findings {
 			var evidence []string
 			for _, e := range f.Evidence {
-				evidence = append(evidence, reviewText(e.Observation)+" ("+reviewPointer(e.Source)+")")
+				pointer := reviewPointer(e.Source)
+				if e.Step != "" {
+					pointer += " step " + reviewText(e.Step)
+				}
+				if e.Session != "" {
+					pointer += " session " + reviewText(e.Session)
+				}
+				if report.Format == ReviewFormatV2 && e.Step == "" && e.Session == "" {
+					pointer += "; unverified"
+				}
+				evidence = append(evidence, reviewText(e.Observation)+" ("+pointer+")")
 			}
 			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s |\n", icons[f.Severity], reviewText(f.Title), reviewText(f.Suggestion), strings.Join(evidence, "<br><br>"), reviewText(f.Prompt))
 		}

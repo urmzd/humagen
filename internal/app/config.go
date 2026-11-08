@@ -493,6 +493,12 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 func applyWorkspace(ctx context.Context, p *platform.Platform, doc spec.Platform) error {
 	w, tenant := doc.Spec.Workspace, doc.Metadata.Name
 	s := p.Settings(tenant)
+	if w.EvalLimits != nil {
+		s.EvalLimits = *w.EvalLimits
+	}
+	if w.Prompts != nil {
+		s.Prompts = *w.Prompts
+	}
 	if doc.Metadata.DisplayName != "" {
 		s.WorkspaceName = doc.Metadata.DisplayName
 	}

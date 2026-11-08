@@ -778,6 +778,8 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	} else if edge.Parent != "" {
 		// Legacy edges name trigger tags; the durable parent is tenant-bound.
 		acc, err = p.rt.AcceptOwnChild(ctx, tag, agent, runtime.RunID(tag.Tenant, edge.Parent))
+	} else if wire.Origin(tag) == OriginEval && wire.Meta(tag)[metaEvalRevision] != "" {
+		acc, err = p.rt.AcceptOwnVersion(ctx, tag, agent, wire.Meta(tag)[metaEvalRevision])
 	} else if th, thErr := p.Threads.Get(tag.Tenant, wire.Meta(tag)[runs.MetaThread]); thErr == nil && th.Session != nil {
 		rec, lookupErr := p.Sessions.Get(ctx, tag.Tenant, th.ID)
 		if lookupErr != nil {
@@ -1127,6 +1129,9 @@ func (p *Platform) observe(ctx context.Context, e event.Envelope) {
 
 // raise checks a run that has just ended against its tenant's alert rules.
 func (p *Platform) raise(run runs.Run) error {
+	if IsEvaluation(run) {
+		return nil
+	}
 	spoken := false
 	raised, err := p.Alerts.EvaluateOnce(run, p.Runs.Recent)
 	if err != nil {
@@ -1370,6 +1375,7 @@ func (p *Platform) Run(ctx context.Context) error {
 	// The work done once per deployment runs on the elected leader only,
 	// and moves to another process when this one stops leading.
 	singletons := map[string]func(context.Context) error{
+		"scheduled evals":     p.runEvalSchedule,
 		"email notifications": p.runEmailNotifications,
 		"source refresh":      p.refreshSources,
 		"catalog crawl":       p.crawlCatalog,

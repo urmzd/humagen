@@ -143,6 +143,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/project-forks/{name}", s.authed(auth.ProjectsRead, s.projectFork))
 	mux.HandleFunc("GET /api/project-agent-hues", s.authed(auth.ProjectsRead, s.agentHues))
 	mux.HandleFunc("GET /api/model-providers", s.authed(auth.AgentsRead, s.modelProviders))
+	mux.HandleFunc("GET /api/agents/{name}/health", s.authed(auth.AgentsRead, s.seenAgent(s.agentHealth)))
+	mux.HandleFunc("GET /api/agents/{name}/changes", s.authed(auth.AgentsRead, s.seenAgent(s.agentChanges)))
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
 	s.sessionRoutes(mux)
 	s.agentSetupRoutes(mux)
@@ -629,7 +631,7 @@ func (s *Server) removeMemory(w http.ResponseWriter, r *http.Request, who auth.P
 
 func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	seer := s.P.Seer(who)
-	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(s.P.ShownRunsAs(who, slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) })))})
+	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(s.P.ShownRunsAs(who, slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) || platform.IsEvaluation(r) })))})
 }
 
 func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -1245,6 +1247,8 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, detail(err, platform.ErrSourceInUse))
 	case errors.Is(err, platform.ErrNoBaseline):
 		fail(w, http.StatusBadRequest, "that setting names an agent that does not exist")
+	case errors.Is(err, evals.ErrRegression):
+		fail(w, http.StatusConflict, "The change did not pass its evaluation checks. Review its scores before trying again.")
 	case errors.Is(err, evals.ErrBusy):
 		fail(w, http.StatusConflict, "that suite is already running")
 	case errors.Is(err, wire.ErrConflict):

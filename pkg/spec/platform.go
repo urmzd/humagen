@@ -15,7 +15,9 @@ import (
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/prompts"
 	"github.com/urmzd/humagen/pkg/settings"
 )
 
@@ -43,6 +45,9 @@ type PlatformSpec struct {
 // Workspace is the workspace's settings and its project tree. A field left
 // out is left to the console; a field set here is applied at every start.
 type Workspace struct {
+	// Prompts configures the stable platform and workspace instruction prefix.
+	EvalLimits *evals.Limits   `json:"eval_limits,omitempty"`
+	Prompts    *prompts.Config `json:"prompts,omitempty"`
 	// Baseline is gone: workspace.agents.default replaces it. It is read
 	// only so that a file still setting it is refused with where it went.
 	Baseline    *string  `json:"baseline,omitempty"`
@@ -686,6 +691,16 @@ var providerName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 var connectorName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 
 func (p Platform) check(kinds Kinds) error {
+	if p.Spec.Workspace.EvalLimits != nil {
+		if err := p.Spec.Workspace.EvalLimits.Validate(); err != nil {
+			return err
+		}
+	}
+	if p.Spec.Workspace.Prompts != nil {
+		if err := p.Spec.Workspace.Prompts.Validate(); err != nil {
+			return err
+		}
+	}
 	where := fmt.Sprintf("platform %q", p.Metadata.Name)
 	if !identifier.MatchString(p.Metadata.Name) {
 		return fmt.Errorf("%s: metadata.name is the tenant: lowercase letters, digits and dashes", where)
