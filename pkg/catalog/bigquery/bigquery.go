@@ -156,6 +156,7 @@ const maxListedTables = 50
 type Connector struct {
 	cfg  Config
 	open func(ctx context.Context) (api, error)
+	dial func(ctx context.Context, cfg Config) (api, error)
 }
 
 // New returns a connector. Nothing is read until it is used.
@@ -166,15 +167,32 @@ func newWith(cfg Config, open func(ctx context.Context, cfg Config) (api, error)
 	if err != nil {
 		return nil, err
 	}
-	return &Connector{cfg: cfg, open: func(ctx context.Context) (api, error) { return open(ctx, cfg) }}, nil
+	return &Connector{cfg: cfg, dial: open, open: func(ctx context.Context) (api, error) { return open(ctx, cfg) }}, nil
+}
+
+// QueryAs runs Query as one reader with their own OAuth token, read per
+// call, so their IAM grants and row-level security apply. The connector's
+// own credential is never used; its datasets, byte cap and row bound are.
+func (c *Connector) QueryAs(ctx context.Context, token func(context.Context) (string, error), sql string) (catalog.Result, error) {
+	if token == nil {
+		return catalog.Result{}, fmt.Errorf("%w: no reader token", ErrInvalid)
+	}
+	cfg := c.cfg
+	cfg.Credential, cfg.TokenSource = "", token
+	reader, err := newWith(cfg, c.dial)
+	if err != nil {
+		return catalog.Result{}, err
+	}
+	return reader.Query(ctx, sql)
 }
 
 // Config returns the connector's settings with their defaults.
 func (c *Connector) Config() Config { return c.cfg }
 
 var (
-	_ catalog.Crawler = (*Connector)(nil)
-	_ catalog.Querier = (*Connector)(nil)
+	_ catalog.Crawler       = (*Connector)(nil)
+	_ catalog.Querier       = (*Connector)(nil)
+	_ catalog.ReaderQuerier = (*Connector)(nil)
 )
 
 // Crawl lists the connector's datasets and their tables with schemas. It

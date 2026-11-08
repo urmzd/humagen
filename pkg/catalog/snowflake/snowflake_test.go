@@ -144,3 +144,29 @@ func TestConfigNeedsExactlyOneToken(t *testing.T) {
 		}
 	}
 }
+
+// QueryAs sends the reader's token, never the connector's credential, and
+// leaves the connector's role out so the reader's own role applies.
+func TestQueryAsUsesTheReadersTokenAndRole(t *testing.T) {
+	c := connection(t)
+	c.client.Transport = transport(func(r *http.Request) (*http.Response, error) {
+		if got := r.Header.Get("Authorization"); got != "Bearer reader-token" {
+			t.Errorf("authorization = %q", got)
+		}
+		b, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(b), `"role"`) {
+			t.Errorf("the connector's role was sent: %s", b)
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"data":[["one"]],"resultSetMetaData":{"numRows":1,"rowType":[{"name":"VALUE"}]}}`))}, nil
+	})
+	reader := func(context.Context) (string, error) { return "reader-token", nil }
+	if r, err := c.QueryAs(context.Background(), reader, "SELECT 1"); err != nil || len(r.Rows) != 1 {
+		t.Fatalf("result=%+v, err=%v", r, err)
+	}
+	if _, err := c.QueryAs(context.Background(), nil, "SELECT 1"); err == nil {
+		t.Fatal("a query with no reader token ran")
+	}
+	if _, err := c.QueryAs(context.Background(), reader, "DELETE FROM T"); err == nil {
+		t.Fatal("a write ran as the reader")
+	}
+}

@@ -219,3 +219,34 @@ func TestOAuthDialsTheRESTQueryPath(t *testing.T) {
 		t.Fatalf("dialed %T", a)
 	}
 }
+
+// QueryAs runs on the reader's token through jobs.query, never on the
+// connector's own credential, and keeps the connector's limits.
+func TestQueryAsRunsWithTheReadersTokenNotTheConnectors(t *testing.T) {
+	f := newRESTFake(t)
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	target, _ := url.Parse(srv.URL)
+	var dialed []Config
+	c, err := newWith(Config{Project: "acme-data", Datasets: []string{"billing"}, MaxBytesBilled: 1 << 20, MaxRows: 3, Credential: "env:BQ_OWNER_KEY"}, func(_ context.Context, cfg Config) (api, error) {
+		dialed = append(dialed, cfg)
+		if cfg.TokenSource == nil {
+			t.Fatal("dialed without the reader's token")
+		}
+		hc := &http.Client{Transport: &tokenTransport{source: cfg.TokenSource, base: toServer{target}}}
+		return &rest{api: newFake(), http: hc, base: restBase + "acme-data"}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := c.QueryAs(context.Background(), readerToken, "SELECT * FROM billing.invoices")
+	if err != nil || len(r.Rows) != 3 {
+		t.Fatalf("result %+v, %v", r, err)
+	}
+	if len(dialed) == 0 || dialed[0].Credential != "" || dialed[0].MaxBytesBilled != 1<<20 || dialed[0].MaxRows != 3 {
+		t.Fatalf("dialed %+v", dialed)
+	}
+	if _, err := c.QueryAs(context.Background(), nil, "SELECT 1"); err == nil {
+		t.Fatal("a query with no reader token ran")
+	}
+}

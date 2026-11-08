@@ -188,6 +188,24 @@ func (c *Connector) token(ctx context.Context) (string, error) {
 	return token, nil
 }
 
+// QueryAs runs Query as one reader with their own token, read per call, so
+// their grants, row access and masking policies apply. The connector's role
+// is left out, so the reader's default role (or their token's role
+// restriction) applies; the connector's own credential is never used.
+func (c *Connector) QueryAs(ctx context.Context, token func(context.Context) (string, error), sql string) (catalog.Result, error) {
+	if token == nil {
+		return catalog.Result{}, errors.New("snowflake: no reader token")
+	}
+	cfg := c.cfg
+	cfg.Credential, cfg.TokenSource, cfg.Role = "", token, ""
+	reader, err := New(cfg)
+	if err != nil {
+		return catalog.Result{}, err
+	}
+	reader.client = c.client
+	return reader.Query(ctx, sql)
+}
+
 // Query accepts only a single SELECT without comments, dollar strings, or
 // statement separators. The SELECT-only warehouse role remains authoritative.
 func (c *Connector) Query(ctx context.Context, sql string) (catalog.Result, error) {
