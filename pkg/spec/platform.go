@@ -548,6 +548,39 @@ type Agent struct {
 	// available there and below, and nowhere else. Left out, it is a
 	// platform agent, available wherever it is enabled.
 	Project string `json:"project,omitempty"`
+	// retired are notes for the fields its spec held that are no longer
+	// read (wire.DropRetiredAgentFields).
+	retired []string
+}
+
+// UnmarshalJSON reads an agent entry as strictly as the rest of the file,
+// except that its spec loads without the fields it no longer reads, each
+// noted.
+func (a *Agent) UnmarshalJSON(b []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(b, &fields); err != nil {
+		return err
+	}
+	var notes []string
+	if spec, ok := fields["spec"]; ok {
+		kept, dropped, err := wire.DropRetiredAgentFields(spec)
+		if err != nil {
+			return err
+		}
+		fields["spec"], notes = kept, dropped
+	}
+	raw, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	type plain Agent
+	var out plain
+	if err := strictJSON(raw, &out); err != nil {
+		return err
+	}
+	*a = Agent(out)
+	a.retired = notes
+	return nil
 }
 
 // Surfaces are where the workspace answers besides the console.
