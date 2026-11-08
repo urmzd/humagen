@@ -811,7 +811,7 @@ export const defaultCopy = {
       people: "People",
       projects: "Projects",
       add: "Add",
-      none: "No one yet.",
+      none: "None yet.",
       create: "Create Corpus",
       save: "Save",
       cancel: "Cancel",

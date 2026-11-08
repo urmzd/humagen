@@ -51,7 +51,6 @@ import { connectionApi } from "./connectionApi.ts";
 import {
   holds,
   itemsOf,
-  NAME,
   namedReaders,
   nameOf,
   providerOfSource,
@@ -81,6 +80,8 @@ import {
 } from "./ui.tsx";
 
 const words = defaultCopy.corpora;
+/** A corpus or source name (corpora.ts NAME) as an input's pattern, which is read with the `v` flag: a literal dash is escaped. */
+const NAME_PATTERN = "[a-z0-9][a-z0-9\\-]{0,62}";
 
 /** A plain click goes there in place; a modified one is the browser's. */
 const follow = (go: () => void) => (e: MouseEvent<HTMLAnchorElement>) => {
@@ -229,6 +230,7 @@ function ReadersField({
         <label key={mode} className="flex min-h-8 items-center gap-2 text-aui-sm text-aui-fg">
           <input
             type="radio"
+            className="accent-aui-fg"
             name={group}
             checked={value.mode === mode}
             onChange={() => onChange({ ...value, mode })}
@@ -322,7 +324,7 @@ function CorpusForm({
             required
             // biome-ignore lint/a11y/noAutofocus: the sheet opened to name a new corpus
             autoFocus
-            pattern={NAME.source.slice(1, -1)}
+            pattern={NAME_PATTERN}
             value={name}
             onChange={(e) => setName(nameOf(e.target.value))}
           />
@@ -624,6 +626,7 @@ function FileSources({
           <label key={s.name} className="flex min-h-8 items-center gap-2 text-aui-sm text-aui-fg">
             <input
               type="checkbox"
+              className="accent-aui-fg"
               checked={picked.includes(s.name)}
               onChange={(e) =>
                 setPicked((was) =>
@@ -1114,7 +1117,7 @@ function UploadFiles({
         <input
           className={field}
           required
-          pattern={NAME.source.slice(1, -1)}
+          pattern={NAME_PATTERN}
           value={name}
           onChange={(e) => setName(nameOf(e.target.value))}
         />
