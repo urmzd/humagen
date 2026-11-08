@@ -5,7 +5,7 @@ import type { Turn } from "@humagen/core";
 import * as fx from "@humagen/core/fixtures";
 import { renderToSlack } from "@humagen/render-slack";
 import { streamTurn } from "@humagen/slack-host";
-import { eventsFor, registry, views } from "./fixtures";
+import { eventsFor, natives, registry, views } from "./fixtures";
 import { buildManifest, CAPABILITIES, capabilitiesExcept, createAppUrl } from "./manifest";
 import { serve } from "./serve";
 import { readEnv, slackClient, uploadFile, validateBlocks } from "./slack";
@@ -73,6 +73,19 @@ async function main() {
             `${res.ok ? "ok  " : "FAIL"} ${p.name}${part}${warnings.length ? ` (${warnings.length} warnings)` : ""}${detail}`,
           );
         }
+      }
+      for (const n of natives()) {
+        const view =
+          n.placement === "modal"
+            ? { type: "modal", title: { type: "plain_text", text: "Humagen" }, blocks: n.blocks }
+            : n.placement === "home"
+              ? { type: "home", blocks: n.blocks }
+              : undefined;
+        const res = await validateBlocks(n.blocks, view);
+        if (!res.ok) failed++;
+        console.log(
+          `${res.ok ? "ok  " : "FAIL"} ${n.name}${res.ok ? "" : ` ${JSON.stringify(res.errors ?? res)}`}`,
+        );
       }
       for (const v of views()) {
         const res = await validateBlocks([], v.view);
