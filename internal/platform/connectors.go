@@ -573,6 +573,8 @@ func automationChannel(rule clients.GitHubAutomation, kind string, body []byte) 
 // hand passes a request to one client's connector, which verifies it again
 // with the same secret before it parses anything.
 func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []byte) {
+	// refused is why someone who may not ask an agent wrote this delivery.
+	refused := ""
 	if st.verifier != nil {
 		current, enabled := s.p.currentInstallation(st.client)
 		if !enabled {
@@ -586,9 +588,21 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 			return
 		}
 		if current.Surface == clients.GitHub {
+			kind := r.Header.Get("X-GitHub-Event")
+			// Only people who may ask are acted on (GitHubAsker). A comment,
+			// a review or a pull request from anyone else starts nothing at
+			// all; an issue from them still meets the client's own rules,
+			// which are written to read issues, but asks no agent.
+			if _, allowed, why := current.GitHubAsker(kind, body); !allowed {
+				if kind != "issues" {
+					s.logIgnored(r, body, &current, http.StatusOK, why)
+					w.WriteHeader(http.StatusOK)
+					return
+				}
+				refused = why
+			}
 			delivery := r.Header.Get("X-GitHub-Delivery")
 			if delivery != "" && len(delivery) <= 128 {
-				kind := r.Header.Get("X-GitHub-Event")
 				for _, rule := range current.MatchAutomations(kind, body) {
 					tag := wire.NewEvent(wire.Raise{
 						ID:     "automation/" + url.PathEscape(current.ID) + "/" + url.PathEscape(delivery) + "/" + url.PathEscape(rule.Name),
@@ -607,6 +621,11 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 				}
 			}
 		}
+	}
+	if refused != "" {
+		s.logIgnored(r, body, &st.client, http.StatusOK, refused)
+		w.WriteHeader(http.StatusOK)
+		return
 	}
 	r = r.Clone(r.Context())
 	r.Body = io.NopCloser(bytes.NewReader(body))

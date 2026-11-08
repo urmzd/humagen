@@ -3984,6 +3984,8 @@ export interface GitHubOptions {
   /** Exact verified non-bot GitHub logins mapped explicitly by this installation to workspace subjects. No inferred identity or cross-installation fallback. */
   people?: Record<string, string>;
   auto_labels?: Record<string, Record<string, string>>;
+  /** When set, the only GitHub logins whose mentions, reviews and pull requests the client acts on, among people with write access to the repository (owner, member or collaborator) and people it maps. */
+  askers?: string[];
   checks?: boolean;
   guides?: boolean;
   mutations?: boolean;

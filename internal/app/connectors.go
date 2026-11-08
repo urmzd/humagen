@@ -42,8 +42,12 @@ const (
 	EnvGitHubBots             = "HUMAGEN_GITHUB_BOTS"
 	EnvGitHubAutoLabels       = "HUMAGEN_GITHUB_AUTO_LABELS"
 	EnvGitHubChecks           = "HUMAGEN_GITHUB_CHECKS"
-	EnvGitHubGuides           = "HUMAGEN_GITHUB_GUIDES"
-	EnvGitHubMutations        = "HUMAGEN_GITHUB_MUTATIONS"
+	// EnvGitHubAskers, when set, are the only GitHub logins whose mentions,
+	// reviews and pull requests the client acts on, among people with write
+	// access to the repository and people it maps.
+	EnvGitHubAskers    = "HUMAGEN_GITHUB_ASKERS"
+	EnvGitHubGuides    = "HUMAGEN_GITHUB_GUIDES"
+	EnvGitHubMutations = "HUMAGEN_GITHUB_MUTATIONS"
 	// EnvGitHubLogin is the app's own login. A comment that mentions it and
 	// names no agent is answered by the client's default (EnvGitHubDefault),
 	// else by the default chain of the client's home.
@@ -221,7 +225,7 @@ func githubClient(env func(string) string) (*platform.ClientInput, error) {
 	if len(list(env(EnvGitHubOwners))) == 0 {
 		return nil, fmt.Errorf("GitHub installation needs $%s", EnvGitHubOwners)
 	}
-	opts := &clients.GitHubOptions{ReadRepositories: list(env(EnvGitHubReadRepositories)), Login: env(EnvGitHubLogin)}
+	opts := &clients.GitHubOptions{ReadRepositories: list(env(EnvGitHubReadRepositories)), Login: env(EnvGitHubLogin), Askers: list(env(EnvGitHubAskers))}
 	var err error
 	if opts.Mutations, err = boolEnv(env, EnvGitHubMutations); err != nil {
 		return nil, err
