@@ -3546,6 +3546,40 @@ export const defaultCopy = {
     item: (label: string) => `On ${label}`,
     clearItem: "Clear Item",
   },
+  /** A session's Details panel: its progress, agents, outputs, where it ran, and what it used. */
+  details: {
+    title: "Details",
+    /** The header's Details button, with how many calls are running or waiting. */
+    open: (n: number) => (n ? `Details, ${n} working` : "Details"),
+    progress: "Progress",
+    working: (agents: number, tools: number) =>
+      [
+        "Working",
+        agents ? `${agents} ${agents === 1 ? "agent" : "agents"}` : "",
+        tools ? `${tools} ${tools === 1 ? "tool" : "tools"}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    waiting: "Waiting for you",
+    agents: "Agents",
+    calls: (n: number) => `${n} ${n === 1 ? "call" : "calls"}`,
+    outputs: "Outputs",
+    environment: "Environment",
+    usedTitle: "Used in this session",
+    used: {
+      origin: "Origin",
+      uploads: "Uploads",
+      connections: "Connections",
+      knowledge: "Knowledge",
+      context: "Context",
+      web: "Web",
+      memory: "Memory",
+    },
+    read: "Read",
+    wrote: "Wrote",
+    back: "Back",
+    files: (n: number) => `${n} ${n === 1 ? "file" : "files"}`,
+  },
   /** A message's references and the work under it: its origin, what it read and touched, what it delegated. */
   trace: {
     /** The section in Details that collects every message's references. */

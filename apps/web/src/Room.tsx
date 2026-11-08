@@ -60,6 +60,7 @@ import { type ConversationPanel, type ConversationView, href } from "./route.ts"
 import { SessionActions } from "./SessionActions.tsx";
 import { alertAnchor, SessionAlerts, useSessionAlerts } from "./SessionAlerts.tsx";
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
+import { SessionDetailsPanel, sessionFiles, sessionProgress } from "./SessionPanel.tsx";
 import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./SessionPlace.tsx";
 import { ShareDialog } from "./Share.tsx";
 import { useThreadSelection } from "./selection.ts";
@@ -907,6 +908,7 @@ export function ThreadRoom({
           agents={answering}
           people={th.participants.filter((p) => p.kind === "person").map((p) => p.name)}
           origin={<OriginButton place={place} />}
+          progress={sessionProgress(turns.flatMap((t) => (t.run ? [t.run] : [])))}
           location={
             <>
               {th.visibility !== "private" && !id.startsWith("s_") && (
@@ -1315,6 +1317,24 @@ export function ThreadRoom({
                       openPanel();
                     }
                   : undefined
+              }
+            />
+          )}
+        </Presence>
+        <Presence when={shownView.panel === "details"} ms={220}>
+          {(leaving) => (
+            <SessionDetailsPanel
+              runs={turns.flatMap((t) => (t.run ? [t.run] : []))}
+              thread={th.id}
+              uploads={turns.flatMap((t) =>
+                (t.message?.attachments ?? []).map((a) => a.name || a.alt || a.media_type),
+              )}
+              origin={referenceOfPlace(place)}
+              files={sessionFiles}
+              leaving={leaving}
+              onClose={() => openPanel()}
+              onOpenFile={(id) =>
+                openPanel("workspace", openPane(shownView, { kind: "artifact", ref: id }))
               }
             />
           )}

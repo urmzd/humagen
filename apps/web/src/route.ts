@@ -90,6 +90,8 @@ export type ConversationPanel =
   | "activity"
   /** One response's activity: every run behind it, flat and in time order. Needs `run`. */
   | "response"
+  /** The session's Details: progress, agents, outputs, environment, and what it used. */
+  | "details"
   | "context"
   | "people"
   | "deliverables"
@@ -98,6 +100,7 @@ const CONVERSATION_PANELS: ConversationPanel[] = [
   "overview",
   "activity",
   "response",
+  "details",
   "context",
   "people",
   "deliverables",
@@ -476,6 +479,7 @@ export function href(r: Route): string {
         context: "sources",
         activity: "steps",
         response: "activity",
+        details: "details",
         overview: "sessions",
         people: "people",
         deliverables: "files",
@@ -689,6 +693,7 @@ function read(pathname: string, search: string): Route {
         workspace: "workspace",
         context: "context",
         activity: "response",
+        details: "details",
         overview: "overview",
         deliverables: "deliverables",
       };

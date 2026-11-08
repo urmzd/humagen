@@ -42,6 +42,7 @@ import { runSource } from "./responseSource.ts";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { Scroller } from "./Scroller.tsx";
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
+import { SessionDetailsPanel, sessionFiles, sessionProgress } from "./SessionPanel.tsx";
 import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./SessionPlace.tsx";
 import { useThreadSelection } from "./selection.ts";
 import { mentionsIn } from "./tags.ts";
@@ -1035,6 +1036,7 @@ export function Chat({
           }
           private={room?.thread.visibility === "private"}
           origin={<OriginButton place={chatPlace} />}
+          progress={sessionProgress(turns)}
           location={
             chatPlace && <SessionPlace place={chatPlace} sender={path[0]?.actor?.display} />
           }
@@ -1222,6 +1224,22 @@ export function Chat({
                       openPanel();
                     }
                   : undefined
+              }
+            />
+          )}
+        </Presence>
+        <Presence when={shownView.panel === "details"} ms={220}>
+          {(leaving) => (
+            <SessionDetailsPanel
+              runs={turns}
+              thread={room?.thread.id ?? threadId ?? undefined}
+              uploads={[]}
+              origin={referenceOfPlace(chatPlace)}
+              files={sessionFiles}
+              leaving={leaving}
+              onClose={() => openPanel()}
+              onOpenFile={(id) =>
+                openPanel("workspace", openPane(shownView, { kind: "artifact", ref: id }))
               }
             />
           )}

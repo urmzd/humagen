@@ -24,6 +24,7 @@ await loadTests([
   "/src/connection-flows.dom.test.tsx",
   "/src/sidebar-recents.dom.test.tsx",
   "/src/agent-builder.dom.test.tsx",
+  "/src/session-panel.dom.test.tsx",
   "/src/session-center.dom.test.tsx",
   "/src/session-ux.dom.test.tsx",
   "/src/conversation-overview.dom.test.tsx",

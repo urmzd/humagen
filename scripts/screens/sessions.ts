@@ -19,7 +19,8 @@ const details = (page: Page) => page.getByRole("dialog", { name: "Details", exac
 
 async function readySession(page: Page): Promise<void> {
   await composer(page).waitFor();
-  await page.getByRole("button", { name: "Details", exact: true }).waitFor();
+  // The Details button says how many calls are running ("Details, 1 working").
+  await page.getByRole("button", { name: /^Details(, \d+ working)?$/ }).waitFor();
 }
 
 async function detailsReady(page: Page): Promise<void> {

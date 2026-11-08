@@ -451,6 +451,20 @@ function Lane({
   );
 }
 
+/** One agent call's lane on its own, as an agent's calls are listed in Details. */
+export function AgentCallLane({ tool, messageId }: { tool: ResponseTool; messageId?: string }) {
+  return (
+    <Lane
+      agent={tool.agent ?? tool.name}
+      title={tool.title}
+      status={tool.status}
+      tool={tool}
+      blocks={tool.content}
+      messageId={messageId}
+    />
+  );
+}
+
 /** A response's activity as lanes: one per agent call, nested by who called whom. */
 export function ActivityLanes({
   state,

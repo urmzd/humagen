@@ -151,11 +151,11 @@ export function answerOf(state: ResponseState): { text: string; from?: string } 
   const root = state.content;
   let last = -1;
   root.forEach((b, i) => {
-    if (b.type === "tool" || b.type === "result") last = i;
+    if (b?.type === "tool" || b?.type === "result") last = i;
   });
   const text = root
     .slice(last + 1)
-    .flatMap((b) => (b.type === "text" ? [b.text] : []))
+    .flatMap((b) => (b?.type === "text" ? [b.text] : []))
     .join("")
     .trim();
   if (text) return { text };
@@ -171,9 +171,10 @@ export function answerOf(state: ResponseState): { text: string; from?: string } 
 /** Every tool call at every depth, in the order they started. */
 export function allTools(state: ResponseState): ResponseTool[] {
   const out: ResponseTool[] = [];
+  // A stream joined late can leave holes; indices hold, so a missing block is skipped.
   const walk = (blocks: ResponseBlock[]) => {
     for (const b of blocks)
-      if (b.type === "tool") {
+      if (b?.type === "tool") {
         out.push(b);
         walk(b.content);
       }
