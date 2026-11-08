@@ -21,20 +21,21 @@ create the default client, `default-github`:
 | `HUMAGEN_GITHUB_OWNERS` | `identity.owners` |
 | `HUMAGEN_GITHUB_APP`, `HUMAGEN_GITHUB_INSTALLATION` | `identity.app_id`, `identity.installation`. Optional |
 | `HUMAGEN_GITHUB_BOTS` | `bots` |
-| `HUMAGEN_GITHUB_AUTO_LABELS` | `github.auto_labels` |
 | `HUMAGEN_GITHUB_CHECKS`, `HUMAGEN_GITHUB_GUIDES`, `HUMAGEN_GITHUB_MUTATIONS` | `github.checks`, `github.guides`, `github.mutations` |
 | `HUMAGEN_GITHUB_READ_REPOSITORIES` | `github.read_repositories` |
 | `HUMAGEN_GITHUB_LOGIN` | `github.login` |
 | `HUMAGEN_GITHUB_DEFAULT_AGENT` | `default_agent` |
 
+`HUMAGEN_GITHUB_AUTO_LABELS` is retired: labels start nothing, and the server
+refuses to start while it is set. Use [Automatic review](#automatic-review).
+
 The default client may route to any agent. One created through the API routes
-to its default agent and its `agents` list, and an auto-label or a bot that
+to its default agent and its `agents` list, and an event rule or a bot that
 names any other agent is refused when the client is saved.
 
 ## Who a comment asks
 
-The rule is Slack's: an `@agent` in a comment, or an `auto_labels` label, is a
-tag; otherwise the client's default; otherwise nothing. Slack delivers a
+The rule is Slack's: an `@agent` in a comment is a tag; otherwise the client's default; otherwise nothing. Slack delivers a
 message only when it mentions the app, so on GitHub a comment that names no
 agent is addressed to the client only when it mentions the app's own login.
 Set it as `github.login`: the login the app comments as, `humagen[bot]`, which
@@ -66,32 +67,37 @@ acts for nobody, as every GitHub run does: no client maps GitHub logins to
 people. A comment addressed to the app on a pull request posts no guide, since
 the guide names the agent that answers; the next one that names an agent does.
 
-## Automatic labels
+## Automatic review
 
-Set repository-specific label mappings alongside the GitHub token and webhook
-secret:
+A pull request is reviewed automatically when it opens or reopens ready for
+review, leaves draft, or gets a push. The client's default agent
+reviews it, on the pull request; a client with no default agent reviews
+nothing. It is on unless switched off, and labels start nothing:
 
-```sh
-export HUMAGEN_GITHUB_AUTO_LABELS='{"acme/handbook":{"agent:auto":"docs-bot"}}'
+```json
+{"github":{"auto_review":{"enabled":true,"repositories":{"acme/handbook":false}}}}
 ```
 
-Register `docs-bot` with Humagen and subscribe the GitHub webhook to `issues`
-and `pull_request` events. Applying `agent:auto` starts a run using the subject's
-title and body. The run answers on that subject unless delivery routes override
-it. Repository matching is case-insensitive; label names match exactly.
+`enabled` is the connection's switch, on when left out. `repositories` turns it
+on or off for exact `owner/repo` names whatever `enabled` says, for at most 64
+repositories the client serves. Subscribe the webhook to `pull_request`.
 
-Applying the label starts the first run. Subsequent PR `synchronize` events
-start a review of the new head while the configured label remains. Removing the
-label stops automatic commit reviews; unrelated label changes do not start runs.
-Draft and closed PRs do not trigger commit reviews. Bot comments are ignored;
-bot-authored commits on activated PRs can trigger reviews of requested fixes. `HUMAGEN_GITHUB_OWNERS` also restricts inbound triggers.
-A GitHub delivery ID is required for automatic labels and commit events: retries retain their run
-identity, while removing and reapplying a label produces a new delivery.
-Automatic commit reviews also deduplicate by repository, PR, agent and head SHA;
-explicit user mentions start independent requests.
+Drafts and closed pull requests wait. One commit is one review: its run is
+named for the client, repository, pull request and head SHA, so a redelivery,
+or a pull request that opens and is pushed at the same commit, joins it. The
+run is asked with identifiers only, never the pull request's title or body;
+the reviewer reads the pull request with its tools. An `@agent` mention still
+starts its own request.
 
-An empty mapping disables automatic runs. Malformed mappings fail startup.
-The configured agent must exist in the registry when the trigger is accepted.
+Opening, reopening or leaving draft reviews the whole pull request. Each push
+after that reviews only the commits after the last one reviewed. Five pushes
+are reviewed; the sixth pauses automatic review on that pull request, and
+later pushes wait. A person who mentions the app (`@humagen`, such as
+`@humagen review`) or one of the client's agents on the pull request resumes
+it: the count starts again, and the next push is reviewed from the last
+reviewed commit. Opening, reopening or leaving draft also starts the count
+again. The count and the pause are kept per pull request in the shared store
+(`pull_reviews`), so every replica sees them.
 
 ## Reading context and structured reviews
 
@@ -309,8 +315,10 @@ permissions, tenant boundary and agent visibility rules apply. A rule is:
 ```
 
 Supported events are `check_run`, `issues`, `pull_request` and `push`. For a
-push, `action` is empty. Issue and pull-request rules may additionally match
-`label`; a blank conclusion or label means no condition on that field.
+push, `action` is empty. A blank conclusion means no condition on it. Labels
+start nothing: a rule cannot fire on `labeled` or `unlabeled`, and one stored
+that way reads paused for good, with a `note`. A rule stored with a `label`
+reads with a `note` saying the label is ignored, and saving drops both.
 Subscribe the GitHub App or repository webhook to the desired events and
 permit those event IDs in the installation's capabilities. All events enter
 through the existing signed GitHub webhook endpoint.
@@ -332,8 +340,8 @@ Own bot events and bot-authored commits do not trigger automation. Push and
 check-run payloads must include commit author evidence (`head_commit.author`
 or `check_run.check_suite.head_commit.author`); missing evidence is ignored.
 A GitHub delivery ID, installation and rule name identify the run, so a
-webhook redelivery does not start a second run. The existing `auto_labels`
-map remains supported and is listed alongside event rules.
+webhook redelivery does not start a second run. Automatic review is not a
+rule: it is the connection's switch (see [Automatic review](#automatic-review)).
 
 ## Native reviews and feedback
 
@@ -343,7 +351,7 @@ head refuses publication. Each applicable finding gets a line comment and an
 optional committable suggestion. Missing diff locations become review-body text.
 Each finding may name the agent that found it (`found_by`, such as
 `security-reviewer` or `security-reviewer#a`), shown on its line comment and in
-the findings table. Agents never approve (RFC 0009): an `approve` verdict is
+the findings table. Agents never approve: an `approve` verdict is
 posted as a comment, `request_changes` as a change request, and a person
 approves and merges. Review recovery uses
 an app-owned marker and the durable delivery store to avoid duplicate reviews.
@@ -358,16 +366,7 @@ Publication retries while the completed review is not yet in the journal.
 
 `github.checks: true` already creates an in-progress check on that pinned commit
 and edits its summary through completion. It needs Checks write permission.
-Automatic reviews remain explicit per repository, for example:
-
-```json
-{"github":{"checks":true,"auto_labels":{"acme/service":{"humagen:auto":"reviewer"}}}}
-```
-
-Applying the configured label triggers a review; later pushes with the label
-trigger a new review. Unlabeled pull requests do not start automatically. Existing
-check conclusion behavior is preserved; no fixed push limit or label precedence
-is introduced.
+[Automatic review](#automatic-review) runs show their progress there too.
 
 Thumb reactions on delivered answers are polled in bounded pages, at most one
 page per installation every 15 seconds, for answers delivered in the last 30

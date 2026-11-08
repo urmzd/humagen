@@ -62,7 +62,7 @@ func TestAMalformedEnvironmentIsAnError(t *testing.T) {
 		"slack commands not json":       {EnvSlackToken: "t", EnvSlackSecret: "s", EnvSlackTeam: "T01", EnvSlackCommands: "create-pr"},
 		"a github secret with no token": {EnvGitHubSecret: "s"},
 		"github with no owners":         {EnvGitHubToken: "t", EnvGitHubSecret: "s"},
-		"github labels not json":        {EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "acme", EnvGitHubAutoLabels: "{"},
+		"github labels, now retired":    {EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "acme", retiredGitHubAutoLabels: `{"acme/site":{"auto":"helper"}}`},
 	} {
 		if _, err := defaultClients(envOf(vars)); err == nil {
 			t.Errorf("%s was accepted", name)
@@ -81,7 +81,7 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 		EnvSlackCommands: `[{"name":"create-pr","description":"Open a pull request","argument_hint":"[title]"}]`,
 		EnvGitHubToken:   "ghs-legacy", EnvGitHubSecret: "legacy-github-secret-of-16-bytes", EnvGitHubOwners: "acme, acme-labs",
 		EnvGitHubBots: "helper[bot]=helper", EnvGitHubChecks: "false", EnvGitHubReadRepositories: "acme/handbook",
-		EnvGitHubAutoLabels: `{"acme/handbook":{"agent:auto":"helper"}}`, EnvGitHubLogin: "humagen[bot]", EnvGitHubDefault: "helper",
+		EnvGitHubLogin: "humagen[bot]", EnvGitHubDefault: "helper",
 	}
 	defaults, err := defaultClients(envOf(vars))
 	if err != nil {
@@ -147,7 +147,7 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 		t.Fatalf("slack client = %+v", sl)
 	}
 	gh, _ := p.Clients.Get("trial", defaultGitHubClient)
-	if len(gh.Identity.Owners) != 2 || gh.GitHub.AutoLabels["acme/handbook"]["agent:auto"] != "helper" || gh.GitHub.ReadRepositories[0] != "acme/handbook" ||
+	if len(gh.Identity.Owners) != 2 || gh.GitHub.AutoReview != nil || gh.GitHub.ReadRepositories[0] != "acme/handbook" ||
 		gh.GitHub.Login != "humagen[bot]" || gh.DefaultAgent != "helper" {
 		t.Fatalf("github client = %+v", gh)
 	}

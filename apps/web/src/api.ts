@@ -572,7 +572,8 @@ export interface Client {
   };
   github?: {
     automations?: GitHubAutomation[];
-    auto_labels?: Record<string, Record<string, string>>;
+    /** Automatic review of pull requests: on unless switched off, per repository too. */
+    auto_review?: { enabled?: boolean; repositories?: Record<string, boolean> };
     checks?: boolean;
     guides?: boolean;
     mutations?: boolean;

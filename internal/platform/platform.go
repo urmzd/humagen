@@ -280,8 +280,10 @@ type Platform struct {
 	ConnectionAuth   *connectionauth.Manager
 	GitHubInstall    *githubinstall.Manager
 	connectionHealth *state.Table[connectionObservation]
-	Sessions         session.Store
-	app              *flow.App
+	// pullReviews keeps automatic review's count and pause per pull request.
+	pullReviews *state.Table[PullReview]
+	Sessions    session.Store
+	app         *flow.App
 	// Rooms holds the conversations followed on this server (pkg/rooms).
 	Rooms    *rooms.Hub
 	roomGate *rooms.Gate

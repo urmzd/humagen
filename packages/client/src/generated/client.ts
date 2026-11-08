@@ -7077,7 +7077,7 @@ read, or a limit on either, is left out.
 
   /** A workspace at its cap of clients answers 429 with a plain error
 body. Every agent the client names, as its default, in its list, for
-a bot or for an auto-label, is an agent that exists and that the
+a bot or in an event rule, is an agent that exists and that the
 caller may read; any other is 400, in the same words whether it does
 not exist or lives in a project the caller may not read.
  */
@@ -7141,7 +7141,7 @@ may not read, which they are not shown: naming none keeps it, and
 naming one they may read replaces it. The agents it names that the
 caller is not shown are kept the same way: its default unless they
 name another, its list unless they write `*`, its bots and its
-auto-labels unless they map the same bot or label, and an agent it
+event rules unless they map the same bot or write the same rule, and an agent it
 routed to stays one it routes to. Every other agent named is one that
 exists and that the caller may read, or one the record already holds
 (400 otherwise, as on create). A client the server's configuration

@@ -335,6 +335,13 @@ func (p *Platform) openStores(cfg Config) error {
 	p.Credentials, err = credentials.Open(perRequest, p.secrets)
 	keep("credentials", err)
 	p.connectionHealth = state.NewTable[connectionObservation](perRequest, "connection_health")
+	// A nil table counts nothing, so automatic review would never pause:
+	// without a store, the count is kept in memory.
+	reviews := perRequest
+	if reviews == nil {
+		reviews = state.NewMemory()
+	}
+	p.pullReviews = state.NewTable[PullReview](reviews, "pull_reviews")
 	if cfg.ConnectionAuth != nil {
 		connectionConfig := *cfg.ConnectionAuth
 		connectionConfig.OnAuthFailure = p.RecordConnectionAuthFailure

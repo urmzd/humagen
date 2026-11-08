@@ -76,7 +76,7 @@ func asRead(t *testing.T, c map[string]any) string {
 
 // A client names only the agents its reader may read. One that lives in a
 // project they may not read is left out of its default, its list, its bots
-// and its auto-labels, as if it were not there, except for the machine that
+// and its event rules, as if it were not there, except for the machine that
 // hosts the client, which routes by them. A writer who saves the client as
 // they read it keeps those agents, names one only as an agent that exists
 // and that they may read, and learns nothing by naming one they may not.
@@ -92,7 +92,10 @@ func TestAClientNamesOnlyTheAgentsTheCallerMayRead(t *testing.T) {
 	}
 	want(t, f, owner, "POST", "/api/clients", app(`"default_agent":"spy","agents":["helper"],"bots":{"U0SPY":"spy","U0HELP":"helper"}`), http.StatusCreated)
 	want(t, f, owner, "POST", "/api/clients", `{"id":"gh","name":"gh","surface":"github","identity":{"owners":["acme"]},"agents":["helper","spy"],`+
-		`"github":{"auto_labels":{"acme/site":{"spy":"spy","help":"helper"},"acme/vault":{"spy":"spy"}}},`+
+		`"github":{"automations":[`+
+		`{"name":"spy-site","repository":"acme/site","event":"pull_request","action":"opened","agent":"spy","instructions":"Look"},`+
+		`{"name":"help-site","repository":"acme/site","event":"pull_request","action":"opened","agent":"helper","instructions":"Help"},`+
+		`{"name":"spy-vault","repository":"acme/vault","event":"issues","action":"opened","agent":"spy","instructions":"Look"}]},`+
 		`"credentials":{"token":{"value":"`+botToken+`"},"signing_secret":{"value":"`+signingSecret+`"}}}`, http.StatusCreated)
 
 	for _, id := range []string{"app", "gh"} {
@@ -129,7 +132,7 @@ func TestAClientNamesOnlyTheAgentsTheCallerMayRead(t *testing.T) {
 	if kept["default_agent"] != "spy" || kept["bots"].(map[string]any)["U0SPY"] != "spy" || !slices.Equal(listed(kept["agents"]), []string{"helper"}) {
 		t.Errorf("after the writer's save, app is %v", kept)
 	}
-	if raw, _ := read(t, f, owner, "/api/clients/gh"); !strings.Contains(raw, `"acme/vault":{"spy":"spy"}`) || !strings.Contains(raw, `"spy":"spy"`) || !strings.Contains(raw, `"agents":["helper","spy"]`) {
+	if raw, _ := read(t, f, owner, "/api/clients/gh"); !strings.Contains(raw, `"name":"spy-vault"`) || !strings.Contains(raw, `"name":"spy-site"`) || !strings.Contains(raw, `"agents":["helper","spy"]`) {
 		t.Errorf("after the writer's save, gh is %s", raw)
 	}
 

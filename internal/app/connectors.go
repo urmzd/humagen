@@ -40,7 +40,6 @@ const (
 	EnvGitHubApp              = "HUMAGEN_GITHUB_APP"
 	EnvGitHubInstallation     = "HUMAGEN_GITHUB_INSTALLATION"
 	EnvGitHubBots             = "HUMAGEN_GITHUB_BOTS"
-	EnvGitHubAutoLabels       = "HUMAGEN_GITHUB_AUTO_LABELS"
 	EnvGitHubChecks           = "HUMAGEN_GITHUB_CHECKS"
 	EnvGitHubGuides           = "HUMAGEN_GITHUB_GUIDES"
 	EnvGitHubMutations        = "HUMAGEN_GITHUB_MUTATIONS"
@@ -210,6 +209,10 @@ func slackClient(env func(string) string) (*platform.ClientInput, error) {
 	}, nil
 }
 
+// retiredGitHubAutoLabels mapped labels to agents until labels stopped
+// starting runs.
+const retiredGitHubAutoLabels = "HUMAGEN_GITHUB_AUTO_LABELS"
+
 func githubClient(env func(string) string) (*platform.ClientInput, error) {
 	token, secret := env(EnvGitHubToken), env(EnvGitHubSecret)
 	if token == "" && secret == "" {
@@ -232,10 +235,10 @@ func githubClient(env func(string) string) (*platform.ClientInput, error) {
 	if opts.Checks, err = boolEnv(env, EnvGitHubChecks); err != nil {
 		return nil, err
 	}
-	if raw := env(EnvGitHubAutoLabels); raw != "" {
-		if err := json.Unmarshal([]byte(raw), &opts.AutoLabels); err != nil {
-			return nil, fmt.Errorf("invalid $%s: %v", EnvGitHubAutoLabels, err)
-		}
+	// Labels start nothing. A deployment that still sets the
+	// variable expects reviews it will not get, so it is told at start.
+	if env(retiredGitHubAutoLabels) != "" {
+		return nil, fmt.Errorf("$%s is no longer read: labels start nothing, and automatic review is the GitHub connection's auto_review switch, on by default; remove it", retiredGitHubAutoLabels)
 	}
 	return &platform.ClientInput{
 		Client: clients.Client{
