@@ -182,10 +182,13 @@ func TestAConversationStartsAtMostItsRate(t *testing.T) {
 	f.do(t, nil, "POST", "/api/agents", f.machine(t, "acme", everything...), helperSpec)
 	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-admins")
 	id := startThread(t, f, ana)
-	if res, out := f.do(t, nil, "POST", "/api/threads/"+id+"/messages", ana, `{"text":"@helper one"}`); res.StatusCode != http.StatusCreated || len(out["runs"].([]any)) != 1 {
+	res, out := f.do(t, nil, "POST", "/api/threads/"+id+"/messages", ana, `{"text":"@helper one"}`)
+	if res.StatusCode != http.StatusCreated || len(out["runs"].([]any)) != 1 {
 		t.Fatalf("the first = %d %v", res.StatusCode, out)
 	}
-	res, out := f.do(t, nil, "POST", "/api/threads/"+id+"/messages", ana, `{"text":"@helper two"}`)
+	// Once it has answered, so the second is no follow-up to it.
+	f.ended(t, ana, out["runs"].([]any)[0].(map[string]any)["id"].(string))
+	res, out = f.do(t, nil, "POST", "/api/threads/"+id+"/messages", ana, `{"text":"@helper two"}`)
 	if res.StatusCode != http.StatusCreated || len(out["runs"].([]any)) != 0 {
 		t.Fatalf("the second = %d %v", res.StatusCode, out)
 	}

@@ -88,6 +88,7 @@ import type {
   HandoffContract,
   HandoffUpdate,
   Health,
+  HealthComponent,
   InboxCounts,
   InboxDeliveryInput,
   InboxMessage,
@@ -155,6 +156,7 @@ import type {
   MemoryFile,
   MemoryFiles,
   MemoryRestoreInput,
+  ModelProvider,
   Note,
   NoteInput,
   NoteList,
@@ -224,6 +226,7 @@ import type {
   SetApprovalModeBody,
   SetKnowledgeDocumentExcludedBody,
   SetKnowledgeSyncSettingsBody,
+  SetModelProviderBody,
   Settings,
   SkillUsage,
   SnoozeInboxMessageBody,
@@ -1714,7 +1717,14 @@ model provider set up, a `provider:none` component is down.
     });
   }
 
-  /** Names are runtime configuration metadata, never keys or credential references. Declared does not mean a live call has been verified; a dry run checks the actual adapter and credential. */
+  /** The providers an agent, a model policy or routing may name in the
+caller's workspace: those the deployment declares and those the
+workspace's administrators set up. There is no built-in model and no
+stand-in. Names are configuration, never keys. Declared does not mean a
+live call has been verified. A caller who may manage the workspace's
+providers (clients:write) also reads how each of its own is set up,
+with no key.
+ */
   async listModelProviders(options?: RequestOptions): Promise<ListModelProvidersResponse> {
     const path = "/api/model-providers";
     return this.request<ListModelProvidersResponse>("GET", path, {
@@ -1725,6 +1735,67 @@ model provider set up, a `provider:none` component is down.
   async listModelProvidersRaw(options?: RequestOptions): Promise<ApiResponse<ListModelProvidersResponse>> {
     const path = "/api/model-providers";
     return this.rawRequest<ListModelProvidersResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** A key is given as a value, kept in the secret store and never
+returned, or as `key_ref`, an `env:NAME` the server's configuration
+gives this workspace. With neither, a replaced provider keeps its key.
+A google provider may instead run on Vertex AI with the server's own
+credentials. A name the deployment declares, `policy`, `offline` and
+names starting `ws-` are refused.
+ */
+  async setModelProvider(name: string, body: SetModelProviderBody, options?: RequestOptions): Promise<ModelProvider> {
+    let path = "/api/model-providers/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ModelProvider>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setModelProviderRaw(name: string, body: SetModelProviderBody, options?: RequestOptions): Promise<ApiResponse<ModelProvider>> {
+    let path = "/api/model-providers/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ModelProvider>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Refused (409) while an agent, a model policy or routing runs on it; the refusal names each. */
+  async deleteModelProvider(name: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/model-providers/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteModelProviderRaw(name: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/model-providers/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Lists the provider's models, spending no tokens. Vertex AI has no check. */
+  async checkModelProvider(name: string, options?: RequestOptions): Promise<HealthComponent> {
+    let path = "/api/model-providers/{name}/check";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<HealthComponent>("POST", path, {
+      ...options,
+    });
+  }
+
+  async checkModelProviderRaw(name: string, options?: RequestOptions): Promise<ApiResponse<HealthComponent>> {
+    let path = "/api/model-providers/{name}/check";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<HealthComponent>("POST", path, {
       ...options,
     });
   }
@@ -1817,18 +1888,18 @@ they were not shown, and the approvals of calls to them, are kept.
     });
   }
 
-  /** An agent that lives in a project is available there and in every
-project below it, and nowhere else: `*` never reaches it, and it is
-not available in the workspace itself. An empty `project`, or `~`,
-makes it a platform agent again, available wherever it is enabled.
+  /** An agent's home says only who sees it: a Personal project keeps it
+to that person, another project to that project's readers, and an
+empty `project`, or `~`, to the whole workspace. It decides nothing
+about where the agent answers: any agent answers in any project its
+allow lists permit, and a private one only where its readers alone
+read.
 
-Refused with 409, naming them, while something outside the new home
-would lose the agent: a project's default, enable or allow list, a
-channel's default (an archived channel's aside), a schedule filed
-elsewhere, an alert rule watching it elsewhere, or a client that
-routes to it. Homing an agent into or out of a company
-project needs `projects:govern`. The platform's own agents live
-nowhere (400).
+Refused with 409 only while the agent's default skills would not
+fit the new home; schedules, alert rules, clients and defaults that
+use the agent hold no change back. Homing an agent into or out of a
+company project needs `projects:govern`. The platform's own agents
+are the workspace's (400).
  */
   async setAgentHome(name: string, body: SetAgentHomeBody, options?: RequestOptions): Promise<AgentHome> {
     let path = "/api/agents/{name}/home";
@@ -6347,9 +6418,15 @@ conversations or files, the delete is refused with 429.
     });
   }
 
-  /** Every agent that lives in a project the caller may not read is left
-out of `enable`, `allow` and `default`, as if it were not there.
+  /** Projects no longer choose agents: any agent answers in any project
+its allow lists permit, and the workspace default answers untagged
+messages. `offers` is always empty, and `enable` and a project's own
+`default` are returned as stored but not read. Kept until the
+console stops reading it. Every agent homed in a project the caller
+may not read is left out of `enable`, `allow`, `default`,
+`available` and `homes`, as if it were not there.
  */
+  /** @deprecated */
   async getProjectAgents(name: string, options?: RequestOptions): Promise<ProjectAgentsView> {
     let path = "/api/projects/{name}/agents";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -6366,13 +6443,13 @@ out of `enable`, `allow` and `default`, as if it were not there.
     });
   }
 
-  /** The body replaces the three as a whole. `enable` adds platform agents
-here and below (`*` alone is every one); `allow`, when set, is the
+  /** The body replaces the three as a whole. `allow`, when set, is the
 only agents that may run here and below, and a child can only narrow
-it; `default` answers a message that tags no agent, here and below,
-and is an agent or `*`. Every name is an agent in the workspace
-that the caller may read, a named default is available where it is
-set, and an agent that lives in a project is not enabled (400). An
+it. On the workspace (`~`), `default` answers a message that tags no
+agent anywhere, and is an agent or `*`. `enable`, and a project's
+own `default`, are kept as written and not read. Every name is an
+agent in the workspace that the caller may read, and the workspace
+default is allowed at the workspace (400). An
 agent that lives in a project the caller may not read is refused in
 the words for one that does not exist. The names in `allow` the
 caller is not shown are kept; an `enable` entry or a `default`
@@ -6382,6 +6459,7 @@ hold the workspace default, and a company project's need
 `projects:govern`. `version` is the one the caller read (409 if it
 changed), and lists the platform file sets answer 409.
  */
+  /** @deprecated */
   async setProjectAgents(name: string, body: ProjectAgentsInput, options?: RequestOptions): Promise<ProjectAgentsView> {
     let path = "/api/projects/{name}/agents";
     path = path.replace("{name}", encodeURIComponent(String(name)));

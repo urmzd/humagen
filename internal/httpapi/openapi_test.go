@@ -628,7 +628,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
 		"WorkspaceFile": {typ: platform.WorkspaceFile{}}, "WorkspaceFileContent": {typ: platform.WorkspaceFileContent{}}, "WorkspaceFileList": {typ: platform.WorkspaceFileList{}}, "WorkspaceFileWrite": {typ: platform.WorkspaceFileWrite{}, written: true}, "WorkspaceFilePublish": {typ: platform.WorkspaceFilePublish{}, written: true},
 		"Thread": {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},
-		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}}, "ThreadAnnouncement": {typ: threads.Announcement{}}, "ThreadAsk": {typ: platform.Ask{}},
+		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadFollowup": {typ: threads.Followup{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}}, "ThreadAnnouncement": {typ: threads.Announcement{}}, "ThreadAsk": {typ: platform.Ask{}},
 		"ThreadAnswers": {typ: answers{}}, "ThreadPosted": {typ: platform.Posted{}}, "ThreadNotice": {typ: threads.Notice{}}, "RoomPage": {typ: rooms.Page{}},
 		"ThreadInput": {typ: platform.ThreadInput{}, written: true}, "ThreadMessageInput": {typ: platform.MessageInput{}, written: true},
 		"ThreadUpdate": {typ: platform.ThreadUpdate{}, written: true}, "ThreadParticipantsUpdate": {typ: platform.ParticipantsUpdate{}, written: true},
@@ -656,7 +656,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 			Text     string `json:"text"`
 			Severity string `json:"severity,omitempty"`
 		}{}, written: true},
-		"Settings": {typ: platform.Settings{}}, "RouterSettings": {typ: platform.RouterSettings{}}, "Preferences": {typ: prefs.Preferences{}},
+		"Settings": {typ: platform.Settings{}}, "Preferences": {typ: prefs.Preferences{}},
 		"ConnectionHealth": {typ: platform.ConnectionHealth{}}, "ConnectionPreset": {typ: platform.ConnectionPreset{}}, "ConnectionAuthorization": {typ: connectionauth.Authorization{}},
 		"ConnectionAuthorizationInput": {typ: platform.ConnectionAuthorizationInput{}, written: true},
 		"ConnectionRegistration":       {typ: connectionauth.Registration{}, written: true},
@@ -1018,7 +1018,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}
 		return time.Now()
 	}
-	f := newFixtureWith(t, platform.Config{Now: now, BuiltinProvider: "offline", BuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
+	f := newFixtureWith(t, platform.Config{Now: now, TestBuiltinProvider: "offline", TestBuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
 		native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
 		}),
@@ -1605,8 +1605,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	agentsAt := "/api/projects/{name}/agents"
 	fieldAgents := c.call(acme, "GET", agentsAt, "/api/projects/Field/agents", "", http.StatusOK)
 	v, _ := strconv.Atoi(fmt.Sprint(fieldAgents.field("version")))
+	// A project's own default is kept as written and not read: the
+	// workspace's decides.
 	set := c.call(acme, "PUT", agentsAt, "/api/projects/Field/agents", fmt.Sprintf(`{"version":%d,"enable":["helper"],"default":"helper"}`, v), http.StatusOK)
-	if d := obj(set.field("default_resolved")); d["agent"] != "helper" || d["from"] != "project:Field" {
+	if d := obj(set.field("default_resolved")); d["agent"] != "*" || d["from"] != "project:~" {
 		t.Errorf("Field's default = %s", set.raw)
 	}
 	c.call(acme, "PUT", agentsAt, "/api/projects/Field/agents", fmt.Sprintf(`{"version":%d,"enable":[]}`, v), http.StatusConflict)
@@ -1619,9 +1621,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	if lives := c.call(acme, "PUT", home, "/api/agents/fieldbot/home", `{"project":"Field"}`, http.StatusOK); lives.str("home") != "Field" {
 		t.Errorf("fieldbot's home = %s", lives.raw)
 	}
-	if inUse := c.call(acme, "PUT", home, "/api/agents/helper/home", `{"project":"Launch"}`, http.StatusConflict); !strings.Contains(inUse.str("error"), "the default of Field") {
-		t.Errorf("homing an agent Field defaults to = %s", inUse.raw)
-	}
+	// What uses an agent holds no change of its home back.
+	c.call(acme, "PUT", home, "/api/agents/helper/home", `{"project":"Launch"}`, http.StatusOK)
+	c.call(acme, "PUT", home, "/api/agents/helper/home", `{"project":"~"}`, http.StatusOK)
 	c.call(acme, "PUT", home, "/api/agents/humagen-writer/home", `{"project":"Field"}`, http.StatusBadRequest)
 	c.call(acme, "PUT", home, "/api/agents/ghost/home", `{"project":"Field"}`, http.StatusNotFound)
 
@@ -2697,6 +2699,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/runs/{id}/calls":                       `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
 		"/api/runs/{id}/questions/{question}/answer": `{"action":"choose","choice":"red"}`,
 		"/api/alert-rules/{name}":                    `{"kind":"run_failed","severity":"critical"}`,
+		"/api/model-providers/{name}":                `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`,
 		"/api/schedules/{name}":                      `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
 		"/api/me/credentials/{provider}":             `{"ref":"op://People/svc/issues"}`,
 		"/api/projects/{name}/channels":              `{"name":"x"}`, "/api/projects/{name}/channels/{channel}": `{"version":1}`,
@@ -2745,6 +2748,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 
 	c.call(acme, "DELETE", "/api/artifacts/{id}", artifactPath, "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/artifacts/{id}", artifactPath, "", http.StatusNotFound)
+	// A workspace's own model provider: set up, checked, in use, removed.
+	c.call(acme, "PUT", "/api/model-providers/{name}", "/api/model-providers/house", `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`, http.StatusOK)
+	c.call(acme, "POST", "/api/model-providers/{name}/check", "/api/model-providers/house/check", "", http.StatusOK)
+	c.call(acme, "POST", "/api/model-providers/{name}/check", "/api/model-providers/nowhere/check", "", http.StatusBadRequest)
+	c.call(acme, "POST", "/api/agents", "/api/agents", `{"name":"house-agent","provider":"house","model":"llama3.2","system_prompt":"Answer."}`, http.StatusCreated)
+	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/house", "", http.StatusConflict)
+	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/nowhere", "", http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/model-providers/{name}", "/api/model-providers/spare", `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`, http.StatusOK)
+	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/spare", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/clients/{id}", "/api/clients/support", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/clients/{id}", "/api/clients/support", "", http.StatusNotFound)
 	c.call(acme, "DELETE", "/api/evals/{name}", "/api/evals/smoke", "", http.StatusNoContent)
@@ -2823,6 +2835,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
+	"PUT /api/agents/{name}/home 409":                    "a home is refused only while the agent's default skills would not fit it; the guard is in platform.homeUsers",
 	"POST /api/sessions 409":                             "governed admission to a deleted project uses the same path tested by POST /api/runs deleted-project response",
 	"POST /api/sessions/{id}/messages 409":               "deleted-project admission uses the same PostMessage path tested by thread/run responses",
 	"POST /api/sessions/{id}/people 409":                 "concurrent participant changes fail thread version CAS covered by participant race tests",

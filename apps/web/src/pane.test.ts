@@ -64,6 +64,6 @@ test("the pane's tabs, active tab, full and split survive a copied address", () 
     split: true,
   } satisfies Route;
   const address = href(view);
-  assert.match(address, /^\/sessions\/t-1\?panel=files&/);
+  assert.match(address, /^\/messages\/t-1\?panel=files&/);
   assert.deepEqual(at(address), JSON.parse(JSON.stringify(view)));
 });

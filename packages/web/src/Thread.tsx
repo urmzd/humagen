@@ -11,6 +11,9 @@ const NEAR_BOTTOM_PX = 48;
  * role="log" with live announcements off: AgentMessage announces state
  * changes itself, so screen readers don't hear every token.
  */
+/** The fewest turns a conversation has before its turn rail shows. */
+export const RAIL_MIN_TURNS = 6;
+
 export function Thread({
   children,
   label = "Conversation",
@@ -91,7 +94,8 @@ export function Thread({
     setAtBottom(near);
   };
 
-  const wave = turns && turns.length > 1 ? turns : null;
+  // The rail is a way around a long conversation; a short one needs none.
+  const wave = turns && turns.length >= RAIL_MIN_TURNS ? turns : null;
   return (
     <div className={`relative flex min-h-0 flex-col ${className ?? ""}`}>
       {busy && <div aria-hidden className="aui-busy-bar absolute inset-x-0 top-0 z-10" />}

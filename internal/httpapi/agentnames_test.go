@@ -737,12 +737,9 @@ func TestAChannelNamesNoDefaultItsReaderMayNotRead(t *testing.T) {
 	want(t, f, owner, "PUT", "/api/projects/Ops/members", `{"version":1,"members":[{"who":"*","role":"member"},{"who":"00u-ana","role":"owner"}]}`, http.StatusOK)
 	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-operators")
 
-	// While spy is a platform agent, it is #room's default, and moving it
-	// into Secret is refused, as #room would lose it.
+	// spy is #room's default, which no longer decides who answers, so it
+	// holds no change of spy's home back.
 	want(t, f, ana, "POST", "/api/projects/Ops/channels", `{"name":"room","default":"spy"}`, http.StatusCreated)
-	if code, out := send(t, f, owner, "PUT", "/api/agents/spy/home", `{"project":"Secret"}`); code != http.StatusConflict || !strings.Contains(out, "the default of #room in Ops") {
-		t.Fatalf("moving spy into Secret while it is #room's default = %d %s", code, out)
-	}
 	_, list := read(t, f, ana, "/api/projects/Ops/channels")
 	version := 0
 	for _, c := range sliceOf(list["channels"]) {

@@ -191,16 +191,17 @@ func approvedCall(ctx context.Context, callee string) bool {
 }
 
 // callTargets is the part of a caller's spawn allowlist the call tool offers
-// a run: the agents available where the run's calls are filed, whose policy
-// admits the caller. A callee that needs approval is offered: the call waits
-// for a person. One not available there would be refused, and lives in a
-// project that the readers of the run may not read, so it is never named.
+// a run: the agents that answer where the run's calls are filed (answersIn),
+// whose policy admits the caller. A callee that needs approval is offered:
+// the call waits for a person. One that would be refused, such as a private
+// agent the run's readers may not see, is never named.
 func (p *Platform) callTargets(tenant, runID, caller string, spawn []string) []string {
 	at, _ := p.placeOfRunID(tenant, runID)
 	tree := p.Projects.Tree(tenant)
+	answers := p.answerersIn(tenant, tree, at.Project)
 	out := []string{}
 	for _, callee := range spawn {
-		if !tree.IsAvailable(at.Project, callee) {
+		if !answers(callee) {
 			continue
 		}
 		pol, _, err := p.CallPolicies.Get(tenant, callee)

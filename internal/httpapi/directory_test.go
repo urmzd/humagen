@@ -90,7 +90,10 @@ func TestSettingsNamingTheBaselineSayWhereItWent(t *testing.T) {
 	}
 }
 
-func TestAgentsSayWhereEachLivesAndIsEnabled(t *testing.T) {
+// An agent's home says who sees it, not where it answers: one homed in a
+// project everyone reads answers in the workspace too, and no project
+// enables it anywhere.
+func TestAgentsSayWhoSeesEachAndAnswerAnywhere(t *testing.T) {
 	f := newFixture(t)
 	tok := f.machine(t, "acme", everything...)
 	want(t, f, tok, "POST", "/api/agents", helperSpec, http.StatusCreated)
@@ -102,13 +105,8 @@ func TestAgentsSayWhereEachLivesAndIsEnabled(t *testing.T) {
 	if homes["helper"] != "Field" || len(enabled["helper"].([]any)) != 0 {
 		t.Fatalf("homes %v, enabled_in %v", homes, enabled)
 	}
-	// A project agent is not available in the workspace itself.
-	if code, body := status(t, f, tok, "POST", "/api/runs", `{"agent":"helper","text":"hi"}`); code != http.StatusForbidden || !strings.Contains(body["error"].(string), "lives in Field") {
-		t.Fatalf("a project agent outside its home = %d %v", code, body)
-	}
-	want(t, f, tok, "POST", "/api/runs", `{"agent":"helper","text":"hi","project":"Field"}`, http.StatusAccepted)
-	want(t, f, tok, "PUT", "/api/agents/helper/home", `{"project":"~"}`, http.StatusOK)
 	want(t, f, tok, "POST", "/api/runs", `{"agent":"helper","text":"hi"}`, http.StatusAccepted)
+	want(t, f, tok, "POST", "/api/runs", `{"agent":"helper","text":"hi","project":"Field"}`, http.StatusAccepted)
 }
 
 func TestAPersonsPhotoIsTheirOwn(t *testing.T) {
