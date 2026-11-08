@@ -1319,10 +1319,13 @@ test("corpus cards, source cards and search hits are the console's shared cards 
     ]),
     [
       ["file", "Uploads· 12"],
-      ["corpus", "Google Drive· 3"],
-      ["corpus", "BigQuery· 4"],
+      ["provider", "Google Drive· 3"],
+      ["provider", "BigQuery· 4"],
     ],
   );
+  // A provider's chip carries its own logo.
+  for (const chip of corpusCard.querySelectorAll('[data-reference="provider"]'))
+    assert.ok(chip.querySelector("svg"), chip.textContent ?? "");
   list.unmount();
   const sources = render(page());
   const member = shared(await screen.findByRole("listitem", { name: "handbook" }));

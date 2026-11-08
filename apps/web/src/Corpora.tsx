@@ -93,9 +93,9 @@ export function providerLabel(provider: string): string {
   return words.providers[provider] ?? provider;
 }
 
-/** The Reference mark for a source from a provider: uploaded files, or a body of knowledge. */
-function referenceKind(provider: string): ReferenceKind {
-  return provider === "manual" ? "file" : "corpus";
+/** A source's chip mark: uploads read as files; any other provider shows its own logo. */
+function sourceMark(provider: string): { kind: ReferenceKind; provider?: string } {
+  return provider === "manual" ? { kind: "file" } : { kind: "provider", provider };
 }
 
 /** The Reference mark for what a member holds. */
@@ -506,7 +506,7 @@ export function KnowledgePage({
                       ? providerItems(c).map(({ provider, items }) => (
                           <Reference
                             key={provider}
-                            kind={referenceKind(provider)}
+                            {...sourceMark(provider)}
                             label={providerLabel(provider)}
                             count={items}
                           />
@@ -1170,11 +1170,11 @@ function SearchHit({
         status={hit.stale ? <Pill>{words.graph.staleLabel}</Pill> : undefined}
         facts={
           <>
-            <Reference kind={referenceKind(provider)} label={hit.member.name} />
+            <Reference {...sourceMark(provider)} label={hit.member.name} />
             {(hit.also ?? []).map((m) => (
               <Reference
                 key={`${m.kind}:${m.name}`}
-                kind={referenceKind(providerOf(m) ?? "manual")}
+                {...sourceMark(providerOf(m) ?? "manual")}
                 label={m.name}
               />
             ))}
