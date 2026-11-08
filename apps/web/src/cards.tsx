@@ -6,6 +6,7 @@ import {
   SelectValue,
 } from "@humagen/render-web/ui/select";
 import type { ReactNode } from "react";
+import { agentShown } from "./branding.ts";
 import { AgentMark } from "./ui.tsx";
 
 /**
@@ -44,8 +45,12 @@ export function Tag({ icon, children }: { icon?: ReactNode; children: ReactNode 
   );
 }
 
+/** An agent by its handle; the entry agent, which has none people see, by the workspace's name. */
 export function AgentTag({ name }: { name: string }) {
-  return <Tag icon={<AgentMark name={name} size={12} />}>@{name}</Tag>;
+  const shown = agentShown(name);
+  return (
+    <Tag icon={<AgentMark name={name} size={12} />}>{shown === name ? `@${name}` : shown}</Tag>
+  );
 }
 
 const statusTone: Record<string, Tone> = {
