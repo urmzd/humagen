@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import type { Page } from "playwright-core";
+import { defaultCopy } from "../../packages/components/src/copy.ts";
 import {
   ALERT_TITLE,
   FINDING_TITLE,
@@ -50,24 +51,32 @@ async function filesReady(page: Page): Promise<void> {
   const panel = details(page);
   const browser = panel.locator('[data-slot="file-browser"]');
   await browser.waitFor();
-  const picker = browser.getByRole("button", { name: "Files", exact: true });
+  const picker = browser.getByRole("button", {
+    name: defaultCopy.workspaceFiles.files,
+    exact: true,
+  });
   if (await picker.isVisible()) {
     await picker.click();
     await page
-      .getByRole("dialog", { name: "Files", exact: true })
+      .getByRole("dialog", { name: defaultCopy.workspaceFiles.files, exact: true })
       .getByRole("button", { name: "plan.md", exact: true })
       .click();
   } else {
     await browser.getByRole("button", { name: "plan.md", exact: true }).click();
   }
-  const editor = panel.getByRole("textbox", { name: "Edit plan.md", exact: true });
+  const editor = panel.getByRole("textbox", {
+    name: defaultCopy.editor.edit("plan.md"),
+    exact: true,
+  });
   await editor.waitFor();
   assert.equal(
     await editor.inputValue(),
     "# Launch plan\n\n- Keep November 12\n- Developer owns the briefing\n- Review the draft on Monday\n",
     "The native work-session file must contain the completed multi-step draft",
   );
-  await panel.getByRole("button", { name: "Preview", exact: true }).click();
+  await panel
+    .getByRole("button", { name: defaultCopy.workspaceFiles.preview, exact: true })
+    .click();
   await panel.getByRole("heading", { name: "Launch plan", exact: true }).waitFor();
   const owner = panel.getByText("Developer owns the briefing", { exact: true });
   await owner.waitFor();

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Locator, Page } from "playwright-core";
+import { defaultCopy } from "../../packages/components/src/copy.ts";
 import { fixtureResponse } from "./native.ts";
 import type { SessionFixtures } from "./session-fixtures.ts";
 import { sessionScreens } from "./sessions.ts";
@@ -24,11 +25,17 @@ function recorder({ pickerVisible = true, fileContent = "" } = {}) {
         locate(`${selector}>${role(name, options)}`),
       getByText: (text: string) => locate(`${selector}>text:${text}`),
       locator: (next: string) => locate(`${selector}>${next}`),
-      isVisible: async () => (selector.endsWith("button:Files") ? pickerVisible : true),
+      isVisible: async () =>
+        selector.includes('[data-slot="file-browser"]>button:')
+          ? selector.endsWith(`button:${defaultCopy.workspaceFiles.files}`) && pickerVisible
+          : true,
       allTextContents: async () => ["Files", "Sources", "Steps", "Sessions"],
       evaluate: async () => true,
       boundingBox: async () => ({ x: 0, width: 390 }),
-      inputValue: async () => fileContent,
+      inputValue: async () => {
+        assert.equal(selector, `dialog:Details>textbox:${defaultCopy.editor.edit("plan.md")}`);
+        return fileContent;
+      },
       scrollIntoViewIfNeeded: async () => calls.push({ action: "scroll", selector }),
       first: () => locate(selector),
       or: (other: Locator) => locate(`${selector}|${String(other)}`),
@@ -88,7 +95,7 @@ test("Files opens the actual native multi-step draft through either responsive p
           call.action === "click" &&
           call.selector ===
             (pickerVisible
-              ? "dialog:Files>button:plan.md"
+              ? "dialog:Conversation Files>button:plan.md"
               : 'dialog:Details>[data-slot="file-browser"]>button:plan.md'),
       ),
     );
