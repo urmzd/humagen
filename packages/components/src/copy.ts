@@ -2576,8 +2576,7 @@ export const defaultCopy = {
     autoHint:
       "The approval agent decides each action the policy asks about, and hands you anything it is unsure of. Every decision is audited.",
     autoFor: (name: string) => `Run, chosen by ${name}`,
-    waiting:
-      "No model is enabled for the approval agent yet, so every action waits for a person.",
+    waiting: "No model is enabled for the approval agent yet, so every action waits for a person.",
     failed: "Could not change approvals. Try again.",
   },
   /** Over Home's chat bar: the person's own project, where a conversation in no project is filed (DES-057). */
