@@ -167,6 +167,8 @@ import type {
   ProjectAgentsInput,
   ProjectAgentsView,
   ProjectContext,
+  ProjectCorpora,
+  ProjectCorporaInput,
   ProjectDetail,
   ProjectExperts,
   ProjectForkOperation,
@@ -6470,6 +6472,58 @@ preview_omitted distinguishes display truncation from runtime omissions.
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ProjectContext>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** A session filed in a project searches the corpora its project
+attaches, then each project's above it, nearest first: `given`, each
+corpus once, from the nearest project that attaches it, at most 40.
+A sibling's or a sub-project's are never given. Attaching a corpus
+makes no one its reader: a session searches it only as each reader
+may. A corpus the caller may not read, or one deleted since, is left
+out, as if it were not there.
+ */
+  async getProjectCorpora(name: string, options?: RequestOptions): Promise<ProjectCorpora> {
+    let path = "/api/projects/{name}/corpora";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectCorpora>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectCorporaRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ProjectCorpora>> {
+    let path = "/api/projects/{name}/corpora";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectCorpora>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** At most 20, attached once, each newly attached a corpus the caller
+may read (400, in the words for one that does not exist). One
+attached already stays when the caller may not read it, so saving
+what they were shown drops nothing they were not shown. It needs
+ownership of the project; the workspace and company projects need
+`projects:govern` as well. `version` is the project's, as read; a
+change made since answers 409.
+ */
+  async setProjectCorpora(name: string, body: ProjectCorporaInput, options?: RequestOptions): Promise<ProjectCorpora> {
+    let path = "/api/projects/{name}/corpora";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectCorpora>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setProjectCorporaRaw(name: string, body: ProjectCorporaInput, options?: RequestOptions): Promise<ApiResponse<ProjectCorpora>> {
+    let path = "/api/projects/{name}/corpora";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectCorpora>("PUT", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }

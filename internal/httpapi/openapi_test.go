@@ -2032,6 +2032,22 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d,"knowledge":[]}`, knownAt), http.StatusConflict)
 	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d,"knowledge":["ghost"]}`, knownAt+1), http.StatusBadRequest)
 	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d}`, knownAt+1), http.StatusBadRequest)
+	// A project's context is the corpora it attaches; a session filed there
+	// searches them.
+	cor := "/api/projects/{name}/corpora"
+	got = c.call(acme, "GET", cor, "/api/projects/Field/corpora", "", http.StatusOK)
+	corporaAt := version(got)
+	got = c.call(acme, "PUT", cor, "/api/projects/Field/corpora", fmt.Sprintf(`{"version":%d,"corpora":["policies"]}`, corporaAt), http.StatusOK)
+	if g := sliceOf(got.field("given")); len(g) != 1 || obj(g[0])["name"] != "policies" || obj(g[0])["from"] != "Field" {
+		t.Errorf("Field's corpora are %s", got.raw)
+	}
+	c.call(acme, "PUT", cor, "/api/projects/Field/corpora", fmt.Sprintf(`{"version":%d,"corpora":[]}`, corporaAt), http.StatusConflict)
+	c.call(acme, "PUT", cor, "/api/projects/Field/corpora", fmt.Sprintf(`{"version":%d,"corpora":["ghost"]}`, corporaAt+1), http.StatusBadRequest)
+	c.call(acme, "PUT", cor, "/api/projects/Field/corpora", fmt.Sprintf(`{"version":%d}`, corporaAt+1), http.StatusBadRequest)
+	c.call(acme, "GET", cor, "/api/projects/Ghost/corpora", "", http.StatusNotFound)
+	if pv := c.call(acme, "GET", "/api/projects/{name}", "/api/projects/Field", "", http.StatusOK); !strings.Contains(string(pv.raw), `"context":{"corpora":["policies"]}`) {
+		t.Errorf("Field's view does not carry its context: %s", pv.raw)
+	}
 	// The skills a project declares are what a message posted there and
 	// below can name; GET /api/skills lists them without instructions, and
 	// GET /api/mentions lists the mention kinds and completes one.
@@ -2606,7 +2622,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/me/credentials/{provider}":      {"provider": "issues"},
 		"/api/inbox/{id}/deliveries/{client}": {"id": mid, "client": "app"},
 		"/api/projects/{name}/channels":       {"name": "Field"}, "/api/projects/{name}/channels/{channel}": {"name": "Field", "channel": "renewals"},
-		"/api/projects/{name}/experts": {"name": "Field"}, "/api/projects/{name}/knowledge": {"name": "Field"}, "/api/projects/{name}/skills": {"name": "Field"}, "/api/threads/{id}": {"id": tid},
+		"/api/projects/{name}/experts": {"name": "Field"}, "/api/projects/{name}/knowledge": {"name": "Field"}, "/api/projects/{name}/corpora": {"name": "Field"}, "/api/projects/{name}/skills": {"name": "Field"}, "/api/threads/{id}": {"id": tid},
 		"/api/threads/{id}/messages": {"id": tid}, "/api/threads/{id}/participants": {"id": tid},
 		"/api/threads/{id}/share":       {"id": tid},
 		"/api/threads/{id}/publication": {"id": draftID},
@@ -2635,7 +2651,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/schedules/{name}":                      `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
 		"/api/me/credentials/{provider}":             `{"ref":"op://People/svc/issues"}`,
 		"/api/projects/{name}/channels":              `{"name":"x"}`, "/api/projects/{name}/channels/{channel}": `{"version":1}`,
-		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/projects/{name}/knowledge": `{"version":1,"knowledge":[]}`, "/api/projects/{name}/skills": `{"version":1,"skills":[]}`, "/api/threads/{id}": `{"version":1}`,
+		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/projects/{name}/knowledge": `{"version":1,"knowledge":[]}`, "/api/projects/{name}/corpora": `{"version":1,"corpora":[]}`, "/api/projects/{name}/skills": `{"version":1,"skills":[]}`, "/api/threads/{id}": `{"version":1}`,
 		"/api/threads/{id}/messages": `{"text":"x"}`, "/api/threads/{id}/participants": `{"version":1}`,
 		"/api/threads/{id}/fork": `{"through":"m-1"}`, "/api/threads/{id}/bring-back": `{"run":"r00000000000000000000000000000000"}`,
 		"/api/threads/{id}/share": `{}`, "/api/threads/{id}/marks": `{"read":true}`, "/api/threads/{id}/approval": `{"mode":"ask"}`,

@@ -875,6 +875,19 @@ key it is, left out of the directory, and subjects are never searched.
 | `pkg/prefs` | `Muted []string` (at most 100 project names) | 4 |
 | `pkg/clients` | `Home{Project, Channel}` (default root, `general`) | 8 |
 
+## A project's context
+
+A project is governance plus context for sessions. Besides its instructions,
+its context is the corpora it attaches (`Project.Context.Corpora`, at most
+20): every session filed there and below searches them, the project's own
+first and each ancestor's after, each once, at most 40 (`Tree.Corpora`). A
+corpus is the Knowledge store's; a project only names it. Attaching one needs
+ownership of the project and that the owner may read the corpus, and makes
+no one its reader: a session searches it only as each of its readers may. A
+corpus a reader may not read, or one deleted since, is left out of what they
+are shown and kept when they save, so saving never drops what they were not
+shown (`GET`, `PUT /api/projects/{name}/corpora`).
+
 ## Agents in projects
 
 ### Agents are independent of projects
