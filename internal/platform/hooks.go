@@ -417,10 +417,15 @@ func hookMeta(hook, target string, extra ...map[string]string) map[string]string
 // trimmed to one line, bounded, and stored only as a title or as notes people
 // can read and remove.
 func (p *Platform) fileHook(run runs.Run) error {
+	meta := wire.Meta(run.Tag())
+	if meta[metaHook] == hookApproval {
+		// An approval run that failed still says so: its question is left
+		// for a person, and the hand-off is audited.
+		return p.fileApproval(context.Background(), run)
+	}
 	if run.Status != runs.Completed {
 		return nil
 	}
-	meta := wire.Meta(run.Tag())
 	target := meta[metaFor]
 	switch meta[metaHook] {
 	case hookTitle:

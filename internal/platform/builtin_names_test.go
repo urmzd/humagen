@@ -11,7 +11,7 @@ import (
 )
 
 func TestBuiltinNamesAndReviewGrants(t *testing.T) {
-	want := []string{"humagen-writer", "humagen-analyst", "humagen-builder", "code-reviewer", "security-reviewer", "architect-reviewer", "qa-reviewer"}
+	want := []string{"humagen-writer", "humagen-analyst", "humagen-builder", "code-reviewer", "security-reviewer", "architect-reviewer", "qa-reviewer", "approver"}
 	if !slices.Equal(platform.Builtins(), want) {
 		t.Fatalf("builtins = %v, want %v", platform.Builtins(), want)
 	}
@@ -53,7 +53,11 @@ func TestBuiltinNamesAndReviewGrants(t *testing.T) {
 		} else if len(r.Spec.Access.Spawn) != 0 {
 			t.Fatalf("%s may spawn %v", r.Spec.Name, r.Spec.Access.Spawn)
 		}
-		if slices.Contains(want[3:], r.Spec.Name) {
+		// The approval agent decides calls; it takes no messages and calls nothing.
+		if r.Spec.Name == platform.BuiltinApprover && (len(r.Spec.Tools) != 0 || !r.Spec.TaggedOnly || r.Spec.Package == nil || r.Spec.Package.Name != "humagen/system") {
+			t.Fatalf("approver = %+v", r.Spec)
+		}
+		if slices.Contains(want[3:7], r.Spec.Name) {
 			tools := []string{platform.ToolFileRead, platform.ToolFileList, "github_read_context", "github_read_file"}
 			slices.Sort(tools)
 			got := slices.Clone(r.Spec.Tools)
