@@ -640,6 +640,8 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ProjectKnowledge": {typ: platform.ProjectKnowledge{}}, "ProjectKnowledgeSource": {typ: projects.KnowledgeSource{}}, "ProjectKnowledgeInput": {typ: platform.KnowledgeInput{}, written: true},
 		"ProjectSkill": {typ: platform.SkillDetail{}}, "ProjectSkillRef": {typ: projects.SkillRef{}}, "ProjectSkills": {typ: platform.ProjectSkills{}}, "ProjectSkillsInput": {typ: platform.SkillsInput{}, written: true},
 		"MentionKind": {typ: platform.MentionKind{}}, "MentionItem": {typ: platform.MentionItem{}},
+		"VoiceSettings": {typ: platform.VoiceSettings{}}, "VoiceProvider": {typ: platform.VoiceProvider{}}, "VoiceKind": {typ: platform.VoiceKind{}},
+		"VoiceProviderInput": {typ: platform.VoiceProviderInput{}, written: true}, "VoicePrice": {typ: speech.Price{}}, "VoiceCheck": {typ: platform.VoiceCheck{}},
 		"ProjectInput": {typ: platform.ProjectInput{}, written: true}, "ProjectUpdate": {typ: platform.ProjectUpdate{}, written: true},
 		"ProjectAgents": {typ: projects.Agents{}}, "AgentAvailability": {typ: projects.Availability{}}, "AgentOffer": {typ: platform.Offer{}},
 		"DefaultResolved": {typ: platform.Nearer{}}, "ProjectAgentsView": {typ: platform.ProjectAgents{}},
@@ -654,8 +656,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 			Text     string `json:"text"`
 			Severity string `json:"severity,omitempty"`
 		}{}, written: true},
-		"Settings": {typ: platform.Settings{}}, "VoiceSettings": {typ: platform.VoiceSettings{}}, "VoiceProvider": {typ: platform.VoiceProvider{}},
-		"VoiceProviderInput": {typ: platform.VoiceProviderInput{}}, "VoiceKind": {typ: platform.VoiceKind{}}, "VoicePrice": {typ: speech.Price{}}, "VoiceCheck": {typ: platform.VoiceCheck{}}, "RouterSettings": {typ: platform.RouterSettings{}}, "Preferences": {typ: prefs.Preferences{}},
+		"Settings": {typ: platform.Settings{}}, "RouterSettings": {typ: platform.RouterSettings{}}, "Preferences": {typ: prefs.Preferences{}},
 		"ConnectionHealth": {typ: platform.ConnectionHealth{}}, "ConnectionPreset": {typ: platform.ConnectionPreset{}}, "ConnectionAuthorization": {typ: connectionauth.Authorization{}},
 		"ConnectionAuthorizationInput": {typ: platform.ConnectionAuthorizationInput{}, written: true},
 		"ConnectionRegistration":       {typ: connectionauth.Registration{}, written: true},

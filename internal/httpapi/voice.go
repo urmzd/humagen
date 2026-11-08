@@ -47,6 +47,10 @@ func (s *Server) putVoiceProvider(w http.ResponseWriter, r *http.Request, who au
 		return
 	}
 	v, err := s.P.SetVoiceProvider(r.Context(), who, in)
+	if errors.Is(err, platform.ErrVoiceProvider) {
+		fail(w, http.StatusBadRequest, detail(err, platform.ErrVoiceProvider))
+		return
+	}
 	if err != nil {
 		s.problem(w, err)
 		return
