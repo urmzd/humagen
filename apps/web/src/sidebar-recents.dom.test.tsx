@@ -155,3 +155,54 @@ test("Recents is one list: Today, Yesterday, Earlier, newest first, each session
     "alerts are under Alerts",
   );
 });
+
+test("Sessions lists newest first; an alert marks its row without moving it; alert-only sessions are left out", async () => {
+  const { SessionsPage } = await import("./SessionCenter.tsx");
+  const rows = [
+    session("s_old", "Why did the deploy fail", yesterday),
+    session("s_new", "In one line: is MD5 acceptable", newest),
+    session("s_health", "Agent health: code-reviewer", newest, { messages: 0, turns: 0 }),
+  ];
+  net = stubFetch({
+    "GET /api/sessions": () => ({
+      sessions: rows.map((t) => ({
+        id: t.id,
+        parent: `console://${t.id}`,
+        agent: "lead",
+        project: "",
+        title: t.title,
+        status: "done",
+        updated_at: t.updated_at,
+        conversation: t,
+      })),
+      next: "",
+    }),
+  });
+  const alerts = [
+    {
+      id: "al-1",
+      title: "deploy needs you",
+      session: "s_old",
+      state: "open",
+      priority: "urgent",
+      at: newest,
+    },
+    {
+      id: "al-2",
+      title: "code-reviewer needs review",
+      session: "s_health",
+      state: "open",
+      priority: "normal",
+      at: newest,
+    },
+  ] as unknown as Alert[];
+  render(<SessionsPage route={{ page: "sessions" }} go={() => {}} alerts={alerts} tick={0} />);
+  await screen.findByRole("link", { name: /In one line: is MD5 acceptable/ });
+  const titles = screen
+    .getAllByRole("link")
+    .map((a) => a.textContent ?? "")
+    .filter((t) => /MD5|deploy|Agent health/.test(t));
+  assert.deepEqual(titles, ["In one line: is MD5 acceptable", "Why did the deploy fail"]);
+  const deploy = screen.getByRole("link", { name: /Why did the deploy fail/ }).closest("li");
+  assert.match(deploy?.textContent ?? "", /Urgent/, "the alert still marks its row");
+});

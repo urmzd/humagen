@@ -53,7 +53,7 @@ import { ConversationPeek, PeekCard, usePeek } from "./RowPreview.tsx";
 import { type Standing, useRecents } from "./recents.ts";
 import { href, type Route, type Page as RoutePage } from "./route.ts";
 import { Avatar, workspaceSettingsRoute } from "./Settings.tsx";
-import { type Alert, openAlert, orderAlerts } from "./sessionCenter.ts";
+import { type Alert, holdsAnAlertOnly, openAlert, orderAlerts } from "./sessionCenter.ts";
 import { AgentMark, type Flash, FlashNote, Popover, SkeletonRows, useFlash } from "./ui.tsx";
 import { workspaceHub } from "./workspace-navigation.ts";
 
@@ -323,12 +323,6 @@ export function recentGroups(
     items: buckets[d].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at)),
   }));
 }
-
-/**
- * A session nobody asked anything in: one opened to hold a system alert,
- * such as an agent's health. It is reached from Alerts, not listed in Recents.
- */
-export const holdsAnAlertOnly = (t: ThreadSummary) => t.messages === 0 && t.turns === 0;
 
 function TaskRow({
   task,
