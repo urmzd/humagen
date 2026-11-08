@@ -2,31 +2,36 @@ package projects
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/urmzd/humagen/pkg/state"
 )
 
-// keyHome keeps where an agent lives: a:<agent>.
+// keyHome keeps an agent's home, which says who sees it: a:<agent>. The key
+// is kept for the records already stored.
 const keyHome = "a:"
 
 // What a home change records, besides the agent.
 const (
-	// HomeChanged is an agent coming to live in a project, or leaving it.
+	// HomeChanged is an agent shared with a project's readers, or no longer.
 	HomeChanged = "home"
 	// AgentsChanged is a project's Agents changing.
 	AgentsChanged = "agents"
 )
 
-// Notes on a home change, on the project it names.
+// Notes on a home change, on the project it names. Older entries read "lives
+// here" and "no longer lives here".
 const (
-	LivesHereNote = "lives here"
-	LeftNote      = "no longer lives here"
+	LivesHereNote = "its readers see this agent"
+	LeftNote      = "its readers no longer see this agent"
 )
 
-// home is where one agent lives, as it is written.
+// Unreadable is the home of an agent whose stored home could not be read: a
+// name no project can have, so nobody but projects:govern sees the agent.
+const Unreadable = "\x00unreadable"
+
+// home is who sees one agent, as it is written.
 type home struct {
 	Agent   string    `json:"agent"`
 	Project string    `json:"project"`
@@ -43,17 +48,17 @@ func homeNames(homes map[string]home) map[string]string {
 	return out
 }
 
-// SetHome makes an agent live in a project: available there and in every
-// project below it, and nowhere else, whatever "*" or an enable list says.
-// project Root makes it a platform agent again, available wherever it is
-// enabled. The agent's existence is the registry's to check, before calling.
+// SetHome sets who sees an agent, as its home: a Personal project keeps it
+// to that person, another project to that project's readers, and Root to the
+// whole workspace. A home decides nothing about where the agent answers: any
+// agent answers in any project its allow lists permit (Tree.IsAvailable).
+// The agent's existence is the registry's to check, before calling.
 //
-// It is refused (ErrInUse, naming them) while anything would lose the agent:
-// a default, an enable list or an allow list in the tree that names it, a
-// channel's default (an archived channel's aside), and whatever inUse names. inUse is given the tree as it is and as it would be,
-// runs under the store's lock, and must not call the store. Homing in or out
-// of a company project needs projects:govern. The record and its history are
-// one write: a change on the new home, and one on the old.
+// It is refused (ErrInUse, naming them) while whatever inUse names would
+// lose the agent. inUse is given the tree as it is and as it would be, runs
+// under the store's lock, and must not call the store. Homing in or out of a
+// company project needs projects:govern. The record and its history are one
+// write: a change on the new home, and one on the old.
 func (s *Store) SetHome(tenantName, agent, project string, w Writer, at time.Time, inUse func(before, after *Tree) []string) error {
 	if !ValidAgent(agent) {
 		return fmt.Errorf("%w: %q is not an agent that can live in a project", ErrInvalid, agent)
@@ -103,9 +108,9 @@ func (s *Store) setHome(tenantName, agent, project string, w Writer, at time.Tim
 		tx.put(keyHome+agent, h)
 	}
 	after := build(tx.t.projects, homeNames(tx.t.homes))
-	users := append(losing(before, after, agent), channelsLosing(tx.t, before, after, agent)...)
+	var users []string
 	if inUse != nil {
-		users = append(users, inUse(before, after)...)
+		users = inUse(before, after)
 	}
 	if len(users) > 0 {
 		return fmt.Errorf("%w: %s would lose %s: %s", ErrInUse, plural(len(users), "place"), agent, strings.Join(users, ", "))
@@ -120,53 +125,6 @@ func (s *Store) setHome(tenantName, agent, project string, w Writer, at time.Tim
 // DropHome makes an agent a platform agent again: SetHome with no project.
 func (s *Store) DropHome(tenantName, agent string, w Writer, at time.Time, inUse func(before, after *Tree) []string) error {
 	return s.SetHome(tenantName, agent, Root, w, at, inUse)
-}
-
-// losing names what in the tree would lose an agent when it moves from
-// before to after: a default or an enable entry where it stops being
-// available, and an allow entry under which it stops being available
-// anywhere. An allow entry above the agent's new home still decides there,
-// so it is not counted.
-func losing(before, after *Tree, agent string) []string {
-	var out []string
-	lost := func(name string) bool { return before.IsAvailable(name, agent) && !after.IsAvailable(name, agent) }
-	anywhere := func(t *Tree, name string) bool {
-		return slices.ContainsFunc(t.Subtree(name), func(n string) bool { return t.IsAvailable(n, agent) })
-	}
-	for _, name := range after.order {
-		a := after.nodes[name].p.Agents
-		if a.Default == agent && lost(name) {
-			out = append(out, "the default of "+display(name))
-		}
-		if slices.Contains(a.Enable, agent) && lost(name) {
-			out = append(out, "the enable list of "+display(name))
-		}
-		if slices.Contains(a.Allow, agent) && anywhere(before, name) && !anywhere(after, name) {
-			out = append(out, "the allow list of "+display(name))
-		}
-	}
-	return out
-}
-
-// channelsLosing names the channels whose default is an agent that would
-// stop being available in the channel's project when it moves from before
-// to after, as losing names a project's default. An archived channel takes
-// no new threads and its default cannot change, so it holds no move back.
-func channelsLosing(t *tenant, before, after *Tree, agent string) []string {
-	var channels []Channel
-	for _, c := range t.channels {
-		if c.Default == agent && !c.Archived && before.IsAvailable(c.Project, agent) && !after.IsAvailable(c.Project, agent) {
-			channels = append(channels, c)
-		}
-	}
-	slices.SortFunc(channels, func(a, b Channel) int {
-		return strings.Compare(channelKey(a.Project, a.Name), channelKey(b.Project, b.Name))
-	})
-	out := make([]string, 0, len(channels))
-	for _, c := range channels {
-		out = append(out, fmt.Sprintf("the default of #%s in %s", c.Name, display(c.Project)))
-	}
-	return out
 }
 
 func plural(n int, word string) string {

@@ -131,13 +131,14 @@ func TestASkillGoesToTheSelectedAgents(t *testing.T) {
 // A selected agent the poster may not read is no oracle: naming it answers
 // as naming an agent that does not exist, whether or not the thread selects
 // it, and a default they were not shown is changed only by its owners.
-// Rewriting the selection drops it once it cannot answer there, and a skill
-// goes to the agents the poster may read.
+// Rewriting the selection drops it once an allow list leaves it out there,
+// and a skill goes to the agents the poster may read.
 func TestAHiddenSelectedAgentIsNoOracle(t *testing.T) {
 	p := start(t, call.Limits{})
 	ctx := t.Context()
 	// Vault is read by its members alone. helper is selected in a Field
-	// conversation and then homed in Vault, which bo cannot read.
+	// conversation, then homed in Vault, which bo cannot read, and left out
+	// of Field's allow list.
 	field(t, p)
 	workIn(t, p, "Field", operator, bo)
 	if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: "Vault"}); err != nil {
@@ -158,6 +159,7 @@ func TestAHiddenSelectedAgentIsNoOracle(t *testing.T) {
 	if err := p.SetAgentHome(ctx, tenant, "helper", "Vault", govern); err != nil {
 		t.Fatal(err)
 	}
+	setAgents(t, p, "Field", platform.AgentsInput{Enable: []string{}, Allow: []string{"lead"}})
 	if p.Seer(bo).Agent("helper") || !p.Seer(bo).Project("Field") {
 		t.Fatal("the test needs bo to read Field and not helper")
 	}
