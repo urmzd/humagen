@@ -4809,6 +4809,40 @@ export interface ConnectionCallback {
   code: string;
 }
 
+export interface BigQuerySetupCredential {
+  kind?: "oauth" | "adc" | "reference";
+  /** A permitted personal credential reference, required only for reference kind. */
+  ref?: string;
+}
+
+export interface BigQuerySetupInput {
+  name: string;
+  project: string;
+  /** Explicit dataset IDs, at most 6000 characters in total. */
+  datasets: string[];
+  location?: string;
+  credential?: BigQuerySetupCredential;
+  max_bytes_billed: number;
+  max_rows: number;
+  timeout_seconds: number;
+  refresh_hours: number;
+}
+
+export interface BigQueryAdcScope {
+  project: string;
+  /** An empty array permits every dataset in this deployment-declared project. */
+  datasets: string[];
+}
+
+export interface BigQuerySetupView {
+  oauth_available: boolean;
+  connected: boolean;
+  /** Your managed OAuth connector names that can bind renewed consent. */
+  oauth_connectors: string[];
+  adc: BigQueryAdcScope[];
+  credential_refs: string[];
+}
+
 export interface GitHubSubjectPullRequest {
   url?: string;
 }

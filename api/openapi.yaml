@@ -8973,6 +8973,89 @@ paths:
           "$ref": "#/components/responses/ServerError"
         '503':
           "$ref": "#/components/responses/Unavailable"
+  "/api/catalog/connectors/bigquery/setup":
+    get:
+      operationId: getBigQuerySetup
+      tags:
+      - knowledge
+      summary: Read your available BigQuery credentials and deployment scopes
+      x-permission: knowledge:write
+      responses:
+        '200':
+          description: Current caller's available consent and permitted fallback scopes.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/BigQuerySetupView"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+  "/api/catalog/connectors/bigquery":
+    post:
+      operationId: createBigQueryConnector
+      tags:
+      - knowledge
+      summary: Save a private unverified BigQuery connector
+      description: Uses existing personal OAuth consent by default. ADC and credential
+        references additionally require clients:write and must stay within the deployment's
+        permitted scope. Saving does not verify or publish the connector.
+      x-permission: knowledge:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/BigQuerySetupInput"
+      responses:
+        '201':
+          description: Saved private connector. Verify separately before publishing.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/CatalogConnector"
+        '400':
+          "$ref": "#/components/responses/BadRequest"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '409':
+          "$ref": "#/components/responses/Conflict"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+  "/api/catalog/connectors/{name}/reconnect":
+    post:
+      operationId: reconnectBigQueryConnector
+      tags:
+      - knowledge
+      summary: Bind renewed consent to your existing BigQuery connector
+      description: Reuses the immutable saved configuration and current personal consent.
+        It does not verify or publish the connector.
+      x-permission: knowledge:write
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Existing connector with renewed consent binding.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/CatalogConnector"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '500':
+          "$ref": "#/components/responses/ServerError"
 components:
   securitySchemes:
     bearerToken:
@@ -17071,3 +17154,112 @@ components:
           type: string
         code:
           type: string
+    BigQuerySetupCredential:
+      type: object
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum:
+          - oauth
+          - adc
+          - reference
+          default: oauth
+        ref:
+          type: string
+          maxLength: 512
+          description: A permitted personal credential reference, required only for reference kind.
+    BigQuerySetupInput:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - project
+      - datasets
+      - max_bytes_billed
+      - max_rows
+      - timeout_seconds
+      - refresh_hours
+      properties:
+        name:
+          type: string
+        project:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        datasets:
+          type: array
+          minItems: 1
+          maxItems: 50
+          uniqueItems: true
+          description: Explicit dataset IDs, at most 6000 characters in total.
+          items:
+            type: string
+            minLength: 1
+            maxLength: 1024
+            pattern: "^[A-Za-z0-9_]+$"
+        location:
+          type: string
+          maxLength: 64
+        credential:
+          "$ref": "#/components/schemas/BigQuerySetupCredential"
+        max_bytes_billed:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 1099511627776
+        max_rows:
+          type: integer
+          minimum: 1
+          maximum: 10000
+        timeout_seconds:
+          type: integer
+          minimum: 1
+          maximum: 600
+        refresh_hours:
+          type: integer
+          minimum: 1
+          maximum: 720
+    BigQueryADCScope:
+      type: object
+      additionalProperties: false
+      required:
+      - project
+      - datasets
+      properties:
+        project:
+          type: string
+        datasets:
+          type: array
+          description: An empty array permits every dataset in this deployment-declared
+            project.
+          items:
+            type: string
+    BigQuerySetupView:
+      type: object
+      additionalProperties: false
+      required:
+      - oauth_available
+      - connected
+      - oauth_connectors
+      - adc
+      - credential_refs
+      properties:
+        oauth_available:
+          type: boolean
+        connected:
+          type: boolean
+        oauth_connectors:
+          type: array
+          items:
+            type: string
+          description: Your managed OAuth connector names that can bind renewed consent.
+        adc:
+          type: array
+          items:
+            "$ref": "#/components/schemas/BigQueryADCScope"
+        credential_refs:
+          type: array
+          items:
+            type: string

@@ -679,6 +679,8 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"EvalCheck": {typ: evals.Check{}}, "EvalCase": {typ: evals.Case{}}, "EvalSuite": {typ: evals.Suite{}, written: true},
 		"EvalVerdict": {typ: evals.Verdict{}}, "EvalHit": {typ: evals.Hit{}}, "EvalResult": {typ: evals.Result{}},
 		"EvalRun": {typ: evals.Run{}}, "EvalSuiteView": {typ: suiteView{}, written: true},
+		"BigQuerySetupInput": {typ: platform.BigQuerySetupInput{}, written: true}, "BigQuerySetupCredential": {typ: platform.BigQuerySetupCredential{}, written: true},
+		"BigQuerySetupView": {typ: platform.BigQuerySetupView{}}, "BigQueryADCScope": {typ: platform.BigQueryADCScope{}},
 		"CatalogColumn": {typ: catalog.Column{}}, "CatalogStats": {typ: catalog.Stats{}}, "CatalogEntry": {typ: catalog.Entry{}}, "CatalogMark": {typ: catalog.Mark{}},
 		"CatalogConnector": {typ: catalog.Connector{}}, "CatalogConnectorView": {typ: platform.CatalogConnectorView{}}, "CatalogPage": {typ: platform.CatalogPage{}},
 		"KnowledgeVariant": {typ: knowledge.Variant{}}, "KnowledgeSource": {typ: knowledge.Source{}},
@@ -970,7 +972,7 @@ func (c *contract) sweep(tok string) {
 		if op.path == "/api/events" || needsQuery(op) {
 			continue
 		}
-		if op.path == "/api/read-audit" || op.path == "/api/audit" || op.path == "/api/me/memory" || op.path == "/api/me/notifications" || op.path == "/api/me/context" {
+		if op.path == "/api/read-audit" || op.path == "/api/audit" || op.path == "/api/me/memory" || op.path == "/api/me/notifications" || op.path == "/api/me/context" || op.path == "/api/catalog/connectors/bigquery/setup" {
 			c.call(tok, "GET", op.path, op.path, "", http.StatusForbidden)
 			continue
 		}
@@ -1031,6 +1033,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		CredentialRefs:   map[string][]string{"acme": {"op://People/{subject}/"}},
 		CredentialValues: map[string]bool{"acme": true},
 		Connectors: []platform.CatalogConnector{
+			bigQueryContractSeed(t),
 			{Tenant: "acme", Connector: catalog.Connector{Name: "warehouse", System: "bigquery", Owner: "catalog-owner"}, Crawler: contractWarehouse{}},
 			{Tenant: "acme", Connector: catalog.Connector{Name: "broken", System: "bigquery", Owner: "catalog-owner"}, Crawler: contractWarehouse{fail: true}},
 			{Tenant: "acme", Connector: catalog.Connector{Name: "live-only", System: "bigquery", Owner: "catalog-owner"}, Querier: contractWarehouse{}},
@@ -1042,6 +1045,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	exerciseEvaluationPolicyContract(t, c)
 	exerciseConnectionContract(t, c)
 	exerciseConnectionHealthContract(t, c)
+	exerciseBigQueryContract(t, c)
 	sessionContract := exerciseSessionContract(t, c)
 	contractSource(t, f, c, sourceFake)
 	contractGitHubItems(t, f, c, sourceFake)
@@ -2625,7 +2629,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}
 		if _, documents := op.schemas["404"]; documents {
 			foreign := globex
-			if strings.HasPrefix(op.path, "/api/connections/") || op.path == "/api/clients/{id}/check" {
+			if strings.HasPrefix(op.path, "/api/connections/") || op.path == "/api/clients/{id}/check" || op.path == "/api/catalog/connectors/{name}/reconnect" {
 				foreign = foreignPerson
 			}
 			c.call(foreign, op.method, op.path, path, valid[op.path], http.StatusNotFound)
