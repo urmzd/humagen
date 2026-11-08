@@ -5,6 +5,7 @@ import {
   changes,
   emptyResponse,
   isAwaiting,
+  isTerminal,
   type ResponseBlock,
   type ResponseState,
   type ResponseTool,
@@ -245,7 +246,7 @@ function ToolPart({
   const urgent = tool.status === "error" || isAwaiting(tool.status);
   const meta = [
     words.status[tool.status],
-    tool.elapsedMs !== undefined && tool.status !== "running" ? took(tool.elapsedMs) : "",
+    tool.elapsedMs !== undefined && isTerminal(tool.status) ? took(tool.elapsedMs) : "",
     tool.decidedBy ? words.by(tool.decidedBy) : "",
   ]
     .filter(Boolean)
@@ -329,6 +330,8 @@ function Lane({
   const hidden = blocks.filter(
     (b) => b.type === "hidden" || (b.type === "tool" && b.hidden),
   ).length;
+  // A lane that runs while someone under it waits or failed says so.
+  const shown = tool?.attention && status === "running" ? tool.attention.status : status;
   return (
     <section
       data-testid="activity-lane"
@@ -342,13 +345,15 @@ function Lane({
     >
       <p className="flex min-w-0 items-center gap-2 text-aui-sm">
         <AgentMark name={agent} size={18} />
-        <span className="min-w-0 truncate font-medium text-aui-fg">{agent}</span>
-        {title && <span className="min-w-0 truncate text-aui-muted text-aui-xs">{title}</span>}
-        {status && status !== "done" && (
+        <span className="max-w-[50%] shrink-0 truncate font-medium text-aui-fg">{agent}</span>
+        {title && (
+          <span className="min-w-0 flex-1 truncate text-aui-muted text-aui-xs">{title}</span>
+        )}
+        {shown && shown !== "done" && (
           <span
-            className={`ml-auto shrink-0 text-aui-xs ${tool ? statusTone(tool) : "text-aui-muted"}`}
+            className={`ml-auto shrink-0 text-aui-xs ${shown === "error" || shown === "denied" ? "text-aui-bad" : isAwaiting(shown) ? "text-aui-warn" : "text-aui-muted"}`}
           >
-            {words.status[status]}
+            {words.status[shown]}
           </span>
         )}
         {tool?.elapsedMs !== undefined && status === "done" && (
@@ -416,7 +421,9 @@ function Lane({
                     onAnswered={onAnswered}
                   />
                   {b.result && b.content.every((c) => c.type !== "text") && (
-                    <p className="mt-1 whitespace-pre-wrap pl-3 text-aui-fg text-aui-sm">
+                    <p
+                      className={`mt-1 whitespace-pre-wrap pl-3 text-aui-sm ${b.result.isError ? "text-aui-bad" : "text-aui-fg"}`}
+                    >
                       {b.result.text}
                     </p>
                   )}

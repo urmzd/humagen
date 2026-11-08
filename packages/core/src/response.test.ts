@@ -120,6 +120,8 @@ describe("a stopped run", () => {
     expect(state.tools.htu_r_lead_1?.result?.isError).toBe(true);
     expect(state.tools.htu_r_analyst_1?.status).toBe("stopped");
     expect(changes(emptyResponse(), state)).toContain("Stopped");
+    // A stopped call's error result is not an answer.
+    expect(answerOf(state)).toEqual({ text: "" });
   });
 });
 

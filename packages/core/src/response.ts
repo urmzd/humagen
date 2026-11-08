@@ -159,7 +159,9 @@ export function answerOf(state: ResponseState): { text: string; from?: string } 
     .join("")
     .trim();
   if (text) return { text };
-  const agents = allTools(state).filter((t) => t.kind === "agent" && t.result?.text.trim());
+  const agents = allTools(state).filter(
+    (t) => t.kind === "agent" && !t.result?.isError && t.result?.text.trim(),
+  );
   const fallback = agents[agents.length - 1];
   return fallback
     ? { text: fallback.result?.text.trim() ?? "", from: fallback.agent }
