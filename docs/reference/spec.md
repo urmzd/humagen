@@ -133,7 +133,10 @@ spec:
     concurrency: 4          # a run that calls another agent waits in one place while it runs in another
     max_depth: 4            # 1 to 7: a deeper call would pass the bus's hop limit of 8
     max_fan_out: 16
-    builtin: {provider: "", model: ""}       # the platform's own agents
+    # There is no built-in model or offline stand-in. The platform's own agents
+    # (writer, analyst, builder, reviewers) ship with a chain, anthropic then
+    # openai then google, and run on the first one a declared or
+    # administrator-enabled provider answers.
 
   sandbox:                  # slot: docker | local | unisolated. Where a run's tools execute
     kind: docker            # the default: an instance per run, destroyed when the run ends
@@ -600,8 +603,9 @@ spec:
   agents:
     - spec:
         name: lead
-        provider: policy
-        model: default
+        provider: anthropic     # a model, never a nickname: the chain is the agent's own
+        model: claude-sonnet-5-5
+        fallbacks: [{provider: openai, model: gpt-5.1}]
         system_prompt: You coordinate work.
         access: {spawn: [helper]}
     - spec: {name: helper, provider: local, model: YOUR_LOCAL_MODEL, system_prompt: Do one task well.}
@@ -776,20 +780,16 @@ Review the change and list what is risky.
 `policy` goes beside an `.agent.md` file, and only there. It holds what
 saige's format does not: `approvers`, `self_approval`, `answerers`,
 `tagged_only`, `workspace_areas`, `mcp_write` (the MCP servers whose write
-tools it may call), `knowledge`, `fallback_on` and `choices`. Left out, it grants
+tools it may call), `knowledge` and `fallback_on`. Left out, it grants
 nothing beyond the file.
 
-The console edits an agent's `choices` on its Model tab and saves them as a new
-revision. Empty lists remove the choices.
-
-`choices` (in a spec or a policy) is what a person may pick for one message
-in place of the agent's model and reasoning effort: `models`, each
-`provider/model`, and `efforts`, such as `low` and `high`. Left out, nothing
-is offered and every message runs on the agent's own model at its default
-effort. A pick the agent does not offer is passed over, the run's model
-ceilings still apply, and an effort the model does not take fails the run
-before any model call. For example
-`choices: {models: [anthropic/YOUR_LARGER_MODEL], efforts: [low, high]}`. `subscriptions` is refused: the platform decides
+People pick agents, not models: an agent's model chain and reasoning effort
+are its definition's, and nothing overrides them per message. saige's format
+has no effort field, so an `.agent.md` file sets it in its metadata,
+`metadata: {humagen_effort: high}`, and the API as the agent's `effort`. It
+is sent only to the chain's first model, and only when that model takes it;
+a run moved to a fallback answers at the model's default. A `choices` block from an older policy
+is not read. `subscriptions` is refused: the platform decides
 what wakes an agent. saige checks the file at start, then the platform's
 own rules apply as to any spec. The file's `version` is not kept: the store
 numbers each change, and a run pins the version, digest and policy it

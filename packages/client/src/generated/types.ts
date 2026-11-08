@@ -669,6 +669,8 @@ most 4, none repeating the primary or each other.
   fallbacks?: ModelRef[];
   /** When a call moves to the next fallback. Empty means any error another model could get past. Needs at least one fallback. */
   fallback_on?: FallbackCondition[];
+  /** The reasoning effort the agent's own first model is asked for, such as `low`, `medium` or `high`. Absent leaves the model's default. It is sent only when that model takes it: a run moved to a fallback, or on a model that takes no such effort, answers at the model's default. */
+  effort?: string;
   system_prompt: string;
   tools?: string[];
   sources?: AgentSource[];
@@ -693,15 +695,6 @@ anyone in the workspace approve, except the person who asked.
   answerers?: string[];
   /** The agent runs only when a message names it. It is never asked whether to take an untagged message. Off by default. */
   tagged_only?: boolean;
-  choices?: AgentChoices;
-}
-
-/** What a person may pick, for one message, in place of the agent's model and reasoning effort. Absent offers nothing, and a message runs on the agent's own model at its default effort. */
-export interface AgentChoices {
-  /** Models offered, each `provider/model`, sorted. The agent's own model needs no listing. */
-  models?: string[];
-  /** Reasoning efforts offered, such as `low` and `high`, sorted and in lower case. Whether a model takes one is checked when a run builds it. */
-  efforts?: string[];
 }
 
 /** A class of model error that moves a call on to the next model. `any` cannot be combined with another. */
@@ -739,16 +732,24 @@ export interface Revision {
   created_by_name?: string;
 }
 
-/** Whether each agent is asked, about a message that names no agent,
-"should I be involved?", and the model that asks. The provider is one
-the deployment declares; its key is a reference (an environment
-variable or a secrets manager), never stored here. Off by default:
-no agent takes a message on its own.
- */
-export interface RouterSettings {
-  enabled: boolean;
-  provider?: string;
-  model?: string;
+/** Vertex AI, where a google provider's calls go. With no key the server's own credentials are used. */
+export interface ModelProviderVertex {
+  project: string;
+  location: string;
+}
+
+/** A model provider the workspace's administrators set up. Its key is never returned. */
+export interface ModelProvider {
+  name: string;
+  kind: "anthropic" | "google" | "openai";
+  base_url?: string;
+  vertex?: ModelProviderVertex;
+  /** The key's env:NAME reference, when it is one. */
+  key_ref?: string;
+  /** A value is kept for it in the secret store. */
+  key_stored?: boolean;
+  added_by?: string;
+  added_at?: string;
 }
 
 /** One agent's answer to whether it should take a message that names no agent. */
@@ -1718,10 +1719,6 @@ export interface ThreadInput {
   text: string;
   /** Post without any agent answering, unless the message tags one. In the console this is what an untagged message does anyway. */
   post_only?: boolean;
-  /** A model, `provider/model`, the runs this message starts use in place of their agent's own. Applied only for an agent whose `choices.models` offers it; any other runs on its own model. The run's model ceilings still apply. */
-  model?: string;
-  /** A reasoning effort, such as `low` or `high`, the runs this message starts use. Applied only for an agent whose `choices.efforts` offers it. A model that does not take it fails the run before any model call. */
-  effort?: string;
   act_as?: ActAs;
   surface?: SurfaceRef;
 }
@@ -1773,10 +1770,6 @@ export interface ThreadMessageInput {
   /** The turn it follows. Empty follows the latest. */
   after?: string;
   post_only?: boolean;
-  /** A model, `provider/model`, the runs this message starts use in place of their agent's own. Applied only for an agent whose `choices.models` offers it; any other runs on its own model. The run's model ceilings still apply. */
-  model?: string;
-  /** A reasoning effort, such as `low` or `high`, the runs this message starts use. Applied only for an agent whose `choices.efforts` offers it. A model that does not take it fails the run before any model call. */
-  effort?: string;
   answers?: ThreadAnswerRef;
   act_as?: ActAs;
   surface?: SurfaceRef;
@@ -2607,7 +2600,11 @@ it stands when each call starts. A policy an agent still runs on
 cannot be removed (409).
  */
   model_policies: ModelPolicy[];
-  router: RouterSettings;
+  /** The model providers the workspace's administrators set up, with no
+key. A settings write keeps them as they are; they change through
+`/api/model-providers/{name}`.
+ */
+  model_providers: ModelProvider[];
   /** Set once by the server when an admin first saves settings. */
   setup_at?: string;
   setup_by?: string;
@@ -4684,8 +4681,6 @@ export interface SessionInput {
   label?: string;
   fresh?: boolean;
   project?: string;
-  model?: string;
-  effort?: string;
   /** The readable session alert that anchors this fix conversation. */
   source_alert?: string;
 }
@@ -4696,10 +4691,6 @@ export interface SessionPostInput {
   /** The turn it follows. Empty follows the latest. */
   after?: string;
   post_only?: boolean;
-  /** A model, `provider/model`, the runs this message starts use in place of their agent's own. Applied only for an agent whose `choices.models` offers it; any other runs on its own model. The run's model ceilings still apply. */
-  model?: string;
-  /** A reasoning effort, such as `low` or `high`, the runs this message starts use. Applied only for an agent whose `choices.efforts` offers it. A model that does not take it fails the run before any model call. */
-  effort?: string;
   answers?: ThreadAnswerRef;
   act_as?: ActAs;
   surface?: SurfaceRef;
@@ -5282,10 +5273,22 @@ export interface AmendAgentSetupBody {
 export interface ListModelProvidersResponseProvidersItem {
   name: string;
   declared: boolean;
+  kind?: "anthropic" | "google" | "openai";
+  source?: "deployment" | "workspace";
 }
 
 export interface ListModelProvidersResponse {
   providers: ListModelProvidersResponseProvidersItem[];
+  kinds: ("anthropic" | "google" | "openai")[];
+  workspace?: ModelProvider[];
+}
+
+export interface SetModelProviderBody {
+  kind: "anthropic" | "google" | "openai";
+  base_url?: string;
+  vertex?: ModelProviderVertex;
+  key_ref?: string;
+  key?: string;
 }
 
 export interface ListAgentsResponse {

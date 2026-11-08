@@ -28,7 +28,7 @@ func placementFixture(t *testing.T) (*Platform, runtime.Request, wire.AgentSpec)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := New(Config{Workspace: t.TempDir(), Policy: policy, BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p, err := New(Config{Workspace: t.TempDir(), Policy: policy, TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	if err != nil {
 		t.Fatal(err)
 	}

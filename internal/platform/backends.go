@@ -143,7 +143,7 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 		return Backends{}, nil, err
 	}
 	names := append(providers(), providerNames...)
-	defs, err := wire.OpenAgents(shared, names...)
+	defs, err := wire.OpenAgentsAccepting(shared, acceptProviderName, names...)
 	if err != nil {
 		return Backends{}, nil, err
 	}

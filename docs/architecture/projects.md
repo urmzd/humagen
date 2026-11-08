@@ -1021,13 +1021,10 @@ ask refuses the message.
 - **An agent opts out** with `tagged_only: true` in its spec (fiber's
   `AgentSpec`): it runs only when a message names it, and is never asked
   about one that does not. Off by default.
-- **The workspace chooses the model that asks**, in its settings
-  (`PUT /api/settings`, and the console's Settings): `router: {enabled,
-  provider, model}`. It is off by default, and while it is off no agent
-  takes a message on its own. The provider is one of the model providers the
-  deployment declares (the spec's `models`), and its key is a credential
-  reference (an environment variable, `op://`, the keychain), never kept in
-  the settings. A program built on Humagen can supply its own asker through
+- **No workspace setting chooses the model that asks**: routing moves to
+  the entry agent, a built-in that picks on its own model chain. Until it
+  lands, no agent takes a message on its own unless a program built on
+  Humagen supplies its own asker through
   `platform.Config.Router`; `join.Words` is a deterministic one, with no
   model, that tests use.
 - An asker that fails, or an answer it cannot read, counts as no.

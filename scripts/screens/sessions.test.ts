@@ -45,6 +45,7 @@ function recorder({ pickerVisible = true, fileContent = "" } = {}) {
     }) as unknown as Locator;
   const page = {
     getByRole: (name: string, options?: { name?: string | RegExp }) => locate(role(name, options)),
+    getByText: (text: string) => locate(`text:${text}`),
     locator: locate,
     viewportSize: () => ({ width: 390, height: 844 }),
   } as unknown as Page;
@@ -135,7 +136,7 @@ test("artifacts waits for loaded content and Connections waits for its MCPs", as
   assert.deepEqual(calls, [
     { action: "wait", selector: "heading:Deliverables" },
     { action: "wait", selector: "searchbox:Search artifacts" },
-    { action: "wait", selector: "list:Artifacts|heading:No artifacts yet" },
+    { action: "wait", selector: "list:Artifacts|text:No artifacts yet" },
     { action: "wait", selector: "list:MCPs" },
   ]);
 });

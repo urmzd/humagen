@@ -473,6 +473,9 @@ func (s *Seer) Revisions(revs []wire.Revision) []wire.Revision {
 // wrote none, unless the spec written names approvers or self_approval of
 // its own. The spec as kept is validated again.
 func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *wire.Revision, spec wire.AgentSpec) (wire.AgentSpec, error) {
+	// A chain read back with a provider name since renamed is written with
+	// the new one.
+	spec = p.readChain(who.Tenant, spec)
 	// An editor can retain unread references already present, but cannot probe
 	// or newly grant a source they cannot read.
 	sources := slices.Clone(spec.Sources)
@@ -516,7 +519,7 @@ func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *w
 		}
 		shown[a] = true
 	}
-	if err := spec.Normalize().ValidateWith(p.agentProviders()); err != nil {
+	if err := spec.Normalize().ValidateWith(p.agentProviders(who.Tenant)); err != nil {
 		return wire.AgentSpec{}, err
 	}
 	if len(hidden) == 0 {
@@ -542,16 +545,40 @@ func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *w
 		spec.Approvers, spec.SelfApproval = slices.Clone(old.Spec.Approvers), old.Spec.SelfApproval
 	}
 	// The spec as written held on its own; the spec as kept must too.
-	if err := spec.Normalize().ValidateWith(p.agentProviders()); err != nil {
+	if err := spec.Normalize().ValidateWith(p.agentProviders(who.Tenant)); err != nil {
 		return wire.AgentSpec{}, err
 	}
 	return spec, nil
 }
 
-// agentProviders are the providers an agent's spec may name here, as the
-// registry holds it to them.
-func (p *Platform) agentProviders() []string {
-	return append(providers(), p.cfg.Ext.ProviderNames()...)
+// agentProviders are the providers an agent's spec may name in tenant's
+// workspace: those the deployment declares, the workspace's own, a model
+// policy, and the kinds an administrator may enable (anthropic, google,
+// openai), which an agent may name before one is: it runs once one is
+// (resolveModel). Fiber's offline counts only when the platform is not held
+// to configured models (Config.ConfiguredModelsOnly).
+func (p *Platform) agentProviders(tenant string) []string {
+	return p.providersIn(p.Settings(tenant))
+}
+
+// providersIn is agentProviders for a workspace whose settings are s, so
+// reading the settings themselves can ask it.
+func (p *Platform) providersIn(s Settings) []string {
+	out := append([]string{PolicyProvider}, p.cfg.Ext.ProviderNames()...)
+	out = append(out, ModelProviderKinds()...)
+	if !p.cfg.ConfiguredModelsOnly {
+		out = append(out, wire.KnownProviders()...)
+	}
+	for _, m := range s.ModelProviders {
+		out = append(out, m.Name)
+	}
+	return out
+}
+
+// modelNames are the providers a model policy or routing may name in
+// tenant's workspace: agentProviders without the policy provider.
+func (p *Platform) modelNames(tenant string) []string {
+	return slices.DeleteFunc(p.agentProviders(tenant), func(n string) bool { return n == PolicyProvider })
 }
 
 // CallPolicy is an agent's call policy as the reader is shown it: every agent
