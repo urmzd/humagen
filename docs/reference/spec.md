@@ -378,7 +378,7 @@ Entries are searched like knowledge, with `knowledge.embedder` when one is set.
 | `s3` | `bucket` (required), `prefix`, `region` (`us-east-1`) | `credential`, a required reference to JSON with `access_key_id`, `secret_access_key`, and optional `session_token` |
 | `bigquery` | `project` (required), `datasets`, `location`, `max_bytes_billed` (1 GiB), `max_rows` (200, at most 10000), `timeout` (60s, at most 10m) | `credential`, a reference to a service account key in JSON; left out, Application Default Credentials: the VM's service account on GCE |
 
-Two tools use the catalog, granted to an agent by name like any tool:
+Three tools use the catalog, granted to an agent by name like any tool:
 
 - `catalog_search` finds entries: a published connector's when everyone the
   answer reaches reads its project, and the owner's own only in the owner's
@@ -388,6 +388,13 @@ Two tools use the catalog, granted to an agent by name like any tool:
   first and refuses it before it runs when it is not a single `SELECT`, reads a
   dataset outside `datasets`, or would read more than `max_bytes_billed`. The
   query that runs carries the same cap as BigQuery's maximum bytes billed.
+- `corpus_query` runs one SQL `SELECT` on a Snowflake or BigQuery connector a
+  corpus holds, with the login of the person the run acts for, never the
+  connector's credential, so the warehouse's own grants, row access and masking
+  apply. It runs only in that person's own private conversation, for a reader
+  of the corpus, and only for an agent the corpus is granted to
+  ([sources.md](../architecture/sources.md#corpora)). Snowflake leaves the
+  connector's role out, so each reader's default role applies.
 
 The credential needs `roles/bigquery.metadataViewer` (or `dataViewer`) on the
 datasets to crawl them, `roles/bigquery.dataViewer` to read them, and

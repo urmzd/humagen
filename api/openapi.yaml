@@ -2302,6 +2302,75 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/catalog/connectors/snowflake:
+    post:
+      operationId: createSnowflakeConnector
+      tags: [knowledge]
+      summary: Save a Snowflake warehouse connector owned by the caller
+      description: |
+        It holds no credential. Its owner's own login crawls the schema (tables,
+        views, columns and comments, never rows); every query runs with the
+        reader's own login, so Snowflake's grants, row access and masking apply.
+        Each person gives their login with PUT /api/catalog/connectors/{name}/login.
+      x-permission: knowledge:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SnowflakeSetupInput"}
+      responses:
+        "201":
+          description: The saved connector, not yet crawled.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CatalogConnector"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/catalog/connectors/{name}/login:
+    put:
+      operationId: putCatalogLogin
+      tags: [knowledge]
+      summary: Keep your own login to a warehouse
+      description: |
+        Your login is yours alone: only queries you ask for use it. Give a
+        reference under a start the workspace lists, or the token itself where
+        the workspace lets people keep values. Warehouses signed in with OAuth,
+        such as BigQuery, use your connection instead and refuse this (400).
+      x-permission: knowledge:read
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CatalogLoginInput"}
+      responses:
+        "204":
+          description: Kept.
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: deleteCatalogLogin
+      tags: [knowledge]
+      summary: Forget your own login to a warehouse
+      x-permission: knowledge:read
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      responses:
+        "204":
+          description: Forgotten, or there was none.
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/catalog/connectors/{name}/crawl:
     post:
       operationId: crawlConnector
@@ -14993,7 +15062,7 @@ components:
         name: {type: string, maxLength: 200, description: "A person's subject or a project's name; none for the workspace."}
     Corpus:
       type: object
-      required: [name, owner, readers, members, links, created_at, updated_at, version, mine]
+      required: [name, owner, readers, members, agents, links, created_at, updated_at, version, mine]
       properties:
         name: {type: string}
         title: {type: string, description: "What people call it, such as HR policies. Absent shows the name."}
@@ -15007,6 +15076,11 @@ components:
           type: array
           maxItems: 50
           items: {$ref: "#/components/schemas/CorpusMember"}
+        agents:
+          type: array
+          maxItems: 50
+          description: The agents granted it that the reader can see. A run of one reads only as the person it acts for, who must be a reader too.
+          items: {type: string}
         links:
           type: string
           enum: [isolated, shared]
@@ -15030,6 +15104,10 @@ components:
           type: array
           maxItems: 50
           items: {$ref: "#/components/schemas/CorpusMemberRef"}
+        agents:
+          type: array
+          maxItems: 50
+          items: {type: string}
         links: {type: string, enum: [isolated, shared]}
     CorpusChange:
       type: object
@@ -15045,6 +15123,11 @@ components:
           maxItems: 50
           items: {$ref: "#/components/schemas/CorpusMemberRef"}
         links: {type: string, enum: [isolated, shared]}
+        agents:
+          type: array
+          maxItems: 50
+          description: Replaces the agents granted it; agents the owner can no longer see are kept.
+          items: {type: string}
         owner: {type: string, minLength: 1, maxLength: 200, description: Hands the corpus to another person.}
         version: {type: integer, format: int64, minimum: 1}
     KnowledgeSource:
@@ -15246,6 +15329,25 @@ components:
         crawled_at: {type: string, format: date-time}
         entries: {type: integer, minimum: 0}
         generation: {type: integer, minimum: 0}
+    SnowflakeSetupInput:
+      type: object
+      required: [name, account, database, warehouse]
+      properties:
+        name: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}
+        account: {type: string, description: "The account identifier, such as myorg-myaccount."}
+        database: {type: string}
+        warehouse: {type: string}
+        role: {type: string, description: "The role the owner's crawl uses; empty is their default role. Queries use each reader's own default role."}
+        token_type: {type: string, enum: [OAUTH, PROGRAMMATIC_ACCESS_TOKEN], description: "How logins are given. Defaults to OAUTH."}
+        max_rows: {type: integer, minimum: 1, maximum: 10000, description: "Defaults to 200."}
+        timeout_seconds: {type: integer, minimum: 1, maximum: 600, description: "Defaults to 60."}
+        refresh_hours: {type: integer, minimum: 1, maximum: 720, description: "How often the schema is crawled again. Defaults to 24."}
+    CatalogLoginInput:
+      type: object
+      description: Exactly one of ref and value.
+      properties:
+        ref: {type: string, maxLength: 512, description: "A reference to your token, under a start the workspace lists."}
+        value: {type: string, maxLength: 8192, writeOnly: true, description: "Your token, where the workspace lets people keep values."}
     CatalogConnectorView:
       allOf:
         - {$ref: "#/components/schemas/CatalogConnector"}
@@ -15257,6 +15359,10 @@ components:
               items: {type: string, enum: [catalog, live]}
             mine: {description: "You own it, so you may publish, withdraw and crawl it.", type: boolean}
             last_error: {description: "The last crawl's failure, shown to the owner only.", type: string}
+            login:
+              type: string
+              enum: [connected, missing, unavailable]
+              description: For a warehouse queried as each reader, whether you have your own login to it.
     CatalogPage:
       type: object
       required: [connectors, entries]
