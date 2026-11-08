@@ -2526,6 +2526,8 @@ export const defaultCopy = {
     archivedCount: (count: number) => `Archived, not yet due (${count})`,
   },
   sidebar: {
+    /** Recents older than yesterday. */
+    earlier: "Earlier",
     pinned: "Pinned",
     you: "You",
     agents: (names: string[]) => `Agents: ${names.join(", ")}`,
