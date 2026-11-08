@@ -82,7 +82,7 @@ function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
   );
 }
 
-test("the sidebar exposes nine canonical destinations, Projects and Scheduled among them, with distinct icons and current-section state", () => {
+test("the sidebar exposes eight canonical destinations, Projects and Scheduled among them, Settings in the account menu, with distinct icons and current-section state", () => {
   const out = sidebar();
   assert.match(out, /aria-label="Sections"/);
   const nav = out.slice(out.indexOf('aria-label="Sections"'), out.indexOf("</nav>"));
@@ -95,14 +95,14 @@ test("the sidebar exposes nine canonical destinations, Projects and Scheduled am
     "/connections",
     "/scheduled",
     "/artifacts",
-    "/settings/profile",
   ])
     assert.ok(nav.includes(`href="${route}"`), route);
-  assert.equal([...nav.matchAll(/<a /g)].length, 9);
+  assert.ok(!nav.includes('href="/settings/profile"'), "Settings opens from the account row");
+  assert.equal([...nav.matchAll(/<a /g)].length, 8);
   assert.match(out, /href="\/" aria-current="page"/);
   const glyphs = [...nav.matchAll(/<a [^>]*>(<svg[\s\S]*?<\/svg>)/g)].map((match) => match[1]);
-  assert.equal(glyphs.length, 9);
-  assert.equal(new Set(glyphs).size, 9);
+  assert.equal(glyphs.length, 8);
+  assert.equal(new Set(glyphs).size, 8);
   assert.match(
     sidebar({ route: { page: "library", section: "sources" } }),
     /href="\/connections" aria-current="page"/,

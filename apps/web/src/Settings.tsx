@@ -816,6 +816,62 @@ function RouterControl({
   );
 }
 
+// Workspace pages shown inside workspace settings. Schedules and Projects live in the sidebar.
+const linked = [
+  {
+    label: "People",
+    icon: <UsersIcon size={16} />,
+    route: { page: "directory", tab: "people" } as Route,
+    permission: "people:read",
+  },
+  {
+    label: "Usage",
+    icon: <ClipboardListIcon size={16} />,
+    route: { page: "usage" } as Route,
+    permission: "runs:read",
+  },
+  {
+    label: "Health",
+    icon: <CheckCircleIcon size={16} />,
+    route: { page: "monitor", tab: "health" } as Route,
+    permission: "alerts:read",
+  },
+  {
+    label: "Policies",
+    icon: <SlidersIcon size={16} />,
+    route: { page: "action-policy" } as Route,
+    permission: "agents:read",
+  },
+  {
+    label: "Audit",
+    icon: <ListChecksIcon size={16} />,
+    route: { page: "audit" } as Route,
+    permission: "projects:govern",
+  },
+  {
+    label: "Agent controls",
+    icon: <PauseIcon size={16} />,
+    route: { page: "agent-control" } as Route,
+    permission: "agents:write",
+  },
+];
+
+/** Your own settings; every other section is the workspace's. */
+const yours: Section[] = ["profile", "notifications", "appearance"];
+
+/**
+ * Where Workspace settings opens for someone: its first section for an admin,
+ * else the first workspace page they may read, else nowhere.
+ */
+export function workspaceSettingsRoute(
+  can: (permission: string) => boolean,
+  roles: string[] = [],
+): Route | null {
+  if (roles.includes("admin") || can("agents:write") || can("projects:govern"))
+    return { page: "settings", section: "workspace" } as Route;
+  return linked.find((item) => can(item.permission))?.route ?? null;
+}
+
 /** The settings sections, and the workspace pages that live inside settings. */
 export function SettingsNav({
   me,
@@ -871,48 +927,12 @@ export function SettingsNav({
           : []),
       ]
     : [];
+  // Your settings and the workspace's are two places: the open section says which.
+  const scope = !active && section && yours.includes(section) ? "you" : "workspace";
   const groups = [
-    { title: "You", entries: personal },
-    { title: "Admin", entries: workspaceEntries },
-  ].filter((g) => g.entries.length > 0);
-  // Workspace pages kept with the admin settings. Schedules live in the sidebar.
-  const linked = [
-    {
-      label: "People",
-      icon: <UsersIcon size={16} />,
-      route: { page: "directory", tab: "people" } as Route,
-      permission: "people:read",
-    },
-    {
-      label: "Usage",
-      icon: <ClipboardListIcon size={16} />,
-      route: { page: "usage" } as Route,
-      permission: "runs:read",
-    },
-    {
-      label: "Health",
-      icon: <CheckCircleIcon size={16} />,
-      route: { page: "monitor", tab: "health" } as Route,
-      permission: "alerts:read",
-    },
-    {
-      label: "Policies",
-      icon: <SlidersIcon size={16} />,
-      route: { page: "action-policy" } as Route,
-      permission: "agents:read",
-    },
-    {
-      label: "Audit",
-      icon: <ListChecksIcon size={16} />,
-      route: { page: "audit" } as Route,
-      permission: "projects:govern",
-    },
-    {
-      label: "Agent controls",
-      icon: <PauseIcon size={16} />,
-      route: { page: "agent-control" } as Route,
-      permission: "agents:write",
-    },
+    scope === "you"
+      ? { title: "Your settings", entries: personal }
+      : { title: "Workspace settings", entries: workspaceEntries },
   ];
   const sectionLink =
     "inline-flex min-h-9 pointer-coarse:min-h-11 shrink-0 items-center gap-2.5 whitespace-nowrap rounded-aui px-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg";
@@ -945,7 +965,7 @@ export function SettingsNav({
                   {s.label}
                 </button>
               ))}
-              {g.title === "Admin" &&
+              {scope === "workspace" &&
                 onNavigate &&
                 linked
                   .filter((item) => me.permissions.includes(item.permission))
