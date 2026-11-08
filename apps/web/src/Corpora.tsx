@@ -125,8 +125,9 @@ function More({
   label: string;
   items: { label: string; run: () => void; destructive?: boolean }[];
 }) {
-  // A choice that moves focus elsewhere (a confirm, a sheet) keeps it there.
-  const chosen = useRef(false);
+  // A choice runs once the menu has closed and given focus back to ⋯, so what
+  // it opens (a confirm, a sheet) takes focus from there and returns it there.
+  const pending = useRef<(() => void) | null>(null);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger aria-label={label} className={moreButton}>
@@ -134,9 +135,10 @@ function More({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        onCloseAutoFocus={(event) => {
-          if (chosen.current) event.preventDefault();
-          chosen.current = false;
+        onCloseAutoFocus={() => {
+          const run = pending.current;
+          pending.current = null;
+          run?.();
         }}
       >
         {items.map((item, i) => (
@@ -145,8 +147,7 @@ function More({
             <DropdownMenuItem
               variant={item.destructive ? "destructive" : undefined}
               onSelect={() => {
-                chosen.current = true;
-                item.run();
+                pending.current = item.run;
               }}
             >
               {item.label}
