@@ -570,11 +570,41 @@ func automationChannel(rule clients.GitHubAutomation, kind string, body []byte) 
 	return ""
 }
 
+// autoReviewTag asks the connection's default agent to review a pull request
+// at one commit: the commits after from, or the whole pull request when from
+// is empty. Its id names the commit, so the pull request opening and a
+// redelivery of it start one review, and each push starts its own. The text
+// holds only identifiers: the reviewer reads the pull request with its tools.
+func autoReviewTag(c clients.Client, kind string, req clients.AutoReviewRequest, from string) event.Envelope {
+	owner, repo, _ := strings.Cut(req.Repository, "/")
+	number := strconv.Itoa(req.Number)
+	channel := address.Address{Connector: "github", Workspace: owner, Path: []string{repo, "pull", number}}.WithParam("head_sha", req.SHA)
+	return wire.NewEvent(wire.Raise{
+		ID:     "autoreview/" + url.PathEscape(c.ID) + "/" + url.PathEscape(strings.ToLower(req.Repository)) + "/" + number + "/" + req.SHA,
+		Tenant: c.Tenant, Origin: "github", Agent: c.DefaultAgent,
+		Channel: channel.String(),
+		Text:    autoReviewText(req, from),
+		At:      time.Now().UTC(),
+		Context: map[string]string{wire.MetaGitHubEvent: kind, wire.MetaGitHubOwner: owner, wire.MetaGitHubRepo: repo},
+	})
+}
+
+func autoReviewText(req clients.AutoReviewRequest, from string) string {
+	number := strconv.Itoa(req.Number)
+	if from == "" {
+		return "Review pull request #" + number + " in " + req.Repository + " at commit " + req.SHA + "."
+	}
+	return "Review the commits pushed to pull request #" + number + " in " + req.Repository + " after " + from + ", up to " + req.SHA + ". Earlier commits were reviewed already."
+}
+
 // hand passes a request to one client's connector, which verifies it again
 // with the same secret before it parses anything.
 func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []byte) {
 	// refused is why someone who may not ask an agent wrote this delivery.
 	refused := ""
+	// started counts the runs event rules and automatic review start here,
+	// beside what the connector raises, for the delivery's log line.
+	var started int64
 	if st.verifier != nil {
 		current, enabled := s.p.currentInstallation(st.client)
 		if !enabled {
@@ -617,6 +647,32 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 							http.Error(w, "automation admission failed", http.StatusServiceUnavailable)
 							return
 						}
+						started++
+					}
+				}
+				if repo, number, ok := current.MentionOnPullRequest(kind, body); ok {
+					if err := s.p.resumeAutoReview(current, repo, number); err != nil {
+						http.Error(w, "automatic review could not resume", http.StatusServiceUnavailable)
+						return
+					}
+				}
+				if req, ok := current.MatchAutoReview(kind, body); ok {
+					from, review, paused, err := s.p.planAutoReview(current, req)
+					if err != nil {
+						http.Error(w, "automatic review could not be planned", http.StatusServiceUnavailable)
+						return
+					}
+					if paused {
+						s.p.log.Info("automatic review paused", "client", current.ID, "repository", req.Repository, "pull", req.Number, "pushes", AutoReviewPushes)
+					}
+					if review {
+						for _, raised := range s.stamp(r.Context(), st, autoReviewTag(current, kind, req, from)) {
+							if _, err := s.p.Invoke(r.Context(), raised); err != nil {
+								http.Error(w, "automatic review admission failed", http.StatusServiceUnavailable)
+								return
+							}
+							started++
+						}
 					}
 				}
 			}
@@ -633,7 +689,7 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 	before := st.raised.Load()
 	rec := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 	st.peer.ServeHTTP(rec, r)
-	s.logDelivery(r, body, st.client, rec.status, st.raised.Load()-before)
+	s.logDelivery(r, body, st.client, rec.status, st.raised.Load()-before+started)
 }
 
 // Deliver gives a run's event to the client that carries it.

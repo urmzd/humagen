@@ -65,6 +65,22 @@ func TestOnlyPeopleWhoMayWriteAskThroughGitHub(t *testing.T) {
 	if !strings.Contains(said.String(), `delivery=d-stranger status=200 why="mallory has no write access to the repository (none)"`) {
 		t.Fatalf("the stranger's mention was not logged as ignored:\n%s", said.String())
 	}
+	// A stranger's pull request is not reviewed automatically either.
+	pull := `{"action":"opened","number":8,"installation":{"id":101},"repository":{"full_name":"acme/repo","name":"repo","owner":{"login":"acme"}},` +
+		`"sender":{"login":"mallory","type":"User"},"pull_request":{"number":8,"state":"open","draft":false,"user":{"login":"mallory"},"author_association":"FIRST_TIME_CONTRIBUTOR","head":{"sha":"` + strings.Repeat("d", 40) + `"}}}`
+	mac := hmac.New(sha256.New, []byte("secret-gh"))
+	mac.Write([]byte(pull))
+	r := httptest.NewRequest(http.MethodPost, "/connectors/github", strings.NewReader(pull))
+	r.Header.Set(signature.HeaderGitHubSignature, "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	r.Header.Set("X-GitHub-Event", "pull_request")
+	r.Header.Set("X-GitHub-Delivery", "d-fork")
+	ingress.ServeHTTP(httptest.NewRecorder(), r)
+	if n := reviews(); n != 0 {
+		t.Fatalf("a stranger's pull request was reviewed (%d runs)", n)
+	}
+	if !strings.Contains(said.String(), `delivery=d-fork status=200 why="mallory has no write access to the repository (first_time_contributor)"`) {
+		t.Fatalf("the stranger's pull request was not logged as ignored:\n%s", said.String())
+	}
 	comment("d-collaborator", "ada", "COLLABORATOR")
 	eventually(t, "the collaborator's mention started a run", func() bool { return reviews() == 1 })
 
