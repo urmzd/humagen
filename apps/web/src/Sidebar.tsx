@@ -18,7 +18,6 @@ import {
   PanelLeftOpenIcon,
   PencilIcon,
   PinIcon,
-  PlugIcon,
   PlusIcon,
   ProjectIcon,
   SearchIcon,
@@ -852,15 +851,6 @@ export function Sidebar({
       icon: <BotIcon />,
       show: can("agents:read"),
       active: hub === "agents" || hub === "customize",
-    },
-    {
-      to: { page: "connections" } as Route,
-      label: "Connections",
-      icon: <PlugIcon />,
-      show: can("runs:read") || can("clients:read"),
-      active:
-        here("connections") ||
-        (route.page === "library" && ["sources", "catalog"].includes(route.section)),
     },
     {
       to: { page: "automations" } as Route,

@@ -15,7 +15,9 @@ import (
 	"github.com/urmzd/orchagent/flow/event"
 )
 
-func TestNativeReviewRecoveryRetainsHistoricalApprovalAndCurrentEvidenceChecks(t *testing.T) {
+// An approve verdict is posted as a comment (agents never approve), and a
+// retried delivery recovers that review instead of posting another.
+func TestNativeReviewRecoveryKeepsTheReviewAndCurrentEvidenceChecks(t *testing.T) {
 	api := github.NewFake()
 	ref := transport.Ref{Owner: "acme", Repo: "repo", Number: 7}
 	sha := strings.Repeat("a", 40)
@@ -26,9 +28,9 @@ func TestNativeReviewRecoveryRetainsHistoricalApprovalAndCurrentEvidenceChecks(t
 	}
 	target := address.MustParse("github://acme/repo/pull/7").WithParam("head_sha", sha)
 	text := fmt.Sprintf(`{"format":"humagen.review.v2","title":"Review","verdict":"approve","scope":{"commit":%q},"summary":"Validated behavior.","findings":[{"id":"f1","severity":"info","title":"Preserve behavior","suggestion":"Keep this result","evidence":[{"observation":"Observed the result","source":"a.go:1","step":"test-1"}],"prompt":"Preserve this behavior","location":{"path":"a.go","line":1}}]}`, sha)
-	allow, evidence := true, true
+	evidence := true
 	findings := 0
-	cfg := github.Config{API: api, Tenant: "tenant", Login: "humagen[bot]", ReviewApproval: func(transport.View) bool { return allow }, ReviewText: func(v transport.View) (string, error) {
+	cfg := github.Config{API: api, Tenant: "tenant", Login: "humagen[bot]", ReviewText: func(v transport.View) (string, error) {
 		if !evidence {
 			return "", errors.New("source evidence unavailable")
 		}
@@ -49,14 +51,13 @@ func TestNativeReviewRecoveryRetainsHistoricalApprovalAndCurrentEvidenceChecks(t
 		if err := c.Deliver(t.Context(), target, env); err != nil {
 			t.Fatal(err)
 		}
-		allow = false
 		snapshot.Subject.Head.SHA = strings.Repeat("b", 40)
 		snapshot.Files = nil
 		if err := api.SeedContext(ref, snapshot); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if reviews := api.SubmittedReviews(); len(reviews) != 1 || reviews[0].Review.Event != "APPROVE" || findings != 2 {
+	if reviews := api.SubmittedReviews(); len(reviews) != 1 || reviews[0].Review.Event != "COMMENT" || findings != 2 {
 		t.Fatalf("recovery duplicated or changed review: %+v findings=%d", reviews, findings)
 	}
 	evidence = false

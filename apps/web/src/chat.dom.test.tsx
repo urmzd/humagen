@@ -325,7 +325,7 @@ test("+ picks mentions with Enter and the single project picker scopes a session
   });
   // The shortcut opens it from the box.
   fireEvent.keyDown(box(), { key: "/", ctrlKey: true });
-  let menu = await screen.findByRole("dialog", { name: chat.menu });
+  const menu = await screen.findByRole("dialog", { name: chat.menu });
   assert.ok(within(menu).getByRole("button", { name: chat.attach }));
   fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
   const lead = await within(menu).findByRole("checkbox", { name: /^lead/ });
@@ -611,7 +611,6 @@ test("Regenerate is offered only on an answered turn that acted for the reader",
     close();
   }
   open(answered({ id: "ben", display: "Ben", user: "ben" }), "ben");
-  fireEvent.click(await screen.findByRole("button", { name: "More actions" }));
   fireEvent.click(await screen.findByRole("button", { name: "Regenerate" }));
   await waitFor(() =>
     assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")),
@@ -628,7 +627,6 @@ test("a reader's own turn from before humagen said whom a run acts for may be as
   );
   close();
   open(answered(before, "api-3-ben-k1"), "ben");
-  fireEvent.click(await screen.findByRole("button", { name: "More actions" }));
   fireEvent.click(await screen.findByRole("button", { name: "Regenerate" }));
   await waitFor(() =>
     assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")),

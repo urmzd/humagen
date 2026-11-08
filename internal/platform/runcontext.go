@@ -302,7 +302,7 @@ func (p *Platform) SetPersonContext(_ context.Context, who auth.Principal, in pe
 			}
 		}
 		if t.Credential != "" && !p.refAllowed(who.Tenant, who.Subject, t.Credential) {
-			return personctx.Context{}, fmt.Errorf("%w: tool server %q: %w", personctx.ErrInvalid, t.Name, errPersonRef)
+			return personctx.Context{}, fmt.Errorf("%w: MCP %q: %w", personctx.ErrInvalid, t.Name, errPersonRef)
 		}
 	}
 	attempt, err := p.BeginAudit(who, audit.Change{Action: "person_context.set", Resource: "person_context", ID: who.Subject, Subject: who.Subject, Route: "PUT /api/me/context", Rule: string(auth.RunsWrite)})

@@ -24,6 +24,7 @@ const field: ProjectView = {
   name: "Field",
   kind: "team",
   members: [{ who: "*", role: "member" }],
+  visibility: "workspace",
   experts: [],
   agents: { enable: [] },
   access: { role: "owner", from: "", via: "projects:govern" },

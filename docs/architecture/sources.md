@@ -140,10 +140,50 @@ scheduled ingestion have separate authority and retention requirements. The
 [conversation-first collection design](../rfcs/0003-conversation-first-delivery.md)
 records that follow-on work.
 
-## Proposed native corpora
+## Corpora
 
-The next backend delivery will structure knowledge as a stable tenant-scoped
-corpus, its runs, corpus-owned files, immutable file versions and version-bound
+A corpus is a named body of knowledge, such as "HR policies", that holds the
+sources one useful body of knowledge comes from. People create and manage
+corpora in Agents > Knowledge, and add sources inside a corpus. `pkg/corpora`
+keeps each workspace's corpora on `pkg/state`, per request.
+
+| Field | Meaning |
+| --- | --- |
+| `name`, `title`, `description` | The name is lower case letters, digits and dashes and never changes; the title is what people call it, such as "HR policies" |
+| `owner` | The person who manages it. Only the owner changes, hands off or deletes it |
+| `readers` | Who may read it: people by subject, everyone who sees a project, or the workspace. Default deny |
+| `members` | Up to 50 knowledge sources (`source`) and catalog connectors (`catalog`), by name |
+| `links` | `isolated` (default) or `shared`: whether its part of the workspace graph links to other corpora |
+
+A member is a reference, never a copy. What it brings depends on the source:
+
+| Holds | From | Kept | Searched |
+| --- | --- | --- | --- |
+| Files | An indexed source | Passages and vectors | The corpus's own indexes |
+| References | A live source | A pointer and its metadata | At the source, with the reader's credential |
+| Records | A catalog connector (Snowflake, BigQuery) | Schema and owners. Never rows | A read-only query at the warehouse, under the reader's own login |
+
+Holding a source never widens who may read it. A reader sees each member by
+the source's own rules; one they may not see is listed as `hidden`, without
+its name (the owner alone sees its name, to remove it), and an owner's new
+members list keeps the members the owner can no longer see. A member whose source was deleted shows as `missing` until the
+owner removes it. Deleting a corpus leaves its sources as they are.
+
+Routes, all behind `knowledge:read` or `knowledge:write`: `GET` and `POST
+/api/corpora`, `GET`, `PATCH` and `DELETE /api/corpora/{name}`, `POST
+/api/corpora/{name}/members` and `DELETE
+/api/corpora/{name}/members/{kind}/{member}`. A corpus the caller may not read
+answers 404; a change from someone other than the owner answers 403; a change
+or delete naming an old `version` answers 409.
+
+Not built yet: per-corpus search and tools, live warehouse queries under the
+reader's login, the corpus pages in the console, ontology and graph, the
+maintenance agent, freshness alerts and sensitivity labels.
+
+## Proposed versioned source files
+
+The next backend delivery will structure each source's content as a stable
+tenant-scoped record, its runs, corpus-owned files, immutable file versions and version-bound
 chunks. Runs attach the exact file version through a membership record; a
 refresh does not duplicate the file identity. This is a proposed extension of
 the current source lifecycle, not a new API already shipped in this UI pass.

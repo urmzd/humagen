@@ -23,7 +23,7 @@ test("custom OAuth is the person's own and keeps its endpoint after refusal", as
     "GET /api/connections/presets": () => [
       {
         id: "other",
-        name: "Other tool server",
+        name: "Other MCP",
         kind: "tools",
         available: true,
         connected: false,
@@ -46,6 +46,8 @@ test("custom OAuth is the person's own and keeps its endpoint after refusal", as
       }),
   });
   render(<Connections provider="other" canWrite />);
+  const sheet = await screen.findByRole("dialog", { name: "Add MCP" });
+  fireEvent.click(within(sheet).getByRole("button", { name: "Sign In" }));
   const endpoint = await screen.findByPlaceholderText("https://tools.example.com/mcp");
   fireEvent.change(endpoint, { target: { value: "https://tools.example.com/mcp" } });
   fireEvent.click(screen.getByLabelText("Use a registered application"));
@@ -247,14 +249,13 @@ const reviewedNotion = {
   ],
 };
 
+/** Reviews Notion's tools from its card's one action; returns that button. */
 async function openToolReview() {
-  const more = await screen.findByRole("button", { name: "More for Notion" });
-  more.focus();
-  fireEvent.keyDown(more, { key: "ArrowDown" });
-  const review = await screen.findByRole("menuitem", { name: "Review tools" });
+  const notion = await screen.findByRole("listitem", { name: "Notion" });
+  const review = within(notion).getByRole("button", { name: "Review Tools" });
   review.focus();
-  fireEvent.keyDown(review, { key: "Enter" });
-  return more;
+  fireEvent.click(review);
+  return review;
 }
 
 test("keyboard tool review opens the provider Sheet, keeps a refused approval visible, and restores focus", async () => {
@@ -356,7 +357,7 @@ function canonicalConnectionRoutes(credentials: ToolCredentials) {
     "GET /api/connections/presets": () => [
       {
         id: "other",
-        name: "Other tool server",
+        name: "Other MCP",
         kind: "tools",
         available: true,
         connected: false,
@@ -368,7 +369,23 @@ function canonicalConnectionRoutes(credentials: ToolCredentials) {
   };
 }
 
-test("canonical Connections exposes configured credential value, reference replacement and removal", async () => {
+/** The open sheet: the page under it is hidden while it is open. */
+const sheet = (name: string) => screen.findByRole("dialog", { name });
+
+/**
+ * Waits until the stub has answered a request, on plain timers. A waitFor
+ * started while a request is in flight can stall happy-dom here, so the
+ * page is observed only after the answer is in.
+ */
+async function sent(method: string, path: string) {
+  for (let i = 0; i < 200; i++) {
+    if (net?.seen.some((r) => r.method === method && r.path === path)) break;
+    await new Promise((done) => setTimeout(done, 5));
+  }
+  await new Promise((done) => setTimeout(done, 30));
+}
+
+test("key MCPs: a value, a replaced reference and a removal, each from its card", async () => {
   const credentials = configuredCredentials();
   net = stubFetch({
     ...canonicalConnectionRoutes(credentials),
@@ -387,27 +404,45 @@ test("canonical Connections exposes configured credential value, reference repla
     },
   });
   render(<Connections canConnect />);
-  const calendar = await screen.findByRole("region", { name: "calendar" });
-  const issues = screen.getByRole("region", { name: "issues" });
-  assert.ok(within(issues).getByRole("button", { name: "Replace" }));
-  assert.ok(within(issues).getByRole("button", { name: "Remove" }));
-  fireEvent.click(within(calendar).getByRole("button", { name: "Connect" }));
+  const calendarCard = await screen.findByRole("listitem", { name: "calendar" });
+  assert.ok(within(screen.getByRole("listitem", { name: "issues" })).getByText("Connected"));
+  fireEvent.click(within(calendarCard).getByRole("button", { name: "Connect" }));
+  const calendar = within(await sheet("calendar")).getByRole("region", { name: "calendar" });
   fireEvent.click(within(calendar).getByRole("button", { name: "Value" }));
   fireEvent.change(within(calendar).getByLabelText(/^Value/), {
     target: { value: "private-value" },
   });
   fireEvent.click(within(calendar).getByRole("button", { name: "Connect" }));
-  await within(calendar).findByRole("button", { name: "Replace" });
+  await sent("PUT", "/api/me/credentials/calendar");
+  await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
+  await within(screen.getByRole("listitem", { name: "calendar" })).findByText("Connected");
   assert.equal(screen.queryByDisplayValue("private-value"), null);
-  assert.equal(screen.queryByRole("dialog"), null, "credential forms do not open the OAuth Sheet");
-  fireEvent.click(within(issues).getByRole("button", { name: "Replace" }));
+
+  fireEvent.click(
+    within(screen.getByRole("listitem", { name: "issues" })).getByRole("button", {
+      name: "Replace",
+    }),
+  );
+  const issues = within(await sheet("issues")).getByRole("region", { name: "issues" });
   fireEvent.change(within(issues).getByLabelText(/^Reference/), {
     target: { value: "op://People/alice/replacement" },
   });
   fireEvent.click(within(issues).getByRole("button", { name: "Replace" }));
-  await within(issues).findByText(/reads op:\/\/People\/alice\/replacement/);
-  fireEvent.click(within(issues).getByRole("button", { name: "Remove" }));
-  await within(issues).findByRole("button", { name: "Connect" });
+  await sent("PUT", "/api/me/credentials/issues");
+  await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
+
+  const more = screen.getByRole("button", { name: "More for issues" });
+  more.focus();
+  fireEvent.keyDown(more, { key: "ArrowDown" });
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Remove" }));
+  await sent("DELETE", "/api/me/credentials/issues");
+  await waitFor(() =>
+    assert.ok(
+      within(screen.getByRole("listitem", { name: "issues" })).getByRole("button", {
+        name: "Connect",
+      }),
+    ),
+  );
   assert.deepEqual(
     net.seen.filter((r) => r.method !== "GET"),
     [
@@ -422,35 +457,21 @@ test("canonical Connections exposes configured credential value, reference repla
   );
 });
 
-test("configured credential selection follows route changes while local selection remains independent", async () => {
+test("an address naming a key MCP opens its sheet, and follows the route", async () => {
   net = stubFetch(canonicalConnectionRoutes(configuredCredentials()));
   const view = render(<Connections provider="calendar" canConnect />);
-  const calendar = await screen.findByRole("region", { name: "calendar" });
-  const issues = screen.getByRole("region", { name: "issues" });
-  assert.ok(within(calendar).getByLabelText(/^Reference/));
-  assert.equal(within(issues).queryByLabelText(/^Reference/), null);
-
+  assert.ok(within(await sheet("calendar")).getByLabelText(/^Reference/));
   view.rerender(<Connections provider="issues" canConnect />);
-  assert.ok(within(issues).getByLabelText(/^Reference/));
-  assert.equal(within(calendar).queryByLabelText(/^Reference/), null);
-
-  fireEvent.click(within(calendar).getByRole("button", { name: "Connect" }));
-  view.rerender(<Connections provider="issues" canConnect />);
-  assert.ok(within(calendar).getByLabelText(/^Reference/));
-  assert.equal(within(issues).queryByLabelText(/^Reference/), null);
-
+  assert.ok(within(await sheet("issues")).getByLabelText(/^Reference/));
   view.rerender(<Connections canConnect />);
-  assert.equal(within(calendar).queryByLabelText(/^Reference/), null);
-  assert.equal(within(issues).queryByLabelText(/^Reference/), null);
-  view.rerender(<Connections provider="calendar" canConnect />);
-  assert.ok(within(calendar).getByLabelText(/^Reference/));
+  await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
   assert.deepEqual(
     net.seen.filter((r) => r.method !== "GET"),
     [],
   );
 });
 
-test("canonical Connections retains a configured credential input after refusal", async () => {
+test("a refused key keeps what was typed, with the reason in its sheet", async () => {
   net = stubFetch({
     ...canonicalConnectionRoutes(configuredCredentials()),
     "PUT /api/me/credentials/calendar": () =>
@@ -459,35 +480,38 @@ test("canonical Connections retains a configured credential input after refusal"
       }),
   });
   render(<Connections provider="calendar" canConnect />);
-  const calendar = await screen.findByRole("region", { name: "calendar" });
+  const dialog = await sheet("calendar");
+  const calendar = within(dialog).getByRole("region", { name: "calendar" });
   fireEvent.click(within(calendar).getByRole("button", { name: "Value" }));
   const value = within(calendar).getByLabelText(/^Value/) as HTMLInputElement;
   fireEvent.change(value, { target: { value: "keep-private-value" } });
   fireEvent.click(within(calendar).getByRole("button", { name: "Connect" }));
-  const ownConnections = screen.getByRole("region", { name: "Your connections" });
-  await within(ownConnections).findByText("This credential cannot be connected");
+  await sent("PUT", "/api/me/credentials/calendar");
+  await within(dialog).findByText("This credential cannot be connected");
   assert.equal(value.value, "keep-private-value");
   assert.ok(within(calendar).getByRole("button", { name: "Connect" }));
-  assert.ok(screen.queryByRole("dialog") === null);
 });
 
-test("canonical Connections shows configured status without granting credential mutations", async () => {
+test("without the right to connect, cards and sheets show status and nothing to press", async () => {
   net = stubFetch(canonicalConnectionRoutes(configuredCredentials()));
-  render(<Connections provider="calendar" canConnect={false} />);
-  await screen.findByRole("region", { name: "calendar" });
-  await screen.findByText(/Connecting a credential takes permission to run agents/);
-  assert.ok(screen.getByText(/reads op:\/\/People\/alice\/issues/));
-  for (const name of ["Connect", "Replace", "Remove", "Add Tool Server", "Connect with OAuth"]) {
-    assert.equal(screen.queryByRole("button", { name }), null);
+  const view = render(<Connections provider="calendar" canConnect={false} />);
+  const dialog = await sheet("calendar");
+  await within(dialog).findByText(/Connecting a credential takes permission to run agents/);
+  assert.equal(within(dialog).queryByRole("textbox"), null);
+  view.rerender(<Connections provider="issues" canConnect={false} />);
+  assert.ok(within(await sheet("issues")).getByText(/reads op:\/\/People\/alice\/issues/));
+  view.rerender(<Connections canConnect={false} />);
+  await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
+  for (const name of ["Connect", "Replace", "Add MCP", "Review Tools", "Enable"]) {
+    assert.equal(screen.queryByRole("button", { name }), null, name);
   }
-  assert.equal(screen.queryByRole("textbox"), null);
   assert.equal(
     net.seen.some((r) => r.method !== "GET"),
     false,
   );
 });
 
-test("canonical Connections adds a custom tool server outside the OAuth Sheet with an accessible review", async () => {
+test("Add MCP adds one by URL, reviews its tools, and shows it as a card", async () => {
   const credentials = configuredCredentials();
   const reviewed = {
     name: "my-tools",
@@ -506,40 +530,18 @@ test("canonical Connections adds a custom tool server outside the OAuth Sheet wi
     "POST /api/me/tool-servers/review": () => reviewed,
     "PUT /api/me/context": (body) => ({ ...(body as object), version: 2 }),
   });
-  render(
-    <>
-      <Connections canConnect />
-      <div id="humagen-inspector-dock" />
-    </>,
-  );
-  const oauth = await screen.findByRole("button", { name: "Connect with OAuth" });
-  fireEvent.click(oauth);
-  const sheet = await screen.findByRole("dialog", { name: "Other tool server" });
-  assert.ok(within(sheet).getByRole("form", { name: "Connect tool server with OAuth" }));
-  assert.equal(within(sheet).queryByRole("button", { name: "Add Tool Server" }), null);
-  fireEvent.keyDown(sheet, { key: "Escape" });
-  await waitFor(() => assert.ok(screen.queryByRole("dialog") === null));
-  const add = await screen.findByRole("button", { name: "Add Tool Server" });
-  add.focus();
-  fireEvent.click(add);
-  const inspector = await screen.findByRole("dialog", { name: "Add a tool server" });
-  assert.equal(
-    inspector.parentElement?.id,
-    "humagen-inspector-dock",
-    "the desktop Inspector remains portaled into its dock",
-  );
-  assert.ok(document.querySelector('[data-slot="sheet-overlay"]') === null);
-  assert.ok(document.querySelector('[data-slot="sheet-content"]') === null);
-  assert.ok(inspector.closest('[aria-hidden="true"], [inert]') === null);
-  const form = within(inspector).getByRole("form", { name: "New tool server" });
-  const name = within(form).getByLabelText(/^Name/);
-  name.focus();
-  assert.equal(document.activeElement === name, true);
-  fireEvent.change(name, { target: { value: "my-tools" } });
-  fireEvent.change(within(form).getByLabelText(/^Address/), {
+  render(<Connections canConnect />);
+  const mcps = await screen.findByRole("region", { name: "MCPs" });
+  fireEvent.click(await within(mcps).findByRole("button", { name: "Add MCP" }));
+  const dialog = await sheet("Add MCP");
+  assert.ok(within(dialog).getByText("Allowed hosts: tools.example.com."));
+  const form = within(dialog).getByRole("form", { name: "New MCP" });
+  fireEvent.change(within(form).getByLabelText(/^Name/), { target: { value: "my-tools" } });
+  fireEvent.change(within(form).getByLabelText(/^URL/), {
     target: { value: "https://tools.example.com/mcp" },
   });
   fireEvent.click(within(form).getByRole("button", { name: "Review Tools" }));
+  await sent("POST", "/api/me/tool-servers/review");
   await within(form).findByText("find_docs");
   assert.equal(
     net.seen.some((r) => r.method === "PUT"),
@@ -547,11 +549,300 @@ test("canonical Connections adds a custom tool server outside the OAuth Sheet wi
     "review does not grant unapproved tools",
   );
   fireEvent.click(within(form).getByRole("button", { name: "Approve Tool List" }));
-  await waitFor(() => assert.ok(screen.queryByRole("dialog") === null));
-  assert.ok(screen.getByRole("listitem", { name: "my-tools" }));
+  await sent("PUT", "/api/me/context");
+  await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
+  const added = await screen.findByRole("listitem", { name: "my-tools" });
+  assert.ok(within(added).getByText("Added"));
   assert.deepEqual(net.seen.find((r) => r.method === "PUT")?.body, {
     run: {},
     version: 1,
     tool_servers: [reviewed],
   });
+});
+
+/** Presets the server offers, with nothing connected and nothing installed. */
+function offered(over: Record<string, (body: unknown) => unknown> = {}) {
+  const preset = (id: string, name: string, kind: string, scope = "person") => ({
+    id,
+    name,
+    kind,
+    scope,
+    available: true,
+    connected: false,
+  });
+  return {
+    "GET /api/connections/presets": () => [
+      preset("notion", "Notion", "oauth"),
+      preset("other", "Other MCP", "tools"),
+      preset("drive", "Google Drive", "source_oauth"),
+      preset("bigquery", "BigQuery", "catalog_oauth"),
+      preset("slack", "Slack", "client_oauth", "workspace"),
+      preset("github", "GitHub", "github_install", "workspace"),
+    ],
+    "GET /api/me/credentials": () => ({ providers: [], references: [], values: false }),
+    "GET /api/me/context": () => ({ run: {}, version: 1, tool_servers: [] }),
+    "GET /api/clients": () => ({ clients: [], caps: { max: 10, max_per_surface: 10 } }),
+    ...over,
+  };
+}
+
+test("Connections is Apps and MCPs, each item once, with what is connected on its own card", async () => {
+  net = stubFetch(
+    offered({
+      "GET /api/clients": () => ({
+        clients: [
+          {
+            id: "acme-slack",
+            name: "Acme Slack",
+            surface: "slack",
+            enabled: true,
+            identity: {},
+            credentials: {},
+          },
+        ],
+        caps: { max: 10, max_per_surface: 10 },
+      }),
+      "GET /api/me/context": () => ({
+        run: {},
+        version: 1,
+        tool_servers: [{ name: "my-tools", url: "https://tools.example.com/mcp", tools: [] }],
+      }),
+    }),
+  );
+  render(<Connections canConnect canWrite />);
+  const apps = await screen.findByRole("list", { name: "Apps" });
+  const mcps = screen.getByRole("list", { name: "MCPs" });
+  const slack = await within(apps).findByRole("listitem", { name: "Slack" });
+  await within(slack).findByText("Installed");
+  assert.ok(within(slack).getByRole("button", { name: "Manage" }));
+  assert.equal(screen.getAllByRole("listitem", { name: "Slack" }).length, 1, "Slack appears once");
+  await within(mcps).findByRole("listitem", { name: "my-tools" });
+  assert.ok(within(mcps).getByRole("listitem", { name: "Notion" }));
+  // Data sources are added inside a corpus, not here; Add MCP replaces a card for any server.
+  for (const name of ["Google Drive", "BigQuery", "Other MCP"]) {
+    assert.equal(screen.queryByRole("listitem", { name }), null, name);
+  }
+  assert.equal(screen.queryByRole("list", { name: "Data sources" }), null);
+  for (const name of ["Installed apps", "Your connections", "Your tool servers"]) {
+    assert.equal(screen.queryByRole("region", { name }), null, name);
+  }
+  for (const words of [/tool server/i, /act(s)? as you/i, /agent tools/i]) {
+    assert.equal(screen.queryByText(words), null, String(words));
+  }
+  assert.equal(screen.queryByRole("alert"), null);
+  assert.equal(screen.queryByRole("tab"), null);
+});
+
+test("an item that is off says so on its card; an administrator sees Enable and how", async () => {
+  const off = {
+    "GET /api/connections/presets": () => [
+      {
+        id: "notion",
+        name: "Notion",
+        kind: "oauth",
+        scope: "person",
+        endpoint: "https://mcp.notion.com/mcp",
+        available: false,
+        connected: false,
+        reason: "An administrator must enable secure account connections for this workspace.",
+      },
+    ],
+  };
+  net = stubFetch(offered(off));
+  const view = render(<Connections canConnect canWrite={false} />);
+  const notion = await screen.findByRole("listitem", { name: "Notion" });
+  assert.ok(within(notion).getByText("Not enabled"));
+  assert.equal(within(notion).queryByRole("button", { name: /Connect|Enable/ }), null);
+  assert.equal(screen.queryByRole("alert"), null);
+  view.unmount();
+
+  net.restore();
+  net = stubFetch(offered(off));
+  render(<Connections canConnect canWrite />);
+  const card = await screen.findByRole("listitem", { name: "Notion" });
+  fireEvent.click(within(card).getByRole("button", { name: "Enable" }));
+  const dialog = await sheet("Notion");
+  assert.ok(within(dialog).getByText(/service connection authorization/));
+});
+
+// The reason is the server's own words (toolHostRefusal); the card matches "MCP hosts" in it.
+test("an MCP on a host the workspace does not allow says so, and an administrator is sent to Limits", async () => {
+  net = stubFetch(
+    offered({
+      "GET /api/connections/presets": () => [
+        {
+          id: "notion",
+          name: "Notion",
+          kind: "oauth",
+          scope: "person",
+          endpoint: "https://mcp.notion.com/mcp",
+          available: false,
+          connected: false,
+          reason:
+            "No MCP hosts are allowed yet. Ask a workspace administrator to allow this service in Limits.",
+        },
+      ],
+    }),
+  );
+  render(<Connections canConnect canWrite />);
+  const card = await screen.findByRole("listitem", { name: "Notion" });
+  assert.ok(within(card).getByText("Host not allowed"));
+  fireEvent.click(within(card).getByRole("button", { name: "Enable" }));
+  const dialog = await sheet("Notion");
+  assert.ok(within(dialog).getByText(/Its host is not allowed yet/));
+  assert.ok(within(dialog).getByRole("link", { name: "Allow it in Limits" }));
+});
+
+test("an empty MCP group is its title and Add MCP; without the right to connect it is gone", async () => {
+  const appsOnly = {
+    "GET /api/connections/presets": () => [
+      {
+        id: "slack",
+        name: "Slack",
+        kind: "client_oauth",
+        scope: "workspace",
+        available: true,
+        connected: false,
+      },
+    ],
+  };
+  net = stubFetch(offered(appsOnly));
+  const view = render(<Connections canConnect canWrite />);
+  const mcps = await screen.findByRole("region", { name: "MCPs" });
+  assert.ok(await within(mcps).findByRole("button", { name: "Add MCP" }));
+  assert.equal(within(mcps).queryByRole("list"), null);
+  assert.equal(within(mcps).queryByRole("paragraph"), null);
+  view.unmount();
+
+  net.restore();
+  net = stubFetch(offered(appsOnly));
+  render(<Connections canConnect={false} />);
+  await screen.findByRole("region", { name: "Apps" });
+  assert.equal(screen.queryByRole("region", { name: "MCPs" }), null);
+});
+
+/** A GitHub app installed for acme, with one rule. */
+function githubApp() {
+  const client = {
+    id: "acme-github",
+    name: "Acme GitHub",
+    surface: "github" as const,
+    enabled: true,
+    managed: "installation",
+    version: 3,
+    identity: { owners: ["acme"] },
+    credentials: { token: {}, signing_secret: {} },
+    default_agent: "code-reviewer",
+    agents: ["code-reviewer", "triage"],
+    github: {
+      automations: [
+        {
+          name: "review-prs",
+          repository: "acme/api",
+          event: "pull_request" as const,
+          action: "opened",
+          agent: "code-reviewer",
+          instructions: "Review the change.",
+          paused: false,
+        },
+      ],
+    },
+  };
+  return client;
+}
+
+test("the GitHub app's sheet holds the rules that start a session, saved on the app", async () => {
+  const client = githubApp();
+  net = stubFetch(
+    offered({
+      "GET /api/connections/presets": () => [
+        {
+          id: "github",
+          name: "GitHub",
+          kind: "github_install",
+          scope: "workspace",
+          available: true,
+          connected: true,
+        },
+      ],
+      "GET /api/clients": () => ({ clients: [client], caps: { max: 10, max_per_surface: 10 } }),
+      "GET /api/agents": () => ({
+        agents: [{ spec: { name: "code-reviewer" } }, { spec: { name: "triage" } }],
+      }),
+      "GET /api/projects": () => ({ projects: [] }),
+      "PUT /api/clients/acme-github": (body) => ({ ...client, ...(body as object), version: 4 }),
+      "GET /api/connections/github": () => ({
+        connection: { id: "github", name: "GitHub" },
+        mappings: [],
+        note: "",
+        truncated: false,
+      }),
+    }),
+  );
+  render(<Connections canConnect canWrite />);
+  const card = await screen.findByRole("listitem", { name: "GitHub" });
+  fireEvent.click(within(card).getByRole("button", { name: "Manage" }));
+  const dialog = await sheet("GitHub");
+  const rules = await within(dialog).findByRole("region", { name: "Start a session when" });
+  const rule = within(rules).getByRole("listitem", { name: "review-prs" });
+  assert.ok(within(rule).getByText("Pull request opened"));
+  assert.ok(within(rule).getByText("acme/api → @code-reviewer"));
+
+  fireEvent.click(within(rules).getByRole("button", { name: "Add Rule" }));
+  const form = within(rules).getByRole("form", { name: "New rule" });
+  fireEvent.change(within(form).getByLabelText(/^Name/), { target: { value: "triage-issues" } });
+  fireEvent.change(within(form).getByLabelText(/^Repository/), { target: { value: "acme/api" } });
+  fireEvent.change(within(form).getByLabelText(/^Event/), { target: { value: "issues" } });
+  await waitFor(() =>
+    assert.ok(within(form).getByRole("option", { name: "@triage" }), "routable agents load"),
+  );
+  fireEvent.change(within(form).getByLabelText(/^Agent/), { target: { value: "triage" } });
+  fireEvent.change(within(form).getByLabelText(/^Instructions/), {
+    target: { value: "Label and route the issue." },
+  });
+  fireEvent.click(within(form).getByRole("button", { name: "Save Rule" }));
+  await sent("PUT", "/api/clients/acme-github");
+  const body = net.seen.find((r) => r.method === "PUT")?.body as {
+    github: { automations: { name: string; event: string; action: string; agent: string }[] };
+  };
+  assert.deepEqual(
+    body.github.automations.map((a) => [a.name, a.event, a.action, a.agent]),
+    [
+      ["review-prs", "pull_request", "opened", "code-reviewer"],
+      ["triage-issues", "issues", "opened", "triage"],
+    ],
+  );
+});
+
+test("a rule the form cannot save says why before anything is sent", async () => {
+  const client = githubApp();
+  net = stubFetch(
+    offered({
+      "GET /api/connections/presets": () => [
+        {
+          id: "github",
+          name: "GitHub",
+          kind: "github_install",
+          scope: "workspace",
+          available: true,
+          connected: true,
+        },
+      ],
+      "GET /api/clients": () => ({ clients: [client], caps: { max: 10, max_per_surface: 10 } }),
+      "GET /api/agents": () => ({ agents: [{ spec: { name: "code-reviewer" } }] }),
+      "GET /api/projects": () => ({ projects: [] }),
+    }),
+  );
+  render(<Connections provider="github" canConnect canWrite />);
+  const dialog = await sheet("GitHub");
+  const rules = await within(dialog).findByRole("region", { name: "Start a session when" });
+  fireEvent.click(within(rules).getByRole("button", { name: "Add Rule" }));
+  const form = within(rules).getByRole("form", { name: "New rule" });
+  fireEvent.change(within(form).getByLabelText(/^Name/), { target: { value: "review-prs" } });
+  fireEvent.click(within(form).getByRole("button", { name: "Save Rule" }));
+  await within(form).findByText("A rule is already named review-prs.");
+  assert.equal(
+    net.seen.some((r) => r.method !== "GET"),
+    false,
+  );
 });

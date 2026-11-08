@@ -94,10 +94,11 @@ export function libraryScreens(call: Call): Screen[] {
       },
     },
     {
-      name: "customize-tool-servers",
+      name: "customize-add-mcp",
       path: "/customize/tools",
+      // The old Customize tab now opens Add MCP on Connections.
       act: async (page) => {
-        await heading(page, "Your tool servers");
+        await page.getByRole("dialog", { name: "Add MCP", exact: true }).waitFor();
       },
     },
     {

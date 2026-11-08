@@ -107,6 +107,9 @@ type projectView struct {
 	// through an entry for their subject or a role they hold, here or as
 	// an owner above. Everyone's entry and projects:govern name nobody.
 	Mine bool `json:"mine"`
+	// Visibility is how widely it is read by its own entries: private,
+	// shared or workspace (projects.VisibilityOf).
+	Visibility projects.Visibility `json:"visibility"`
 }
 
 // What a caller may do on a project, as a view lists it.
@@ -232,6 +235,7 @@ func (s *Server) projectView(f projectFacts, p projects.Project) projectView {
 		}
 	}
 	v.Access, v.Actions, v.Mine = f.access[p.Name], actionsOf(f, p), f.named[p.Name]
+	v.Visibility = projects.VisibilityOf(p)
 	// The chain is nearest first and ends at the workspace, which a path
 	// leaves out.
 	for i := len(chain) - 2; i >= 0; i-- {

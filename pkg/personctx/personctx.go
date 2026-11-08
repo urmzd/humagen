@@ -113,11 +113,11 @@ func (in Input) Check() error {
 		return errors.Join(ErrInvalid, err)
 	}
 	if len(in.ToolServers) > MaxToolServers {
-		return fmt.Errorf("%w: at most %d tool servers", ErrInvalid, MaxToolServers)
+		return fmt.Errorf("%w: at most %d MCPs", ErrInvalid, MaxToolServers)
 	}
 	raw, _ := json.Marshal(in.ToolServers)
 	if len(raw) > 48<<10 {
-		return fmt.Errorf("%w: tool servers exceed 48 KiB", ErrInvalid)
+		return fmt.Errorf("%w: MCPs exceed 48 KiB", ErrInvalid)
 	}
 	for i, t := range in.ToolServers {
 		if len(t.Tools) > 64 {
@@ -135,17 +135,17 @@ func (in Input) Check() error {
 			return fmt.Errorf("%w: tool_servers[%d]: a name is lower case letters, digits and dashes, at most 63", ErrInvalid, i)
 		}
 		if slices.ContainsFunc(in.ToolServers[:i], func(o ToolServer) bool { return o.Name == t.Name }) {
-			return fmt.Errorf("%w: tool server %q is named twice", ErrInvalid, t.Name)
+			return fmt.Errorf("%w: MCP %q is named twice", ErrInvalid, t.Name)
 		}
 		if u, err := url.Parse(t.URL); len(t.URL) > MaxURL || err != nil || u.Scheme != "https" || u.User != nil || u.Host == "" || t.Host() == "" {
-			return fmt.Errorf("%w: tool server %q: the address is an https URL with no user or password in it", ErrInvalid, t.Name)
+			return fmt.Errorf("%w: MCP %q: the address is an https URL with no user or password in it", ErrInvalid, t.Name)
 		}
 		if t.OAuth != "" && (!serverName.MatchString(t.OAuth) || t.Credential != "") {
 			return fmt.Errorf("%w: choose OAuth or a credential reference", ErrInvalid)
 		}
 		if t.Credential != "" {
 			if _, err := credref.Parse(t.Credential); err != nil {
-				return fmt.Errorf("%w: tool server %q: %w", ErrInvalid, t.Name, err)
+				return fmt.Errorf("%w: MCP %q: %w", ErrInvalid, t.Name, err)
 			}
 		}
 	}

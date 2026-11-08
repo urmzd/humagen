@@ -28,6 +28,7 @@ export function view(
   return {
     name,
     kind,
+    visibility: "workspace",
     ...(opts.title ? { title: opts.title } : {}),
     ...(opts.description ? { description: opts.description } : {}),
     ...(opts.parent ? { parent: opts.parent.name } : {}),

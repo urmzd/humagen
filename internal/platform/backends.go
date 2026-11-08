@@ -28,6 +28,7 @@ import (
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/connectionauth"
 	"github.com/urmzd/humagen/pkg/contextflags"
+	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/evals"
@@ -228,6 +229,8 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("knowledge", err)
 	p.CatalogStore, err = catalog.Open(perRequest)
 	keep("catalog", err)
+	p.Corpora, err = corpora.Open(perRequest)
+	keep("corpora", err)
 	p.SourceEvidence, err = knowledge.OpenEvidenceStore(perRequest)
 	keep("source citation evidence", err)
 	p.Evals, err = evals.Open(perRequest)

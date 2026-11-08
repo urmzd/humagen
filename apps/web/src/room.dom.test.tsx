@@ -3152,8 +3152,9 @@ test("recorded outcomes lead with recommendations and Redirect prepares human in
   assert.ok(within(message).getByText("Recommendation"));
   assert.ok(within(message).getByText("Keep the current term"));
   assert.ok(within(message).getByText("Confirm the owner"));
-  fireEvent.click(within(message).getByRole("button", { name: "More actions" }));
-  fireEvent.click(screen.getByRole("button", { name: "Redirect" }));
+  // One less frequent action sits in the row, with no menu.
+  assert.equal(within(message).queryByRole("button", { name: "More actions" }), null);
+  fireEvent.click(within(message).getByRole("button", { name: "Redirect" }));
   const composer = screen.getByLabelText("Message", {
     selector: "textarea",
   }) as HTMLTextAreaElement;
@@ -3285,12 +3286,9 @@ test("human and completed-agent fork actions share the Copy and Reply footer", a
   assert.ok(within(actions).getByRole("button", { name: defaultCopy.conversation.copyMessage }));
   fireEvent.click(within(actions).getByRole("button", { name: defaultCopy.forking.fromHere }));
   const agent = screen.getByRole("article", { name: "Answered by helper" });
-  fireEvent.click(within(agent).getByRole("button", { name: "More actions" }));
-  fireEvent.click(
-    within(screen.getByRole("dialog", { name: "More actions" })).getByRole("button", {
-      name: defaultCopy.forking.fromHere,
-    }),
-  );
+  // Fork sits in the answer's row, never behind More actions.
+  assert.equal(within(agent).queryByRole("button", { name: "More actions" }), null);
+  fireEvent.click(within(agent).getByRole("button", { name: defaultCopy.forking.fromHere }));
   assert.deepEqual(points, ["m-1", "r1"]);
 });
 

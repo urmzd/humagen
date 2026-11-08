@@ -93,7 +93,7 @@ func (p *Platform) discoverPersonToolsFor(ctx context.Context, tenant, person st
 	client := &http.Client{Transport: personBearer{secret: secret, next: oauthClient.Transport}, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "humagen", Version: "1"}, nil).Connect(ctx, &mcp.StreamableClientTransport{Endpoint: server.URL, HTTPClient: client, DisableStandaloneSSE: true, MaxRetries: -1, MaxEventSize: 1 << 20}, nil)
 	if err != nil {
-		return nil, errors.New("personal tool server could not be reached")
+		return nil, errors.New("your MCP could not be reached")
 	}
 	defer func() { _ = cs.Close() }()
 	out := []toolprovider.Tool{}

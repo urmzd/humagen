@@ -262,7 +262,7 @@ export type Route =
   | { page: "agents"; state?: string }
   | { page: "agent"; name: string | null; tab: AgentTab }
   | { page: "artifacts"; artifact?: string }
-  /** Your connections: the tools that act as you, and the credential you gave each. `provider` opens one to connect. */
+  /** Connections: apps and MCPs. `provider` opens one in the side sheet. */
   | { page: "connections"; provider?: string }
   | { page: "directory"; tab: DirectoryTab }
   | { page: "settings"; section: SettingsSection; permission?: string };
@@ -536,7 +536,7 @@ export function href(r: Route): string {
       if (r.section === "agents") return "/agents";
       return href({ page: "connections", provider: r.section === "tools" ? "other" : r.provider });
     case "connections":
-      return r.provider ? `/connections/${enc(r.provider)}` : "/connections";
+      return r.provider ? `/settings/connections/${enc(r.provider)}` : "/settings/connections";
     case "directory":
       return r.tab === "agents"
         ? "/agents"
@@ -544,7 +544,7 @@ export function href(r: Route): string {
           ? "/projects"
           : "/settings/people";
     case "settings": {
-      if (r.section === "connections") return "/connections";
+      if (r.section === "connections") return "/settings/connections";
       const base = `/settings/${r.section}`;
       return r.section === "access" && r.permission
         ? `${base}?permission=${enc(r.permission)}`
@@ -929,6 +929,8 @@ function read(pathname: string, search: string): Route {
       return { page: "directory", tab: "people" };
     case "settings":
       if (a === "people") return { page: "directory", tab: "people" };
+      // Connections is a section of your settings, with a path of its own.
+      if (a === "connections") return { page: "connections", provider: b };
       if (a === "health") return { page: "monitor", tab: "health" };
       if (a === "audit") return { page: "audit" };
       if (a === "usage") return read("/operations/usage", search);

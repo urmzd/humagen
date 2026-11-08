@@ -356,3 +356,17 @@ test("models are chosen per agent: old shared-chain addresses land on the agents
   assert.deepEqual(parse("/agent-models"), { page: "agents" });
   assert.deepEqual(parse("/settings/models"), { page: "agents" });
 });
+
+test("Connections is a section of your settings with an address of its own; old links still open it", () => {
+  assert.equal(href({ page: "connections" }), "/settings/connections");
+  assert.equal(href({ page: "connections", provider: "notion" }), "/settings/connections/notion");
+  for (const path of ["/settings/connections", "/connections"]) {
+    const route = parse(path);
+    assert.equal(route.page, "connections", path);
+    assert.equal("provider" in route ? route.provider : undefined, undefined, path);
+  }
+  assert.deepEqual(parse("/settings/connections/notion"), {
+    page: "connections",
+    provider: "notion",
+  });
+});

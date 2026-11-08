@@ -79,8 +79,7 @@ type ProjectUpdate struct {
 	Kinds *[]projects.KindSpec `json:"kinds,omitempty"`
 	// AgentPosts is what becomes of what an agent scheduled here posts:
 	// publish, review, or "" for the kind's default.
-	AgentPosts     *string `json:"agent_posts,omitempty"`
-	ApproveReviews *bool   `json:"approve_reviews,omitempty"`
+	AgentPosts *string `json:"agent_posts,omitempty"`
 }
 
 // HasProject reports whether a tenant has a project by this exact name, as it
@@ -137,9 +136,6 @@ func (p *Platform) UpdateProject(_ context.Context, tenant, name string, w proje
 		}
 		if in.Kinds != nil {
 			pr.Kinds = slices.Clone(*in.Kinds)
-		}
-		if in.ApproveReviews != nil {
-			pr.ApproveReviews = *in.ApproveReviews
 		}
 		if in.AgentPosts != nil {
 			pr.AgentPosts = *in.AgentPosts
