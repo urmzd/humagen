@@ -481,7 +481,7 @@ func TestTheEnvironmentSwitchesAutomaticReview(t *testing.T) {
 		if err != nil || len(defaults) != 1 {
 			t.Fatalf("defaults = %v, %v", defaults, err)
 		}
-		return defaults[0].Client.GitHub.AutoReview
+		return defaults[0].GitHub.AutoReview
 	}
 	if a := read(nil); a != nil || !a.Reviews("acme/site") {
 		t.Fatalf("unset: %+v", a)
