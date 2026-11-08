@@ -682,6 +682,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"EvalRun": {typ: evals.Run{}}, "EvalSuiteView": {typ: suiteView{}, written: true},
 		"BigQuerySetupInput": {typ: platform.BigQuerySetupInput{}, written: true}, "BigQuerySetupCredential": {typ: platform.BigQuerySetupCredential{}, written: true},
 		"BigQuerySetupView": {typ: platform.BigQuerySetupView{}}, "BigQueryADCScope": {typ: platform.BigQueryADCScope{}},
+		"SnowflakeSetupInput": {typ: platform.SnowflakeSetupInput{}, written: true}, "CatalogLoginInput": {typ: platform.CatalogLoginInput{}, written: true},
 		"CatalogColumn": {typ: catalog.Column{}}, "CatalogStats": {typ: catalog.Stats{}}, "CatalogEntry": {typ: catalog.Entry{}}, "CatalogMark": {typ: catalog.Mark{}},
 		"CatalogConnector": {typ: catalog.Connector{}}, "CatalogConnectorView": {typ: platform.CatalogConnectorView{}}, "CatalogPage": {typ: platform.CatalogPage{}},
 		"KnowledgeVariant": {typ: knowledge.Variant{}}, "KnowledgeSource": {typ: knowledge.Source{}},
@@ -1230,6 +1231,21 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/me/credentials", "/api/me/credentials", "", http.StatusOK)
 	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNoContent)
 	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNotFound)
+
+	// A Snowflake warehouse holds no credential: each person keeps their own
+	// login to it, and a value never comes back out.
+	const login = "/api/catalog/connectors/{name}/login"
+	c.call(ana, "POST", "/api/catalog/connectors/snowflake", "/api/catalog/connectors/snowflake", `{"name":"finance","account":"acme-test","database":"ANALYTICS","warehouse":"READ_WH"}`, http.StatusCreated)
+	c.call(ana, "POST", "/api/catalog/connectors/snowflake", "/api/catalog/connectors/snowflake", `{"name":"finance","account":"acme-test","database":"ANALYTICS","warehouse":"READ_WH"}`, http.StatusConflict)
+	c.call(ana, "POST", "/api/catalog/connectors/snowflake", "/api/catalog/connectors/snowflake", `{"name":"bad","account":"acme-test","database":"ANALYTICS; DROP","warehouse":"READ_WH"}`, http.StatusBadRequest)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{"ref":"op://People/ana/snowflake"}`, http.StatusNoContent)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{"value":"pat-ana-contract"}`, http.StatusNoContent)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{"ref":"op://People/ben/snowflake"}`, http.StatusBadRequest)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{}`, http.StatusBadRequest)
+	if catalogView := c.call(ana, "GET", "/api/catalog", "/api/catalog", "", http.StatusOK); strings.Contains(string(catalogView.raw), "pat-ana-contract") || !strings.Contains(string(catalogView.raw), `"login":"connected"`) {
+		t.Errorf("the catalog after ana's login = %s", catalogView.raw)
+	}
+	c.call(ana, "DELETE", login, "/api/catalog/connectors/finance/login", "", http.StatusNoContent)
 
 	// A person's own context: theirs to read and narrow, a reference under
 	// their own start, the version they read.
@@ -2632,6 +2648,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}/limits": `{"period":"day","max_runs":1}`, "/api/projects/{name}/announcements": `{"subject":"Hi","text":"Hi."}`,
 		"/api/memory/files/proposals/{id}": `{"scope":"project","decision":"discard"}`,
 		"/api/corpora/{name}":              `{}`, "/api/corpora/{name}/members": `{"kind":"source","name":"handbook"}`,
+		"/api/catalog/connectors/{name}/login": `{"ref":"op://People/svc-globex/x"}`,
 	}
 	for _, op := range c.spec.ops {
 		params := pathParams(op.path)

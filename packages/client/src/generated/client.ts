@@ -35,6 +35,7 @@ import type {
   CallPolicy,
   CallPolicyInput,
   CatalogConnector,
+  CatalogLoginInput,
   CatalogPage,
   ChangeAlertStateBody,
   ChannelInput,
@@ -219,6 +220,7 @@ import type {
   Settings,
   SkillUsage,
   SnoozeInboxMessageBody,
+  SnowflakeSetupInput,
   SourceDependencies,
   SourceExcerpt,
   SourceLinkResource,
@@ -2401,6 +2403,71 @@ path. Seeing an entry never grants reading the object.
     let path = "/api/catalog/connectors/{name}/publish";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<CatalogConnector>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** It holds no credential. Its owner's own login crawls the schema (tables,
+views, columns and comments, never rows); every query runs with the
+reader's own login, so Snowflake's grants, row access and masking apply.
+Each person gives their login with PUT /api/catalog/connectors/{name}/login.
+ */
+  async createSnowflakeConnector(body: SnowflakeSetupInput, options?: RequestOptions): Promise<CatalogConnector> {
+    const path = "/api/catalog/connectors/snowflake";
+    return this.request<CatalogConnector>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async createSnowflakeConnectorRaw(body: SnowflakeSetupInput, options?: RequestOptions): Promise<ApiResponse<CatalogConnector>> {
+    const path = "/api/catalog/connectors/snowflake";
+    return this.rawRequest<CatalogConnector>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Your login is yours alone: only queries you ask for use it. Give a
+reference under a start the workspace lists, or the token itself where
+the workspace lets people keep values. Warehouses signed in with OAuth,
+such as BigQuery, use your connection instead and refuse this (400).
+ */
+  async putCatalogLogin(name: string, body: CatalogLoginInput, options?: RequestOptions): Promise<void> {
+    let path = "/api/catalog/connectors/{name}/login";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    await this.request<void>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async putCatalogLoginRaw(name: string, body: CatalogLoginInput, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/catalog/connectors/{name}/login";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<void>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Forget your own login to a warehouse */
+  async deleteCatalogLogin(name: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/catalog/connectors/{name}/login";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteCatalogLoginRaw(name: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/catalog/connectors/{name}/login";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<void>("DELETE", path, {
       ...options,
     });
   }

@@ -3450,6 +3450,8 @@ export interface Corpus {
   owner: string;
   readers: CorpusReader[];
   members: CorpusMember[];
+  /** The agents granted it that the reader can see. A run of one reads only as the person it acts for, who must be a reader too. */
+  agents: string[];
   /** Whether its graph links to other shared corpora. Isolated by default. */
   links: "isolated" | "shared";
   created_at: string;
@@ -3465,6 +3467,7 @@ export interface CorpusCreate {
   description?: string;
   readers?: CorpusReader[];
   members?: CorpusMemberRef[];
+  agents?: string[];
   links?: "isolated" | "shared";
 }
 
@@ -3474,6 +3477,8 @@ export interface CorpusChange {
   readers?: CorpusReader[];
   members?: CorpusMemberRef[];
   links?: "isolated" | "shared";
+  /** Replaces the agents granted it; agents the owner can no longer see are kept. */
+  agents?: string[];
   /** Hands the corpus to another person. */
   owner?: string;
   version?: number;
@@ -3635,7 +3640,33 @@ export interface CatalogConnector {
   generation: number;
 }
 
-export type CatalogConnectorView = CatalogConnector & { capabilities: ("catalog" | "live")[]; mine: boolean; last_error?: string };
+export interface SnowflakeSetupInput {
+  name: string;
+  /** The account identifier, such as myorg-myaccount. */
+  account: string;
+  database: string;
+  warehouse: string;
+  /** The role the owner's crawl uses; empty is their default role. Queries use each reader's own default role. */
+  role?: string;
+  /** How logins are given. Defaults to OAUTH. */
+  token_type?: "OAUTH" | "PROGRAMMATIC_ACCESS_TOKEN";
+  /** Defaults to 200. */
+  max_rows?: number;
+  /** Defaults to 60. */
+  timeout_seconds?: number;
+  /** How often the schema is crawled again. Defaults to 24. */
+  refresh_hours?: number;
+}
+
+/** Exactly one of ref and value. */
+export interface CatalogLoginInput {
+  /** A reference to your token, under a start the workspace lists. */
+  ref?: string;
+  /** Your token, where the workspace lets people keep values. */
+  value?: string;
+}
+
+export type CatalogConnectorView = CatalogConnector & { capabilities: ("catalog" | "live")[]; mine: boolean; last_error?: string; login?: "connected" | "missing" | "unavailable" };
 
 export interface CatalogPage {
   connectors: CatalogConnectorView[];
