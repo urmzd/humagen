@@ -326,7 +326,7 @@ channels):
   the data can't be used here and suggests a direct message, or a private
   channel whose members may all read it.
 - A Slack conversation's audience is what the Slack app last reported with a
-  message (`SurfaceAudience`: kind, members as people, unmapped members),
+  message (`ReportedAudience`: kind, members as people, unmapped members),
   read through the session API (`Platform.audienceSource`).
 - A direct answer marks its run private, so nothing it read goes into shared
   agent memory or out to another place.

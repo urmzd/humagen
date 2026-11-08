@@ -43,23 +43,23 @@ const (
 	AudienceGitHub = "github"
 )
 
-// SurfaceAudience is who a Slack conversation reaches, as its app last
+// ReportedAudience is who a Slack conversation reaches, as its app last
 // reported it with a message: its kind (public, private, group or
 // direct), its members as people, and how many members the workspace could
 // not map to a person.
-type SurfaceAudience struct {
+type ReportedAudience struct {
 	Kind     string
 	Members  []string
 	Unmapped int
 	At       time.Time
 }
 
-// surfaceAudience reads a surfaced session's latest reported audience
+// reportedAudience reads a surfaced session's latest reported audience
 // through audienceSource, which the session API sets. Not reported reads as
 // a public channel.
-func (p *Platform) surfaceAudience(tenant, session string) (SurfaceAudience, bool) {
+func (p *Platform) reportedAudience(tenant, session string) (ReportedAudience, bool) {
 	if p.audienceSource == nil {
-		return SurfaceAudience{}, false
+		return ReportedAudience{}, false
 	}
 	return p.audienceSource(tenant, session)
 }
@@ -108,7 +108,7 @@ func (p *Platform) audienceOf(req runtime.Request) (corpusAudience, error) {
 	if directMessage(th.Surface.Channel) {
 		return p.directAudience(req.Tenant, person), nil
 	}
-	au, ok := p.surfaceAudience(req.Tenant, th.ID)
+	au, ok := p.reportedAudience(req.Tenant, th.ID)
 	if !ok {
 		return public, nil
 	}
