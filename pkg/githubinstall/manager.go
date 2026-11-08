@@ -56,6 +56,7 @@ type Installation struct {
 type pending struct {
 	Hash    string        `json:"hash"`
 	Binding string        `json:"binding"`
+	Epoch   string        `json:"epoch,omitempty"`
 	Expires time.Time     `json:"expires"`
 	Claimed bool          `json:"claimed"`
 	Result  *Installation `json:"result,omitempty"`
@@ -155,12 +156,16 @@ func (m *Manager) Begin(ctx context.Context, tenant, person string) (connectiona
 	if !identity(tenant, person) {
 		return connectionauth.Authorization{}, connectionauth.ErrInvalid
 	}
+	epoch, err := m.epoch(ctx, tenant)
+	if err != nil {
+		return connectionauth.Authorization{}, err
+	}
 	random := make([]byte, 32)
 	if _, err := rand.Read(random); err != nil {
 		return connectionauth.Authorization{}, err
 	}
 	nonce := base64.RawURLEncoding.EncodeToString(random)
-	p := pending{Hash: hash(nonce), Binding: m.binding, Expires: m.now().UTC().Add(lifetime)}
+	p := pending{Hash: hash(nonce), Binding: m.binding, Epoch: string(epoch.Value), Expires: m.now().UTC().Add(lifetime)}
 	raw, err := json.Marshal(p)
 	if err != nil {
 		return connectionauth.Authorization{}, err
@@ -193,14 +198,26 @@ func (m *Manager) Complete(ctx context.Context, tenant, person, nonce, code, ins
 	if json.Unmarshal(rec.Value, &p) != nil || p.Hash != hash(nonce) || p.Binding != m.binding || !m.now().Before(p.Expires) {
 		return Installation{}, connectionauth.ErrInvalid
 	}
+	epoch, err := m.store.Lookup(ctx, namespace, tenant, "epoch")
+	if err != nil || p.Epoch == "" || p.Epoch != string(epoch.Value) {
+		return Installation{}, connectionauth.ErrInvalid
+	}
 	if p.Result != nil {
-		if p.Result.ID != installationID {
+		owner, receiptErr := m.Receipt(ctx, tenant, m.cfg.AppID, installationID)
+		if p.Result.ID != installationID || receiptErr != nil || owner.Person != person || owner.Generation != p.Hash {
 			return Installation{}, connectionauth.ErrInvalid
 		}
 		return *p.Result, nil
 	}
 	if p.Claimed {
 		return Installation{}, connectionauth.ErrBusy
+	}
+	ownerKey := receiptKey(m.cfg.AppID, installationID)
+	previous, err := m.store.Lookup(ctx, namespace, tenant, ownerKey)
+	if errors.Is(err, state.ErrNotFound) {
+		previous.Version = state.Missing
+	} else if err != nil {
+		return Installation{}, err
 	}
 	p.Claimed = true
 	raw, _ := json.Marshal(p)
@@ -221,7 +238,12 @@ func (m *Manager) Complete(ctx context.Context, tenant, person, nonce, code, ins
 	}
 	p.Result = &verified
 	raw, _ = json.Marshal(p)
-	if err := m.store.Write(ctx, namespace, state.PutAt(tenant, rec.Key, raw, rec.Version+1)); err != nil {
+	receipt, _ := json.Marshal(installationReceipt{Person: person, Generation: p.Hash, Binding: m.binding, Epoch: p.Epoch, Installation: verified})
+	if err := m.store.Write(ctx, namespace,
+		state.PutAt(tenant, rec.Key, raw, rec.Version+1),
+		state.PutAt(tenant, ownerKey, receipt, previous.Version),
+		state.PutAt(tenant, "epoch", epoch.Value, epoch.Version),
+	); err != nil {
 		if errors.Is(err, state.ErrConflict) {
 			return Installation{}, connectionauth.ErrInvalid
 		}

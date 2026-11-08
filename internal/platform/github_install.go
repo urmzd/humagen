@@ -59,7 +59,12 @@ func (p *Platform) CompleteGitHubInstall(ctx context.Context, who auth.Principal
 	return err
 }
 
-func (p *Platform) completeGitHubInstall(ctx context.Context, who auth.Principal, nonce, code, installationID string) error {
+func (p *Platform) completeGitHubInstall(ctx context.Context, who auth.Principal, nonce, code, installationID string) (err error) {
+	defer func() {
+		if err == nil {
+			_ = p.ResolveConnectionAuthFailure(ctx, who.Tenant, who.Subject, "github")
+		}
+	}()
 	verified, err := p.GitHubInstall.Complete(ctx, who.Tenant, who.Subject, nonce, code, installationID)
 	if err != nil {
 		return err
@@ -113,6 +118,9 @@ func (p *Platform) DisconnectGitHubInstall(ctx context.Context, who auth.Princip
 
 func (p *Platform) disableGitHubInstall(ctx context.Context, who auth.Principal) error {
 	if p.GitHubInstall != nil {
+		if err := p.GitHubInstall.Revoke(ctx, who.Tenant); err != nil {
+			return err
+		}
 		if err := p.GitHubInstall.Cancel(ctx, who.Tenant, who.Subject); err != nil {
 			return err
 		}
