@@ -373,7 +373,7 @@ export function ProjectsPage({
       )}
       {cards === null ? (
         <output data-testid="skeleton" className={`aui-skeleton-delay ${grid}`}>
-          <span className="sr-only">Loading</span>
+          <span className="sr-only">{words.loading}</span>
           {LOADING_CARDS.map((k) => (
             <span key={k} aria-hidden className="aui-skeleton block h-32 rounded-aui-lg" />
           ))}

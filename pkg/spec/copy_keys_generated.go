@@ -1631,6 +1631,7 @@ var copyKeyList = []string{
 	"projects.knowledge.stale",
 	"projects.lead",
 	"projects.limits",
+	"projects.loading",
 	"projects.managed",
 	"projects.missingHint",
 	"projects.moreTasks",
