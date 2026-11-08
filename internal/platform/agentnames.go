@@ -465,6 +465,9 @@ func (s *Seer) Revisions(revs []wire.Revision) []wire.Revision {
 // wrote none, unless the spec written names approvers or self_approval of
 // its own. The spec as kept is validated again.
 func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *wire.Revision, spec wire.AgentSpec) (wire.AgentSpec, error) {
+	// A chain read back with a provider name since renamed is written with
+	// the new one.
+	spec = p.readChain(who.Tenant, spec)
 	// An editor can retain unread references already present, but cannot probe
 	// or newly grant a source they cannot read.
 	sources := slices.Clone(spec.Sources)
@@ -547,12 +550,18 @@ func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *w
 // (resolveModel). Fiber's offline counts only when the platform is not held
 // to configured models (Config.ConfiguredModelsOnly).
 func (p *Platform) agentProviders(tenant string) []string {
+	return p.providersIn(p.Settings(tenant))
+}
+
+// providersIn is agentProviders for a workspace whose settings are s, so
+// reading the settings themselves can ask it.
+func (p *Platform) providersIn(s Settings) []string {
 	out := append([]string{PolicyProvider}, p.cfg.Ext.ProviderNames()...)
 	out = append(out, ModelProviderKinds()...)
 	if !p.cfg.ConfiguredModelsOnly {
 		out = append(out, wire.KnownProviders()...)
 	}
-	for _, m := range p.Settings(tenant).ModelProviders {
+	for _, m := range s.ModelProviders {
 		out = append(out, m.Name)
 	}
 	return out
