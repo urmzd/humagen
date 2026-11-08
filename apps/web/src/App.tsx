@@ -1462,10 +1462,10 @@ function Console({
                       provider={route.provider}
                       canConnect={can(CONNECT_PERMISSION)}
                       canWrite={can("clients:write")}
-                      canKnowledgeWrite={can("knowledge:write")}
                       onOpen={(provider) =>
                         go({ page: "connections", provider }, { replace: true })
                       }
+                      onNavigate={go}
                     />
                   )}
                   {route.page === "settings" && (
