@@ -10480,6 +10480,11 @@ components:
           description: When a call moves to the next fallback. Empty means any error another model could get past. Needs at least one fallback.
           type: array
           items: {$ref: "#/components/schemas/FallbackCondition"}
+        effort:
+          description: "The reasoning effort the agent's own first model is asked for, such as `low`, `medium` or `high`. Absent leaves the model's default. It is sent only when that model takes it: a run moved to a fallback, or on a model that takes no such effort, answers at the model's default."
+          type: string
+          maxLength: 16
+          pattern: "^[a-z]+$"
         system_prompt: {type: string}
         tools:
           type: array

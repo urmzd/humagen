@@ -38,8 +38,10 @@ func (p *Platform) evaluateCandidate(ctx context.Context, tenant string, spec wi
 			return "", err
 		}
 		def.Spec.Sources = sources
+		def.Spec.Effort = spec.Effort
 		// The candidate runs on its model as a run would: a policy in place,
-		// and a workspace provider by the name the runtime resolves.
+		// a workspace provider by the name the runtime resolves, and its
+		// effort where the model takes it.
 		resolved, err := p.resolveModel(runtime.Request{Tenant: tenant, Definition: def})
 		if err != nil {
 			return "", err

@@ -260,6 +260,25 @@ function ModelTab({
           editable={editable}
           onChange={writeChain}
         />
+        <Label
+          text="Reasoning effort"
+          hint="How hard the first model thinks. Sent only when that model takes it; a fallback answers at its default."
+        >
+          <select
+            className={`${field} sm:w-56`}
+            aria-label="Reasoning effort"
+            value={spec.effort ?? ""}
+            disabled={!editable}
+            onChange={(e) => onChange({ effort: e.target.value || undefined })}
+          >
+            <option value="">Model's default</option>
+            {[...new Set([...EFFORTS, ...(spec.effort ? [spec.effort] : [])])].map((e) => (
+              <option key={e} value={e}>
+                {e.charAt(0).toUpperCase() + e.slice(1)}
+              </option>
+            ))}
+          </select>
+        </Label>
       </Section>
       <p className="text-aui-xs text-aui-muted">
         Each call is billed at the price of the model that answered it. Temperature, token limits
@@ -269,6 +288,9 @@ function ModelTab({
     </div>
   );
 }
+
+/** The reasoning efforts an agent's editor offers; a saved one outside them stays listed. */
+const EFFORTS = ["low", "medium", "high"];
 
 /** What is wrong with an agent's models, before the server says so. */
 export function policyProblem(spec: AgentSpec, policies: ModelPolicy[] = []): string | null {

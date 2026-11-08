@@ -10,6 +10,8 @@ import (
 
 	"github.com/urmzd/orchagent/flow/runtime"
 	"github.com/urmzd/orchagent/flow/turn/native"
+	"github.com/urmzd/saige/agent/provider/catalog"
+	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/humagen/internal/wire"
 )
@@ -163,6 +165,7 @@ func (p *Platform) policyUsers(ctx context.Context, tenant, name string) []strin
 // that workspace's key (resolveProvider). A declared provider keeps its name.
 func (p *Platform) resolveModel(req runtime.Request) (runtime.Request, error) {
 	spec := req.Definition.Spec
+	primary := native.ModelRef{Provider: spec.Provider, Model: spec.Model}
 	if spec.Provider == PolicyProvider {
 		m, ok := policyIn(p.Settings(req.Tenant).ModelPolicies, spec.Model)
 		if !ok {
@@ -198,6 +201,12 @@ func (p *Platform) resolveModel(req runtime.Request) (runtime.Request, error) {
 		if len(spec.Fallbacks) == 0 {
 			spec.Fallbacks, spec.FallbackOn = nil, nil
 		}
+	}
+	// The agent's effort is for its own primary: a run moved to another
+	// model, or on one that takes no such effort, runs at the model's
+	// default rather than fail before its first call.
+	if spec.Effort != "" && (spec.Provider != primary.Provider || spec.Model != primary.Model || !p.takesEffort(req.Tenant, spec.Provider, spec.Model, spec.Effort)) {
+		spec.Effort = ""
 	}
 	spec.Provider = p.runName(req.Tenant, spec.Provider)
 	if len(spec.Fallbacks) > 0 {
@@ -253,4 +262,37 @@ func (p *Platform) ModelProviderChoices(tenant string) []ModelProviderChoice {
 		}
 	}
 	return out
+}
+
+// providerKind is the kind of the provider an agent names in tenant's
+// workspace: a declared provider's, a workspace provider's, or for the
+// built-in kinds the name itself.
+func (p *Platform) providerKind(tenant, name string) string {
+	if kind := p.cfg.DeclaredKinds[name]; kind != "" {
+		return kind
+	}
+	if m, ok := p.workspaceProvider(tenant, name); ok {
+		return m.Kind
+	}
+	return name
+}
+
+// takesEffort reports whether model, behind the provider named provider,
+// takes reasoning effort effort, as the model catalog the runners build
+// with says.
+func (p *Platform) takesEffort(tenant, provider, model, effort string) bool {
+	caps, ok := catalog.Lookup(saigetypes.ProviderName(p.providerKind(tenant, provider)), model)
+	return ok && caps.Supports(saigetypes.CapReasoningEffort) && slices.Contains(caps.ReasoningEfforts, effort)
+}
+
+// withEffort puts the pinned revision's reasoning effort on the request's
+// copy of its spec: saige's definitions carry none, so the platform keeps it
+// with the revision (wire.AgentSpec.Effort) and resolveModel decides whether
+// it is sent. A revision that cannot be read runs at the model's default.
+func (p *Platform) withEffort(req runtime.Request) runtime.Request {
+	rev, err := p.Catalog().Get(context.Background(), req.Tenant, req.Definition.Name, wire.RevOf(req.Definition.Version))
+	if err == nil {
+		req.Definition.Spec.Effort = rev.Spec.Effort
+	}
+	return req
 }

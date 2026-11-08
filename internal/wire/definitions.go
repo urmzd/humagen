@@ -117,6 +117,7 @@ func RevisionOf(rec definition.Record, rev int) (Revision, error) {
 	if name := d.Metadata["humagen_package"]; name != "" {
 		spec.Package = &PackageBase{Name: name, Version: d.Metadata["humagen_package_version"]}
 	}
+	spec.Effort = d.Metadata["humagen_effort"]
 	if d.Model != nil {
 		spec.Provider, spec.Model, _ = strings.Cut(d.Model.Use, "/")
 		for _, f := range d.Model.Fallback {

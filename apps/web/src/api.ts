@@ -165,6 +165,8 @@ export interface AgentSpec {
   fallbacks?: ModelRef[];
   /** Which errors move a call to the next fallback. Absent means any recoverable error. */
   fallback_on?: string[];
+  /** How hard the first model thinks, such as low, medium or high. Sent only where that model takes it. */
+  effort?: string;
   system_prompt: string;
   tools?: string[];
   sources?: { name: string; uri: string }[];

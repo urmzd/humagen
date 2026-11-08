@@ -669,6 +669,8 @@ most 4, none repeating the primary or each other.
   fallbacks?: ModelRef[];
   /** When a call moves to the next fallback. Empty means any error another model could get past. Needs at least one fallback. */
   fallback_on?: FallbackCondition[];
+  /** The reasoning effort the agent's own first model is asked for, such as `low`, `medium` or `high`. Absent leaves the model's default. It is sent only when that model takes it: a run moved to a fallback, or on a model that takes no such effort, answers at the model's default. */
+  effort?: string;
   system_prompt: string;
   tools?: string[];
   sources?: AgentSource[];
