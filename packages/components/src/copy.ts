@@ -2780,7 +2780,7 @@ export const defaultCopy = {
   voiceSettings: {
     /** The settings section and its nav entry. */
     title: "Voice",
-    lede: "The service that hears people and speaks agents' answers. With one set up, people can talk with an agent in voice mode, and the microphone uses it too. Without one, the microphone uses the browser's own dictation.",
+    lede: "The service that hears people and speaks agents' answers. With one set up, a voice clip sent in Slack is heard and answered out loud as well as in writing, and the console's microphone uses it too. Without one, the microphone uses the browser's own dictation.",
     /** The kinds, by name. */
     kinds: { groq: "Groq", openai: "OpenAI" } as Record<string, string>,
     off: "Not set up",
