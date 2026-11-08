@@ -224,6 +224,11 @@ func (sp *PlatformSpec) unreadAgentFields() []string {
 			}
 		}
 	}
+	for i, a := range sp.Agents {
+		for _, n := range a.retired {
+			notes = append(notes, fmt.Sprintf("agents[%d].spec.%s", i, n))
+		}
+	}
 	return notes
 }
 
