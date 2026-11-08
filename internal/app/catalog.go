@@ -93,6 +93,7 @@ func openConnectors(ctx context.Context, o Options, cfg spec.Config) ([]platform
 			}
 			cc.Crawler, _ = impl.(catalog.Crawler)
 			cc.Querier, _ = impl.(catalog.Querier)
+			cc.Reader, _ = impl.(catalog.ReaderQuerier)
 			if cc.Crawler == nil && cc.Querier == nil {
 				return nil, fmt.Errorf("%s: kind %q can neither list a catalog nor answer a query", where, c.Kind)
 			}

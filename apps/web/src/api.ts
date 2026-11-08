@@ -47,6 +47,7 @@ import type {
   SessionPostInput,
   SkillUsage,
   SourceDependencies,
+  ThreadFollowup,
   ThreadShare,
   VoiceSettings,
   VoiceTranscript,
@@ -93,6 +94,7 @@ export type {
   ProjectUpdate,
   ProjectView,
   SourceDependencies,
+  ThreadFollowup,
 } from "../../../packages/client/src/generated/types.ts";
 
 /** What the caller may do on a project: their permission and their role together. */
@@ -165,6 +167,8 @@ export interface AgentSpec {
   fallbacks?: ModelRef[];
   /** Which errors move a call to the next fallback. Absent means any recoverable error. */
   fallback_on?: string[];
+  /** How hard the first model thinks, such as low, medium or high. Sent only where that model takes it. */
+  effort?: string;
   system_prompt: string;
   tools?: string[];
   sources?: { name: string; uri: string }[];
@@ -179,20 +183,6 @@ export interface AgentSpec {
   tagged_only?: boolean;
   /** When set, the only people who may answer a question the agent asks. */
   answerers?: string[];
-  /** What a person may pick for one message in place of the agent's model and effort. Absent offers nothing. */
-  choices?: AgentChoices;
-}
-
-/** The models (`provider/model`) and reasoning efforts an agent offers per message. */
-export interface AgentChoices {
-  models?: string[];
-  efforts?: string[];
-}
-
-/** One message's model and effort, used where the agents it starts offer them. */
-export interface MessagePick {
-  model?: string;
-  effort?: string;
 }
 
 export interface Revision {
@@ -471,22 +461,67 @@ export interface Marks {
   since?: string;
 }
 
+/** A provider kind an administrator may set up. */
+export type ModelProviderKind = "anthropic" | "google" | "openai";
+
+/** A provider agents may run on: the deployment's, or one the workspace set up. */
+export interface ModelProviderChoice {
+  name: string;
+  declared: boolean;
+  kind?: ModelProviderKind;
+  source?: "deployment" | "workspace";
+}
+
+/** Where a google provider's calls go on Vertex AI. */
+export interface VertexLocation {
+  project: string;
+  location: string;
+}
+
+/** A model provider the workspace's administrators set up. Its key is never returned. */
+export interface ModelProvider {
+  name: string;
+  kind: ModelProviderKind;
+  base_url?: string;
+  vertex?: VertexLocation;
+  /** The key's env:NAME reference, when it is one. */
+  key_ref?: string;
+  /** A value is kept for it in the secret store. */
+  key_stored?: boolean;
+  added_by?: string;
+  added_at?: string;
+}
+
+/** A provider as an administrator writes it: a key as a value or a reference, or neither to keep it. */
+export interface ModelProviderInput {
+  kind: ModelProviderKind;
+  base_url?: string;
+  vertex?: VertexLocation;
+  key_ref?: string;
+  key?: string;
+}
+
+export interface ModelProviderSetup {
+  providers: ModelProviderChoice[];
+  kinds: ModelProviderKind[];
+  /** The workspace's own providers, for someone who may manage them. */
+  workspace?: ModelProvider[];
+}
+
+/** A provider's answer to a check, as a health component. */
+export interface ModelProviderCheck {
+  id: string;
+  name: string;
+  status: "operational" | "degraded" | "down";
+  detail?: string;
+  latency_ms: number;
+}
+
 /** One agent's answer to whether it would take a message that names no agent. */
 export interface JoinDecision {
   agent: string;
   join: boolean;
   reason: string;
-}
-
-/**
- * The dynamic router: when on, every available agent is asked whether it
- * should take a message that names no agent. The provider is one the
- * deployment declares; its key never lives here.
- */
-export interface RouterSettings {
-  enabled: boolean;
-  provider?: string;
-  model?: string;
 }
 
 /**
@@ -502,8 +537,8 @@ export interface Settings {
   workspace_name?: string;
   /** Named model lists agents run on with provider "policy". */
   model_policies?: ModelPolicy[];
-  /** Whether agents decide for themselves to take a message that names no agent. */
-  router: RouterSettings;
+  /** The model providers the workspace's administrators set up, with no key. */
+  model_providers?: ModelProvider[];
   /** Set once by the server when an admin first saves settings. */
   setup_at?: string;
   setup_by?: string;
@@ -1046,10 +1081,15 @@ export const api = {
     call<AgentSetup>("POST", `/api/agent-setups/${encodeURIComponent(name)}/test`, { text }),
   activateAgentSetup: (name: string) =>
     call<AgentSetup>("POST", `/api/agent-setups/${encodeURIComponent(name)}/activate`),
-  modelProviders: () =>
-    call<{ providers: { name: string; declared: boolean }[] }>("GET", "/api/model-providers").then(
-      (response) => response.providers,
-    ),
+  modelProviders: () => api.modelProviderSetup().then((response) => response.providers),
+  /** What agents may run on, the kinds an admin may add, and, for an admin, the workspace's own. */
+  modelProviderSetup: () => call<ModelProviderSetup>("GET", "/api/model-providers"),
+  setModelProvider: (name: string, input: ModelProviderInput) =>
+    call<ModelProvider>("PUT", `/api/model-providers/${encodeURIComponent(name)}`, input),
+  deleteModelProvider: (name: string) =>
+    call<void>("DELETE", `/api/model-providers/${encodeURIComponent(name)}`),
+  checkModelProvider: (name: string) =>
+    call<ModelProviderCheck>("POST", `/api/model-providers/${encodeURIComponent(name)}/check`),
   agentList: () =>
     call<{
       agents: Revision[];
@@ -1822,6 +1862,8 @@ export interface ThreadMessage {
   text: string;
   mentions: ThreadMention[];
   answers?: { run: string; question: string };
+  /** Set on a message posted while agents worked: queued, replacing that work, or stopping it. */
+  followup?: ThreadFollowup;
   via: string;
   surface_id?: string;
   at: string;
@@ -1898,7 +1940,8 @@ export type ThreadRule =
   | "post_only"
   | "routed"
   | "untagged"
-  | "default";
+  | "default"
+  | "followup";
 
 /** What posting a message did. */
 export interface ThreadPosted {
@@ -2038,25 +2081,21 @@ export const coworking = {
    * the people in it alone until it is shared. A message starts a run only
    * for the agents it tags.
    */
-  start: (
-    t: {
-      project: string;
-      channel: string;
-      text: string;
-      title?: string;
-      visibility?: "shared" | "private";
-      agents?: string[];
-      mode?: "join" | "all";
-    } & MessagePick,
-  ) =>
+  start: (t: {
+    project: string;
+    channel: string;
+    text: string;
+    title?: string;
+    visibility?: "shared" | "private";
+    agents?: string[];
+    mode?: "join" | "all";
+  }) =>
     t.visibility === "shared"
       ? call<ThreadPosted>("POST", "/api/threads", t)
       : call<AgentSession>("POST", "/api/sessions", {
           text: t.text,
           project: t.project,
           agent: t.agents?.[0],
-          model: t.model,
-          effort: t.effort,
         }).then(sessionPosted),
   /**
    * Shares a private thread in a project's channel (general unless named)

@@ -92,8 +92,7 @@ func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error)
 	if err != nil {
 		return req, err
 	}
-	req = chooseForMessage(req)
-	if req, err = p.resolveModel(req); err != nil {
+	if req, err = p.resolveModel(p.withEffort(req)); err != nil {
 		return req, err
 	}
 	if req, err = boundRunContext(req); err != nil {

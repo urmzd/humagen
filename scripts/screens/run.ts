@@ -3,8 +3,10 @@
  * when one breaks the layout checks in checks.ts. SCREENS_SUITE=legacy retains
  * the historical screen/showcase fixtures for their older interfaces.
  *
- * It starts humagen on a free loopback port with the development sign-in, the
- * seeded agents on the offline provider and state in memory, adds a little
+ * It starts humagen on a free loopback port with the development sign-in, a
+ * local OpenAI-compatible model fixture (there is no offline model), declared
+ * as screens-native and as anthropic, which the platform's agents name first,
+ * the example agents on it and state in memory, adds a little
  * more through the API (announcements, a failed run whose alert waits in the
  * inbox, a schedule), and serves the built console from apps/web/dist. Run it
  * with `make screens`, which builds both first.
@@ -1355,7 +1357,7 @@ function screens(ids: Ids, call: Call): Screen[] {
       "profile",
       "appearance",
       "workspace",
-      "routing",
+      "providers",
       "models",
       "limits",
       "connections",
@@ -1448,6 +1450,14 @@ spec:
     - name: screens-native
       kind: openai
       openai: {base_url: "${model.base}", key: {ref: env:HUMAGEN_SCREENS_MODEL_KEY}}
+    # The platform's agents name anthropic first; here it is the same fixture.
+    - name: anthropic
+      kind: openai
+      openai: {base_url: "${model.base}", key: {ref: env:HUMAGEN_SCREENS_MODEL_KEY}}
+    # Nothing answers here, so a run on it fails: what needs a person on Home.
+    - name: screens-broken
+      kind: openai
+      openai: {base_url: "http://127.0.0.1:9/v1", key: {ref: env:HUMAGEN_SCREENS_MODEL_KEY}}
 `,
   );
   const env: NodeJS.ProcessEnv = {
@@ -1470,8 +1480,6 @@ spec:
       "-storage=memory",
       `-addr=127.0.0.1:${port}`,
       `-web=${web}`,
-      "-builtin-provider=offline",
-      "-builtin-model=offline",
       // The fixture's file tools run on this host, as they did before the
       // sandbox; CI has Docker but not gVisor.
       "-sandbox=unisolated",
@@ -1489,7 +1497,8 @@ spec:
     if (proc.exitCode !== null) throw new Error(`humagen exited with ${proc.exitCode}:\n${log}`);
     try {
       const r = await fetch(`${base}/api/me`);
-      if (r.ok)
+      if (r.ok) {
+        await seedModels(api(base));
         return {
           base,
           proc,
@@ -1499,6 +1508,7 @@ spec:
             await email.close();
           },
         };
+      }
     } catch {
       // Not listening yet.
     }
@@ -1506,6 +1516,35 @@ spec:
   }
   proc.kill();
   throw new Error(`humagen did not start:\n${log}`);
+}
+
+/**
+ * The agents every screen expects, on the local model fixture: the example lead and
+ * helper, and the lead answering the workspace's untagged messages. The platform's own
+ * agents exist already, on the chain they ship with, which anthropic answers here.
+ */
+async function seedModels(call: Call): Promise<void> {
+  const fixture = { provider: "screens-native", model: "screens-native" };
+  for (const a of [
+    {
+      name: "helper",
+      description: "Does one piece of work for the lead.",
+      system_prompt: "You do one task well.",
+    },
+    {
+      name: "lead",
+      description: "Takes a request and may call the helper.",
+      system_prompt: "You coordinate work.",
+      access: { spawn: ["helper"] },
+    },
+  ])
+    await call("POST", "/api/agents", { ...a, ...fixture });
+  const root = await call<{ version: number; enable: string[] }>("GET", "/api/projects/~/agents");
+  await call("PUT", "/api/projects/~/agents", {
+    version: root.version,
+    enable: root.enable,
+    default: "lead",
+  });
 }
 
 /** One call to the API, failing loudly: a seed that did not land would make every screen lie. */
@@ -1729,7 +1768,7 @@ async function seedChats(
       text: "@helper what would you check first?",
     }),
   );
-  // This goes through native retained-document retrieval and the offline model.
+  // This goes through native retained-document retrieval and the local model fixture.
   // The capture is refused unless the API returns durable retrieval evidence.
   const requestedScreens = process.env.SCREENS_ONLY?.split(",");
   if (
@@ -2252,7 +2291,7 @@ async function main(): Promise<void> {
         name: a.name,
         description: a.description,
         model: "unavailable",
-        provider: "anthropic",
+        provider: "screens-broken",
         system_prompt: a.description,
       });
     }
@@ -2261,8 +2300,8 @@ async function main(): Promise<void> {
       await call("POST", "/api/agents", {
         name: `z-color-${i}`,
         description: "Color reservation example.",
-        model: "offline",
-        provider: "offline",
+        model: "screens-native",
+        provider: "screens-native",
         system_prompt: "Help.",
       });
     }

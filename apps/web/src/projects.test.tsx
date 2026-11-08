@@ -352,7 +352,6 @@ test("settings no longer edit projects: the workspace section links to Projects 
     title_agent: "",
     memory_agent: "",
     memory_auto_approve: false,
-    router: { enabled: false },
   };
   const out = html(
     <Settings

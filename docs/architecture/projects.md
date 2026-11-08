@@ -958,6 +958,35 @@ Schedules, alert rules, clients and defaults that use the agent hold no
 change back. The spec says the same on Humagen's wrapper:
 `agents: [{project: Globex, spec: {...}}]`.
 
+### The entry agent
+
+Every workspace has one entry agent, `humagen` unless the spec names another
+(`branding.entry_agent`), shipped with the platform's own agents on the same
+models (package `humagen/entry`). It is the agent people talk to the workspace
+through: a console session started with no mention, where no named default
+answers, belongs to it. It answers simple asks itself and calls specialists
+with `session_call`, each in a child session under the root, then answers once,
+naming who did what. Routing has no page and no switch of its own: it is this
+agent, on its own model.
+
+- **Who answers a console session**, in order: an agent the message mentions;
+  a default that names an agent (thread, client, workspace); the entry agent;
+  without one (a server that ships no agents of its own), routing by search
+  (below), so the message still lands.
+- **It is told who may fit.** Each message it answers comes with the best 3
+  agents search finds (their names, the words that matched and their
+  instructions, loaded only for these) and the names of the others it may call,
+  leaving out agents the poster may not read.
+- **It may call every other agent whose definition pins** (`Access.Spawn`,
+  kept by the platform). A run pins its whole call tree, so an agent that no
+  longer pins is left out rather than stopping the entry agent. The list is
+  worked out again only when an agent is added, revised or retired, and the
+  entry agent is revised only when it changes. Each call is still held to the
+  place: an agent not available in the session's project is refused there, as
+  are call policy, budget and depth.
+- `EntryAgent(tenant)` gives its name and the name people see (the
+  workspace's branding, else Humagen), which the GitHub check run uses.
+
 ### The dynamic router
 
 A message that names no agent, where the default it inherits is `*`
@@ -992,13 +1021,10 @@ ask refuses the message.
 - **An agent opts out** with `tagged_only: true` in its spec (fiber's
   `AgentSpec`): it runs only when a message names it, and is never asked
   about one that does not. Off by default.
-- **The workspace chooses the model that asks**, in its settings
-  (`PUT /api/settings`, and the console's Settings): `router: {enabled,
-  provider, model}`. It is off by default, and while it is off no agent
-  takes a message on its own. The provider is one of the model providers the
-  deployment declares (the spec's `models`), and its key is a credential
-  reference (an environment variable, `op://`, the keychain), never kept in
-  the settings. A program built on Humagen can supply its own asker through
+- **No workspace setting chooses the model that asks**: routing moves to
+  the entry agent, a built-in that picks on its own model chain. Until it
+  lands, no agent takes a message on its own unless a program built on
+  Humagen supplies its own asker through
   `platform.Config.Router`; `join.Words` is a deterministic one, with no
   model, that tests use.
 - An asker that fails, or an answer it cannot read, counts as no.

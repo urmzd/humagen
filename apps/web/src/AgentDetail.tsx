@@ -1,7 +1,6 @@
 import { defaultCopy } from "@humagen/components";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { BuilderButton } from "./AgentBuilder.tsx";
-import { AgentChoicesEditor, choicesProblem, cleanChoices } from "./AgentChoicesEditor.tsx";
 import { AgentDefaultSkills } from "./AgentDefaultSkills.tsx";
 import { AgentHealth } from "./AgentHealth.tsx";
 import {
@@ -261,12 +260,26 @@ function ModelTab({
           editable={editable}
           onChange={writeChain}
         />
+        <Label
+          text="Reasoning effort"
+          hint="How hard the first model thinks. Sent only when that model takes it; a fallback answers at its default."
+        >
+          <select
+            className={`${field} sm:w-56`}
+            aria-label="Reasoning effort"
+            value={spec.effort ?? ""}
+            disabled={!editable}
+            onChange={(e) => onChange({ effort: e.target.value || undefined })}
+          >
+            <option value="">Model's default</option>
+            {[...new Set([...EFFORTS, ...(spec.effort ? [spec.effort] : [])])].map((e) => (
+              <option key={e} value={e}>
+                {e.charAt(0).toUpperCase() + e.slice(1)}
+              </option>
+            ))}
+          </select>
+        </Label>
       </Section>
-      <AgentChoicesEditor
-        choices={spec.choices}
-        editable={editable}
-        onChange={(choices) => onChange({ choices })}
-      />
       <p className="text-aui-xs text-aui-muted">
         Each call is billed at the price of the model that answered it. Temperature, token limits
         and step limits are not settings yet: the agent spec this platform runs on has no fields for
@@ -275,6 +288,9 @@ function ModelTab({
     </div>
   );
 }
+
+/** The reasoning efforts an agent's editor offers; a saved one outside them stays listed. */
+const EFFORTS = ["low", "medium", "high"];
 
 /** What is wrong with an agent's models, before the server says so. */
 export function policyProblem(spec: AgentSpec, policies: ModelPolicy[] = []): string | null {
@@ -386,8 +402,9 @@ export function AgentDetail({
   const saved: AgentSpec = revision?.spec ?? {
     name: "",
     description: "",
-    provider: "offline",
-    model: "offline",
+    // No model until one is picked: an agent runs only on a provider someone set up.
+    provider: "",
+    model: "",
     system_prompt: "",
     access: { spawn: [] },
   };
@@ -481,7 +498,9 @@ export function AgentDetail({
     setSaving(true);
     setProblem(null);
     try {
-      const draft = { ...spec, choices: cleanChoices(spec.choices) };
+      // Message choices are the workspace's now (Settings, Model providers); an agent's
+      // own, from before, are kept as they are for one release.
+      const draft = spec;
       const next = revision
         ? await api.reviseAgent(draft, revision.rev)
         : await api.createAgent(draft);
@@ -568,12 +587,7 @@ export function AgentDetail({
             <button
               type="button"
               className={primary}
-              disabled={
-                !dirty ||
-                saving ||
-                policyProblem(spec, policies) !== null ||
-                choicesProblem(spec.choices) !== null
-              }
+              disabled={!dirty || saving || policyProblem(spec, policies) !== null}
               onClick={save}
             >
               {revision ? `Save as Revision ${revision.rev + 1}` : "Create Agent"}

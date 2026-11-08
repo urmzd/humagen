@@ -35,6 +35,9 @@ const helper = {
   rev: 1,
 } as unknown as Revision;
 
+// Declared before the first test: node:test may start a test as soon as it is registered.
+let net: ReturnType<typeof stubFetch> | undefined;
+
 test("a channel's Plus picker offers explicit Company-home agents and excludes unavailable scoped homes", async () => {
   net = stubFetch({
     "GET /api/projects/Globex/channels": () => ({
@@ -130,7 +133,6 @@ const page: ThreadPage = {
 
 // Hooks at the top level run after every DOM file's tests, so this one
 // restores only a fetch it stubbed.
-let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
   cleanup();
   net?.restore();
@@ -225,6 +227,63 @@ test("the reader's messages sit on the right, everyone else's on the left under 
   // Both sides keep their actions.
   for (const a of all)
     assert.ok(within(a).getByRole("button", { name: defaultCopy.conversation.copyMessage }));
+});
+
+test("a message posted while an agent worked says quietly what it did to that work", async () => {
+  const run = "r0123456789abcdef0123456789abcdef";
+  const message = (
+    id: string,
+    text: string,
+    followup?: NonNullable<ThreadTurn["message"]>["followup"],
+  ): ThreadTurn => ({
+    kind: "message",
+    message: {
+      id,
+      thread: page.thread.id,
+      by: "dana",
+      name: "Dana Scully",
+      text,
+      mentions: [],
+      via: "console",
+      at,
+      ...(followup ? { followup } : {}),
+    },
+  });
+  room(
+    {},
+    {
+      ...page,
+      turns: [
+        message("m-1", "Waiting", { outcome: "queue", reason: "Adds a detail.", waiting: [run] }),
+        message("m-2", "Ran already", {
+          outcome: "queue",
+          reason: "Adds a detail.",
+          waiting: [run],
+          handled: true,
+        }),
+        message("m-3", "Instead", { outcome: "replace", reason: "A new task.", waiting: [run] }),
+        message("m-4", "stop: wrong repository", {
+          outcome: "stop",
+          reason: "wrong repository",
+          waiting: [run],
+          handled: true,
+        }),
+        message("m-5", "stop", { outcome: "stop", reason: "", waiting: [run], handled: true }),
+        message("m-6", "Plain"),
+      ],
+    },
+  );
+  const all = await screen.findAllByRole("article", { name: /^Message from/ });
+  const notes = all.map((a) => a.querySelector("[data-followup]")?.textContent ?? "");
+  assert.deepEqual(notes, [
+    words.followup.queued,
+    "",
+    words.followup.replaced,
+    words.followup.stopped("wrong repository"),
+    words.followup.stopped(""),
+    "",
+  ]);
+  assert.equal(words.followup.stopped("wrong repository"), "Stopped: wrong repository");
 });
 
 test("message dates reveal the exact local date, time and timezone on hover, focus and tap", async () => {
@@ -1520,7 +1579,10 @@ test("a thread started in Slack says so, and so does each message posted there; 
         onChanged={() => {}}
       />,
     );
-    assert.ok(await screen.findByText(words.inSlack));
+    // The header's first icon links back to the Slack thread it started in; its meta line names it.
+    const back = await screen.findByRole("link", { name: defaultCopy.trace.place.openIn("Slack") });
+    assert.match(back.getAttribute("href") ?? "", /C0123GLOBEX/);
+    assert.match(screen.getByTestId("session-place").textContent ?? "", /Slack thread/);
     assert.equal(
       screen.getAllByText(words.fromSlack).length,
       1,

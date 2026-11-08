@@ -2578,31 +2578,6 @@ export const defaultCopy = {
     autoFor: (name: string) => `Approved for ${name}`,
     failed: "Could not change approvals. Try again.",
   },
-  /**
-   * Under the composer: the model and reasoning effort for the next message
-   * alone, from what the agents it may start offer (DES-067).
-   */
-  pick: {
-    label: "Model and effort for this message",
-    agentModel: "Agent's model",
-    agentEffort: "Default effort",
-    models: "Model",
-    efforts: "Effort",
-    hint: "Applies to this message only, for agents that offer it.",
-    effort: (effort: string) => effort.charAt(0).toUpperCase() + effort.slice(1),
-  },
-  agentChoices: {
-    title: "Message choices",
-    hint: "Let people choose a model or reasoning effort for each message. Leave both lists empty to use only this agent's model and default effort.",
-    models: "Allowed models",
-    modelsHint:
-      "One provider/model per line. The agent's own model is always available. Only configured providers can be saved.",
-    efforts: "Allowed reasoning efforts",
-    effortsHint:
-      "One effort per line, such as low, medium or high. Choose efforts supported by the models you offer; unsupported efforts fail before a model call.",
-    modelProblem: "Enter each model as provider/model, with no spaces.",
-    effortProblem: "Enter each effort as a word, such as low or high, with no spaces.",
-  },
   /** Over Home's chat bar: the person's own project, where a conversation in no project is filed (DES-057). */
   noProject: "No project",
   /**
@@ -3544,6 +3519,80 @@ export const defaultCopy = {
     },
   },
   /** Channels and shared threads: where people and agents work together in a project. */
+  /** An item people pointed at: a PR, an issue, a Slack thread, a URL. */
+  items: {
+    kind: (kind: string) =>
+      kind === "github"
+        ? "GitHub"
+        : kind === "slack"
+          ? "Slack"
+          : kind === "url"
+            ? "Web page"
+            : kind === "schedule"
+              ? "Schedule"
+              : "Item",
+    sessions: "Sessions",
+    noSessions: "No sessions yet",
+    /** Places that mentioned the item: a pasted link, a permalink, "#243". */
+    backlinks: "Also discussed in",
+    /** The header's link to the session's item. */
+    open: "Item",
+  },
+  /** Where a session started, as the Sessions list filters it. */
+  places: {
+    label: "Session place",
+    any: "All places",
+    slack: "Slack",
+    github: "GitHub",
+    schedule: "Scheduled",
+    console: "Console",
+    item: (label: string) => `On ${label}`,
+    clearItem: "Clear Item",
+  },
+  /** A message's references and the work under it: its origin, what it read and touched, what it delegated. */
+  trace: {
+    /** The section in Details that collects every message's references. */
+    references: "References",
+    delegatedTo: (agents: string) => `Delegated to ${agents}`,
+    /** Under an answer more than one agent worked on: it opens the response's activity in Details. */
+    viewActivity: "View activity",
+    agents: (n: number) => `${n} agents`,
+    /** Every run behind a response, flat, in Details and on a focused message. */
+    activity: "Activity",
+    asked: "Asked",
+    focus: (agent: string) => `Open ${agent}'s message on its own`,
+    message: "Message",
+    messageBy: (agent: string) => `${agent}'s message`,
+    breadcrumb: "Where this message sits",
+    root: "Session",
+    notFound: "This message could not be found.",
+    picked: (reason: string) => `Picked: ${reason}`,
+    failedTool: (tool: string) => `${tool} failed`,
+    decided: {
+      allow: "Approved",
+      deny: "Denied",
+      ask: "Waiting for",
+    },
+    by: (who: string) => `by ${who}`,
+    /** Where a session started, in its header. */
+    place: {
+      label: "Started in",
+      openIn: (where: string) => `Open in ${where}`,
+      openSchedule: "Open schedule",
+      /** Who sent the root message. */
+      from: (who: string) => `from ${who}`,
+    },
+    /** Who can read the session where it started. */
+    audience: {
+      label: "Audience",
+      dm: "Direct message",
+      channel: "Slack channel",
+      private: "Private",
+      shared: "Shared",
+    },
+    /** A person's message in a session that started in Slack or GitHub, posted from the console instead. */
+    postedFromWeb: "Posted from the web",
+  },
   threads: {
     posted: (at: string) => `Posted ${at}`,
     /** A channel's title on its page: "#renewals". */
@@ -3632,6 +3681,12 @@ export const defaultCopy = {
     inSlack: "Also in Slack",
     /** A message posted in Slack, beside when it was posted. */
     fromSlack: "From Slack",
+    /** Beside a message posted while an agent worked: what it did to that work. */
+    followup: {
+      queued: "Queued until the current answer finishes",
+      replaced: "Replaced the current answer",
+      stopped: (reason: string) => (reason ? `Stopped: ${reason}` : "Stopped"),
+    },
     /** A failed answer to the reader's own message: it is asked again for them from their inbox. */
     retryFromInbox: "Retry it from your inbox, where it answers your message again.",
     /** A failed turn that acted for nobody, such as a machine's from before threads: it is retried for nobody, by anyone who may start runs. */
