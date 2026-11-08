@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.97.1 (2026-11-08)
+
+### Bug Fixes
+
+- **sidebar**: Recents is one list by local day; Recents and Sessions list newest first (#291) ([03f5c1f](https://github.com/urmzd/humagen/commit/03f5c1f36d19453bab80cf3014dffae636588a12))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.97.0...v0.97.1)
+
+
 ## 0.97.0 (2026-11-08)
 
 ### Features
