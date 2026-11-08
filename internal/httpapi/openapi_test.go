@@ -2754,14 +2754,16 @@ var unexercised = map[string]string{
 	"POST /api/sessions/{id}/alerts 409":                 "random alert identity collision fails CreateSession CAS; callers cannot supply the ID",
 	"PUT /api/sessions/{id}/messages/{mid}/feedback 409": "same putFeedback handler unfinished-run409 is exercised via legacy feedback route",
 
-	"POST /api/voice/transcriptions 404":               "a deployment with speech left out, covered by TestWithoutSpeechTheConsoleHasNoVoiceNotes",
+	// Voice mode's refusals, each covered by its own test in voice_session_test.go.
 	"POST /api/sessions/{id}/voice/transcriptions 402": "a spend limit reached, covered by TestVoiceModeStopsAtTheSpendLimit",
 	"POST /api/sessions/{id}/voice/speech 402":         "a spend limit reached, covered by TestVoiceModeStopsAtTheSpendLimit",
 	"POST /api/sessions/{id}/voice/transcriptions 413": "a recording over the body cap, the same MaxBytesReader TestTheConsoleTranscribesARecording covers",
 	"POST /api/sessions/{id}/voice/transcriptions 422": "no words heard, covered by TestVoiceModeHearsAndSpeaksInASession",
 	"POST /api/sessions/{id}/voice/transcriptions 503": "a provider that fails, covered by TestVoiceModeHearsAndSpeaksInASession",
 	"POST /api/sessions/{id}/voice/speech 503":         "a provider that fails, covered by TestVoiceModeHearsAndSpeaksInASession",
-	"POST /api/catalog/connectors/{name}/crawl 409":    "a crawl asked for while another of the same connector runs; the guard is in platform.crawl",
+
+	"POST /api/voice/transcriptions 404":            "a deployment with speech left out, covered by TestWithoutSpeechTheConsoleHasNoVoiceNotes",
+	"POST /api/catalog/connectors/{name}/crawl 409": "a crawl asked for while another of the same connector runs; the guard is in platform.crawl",
 	// The atomic source configuration race is covered by TestPromotionGuardAndProvenanceSurviveRestart.
 	"POST /api/artifacts/{id}/promote-knowledge 409": "source audience changed concurrently",
 	"POST /api/projects/{name}/fork 429":             "bounded private operation-plan capacity, covered by projectforks store tests",
