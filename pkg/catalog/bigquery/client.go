@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net/http"
 	"strings"
 	"time"
 
@@ -26,7 +27,9 @@ type client struct {
 // time, so a rotated key is used on the next call.
 func dial(ctx context.Context, cfg Config) (api, error) {
 	var opts []option.ClientOption
-	if cfg.Credential != "" {
+	if cfg.TokenSource != nil {
+		opts = append(opts, option.WithHTTPClient(&http.Client{Transport: &tokenTransport{source: cfg.TokenSource, base: http.DefaultTransport}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}))
+	} else if cfg.Credential != "" {
 		key, err := credref.Default.Resolve(ctx, cfg.Credential)
 		if err != nil {
 			return nil, err

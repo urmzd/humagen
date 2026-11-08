@@ -1730,6 +1730,12 @@ Evidence: `replay.test.ts`, `replay.dom.test.tsx`; the phone and desktop
 
 ### DES-063: Connectors and catalog
 
+The managed BigQuery backend now saves private bounded definitions, verifies
+metadata through an explicit crawl, and binds renewed consent to the same owned
+configuration. API/platform race tests and actual PostgreSQL name-reservation
+and cross-process catalog tests pass. The dedicated OAuth mode exposes metadata
+only; connection-form browser validation belongs to the console layer.
+
 Browse and search warehouse and object metadata in Library > Catalog. Search
 text has an address. Show columns and descriptions without copying
 rows or file content. Owners can crawl, publish metadata to the connector's
