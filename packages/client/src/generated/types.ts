@@ -4532,6 +4532,10 @@ export interface SessionInput {
   effort?: string;
   /** The readable session alert that anchors this fix conversation. */
   source_alert?: string;
+  surface?: SurfaceRef;
+  act_as?: ActAs;
+  /** The kind of chat surface: slack, the default and only one taken today. */
+  surface_kind?: string;
 }
 
 /** A session message with optional routing to a mentioned agent. */

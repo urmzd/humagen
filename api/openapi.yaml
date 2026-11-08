@@ -467,6 +467,12 @@ paths:
             schema:
               $ref: "#/components/schemas/SessionInput"
       responses:
+        "200":
+          description: "A chat surface's message landed in its thread's root session, which already existed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSession"
         "201":
           description: "Successful session operation"
           content:
@@ -16478,6 +16484,14 @@ components:
         source_alert:
           type: string
           description: The readable session alert that anchors this fix conversation.
+        surface:
+          $ref: "#/components/schemas/SurfaceRef"
+          description: "A chat surface's thread. Only that client's machine sends it, with act_as; the thread's root session (keyed by slack://<team>/<channel>/<ts>, owned by the entry agent) is found or started, filed where the Slack channel is bound. project, parent, agent, label, fresh and source_alert are refused with it."
+        act_as:
+          $ref: "#/components/schemas/ActAs"
+        surface_kind:
+          type: string
+          description: "The kind of chat surface: slack, the default and only one taken today."
     SessionPostInput:
       description: A session message with optional routing to a mentioned agent.
       type: object

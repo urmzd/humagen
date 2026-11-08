@@ -35,6 +35,12 @@ type SessionInput struct {
 	Model       string `json:"model,omitempty"`
 	Effort      string `json:"effort,omitempty"`
 	SourceAlert string `json:"source_alert,omitempty"`
+	// Surface and ActAs are a chat surface's thread and the person a
+	// message from it is posted for: only that client's machine sends them,
+	// and the place's root session is found or started (surface_sessions.go).
+	Surface     *SurfaceRef `json:"surface,omitempty"`
+	ActAs       *ActAs      `json:"act_as,omitempty"`
+	SurfaceKind string      `json:"surface_kind,omitempty"`
 }
 
 // SessionMessageOptions choose a mentioned agent's continuing or fresh child.
@@ -171,10 +177,14 @@ func (p *Platform) sessionAgent(ctx context.Context, who auth.Principal, project
 }
 func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in SessionInput) (SessionView, error) {
 	ctx = context.WithValue(ctx, sessionReaderKey{}, who)
+	if in.Surface != nil {
+		v, _, err := p.StartSurfaceSession(ctx, who, in)
+		return v, err
+	}
 	if err := threads.CheckText(in.Text); err != nil {
 		return SessionView{}, err
 	}
-	if _, _, _, _, err := p.author(who, nil); err != nil {
+	if _, _, _, _, err := p.author(who, in.ActAs); err != nil {
 		return SessionView{}, err
 	}
 	if in.SourceAlert != "" {
@@ -262,7 +272,7 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 	if existing.Session == nil || existing.Session.SourceAlert != in.SourceAlert {
 		return SessionView{}, fmt.Errorf("%w: this session belongs to another source alert", threads.ErrInvalid)
 	}
-	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: in.Text, Model: in.Model, Effort: in.Effort}); err != nil {
+	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: in.Text, Model: in.Model, Effort: in.Effort, ActAs: in.ActAs}); err != nil {
 		return SessionView{}, err
 	}
 	return p.ReadSession(ctx, who, rec.ID, "", "", false)
@@ -288,13 +298,19 @@ func (p *Platform) PostSession(ctx context.Context, who auth.Principal, id strin
 	if err != nil {
 		return SessionView{}, err
 	}
-	if _, _, err = p.sessionAgent(ctx, who, th.Project, th.Session.Agent, in.Text); err != nil {
+	// A chat surface's message is read in its own grammar, as the person it
+	// is posted for, so its markup is never taken for a mention here.
+	text, reader, err := p.sessionReading(who, in)
+	if err != nil {
+		return SessionView{}, err
+	}
+	if _, _, err = p.sessionAgent(ctx, reader, th.Project, th.Session.Agent, text); err != nil {
 		return SessionView{}, err
 	}
 	// A different named agent gets its continuing child session. The parent
 	// keeps the person's request and a visible child reference, never a second owner.
 	if !in.PostOnly && in.Answers == nil {
-		mentions, parseErr := threads.Parse(in.Text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, sees: p.Seer(who).Agent, tree: p.Projects.Tree(who.Tenant), project: th.Project, person: who.Subject, console: true})
+		mentions, parseErr := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, sees: p.Seer(reader).Agent, tree: p.Projects.Tree(who.Tenant), project: th.Project, person: reader.Subject, console: true})
 		if parseErr != nil {
 			return SessionView{}, parseErr
 		}
@@ -318,7 +334,7 @@ func (p *Platform) PostSession(ctx context.Context, who auth.Principal, id strin
 			if _, err := p.PostMessage(ctx, who, id, posted); err != nil {
 				return SessionView{}, err
 			}
-			if _, err := p.StartSession(ctx, who, SessionInput{Text: in.Text, Agent: target, Parent: id, Model: in.Model, Effort: in.Effort, Fresh: option.Fresh, Label: option.Label}); err != nil {
+			if _, err := p.StartSession(ctx, who, SessionInput{Text: text, Agent: target, Parent: id, Model: in.Model, Effort: in.Effort, Fresh: option.Fresh, Label: option.Label, ActAs: in.ActAs}); err != nil {
 				return SessionView{}, err
 			}
 			return p.ReadSession(ctx, who, id, "", "", false)
