@@ -43,8 +43,10 @@ import { DirectoryPage } from "./Directory.tsx";
 import { ForkProject } from "./ForkProject.tsx";
 import { Health } from "./Health.tsx";
 import { Integrations } from "./Integrations.tsx";
+import { ItemPage } from "./ItemPage.tsx";
 import { Knowledge } from "./Knowledge.tsx";
 import { MemoryLibrary } from "./MemoryLibrary.tsx";
+import { MessageFocus } from "./MessageFocus.tsx";
 import { Monitor } from "./Monitor.tsx";
 import type { Source as About } from "./mail.ts";
 import { NotificationsPage, useNotifications } from "./Notifications.tsx";
@@ -783,6 +785,28 @@ function Console({
                         <Problem message={defaultCopy.noPermission} />
                       </Page>
                     ))}
+                  {route.page === "message" &&
+                    (can("runs:read") ? (
+                      <MessageFocus key={route.id} id={route.id} go={go} />
+                    ) : (
+                      <Page title="Message">
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "item" &&
+                    (can("runs:read") ? (
+                      <ItemPage
+                        key={route.address}
+                        address={route.address}
+                        go={go}
+                        alerts={attention.alerts}
+                        tick={tick}
+                      />
+                    ) : (
+                      <Page title="Item">
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
                   {route.page === "alerts" &&
                     (can("alerts:read") ? (
                       <AlertsPage
@@ -1101,17 +1125,20 @@ function Console({
                     <ProjectsPage
                       projects={projects}
                       root={root}
-                      workspaceName={workspaceName}
                       q={route.q ?? ""}
                       kind={route.kind}
-                      onFilter={(q, kind) =>
+                      sort={route.sort}
+                      onFilter={({ q, kind, sort }) =>
                         go(
-                          { page: "projects", q: q || undefined, kind: kindParam(kind) },
+                          { page: "projects", q: q || undefined, kind: kindParam(kind), sort },
                           { replace: true },
                         )
                       }
                       canCreate={can("projects:write")}
                       canGovern={can("projects:govern")}
+                      me={me.principal.subject}
+                      pinned={prefs.pinned_projects ?? []}
+                      onPin={pinProject}
                       onOpen={openProject}
                       onCreated={(project) => {
                         loadProjects();

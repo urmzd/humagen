@@ -140,10 +140,72 @@ scheduled ingestion have separate authority and retention requirements. The
 [conversation-first collection design](../rfcs/0003-conversation-first-delivery.md)
 records that follow-on work.
 
-## Proposed native corpora
+## Corpora
 
-The next backend delivery will structure knowledge as a stable tenant-scoped
-corpus, its runs, corpus-owned files, immutable file versions and version-bound
+A corpus is a named body of knowledge, such as "HR policies", that holds the
+sources one useful body of knowledge comes from. People create and manage
+corpora in Agents > Knowledge, and add sources inside a corpus. `pkg/corpora`
+keeps each workspace's corpora on `pkg/state`, per request.
+
+| Field | Meaning |
+| --- | --- |
+| `name`, `title`, `description` | The name is lower case letters, digits and dashes and never changes; the title is what people call it, such as "HR policies" |
+| `owner` | The person who manages it. Only the owner changes, hands off or deletes it |
+| `readers` | Who may read it: people by subject, everyone who sees a project, or the workspace. Default deny |
+| `members` | Up to 50 knowledge sources (`source`) and catalog connectors (`catalog`), by name |
+| `agents` | The agents granted it. A run of one reads only as the person it acts for, who must be a reader too |
+| `links` | `isolated` (default) or `shared`: whether its part of the workspace graph links to other corpora |
+
+A member is a reference, never a copy. What it brings depends on the source:
+
+| Holds | From | Kept | Searched |
+| --- | --- | --- | --- |
+| Files | An indexed source | Passages and vectors | The corpus's own indexes |
+| References | A live source | A pointer and its metadata | At the source, with the reader's credential |
+| Records | A catalog connector (Snowflake, BigQuery) | Schema and owners. Never rows | A read-only query at the warehouse, under the reader's own login |
+
+Holding a source never widens who may read it. A reader sees each member by
+the source's own rules; one they may not see is listed as `hidden`, without
+its name (the owner alone sees its name, to remove it), and an owner's new
+members list keeps the members the owner can no longer see. A member whose source was deleted shows as `missing` until the
+owner removes it. Deleting a corpus leaves its sources as they are.
+
+Routes, all behind `knowledge:read` or `knowledge:write`: `GET` and `POST
+/api/corpora`, `GET`, `PATCH` and `DELETE /api/corpora/{name}`, `POST
+/api/corpora/{name}/members` and `DELETE
+/api/corpora/{name}/members/{kind}/{member}`. A corpus the caller may not read
+answers 404; a change from someone other than the owner answers 403; a change
+or delete naming an old `version` answers 409.
+
+### Warehouses: queried live as the reader
+
+A Snowflake or BigQuery connector in a corpus keeps schema only: its owner's
+login crawls tables, views, columns and comments, never rows. Every data
+question is a read-only query run with the reader's own login
+(`catalog.ReaderQuerier`), so the warehouse's grants, row access and masking
+decide what each person reads.
+
+| Warehouse | Set up | Each reader's login |
+| --- | --- | --- |
+| Snowflake | `POST /api/catalog/connectors/snowflake`: account, database, warehouse, an optional crawl role, `token_type` (`OAUTH` or `PROGRAMMATIC_ACCESS_TOKEN`). It holds no credential | `PUT /api/catalog/connectors/{name}/login` with a reference under a start the workspace lists, or the token where the workspace keeps values. Queries leave the role out, so the reader's default role applies |
+| BigQuery | `POST /api/catalog/connectors/bigquery` (managed) or a Platform document | The reader's own BigQuery connection (OAuth, `bigquery.readonly`). Queries go through `jobs.query`, which that scope authorizes; the connector's datasets, byte cap and row bound still apply |
+
+`GET /api/catalog` tells each reader whether they have a login (`login`:
+`connected`, `missing` or `unavailable`). A login is kept under an `hcat-`
+credential id that is never offered to a tool server.
+
+The `corpus_query` tool runs the query. It answers only in the reader's own
+private conversation, for a corpus granted to the run's agent that the reader
+may read, on a warehouse the corpus holds and the reader may see. The result
+carries the corpus, the connector, the SQL and when it ran; no row is stored.
+
+Not built yet: per-corpus search, the corpus pages in the console, ontology
+and graph, the maintenance agent, freshness alerts and sensitivity labels.
+
+## Proposed versioned source files
+
+The next backend delivery will structure each source's content as a stable
+tenant-scoped record, its runs, corpus-owned files, immutable file versions and version-bound
 chunks. Runs attach the exact file version through a membership record; a
 refresh does not duplicate the file identity. This is a proposed extension of
 the current source lifecycle, not a new API already shipped in this UI pass.

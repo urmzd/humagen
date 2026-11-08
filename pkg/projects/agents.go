@@ -11,12 +11,12 @@ import (
 // OpenDefault is the default that names no agent: every agent available
 // where an untagged message is posted decides for itself whether to take it
 // (pkg/join). It is no agent: it is not in the registry and is never
-// homed, enabled or allowed. A default written as "auto", the router that
+// homed or allowed. A default written as "auto", the router that
 // picked one agent, reads as it (legacy.Default).
 const OpenDefault = Everyone
 
-// Everyone, alone in an enable list, is every platform agent: every agent
-// with no home. It never reaches an agent that lives in a project.
+// Everyone, alone in an enable list, was every agent. It is also the member
+// entry for everyone in the workspace.
 const Everyone = "*"
 
 // MaxAgentList bounds an enable list and an allow list, as
@@ -26,22 +26,18 @@ const MaxAgentList = 64
 // FieldAgents is the platform file owning a project's Agents.
 const FieldAgents = "agents"
 
-// Agents is what a project turns on. It adds up down the tree: an agent is
-// available in a project when the project or an ancestor offers it, and
-// every allow list on the way permits it:
+// Agents is a project's agent policy. Agents are independent of projects:
+// any agent answers in any project, unless an allow list on its chain leaves
+// it out:
 //
-//	offered(P)   = ∪ over Q in Chain(P) of (Q.Enable ∪ Homes(Q))
-//	allowed(P)   = ∩ over Q in Chain(P) with Q.Allow set, of Q.Allow
-//	available(P) = offered(P) ∩ allowed(P)
+//	available(P) = ∩ over Q in Chain(P) with Q.Allow set, of Q.Allow
 //
-// The zero value adds nothing and narrows nothing.
+// The zero value narrows nothing. Enable, and Default below the root, were
+// how a project chose its agents; they are kept so the records already
+// stored read back, and are not read.
 type Agents struct {
-	// Enable is the platform agents available here and below. "*" alone is
-	// every platform agent. An entry naming an agent that lives in a project
-	// adds nothing: a project agent is available only in its home and below.
-	// It is never nil, except on the root as it was written before projects
-	// had agents, which the upgrade rewrites at start: any other record from
-	// then is read with an empty list, which adds nothing either.
+	// Enable is not read. It is never nil, except on the root as it was
+	// written before projects had agents.
 	Enable []string `json:"enable"`
 	// Allow, when set, is the only agents that may run here and below. Every
 	// allow list on the chain applies, so a child can only narrow what its
@@ -49,8 +45,9 @@ type Agents struct {
 	// A set list is written even when empty, as it reads to someone not
 	// shown the agents it names.
 	Allow []string `json:"allow,omitzero"`
-	// Default answers a message that tags no agent, here and below: an agent,
-	// or OpenDefault. "" inherits the nearest ancestor's.
+	// Default, on the root, is the workspace default: the agent that answers
+	// a message that tags none, or OpenDefault. Below the root it is not
+	// read.
 	Default string `json:"default,omitempty"`
 }
 
@@ -164,23 +161,23 @@ func sameAgents(a, b Agents) bool {
 
 // Availability is which agents may run in a project.
 type Availability struct {
-	// All is every platform agent: "*" is enabled on the chain and no allow
-	// list narrows it.
+	// All is every agent: no allow list on the chain narrows it.
 	All bool `json:"all"`
-	// Names is the agents available by name, sorted. With All, it is the
-	// project agents that live on the chain, which "*" never reaches; without,
-	// it is every agent available.
+	// Names is, without All, every agent the allow lists permit, sorted.
+	// With All it is empty.
 	Names []string `json:"names"`
 }
 
-// Home returns the project an agent lives in, by any spelling of its name,
-// as the registry finds an agent by any. Company is an explicit root home.
+// Home returns an agent's home, which says who sees it, by any spelling of
+// its name, as the registry finds an agent by any. Root is an explicit home
+// for the whole workspace.
 func (t *Tree) Home(agent string) (string, bool) {
 	p, ok := t.homes[wire.NormalizeName(agent)]
 	return p, ok
 }
 
-// Homes returns the agents that live in a project, by name.
+// Homes returns the agents homed in a project, by name: those its readers
+// see.
 func (t *Tree) Homes(project string) []string {
 	return slices.Clone(t.lives[project])
 }
@@ -200,59 +197,18 @@ func (t *Tree) chain(name string, fn func(p *Project) bool) bool {
 	}
 }
 
-// Available returns which agents may run in a project. A name the tree does
-// not hold has none.
+// Available returns which agents may run in a project: every agent, unless
+// an allow list on its chain narrows them. A name the tree does not hold has
+// none.
 func (t *Tree) Available(project string) Availability {
-	star := false
-	offered := map[string]bool{}
-	var allowed map[string]bool
-	held := t.chain(project, func(q *Project) bool {
-		for _, n := range q.Agents.Enable {
-			if n == Everyone {
-				star = true
-			} else if home, homed := t.homes[n]; !homed || home == Root {
-				offered[n] = true
-			}
-		}
-		if q.Name != Root {
-			for _, a := range t.lives[q.Name] {
-				offered[a] = true
-			}
-		}
-		if q.Agents.Allow != nil {
-			next := map[string]bool{}
-			for _, a := range q.Agents.Allow {
-				if allowed == nil || allowed[a] {
-					next[a] = true
-				}
-			}
-			allowed = next
-		}
-		return true
-	})
-	out := Availability{Names: []string{}}
-	if !held {
-		return out
+	if !t.Has(project) {
+		return Availability{Names: []string{}}
 	}
+	allowed := t.Allowed(project)
 	if allowed == nil {
-		out.All = star
-		for a := range offered {
-			if home, homed := t.homes[a]; (homed && home != Root) || !star {
-				out.Names = append(out.Names, a)
-			}
-		}
-	} else {
-		for a := range allowed {
-			home, homed := t.homes[a]
-			homed = homed && home != Root
-			if offered[a] || (star && !homed) {
-				out.Names = append(out.Names, a)
-			}
-		}
+		return Availability{All: true, Names: []string{}}
 	}
-	out.Names = slices.DeleteFunc(out.Names, func(agent string) bool { return !t.IsAvailable(project, agent) })
-	slices.Sort(out.Names)
-	return out
+	return Availability{Names: allowed}
 }
 
 // Allowed returns the agents every allow list on a project's chain permits,
@@ -303,76 +259,60 @@ func Widens(was, next []string) bool {
 	return false
 }
 
-// IsAvailable reports whether an agent may run in a project: offered there,
-// and permitted by every allow list on the chain. It does not know whether
-// the agent exists; the registry does. OpenDefault is no agent, so it is never
-// available itself: a caller resolves it to one first.
+// IsAvailable reports whether an agent may run in a project: any agent may,
+// unless an allow list on the chain leaves it out. Agents are independent of
+// projects: where an agent's home is, and what a project enables, decide
+// nothing. It does not know whether the agent exists; the registry does.
+// OpenDefault is no agent, so it is never available itself: a caller
+// resolves it to one first.
 func (t *Tree) IsAvailable(project, agent string) bool {
-	if home, ok := t.homes[agent]; ok && home != project {
-		if pr, known := t.Get(home); known && pr.Initiative {
-			return false
-		}
-	}
 	if !ValidAgent(agent) {
 		return false
 	}
-	home, homed := t.homes[agent]
-	homed = homed && home != Root
-	offered, allowed := false, true
-	t.chain(project, func(q *Project) bool {
-		switch {
-		case homed:
-			offered = offered || q.Name == home
-		case slices.Contains(q.Agents.Enable, Everyone), slices.Contains(q.Agents.Enable, agent):
-			offered = true
-		}
+	allowed := true
+	held := t.chain(project, func(q *Project) bool {
 		if q.Agents.Allow != nil && !slices.Contains(q.Agents.Allow, agent) {
 			allowed = false
 			return false
 		}
 		return true
 	})
-	return offered && allowed
+	return held && allowed
 }
 
-// DefaultOf returns the default a message in a project inherits: the first
-// default set on its chain, and the project that set it ("" is the root). It
-// returns "" for none, and for a name the tree does not hold.
+// DefaultOf returns the default a message in a project inherits: the
+// workspace's, set on the root, and the project that set it (always the
+// root). A project's own default is no longer read: any agent answers in any
+// project, so none is a project's. It returns "" for none, and for a name the
+// tree does not hold.
 func (t *Tree) DefaultOf(project string) (agent, from string) {
-	t.chain(project, func(q *Project) bool {
-		if q.Agents.Default != "" {
-			agent, from = q.Agents.Default, q.Name
-			return false
-		}
-		return true
-	})
-	return agent, from
+	if !t.Has(project) {
+		return "", ""
+	}
+	if d := t.Root().Agents.Default; d != "" {
+		return d, Root
+	}
+	return "", ""
 }
 
-// NamedDefault returns the nearest default on a project's chain that names an
-// agent rather than OpenDefault, and where it is set. It is where OpenDefault hands a
-// message that nothing matched. It is not skipped when it has stopped being
-// available: admission refuses it, and says why.
+// NamedDefault returns the workspace default when it names an agent rather
+// than OpenDefault, and where it is set (the root). It is where OpenDefault
+// hands a message that nothing matched.
 func (t *Tree) NamedDefault(project string) (agent, from string) {
-	t.chain(project, func(q *Project) bool {
-		if d := q.Agents.Default; d != "" && d != OpenDefault {
-			agent, from = d, q.Name
-			return false
-		}
-		return true
-	})
-	return agent, from
+	if d, from := t.DefaultOf(project); d != OpenDefault {
+		return d, from
+	}
+	return "", ""
 }
 
-// checkAgents holds a project's lists to the tree they are written into: a
-// named default must be available where it is set, and an agent that lives in
-// a project is not enabled, since that would add nothing. The platform file
-// is checked as a whole instead (Platform.check), so Upsert does not call it.
+// checkAgents holds a project's lists to the tree they are written into: the
+// workspace default must be available at the root. A project below the root
+// chooses no agents, so its enable list and default are not checked: they
+// are not read. The platform file is checked as a whole instead
+// (Platform.check), so Upsert does not call it.
 func checkAgents(t *Tree, p Project) error {
-	for _, n := range p.Agents.Enable {
-		if home, homed := t.homes[n]; homed && home != Root {
-			return fmt.Errorf("%w: %s lives in %s, so it is available there and below, and enabling it adds nothing", ErrInvalid, n, home)
-		}
+	if !p.IsRoot() {
+		return nil
 	}
 	if d := p.Agents.Default; d != "" && d != OpenDefault && !t.IsAvailable(p.Name, d) {
 		return fmt.Errorf("%w: %s is not available in %s, so it cannot answer there", ErrInvalid, d, display(p.Name))

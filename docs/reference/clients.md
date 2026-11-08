@@ -13,7 +13,7 @@ one per agent are all the same record with different values.
 | `surface` | `slack` or `github`. It cannot change after the client is created. |
 | `identity` | The external identity the client answers for. Slack: `team` (required) and `app_id`. GitHub: `owners` (required), `installation` and `app_id`. |
 | `credentials` | `token` and `signing_secret`. Written, never read back. See [Secrets](#secrets). |
-| `default_agent` | Answers a request that named no agent. `"*"` asks each agent the client routes to whether to join (see [the dynamic router](../architecture/projects.md#the-dynamic-router)); `auto` reads as `"*"`. |
+| `default_agent` | Answers a request that named no agent. `"*"` searches the agents the client routes to and asks the best few whether to join (see [the dynamic router](../architecture/projects.md#the-dynamic-router)); `auto` reads as `"*"`. |
 | `agents` | The agents the client may route to, besides its default. |
 | `bots` | A Slack bot user id, or a GitHub login, to the agent it stands for. These three, and `github.auto_labels`, show only the agents the reader may read (see [Agents a reader may not read](#agents-a-reader-may-not-read)). |
 | `slack` | `sessions`, `commands`, and `machine` and `people` (see [People a Slack app answers for](#people-a-slack-app-answers-for)). |

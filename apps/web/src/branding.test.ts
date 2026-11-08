@@ -21,6 +21,7 @@ test("before the workspace's branding is read, the served name brands the consol
     style: null,
     starters: null,
     copy: {},
+    entry_agent: "humagen",
   });
   const acme = servedBranding("Acme");
   assert.equal(acme.wordmark, "Acme");

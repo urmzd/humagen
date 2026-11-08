@@ -1571,8 +1571,27 @@ export interface Attachment {
   unread?: string;
 }
 
+/** What a message posted while agents worked in its thread does to that
+work: `queue` (it starts once the work has ended), `replace` (the
+work is asked to stop, keeping what it has said, and the message
+starts once it has) or `stop` (the work is asked to stop and nothing
+starts). The first word after any leading mentions forces it:
+`queue`, `replace` or `stop`, with an optional colon. Otherwise a
+model decides, and when unsure, or when there is no model, it queues.
+ */
+export interface ThreadFollowup {
+  outcome: "queue" | "replace" | "stop";
+  /** Why, in one line. A stop forced by its first word says what was written after it, which may be nothing. */
+  reason: string;
+  /** The runs it waits on, which a replace or a stop asked to stop. */
+  waiting: string[];
+  /** It was carried out. A queue or a replace started what it calls for; a stop is handled as it is posted. */
+  handled?: boolean;
+}
+
 /** A person's turn in a thread. It starts no run of its own. Its author is always a person. */
 export interface ThreadMessage {
+  followup?: ThreadFollowup;
   attachments?: Attachment[];
   /** `m-` and its place in the thread, from 1. */
   id: string;
@@ -1812,10 +1831,11 @@ or experts), `reply` (it answers a question or replies to a
 mention), `post_only`, `routed` (it tags no agent, and the thread's
 selected agents answer it, see `ThreadMode`), `untagged` (posted by
 a person as themselves, as the console does, and it tags no agent,
-so nothing runs), or `default` (the inherited default answers, if
-there is one).
+so nothing runs), `default` (the inherited default answers, if
+there is one), or `followup` (it was posted while agents worked in
+the thread, so its `followup` decides what it starts and when).
  */
-export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "routed" | "untagged" | "default";
+export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "routed" | "untagged" | "default" | "followup";
 
 /** What posting a message did. */
 export interface ThreadPosted {
@@ -2031,6 +2051,38 @@ each once. Empty for a caller without `knowledge:read`.
   given: ProjectKnowledgeSource[];
 }
 
+/** The corpora a project attaches, its context, at the project's version, and what a session filed in it searches. */
+export interface ProjectCorpora {
+  version: number;
+  /** The corpora the project attaches itself, in its order, each one the caller may read. */
+  corpora: ProjectCorpus[];
+  /** What a session filed here searches: the project's corpora, then
+each project's above it, nearest first, each once, at most 40,
+each one the caller may read.
+ */
+  given: ProjectCorpusRef[];
+}
+
+/** One corpus a project attaches. */
+export interface ProjectCorpus {
+  name: string;
+  title?: string;
+  /** How many of its members the caller may see. */
+  sources: number;
+}
+
+/** A corpus a session searches, and the project on its chain that attaches it (`""` is the workspace). */
+export interface ProjectCorpusRef {
+  name: string;
+  from: string;
+}
+
+/** The corpora a project attaches, as a whole, and the project's version as read. */
+export interface ProjectCorporaInput {
+  version: number;
+  corpora: string[];
+}
+
 /** The knowledge sources a project names, as a whole, from the version read. */
 export interface ProjectKnowledgeInput {
   /** The version the caller read. */
@@ -2199,6 +2251,11 @@ which `GET /api/projects/{name}/skills` reads. Set with `PUT
 change in the project's history records them the same way.
  */
   skills?: ProjectSkillBrief[];
+  /** What every session filed here and below is given besides its
+instructions. Set with `PUT /api/projects/{name}/corpora`.
+Absent when it attaches nothing.
+ */
+  context?: ProjectContext2;
   /** An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived. */
   archived?: boolean;
   /** The lowest role that may post an announcement here. Absent reads as owner. */
@@ -2212,7 +2269,6 @@ change in the project's history records them the same way.
   updated_by?: string;
   /** When the record last changed. What happened in it is `active_at` on a view. */
   updated_at: string;
-  approve_reviews?: boolean;
 }
 
 /** One project on the way down to another. */
@@ -2223,7 +2279,7 @@ export interface ProjectStep {
 }
 
 /** A project, where it sits, and what is in it. */
-export type ProjectView = Project & { unread: number; row_agents: string[]; depth: number; path: ProjectStep[]; children: number; conversations: number; active: number; active_at?: string; schedules: number; notes: number; proposed: number; access: ProjectAccess; actions: ("create" | "propose" | "notes" | "edit" | "move" | "archive" | "delete" | "limits" | "announce")[]; mine: boolean };
+export type ProjectView = Project & { visibility: "private" | "shared" | "workspace"; unread: number; row_agents: string[]; depth: number; path: ProjectStep[]; children: number; conversations: number; active: number; active_at?: string; schedules: number; notes: number; proposed: number; access: ProjectAccess; actions: ("create" | "propose" | "notes" | "edit" | "move" | "archive" | "delete" | "limits" | "announce")[]; mine: boolean };
 
 /** A limit a run filed in the project falls under for being there, and
 the project it is set on. What the limit allows is read from
@@ -2288,7 +2344,6 @@ export interface ProjectUpdate {
   kinds?: ProjectKindSpec[];
   /** What a scheduled agent's announcement here does, `publish` or `review`. Empty takes the kind's default. */
   agent_posts?: "" | "publish" | "review";
-  approve_reviews?: boolean;
 }
 
 /** A caller's role in a project, where it comes from, and the entry or rule that gave it. */
@@ -2377,7 +2432,7 @@ project names as experts, `knowledge` to the knowledge sources it
 names, and `channel` to one of its channels, which `channel`
 holds before and after.
  */
-  what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home" | "experts" | "knowledge" | "skills" | "channel";
+  what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home" | "experts" | "knowledge" | "skills" | "channel" | "context";
   /** The agent a `home` change is about. Absent when it lives in a project the caller may not read. */
   agent?: string;
   /** Says more, such as that a project created under a deleted name adopts its old conversations. */
@@ -2443,11 +2498,11 @@ export interface ProjectAgentsView {
   allow?: string[];
   default?: string;
   available: AgentAvailability;
-  /** Each available agent and where it comes from, `*` first when every platform agent is. */
+  /** Always empty. Projects no longer offer agents. */
   offers: AgentOffer[];
-  /** The agents that live here. */
+  /** The agents homed here, which this project's readers see. */
   homes: string[];
-  /** Who answers an untagged message here, or null when nothing does. */
+  /** Who answers an untagged message here, the workspace default, or null when nothing does. */
   default_resolved: DefaultResolved | null;
 }
 
@@ -2463,15 +2518,15 @@ empty list sends one back. Otherwise it names at least one agent.
   default?: string;
 }
 
-/** Where an agent lives and which projects enable it. */
+/** Who sees an agent, as its home. */
 export interface AgentPlace {
-  /** The project it lives in. Absent for a platform agent. */
+  /** The project whose readers see it. Absent when the whole workspace does. */
   home?: string;
-  /** The projects whose enable list names it, or holds `*` for a platform agent. `~` is the workspace. */
+  /** Always empty. Projects no longer enable agents; kept until the console stops reading it. */
   enabled_in: string[];
 }
 
-/** Where an agent now lives. */
+/** Who now sees an agent, as its home. */
 export type AgentHome = { agent: string } & AgentPlace;
 
 /** Whether voice notes are transcribed, and the largest recording taken. */
@@ -2581,6 +2636,8 @@ export interface PersonalPreferences {
 export interface Branding {
   /** The product's name. */
   name: string;
+  /** The entry agent's agent name. People see it as name, never as this. */
+  entry_agent: string;
   /** The text beside the logo in the sidebar. Empty shows the logo alone. */
   wordmark: string;
   /** What follows the page's name in the browser tab. */
@@ -3406,6 +3463,81 @@ export interface KnowledgeVariant {
   excluded: string[];
 }
 
+/** A source or catalog connector a corpus holds, by kind and name. */
+export interface CorpusMemberRef {
+  /** `source` is a knowledge source; `catalog` is a catalog connector (a warehouse). */
+  kind: "source" | "catalog";
+  name: string;
+}
+
+/** A member as the reader sees it. One the reader may not see has
+status `hidden` and no name, except to the corpus's owner, who sees its
+name so they can remove it; one whose source was deleted is `missing`.
+ */
+export interface CorpusMember {
+  kind: "source" | "catalog";
+  name: string;
+  /** files are indexed text; references are searched live at the
+source; records are warehouse tables kept as schema only and
+queried live.
+ */
+  holds?: "files" | "references" | "records";
+  /** manual, drive, notion, s3, gcs, bigquery, snowflake and so on. */
+  provider?: string;
+  /** Indexed documents, or the tables and views a warehouse lists. */
+  items: number;
+  status: "ready" | "syncing" | "failed" | "missing" | "hidden";
+}
+
+export interface CorpusReader {
+  kind: "person" | "project" | "workspace";
+  /** A person's subject or a project's name; none for the workspace. */
+  name?: string;
+}
+
+export interface Corpus {
+  name: string;
+  /** What people call it, such as HR policies. Absent shows the name. */
+  title?: string;
+  description?: string;
+  /** The subject of the person who manages it. */
+  owner: string;
+  readers: CorpusReader[];
+  members: CorpusMember[];
+  /** The agents granted it that the reader can see. A run of one reads only as the person it acts for, who must be a reader too. */
+  agents: string[];
+  /** Whether its graph links to other shared corpora. Isolated by default. */
+  links: "isolated" | "shared";
+  created_at: string;
+  updated_at: string;
+  version: number;
+  /** Set for its owner, who alone changes it. */
+  mine: boolean;
+}
+
+export interface CorpusCreate {
+  name: string;
+  title?: string;
+  description?: string;
+  readers?: CorpusReader[];
+  members?: CorpusMemberRef[];
+  agents?: string[];
+  links?: "isolated" | "shared";
+}
+
+export interface CorpusChange {
+  title?: string;
+  description?: string;
+  readers?: CorpusReader[];
+  members?: CorpusMemberRef[];
+  links?: "isolated" | "shared";
+  /** Replaces the agents granted it; agents the owner can no longer see are kept. */
+  agents?: string[];
+  /** Hands the corpus to another person. */
+  owner?: string;
+  version?: number;
+}
+
 export interface KnowledgeSource {
   lifecycle?: KnowledgeLifecycle;
   content_version?: number;
@@ -3562,7 +3694,33 @@ export interface CatalogConnector {
   generation: number;
 }
 
-export type CatalogConnectorView = CatalogConnector & { capabilities: ("catalog" | "live")[]; mine: boolean; last_error?: string };
+export interface SnowflakeSetupInput {
+  name: string;
+  /** The account identifier, such as myorg-myaccount. */
+  account: string;
+  database: string;
+  warehouse: string;
+  /** The role the owner's crawl uses; empty is their default role. Queries use each reader's own default role. */
+  role?: string;
+  /** How logins are given. Defaults to OAUTH. */
+  token_type?: "OAUTH" | "PROGRAMMATIC_ACCESS_TOKEN";
+  /** Defaults to 200. */
+  max_rows?: number;
+  /** Defaults to 60. */
+  timeout_seconds?: number;
+  /** How often the schema is crawled again. Defaults to 24. */
+  refresh_hours?: number;
+}
+
+/** Exactly one of ref and value. */
+export interface CatalogLoginInput {
+  /** A reference to your token, under a start the workspace lists. */
+  ref?: string;
+  /** Your token, where the workspace lets people keep values. */
+  value?: string;
+}
+
+export type CatalogConnectorView = CatalogConnector & { capabilities: ("catalog" | "live")[]; mine: boolean; last_error?: string; login?: "connected" | "missing" | "unavailable" };
 
 export interface CatalogPage {
   connectors: CatalogConnectorView[];
@@ -4559,9 +4717,12 @@ export interface SessionAuthor {
   kind: string;
   name: string;
   version?: string;
+  /** The name people see when it differs from name: the workspace's own name for its entry agent. */
+  display?: string;
 }
 
 export interface SessionPart {
+  /** text, call (a child session, with its answer as text once it has one) or pick (why the entry agent chose who answers, as text). */
   type: string;
   text?: string;
   session?: string;
@@ -4959,6 +5120,10 @@ export interface ProjectFork {
   by: string;
   at: string;
   ready: boolean;
+}
+
+export interface ProjectContext2 {
+  corpora?: string[];
 }
 
 export interface ProjectChangeChannel {
@@ -5363,6 +5528,10 @@ export interface ListEvalSuitesResponse {
 
 export interface ListEvalRunsResponse {
   runs: EvalRun[];
+}
+
+export interface ListCorporaResponse {
+  corpora: Corpus[];
 }
 
 export interface ListKnowledgeSourcesResponse {

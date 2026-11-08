@@ -65,6 +65,7 @@ import (
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/connectionauth"
 	"github.com/urmzd/humagen/pkg/contextflags"
+	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/evals"
@@ -121,6 +122,9 @@ type Config struct {
 	// Wording is each workspace's product name and the welcome and email
 	// text its branding replaces. Nil is Humagen's own.
 	Wording func(tenant string) Wording
+	// EntryAgent names the workspace's entry agent, which owns each root
+	// session that names nobody (entry.go). Empty is BuiltinEntry.
+	EntryAgent string
 
 	// AssignmentSources overrides the native resident source cursor for an embedding boundary. Nil uses this platform.
 	AssignmentSources operations.SourceChanges
@@ -304,6 +308,13 @@ type Platform struct {
 	Rooms    *rooms.Hub
 	roomGate *rooms.Gate
 	files    filesblob.Store
+	// GoodAsks are the asks each agent answered well, which routing
+	// searches beside its prompt (pkg/goodasks).
+	GoodAsks goodAsksStore
+	// entry is the entry agent's spawn list per workspace, and picks what
+	// each of its picks came to (entry.go).
+	entry entrySpawns
+	picks *state.Table[pickRecord]
 	// health is the last health report and each component's recent checks.
 	health healthBook
 
@@ -326,10 +337,13 @@ type Platform struct {
 	// CatalogStore is the catalog: what exists in connected systems.
 	CatalogStore *catalog.Store
 	catalog      catalogState
-	SourceLinks  *sourcelinks.Store
-	Evals        *evals.Store
-	Feedback     *feedback.Store
-	Prefs        *prefs.Store
+	// Corpora are named bodies of knowledge, each holding sources and
+	// connectors (docs/architecture/sources.md#corpora).
+	Corpora     *corpora.Store
+	SourceLinks *sourcelinks.Store
+	Evals       *evals.Store
+	Feedback    *feedback.Store
+	Prefs       *prefs.Store
 	// Marks is what each person marked on the conversations they read:
 	// archived for them, when last read, and the tips they dismissed.
 	Marks *marks.Store
@@ -487,6 +501,12 @@ type Platform struct {
 
 // New assembles a platform. Nothing runs until Run is called.
 func New(cfg Config) (*Platform, error) {
+	if cfg.EntryAgent == "" {
+		cfg.EntryAgent = BuiltinEntry
+	}
+	if !projects.ValidAgent(cfg.EntryAgent) {
+		return nil, fmt.Errorf("platform: the entry agent's name %q is not an agent name", cfg.EntryAgent)
+	}
 	if cfg.ProjectTemplates == nil {
 		cfg.ProjectTemplates = projects.DefaultTemplates()
 	}
@@ -792,6 +812,11 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	if err := p.admit(tag, edge, project, within, client); err != nil {
 		return runs.Run{}, err
 	}
+	// A schedule's run is a session in the schedule's project, made once
+	// the run is admitted.
+	if edge.Parent == "" && scheduledOrigin(tag) {
+		tag = p.fileInScheduleSession(ctx, tag, project)
+	}
 	if wire.Meta(tag)[MetaPersonalMemoryContext] == "true" || wire.Meta(tag)[MetaPrivateLibraryContext] == "true" {
 		if err := p.ContextFlags.Mark(tag.Tenant, runID); err != nil {
 			p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
@@ -953,6 +978,9 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	}
 	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) || sees != nil && !sees(req.Agent) {
 		return runs.Run{}, fmt.Errorf("%w: refused by the caller: %q may not call %q, which its spec's spawn allowlist does not name", ErrForbidden, parent.Agent, req.Agent)
+	}
+	if err := p.entryMayCall(tenant, rev, parent.Project, req.Agent); err != nil {
+		return runs.Run{}, err
 	}
 	if err := p.checkOperationCall(ctx, parent, req); err != nil {
 		return runs.Run{}, err

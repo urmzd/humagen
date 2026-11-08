@@ -28,6 +28,7 @@ import { FindHelp, type HelpSuggestion } from "./FindHelp.tsx";
 import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { type HomeAnnouncement, HomePage } from "./HomePage.tsx";
 import { itemActions } from "./itemActions.tsx";
+import { AnswerRefs, OriginRef, ResponseActivity } from "./MessageRefs.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { emptySelection, mentionPicks, PlusMenu, type Selection, SelectionChips } from "./Plus.tsx";
@@ -40,6 +41,7 @@ import { useRunTurn } from "./Runs.tsx";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { Scroller } from "./Scroller.tsx";
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
+import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./SessionPlace.tsx";
 import { useThreadSelection } from "./selection.ts";
 import { mentionsIn } from "./tags.ts";
 import { readFromStart } from "./turns.ts";
@@ -156,9 +158,15 @@ function TurnView({
   onRedirect,
   actions,
   canStop = false,
+  origin,
+  onActivity,
 }: {
   run: Run;
   canStop?: boolean;
+  /** Open this answer's activity in Details, when more than one agent worked on it. */
+  onActivity?: (run: string) => void;
+  /** Where the session started, as a chip under the first message. */
+  origin?: ReactNode;
   /** The reader's subject. */
   me: string;
   siblings: Run[];
@@ -202,6 +210,7 @@ function TurnView({
       <p className="humagen-glass max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">
         <Mentioned text={run.text} />
       </p>
+      {origin && <div className="flex justify-end">{origin}</div>}
       {/* The answer names its agent. Only a router's pick, which it does not show, is said. */}
       {run.picked && <Checkpoint agent={run.agent}>{run.picked}</Checkpoint>}
 
@@ -224,6 +233,7 @@ function TurnView({
           )}
         </RunFeedbackHost>
       </AgentTint>
+      <AnswerRefs run={run} onActivity={onActivity} />
 
       <div className="flex flex-wrap items-center gap-2 pl-11 text-aui-xs text-aui-muted">
         {siblings.length > 1 && (
@@ -426,6 +436,7 @@ export function Chat({
   const [room, setRoom] = useState<ThreadPage | null>(null);
   const wide = useWide();
   // The + selection of a conversation of runs, saved on its thread as a room's is.
+  const chatPlace = usePlace(room?.thread);
   const runs = useThreadSelection(threadId ?? "", room?.thread ?? noThread, {
     saved: (t) => {
       setRoom((r) => (r ? { ...r, thread: t } : r));
@@ -1061,6 +1072,10 @@ export function Chat({
             defaultCopy.projects.workspace
           }
           private={room?.thread.visibility === "private"}
+          origin={<OriginButton place={chatPlace} />}
+          location={
+            chatPlace && <SessionPlace place={chatPlace} sender={path[0]?.actor?.display} />
+          }
           agents={summary?.agents ?? [...new Set(turns.map((t) => t.agent))]}
           people={room?.thread.participants?.filter((p) => p.kind === "person").map((p) => p.name)}
           onPanel={(next) => openPanel(next)}
@@ -1085,6 +1100,8 @@ export function Chat({
                 <TurnView
                   key={run.id}
                   run={run}
+                  origin={i === 0 ? <OriginRef origin={referenceOfPlace(chatPlace)} /> : undefined}
+                  onActivity={(id) => openPanel("response", { run: id })}
                   canStop={canRun && !room?.thread.read_only}
                   actions={
                     !room?.thread.read_only && run.status === "completed" ? (
@@ -1156,6 +1173,7 @@ export function Chat({
         </ConversationPage>
         {room && (
           <ConversationInfo
+            origin={referenceOfPlace(chatPlace)}
             canWrite={canRun}
             runs={turns}
             view={shownView}
@@ -1240,6 +1258,14 @@ export function Chat({
               }
             />
           )}
+        </Presence>
+        <Presence when={shownView.panel === "response" && !!shownView.run} ms={220}>
+          {(leaving) => {
+            const run = turns.find((t) => t.id === shownView.run);
+            return run ? (
+              <ResponseActivity run={run} leaving={leaving} onClose={() => openPanel()} />
+            ) : null;
+          }}
         </Presence>
         <Presence when={activity !== null} ms={220}>
           {(leaving) => (

@@ -27,6 +27,8 @@ func TestBuiltinNamesAndReviewGrants(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The entry agent is held to its own rules in entry_test.go.
+	revs = slices.DeleteFunc(revs, func(r wire.Revision) bool { return r.Spec.Name == platform.BuiltinEntry })
 	if len(revs) != len(want) {
 		t.Fatalf("directory contains %d agents, want %d", len(revs), len(want))
 	}
@@ -165,7 +167,7 @@ func TestBuiltinCompatibilitySurvivesRestart(t *testing.T) {
 			t.Fatalf("pinned revision after restart: %+v, %v", pinned, err)
 		}
 		rows, _, err := p.AgentDirectory(ctx, "acme", wire.Page{Size: 100})
-		if err != nil || len(rows) != len(platform.Builtins()) {
+		if err != nil || len(rows) != len(platform.Builtins())+1 { // and the entry agent
 			t.Fatalf("directory after restart = %v, %v", rows, err)
 		}
 	})

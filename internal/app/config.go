@@ -277,6 +277,7 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 	set("concurrency", strconv.Itoa(sp.Execution.Concurrency))
 	set("max-depth", strconv.Itoa(sp.Execution.MaxDepth))
 	set("max-fan-out", strconv.Itoa(sp.Execution.MaxFanOut))
+	set("entry-agent", sp.Branding.EntryAgent)
 	set("room-coalesce-above", strconv.Itoa(sp.Rooms.CoalesceAbove))
 	set("room-tail-interval", sp.Rooms.TailInterval)
 	set("room-max-runs-per-minute", strconv.Itoa(sp.Rooms.MaxRunsPerMinute))
@@ -605,8 +606,7 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 	pr := projects.Project{
 		Name: d.Name, Title: d.Title, Description: d.Description, Kind: projects.Kind(d.Kind),
 		Parent: spec.ParentOf(d), Instructions: d.Instructions, Experts: expertsOf(d.Experts), AgentPosts: d.AgentPosts,
-		ApproveReviews: d.ApproveReviews != nil && *d.ApproveReviews,
-		Knowledge:      append([]string(nil), d.Knowledge...), Skills: skillsOf(d.Skills),
+		Knowledge: append([]string(nil), d.Knowledge...), Skills: skillsOf(d.Skills),
 	}
 	if a := d.Account; a != nil {
 		pr.Account = &projects.AccountInfo{Customer: a.Customer, ExternalID: a.ExternalID, URL: a.URL}
@@ -619,19 +619,18 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 	}
 	var owns []string
 	for field, set := range map[string]bool{
-		projects.FieldTitle:          d.Title != "",
-		projects.FieldDescription:    d.Description != "",
-		projects.FieldKind:           d.Kind != "",
-		projects.FieldParent:         d.Parent != "",
-		projects.FieldAccount:        d.Account != nil,
-		projects.FieldInstructions:   d.Instructions != "",
-		projects.FieldAgentPosts:     d.AgentPosts != "",
-		projects.FieldApproveReviews: d.ApproveReviews != nil,
-		projects.FieldExperts:        d.Experts != nil,
-		projects.FieldKnowledge:      d.Knowledge != nil,
-		projects.FieldSkills:         d.Skills != nil,
-		projects.FieldAgents:         d.Agents != nil,
-		projects.FieldMembers:        d.Members != nil,
+		projects.FieldTitle:        d.Title != "",
+		projects.FieldDescription:  d.Description != "",
+		projects.FieldKind:         d.Kind != "",
+		projects.FieldParent:       d.Parent != "",
+		projects.FieldAccount:      d.Account != nil,
+		projects.FieldInstructions: d.Instructions != "",
+		projects.FieldAgentPosts:   d.AgentPosts != "",
+		projects.FieldExperts:      d.Experts != nil,
+		projects.FieldKnowledge:    d.Knowledge != nil,
+		projects.FieldSkills:       d.Skills != nil,
+		projects.FieldAgents:       d.Agents != nil,
+		projects.FieldMembers:      d.Members != nil,
 	} {
 		if set {
 			owns = append(owns, field)
