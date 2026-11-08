@@ -521,16 +521,6 @@ export interface JoinDecision {
 }
 
 /**
- * The model that asks every available agent whether it should take a message
- * that names no agent. There is no switch: routing runs once both are set,
- * on a provider the deployment declares or the workspace set up.
- */
-export interface RouterSettings {
-  provider?: string;
-  model?: string;
-}
-
-/**
  * Workspace settings. Who answers a message that tags no agent is not one of
  * them: it is the workspace's default, on the root's agents.
  */
@@ -543,8 +533,6 @@ export interface Settings {
   workspace_name?: string;
   /** Named model lists agents run on with provider "policy". */
   model_policies?: ModelPolicy[];
-  /** The model that routes a message that names no agent. */
-  router: RouterSettings;
   /** The model providers the workspace's administrators set up, with no key. */
   model_providers?: ModelProvider[];
   /** Set once by the server when an admin first saves settings. */

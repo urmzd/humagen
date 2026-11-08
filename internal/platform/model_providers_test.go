@@ -200,7 +200,7 @@ func TestSetModelProviderRefusesWhatCannotRun(t *testing.T) {
 	}
 }
 
-// A provider an agent, a policy or routing runs on cannot be removed, and
+// A provider an agent or a policy runs on cannot be removed, and
 // removing one drops its kept key.
 func TestDeleteModelProviderRefusesOneInUse(t *testing.T) {
 	p, _ := configured(t, Config{})
@@ -208,23 +208,13 @@ func TestDeleteModelProviderRefusesOneInUse(t *testing.T) {
 	if _, err := p.SetModelProvider(ctx, admin("acme"), "team", ModelProviderInput{Kind: KindAnthropic, Key: "sk"}); err != nil {
 		t.Fatal(err)
 	}
-	set := p.Settings("acme")
-	set.Router = RouterSettings{Provider: "team", Model: "claude-haiku-5-5"}
-	if err := p.SetSettings(ctx, "acme", set); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := p.Agents.Create(ctx, "acme", wire.AgentSpec{Name: "writer", Provider: "team", Model: "claude-sonnet-5-5", SystemPrompt: "Write."}, "ada"); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.DeleteModelProvider(ctx, admin("acme"), "team"); !errors.Is(err, ErrModelProviderInUse) || !strings.Contains(err.Error(), "routing") || !strings.Contains(err.Error(), "@writer") {
-		t.Fatalf("delete while routing and an agent use it = %v", err)
+	if err := p.DeleteModelProvider(ctx, admin("acme"), "team"); !errors.Is(err, ErrModelProviderInUse) || !strings.Contains(err.Error(), "@writer") {
+		t.Fatalf("delete while an agent uses it = %v", err)
 	}
 	if _, err := p.Agents.Revise(ctx, "acme", wire.AgentSpec{Name: "writer", Provider: "offline", Model: "offline", SystemPrompt: "Write."}, 1, "ada"); err != nil {
-		t.Fatal(err)
-	}
-	set = p.Settings("acme")
-	set.Router = RouterSettings{}
-	if err := p.SetSettings(ctx, "acme", set); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.DeleteModelProvider(ctx, admin("acme"), "team"); err != nil {
@@ -251,30 +241,6 @@ func TestSettingsWritesKeepTheWorkspacesProviders(t *testing.T) {
 	got := p.ModelProviders("acme")
 	if len(got) != 1 || got[0].Name != "team" {
 		t.Fatalf("providers after a settings write = %+v", got)
-	}
-}
-
-// Routing has no switch: it runs once its model is set, on a provider the
-// workspace has, and refuses one it does not.
-func TestRoutingRunsOnceItsModelIsSet(t *testing.T) {
-	p, _ := configured(t, Config{})
-	ctx := context.Background()
-	if p.asker("acme") != nil {
-		t.Fatal("routing asks with no model")
-	}
-	set := p.Settings("acme")
-	set.Router = RouterSettings{Provider: "team", Model: "claude-haiku-5-5"}
-	if err := p.SetSettings(ctx, "acme", set); !errors.Is(err, ErrSettings) {
-		t.Fatalf("routing on a provider nobody set up = %v", err)
-	}
-	if _, err := p.SetModelProvider(ctx, admin("acme"), "team", ModelProviderInput{Kind: KindAnthropic, Key: "sk"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := p.SetSettings(ctx, "acme", set); err != nil {
-		t.Fatal(err)
-	}
-	if p.asker("acme") == nil {
-		t.Fatal("routing does not ask once its model is set")
 	}
 }
 

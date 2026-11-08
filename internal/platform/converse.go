@@ -79,9 +79,6 @@ type Settings struct {
 	// call moves from one to the next. An agent runs on one by naming the
 	// provider "policy" and the policy's name as its model.
 	ModelPolicies []ModelPolicy `json:"model_policies"`
-	// Router is the model each agent is asked on about a message that
-	// names none: "should I be involved?".
-	Router RouterSettings `json:"router"`
 	// ModelProviders are the model providers the workspace's
 	// administrators set up. Only SetModelProvider and DeleteModelProvider
 	// change them; a settings write keeps them as they are.
@@ -319,9 +316,6 @@ func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings
 		return fmt.Errorf("%w: the history limit is from %d to %d characters", ErrSettings, MinHistory, MaxHistory)
 	}
 	if err := checkPoliciesAgainst(next.ModelPolicies, p.modelNames(tenant)); err != nil {
-		return err
-	}
-	if err := p.checkRouter(tenant, &next.Router); err != nil {
 		return err
 	}
 	// A policy an agent still runs on cannot be removed, or that agent would

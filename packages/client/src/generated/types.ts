@@ -730,17 +730,6 @@ export interface Revision {
   created_by_name?: string;
 }
 
-/** The model that asks each agent, about a message that names no agent,
-"should I be involved?". There is no switch: routing runs once an
-administrator picks its model, on a provider the deployment declares
-or the workspace set up. Until then no agent takes a message on its
-own.
- */
-export interface RouterSettings {
-  provider?: string;
-  model?: string;
-}
-
 /** Vertex AI, where a google provider's calls go. With no key the server's own credentials are used. */
 export interface ModelProviderVertex {
   project: string;
@@ -2554,7 +2543,6 @@ it stands when each call starts. A policy an agent still runs on
 cannot be removed (409).
  */
   model_policies: ModelPolicy[];
-  router: RouterSettings;
   /** The model providers the workspace's administrators set up, with no
 key. A settings write keeps them as they are; they change through
 `/api/model-providers/{name}`.

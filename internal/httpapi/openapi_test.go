@@ -654,7 +654,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 			Text     string `json:"text"`
 			Severity string `json:"severity,omitempty"`
 		}{}, written: true},
-		"Settings": {typ: platform.Settings{}}, "RouterSettings": {typ: platform.RouterSettings{}}, "Preferences": {typ: prefs.Preferences{}},
+		"Settings": {typ: platform.Settings{}}, "Preferences": {typ: prefs.Preferences{}},
 		"ConnectionHealth": {typ: platform.ConnectionHealth{}}, "ConnectionPreset": {typ: platform.ConnectionPreset{}}, "ConnectionAuthorization": {typ: connectionauth.Authorization{}},
 		"ConnectionAuthorizationInput": {typ: platform.ConnectionAuthorizationInput{}, written: true},
 		"ConnectionRegistration":       {typ: connectionauth.Registration{}, written: true},
