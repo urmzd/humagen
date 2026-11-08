@@ -362,6 +362,7 @@ func Parse(b []byte) (parsed, error) {
 				return out, fmt.Errorf("%s: spec: %w", where, err)
 			}
 			notes = append(notes, p.Spec.adoptAutoDefaults()...)
+			notes = append(notes, p.Spec.unreadAgentFields()...)
 			for _, n := range notes {
 				out.Old = true
 				out.Notes = append(out.Notes, where+": "+n)

@@ -44,12 +44,11 @@ type level struct {
 //   - enable, allow and default name agents in this file or the platform's
 //     own; "*" only stands alone in enable, and auto is only a default;
 //   - an allow list names at least one agent, and a list at most 64;
-//   - an agent lives in at most one project, one in this file, and an agent
-//     that lives in a project is not enabled anywhere, which would add
-//     nothing;
-//   - a named default is available where it is set, as far as the file can
-//     tell: a level the file leaves to the console may enable anything, and
-//     the file's allow lists always apply.
+//   - an agent has at most one home, one in this file; a home says only who
+//     sees the agent;
+//   - the workspace default is allowed at the root. A project's default and
+//     every enable list are not read (unreadAgentFields notes them), since
+//     any agent answers in any project its allow lists permit.
 //
 // An agent read from a file is named only when the file is read at start,
 // so a name the file cannot see is left to the start, which checks again.
@@ -105,7 +104,7 @@ func checkAgents(sp PlatformSpec) error {
 		if l.agents == nil {
 			continue
 		}
-		if err := checkAgentLists(*l.agents, known, blind, homes); err != nil {
+		if err := checkAgentLists(*l.agents, known, blind); err != nil {
 			return fmt.Errorf("%s.%w", l.path, err)
 		}
 	}
@@ -116,12 +115,9 @@ func checkAgents(sp PlatformSpec) error {
 		parents[p.Name] = ParentOf(p)
 		byName[p.Name] = p.Agents
 	}
-	for _, l := range levels {
-		if l.agents == nil || l.agents.Default == "" || l.agents.Default == OpenDefault {
-			continue
-		}
-		if why := unavailable(l.agents.Default, l.name, parents, byName, homes); why != "" {
-			return fmt.Errorf("%s.default: %s is not available in %s: %s", l.path, l.agents.Default, display(l.name), why)
+	if d := w.Agents; d != nil && d.Default != "" && d.Default != OpenDefault {
+		if why := unavailable(d.Default, "", parents, byName); why != "" {
+			return fmt.Errorf("workspace.agents.default: %s is not available in %s: %s", d.Default, display(""), why)
 		}
 	}
 	return nil
@@ -136,7 +132,7 @@ func display(name string) string {
 
 // checkAgentLists checks one level's lists on their own. Its error starts
 // with the field's name.
-func checkAgentLists(a Agents, known map[string]bool, blind bool, homes map[string]string) error {
+func checkAgentLists(a Agents, known map[string]bool, blind bool) error {
 	switch {
 	case len(a.Enable) > maxAgentList:
 		return fmt.Errorf("enable: at most %d agents", maxAgentList)
@@ -159,9 +155,6 @@ func checkAgentLists(a Agents, known map[string]bool, blind bool, homes map[stri
 			}
 			if err := checkAgentName(n, known, blind); err != nil {
 				return fmt.Errorf("%s: %w", field, err)
-			}
-			if home, homed := homes[n]; homed && field == "enable" {
-				return fmt.Errorf("enable: %s lives in %q, so it is available there and below, and enabling it adds nothing", n, home)
 			}
 		}
 	}
@@ -186,35 +179,52 @@ func checkAgentName(n string, known map[string]bool, blind bool) error {
 }
 
 // unavailable says why an agent cannot run in a project, as far as the file
-// can tell, or "" when it can or the file cannot tell.
-func unavailable(agent, project string, parents map[string]string, lists map[string]*Agents, homes map[string]string) string {
-	home, homed := homes[agent]
-	offered, unknown := false, false
+// can tell, or "" when it can or the file cannot tell: an allow list on the
+// project's chain leaves it out. Any agent answers in any project the allow
+// lists permit.
+func unavailable(agent, project string, parents map[string]string, lists map[string]*Agents) string {
 	for at, steps := project, 0; steps <= len(parents)+1; steps++ {
-		a := lists[at]
-		switch {
-		case a == nil:
-			unknown = true
-		case a.Allow != nil && !slices.Contains(a.Allow, agent):
+		if a := lists[at]; a != nil && a.Allow != nil && !slices.Contains(a.Allow, agent) {
 			return fmt.Sprintf("the allow list of %s leaves it out", display(at))
-		case !homed && (slices.Contains(a.Enable, agent) || slices.Contains(a.Enable, EveryAgent)):
-			offered = true
-		}
-		if homed && at == home {
-			offered = true
 		}
 		if at == "" {
 			break
 		}
 		at = parents[at]
 	}
-	switch {
-	case homed && !offered:
-		return fmt.Sprintf("it lives in %q, and is available only there and below", home)
-	case !offered && !unknown:
-		return "nothing on its chain enables it"
-	}
 	return ""
+}
+
+// unreadAgentFields returns a note for each field the file sets that is no
+// longer read: an enable list, a project's default and a channel's default.
+// Agents are independent of projects, so none of them decides who answers.
+// They are still accepted, so a file that sets them keeps starting.
+func (sp *PlatformSpec) unreadAgentFields() []string {
+	var notes []string
+	const why = "is no longer read: any agent answers in any project its allow lists permit"
+	w := sp.Workspace
+	if w.Agents != nil && w.Agents.Enable != nil {
+		notes = append(notes, "workspace.agents.enable "+why)
+	}
+	for i, c := range w.Channels {
+		if c.Default != "" {
+			notes = append(notes, fmt.Sprintf("workspace.channels[%d].default %s", i, why))
+		}
+	}
+	for i, p := range w.Projects {
+		if p.Agents != nil && p.Agents.Enable != nil {
+			notes = append(notes, fmt.Sprintf("workspace.projects[%d].agents.enable %s", i, why))
+		}
+		if p.Agents != nil && p.Agents.Default != "" {
+			notes = append(notes, fmt.Sprintf("workspace.projects[%d].agents.default %s", i, why))
+		}
+		for j, c := range p.Channels {
+			if c.Default != "" {
+				notes = append(notes, fmt.Sprintf("workspace.projects[%d].channels[%d].default %s", i, j, why))
+			}
+		}
+	}
+	return notes
 }
 
 // adoptAutoDefaults reads every default written as "auto", the router that

@@ -472,18 +472,17 @@ func (p *Platform) checkTags(tenant string, tree *projects.Tree, project string,
 }
 
 // placeOfThread is where a message in a thread is posted, for deciding who
-// answers it: the thread's project, with the thread's and its channel's
-// defaults nearer than the project's.
+// answers it: the thread's project, with the thread's default nearer than
+// the workspace's.
 func (p *Platform) placeOfThread(tenant string, th threads.Thread) Place {
 	return p.placeIn(tenant, th, "")
 }
 
 // placeIn is placeOfThread for a message a client sends, with the client's
-// default between the thread's and the channel's.
+// default after the thread's.
 func (p *Platform) placeIn(tenant string, th threads.Thread, clientDefault string) Place {
-	ch, _ := p.Projects.Channel(tenant, th.Project, cmp.Or(th.Channel, projects.General))
 	at := Place{Project: th.Project}
-	for _, d := range threads.Nearer(th, cmp.Or(clientDefault, p.clientDefault(tenant, th)), ch) {
+	for _, d := range threads.Nearer(th, cmp.Or(clientDefault, p.clientDefault(tenant, th))) {
 		at.Nearer = append(at.Nearer, Nearer{Agent: d.Agent, From: d.From})
 	}
 	return at

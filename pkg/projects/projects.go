@@ -220,8 +220,9 @@ type Project struct {
 	// Announce is the lowest role that may post an announcement here. ""
 	// reads as owner.
 	Announce Role `json:"announce,omitempty"`
-	// Agents is what the project turns on: which agents are available here
-	// and below, and which answers a message that tags none.
+	// Agents is the project's agent policy: its allow list, and on the root
+	// the workspace default. Any agent answers in any project the allow
+	// lists permit.
 	Agents Agents `json:"agents"`
 	// Knowledge is the knowledge sources every run filed here and below is
 	// grounded in, besides its agent's own (Tree.Knowledge).
