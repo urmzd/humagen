@@ -2544,10 +2544,10 @@ export interface VoiceProviderView {
 
 /** What voice mode has used in a session, counted also in the workspace's usage. */
 export interface VoiceUsage {
-  /** How long the person spoke */
+  /** How long the person spoke, as the provider measured it. */
   heard_ms: number;
   spoken_chars: number;
-  /** What it cost */
+  /** What it cost, in micro-USD. */
   micros: number;
   calls: number;
   unpriced_calls?: number;
@@ -2566,10 +2566,10 @@ export interface VoiceSpeechInput {
 
 /** The next part of a run's answer, spoken. */
 export interface VoiceSpeech {
-  /** The sound */
+  /** The sound, base64. Left out while pending. */
   audio?: Blob;
   media_type?: string;
-  /** What was said */
+  /** What was said, for captions. */
   text: string;
   /** The offset to ask from next. */
   next: number;
