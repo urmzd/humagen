@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -34,6 +35,7 @@ import (
 	"github.com/urmzd/orchagent/flow/event"
 	"github.com/urmzd/orchagent/flow/mcptools"
 	"github.com/urmzd/orchagent/flow/runtime"
+	orchsession "github.com/urmzd/orchagent/flow/session"
 	"github.com/urmzd/orchagent/flow/toolprovider"
 	"github.com/urmzd/orchagent/flow/turn/native"
 	"github.com/urmzd/saige/agent/agenttest"
@@ -115,6 +117,9 @@ func loadSpec(t *testing.T) *apiSpec {
 	var viaYAML any
 	if err := yaml.Unmarshal(raw, &viaYAML); err != nil {
 		t.Fatalf("the spec is not YAML: %v", err)
+	}
+	if err := specJSONKeys(viaYAML, "openapi"); err != nil {
+		t.Fatalf("the spec must use JSON mapping keys: %v", err)
 	}
 	// Through JSON, so every value is one the schema compiler expects.
 	asJSON, err := json.Marshal(viaYAML)
@@ -603,7 +608,12 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		written bool
 	}
 	shapes := map[string]shape{
-		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: wire.AgentSpec{}}, "AgentSource": {typ: wire.Source{}},
+		"SessionIdentity": {typ: threads.SessionIdentity{}}, "SessionInput": {typ: platform.SessionInput{}, written: true}, "SessionPostInput": {typ: platform.SessionPostInput{}, written: true},
+		"AgentSessionSummary": {typ: platform.SessionSummary{}}, "SessionAuthor": {typ: platform.SessionAuthor{}},
+		"SessionPart": {typ: platform.SessionPart{}}, "SessionFeedback": {typ: platform.SessionFeedback{}},
+		"SessionMessage": {typ: platform.SessionMessage{}}, "SessionLink": {typ: orchsession.Link{}},
+		"AgentSession": {typ: platform.SessionView{}},
+		"Principal":    {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: wire.AgentSpec{}}, "AgentSource": {typ: wire.Source{}},
 		"PackageBase": {typ: wire.PackageBase{}}, "AgentPackage": {typ: wire.AgentPackage{}}, "AgentAccess": {typ: wire.Access{}}, "Revision": {typ: revisionView{}}, "JoinDecision": {typ: join.Decision{}},
 		"Note": {typ: noteView{}}, "DriveTree": {typ: drive.Tree{}}, "DriveEntry": {typ: drive.Entry{}}, "DriveChange": {typ: drive.Change{}}, "DriveProposal": {typ: drive.Proposal{}}, "DriveVersion": {typ: drive.Version{}}, "DriveHit": {typ: drive.Hit{}}, "MemoryFiles": {typ: memoryTree{}}, "MemoryFile": {typ: memoryFile{}}, "MemoryRestoreInput": {typ: memoryRestore{}, written: true}, "MemoryDecisionInput": {typ: memoryDecision{}, written: true}, "LibraryScope": {typ: library.Scope{}}, "MemoryFolder": {typ: platform.MemoryFolder{}}, "LibrarySkillFile": {typ: library.File{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: event.Actor{}}, "Run": {typ: runs.Run{}},
 
@@ -980,7 +990,14 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	})
 	notesServer := httptest.NewTLSServer(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return notes }, nil))
 	t.Cleanup(notesServer.Close)
-	f := newFixtureWith(t, platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
+	var quotaClock atomic.Pointer[time.Time]
+	now := func() time.Time {
+		if at := quotaClock.Load(); at != nil {
+			return *at
+		}
+		return time.Now()
+	}
+	f := newFixtureWith(t, platform.Config{Now: now, BuiltinProvider: "offline", BuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
 		native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
 		}),
@@ -1010,6 +1027,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		Speech:    contractSpeech{},
 	})
 	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
+	sessionContract := exerciseSessionContract(t, c)
 	contractSource(t, f, c, sourceFake)
 	contractGitHubItems(t, f, c, sourceFake)
 	pullToken := f.machine(t, "pull-contract", "humagen:runs:read")
@@ -2363,6 +2381,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 			continue
 		}
 		caller := acme
+		if strings.HasPrefix(op.path, "/api/sessions/") {
+			caller = sessionContract["token"]
+		}
 		if strings.HasPrefix(op.path, "/api/me/memory") || strings.HasPrefix(op.path, "/api/agent-setups/") || strings.HasSuffix(op.path, "/skill-draft") || strings.HasSuffix(op.path, "/decision-memory") {
 			caller = auditAdmin
 		}
@@ -2385,19 +2406,29 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// A workspace that has spent its spend limit refuses a new run with 402.
 	// The offline provider prices nothing, so the spend is written to the
 	// ledger as a priced call would be.
+	// Hold this fixture's quota window steady even across UTC midnight.
+	quotaAt := time.Now()
+	quotaClock.Store(&quotaAt)
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"tenant"},"period":"day","max_runs":100,"max_concurrent":50,"spend_limit":5000}`, http.StatusOK)
 	if _, err := c.f.p.Usage.Append(usage.Entry{Kind: usage.Spent, Tenant: "acme", Agent: "helper", RunID: "r-spent", Key: "r-spent/a1/1",
-		At: time.Now(), Spend: &usage.Spend{Micros: 5000, ModelCalls: 1, Tokens: 1000}}); err != nil {
+		At: quotaAt, Spend: &usage.Spend{Micros: 5000, ModelCalls: 1, Tokens: 1000}}); err != nil {
 		t.Fatal(err)
 	}
 	c.call(acme, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"hi"}`, http.StatusPaymentRequired)
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"tenant"},"period":"day","max_runs":100,"max_concurrent":50,"spend_limit":1000000}`, http.StatusOK)
 	// With the agent at its day's limit, everything that would start it is
-	// told so.
+	// told so. Seed a completed admission in this window: earlier contract
+	// requests may have run on the previous UTC day.
+	for _, kind := range []usage.Kind{usage.Admitted, usage.Ended} {
+		if _, err := c.f.p.Usage.Append(usage.Entry{Kind: kind, Tenant: "acme", Agent: "helper", RunID: "r-quota", At: quotaAt}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"agent","name":"helper"},"period":"day","max_runs":1}`, http.StatusOK)
 	c.call(acme, "POST", "/api/schedules/{name}/run", "/api/schedules/nightly/run", "", http.StatusTooManyRequests)
 	c.callFromLiveRun(acme, `{"key":"k429","agent":"helper","text":"hi","mode":"delegate"}`, http.StatusTooManyRequests)
 	c.call(acme, "DELETE", "/api/policies", "/api/policies?kind=agent&name=helper", "", http.StatusNoContent)
+	quotaClock.Store(nil)
 
 	// Durable agent operations use the same contract and admission path.
 	for _, path := range []string{"/api/agent-controls", "/api/agents/helper/control"} {
@@ -2456,6 +2487,14 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/projects/{name}/memory/{id}", "/api/projects/Launch/memory/"+freshProjectNote.str("id"), `{"text":""}`, http.StatusBadRequest)
 	freshPersonalNote := c.call(auditAdmin, "POST", "/api/me/memory", "/api/me/memory", `{"text":"Personal correction source"}`, http.StatusCreated)
 	real := map[string]map[string]string{
+		"/api/sessions/{id}":                         {"id": sessionContract["id"]},
+		"/api/sessions/{id}/messages":                {"id": sessionContract["id"]},
+		"/api/sessions/{id}/stream":                  {"id": sessionContract["id"]},
+		"/api/sessions/{id}/stop":                    {"id": sessionContract["id"]},
+		"/api/sessions/{id}/people":                  {"id": sessionContract["id"]},
+		"/api/sessions/{id}/links":                   {"id": sessionContract["id"]},
+		"/api/sessions/{id}/messages/{mid}/feedback": {"id": sessionContract["id"], "mid": sessionContract["run"]},
+
 		"/api/threads/{id}/files":                             {"id": workspaceID},
 		"/api/threads/{id}/files/content":                     {"id": workspaceID},
 		"/api/threads/{id}/files/publish":                     {"id": workspaceID},
@@ -2567,6 +2606,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}
 		if refusesUnknownFields(op) {
 			caller := acme
+			if strings.HasPrefix(op.path, "/api/sessions/") {
+				caller = sessionContract["token"]
+			}
 			if strings.HasPrefix(op.path, "/api/me/memory") || strings.HasPrefix(op.path, "/api/agent-setups/") || strings.HasSuffix(op.path, "/skill-draft") || strings.HasSuffix(op.path, "/decision-memory") {
 				caller = auditAdmin
 			}
@@ -2651,6 +2693,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
+	"POST /api/sessions 409":                             "governed admission to a deleted project uses the same path tested by POST /api/runs deleted-project response",
+	"POST /api/sessions/{id}/messages 409":               "deleted-project admission uses the same PostMessage path tested by thread/run responses",
+	"POST /api/sessions/{id}/people 409":                 "concurrent participant changes fail thread version CAS covered by participant race tests",
+	"PUT /api/sessions/{id}/messages/{mid}/feedback 409": "same putFeedback handler unfinished-run409 is exercised via legacy feedback route",
+
 	"POST /api/voice/transcriptions 404":            "a deployment with speech left out, covered by TestWithoutSpeechTheConsoleHasNoVoiceNotes",
 	"POST /api/catalog/connectors/{name}/crawl 409": "a crawl asked for while another of the same connector runs; the guard is in platform.crawl",
 	// The atomic source configuration race is covered by TestPromotionGuardAndProvenanceSurviveRestart.

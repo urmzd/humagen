@@ -4311,6 +4311,7 @@ version; `data` is that type's body as JSON. `run`, `seq`, `agent`,
 `version` and `digest` are set on every run event.
  */
 export interface EventEnvelope {
+  session?: string;
   /** Unique per source. A redelivery keeps it. */
   id: string;
   /** What produced the event, as a URI. */
@@ -4488,6 +4489,113 @@ export interface SessionIdentity {
   label?: string;
 }
 
+export interface SessionInput {
+  text: string;
+  agent?: string;
+  parent?: string;
+  label?: string;
+  fresh?: boolean;
+  project?: string;
+  model?: string;
+  effort?: string;
+}
+
+/** A session message with optional routing to a mentioned agent. */
+export interface SessionPostInput {
+  text: string;
+  /** The turn it follows. Empty follows the latest. */
+  after?: string;
+  post_only?: boolean;
+  /** A model, `provider/model`, the runs this message starts use in place of their agent's own. Applied only for an agent whose `choices.models` offers it; any other runs on its own model. The run's model ceilings still apply. */
+  model?: string;
+  /** A reasoning effort, such as `low` or `high`, the runs this message starts use. Applied only for an agent whose `choices.efforts` offers it. A model that does not take it fails the run before any model call. */
+  effort?: string;
+  answers?: ThreadAnswerRef;
+  act_as?: ActAs;
+  surface?: SurfaceRef;
+  /** The @agent in text whose child receives this request. */
+  agent?: string;
+  /** Start an independent child instead of continuing its existing session. */
+  fresh?: boolean;
+  label?: string;
+}
+
+export interface AgentSessionSummary {
+  conversation: ThreadSummary;
+  id: string;
+  agent: string;
+  parent: string;
+  label?: string;
+  project: string;
+  title: string;
+  status: "working" | "waiting" | "done" | "failed" | "stopped";
+  updated_at: string;
+}
+
+export interface SessionAuthor {
+  kind: string;
+  name: string;
+  version?: string;
+}
+
+export interface SessionPart {
+  type: string;
+  text?: string;
+  session?: string;
+  agent?: string;
+  status?: string;
+}
+
+export interface SessionFeedback {
+  rating: "up" | "down";
+  reason?: string;
+  comment?: string;
+  finding_id?: string;
+}
+
+export interface SessionMessage {
+  finding_feedback?: SessionFeedback[];
+  message?: ThreadMessage;
+  id: string;
+  session: string;
+  author: SessionAuthor;
+  status: string;
+  parts: SessionPart[];
+  at: string;
+  run?: Run;
+  ask?: ThreadAsk;
+  feedback?: SessionFeedback;
+}
+
+export interface SessionLink {
+  target: string;
+  kind: "context" | "evidence";
+  created_at: string;
+}
+
+export interface AgentSession {
+  /** More changed messages remain after cursor; continue with since until false. */
+  more?: boolean;
+  usage?: RunUsage;
+  conversation: ThreadSummary;
+  thread: Thread;
+  id: string;
+  agent: string;
+  parent: string;
+  label?: string;
+  project: string;
+  title: string;
+  status: "working" | "waiting" | "done" | "failed" | "stopped";
+  updated_at: string;
+  messages: SessionMessage[];
+  children: AgentSessionSummary[];
+  links: SessionLink[];
+  people: ThreadParticipant[];
+  next?: string;
+  cursor: string;
+  summary?: string;
+}
+
 export interface GitHubSubjectPullRequest {
   url?: string;
 }
@@ -4638,6 +4746,30 @@ export interface ClientViewCredentials {
 export interface ManifestUsage {
   metered: boolean;
   total: Usage;
+}
+
+export interface SaveSessionFeedbackBody {
+  rating: "up" | "down";
+  reason?: string;
+  comment?: string;
+}
+
+export interface LinkSessionBody {
+  target: string;
+  kind?: "context" | "evidence";
+}
+
+export interface InviteSessionPersonBody {
+  person: string;
+}
+
+export interface StopSessionBody {
+  children?: boolean;
+}
+
+export interface ListSessionsResponse {
+  sessions: AgentSessionSummary[];
+  next: string;
 }
 
 export interface ReviewedPullsResponse {

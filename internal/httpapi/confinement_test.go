@@ -59,6 +59,7 @@ const marker = "zqx"
 
 // hidden is what one workspace holds that an outsider must not see.
 type hidden struct {
+	session, sessionMessage                                       string
 	setup                                                         string
 	handoff                                                       string
 	notificationID                                                string
@@ -203,6 +204,7 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	run := must("POST", "/api/runs", `{"agent":"`+h.agent+`","text":"Run `+marker+`.","project":"`+h.project+`"}`, http.StatusAccepted)
 	h.run, h.thread = str(run, "id"), str(run, "thread")
 	ended(t, f, owner, h.run)
+	h.seedSession(t, f, f.person(t, "acme", "00u-session-owner", "Canary", "humagen-admins"))
 	h.handoff = "handoff-" + marker
 	if _, err := f.p.Operations.SetHandoff("acme", operations.Handoff{ID: h.handoff, From: h.agent, To: h.agent, Project: h.project, Thread: h.thread, Owner: "svc-acme", Goal: "Contract " + marker, DoneWhen: "Review " + marker, State: operations.Result, RunID: h.run, Chain: []string{"root", h.agent}, Inputs: []operations.Input{}}, 0, time.Now()); err != nil {
 		t.Fatal(err)
@@ -408,6 +410,7 @@ func hidePrivate(t *testing.T, f *fixture, owner string) hidden {
 	h.thread = started["thread"].(map[string]any)["id"].(string)
 	h.run = started["runs"].([]any)[0].(map[string]any)["id"].(string)
 	ended(t, f, ana, h.run)
+	h.seedSession(t, f, ana)
 	h.handoff = "private-handoff-" + marker
 	if _, err := f.p.Operations.SetHandoff("acme", operations.Handoff{ID: h.handoff, From: h.agent, To: h.agent, Project: h.project, Thread: h.thread, Owner: "00u-ana", Goal: "Contract " + marker, DoneWhen: "Review " + marker, State: operations.Result, RunID: h.run, Chain: []string{"root", h.agent}, Inputs: []operations.Input{}}, 0, time.Now()); err != nil {
 		t.Fatal(err)
@@ -454,6 +457,34 @@ func hidePrivate(t *testing.T, f *fixture, owner string) hidden {
 		time.Sleep(10 * time.Millisecond)
 	}
 	return h
+}
+
+// Seed a real canonical session and completed answer, so the session routes
+// cannot pass the sweep merely because both supplied identifiers are absent.
+func (h *hidden) seedSession(t *testing.T, f *fixture, owner string) {
+	t.Helper()
+	body, err := json.Marshal(map[string]string{"agent": h.agent, "project": h.project, "text": "Session " + marker})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := want(t, f, owner, "POST", "/api/sessions", string(body), http.StatusCreated)
+	h.session = created["id"].(string)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		view := want(t, f, owner, "GET", "/api/sessions/"+h.session, "", http.StatusOK)
+		for _, value := range view["messages"].([]any) {
+			message := value.(map[string]any)
+			if run, ok := message["run"].(map[string]any); ok {
+				h.sessionMessage = message["id"].(string)
+				ended(t, f, owner, run["id"].(string))
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("canonical confinement fixture has no answer")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // visiblePath is an operation's path with every parameter naming what the
@@ -518,6 +549,7 @@ func (h hidden) openPath(path string) (string, bool) {
 // holds reports whether a body shows anything hidden.
 func (h hidden) holds(body string) bool {
 	return strings.Contains(body, marker) || strings.Contains(body, h.run) || (h.thread != "" && strings.Contains(body, h.thread)) ||
+		(h.session != "" && strings.Contains(body, h.session)) ||
 		(!h.inside && h.provider != "" && strings.Contains(body, h.provider))
 }
 
@@ -525,6 +557,9 @@ func (h hidden) holds(body string) bool {
 // which a member of the workspace may see.
 func (h hidden) unplaced(path, param string) bool {
 	if h.private {
+		if strings.HasPrefix(path, "/api/sessions/") {
+			return false
+		}
 		if param == "part" || param == "question" {
 			return h.message == "" && strings.HasPrefix(path, "/api/inbox/")
 		}
@@ -584,6 +619,8 @@ func (h hidden) value(path, param string) (string, bool) {
 		}
 	case "id":
 		switch {
+		case prefix("/api/sessions/"):
+			return h.session, h.session != ""
 		case prefix("/api/library/skills/"):
 			return h.librarySkill, true
 		case prefix("/api/me/notifications/"):
@@ -637,6 +674,10 @@ func (h hidden) value(path, param string) (string, bool) {
 		return "q1", true
 	case "pad":
 		return h.scratchpad, true
+	case "mid":
+		if prefix("/api/sessions/") {
+			return h.sessionMessage, h.sessionMessage != ""
+		}
 	}
 	return "", false
 }
@@ -645,10 +686,10 @@ func (h hidden) value(path, param string) (string, bool) {
 // each names.
 func (h hidden) probes() map[string]string {
 	if h.private {
-		return map[string]string{"thread": h.thread, "run": h.run}
+		return map[string]string{"thread": h.thread, "run": h.run, "session": h.session, "parent": h.session}
 	}
 	out := map[string]string{
-		"project": h.project, "thread": h.thread, "run": h.run, "agent": h.agent, "names": h.agent, "q": "Canary" + marker,
+		"project": h.project, "thread": h.thread, "run": h.run, "session": h.session, "parent": h.session, "agent": h.agent, "names": h.agent, "q": "Canary" + marker,
 	}
 	if !h.inside {
 		out["source"], out["variant"] = h.source, h.variant

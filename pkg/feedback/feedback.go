@@ -27,6 +27,7 @@ import (
 // platform calls them. Seq orders a run's feedback and pages it, and is not a
 // subject.
 type Record struct {
+	FindingID string    `json:"finding_id,omitempty"`
 	Run       string    `json:"run"`
 	Subject   string    `json:"subject"`
 	Seq       int64     `json:"seq,omitempty"`
@@ -80,8 +81,14 @@ func hash(s string) string {
 
 func runPrefix(run string) string          { return "r:" + hash(run) + ":" }
 func recordKey(run string, n int64) string { return runPrefix(run) + state.Seq(n) }
-func subjectKey(run, subject string) string {
+func subjectKey(run, subject string, finding ...string) string {
+	if len(finding) > 0 && finding[0] != "" {
+		subject += "\x00finding:" + finding[0]
+	}
 	return "x:" + hash(run) + ":" + hash(subject)
+}
+func ownKey(r Record) string {
+	return "o:" + hash(r.Run) + ":" + hash(r.Subject) + ":" + hash(r.FindingID)
 }
 func headKey(run string) string { return "h:" + hash(run) }
 
@@ -240,7 +247,8 @@ func (s *Store) move(tenant, key string, r Record) error {
 		}
 		w := &write{}
 		w.put(tenant, recordKey(r.Run, r.Seq), r, state.Missing)
-		w.put(tenant, subjectKey(r.Run, r.Subject), r.Seq, state.Missing)
+		w.put(tenant, ownKey(r), r, 0)
+		w.put(tenant, subjectKey(r.Run, r.Subject, r.FindingID), r.Seq, state.Missing)
 		w.advance(tenant, r.Run, head, r.Seq, hv)
 		w.ops = append(w.ops, state.DeleteAt(tenant, key, at))
 		if err := w.commit(s.st); !errors.Is(err, state.ErrConflict) {
@@ -252,7 +260,7 @@ func (s *Store) move(tenant, key string, r Record) error {
 
 // Save replaces a rating. Repeating a rating preserves existing comments.
 func (s *Store) Save(tenant string, r Record) (Record, error) {
-	if tenant == "" || r.Run == "" || r.Subject == "" || (r.Rating != "up" && r.Rating != "down") || len(r.Comment) > 4000 || len(r.Reason) > 80 {
+	if tenant == "" || r.Run == "" || r.Subject == "" || (r.Rating != "up" && r.Rating != "down") || len(r.Comment) > 4000 || len(r.Reason) > 80 || len(r.FindingID) > 200 {
 		return Record{}, errors.New("feedback: invalid record")
 	}
 	r.Comment, r.Reason = strings.TrimSpace(r.Comment), strings.TrimSpace(r.Reason)
@@ -268,10 +276,20 @@ func (s *Store) Save(tenant string, r Record) (Record, error) {
 
 // save reads what the run holds and writes the rating at the versions read.
 // It returns state.ErrConflict when another writer moved any of them.
-func (s *Store) save(tenant string, r Record) (Record, error) {
+func (s *Store) save(tenant string, r Record, nativeID ...string) (Record, error) {
+	if len(nativeID) > 0 {
+		var previous Record
+		_, err := s.lookup(tenant, "native:"+hash(nativeID[0]), &previous)
+		if err == nil {
+			return previous, nil
+		}
+		if !errors.Is(err, state.ErrNotFound) {
+			return Record{}, err
+		}
+	}
 	r.UpdatedAt = time.Now().UTC()
 	var n int64
-	_, err := s.lookup(tenant, subjectKey(r.Run, r.Subject), &n)
+	_, err := s.lookup(tenant, subjectKey(r.Run, r.Subject, r.FindingID), &n)
 	switch {
 	case err == nil:
 		var old Record
@@ -289,7 +307,14 @@ func (s *Store) save(tenant string, r Record) (Record, error) {
 			r.Reason = cmp.Or(r.Reason, old.Reason)
 		}
 		w := &write{}
+		if err := s.touchChange(w, tenant, r.Run, r.Subject, r.UpdatedAt); err != nil {
+			return Record{}, err
+		}
 		w.put(tenant, recordKey(r.Run, n), r, at)
+		w.put(tenant, ownKey(r), r, 0)
+		if len(nativeID) > 0 {
+			w.put(tenant, "native:"+hash(nativeID[0]), r, state.Missing)
+		}
 		return r, w.commit(s.st)
 	case !errors.Is(err, state.ErrNotFound):
 		return Record{}, err
@@ -301,9 +326,16 @@ func (s *Store) save(tenant string, r Record) (Record, error) {
 	}
 	r.Seq = head + 1
 	w := &write{}
+	if err := s.touchChange(w, tenant, r.Run, r.Subject, r.UpdatedAt); err != nil {
+		return Record{}, err
+	}
 	w.advance(tenant, r.Run, head, r.Seq, hv)
-	w.put(tenant, subjectKey(r.Run, r.Subject), r.Seq, state.Missing)
+	w.put(tenant, subjectKey(r.Run, r.Subject, r.FindingID), r.Seq, state.Missing)
 	w.put(tenant, recordKey(r.Run, r.Seq), r, state.Missing)
+	w.put(tenant, ownKey(r), r, 0)
+	if len(nativeID) > 0 {
+		w.put(tenant, "native:"+hash(nativeID[0]), r, state.Missing)
+	}
 	return r, w.commit(s.st)
 }
 
@@ -325,6 +357,86 @@ func (s *Store) List(tenant, run string, after int64) ([]Record, error) {
 		var r Record
 		if err := json.Unmarshal(rec.Value, &r); err != nil {
 			return nil, fmt.Errorf("feedback: %q: %w", rec.Key, err)
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// ChangedAt includes removals so incremental session reads can clear a rating.
+func (s *Store) ChangedAt(tenant, run, subject string) (time.Time, error) {
+	var at time.Time
+	_, err := s.lookup(tenant, "changed:"+hash(run)+":"+hash(subject), &at)
+	if errors.Is(err, state.ErrNotFound) {
+		return time.Time{}, nil
+	}
+	return at, err
+}
+func (s *Store) touchChange(w *write, tenant, run, subject string, at time.Time) error {
+	key := "changed:" + hash(run) + ":" + hash(subject)
+	var old time.Time
+	v, err := s.lookup(tenant, key, &old)
+	if errors.Is(err, state.ErrNotFound) {
+		v = state.Missing
+	} else if err != nil {
+		return err
+	}
+	if old.After(at) {
+		at = old
+	}
+	w.put(tenant, key, at, v)
+	return nil
+}
+
+// Own reads the authenticated person's rating without listing other people.
+func (s *Store) Own(tenant, run, subject string, finding ...string) (Record, error) {
+	var seq int64
+	if _, err := s.lookup(tenant, subjectKey(run, subject, finding...), &seq); err != nil {
+		return Record{}, err
+	}
+	var r Record
+	_, err := s.lookup(tenant, recordKey(run, seq), &r)
+	return r, err
+}
+
+// Remove clears one person's feedback atomically. It never changes another rating.
+func (s *Store) Remove(tenant, run, subject string, finding ...string) error {
+	return state.Retry(func() error {
+		var seq int64
+		v, err := s.lookup(tenant, subjectKey(run, subject, finding...), &seq)
+		if errors.Is(err, state.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		var r Record
+		rv, err := s.lookup(tenant, recordKey(run, seq), &r)
+		if err != nil {
+			return err
+		}
+		w := &write{}
+		if err := s.touchChange(w, tenant, run, subject, time.Now().UTC()); err != nil {
+			return err
+		}
+		w.ops = append(w.ops, state.DeleteAt(tenant, subjectKey(run, subject, finding...), v), state.DeleteAt(tenant, recordKey(run, seq), rv), state.Delete(tenant, ownKey(r)))
+		return w.commit(s.st)
+	})
+}
+
+// OwnAll reads only this person's feedback, bounded to the response page limit.
+func (s *Store) OwnAll(tenant, run, subject string) ([]Record, error) {
+	c, cancel := ctx()
+	defer cancel()
+	rows, _, err := s.st.List(c, namespace, tenant, state.Query{Prefix: "o:" + hash(run) + ":" + hash(subject) + ":", Limit: MaxPage})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Record, 0, len(rows))
+	for _, row := range rows {
+		var r Record
+		if err = json.Unmarshal(row.Value, &r); err != nil {
+			return nil, err
 		}
 		out = append(out, r)
 	}

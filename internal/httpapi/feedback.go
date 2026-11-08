@@ -101,3 +101,11 @@ func (s *Server) listFeedback(w http.ResponseWriter, r *http.Request, who auth.P
 	}
 	ok(w, http.StatusOK, map[string]any{"feedback": s.shownFeedback(who, who.Subject, records), "next": next})
 }
+
+func (s *Server) deleteFeedback(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	if err := s.P.Feedback.Remove(who.Tenant, r.PathValue("id"), who.Subject, r.URL.Query().Get("finding_id")); err != nil {
+		s.problem(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

@@ -35,6 +35,7 @@ func (p *Platform) ShownEvent(who auth.Principal, e event.Envelope) event.Envelo
 // APIEvent is an event as the API sends it: the envelope, with data as the
 // JSON the reader is shown.
 type APIEvent struct {
+	Session string          `json:"session,omitempty"`
 	ID      string          `json:"id"`
 	Source  string          `json:"source"`
 	Type    string          `json:"type"`
@@ -81,7 +82,7 @@ func (p *Platform) ShownAPI(who auth.Principal, e event.Envelope) (APIEvent, boo
 		}
 	}
 	return APIEvent{
-		ID: e.ID, Source: e.Source, Type: e.Type, Subject: e.Subject, Channel: e.Channel, Time: e.Time, Hops: e.Hops,
+		Session: e.Session, ID: e.ID, Source: e.Source, Type: e.Type, Subject: e.Subject, Channel: e.Channel, Time: e.Time, Hops: e.Hops,
 		Tenant: e.Tenant, Run: e.Run, Seq: e.Seq, Agent: e.Agent, Version: e.Version, Digest: e.Digest, Data: raw,
 	}, true
 }

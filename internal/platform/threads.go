@@ -268,7 +268,7 @@ func (p *Platform) mayPost(person auth.Principal, at Place, need projects.Role) 
 		return keeps, nil
 	}
 	th, err := p.Threads.Get(person.Tenant, at.Thread)
-	if err == nil && th.Fork != nil && !p.SeesThread(person, at.Thread) {
+	if err == nil && (th.Fork != nil || th.Session != nil) && !p.SeesThread(person, at.Thread) {
 		return false, threads.ErrNotFound
 	}
 	if err == nil && th.ReadOnly {
@@ -1051,7 +1051,7 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 		}
 		th = cur
 	}
-	if th.Fork != nil && !p.SeesThread(poster, th.ID) {
+	if (th.Fork != nil || th.Session != nil) && !p.SeesThread(poster, th.ID) {
 		return Posted{}, threads.ErrNotFound
 	}
 	def, unavailable := p.defaultOf(tenant, th, sees)
@@ -1059,6 +1059,12 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 	// they tag: no default answers them. A client's surface keeps its
 	// defaults, where mentioning the app is what asks.
 	tagsOnly := via == ""
+	if th.Session != nil {
+		// Session ownership is immutable. Mentions are context, never a second
+		// answering agent in this transcript. Calls to another agent open children.
+		tagsOnly = false
+		m.Mentions = slices.DeleteFunc(slices.Clone(m.Mentions), func(mn threads.Mention) bool { return mn.Kind == threads.Agent && mn.Name != th.Session.Agent })
+	}
 	// The thread's selected agents answer an untagged message, those the
 	// poster may read: one they may not is passed over for them.
 	routed, mode := slices.DeleteFunc(slices.Clone(th.Agents), func(a string) bool { return sees != nil && !sees(a) }), th.Mode
@@ -1243,7 +1249,7 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	}
 	cfg := p.Settings(tenant)
 	body := m.Text
-	if cfg.History == HistoryRecent {
+	if cfg.History == HistoryRecent && th.Session == nil {
 		body = threads.Ask(p.roomBefore(tenant, th, m), cfg.HistoryLimit, p.shower(tenant), threads.Asker{Person: m.By, Name: m.Name}, m.Text)
 	}
 	var out []runs.Run
@@ -1417,6 +1423,10 @@ func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.T
 		var to []string
 		switch mn.Kind {
 		case threads.Person:
+			if !p.sessionInviteeSeesAncestors(tenant, th, mn.Name) {
+				mn.Refused = "they need access to the parent session before they can join this one"
+				continue
+			}
 			to = []string{mn.Name}
 		case threads.SME:
 			to, _ = tree.ExpertsFor(th.Project, mn.Name)
@@ -1500,16 +1510,7 @@ func (p *Platform) mayBeTold(tenant string, tree *projects.Tree, th threads.Thre
 	if strings.HasPrefix(who, projects.RolePrefix) {
 		return th.Visibility != threads.Private
 	}
-	person := p.byPolicy(tenant, who)
-	if p.People != nil {
-		if known, err := p.People.Get(tenant, who); err == nil {
-			for _, r := range known.Roles {
-				if !slices.Contains(person.Roles, auth.Role(r)) {
-					person.Roles = append(person.Roles, auth.Role(r))
-				}
-			}
-		}
-	}
+	person := p.invitationReader(tenant, who)
 	reader := ReaderOf(person)
 	return reader.Govern || tree.Resolve(th.Project, reader).Role.AtLeast(projects.Viewer)
 }
@@ -1766,6 +1767,9 @@ func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id s
 				return threads.Thread{}, fmt.Errorf("%w: no one in this workspace goes by @%s", threads.ErrInvalid, a.Name)
 			}
 			a.Name = subject
+			if !p.sessionInviteeSeesAncestors(who.Tenant, th, subject) {
+				return threads.Thread{}, fmt.Errorf("%w: add this person to the parent session before inviting them here", threads.ErrInvalid)
+			}
 			if subject != who.Subject && !takesPart(th, subject) && th.Visibility == threads.Private && p.threadNeedsSummary(ctx, who.Tenant, th.ID, th.Project) {
 				return threads.Thread{}, fmt.Errorf("%w: private sources require a reviewed summary before adding people", threads.ErrInvalid)
 			}
