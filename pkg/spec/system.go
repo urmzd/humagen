@@ -62,6 +62,7 @@ type System struct {
 
 // SystemSpec is a System document's spec.
 type SystemSpec struct {
+	Connections *ConnectionAuthorization `json:"connections,omitempty"`
 	// Branding is the deployment's look and name in the console.
 	Branding      Branding             `json:"branding,omitzero"`
 	Notifications NotificationSettings `json:"notifications,omitzero"`
@@ -600,6 +601,9 @@ func (s System) Tenant() string { return s.Spec.Auth.Tenant.Fixed }
 
 func (s System) check(kinds Kinds) error {
 	sp := s.Spec
+	if err := sp.Connections.check(); err != nil {
+		return err
+	}
 	if err := sp.Notifications.check(); err != nil {
 		return err
 	}

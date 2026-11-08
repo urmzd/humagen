@@ -98,6 +98,9 @@ const (
 	ManagedStatic = "static"
 	// ManagedFile is a client a Platform document declares.
 	ManagedFile = "file"
+	// ManagedInstall pins credentials and identity verified by native consent.
+	// Administrators may still choose its routes and connector capabilities.
+	ManagedInstall = "installation"
 )
 
 // Identity is the external identity a client answers for. An inbound request
@@ -189,6 +192,8 @@ type Command struct {
 
 // SlackOptions are the options of a Slack client.
 type SlackOptions struct {
+	// ActionChannels explicitly grant writes from another surface to exact channel IDs.
+	ActionChannels []string `json:"action_channels,omitempty"`
 	// Sessions reports run lifecycle as agent-session status.
 	Sessions bool      `json:"sessions,omitempty"`
 	Commands []Command `json:"commands,omitempty"`
@@ -227,8 +232,10 @@ type GitHubAutomation struct {
 }
 
 type GitHubOptions struct {
-	Automations []GitHubAutomation `json:"automations,omitempty"`
-	People      map[string]string  `json:"people,omitempty"`
+	// ActionRepositories explicitly grant writes from another surface to exact repositories.
+	ActionRepositories []string           `json:"action_repositories,omitempty"`
+	Automations        []GitHubAutomation `json:"automations,omitempty"`
+	People             map[string]string  `json:"people,omitempty"`
 	// AutoLabels maps "owner/repo" to label to agent.
 	AutoLabels map[string]map[string]string `json:"auto_labels,omitempty"`
 	Checks     bool                         `json:"checks,omitempty"`
@@ -470,6 +477,14 @@ func (c Client) validateSlack() error {
 		}
 		seen[cmd.Name] = true
 	}
+	if len(c.Slack.ActionChannels) > maxRepos {
+		return bad("a client grants at most %d action channels", maxRepos)
+	}
+	for i, ch := range c.Slack.ActionChannels {
+		if !slackID.MatchString(ch) || (ch[0] != 'C' && ch[0] != 'G' && ch[0] != 'D') || slices.Contains(c.Slack.ActionChannels[:i], ch) {
+			return bad("action channels must be unique Slack channel IDs")
+		}
+	}
 	if len(c.Slack.People) > maxPeople {
 		return bad("a client maps at most %d people", maxPeople)
 	}
@@ -543,6 +558,15 @@ func (c Client) validateGitHub() error {
 	if len(g.ReadRepositories) > maxRepos || len(g.AutoLabels) > maxRepos {
 		return bad("a client names at most %d repositories", maxRepos)
 	}
+	if len(g.ActionRepositories) > maxRepos {
+		return bad("a client grants at most %d action repositories", maxRepos)
+	}
+	for i, repo := range g.ActionRepositories {
+		owner, _, _ := strings.Cut(repo, "/")
+		if !repoPattern.MatchString(repo) || !c.Serves(owner) || slices.ContainsFunc(g.ActionRepositories[:i], func(prior string) bool { return strings.EqualFold(prior, repo) }) {
+			return bad("action repositories must be unique owner/repo names served by this client")
+		}
+	}
 	for _, repo := range g.ReadRepositories {
 		if !repoPattern.MatchString(repo) {
 			return bad("%q is not an owner/repo name", repo)
@@ -604,6 +628,7 @@ func (c Client) clone() Client {
 	if c.Slack != nil {
 		s := *c.Slack
 		s.Commands = slices.Clone(s.Commands)
+		s.ActionChannels = slices.Clone(s.ActionChannels)
 		if s.People != nil {
 			people := make(map[string]string, len(s.People))
 			for k, v := range s.People {
@@ -623,6 +648,7 @@ func (c Client) clone() Client {
 			}
 		}
 		g.ReadRepositories = slices.Clone(g.ReadRepositories)
+		g.ActionRepositories = slices.Clone(g.ActionRepositories)
 		if g.AutoLabels != nil {
 			labels := make(map[string]map[string]string, len(g.AutoLabels))
 			for repo, m := range g.AutoLabels {
