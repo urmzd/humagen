@@ -3323,7 +3323,8 @@ export interface Alert {
   acked_at?: string;
 }
 
-export type EvalTarget = "agent" | "knowledge";
+/** `corpus` scores a corpus's search as an agent runs it, with the access of whoever starts the run; its cases name the documents (by title) a query should return. */
+export type EvalTarget = "agent" | "knowledge" | "corpus";
 
 /** A deterministic check on an agent's output. */
 export interface EvalCheck {
