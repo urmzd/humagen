@@ -1,7 +1,8 @@
 import { defaultCopy } from "@humagen/components";
-import { useEffect, useState } from "react";
+import { type MouseEvent, useEffect, useState } from "react";
 import { api } from "./api.ts";
-import { OriginMark } from "./MessageRefs.tsx";
+import { inApp, OriginMark } from "./MessageRefs.tsx";
+import { href } from "./route.ts";
 import { type Place, placeOf, type Reference } from "./trace.ts";
 
 const words = defaultCopy.trace;
@@ -94,6 +95,9 @@ export function OriginButton({ place }: { place: Place | undefined }) {
  * sent it, and who can read it there. "Slack thread · from Ana · Slack
  * channel". A session started on the web needs no line.
  */
+const link =
+  "min-h-6 rounded-aui underline decoration-aui-border underline-offset-2 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
+
 export function SessionPlace({ place, sender }: { place: Place; sender?: string }) {
   if (place.kind === "console") return null;
   return (
@@ -109,8 +113,17 @@ export function SessionPlace({ place, sender }: { place: Place; sender?: string 
       <span aria-hidden>·</span>
       <span>
         <span className="sr-only">{words.audience.label}: </span>
-        {words.audience[place.audience]}
+        {defaultCopy.trace.audience[place.audience]}
       </span>
+      {place.origin && (
+        <>
+          <span aria-hidden>·</span>
+          {/* The session's item is where it started: its page lists every session on it and every place that mentioned it. */}
+          <a href={href({ page: "item", address: place.origin })} onClick={inApp} className={link}>
+            {defaultCopy.items.open}
+          </a>
+        </>
+      )}
     </span>
   );
 }

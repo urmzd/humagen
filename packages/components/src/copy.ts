@@ -3396,6 +3396,36 @@ export const defaultCopy = {
     },
   },
   /** Channels and shared threads: where people and agents work together in a project. */
+  /** An item people pointed at: a PR, an issue, a Slack thread, a URL. */
+  items: {
+    kind: (kind: string) =>
+      kind === "github"
+        ? "GitHub"
+        : kind === "slack"
+          ? "Slack"
+          : kind === "url"
+            ? "Web page"
+            : kind === "schedule"
+              ? "Schedule"
+              : "Item",
+    sessions: "Sessions",
+    noSessions: "No sessions yet",
+    /** Places that mentioned the item: a pasted link, a permalink, "#243". */
+    backlinks: "Also discussed in",
+    /** The header's link to the session's item. */
+    open: "Item",
+  },
+  /** Where a session started, as the Sessions list filters it. */
+  places: {
+    label: "Session place",
+    any: "All places",
+    slack: "Slack",
+    github: "GitHub",
+    schedule: "Scheduled",
+    console: "Console",
+    item: (label: string) => `On ${label}`,
+    clearItem: "Clear Item",
+  },
   /** A message's references and the work under it: its origin, what it read and touched, what it delegated. */
   trace: {
     /** The section in Details that collects every message's references. */
