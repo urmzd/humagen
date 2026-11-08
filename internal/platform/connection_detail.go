@@ -201,6 +201,31 @@ func (p *Platform) GetConnection(ctx context.Context, who auth.Principal, name s
 			}
 		}
 	}
-
+	if name == "bigquery" && who.Can(auth.KnowledgeRead) && p.CatalogStore != nil {
+		page, err := p.CatalogAs(who, "", 1)
+		if err != nil {
+			return out, err
+		}
+		for _, c := range page.Connectors {
+			if !c.Mine || c.System != "bigquery" {
+				continue
+			}
+			_, definition, err := p.managedBigQueryDefinition(who.Tenant, c.Name)
+			if err != nil || definition.Input.Credential.Kind != "oauth" {
+				continue
+			}
+			provider, marker, bindingErr := p.ConnectionAuth.Binding(who.Tenant, who.Subject, definition.Binding)
+			if bindingErr != nil || marker == "" || provider != "bigquery" {
+				continue
+			}
+			m := mapping("catalog", c.Name, c.Name)
+			addProject(&m, c.Project)
+			out.Mappings = append(out.Mappings, m)
+			if len(out.Mappings) == 200 {
+				out.Truncated = true
+				break
+			}
+		}
+	}
 	return out, nil
 }

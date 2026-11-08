@@ -64,6 +64,9 @@ type Config struct {
 	// Credential is a reference to a service account key in JSON. Empty is
 	// Application Default Credentials.
 	Credential string
+	// TokenSource supplies a freshly authorized token for every Google API request.
+	// When set, credentials and ADC are not used as a fallback.
+	TokenSource func(context.Context) (string, error)
 	// MaxBytesBilled caps what one query may read. Zero is
 	// DefaultMaxBytesBilled.
 	MaxBytesBilled int64
@@ -75,6 +78,9 @@ type Config struct {
 
 // withDefaults fills zero limits and checks the rest.
 func (c Config) withDefaults() (Config, error) {
+	if c.TokenSource != nil && c.Credential != "" {
+		return c, fmt.Errorf("%w: choose OAuth or a credential reference", ErrInvalid)
+	}
 	if c.Project == "" {
 		return c, fmt.Errorf("%w: a project is required", ErrInvalid)
 	}
@@ -178,6 +184,11 @@ func (c *Connector) Crawl(ctx context.Context) ([]catalog.Entry, error) {
 	all, err := bq.Datasets(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("bigquery: list datasets: %w", err)
+	}
+	for _, selected := range c.cfg.Datasets {
+		if !slices.ContainsFunc(all, func(ds dataset) bool { return ds.ID == selected }) {
+			return nil, fmt.Errorf("%w: a selected dataset is unavailable; check the dataset name and account permissions", ErrOutOfScope)
+		}
 	}
 	var out []catalog.Entry
 	type ref struct{ dataset, table string }

@@ -21,6 +21,7 @@
 package catalog
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -38,6 +39,7 @@ import (
 var (
 	ErrNotFound = errors.New("catalog: not found")
 	ErrInvalid  = errors.New("catalog: invalid")
+	ErrExists   = errors.New("catalog: connector already exists")
 )
 
 // Bounds on what one connector may hold. A crawl past them is refused whole.
@@ -139,10 +141,11 @@ type Hit struct {
 // record is one stored document: a connector, an entry, an entry's vector,
 // or the stamp every new connector moves.
 type record struct {
-	Connector *Connector    `json:"connector,omitempty"`
-	Entry     *Entry        `json:"entry,omitempty"`
-	Vector    *vectorRecord `json:"vector,omitempty"`
-	Stamp     int64         `json:"stamp,omitempty"`
+	Definition json.RawMessage `json:"definition,omitempty"`
+	Connector  *Connector      `json:"connector,omitempty"`
+	Entry      *Entry          `json:"entry,omitempty"`
+	Vector     *vectorRecord   `json:"vector,omitempty"`
+	Stamp      int64           `json:"stamp,omitempty"`
 }
 
 // namespace is where the catalog is kept. The tenant is the shard key;
@@ -286,6 +289,11 @@ func (s *Store) Declare(tenant string, c Connector) (Connector, error) {
 	}
 	var out Connector
 	err := state.Retry(func() error {
+		if _, err := s.ManagedDefinition(tenant, c.Name); err == nil {
+			return ErrExists
+		} else if !errors.Is(err, ErrNotFound) {
+			return err
+		}
 		have, version, err := s.connector(tenant, c.Name)
 		exists := err == nil
 		if err != nil && !errors.Is(err, ErrNotFound) {
@@ -363,6 +371,7 @@ func (s *Store) Remove(tenant, name string) error {
 			b.Delete(tenant, k)
 		}
 		b.DeleteAt(tenant, connectorKey(name), version)
+		b.Delete(tenant, definitionKey(name))
 		return b.Commit()
 	})
 }

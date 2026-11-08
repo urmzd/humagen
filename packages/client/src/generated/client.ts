@@ -28,6 +28,8 @@ import type {
   Assignment,
   AssignmentInput,
   AttachKnowledgeSourceBody,
+  BigQuerySetupInput,
+  BigQuerySetupView,
   Branding,
   BringBackThreadResultBody,
   CallPolicy,
@@ -7628,6 +7630,57 @@ owns cannot be changed here and answers 409.
     let path = "/api/connections/{provider}";
     path = path.replace("{provider}", encodeURIComponent(String(provider)));
     return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Read your available BigQuery credentials and deployment scopes */
+  async getBigQuerySetup(options?: RequestOptions): Promise<BigQuerySetupView> {
+    const path = "/api/catalog/connectors/bigquery/setup";
+    return this.request<BigQuerySetupView>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getBigQuerySetupRaw(options?: RequestOptions): Promise<ApiResponse<BigQuerySetupView>> {
+    const path = "/api/catalog/connectors/bigquery/setup";
+    return this.rawRequest<BigQuerySetupView>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Uses existing personal OAuth consent by default. ADC and credential references additionally require clients:write and must stay within the deployment's permitted scope. Saving does not verify or publish the connector. */
+  async createBigQueryConnector(body: BigQuerySetupInput, options?: RequestOptions): Promise<CatalogConnector> {
+    const path = "/api/catalog/connectors/bigquery";
+    return this.request<CatalogConnector>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async createBigQueryConnectorRaw(body: BigQuerySetupInput, options?: RequestOptions): Promise<ApiResponse<CatalogConnector>> {
+    const path = "/api/catalog/connectors/bigquery";
+    return this.rawRequest<CatalogConnector>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Reuses the immutable saved configuration and current personal consent. It does not verify or publish the connector. */
+  async reconnectBigQueryConnector(name: string, options?: RequestOptions): Promise<CatalogConnector> {
+    let path = "/api/catalog/connectors/{name}/reconnect";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<CatalogConnector>("POST", path, {
+      ...options,
+    });
+  }
+
+  async reconnectBigQueryConnectorRaw(name: string, options?: RequestOptions): Promise<ApiResponse<CatalogConnector>> {
+    let path = "/api/catalog/connectors/{name}/reconnect";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<CatalogConnector>("POST", path, {
       ...options,
     });
   }

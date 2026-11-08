@@ -90,6 +90,11 @@ func (p *Platform) declareConnectors(declared []CatalogConnector) error {
 		}
 		for _, c := range cs {
 			if _, ok := p.catalog.declared[[2]string{tenant, c.Name}]; !ok {
+				if _, err := p.CatalogStore.ManagedDefinition(tenant, c.Name); err == nil {
+					continue
+				} else if !errors.Is(err, catalog.ErrNotFound) {
+					return err
+				}
 				if err := p.CatalogStore.Remove(tenant, c.Name); err != nil && !errors.Is(err, catalog.ErrNotFound) {
 					return fmt.Errorf("platform: remove connector %s/%s: %w", tenant, c.Name, err)
 				}
@@ -101,9 +106,12 @@ func (p *Platform) declareConnectors(declared []CatalogConnector) error {
 
 func (p *Platform) declaredConnector(tenant, name string) (CatalogConnector, bool) {
 	p.catalog.mu.Lock()
-	defer p.catalog.mu.Unlock()
 	c, ok := p.catalog.declared[[2]string{tenant, name}]
-	return c, ok
+	p.catalog.mu.Unlock()
+	if ok {
+		return c, true
+	}
+	return p.managedCatalogConnector(tenant, name)
 }
 
 // crawlCatalog crawls each connector when it is due: never crawled, or
@@ -122,6 +130,10 @@ func (p *Platform) crawlCatalog(ctx context.Context) error {
 }
 
 func (p *Platform) crawlDue(ctx context.Context) {
+	if err := p.refreshManagedCatalog(); err != nil {
+		p.log.Error("catalog: managed connections could not be loaded", "err", err)
+		return
+	}
 	now := p.now()
 	p.catalog.mu.Lock()
 	var due []CatalogConnector
