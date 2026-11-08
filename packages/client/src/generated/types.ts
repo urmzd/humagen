@@ -3495,7 +3495,7 @@ export interface GraphStaleness {
   reasons?: ("old" | "unowned" | "out_of_date" | "superseded")[];
 }
 
-export type GraphNodeView = GraphNode & { owner?: string; owner_state: "" | "suggested" | "confirmed" | "unowned"; staleness?: GraphStaleness };
+export type GraphNodeView = GraphNode & { owner?: string; owner_name?: string; owner_state: "" | "suggested" | "confirmed" | "unowned"; staleness?: GraphStaleness };
 
 export interface GraphHealth {
   nodes: number;

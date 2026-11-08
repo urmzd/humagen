@@ -284,7 +284,9 @@ func (p *Platform) readerGraph(who auth.Principal, cs []corpora.Corpus) (graph.G
 // document, how stale it is.
 type GraphNodeView struct {
 	graph.Node
-	Owner      string           `json:"owner,omitempty"`
+	Owner string `json:"owner,omitempty"`
+	// OwnerName is what the owner is called, as the console names people.
+	OwnerName  string           `json:"owner_name,omitempty"`
 	OwnerState string           `json:"owner_state"`
 	Staleness  *graph.Staleness `json:"staleness,omitempty"`
 }
@@ -373,9 +375,15 @@ func (p *Platform) graphView(tenant string, g graph.Graph, slices_ []graph.Slice
 		view.Health.Truncated = view.Health.Truncated || sl.Truncated
 	}
 	shown := map[string]bool{}
+	names := p.Names(tenant)
 	for _, n := range g.Nodes {
 		v := GraphNodeView{Node: n}
 		v.Owner, v.OwnerState = o.of(n)
+		v.OwnerName = names.Of(v.Owner)
+		if n.Type == graph.Person {
+			// A person's node is keyed by subject and shown by name.
+			v.Name = names.Of(n.Name)
+		}
 		if n.Type != graph.Person && n.Type != graph.Team && n.Type != graph.Project {
 			if v.OwnerState == OwnerUnowned {
 				view.Health.Unowned++
