@@ -130,7 +130,7 @@ func Builtins() []string {
 
 // IsBuiltin reports whether a name belongs to the platform.
 func IsBuiltin(name string) bool {
-	return slices.Contains(Builtins(), wire.NormalizeName(name)) || legacy.IsBuiltinAgent(wire.NormalizeName(name))
+	return slices.Contains(Builtins(), wire.NormalizeName(name)) || legacy.IsBuiltinAgent(wire.NormalizeName(name)) || wire.NormalizeName(name) == BuiltinEntry
 }
 
 // BuiltinChain is the model chain the platform's agents ship with: each
@@ -247,7 +247,7 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 			specs[i].Package = &wire.PackageBase{Name: group.name, Version: version}
 		}
 	}
-	return specs
+	return append(specs, p.entryBuiltin(specs[0]))
 }
 
 // EnsureBuiltins makes sure a tenant has the platform's agents, at the
@@ -278,6 +278,10 @@ func (p *Platform) EnsureBuiltins(ctx context.Context, tenant string) error {
 		}
 	}
 	for _, want := range specs {
+		want, err := p.withEntrySpawn(ctx, tenant, want)
+		if err != nil {
+			return fmt.Errorf("platform: the entry agent's spawn list: %w", err)
+		}
 		have, err := p.Catalog().Get(ctx, tenant, want.Name, 0)
 		if err == nil {
 			if err := p.checkBuiltinOwner(ctx, tenant, have); err != nil {

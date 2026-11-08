@@ -207,7 +207,7 @@ test("session details loads linked children, summarizes and validates a context 
   try {
     render(<SessionRelations id="s_details" canWrite />);
     const child = await screen.findByRole("link", { name: /Review dependencies/ });
-    assert.equal(child.getAttribute("href"), "/sessions/s_child");
+    assert.equal(child.getAttribute("href"), "/messages/s_child");
     fireEvent.click(screen.getByRole("button", { name: "Catch me up" }));
     await screen.findByText("The review completed with two findings.");
     fireEvent.change(screen.getByRole("textbox", { name: "Link a session" }), {
@@ -221,7 +221,7 @@ test("session details loads linked children, summarizes and validates a context 
     });
     fireEvent.click(screen.getByRole("button", { name: "Link session" }));
     const context = await screen.findByRole("link", { name: "context" });
-    assert.equal(context.getAttribute("href"), "/sessions/s_target");
+    assert.equal(context.getAttribute("href"), "/messages/s_target");
     assert.equal(
       (screen.getByRole("textbox", { name: "Link a session" }) as HTMLInputElement).value,
       "",
@@ -460,7 +460,7 @@ test("session UX alerts read without resolving, offer governed fix review, and k
   assert.equal(card.getAttribute("data-alert-message"), "r_failed");
   assert.equal(
     within(card).getByRole("link", { name: "Review failed answer" }).getAttribute("href"),
-    "/sessions/s_controls?message=r_failed",
+    "/messages/s_controls?message=r_failed",
   );
   fireEvent.click(within(card).getByRole("button", { name: "Fix with @reviewer" }));
   const dialog = await screen.findByRole("dialog", { name: "Start a fix session" });

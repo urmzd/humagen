@@ -464,18 +464,17 @@ func (p *Platform) checkTags(tenant string, tree *projects.Tree, project string,
 }
 
 // placeOfThread is where a message in a thread is posted, for deciding who
-// answers it: the thread's project, with the thread's and its channel's
-// defaults nearer than the project's.
+// answers it: the thread's project, with the thread's default nearer than
+// the workspace's.
 func (p *Platform) placeOfThread(tenant string, th threads.Thread) Place {
 	return p.placeIn(tenant, th, "")
 }
 
 // placeIn is placeOfThread for a message a client sends, with the client's
-// default between the thread's and the channel's.
+// default after the thread's.
 func (p *Platform) placeIn(tenant string, th threads.Thread, clientDefault string) Place {
-	ch, _ := p.Projects.Channel(tenant, th.Project, cmp.Or(th.Channel, projects.General))
 	at := Place{Project: th.Project}
-	for _, d := range threads.Nearer(th, cmp.Or(clientDefault, p.clientDefault(tenant, th)), ch) {
+	for _, d := range threads.Nearer(th, cmp.Or(clientDefault, p.clientDefault(tenant, th))) {
 		at.Nearer = append(at.Nearer, Nearer{Agent: d.Agent, From: d.From})
 	}
 	return at
@@ -891,6 +890,14 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		a := *in.Answers
 		msg.Answers = &a
 	}
+	// A message that would start agent work, or says stop first, while
+	// agents work in the thread is a follow-up: queued, replacing that work
+	// or stopping it.
+	if !in.PostOnly && in.Answers == nil && !in.reply && (forcesStop(msg.Text) || p.startsWork(who.Tenant, th, msg.Mentions, clientOf(in.ActAs), sees)) {
+		if msg.Followup, err = p.followupOf(ctx, person, th, msg.Text); err != nil {
+			return Posted{}, err
+		}
+	}
 	if th, err = p.recordOf(who.Tenant, id, p.claimant(person, th.Project)); err != nil {
 		return Posted{}, err
 	}
@@ -902,9 +909,18 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		return Posted{}, err
 	}
 	if !fresh {
+		if m.Followup != nil {
+			return p.followThrough(ctx, person, tree, th, m, true)
+		}
 		again := p.posted(who.Tenant, th, m)
 		again.Repeated = true
 		return again, nil
+	}
+	if m.Followup != nil {
+		p.repliedTo(who.Tenant, th.ID, m)
+		out, err := p.followThrough(ctx, person, tree, th, m, false)
+		out.Refused = append(out.Refused, unmapped...)
+		return out, err
 	}
 	p.repliedTo(who.Tenant, th.ID, m)
 	out, err := p.carryOut(ctx, person, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, in.Answers != nil || in.reply, keeps, sees)
@@ -1196,6 +1212,15 @@ func answerTagID(thread, message, agent string) string {
 // a turn does (Turn.KeepsNotes). sees is the agents that person may read:
 // one they may not read is never asked.
 func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, routed string, actor event.Actor, tagID string, keeps bool, sees func(string) bool) ([]runs.Run, error) {
+	if p.entryRoot(ctx, tenant, th, agent) {
+		return p.answerAsEntry(ctx, tenant, th, m, via, actor, tagID, keeps, sees)
+	}
+	return p.answerDirect(ctx, tenant, th, m, via, agent, among, routed, actor, tagID, keeps, sees)
+}
+
+// answerDirect is answerMessage once who answers is settled: agent itself,
+// or for Open each agent that joins.
+func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, routed string, actor event.Actor, tagID string, keeps bool, sees func(string) bool) ([]runs.Run, error) {
 	meta := map[string]string{
 		runs.MetaAsk: m.Text, runs.MetaThread: th.ID, runs.MetaPrev: m.ID, runs.MetaMessage: m.ID,
 		runs.MetaChannel: th.Channel, runs.MetaProject: th.Project,
@@ -1243,6 +1268,10 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 			continue
 		}
 		a.picked = cmp.Or(a.picked, pickedOf(ctx))
+		text := body
+		if hints := p.entryHintsFor(ctx, tenant, th.Project, a.agent, m.Text, sees); hints != "" {
+			text = hints + "\n\n" + body
+		}
 		mt := meta
 		if a.picked != "" {
 			mt = maps.Clone(meta)
@@ -1251,7 +1280,7 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 		run, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{
 			ID: a.tag, Tenant: tenant, Agent: a.agent, Origin: runs.OriginAPI,
 			Attachments: m.Attachments, Actor: actor, Context: mt,
-			Text: p.turnContext(tenant, th.Project, th.Channel, a.agent, actor.User, body, mt),
+			Text: p.turnContext(tenant, th.Project, th.Channel, a.agent, actor.User, text, mt),
 		}))
 		if err != nil {
 			firstErr = cmp.Or(firstErr, err)

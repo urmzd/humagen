@@ -96,6 +96,12 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 		{"session_alerts", func() error { return p.settleSessionAlerts(run.Tenant, run.Thread) }},
 		{"cascade", func() error { return p.cascade(ctx, run) }},
 		{"answer", func() error { return p.deliverAnswer(ctx, run) }},
+		{"followups", func() error {
+			if run.Parent != "" {
+				return nil
+			}
+			return p.releaseFollowups(ctx, run.Tenant, run.Thread)
+		}},
 		{"housekeeping", func() error {
 			if IsEvaluation(run) {
 				return nil

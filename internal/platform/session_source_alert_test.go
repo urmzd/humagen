@@ -30,6 +30,12 @@ func TestSessionSourceAlertPinsContinuationsAndStaysWithinSourceTree(t *testing.
 	if fix.Parent != root.ID || fix.Project != "Field" || fix.Thread.Session.SourceAlert != a.ID {
 		t.Fatalf("wrong fix anchor: %+v", fix)
 	}
+	// The first turn has answered, so the next is no follow-up to it.
+	for _, msg := range fix.Messages {
+		if msg.Run != nil {
+			await(t, p, msg.Run.ID, runs.Completed)
+		}
+	}
 	fix, err = p.PostSession(t.Context(), admin, fix.ID, platform.MessageInput{Text: "Continue the fix"})
 	if err != nil {
 		t.Fatal(err)

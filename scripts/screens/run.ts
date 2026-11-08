@@ -983,11 +983,11 @@ function screens(ids: Ids, call: Call): Screen[] {
     ...chats(ids, call),
     { name: "projects", path: "/projects" },
     {
-      name: "project-template",
+      name: "project-new",
       path: "/projects",
       act: async (page) => {
         await page.getByRole("button", { name: "New Project", exact: true }).click();
-        await page.getByLabel("Start From", { exact: true }).selectOption("initiative");
+        await page.getByRole("textbox", { name: "Name", exact: true }).fill("Q4 launch");
       },
     },
     { name: "project-initiative", path: "/projects/Strategy/overview" },

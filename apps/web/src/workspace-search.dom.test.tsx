@@ -51,7 +51,7 @@ test("workspace search requests indexed content and opens exact message, file an
   const message = await screen.findByRole("link", { name: /^Launch evidence/ });
   assert.equal(query?.get("content"), "true");
   assert.equal(query?.get("limit"), "20");
-  assert.equal(message.getAttribute("href"), "/sessions/th-a?message=m-2");
+  assert.equal(message.getAttribute("href"), "/messages/th-a?message=m-2");
   assert.equal(
     screen.getByRole("link", { name: /^evidence.docx/ }).getAttribute("href"),
     "/artifacts/art-a",
@@ -93,7 +93,7 @@ test("search names personal and titled project contexts while preserving exact a
   const privateSession = await screen.findByRole("link", { name: /^Draft reply/ });
   assert.match(privateSession.textContent ?? "", /Personal/);
   assert.doesNotMatch(privateSession.textContent ?? "", /personal-7e5222|private-channel-raw/);
-  assert.equal(privateSession.getAttribute("href"), "/sessions/s_private");
+  assert.equal(privateSession.getAttribute("href"), "/messages/s_private");
   assert.equal(
     screen.getByRole("link", { name: /^Spring launch/ }).getAttribute("href"),
     "/projects/launch/context",

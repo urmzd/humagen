@@ -223,6 +223,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	mockPersonas := fs.String("mock-personas", "", `with -auth=mock, a JSON file of {"people": [...], "machines": [...]} to sign in as. Empty means the built-in set`)
 	publicURL := fs.String("public-url", "http://localhost:8080", "where browsers reach this server")
 	webDir := fs.String("web", d.web, "directory of a built web console to serve")
+	entryAgent := fs.String("entry-agent", "humagen", "the workspace's entry agent, which owns each root session that names nobody")
 	maxDepth := fs.Int("max-depth", 4, "deepest an agent-to-agent call may land")
 	maxFanOut := fs.Int("max-fan-out", 16, "most calls one run may make")
 	seed := fs.Bool("seed", d.seed, "create an example project and alert rule; agents wait for an administrator to set up a model provider")
@@ -459,6 +460,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 		// operator allows, values where the workspace keeps them.
 		CredentialRefs:   people,
 		CredentialValues: personValues(file.cfg),
+		EntryAgent:       *entryAgent,
 		Limits:           call.Limits{MaxDepth: *maxDepth, MaxFanOut: *maxFanOut},
 		Log:              log,
 		// Agents run only on a provider someone set up: the ones this

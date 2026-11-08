@@ -21,6 +21,7 @@ export function servedBranding(name = servedName()): Branding {
     style: null,
     starters: null,
     copy: {},
+    entry_agent: "humagen",
   };
 }
 
