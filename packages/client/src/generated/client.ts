@@ -150,6 +150,8 @@ import type {
   MemoryFile,
   MemoryFiles,
   MemoryRestoreInput,
+  MessageCreated,
+  MessagesInput,
   Note,
   NoteInput,
   NoteList,
@@ -577,6 +579,101 @@ export class ApiClient {
       );
     }
     return response.data;
+  }
+
+  /** People's messages from one origin, under the root session of the
+origin's place: found by its address, or started on its first message
+and owned by the entry agent, so work asked for in a place is picked
+up there later. With no ref (or type web) the message starts a new
+console conversation. Agents a message mentions answer in their own
+child sessions under the root; with no mention the entry agent
+picks. Earlier messages in a batch are posted as said and start
+nothing. Callers send role user; the platform writes the agents'
+messages. 201 when the root was started, 200 otherwise.
+ */
+  async sendMessages(body: MessagesInput, options?: RequestOptions): Promise<MessageCreated> {
+    const path = "/api/messages";
+    return this.request<MessageCreated>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async sendMessagesRaw(body: MessagesInput, options?: RequestOptions): Promise<ApiResponse<MessageCreated>> {
+    const path = "/api/messages";
+    return this.rawRequest<MessageCreated>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The session a message is in, with its messages, the entry agent's picks and each delegated answer, its children and links. id is a session id, or a message id (session:message). */
+  async getMessage(id: string, since?: string, before?: string, around?: string, summary?: boolean, options?: RequestOptions): Promise<AgentSession> {
+    let path = "/api/messages/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (since !== undefined && since !== null) _q.set("since", String(since));
+    if (before !== undefined && before !== null) _q.set("before", String(before));
+    if (around !== undefined && around !== null) _q.set("around", String(around));
+    if (summary !== undefined && summary !== null) _q.set("summary", String(summary));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<AgentSession>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getMessageRaw(id: string, since?: string, before?: string, around?: string, summary?: boolean, options?: RequestOptions): Promise<ApiResponse<AgentSession>> {
+    let path = "/api/messages/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (since !== undefined && since !== null) _q.set("since", String(since));
+    if (before !== undefined && before !== null) _q.set("before", String(before));
+    if (around !== undefined && around !== null) _q.set("around", String(around));
+    if (summary !== undefined && summary !== null) _q.set("summary", String(summary));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<AgentSession>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** People's messages beneath a message or its session, as a follow-up in that conversation. id is a session id, or a message id (session:message). */
+  async sendMessagesUnder(id: string, body: MessagesInput, options?: RequestOptions): Promise<MessageCreated> {
+    let path = "/api/messages/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<MessageCreated>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async sendMessagesUnderRaw(id: string, body: MessagesInput, options?: RequestOptions): Promise<ApiResponse<MessageCreated>> {
+    let path = "/api/messages/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<MessageCreated>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** What happens beneath a message: its session's snapshots and run events, as GET /api/sessions/{id}/stream. Resume with Last-Event-ID. */
+  async *streamMessage(id: string, lastEventId?: string, options?: SSEOptions): AsyncGenerator<SSEEvent<string>> {
+    let path = "/api/messages/{id}/stream";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    let url = `${this.baseUrl}${path}`;
+    const _hdr: Record<string, string> = {};
+    for (const [k, v] of Object.entries({ "Last-Event-ID": lastEventId })) {
+      if (v !== undefined && v !== null) _hdr[k] = String(v);
+    }
+    yield* streamSse<string>(url, {
+      method: "GET",
+      headers: { ...this.headers, ..._hdr, ...options?.headers },
+    }, options, this.requestInterceptor, this.fetchFn);
   }
 
   /** Emits session snapshots and run events. Resume with Last-Event-ID.

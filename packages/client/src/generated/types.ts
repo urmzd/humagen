@@ -4618,6 +4618,78 @@ export interface SessionIdentity {
   source_alert?: string;
 }
 
+/** People's messages from one origin. Who said them is the caller. */
+export interface MessagesInput {
+  messages: InMessage[];
+  ref?: ExternalRef;
+  /** Accepted; follow GET /api/messages/{id}/stream for what happens beneath. */
+  stream?: boolean;
+}
+
+/** One person's message. role is user; the platform writes the agents' messages. */
+export interface InMessage {
+  role: "user";
+  content: MessageContent;
+  ref?: ExternalRef;
+}
+
+/** A string, or content blocks. */
+export type MessageContent = string | ContentBlock[];
+
+/** One block of a message: text; a mention of an agent or a person a
+surface already resolved, which picks who answers as an @mention in
+the text does; or a link to another place. image, document, audio and
+answer blocks are refused for now.
+ */
+export interface ContentBlock {
+  type: "text" | "mention" | "link" | "image" | "document" | "audio" | "answer";
+  text?: string;
+  agent?: string;
+  person?: string;
+  ref?: ExternalRef;
+}
+
+/** Where a message came from, its origin: a union on type. slack (team,
+channel, ts, thread_ts for a reply, audience), github (repo as
+owner/name, kind pull, issue or comment, number, comment_id; a
+comment on a pull request sends kind pull), schedule (name,
+occurrence), url (url) or web (the console). A place has one root
+session, keyed slack://team/channel/thread_ts,
+github://owner/repo/pull/N or issues/N, schedule://name/occurrence or
+the normalized URL. client is the Humagen client the origin is
+reached through: it files the root where the client's channel is
+bound and maps a Slack conversation's members to people.
+ */
+export interface ExternalRef {
+  type: "slack" | "github" | "schedule" | "url" | "web";
+  client?: string;
+  team?: string;
+  channel?: string;
+  ts?: string;
+  thread_ts?: string;
+  audience?: SurfaceAudience;
+  repo?: string;
+  kind?: "pull" | "issue" | "comment";
+  number?: number;
+  comment_id?: number;
+  name?: string;
+  occurrence?: string;
+  url?: string;
+}
+
+/** The message a request created, the root it is under, and what it did. */
+export interface MessageCreated {
+  /** The message's id, session:message. */
+  id: string;
+  /** The root session's id. */
+  root: string;
+  role: "user";
+  content: MessageContent;
+  /** This request started the root. */
+  created: boolean;
+  posted: SessionPosted;
+}
+
 export interface SessionInput {
   text: string;
   agent?: string;

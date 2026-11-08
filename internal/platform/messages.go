@@ -140,7 +140,7 @@ func (r ExternalRef) key() string {
 }
 
 func slackPart(s string) bool {
-	return s != "" && len(s) <= 32 && strings.IndexFunc(s, func(r rune) bool { return !(r >= 'A' && r <= 'Z' || r >= '0' && r <= '9') }) < 0
+	return s != "" && len(s) <= 32 && strings.IndexFunc(s, func(r rune) bool { return (r < 'A' || r > 'Z') && (r < '0' || r > '9') }) < 0
 }
 
 func slackTS(s string) bool {
@@ -153,7 +153,7 @@ func slackTS(s string) bool {
 
 func githubPart(s string) bool {
 	return s != "" && len(s) <= 100 && strings.IndexFunc(s, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.')
+		return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' && r != '_' && r != '.'
 	}) < 0
 }
 
@@ -305,7 +305,7 @@ func (p *Platform) SendMessages(ctx context.Context, who auth.Principal, in Mess
 	if place == "" {
 		return p.sendToNewConsoleRoot(ctx, who, in)
 	}
-	root, created, err := p.rootAt(ctx, who, place, origin)
+	root, created, err := p.rootAt(ctx, who, place, origin, p.firstMentioned(ctx, who, in.Messages[len(in.Messages)-1]))
 	if err != nil {
 		return MessageView{}, err
 	}
@@ -372,7 +372,7 @@ func (p *Platform) sendToNewConsoleRoot(ctx context.Context, who auth.Principal,
 // filed where the origin's client files it: a Slack channel where it is
 // bound, else the client's home; with no client, who's own project. Its
 // audience follows the origin.
-func (p *Platform) rootAt(ctx context.Context, who auth.Principal, place string, origin ExternalRef) (threads.Thread, bool, error) {
+func (p *Platform) rootAt(ctx context.Context, who auth.Principal, place string, origin ExternalRef, mentioned string) (threads.Thread, bool, error) {
 	var c *clients.Client
 	if origin.Client != "" {
 		got, err := p.Clients.Get(who.Tenant, origin.Client)
@@ -416,6 +416,11 @@ func (p *Platform) rootAt(ctx context.Context, who auth.Principal, place string,
 	owner := p.entryFor(ctx, who.Tenant, project, p.Seer(who).Agent)
 	if owner == "" && c != nil && c.DefaultAgent != Open {
 		owner = c.DefaultAgent
+	}
+	if owner == "" {
+		// With no entry agent and no client default, the agent the message
+		// mentions owns the place's root.
+		owner = mentioned
 	}
 	if owner == "" {
 		return threads.Thread{}, false, fmt.Errorf("%w: nobody answers here: the server has no entry agent and the origin's client names no default agent", ErrNoDefault)
@@ -501,4 +506,20 @@ func mentionedAgents(ms []threads.Mention, owner string) []string {
 		}
 	}
 	return out
+}
+
+// firstMentioned is the first agent m mentions, as who reads it, or "".
+func (p *Platform) firstMentioned(ctx context.Context, who auth.Principal, m Message) string {
+	text, err := m.Content.text()
+	if err != nil {
+		return ""
+	}
+	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, sees: p.Seer(who).Agent, tree: p.Projects.Tree(who.Tenant), project: "", person: who.Subject, console: true})
+	if err != nil {
+		return ""
+	}
+	if agents := mentionedAgents(mentions, ""); len(agents) > 0 {
+		return agents[0]
+	}
+	return ""
 }

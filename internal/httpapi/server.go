@@ -149,6 +149,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/agents/{name}/changes", s.authed(auth.AgentsRead, s.seenAgent(s.agentChanges)))
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
 	s.sessionRoutes(mux)
+	s.messageRoutes(mux)
 	mux.HandleFunc("GET /api/catalog/connectors/bigquery/setup", s.authed(auth.KnowledgeWrite, s.getBigQuerySetup))
 	mux.HandleFunc("POST /api/catalog/connectors/bigquery", s.authed(auth.KnowledgeWrite, s.createBigQueryConnector))
 	mux.HandleFunc("POST /api/catalog/connectors/{name}/reconnect", s.authed(auth.KnowledgeWrite, s.reconnectBigQueryConnector))

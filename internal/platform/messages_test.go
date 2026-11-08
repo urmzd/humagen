@@ -7,6 +7,7 @@ import (
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/threads"
 )
@@ -172,5 +173,17 @@ func TestAMessagesRequestIsPeoplesMessagesFromAPlaceThatExists(t *testing.T) {
 		if _, err := p.SendMessages(t.Context(), ana, in); !errors.Is(err, threads.ErrInvalid) {
 			t.Errorf("%s = %v, want invalid", name, err)
 		}
+	}
+}
+
+func TestAPlaceNobodyAnswersIsRefusedSayingWhy(t *testing.T) {
+	p := start(t, call.Limits{})
+	_, err := p.SendMessages(t.Context(), admin, sayIn("summarise this page", &platform.ExternalRef{Type: platform.RefURL, URL: "https://example.com/page"}))
+	if !errors.Is(err, platform.ErrNoDefault) {
+		t.Fatalf("a place with nobody to answer = %v", err)
+	}
+	out, err := p.SendMessages(t.Context(), admin, sayIn("@helper summarise this page", &platform.ExternalRef{Type: platform.RefURL, URL: "https://example.com/page"}))
+	if err != nil || len(out.Posted.Runs) != 1 || out.Posted.Runs[0].Agent != "helper" {
+		t.Fatalf("with a mention, the agent named answers: %+v, %v", out.Posted.Runs, err)
 	}
 }
