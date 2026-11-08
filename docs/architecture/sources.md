@@ -316,6 +316,24 @@ a reader, and a restricted corpus is reached only through its own grant,
 which takes an admin and a purpose. The list is read when a tool runs, so a
 change to a project's context applies to the next call.
 
+### Pulling one item
+
+A corpus item address names one thing a corpus holds, as `corpus_search` and
+`corpus_graph` hand it out, so an agent can pull it in on demand:
+
+| Address | Resolves to |
+| --- | --- |
+| `corpus:<corpus>/<source>/<document id>` | The document's text, its passages in order, clipped to 4000 characters, and its link |
+| `corpus:<corpus>/<connector>/<table path>` | The table's description and columns, never rows |
+| `corpus:<corpus>/node/<node id>` | What a graph node stands for |
+
+`(*Platform).ResolveCorpusItem` resolves one by the same rule as every corpus
+tool, at the moment it is asked, and adds who owns the item and whether it is
+stale. An item this conversation may not be shown comes back with
+`held_back` and no content; a provider's retained copy is read live with
+`corpus_search` instead. Citation evidence is kept for a document's text, as
+search keeps it.
+
 ### Retrieval evals
 
 A corpus's search is evaluated beside its agents: an eval suite with
