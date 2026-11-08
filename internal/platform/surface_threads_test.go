@@ -195,6 +195,8 @@ func TestAClientsListHoldsWhereverItPostsForAPerson(t *testing.T) {
 	if got := agents(posted); !slices.Equal(got, []string{"helper"}) || len(posted.Refused) != 1 || posted.Refused[0].Name != "lead" {
 		t.Fatalf("a message the client posted for ana in a console thread started %v, refusing %+v", got, posted.Refused)
 	}
+	// Once that answer is in, so ana's own message is no follow-up to it.
+	await(t, p, posted.Runs[0].ID, runs.Completed)
 	herself := auth.Principal{Subject: "ana", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
 	own, err := p.PostMessage(t.Context(), herself, room.Thread.ID, platform.MessageInput{Text: "@lead look"})
 	if err != nil {
