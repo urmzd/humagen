@@ -2038,6 +2038,38 @@ each once. Empty for a caller without `knowledge:read`.
   given: ProjectKnowledgeSource[];
 }
 
+/** The corpora a project attaches, its context, at the project's version, and what a session filed in it searches. */
+export interface ProjectCorpora {
+  version: number;
+  /** The corpora the project attaches itself, in its order, each one the caller may read. */
+  corpora: ProjectCorpus[];
+  /** What a session filed here searches: the project's corpora, then
+each project's above it, nearest first, each once, at most 40,
+each one the caller may read.
+ */
+  given: ProjectCorpusRef[];
+}
+
+/** One corpus a project attaches. */
+export interface ProjectCorpus {
+  name: string;
+  title?: string;
+  /** How many of its members the caller may see. */
+  sources: number;
+}
+
+/** A corpus a session searches, and the project on its chain that attaches it (`""` is the workspace). */
+export interface ProjectCorpusRef {
+  name: string;
+  from: string;
+}
+
+/** The corpora a project attaches, as a whole, and the project's version as read. */
+export interface ProjectCorporaInput {
+  version: number;
+  corpora: string[];
+}
+
 /** The knowledge sources a project names, as a whole, from the version read. */
 export interface ProjectKnowledgeInput {
   /** The version the caller read. */
@@ -2206,6 +2238,11 @@ which `GET /api/projects/{name}/skills` reads. Set with `PUT
 change in the project's history records them the same way.
  */
   skills?: ProjectSkillBrief[];
+  /** What every session filed here and below is given besides its
+instructions. Set with `PUT /api/projects/{name}/corpora`.
+Absent when it attaches nothing.
+ */
+  context?: ProjectContext2;
   /** An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived. */
   archived?: boolean;
   /** The lowest role that may post an announcement here. Absent reads as owner. */
@@ -2382,7 +2419,7 @@ project names as experts, `knowledge` to the knowledge sources it
 names, and `channel` to one of its channels, which `channel`
 holds before and after.
  */
-  what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home" | "experts" | "knowledge" | "skills" | "channel";
+  what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home" | "experts" | "knowledge" | "skills" | "channel" | "context";
   /** The agent a `home` change is about. Absent when it lives in a project the caller may not read. */
   agent?: string;
   /** Says more, such as that a project created under a deleted name adopts its old conversations. */
@@ -2448,11 +2485,11 @@ export interface ProjectAgentsView {
   allow?: string[];
   default?: string;
   available: AgentAvailability;
-  /** Each available agent and where it comes from, `*` first when every platform agent is. */
+  /** Always empty. Projects no longer offer agents. */
   offers: AgentOffer[];
-  /** The agents that live here. */
+  /** The agents homed here, which this project's readers see. */
   homes: string[];
-  /** Who answers an untagged message here, or null when nothing does. */
+  /** Who answers an untagged message here, the workspace default, or null when nothing does. */
   default_resolved: DefaultResolved | null;
 }
 
@@ -2468,15 +2505,15 @@ empty list sends one back. Otherwise it names at least one agent.
   default?: string;
 }
 
-/** Where an agent lives and which projects enable it. */
+/** Who sees an agent, as its home. */
 export interface AgentPlace {
-  /** The project it lives in. Absent for a platform agent. */
+  /** The project whose readers see it. Absent when the whole workspace does. */
   home?: string;
-  /** The projects whose enable list names it, or holds `*` for a platform agent. `~` is the workspace. */
+  /** Always empty. Projects no longer enable agents; kept until the console stops reading it. */
   enabled_in: string[];
 }
 
-/** Where an agent now lives. */
+/** Who now sees an agent, as its home. */
 export type AgentHome = { agent: string } & AgentPlace;
 
 /** Whether voice notes are transcribed, and the largest recording taken. */
@@ -5042,6 +5079,10 @@ export interface ProjectFork {
   by: string;
   at: string;
   ready: boolean;
+}
+
+export interface ProjectContext2 {
+  corpora?: string[];
 }
 
 export interface ProjectChangeChannel {

@@ -1586,8 +1586,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	agentsAt := "/api/projects/{name}/agents"
 	fieldAgents := c.call(acme, "GET", agentsAt, "/api/projects/Field/agents", "", http.StatusOK)
 	v, _ := strconv.Atoi(fmt.Sprint(fieldAgents.field("version")))
+	// A project's own default is kept as written and not read: the
+	// workspace's decides.
 	set := c.call(acme, "PUT", agentsAt, "/api/projects/Field/agents", fmt.Sprintf(`{"version":%d,"enable":["helper"],"default":"helper"}`, v), http.StatusOK)
-	if d := obj(set.field("default_resolved")); d["agent"] != "helper" || d["from"] != "project:Field" {
+	if d := obj(set.field("default_resolved")); d["agent"] != "*" || d["from"] != "project:~" {
 		t.Errorf("Field's default = %s", set.raw)
 	}
 	c.call(acme, "PUT", agentsAt, "/api/projects/Field/agents", fmt.Sprintf(`{"version":%d,"enable":[]}`, v), http.StatusConflict)
@@ -1600,9 +1602,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	if lives := c.call(acme, "PUT", home, "/api/agents/fieldbot/home", `{"project":"Field"}`, http.StatusOK); lives.str("home") != "Field" {
 		t.Errorf("fieldbot's home = %s", lives.raw)
 	}
-	if inUse := c.call(acme, "PUT", home, "/api/agents/helper/home", `{"project":"Launch"}`, http.StatusConflict); !strings.Contains(inUse.str("error"), "the default of Field") {
-		t.Errorf("homing an agent Field defaults to = %s", inUse.raw)
-	}
+	// What uses an agent holds no change of its home back.
+	c.call(acme, "PUT", home, "/api/agents/helper/home", `{"project":"Launch"}`, http.StatusOK)
+	c.call(acme, "PUT", home, "/api/agents/helper/home", `{"project":"~"}`, http.StatusOK)
 	c.call(acme, "PUT", home, "/api/agents/humagen-writer/home", `{"project":"Field"}`, http.StatusBadRequest)
 	c.call(acme, "PUT", home, "/api/agents/ghost/home", `{"project":"Field"}`, http.StatusNotFound)
 
@@ -2030,6 +2032,22 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d,"knowledge":[]}`, knownAt), http.StatusConflict)
 	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d,"knowledge":["ghost"]}`, knownAt+1), http.StatusBadRequest)
 	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d}`, knownAt+1), http.StatusBadRequest)
+	// A project's context is the corpora it attaches; a session filed there
+	// searches them.
+	cor := "/api/projects/{name}/corpora"
+	got = c.call(acme, "GET", cor, "/api/projects/Field/corpora", "", http.StatusOK)
+	corporaAt := version(got)
+	got = c.call(acme, "PUT", cor, "/api/projects/Field/corpora", fmt.Sprintf(`{"version":%d,"corpora":["policies"]}`, corporaAt), http.StatusOK)
+	if g := sliceOf(got.field("given")); len(g) != 1 || obj(g[0])["name"] != "policies" || obj(g[0])["from"] != "Field" {
+		t.Errorf("Field's corpora are %s", got.raw)
+	}
+	c.call(acme, "PUT", cor, "/api/projects/Field/corpora", fmt.Sprintf(`{"version":%d,"corpora":[]}`, corporaAt), http.StatusConflict)
+	c.call(acme, "PUT", cor, "/api/projects/Field/corpora", fmt.Sprintf(`{"version":%d,"corpora":["ghost"]}`, corporaAt+1), http.StatusBadRequest)
+	c.call(acme, "PUT", cor, "/api/projects/Field/corpora", fmt.Sprintf(`{"version":%d}`, corporaAt+1), http.StatusBadRequest)
+	c.call(acme, "GET", cor, "/api/projects/Ghost/corpora", "", http.StatusNotFound)
+	if pv := c.call(acme, "GET", "/api/projects/{name}", "/api/projects/Field", "", http.StatusOK); !strings.Contains(string(pv.raw), `"context":{"corpora":["policies"]}`) {
+		t.Errorf("Field's view does not carry its context: %s", pv.raw)
+	}
 	// The skills a project declares are what a message posted there and
 	// below can name; GET /api/skills lists them without instructions, and
 	// GET /api/mentions lists the mention kinds and completes one.
@@ -2604,7 +2622,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/me/credentials/{provider}":      {"provider": "issues"},
 		"/api/inbox/{id}/deliveries/{client}": {"id": mid, "client": "app"},
 		"/api/projects/{name}/channels":       {"name": "Field"}, "/api/projects/{name}/channels/{channel}": {"name": "Field", "channel": "renewals"},
-		"/api/projects/{name}/experts": {"name": "Field"}, "/api/projects/{name}/knowledge": {"name": "Field"}, "/api/projects/{name}/skills": {"name": "Field"}, "/api/threads/{id}": {"id": tid},
+		"/api/projects/{name}/experts": {"name": "Field"}, "/api/projects/{name}/knowledge": {"name": "Field"}, "/api/projects/{name}/corpora": {"name": "Field"}, "/api/projects/{name}/skills": {"name": "Field"}, "/api/threads/{id}": {"id": tid},
 		"/api/threads/{id}/messages": {"id": tid}, "/api/threads/{id}/participants": {"id": tid},
 		"/api/threads/{id}/share":       {"id": tid},
 		"/api/threads/{id}/publication": {"id": draftID},
@@ -2633,7 +2651,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/schedules/{name}":                      `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
 		"/api/me/credentials/{provider}":             `{"ref":"op://People/svc/issues"}`,
 		"/api/projects/{name}/channels":              `{"name":"x"}`, "/api/projects/{name}/channels/{channel}": `{"version":1}`,
-		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/projects/{name}/knowledge": `{"version":1,"knowledge":[]}`, "/api/projects/{name}/skills": `{"version":1,"skills":[]}`, "/api/threads/{id}": `{"version":1}`,
+		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/projects/{name}/knowledge": `{"version":1,"knowledge":[]}`, "/api/projects/{name}/corpora": `{"version":1,"corpora":[]}`, "/api/projects/{name}/skills": `{"version":1,"skills":[]}`, "/api/threads/{id}": `{"version":1}`,
 		"/api/threads/{id}/messages": `{"text":"x"}`, "/api/threads/{id}/participants": `{"version":1}`,
 		"/api/threads/{id}/fork": `{"through":"m-1"}`, "/api/threads/{id}/bring-back": `{"run":"r00000000000000000000000000000000"}`,
 		"/api/threads/{id}/share": `{}`, "/api/threads/{id}/marks": `{"read":true}`, "/api/threads/{id}/approval": `{"mode":"ask"}`,
@@ -2754,6 +2772,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
+	"PUT /api/agents/{name}/home 409":                    "a home is refused only while the agent's default skills would not fit it; the guard is in platform.homeUsers",
 	"POST /api/sessions 409":                             "governed admission to a deleted project uses the same path tested by POST /api/runs deleted-project response",
 	"POST /api/sessions/{id}/messages 409":               "deleted-project admission uses the same PostMessage path tested by thread/run responses",
 	"POST /api/sessions/{id}/people 409":                 "concurrent participant changes fail thread version CAS covered by participant race tests",

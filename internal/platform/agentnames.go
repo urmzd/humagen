@@ -234,15 +234,23 @@ func (s *Seer) ProjectAgents(a projects.Agents) projects.Agents {
 }
 
 // AgentsView is a project's agents as the reader is shown them: its lists
-// as ProjectAgents leaves them, and no resolved default naming an agent they
-// may not read. What is available in a project the reader may read is
-// always an agent they may read, since a project agent is available only in
-// its home and below, which they may read too.
+// as ProjectAgents leaves them, what is available there and the agents homed
+// there without any agent they may not read, and no resolved default naming
+// one. What is available comes from the allow lists, which may name an agent
+// homed where the reader does not read.
 func (s *Seer) AgentsView(v ProjectAgents) ProjectAgents {
 	shown := s.ProjectAgents(projects.Agents{Enable: v.Enable, Allow: v.Allow, Default: v.Default})
 	v.Enable, v.Allow, v.Default = shown.Enable, shown.Allow, shown.Default
 	if v.Enable == nil {
 		v.Enable = []string{}
+	}
+	v.Available.Names = s.shownNames(v.Available.Names)
+	if v.Available.Names == nil {
+		v.Available.Names = []string{}
+	}
+	v.Homes = s.shownNames(v.Homes)
+	if v.Homes == nil {
+		v.Homes = []string{}
 	}
 	if d := v.DefaultResolved; d != nil && d.Agent != Open && !s.Agent(d.Agent) {
 		v.DefaultResolved = nil

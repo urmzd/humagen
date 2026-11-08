@@ -491,7 +491,7 @@ metadata:
 spec:
   workspace:                # a field left out is left to the console
     history: {mode: recent, limit: 8000}
-    agents: {enable: ["*"], default: "*"}   # the workspace's own: every platform agent, and each decides on untagged messages
+    agents: {default: "*"}  # the workspace's own: each agent decides on untagged messages, anywhere
     instructions: Acme sells warehouse robots. Answer plainly.   # the workspace's own, sent first
     channels: [{name: announcements, purpose: Company news}]      # the workspace's own; every project has general
     experts: [{who: "role:security", topics: [security]}]         # answer anywhere a nearer project names nobody
@@ -512,7 +512,6 @@ spec:
         title: Field engineering
         kind: team          # company | team | account | a project_kinds name. Left out: team
         instructions: Customer accounts. Never promise dates.
-        agents: {default: lead}             # answers untagged messages here and below
         knowledge: [field-playbook]         # runs filed here and below are grounded in it too, nearest first
         skills:                             # $review here and below; a nearer project's of the same name wins
           - {name: review, description: Review a renewal., argument_hint: "[account]", instructions: Check the renewal terms against the contract and list what changed.}
@@ -528,10 +527,10 @@ spec:
         kind: account
         account: {customer: Globex Inc, external_id: "sf:0015g00000ABC", url: "https://crm.example.com/globex"}
         channels:
-          - {name: renewals, purpose: Renewal work, default: "*"}   # everyone decides: each agent available asks itself whether to answer
+          - {name: renewals, purpose: Renewal work}
           - {name: general, slack: {client: slack-acme, channel: C0123GLOBEX}}  # a Slack thread there is a shared thread here
         experts: [{who: "okta|00u1ana", topics: [billing, renewals]}]
-        agents: {allow: [globex-helper, lead], default: globex-helper}  # narrows: only these run here and below
+        agents: {allow: [globex-helper, lead]}  # narrows: only these run here and below
         members: [{who: "okta|00u1ana", role: owner}]   # no "*": members only, read by its members alone
     person_credentials: {values: false}   # true lets people store a tool credential's value with humagen
     release_notes: true     # each release's breaking changes and features, posted once in the workspace's inbox from humagen
@@ -598,7 +597,7 @@ spec:
         system_prompt: You coordinate work.
         access: {spawn: [helper]}
     - spec: {name: helper, provider: local, model: YOUR_LOCAL_MODEL, system_prompt: Do one task well.}
-    - project: Globex       # lives in Globex: available there and below, and nowhere else
+    - project: Globex       # its home: only Globex's readers see it, and it answers only where they alone read
       spec: {name: globex-helper, provider: local, model: YOUR_LOCAL_MODEL, system_prompt: You know the Globex account.}
     - file: agents/reviewer.agent.md   # saige's own format; a .json or .yaml file holds a spec instead
       policy: {answerers: ["role:field-leads"], tagged_only: true}   # what the .agent.md does not say
@@ -712,23 +711,26 @@ builds on:
   the console made one by that name, filed in the project; the console can
   pause, resume and run one, not change or delete it (409), and one that
   leaves the file stays, the console's again. Schedules are applied last,
-  once the agents and where they live are in.
-- **Agents in projects.** `workspace.agents` and a project's `agents` are
-  what it turns on: `enable` adds platform agents here and below (`*` alone
-  is every one), `allow`, when set, is the only agents that may run here and
-  below, and `default` answers a message that tags no agent (an agent, or
-  `*` for everyone decides: each agent available there that is not
-  `tagged_only` is asked whether to join, see
-  [the dynamic router](../architecture/projects.md#the-dynamic-router)). `auto` still works
-  and reads as `*`, with a load note asking to write `"*"`. Each list names agents in the file or the platform's
-  own. Set, the three are the file's as a whole, and the console cannot
-  change them. An agent's `project` is where it lives: available there and
-  below, and nowhere else, so `*` never reaches it and enabling it adds
-  nothing. A named default must be available where it is set. They are
-  applied in this order: the workspace, the projects, the agents, then
-  where each agent lives. A home that leaves the file stays.
-  `workspace.baseline` is gone: a file that still sets it fails with
-  "baseline is now workspace.agents.default".
+  once the agents and their homes are in.
+- **Agents are independent of projects.** Any agent answers in any
+  project, unless an `allow` list leaves it out: `allow`, set on the
+  workspace or a project, is the only agents that may run there and below,
+  and a project below can only narrow it. `workspace.agents.default`
+  answers a message that tags no agent anywhere (an agent, or `*` for
+  everyone decides: each agent that is not `tagged_only` is asked whether to
+  join, see [the dynamic router](../architecture/projects.md#the-dynamic-router)).
+  `auto` still works and reads as `*`, with a load note asking to write
+  `"*"`. Each list names agents in the file or the platform's own. Set,
+  they are the file's as a whole, and the console cannot change them. An
+  agent's `project` is its home, which says only who sees it: an agent homed
+  in a project everyone reads answers anywhere, and one homed in a project
+  kept to its members answers only where its readers alone read. The
+  workspace default must be allowed at the workspace. `enable`, a project's
+  `default` and a channel's `default` are no longer read; a file that sets
+  them still starts, with a load note for each. They are applied in this
+  order: the workspace, the projects, the agents, then each agent's home. A
+  home that leaves the file stays. `workspace.baseline` is gone: a file
+  that still sets it fails with "baseline is now workspace.agents.default".
 - **Models and tools** exist only while the file declares them. A tool's
   pinned schemas are its acceptance; anything else stays pending. A tool's
   `credential_scope` says whose credential reaches it: see
@@ -950,7 +952,7 @@ or declares `general` to set its purpose:
 | `name` | required | lower case letters, digits and dashes, starting with a letter or digit, at most 40, once per project, never changed |
 | `title` | the name | one line, at most 80 characters |
 | `purpose` | none | one line, at most 200 characters, sent to every agent answering in the channel |
-| `default` | the project's | the agent that answers a message that tags none, or `"*"` for everyone decides (`auto` reads as `*`). One that cannot answer in the project answers nothing, and the message says why |
+| `default` | none | no longer read: the workspace default answers a message that tags no agent. A file that sets it still starts, with a load note |
 | `slack` | unbound | `{client, channel}`: a Slack client's id and a Slack channel's (`C...` or `G...`, never a direct message) whose threads are shared threads here. One Slack channel is bound once in the file. The client need not exist yet: until it does the binding binds nothing. The app's bot must already be in the channel |
 
 `experts` names who answers for some topics, here and below: at most 50, each

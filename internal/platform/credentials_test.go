@@ -1049,13 +1049,11 @@ func TestARetryIsRefusedWhereTheConversationIsFiledOnceItsAgentIsNotAvailableThe
 		t.Fatalf("the first turn was filed in %q after %q", failed.Project, failed.Prev)
 	}
 	reached := len(w.server.Requests())
-	if err := w.p.SetAgentHome(ctx, tenant, "worker", "Initech", ada); err != nil {
-		t.Fatal(err)
-	}
+	setAgents(t, w.p, "Globex", platform.AgentsInput{Enable: []string{}, Allow: []string{"lead"}})
 	retry := platform.Resolution{Action: platform.ActRetry}
 	_, err := w.p.InboxResolve(ctx, ana, msg.ID, msg.Parts[0].ID, retry)
-	if !errors.Is(err, platform.ErrNotAvailable) || !strings.Contains(err.Error(), "worker is not available in Globex") {
-		t.Fatalf("a retry in Globex of an agent that lives in Initech = %v, want ErrNotAvailable", err)
+	if !errors.Is(err, platform.ErrNotAvailable) || !strings.Contains(err.Error(), "worker is not allowed in Globex") {
+		t.Fatalf("a retry in Globex once its allow list leaves worker out = %v, want ErrNotAvailable", err)
 	}
 	if got, _ := w.p.InboxGet(ana, msg.ID); got.Parts[0].State != inbox.PartOpen {
 		t.Fatalf("a refused retry settled the part: %+v", got.Parts[0])
@@ -1064,9 +1062,7 @@ func TestARetryIsRefusedWhereTheConversationIsFiledOnceItsAgentIsNotAvailableThe
 		t.Fatalf("a refused retry reached the server with %q", got)
 	}
 
-	if err := w.p.SetAgentHome(ctx, tenant, "worker", "", ada); err != nil {
-		t.Fatal(err)
-	}
+	setAgents(t, w.p, "Globex", platform.AgentsInput{Enable: []string{}})
 	done, err := w.p.InboxResolve(ctx, ana, msg.ID, msg.Parts[0].ID, retry)
 	if err != nil {
 		t.Fatalf("ana retrying once worker is available again: %v", err)
