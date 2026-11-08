@@ -2829,6 +2829,42 @@ export const defaultCopy = {
     offFailed: "Voice could not be turned off.",
     checkFailed: (why: string) => `The sample could not be spoken: ${why}`,
   },
+  voiceMode: {
+    /** The waveform button beside the microphone. */
+    open: "Voice mode",
+    title: "Voice mode",
+    /** The state line, one a phase. */
+    phase: {
+      starting: "Starting",
+      listening: "Listening",
+      hearing: "Hearing you",
+      sending: "Sending",
+      thinking: "Thinking",
+      speaking: "Speaking",
+      approval: "Waiting for your approval",
+      paused: "Paused",
+      ended: "Voice mode ended",
+      failed: "The microphone is off",
+    } as Record<string, string>,
+    /** The state line while the agent uses a tool. */
+    using: (tool: string) => `Using ${tool}`,
+    pause: "Pause",
+    resume: "Resume",
+    end: "End",
+    approve: "Approve",
+    deny: "Deny",
+    you: "You",
+    /** A hint under the controls. */
+    hint: "Speak, or hold Space to talk. Speaking over the agent stops it.",
+    /** What an approval asks, on screen. */
+    asks: (agent: string, tool: string) => `${agent} wants to use ${tool}.`,
+    /** What an approval asks, said aloud: no answer words in it. */
+    asksAloud: (agent: string, tool: string) => `${agent} needs your go-ahead to use ${tool}.`,
+    answerHow: "Say yes or no, or press Approve or Deny.",
+    queued: (text: string) => `Sends when the agent finishes: "${text}"`,
+    denied: "The microphone could not be used. Check that it is allowed for this page.",
+    failed: (why: string) => `Voice mode could not go on: ${why}`,
+  },
   voice: {
     /** The microphone button, before recording. */
     record: "Record a voice note",

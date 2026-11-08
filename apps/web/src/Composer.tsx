@@ -1,5 +1,5 @@
 import { defaultCopy } from "@humagen/components";
-import { ArrowUpIcon, FileIcon, XIcon } from "@humagen/render-web";
+import { ArrowUpIcon, AudioLinesIcon, FileIcon, XIcon } from "@humagen/render-web";
 import { Modal, type QueueControls, QueueStrip } from "@humagen/web";
 import {
   type KeyboardEvent,
@@ -171,8 +171,14 @@ export function Composer({
   sessionAgents,
   plus,
   voice,
+  onVoiceMode,
   disclaimer = defaultCopy.disclaimer(defaultCopy.product),
 }: {
+  /**
+   * Opens voice mode, when the workspace has a voice provider: its own button
+   * beside the microphone, which keeps dictating into the box.
+   */
+  onVoiceMode?: () => void;
   /**
    * Voice notes, when the deployment transcribes them: the microphone
    * records, and the words come back into the draft, marked, to read and
@@ -985,6 +991,17 @@ export function Composer({
           listens it stays the stop button, even as words arrive, so it can
           always be ended from where it was started.
         */}
+          {onVoiceMode && (
+            <button
+              type="button"
+              className={`${action} bg-aui-hover text-aui-fg hover:opacity-90`}
+              aria-label={defaultCopy.voiceMode.open}
+              title={defaultCopy.voiceMode.open}
+              onClick={onVoiceMode}
+            >
+              <AudioLinesIcon size={16} />
+            </button>
+          )}
           {listening || recording || transcribing || (!ready && canDictate) ? (
             <button
               type="button"

@@ -843,6 +843,16 @@ export type VoiceKind = {
 };
 export type VoiceProviderView = { provider?: VoiceProvider; kinds: VoiceKind[] };
 export type VoiceCheck = { audio: string; media_type: string; heard: string; cost_micros: number };
+/** The next part of a run's answer, spoken, or pending while it is written. */
+export type VoiceSpeech = {
+  audio?: string;
+  media_type?: string;
+  text: string;
+  next: number;
+  pending?: boolean;
+  done?: boolean;
+  cost_micros: number;
+};
 
 export function call<T>(method: string, path: string, json?: unknown): Promise<T> {
   return method === "GET" ? track(send<T>(method, path, json)) : send<T>(method, path, json);
@@ -1395,6 +1405,21 @@ export const api = {
   deleteVoiceProvider: () => call<void>("DELETE", "/api/voice/provider"),
   /** Speaks a sample with the provider and hears it back. */
   checkVoiceProvider: () => call<VoiceCheck>("POST", "/api/voice/provider/check"),
+  /** Voice mode: what a person said in a session, heard by the workspace's provider. */
+  hearInSession: async (session: string, audio: Blob) => {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(session)}/voice/transcriptions`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: audio,
+    });
+    const data = (await res.json().catch(() => ({}))) as VoiceTranscript & { error?: string };
+    if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`);
+    return data as VoiceTranscript;
+  },
+  /** Voice mode: the next part of a run's answer, spoken. The server reads the text. */
+  speakInSession: (session: string, input: { run: string; from: number }) =>
+    call<VoiceSpeech>("POST", `/api/sessions/${encodeURIComponent(session)}/voice/speech`, input),
   /** A recording's words. It is sent as its own bytes; the server decides what it is and keeps nothing. */
   transcribeVoice: async (audio: Blob) => {
     const res = await fetch("/api/voice/transcriptions", {
