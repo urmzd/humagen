@@ -3433,6 +3433,43 @@ export const defaultCopy = {
     /** Every run behind a response, flat, in Details and on a focused message. */
     activity: "Activity",
     asked: "Asked",
+    /** Under an answer: how long the response worked and how much it brought in. */
+    worked: (time: string, agents: number, tools: number) =>
+      [
+        `Worked ${time}`,
+        agents ? `${agents} ${agents === 1 ? "agent" : "agents"}` : "",
+        tools ? `${tools} ${tools === 1 ? "tool" : "tools"}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    working: (time: string) => `Working ${time}`,
+    /** How a response that did not finish ended, once, in plain words. */
+    stoppedAfter: (time: string, unfinished: number, agents: number) =>
+      agents
+        ? `Stopped after ${time} · ${unfinished} of ${agents} ${agents === 1 ? "agent" : "agents"} unfinished`
+        : `Stopped after ${time}`,
+    failedAfter: (time: string, unfinished: number, agents: number) =>
+      agents
+        ? `Failed after ${time} · ${unfinished} of ${agents} ${agents === 1 ? "agent" : "agents"} unfinished`
+        : `Failed after ${time}`,
+    waitingForYou: "Waiting for you",
+    thinking: "Thinking",
+    input: "Input",
+    result: "Result",
+    privateSteps: (n: number) => `${n} private ${n === 1 ? "step" : "steps"}`,
+    approve: "Approve",
+    deny: "Deny",
+    answerFailed: "That answer was not taken. Try again.",
+    status: {
+      queued: "Queued",
+      running: "Working",
+      awaiting_approval: "Waiting for approval",
+      awaiting_input: "Waiting for a reply",
+      done: "Done",
+      error: "Failed",
+      denied: "Denied",
+      stopped: "Stopped",
+    },
     focus: (agent: string) => `Open ${agent}'s message on its own`,
     message: "Message",
     messageBy: (agent: string) => `${agent}'s message`,

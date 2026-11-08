@@ -9,6 +9,7 @@ import { InboxPage } from "./InboxPage.tsx";
 import { LimitsPanel } from "./Limits.tsx";
 import { overLimit, parentBound, sessionBound, unlimited } from "./limits.fixtures.ts";
 import { memoryTransport } from "./mail.fixtures.ts";
+import { ResponseGallery } from "./ResponseGallery.tsx";
 import { RunItem } from "./RunItem.tsx";
 import { SessionGauge } from "./SessionGauge.tsx";
 import { Storage, StorageUsed, StoredList } from "./Storage.tsx";
@@ -306,6 +307,10 @@ function Gallery() {
             <ActivityPanel trees={[]} selected={null} onSelect={() => {}} onClose={() => {}} />
           </div>
         </div>
+      </Section>
+
+      <Section title="A response's activity, from four recorded streams: one agent, two in parallel, two deep waiting on an approval, stopped">
+        <ResponseGallery />
       </Section>
 
       <Section title="Inbox, held in memory with one message of every kind">

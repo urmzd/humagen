@@ -28,16 +28,18 @@ import { FindHelp, type HelpSuggestion } from "./FindHelp.tsx";
 import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { type HomeAnnouncement, HomePage } from "./HomePage.tsx";
 import { itemActions } from "./itemActions.tsx";
-import { AnswerRefs, OriginRef, ResponseActivity } from "./MessageRefs.tsx";
+import { AnswerRefs, OriginRef } from "./MessageRefs.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { emptySelection, mentionPicks, PlusMenu, type Selection, SelectionChips } from "./Plus.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { openPane } from "./pane.ts";
+import { ResponseActivityPanel } from "./ResponseActivity.tsx";
 import { ThreadRoom, topicsOf } from "./Room.tsx";
 import { RunFeedbackHost } from "./RunFeedback.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
+import { runSource } from "./responseSource.ts";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { Scroller } from "./Scroller.tsx";
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
@@ -160,11 +162,14 @@ function TurnView({
   canStop = false,
   origin,
   onActivity,
+  activityOpen,
 }: {
   run: Run;
   canStop?: boolean;
-  /** Open this answer's activity in Details, when more than one agent worked on it. */
+  /** Open or close this answer's activity in Details. */
   onActivity?: (run: string) => void;
+  /** This answer's activity is open in Details. */
+  activityOpen?: boolean;
   /** Where the session started, as a chip under the first message. */
   origin?: ReactNode;
   /** The reader's subject. */
@@ -233,7 +238,7 @@ function TurnView({
           )}
         </RunFeedbackHost>
       </AgentTint>
-      <AnswerRefs run={run} onActivity={onActivity} />
+      <AnswerRefs run={run} open={activityOpen} onActivity={onActivity} />
 
       <div className="flex flex-wrap items-center gap-2 pl-11 text-aui-xs text-aui-muted">
         {siblings.length > 1 && (
@@ -1101,7 +1106,12 @@ export function Chat({
                   key={run.id}
                   run={run}
                   origin={i === 0 ? <OriginRef origin={referenceOfPlace(chatPlace)} /> : undefined}
-                  onActivity={(id) => openPanel("response", { run: id })}
+                  activityOpen={shownView.panel === "response" && shownView.run === run.id}
+                  onActivity={(id) =>
+                    shownView.panel === "response" && shownView.run === id
+                      ? openPanel()
+                      : openPanel("response", { run: id })
+                  }
                   canStop={canRun && !room?.thread.read_only}
                   actions={
                     !room?.thread.read_only && run.status === "completed" ? (
@@ -1263,7 +1273,11 @@ export function Chat({
           {(leaving) => {
             const run = turns.find((t) => t.id === shownView.run);
             return run ? (
-              <ResponseActivity run={run} leaving={leaving} onClose={() => openPanel()} />
+              <ResponseActivityPanel
+                source={runSource(run)}
+                leaving={leaving}
+                onClose={() => openPanel()}
+              />
             ) : null;
           }}
         </Presence>
