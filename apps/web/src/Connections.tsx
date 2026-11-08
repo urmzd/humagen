@@ -51,6 +51,7 @@ import {
   ways,
   whereReferences,
 } from "./connections.ts";
+import { GitHubRules } from "./GitHubRules.tsx";
 import { InstalledClientSetup } from "./InstalledClientSetup.tsx";
 import { href, type Route } from "./route.ts";
 import { AddToolServer, ToolList, YourToolServers } from "./ToolServers.tsx";
@@ -938,6 +939,14 @@ export function Connections({
                           <InstalledClientSetup
                             key={`${c.id}:${c.version}`}
                             client={c}
+                            onChanged={changed}
+                          />
+                        )}
+                        {c.surface === "github" && (
+                          <GitHubRules
+                            key={`${c.id}:rules:${c.version}`}
+                            client={c}
+                            canWrite={c.managed !== "file"}
                             onChanged={changed}
                           />
                         )}

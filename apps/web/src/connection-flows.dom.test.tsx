@@ -561,7 +561,7 @@ test("Add MCP adds one by URL, reviews its tools, and shows it as a card", async
 });
 
 /** Presets the server offers, with nothing connected and nothing installed. */
-function offered(over: Record<string, () => unknown> = {}) {
+function offered(over: Record<string, (body: unknown) => unknown> = {}) {
   const preset = (id: string, name: string, kind: string, scope = "person") => ({
     id,
     name,
@@ -691,4 +691,130 @@ test("an empty MCP group is its title and Add MCP; without the right to connect 
   render(<Connections canConnect={false} />);
   await screen.findByRole("region", { name: "Apps" });
   assert.equal(screen.queryByRole("region", { name: "MCPs" }), null);
+});
+
+/** A GitHub app installed for acme, with one rule. */
+function githubApp() {
+  const client = {
+    id: "acme-github",
+    name: "Acme GitHub",
+    surface: "github" as const,
+    enabled: true,
+    managed: "installation",
+    version: 3,
+    identity: { owners: ["acme"] },
+    credentials: { token: {}, signing_secret: {} },
+    default_agent: "code-reviewer",
+    agents: ["code-reviewer", "triage"],
+    github: {
+      automations: [
+        {
+          name: "review-prs",
+          repository: "acme/api",
+          event: "pull_request" as const,
+          action: "opened",
+          agent: "code-reviewer",
+          instructions: "Review the change.",
+          paused: false,
+        },
+      ],
+    },
+  };
+  return client;
+}
+
+test("the GitHub app's sheet holds the rules that start a session, saved on the app", async () => {
+  const client = githubApp();
+  net = stubFetch(
+    offered({
+      "GET /api/connections/presets": () => [
+        {
+          id: "github",
+          name: "GitHub",
+          kind: "github_install",
+          scope: "workspace",
+          available: true,
+          connected: true,
+        },
+      ],
+      "GET /api/clients": () => ({ clients: [client], caps: { max: 10, max_per_surface: 10 } }),
+      "GET /api/agents": () => ({
+        agents: [{ spec: { name: "code-reviewer" } }, { spec: { name: "triage" } }],
+      }),
+      "GET /api/projects": () => ({ projects: [] }),
+      "PUT /api/clients/acme-github": (body) => ({ ...client, ...(body as object), version: 4 }),
+      "GET /api/connections/github": () => ({
+        connection: { id: "github", name: "GitHub" },
+        mappings: [],
+        note: "",
+        truncated: false,
+      }),
+    }),
+  );
+  render(<Connections canConnect canWrite />);
+  const card = await screen.findByRole("listitem", { name: "GitHub" });
+  fireEvent.click(within(card).getByRole("button", { name: "Manage" }));
+  const dialog = await sheet("GitHub");
+  const rules = await within(dialog).findByRole("region", { name: "Start a session when" });
+  const rule = within(rules).getByRole("listitem", { name: "review-prs" });
+  assert.ok(within(rule).getByText("Pull request opened"));
+  assert.ok(within(rule).getByText("acme/api → @code-reviewer"));
+
+  fireEvent.click(within(rules).getByRole("button", { name: "Add Rule" }));
+  const form = within(rules).getByRole("form", { name: "New rule" });
+  fireEvent.change(within(form).getByLabelText(/^Name/), { target: { value: "triage-issues" } });
+  fireEvent.change(within(form).getByLabelText(/^Repository/), { target: { value: "acme/api" } });
+  fireEvent.change(within(form).getByLabelText(/^Event/), { target: { value: "issues" } });
+  await waitFor(() =>
+    assert.ok(within(form).getByRole("option", { name: "@triage" }), "routable agents load"),
+  );
+  fireEvent.change(within(form).getByLabelText(/^Agent/), { target: { value: "triage" } });
+  fireEvent.change(within(form).getByLabelText(/^Instructions/), {
+    target: { value: "Label and route the issue." },
+  });
+  fireEvent.click(within(form).getByRole("button", { name: "Save Rule" }));
+  await sent("PUT", "/api/clients/acme-github");
+  const body = net.seen.find((r) => r.method === "PUT")?.body as {
+    github: { automations: { name: string; event: string; action: string; agent: string }[] };
+  };
+  assert.deepEqual(
+    body.github.automations.map((a) => [a.name, a.event, a.action, a.agent]),
+    [
+      ["review-prs", "pull_request", "opened", "code-reviewer"],
+      ["triage-issues", "issues", "opened", "triage"],
+    ],
+  );
+});
+
+test("a rule the form cannot save says why before anything is sent", async () => {
+  const client = githubApp();
+  net = stubFetch(
+    offered({
+      "GET /api/connections/presets": () => [
+        {
+          id: "github",
+          name: "GitHub",
+          kind: "github_install",
+          scope: "workspace",
+          available: true,
+          connected: true,
+        },
+      ],
+      "GET /api/clients": () => ({ clients: [client], caps: { max: 10, max_per_surface: 10 } }),
+      "GET /api/agents": () => ({ agents: [{ spec: { name: "code-reviewer" } }] }),
+      "GET /api/projects": () => ({ projects: [] }),
+    }),
+  );
+  render(<Connections provider="github" canConnect canWrite />);
+  const dialog = await sheet("GitHub");
+  const rules = await within(dialog).findByRole("region", { name: "Start a session when" });
+  fireEvent.click(within(rules).getByRole("button", { name: "Add Rule" }));
+  const form = within(rules).getByRole("form", { name: "New rule" });
+  fireEvent.change(within(form).getByLabelText(/^Name/), { target: { value: "review-prs" } });
+  fireEvent.click(within(form).getByRole("button", { name: "Save Rule" }));
+  await within(form).findByText("A rule is already named review-prs.");
+  assert.equal(
+    net.seen.some((r) => r.method !== "GET"),
+    false,
+  );
 });
