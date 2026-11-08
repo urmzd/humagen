@@ -41,6 +41,9 @@ type SessionInput struct {
 	Surface     *SurfaceRef `json:"surface,omitempty"`
 	ActAs       *ActAs      `json:"act_as,omitempty"`
 	SurfaceKind string      `json:"surface_kind,omitempty"`
+	// PostOnly posts a surface's message without starting anything, as a
+	// channel the app follows quietly, or catching a thread up, does.
+	PostOnly bool `json:"post_only,omitempty"`
 }
 
 // SessionMessageOptions choose a mentioned agent's continuing or fresh child.
@@ -110,6 +113,8 @@ type SessionView struct {
 	Cursor   string                `json:"cursor"`
 	More     bool                  `json:"more,omitempty"`
 	Summary  string                `json:"summary,omitempty"`
+	// Posted is what the message just posted did, on a surface's post only.
+	Posted *SessionPosted `json:"posted,omitempty"`
 }
 
 // SeesSession checks the session and every parent: sharing a child never leaks
@@ -329,7 +334,10 @@ func (p *Platform) PostSession(ctx context.Context, who auth.Principal, id strin
 			return SessionView{}, fmt.Errorf("%w: child routing must name an @agent in the message", threads.ErrInvalid)
 		}
 		if target != "" && (in.Surface != nil || in.ActAs != nil) {
-			return p.postSurfaceChild(ctx, who, th, in, text, target, option)
+			if _, err := p.postSurfaceChild(ctx, who, th, in, text, target, option); err != nil {
+				return SessionView{}, err
+			}
+			return p.ReadSession(ctx, who, id, "", "", false)
 		}
 		if target != "" {
 			posted := in

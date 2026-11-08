@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/orchagent/flow/session"
 )
@@ -36,7 +40,7 @@ func surfacePlace(team, channel, ts string) string {
 // message. started reports whether it did. Only the client's own machine may
 // post, for a person of the client (act_as), and the request may not say
 // where to file the session or who owns it.
-func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, in SessionInput) (view SessionView, started bool, err error) {
+func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, in SessionInput) (out SessionView, started bool, err error) {
 	if in.Surface == nil {
 		return SessionView{}, false, fmt.Errorf("%w: a surface session needs its surface", threads.ErrInvalid)
 	}
@@ -58,19 +62,31 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 	if err := sf.Validate(); err != nil {
 		return SessionView{}, false, err
 	}
-	post := MessageInput{Text: in.Text, ActAs: in.ActAs, Surface: &ref}
+	post := MessageInput{Text: in.Text, ActAs: in.ActAs, Surface: &ref, PostOnly: in.PostOnly}
+	person, err := p.poster(who, in.ActAs)
+	if err != nil {
+		return SessionView{}, false, err
+	}
+	vis, people, aud, err := p.surfaceAudience(who, c, ref, person)
+	if err != nil {
+		return SessionView{}, false, err
+	}
 	if th, ok, err := p.Threads.BySurface(who.Tenant, sf); err != nil {
 		return SessionView{}, false, err
 	} else if ok {
 		if th.Session == nil {
 			return SessionView{}, false, ErrSurfaceThreadBeforeSessions
 		}
-		view, err := p.PostSession(ctx, who, th.ID, post)
-		return view, false, err
-	}
-	person, err := p.poster(who, in.ActAs)
-	if err != nil {
-		return SessionView{}, false, err
+		if vis == threads.Private && ref.Audience != nil && len(ref.Audience.Members) > 0 {
+			if err := p.keepAudience(who.Tenant, th, people); err != nil {
+				return SessionView{}, false, err
+			}
+		}
+		if err := p.audiences.Put(who.Tenant, th.ID, aud); err != nil {
+			return SessionView{}, false, err
+		}
+		out, err := p.surfacePost(ctx, who, th, post)
+		return out, false, err
 	}
 	at, err := p.filedAt(who.Tenant, c, ref.Channel)
 	if err != nil {
@@ -88,14 +104,89 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 	if err != nil {
 		return SessionView{}, false, err
 	}
-	th := threads.Thread{ID: rec.ID, Project: at.project, Channel: at.channel, Visibility: at.vis, Title: firstWords(in.Text, threads.MaxTitle), Default: owner, Agents: []string{owner}, CreatedBy: humanSubject(person), Surface: &sf, Session: &threads.SessionIdentity{Agent: owner, Parent: rec.Key.Parent, Label: rec.Key.Label}}
+	th := threads.Thread{ID: rec.ID, Project: at.project, Channel: at.channel, Visibility: vis, Participants: people, Title: firstWords(in.Text, threads.MaxTitle), Default: owner, Agents: []string{owner}, CreatedBy: humanSubject(person), Surface: &sf, Session: &threads.SessionIdentity{Agent: owner, Parent: rec.Key.Parent, Label: rec.Key.Label}}
 	_, err = p.Threads.Create(who.Tenant, th, p.now())
 	started = err == nil
 	if err != nil && !errors.Is(err, threads.ErrExists) {
 		return SessionView{}, false, err
 	}
-	view, err = p.PostSession(ctx, who, rec.ID, post)
-	return view, started, err
+	if err := p.audiences.Put(who.Tenant, rec.ID, aud); err != nil {
+		return SessionView{}, false, err
+	}
+	if th, err = p.Threads.Get(who.Tenant, rec.ID); err != nil {
+		return SessionView{}, false, err
+	}
+	out, err = p.surfacePost(ctx, who, th, post)
+	return out, started, err
+}
+
+// SessionPosted is what one posted message did: the message, the runs it
+// started (in the root or the named agent's child), the people it told, the
+// mentions it refused, and why it started what it did or nothing. Repeated
+// is a message already posted, which starts nothing again.
+type SessionPosted struct {
+	Message  SessionPostedMessage `json:"message"`
+	Runs     []runs.Run           `json:"runs"`
+	Notified []string             `json:"notified"`
+	Refused  []threads.Mention    `json:"refused"`
+	Rule     threads.Rule         `json:"rule"`
+	Reason   string               `json:"reason,omitempty"`
+	Repeated bool                 `json:"repeated,omitempty"`
+}
+
+// SessionPostedMessage is a posted message's id and its text as read.
+type SessionPostedMessage struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
+}
+
+func sessionPosted(p Posted) SessionPosted {
+	return SessionPosted{Message: SessionPostedMessage{ID: p.Message.ID, Text: p.Message.Text}, Runs: nonNil(p.Runs), Notified: nonNil(p.Notified), Refused: nonNil(p.Refused), Rule: p.Rule, Reason: p.Reason, Repeated: p.Repeated}
+}
+
+func nonNil[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
+}
+
+// surfacePost posts a surface's message to its root session th: to the
+// child of an agent it names, else to the root, where its owner answers.
+func (p *Platform) surfacePost(ctx context.Context, who auth.Principal, th threads.Thread, in MessageInput) (SessionView, error) {
+	text, reader, err := p.sessionReading(who, in)
+	if err != nil {
+		return SessionView{}, err
+	}
+	if _, _, err = p.sessionAgent(ctx, reader, th.Project, th.Session.Agent, text); err != nil {
+		return SessionView{}, err
+	}
+	target := ""
+	if !in.PostOnly {
+		mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, sees: p.Seer(reader).Agent, tree: p.Projects.Tree(who.Tenant), project: th.Project, person: reader.Subject, console: true})
+		if err != nil {
+			return SessionView{}, err
+		}
+		for _, m := range mentions {
+			if m.Kind == threads.Agent && m.Name != th.Session.Agent {
+				target = m.Name
+				break
+			}
+		}
+	}
+	var posted Posted
+	if target != "" {
+		posted, err = p.postSurfaceChild(ctx, who, th, in, text, target, SessionMessageOptions{})
+	} else {
+		posted, err = p.PostMessage(ctx, who, th.ID, in)
+	}
+	if err != nil {
+		return SessionView{}, err
+	}
+	view, err := p.ReadSession(ctx, who, th.ID, "", "", false)
+	sp := sessionPosted(posted)
+	view.Posted = &sp
+	return view, err
 }
 
 // sessionReading is the text of a session message as mentions are read
@@ -125,22 +216,170 @@ func (p *Platform) sessionReading(who auth.Principal, in MessageInput) (string, 
 // the root, starting nothing there, then into that agent's child session
 // under the root (continued, or fresh or labelled as asked), as the person
 // it is posted for, where the agent answers it.
-func (p *Platform) postSurfaceChild(ctx context.Context, who auth.Principal, root threads.Thread, in MessageInput, text, agent string, option SessionMessageOptions) (SessionView, error) {
-	posted := in
-	posted.PostOnly = true
-	if _, err := p.PostMessage(ctx, who, root.ID, posted); err != nil {
-		return SessionView{}, err
+func (p *Platform) postSurfaceChild(ctx context.Context, who auth.Principal, root threads.Thread, in MessageInput, text, agent string, option SessionMessageOptions) (Posted, error) {
+	only := in
+	only.PostOnly = true
+	inRoot, err := p.PostMessage(ctx, who, root.ID, only)
+	if err != nil {
+		return Posted{}, err
+	}
+	if inRoot.Repeated {
+		return inRoot, nil
 	}
 	rec, err := p.Sessions.Open(ctx, who.Tenant, session.Open{Parent: root.ID, Agent: agent, Label: option.Label, Fresh: option.Fresh, Channel: wire.Channel(who.Tenant)})
 	if err != nil {
-		return SessionView{}, err
+		return Posted{}, err
 	}
 	child := threads.Thread{ID: rec.ID, Project: root.Project, Channel: root.Channel, Visibility: root.Visibility, CreatedBy: root.CreatedBy, Participants: slices.Clone(root.Participants), Default: agent, Agents: []string{agent}, Title: firstWords(text, threads.MaxTitle), Session: &threads.SessionIdentity{Agent: agent, Parent: root.ID, Label: rec.Key.Label, SourceAlert: root.Session.SourceAlert}}
 	if _, err := p.Threads.Create(who.Tenant, child, p.now()); err != nil && !errors.Is(err, threads.ErrExists) {
-		return SessionView{}, err
+		return Posted{}, err
 	}
-	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: text, ActAs: in.ActAs}); err != nil {
-		return SessionView{}, err
+	inChild, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: text, ActAs: in.ActAs})
+	if err != nil {
+		return Posted{}, err
 	}
-	return p.ReadSession(ctx, who, root.ID, "", "", false)
+	inRoot.Runs, inRoot.Rule, inRoot.Reason = inChild.Runs, inChild.Rule, inChild.Reason
+	inRoot.Notified = append(inRoot.Notified, inChild.Notified...)
+	return inRoot, nil
+}
+
+// Slack conversation kinds (SurfaceAudience.Type).
+const (
+	ChannelPublic  = "public_channel"
+	ChannelPrivate = "private_channel"
+	ChannelGroupDM = "mpim"
+	ChannelDM      = "im"
+)
+
+// maxSurfaceMembers bounds the members one message may name.
+const maxSurfaceMembers = 500
+
+// SessionAudience is who a surface session was asked in front of, as the
+// place said with its latest message: Kind public, private, group or
+// direct; Members the people the client maps those members to; Unmapped the
+// members it maps to nobody. Knowledge is gated on it at answer time.
+type SessionAudience struct {
+	Kind     string    `json:"kind"`
+	Members  []string  `json:"members,omitempty"`
+	Unmapped int       `json:"unmapped,omitempty"`
+	At       time.Time `json:"at"`
+}
+
+// audienceStore keeps the latest audience of each surface root session.
+func audienceStore(st state.Store) *state.Table[SessionAudience] {
+	if st == nil {
+		st = state.NewMemory()
+	}
+	return state.NewTable[SessionAudience](st, "session-audiences")
+}
+
+// SessionAudience is the latest audience of session's root, the place it
+// belongs to. It is false for a session no surface reported one for.
+func (p *Platform) SessionAudience(tenant, session string) (SessionAudience, bool) {
+	id := session
+	for range 64 {
+		th, err := p.Threads.Get(tenant, id)
+		if err != nil || th.Session == nil {
+			return SessionAudience{}, false
+		}
+		if !strings.HasPrefix(th.Session.Parent, "s_") {
+			break
+		}
+		id = th.Session.Parent
+	}
+	it, err := p.audiences.Lookup(tenant, id)
+	if err != nil {
+		return SessionAudience{}, false
+	}
+	return it.Value, true
+}
+
+// surfaceAudience is who a surface thread's root session is for, by the
+// place it was asked in (owner rule, 2026-11-07): a public channel's is
+// shared where it is filed; a private channel's or a group direct message's
+// is private to the conversation's members now, those the client maps to a
+// person; a direct message's is private to its person. The entry agent and
+// the children it hands work to inherit it, and a child is never read by
+// anyone who cannot read its root (SeesSession). aud is what is kept for the
+// knowledge gate.
+func (p *Platform) surfaceAudience(who auth.Principal, c clients.Client, ref SurfaceRef, person auth.Principal) (vis threads.Visibility, people []threads.Participant, aud SessionAudience, err error) {
+	kind, members := "", []string(nil)
+	if ref.Audience != nil {
+		kind, members = ref.Audience.Type, ref.Audience.Members
+	}
+	if kind == "" {
+		switch {
+		case directMessage(ref.Channel):
+			kind = ChannelDM
+		case strings.HasPrefix(ref.Channel, "G"):
+			kind = ChannelPrivate
+		default:
+			kind = ChannelPublic
+		}
+	}
+	if len(members) > maxSurfaceMembers {
+		return "", nil, SessionAudience{}, fmt.Errorf("%w: an audience names at most %d members", threads.ErrInvalid, maxSurfaceMembers)
+	}
+	at := p.now()
+	self := humanSubject(person)
+	owner := threads.Participant{Kind: threads.Person, Name: self, Owner: true, At: at}
+	aud = SessionAudience{At: at}
+	switch kind {
+	case ChannelPublic:
+		aud.Kind = "public"
+		return threads.Shared, nil, aud, nil
+	case ChannelDM:
+		aud.Kind, aud.Members = "direct", []string{self}
+		return threads.Private, []threads.Participant{owner}, aud, nil
+	case ChannelPrivate, ChannelGroupDM:
+		aud.Kind = "private"
+		if kind == ChannelGroupDM {
+			aud.Kind = "group"
+		}
+		people = []threads.Participant{owner}
+		aud.Members = []string{self}
+		for _, u := range members {
+			member, err := p.Acting(who, ActAs{Client: c.ID, User: u})
+			if err != nil || humanSubject(member) == "" {
+				aud.Unmapped++ // reads nothing here, and the knowledge gate fails closed on it
+				continue
+			}
+			s := humanSubject(member)
+			if !slices.Contains(aud.Members, s) {
+				aud.Members = append(aud.Members, s)
+				if len(people) < threads.MaxParticipants {
+					people = append(people, threads.Participant{Kind: threads.Person, Name: s, AddedBy: self, At: at})
+				}
+			}
+		}
+		return threads.Private, people, aud, nil
+	}
+	return "", nil, SessionAudience{}, fmt.Errorf("%w: audience.type is public_channel, private_channel, mpim or im", threads.ErrInvalid)
+}
+
+// keepAudience makes a private root's people the conversation's members
+// now: members who joined are added, people who left are removed. Its
+// agents, and the person who started it, stay.
+func (p *Platform) keepAudience(tenant string, th threads.Thread, people []threads.Participant) error {
+	want := map[string]bool{}
+	for _, pt := range people {
+		want[pt.Name] = true
+	}
+	var add []threads.Participant
+	for _, pt := range people {
+		if !slices.ContainsFunc(th.Participants, func(have threads.Participant) bool { return have.Kind == threads.Person && have.Name == pt.Name }) {
+			add = append(add, pt)
+		}
+	}
+	var remove []string
+	for _, have := range th.Participants {
+		if have.Kind == threads.Person && !have.Owner && !want[have.Name] {
+			remove = append(remove, have.Name)
+		}
+	}
+	if len(add) == 0 && len(remove) == 0 {
+		return nil
+	}
+	_, err := p.Threads.Participants(tenant, th.ID, th.Version, add, remove, func(threads.Participant) bool { return true }, "surface", p.now())
+	return err
 }

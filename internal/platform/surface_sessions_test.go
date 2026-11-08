@@ -106,3 +106,69 @@ func TestTheEntryAgentOwnsASlackThreadsRoot(t *testing.T) {
 		t.Fatalf("root = agent %q, place %q, %s", v.Agent, v.Parent, v.Thread.Visibility)
 	}
 }
+
+func withAudience(in platform.SessionInput, typ string, members ...string) platform.SessionInput {
+	in.Surface.Audience = &platform.SurfaceAudience{Type: typ, Members: members}
+	return in
+}
+
+func TestASlackRootIsReadByThePlacesAudience(t *testing.T) {
+	p, machine := slackRoom(t, nil)
+	ana := auth.Principal{Subject: "ana", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Viewer}}
+	vic := auth.Principal{Subject: "vic", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Viewer}}
+
+	public, _, err := p.StartSurfaceSession(t.Context(), machine, withAudience(slackSession("C01RENEW", "1700000000.000100", "", "<@UAPP> status?"), platform.ChannelPublic))
+	if err != nil || public.Thread.Visibility != threads.Shared {
+		t.Fatalf("a public channel's root = %s, %v", public.Thread.Visibility, err)
+	}
+	if a, ok := p.SessionAudience(tenant, public.ID); !ok || a.Kind != "public" {
+		t.Fatalf("public audience = %+v, %v", a, ok)
+	}
+
+	private, _, err := p.StartSurfaceSession(t.Context(), machine, withAudience(slackSession("G01SECRET", "1700000000.000200", "", "<@UAPP> status?"), platform.ChannelPrivate, "U0ANA", "U0EVE"))
+	if err != nil || private.Thread.Visibility != threads.Private {
+		t.Fatalf("a private channel's root = %s, %v", private.Thread.Visibility, err)
+	}
+	if !p.SeesSession(ana, private.ID) || p.SeesSession(vic, private.ID) {
+		t.Fatal("a private channel's root is read by someone outside it, or not by its member")
+	}
+	if a, _ := p.SessionAudience(tenant, private.ID); a.Kind != "private" || a.Unmapped != 1 || len(a.Members) != 1 || a.Members[0] != "ana" {
+		t.Fatalf("private audience = %+v, want ana and one unmapped member", a)
+	}
+	// vic joins the channel: the next message brings them in.
+	if _, _, err := p.StartSurfaceSession(t.Context(), machine, withAudience(slackSession("G01SECRET", "1700000000.000200", "1700000000.000300", "<@UAPP> and now?"), platform.ChannelPrivate, "U0ANA", "U0VIC")); err != nil {
+		t.Fatal(err)
+	}
+	if !p.SeesSession(vic, private.ID) {
+		t.Fatal("a member who joined the channel cannot read its root")
+	}
+
+	dm, _, err := p.StartSurfaceSession(t.Context(), machine, withAudience(slackSession("D0ANA", "1700000000.000400", "", "my question"), platform.ChannelDM))
+	if err != nil || dm.Thread.Visibility != threads.Private || p.SeesSession(vic, dm.ID) || !p.SeesSession(ana, dm.ID) {
+		t.Fatalf("a direct message's root = %s, %v", dm.Thread.Visibility, err)
+	}
+	if _, _, err := p.StartSurfaceSession(t.Context(), machine, withAudience(slackSession("C01RENEW", "1700000000.000500", "", "x"), "town_square")); !errors.Is(err, threads.ErrInvalid) {
+		t.Fatalf("an unknown audience type = %v", err)
+	}
+}
+
+func TestASurfaceMessageSaysWhatItStartedAndStartsNothingTwice(t *testing.T) {
+	p, machine := slackRoom(t, nil)
+	first, _, err := p.StartSurfaceSession(t.Context(), machine, slackSession("C01RENEW", "1700000000.000100", "", "<@UAPP> @lead plan it"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Posted.Runs) != 1 || first.Posted.Runs[0].Agent != "lead" || first.Posted.Message.Text != "@lead plan it" || first.Posted.Repeated {
+		t.Fatalf("posted = %+v", first.Posted)
+	}
+	again, _, err := p.StartSurfaceSession(t.Context(), machine, slackSession("C01RENEW", "1700000000.000100", "", "<@UAPP> @lead plan it"))
+	if err != nil || !again.Posted.Repeated || len(again.Children) != 1 {
+		t.Fatalf("sent again = %+v, children %d, %v", again.Posted, len(again.Children), err)
+	}
+	quiet := slackSession("C01RENEW", "1700000000.000100", "1700000000.000600", "just noting this")
+	quiet.PostOnly = true
+	got, _, err := p.StartSurfaceSession(t.Context(), machine, quiet)
+	if err != nil || len(got.Posted.Runs) != 0 || got.Posted.Message.ID == "" {
+		t.Fatalf("a post-only message = %+v, %v", got.Posted, err)
+	}
+}
