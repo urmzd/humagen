@@ -191,16 +191,6 @@ func (p *Platform) nativeOptions() []native.Option {
 	return append(p.cfg.Ext.agentOptions(), native.WithProviderResolver(p.resolveProvider))
 }
 
-// providerFunc is the factory for a provider a workspace names outside a
-// turn, such as the router's: a declared one, else the workspace's own.
-func (p *Platform) providerFunc(tenant, name string) native.ProviderFunc {
-	if fn := p.cfg.Ext.Providers[name]; fn != nil {
-		return fn
-	}
-	fn, _ := p.resolveProvider(workspaceRef(tenant, name))
-	return fn
-}
-
 // block is the provider as the server's model kinds read it. The key is
 // passed apart, as a KeyFunc.
 func (m ModelProvider) block() spec.ModelBlock {
