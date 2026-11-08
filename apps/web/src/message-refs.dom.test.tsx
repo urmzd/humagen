@@ -201,10 +201,8 @@ test("two agents in parallel are two lanes; the root's own answer stays beside t
     lanes.map((l) => l.getAttribute("data-agent")),
     ["humagen", "security-reviewer", "perf-reviewer"],
   );
-  assert.match(
-    screen.getByTestId("activity-summary").textContent ?? "",
-    /Worked 5\.8s · 2 agents · 3 tools · \$0\.02/,
-  );
+  // The panel is titled Activity; how it worked stays under the message, so the panel says cost and models only.
+  assert.equal(screen.getByTestId("activity-summary").textContent, "$0.02 · claude-sonnet-5-5");
   assert.equal(screen.queryByText(/^## security-reviewer/), null, "the answer is not repeated");
   // Parts that went well are closed; nothing waits or failed here.
   for (const part of screen.getAllByTestId("activity-part"))
@@ -230,6 +228,19 @@ test("a question two agents deep opens where it waits and is answered there", as
     .getAllByTestId("activity-part")
     .find((p) => p.getAttribute("data-status") === "error");
   assert.equal(failed?.querySelector("details")?.open, true, "a failure opens by default");
+  // Its error shows; its input stays closed until the reader opens it.
+  assert.match(failed?.textContent ?? "", /403: the deploy token expired/);
+  const input = [...(failed?.querySelectorAll("details details") ?? [])][0] as HTMLDetailsElement;
+  assert.equal(input?.open, false);
+  // A lane whose work waits on a person says so in its header, once, without the narration line.
+  const deployer = screen
+    .getAllByTestId("activity-lane")
+    .find((l) => l.getAttribute("data-agent") === "deployer");
+  assert.match(deployer?.querySelector("p")?.textContent ?? "", /Waiting for approval/);
+  assert.equal(
+    !!within(deployer as HTMLElement).queryByText("Waiting for approval to rotate the token"),
+    false,
+  );
   fireEvent.click(within(deploy).getByRole("button", { name: "Approve" }));
   await waitFor(() =>
     assert.deepEqual(net.seen.find((r) => r.method === "POST")?.body, {
@@ -237,6 +248,22 @@ test("a question two agents deep opens where it waits and is answered there", as
       answer: "approve",
     }),
   );
+});
+
+test("a stopped response says how it ended once, in plain words", async () => {
+  const { WorkedButton } = await import("./ResponseActivity.tsx");
+  const state = foldAll(responseStreams.stopped);
+  render(<WorkedButton state={state} open={false} onToggle={() => {}} />);
+  assert.equal(screen.getByTestId("worked").textContent, words.stoppedAfter("3.0s", 1, 1));
+  cleanup();
+  render(
+    <ResponseActivityPanel
+      source={replaySource("s", responseStreams.stopped)}
+      onClose={() => {}}
+    />,
+  );
+  await screen.findAllByTestId("activity-lane");
+  assert.equal(!!screen.queryByText("stopped"), false, "no raw stop reason");
 });
 
 test("a live stream says when a call starts waiting, politely, and a replay says nothing", async () => {

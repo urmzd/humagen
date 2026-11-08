@@ -112,7 +112,7 @@ export function WorkedButton({
       ? awaited
         ? words.waitingForYou
         : words.working(timeWords(state))
-      : words.worked(timeWords(state), w.agents, w.tools);
+      : outcomeOf(state);
   return (
     <button
       type="button"
@@ -268,12 +268,22 @@ function ToolPart({
             <Ask tool={tool} messageId={messageId} onAnswered={onAnswered} />
           )}
           {Object.keys(tool.input).length > 0 && (
-            <div>
-              <p className="mb-0.5 text-aui-2xs text-aui-muted">{words.input}</p>
-              <Json value={tool.input} />
-            </div>
+            <details className="group/input">
+              <summary className="flex min-h-6 cursor-pointer list-none items-center gap-1 text-aui-2xs text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent">
+                <ChevronRightIcon
+                  size={10}
+                  aria-hidden
+                  className="shrink-0 transition-transform group-open/input:rotate-90"
+                />
+                {words.input}
+              </summary>
+              <div className="mt-0.5">
+                <Json value={tool.input} />
+              </div>
+            </details>
           )}
-          {tool.result && (
+          {/* A stopped call's result only repeats that it stopped, which its row already says. */}
+          {tool.result && tool.status !== "stopped" && (
             <div>
               <p className="mb-0.5 text-aui-2xs text-aui-muted">{words.result}</p>
               {tool.result.isError ? (
@@ -373,7 +383,7 @@ function Lane({
           </a>
         )}
       </p>
-      {tool?.progress && status === "running" && (
+      {tool?.progress && shown === "running" && (
         <p className="text-aui-muted text-aui-xs">{tool.progress}</p>
       )}
       <ul className="flex flex-col gap-1.5">
@@ -420,13 +430,15 @@ function Lane({
                     messageId={messageId}
                     onAnswered={onAnswered}
                   />
-                  {b.result && b.content.every((c) => c.type !== "text") && (
-                    <p
-                      className={`mt-1 whitespace-pre-wrap pl-3 text-aui-sm ${b.result.isError ? "text-aui-bad" : "text-aui-fg"}`}
-                    >
-                      {b.result.text}
-                    </p>
-                  )}
+                  {b.result &&
+                    b.status !== "stopped" &&
+                    b.content.every((c) => c.type !== "text") && (
+                      <p
+                        className={`mt-1 whitespace-pre-wrap pl-3 text-aui-sm ${b.result.isError ? "text-aui-bad" : "text-aui-fg"}`}
+                      >
+                        {b.result.text}
+                      </p>
+                    )}
                 </li>
               );
             return <ToolPart key={b.id} tool={b} messageId={messageId} onAnswered={onAnswered} />;
@@ -462,18 +474,39 @@ export function ActivityLanes({
   );
 }
 
-/** "Worked 42s · 3 agents · 7 tools · $0.02 · claude-sonnet" for the panel's summary line. */
-export function summaryOf(state: ResponseState): string {
+/**
+ * How a response ended, in plain words, once: "Worked 42s · 3 agents · 7
+ * tools", or "Stopped after 3.0s · 1 of 1 agents unfinished".
+ */
+export function outcomeOf(state: ResponseState): string {
   const w = worked(state);
+  const time = took(w.ms);
+  if (state.status === "running") return words.working(time);
+  if (state.status === "stopped" || state.status === "failed") {
+    const calls = allTools(state).filter((t) => t.kind === "agent");
+    const unfinished = calls.filter((t) => t.status !== "done").length;
+    return (state.status === "stopped" ? words.stoppedAfter : words.failedAfter)(
+      time,
+      unfinished,
+      calls.length,
+    );
+  }
+  return words.worked(time, w.agents, w.tools);
+}
+
+/** What a response cost and the models it ran on: "$0.02 · claude-sonnet". */
+export function costOf(state: ResponseState): string {
   return [
-    state.status === "running"
-      ? words.working(took(w.ms))
-      : words.worked(took(w.ms), w.agents, w.tools),
     state.costUsd ? usd(Math.round(state.costUsd * 1_000_000)) : "",
     ...Object.keys(state.byModel ?? {}).map((m) => m.split("/").pop() ?? m),
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+/** The outcome, cost and models together, for a line of its own (Details › References). */
+export function summaryOf(state: ResponseState): string {
+  return [outcomeOf(state), costOf(state)].filter(Boolean).join(" · ");
 }
 
 /**
@@ -505,9 +538,11 @@ export function ResponseActivityPanel({
           <SkeletonRows count={3} />
         ) : (
           <>
-            <p className="text-aui-muted text-aui-xs" data-testid="activity-summary">
-              {summaryOf(state)}
-            </p>
+            {costOf(state) && (
+              <p className="text-aui-muted text-aui-xs" data-testid="activity-summary">
+                {costOf(state)}
+              </p>
+            )}
             {state.error && <p className="text-aui-bad text-aui-sm">{state.error}</p>}
             <ActivityLanes state={state} messageId={messageId} />
           </>

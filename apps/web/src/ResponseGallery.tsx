@@ -1,7 +1,7 @@
 import { answerOf, foldAll } from "@humagen/core";
 import { responseStreams } from "@humagen/core/fixtures/responses";
 import { useState } from "react";
-import { ActivityLanes, summaryOf, WorkedButton } from "./ResponseActivity.tsx";
+import { ActivityLanes, costOf, WorkedButton } from "./ResponseActivity.tsx";
 import { AgentMark } from "./ui.tsx";
 
 const streams = [
@@ -44,7 +44,7 @@ function Example({ name, events }: { name: string; events: (typeof streams)[numb
       <WorkedButton state={state} open={open} onToggle={() => setOpen((v) => !v)} />
       {open && (
         <div className="flex flex-col gap-3 border-[var(--humagen-rule)] border-t pt-3">
-          <p className="text-aui-muted text-aui-xs">{summaryOf(state)}</p>
+          <p className="text-aui-muted text-aui-xs">{costOf(state)}</p>
           <ActivityLanes state={state} messageId={state.id} />
         </div>
       )}

@@ -3417,6 +3417,15 @@ export const defaultCopy = {
         .filter(Boolean)
         .join(" · "),
     working: (time: string) => `Working ${time}`,
+    /** How a response that did not finish ended, once, in plain words. */
+    stoppedAfter: (time: string, unfinished: number, agents: number) =>
+      agents
+        ? `Stopped after ${time} · ${unfinished} of ${agents} ${agents === 1 ? "agent" : "agents"} unfinished`
+        : `Stopped after ${time}`,
+    failedAfter: (time: string, unfinished: number, agents: number) =>
+      agents
+        ? `Failed after ${time} · ${unfinished} of ${agents} ${agents === 1 ? "agent" : "agents"} unfinished`
+        : `Failed after ${time}`,
     waitingForYou: "Waiting for you",
     thinking: "Thinking",
     input: "Input",
