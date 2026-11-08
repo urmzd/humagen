@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.92.0 (2026-11-08)
+
+### Features
+
+- **console**: add session workspace connections and review controls (#240) ([b296b5b](https://github.com/urmzd/humagen/commit/b296b5b489864b37bf938d695e3faf0886d8c33e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.91.0...v0.92.0)
+
+
 ## 0.91.0 (2026-11-08)
 
 ### Features
