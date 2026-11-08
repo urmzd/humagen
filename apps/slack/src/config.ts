@@ -13,6 +13,8 @@ export const USEFUL = [
   "agents:write",
   "alerts:read",
   "alerts:write",
+  // A spoken answer to a voice clip, uploaded in the thread (voiceReply.ts).
+  "speech:write",
 ];
 
 export interface Config {

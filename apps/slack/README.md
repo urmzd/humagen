@@ -162,6 +162,7 @@ The app authenticates as a machine. Least privilege:
 | `humagen:agents:read` | Know which agents exist; see proposed memories |
 | `humagen:clients:read` | Only with `HUMAGEN_CLIENT` |
 | `humagen:projects:read` | Your projects on the Home tab of a person the client maps. Without it the Home leaves them out |
+| `humagen:speech:write` | Answer a voice clip with a spoken answer, an audio clip in the thread, when the workspace has a voice provider. Also needs the Slack scope `files:write`. Without it voice clips are answered in text |
 
 Every button in Slack acts with the app's rights, so each extra scope lets the
 people in the loop do more: `agents:write` keeps or discards memories,

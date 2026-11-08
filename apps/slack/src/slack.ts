@@ -35,7 +35,13 @@ function slackHook(url: string): boolean {
 }
 
 /** Read methods that take a form, not JSON. */
-const FORM = new Set(["conversations.replies", "users.info"]);
+const FORM = new Set([
+  "conversations.replies",
+  "users.info",
+  // A file's upload, which takes its list of files as a JSON string in a form.
+  "files.getUploadURLExternal",
+  "files.completeUploadExternal",
+]);
 
 function formOf(args: Record<string, unknown>): URLSearchParams {
   const form = new URLSearchParams();
