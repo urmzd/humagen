@@ -1774,6 +1774,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	if listed := c.call(acme, "GET", "/api/schedules", "/api/schedules", "", http.StatusOK); !strings.Contains(string(listed.raw), `"managed":"file"`) {
 		t.Errorf("the file's schedule does not say so: %s", listed.raw)
 	}
+	// A project's page lists the schedules filed there.
+	if launch := c.call(acme, "GET", "/api/schedules", "/api/schedules?project=Launch", "", http.StatusOK); !strings.Contains(string(launch.raw), `"from-file"`) {
+		t.Errorf("Launch's schedules leave out the one filed there: %s", launch.raw)
+	}
+	if ws := c.call(acme, "GET", "/api/schedules", "/api/schedules?project=~", "", http.StatusOK); strings.Contains(string(ws.raw), `"from-file"`) {
+		t.Errorf("the workspace's own schedules hold Launch's: %s", ws.raw)
+	}
+	c.call(acme, "GET", "/api/schedules", "/api/schedules?project=", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/schedules", "/api/schedules?project=Ghost", "", http.StatusNotFound)
 	c.call(acme, "PUT", "/api/schedules/{name}", "/api/schedules/from-file", `{"expression":"0 3 * * *","agent":"helper","text":"Mine."}`, http.StatusConflict)
 	c.call(acme, "DELETE", "/api/schedules/{name}", "/api/schedules/from-file", "", http.StatusConflict)
 	if err := f.p.Schedules.Release("acme", "from-file"); err != nil {

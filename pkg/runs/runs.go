@@ -492,8 +492,9 @@ func (x *Index) Record(runID string, tag event.Envelope, rev int) error {
 	if wire.Origin(tag) == "cron" || wire.Origin(tag) == OriginManual {
 		schedule = wire.SurfaceOf(tag).CronSchedule
 	}
-	// A run is its own conversation unless the API placed it in one. A run
-	// called by an agent belongs to its root's conversation.
+	// A run is its own conversation unless the API, or the platform for a
+	// schedule's run, placed it in one. A run called by an agent belongs to
+	// its root's conversation.
 	thread, prev, picked, routed, text, client := runID, "", "", "", wire.TextOf(tag), ClientOf(tag)
 	channel, message := "", ""
 	// A schedule's project is written by the server when the schedule is
@@ -505,6 +506,13 @@ func (x *Index) Record(runID string, tag event.Envelope, rev int) error {
 		}
 		prev, picked, routed = wire.Meta(tag)[MetaPrev], wire.Meta(tag)[MetaPicked], wire.Meta(tag)[MetaRouted]
 		channel, message = wire.Meta(tag)[MetaChannel], wire.Meta(tag)[MetaMessage]
+	} else if schedule != "" {
+		// The platform files a schedule's run in a session of its own, in
+		// the schedule's project, and names it here (Platform.Invoke drops
+		// any the tag brought).
+		if v := wire.Meta(tag)[MetaThread]; v != "" {
+			thread = v
+		}
 	}
 	// Slack and GitHub ingress writes the channel from the client's binding.
 	if wire.Origin(tag) == OriginSlack || wire.Origin(tag) == OriginGitHub {

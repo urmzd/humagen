@@ -3827,16 +3827,29 @@ name none in its place.
     });
   }
 
-  /** List schedules */
-  async listSchedules(options?: RequestOptions): Promise<ListSchedulesResponse> {
-    const path = "/api/schedules";
+  /** Every schedule filed where the caller may read, or with `project`
+those filed in one project (`~` is the workspace itself). Each run
+of a schedule is a session in its project, under
+`schedule://<name>`: `GET /api/sessions?parent=schedule://<name>`
+lists them.
+ */
+  async listSchedules(project?: string, options?: RequestOptions): Promise<ListSchedulesResponse> {
+    let path = "/api/schedules";
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.request<ListSchedulesResponse>("GET", path, {
       ...options,
     });
   }
 
-  async listSchedulesRaw(options?: RequestOptions): Promise<ApiResponse<ListSchedulesResponse>> {
-    const path = "/api/schedules";
+  async listSchedulesRaw(project?: string, options?: RequestOptions): Promise<ApiResponse<ListSchedulesResponse>> {
+    let path = "/api/schedules";
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListSchedulesResponse>("GET", path, {
       ...options,
     });
