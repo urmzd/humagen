@@ -1,91 +1,77 @@
 import { defaultCopy } from "@humagen/components";
-import { ChevronDownIcon, FolderIcon, FolderPlusIcon, PinIcon } from "@humagen/render-web";
-import { Badge } from "@humagen/render-web/ui/badge";
+import { FolderPlusIcon, LayersIcon, PinIcon, UserIcon, UsersIcon } from "@humagen/render-web";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@humagen/render-web/ui/sheet";
 import {
   type FormEvent,
   type MouseEvent,
   type ReactNode,
-  useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
 } from "react";
 import {
   ApiError,
   api,
+  type Channel,
+  type Client,
+  type CorpusBrief,
+  coworking,
   type Note,
   type ProjectAccount,
   type ProjectAction,
+  type ProjectCorpora,
   type ProjectDetail,
   type ProjectKind,
   type ProjectKindSpec,
-  type ProjectTemplate,
   type ProjectView,
+  type ProjectVisibility,
   type Revision,
   type ScheduleView,
-  type ThreadSummary,
 } from "./api.ts";
-import { AUTO } from "./availability.ts";
-import { FilterSelect, Pill } from "./cards.tsx";
-import { inWords } from "./cron.ts";
-import type { Source } from "./mail.ts";
-import { ProjectAgentsTab } from "./ProjectAgents.tsx";
-import { ProjectContextPreview } from "./ProjectContextPreview.tsx";
-import { ProjectKnowledgeSection } from "./ProjectKnowledge.tsx";
-import { ProjectRollup } from "./ProjectRollup.tsx";
-import { ProjectLimits, ProjectPeople } from "./ProjectTabs.tsx";
-import { ProjectWork } from "./ProjectWork.tsx";
+import { FilterSelect, Pill, StatusPill } from "./cards.tsx";
+import { inWords, presets } from "./cron.ts";
+import { ProjectPeople } from "./ProjectTabs.tsx";
 import {
-  above,
-  accountOf,
   cardsOf,
   groupWord,
-  INDENT_PX,
   isPrivate,
   kindsOf,
   kindsUnder,
   kindWord,
   lastActive,
-  likeOf,
-  MAX_DEPTH,
   nameFrom,
-  type Place,
   titleOf,
   updateOf,
   validName,
+  visibilityOf,
   WORKSPACE,
 } from "./projects.ts";
-import { deliverOptions, recapAgent, recapName, weeklyRecap } from "./recap.ts";
-import { href, PROJECT_TABS, type ProjectSort, type ProjectTab } from "./route.ts";
+import { href, type ProjectSort } from "./route.ts";
+import { type AgentSessionSummary, isRootSession, sessionCenter } from "./sessionCenter.ts";
 import {
   AgentMark,
-  agentOptions,
   ago,
   button,
   Confirm,
-  Count,
   FlashNote,
   field,
   Label,
-  Menu,
+  MoreMenu,
   Page,
-  PageActions,
+  type PageAction,
   Problem,
+  pageTitle,
   primary,
+  rows,
   SearchField,
-  Segmented,
   SkeletonRows,
-  Switch,
-  Tabs,
+  textAction,
   useFlash,
 } from "./ui.tsx";
 
 const words = defaultCopy.projects;
-const scheduleWords = defaultCopy.schedules;
-// A rule over each section parts it from the one before. The first in its column has none: what is above it draws its own.
-const section = "flex flex-col gap-2 border-aui-border border-t pt-5 first:border-t-0 first:pt-0";
-const heading = "text-aui-base font-medium text-aui-fg";
+const here = words.page;
 const fail = (set: (m: string) => void, fallback: string) => (e: unknown) =>
   set(e instanceof ApiError ? e.message : fallback);
 
@@ -113,156 +99,7 @@ function Go({
   );
 }
 
-const projectHref = (name: string) => href({ page: "project", name, tab: "context" });
-
-/** What is happening in a project, what waits, and how much it holds, most pressing first. */
-export function factsOf(p: ProjectView): string {
-  return factLabelsOf(p).join(", ");
-}
-
-function factLabelsOf(p: ProjectView): string[] {
-  return [
-    p.active > 0 && words.count.running(p.active),
-    p.proposed > 0 && words.count.review(p.proposed),
-    words.count.tasks(p.conversations),
-    p.active_at && words.count.active(ago(p.active_at)),
-  ].filter((label): label is string => typeof label === "string");
-}
-
-/** A project in words under its title: its kind, its customer, and where it sits when the tree does not show it. */
-function aboutOf(p: ProjectView, path: string[], kinds: ProjectKindSpec[]): string[] {
-  return [
-    kindWord(p.kind, kinds),
-    p.account?.customer,
-    path.length > 0 ? words.within(path) : null,
-  ].filter((label): label is string => typeof label === "string" && label.length > 0);
-}
-
-/** The workspace's own kinds, as a project page reads them: from the workspace, first among its ancestors. */
-function kindsIn(detail: ProjectDetail): ProjectKindSpec[] {
-  const workspace =
-    detail.project.name === "" ? detail.project : detail.ancestors.find((a) => a.name === "");
-  return workspace?.kinds ?? [];
-}
-
-function ProjectRow({
-  to,
-  title,
-  about,
-  indent,
-  project,
-  onOpen,
-}: {
-  to: string;
-  title: string;
-  about: string | string[];
-  indent: number;
-  project: ProjectView;
-  onOpen: () => void;
-}) {
-  const agents = project.row_agents;
-  const details = [
-    ...(Array.isArray(about) ? about.slice(1) : [about]),
-    project.description,
-  ].filter(Boolean);
-  const hasDetails = details.length > 0 || agents.length > 2;
-  return (
-    <li
-      data-indent={indent}
-      style={indent > 0 ? { marginLeft: indent * INDENT_PX } : undefined}
-      className="rounded-aui-lg border border-aui-border bg-aui-surface"
-    >
-      <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 px-3 py-1.5">
-        <Go
-          to={to}
-          onGo={onOpen}
-          className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-aui text-left hover:text-aui-accent focus-visible:outline-2 focus-visible:outline-aui-accent"
-        >
-          <span className="relative shrink-0">
-            <FolderIcon size={18} className="text-aui-muted" />
-            {project.unread > 0 && (
-              <span
-                role="img"
-                aria-label={words.unreadUpdates}
-                className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-aui-accent"
-              />
-            )}
-          </span>
-          <span className="min-w-0">
-            <span className="block break-words text-aui-sm font-medium text-aui-fg">{title}</span>
-            {project.account?.customer && (
-              <span className="block text-aui-xs text-aui-muted">{project.account.customer}</span>
-            )}
-          </span>
-        </Go>
-        <div className="flex w-full min-w-0 flex-wrap items-center gap-1.5 pl-[30px] sm:ml-auto sm:w-auto sm:max-w-[60%] sm:justify-end sm:pl-0">
-          {project.initiative && (
-            <Badge variant="secondary">{defaultCopy.projectTemplates.initiative}</Badge>
-          )}
-          {agents.slice(0, 2).map((name) => (
-            <Badge
-              key={name}
-              variant="outline"
-              className="max-w-full gap-1.5 whitespace-normal text-xs font-normal"
-            >
-              <AgentMark name={name} size={12} />
-              <span className="min-w-0 break-all">{name}</span>
-            </Badge>
-          ))}
-          {project.active > 0 && (
-            <Badge variant="secondary">{words.count.running(project.active)}</Badge>
-          )}
-          {project.proposed > 0 && (
-            <Badge variant="secondary">{words.count.review(project.proposed)}</Badge>
-          )}
-          {project.conversations > 0 && (
-            <span className="px-1 text-aui-xs text-aui-muted tabular-nums">
-              {words.count.tasks(project.conversations)}
-            </span>
-          )}
-          {project.active_at && (
-            <time dateTime={project.active_at} className="px-1 text-aui-xs text-aui-muted">
-              {words.count.active(ago(project.active_at))}
-            </time>
-          )}
-        </div>
-      </div>
-      {hasDetails && (
-        <details className="group/project-details border-aui-border border-t px-3 text-aui-xs text-aui-muted">
-          <summary className="flex min-h-8 pointer-coarse:min-h-11 w-fit cursor-pointer list-none items-center gap-3 rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent">
-            <span className="flex w-[18px] shrink-0 justify-center">
-              <ChevronDownIcon
-                size={14}
-                className="-rotate-90 transition-transform group-open/project-details:rotate-0 motion-reduce:transition-none"
-              />
-            </span>
-            <span>{words.details}</span>
-            {agents.length > 2 && (
-              <span className="tabular-nums">| {words.moreAgents(agents.length - 2)}</span>
-            )}
-          </summary>
-          <div className="max-w-[70ch] space-y-3 pb-3 pl-[30px] leading-5">
-            <p>{details.join(". ")}</p>
-            {agents.length > 2 && (
-              <div className="flex flex-wrap gap-1.5">
-                {agents.slice(2).map((name) => (
-                  <Badge
-                    key={name}
-                    variant="outline"
-                    className="gap-1.5 whitespace-normal font-normal"
-                  >
-                    <AgentMark name={name} size={12} />
-                    <span className="break-all">{name}</span>
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
-        </details>
-      )}
-    </li>
-  );
-}
+const projectHref = (name: string) => href({ page: "project", name });
 
 /**
  * Every project the reader has, as a grid of cards: sub-projects too, none
@@ -635,802 +472,6 @@ function CreateProject({
   );
 }
 
-/**
- * The form that makes a project: a title, a name that never changes, its kind
- * and where it sits. Under a fixed parent it makes a sub-project.
- */
-export function NewProject({
-  places,
-  kinds: own = [],
-  parent: fixed,
-  canGovern,
-  onCreated,
-  onCancel,
-}: {
-  /** The projects it could sit under. */
-  places: ProjectView[];
-  /** The workspace's own kinds, offered after humagen's where they may sit. */
-  kinds?: ProjectKindSpec[];
-  /** Where it goes, when that is decided: a sub-project's parent. */
-  parent?: Place & { title?: string };
-  canGovern: boolean;
-  onCreated: (project: ProjectView) => void;
-  onCancel: () => void;
-}) {
-  const [template, setTemplate] = useState("");
-  const [templates, setTemplates] = useState<ProjectTemplate[]>([]);
-  useEffect(() => {
-    let active = true;
-    api
-      .projectTemplates()
-      .then((items) => {
-        if (active) setTemplates(items);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, []);
-  const [title, setTitle] = useState("");
-  const [name, setName] = useState("");
-  const [named, setNamed] = useState(false);
-  const [parentName, setParentName] = useState(fixed?.name ?? "");
-  const [want, setWant] = useState<ProjectKind>("team");
-  const [description, setDescription] = useState("");
-  const [customer, setCustomer] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-
-  const parent: Place = fixed ?? places.find((p) => p.name === parentName) ?? WORKSPACE;
-  const kinds = kindsUnder(parent, canGovern, own);
-  const kind = kinds.includes(want) ? want : (kinds[0] ?? "team");
-  const shownName = named ? name : nameFrom(title);
-  const roomy = places.filter((p) => p.depth < MAX_DEPTH);
-  // Someone who may not make company-wide projects is told why it is not offered where it could be.
-  const governedHere = !canGovern && parent.kind === "company";
-
-  const create = (e: FormEvent) => {
-    e.preventDefault();
-    if (saving) return;
-    const chosen = shownName.trim();
-    const shownTitle = title.trim();
-    const account = likeOf(kind, own) === "account" ? accountOf({ customer }) : undefined;
-    setSaving(true);
-    setProblem(null);
-    api
-      .createProject({
-        name: chosen,
-        ...(template ? { template } : {}),
-        ...(shownTitle && shownTitle !== chosen ? { title: shownTitle } : {}),
-        ...(description.trim() ? { description: description.trim() } : {}),
-        kind,
-        ...(parent.name ? { parent: parent.name } : {}),
-        ...(account ? { account } : {}),
-      })
-      .then(onCreated)
-      .catch(fail(setProblem, words.failed.create))
-      .finally(() => setSaving(false));
-  };
-
-  return (
-    <form
-      onSubmit={create}
-      aria-label={words.form.heading}
-      className="flex flex-col gap-3 rounded-aui-lg border border-aui-border p-3"
-    >
-      <h2 className="text-aui-sm font-medium text-aui-fg">
-        {fixed ? `${words.form.heading} ${words.within([titleOf(fixed)])}` : words.form.heading}
-      </h2>
-      <Label text={defaultCopy.projectTemplates.start}>
-        <select
-          aria-label={defaultCopy.projectTemplates.start}
-          className={field}
-          value={template}
-          disabled={saving}
-          onChange={(event) => {
-            const name = event.target.value;
-            setTemplate(name);
-            const picked = templates.find((item) => item.name === name);
-            if (picked) setWant(picked.kind);
-          }}
-        >
-          <option value="">{defaultCopy.projectTemplates.blank}</option>
-          {templates
-            .filter((item) => kinds.includes(item.kind))
-            .map((item) => (
-              <option key={item.name} value={item.name}>
-                {item.title}
-              </option>
-            ))}
-        </select>
-      </Label>
-      {template && (
-        <p className="text-aui-xs text-aui-muted">
-          {templates.find((item) => item.name === template)?.description}{" "}
-          {defaultCopy.projectTemplates.hint}
-        </p>
-      )}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Label text={words.form.title} hint={words.form.titleHint}>
-          <input
-            // biome-ignore lint/a11y/noAutofocus: the form appears because the person asked to make a project
-            autoFocus
-            className={field}
-            value={title}
-            maxLength={80}
-            disabled={saving}
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") onCancel();
-            }}
-          />
-        </Label>
-        <Label text={words.form.name} hint={words.form.nameHint}>
-          <input
-            className={field}
-            value={shownName}
-            required
-            maxLength={63}
-            pattern="[A-Za-z0-9][A-Za-z0-9 _\-]*"
-            title={words.form.nameHint}
-            disabled={saving}
-            onChange={(e) => {
-              setName(e.target.value);
-              setNamed(true);
-            }}
-          />
-        </Label>
-      </div>
-      <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
-        {!fixed && (
-          <Label text={words.form.parent}>
-            <Menu
-              label={words.form.parent}
-              value={parentName}
-              disabled={saving}
-              options={[
-                { value: "", label: words.form.topLevel },
-                ...roomy.map((p) => ({
-                  value: p.name,
-                  label: titleOf(p),
-                  hint: [
-                    p.initiative
-                      ? defaultCopy.projectTemplates.underInitiative
-                      : kindWord(p.kind, own),
-                    above(p).length > 0 ? words.within(above(p)) : null,
-                  ]
-                    .filter(Boolean)
-                    .join(", "),
-                })),
-              ]}
-              onChange={setParentName}
-            />
-          </Label>
-        )}
-        <div className="flex flex-col gap-1">
-          <span className="text-aui-xs font-medium text-aui-muted">{words.form.kind}</span>
-          <Segmented
-            label={words.form.kind}
-            value={kind}
-            options={kinds.map((k) => ({ id: k, label: kindWord(k, own) }))}
-            onChange={setWant}
-          />
-        </div>
-      </div>
-      {governedHere && <p className="text-aui-2xs text-aui-muted">{words.form.governed}</p>}
-      {kind === "account" && (
-        <p className="text-aui-2xs text-aui-muted">{words.form.accountMembersOnly}</p>
-      )}
-      <Label text={words.form.description}>
-        <input
-          className={field}
-          value={description}
-          maxLength={500}
-          disabled={saving}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-      </Label>
-      {likeOf(kind, own) === "account" && (
-        <Label text={words.form.customer}>
-          <input
-            className={field}
-            value={customer}
-            maxLength={120}
-            disabled={saving}
-            onChange={(e) => setCustomer(e.target.value)}
-          />
-        </Label>
-      )}
-      {template && templates.find((item) => item.name === template)?.kind !== kind && (
-        <Problem message={defaultCopy.projectTemplates.parentMismatch} />
-      )}
-      <Problem message={problem} />
-      <div className="flex justify-end gap-2">
-        <button type="button" className={button} disabled={saving} onClick={onCancel}>
-          {words.cancel}
-        </button>
-        <button
-          type="submit"
-          className={primary}
-          disabled={
-            saving ||
-            !shownName.trim() ||
-            Boolean(template && templates.find((item) => item.name === template)?.kind !== kind)
-          }
-        >
-          {saving ? words.creating : words.createProject}
-        </button>
-      </div>
-    </form>
-  );
-}
-
-/**
- * What every agent in the project is sent, and what is waiting to become that.
- * An owner decides what is kept; a member's note is a proposal for them.
- */
-function SharedMemory({
-  project,
-  canWrite,
-  canPropose = false,
-  onChanged,
-}: {
-  project: string;
-  canWrite: boolean;
-  canPropose?: boolean;
-  onChanged: () => void;
-}) {
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [text, setText] = useState("");
-  const [picked, setPicked] = useState<Set<string>>(() => new Set());
-  const [problem, setProblem] = useState<string | null>(null);
-
-  const load = () => {
-    api
-      .projectMemory(project)
-      .then(setNotes)
-      .catch(() => setNotes([]));
-    onChanged();
-  };
-  useEffect(() => {
-    api
-      .projectMemory(project)
-      .then(setNotes)
-      .catch(() => setNotes([]));
-  }, [project]);
-
-  const kept = notes.filter((n) => n.status === "approved");
-  const proposed = notes.filter((n) => n.status === "pending");
-  const failed = (fallback: string) => fail(setProblem, fallback);
-
-  return (
-    <section className={section}>
-      <h2 className={heading}>Shared memory</h2>
-      <p className="max-w-xl text-aui-sm text-aui-muted">
-        Every agent answering in this project and below it is sent these, in every conversation.
-        Keep them few and lasting.
-      </p>
-      <Problem message={problem} />
-      {proposed.length > 0 && (
-        <div className="flex flex-col gap-2 rounded-aui-lg border border-aui-border p-3">
-          <h3 className="text-aui-sm font-medium text-aui-fg">Proposed ({proposed.length})</h3>
-          <p className="text-aui-xs text-aui-muted">
-            Not in use yet. Tick what the project should keep.
-          </p>
-          <ul>
-            {proposed.map((n) => (
-              <li key={n.id} className="border-aui-border border-t py-2 first:border-t-0">
-                <label className="flex items-start gap-2.5 text-aui-sm text-aui-fg">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    disabled={!canWrite}
-                    checked={picked.has(n.id)}
-                    onChange={(e) =>
-                      setPicked((p) => {
-                        const next = new Set(p);
-                        if (e.target.checked) next.add(n.id);
-                        else next.delete(n.id);
-                        return next;
-                      })
-                    }
-                  />
-                  <span>{n.text}</span>
-                </label>
-              </li>
-            ))}
-          </ul>
-          {canWrite && (
-            <div className="flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                className={button}
-                onClick={() =>
-                  Promise.all(
-                    proposed
-                      .filter((n) => picked.size === 0 || picked.has(n.id))
-                      .map((n) => api.removeProjectMemory(project, n.id)),
-                  )
-                    .then(() => {
-                      setPicked(new Set());
-                      load();
-                    })
-                    .catch(failed("Those could not be discarded."))
-                }
-              >
-                {picked.size > 0 ? `Discard ${picked.size} Selected` : "Discard All"}
-              </button>
-              <button
-                type="button"
-                className={primary}
-                disabled={picked.size === 0}
-                onClick={() =>
-                  api
-                    .approveProjectMemory(project, [...picked])
-                    .then(() => {
-                      setPicked(new Set());
-                      load();
-                    })
-                    .catch(failed("Those could not be kept."))
-                }
-              >
-                Keep {picked.size > 0 ? `${picked.size} Selected` : "Selected"}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-      {kept.length === 0 ? (
-        <p className="text-aui-sm text-aui-muted">Nothing shared yet.</p>
-      ) : (
-        <ul>
-          {kept.map((n) => (
-            <li
-              key={n.id}
-              className="humagen-enter flex items-start justify-between gap-3 border-aui-border border-t py-2 first:border-t-0"
-            >
-              <span className="min-w-0">
-                <span className="block text-aui-sm text-aui-fg">{n.text}</span>
-                <span className="block text-aui-xs text-aui-muted">
-                  {n.source === "person"
-                    ? `Written by ${n.by_name || n.by}`
-                    : "Proposed by the memory agent and approved"}
-                  , {ago(n.at)}
-                </span>
-              </span>
-              {canWrite && (
-                <button
-                  type="button"
-                  className={button}
-                  onClick={() =>
-                    api
-                      .removeProjectMemory(project, n.id)
-                      .then(load)
-                      .catch(failed("That could not be removed."))
-                  }
-                >
-                  Forget
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      {canPropose && !canWrite && (
-        <p className="text-aui-xs text-aui-muted">{defaultCopy.project.proposeHint}</p>
-      )}
-      {(canWrite || canPropose) && (
-        <form
-          className="flex gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setProblem(null);
-            api
-              .addProjectMemory(project, text)
-              .then(() => {
-                setText("");
-                load();
-              })
-              .catch(failed("The note could not be saved."));
-          }}
-        >
-          <input
-            aria-label="Something everyone in this project should know"
-            className={field}
-            value={text}
-            maxLength={300}
-            required
-            placeholder="A lasting fact, such as: The launch date is the first Tuesday of November."
-            onChange={(e) => setText(e.target.value)}
-          />
-          <button type="submit" className={button}>
-            Share
-          </button>
-        </form>
-      )}
-    </section>
-  );
-}
-
-const TASK_PAGE = 20;
-
-/**
- * The project's tasks, newest first, paged on the server. With its
- * sub-projects included, a task filed below says where.
- */
-function ProjectTasks({
-  name,
-  hasChildren,
-  tick,
-  onOpenThread,
-}: {
-  name: string;
-  hasChildren: boolean;
-  tick?: number;
-  onOpenThread: (id: string) => void;
-}) {
-  const [below, setBelow] = useState(false);
-  const [page, setPage] = useState<{ threads: ThreadSummary[]; next: string | null } | null>(null);
-  const [more, setMore] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [moreFailed, setMoreFailed] = useState(false);
-  const [retry, setRetry] = useState(0);
-  const generation = useRef(0);
-  const loadedScope = useRef("");
-  const address = name === "" ? "~" : name;
-  const scope = useCallback(
-    (): { project?: string; within?: string } =>
-      below ? { within: address } : { project: address },
-    [below, address],
-  );
-  const scopeKey = `${below ? "within" : "project"}:${address}`;
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: tick and retry are signals to read again
-  useEffect(() => {
-    const current = ++generation.current;
-    // Keep readable rows steady during live refreshes; a new scope starts empty.
-    if (loadedScope.current !== scopeKey) setPage(null);
-    loadedScope.current = scopeKey;
-    setFailed(false);
-    setMore(false);
-    setMoreFailed(false);
-    api
-      .threadsPage({ limit: TASK_PAGE, ...scope() })
-      .then(
-        (r) =>
-          current === generation.current && setPage({ threads: r.threads, next: r.next ?? null }),
-      )
-      .catch(() => current === generation.current && setFailed(true));
-    return () => {
-      generation.current++;
-    };
-  }, [scope, scopeKey, tick, retry]);
-
-  const loadMore = () => {
-    if (!page?.next || more) return;
-    const current = generation.current;
-    setMore(true);
-    setMoreFailed(false);
-    api
-      .threadsPage({ limit: TASK_PAGE, before: page.next, ...scope() })
-      .then(
-        (r) =>
-          current === generation.current &&
-          setPage({
-            threads: [
-              ...page.threads,
-              ...r.threads.filter((t) => !page.threads.some((s) => s.id === t.id)),
-            ],
-            next: r.next ?? null,
-          }),
-      )
-      .catch(() => current === generation.current && setMoreFailed(true))
-      .finally(() => current === generation.current && setMore(false));
-  };
-
-  return (
-    <ProjectWork
-      threads={page?.threads ?? null}
-      project={name}
-      failed={failed}
-      onRetry={() => setRetry((n) => n + 1)}
-      onOpenThread={onOpenThread}
-      hasMore={Boolean(page?.next)}
-      loadingMore={more}
-      onMore={loadMore}
-      moreFailed={moreFailed}
-      controls={
-        hasChildren && (
-          <div className="min-w-0 max-w-xs">
-            <Switch label={words.includeBelow} checked={below} onChange={setBelow} />
-          </div>
-        )
-      }
-    />
-  );
-}
-
-/** What sits directly below a project, and the way to put something there. */
-function SubProjects({
-  detail,
-  places,
-  canCreate,
-  canGovern,
-  onOpen,
-  onCreated,
-}: {
-  detail: ProjectDetail;
-  places: ProjectView[];
-  canCreate: boolean;
-  canGovern: boolean;
-  onOpen: (name: string) => void;
-  onCreated: (project: ProjectView) => void;
-}) {
-  const [adding, setAdding] = useState(false);
-  const here = detail.project;
-  const kinds = kindsIn(detail);
-  const room = here.depth < MAX_DEPTH && kindsUnder(here, canGovern, kinds).length > 0;
-  return (
-    <section className={section} aria-label={words.subProjects}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className={`${heading} flex items-center gap-2`}>
-          {words.subProjects}
-          {detail.children.length > 0 && <Count n={detail.children.length} />}
-        </h2>
-        {canCreate && room && !adding && (
-          <button type="button" className={button} onClick={() => setAdding(true)}>
-            <FolderPlusIcon size={16} /> {words.newSubProject}
-          </button>
-        )}
-      </div>
-      {adding && (
-        <NewProject
-          places={places}
-          kinds={kinds}
-          parent={here}
-          canGovern={canGovern}
-          onCancel={() => setAdding(false)}
-          onCreated={(p) => {
-            setAdding(false);
-            onCreated(p);
-          }}
-        />
-      )}
-      {detail.children.length === 0 ? (
-        <p className="text-aui-sm text-aui-muted">
-          {here.depth >= MAX_DEPTH ? words.deepest : words.noSubProjects}
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {detail.children.map((c) => (
-            <ProjectRow
-              key={c.name}
-              to={projectHref(c.name)}
-              title={titleOf(c)}
-              about={[
-                ...aboutOf(c, [], kinds),
-                ...(c.children > 0 ? [words.count.below(c.children)] : []),
-              ]}
-              project={c}
-              indent={0}
-              onOpen={() => onOpen(c.name)}
-            />
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-/** What runs in a project on a timer, and a way to add one. */
-function Scheduled({
-  name,
-  title,
-  schedules,
-  agents,
-  canSchedule,
-  recap = false,
-  onOpenThread,
-  onSchedulesChanged,
-  onChanged,
-}: {
-  name: string;
-  /** The project's title, for the recap's question. */
-  title: string;
-  schedules: ScheduleView[];
-  agents: Revision[];
-  canSchedule: boolean;
-  /** Offer "Add Weekly Recap" and where answers go: the Schedules tab. */
-  recap?: boolean;
-  onOpenThread: (id: string) => void;
-  onSchedulesChanged: () => void;
-  onChanged: () => void;
-}) {
-  const timed = schedules.filter((s) => (s.project ?? "") === name);
-  const [draft, setDraft] = useState<{
-    name: string;
-    expression: string;
-    agent: string;
-    text: string;
-    deliver?: "inbox" | "project";
-  }>({
-    name: "",
-    expression: "0 9 * * 1-5",
-    agent: "",
-    text: "",
-  });
-  const [adding, setAdding] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  const agent = draft.agent || agents[0]?.spec.name || "";
-  const failed = (fallback: string) => fail(setProblem, fallback);
-  const recapper = recapAgent(agents.map((a) => a.spec.name));
-  const hasRecap = timed.some((s) => s.name === recapName(name));
-  const addRecap = () => {
-    if (!recapper) return;
-    setProblem(null);
-    api
-      .createSchedule(
-        weeklyRecap(name, recapper, scheduleWords.recapText(title), scheduleWords.recapDescription),
-      )
-      .then(() => {
-        onSchedulesChanged();
-        onChanged();
-      })
-      .catch(failed("The recap could not be added."));
-  };
-
-  return (
-    <section className={section}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className={`${heading} flex items-center gap-2`}>
-          Scheduled
-          {timed.length > 0 && <Count n={timed.length} />}
-        </h2>
-        <span className="flex flex-wrap gap-2">
-          {recap && canSchedule && recapper && !hasRecap && (
-            <button type="button" className={button} onClick={addRecap}>
-              {scheduleWords.addWeeklyRecap}
-            </button>
-          )}
-          {canSchedule && agents.length > 0 && !adding && (
-            <button type="button" className={button} onClick={() => setAdding(true)}>
-              New Schedule
-            </button>
-          )}
-        </span>
-      </div>
-      <p className="max-w-xl text-aui-sm text-aui-muted">
-        Each time one fires, its run is filed in this project and is sent what the project knows.
-      </p>
-      {recap && recapper && (
-        <p className="max-w-xl text-aui-xs text-aui-muted">
-          {hasRecap ? scheduleWords.hasRecap : scheduleWords.recapHint(recapper)}
-        </p>
-      )}
-      <Problem message={problem} />
-      {adding && (
-        <form
-          className="flex flex-col gap-3 rounded-aui-lg border border-aui-border p-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setProblem(null);
-            api
-              .createSchedule({ ...draft, agent, project: name === "" ? "~" : name })
-              .then(() => {
-                setDraft({ ...draft, name: "", text: "" });
-                setAdding(false);
-                onSchedulesChanged();
-                onChanged();
-              })
-              .catch(failed("The schedule could not be saved."));
-          }}
-        >
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Label text="Name">
-              <input
-                className={field}
-                value={draft.name}
-                required
-                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-              />
-            </Label>
-            <Label text="Send to agent">
-              <Menu
-                label="Send to agent"
-                value={agent}
-                options={agentOptions(agents.map((a) => a.spec.name))}
-                onChange={(v) => setDraft({ ...draft, agent: v })}
-              />
-            </Label>
-            <Label text="How often" hint="minute hour day month weekday, in UTC">
-              <input
-                className={`${field} font-aui-mono`}
-                value={draft.expression}
-                required
-                onChange={(e) => setDraft({ ...draft, expression: e.target.value })}
-              />
-            </Label>
-          </div>
-          <Label text="What to ask">
-            <textarea
-              className={`${field} min-h-14`}
-              value={draft.text}
-              required
-              onChange={(e) => setDraft({ ...draft, text: e.target.value })}
-            />
-          </Label>
-          {recap && (
-            <Label text={scheduleWords.deliver} hint={scheduleWords.deliverHint}>
-              <Menu
-                label={scheduleWords.deliver}
-                value={draft.deliver ?? ""}
-                options={deliverOptions(name, scheduleWords, true)}
-                onChange={(v) =>
-                  setDraft({ ...draft, deliver: v === "inbox" || v === "project" ? v : undefined })
-                }
-              />
-            </Label>
-          )}
-          <div className="flex justify-end gap-2">
-            <button type="button" className={button} onClick={() => setAdding(false)}>
-              Cancel
-            </button>
-            <button type="submit" className={primary}>
-              Create Schedule
-            </button>
-          </div>
-        </form>
-      )}
-      {timed.length === 0 && !adding ? (
-        <p className="text-aui-sm text-aui-muted">Nothing runs on a timer here.</p>
-      ) : (
-        <ul>
-          {timed.map((s) => (
-            <li
-              key={s.name}
-              className="flex items-center justify-between gap-3 border-aui-border border-t py-2 first:border-t-0"
-            >
-              <span className="min-w-0">
-                <span className="block text-aui-sm text-aui-fg">
-                  {s.name}
-                  <span className="pl-2 text-aui-xs text-aui-muted">
-                    <span title={s.expression}>{inWords(s.expression)}</span> to {s.agent}
-                    {s.paused ? ", paused" : ""}
-                    {s.deliver === "project"
-                      ? `, ${scheduleWords.deliverProject.toLowerCase()}`
-                      : ""}
-                  </span>
-                </span>
-                <span className="block truncate text-aui-xs text-aui-muted">{s.text}</span>
-                {s.managed && (
-                  <span className="block text-aui-xs text-aui-muted">{scheduleWords.managed}</span>
-                )}
-              </span>
-              {canSchedule && (
-                <button
-                  type="button"
-                  className={button}
-                  onClick={() =>
-                    api
-                      .runSchedule(s.name)
-                      .then((run) => {
-                        onSchedulesChanged();
-                        onOpenThread(run.thread);
-                      })
-                      .catch(failed("The schedule could not be run."))
-                  }
-                >
-                  Run Now
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
 /** A project's title, description and, for an account, its customer, changed as a whole. */
 function EditProject({
   project,
@@ -1468,12 +509,8 @@ function EditProject({
       .finally(() => setSaving(false));
   };
   return (
-    <form
-      onSubmit={save}
-      aria-label={words.editProject}
-      className="flex flex-col gap-3 rounded-aui-lg border border-aui-border p-3"
-    >
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <form onSubmit={save} aria-label={words.editProject} className="flex min-w-0 flex-col gap-4">
+      <div className="flex min-w-0 flex-col gap-4">
         <Label text={words.form.title} hint={words.form.titleHint}>
           <input
             className={field}
@@ -1497,7 +534,7 @@ function EditProject({
         />
       </Label>
       {project.kind === "account" && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="flex min-w-0 flex-col gap-4">
           <Label text={words.form.customer}>
             <input
               className={field}
@@ -1530,7 +567,7 @@ function EditProject({
         </div>
       )}
       <Problem message={problem} />
-      <div className="flex justify-end gap-2">
+      <div className="flex flex-wrap justify-end gap-2">
         <button type="button" className={button} disabled={saving} onClick={onCancel}>
           {words.cancel}
         </button>
@@ -1542,292 +579,1125 @@ function EditProject({
   );
 }
 
+/** A card in the project page's side column: a panel on a hairline, like the Projects grid's. */
+const sideCard =
+  "flex min-w-0 flex-col gap-2 rounded-aui-lg border border-[var(--humagen-rule)] bg-[var(--humagen-panel)] p-4";
+/** A card's summary: a few short lines, muted. */
+const summary = "min-w-0 text-aui-sm text-aui-muted";
+
+/** What a side card's one action says, what a screen reader hears, and the heading of the sheet it opens. */
+interface CardAction {
+  text: string;
+  label: string;
+  heading: string;
+}
+
 /**
- * What a turn here is given from the project tree: this project's
- * instructions, which those who may change the project edit, and, read only,
- * what each project above it sends, the workspace first. Then, to a reader of
- * knowledge, the sources the project names and what a run here is grounded in.
+ * One part of a project in its side column: a heading, one action at its
+ * right, and a short summary under it. The action opens a sheet beside the
+ * page; closing the sheet puts focus back on the action. `plain` draws it as
+ * a line with no box, its heading for assistive technology only.
  */
-export function ContextTab({
-  detail,
-  workspaceName,
-  canWrite,
-  canKnowledge = false,
-  onSaved,
+function SideCard({
+  title,
+  action,
+  sheet,
+  plain = false,
+  children,
 }: {
-  detail: ProjectDetail;
-  workspaceName: string;
-  canWrite: boolean;
-  /** Holds `knowledge:read`: without it, nothing about sources is shown. */
-  canKnowledge?: boolean;
-  onSaved: () => void;
+  title: string;
+  action?: CardAction;
+  /** What the sheet holds, given a way to close it. Drawn only while it is open. */
+  sheet?: (close: () => void) => ReactNode;
+  plain?: boolean;
+  children: ReactNode;
 }) {
-  const p = detail.project;
-  const [draft, setDraft] = useState(p.instructions ?? "");
+  const [open, setOpen] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  const control = action && sheet && (
+    <button
+      ref={opener}
+      type="button"
+      aria-label={action.label}
+      className={`${textAction} shrink-0`}
+      onClick={() => setOpen(true)}
+    >
+      {action.text}
+    </button>
+  );
+  return (
+    <section
+      aria-labelledby={id}
+      className={plain ? "flex min-w-0 items-center justify-between gap-3 px-1" : sideCard}
+    >
+      {plain ? (
+        <>
+          <h2 id={id} className="sr-only">
+            {title}
+          </h2>
+          {children}
+          {control}
+        </>
+      ) : (
+        <>
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <h2 id={id} className="text-aui-sm font-medium text-aui-fg">
+              {title}
+            </h2>
+            {control}
+          </div>
+          {children}
+        </>
+      )}
+      {action && sheet && (
+        <Sheet open={open} onOpenChange={(next) => !next && setOpen(false)}>
+          <SheetContent
+            aria-describedby={undefined}
+            onCloseAutoFocus={(event) => {
+              if (opener.current?.isConnected) {
+                event.preventDefault();
+                opener.current.focus();
+              }
+            }}
+          >
+            <SheetHeader>
+              <SheetTitle className="text-aui-base">{action.heading}</SheetTitle>
+            </SheetHeader>
+            {open && sheet(() => setOpen(false))}
+          </SheetContent>
+        </Sheet>
+      )}
+    </section>
+  );
+}
+
+/** A sheet's Cancel and its one primary action, at its foot. */
+function SheetButtons({
+  busy,
+  label,
+  disabled = false,
+  onCancel,
+}: {
+  busy: boolean;
+  label: string;
+  disabled?: boolean;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap justify-end gap-2">
+      <button type="button" className={button} disabled={busy} onClick={onCancel}>
+        {here.cancel}
+      </button>
+      <button type="submit" className={primary} disabled={busy || disabled}>
+        {busy ? here.saving : label}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The project page's composer: one box and Send, to try the project out. A
+ * session started here is filed in the project, and opens once it exists.
+ */
+function NewSession({
+  project,
+  title,
+  canStart,
+  onStarted,
+}: {
+  project: string;
+  title: string;
+  canStart: boolean;
+  onStarted: (session: string) => void;
+}) {
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const prompt = here.composer(title);
+  const send = () => {
+    const said = text.trim();
+    if (!said || sending || !canStart) return;
+    setSending(true);
+    setProblem(null);
+    api
+      .startSession({ text: said, project })
+      .then((session) => onStarted(session.id))
+      .catch((e: unknown) => {
+        fail(setProblem, here.startFailed)(e);
+        setSending(false);
+      });
+  };
+  return (
+    <form
+      aria-label={prompt}
+      onSubmit={(e) => {
+        e.preventDefault();
+        send();
+      }}
+      className="flex min-w-0 flex-col gap-2 rounded-aui-lg border border-[var(--humagen-rule)] bg-[var(--humagen-panel)] p-3 has-[textarea:focus-visible]:border-aui-ring"
+    >
+      <textarea
+        aria-label={prompt}
+        placeholder={prompt}
+        rows={3}
+        className="min-h-16 w-full min-w-0 resize-none bg-transparent px-1 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted disabled:cursor-not-allowed"
+        value={text}
+        disabled={!canStart || sending}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          // Enter sends; Shift+Enter, or Enter while composing a character, is a new line.
+          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            send();
+          }
+        }}
+      />
+      <div className="flex min-w-0 items-center justify-end gap-3">
+        <Problem message={problem} />
+        <button type="submit" className={primary} disabled={!canStart || sending || !text.trim()}>
+          {sending ? here.sending : here.send}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** How many sessions Recents reads at a time. */
+const RECENT_PAGE = 20;
+
+/** Where a schedule's runs are filed: sessions under schedule://<name>. */
+const SCHEDULE_PARENT = "schedule://";
+
+/**
+ * Where a session started, in words: a schedule's run by the schedule's name,
+ * a Slack or GitHub conversation by where it came from, else the console. The
+ * list carries no link back to the Slack thread or the pull request.
+ */
+function originOf(s: AgentSessionSummary): string {
+  const t = here.trace;
+  if (s.parent.startsWith(SCHEDULE_PARENT))
+    return t.schedule(s.parent.slice(SCHEDULE_PARENT.length));
+  const origin = s.conversation?.origin;
+  if (origin === "slack") return t.slack;
+  if (origin === "github") return t.github;
+  if (origin === "cron" || origin === "manual") return t.scheduled;
+  return t.console;
+}
+
+/** How many agents, then people, a row names before it counts the rest. */
+const SHOWN = 3;
+
+/**
+ * One session in Recents: what it is, its state and when it last changed;
+ * under that where it started and who answered, agents in their color, then
+ * people. It opens the session.
+ */
+function SessionRow({ session: s, onOpen }: { session: AgentSessionSummary; onOpen: () => void }) {
+  const agents = s.conversation?.agents?.length ? s.conversation.agents : [s.agent];
+  const people = s.conversation?.people ?? [];
+  const who = [
+    ...agents.map((name) => ({ kind: "agent" as const, name })),
+    ...people.map((name) => ({ kind: "person" as const, name })),
+  ];
+  return (
+    <li className="min-w-0">
+      <Go
+        to={href({ page: "conversation", id: s.id })}
+        onGo={onOpen}
+        className="flex min-h-11 min-w-0 flex-col gap-1 rounded-aui px-2 py-2.5 transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent motion-reduce:transition-none"
+      >
+        <span className="flex min-w-0 items-center gap-3">
+          <span className="min-w-0 flex-1 truncate text-aui-sm font-medium text-aui-fg">
+            {s.title || here.untitled}
+          </span>
+          <StatusPill status={s.status} />
+          <time dateTime={s.updated_at} className="shrink-0 text-aui-xs text-aui-muted">
+            {ago(s.updated_at)}
+          </time>
+        </span>
+        <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-aui-xs text-aui-muted">
+          <span>{originOf(s)}</span>
+          {who.slice(0, SHOWN).map((w) =>
+            w.kind === "agent" ? (
+              <span key={`a:${w.name}`} className="inline-flex min-w-0 items-center gap-1">
+                <AgentMark name={w.name} size={12} />
+                <span className="truncate">{w.name}</span>
+              </span>
+            ) : (
+              <span key={`p:${w.name}`} className="truncate">
+                @{w.name}
+              </span>
+            ),
+          )}
+          {who.length > SHOWN && <span>{here.trace.more(who.length - SHOWN)}</span>}
+        </span>
+      </Go>
+    </li>
+  );
+}
+
+/** The project's sessions, newest first, each opening where it lives. */
+function Recents({
+  project,
+  tick,
+  onOpen,
+}: {
+  project: string;
+  tick?: number;
+  onOpen: (session: string) => void;
+}) {
+  const [list, setList] = useState<{ sessions: AgentSessionSummary[]; next: string } | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [more, setMore] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const generation = useRef(0);
+  const id = useId();
+  const filters = { project: project === "" ? "~" : project, roots: "true" };
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick and retry are signals to read again
+  useEffect(() => {
+    const current = ++generation.current;
+    setFailed(false);
+    sessionCenter.sessions({ ...filters, limit: String(RECENT_PAGE) }).then(
+      (r) =>
+        current === generation.current &&
+        setList({ sessions: r.sessions.filter(isRootSession), next: r.next }),
+      () => current === generation.current && setFailed(true),
+    );
+  }, [project, tick, retry]);
+
+  const loadMore = () => {
+    if (!list?.next || more) return;
+    const current = generation.current;
+    setMore(true);
+    sessionCenter
+      .sessions({ ...filters, limit: String(RECENT_PAGE), after: list.next })
+      .then(
+        (r) =>
+          current === generation.current &&
+          setList({
+            sessions: [
+              ...list.sessions,
+              ...r.sessions
+                .filter(isRootSession)
+                .filter((s) => !list.sessions.some((t) => t.id === s.id)),
+            ],
+            next: r.next,
+          }),
+      )
+      .catch(() => current === generation.current && setFailed(true))
+      .finally(() => current === generation.current && setMore(false));
+  };
+
+  return (
+    <section aria-labelledby={id} className="flex min-w-0 flex-col gap-2">
+      <h2 id={id} className="text-aui-sm font-medium text-aui-muted">
+        {here.recents}
+      </h2>
+      {failed ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <Problem message={here.sessionsFailed} />
+          <button type="button" className={textAction} onClick={() => setRetry((n) => n + 1)}>
+            {here.retry}
+          </button>
+        </div>
+      ) : null}
+      {list === null ? (
+        !failed && <SkeletonRows count={3} />
+      ) : list.sessions.length === 0 ? (
+        <p className="text-aui-sm text-aui-muted">{here.noSessions}</p>
+      ) : (
+        <ul className={rows}>
+          {list.sessions.map((s) => (
+            <SessionRow key={s.id} session={s} onOpen={() => onOpen(s.id)} />
+          ))}
+        </ul>
+      )}
+      {list?.next && (
+        <button type="button" className={`${button} self-start`} disabled={more} onClick={loadMore}>
+          {more ? here.loadingMore : here.showMore}
+        </button>
+      )}
+    </section>
+  );
+}
+
+/** The instructions every session in the project is sent, as a whole, from the version read. */
+function InstructionsForm({
+  project,
+  onSaved,
+  onCancel,
+}: {
+  project: ProjectView;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState(project.instructions ?? "");
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const [notes, setNotes] = useState<Record<string, Note[]>>({});
-  const { flash, say } = useFlash();
-  const chain = detail.ancestors.map((a) => a.name).join("\n");
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: read again when the projects above change
-  useEffect(() => {
-    let live = true;
-    Promise.all(
-      detail.ancestors.map((a) =>
-        api
-          .projectMemory(a.name)
-          .then((n): [string, Note[]] => [a.name, n.filter((x) => x.status === "approved")])
-          .catch((): [string, Note[]] => [a.name, []]),
-      ),
-    ).then((pairs) => live && setNotes(Object.fromEntries(pairs)));
-    return () => {
-      live = false;
-    };
-  }, [chain]);
-
   const save = (e: FormEvent) => {
     e.preventDefault();
     if (saving) return;
     setSaving(true);
     setProblem(null);
     api
-      .updateProject(p.name, updateOf(p, { instructions: draft }))
-      .then(() => {
-        say(words.context.saved);
-        onSaved();
-      })
+      .updateProject(project.name, updateOf(project, { instructions: draft }))
+      .then(onSaved)
       .catch((err: unknown) => {
-        fail(setProblem, words.failed.save)(err);
-        // A stale version: read the latest, keeping what was typed.
-        if (err instanceof ApiError && err.status === 409) onSaved();
-      })
-      .finally(() => setSaving(false));
+        fail(setProblem, here.instructions.failed)(err);
+        setSaving(false);
+      });
   };
-
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
-      <ProjectContextPreview project={p.name} version={p.version} />
-      <p className="text-aui-sm text-aui-muted">{words.context.order}</p>
-      <section className="flex flex-col gap-2" aria-label={words.context.instructions}>
-        <h2 className={heading}>{words.context.instructions}</h2>
-        <p className="text-aui-xs text-aui-muted">{words.context.instructionsHint}</p>
-        {canWrite ? (
-          <form onSubmit={save} className="flex flex-col gap-2">
-            <textarea
-              aria-label={words.context.instructions}
-              className={`${field} min-h-32`}
-              value={draft}
-              maxLength={4000}
-              disabled={saving}
-              onChange={(e) => setDraft(e.target.value)}
-            />
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-aui-2xs text-aui-muted tabular-nums">
-                {draft.length} / 4,000
-              </span>
-              <span className="flex items-center gap-2">
-                <FlashNote flash={flash} align="right" />
-                <button
-                  type="submit"
-                  className={primary}
-                  disabled={saving || draft === (p.instructions ?? "")}
-                >
-                  {saving ? words.saving : words.context.save}
-                </button>
-              </span>
-            </div>
-            <Problem message={problem} />
-          </form>
-        ) : (
-          <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">
-            {p.instructions || <span className="text-aui-muted">{words.context.none}</span>}
-          </p>
-        )}
-      </section>
-      {detail.ancestors.length > 0 && (
-        <section className="flex flex-col gap-3" aria-label={words.context.inherited}>
-          <div>
-            <h2 className={heading}>{words.context.inherited}</h2>
-            <p className="text-aui-xs text-aui-muted">{words.context.inheritedHint}</p>
-          </div>
-          {detail.ancestors.map((a) => {
-            const kept = notes[a.name] ?? [];
-            return (
-              <section
-                key={a.name}
-                aria-label={words.context.from(titleOf(a, workspaceName))}
-                className="flex flex-col gap-1.5 border-aui-border border-t pt-3"
-              >
-                <h3 className="text-aui-sm font-medium text-aui-fg">
-                  {words.context.from(titleOf(a, workspaceName))}
-                </h3>
-                <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">
-                  {a.instructions || <span className="text-aui-muted">{words.context.none}</span>}
-                </p>
-                {kept.length > 0 && (
-                  <ul className="flex flex-col gap-1">
-                    {kept.map((n) => (
-                      <li key={n.id} className="text-aui-sm text-aui-muted">
-                        {n.text}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            );
-          })}
-        </section>
-      )}
-      <section className="flex flex-col gap-2">
-        <h2 className={heading}>Connections</h2>
-        <p className="text-aui-sm text-aui-muted">
-          Choose the sources available to sessions in this project below. Repository and tool
-          connections are managed in Connections.
-        </p>
-        <a href="/connections" className="self-start text-aui-sm underline">
-          Manage connections
-        </a>
-      </section>
-      <ProjectKnowledgeSection
-        project={p.name}
-        version={p.version}
-        ancestors={detail.ancestors}
-        workspaceName={workspaceName}
-        canRead={canKnowledge}
-        canWrite={canWrite}
-        onSaved={onSaved}
+    <form onSubmit={save} className="flex min-w-0 flex-col gap-3">
+      <textarea
+        aria-label={here.instructions.title}
+        // biome-ignore lint/a11y/noAutofocus: the sheet opens because the person asked to write them
+        autoFocus
+        className={`${field} h-auto min-h-56 py-2`}
+        value={draft}
+        maxLength={4000}
+        disabled={saving}
+        onChange={(e) => setDraft(e.target.value)}
       />
-    </div>
+      <span className="self-end text-aui-2xs text-aui-muted tabular-nums">
+        {here.instructions.count(draft.length)}
+      </span>
+      <Problem message={problem} />
+      <SheetButtons
+        busy={saving}
+        label={here.save}
+        disabled={draft === (project.instructions ?? "")}
+        onCancel={onCancel}
+      />
+    </form>
   );
 }
 
-/** Where a project sits: plain links from the workspace down, then the project itself. */
-function Breadcrumb({
-  detail,
-  workspaceName,
-  onOpen,
+/** The corpora a project attaches, chosen from those the reader may read, saved as a whole. */
+function ContextForm({
+  project,
+  attached,
+  corpora,
+  onSaved,
+  onStale,
+  onCancel,
 }: {
-  detail: ProjectDetail;
-  workspaceName: string;
-  onOpen: (name: string) => void;
+  project: string;
+  attached: ProjectCorpora;
+  corpora: CorpusBrief[];
+  onSaved: (next: ProjectCorpora) => void;
+  onStale: () => void;
+  onCancel: () => void;
 }) {
+  const [picked, setPicked] = useState(() => attached.corpora.map((c) => c.name));
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  // One the project attaches that the list leaves out stays offered, so it is not dropped unseen.
+  const offered = [
+    ...corpora,
+    ...attached.corpora.filter((a) => !corpora.some((c) => c.name === a.name)),
+  ];
+  const same =
+    picked.length === attached.corpora.length &&
+    picked.every((name) => attached.corpora.some((c) => c.name === name));
+  const save = (e: FormEvent) => {
+    e.preventDefault();
+    if (saving) return;
+    setSaving(true);
+    setProblem(null);
+    api
+      .setProjectCorpora(project, attached.version, picked)
+      .then(onSaved)
+      .catch((err: unknown) => {
+        setSaving(false);
+        if (err instanceof ApiError && err.status === 409) {
+          setProblem(here.context.stale);
+          onStale();
+          return;
+        }
+        fail(setProblem, here.context.failed)(err);
+      });
+  };
+  if (offered.length === 0)
+    return <p className="text-aui-sm text-aui-muted">{here.context.noCorpora}</p>;
   return (
-    <nav aria-label={words.breadcrumb}>
-      <ol className="flex flex-wrap items-center gap-x-1 text-aui-xs text-aui-muted">
-        {detail.ancestors.map((a) => (
-          <li key={a.name} className="flex items-center gap-1">
-            <Go
-              to={projectHref(a.name)}
-              onGo={() => onOpen(a.name)}
-              className="inline-flex min-h-6 items-center rounded-aui hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
-            >
-              {titleOf(a, workspaceName)}
-            </Go>
-            <span aria-hidden>›</span>
-          </li>
+    <form onSubmit={save} className="flex min-w-0 flex-col gap-4">
+      <fieldset disabled={saving} className="flex min-w-0 flex-col gap-1">
+        <legend className="sr-only">{here.context.title}</legend>
+        {offered.map((c) => (
+          <label
+            key={c.name}
+            className="flex min-h-11 cursor-pointer items-center gap-3 rounded-aui px-2 text-aui-sm text-aui-fg hover:bg-aui-hover has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-aui-accent"
+          >
+            <input
+              type="checkbox"
+              className="size-4 shrink-0 accent-[var(--aui-accent)] outline-none"
+              checked={picked.includes(c.name)}
+              onChange={(e) =>
+                setPicked((now) =>
+                  e.target.checked ? [...now, c.name] : now.filter((name) => name !== c.name),
+                )
+              }
+            />
+            <span className="min-w-0 break-words">{c.title || c.name}</span>
+          </label>
         ))}
-        <li aria-current="page" className="text-aui-fg">
-          {titleOf(detail.project, workspaceName)}
-        </li>
-      </ol>
-    </nav>
+      </fieldset>
+      <Problem message={problem} />
+      <SheetButtons busy={saving} label={here.save} disabled={same} onCancel={onCancel} />
+    </form>
   );
 }
 
 /**
- * One project, the workspace included: where it sits, what it holds, and what
- * every turn in it is sent. Its tabs are addresses.
+ * What every session in the project is sent: its notes, and those waiting to
+ * become notes. Whoever decides the project's notes keeps or discards what
+ * waits and forgets what is kept; whoever may propose adds one.
+ */
+function MemorySheet({
+  project,
+  canDecide,
+  canPropose,
+  onChanged,
+}: {
+  project: string;
+  canDecide: boolean;
+  canPropose: boolean;
+  onChanged: () => void;
+}) {
+  const [notes, setNotes] = useState<Note[] | null>(null);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const read = () =>
+    api
+      .projectMemory(project)
+      .then(setNotes)
+      .catch(() => setNotes([]));
+  // biome-ignore lint/correctness/useExhaustiveDependencies: read once per project
+  useEffect(() => {
+    void read();
+  }, [project]);
+  const act = (work: Promise<unknown>) => {
+    setBusy(true);
+    setProblem(null);
+    work
+      .then(() => {
+        onChanged();
+        return read();
+      })
+      .catch(fail(setProblem, here.memory.failed))
+      .finally(() => setBusy(false));
+  };
+  if (notes === null) return <SkeletonRows count={3} />;
+  const kept = notes.filter((n) => n.status === "approved");
+  const waiting = notes.filter((n) => n.status === "pending");
+  const noteRow = (n: Note, controls: ReactNode) => (
+    <li key={n.id} className="flex min-w-0 items-start justify-between gap-3 py-2.5">
+      <span className="min-w-0 break-words text-aui-sm text-aui-fg">{n.text}</span>
+      {controls && <span className="flex shrink-0 items-center gap-3">{controls}</span>}
+    </li>
+  );
+  return (
+    <div className="flex min-w-0 flex-col gap-5">
+      <Problem message={problem} />
+      {waiting.length > 0 && (
+        <section aria-label={here.memory.waiting} className="flex min-w-0 flex-col gap-1">
+          <h3 className="text-aui-xs font-medium text-aui-muted">{here.memory.waiting}</h3>
+          <ul className={rows}>
+            {waiting.map((n) =>
+              noteRow(
+                n,
+                canDecide && (
+                  <>
+                    <button
+                      type="button"
+                      className={textAction}
+                      disabled={busy}
+                      aria-label={here.memory.keepLabel(n.text)}
+                      onClick={() => act(api.approveProjectMemory(project, [n.id]))}
+                    >
+                      {here.memory.keep}
+                    </button>
+                    <button
+                      type="button"
+                      className={textAction}
+                      disabled={busy}
+                      aria-label={here.memory.discardLabel(n.text)}
+                      onClick={() => act(api.removeProjectMemory(project, n.id))}
+                    >
+                      {here.memory.discard}
+                    </button>
+                  </>
+                ),
+              ),
+            )}
+          </ul>
+        </section>
+      )}
+      <section aria-label={here.memory.kept} className="flex min-w-0 flex-col gap-1">
+        {waiting.length > 0 && (
+          <h3 className="text-aui-xs font-medium text-aui-muted">{here.memory.kept}</h3>
+        )}
+        {kept.length === 0 ? (
+          <p className="text-aui-sm text-aui-muted">{here.memory.none}</p>
+        ) : (
+          <ul className={rows}>
+            {kept.map((n) =>
+              noteRow(
+                n,
+                canDecide && (
+                  <button
+                    type="button"
+                    className={textAction}
+                    disabled={busy}
+                    aria-label={here.memory.forgetLabel(n.text)}
+                    onClick={() => act(api.removeProjectMemory(project, n.id))}
+                  >
+                    {here.memory.forget}
+                  </button>
+                ),
+              ),
+            )}
+          </ul>
+        )}
+      </section>
+      {(canDecide || canPropose) && (
+        <form
+          className="flex min-w-0 flex-col gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!text.trim()) return;
+            act(api.addProjectMemory(project, text.trim()).then(() => setText("")));
+          }}
+        >
+          <Label text={here.memory.note}>
+            <textarea
+              className={`${field} h-auto min-h-20 py-2`}
+              value={text}
+              maxLength={300}
+              disabled={busy}
+              onChange={(e) => setText(e.target.value)}
+            />
+          </Label>
+          <button type="submit" className={`${button} self-end`} disabled={busy || !text.trim()}>
+            {here.memory.add}
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+/** "Custom" in the When menu: a cron expression typed out. */
+const CUSTOM = "custom";
+
+/** A new schedule in this project: a name, when, the agent it asks and what it asks. */
+function ScheduleForm({
+  project,
+  agents,
+  onCreated,
+  onCancel,
+}: {
+  project: string;
+  agents: Revision[];
+  onCreated: () => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [when, setWhen] = useState(presets[3]?.expression ?? "0 9 * * 1-5");
+  const [expression, setExpression] = useState("0 9 * * 1-5");
+  const [agent, setAgent] = useState(agents[0]?.spec.name ?? "");
+  const [text, setText] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const words = here.scheduled;
+  const create = (e: FormEvent) => {
+    e.preventDefault();
+    if (saving) return;
+    setSaving(true);
+    setProblem(null);
+    api
+      .createSchedule({
+        name: name.trim(),
+        expression: when === CUSTOM ? expression.trim() : when,
+        agent,
+        text: text.trim(),
+        project: project === "" ? "~" : project,
+      })
+      .then(onCreated)
+      .catch((err: unknown) => {
+        fail(setProblem, words.failed)(err);
+        setSaving(false);
+      });
+  };
+  return (
+    <form onSubmit={create} className="flex min-w-0 flex-col gap-4">
+      <Label text={words.name}>
+        <input
+          // biome-ignore lint/a11y/noAutofocus: the sheet opens because the person asked to add one
+          autoFocus
+          className={field}
+          value={name}
+          required
+          maxLength={63}
+          disabled={saving}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </Label>
+      <Label text={words.when}>
+        <select
+          className={field}
+          value={when}
+          disabled={saving}
+          onChange={(e) => setWhen(e.target.value)}
+        >
+          {presets.map((p) => (
+            <option key={p.expression} value={p.expression}>
+              {p.label}
+            </option>
+          ))}
+          <option value={CUSTOM}>{words.custom}</option>
+        </select>
+      </Label>
+      {when === CUSTOM && (
+        <Label text={words.expression} hint={words.expressionHint}>
+          <input
+            className={`${field} font-aui-mono`}
+            value={expression}
+            required
+            disabled={saving}
+            onChange={(e) => setExpression(e.target.value)}
+          />
+        </Label>
+      )}
+      <Label text={words.agent}>
+        <select
+          className={field}
+          value={agent}
+          required
+          disabled={saving}
+          onChange={(e) => setAgent(e.target.value)}
+        >
+          {agents.map((a) => (
+            <option key={a.spec.name} value={a.spec.name}>
+              {a.spec.name}
+            </option>
+          ))}
+        </select>
+      </Label>
+      <Label text={words.text}>
+        <textarea
+          className={`${field} h-auto min-h-24 py-2`}
+          value={text}
+          required
+          disabled={saving}
+          onChange={(e) => setText(e.target.value)}
+        />
+      </Label>
+      <Problem message={problem} />
+      <SheetButtons
+        busy={saving}
+        label={words.create}
+        disabled={!name.trim() || !agent || !text.trim()}
+        onCancel={onCancel}
+      />
+    </form>
+  );
+}
+
+/** A Slack channel's id as Slack writes it: C for a public channel, G for a private one. */
+const SLACK_CHANNEL = /^[CG][A-Z0-9]{2,}$/;
+
+/**
+ * Links a Slack channel to the project: a project channel bound to it, named
+ * for it, so a session started there is filed here.
+ */
+function SlackForm({
+  project,
+  clients,
+  onLinked,
+  onCancel,
+}: {
+  project: string;
+  clients: Client[];
+  onLinked: () => void;
+  onCancel: () => void;
+}) {
+  const [client, setClient] = useState(clients[0]?.id ?? "");
+  const [channel, setChannel] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const words = here.slack;
+  if (clients.length === 0) return <p className="text-aui-sm text-aui-muted">{words.noClients}</p>;
+  const link = (e: FormEvent) => {
+    e.preventDefault();
+    if (saving) return;
+    const id = channel.trim().toUpperCase();
+    if (!SLACK_CHANNEL.test(id)) {
+      setProblem(words.invalid);
+      return;
+    }
+    setSaving(true);
+    setProblem(null);
+    coworking
+      .createChannel(project, {
+        name: `slack-${id.toLowerCase()}`,
+        slack: { client, channel: id },
+      })
+      .then(onLinked)
+      .catch((err: unknown) => {
+        fail(setProblem, words.failed)(err);
+        setSaving(false);
+      });
+  };
+  return (
+    <form onSubmit={link} className="flex min-w-0 flex-col gap-4">
+      <Label text={words.client}>
+        <select
+          className={field}
+          value={client}
+          disabled={saving}
+          onChange={(e) => setClient(e.target.value)}
+        >
+          {clients.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name || c.id}
+            </option>
+          ))}
+        </select>
+      </Label>
+      <Label text={words.channel} hint={words.channelHint}>
+        <input
+          // biome-ignore lint/a11y/noAutofocus: the sheet opens because the person asked to link one
+          autoFocus
+          className={`${field} font-aui-mono`}
+          value={channel}
+          required
+          maxLength={32}
+          autoComplete="off"
+          spellCheck={false}
+          disabled={saving}
+          onChange={(e) => setChannel(e.target.value)}
+        />
+      </Label>
+      <Problem message={problem} />
+      <SheetButtons
+        busy={saving}
+        label={words.link}
+        disabled={!client || !channel.trim()}
+        onCancel={onCancel}
+      />
+    </form>
+  );
+}
+
+/** The Context card: the corpora the project attaches, each with how many sources it holds. */
+function ContextCard({
+  project,
+  tick,
+  canEdit,
+  canList,
+}: {
+  project: ProjectView;
+  tick: number;
+  canEdit: boolean;
+  /** Holds knowledge:read, which listing the workspace's corpora takes. */
+  canList: boolean;
+}) {
+  const name = project.name;
+  const [attached, setAttached] = useState<ProjectCorpora | null>(null);
+  const [corpora, setCorpora] = useState<CorpusBrief[] | null>(null);
+  const [reads, setReads] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick and reads are signals to read again
+  useEffect(() => {
+    let live = true;
+    api
+      .projectCorpora(name)
+      .then((v) => live && setAttached(v))
+      .catch(() => live && setAttached(null));
+    if (canEdit && canList)
+      api
+        .corpora()
+        .then((list) => live && setCorpora(list))
+        // A server without corpora answers 404: the card stays empty, with nothing to add.
+        .catch(() => live && setCorpora(null));
+    return () => {
+      live = false;
+    };
+  }, [name, tick, reads, canEdit, canList]);
+  const words = here.context;
+  const some = (attached?.corpora.length ?? 0) > 0;
+  return (
+    <SideCard
+      title={words.title}
+      action={
+        canEdit && attached && corpora
+          ? {
+              text: some ? words.edit : words.add,
+              label: some ? words.editLabel : words.addLabel,
+              heading: words.title,
+            }
+          : undefined
+      }
+      sheet={
+        attached && corpora
+          ? (close) => (
+              <ContextForm
+                project={name}
+                attached={attached}
+                corpora={corpora}
+                onCancel={close}
+                onStale={() => setReads((n) => n + 1)}
+                onSaved={(next) => {
+                  setAttached(next);
+                  close();
+                }}
+              />
+            )
+          : undefined
+      }
+    >
+      {some ? (
+        <ul className={`${summary} flex flex-col gap-0.5`}>
+          {attached?.corpora.map((c) => (
+            <li key={c.name} className="break-words">
+              {words.corpus(c.title || c.name, c.sources)}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className={summary}>{words.none}</p>
+      )}
+    </SideCard>
+  );
+}
+
+/** The Scheduled card: what runs in the project on a timer. Each run is a session here. */
+function ScheduledCard({
+  project,
+  tick,
+  agents,
+  canAdd,
+  onChanged,
+}: {
+  project: string;
+  tick: number;
+  agents: Revision[];
+  canAdd: boolean;
+  onChanged: () => void;
+}) {
+  const [schedules, setSchedules] = useState<ScheduleView[] | null>(null);
+  const [reads, setReads] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick and reads are signals to read again
+  useEffect(() => {
+    let live = true;
+    api
+      .projectSchedules(project)
+      .then((list) => live && setSchedules(list))
+      .catch(() => live && setSchedules([]));
+    return () => {
+      live = false;
+    };
+  }, [project, tick, reads]);
+  const words = here.scheduled;
+  return (
+    <SideCard
+      title={words.title}
+      action={
+        canAdd && agents.length > 0
+          ? { text: words.add, label: words.addLabel, heading: words.heading }
+          : undefined
+      }
+      sheet={(close) => (
+        <ScheduleForm
+          project={project}
+          agents={agents}
+          onCancel={close}
+          onCreated={() => {
+            setReads((n) => n + 1);
+            onChanged();
+            close();
+          }}
+        />
+      )}
+    >
+      {schedules === null ? null : schedules.length === 0 ? (
+        <p className={summary}>{words.none}</p>
+      ) : (
+        <ul className="flex min-w-0 flex-col gap-1.5">
+          {schedules.map((s) => (
+            <li key={s.name} className="min-w-0">
+              <span className="block break-words text-aui-sm text-aui-fg">
+                {s.description || s.name}
+              </span>
+              <span className="block text-aui-xs text-aui-muted">
+                <span title={s.expression}>{inWords(s.expression)}</span>
+                {s.paused ? `, ${words.paused.toLowerCase()}` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </SideCard>
+  );
+}
+
+/** The Slack card: the Slack channels linked to the project, and a way to link or unlink one. */
+function SlackCard({
+  project,
+  tick,
+  canLink,
+  canReadClients,
+}: {
+  project: string;
+  tick: number;
+  canLink: boolean;
+  canReadClients: boolean;
+}) {
+  const [channels, setChannels] = useState<Channel[] | null>(null);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [reads, setReads] = useState(0);
+  const [problem, setProblem] = useState<string | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick and reads are signals to read again
+  useEffect(() => {
+    let live = true;
+    coworking
+      .channels(project)
+      .then((list) => live && setChannels(list))
+      .catch(() => live && setChannels([]));
+    if (canReadClients)
+      api
+        .clients()
+        .then((r) => live && setClients(r.clients.filter((c) => c.surface === "slack")))
+        .catch(() => live && setClients([]));
+    return () => {
+      live = false;
+    };
+  }, [project, tick, reads, canReadClients]);
+  const words = here.slack;
+  const links = (channels ?? []).filter(
+    (c): c is Channel & { slack: NonNullable<Channel["slack"]> } => !!c.slack && !c.archived,
+  );
+  const clientName = (id: string) => clients.find((c) => c.id === id)?.name || id;
+  return (
+    <SideCard
+      title={words.title}
+      action={
+        canLink ? { text: words.add, label: words.addLabel, heading: words.heading } : undefined
+      }
+      sheet={(close) => (
+        <SlackForm
+          project={project}
+          clients={clients}
+          onCancel={close}
+          onLinked={() => {
+            setReads((n) => n + 1);
+            close();
+          }}
+        />
+      )}
+    >
+      {channels === null ? null : links.length === 0 ? (
+        <p className={summary}>{words.none}</p>
+      ) : (
+        <ul className="flex min-w-0 flex-col gap-1">
+          {links.map((c) => (
+            <li key={c.name} className="flex min-w-0 items-center justify-between gap-3">
+              <span className={`${summary} break-words`}>
+                {words.via(c.slack.channel, clientName(c.slack.client))}
+              </span>
+              {canLink && (
+                <button
+                  type="button"
+                  className={`${textAction} shrink-0`}
+                  aria-label={words.removeLabel(c.slack.channel)}
+                  onClick={() => {
+                    setProblem(null);
+                    coworking
+                      .archiveChannel(project, c.name)
+                      .then(() => setReads((n) => n + 1))
+                      .catch(fail(setProblem, words.removeFailed));
+                  }}
+                >
+                  {words.remove}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <Problem message={problem} />
+    </SideCard>
+  );
+}
+
+const VISIBILITY_ICON: Record<ProjectVisibility, ReactNode> = {
+  private: <UserIcon size={16} />,
+  shared: <UsersIcon size={16} />,
+  workspace: <LayersIcon size={16} />,
+};
+
+/**
+ * One project, the workspace included, as its owner looks after it: a
+ * composer to try it and its recent sessions, and beside them what every
+ * session in it is given (instructions, context, memory), what runs on a
+ * timer, the Slack channels linked to it and who can see it. It has no tabs,
+ * and no agents of its own: agents are independent of projects, so a session
+ * names who answered it.
  */
 export function ProjectPage({
   name,
-  tab,
-  onTab,
-  message,
-  onMessage = () => {},
-  me = "",
-  inboxTick,
-  muted = [],
-  onMute,
   pinned = false,
   onPin,
-  onOpenSource = () => {},
   workspaceName,
   projects,
-  schedules,
   agents,
-  homes = {},
-  enabledIn = {},
   can,
-  tick,
+  tick = 0,
   onOpen,
   onOpenAll,
-  onNewChat,
   onOpenThread,
   onChanged,
   onSchedulesChanged,
-  onAgentsChanged,
   onDeleted,
-  onOpenChannel,
   onFork,
 }: {
   /** "" is the workspace. */
   name: string;
-  tab: ProjectTab;
-  /** Open one of the project's channels. */
-  onOpenChannel?: (channel: string) => void;
-  onFork?: () => void;
-  onTab: (tab: ProjectTab) => void;
-  /** The message open in its inbox, and how another is opened. */
-  message?: string;
-  onMessage?: (id: string | null) => void;
-  /** The reader's subject, to tell their own announcements apart. */
-  me?: string;
-  /** Changes whenever the inbox may have. */
-  inboxTick?: unknown;
-  /** The projects whose announcements stay out of the reader's own inbox. */
-  muted?: string[];
-  /** Resolves once the change is saved, and rejects when it could not be. */
-  onMute?: (project: string, muted: boolean) => Promise<void>;
   pinned?: boolean;
   onPin?: (project: string, pinned: boolean) => Promise<void>;
-  /** Open what an inbox message is about. */
-  onOpenSource?: (source: Source) => void;
   workspaceName: string;
-  /** Every project, for the places a sub-project could go and the title shown while this one loads. */
+  /** Every project, for the title shown while this one loads. */
   projects: ProjectView[];
-  schedules: ScheduleView[];
+  /** The agents a new schedule may ask. */
   agents: Revision[];
-  /** Where each agent that lives in a project lives, and which projects enable each. */
-  homes?: Record<string, string>;
-  enabledIn?: Record<string, string[]>;
   can: (permission: string) => boolean;
   /** Changes when runs do, so what the project holds is read again. */
   tick?: number;
+  /** Open another project: the one this was forked from. */
   onOpen: (name: string) => void;
   onOpenAll: () => void;
-  onNewChat: () => void;
+  /** Open a session. */
   onOpenThread: (id: string) => void;
   onChanged: () => void;
   onSchedulesChanged: () => void;
-  /** Where an agent lives, or what a project enables, changed. */
-  onAgentsChanged?: () => void;
   onDeleted: () => void;
+  onFork?: () => void;
 }) {
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
   const [missing, setMissing] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
-  const [moving, setMoving] = useState<string | null>(null);
   const [reads, setReads] = useState(0);
-  // The agent that answers what tags no agent here, for the meta line. Left out until read.
-  const [lead, setLead] = useState<string | null>(null);
   // Deleting cannot be undone, so it is asked twice.
   const [deleting, setDeleting] = useState(false);
-  // A preference change that did not take says so beside the actions.
-  const { flash: muteFlash, say: sayMute, clear: clearMute } = useFlash();
+  // A pin that did not take says so beside the menu.
+  const { flash, say, clear } = useFlash();
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: tick, inboxTick and reads are signals to read again
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick and reads are signals to read again
   useEffect(() => {
     let live = true;
     api
@@ -1840,19 +1710,29 @@ export function ProjectPage({
       .catch((e) => {
         if (live && e instanceof ApiError && e.status === 404) setMissing(true);
       });
-    api
-      .projectAgents(name)
-      .then((v) => live && setLead(v.default_resolved?.agent || null))
-      .catch(() => {});
     return () => {
       live = false;
     };
-  }, [name, tick, inboxTick, reads]);
+  }, [name, tick, reads]);
 
   const changed = () => {
     setReads((n) => n + 1);
     onChanged();
   };
+  const crumbs = (
+    <nav aria-label={words.breadcrumb} className="flex shrink-0 items-center gap-3">
+      <Go
+        to={href({ page: "projects" })}
+        onGo={onOpenAll}
+        className={`${pageTitle} rounded-aui text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent motion-reduce:transition-none`}
+      >
+        {words.title}
+      </Go>
+      <span aria-hidden className={`${pageTitle} text-aui-muted`}>
+        /
+      </span>
+    </nav>
+  );
 
   if (missing) {
     return (
@@ -1868,11 +1748,7 @@ export function ProjectPage({
   if (!detail) {
     const listed = projects.find((p) => p.name === name);
     return (
-      <Page
-        title={listed ? titleOf(listed) : name === "" ? workspaceName : name}
-        back={{ label: words.allProjects, onClick: onOpenAll }}
-        icon={<FolderIcon size={28} />}
-      >
+      <Page icon={crumbs} title={listed ? titleOf(listed) : name === "" ? workspaceName : name}>
         <SkeletonRows count={4} />
       </Page>
     );
@@ -1880,305 +1756,224 @@ export function ProjectPage({
 
   const p = detail.project;
   const root = p.name === "";
-  // The workspace and company-wide projects are changed only by those who govern projects as well.
-  const governed = root || p.kind === "company";
+  const title = titleOf(p, workspaceName);
   // What the caller may do here is their permission and their role together, as the server says.
   const may = (action: ProjectAction) => p.actions.includes(action);
-  const canWrite = may("edit");
-  const isMuted = muted.includes(p.name);
-  const parent = detail.ancestors[detail.ancestors.length - 1];
-  const back =
-    parent && parent.name !== ""
-      ? { label: titleOf(parent), onClick: () => onOpen(parent.name) }
-      : { label: words.allProjects, onClick: onOpenAll };
-  const meta = root
-    ? words.workspace
-    : [
-        kindWord(p.kind, kindsIn(detail)),
-        p.account?.customer,
-        p.depth > 1 ? words.within(above(p)) : null,
-      ]
-        .filter(Boolean)
-        .join(" | ");
-  const ownScope = root
-    ? ({ kind: "tenant" } as const)
-    : ({ kind: "project", name: p.name } as const);
-  const chain = detail.limits
-    .filter((l) => l.from !== p.name)
-    .map((l) => {
-      const from = detail.ancestors.find((a) => a.name === l.from);
-      return {
-        scope: l.scope,
-        words:
-          l.from === "" ? words.workspaceLimit : words.limitAbove(from ? titleOf(from) : l.from),
-      };
-    });
+  const canEdit = may("edit") && p.managed !== "file";
+  const visibility = visibilityOf(p);
+  const menu: PageAction[] = [
+    ...(onPin
+      ? [
+          {
+            label: pinned ? defaultCopy.pins.unpinProject : defaultCopy.pins.pinProject,
+            onSelect: () => {
+              clear();
+              onPin(p.name || "~", !pinned).catch(() =>
+                say(pinned ? defaultCopy.pins.unpinFailed : defaultCopy.pins.pinFailed, true),
+              );
+            },
+          },
+        ]
+      : []),
+    ...(may("edit") && !root
+      ? [{ label: words.editProject, onSelect: () => setEditing(true) }]
+      : []),
+    ...(can("projects:write") && !root && !p.personal_owner && onFork
+      ? [{ label: defaultCopy.projectFork.title, onSelect: onFork }]
+      : []),
+    ...(may("archive")
+      ? [
+          {
+            label: p.archived ? defaultCopy.roles.unarchive : defaultCopy.roles.archive,
+            // Restoring is not destructive; archiving is.
+            destructive: !p.archived,
+            onSelect: () =>
+              api
+                .updateProject(p.name, { ...updateOf(p), archived: !p.archived })
+                .then(changed)
+                .catch(fail(setProblem, words.failed.save)),
+          },
+        ]
+      : []),
+    ...(may("delete")
+      ? [{ label: words.deleteProject, destructive: true, onSelect: () => setDeleting(true) }]
+      : []),
+  ];
 
   return (
     <Page
-      back={back}
-      icon={<FolderIcon size={28} />}
-      title={titleOf(p, workspaceName)}
+      icon={crumbs}
+      title={<span className="block whitespace-normal break-words">{title}</span>}
       meta={
-        <span className="inline-flex flex-wrap items-center gap-x-1.5">
-          <span>{meta}</span>
-          {lead && (
-            <span className="inline-flex items-center gap-1.5">
-              <span>{words.lead}</span>
-              {lead === AUTO ? (
-                defaultCopy.auto.handle
-              ) : (
-                <span className="inline-flex items-center gap-1">
-                  <AgentMark name={lead} size={12} />
-                  {lead}
-                </span>
-              )}
-            </span>
-          )}
-        </span>
+        p.fork?.ready ? (
+          <span>
+            {p.fork.source ? defaultCopy.projectFork.origin : defaultCopy.projectFork.originHidden}
+            {p.fork.source && (
+              <>
+                {" "}
+                <Go
+                  to={href({ page: "project", name: p.fork.source })}
+                  onGo={() => onOpen(p.fork?.source || "")}
+                  className="text-aui-accent underline"
+                >
+                  {p.fork.source}
+                </Go>
+              </>
+            )}
+          </span>
+        ) : undefined
       }
-      crumbs={
-        root ? undefined : (
-          <Breadcrumb detail={detail} workspaceName={workspaceName} onOpen={onOpen} />
-        )
-      }
-      lede={root ? words.workspaceHint : p.description}
       actions={
-        <PageActions
-          primary={can("runs:write") ? { label: "New Session", onSelect: onNewChat } : undefined}
-          actions={[
-            ...(onPin
-              ? [
-                  {
-                    label: pinned ? defaultCopy.pins.unpinProject : defaultCopy.pins.pinProject,
-                    onSelect: () => {
-                      clearMute();
-                      onPin(p.name || "~", !pinned).catch(() =>
-                        sayMute(
-                          pinned ? defaultCopy.pins.unpinFailed : defaultCopy.pins.pinFailed,
-                          true,
-                        ),
-                      );
-                    },
-                  },
-                ]
-              : []),
-            ...(!root && onMute
-              ? [
-                  {
-                    label: isMuted
-                      ? defaultCopy.announcements.unmute
-                      : defaultCopy.announcements.mute,
-                    onSelect: () => {
-                      clearMute();
-                      onMute(p.name, !isMuted).catch(() =>
-                        sayMute(
-                          isMuted
-                            ? defaultCopy.announcements.unmuteFailed
-                            : defaultCopy.announcements.muteFailed,
-                          true,
-                        ),
-                      );
-                    },
-                  },
-                ]
-              : []),
-            ...(can("projects:write") && !root && !p.personal_owner && onFork
-              ? [{ label: defaultCopy.projectFork.title, onSelect: onFork }]
-              : []),
-            ...(canWrite && !root && !editing
-              ? [{ label: words.editProject, onSelect: () => setEditing(true) }]
-              : []),
-            ...(may("move") && moving === null
-              ? [
-                  {
-                    label: defaultCopy.roles.moveProject,
-                    onSelect: () => setMoving(p.parent ?? ""),
-                  },
-                ]
-              : []),
-            ...(may("archive")
-              ? [
-                  {
-                    label: p.archived ? defaultCopy.roles.unarchive : defaultCopy.roles.archive,
-                    // Restoring is not destructive; archiving is.
-                    destructive: !p.archived,
-                    onSelect: () =>
-                      api
-                        .updateProject(p.name, { ...updateOf(p), archived: !p.archived })
-                        .then(changed)
-                        .catch(fail(setProblem, words.failed.save)),
-                  },
-                ]
-              : []),
-            ...(may("delete")
-              ? [
-                  {
-                    label: words.deleteProject,
-                    destructive: true,
-                    onSelect: () => setDeleting(true),
-                  },
-                ]
-              : []),
-          ]}
-          note={<FlashNote flash={muteFlash} align="left" />}
-        />
-      }
-      tabs={
-        <Tabs
-          label={titleOf(p, workspaceName)}
-          value={tab}
-          tabs={PROJECT_TABS.map((id) => ({
-            id,
-            label:
-              (id === "people" ? "Access" : id === "agents" ? "Default agents" : undefined) ??
-              words.tab[id] ??
-              defaultCopy.project.tabs[id as keyof typeof defaultCopy.project.tabs] ??
-              id,
-          }))}
-          onChange={onTab}
-        />
+        menu.length > 0 ? (
+          <span className="relative inline-flex items-center">
+            <MoreMenu items={menu} />
+            <FlashNote flash={flash} align="right" />
+          </span>
+        ) : undefined
       }
     >
-      {p.fork?.ready && (
-        <p className="text-aui-xs text-aui-muted">
-          {p.fork.source ? defaultCopy.projectFork.origin : defaultCopy.projectFork.originHidden}
-          {p.fork.source && (
-            <>
-              {" "}
-              <Go
-                to={projectHref(p.fork.source)}
-                onGo={() => onOpen(p.fork?.source || "")}
-                className="text-aui-accent underline"
-              >
-                {p.fork.source}
-              </Go>
-            </>
+      {(p.archived || p.managed || problem || deleting) && (
+        <div className="flex min-w-0 flex-col gap-2">
+          {p.archived && <p className="text-aui-xs text-aui-muted">{defaultCopy.roles.archived}</p>}
+          {p.managed && <p className="text-aui-xs text-aui-muted">{words.managed}</p>}
+          <Problem message={problem} />
+          {deleting && (
+            <Confirm
+              question={defaultCopy.confirm.ask(title)}
+              action={words.deleteProject}
+              onConfirm={() => {
+                setDeleting(false);
+                api
+                  .deleteProject(p.name)
+                  .then(onDeleted)
+                  .catch(fail(setProblem, words.failed.delete));
+              }}
+              onKeep={() => setDeleting(false)}
+            />
           )}
-        </p>
-      )}
-      <Problem message={problem} />
-      {deleting && (
-        <Confirm
-          question={defaultCopy.confirm.ask(titleOf(p, workspaceName))}
-          action={words.deleteProject}
-          onConfirm={() => {
-            setDeleting(false);
-            api.deleteProject(p.name).then(onDeleted).catch(fail(setProblem, words.failed.delete));
-          }}
-          onKeep={() => setDeleting(false)}
-        />
-      )}
-      {isMuted && <p className="text-aui-xs text-aui-muted">{defaultCopy.announcements.muted}</p>}
-      {p.archived && <p className="text-aui-xs text-aui-muted">{defaultCopy.roles.archived}</p>}
-      {moving !== null && (
-        <form
-          className="flex flex-wrap items-center gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            api
-              .moveProject(p.name, p.version, moving)
-              .then(() => {
-                setMoving(null);
-                changed();
-              })
-              .catch(fail(setProblem, words.failed.save));
-          }}
-        >
-          <Menu
-            label={defaultCopy.project.moveUnder}
-            value={moving}
-            options={[
-              { value: "", label: defaultCopy.project.topLevel },
-              ...projects
-                // Not under itself or anything below it, and only where the caller works.
-                .filter(
-                  (q) =>
-                    q.name !== p.name &&
-                    !q.path.some((step) => step.name === p.name) &&
-                    (q.access.role === "member" || q.access.role === "owner"),
-                )
-                .map((q) => ({
-                  value: q.name,
-                  label: titleOf(q, workspaceName),
-                  hint: q.depth > 1 ? words.within(above(q)) : undefined,
-                })),
-            ]}
-            onChange={setMoving}
-          />
-          <button type="submit" className={primary} disabled={moving === (p.parent ?? "")}>
-            {defaultCopy.project.move}
-          </button>
-          <button type="button" className={button} onClick={() => setMoving(null)}>
-            {words.cancel}
-          </button>
-        </form>
-      )}
-      {p.managed && <p className="text-aui-xs text-aui-muted">{words.managed}</p>}
-      {can("projects:write") && governed && !can("projects:govern") && (
-        <p className="text-aui-xs text-aui-muted">{words.governed}</p>
-      )}
-      {editing && (
-        <EditProject
-          project={p}
-          onCancel={() => setEditing(false)}
-          onSaved={() => {
-            setEditing(false);
-            changed();
-          }}
-        />
-      )}
-
-      {tab === "people" ? (
-        <ProjectPeople key={`${p.name}:${p.version}`} project={p} onChanged={changed} />
-      ) : tab === "limits" ? (
-        <ProjectLimits
-          project={p}
-          scope={ownScope}
-          chain={chain}
-          canBilling={can("billing:write")}
-          above={parent ? titleOf(parent, workspaceName) : undefined}
-          tick={tick}
-        />
-      ) : tab === "agents" ? (
-        <ProjectAgentsTab
-          key={p.name}
-          name={p.name}
-          workspaceName={workspaceName}
-          agents={agents}
-          homes={homes}
-          enabledIn={enabledIn}
-          projects={projects}
-          canWrite={canWrite}
-          canHome={can("agents:write") && (!governed || can("projects:govern"))}
-          onChanged={() => {
-            changed();
-            onAgentsChanged?.();
-          }}
-        />
-      ) : (
-        <div className="flex flex-col gap-8">
-          <ContextTab
-            key={p.name}
-            detail={detail}
-            workspaceName={workspaceName}
-            canWrite={canWrite}
-            canKnowledge={can("knowledge:read")}
-            onSaved={changed}
-          />
-          <SubProjects
-            detail={detail}
-            places={projects}
-            canCreate={may("create")}
-            canGovern={can("projects:govern")}
-            onOpen={onOpen}
-            onCreated={(created) => {
-              changed();
-              onOpen(created.name);
-            }}
-          />
         </div>
       )}
+      <div className="grid min-w-0 grid-cols-1 gap-8 @3xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="flex min-w-0 flex-col gap-8">
+          <NewSession
+            project={p.name}
+            title={title}
+            canStart={can("runs:write")}
+            onStarted={onOpenThread}
+          />
+          {can("runs:read") && <Recents project={p.name} tick={tick} onOpen={onOpenThread} />}
+        </div>
+        <aside aria-label={here.side} className="flex min-w-0 flex-col gap-3">
+          <SideCard
+            title={here.instructions.title}
+            action={
+              canEdit
+                ? p.instructions
+                  ? {
+                      text: here.instructions.edit,
+                      label: here.instructions.editLabel,
+                      heading: here.instructions.title,
+                    }
+                  : {
+                      text: here.instructions.add,
+                      label: here.instructions.addLabel,
+                      heading: here.instructions.title,
+                    }
+                : undefined
+            }
+            sheet={(close) => (
+              <InstructionsForm
+                project={p}
+                onCancel={close}
+                onSaved={() => {
+                  close();
+                  changed();
+                }}
+              />
+            )}
+          >
+            <p className={`${summary} line-clamp-3 whitespace-pre-line break-words`}>
+              {p.instructions || here.instructions.none}
+            </p>
+          </SideCard>
+          <ContextCard project={p} tick={tick} canEdit={canEdit} canList={can("knowledge:read")} />
+          <SideCard
+            title={here.memory.title}
+            action={{
+              text: here.memory.view,
+              label: here.memory.viewLabel,
+              heading: here.memory.title,
+            }}
+            sheet={() => (
+              <MemorySheet
+                project={p.name}
+                canDecide={may("notes")}
+                canPropose={may("propose")}
+                onChanged={changed}
+              />
+            )}
+          >
+            <p className={summary}>
+              {p.notes + p.proposed > 0
+                ? here.memory.summary(p.notes, p.proposed)
+                : here.memory.none}
+            </p>
+          </SideCard>
+          {can("schedules:read") && (
+            <ScheduledCard
+              project={p.name}
+              tick={tick}
+              agents={agents}
+              canAdd={canEdit && can("schedules:write")}
+              onChanged={onSchedulesChanged}
+            />
+          )}
+          <SlackCard
+            project={p.name}
+            tick={tick}
+            canLink={canEdit && can("clients:write")}
+            canReadClients={can("clients:read")}
+          />
+          <SideCard
+            plain
+            title={here.visibility.title}
+            action={
+              may("edit")
+                ? {
+                    text: here.visibility.change,
+                    label: here.visibility.changeLabel,
+                    heading: here.visibility.heading,
+                  }
+                : undefined
+            }
+            sheet={() => (
+              <ProjectPeople key={`${p.name}:${p.version}`} project={p} onChanged={changed} />
+            )}
+          >
+            <span className="inline-flex min-w-0 items-center gap-2 text-aui-sm text-aui-muted">
+              {VISIBILITY_ICON[visibility]}
+              {here.visibility[visibility]}
+            </span>
+          </SideCard>
+        </aside>
+      </div>
+      <Sheet open={editing} onOpenChange={(next) => !next && setEditing(false)}>
+        <SheetContent aria-describedby={undefined}>
+          <SheetHeader>
+            <SheetTitle className="text-aui-base">{here.editHeading}</SheetTitle>
+          </SheetHeader>
+          {editing && (
+            <EditProject
+              project={p}
+              onCancel={() => setEditing(false)}
+              onSaved={() => {
+                setEditing(false);
+                changed();
+              }}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
     </Page>
   );
 }

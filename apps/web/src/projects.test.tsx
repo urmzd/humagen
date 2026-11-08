@@ -4,16 +4,13 @@ import { defaultCopy as copy } from "@humagen/components";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Me, Preferences, ProjectChange, ProjectView, Settings as Workspace } from "./api.ts";
-import { KnowledgeLists, MAX_KNOWLEDGE } from "./ProjectKnowledge.tsx";
 import { ProjectChoices, ProjectPicker, placeOf } from "./ProjectPicker.tsx";
 import { ProjectsPage } from "./Projects.tsx";
 import {
   east,
   field,
   globex,
-  globexKnowledge,
   initech,
-  knowledgeSources,
   news,
   projectView,
   renewals,
@@ -23,7 +20,15 @@ import {
   view,
   workspace,
 } from "./projects.fixtures.ts";
-import { cardsOf, kindsUnder, nameFrom, updateOf, validName, WORKSPACE } from "./projects.ts";
+import {
+  cardsOf,
+  kindsUnder,
+  nameFrom,
+  updateOf,
+  validName,
+  visibilityOf,
+  WORKSPACE,
+} from "./projects.ts";
 import { Settings } from "./Settings.tsx";
 
 const html = (el: ReactElement) => renderToStaticMarkup(el);
@@ -78,8 +83,8 @@ test("the projects page is one title over a flat grid of cards: every project bu
       "Stores",
     ],
   );
-  assert.ok(cardsIn(out).some(([, to]) => to === "/projects/Globex/context"));
-  assert.doesNotMatch(out, /href="\/projects\/~\/context"/, "the workspace is not a card");
+  assert.ok(cardsIn(out).some(([, to]) => to === "/projects/Globex"));
+  assert.doesNotMatch(out, /href="\/projects\/~"/, "the workspace is not a card");
   // No tree: no groups, no indent, no expander, and no counts.
   for (const gone of [
     /Company-wide/,
@@ -202,6 +207,28 @@ test("a private project says so on its card; a workspace one and the reader's Pe
     "Personal is a card of its own",
   );
   assert.match(out, /Secret<\/a>(?:(?!<article).)*>Private</s);
+});
+
+test("a project's visibility is the server's word for it, else read from its entries as the server reads them", () => {
+  const as = (members: ProjectView["members"], over: Partial<ProjectView> = {}) =>
+    visibilityOf(projectView({ name: "P", members, ...over }));
+  assert.equal(as([{ who: "*", role: "member" }]), "workspace");
+  assert.equal(as([{ who: "ada", role: "owner" }]), "private");
+  assert.equal(as([{ who: "ada", role: "owner" }], { personal_owner: "ada" }), "private");
+  assert.equal(
+    as([
+      { who: "ada", role: "owner" },
+      { who: "bo", role: "member" },
+    ]),
+    "shared",
+  );
+  assert.equal(as([{ who: "role:sales", role: "member" }]), "shared");
+  // A server that says so is believed.
+  assert.equal(
+    visibilityOf({ ...projectView({ name: "P" }), visibility: "shared" }),
+    "shared",
+    "the server's word wins",
+  );
 });
 
 test("the kind rules decide what may be made where", () => {
@@ -349,7 +376,7 @@ test("settings no longer edit projects: the workspace section links to Projects 
   assert.doesNotMatch(out, /Add Project/);
   assert.doesNotMatch(out, /No projects yet/);
   assert.match(out, /href="\/projects"[^>]*>Open Projects</);
-  assert.match(out, /href="\/projects\/~\/context"[^>]*>Open the Workspace</);
+  assert.match(out, /href="\/projects\/~"[^>]*>Open the Workspace</);
 });
 
 test("every kind of change in a project's history reads as words", () => {
@@ -371,80 +398,4 @@ test("every kind of change in a project's history reads as words", () => {
   };
   for (const what of Object.keys(kinds))
     assert.ok(copy.project.what[what], `no words for a ${what} change`);
-});
-
-const knowledgeOf = (
-  opts: { editable?: boolean; fileOwned?: boolean; draft?: string[]; project?: string } = {},
-) =>
-  html(
-    <KnowledgeLists
-      project={opts.project ?? "Globex"}
-      view={globexKnowledge}
-      titles={{ "": "Acme", Field: "Field engineering" }}
-      sources={knowledgeSources}
-      draft={opts.draft ?? globexKnowledge.knowledge}
-      editable={opts.editable ?? false}
-      fileOwned={opts.fileOwned ?? false}
-    />,
-  );
-
-test("knowledge: an owner who reads knowledge gets an editor of the sources the project names", () => {
-  const out = knowledgeOf({ editable: true });
-  assert.match(out, />Add Source</);
-  assert.match(out, />Save Knowledge</);
-  assert.match(out, /aria-label="Remove globex-contracts"/);
-  assert.doesNotMatch(out, /The platform file sets/);
-});
-
-test("knowledge: an owner in a workspace with no sources is told so, and offered no Save with nothing to save", () => {
-  const out = html(
-    <KnowledgeLists
-      project="Globex"
-      view={{ ...globexKnowledge, knowledge: [] }}
-      titles={{}}
-      sources={[]}
-      draft={[]}
-      editable
-      fileOwned={false}
-    />,
-  );
-  assert.match(out, /The workspace has no sources yet/);
-  assert.doesNotMatch(out, /Save Knowledge|Add Source/);
-  // Both parts are titled sections, as the rest of the Context tab is.
-  assert.equal([...out.matchAll(/<section aria-labelledby=/g)].length, 2);
-});
-
-test("knowledge: at the cap of 8 nothing more can be added", () => {
-  const names = Array.from({ length: MAX_KNOWLEDGE }, (_, i) => `source-${i}`);
-  const out = knowledgeOf({ editable: true, draft: names });
-  assert.doesNotMatch(out, />Add Source</);
-  assert.match(out, /the most a project names/);
-});
-
-test("knowledge: a member sees the sources the project names, read only", () => {
-  const out = knowledgeOf();
-  assert.match(out, /<li[^>]*>globex-contracts<\/li>/);
-  assert.doesNotMatch(out, /Add Source|Save Knowledge|Remove globex-contracts/);
-});
-
-test("knowledge: what runs here are grounded in says where each source comes from, nearest first", () => {
-  const out = knowledgeOf();
-  assert.match(out, /What runs here are grounded in/);
-  const given = [
-    ...out.matchAll(/<span class="min-w-0[^"]*">([^<]+)<\/span><span[^>]*>([^<]+)<\/span>/g),
-  ].map((m) => [m[1], m[2]]);
-  assert.deepEqual(given, [
-    ["globex-contracts", "From this project"],
-    ["field-playbook", "From Field engineering"],
-    ["handbook", "From the workspace"],
-  ]);
-  // On the workspace itself, what it names is its own.
-  assert.match(knowledgeOf({ project: "" }), /handbook<\/span><span[^>]*>From this project</);
-});
-
-test("knowledge: a list the platform file sets is read only, and says so", () => {
-  const out = knowledgeOf({ editable: true, fileOwned: true });
-  assert.match(out, /The platform file sets these sources\./);
-  assert.doesNotMatch(out, /Add Source|Save Knowledge/);
-  assert.match(out, /<li[^>]*>globex-contracts<\/li>/);
 });

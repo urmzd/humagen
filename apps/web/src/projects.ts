@@ -11,6 +11,7 @@ import type {
   ProjectStep,
   ProjectUpdate,
   ProjectView,
+  ProjectVisibility,
 } from "./api.ts";
 
 const words = defaultCopy.projects;
@@ -132,6 +133,22 @@ export const lastActive = (
 /** Whether only a project's members read it: no entry names everyone. */
 export const isPrivate = (p: Pick<ProjectView, "members">): boolean =>
   !p.members.some((m) => m.who === "*");
+
+/**
+ * How widely a project is read, as its page says it: the server's
+ * `visibility` when it sends one, else read from its entries as the server
+ * does. A Personal project, or one whose one entry is a person, is private;
+ * an entry for everyone makes it the workspace's; anything else is shared.
+ */
+export function visibilityOf(
+  p: Pick<ProjectView, "members" | "personal_owner"> & { visibility?: ProjectVisibility },
+): ProjectVisibility {
+  if (p.visibility) return p.visibility;
+  if (p.personal_owner) return "private";
+  if (!isPrivate(p)) return "workspace";
+  const [only, ...rest] = p.members;
+  return only && rest.length === 0 && !only.who.startsWith("role:") ? "private" : "shared";
+}
 
 const newest = (a: string, b: string) => (Date.parse(b) || 0) - (Date.parse(a) || 0);
 const byTitle = (a: ProjectView, b: ProjectView) =>

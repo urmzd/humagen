@@ -267,7 +267,7 @@ export function Settings({
                   project sets its own. It lives on the workspace's Agents tab.
                 </p>
                 <a
-                  href={href({ page: "project", name: "", tab: "agents" })}
+                  href={href({ page: "project", name: "" })}
                   className={`${button} self-start`}
                   onClick={follow(onOpenWorkspaceAgents)}
                 >
@@ -551,7 +551,7 @@ export function Settings({
                         Open Projects
                       </a>
                       <a
-                        href={href({ page: "project", name: "", tab: "inbox" })}
+                        href={href({ page: "project", name: "" })}
                         className={button}
                         onClick={follow(onOpenWorkspace)}
                       >

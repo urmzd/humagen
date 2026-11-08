@@ -1163,22 +1163,14 @@ export function Sidebar({
                         <Item
                           icon={<ProjectIcon />}
                           label={projectTitle(project)}
-                          href={href({
-                            page: "project",
-                            name: project === "~" ? "" : project,
-                            tab: "inbox",
-                          })}
+                          href={href({ page: "project", name: project === "~" ? "" : project })}
                           active={
                             route.page === "project" &&
                             route.name === (project === "~" ? "" : project)
                           }
                           open
                           onClick={() =>
-                            go({
-                              page: "project",
-                              name: project === "~" ? "" : project,
-                              tab: "inbox",
-                            })
+                            go({ page: "project", name: project === "~" ? "" : project })
                           }
                         />
                       </div>

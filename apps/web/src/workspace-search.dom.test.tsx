@@ -96,8 +96,8 @@ test("search names personal and titled project contexts while preserving exact a
   assert.equal(privateSession.getAttribute("href"), "/sessions/s_private");
   assert.equal(
     screen.getByRole("link", { name: /^Spring launch/ }).getAttribute("href"),
-    "/projects/launch/context",
+    "/projects/launch",
   );
   const personal = screen.getByRole("link", { name: /^Personal/ });
-  assert.equal(personal.getAttribute("href"), "/projects/personal-7e5222/context");
+  assert.equal(personal.getAttribute("href"), "/projects/personal-7e5222");
 });
