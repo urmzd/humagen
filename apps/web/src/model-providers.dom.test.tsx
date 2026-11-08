@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { ModelProvider, ModelRef } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { forgetConfiguredProviders, ModelChain } from "./ModelChain.tsx";
-import { MessageChoicesControl, ModelProviderSettings } from "./ModelProviders.tsx";
+import { ModelProviderSettings } from "./ModelProviders.tsx";
 
 // There is no built-in model: an administrator enables Anthropic, OpenAI or Google by
 // name, which agents' models name, or adds an OpenAI-compatible server.
@@ -140,41 +140,4 @@ test("a chain no enabled provider answers says which it needs", async () => {
   await waitFor(() =>
     assert.ok(screen.getByText(/Runs once an administrator enables anthropic, openai or google/)),
   );
-});
-
-test("message choices are picked from enabled providers' models, with efforts as toggles", async () => {
-  net = stubFetch({
-    "GET /api/model-providers": () => ({
-      providers: [
-        { name: "anthropic", declared: true, kind: "anthropic", source: "workspace" },
-        { name: "groq", declared: true, kind: "openai", source: "workspace" },
-      ],
-      kinds: [],
-    }),
-  });
-  let saved: unknown;
-  render(
-    <MessageChoicesControl
-      saved={{ models: ["gone/model"] }}
-      canEdit
-      onSave={(next) => {
-        saved = next;
-      }}
-    />,
-  );
-  const anthropic = await screen.findByRole("group", { name: "anthropic" });
-  fireEvent.click(within(anthropic).getByRole("checkbox", { name: "Claude Haiku 5.5" }));
-  // A model on a provider no longer enabled is shown, so it can be dropped.
-  fireEvent.click(screen.getByRole("checkbox", { name: "gone/model" }));
-  fireEvent.change(screen.getByLabelText("Provider of another model"), {
-    target: { value: "groq" },
-  });
-  fireEvent.change(screen.getByLabelText("Model id"), { target: { value: "openai/gpt-oss-20b" } });
-  fireEvent.click(screen.getByRole("button", { name: "Add" }));
-  fireEvent.click(screen.getByRole("button", { name: "High" }));
-  fireEvent.click(screen.getByRole("button", { name: "Save Choices" }));
-  assert.deepEqual(saved, {
-    models: ["anthropic/claude-haiku-5-5", "groq/openai/gpt-oss-20b"],
-    efforts: ["high"],
-  });
 });

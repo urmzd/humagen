@@ -71,10 +71,6 @@ type ThreadInput struct {
 	Mode     string   `json:"mode,omitempty"`
 	Text     string   `json:"text"`
 	PostOnly bool     `json:"post_only,omitempty"`
-	// Model and Effort are what the runs the message starts use in place of
-	// their agents' own, where an agent offers them (message_choice.go).
-	Model  string `json:"model,omitempty"`
-	Effort string `json:"effort,omitempty"`
 	// ActAs is the person a surface's credential posts for.
 	ActAs *ActAs `json:"act_as,omitempty"`
 	// Surface is where on a client's surface the message was posted, sent
@@ -92,10 +88,6 @@ type MessageInput struct {
 	// latest.
 	After    string `json:"after,omitempty"`
 	PostOnly bool   `json:"post_only,omitempty"`
-	// Model and Effort are what the runs the message starts use in place of
-	// their agents' own, where an agent offers them (message_choice.go).
-	Model  string `json:"model,omitempty"`
-	Effort string `json:"effort,omitempty"`
 	// Answers records the message as a question's answer, which resumes the
 	// run parked on it.
 	Answers *threads.AnswerRef `json:"answers,omitempty"`
@@ -739,10 +731,6 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if err := threads.CheckText(in.Text); err != nil {
 		return Posted{}, err
 	}
-	choice, err := checkMessageChoice(in.Model, in.Effort)
-	if err != nil {
-		return Posted{}, err
-	}
 	if in.Visibility == "" && on == nil && in.ActAs == nil {
 		// A conversation a person starts as themselves, as in the console,
 		// starts private, its starter's alone, until they share it
@@ -808,7 +796,7 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if err != nil {
 		return Posted{}, err
 	}
-	out, err := p.carryOut(withMessageChoice(ctx, choice), person, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, false, keeps, seer.Agent)
+	out, err := p.carryOut(ctx, person, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, false, keeps, seer.Agent)
 	out.Refused = append(out.Refused, unmapped...)
 	return out, err
 }
@@ -835,10 +823,6 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	}
 	// Refused before its tags are looked up.
 	if err := threads.CheckText(in.Text); err != nil {
-		return Posted{}, err
-	}
-	choice, err := checkMessageChoice(in.Model, in.Effort)
-	if err != nil {
 		return Posted{}, err
 	}
 	by, name, via, slack, err := p.author(who, in.ActAs)
@@ -923,7 +907,7 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		return again, nil
 	}
 	p.repliedTo(who.Tenant, th.ID, m)
-	out, err := p.carryOut(withMessageChoice(ctx, choice), person, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, in.Answers != nil || in.reply, keeps, sees)
+	out, err := p.carryOut(ctx, person, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, in.Answers != nil || in.reply, keeps, sees)
 	out.Refused = append(out.Refused, unmapped...)
 	return out, err
 }
@@ -1224,7 +1208,6 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	}
 	skills := p.skillsOfMessage(tenant, th, m, via, actor.User)
 	pinSkills(meta, skills)
-	pinMessageChoice(ctx, meta)
 	type answer struct{ agent, tag, picked string }
 	var who []answer
 	if agent == Open {

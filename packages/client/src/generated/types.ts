@@ -693,15 +693,6 @@ anyone in the workspace approve, except the person who asked.
   answerers?: string[];
   /** The agent runs only when a message names it. It is never asked whether to take an untagged message. Off by default. */
   tagged_only?: boolean;
-  choices?: AgentChoices;
-}
-
-/** What a person may pick, for one message, in place of the agent's model and reasoning effort. Absent offers nothing, and a message runs on the agent's own model at its default effort. */
-export interface AgentChoices {
-  /** Models offered, each `provider/model`, sorted. The agent's own model needs no listing. */
-  models?: string[];
-  /** Reasoning efforts offered, such as `low` and `high`, sorted and in lower case. Whether a model takes one is checked when a run builds it. */
-  efforts?: string[];
 }
 
 /** A class of model error that moves a call on to the next model. `any` cannot be combined with another. */
@@ -1718,10 +1709,6 @@ export interface ThreadInput {
   text: string;
   /** Post without any agent answering, unless the message tags one. In the console this is what an untagged message does anyway. */
   post_only?: boolean;
-  /** A model, `provider/model`, the runs this message starts use in place of their agent's own. Applied only for an agent whose `choices.models` offers it; any other runs on its own model. The run's model ceilings still apply. */
-  model?: string;
-  /** A reasoning effort, such as `low` or `high`, the runs this message starts use. Applied only for an agent whose `choices.efforts` offers it. A model that does not take it fails the run before any model call. */
-  effort?: string;
   act_as?: ActAs;
   surface?: SurfaceRef;
 }
@@ -1773,10 +1760,6 @@ export interface ThreadMessageInput {
   /** The turn it follows. Empty follows the latest. */
   after?: string;
   post_only?: boolean;
-  /** A model, `provider/model`, the runs this message starts use in place of their agent's own. Applied only for an agent whose `choices.models` offers it; any other runs on its own model. The run's model ceilings still apply. */
-  model?: string;
-  /** A reasoning effort, such as `low` or `high`, the runs this message starts use. Applied only for an agent whose `choices.efforts` offers it. A model that does not take it fails the run before any model call. */
-  effort?: string;
   answers?: ThreadAnswerRef;
   act_as?: ActAs;
   surface?: SurfaceRef;
@@ -2572,12 +2555,6 @@ cannot be removed (409).
  */
   model_policies: ModelPolicy[];
   router: RouterSettings;
-  /** The models and reasoning efforts a person may pick for one message,
-for every agent it starts; each agent's own models are the default.
-Each model is provider/model on a provider the workspace has; each
-effort is low, medium or high. Absent offers none.
- */
-  message_choices?: AgentChoices;
   /** The model providers the workspace's administrators set up, with no
 key. A settings write keeps them as they are; they change through
 `/api/model-providers/{name}`.
@@ -4556,8 +4533,6 @@ export interface SessionInput {
   label?: string;
   fresh?: boolean;
   project?: string;
-  model?: string;
-  effort?: string;
   /** The readable session alert that anchors this fix conversation. */
   source_alert?: string;
 }
@@ -4568,10 +4543,6 @@ export interface SessionPostInput {
   /** The turn it follows. Empty follows the latest. */
   after?: string;
   post_only?: boolean;
-  /** A model, `provider/model`, the runs this message starts use in place of their agent's own. Applied only for an agent whose `choices.models` offers it; any other runs on its own model. The run's model ceilings still apply. */
-  model?: string;
-  /** A reasoning effort, such as `low` or `high`, the runs this message starts use. Applied only for an agent whose `choices.efforts` offers it. A model that does not take it fails the run before any model call. */
-  effort?: string;
   answers?: ThreadAnswerRef;
   act_as?: ActAs;
   surface?: SurfaceRef;
