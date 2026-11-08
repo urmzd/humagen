@@ -42,6 +42,9 @@ import {
   type CorpusMember,
   type CorpusMemberRef,
   type CorpusSearch,
+  type GraphNodeView,
+  type GraphView,
+  type OwnerAction,
   type Person,
   type ProjectView,
   type Source,
@@ -51,11 +54,18 @@ import { ConnectionLogo } from "./ConnectionLogo.tsx";
 import { Pill, Tag } from "./cards.tsx";
 import { connectionApi } from "./connectionApi.ts";
 import {
+  type CorpusLabel,
   holds,
+  isDocumentNode,
   itemsOf,
+  LABELS,
+  memberOfNode,
   namedReaders,
   nameFromTitle,
   nameOf,
+  type OntologyType,
+  ontologyTypes,
+  ownerChoices,
   providerOfSource,
   providersOf,
   type ReaderMode,
@@ -70,6 +80,7 @@ import { type CorpusTab, href } from "./route.ts";
 import { addTextFiles } from "./sourceUpload.ts";
 import {
   AgentMark,
+  ago,
   button,
   Confirm,
   card,
@@ -83,6 +94,7 @@ import {
   primary,
   rows,
   SkeletonRows,
+  Switch,
   Tabs,
 } from "./ui.tsx";
 
@@ -295,12 +307,19 @@ function CorpusForm({
   const name = corpus?.name ?? (nameFromTitle(title) || spare);
   const [description, setDescription] = useState(corpus?.description ?? "");
   const [readers, setReaders] = useState(draftOf(corpus));
+  const [label, setLabel] = useState<CorpusLabel>(corpus?.label ?? "internal");
+  const [purpose, setPurpose] = useState(corpus?.purpose ?? "");
+  const [graphSearch, setGraphSearch] = useState(corpus?.graph_search ?? false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy) return;
     const chosen = readersOf(readers.mode, readers.people, readers.projects);
+    const sensitivity = {
+      label,
+      ...(label === "restricted" ? { purpose: purpose.trim() } : {}),
+    };
     setBusy(true);
     setProblem(null);
     try {
@@ -310,13 +329,21 @@ function CorpusForm({
               title: title.trim(),
               description,
               readers: chosen,
+              ...sensitivity,
+              graph_search: graphSearch,
               version: corpus.version,
             })
-          : await api.createCorpus({ name, title: title.trim(), description, readers: chosen }),
+          : await api.createCorpus({
+              name,
+              title: title.trim(),
+              description,
+              readers: chosen,
+              ...sensitivity,
+            }),
       );
     } catch (err) {
       if (corpus && conflict(err)) onConflict();
-      else setProblem(message(err));
+      else setProblem(refusal(err, label));
     } finally {
       setBusy(false);
     }
@@ -352,6 +379,15 @@ function CorpusForm({
         />
       </Label>
       <ReadersField value={readers} onChange={setReaders} directory={directory} />
+      <LabelField label={label} purpose={purpose} onLabel={setLabel} onPurpose={setPurpose} />
+      {corpus && (
+        <Switch
+          label={words.labels.graphSearch}
+          hint={words.labels.graphSearchHint}
+          checked={graphSearch}
+          onChange={setGraphSearch}
+        />
+      )}
       <div className="flex flex-wrap gap-2">
         <button type="submit" className={primary} disabled={busy}>
           {corpus ? words.form.save : words.form.create}
@@ -361,6 +397,51 @@ function CorpusForm({
         </button>
       </div>
     </form>
+  );
+}
+
+/** A refusal in words: restricting needs a workspace admin, which the server says as a bare 403. */
+function refusal(e: unknown, label?: string): string {
+  if (e instanceof ApiError && e.status === 403 && label === "restricted")
+    return words.labels.adminNeeded;
+  return message(e);
+}
+
+/** How sensitive a corpus is, with one line on what that means, and why when it is restricted. */
+function LabelField({
+  label,
+  purpose,
+  onLabel,
+  onPurpose,
+}: {
+  label: CorpusLabel;
+  purpose: string;
+  onLabel: (label: CorpusLabel) => void;
+  onPurpose: (purpose: string) => void;
+}) {
+  return (
+    <>
+      <Label text={words.labels.title} hint={words.labels.meaning}>
+        <NativeSelect value={label} onChange={(e) => onLabel(e.target.value as CorpusLabel)}>
+          {LABELS.map((l) => (
+            <NativeSelectOption key={l} value={l}>
+              {words.labels[l]}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </Label>
+      {label === "restricted" && (
+        <Label text={words.labels.purpose} hint={words.labels.purposeHint}>
+          <input
+            className={field}
+            required
+            maxLength={500}
+            value={purpose}
+            onChange={(e) => onPurpose(e.target.value)}
+          />
+        </Label>
+      )}
+    </>
   );
 }
 
@@ -476,7 +557,7 @@ export function KnowledgePage({
               >
                 <div className="flex min-w-0 items-center gap-2">
                   <h2 className="min-w-0 flex-1 truncate font-medium text-aui-fg">{title}</h2>
-                  <Pill>{c.links === "shared" ? words.shared : words.isolated}</Pill>
+                  <Pill>{words.labels[c.label ?? "internal"]}</Pill>
                   {owner && (
                     <More
                       label={words.more(title)}
@@ -702,6 +783,7 @@ export function CorpusPage({
   q,
   sources,
   agents = [],
+  viewer = "",
   canWrite,
   onTab,
   onSearch,
@@ -717,6 +799,8 @@ export function CorpusPage({
   sources: Source[];
   /** The agents the reader can see, to grant it to. */
   agents?: string[];
+  /** The reader's subject, to tell the documents they own. */
+  viewer?: string;
   canWrite: boolean;
   onTab: (tab: CorpusTab) => void;
   onSearch?: (q: string) => void;
@@ -829,6 +913,8 @@ export function CorpusPage({
           tabs={[
             { id: "sources", label: words.tabs.sources, count: corpus.members.length },
             { id: "search", label: words.tabs.search },
+            { id: "graph", label: words.tabs.graph },
+            { id: "types", label: words.tabs.types },
             { id: "access", label: words.tabs.access },
           ]}
         />
@@ -866,6 +952,24 @@ export function CorpusPage({
         ))}
       {tab === "search" && (
         <SearchTab key={corpus.name} corpus={corpus} q={q} onSearch={onSearch} />
+      )}
+      {tab === "graph" && (
+        <GraphTab
+          key={corpus.name}
+          corpus={corpus}
+          owner={owner}
+          viewer={viewer}
+          directory={directory}
+        />
+      )}
+      {tab === "types" && (
+        <TypesTab
+          key={corpus.version}
+          corpus={corpus}
+          owner={owner}
+          onChanged={setCorpus}
+          onConflict={reloadAfterConflict}
+        />
       )}
       {tab === "access" && (
         <Access
@@ -1669,7 +1773,7 @@ function Access({
       done(next);
     } catch (e) {
       if (conflict(e)) onConflict();
-      else setProblem(message(e));
+      else setProblem(refusal(e, corpus.label));
     } finally {
       setBusy(false);
     }
@@ -1794,6 +1898,429 @@ function Access({
           </ul>
         )}
       </section>
+      <section aria-label={words.links.title} className={`${card} flex flex-col gap-3`}>
+        <div className="flex items-center gap-2">
+          <h2 className={heading}>{words.links.title}</h2>
+          <Pill>{corpus.links === "shared" ? words.shared : words.isolated}</Pill>
+        </div>
+        {owner && (
+          <Switch
+            label={words.links.shared}
+            hint={words.links.sharedHint}
+            checked={corpus.links === "shared"}
+            disabled={busy}
+            onChange={(on) =>
+              void change({ links: on ? "shared" : "isolated" }, () =>
+                toast.success(words.form.saved),
+              )
+            }
+          />
+        )}
+      </section>
+    </div>
+  );
+}
+
+/**
+ * A corpus's slice of the workspace graph: one line on its health, then its
+ * documents and tables with who owns each and whether it is stale. Whoever
+ * owns a row confirms, declines or hands it off; the corpus's owner claims or
+ * hands on one nobody owns.
+ */
+function GraphTab({
+  corpus,
+  owner,
+  viewer,
+  directory,
+}: {
+  corpus: Corpus;
+  owner: boolean;
+  viewer: string;
+  directory: ReturnType<typeof useDirectory>;
+}) {
+  const gw = words.graph;
+  const [view, setView] = useState<GraphView | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [handing, setHanding] = useState<GraphNodeView | null>(null);
+  const [to, setTo] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    api.corpusGraph(corpus.name).then(
+      (next) => live && setView(next),
+      (e) => {
+        if (!live) return;
+        setView({
+          nodes: [],
+          edges: [],
+          health: { nodes: 0, edges: 0, by_type: {}, unowned: 0, stale: 0 },
+        });
+        setProblem(e instanceof ApiError && e.status < 500 ? e.message : gw.failed);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [corpus.name, gw.failed]);
+
+  const rebuild = async () => {
+    setBusy(true);
+    setProblem(null);
+    try {
+      setView(await api.buildCorpusGraph(corpus.name));
+      toast.success(gw.rebuilt);
+    } catch (e) {
+      setProblem(message(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const decide = async (node: GraphNodeView, action: OwnerAction) => {
+    setBusy(true);
+    try {
+      const next = await api.decideGraphOwner(node.id, action);
+      setView((v) => v && { ...v, nodes: v.nodes.map((n) => (n.id === node.id ? next : n)) });
+      toast.success(
+        action.action === "confirm"
+          ? gw.confirmed(node.name)
+          : action.action === "decline"
+            ? gw.declined(node.name)
+            : gw.handedOff(node.name, directory.personName(action.to ?? "")),
+      );
+      return true;
+    } catch (e) {
+      toast.error(message(e));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!view) return <SkeletonRows count={4} />;
+  const by = view.health.by_type;
+  const count = (types: string[]) => types.reduce((n, t) => n + (by[t] ?? 0), 0);
+  const documents = Object.entries(by)
+    .filter(([type]) => isDocumentNode({ type }))
+    .reduce((n, [, c]) => n + c, 0);
+  const health = gw.health([
+    gw.documents(documents),
+    gw.systems(count(["system"])),
+    gw.people(count(["person"])),
+    gw.unowned(view.health.unowned),
+    gw.stale(view.health.stale),
+    view.health.built_at ? gw.built(ago(view.health.built_at)) : gw.notBuilt,
+  ]);
+  const rowsShown = view.nodes.filter(isDocumentNode);
+  const providerOf = (member?: string) => {
+    const ref = memberOfNode(member);
+    return ref
+      ? corpus.members.find((m) => m.kind === ref.kind && m.name === ref.name)?.provider
+      : undefined;
+  };
+  const ownerName = (node: GraphNodeView) =>
+    !node.owner || node.owner_state === "unowned"
+      ? gw.noOwner
+      : node.owner === viewer
+        ? gw.you
+        : directory.personName(node.owner);
+  const people = directory.peopleOptions.filter((p) => p.value !== handing?.owner);
+
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+        <p className="text-aui-xs text-aui-muted tabular-nums">{health}</p>
+        {owner && (
+          <button type="button" className={button} disabled={busy} onClick={() => void rebuild()}>
+            {gw.rebuild}
+          </button>
+        )}
+      </div>
+      <Problem message={problem} />
+      {rowsShown.length === 0 ? (
+        <Empty title={gw.empty} />
+      ) : (
+        <ul aria-label={words.tabs.graph} className={rows}>
+          {rowsShown.map((node) => {
+            const link = safeLink(node.uri);
+            const choices = ownerChoices(node, viewer, owner);
+            const stale = node.staleness?.stale;
+            return (
+              <li
+                key={node.id}
+                aria-label={node.name}
+                className="flex min-w-0 items-start gap-3 py-3"
+              >
+                <ProviderMark provider={providerOf(node.member) ?? "manual"} small />
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    {link ? (
+                      <a
+                        href={link}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="min-w-0 truncate font-medium text-aui-sm text-aui-fg underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+                      >
+                        {node.name}
+                      </a>
+                    ) : (
+                      <span className="min-w-0 truncate font-medium text-aui-sm text-aui-fg">
+                        {node.name}
+                      </span>
+                    )}
+                    {node.type !== "document" && <Tag>{node.type}</Tag>}
+                  </div>
+                  <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-aui-xs text-aui-muted">
+                    <span>{ownerName(node)}</span>
+                    {node.owner_state && <Pill>{gw.states[node.owner_state]}</Pill>}
+                    {stale && <Pill>{gw.staleLabel}</Pill>}
+                    {stale && (node.staleness?.reasons?.length ?? 0) > 0 && (
+                      <span>
+                        {(node.staleness?.reasons ?? []).map((r) => gw.reasons[r] ?? r).join(", ")}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {choices.length > 0 && (
+                  <More
+                    label={words.more(node.name)}
+                    items={choices.map((c) =>
+                      c === "confirm"
+                        ? { label: gw.confirm, run: () => void decide(node, { action: "confirm" }) }
+                        : c === "hand_off"
+                          ? {
+                              label: gw.handOff,
+                              run: () => {
+                                setTo("");
+                                setHanding(node);
+                              },
+                            }
+                          : {
+                              label: gw.decline,
+                              destructive: true,
+                              run: () => void decide(node, { action: "decline" }),
+                            },
+                    )}
+                  />
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {view.more && <p className="text-aui-xs text-aui-muted">{gw.more}</p>}
+      <SideSheet
+        open={handing !== null}
+        title={gw.handOffTitle(handing?.name ?? "")}
+        description={titleOf(corpus)}
+        onClose={() => setHanding(null)}
+      >
+        <form
+          aria-label={gw.handOffTitle(handing?.name ?? "")}
+          className="flex min-w-0 flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!handing || !to) return;
+            void decide(handing, { action: "hand_off", to }).then((ok) => ok && setHanding(null));
+          }}
+        >
+          <Label text={gw.to}>
+            <NativeSelect value={to} onChange={(e) => setTo(e.target.value)}>
+              <NativeSelectOption value="" />
+              {people.map((p) => (
+                <NativeSelectOption key={p.value} value={p.value}>
+                  {p.label}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </Label>
+          <div>
+            <button type="submit" className={primary} disabled={busy || !to}>
+              {gw.handOff}
+            </button>
+          </div>
+        </form>
+      </SideSheet>
+    </div>
+  );
+}
+
+/**
+ * The types a corpus's ontology adds to the graph, a proposal from its
+ * warehouses waiting to be accepted, and, for its owner, the ontology as JSON.
+ */
+function TypesTab({
+  corpus,
+  owner,
+  onChanged,
+  onConflict,
+}: {
+  corpus: Corpus;
+  owner: boolean;
+  onChanged: (corpus: Corpus) => void;
+  onConflict: () => void;
+}) {
+  const tw = words.types;
+  const declared = ontologyTypes(corpus.ontology);
+  const proposed = ontologyTypes(corpus.proposed_ontology);
+  const [picked, setPicked] = useState<string[]>(proposed.map((t) => t.name));
+  const [json, setJson] = useState(() => JSON.stringify(corpus.ontology ?? {}, null, 2));
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const act = async (run: () => Promise<Corpus>, done: string) => {
+    setBusy(true);
+    setProblem(null);
+    try {
+      onChanged(await run());
+      toast.success(done);
+    } catch (e) {
+      if (conflict(e)) onConflict();
+      else setProblem(message(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const save = (e: FormEvent) => {
+    e.preventDefault();
+    let ontology: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(json);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
+      ontology = parsed;
+    } catch {
+      setProblem(tw.badJson);
+      return;
+    }
+    void act(() => api.updateCorpus(corpus.name, { ontology, version: corpus.version }), tw.saved);
+  };
+
+  const typeRow = (t: OntologyType) => (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <span className="font-medium text-aui-sm text-aui-fg">{t.name}</span>
+      {t.properties.length > 0 && (
+        <span className="text-aui-xs text-aui-muted">
+          {tw.properties}: {t.properties.join(", ")}
+        </span>
+      )}
+      {t.relations.length > 0 && (
+        <span className="text-aui-xs text-aui-muted">
+          {tw.relations}: {t.relations.map((r) => tw.relation(r.name, r.to, r.many)).join(", ")}
+        </span>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      <Problem message={problem} />
+      <section aria-label={tw.declared} className="flex min-w-0 flex-col gap-2">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+          <h2 className="text-aui-xs font-medium text-aui-muted">{tw.declared}</h2>
+          {owner && (
+            <button
+              type="button"
+              className={button}
+              disabled={busy}
+              onClick={() => void act(() => api.inferOntology(corpus.name), tw.inferred)}
+            >
+              {tw.infer}
+            </button>
+          )}
+        </div>
+        {declared.length === 0 ? (
+          <p className="text-aui-sm text-aui-muted">{tw.none}</p>
+        ) : (
+          <ul className={rows}>
+            {declared.map((t) => (
+              <li key={t.name} aria-label={t.name} className="py-2.5">
+                {typeRow(t)}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      {proposed.length > 0 && (
+        <section aria-label={tw.proposed} className={`${card} flex min-w-0 flex-col gap-3`}>
+          <h2 className="text-aui-xs font-medium text-aui-muted">{tw.proposed}</h2>
+          <ul className="flex flex-col gap-2">
+            {proposed.map((t) => (
+              <li key={t.name}>
+                {owner ? (
+                  <label className="flex min-w-0 items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-1 accent-aui-fg"
+                      aria-label={t.name}
+                      checked={picked.includes(t.name)}
+                      onChange={(e) =>
+                        setPicked((was) =>
+                          e.target.checked ? [...was, t.name] : was.filter((n) => n !== t.name),
+                        )
+                      }
+                    />
+                    {typeRow(t)}
+                  </label>
+                ) : (
+                  typeRow(t)
+                )}
+              </li>
+            ))}
+          </ul>
+          {owner && (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className={primary}
+                disabled={busy || picked.length === 0}
+                onClick={() => void act(() => api.acceptOntology(corpus.name, picked), tw.accepted)}
+              >
+                {tw.acceptSelected}
+              </button>
+              <button
+                type="button"
+                className={button}
+                disabled={busy}
+                onClick={() => void act(() => api.acceptOntology(corpus.name), tw.accepted)}
+              >
+                {tw.acceptAll}
+              </button>
+              <button
+                type="button"
+                className={button}
+                disabled={busy}
+                onClick={() => void act(() => api.discardOntology(corpus.name), tw.discarded)}
+              >
+                {tw.discard}
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+      {owner && (
+        <details className="min-w-0 rounded-aui border border-aui-border p-3">
+          <summary className="cursor-pointer text-aui-sm text-aui-fg">{tw.editJson}</summary>
+          <form
+            aria-label={tw.editJson}
+            className="flex min-w-0 flex-col gap-3 pt-3"
+            onSubmit={save}
+          >
+            <Label text={tw.json}>
+              <textarea
+                className={`${field} min-h-64 font-aui-mono text-aui-xs`}
+                spellCheck={false}
+                value={json}
+                onChange={(e) => setJson(e.target.value)}
+              />
+            </Label>
+            <div>
+              <button type="submit" className={primary} disabled={busy}>
+                {tw.save}
+              </button>
+            </div>
+          </form>
+        </details>
+      )}
     </div>
   );
 }

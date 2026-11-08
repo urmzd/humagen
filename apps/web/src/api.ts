@@ -621,6 +621,9 @@ import type {
   CorpusReader,
   CorpusSearch,
   CorpusSearchWarning,
+  GraphNodeView,
+  GraphView,
+  OwnerAction,
   SnowflakeSetupInput,
 } from "../../../packages/client/src/generated/types.ts";
 export type { CatalogConnector, CatalogConnectorView, CatalogEntry, CatalogPage };
@@ -635,6 +638,9 @@ export type {
   CorpusReader,
   CorpusSearch,
   CorpusSearchWarning,
+  GraphNodeView,
+  GraphView,
+  OwnerAction,
   SnowflakeSetupInput,
 };
 
@@ -1565,6 +1571,19 @@ export const api = {
   /** The search an agent's corpus_search runs, with the caller's own access. */
   searchCorpus: (name: string, q: string) =>
     call<CorpusSearch>("GET", `${corpusPath(name)}/search?${new URLSearchParams({ q })}`),
+  /** A corpus's slice of the workspace graph, as the caller may see it, and its health. */
+  corpusGraph: (name: string) => call<GraphView>("GET", `${corpusPath(name)}/graph`),
+  /** The owner rebuilds the slice now. */
+  buildCorpusGraph: (name: string) => call<GraphView>("POST", `${corpusPath(name)}/graph/build`),
+  /** Confirm, decline or hand off who owns a document or table. */
+  decideGraphOwner: (id: string, action: OwnerAction) =>
+    call<GraphNodeView>("PUT", `/api/graph/nodes/${encodeURIComponent(id)}/owner`, action),
+  /** Propose types from the warehouse tables a corpus holds; kept as `proposed_ontology`. */
+  inferOntology: (name: string) => call<Corpus>("POST", `${corpusPath(name)}/ontology/infer`),
+  /** Accept the proposed types named, or every one when none is named. */
+  acceptOntology: (name: string, types?: string[]) =>
+    call<Corpus>("POST", `${corpusPath(name)}/ontology/accept`, types ? { types } : {}),
+  discardOntology: (name: string) => call<Corpus>("POST", `${corpusPath(name)}/ontology/discard`),
   /** A Snowflake connector that holds no credential: each reader gives their own login. */
   createSnowflakeConnector: (input: SnowflakeSetupInput) =>
     call<CatalogConnector>("POST", "/api/catalog/connectors/snowflake", input),

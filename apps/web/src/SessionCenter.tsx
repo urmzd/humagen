@@ -6,6 +6,9 @@ import { href, type Route } from "./route.ts";
 import {
   type AgentSessionSummary,
   type Alert,
+  alertActionLabel,
+  alertDestination,
+  alertPage,
   alertPriority,
   attentionAlerts,
   isRootSession,
@@ -368,7 +371,10 @@ export function AlertsPage({
     else
       sessionCenter.alerts(JSON.parse(key)).then(
         (r) => {
-          if (generation === request.current) setRows(orderAlerts(r.filter((a) => !!a.session)));
+          // An alert with no session (knowledge maintenance before a workspace has a
+          // model) stays here when its action names the page it is about.
+          if (generation === request.current)
+            setRows(orderAlerts(r.filter((a) => !!a.session || !!alertPage(a))));
         },
         (e) => {
           if (generation === request.current) setProblem(failure(e));
@@ -587,9 +593,13 @@ export function AlertsPage({
                 <li key={a.id}>
                   <ItemCard
                     title={a.title}
-                    href={href({ page: "conversation", id: a.session!, message: a.message })}
+                    // An alert with no session (maintenance before a workspace has a model) opens its page.
+                    href={alertDestination(a) && href(alertDestination(a)!)}
                     time={ago(a.at)}
-                    onOpen={() => go({ page: "conversation", id: a.session!, message: a.message })}
+                    onOpen={() => {
+                      const to = alertDestination(a);
+                      if (to) go(to);
+                    }}
                     facts={
                       <>
                         {canWrite && (
@@ -622,11 +632,12 @@ export function AlertsPage({
                         <button
                           type="button"
                           className={primary}
-                          onClick={() =>
-                            go({ page: "conversation", id: a.session!, message: a.message })
-                          }
+                          onClick={() => {
+                            const to = alertPage(a) ?? alertDestination(a);
+                            if (to) go(to);
+                          }}
                         >
-                          {a.action || "Open"}
+                          {alertActionLabel(a)}
                         </button>
                         {canWrite && (
                           <>
@@ -776,10 +787,16 @@ export function HomeSessionGlance({
                         type="button"
                         className={primary}
                         onClick={() =>
-                          go({ page: "conversation", id: a.session!, message: a.message })
+                          go(
+                            alertPage(a) ?? {
+                              page: "conversation",
+                              id: a.session!,
+                              message: a.message,
+                            },
+                          )
                         }
                       >
-                        {a.action || "Open"}
+                        {alertActionLabel(a)}
                       </button>
                       {canWrite && (
                         <button

@@ -378,6 +378,8 @@ test("Knowledge and each corpus have addresses, with tabs as paths, and old link
     { page: "corpus", name: "hr-policies", tab: "access" },
     { page: "corpus", name: "hr-policies", tab: "search" },
     { page: "corpus", name: "hr-policies", tab: "search", q: "parental leave & pay" },
+    { page: "corpus", name: "hr-policies", tab: "graph" },
+    { page: "corpus", name: "hr-policies", tab: "types" },
     { page: "context", corpus: "hr-policies", source: "handbook", tab: "documents" },
     { page: "context", corpus: "hr-policies", source: "handbook", tab: "search" },
     { page: "context", source: "handbook", tab: "evals" },
@@ -402,6 +404,14 @@ test("Knowledge and each corpus have addresses, with tabs as paths, and old link
   assert.equal(
     href({ page: "corpus", name: "hr-policies", tab: "search", q: "leave" }),
     "/knowledge/hr-policies/search?q=leave",
+  );
+  assert.equal(
+    href({ page: "corpus", name: "hr-policies", tab: "graph" }),
+    "/knowledge/hr-policies/graph",
+  );
+  assert.equal(
+    href({ page: "corpus", name: "hr-policies", tab: "types" }),
+    "/knowledge/hr-policies/types",
   );
   // The words of a search belong to the search tab alone.
   assert.deepEqual(at("/knowledge/hr-policies/access?q=leave"), {

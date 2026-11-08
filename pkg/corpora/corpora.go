@@ -94,6 +94,25 @@ const (
 	Shared Links = "shared"
 )
 
+// Label is how sensitive a corpus's content is.
+type Label string
+
+const (
+	Public       Label = "public"
+	Internal     Label = "internal"
+	Confidential Label = "confidential"
+	// Restricted is pay, health, performance, investigations and personal
+	// records. Granting it to an agent takes a workspace admin and a stated
+	// purpose.
+	Restricted Label = "restricted"
+)
+
+var labels = []Label{Public, Internal, Confidential, Restricted}
+
+// Sensitive reports whether content of the label stays in the private
+// conversation of the person who read it.
+func (l Label) Sensitive() bool { return l == Confidential || l == Restricted }
+
 // Corpus is one named body of knowledge.
 type Corpus struct {
 	Name string `json:"name"`
@@ -112,13 +131,21 @@ type Corpus struct {
 	// GraphSearch adds the workspace graph to its search: documents by who
 	// owns them, the systems they sit in and how stale they are.
 	GraphSearch bool `json:"graph_search,omitempty"`
+	// Label is how sensitive its content is; internal by default.
+	Label Label `json:"label"`
+	// Purpose is why its agents may read it, required to grant a
+	// restricted corpus.
+	Purpose string `json:"purpose,omitempty"`
 	// Ontology is the types the corpus adds to the workspace graph, a JSON
 	// Schema the platform checks (pkg/graph). Proposed is one inferred for
 	// the owner to accept; it adds nothing until accepted.
-	Ontology  json.RawMessage `json:"ontology,omitempty"`
-	Proposed  json.RawMessage `json:"proposed_ontology,omitempty"`
-	CreatedAt time.Time       `json:"created_at"`
-	UpdatedAt time.Time       `json:"updated_at"`
+	Ontology json.RawMessage `json:"ontology,omitempty"`
+	Proposed json.RawMessage `json:"proposed_ontology,omitempty"`
+	// OntologySeen marks the last inferred proposal, so one discarded or
+	// accepted is not proposed again.
+	OntologySeen string    `json:"ontology_seen,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 	// Version is the stored record's version. An update or delete that
 	// names it fails with ErrConflict once someone else changed the corpus.
 	Version int64 `json:"version"`
@@ -155,6 +182,13 @@ func normal(c Corpus) (Corpus, error) {
 	}
 	if c.Links == "" {
 		c.Links = Isolated
+	}
+	if c.Label == "" {
+		c.Label = Internal
+	}
+	c.Purpose = strings.TrimSpace(c.Purpose)
+	if !slices.Contains(labels, c.Label) || len(c.Purpose) > MaxDescription || !utf8.ValidString(c.Purpose) {
+		return c, fmt.Errorf("%w: label is public, internal, confidential or restricted, and a purpose at most %d bytes", ErrInvalid, MaxDescription)
 	}
 	if c.Links != Isolated && c.Links != Shared {
 		return c, fmt.Errorf("%w: links is isolated or shared", ErrInvalid)

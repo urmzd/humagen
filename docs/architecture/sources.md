@@ -190,6 +190,16 @@ warehouse login on a warehouse's card. A source opened from a corpus sits
 under it, at `/knowledge/{corpus}/sources/{source}`. Built in
 `apps/web/src/Corpora.tsx`, tested in `corpora.dom.test.tsx`.
 
+The Graph tab (`/knowledge/{corpus}/graph`) shows the slice's health on one
+line and a row per document and table, with who owns it and whether it is
+stale and why; whoever owns a row confirms, hands off or declines it, and the
+corpus's owner claims or hands on one nobody owns. The Types tab
+(`/knowledge/{corpus}/types`) lists the declared types, offers a proposal's
+types to accept or discard, and gives the owner Propose From Warehouse and the
+ontology as JSON. New Corpus and Edit ask for the label (a restricted corpus
+also asks for its purpose), and a card's pill is its label. A knowledge alert
+opens its corpus.
+
 ### Warehouses: queried live as the reader
 
 A Snowflake or BigQuery connector in a corpus keeps schema only: its owner's
@@ -299,9 +309,72 @@ that matches a type gets `entity_type` and that type's half-life, and the
 ontology's relations join the typed tables of one warehouse (an Order table's
 `customer`). Only the owner changes, infers, accepts or discards.
 
-Not built yet: the semantic layer (content extraction against the ontology:
-topics, mentions, contradictions, metadata filters), the maintenance agent,
-freshness alerts and sensitivity labels.
+### Maintenance
+
+After each graph refresh (every 10 minutes, on the leader) a maintenance pass
+looks at every corpus, with no model calls, and tells the person who can act:
+
+| Finds | Alert to | Resolved when |
+| --- | --- | --- |
+| A member whose sync failed or went stale, or a warehouse not crawled in twice its cadence | The corpus's owner | It syncs again |
+| Stale documents | Each document's owner, naming theirs | They are updated, replaced or handed on |
+| Documents nobody owns (declined, or their owner left) | The corpus's owner | Someone claims them or they are handed on |
+| Warehouse tables that would add types the ontology lacks | The corpus's owner, with the types kept as `proposed_ontology` | The proposal is accepted or discarded; one is never proposed twice |
+
+Alerts are kind `knowledge`, at most one open per cause, in the person's own
+session with the builder; before a workspace has a model there is no built-in
+to hold that session, and the alert stays in the person's alert center. Each
+names up to 10 items. The low-risk changes need no proposal: staleness marks
+and facts retired with their source are applied as the graph rebuilds.
+`(*Platform).MaintainKnowledge` runs one pass.
+
+### Retrieval evals
+
+A corpus's search is evaluated beside its agents: an eval suite with
+`target: corpus` names the corpus, and each case a query and the documents
+(by title) it should return. A run scores the same search agents run (fused,
+deduplicated, graph retrieval when the corpus has it, no live member, so a
+suite never spends anyone's credential) with the access of whoever starts it,
+and reports hit rate, MRR, recall, precision and nDCG at `k`. Suites run on
+demand or on a schedule (`every_seconds`) and alert like any other suite. Only
+someone who may read the corpus makes or runs one.
+
+### Sensitivity
+
+Every corpus has a label: `public`, `internal` (the default), `confidential`
+or `restricted` (pay, health, performance, investigations, personal records).
+
+An answer stays where it was asked, so a corpus tool uses only what everyone
+that place reaches may read, checked each time the tool runs (people join
+channels):
+
+| Where the question is | Audience | A corpus is used when |
+| --- | --- | --- |
+| The person's own private conversation in the console, or their DM with the app | The person | They may read it, at any label; live references and their own warehouse logins too |
+| A shared conversation in the console, or a Slack private channel or group DM | Its current members | Every member reads it, at any label, and only members every one of them may see; a Slack member the workspace cannot map to a person fails it |
+| A Slack public channel, or a Slack thread whose audience is not known | The workspace | The workspace reads it and it is public or internal |
+| A GitHub thread | Possibly beyond the workspace | The workspace reads it and it is public |
+
+- What a tool holds back, it says (`held_back`), so the agent tells the person
+  the data can't be used here and suggests a direct message, or a private
+  channel whose members may all read it.
+- A Slack conversation's audience is what the Slack app last reported with a
+  message (`SurfaceAudience`: kind, members as people, unmapped members),
+  read through the session API (`Platform.audienceSource`).
+- A direct answer marks its run private, so nothing it read goes into shared
+  agent memory or out to another place.
+- Every read of a confidential or restricted corpus is audited (`corpus.read`,
+  with the agent, the conversation, the audience and the corpus's purpose).
+- Granting a restricted corpus to an agent, or restricting one that agents
+  are granted, takes a workspace admin (`clients:write`) and a stated
+  `purpose`.
+- Warehouse rows (`corpus_query`) are answered only in a direct conversation.
+
+Not built yet: labels read from the sources themselves (Drive labels,
+Snowflake and BigQuery policy tags) and per document, self access to records
+about oneself, personal corpora, and the semantic layer (content extraction
+against the ontology: topics, mentions, contradictions, metadata filters,
+duplicate entities).
 
 ## Proposed versioned source files
 

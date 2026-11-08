@@ -1320,6 +1320,7 @@ function Console({
                           q={route.q}
                           sources={sources}
                           agents={agents.map((agent) => agent.spec.name)}
+                          viewer={me.principal.subject}
                           canWrite={can("knowledge:write")}
                           onTab={(tab) => go({ page: "corpus", name: route.name, tab })}
                           onSearch={(q) =>

@@ -2,6 +2,8 @@ package platform
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -73,6 +75,8 @@ type CorpusCreate struct {
 	GraphSearch bool     `json:"graph_search"`
 	// Ontology is a JSON Schema of the types it adds to the graph.
 	Ontology json.RawMessage `json:"ontology,omitempty"`
+	Label    corpora.Label   `json:"label"`
+	Purpose  string          `json:"purpose"`
 }
 
 // CorpusChange is a partial change to a corpus. A nil field is kept.
@@ -86,6 +90,8 @@ type CorpusChange struct {
 	GraphSearch *bool             `json:"graph_search,omitempty"`
 	// Ontology replaces its declared ontology; {} clears it.
 	Ontology *json.RawMessage `json:"ontology,omitempty"`
+	Label    *corpora.Label   `json:"label,omitempty"`
+	Purpose  *string          `json:"purpose,omitempty"`
 	// Agents replaces the agents granted the corpus. Agents the owner can
 	// no longer see are kept.
 	Agents *[]string `json:"agents,omitempty"`
@@ -286,7 +292,10 @@ func (p *Platform) CreateCorpus(who auth.Principal, in CorpusCreate) (CorpusView
 	if err != nil {
 		return CorpusView{}, err
 	}
-	c, err := p.Corpora.Create(who.Tenant, corpora.Corpus{Name: in.Name, Title: in.Title, Description: in.Description, Owner: who.Subject, Readers: in.Readers, Members: in.Members, Agents: in.Agents, Links: in.Links, GraphSearch: in.GraphSearch, Ontology: ontology}, p.now())
+	if err := restrictedGrant(who, corpora.Corpus{}, corpora.Corpus{Label: in.Label, Agents: in.Agents, Purpose: in.Purpose}); err != nil {
+		return CorpusView{}, err
+	}
+	c, err := p.Corpora.Create(who.Tenant, corpora.Corpus{Name: in.Name, Title: in.Title, Description: in.Description, Owner: who.Subject, Readers: in.Readers, Members: in.Members, Agents: in.Agents, Links: in.Links, GraphSearch: in.GraphSearch, Ontology: ontology, Label: in.Label, Purpose: in.Purpose}, p.now())
 	if err != nil {
 		return CorpusView{}, err
 	}
@@ -326,6 +335,8 @@ func (p *Platform) UpdateCorpus(who auth.Principal, name string, ch CorpusChange
 		if c.Owner != who.Subject {
 			return fmt.Errorf("%w: only %s's owner may change it", ErrForbidden, name)
 		}
+		before := *c
+		before.Agents = slices.Clone(c.Agents)
 		if ch.Title != nil {
 			c.Title = *ch.Title
 		}
@@ -343,6 +354,12 @@ func (p *Platform) UpdateCorpus(who auth.Principal, name string, ch CorpusChange
 		}
 		if ch.Ontology != nil {
 			c.Ontology = ontology
+		}
+		if ch.Label != nil {
+			c.Label = *ch.Label
+		}
+		if ch.Purpose != nil {
+			c.Purpose = *ch.Purpose
 		}
 		if ch.Members != nil {
 			next := slices.Clone(*ch.Members)
@@ -366,7 +383,7 @@ func (p *Platform) UpdateCorpus(who auth.Principal, name string, ch CorpusChange
 		if ch.Owner != nil {
 			c.Owner = *ch.Owner
 		}
-		return nil
+		return restrictedGrant(who, before, *c)
 	})
 	if err != nil {
 		return CorpusView{}, err
@@ -486,8 +503,9 @@ func (p *Platform) InferOntology(who auth.Principal, name string) (CorpusView, e
 		return CorpusView{}, err
 	}
 	proposed := graph.Infer(entries).Raw()
+	digest := sha256.Sum256(proposed)
 	updated, err := p.Corpora.Update(who.Tenant, name, c.Version, p.now(), func(c *corpora.Corpus) error {
-		c.Proposed = proposed
+		c.Proposed, c.OntologySeen = proposed, hex.EncodeToString(digest[:12])
 		return nil
 	})
 	if err != nil {
@@ -540,4 +558,29 @@ func (p *Platform) DiscardOntology(who auth.Principal, name string) (CorpusView,
 		return CorpusView{}, err
 	}
 	return p.corpusView(who, updated), nil
+}
+
+// restrictedGrant checks a change against the rule for restricted corpora:
+// granting one to an agent, or restricting one that agents are granted,
+// takes a workspace admin (clients:write) and a stated purpose.
+func restrictedGrant(who auth.Principal, before, after corpora.Corpus) error {
+	if after.Label != corpora.Restricted || len(after.Agents) == 0 {
+		return nil
+	}
+	added := before.Label != corpora.Restricted
+	for _, a := range after.Agents {
+		if !slices.Contains(before.Agents, a) {
+			added = true
+		}
+	}
+	if !added {
+		return nil
+	}
+	if !who.Can(auth.ClientsWrite) {
+		return fmt.Errorf("%w: granting a restricted corpus to an agent takes a workspace admin", ErrForbidden)
+	}
+	if strings.TrimSpace(after.Purpose) == "" {
+		return fmt.Errorf("%w: say why its agents may read a restricted corpus (purpose)", corpora.ErrInvalid)
+	}
+	return nil
 }

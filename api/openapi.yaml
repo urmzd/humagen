@@ -422,8 +422,8 @@ paths:
         - {name: mine, in: query, required: false, schema: {type: boolean}}
         - {"name": "status", "in": "query", "required": false, "schema": {"type": "string"}}
         - {"name": "agent", "in": "query", "required": false, "schema": {"type": "string"}}
-        - {"name": "project", "in": "query", "required": false, "schema": {"type": "string"}}
-        - {"name": "parent", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "project", "in": "query", "required": false, "description": "A project's name, or `~` for the workspace itself.", "schema": {"type": "string"}}
+        - {"name": "parent", "in": "query", "required": false, "description": "A session's id, or `schedule://<name>` for a schedule's runs.", "schema": {"type": "string"}}
         - {"name": "after", "in": "query", "required": false, "schema": {"type": "string"}}
         - {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200}}
       responses:
@@ -4107,7 +4107,19 @@ paths:
       operationId: listSchedules
       tags: [schedules]
       summary: List schedules
+      description: |
+        Every schedule filed where the caller may read, or with `project`
+        those filed in one project (`~` is the workspace itself). Each run
+        of a schedule is a session in its project, under
+        `schedule://<name>`: `GET /api/sessions?parent=schedule://<name>`
+        lists them.
       x-permission: schedules:read
+      parameters:
+        - name: project
+          in: query
+          required: false
+          description: A project's name, or `~` for the workspace. One the caller may not read is 404.
+          schema: {type: string, minLength: 1, maxLength: 63}
       responses:
         "200":
           description: Every schedule, with its next fires and recent runs.
@@ -4120,8 +4132,10 @@ paths:
                   schedules:
                     type: array
                     items: {$ref: "#/components/schemas/ScheduleView"}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
     post:
       operationId: createSchedule
@@ -13227,9 +13241,6 @@ components:
             on a view.
           type: string
           format: date-time
-        approve_reviews:
-          type: boolean
-          default: false
     ProjectStep:
       description: One project on the way down to another.
       type: object
@@ -13243,8 +13254,16 @@ components:
       allOf:
         - {$ref: "#/components/schemas/Project"}
         - type: object
-          required: [depth, path, children, conversations, active, schedules, notes, proposed, access, actions, mine, unread, row_agents]
+          required: [depth, path, children, conversations, active, schedules, notes, proposed, access, actions, mine, unread, row_agents, visibility]
           properties:
+            visibility:
+              description: |
+                How widely the project is read by its own entries: `private`
+                (a Personal project, or one person alone), `shared` (named
+                people or roles), or `workspace` (an entry for everyone).
+                Owners above a members-only project read it too.
+              type: string
+              enum: [private, shared, workspace]
             unread:
               description: Unread open messages and announcements in the caller's own inbox filed directly in this project, excluding every message the reader cannot see.
               type: integer
@@ -13427,9 +13446,6 @@ components:
           - ''
           - publish
           - review
-        approve_reviews:
-          type: boolean
-          default: false
     ProjectAccess:
       description: A caller's role in a project, where it comes from, and the entry or rule that gave it.
       type: object
@@ -14765,7 +14781,7 @@ components:
       description: |
         `budget` is raised by a billing policy, never by a rule, and a rule
         cannot be created with it.
-      enum: [run_failed, failure_rate, slow_run, eval_below, spend, budget, session, mention, source, approval, clarification, failure, operation, alert, connection]
+      enum: [run_failed, failure_rate, slow_run, eval_below, spend, budget, session, mention, source, approval, clarification, failure, operation, alert, connection, knowledge]
     AlertSeverity:
       type: string
       enum: [warning, critical]
@@ -14897,7 +14913,8 @@ components:
 
     EvalTarget:
       type: string
-      enum: [agent, knowledge]
+      description: "`corpus` scores a corpus's search as an agent runs it, with the access of whoever starts the run; its cases name the documents (by title) a query should return."
+      enum: [agent, knowledge, corpus]
     EvalCheck:
       description: A deterministic check on an agent's output.
       type: object
@@ -15083,7 +15100,7 @@ components:
         name: {type: string, maxLength: 200, description: "A person's subject or a project's name; none for the workspace."}
     Corpus:
       type: object
-      required: [name, owner, readers, members, agents, links, created_at, updated_at, version, mine]
+      required: [name, owner, readers, members, agents, links, label, created_at, updated_at, version, mine]
       properties:
         name: {type: string}
         title: {type: string, description: "What people call it, such as HR policies. Absent shows the name."}
@@ -15104,6 +15121,9 @@ components:
           items: {type: string}
         ontology: {type: object, additionalProperties: true, description: "A JSON Schema (2020-12) of the types it adds to the graph: $defs, x-relations, x-metadata."}
         proposed_ontology: {type: object, additionalProperties: true, description: "An inferred ontology waiting for its owner to accept it."}
+        ontology_seen: {type: string, description: "Marks the last inferred proposal, so one accepted or discarded is not proposed again."}
+        label: {type: string, enum: [public, internal, confidential, restricted], description: "How sensitive its content is. Confidential and restricted content stays in its reader's private conversation."}
+        purpose: {type: string, description: "Why its agents may read it; required to grant a restricted corpus."}
         graph_search: {type: boolean, description: "Adds the workspace graph to its search."}
         links:
           type: string
@@ -15196,6 +15216,7 @@ components:
           items: {$ref: "#/components/schemas/CorpusMemberRef"}
         owner: {type: string, description: "Who owns the document, when graph retrieval found it."}
         stale: {type: boolean}
+        label: {type: string, enum: [public, internal, confidential, restricted], description: "Its corpus's label."}
     CorpusSearchWarning:
       type: object
       required: [corpus, cause]
@@ -15237,6 +15258,8 @@ components:
           maxItems: 50
           items: {type: string}
         ontology: {type: object, additionalProperties: true}
+        label: {type: string, enum: [public, internal, confidential, restricted], default: internal}
+        purpose: {type: string, maxLength: 500}
         graph_search: {type: boolean, description: "Adds the workspace graph to its search."}
         links: {type: string, enum: [isolated, shared]}
     CorpusChange:
@@ -15253,6 +15276,8 @@ components:
           maxItems: 50
           items: {$ref: "#/components/schemas/CorpusMemberRef"}
         ontology: {type: object, additionalProperties: true, description: "Replaces its declared ontology; {} clears it."}
+        label: {type: string, enum: [public, internal, confidential, restricted], description: "Restricting a corpus that agents are granted takes a workspace admin and a purpose."}
+        purpose: {type: string, maxLength: 500}
         graph_search: {type: boolean, description: "Adds the workspace graph to its search."}
         links: {type: string, enum: [isolated, shared]}
         agents:

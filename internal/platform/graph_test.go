@@ -203,3 +203,30 @@ func TestAnAcceptedOntologyTypesTheGraph(t *testing.T) {
 		t.Fatal("a reader who is not the owner proposed an ontology")
 	}
 }
+
+// Maintenance proposes types a corpus's warehouse suggests once: a
+// proposal discarded or accepted is not asked again.
+func TestMaintenanceProposesAnOntologyOnce(t *testing.T) {
+	f := graphFixture(t)
+	f.mine.entries = []catalog.Entry{{System: "bigquery", Kind: "table", Path: "acme.sales.orders", Schema: []catalog.Column{{Name: "id", Type: "INT64"}}}}
+	owner := f.p.invitationReader("tenant", "owner")
+	owner.Scopes = append(owner.Scopes, auth.KnowledgeWrite)
+	if _, err := f.p.CrawlConnector(t.Context(), owner, "mine"); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := f.p.Corpora.Get("tenant", "hr")
+	if got, err := f.p.proposeOntology("tenant", c); err != nil || got != "Order" {
+		t.Fatalf("first proposal %q, %v", got, err)
+	}
+	c, _ = f.p.Corpora.Get("tenant", "hr")
+	if got, _ := f.p.proposeOntology("tenant", c); got != "Order" {
+		t.Fatalf("an open proposal is still named: %q", got)
+	}
+	if _, err := f.p.DiscardOntology(owner, "hr"); err != nil {
+		t.Fatal(err)
+	}
+	c, _ = f.p.Corpora.Get("tenant", "hr")
+	if got, _ := f.p.proposeOntology("tenant", c); got != "" || len(c.Proposed) != 0 {
+		t.Fatalf("a discarded proposal came back: %q", got)
+	}
+}

@@ -49,6 +49,7 @@ const corpus = (over: Partial<Corpus> = {}): Corpus => ({
     },
   ],
   agents: [],
+  label: "internal",
   links: "isolated",
   created_at: at,
   updated_at: at,
@@ -103,7 +104,14 @@ test("Knowledge lists corpora as cards by title: providers, items, one pill, Ope
     "GET /api/corpora": () => ({
       corpora: [
         corpus(),
-        corpus({ name: "finance", title: undefined, mine: false, links: "shared", members: [] }),
+        corpus({
+          name: "finance",
+          title: undefined,
+          label: "public",
+          mine: false,
+          links: "shared",
+          members: [],
+        }),
       ],
     }),
   });
@@ -114,7 +122,7 @@ test("Knowledge lists corpora as cards by title: providers, items, one pill, Ope
   assert.ok(within(hr).getByText("Google Drive"));
   assert.ok(within(hr).getByText("BigQuery"));
   assert.ok(within(hr).getByText(words.items(19)));
-  assert.ok(within(hr).getByText(words.isolated));
+  assert.ok(within(hr).getByText(words.labels.internal));
   assert.equal(
     within(hr)
       .getByRole("link", { name: `${words.open} HR policies` })
@@ -124,7 +132,7 @@ test("Knowledge lists corpora as cards by title: providers, items, one pill, Ope
   assert.ok(within(hr).getByRole("button", { name: words.more("HR policies") }));
   // A corpus with no title shows its name.
   const finance = screen.getByRole("listitem", { name: "finance" });
-  assert.ok(within(finance).getByText(words.shared));
+  assert.ok(within(finance).getByText(words.labels.public));
   // Only the owner changes a corpus.
   assert.equal(within(finance).queryByRole("button", { name: words.more("finance") }), null);
   // With corpora shown, New Corpus is the page's one action.
@@ -165,6 +173,7 @@ test("New Corpus asks for a title, names it from the title, sets who reads it, a
     title: "HR policies!",
     description: "Leave and benefits",
     readers: [{ kind: "workspace" }],
+    label: "internal",
   });
 });
 
@@ -843,4 +852,370 @@ test("the owner grants the corpus to an agent; a reader sees the agents read-onl
   const readOnly = await screen.findByRole("region", { name: words.agents.title });
   await within(readOnly).findByText("hr-helper");
   assert.equal(within(readOnly).queryByRole("button"), null);
+});
+
+const graphView = {
+  nodes: [
+    {
+      id: "n1",
+      key: "doc:leave",
+      type: "document",
+      name: "Leave policy",
+      uri: "https://wiki.example.com/leave",
+      member: "source/handbook",
+      owner: "me",
+      owner_state: "suggested",
+      staleness: { score: 0.9, stale: true, reasons: ["old", "superseded"] },
+    },
+    {
+      id: "n2",
+      key: "doc:faq",
+      type: "document",
+      name: "Benefits FAQ",
+      member: "source/handbook",
+      owner: "bob",
+      owner_state: "confirmed",
+      staleness: { score: 0.1, stale: false },
+    },
+    {
+      id: "n3",
+      key: "table:employees",
+      type: "Employee",
+      name: "HR.PUBLIC.EMPLOYEES",
+      member: "catalog/people-warehouse",
+      owner_state: "unowned",
+    },
+    { id: "p1", key: "person:ada", type: "person", name: "Ada", owner_state: "" },
+  ],
+  edges: [],
+  health: {
+    nodes: 5,
+    edges: 3,
+    by_type: { document: 2, Employee: 1, person: 1, system: 1 },
+    unowned: 1,
+    stale: 1,
+    built_at: at,
+  },
+};
+
+test("the Graph tab shows its health and each document's owner and staleness, and owners decide", async () => {
+  net = stubFetch({
+    "GET /api/corpora/hr-policies": () => corpus(),
+    "GET /api/corpora/hr-policies/graph": () => graphView,
+    "POST /api/corpora/hr-policies/graph/build": () => graphView,
+    "PUT /api/graph/nodes/n1/owner": () => ({ ...graphView.nodes[0], owner_state: "confirmed" }),
+    "PUT /api/graph/nodes/n3/owner": (body) => ({
+      ...graphView.nodes[2],
+      owner: (body as { to: string }).to,
+      owner_state: "confirmed",
+    }),
+    ...directory,
+  });
+  render(page({ tab: "graph", viewer: "me" }));
+  await screen.findByText(/^3 documents \| 1 system \| 1 person \| 1 unowned \| 1 stale \| built /);
+  const leave = await screen.findByRole("listitem", { name: "Leave policy" });
+  assert.equal(
+    within(leave).getByRole("link", { name: "Leave policy" }).getAttribute("href"),
+    "https://wiki.example.com/leave",
+  );
+  assert.ok(within(leave).getByText(words.graph.you));
+  assert.ok(within(leave).getByText(words.graph.states.suggested));
+  assert.ok(within(leave).getByText(words.graph.staleLabel));
+  assert.ok(within(leave).getByText("old, superseded"));
+  const faq = screen.getByRole("listitem", { name: "Benefits FAQ" });
+  await within(faq).findByText("Bob");
+  assert.ok(within(faq).getByText(words.graph.states.confirmed));
+  assert.equal(within(faq).queryByText(words.graph.staleLabel), null);
+  // Someone else's document is theirs to decide.
+  assert.equal(within(faq).queryByRole("button"), null);
+  const table = screen.getByRole("listitem", { name: "HR.PUBLIC.EMPLOYEES" });
+  assert.ok(within(table).getByText("Employee"));
+  assert.ok(within(table).getByText(words.graph.noOwner));
+  // People are part of the graph, not rows of it.
+  assert.equal(screen.queryByRole("listitem", { name: "Ada" }), null);
+
+  await openMenu("Leave policy");
+  assert.ok(await screen.findByRole("menuitem", { name: words.graph.decline }));
+  await choose(words.graph.confirm);
+  await screen.findByText(words.graph.confirmed("Leave policy"));
+  await within(screen.getByRole("listitem", { name: "Leave policy" })).findByText(
+    words.graph.states.confirmed,
+  );
+
+  // The corpus's owner hands on a table nobody owns.
+  await openMenu("HR.PUBLIC.EMPLOYEES");
+  assert.equal(screen.queryByRole("menuitem", { name: words.graph.decline }), null);
+  await choose(words.graph.handOff);
+  const form = await screen.findByRole("form", {
+    name: words.graph.handOffTitle("HR.PUBLIC.EMPLOYEES"),
+  });
+  fireEvent.change(within(form).getByRole("combobox", { name: words.graph.to }), {
+    target: { value: "bob" },
+  });
+  fireEvent.click(within(form).getByRole("button", { name: words.graph.handOff }));
+  await screen.findByText(words.graph.handedOff("HR.PUBLIC.EMPLOYEES", "Bob"));
+  assert.deepEqual(
+    net.seen.filter((r) => r.method === "PUT").map((r) => [r.path, r.body]),
+    [
+      ["/api/graph/nodes/n1/owner", { action: "confirm" }],
+      ["/api/graph/nodes/n3/owner", { action: "hand_off", to: "bob" }],
+    ],
+  );
+  fireEvent.click(screen.getByRole("button", { name: words.graph.rebuild }));
+  await screen.findByText(words.graph.rebuilt);
+});
+
+test("a reader who owns no document and not the corpus sees the graph without actions", async () => {
+  net = stubFetch({
+    "GET /api/corpora/hr-policies": () => corpus({ mine: false }),
+    "GET /api/corpora/hr-policies/graph": () => graphView,
+    ...directory,
+  });
+  render(page({ tab: "graph", viewer: "carol" }));
+  await screen.findByRole("listitem", { name: "Leave policy" });
+  assert.equal(screen.queryByRole("button", { name: words.graph.rebuild }), null);
+  assert.equal(screen.queryByRole("button", { name: words.more("HR.PUBLIC.EMPLOYEES") }), null);
+  assert.equal(screen.queryByRole("button", { name: words.more("Leave policy") }), null);
+});
+
+const ontology = {
+  $defs: {
+    Policy: { type: "object", properties: { jurisdiction: { type: "string" } } },
+    Employee: { type: "object", properties: { start_date: { type: "string" } } },
+  },
+  "x-relations": [{ name: "governs", from: "Policy", to: "Employee", cardinality: "many" }],
+};
+const proposal = {
+  $defs: {
+    Order: { type: "object", properties: { id: { type: "string" }, total: { type: "number" } } },
+    Customer: { type: "object", properties: { id: { type: "string" } } },
+  },
+};
+
+test("the Types tab shows declared types and accepts the selected proposed ones", async () => {
+  let current = corpus({ ontology, proposed_ontology: proposal });
+  net = stubFetch({
+    "GET /api/corpora/hr-policies": () => current,
+    "POST /api/corpora/hr-policies/ontology/accept": () => {
+      current = corpus({ ontology, version: 4 });
+      return current;
+    },
+  });
+  render(page({ tab: "types" }));
+  const policy = await screen.findByRole("listitem", { name: "Policy" });
+  assert.ok(within(policy).getByText(`${words.types.properties}: jurisdiction`));
+  assert.ok(
+    within(policy).getByText(
+      `${words.types.relations}: ${words.types.relation("governs", "Employee", true)}`,
+    ),
+  );
+  const proposed = screen.getByRole("region", { name: words.types.proposed });
+  fireEvent.click(within(proposed).getByRole("checkbox", { name: "Customer" }));
+  fireEvent.click(within(proposed).getByRole("button", { name: words.types.acceptSelected }));
+  await screen.findByText(words.types.accepted);
+  assert.deepEqual(net.seen.find((r) => r.method === "POST")?.body, { types: ["Order"] });
+  await waitFor(() =>
+    assert.equal(screen.queryByRole("region", { name: words.types.proposed }), null),
+  );
+});
+
+test("the owner proposes types from warehouses, discards a proposal, and edits types as JSON", async () => {
+  let current = corpus({ proposed_ontology: proposal });
+  net = stubFetch({
+    "GET /api/corpora/hr-policies": () => current,
+    "POST /api/corpora/hr-policies/ontology/infer": () =>
+      new Response(JSON.stringify({ error: "hr-policies holds no warehouse to infer from" }), {
+        status: 400,
+      }),
+    "POST /api/corpora/hr-policies/ontology/discard": () => {
+      current = corpus({ version: 4 });
+      return current;
+    },
+    "PATCH /api/corpora/hr-policies": () =>
+      new Response(JSON.stringify({ error: "ontology: a relation to nothing" }), { status: 400 }),
+  });
+  render(page({ tab: "types" }));
+  fireEvent.click(await screen.findByRole("button", { name: words.types.infer }));
+  await screen.findByText("hr-policies holds no warehouse to infer from");
+  fireEvent.click(screen.getByRole("button", { name: words.types.discard }));
+  await screen.findByText(words.types.discarded);
+  await waitFor(() =>
+    assert.equal(screen.queryByRole("region", { name: words.types.proposed }), null),
+  );
+  const form = screen.getByRole("form", { name: words.types.editJson });
+  const box = within(form).getByRole("textbox", { name: words.types.json });
+  fireEvent.change(box, { target: { value: "{ not json" } });
+  fireEvent.click(within(form).getByRole("button", { name: words.types.save }));
+  await screen.findByText(words.types.badJson);
+  assert.ok(!net.seen.some((r) => r.method === "PATCH"));
+  fireEvent.change(
+    within(screen.getByRole("form", { name: words.types.editJson })).getByRole("textbox", {
+      name: words.types.json,
+    }),
+    {
+      target: {
+        value: JSON.stringify({
+          "x-relations": [{ name: "governs", from: "Policy", to: "Employee" }],
+        }),
+      },
+    },
+  );
+  fireEvent.click(
+    within(screen.getByRole("form", { name: words.types.editJson })).getByRole("button", {
+      name: words.types.save,
+    }),
+  );
+  await screen.findByText("ontology: a relation to nothing");
+  assert.deepEqual(net.seen.find((r) => r.method === "PATCH")?.body, {
+    ontology: { "x-relations": [{ name: "governs", from: "Policy", to: "Employee" }] },
+    version: 4,
+  });
+});
+
+test("New Corpus asks for its label, and for a purpose when it is restricted", async () => {
+  net = stubFetch({
+    "GET /api/corpora": () => ({ corpora: [] }),
+    "POST /api/corpora": (body) => corpus({ ...(body as Partial<Corpus>), members: [] }),
+    ...directory,
+  });
+  render(<KnowledgePage sources={[]} canWrite onOpen={() => {}} />);
+  fireEvent.click(await screen.findByRole("button", { name: words.newCorpus }));
+  const form = await screen.findByRole("form", { name: words.form.newTitle });
+  const label = within(form).getByRole("combobox", {
+    name: new RegExp(`^${words.labels.title}`),
+  }) as HTMLSelectElement;
+  assert.equal(label.value, "internal");
+  assert.ok(within(form).getByText(words.labels.meaning));
+  assert.equal(
+    within(form).queryByRole("textbox", { name: new RegExp(`^${words.labels.purpose}`) }),
+    null,
+  );
+  fireEvent.change(
+    within(form).getByRole("textbox", { name: new RegExp(`^${words.form.title}`) }),
+    {
+      target: { value: "Pay" },
+    },
+  );
+  fireEvent.change(label, { target: { value: "restricted" } });
+  fireEvent.change(
+    within(form).getByRole("textbox", { name: new RegExp(`^${words.labels.purpose}`) }),
+    {
+      target: { value: "Payroll questions" },
+    },
+  );
+  fireEvent.click(within(form).getByRole("button", { name: words.form.create }));
+  await waitFor(() =>
+    assert.deepEqual(net?.seen.find((r) => r.method === "POST")?.body, {
+      name: "pay",
+      title: "Pay",
+      description: "",
+      readers: [],
+      label: "restricted",
+      purpose: "Payroll questions",
+    }),
+  );
+});
+
+test("a card's pill is its label; Edit searches the graph too, and restricting it may need an admin", async () => {
+  net = stubFetch({
+    "GET /api/corpora": () => ({
+      corpora: [corpus({ label: "confidential", agents: ["hr-helper"] })],
+    }),
+    "PATCH /api/corpora/hr-policies": () =>
+      new Response(JSON.stringify({ error: "forbidden" }), { status: 403 }),
+    ...directory,
+  });
+  render(<KnowledgePage sources={[]} canWrite onOpen={() => {}} />);
+  const card = await screen.findByRole("listitem", { name: "HR policies" });
+  assert.ok(within(card).getByText(words.labels.confidential));
+  assert.equal(within(card).queryByText(words.isolated), null);
+  await openMenu("HR policies");
+  await choose(words.edit);
+  const form = await screen.findByRole("form", { name: words.form.editTitle("HR policies") });
+  fireEvent.click(
+    within(form).getByRole("checkbox", { name: new RegExp(`^${words.labels.graphSearch}`) }),
+  );
+  fireEvent.change(
+    within(form).getByRole("combobox", { name: new RegExp(`^${words.labels.title}`) }),
+    {
+      target: { value: "restricted" },
+    },
+  );
+  fireEvent.change(
+    within(form).getByRole("textbox", { name: new RegExp(`^${words.labels.purpose}`) }),
+    {
+      target: { value: "Pay questions" },
+    },
+  );
+  fireEvent.click(within(form).getByRole("button", { name: words.form.save }));
+  await within(form).findByText(words.labels.adminNeeded);
+  const sent = net.seen.find((r) => r.method === "PATCH")?.body as Record<string, unknown>;
+  assert.equal(sent.label, "restricted");
+  assert.equal(sent.purpose, "Pay questions");
+  assert.equal(sent.graph_search, true);
+});
+
+test("Isolated or Shared is on the Access tab, where the owner changes it", async () => {
+  net = stubFetch({
+    "GET /api/corpora/hr-policies": () => corpus(),
+    "PATCH /api/corpora/hr-policies": () => corpus({ links: "shared", version: 4 }),
+    ...directory,
+  });
+  render(page({ tab: "access" }));
+  const links = await screen.findByRole("region", { name: words.links.title });
+  assert.ok(within(links).getByText(words.isolated));
+  fireEvent.click(
+    within(links).getByRole("checkbox", { name: new RegExp(`^${words.links.shared}`) }),
+  );
+  // The tab is drawn again from the corpus the change returned.
+  await waitFor(() =>
+    assert.ok(
+      within(screen.getByRole("region", { name: words.links.title })).getByText(words.shared),
+    ),
+  );
+  assert.deepEqual(net.seen.find((r) => r.method === "PATCH")?.body, {
+    links: "shared",
+    version: 3,
+  });
+});
+
+test("a knowledge alert reads as one and opens its corpus, with or without a session", async () => {
+  const { AlertsPage } = await import("./SessionCenter.tsx");
+  const knowledgeAlert = (id: string, session?: string) => ({
+    id,
+    rule: "knowledge",
+    kind: "knowledge",
+    severity: "warning",
+    priority: "normal",
+    state: "open",
+    title: `2 documents in HR policies have no owner (${id})`,
+    action: "/knowledge/hr-policies",
+    at,
+    ...(session ? { session } : {}),
+  });
+  net = stubFetch({
+    "GET /api/alerts": () => ({
+      alerts: [knowledgeAlert("a1"), knowledgeAlert("a2", "s_builder")],
+    }),
+  });
+  const went: unknown[] = [];
+  render(
+    <AlertsPage
+      route={{ page: "alerts" }}
+      go={(to) => went.push(to)}
+      canWrite={false}
+      onChanged={() => {}}
+      tick={0}
+    />,
+  );
+  const alone = await screen.findByRole("link", { name: /\(a1\)/ });
+  assert.equal(alone.getAttribute("href"), "/knowledge/hr-policies");
+  const inSession = screen.getByRole("link", { name: /\(a2\)/ });
+  assert.equal(inSession.getAttribute("href"), "/sessions/s_builder");
+  assert.equal(screen.getAllByText("Knowledge").length >= 2, true);
+  const open = screen.getAllByRole("button", { name: words.openCorpus });
+  assert.equal(open.length, 2);
+  assert.equal(screen.queryByText("/knowledge/hr-policies"), null);
+  fireEvent.click(open[1] as HTMLElement);
+  assert.deepEqual(went, [{ page: "corpus", name: "hr-policies", tab: "sources" }]);
 });

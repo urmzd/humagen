@@ -2219,7 +2219,6 @@ change in the project's history records them the same way.
   updated_by?: string;
   /** When the record last changed. What happened in it is `active_at` on a view. */
   updated_at: string;
-  approve_reviews?: boolean;
 }
 
 /** One project on the way down to another. */
@@ -2230,7 +2229,7 @@ export interface ProjectStep {
 }
 
 /** A project, where it sits, and what is in it. */
-export type ProjectView = Project & { unread: number; row_agents: string[]; depth: number; path: ProjectStep[]; children: number; conversations: number; active: number; active_at?: string; schedules: number; notes: number; proposed: number; access: ProjectAccess; actions: ("create" | "propose" | "notes" | "edit" | "move" | "archive" | "delete" | "limits" | "announce")[]; mine: boolean };
+export type ProjectView = Project & { visibility: "private" | "shared" | "workspace"; unread: number; row_agents: string[]; depth: number; path: ProjectStep[]; children: number; conversations: number; active: number; active_at?: string; schedules: number; notes: number; proposed: number; access: ProjectAccess; actions: ("create" | "propose" | "notes" | "edit" | "move" | "archive" | "delete" | "limits" | "announce")[]; mine: boolean };
 
 /** A limit a run filed in the project falls under for being there, and
 the project it is set on. What the limit allows is read from
@@ -2295,7 +2294,6 @@ export interface ProjectUpdate {
   kinds?: ProjectKindSpec[];
   /** What a scheduled agent's announcement here does, `publish` or `review`. Empty takes the kind's default. */
   agent_posts?: "" | "publish" | "review";
-  approve_reviews?: boolean;
 }
 
 /** A caller's role in a project, where it comes from, and the entry or rule that gave it. */
@@ -3240,7 +3238,7 @@ export interface Span {
 /** `budget` is raised by a billing policy, never by a rule, and a rule
 cannot be created with it.
  */
-export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "spend" | "budget" | "session" | "mention" | "source" | "approval" | "clarification" | "failure" | "operation" | "alert" | "connection";
+export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "spend" | "budget" | "session" | "mention" | "source" | "approval" | "clarification" | "failure" | "operation" | "alert" | "connection" | "knowledge";
 
 export type AlertSeverity = "warning" | "critical";
 
@@ -3323,7 +3321,8 @@ export interface Alert {
   acked_at?: string;
 }
 
-export type EvalTarget = "agent" | "knowledge";
+/** `corpus` scores a corpus's search as an agent runs it, with the access of whoever starts the run; its cases name the documents (by title) a query should return. */
+export type EvalTarget = "agent" | "knowledge" | "corpus";
 
 /** A deterministic check on an agent's output. */
 export interface EvalCheck {
@@ -3456,6 +3455,12 @@ export interface Corpus {
   ontology?: Record<string, unknown>;
   /** An inferred ontology waiting for its owner to accept it. */
   proposed_ontology?: Record<string, unknown>;
+  /** Marks the last inferred proposal, so one accepted or discarded is not proposed again. */
+  ontology_seen?: string;
+  /** How sensitive its content is. Confidential and restricted content stays in its reader's private conversation. */
+  label: "public" | "internal" | "confidential" | "restricted";
+  /** Why its agents may read it; required to grant a restricted corpus. */
+  purpose?: string;
   /** Adds the workspace graph to its search. */
   graph_search?: boolean;
   /** Whether its graph links to other shared corpora. Isolated by default. */
@@ -3539,6 +3544,8 @@ export interface CorpusHit {
   /** Who owns the document, when graph retrieval found it. */
   owner?: string;
   stale?: boolean;
+  /** Its corpus's label. */
+  label?: "public" | "internal" | "confidential" | "restricted";
 }
 
 export interface CorpusSearchWarning {
@@ -3562,6 +3569,8 @@ export interface CorpusCreate {
   members?: CorpusMemberRef[];
   agents?: string[];
   ontology?: Record<string, unknown>;
+  label?: "public" | "internal" | "confidential" | "restricted";
+  purpose?: string;
   /** Adds the workspace graph to its search. */
   graph_search?: boolean;
   links?: "isolated" | "shared";
@@ -3574,6 +3583,9 @@ export interface CorpusChange {
   members?: CorpusMemberRef[];
   /** Replaces its declared ontology; {} clears it. */
   ontology?: Record<string, unknown>;
+  /** Restricting a corpus that agents are granted takes a workspace admin and a purpose. */
+  label?: "public" | "internal" | "confidential" | "restricted";
+  purpose?: string;
   /** Adds the workspace graph to its search. */
   graph_search?: boolean;
   links?: "isolated" | "shared";

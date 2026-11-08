@@ -38,12 +38,12 @@ export const SOURCE_TABS: SourceTab[] = ["documents", "search", "variants", "eva
 
 /**
  * A corpus's tabs: the sources it holds (the default, at the corpus's own
- * address), a search to try, with its words as `?q=`, and who may read it. A
- * source opened from a corpus sits under it, at
- * `/knowledge/{corpus}/sources/{source}`.
+ * address), a search to try, with its words as `?q=`, its slice of the
+ * workspace graph, the types its ontology adds, and who may read it. A source
+ * opened from a corpus sits under it, at `/knowledge/{corpus}/sources/{source}`.
  */
-export type CorpusTab = "sources" | "search" | "access";
-export const CORPUS_TABS: CorpusTab[] = ["sources", "search", "access"];
+export type CorpusTab = "sources" | "search" | "graph" | "types" | "access";
+export const CORPUS_TABS: CorpusTab[] = ["sources", "search", "graph", "types", "access"];
 
 /** Monitor: how runs are going (overview), the rules that watch them, and the health of what the deployment runs on. What a rule fires lands in the inbox. */
 export type MonitorTab = "overview" | "rules" | "health";
@@ -541,7 +541,9 @@ export function href(r: Route): string {
     case "corpus":
       if (r.tab === "search")
         return `/knowledge/${enc(r.name)}/search${r.q ? `?q=${enc(r.q)}` : ""}`;
-      return r.tab === "access" ? `/knowledge/${enc(r.name)}/access` : `/knowledge/${enc(r.name)}`;
+      return r.tab === "sources"
+        ? `/knowledge/${enc(r.name)}`
+        : `/knowledge/${enc(r.name)}/${r.tab}`;
     case "context": {
       if (!r.source) return r.corpus ? `/knowledge/${enc(r.corpus)}` : "/knowledge";
       const tab = !r.tab || r.tab === "documents" ? "" : `/${r.tab}`;

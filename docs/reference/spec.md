@@ -390,16 +390,19 @@ Five tools use the catalog and corpora, granted to an agent by name like any too
 - `corpus_query` runs one SQL `SELECT` on a Snowflake or BigQuery connector a
   corpus holds, with the login of the person the run acts for, never the
   connector's credential, so the warehouse's own grants, row access and masking
-  apply. It runs only in that person's own private conversation, for a reader
-  of the corpus, and only for an agent the corpus is granted to
+  apply. It runs only in a direct conversation (the person's own private one,
+  or their DM with the app), for a reader of the corpus, and only for an
+  agent the corpus is granted to
   ([sources.md](../architecture/sources.md#corpora)). Snowflake leaves the
   connector's role out, so each reader's default role applies.
-- `corpus_search` searches the corpora granted to the agent with the reader's
-  own access: files by words and meaning, references live, warehouse tables by
-  what they hold. Only in the reader's own private conversation.
+- `corpus_search` searches the corpora granted to the agent: files by words
+  and meaning, references live, warehouse tables by what they hold. It uses
+  only what everyone the answer reaches may read, checked when it runs, and
+  says what it held back
+  ([sources.md](../architecture/sources.md#sensitivity)).
 - `corpus_graph` reads the workspace graph of the corpora granted to the agent:
-  documents, tables and systems, who owns each and how stale each is. Only in
-  the reader's own private conversation.
+  documents, tables and systems, who owns each and how stale each is, by the
+  same rules as `corpus_search`.
 
 The credential needs `roles/bigquery.metadataViewer` (or `dataViewer`) on the
 datasets to crawl them, `roles/bigquery.dataViewer` to read them, and

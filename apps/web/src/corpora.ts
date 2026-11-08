@@ -99,3 +99,73 @@ export function safeLink(uri: string | undefined): string | undefined {
     return undefined;
   }
 }
+
+/** A corpus's label, from least to most sensitive. */
+export const LABELS = ["public", "internal", "confidential", "restricted"] as const;
+export type CorpusLabel = (typeof LABELS)[number];
+
+/** One type an ontology adds to the graph: its properties and the relations that start at it. */
+export interface OntologyType {
+  name: string;
+  properties: string[];
+  relations: { name: string; to: string; many: boolean }[];
+}
+
+/**
+ * The types a corpus ontology (a JSON Schema with `$defs` and `x-relations`,
+ * docs/architecture/sources.md#ontologies) declares, by name. Anything not
+ * shaped as one reads as no types; the server is what checks an ontology.
+ */
+export function ontologyTypes(ontology: Record<string, unknown> | undefined): OntologyType[] {
+  const defs = ontology?.$defs;
+  if (!defs || typeof defs !== "object") return [];
+  const relations = Array.isArray(ontology?.["x-relations"])
+    ? (ontology["x-relations"] as Record<string, unknown>[])
+    : [];
+  return Object.entries(defs as Record<string, Record<string, unknown>>)
+    .map(([name, type]) => ({
+      name,
+      properties: Object.keys(
+        type && typeof type.properties === "object" && type.properties ? type.properties : {},
+      ),
+      relations: relations
+        .filter((r) => r && r.from === name && typeof r.name === "string")
+        .map((r) => ({
+          name: String(r.name),
+          to: String(r.to ?? ""),
+          many: r.cardinality === "many",
+        })),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** The graph's node types that are not documents or tables. */
+const NOT_DOCUMENTS = new Set(["person", "team", "project", "system", "topic"]);
+
+/** Whether a graph node is a document or a warehouse table (typed by an ontology or not). */
+export function isDocumentNode(node: { type: string }): boolean {
+  return !NOT_DOCUMENTS.has(node.type);
+}
+
+/** The corpus member a graph node was built from, as `source/<name>` or `catalog/<name>`. */
+export function memberOfNode(member: string | undefined): CorpusMemberRef | undefined {
+  const [kind, ...rest] = (member ?? "").split("/");
+  const name = rest.join("/");
+  return (kind === "source" || kind === "catalog") && name ? { kind, name } : undefined;
+}
+
+/** What the reader may do about who owns a document or table. */
+export function ownerChoices(
+  node: { owner?: string; owner_state: "" | "suggested" | "confirmed" | "unowned" },
+  viewer: string,
+  corpusOwner: boolean,
+): ("confirm" | "hand_off" | "decline")[] {
+  if (node.owner && node.owner === viewer) {
+    if (node.owner_state === "suggested") return ["confirm", "hand_off", "decline"];
+    if (node.owner_state === "confirmed") return ["hand_off", "decline"];
+  }
+  // A corpus's owner may claim, or hand on, a document of it nobody owns.
+  if (corpusOwner && (node.owner_state === "unowned" || !node.owner))
+    return ["confirm", "hand_off"];
+  return [];
+}
