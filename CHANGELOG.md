@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.93.0 (2026-11-08)
+
+### Features
+
+- **console**: per-agent models, settings split and automation delivery (#241) ([c9a5d80](https://github.com/urmzd/humagen/commit/c9a5d80a57368183dce9c0408d76714fff8aa2d5))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.92.0...v0.93.0)
+
+
 ## 0.92.0 (2026-11-08)
 
 ### Features
