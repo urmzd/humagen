@@ -54,17 +54,9 @@ func TestEachAgentCheckNamesItsPath(t *testing.T) {
 			"    projects:\n" + field, "    - project: Field\n      spec: {name: humagen-writer, provider: p, model: m, system_prompt: X.}\n",
 			`agents[0].project: humagen-writer is one of the platform's own agents`,
 		},
-		"enabling an agent that lives in a project": {
-			"    agents: {enable: [globex-helper]}\n    projects:\n" + field, fileAgentsYAML,
-			`workspace.agents.enable: globex-helper lives in "Globex", so it is available there and below, and enabling it adds nothing`,
-		},
-		"a default outside its home": {
-			"    projects:\n      - {name: Field, agents: {default: globex-helper}}\n      - {name: Globex, parent: Field, kind: account}\n", fileAgentsYAML,
-			`workspace.projects[0].agents.default: globex-helper is not available in "Field": it lives in "Globex"`,
-		},
-		"a default an allow list leaves out": {
-			"    projects:\n      - {name: Field, agents: {allow: [lead]}}\n      - {name: Globex, parent: Field, kind: account, agents: {default: helper}}\n", fileAgentsYAML,
-			`workspace.projects[1].agents.default: helper is not available in "Globex": the allow list of "Field" leaves it out`,
+		"a workspace default its allow list leaves out": {
+			"    agents: {allow: [lead], default: helper}\n", platformAgentsYAML,
+			`workspace.agents.default: helper is not available in the workspace: the allow list of the workspace leaves it out`,
 		},
 		"an agent named auto": {
 			"", platformAgentsYAML + "    - spec: {name: auto, provider: p, model: m, system_prompt: X.}\n",
@@ -73,10 +65,6 @@ func TestEachAgentCheckNamesItsPath(t *testing.T) {
 		"an agent named sme": {
 			"", "    - spec: {name: sme, provider: p, model: m, system_prompt: X.}\n",
 			`agents[0].spec.name: @sme is reserved`,
-		},
-		"a default nothing enables": {
-			"    agents: {enable: [lead]}\n    projects:\n      - {name: Field, agents: {default: helper}}\n", platformAgentsYAML,
-			`workspace.projects[0].agents.default: helper is not available in "Field": nothing on its chain enables it`,
 		},
 	} {
 		_, err := loadBody(t, platformDoc(tc.workspace, tc.agents))

@@ -61,6 +61,7 @@ func (p *Platform) scoreOnline(run runs.Run) error {
 // RecordFeedbackCandidate is called only after the source feedback is saved.
 // Its input remains under the source run's project and visibility checks.
 func (p *Platform) RecordFeedbackCandidate(tenant string, record feedback.Record) error {
+	p.RefreshGoodAsk(tenant, record.Run)
 	if record.Rating != "down" || strings.TrimSpace(record.Reason) == "" {
 		return nil
 	}

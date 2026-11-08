@@ -63,7 +63,7 @@ func (p *Platform) whereOf(tenant string, tree *projects.Tree, project string) s
 func (p *Platform) Available(tenant, project, agent string) error {
 	project = projects.NameOf(project)
 	tree := p.Projects.Tree(tenant)
-	if tree.IsAvailable(project, agent) {
+	if p.answersIn(tenant, tree, project, agent) {
 		return nil
 	}
 	if !tree.Has(project) {
@@ -72,20 +72,37 @@ func (p *Platform) Available(tenant, project, agent string) error {
 	return p.notAvailable(tenant, tree, project, agent)
 }
 
-// notAvailable says why an agent may not run in a project the tree holds.
-// It says where the agent lives only when everyone in the workspace reads
-// that project: the refusal reaches whoever reads the place it was made in
-// (a run's events, a message's tags), and they may not read the agent's
-// home.
+// answersIn reports whether an agent may answer in a project: every allow
+// list on the project's chain permits it (projects.Tree.IsAvailable), and
+// everyone who reads the project may see it. Agents are independent of
+// projects, so an agent with no home, or homed where everyone reads, answers
+// anywhere; a private one, homed in a project kept to its members (a
+// Personal project), answers only where its readers alone read, so what it
+// says never reaches someone who may not see it.
+func (p *Platform) answersIn(tenant string, tree *projects.Tree, project, agent string) bool {
+	return p.answerersIn(tenant, tree, project)(agent)
+}
+
+// answerersIn is answersIn for many agents in one project, reading who reads
+// the project once.
+func (p *Platform) answerersIn(tenant string, tree *projects.Tree, project string) func(agent string) bool {
+	seen := p.agentsEveryoneReads(tenant, project)
+	return func(agent string) bool { return tree.IsAvailable(project, agent) && seen(agent) }
+}
+
+// notAvailable says why an agent may not run in a project the tree holds:
+// an allow list on its chain leaves it out, or it is private to readers the
+// project has more of. It never says where the agent's home is: the refusal
+// reaches whoever reads the place it was made in, and they may not read it.
 func (p *Platform) notAvailable(tenant string, tree *projects.Tree, project, agent string) error {
 	where := p.whereOf(tenant, tree, project)
 	if agent == Open {
 		return fmt.Errorf("%w: open is no agent: the agents decide whether to take a message before anything runs", ErrNotAvailable)
 	}
-	if home, ok := tree.Home(agent); ok && home != projects.Root && !onChain(tree, project, home) && everyoneIn(tree, home) {
-		return fmt.Errorf("%w: %s is not available in %s; it lives in %s and is available only there and below", ErrNotAvailable, agent, where, p.whereOf(tenant, tree, home))
+	if !tree.IsAvailable(project, agent) {
+		return fmt.Errorf("%w: %s is not allowed in %s", ErrNotAvailable, agent, where)
 	}
-	return fmt.Errorf("%w: %s is not available in %s", ErrNotAvailable, agent, where)
+	return fmt.Errorf("%w: %s is private, and not everyone who reads %s may see it", ErrNotAvailable, agent, where)
 }
 
 // everyoneIn reports whether everyone in the workspace reads a project: no
@@ -113,7 +130,7 @@ func (p *Platform) admitAgent(tag event.Envelope, project string) error {
 	}
 	tree := p.Projects.Tree(tag.Tenant)
 	at := project
-	if tree.IsAvailable(at, tag.Agent) {
+	if p.answersIn(tag.Tenant, tree, at, tag.Agent) {
 		return nil
 	}
 	if !tree.Has(at) {
@@ -148,10 +165,13 @@ func (p *Platform) unavailableAlert(tenant, schedule, agent, project string, err
 }
 
 // candidates are the agents available in a project that keep passes and
-// that take untagged messages, as join asks them. keep nil keeps
-// every one. An agent whose spec is tagged_only is never asked.
+// that take untagged messages, as join asks them (answersIn: a private agent
+// is asked only where its readers alone read). keep nil keeps every one. An
+// agent whose spec is tagged_only is never asked.
 func (p *Platform) candidates(ctx context.Context, tenant string, tree *projects.Tree, project string, keep func(string) bool) ([]join.Candidate, error) {
+	answers := p.answerersIn(tenant, tree, project)
 	var out []join.Candidate
+	asks := p.goodAsks(tenant)
 	page := wire.Page{Size: 100}
 	for {
 		revs, next, err := p.Catalog().List(ctx, tenant, page)
@@ -159,10 +179,10 @@ func (p *Platform) candidates(ctx context.Context, tenant string, tree *projects
 			return nil, err
 		}
 		for _, r := range revs {
-			if wire.PolicyOf(r.Spec).TaggedOnly || !tree.IsAvailable(project, r.Spec.Name) || (keep != nil && !keep(r.Spec.Name)) {
+			if wire.PolicyOf(r.Spec).TaggedOnly || !answers(r.Spec.Name) || (keep != nil && !keep(r.Spec.Name)) {
 				continue
 			}
-			out = append(out, join.Candidate{Name: r.Spec.Name, Description: r.Spec.Description, Prompt: r.Spec.SystemPrompt})
+			out = append(out, join.Candidate{Name: r.Spec.Name, Description: r.Spec.Description, Prompt: r.Spec.SystemPrompt, Asks: asks[r.Spec.Name]})
 			if len(out) == join.MaxCandidates {
 				return out, nil
 			}
@@ -236,17 +256,17 @@ func (p *Platform) Route(ctx context.Context, tenant, project, message string) (
 	if err != nil {
 		return nil, err
 	}
-	return join.Route(ctx, p.asker(tenant), cs, message), nil
+	return routePreview(ctx, p.asker(tenant), cs, message), nil
 }
 
-// join asks every candidate in a project at once and returns those that
-// take the message, in order. With none it is ErrNoTakers.
+// join searches the candidates in a project for the message, asks the best
+// few at once, and returns those that take it, best match first. With none
+// it is ErrNoTakers.
 func (p *Platform) join(ctx context.Context, tenant string, tree *projects.Tree, project, message string, keep func(string) bool) ([]join.Decision, error) {
-	cs, err := p.candidates(ctx, tenant, tree, project, keep)
+	_, joined, err := p.search(ctx, tenant, tree, project, message, keep)
 	if err != nil {
 		return nil, err
 	}
-	joined := join.Joined(join.Route(ctx, p.asker(tenant), cs, message))
 	if len(joined) == 0 {
 		return nil, fmt.Errorf("%w: it waits for a person to answer or tag an agent", ErrNoTakers)
 	}
@@ -306,9 +326,9 @@ func fromProject(name string) string {
 }
 
 // DefaultAt is the default a message in a place inherits, and where it is
-// set: the first set of the place's nearer defaults, then its project's, each
-// ancestor's nearest first, and the root's. It is the zero Nearer when none
-// is set.
+// set: the first set of the place's nearer defaults (the thread's, then the
+// client's), then the workspace's. A project chooses no default: any agent
+// answers in any project. It is the zero Nearer when none is set.
 func (p *Platform) DefaultAt(tenant string, at Place) Nearer {
 	for _, n := range at.Nearer {
 		if n.Agent != "" {
@@ -354,7 +374,7 @@ func (p *Platform) resolveAgents(ctx context.Context, tenant string, at Place, a
 		}
 		return answer, nil
 	}
-	if out.From != "" && !tree.IsAvailable(at.Project, out.Agent) {
+	if out.From != "" && !p.answersIn(tenant, tree, at.Project, out.Agent) {
 		return nil, fmt.Errorf("%w: @%s answers untagged messages in %s, but it is not available there; tag an agent", ErrNotAvailable, out.Agent, p.whereOf(tenant, tree, at.Project))
 	}
 	return []Answerer{out}, nil
@@ -466,14 +486,14 @@ type AgentsInput struct {
 	Default string   `json:"default,omitempty"`
 }
 
-// Offer is one agent available in a project, and where it comes from: the
-// nearest project on the chain that enables it, or the project it lives in.
-// Agent "*" is every platform agent.
+// Offer was one agent a project offered, and where it came from. Projects
+// no longer offer agents, so an answer lists none; the type is kept for the
+// API's shape until the console stops reading it.
 type Offer struct {
 	Agent string `json:"agent"`
 	// From is the project, by address: "~" is the root.
 	From string `json:"from"`
-	// Home is set when the agent lives in From.
+	// Home was set when the agent lived in From.
 	Home bool `json:"home,omitempty"`
 }
 
@@ -486,11 +506,11 @@ type ProjectAgents struct {
 	Enable  []string `json:"enable"`
 	Allow   []string `json:"allow,omitzero"`
 	Default string   `json:"default,omitempty"`
-	// Available is what may run here, with Offers saying where each comes
-	// from, in the order of Available's names.
+	// Available is what may run here: every agent the allow lists permit.
+	// Offers is always empty: projects no longer offer agents.
 	Available projects.Availability `json:"available"`
 	Offers    []Offer               `json:"offers"`
-	// Homes is the agents that live here.
+	// Homes is the agents shared with this project's readers.
 	Homes []string `json:"homes"`
 	// DefaultResolved is who answers an untagged message here, and where
 	// that default is set. Nil when nothing does.
@@ -524,37 +544,17 @@ func (p *Platform) ProjectAgentsOf(tenant, name string) (ProjectAgents, error) {
 	if out.Homes == nil {
 		out.Homes = []string{}
 	}
-	chain := tree.Chain(name)
-	offer := func(agent string) Offer {
-		if home, ok := tree.Home(agent); ok && home != projects.Root {
-			return Offer{Agent: agent, From: projectAddress(home), Home: true}
-		}
-		for _, q := range chain {
-			if slices.Contains(q.Agents.Enable, agent) || slices.Contains(q.Agents.Enable, projects.Everyone) {
-				return Offer{Agent: agent, From: projectAddress(q.Name)}
-			}
-		}
-		return Offer{Agent: agent, From: projectAddress(name)}
-	}
-	if out.Available.All {
-		o := offer(projects.Everyone)
-		o.Agent = projects.Everyone
-		out.Offers = append(out.Offers, o)
-	}
-	for _, a := range out.Available.Names {
-		out.Offers = append(out.Offers, offer(a))
-	}
 	if d := p.DefaultAt(tenant, Place{Project: name}); d.Agent != "" {
 		out.DefaultResolved = &d
 	}
 	return out, nil
 }
 
-// SetProjectAgents replaces what a project turns on. Every name must be an
-// agent in the workspace, a named default must be available in the project
-// under the new lists, and an agent that lives in a project is not enabled,
-// since that adds nothing. The root's lists, the workspace default among
-// them, and a company project's need projects:govern.
+// SetProjectAgents replaces a project's agent policy: its allow list, and on
+// the root the workspace default. Every name must be an agent in the
+// workspace, and the workspace default must be allowed at the root. An
+// enable list and a project's own default are kept as written and not read.
+// The root's policy and a company project's need projects:govern.
 func (p *Platform) SetProjectAgents(ctx context.Context, tenant, name string, w projects.Writer, in AgentsInput) (ProjectAgents, error) {
 	name = projects.NameOf(name)
 	if err := p.EnsureBuiltins(ctx, tenant); err != nil {
@@ -574,45 +574,36 @@ func (p *Platform) SetProjectAgents(ctx context.Context, tenant, name string, w 
 	return p.ProjectAgentsOf(tenant, name)
 }
 
-// AgentPlace is where one agent lives and which projects enable it.
+// AgentPlace is who sees one agent, as its home.
 type AgentPlace struct {
-	// Home is the project it lives in, by address. Empty for a platform
-	// agent.
+	// Home is the project whose readers see it, by address: "~" for the
+	// whole workspace. Empty for a platform agent.
 	Home string `json:"home,omitempty"`
-	// EnabledIn is the projects, by address, whose enable list names it, or
-	// holds "*" for a platform agent, in tree order.
+	// EnabledIn is always empty: projects no longer enable agents. It is
+	// kept for the API's shape until the console stops reading it.
 	EnabledIn []string `json:"enabled_in"`
 }
 
-// AgentPlaces says, for each agent named, where it lives and which projects
-// enable it.
+// AgentPlaces says, for each agent named, who sees it.
 func (p *Platform) AgentPlaces(tenant string, agents []string) map[string]AgentPlace {
 	tree := p.Projects.Tree(tenant)
-	all := append([]projects.Project{tree.Root()}, tree.Projects()...)
 	out := make(map[string]AgentPlace, len(agents))
 	for _, a := range agents {
 		place := AgentPlace{EnabledIn: []string{}}
-		home, homed := tree.Home(a)
-		if homed {
+		if home, homed := tree.Home(a); homed {
 			place.Home = projectAddress(home)
-		}
-		for _, q := range all {
-			if slices.Contains(q.Agents.Enable, a) || ((!homed || home == projects.Root) && slices.Contains(q.Agents.Enable, projects.Everyone)) {
-				place.EnabledIn = append(place.EnabledIn, projectAddress(q.Name))
-			}
 		}
 		out[a] = place
 	}
 	return out
 }
 
-// SetAgentHome makes an agent live in a project: available there and below,
-// and nowhere else. "" or "~" makes it a platform agent again, available
-// wherever it is enabled. It is refused (projects.ErrInUse, naming them)
-// while something outside the new home's subtree would lose the agent: a
-// project's or a channel's default, an enable or allow list, a schedule filed
-// elsewhere, an alert rule watching it elsewhere, or a client that routes to
-// it, since a client files its runs at the root. The platform's own agents live nowhere.
+// SetAgentHome sets who sees an agent, as its home: a Personal project keeps
+// it to that person, another project to that project's readers, and "" or
+// "~" to the whole workspace. A home decides nothing about where the agent
+// answers: any agent answers in any project its allow lists permit. It is
+// refused (projects.ErrInUse) while the agent's default skills would not fit
+// the new home. The platform's own agents are the workspace's.
 func (p *Platform) SetAgentHome(ctx context.Context, tenant, agent, project string, w projects.Writer) error {
 	unlock, err := p.lockSetupRevision(tenant, agent)
 	if err != nil {
@@ -627,7 +618,7 @@ func (p *Platform) setAgentHome(ctx context.Context, tenant, agent, project stri
 	p.skillDefaultsMu.Lock()
 	defer p.skillDefaultsMu.Unlock()
 	if IsBuiltin(agent) && projects.NameOf(project) != projects.Root {
-		return fmt.Errorf("%w: built-in agents live in Company", projects.ErrInvalid)
+		return fmt.Errorf("%w: built-in agents are seen by the whole workspace", projects.ErrInvalid)
 	}
 	if _, err := p.Catalog().Get(ctx, tenant, agent, 0); err != nil {
 		return err
@@ -637,47 +628,15 @@ func (p *Platform) setAgentHome(ctx context.Context, tenant, agent, project stri
 	})
 }
 
-// homeUsers names what outside the tree would lose an agent when it moves
-// from before to after.
-func (p *Platform) homeUsers(tenant, agent string, before, after *projects.Tree) []string {
-	lost := func(project string) bool {
-		return before.IsAvailable(project, agent) && !after.IsAvailable(project, agent)
-	}
-	var out []string
+// homeUsers names what a home change would leave out of place: the agent's
+// default skills, which are scoped to who sees the agent. Schedules, alert
+// rules and clients that use the agent hold no change back, since where the
+// agent answers does not change.
+func (p *Platform) homeUsers(tenant, agent string, _, after *projects.Tree) []string {
 	if home, ok := after.Home(agent); ok && !p.defaultSkillsFitHome(tenant, agent, home, after) {
-		out = append(out, "the agent default skills")
+		return []string{"the agent default skills"}
 	}
-	// What cannot be read is named, so a move is refused rather than
-	// allowed blind.
-	scheds, err := p.Schedules.List(tenant)
-	if err != nil {
-		out = append(out, "the schedules, which could not be read")
-	}
-	for _, sc := range scheds {
-		if sc.Agent == agent && lost(sc.Context[runs.MetaProject]) {
-			out = append(out, "the schedule "+sc.Name)
-		}
-	}
-	rules, err := p.Alerts.Rules(tenant)
-	if err != nil {
-		// What cannot be read may point at the agent, so the move waits.
-		out = append(out, "the alert rules, which could not be read")
-	}
-	for _, r := range rules {
-		if r.Agent == agent && r.Project != "" && lost(r.Project) {
-			out = append(out, "the alert rule "+r.Name)
-		}
-	}
-	cs, err := p.Clients.List(tenant)
-	if err != nil {
-		out = append(out, "the clients, which could not be read")
-	}
-	for _, c := range cs {
-		if c.Enabled && (c.DefaultAgent == agent || slices.Contains(c.Agents, agent)) && lost(projects.Root) {
-			out = append(out, "the client "+c.ID)
-		}
-	}
-	return out
+	return nil
 }
 
 // Catalog is where the platform reads agent definitions.
