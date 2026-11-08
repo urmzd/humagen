@@ -741,6 +741,10 @@ export const defaultCopy = {
     manualHint: "A searchable collection you manage. Upload UTF-8 text, Markdown, CSV or JSON.",
     drive: "Google Drive",
     driveHint: "Google Docs and text files in the selected folder. Query live or collect a copy.",
+    onedrive: "OneDrive",
+    onedriveHint:
+      "Text, Markdown, CSV, JSON and HTML files in the selected folder. Query live or collect a copy.",
+    onedriveOrigin: "OneDrive folder ID, or root",
     notion: "Notion",
     notionHint:
       "Text from a selected page and supported nested blocks. Query live or collect a copy.",
@@ -1098,6 +1102,7 @@ export const defaultCopy = {
     providers: {
       manual: "Manual",
       drive: "Google Drive",
+      onedrive: "OneDrive",
       notion: "Notion",
       gcs: "Google Cloud Storage",
       s3: "Amazon S3",
