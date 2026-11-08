@@ -308,7 +308,9 @@ type ToolCredential struct {
 // ToolCredentials is the person-scoped providers of a workspace, as one
 // person stands with each, and what the workspace lets them give.
 type ToolCredentials struct {
-	Providers []ToolCredential `json:"providers"`
+	AllowedHosts   []string         `json:"allowed_hosts"`
+	OAuthAvailable bool             `json:"oauth_available"`
+	Providers      []ToolCredential `json:"providers"`
 	// Values reports whether this workspace lets people store a value.
 	Values bool `json:"values"`
 	// References is how the references the person asking may give start:
@@ -328,7 +330,11 @@ func (p *Platform) ToolCredentials(ctx context.Context, who auth.Principal) (Too
 	if err != nil {
 		return ToolCredentials{}, err
 	}
-	out := ToolCredentials{Providers: []ToolCredential{}, Values: p.cfg.CredentialValues[who.Tenant], References: []string{}}
+	resolved, err := p.resolveSettings(who.Tenant, "", nil, who.Subject)
+	if err != nil {
+		return ToolCredentials{}, err
+	}
+	out := ToolCredentials{AllowedHosts: append([]string{}, resolved.Ceilings.ToolServers...), OAuthAvailable: p.ConnectionAuth != nil, Providers: []ToolCredential{}, Values: p.cfg.CredentialValues[who.Tenant], References: []string{}}
 	if who.Kind != auth.Machine {
 		out.References = p.ownStarts(who.Tenant, who.Subject)
 	}

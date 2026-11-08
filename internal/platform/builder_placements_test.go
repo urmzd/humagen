@@ -50,7 +50,7 @@ func placementFixture(t *testing.T) (*Platform, runtime.Request, wire.AgentSpec)
 
 func TestBuilderPreviewShowsCurrentPlacementWithoutCredentialsOrWrites(t *testing.T) {
 	p, req, spec := placementFixture(t)
-	c, err := p.Clients.Create("t", clients.Client{ID: "chat", Name: "Team chat", Surface: clients.Slack, Identity: clients.Identity{AppID: "A01", Team: "T01"}, Agents: []string{"writer"}, Enabled: true, Credentials: clients.Credentials{Token: clients.SecretRef{Set: true, Ref: "env:PRIVATE_TOKEN"}}}, clients.DefaultCaps(), time.Now())
+	c, err := p.Clients.Create("t", clients.Client{ID: "chat", Name: "Team chat", Surface: clients.Slack, Identity: clients.Identity{AppID: "A01", Team: "T01"}, Agents: []string{"writer"}, Enabled: true, Credentials: clients.Credentials{Token: clients.SecretRef{Set: true, Ref: "env:PRIVATE_TOKEN"}}, Slack: &clients.SlackOptions{ActionChannels: []string{"C09"}}}, clients.DefaultCaps(), time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestBuilderPreviewShowsCurrentPlacementWithoutCredentialsOrWrites(t *testin
 			t.Fatal(err)
 		}
 	}
-	if _, err = p.Clients.Create("t", clients.Client{ID: "git", Name: "Repository reviews", Surface: clients.GitHub, Identity: clients.Identity{Owners: []string{"acme"}}, Agents: []string{"writer"}, GitHub: &clients.GitHubOptions{Automations: []clients.GitHubAutomation{{Name: "review", Repository: "acme/repo", Event: "pull_request", Action: "opened", Agent: "writer", Instructions: "Review this"}}}}, clients.DefaultCaps(), time.Now()); err != nil {
+	if _, err = p.Clients.Create("t", clients.Client{ID: "git", Name: "Repository reviews", Surface: clients.GitHub, Identity: clients.Identity{Owners: []string{"acme"}}, Agents: []string{"writer"}, GitHub: &clients.GitHubOptions{ActionRepositories: []string{"acme/write-only"}, Automations: []clients.GitHubAutomation{{Name: "review", Repository: "acme/repo", Event: "pull_request", Action: "opened", Agent: "writer", Instructions: "Review this"}}}}, clients.DefaultCaps(), time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = p.Clients.Create("other", clients.Client{ID: "secret", Name: "Other tenant secret", Surface: clients.GitHub, Identity: clients.Identity{Owners: []string{"hidden"}}, Agents: []string{"writer"}}, clients.DefaultCaps(), time.Now()); err != nil {
@@ -99,7 +99,7 @@ func TestBuilderPreviewShowsCurrentPlacementWithoutCredentialsOrWrites(t *testin
 	if out.Connections == nil || len(*out.Connections) != 3 || out.Listens == nil || len(*out.Listens) != 4 {
 		t.Fatalf("missing placements: %s", raw)
 	}
-	for _, forbidden := range []string{"PRIVATE_TOKEN", "PERSON_SECRET", "Other tenant secret", "C01", "outgoing title", "allowed.example.com"} {
+	for _, forbidden := range []string{"PRIVATE_TOKEN", "PERSON_SECRET", "Other tenant secret", "C09", "C01", "outgoing title", "write-only", "allowed.example.com"} {
 		if strings.Contains(raw, forbidden) {
 			t.Fatalf("private or write-only detail disclosed: %s", forbidden)
 		}

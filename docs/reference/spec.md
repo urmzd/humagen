@@ -1301,3 +1301,13 @@ online execution cost, duration, and evidence checks. Zero cost or duration limi
 leave those optional checks disabled; changing shared instructions requires the sampled eval gate. Existing
 runs retain their admitted prompt versions. See [Prompt and evaluation policy](prompt-evaluations.md)
 for fields, deterministic checks, and approved regression overrides.
+
+### Service connection authorization
+
+`System.spec.connections` defaults to disabled. It accepts an `encryption_key`
+secret reference, a `redirect_url`, optional registered `clients`, and optional
+GitHub App installation configuration under `github`. The key resolves to a
+base64-encoded 32-byte value. Registered clients bind an issuer, client ID,
+optional secret reference and scopes; native providers use their fixed profiles.
+Configuration does not grant host access, tools or agent routing. See
+[connection authorization](connections.md).

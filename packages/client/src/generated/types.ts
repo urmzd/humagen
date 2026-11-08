@@ -1010,6 +1010,8 @@ export interface ToolCredentials {
   values: boolean;
   /** How the references the caller may give start, their own under each start the operator listed, with the caller's subject in place of `{subject}`. A start the caller's subject cannot be written in is left out, and a machine gets none. Empty means no reference can be given. */
   references: string[];
+  oauth_available: boolean;
+  allowed_hosts: string[];
 }
 
 /** One level of the run settings. Ceilings bound a run and the strictest level wins; preferences choose within them and the nearest level wins. */
@@ -4741,6 +4743,72 @@ export interface FeedbackPayload {
 
 export type RunFeedbackEvent = EventEnvelope & { type: "run.feedback.v1"; data: FeedbackPayload };
 
+export interface ConnectionHealth {
+  healthy: boolean;
+  checked_at: string;
+  message: string;
+}
+
+export interface ConnectionMapping {
+  kind: string;
+  id: string;
+  name: string;
+  agents: string[];
+  projects: string[];
+  tools: string[];
+  health?: ConnectionHealth;
+  /** Configured reply channels or repositories visible to the caller. */
+  places: string[];
+}
+
+export interface ConnectionDetail {
+  connection: ConnectionPreset;
+  mappings: ConnectionMapping[];
+  note: string;
+  truncated: boolean;
+}
+
+export interface ConnectionPreset {
+  id: string;
+  name: string;
+  kind: string;
+  endpoint?: string;
+  available: boolean;
+  connected: boolean;
+  reason?: string;
+  scope: string;
+  /** Granted scopes reported by the provider. Omitted when it did not report scopes. */
+  granted_scopes?: string[];
+  /** A confirmed provider rejection requires renewed consent. */
+  reconnect_required?: boolean;
+  health?: ConnectionHealth;
+}
+
+export interface ConnectionRegistration {
+  issuer: string;
+  client_id: string;
+  client_secret?: string;
+}
+
+export interface ConnectionAuthorizationInput {
+  endpoint?: string;
+  scope?: "person" | "workspace";
+  registration?: ConnectionRegistration;
+}
+
+export interface ConnectionAuthorization {
+  provider?: string;
+  url: string;
+  expires_at: string;
+}
+
+export interface ConnectionCallback {
+  /** Required with GitHub installation callbacks; verified by GitHub before saving. */
+  installation_id?: string;
+  state: string;
+  code: string;
+}
+
 export interface GitHubSubjectPullRequest {
   url?: string;
 }
@@ -5287,10 +5355,6 @@ export interface ListKnowledgeResourcesResponse {
 export interface SetKnowledgeSyncSettingsBody {
   every_seconds: number;
   stop_after_seconds: number;
-}
-
-export interface ConnectKnowledgeSourceBody {
-  ref: string;
 }
 
 export interface SearchKnowledgeResponseWarningsItem {
