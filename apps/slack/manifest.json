@@ -1,7 +1,7 @@
 {
   "display_information": {
     "name": "Humagen",
-    "description": "Your workspace's agents in Slack. Ask a question, or review what one is waiting on.",
+    "description": "Mention @Humagen in any channel, thread or DM. It brings in the right agents and answers where you asked.",
     "background_color": "#2b50c8"
   },
   "features": {
@@ -17,34 +17,14 @@
     },
     "shortcuts": [
       {
-        "name": "Ask Humagen",
-        "type": "global",
-        "callback_id": "aui_ask",
-        "description": "Ask from anywhere. The answer arrives in the app's messages."
-      },
-      {
-        "name": "Ask Humagen about this",
+        "name": "Ask about this",
         "type": "message",
         "callback_id": "aui_ask_about",
-        "description": "Answer in this message's thread, using the message as the question."
-      }
-    ],
-    "slash_commands": [
-      {
-        "command": "/agent",
-        "description": "Ask Humagen in this channel",
-        "usage_hint": "[question], skills, connections or canvas RUN_ID",
-        "should_escape": false
-      },
-      {
-        "command": "/skill",
-        "description": "Run a configured agent skill",
-        "usage_hint": "[name] [arguments]",
-        "should_escape": false
+        "description": "Answers in this message's thread, with the message as the question."
       }
     ],
     "agent_view": {
-      "agent_description": "Your workspace's agents in Slack. Mention @Humagen and the agent you want, such as @Humagen @analyst, or message it.",
+      "agent_description": "Ask anything. Humagen brings in the right agents and answers here.",
       "suggested_prompts": []
     }
   },

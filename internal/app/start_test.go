@@ -467,7 +467,7 @@ spec:
 	if err := slackCmd([]string{"manifest", "-f", path}, &got); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(got.String(), `"name": "Acme"`) || !strings.Contains(got.String(), `"command": "/acme"`) {
+	if !strings.Contains(got.String(), `"name": "Acme"`) || strings.Contains(got.String(), `slash_commands`) {
 		t.Errorf("manifest:\n%s", got.String())
 	}
 }
@@ -495,7 +495,7 @@ spec:
 	if err := slackCmd([]string{"manifest", "-f", path}, &got); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"description": "Acme's field agents in Slack"`, `"background_color": "#1a1a2e"`, `"description": "Ask Acme's agents"`, `"usage_hint": "[question]"`} {
+	for _, want := range []string{`"description": "Acme's field agents in Slack"`, `"background_color": "#1a1a2e"`} {
 		if !strings.Contains(got.String(), want) {
 			t.Errorf("manifest lacks %s:\n%s", want, got.String())
 		}
@@ -504,7 +504,7 @@ spec:
 	if err := slackCmd([]string{"manifest"}, &got); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(got.String(), `"background_color": "#2b50c8"`) || !strings.Contains(got.String(), `"description": "Ask Humagen in this channel"`) {
+	if !strings.Contains(got.String(), `"background_color": "#2b50c8"`) || !strings.Contains(got.String(), `"name": "Ask about this"`) || strings.Contains(got.String(), `slash_commands`) {
 		t.Errorf("with nothing set, the manifest is Humagen's:\n%s", got.String())
 	}
 }
