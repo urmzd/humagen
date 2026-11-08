@@ -20,6 +20,17 @@ func (s *Server) corpusRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/corpora/{name}", s.authed(auth.KnowledgeWrite, s.deleteCorpus))
 	mux.HandleFunc("POST /api/corpora/{name}/members", s.authed(auth.KnowledgeWrite, s.addCorpusMember))
 	mux.HandleFunc("DELETE /api/corpora/{name}/members/{kind}/{member}", s.authed(auth.KnowledgeWrite, s.removeCorpusMember))
+	mux.HandleFunc("GET /api/corpora/{name}/search", s.authed(auth.KnowledgeRead, s.searchCorpus))
+}
+
+func (s *Server) searchCorpus(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	q := r.URL.Query()
+	out, err := s.P.SearchCorpusAs(r.Context(), who, r.PathValue("name"), q.Get("q"), q.Get("limit"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, out)
 }
 
 func (s *Server) listCorpora(w http.ResponseWriter, _ *http.Request, who auth.Principal) {

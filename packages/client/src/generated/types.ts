@@ -3461,6 +3461,35 @@ export interface Corpus {
   mine: boolean;
 }
 
+export interface CorpusHit {
+  corpus: string;
+  member: CorpusMemberRef;
+  holds: "files" | "references" | "records";
+  document_id?: string;
+  /** A document's title, or a warehouse table's path. */
+  title: string;
+  uri?: string;
+  index?: number;
+  text: string;
+  /** The fused rank score, comparable within one answer. */
+  score: number;
+  /** Other members the same passage came through. */
+  also?: CorpusMemberRef[];
+}
+
+export interface CorpusSearchWarning {
+  corpus: string;
+  member: CorpusMemberRef;
+  cause: string;
+}
+
+export interface CorpusSearch {
+  hits: CorpusHit[];
+  warnings: CorpusSearchWarning[];
+  /** Kept for a search an agent ran; absent here. */
+  citations?: RunCitation[];
+}
+
 export interface CorpusCreate {
   name: string;
   title?: string;

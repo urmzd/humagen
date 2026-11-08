@@ -199,8 +199,32 @@ private conversation, for a corpus granted to the run's agent that the reader
 may read, on a warehouse the corpus holds and the reader may see. The result
 carries the corpus, the connector, the SQL and when it ran; no row is stored.
 
-Not built yet: per-corpus search, the corpus pages in the console, ontology
-and graph, the maintenance agent, freshness alerts and sensitivity labels.
+### Search
+
+A corpus search fans one query out to every member the reader may see, by
+what each holds, and merges the answers:
+
+| Member | Searched by |
+| --- | --- |
+| Files | Lexical (BM25) and, with an embedder, vectors, fused, over the indexed passages (`pkg/knowledge`), one ranked list per source |
+| References | The source's own search, live, with the reader's access; only when the answer reaches the reader alone |
+| Records | The catalog: tables and views by their names, descriptions and columns, never rows |
+
+The lists merge by reciprocal rank (k = 60), so no one scoring scale
+decides. The same passage reached through two members (equal words,
+ignoring case, spacing and punctuation) is one hit whose `also` names the
+others. A member that fails or times out (20 s for a live search) is named in
+`warnings` and left out; it never fails the search.
+
+`GET /api/corpora/{name}/search?q=` runs it for the caller (the Try a search
+box). The `corpus_search` tool runs it for a run's agent over every corpus
+granted to it that the person the run acts for may read, at most 8, only in
+that person's own private conversation, and keeps citation evidence for every
+source hit before the model reads it. Graph retrieval joins the fan-out once
+the workspace graph is built.
+
+Not built yet: the corpus pages in the console, ontology and graph, the
+maintenance agent, freshness alerts and sensitivity labels.
 
 ## Proposed versioned source files
 

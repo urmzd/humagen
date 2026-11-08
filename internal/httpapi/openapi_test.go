@@ -687,6 +687,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"CatalogConnector": {typ: catalog.Connector{}}, "CatalogConnectorView": {typ: platform.CatalogConnectorView{}}, "CatalogPage": {typ: platform.CatalogPage{}},
 		"KnowledgeVariant": {typ: knowledge.Variant{}}, "KnowledgeSource": {typ: knowledge.Source{}},
 		"Corpus": {typ: platform.CorpusView{}}, "CorpusMember": {typ: platform.CorpusMemberView{}}, "CorpusReader": {typ: corpora.Reader{}},
+		"CorpusHit": {typ: platform.CorpusHit{}}, "CorpusSearchWarning": {typ: platform.CorpusSearchWarning{}}, "CorpusSearch": {typ: platform.CorpusSearch{}},
 		"CorpusMemberRef": {typ: corpora.Member{}, written: true}, "CorpusCreate": {typ: platform.CorpusCreate{}, written: true}, "CorpusChange": {typ: platform.CorpusChange{}, written: true},
 		"KnowledgeDocument": {typ: knowledge.Document{}}, "KnowledgeHit": {typ: knowledge.Hit{}},
 		"PolicyScope": {typ: policy.Scope{}}, "Policy": {typ: policyView{}}, "PolicyChange": {typ: policyChangeView{}},
@@ -1914,6 +1915,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "DELETE", "/api/corpora/{name}/members/{kind}/{member}", "/api/corpora/policies/members/source/handbook", "", http.StatusOK)
 	c.call(acme, "DELETE", "/api/corpora/{name}/members/{kind}/{member}", "/api/corpora/policies/members/source/handbook", "", http.StatusNotFound)
 	c.call(acme, "POST", "/api/corpora/{name}/members", "/api/corpora/policies/members", `{"kind":"source","name":"handbook"}`, http.StatusOK)
+	c.call(acme, "GET", "/api/corpora/{name}/search", "/api/corpora/policies/search?q=refunds", "", http.StatusOK)
+	c.call(acme, "GET", "/api/corpora/{name}/search", "/api/corpora/policies/search?q=", "", http.StatusBadRequest)
 	c.call(acme, "DELETE", "/api/corpora/{name}", "/api/corpora/policies?version=x", "", http.StatusBadRequest)
 
 	c.call(acme, "POST", "/api/evals", "/api/evals", `{"name":"smoke","target":"agent","subject":"helper","cases":[{"id":"says-offline","input":"hello","checks":[{"kind":"contains","value":"offline provider"}]}]}`, http.StatusCreated)
@@ -2589,7 +2592,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/evals/{name}/run": {"name": "smoke"}, "/api/knowledge/{name}": {"name": "handbook"},
 		"/api/knowledge/{name}/resources": {"name": "handbook"}, "/api/knowledge/{name}/snapshot": {"name": "handbook"}, "/api/knowledge/{name}/replace": {"name": "handbook"}, "/api/knowledge/{name}/sync-settings": {"name": "handbook"},
 		"/api/knowledge/{name}/dependencies": {"name": "handbook"},
-		"/api/corpora/{name}":                {"name": "policies"}, "/api/corpora/{name}/members": {"name": "policies"},
+		"/api/corpora/{name}":                {"name": "policies"}, "/api/corpora/{name}/members": {"name": "policies"}, "/api/corpora/{name}/search": {"name": "policies"},
 		"/api/corpora/{name}/members/{kind}/{member}": {"name": "policies", "kind": "source", "member": "handbook"},
 		"/api/knowledge/{name}/configuration":         {"name": "handbook"}, "/api/knowledge/{name}/credential": {"name": "handbook"}, "/api/knowledge/{name}/sync": {"name": "handbook"},
 		"/api/knowledge/{name}/documents": {"name": "handbook"}, "/api/knowledge/{name}/documents/{id}": {"name": "handbook", "id": doc.str("id")},

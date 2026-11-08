@@ -57,6 +57,7 @@ import type {
   CorpusChange,
   CorpusCreate,
   CorpusMemberRef,
+  CorpusSearch,
   CreateCallRequest,
   CreateKnowledgeSourceBody,
   CreateRunRequest,
@@ -5238,6 +5239,39 @@ members list keeps the members the owner can no longer see. With
     path = path.replace("{kind}", encodeURIComponent(String(kind)));
     path = path.replace("{member}", encodeURIComponent(String(member)));
     return this.rawRequest<Corpus>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** The search an agent's corpus_search runs, for the caller: indexed
+files by words and meaning, references live at their source with the
+caller's own access, and warehouse tables by what they hold (never
+rows). Lists merge by reciprocal rank; the same passage through two
+members is one hit naming both. A member that fails or times out is
+named in `warnings` and left out.
+ */
+  async searchCorpus(name: string, q: string, limit?: number, options?: RequestOptions): Promise<CorpusSearch> {
+    let path = "/api/corpora/{name}/search";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<CorpusSearch>("GET", path, {
+      ...options,
+    });
+  }
+
+  async searchCorpusRaw(name: string, q: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<CorpusSearch>> {
+    let path = "/api/corpora/{name}/search";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<CorpusSearch>("GET", path, {
       ...options,
     });
   }
