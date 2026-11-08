@@ -38,8 +38,10 @@ import {
   api,
   type CatalogConnectorView,
   type Corpus,
+  type CorpusHit,
   type CorpusMember,
   type CorpusMemberRef,
+  type CorpusSearch,
   type Person,
   type ProjectView,
   type Source,
@@ -52,18 +54,22 @@ import {
   holds,
   itemsOf,
   namedReaders,
+  nameFromTitle,
   nameOf,
   providerOfSource,
   providersOf,
   type ReaderMode,
   readerMode,
   readersOf,
+  safeLink,
+  titleOf,
   unfiledSources,
 } from "./corpora.ts";
 import { ConnectSource } from "./Integrations.tsx";
 import { type CorpusTab, href } from "./route.ts";
 import { addTextFiles } from "./sourceUpload.ts";
 import {
+  AgentMark,
   button,
   Confirm,
   card,
@@ -75,6 +81,7 @@ import {
   PickMany,
   Problem,
   primary,
+  rows,
   SkeletonRows,
   Tabs,
 } from "./ui.tsx";
@@ -282,7 +289,10 @@ function CorpusForm({
   onConflict: () => void;
 }) {
   const directory = useDirectory();
-  const [name, setName] = useState("");
+  const [title, setTitle] = useState(corpus ? titleOf(corpus) : "");
+  // A title with no letter or digit a name can hold still makes a corpus.
+  const [spare] = useState(() => `corpus-${Math.random().toString(36).slice(2, 8)}`);
+  const name = corpus?.name ?? (nameFromTitle(title) || spare);
   const [description, setDescription] = useState(corpus?.description ?? "");
   const [readers, setReaders] = useState(draftOf(corpus));
   const [busy, setBusy] = useState(false);
@@ -297,11 +307,12 @@ function CorpusForm({
       onSaved(
         corpus
           ? await api.updateCorpus(corpus.name, {
+              title: title.trim(),
               description,
               readers: chosen,
               version: corpus.version,
             })
-          : await api.createCorpus({ name, description, readers: chosen }),
+          : await api.createCorpus({ name, title: title.trim(), description, readers: chosen }),
       );
     } catch (err) {
       if (corpus && conflict(err)) onConflict();
@@ -312,24 +323,26 @@ function CorpusForm({
   };
   return (
     <form
-      aria-label={corpus ? words.form.editTitle(corpus.name) : words.form.newTitle}
+      aria-label={corpus ? words.form.editTitle(titleOf(corpus)) : words.form.newTitle}
       className="flex min-w-0 flex-col gap-4"
       onSubmit={submit}
     >
       <Problem message={problem} />
-      {!corpus && (
-        <Label text={words.form.name} hint={words.form.nameHint}>
-          <input
-            className={field}
-            required
-            // biome-ignore lint/a11y/noAutofocus: the sheet opened to name a new corpus
-            autoFocus
-            pattern={NAME_PATTERN}
-            value={name}
-            onChange={(e) => setName(nameOf(e.target.value))}
-          />
-        </Label>
-      )}
+      {/* Names never change: a new corpus takes its name from its title. */}
+      <Label
+        text={words.form.title}
+        hint={corpus || !title.trim() ? undefined : words.form.nameIs(name)}
+      >
+        <input
+          className={field}
+          required
+          // biome-ignore lint/a11y/noAutofocus: the sheet opened to name the corpus
+          autoFocus
+          maxLength={120}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+      </Label>
       <Label text={words.form.description}>
         <input
           className={field}
@@ -422,7 +435,7 @@ export function KnowledgePage({
     setDeleting(null);
     try {
       await api.deleteCorpus(c.name, c.version);
-      toast.success(words.deleted(c.name));
+      toast.success(words.deleted(titleOf(c)));
     } catch (e) {
       if (conflict(e)) toast.error(words.changed);
       else toast.error(message(e));
@@ -454,18 +467,19 @@ export function KnowledgePage({
         <ul aria-label={words.title} className={cardGrid}>
           {list.map((c) => {
             const owner = c.mine && canWrite;
+            const title = titleOf(c);
             return (
               <li
                 key={c.name}
-                aria-label={c.name}
+                aria-label={title}
                 className={`${card} flex h-full min-w-0 flex-col gap-2`}
               >
                 <div className="flex min-w-0 items-center gap-2">
-                  <h2 className="min-w-0 flex-1 truncate font-medium text-aui-fg">{c.name}</h2>
+                  <h2 className="min-w-0 flex-1 truncate font-medium text-aui-fg">{title}</h2>
                   <Pill>{c.links === "shared" ? words.shared : words.isolated}</Pill>
                   {owner && (
                     <More
-                      label={words.more(c.name)}
+                      label={words.more(title)}
                       items={[
                         { label: words.edit, run: () => setSheet({ kind: "edit", name: c.name }) },
                         { label: words.delete, destructive: true, run: () => setDeleting(c.name) },
@@ -489,7 +503,7 @@ export function KnowledgePage({
                 <div className="mt-auto pt-1">
                   {deleting === c.name ? (
                     <Confirm
-                      question={words.deleteAsk(c.name)}
+                      question={words.deleteAsk(title)}
                       action={words.deleteAction}
                       onKeep={() => setDeleting(null)}
                       onConfirm={() => void remove(c)}
@@ -499,6 +513,7 @@ export function KnowledgePage({
                       href={href({ page: "corpus", name: c.name, tab: "sources" })}
                       onClick={follow(() => onOpen(c.name))}
                       className={button}
+                      aria-label={`${words.open} ${title}`}
                     >
                       {words.open}
                     </a>
@@ -521,7 +536,7 @@ export function KnowledgePage({
       )}
       <SideSheet
         open={sheet?.kind === "new" || !!editing}
-        title={editing ? words.form.editTitle(editing.name) : words.form.newTitle}
+        title={editing ? words.form.editTitle(titleOf(editing)) : words.form.newTitle}
         description={words.title}
         onClose={() => setSheet(null)}
       >
@@ -536,7 +551,7 @@ export function KnowledgePage({
               toast.success(words.form.saved);
               load();
             } else {
-              toast.success(words.form.created(c.name));
+              toast.success(words.form.created(titleOf(c)));
               onOpen(c.name);
             }
           }}
@@ -598,7 +613,8 @@ function FileSources({
         await api.addCorpusMember(target, { kind: "source", name });
         added++;
       }
-      toast.success(words.file.filed(added, target));
+      const into = corpora.find((c) => c.name === target);
+      toast.success(words.file.filed(added, into ? titleOf(into) : target));
       onDone();
     } catch (err) {
       setProblem(message(err));
@@ -613,7 +629,7 @@ function FileSources({
         <NativeSelect value={target} onChange={(e) => setTarget(e.target.value)}>
           {corpora.map((c) => (
             <NativeSelectOption key={c.name} value={c.name}>
-              {c.name}
+              {titleOf(c)}
             </NativeSelectOption>
           ))}
         </NativeSelect>
@@ -648,17 +664,47 @@ function FileSources({
   );
 }
 
+/** Starts the person's own BigQuery connection: Google sign-in, then back to the console. */
+function startBigQueryLogin(onError: (message: string) => void) {
+  connectionApi
+    .authorize("bigquery", { scope: "person" })
+    .then((auth) => {
+      sessionStorage.setItem("humagen.connection.provider", auth.provider ?? "bigquery");
+      window.location.assign(auth.url);
+    })
+    .catch((e) => onError(message(e)));
+}
+
+/** Each warehouse the reader's own login reaches, by connector name, from GET /api/catalog. */
+function useConnectors(names: string[]) {
+  const [connectors, setConnectors] = useState<Record<string, CatalogConnectorView>>({});
+  const key = names.join("\n");
+  const load = useCallback(() => {
+    if (!key) return;
+    api.catalog().then(
+      (page) => setConnectors(Object.fromEntries((page.connectors ?? []).map((c) => [c.name, c]))),
+      () => {},
+    );
+  }, [key]);
+  useEffect(() => load(), [load]);
+  return { connectors, reload: load };
+}
+
 /**
- * One corpus: the sources it holds and who may read it, each a tab with its
- * own address. Only its owner adds and removes sources, changes its readers
- * and hands it off; anyone else who may read it sees the same page read-only.
+ * One corpus: the sources it holds, a search to try and who may read it,
+ * each a tab with its own address. Only its owner adds and removes sources,
+ * changes its readers and agents and hands it off; anyone else who may read
+ * it sees the same page read-only, with their own warehouse logins.
  */
 export function CorpusPage({
   name,
   tab,
+  q,
   sources,
+  agents = [],
   canWrite,
   onTab,
+  onSearch,
   onBack,
   onOpenSource,
   onMissing,
@@ -666,9 +712,14 @@ export function CorpusPage({
 }: {
   name: string;
   tab: CorpusTab;
+  /** The words of the search on the Search tab. */
+  q?: string;
   sources: Source[];
+  /** The agents the reader can see, to grant it to. */
+  agents?: string[];
   canWrite: boolean;
   onTab: (tab: CorpusTab) => void;
+  onSearch?: (q: string) => void;
   onBack: () => void;
   onOpenSource: (source: string) => void;
   /** An old `/knowledge/{source}` link named a source, not a corpus: open the source instead. */
@@ -679,6 +730,12 @@ export function CorpusPage({
   const [corpus, setCorpus] = useState<Corpus | null | undefined>(undefined);
   const [problem, setProblem] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [loginFor, setLoginFor] = useState<string | null>(null);
+  const directory = useDirectory();
+  const warehouses = (corpus?.members ?? [])
+    .filter((m) => m.kind === "catalog" && m.name && m.status !== "hidden")
+    .map((m) => m.name);
+  const { connectors, reload: reloadConnectors } = useConnectors(warehouses);
 
   const load = useCallback(() => {
     api.corpus(name).then(
@@ -719,6 +776,7 @@ export function CorpusPage({
     );
 
   const owner = corpus.mine && canWrite;
+  const title = titleOf(corpus);
   const addSource = owner ? (
     <button type="button" className={primary} onClick={() => setAdding(true)}>
       {words.addSource}
@@ -742,25 +800,35 @@ export function CorpusPage({
       toast.error(message(e));
     }
   };
+  const forget = async (connector: string) => {
+    try {
+      await api.deleteCatalogLogin(connector);
+      toast.success(words.login.forgotten);
+      reloadConnectors();
+    } catch (e) {
+      toast.error(message(e));
+    }
+  };
 
   return (
     <Page
-      title={corpus.name}
+      title={title}
       back={{ label: words.back, onClick: onBack }}
       meta={
         <>
-          <span className="font-medium text-aui-fg">{corpus.name}</span>
+          <span className="font-medium text-aui-fg">{title}</span>
           {corpus.description && <span>{corpus.description}</span>}
         </>
       }
       actions={tab === "sources" && corpus.members.length > 0 ? addSource : undefined}
       tabs={
         <Tabs
-          label={corpus.name}
+          label={title}
           value={tab}
           onChange={onTab}
           tabs={[
             { id: "sources", label: words.tabs.sources, count: corpus.members.length },
+            { id: "search", label: words.tabs.search },
             { id: "access", label: words.tabs.access },
           ]}
         />
@@ -777,22 +845,35 @@ export function CorpusPage({
           <ul aria-label={words.tabs.sources} className={cardGrid}>
             {corpus.members.map((m, i) => (
               <MemberCard
-                // A hidden member has no name; its place in the list tells it apart.
-                key={m.status === "hidden" ? `hidden:${i}` : `${m.kind}:${m.name}`}
+                // A member hidden from a reader has no name; its place in the list tells it apart.
+                key={m.name ? `${m.kind}:${m.name}` : `hidden:${i}`}
                 corpus={corpus.name}
                 member={m}
+                mine={corpus.mine}
                 owner={owner}
+                connector={m.kind === "catalog" ? connectors[m.name] : undefined}
                 onOpen={() => onOpenSource(m.name)}
                 onRemove={() => void remove(m)}
+                onConnect={() =>
+                  (connectors[m.name]?.system ?? m.provider) === "bigquery"
+                    ? startBigQueryLogin((why) => toast.error(why))
+                    : setLoginFor(m.name)
+                }
+                onForget={() => void forget(m.name)}
               />
             ))}
           </ul>
         ))}
+      {tab === "search" && (
+        <SearchTab key={corpus.name} corpus={corpus} q={q} onSearch={onSearch} />
+      )}
       {tab === "access" && (
         <Access
           key={corpus.version}
           corpus={corpus}
           owner={owner}
+          agents={agents}
+          directory={directory}
           onChanged={setCorpus}
           onConflict={reloadAfterConflict}
         />
@@ -802,7 +883,10 @@ export function CorpusPage({
           open={adding}
           corpus={corpus}
           sources={sources}
-          onClose={() => setAdding(false)}
+          onClose={() => {
+            setAdding(false);
+            reloadConnectors();
+          }}
           onAdded={(next, done) => {
             setCorpus(next);
             if (done) setAdding(false);
@@ -810,6 +894,22 @@ export function CorpusPage({
           onSourcesChanged={onSourcesChanged}
         />
       )}
+      <SideSheet
+        open={loginFor !== null}
+        title={words.login.title(loginFor ?? "")}
+        description={title}
+        onClose={() => setLoginFor(null)}
+      >
+        {loginFor && (
+          <LoginForm
+            connector={loginFor}
+            onSaved={() => {
+              setLoginFor(null);
+              reloadConnectors();
+            }}
+          />
+        )}
+      </SideSheet>
     </Page>
   );
 }
@@ -818,18 +918,39 @@ export function CorpusPage({
 function MemberCard({
   corpus,
   member,
+  mine,
   owner,
+  connector,
   onOpen,
   onRemove,
+  onConnect,
+  onForget,
 }: {
   corpus: string;
   member: CorpusMember;
+  /** The reader owns the corpus, so a member hidden from them still shows its name. */
+  mine: boolean;
+  /** The reader owns the corpus and may change it. */
   owner: boolean;
+  /** The warehouse a catalog member is, with the reader's own login to it. */
+  connector?: CatalogConnectorView;
   onOpen: () => void;
   onRemove: () => void;
+  onConnect: () => void;
+  onForget: () => void;
 }) {
   const hidden = member.status === "hidden";
-  const title = hidden ? words.hidden : member.name;
+  // Only the owner is told the name of a member hidden from them, so they can remove it.
+  const named = !hidden || (mine && !!member.name);
+  const title = named ? member.name : words.hidden;
+  const login = !hidden && member.kind === "catalog" ? connector?.login : undefined;
+  const system = connector?.system ?? member.provider;
+  const menu = [
+    ...(login === "connected" && system !== "bigquery"
+      ? [{ label: words.login.forget, run: onForget }]
+      : []),
+    ...(owner && named ? [{ label: words.remove, destructive: true, run: onRemove }] : []),
+  ];
   const facts = [
     member.holds ? words.holds[member.holds] : undefined,
     member.status === "missing" ? undefined : words.items(member.items),
@@ -848,15 +969,16 @@ function MemberCard({
             {words.status[member.status]}
           </Pill>
         )}
-        {owner && !hidden && (
-          <More
-            label={words.more(member.name)}
-            items={[{ label: words.remove, destructive: true, run: onRemove }]}
-          />
-        )}
+        {menu.length > 0 && <More label={words.more(title)} items={menu} />}
       </div>
+      {hidden && named && <p className="text-aui-xs text-aui-muted">{words.hiddenToOwner}</p>}
       {!hidden && facts.length > 0 && (
         <p className="text-aui-xs text-aui-muted tabular-nums">{facts.join(" | ")}</p>
+      )}
+      {(login === "connected" || login === "unavailable") && (
+        <p className="text-aui-xs text-aui-muted">
+          {login === "connected" ? words.login.connected : words.login.unavailable}
+        </p>
       )}
       {member.kind === "source" && !hidden && member.status !== "missing" && (
         <div className="mt-auto pt-1">
@@ -870,6 +992,158 @@ function MemberCard({
           </a>
         </div>
       )}
+      {login === "missing" && (
+        <div className="mt-auto pt-1">
+          <button type="button" className={button} onClick={onConnect}>
+            {words.login.connect}
+          </button>
+        </div>
+      )}
+    </li>
+  );
+}
+
+/** A failure cause in words, where the console has words for it. */
+function causeOf(cause: string): string {
+  const known = (defaultCopy.sourceLifecycle.cause as Record<string, string>)[cause];
+  return known ? known.charAt(0).toLowerCase() + known.slice(1) : cause;
+}
+
+/** Try a search: what an agent granted the corpus would find, with the reader's own access. */
+function SearchTab({
+  corpus,
+  q,
+  onSearch,
+}: {
+  corpus: Corpus;
+  q?: string;
+  onSearch?: (q: string) => void;
+}) {
+  const [text, setText] = useState(q ?? "");
+  const [state, setState] = useState<
+    { busy: true } | { busy: false; result?: CorpusSearch; failed?: string } | null
+  >(null);
+  const last = useRef<string | null>(null);
+  const run = useCallback(
+    (query: string) => {
+      last.current = query;
+      setState({ busy: true });
+      api.searchCorpus(corpus.name, query).then(
+        (result) => last.current === query && setState({ busy: false, result }),
+        (e) =>
+          last.current === query &&
+          setState({
+            busy: false,
+            failed: e instanceof ApiError && e.status < 500 ? e.message : words.search.failed,
+          }),
+      );
+    },
+    [corpus.name],
+  );
+  // A search at its address (a reload, a copied link) runs once.
+  useEffect(() => {
+    if (q && q !== last.current) {
+      setText(q);
+      run(q);
+    }
+  }, [q, run]);
+
+  const providerOf = (ref: CorpusMemberRef) =>
+    corpus.members.find((m) => m.kind === ref.kind && m.name === ref.name)?.provider;
+  const result = state && !state.busy ? state.result : undefined;
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      <form
+        aria-label={words.search.label}
+        className="flex min-w-0 gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const query = text.trim();
+          if (!query) return;
+          run(query);
+          onSearch?.(query);
+        }}
+      >
+        <input
+          type="search"
+          aria-label={words.search.label}
+          className={field}
+          maxLength={1000}
+          required
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+        <button type="submit" className={button} disabled={state?.busy}>
+          {words.search.action}
+        </button>
+      </form>
+      {state?.busy && (
+        <output className="text-aui-sm text-aui-muted">{words.search.searching}</output>
+      )}
+      {state && !state.busy && state.failed && <Problem message={state.failed} />}
+      {result && (
+        <>
+          {result.warnings.map((w) => (
+            <p key={`${w.member.kind}:${w.member.name}`} className="text-aui-xs text-aui-muted">
+              {words.search.warning(w.member.name, causeOf(w.cause))}
+            </p>
+          ))}
+          {result.hits.length === 0 ? (
+            <p className="text-aui-sm text-aui-muted">{words.search.none}</p>
+          ) : (
+            <ol aria-label={words.search.label} className={rows}>
+              {result.hits.map((hit) => (
+                <SearchHit
+                  key={`${hit.member.kind}:${hit.member.name}:${hit.document_id ?? hit.title}:${hit.index ?? 0}`}
+                  hit={hit}
+                  providerOf={providerOf}
+                />
+              ))}
+            </ol>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function SearchHit({
+  hit,
+  providerOf,
+}: {
+  hit: CorpusHit;
+  providerOf: (ref: CorpusMemberRef) => string | undefined;
+}) {
+  const link = safeLink(hit.uri);
+  return (
+    <li aria-label={hit.title} className="flex min-w-0 flex-col gap-1.5 py-3">
+      {link ? (
+        <a
+          href={link}
+          target="_blank"
+          rel="noreferrer"
+          className="min-w-0 truncate font-medium text-aui-sm text-aui-fg underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+        >
+          {hit.title}
+        </a>
+      ) : (
+        <span className="min-w-0 truncate font-medium text-aui-sm text-aui-fg">{hit.title}</span>
+      )}
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        <Tag icon={<ProviderMark provider={providerOf(hit.member) ?? "manual"} small />}>
+          {hit.member.name}
+        </Tag>
+        {(hit.also ?? []).map((m) => (
+          <Tag
+            key={`${m.kind}:${m.name}`}
+            icon={<ProviderMark provider={providerOf(m) ?? "manual"} small />}
+          >
+            {m.name}
+          </Tag>
+        ))}
+        <span className="text-aui-xs text-aui-muted">{words.holds[hit.holds]}</span>
+      </div>
+      <p className="line-clamp-3 text-aui-sm text-aui-muted">{hit.text}</p>
     </li>
   );
 }
@@ -884,12 +1158,11 @@ const NEW_SOURCES: NewSource[] = [
   "bigquery",
   "snowflake",
 ];
-/** Its setup lands in a later backend layer. */
-const SOON: NewSource[] = ["snowflake"];
 
 /**
  * Add Source: a source or warehouse the owner can already see, or a new one
- * made here and added once it exists.
+ * made here and added once it exists. A new Snowflake warehouse then asks for
+ * the owner's own login, which every query of theirs runs on.
  */
 function AddSource({
   open,
@@ -907,26 +1180,25 @@ function AddSource({
   onAdded: (corpus: Corpus, done: boolean) => void;
   onSourcesChanged?: () => void;
 }) {
-  const [step, setStep] = useState<NewSource | null>(null);
+  const [step, setStep] = useState<NewSource | { login: string } | null>(null);
   const [connectors, setConnectors] = useState<CatalogConnectorView[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
+  const loadConnectors = useCallback(() => {
+    api.catalog().then(
+      (page) => setConnectors(page.connectors ?? []),
+      () => {},
+    );
+  }, []);
   useEffect(() => {
     if (!open) {
       setStep(null);
       setProblem(null);
       return;
     }
-    let live = true;
-    api.catalog().then(
-      (page) => live && setConnectors(page.connectors ?? []),
-      () => {},
-    );
-    return () => {
-      live = false;
-    };
-  }, [open]);
+    loadConnectors();
+  }, [open, loadConnectors]);
 
   const add = async (ref: CorpusMemberRef, done: boolean) => {
     setBusy(`${ref.kind}:${ref.name}`);
@@ -934,15 +1206,17 @@ function AddSource({
     try {
       onAdded(await api.addCorpusMember(corpus.name, ref), done);
       toast.success(words.added(ref.name));
+      return true;
     } catch (e) {
       setProblem(message(e));
+      return false;
     } finally {
       setBusy(null);
     }
   };
   const created = (ref: CorpusMemberRef, done = true) => {
     onSourcesChanged?.();
-    void add(ref, done);
+    return add(ref, done);
   };
 
   const existing = [
@@ -966,13 +1240,22 @@ function AddSource({
       ‹ {words.add.back}
     </button>
   );
+  const login = step && typeof step === "object" ? step.login : null;
 
   return (
     <SideSheet
       open={open}
       wide
-      title={step ? (step === "manual" ? words.add.upload : providerLabel(step)) : words.add.title}
-      description={corpus.name}
+      title={
+        login
+          ? words.login.title(login)
+          : typeof step === "string"
+            ? step === "manual"
+              ? words.add.upload
+              : providerLabel(step)
+            : words.add.title
+      }
+      description={titleOf(corpus)}
       onClose={onClose}
     >
       <div className="flex min-w-0 flex-col gap-5">
@@ -1009,29 +1292,21 @@ function AddSource({
             <section aria-label={words.add.new} className="flex flex-col gap-1">
               <h3 className="text-aui-xs font-medium text-aui-muted">{words.add.new}</h3>
               <ul className="flex flex-col gap-2">
-                {NEW_SOURCES.map((p) => {
-                  const soon = SOON.includes(p);
-                  return (
-                    <li key={p}>
-                      <button
-                        type="button"
-                        disabled={soon}
-                        onClick={() => setStep(p)}
-                        className="flex min-h-11 w-full items-center gap-3 rounded-aui border border-aui-border px-3 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-not-allowed disabled:text-aui-muted disabled:hover:bg-transparent"
-                      >
-                        <ProviderMark provider={p} />
-                        <span className="min-w-0 flex-1 truncate">
-                          {p === "manual" ? words.add.upload : providerLabel(p)}
-                        </span>
-                        {soon ? (
-                          <Pill>{words.add.comingSoon}</Pill>
-                        ) : (
-                          <ChevronRightIcon size={16} className="text-aui-muted" />
-                        )}
-                      </button>
-                    </li>
-                  );
-                })}
+                {NEW_SOURCES.map((p) => (
+                  <li key={p}>
+                    <button
+                      type="button"
+                      onClick={() => setStep(p)}
+                      className="flex min-h-11 w-full items-center gap-3 rounded-aui border border-aui-border px-3 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                    >
+                      <ProviderMark provider={p} />
+                      <span className="min-w-0 flex-1 truncate">
+                        {p === "manual" ? words.add.upload : providerLabel(p)}
+                      </span>
+                      <ChevronRightIcon size={16} className="text-aui-muted" />
+                    </button>
+                  </li>
+                ))}
               </ul>
             </section>
           </>
@@ -1041,7 +1316,7 @@ function AddSource({
             {back}
             <UploadFiles
               corpus={corpus.name}
-              onCreated={(source) => created({ kind: "source", name: source })}
+              onCreated={(source) => void created({ kind: "source", name: source })}
             />
           </>
         )}
@@ -1052,7 +1327,7 @@ function AddSource({
               key={step}
               initialProvider={step}
               onCancel={() => setStep(null)}
-              onCreated={(source) => created({ kind: "source", name: source })}
+              onCreated={(source) => void created({ kind: "source", name: source })}
             />
           </>
         )}
@@ -1061,23 +1336,228 @@ function AddSource({
             canWrite
             onCancel={() => setStep(null)}
             // Added once saved; the sheet stays open to verify and publish it.
-            onSaved={(connector) => created({ kind: "catalog", name: connector }, false)}
-            onAuthorize={() =>
-              void connectionApi
-                .authorize("bigquery", { scope: "person" })
-                .then((auth) => {
-                  sessionStorage.setItem(
-                    "humagen.connection.provider",
-                    auth.provider ?? "bigquery",
-                  );
-                  window.location.assign(auth.url);
-                })
-                .catch((e) => setProblem(message(e)))
-            }
+            onSaved={(connector) => void created({ kind: "catalog", name: connector }, false)}
+            onAuthorize={() => startBigQueryLogin(setProblem)}
           />
+        )}
+        {step === "snowflake" && (
+          <>
+            {back}
+            <SnowflakeSetup
+              corpus={corpus.name}
+              onCreated={async (connector) => {
+                if (await created({ kind: "catalog", name: connector }, false)) {
+                  loadConnectors();
+                  setStep({ login: connector });
+                }
+              }}
+            />
+          </>
+        )}
+        {login && (
+          <>
+            {connectors.find((c) => c.name === login)?.login === "unavailable" ? (
+              <p className="text-aui-sm text-aui-muted">{words.login.unavailable}</p>
+            ) : (
+              <LoginForm connector={login} onSaved={onClose} />
+            )}
+            <div>
+              <button type="button" className={button} onClick={onClose}>
+                {words.login.done}
+              </button>
+            </div>
+          </>
         )}
       </div>
     </SideSheet>
+  );
+}
+
+/** A Snowflake warehouse that holds no credential, made inside the corpus. */
+function SnowflakeSetup({
+  corpus,
+  onCreated,
+}: {
+  corpus: string;
+  onCreated: (connector: string) => Promise<void>;
+}) {
+  const sf = words.snowflake;
+  const [draft, setDraft] = useState({
+    name: nameOf(words.add.snowflakeName(corpus)),
+    account: "",
+    database: "",
+    warehouse: "",
+    role: "",
+    token: "OAUTH" as "OAUTH" | "PROGRAMMATIC_ACCESS_TOKEN",
+  });
+  const group = useId();
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const set = (key: keyof typeof draft) => (e: { target: { value: string } }) =>
+    setDraft((d) => ({ ...d, [key]: key === "name" ? nameOf(e.target.value) : e.target.value }));
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      const connector = await api.createSnowflakeConnector({
+        name: draft.name,
+        account: draft.account.trim(),
+        database: draft.database.trim(),
+        warehouse: draft.warehouse.trim(),
+        ...(draft.role.trim() ? { role: draft.role.trim() } : {}),
+        token_type: draft.token,
+      });
+      await onCreated(connector.name);
+    } catch (err) {
+      setProblem(message(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form
+      aria-label={providerLabel("snowflake")}
+      className="flex min-w-0 flex-col gap-4"
+      onSubmit={submit}
+    >
+      <Problem message={problem} />
+      <Label text={words.form.name} hint={words.form.nameHint}>
+        <input
+          className={field}
+          required
+          pattern={NAME_PATTERN}
+          value={draft.name}
+          onChange={set("name")}
+        />
+      </Label>
+      <Label text={sf.account} hint={sf.accountHint}>
+        <input className={field} required value={draft.account} onChange={set("account")} />
+      </Label>
+      <Label text={sf.database}>
+        <input className={field} required value={draft.database} onChange={set("database")} />
+      </Label>
+      <Label text={sf.warehouse}>
+        <input className={field} required value={draft.warehouse} onChange={set("warehouse")} />
+      </Label>
+      <Label text={sf.role}>
+        <input className={field} value={draft.role} onChange={set("role")} />
+      </Label>
+      <fieldset className="flex min-w-0 flex-col gap-1">
+        <legend className="pb-1 text-aui-xs font-medium text-aui-muted">{sf.tokenType}</legend>
+        {(
+          [
+            ["OAUTH", sf.oauth],
+            ["PROGRAMMATIC_ACCESS_TOKEN", sf.pat],
+          ] as const
+        ).map(([value, label]) => (
+          <label key={value} className="flex min-h-8 items-center gap-2 text-aui-sm text-aui-fg">
+            <input
+              type="radio"
+              className="accent-aui-fg"
+              name={group}
+              checked={draft.token === value}
+              onChange={() => setDraft((d) => ({ ...d, token: value }))}
+            />
+            {label}
+          </label>
+        ))}
+      </fieldset>
+      <div>
+        <button type="submit" className={primary} disabled={busy}>
+          {sf.create}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * The reader's own login to a warehouse: a reference to their token, or the
+ * token itself where the workspace keeps values. A refusal says why, in the
+ * server's words, since the workspace decides which it takes.
+ */
+function LoginForm({ connector, onSaved }: { connector: string; onSaved: () => void }) {
+  const lw = words.login;
+  const group = useId();
+  const [kind, setKind] = useState<"ref" | "value">("ref");
+  const [ref, setRef] = useState("");
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      await api.putCatalogLogin(connector, kind === "ref" ? { ref: ref.trim() } : { value });
+      toast.success(lw.saved);
+      onSaved();
+    } catch (err) {
+      setProblem(message(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form
+      aria-label={lw.title(connector)}
+      className="flex min-w-0 flex-col gap-4"
+      onSubmit={submit}
+    >
+      <Problem message={problem} />
+      <fieldset className="flex min-w-0 flex-col gap-1">
+        <legend className="pb-1 text-aui-xs font-medium text-aui-muted">{lw.kind}</legend>
+        {(
+          [
+            ["ref", lw.ref],
+            ["value", lw.value],
+          ] as const
+        ).map(([id, label]) => (
+          <label key={id} className="flex min-h-8 items-center gap-2 text-aui-sm text-aui-fg">
+            <input
+              type="radio"
+              className="accent-aui-fg"
+              name={group}
+              checked={kind === id}
+              onChange={() => setKind(id)}
+            />
+            {label}
+          </label>
+        ))}
+      </fieldset>
+      {kind === "ref" ? (
+        <Label text={lw.refLabel} hint={lw.refHint}>
+          <input
+            className={field}
+            required
+            maxLength={512}
+            spellCheck={false}
+            value={ref}
+            onChange={(e) => setRef(e.target.value)}
+          />
+        </Label>
+      ) : (
+        <Label text={lw.valueLabel}>
+          <input
+            className={field}
+            type="password"
+            autoComplete="off"
+            required
+            maxLength={8192}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+          />
+        </Label>
+      )}
+      <div>
+        <button type="submit" className={primary} disabled={busy}>
+          {lw.save}
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -1148,19 +1628,22 @@ function UploadFiles({
   );
 }
 
-/** Who owns a corpus and who may read it; its owner changes both. */
+/** Who owns a corpus, who may read it and which agents it is granted to; its owner changes each. */
 function Access({
   corpus,
   owner,
+  agents,
+  directory,
   onChanged,
   onConflict,
 }: {
   corpus: Corpus;
   owner: boolean;
+  agents: string[];
+  directory: ReturnType<typeof useDirectory>;
   onChanged: (corpus: Corpus) => void;
   onConflict: () => void;
 }) {
-  const directory = useDirectory();
   const [readers, setReaders] = useState(draftOf(corpus));
   const [handTo, setHandTo] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1197,12 +1680,19 @@ function Access({
           : directory.personName(r.name ?? ""),
   }));
   const others = directory.peopleOptions.filter((p) => p.value !== corpus.owner);
+  const granted = corpus.agents ?? [];
+  const agentOptions: Pickable[] = [...new Set([...agents, ...granted])].map((a) => ({
+    value: a,
+    label: a,
+    mark: <AgentMark name={a} size={16} />,
+  }));
+  const heading = "text-aui-xs font-medium text-aui-muted";
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <Problem message={problem} />
       <section aria-label={words.access.owner} className={`${card} flex flex-col gap-3`}>
-        <h2 className="text-aui-xs font-medium text-aui-muted">{words.access.owner}</h2>
+        <h2 className={heading}>{words.access.owner}</h2>
         <p className="text-aui-sm text-aui-fg">{ownerName}</p>
         {owner && others.length > 0 && (
           <form
@@ -1254,7 +1744,7 @@ function Access({
           </form>
         ) : (
           <>
-            <h2 className="text-aui-xs font-medium text-aui-muted">{words.access.readers}</h2>
+            <h2 className={heading}>{words.access.readers}</h2>
             <ul className="flex flex-col gap-1">
               {(readerRows.length > 0
                 ? readerRows
@@ -1266,6 +1756,36 @@ function Access({
               ))}
             </ul>
           </>
+        )}
+      </section>
+      <section aria-label={words.agents.title} className={`${card} flex flex-col gap-3`}>
+        <h2 className={heading}>{words.agents.title}</h2>
+        {owner ? (
+          <>
+            <PickMany
+              label={words.agents.title}
+              add={words.agents.add}
+              empty={words.agents.none}
+              disabled={busy}
+              options={agentOptions}
+              value={granted}
+              onChange={(next) =>
+                void change({ agents: next }, () => toast.success(words.form.saved))
+              }
+            />
+            <p className="text-aui-xs text-aui-muted">{words.agents.hint}</p>
+          </>
+        ) : granted.length === 0 ? (
+          <p className="text-aui-sm text-aui-muted">{words.agents.none}</p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {granted.map((a) => (
+              <li key={a} className="flex items-center gap-2 text-aui-sm text-aui-fg">
+                <AgentMark name={a} size={16} />
+                {a}
+              </li>
+            ))}
+          </ul>
         )}
       </section>
     </div>

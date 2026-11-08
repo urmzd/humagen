@@ -78,3 +78,24 @@ export function nameOf(text: string): string {
     .replace(/^-+/, "")
     .slice(0, 63);
 }
+
+/** What people call a corpus: its title, or its name without one. */
+export function titleOf(corpus: Pick<Corpus, "name" | "title">): string {
+  return corpus.title?.trim() || corpus.name;
+}
+
+/** The name a title gives a new corpus: "HR policies" is hr-policies. Empty when it has no letter or digit a name can hold. */
+export function nameFromTitle(title: string): string {
+  return nameOf(title).replace(/-+$/, "");
+}
+
+/** Where a link from a search hit may go: the web, and nowhere a link could run code. */
+export function safeLink(uri: string | undefined): string | undefined {
+  if (!uri) return undefined;
+  try {
+    const url = new URL(uri);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}

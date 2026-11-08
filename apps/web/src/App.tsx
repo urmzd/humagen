@@ -424,9 +424,15 @@ function Console({
         .catch(() => {});
   }, [can]);
   // An old `/knowledge/{source}` link that names no corpus opens the source it named.
+  const corpusTab = route.page === "corpus" ? route.tab : undefined;
   const openOldSource = useCallback(
-    (source: string) => go({ page: "context", source }, { replace: true }),
-    [go],
+    (source: string) =>
+      go(
+        // `/knowledge/{source}/search` was the source's own search.
+        { page: "context", source, tab: corpusTab === "search" ? "search" : undefined },
+        { replace: true },
+      ),
+    [go, corpusTab],
   );
   const loadSuites = useCallback(() => {
     if (can("evals:read"))
@@ -1311,9 +1317,17 @@ function Console({
                           key={route.name}
                           name={route.name}
                           tab={route.tab}
+                          q={route.q}
                           sources={sources}
+                          agents={agents.map((agent) => agent.spec.name)}
                           canWrite={can("knowledge:write")}
                           onTab={(tab) => go({ page: "corpus", name: route.name, tab })}
+                          onSearch={(q) =>
+                            go(
+                              { page: "corpus", name: route.name, tab: "search", q },
+                              { replace: true },
+                            )
+                          }
                           onBack={() => go({ page: "knowledge" })}
                           onOpenSource={(source) =>
                             go({ page: "context", source, corpus: route.name })

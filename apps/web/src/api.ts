@@ -610,16 +610,33 @@ import type {
   CatalogConnector,
   CatalogConnectorView,
   CatalogEntry,
+  CatalogLoginInput,
   CatalogPage,
   Corpus,
   CorpusChange,
   CorpusCreate,
+  CorpusHit,
   CorpusMember,
   CorpusMemberRef,
   CorpusReader,
+  CorpusSearch,
+  CorpusSearchWarning,
+  SnowflakeSetupInput,
 } from "../../../packages/client/src/generated/types.ts";
 export type { CatalogConnector, CatalogConnectorView, CatalogEntry, CatalogPage };
-export type { Corpus, CorpusChange, CorpusCreate, CorpusMember, CorpusMemberRef, CorpusReader };
+export type {
+  CatalogLoginInput,
+  Corpus,
+  CorpusChange,
+  CorpusCreate,
+  CorpusHit,
+  CorpusMember,
+  CorpusMemberRef,
+  CorpusReader,
+  CorpusSearch,
+  CorpusSearchWarning,
+  SnowflakeSetupInput,
+};
 
 const corpusPath = (name: string) => `/api/corpora/${encodeURIComponent(name)}`;
 
@@ -1545,6 +1562,17 @@ export const api = {
     call<void>("DELETE", `${corpusPath(name)}${version ? `?version=${version}` : ""}`),
   addCorpusMember: (name: string, member: CorpusMemberRef) =>
     call<Corpus>("POST", `${corpusPath(name)}/members`, member),
+  /** The search an agent's corpus_search runs, with the caller's own access. */
+  searchCorpus: (name: string, q: string) =>
+    call<CorpusSearch>("GET", `${corpusPath(name)}/search?${new URLSearchParams({ q })}`),
+  /** A Snowflake connector that holds no credential: each reader gives their own login. */
+  createSnowflakeConnector: (input: SnowflakeSetupInput) =>
+    call<CatalogConnector>("POST", "/api/catalog/connectors/snowflake", input),
+  /** Your own login to a warehouse: a reference, or the token where the workspace keeps values. */
+  putCatalogLogin: (name: string, login: CatalogLoginInput) =>
+    call<void>("PUT", `/api/catalog/connectors/${encodeURIComponent(name)}/login`, login),
+  deleteCatalogLogin: (name: string) =>
+    call<void>("DELETE", `/api/catalog/connectors/${encodeURIComponent(name)}/login`),
   removeCorpusMember: (name: string, member: CorpusMemberRef) =>
     call<Corpus>(
       "DELETE",

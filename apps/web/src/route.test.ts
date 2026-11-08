@@ -376,6 +376,8 @@ test("Knowledge and each corpus have addresses, with tabs as paths, and old link
     { page: "knowledge" },
     { page: "corpus", name: "hr-policies", tab: "sources" },
     { page: "corpus", name: "hr-policies", tab: "access" },
+    { page: "corpus", name: "hr-policies", tab: "search" },
+    { page: "corpus", name: "hr-policies", tab: "search", q: "parental leave & pay" },
     { page: "context", corpus: "hr-policies", source: "handbook", tab: "documents" },
     { page: "context", corpus: "hr-policies", source: "handbook", tab: "search" },
     { page: "context", source: "handbook", tab: "evals" },
@@ -397,6 +399,16 @@ test("Knowledge and each corpus have addresses, with tabs as paths, and old link
     "/knowledge/hr-policies/sources/handbook",
   );
   assert.equal(href({ page: "context", corpus: "hr-policies" }), "/knowledge/hr-policies");
+  assert.equal(
+    href({ page: "corpus", name: "hr-policies", tab: "search", q: "leave" }),
+    "/knowledge/hr-policies/search?q=leave",
+  );
+  // The words of a search belong to the search tab alone.
+  assert.deepEqual(at("/knowledge/hr-policies/access?q=leave"), {
+    page: "corpus",
+    name: "hr-policies",
+    tab: "access",
+  });
   const links: [string, Route][] = [
     ["/knowledge", { page: "knowledge" }],
     ["/context", { page: "knowledge" }],
@@ -404,8 +416,10 @@ test("Knowledge and each corpus have addresses, with tabs as paths, and old link
     ["/?view=context", { page: "knowledge" }],
     ["/context/handbook", { page: "context", source: "handbook", tab: "documents" }],
     ["/context/handbook/variants", { page: "context", source: "handbook", tab: "variants" }],
-    // Before corpora, `/knowledge/{source}/{tab}` was a source's tab.
-    ["/knowledge/handbook/search", { page: "context", source: "handbook", tab: "search" }],
+    // Before corpora, `/knowledge/{source}/{tab}` was a source's tab. Search is now a
+    // corpus's tab too; the corpus page opens the source when no corpus has its name.
+    ["/knowledge/handbook/variants", { page: "context", source: "handbook", tab: "variants" }],
+    ["/knowledge/handbook/search", { page: "corpus", name: "handbook", tab: "search" }],
     ["/connections/sources/handbook", { page: "context", source: "handbook", tab: "documents" }],
     ["/knowledge/hr-policies/sources", { page: "corpus", name: "hr-policies", tab: "sources" }],
     ["/knowledge/hr-policies/bogus", { page: "corpus", name: "hr-policies", tab: "sources" }],
