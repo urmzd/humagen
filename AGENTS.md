@@ -58,7 +58,7 @@ and evidence when implementing a requirement.
 ## Layout
 
 - `internal/legacy`: every name from before the rename to Humagen that is still read, the names kept for stored data, and the notes printed at start. `pkg/call`: the call primitive. `pkg/runs`: the run index and statistics. `pkg/auth`: principals, roles, OIDC. `pkg/authz`: the policy language. `pkg/auth/mockidp`: the loopback development provider.
-- `pkg/journal`: the event log, queries and traces. `pkg/alerts`: rules and alerts. `pkg/knowledge`: sources and search. `pkg/catalog`: what exists in connected systems, metadata only, searched hybrid (RFC 0005); `pkg/catalog/bigquery` its first connector kind; `internal/platform/catalog.go` crawls, publishing and the `catalog_search` and `catalog_query` tools.
+- `pkg/journal`: the event log, queries and traces. `pkg/alerts`: rules and alerts. `pkg/knowledge`: sources and search. `pkg/corpora`: corpora, the named bodies of knowledge that hold sources and catalog connectors. `pkg/catalog`: what exists in connected systems, metadata only, searched hybrid (RFC 0005); `pkg/catalog/bigquery` its first connector kind; `internal/platform/catalog.go` crawls, publishing and the `catalog_search` and `catalog_query` tools.
 - `pkg/memory`: what an agent carries between conversations, as notes over `pkg/drive`. `pkg/drive`: versioned file trees (manifests on `pkg/state`, content by hash in `pkg/blob`), installed into and diffed from a run's files. `internal/platform/hooks.go`: housekeeping runs.
 - `pkg/clients`: the Slack apps and GitHub installations a workspace answers through. `internal/platform/connectors.go`: one surface per scheme, fanning in and out to them.
 - `pkg/evals`: suites and runs, scored by saige. `pkg/signals`: one run's signals, folded from its events and ratings. `pkg/join`: whether each agent takes a message that names none (the dynamic router). `pkg/prefs`: a person's own settings. `pkg/marks`: what a person marked on conversations (archived for them alone, when last read, dismissed tips).
@@ -101,6 +101,16 @@ and evidence when implementing a requirement.
 - Money is an `int64` of micro-USD. No floats.
 - Tests run with `-race`.
 - No em dashes in docs or comments.
+
+## Console patterns
+
+New console pages use these and never hand-roll them:
+
+- **Cards are `ItemCard`** (`apps/web/src/cards.tsx`), in the `itemGrid` grid. The whole card is its link; there is no Open button. Slots: a leading mark, the title, one status at the top right (a Pill or a dot, never empty), a one-line description, a facts row, and a ⋯ menu.
+- **References are `Reference`** (`apps/web/src/cards.tsx`): an origin, a source an agent pulled in, an item or backlink, a knowledge source, a search hit, a child session. A leading mark, a label, an optional count, and a link when it has a target.
+- **Status is a `Pill` or a dot.** Pills are for state only, never for references.
+- **Menus use the shared rows**: `MoreMenu`, or `menuRow` and `MenuSeparator` from `apps/web/src/ui.tsx` inside a `Popover`. Plain rows, an optional leading icon, destructive rows last after a separator.
+- **The composer is `Composer`** (`apps/web/src/Composer.tsx`).
 
 ## Shared presentation
 
