@@ -69,8 +69,16 @@ const notes: Note[] = [
   },
 ];
 
+const personal: ProjectView = {
+  ...field,
+  name: "personal-ada",
+  title: "Personal",
+  personal_owner: "ada",
+  path: [{ name: "personal-ada", kind: "team" }],
+};
+
 const noop = () => {};
-const render = (builtin: boolean, canWrite = true, startOn: Tab = "prompt") =>
+const render = (builtin: boolean, canWrite = true, startOn: Tab = "prompt", home?: string) =>
   renderToStaticMarkup(
     <AgentDetail
       revision={writer}
@@ -81,9 +89,9 @@ const render = (builtin: boolean, canWrite = true, startOn: Tab = "prompt") =>
       alerts={[]}
       stats={undefined}
       workspaceDefault="humagen-writer"
-      tree={[field]}
-      place={{ enabled_in: ["~"] }}
-      workspaceName="Acme"
+      tree={[field, personal]}
+      home={home}
+      personalProject="personal-ada"
       canWrite={canWrite}
       builtin={builtin}
       canEval={false}
@@ -120,34 +128,48 @@ test("someone who may not write sees no save, with or without the lock", () => {
 });
 
 const text = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-// The controls, by what they hold: the model on the Model tab, where it lives on the Access tab.
+// The controls, by what they hold: the model on the Model tab, who sees it on the Access tab.
 const model = (html: string) =>
   /<button[^>]*aria-label="Model, primary: offline"[^>]*>/.exec(html)?.[0] ?? "";
-const livesIn = (html: string) =>
-  /<button[^>]*aria-label="Lives in: [^"]*"[^>]*>/.exec(html)?.[0] ?? "";
+const access = (html: string) =>
+  /<button[^>]*aria-label="Access: [^"]*"[^>]*>/.exec(html)?.[0] ?? "";
 
-test("A built-in's spec is locked, and it lives in no project", () => {
+test("A built-in's spec is locked, and it is the workspace's", () => {
   assert.match(model(render(true, true, "model")), /disabled=""/);
   // Every switch of the spec's own is locked.
-  const access = render(true, true, "access");
-  const specSwitches = access.match(/<input type="checkbox" class="humagen-switch[^>]*>/g) ?? [];
+  const locked = render(true, true, "access");
+  const specSwitches = locked.match(/<input type="checkbox" class="humagen-switch[^>]*>/g) ?? [];
   assert.ok(
     specSwitches.length > 0 && specSwitches.every((s) => s.includes('disabled=""')),
     "the spec's switches are locked",
   );
-  assert.match(livesIn(access), /disabled=""/, "the platform's own agents live nowhere");
+  // The platform's own agents are the workspace's, whatever home is stored.
+  assert.match(access(locked), /aria-label="Access: Workspace"[^>]*disabled=""/);
+  assert.match(
+    access(render(true, true, "access", "Field")),
+    /aria-label="Access: Workspace"[^>]*disabled=""/,
+  );
   assert.doesNotMatch(model(render(false, true, "model")), /\sdisabled(?:=|\s|>)/);
-  assert.doesNotMatch(livesIn(render(false, true, "access")), /disabled=""/);
+  assert.doesNotMatch(access(render(false, true, "access")), /disabled=""/);
   // Without the right to write, neither changes.
   assert.match(model(render(false, false, "model")), /disabled=""/);
-  assert.match(livesIn(render(false, false, "access")), /disabled=""/);
+  assert.match(access(render(false, false, "access")), /disabled=""/);
 });
 
-test("Access: an agent enabled in the workspace says it is available everywhere, and the workspace default says so", () => {
-  const html = text(render(false, true, "access"));
-  assert.match(html, /Where it answers/);
-  assert.match(html, /Lives in Workspace/);
-  assert.match(html, /Available everywhere/);
+test("Access: who sees the agent follows its home, and nothing says where it is enabled", () => {
+  const shown = (home?: string) =>
+    /aria-label="Access: ([^"]*)"/.exec(render(false, true, "access", home))?.[1];
+  assert.equal(shown(), "Workspace");
+  assert.equal(shown("~"), "Workspace");
+  assert.equal(shown("personal-ada"), "Private");
+  assert.equal(shown("~personal-ada"), "Private");
+  assert.equal(shown("Field"), "Members of Field");
+  const html = text(render(false, true, "access", "Field"));
+  assert.match(html, /Who sees it/);
+  assert.doesNotMatch(html, /Where it answers|Lives in|Available (in|everywhere)|enabled in/i);
+});
+
+test("Access: the workspace default says so", () => {
   assert.match(text(render(false, true, "prompt")), /Workspace Default/);
   assert.doesNotMatch(text(render(false, true, "prompt")), /Baseline/);
 });
@@ -258,9 +280,34 @@ test("the directory keeps empty and populated statistics in the same three field
     assert.doesNotMatch(html, /Built in/);
     assert.match(html, /<p[^>]*class="truncate[^"]*">Writes a document\.<\/p>/);
     assert.doesNotMatch(html, /title="Writes a document\."/);
-    assert.doesNotMatch(html, /Lives in Workspace|Built in, read only|No runs in the last/);
+    assert.doesNotMatch(
+      html,
+      /Lives in|Members of|Private|Built in, read only|No runs in the last/,
+    );
     assert.doesNotMatch(html, /humagen-tape|humagen-stroke/);
   }
   assert.deepEqual(cells(empty).slice(-3), ["–", "–", "–"]);
   assert.deepEqual(cells(active).slice(-3), ["4", "75%", "2.0s"]);
+});
+
+test("the directory tags an agent with who sees it: Private, or the members of its project", () => {
+  const named = (name: string): Revision => ({ ...writer, spec: { ...writer.spec, name } });
+  const html = renderToStaticMarkup(
+    <Agents
+      agents={[named("shared"), named("mine"), named("everyone")]}
+      stats={new Map()}
+      homes={{ shared: "Field", mine: "personal-ada", everyone: "~" }}
+      tree={[field, personal]}
+      personalProject="personal-ada"
+      canWrite
+      onOpen={noop}
+      onNew={noop}
+    />,
+  );
+  const row = (name: string) =>
+    text(html.split("<tr").find((r) => r.includes(`>${name}</button>`)) ?? "");
+  assert.match(row("shared"), /Members of Field/);
+  assert.match(row("mine"), /Private/);
+  assert.doesNotMatch(row("everyone"), /Members of|Private|Workspace/);
+  assert.doesNotMatch(html, /Lives in/);
 });

@@ -1028,10 +1028,6 @@ export const api = {
     call<AccessDecision>("GET", `/api/access/explain?${new URLSearchParams({ permission })}`),
   agents: () => call<{ agents: Revision[] }>("GET", "/api/agents").then((r) => r.agents),
   /** Every agent, and the names of those the platform provides, which cannot be edited. */
-  /**
-   * Every agent, the platform's own by name, where each that lives in a
-   * project lives, and which projects enable each ("~" is the workspace).
-   */
   agentHues: (names: string[], path = "/api/agent-hues") =>
     call<{ hues: Record<string, number> }>(
       "GET",
@@ -1057,6 +1053,10 @@ export const api = {
     call<void>("DELETE", `/api/model-providers/${encodeURIComponent(name)}`),
   checkModelProvider: (name: string) =>
     call<ModelProviderCheck>("POST", `/api/model-providers/${encodeURIComponent(name)}/check`),
+  /**
+   * Every agent, the platform's own by name, and the project each is homed in,
+   * which says who sees it. `enabled_in` is always empty now.
+   */
   agentList: () =>
     call<{
       agents: Revision[];
@@ -1065,7 +1065,7 @@ export const api = {
       enabled_in?: Record<string, string[]>;
       hues?: Record<string, number>;
     }>("GET", "/api/agents"),
-  /** Make an agent live in a project, "" for none: available there and below, and nowhere else. */
+  /** Says who sees an agent: a project's members, Private in a Personal project, or "~" for the workspace. */
   setAgentHome: (agent: string, project: string) =>
     call<AgentHome>("PUT", `/api/agents/${encodeURIComponent(agent)}/home`, { project }),
   createAgent: (spec: AgentSpec) => call<Revision>("POST", "/api/agents", spec),

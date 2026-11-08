@@ -313,9 +313,8 @@ function Console({
   );
   // The agents the platform provides. They run like any other and cannot be edited.
   const [builtin, setBuiltin] = useState<string[]>([]);
-  // Where each agent that lives in a project lives, and which projects enable each.
+  // The project each agent is homed in, which says who sees it.
   const [homes, setHomes] = useState<Record<string, string>>({});
-  const [enabledIn, setEnabledIn] = useState<Record<string, string[]>>({});
   // Who answers a message that tags no agent in the workspace itself: the Workspace Default.
   const [workspaceDefault, setWorkspaceDefault] = useState("");
   const [schedules, setSchedules] = useState<ScheduleView[]>([]);
@@ -400,7 +399,6 @@ function Console({
         setAgentRead("ready");
         setBuiltin(r.builtin ?? []);
         setHomes(r.homes ?? {});
-        setEnabledIn(r.enabled_in ?? {});
       })
       .catch(() => setAgentRead("error"));
     api
@@ -1151,7 +1149,6 @@ function Console({
                       schedules={schedules}
                       agents={agents}
                       homes={homes}
-                      enabledIn={enabledIn}
                       can={can}
                       tick={tick}
                       onOpen={openProject}
@@ -1338,6 +1335,8 @@ function Console({
                       stats={stats}
                       workspaceDefault={workspaceDefault}
                       homes={homes}
+                      tree={projects ?? []}
+                      personalProject={me.personal_project}
                       canWrite={can("agents:write")}
                       onOpen={(name) => openAgent(name)}
                       onNew={() => openAgent(null)}
@@ -1413,12 +1412,8 @@ function Console({
                         alerts={alerts}
                         projects={projectNames}
                         tree={projects ?? []}
-                        place={
-                          route.name
-                            ? { home: homes[route.name], enabled_in: enabledIn[route.name] ?? [] }
-                            : undefined
-                        }
-                        workspaceName={workspaceName}
+                        home={route.name ? homes[route.name] : undefined}
+                        personalProject={me.personal_project}
                         stats={route.name ? stats.get(route.name) : undefined}
                         workspaceDefault={workspaceDefault}
                         canWrite={can("agents:write")}
@@ -1441,7 +1436,6 @@ function Console({
                         onOpenAlerts={() => go({ page: "monitor", tab: "rules" })}
                         onOpenTask={openThread}
                         onHomed={loadAgents}
-                        onOpenProject={openProject}
                         policies={workspace?.model_policies ?? []}
                         viewer={me.principal.subject}
                       />
