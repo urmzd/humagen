@@ -67,7 +67,7 @@ func (p *Platform) ResolveCorpusItem(ctx context.Context, req runtime.Request, a
 	if err != nil {
 		return CorpusItem{}, err
 	}
-	a, err := p.audienceOf(req)
+	a, err := p.corpusAudienceOf(req)
 	if err != nil {
 		return CorpusItem{}, err
 	}
