@@ -206,7 +206,9 @@ func TestAMessageTreeWithholdsAChildSessionItsReaderMayNotRead(t *testing.T) {
 // audience asked in front of, paged by the root before.
 func TestTheRootsAreListedNewestFirstWithTheirPlaceAndAudience(t *testing.T) {
 	p, ana := slackWorkspace(t)
-	first, err := p.SendMessages(t.Context(), ana, sayIn("why did the deploy fail?", slackRef("C01ANY", "1700000000.000100", "")))
+	public := slackRef("C01ANY", "1700000000.000100", "")
+	public.Audience = &platform.SurfaceAudience{Type: platform.ChannelPublic}
+	first, err := p.SendMessages(t.Context(), ana, sayIn("why did the deploy fail?", public))
 	if err != nil {
 		t.Fatal(err)
 	}
