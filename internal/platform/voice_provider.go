@@ -14,6 +14,7 @@ import (
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/speech"
+	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/usage"
 )
 
@@ -23,10 +24,11 @@ import (
 // composer's microphone uses the deployment's speech kind (the System spec's
 // speech slot) or the browser's own dictation.
 //
-// It is kept on the workspace's settings record, apart from Settings, so
-// GET /api/settings never shows it and PUT /api/settings cannot change it.
-// Its key is a value kept in Secrets or an env reference this server grants
-// the workspace, as a client's secrets are, and is never returned.
+// It is a record of its own beside the workspace's settings, so the settings
+// routes neither show nor replace it, and a writer of the settings record
+// that does not know it (an older server, mid-rollout) cannot drop it. Its
+// key is a value kept in Secrets or an env reference this server grants the
+// workspace, as a client's secrets are, and is never returned.
 
 // ErrVoiceProvider is a voice provider that cannot be set up as given.
 var ErrVoiceProvider = errors.New("platform: voice provider")
@@ -108,21 +110,38 @@ type VoiceBuild func(kind string, c speech.Config) (Voice, error)
 
 func buildVoice(kind string, c speech.Config) (Voice, error) { return speech.New(kind, c) }
 
+// voiceProviderKey is the record a workspace's voice provider is kept
+// under, in the settings namespace.
+const voiceProviderKey = "voice-provider"
+
 // VoiceProvider is who's workspace voice provider, and whether it has one.
 func (p *Platform) VoiceProvider(tenant string) (VoiceProvider, bool) {
 	if p.settings.rec.st == nil {
 		// A platform built without its stores, as a unit test builds one.
 		return VoiceProvider{}, false
 	}
-	v, _, err := p.settings.read(tenant)
+	var v VoiceProvider
+	_, err := p.settings.rec.lookup(tenant, voiceProviderKey, &v)
+	switch {
+	case errors.Is(err, state.ErrNotFound):
+		return VoiceProvider{}, false
+	case err != nil:
+		p.log.Error("platform: the voice provider could not be read", "tenant", tenant, "error", err)
+		return VoiceProvider{}, false
+	}
+	return v, v.Kind != ""
+}
+
+// writeVoiceProvider keeps a workspace's voice provider, or forgets it.
+func (p *Platform) writeVoiceProvider(tenant string, v *VoiceProvider) error {
+	if v == nil {
+		return p.settings.rec.write(state.Delete(tenant, voiceProviderKey))
+	}
+	op, err := recordOp(tenant, voiceProviderKey, *v, 0)
 	if err != nil {
-		p.log.Error("platform: settings could not be read", "tenant", tenant, "error", err)
-		return VoiceProvider{}, false
+		return err
 	}
-	if v.VoiceProvider == nil {
-		return VoiceProvider{}, false
-	}
-	return *v.VoiceProvider, true
+	return p.settings.rec.write(op)
 }
 
 // SetVoiceProvider sets who's workspace voice provider up, or replaces it.
@@ -191,10 +210,7 @@ func (p *Platform) SetVoiceProvider(ctx context.Context, who auth.Principal, in 
 			return VoiceProvider{}, err
 		}
 	}
-	if err := p.settings.update(tenant, func(v *storedSettings) error {
-		v.VoiceProvider = &next
-		return nil
-	}); err != nil {
+	if err := p.writeVoiceProvider(tenant, &next); err != nil {
 		return VoiceProvider{}, err
 	}
 	// A key that moved from a value to a reference leaves no value behind.
@@ -222,10 +238,7 @@ func (p *Platform) DeleteVoiceProvider(ctx context.Context, who auth.Principal) 
 	if !ok {
 		return nil
 	}
-	if err := p.settings.update(who.Tenant, func(v *storedSettings) error {
-		v.VoiceProvider = nil
-		return nil
-	}); err != nil {
+	if err := p.writeVoiceProvider(who.Tenant, nil); err != nil && !errors.Is(err, state.ErrNotFound) {
 		return err
 	}
 	if had.KeyStored && p.secrets != nil {
