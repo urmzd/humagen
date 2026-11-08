@@ -359,14 +359,16 @@ function statusEvent(state: ResponseState, event: ResponseEvent) {
     }
     if (path.length) target.path = path;
   }
-  // Anything awaiting or failing below a depth-1 call is shown on that call too.
-  const lane = state.tools[id];
-  if (lane && path.length > 1) {
-    lane.attention =
-      isAwaiting(status) || status === "error" ? { status, question, path } : undefined;
-  } else if (lane && lane === target && !isAwaiting(status) && status !== "error") {
-    lane.attention = undefined;
+  // Anything awaiting or failing below a call is shown on every call above it
+  // on its path, from the depth-1 call down, so it is never hidden.
+  const above = path.length > 1 ? path.slice(0, -1) : [];
+  const flag = isAwaiting(status) || status === "error" ? { status, question, path } : undefined;
+  for (const up of above) {
+    const call = state.tools[up];
+    if (call) call.attention = flag;
   }
+  const lane = state.tools[id];
+  if (lane && !above.length && lane === target && !flag) lane.attention = undefined;
 }
 
 function blockEvent(state: ResponseState, scope: Scope | undefined, event: ResponseEvent) {

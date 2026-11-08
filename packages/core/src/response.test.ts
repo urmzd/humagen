@@ -89,6 +89,7 @@ describe("delegation two deep, waiting on an approval", () => {
       "htu_r_ops_2",
       "htu_r_deployer_1",
     ]);
+    expect(state.tools.htu_r_ops_2?.attention?.status).toBe("awaiting_approval");
     expect(waiting(state).map((t) => t.id)).toEqual(["htu_r_deployer_1"]);
   });
 
