@@ -76,13 +76,6 @@ export function MessageMore({ children }: { children: ReactNode }) {
             }}
           >
             <div className="flex flex-wrap items-center gap-2">{children}</div>
-            <button
-              type="button"
-              onClick={close}
-              className="mt-2 min-h-9 w-full rounded-aui px-3 text-aui-xs hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-            >
-              Close
-            </button>
           </dialog>,
           document.body,
         )}
