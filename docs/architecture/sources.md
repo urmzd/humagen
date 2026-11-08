@@ -177,6 +177,19 @@ Routes, all behind `knowledge:read` or `knowledge:write`: `GET` and `POST
 answers 404; a change from someone other than the owner answers 403; a change
 or delete naming an old `version` answers 409.
 
+### In the console
+
+Agents > Knowledge (`/knowledge`) lists the corpora a person may read by
+title, and each corpus has its own address (`/knowledge/{corpus}`, with its
+Search tab at `/knowledge/{corpus}/search?q=` and its Access tab at
+`/knowledge/{corpus}/access`). Its owner adds sources there, existing or new
+(uploaded files, Google Drive, Notion, Amazon S3, Google Cloud Storage,
+BigQuery, Snowflake), removes them, changes its readers and the agents it is
+granted to, and hands it off. Each reader connects or forgets their own
+warehouse login on a warehouse's card. A source opened from a corpus sits
+under it, at `/knowledge/{corpus}/sources/{source}`. Built in
+`apps/web/src/Corpora.tsx`, tested in `corpora.dom.test.tsx`.
+
 ### Warehouses: queried live as the reader
 
 A Snowflake or BigQuery connector in a corpus keeps schema only: its owner's
