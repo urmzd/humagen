@@ -553,28 +553,14 @@ func (s *surface) route(w http.ResponseWriter, r *http.Request, body []byte, ref
 	}
 }
 
-// automationChannel is where an automation's run answers besides its session,
-// which always keeps it: the pull request or issue that triggered it, a Slack
-// channel through one of the tenant's Slack connections, or nowhere else. A
-// Slack connection that is missing or off keeps the answer in the session.
-func (s *surface) automationChannel(tenant string, rule clients.GitHubAutomation, kind string, body []byte) string {
-	switch rule.Deliver {
-	case clients.DeliverGitHub:
-		if thread, ok := clients.AutomationThread(kind, body); ok {
-			return "github://" + rule.Repository + "/" + thread
-		}
-		return ""
-	case clients.DeliverSlack:
-		c, err := s.p.Clients.Get(tenant, rule.SlackClient)
-		if err != nil || c.Surface != clients.Slack || !c.Enabled || c.Identity.Team == "" {
-			s.p.log.Warn("platform: an automation's Slack connection is unavailable; its answer stays in its session",
-				"tenant", tenant, "automation", rule.Name, "client", rule.SlackClient)
-			return ""
-		}
-		return "slack://" + c.Identity.Team + "/" + rule.SlackChannel
-	default:
-		return ""
+// automationChannel is where an automation's run answers: the pull request or
+// issue that triggered it. An event with neither has no thread, and its answer
+// stays in its session.
+func automationChannel(rule clients.GitHubAutomation, kind string, body []byte) string {
+	if thread, ok := clients.AutomationThread(kind, body); ok {
+		return "github://" + rule.Repository + "/" + thread
 	}
+	return ""
 }
 
 // hand passes a request to one client's connector, which verifies it again
@@ -598,7 +584,7 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 					tag := wire.NewEvent(wire.Raise{
 						ID:     "automation/" + url.PathEscape(current.ID) + "/" + url.PathEscape(delivery) + "/" + url.PathEscape(rule.Name),
 						Tenant: current.Tenant, Origin: "github", Agent: rule.Agent,
-						Channel: s.automationChannel(current.Tenant, rule, kind, body),
+						Channel: automationChannel(rule, kind, body),
 						Text:    rule.Instructions + "\n\nRepository: " + rule.Repository + "\nEvent: " + kind + clients.AutomationContext(body),
 						At:      time.Now().UTC(),
 						Context: map[string]string{wire.MetaGitHubEvent: kind, wire.MetaGitHubOwner: strings.SplitN(rule.Repository, "/", 2)[0], wire.MetaGitHubRepo: strings.SplitN(rule.Repository, "/", 2)[1]},

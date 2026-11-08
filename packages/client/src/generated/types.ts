@@ -2641,15 +2641,23 @@ export interface Schedule {
   project?: string;
   /** What the schedule is for, at most 500 characters. The agent is not shown it. */
   description?: string;
-  /** Where the answer of each run goes. Left out, it stays on the run.
-`inbox` sends it to the schedule's creator as a result. `project`
-posts it in the schedule's project as an announcement from the
-agent, its first line the subject: it needs a project (`~` for
-the workspace) where the agent is available (400 without one). A
-project whose `agent_posts` is `review` holds it as a draft for
-its owners instead. An answer of NONE goes nowhere.
+  /** Where the answer of each run goes. Left out, it stays in its
+session. `slack` posts it in the Slack channel `deliver_to`
+through the Slack connection `deliver_client`; `github` comments
+it on the GitHub issue `deliver_to` (owner/repo#number) through
+the GitHub connection `deliver_client`. Either takes clients:read,
+a connection that is on and serves that place (400 otherwise),
+and only that connection posts it. An answer that may hold
+private context or a person's own credentials is kept for the
+schedule's creator instead. Older schedules may still say `inbox`
+(the creator) or `project` (an announcement in its project). An
+answer of NONE goes nowhere.
  */
-  deliver?: "inbox" | "project";
+  deliver?: "slack" | "github" | "inbox" | "project";
+  /** The Slack or GitHub connection a `slack` or `github` delivery goes out through. */
+  deliver_client?: string;
+  /** A Slack channel id such as C0123ABC, or a GitHub issue as owner/repo#number. */
+  deliver_to?: string;
 }
 
 /** A schedule with whether it is running, when it fires next, and how its recent occurrences went. */
@@ -2660,8 +2668,12 @@ export interface ScheduleView {
   text: string;
   project?: string;
   description?: string;
-  /** Where the answer of each run goes. Absent when it stays on the run. */
-  deliver?: "inbox" | "project";
+  /** Where the answer of each run goes. Absent when it stays in its session. */
+  deliver?: "slack" | "github" | "inbox" | "project";
+  /** The connection a `slack` or `github` delivery goes out through. */
+  deliver_client?: string;
+  /** A Slack channel id, or a GitHub issue as owner/repo#number. */
+  deliver_to?: string;
   paused: boolean;
   /** `file` while the platform file declares the schedule: it can be paused, resumed and run here, and changing or deleting it answers 409. */
   managed: "file";
@@ -3798,6 +3810,7 @@ person it maps is that principal's answer; anyone else is refused.
   action_channels?: string[];
 }
 
+/** Starts a session when GitHub sends a matching event. The session answers on the pull request or issue that triggered it; a push, or a check run with no pull request, has no thread and stays in its session. */
 export interface GitHubAutomation {
   name: string;
   repository: string;
@@ -3808,12 +3821,6 @@ export interface GitHubAutomation {
   agent: string;
   instructions: string;
   paused: boolean;
-  /** Where each run's answer goes besides its session, which always keeps it. github answers on the pull request or issue that triggered it; slack posts in slack_channel through the Slack connection slack_client; none or unset keeps it in the session only. */
-  deliver?: "github" | "slack" | "none";
-  /** The Slack connection that posts, when deliver is slack. */
-  slack_client?: string;
-  /** The Slack channel id, such as C0123ABC, when deliver is slack. */
-  slack_channel?: string;
 }
 
 export interface GitHubOptions {

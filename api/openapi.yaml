@@ -13513,15 +13513,27 @@ components:
           maxLength: 500
         deliver:
           description: |
-            Where the answer of each run goes. Left out, it stays on the run.
-            `inbox` sends it to the schedule's creator as a result. `project`
-            posts it in the schedule's project as an announcement from the
-            agent, its first line the subject: it needs a project (`~` for
-            the workspace) where the agent is available (400 without one). A
-            project whose `agent_posts` is `review` holds it as a draft for
-            its owners instead. An answer of NONE goes nowhere.
+            Where the answer of each run goes. Left out, it stays in its
+            session. `slack` posts it in the Slack channel `deliver_to`
+            through the Slack connection `deliver_client`; `github` comments
+            it on the GitHub issue `deliver_to` (owner/repo#number) through
+            the GitHub connection `deliver_client`. Either takes clients:read,
+            a connection that is on and serves that place (400 otherwise),
+            and only that connection posts it. An answer that may hold
+            private context or a person's own credentials is kept for the
+            schedule's creator instead. Older schedules may still say `inbox`
+            (the creator) or `project` (an announcement in its project). An
+            answer of NONE goes nowhere.
           type: string
-          enum: [inbox, project]
+          enum: [slack, github, inbox, project]
+        deliver_client:
+          description: The Slack or GitHub connection a `slack` or `github` delivery goes out through.
+          type: string
+          maxLength: 128
+        deliver_to:
+          description: A Slack channel id such as C0123ABC, or a GitHub issue as owner/repo#number.
+          type: string
+          maxLength: 160
     ScheduleView:
       description: A schedule with whether it is running, when it fires next, and how its recent occurrences went.
       type: object
@@ -13534,9 +13546,15 @@ components:
         project: {type: string}
         description: {type: string}
         deliver:
-          description: Where the answer of each run goes. Absent when it stays on the run.
+          description: Where the answer of each run goes. Absent when it stays in its session.
           type: string
-          enum: [inbox, project]
+          enum: [slack, github, inbox, project]
+        deliver_client:
+          description: The connection a `slack` or `github` delivery goes out through.
+          type: string
+        deliver_to:
+          description: A Slack channel id, or a GitHub issue as owner/repo#number.
+          type: string
         paused: {type: boolean}
         managed:
           description: "`file` while the platform file declares the schedule: it can be paused, resumed and run here, and changing or deleting it answers 409."
@@ -15128,6 +15146,7 @@ components:
           items:
             type: string
     GitHubAutomation:
+      description: Starts a session when GitHub sends a matching event. The session answers on the pull request or issue that triggered it; a push, or a check run with no pull request, has no thread and stays in its session.
       type: object
       required: [name, repository, event, action, agent, instructions, paused]
       properties:
@@ -15140,14 +15159,6 @@ components:
         agent: {type: string}
         instructions: {type: string, maxLength: 16000}
         paused: {type: boolean}
-        deliver:
-          description: Where each run's answer goes besides its session, which always keeps it.
-            github answers on the pull request or issue that triggered it; slack posts in slack_channel
-            through the Slack connection slack_client; none or unset keeps it in the session only.
-          type: string
-          enum: [github, slack, none]
-        slack_client: {type: string, maxLength: 128, description: "The Slack connection that posts, when deliver is slack."}
-        slack_channel: {type: string, pattern: "^[CGD][A-Z0-9]{2,31}$", description: "The Slack channel id, such as C0123ABC, when deliver is slack."}
     GitHubOptions:
       type: object
       properties:

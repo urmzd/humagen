@@ -25,9 +25,17 @@ type schedule struct {
 	Project string `json:"project,omitempty"`
 	// Description says what the schedule is for. The agent is not shown it.
 	Description string `json:"description,omitempty"`
-	// Deliver is where the answer of each run goes: nowhere (""), the
-	// creator's inbox, or the project's.
+	// Deliver is where the answer of each run goes: nowhere (""), so it
+	// stays in its session; slack or github, through the connection
+	// DeliverClient names, to DeliverTo; or, for older schedules, the
+	// creator's inbox or the project's.
 	Deliver string `json:"deliver,omitempty"`
+	// DeliverClient is the Slack or GitHub connection a slack or github
+	// delivery goes out through.
+	DeliverClient string `json:"deliver_client,omitempty"`
+	// DeliverTo is a Slack channel id, or owner/repo#number for a GitHub
+	// issue.
+	DeliverTo string `json:"deliver_to,omitempty"`
 }
 
 // scheduleView is a schedule with what a person needs to trust it: whether it
@@ -59,6 +67,7 @@ func (s *Server) viewOf(seer *platform.Seer, e platform.ScheduleEntry, now time.
 		schedule: schedule{
 			Name: sc.Name, Expression: sc.Expression, Agent: sc.Agent, Text: sc.Text,
 			Project: sc.Context[runs.MetaProject], Description: about.Description, Deliver: sc.Context[platform.MetaDeliver],
+			DeliverClient: sc.Context[platform.MetaDeliverClient], DeliverTo: sc.Context[platform.MetaDeliverTo],
 		},
 		Paused:        e.Paused,
 		Managed:       about.Managed,
@@ -200,10 +209,28 @@ func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.P
 	}
 	delete(meta, runs.MetaProject)
 	delete(meta, platform.MetaDeliver)
+	delete(meta, platform.MetaDeliverClient)
+	delete(meta, platform.MetaDeliverTo)
+	through := body.Deliver == platform.DeliverSlack || body.Deliver == platform.DeliverGitHub
 	switch {
 	case !platform.ValidDeliver(body.Deliver):
-		fail(w, http.StatusBadRequest, "deliver is inbox, project, or left out to keep the answer on the run")
+		fail(w, http.StatusBadRequest, "deliver is slack or github with a connection and a place, or left out to keep the answer in its session")
 		return nil, false
+	case !through && (body.DeliverClient != "" || body.DeliverTo != ""):
+		fail(w, http.StatusBadRequest, "only a slack or github delivery names a connection and a place")
+		return nil, false
+	case through && !who.Can(auth.ClientsRead):
+		// Posting through a connection takes being able to see it.
+		notFound(w)
+		return nil, false
+	case through:
+		if _, _, err := s.P.DeliveryTarget(who.Tenant, body.Deliver, body.DeliverClient, body.DeliverTo); err != nil {
+			fail(w, http.StatusBadRequest, strings.TrimPrefix(err.Error(), platform.ErrDeliveryTarget.Error()+": "))
+			return nil, false
+		}
+		meta[platform.MetaDeliver] = body.Deliver
+		meta[platform.MetaDeliverClient] = body.DeliverClient
+		meta[platform.MetaDeliverTo] = body.DeliverTo
 	case body.Deliver == platform.DeliverProject && body.Project == "":
 		fail(w, http.StatusBadRequest, "deliver: project posts to the schedule's project, so name one, or ~ for the workspace")
 		return nil, false
@@ -307,6 +334,7 @@ func (s *Server) runSchedule(w http.ResponseWriter, r *http.Request, who auth.Pr
 		Context: map[string]string{
 			wire.MetaCronSchedule: sc.Name, wire.MetaCronExpression: sc.Expression,
 			runs.MetaProject: sc.Context[runs.MetaProject], platform.MetaDeliver: sc.Context[platform.MetaDeliver],
+			platform.MetaDeliverClient: sc.Context[platform.MetaDeliverClient], platform.MetaDeliverTo: sc.Context[platform.MetaDeliverTo],
 			"created_by": sc.Context["created_by"],
 		},
 		At:   now,

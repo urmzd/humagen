@@ -4,14 +4,17 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/orchagent/flow/event"
 	"github.com/urmzd/orchagent/flow/runtime"
 	saigetypes "github.com/urmzd/saige/agent/types"
 )
@@ -61,19 +64,12 @@ func TestAutomationRequiresTheInstallationsSignature(t *testing.T) {
 	}
 }
 
-func TestAnAutomationAnswersWhereItIsToldAndAlwaysKeepsItsSession(t *testing.T) {
+func TestAnAutomationAnswersOnTheThreadThatTriggeredIt(t *testing.T) {
 	f := &fakes{}
-	p := stage(t, &cast{says: map[string][][]saigetypes.Delta{"lead": {say("Looked into it."), say("Looked into it."), say("Looked into it."), say("Looked into it.")}}}, f.config())
-	create(t, p, tenant, slackClient("slack-app", "A0SLACK1", "T0TEAM1", "lead"))
-	rule := func(name, deliver, slackClient, channel string) clients.GitHubAutomation {
-		return clients.GitHubAutomation{Name: name, Repository: "acme/repo", Event: "issues", Action: "opened", Agent: "lead", Instructions: "Investigate this issue.", Deliver: deliver, SlackClient: slackClient, SlackChannel: channel}
-	}
+	p := stage(t, &cast{says: map[string][][]saigetypes.Delta{"lead": {say("Looked into it.")}}}, f.config())
 	create(t, p, tenant, platform.ClientInput{
 		Client: clients.Client{ID: "gh", Name: "GitHub", Surface: clients.GitHub, Enabled: true, Identity: clients.Identity{Owners: []string{"acme"}, Installation: "101"}, DefaultAgent: "lead", GitHub: &clients.GitHubOptions{Automations: []clients.GitHubAutomation{
-			rule("on-the-issue", clients.DeliverGitHub, "", ""),
-			rule("as-before", "", "", ""),
-			rule("to-slack", clients.DeliverSlack, "slack-app", "C0ALERTS1"),
-			rule("kept", clients.DeliverNone, "", ""),
+			{Name: "triage", Repository: "acme/repo", Event: "issues", Action: "opened", Agent: "lead", Instructions: "Investigate this issue."},
 		}}},
 		Token: clients.SecretInput{Value: "token-gh"}, SigningSecret: clients.SecretInput{Value: "secret-gh"},
 	})
@@ -89,13 +85,11 @@ func TestAnAutomationAnswersWhereItIsToldAndAlwaysKeepsItsSession(t *testing.T) 
 	if w.Code != http.StatusOK {
 		t.Fatalf("delivery = %d", w.Code)
 	}
-	for _, name := range []string{"on-the-issue", "as-before", "to-slack", "kept"} {
-		run := await(t, p, runtime.RunID(tenant, "automation/gh/d1/"+name), runs.Completed)
-		if run.Thread == "" {
-			t.Fatalf("%s kept no session", name)
-		}
+	run := await(t, p, runtime.RunID(tenant, "automation/gh/d1/triage"), runs.Completed)
+	if run.Thread == "" {
+		t.Fatal("the automation kept no session")
 	}
-	eventually(t, "the issue automation answered on the issue", func() bool {
+	eventually(t, "the automation answered on the issue", func() bool {
 		for _, c := range f.githubFor("token-gh").Comments() {
 			if strings.Contains(c.Body, "Looked into it.") {
 				return true
@@ -103,15 +97,51 @@ func TestAnAutomationAnswersWhereItIsToldAndAlwaysKeepsItsSession(t *testing.T) 
 		}
 		return false
 	})
-	eventually(t, "the Slack automation posted in its channel", func() bool {
-		for _, m := range f.slackFor("token-slack-app").Messages() {
-			if m.Channel == "C0ALERTS1" && strings.Contains(m.Text, "Looked into it.") {
+}
+
+// A schedule that sends its answer to Slack posts through the Slack connection
+// it names, even when another one serves the same workspace, and only there.
+func TestAScheduleDeliversThroughTheSlackConnectionItNames(t *testing.T) {
+	f := &fakes{}
+	p := stage(t, &cast{says: map[string][][]saigetypes.Delta{"lead": {say("Nightly: all green.")}}}, f.config())
+	create(t, p, tenant, slackClient("slack-a", "A0SLACKA", "T0TEAM1", "lead"))
+	create(t, p, tenant, slackClient("slack-b", "A0SLACKB", "T0TEAM1", "lead"))
+	run, err := p.Invoke(t.Context(), wire.NewEvent(wire.Raise{ID: "manual-nightly", Tenant: tenant, Agent: "lead", Origin: runs.OriginManual, Text: "Report.", Actor: event.Actor{ID: "ada"}, Context: map[string]string{
+		"cron_schedule": "nightly", "cron_expression": "0 9 * * *", "created_by": "ada",
+		platform.MetaDeliver: platform.DeliverSlack, platform.MetaDeliverClient: "slack-a", platform.MetaDeliverTo: "C0ALERTS1",
+	}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	await(t, p, run.ID, runs.Completed)
+	eventually(t, "the schedule posted in its channel through slack-a", func() bool {
+		for _, m := range f.slackFor("token-slack-a").Messages() {
+			if m.Channel == "C0ALERTS1" && strings.Contains(m.Text, "Nightly: all green.") {
 				return true
 			}
 		}
 		return false
 	})
-	if n := len(f.githubFor("token-gh").Comments()); n != 1 {
-		t.Fatalf("%d comments on the issue, want only the GitHub automation's; an unset delivery stays in its session", n)
+	if n := len(f.slackFor("token-slack-b").Messages()); n != 0 {
+		t.Fatalf("slack-b posted %d messages; only the named connection delivers", n)
+	}
+}
+
+// A schedule names a place its connection serves, or it is refused when written.
+func TestAScheduleDeliveryTargetIsChecked(t *testing.T) {
+	f := &fakes{}
+	p := stage(t, &cast{}, f.config())
+	create(t, p, tenant, slackClient("slack-a", "A0SLACKA", "T0TEAM1", "lead"))
+	for _, c := range []struct{ deliver, client, to string }{
+		{platform.DeliverSlack, "slack-a", "D0DIRECT1"},
+		{platform.DeliverSlack, "missing", "C0ALERTS1"},
+		{platform.DeliverGitHub, "slack-a", "acme/repo#7"},
+	} {
+		if _, _, err := p.DeliveryTarget(tenant, c.deliver, c.client, c.to); !errors.Is(err, platform.ErrDeliveryTarget) {
+			t.Errorf("%+v: err = %v, want a refused target", c, err)
+		}
+	}
+	if _, to, err := p.DeliveryTarget(tenant, platform.DeliverSlack, "slack-a", "C0ALERTS1"); err != nil || to != "slack://T0TEAM1/C0ALERTS1" {
+		t.Fatalf("to = %q, err = %v", to, err)
 	}
 }

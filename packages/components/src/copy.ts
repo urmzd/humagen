@@ -2981,52 +2981,34 @@ export const defaultCopy = {
   rated: { up: "Rated helpful", down: "Rated not helpful" },
   /** Where a schedule's answers go, and the weekly recap a project can add. */
   automations: {
-    labels: {
-      name: "Name",
-      installation: "GitHub installation",
-      repository: "Repository",
-      event: "Event",
-      action: "Action equals",
-      conclusion: "Conclusion equals",
-      label: "Label equals",
-      agent: "Target agent",
-      instructions: "Instructions",
-      paused: "Paused",
-      deliver: "Send to",
-      slackClient: "Slack connection",
-      slackChannel: "Slack channel id",
-    },
-    deliverGitHub: "This pull request or issue",
-    deliverSlack: "A Slack channel",
-    deliverNone: "Only its session",
-    noSlack: "Connect Slack first, then choose its channel here.",
-    sentToGitHub: "Answers on the pull request or issue",
-    sentToSlack: (channel: string, via: string) => `Slack ${channel} via ${via}`,
-    sentToSession: "Kept in its session",
     title: "Scheduled",
-    lede: "Work that runs at set times or when GitHub sends an event. Each run opens a session.",
+    lede: "Work that runs at set times. Each run is a session, and its answer goes where you choose.",
     newSchedule: "New Schedule",
-    runs: "Runs",
-    atTimes: "At set times",
-    onGitHub: "On a GitHub event",
-    events: {
-      check_run: "Check run",
-      issues: "Issue",
-      pull_request: "Pull request",
-      push: "Push",
-    },
-    newTitle: "New schedule",
-    editTitle: (name: string) => `Change ${name}`,
-    save: "Save Schedule",
     empty: "Nothing scheduled yet",
-    noGitHub: "Connect GitHub first; its events can then start work here.",
-    openConnections: "Open Connections",
     active: "Active",
     paused: "Paused",
   },
   schedules: {
-    deliver: "Answer",
+    deliver: "Send to",
     deliverHint: "Where each run's answer goes. A recap that finds nothing to say sends nothing.",
+    sendSession: "Only its session",
+    sendSlack: "A Slack channel",
+    sendGitHub: "A GitHub issue",
+    sendInbox: "Its creator (older)",
+    sendProject: "Its project (older)",
+    connection: "Connection",
+    slackChannel: "Slack channel id",
+    githubIssue: "Issue",
+    sentTo: (deliver: string | undefined, to: string | undefined) =>
+      deliver === "slack"
+        ? `Slack ${to ?? ""}`
+        : deliver === "github"
+          ? `GitHub ${to ?? ""}`
+          : deliver === "project"
+            ? "Its project"
+            : deliver === "inbox"
+              ? "Its creator"
+              : "Its session",
     deliverNone: "Keep in the conversation",
     /** A new schedule is the reader's own; an existing one goes to whoever created it. */
     deliverInbox: (mine: boolean) => (mine ? "Send to my inbox" : "Send to its creator's inbox"),
