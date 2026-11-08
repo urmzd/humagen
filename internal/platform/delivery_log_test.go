@@ -52,11 +52,21 @@ func TestEveryGitHubDeliverySaysWhatBecameOfIt(t *testing.T) {
 	if code := post("wrong-secret", "d-forged", "@humagen review this"); code != http.StatusUnauthorized {
 		t.Fatalf("the forged delivery answered %d", code)
 	}
+	pull := `{"action":"opened","number":8,"installation":{"id":101},"repository":{"full_name":"acme/repo","name":"repo","owner":{"login":"acme"}},` +
+		`"sender":{"login":"ada","type":"User"},"pull_request":{"number":8,"state":"open","draft":false,"head":{"sha":"` + strings.Repeat("c", 40) + `"}}}`
+	mac := hmac.New(sha256.New, []byte("secret-gh"))
+	mac.Write([]byte(pull))
+	r := httptest.NewRequest(http.MethodPost, "/connectors/github", strings.NewReader(pull))
+	r.Header.Set(signature.HeaderGitHubSignature, "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	r.Header.Set("X-GitHub-Event", "pull_request")
+	r.Header.Set("X-GitHub-Delivery", "d-pull")
+	ingress.ServeHTTP(httptest.NewRecorder(), r)
 	lines := said.String()
 	for _, want := range []string{
 		`msg="platform: a webhook delivery was accepted" surface=github tenant=` + tenant + ` client=gh event=issue_comment action=created place=acme/repo delivery=d-mention status=200 requests=1`,
 		`delivery=d-plain status=200 why="it mentions neither the app (@humagen) nor one of the client's agents"`,
 		`delivery=d-forged status=401 why="its signature matches the secret of none of the 1 clients that claim it"`,
+		`event=pull_request action=opened place=acme/repo delivery=d-pull status=200 requests=1`,
 	} {
 		if !strings.Contains(lines, want) {
 			t.Errorf("the logs do not say %q:\n%s", want, lines)

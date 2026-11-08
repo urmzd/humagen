@@ -600,6 +600,9 @@ func autoReviewText(req clients.AutoReviewRequest, from string) string {
 // hand passes a request to one client's connector, which verifies it again
 // with the same secret before it parses anything.
 func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []byte) {
+	// started counts the runs event rules and automatic review start here,
+	// beside what the connector raises, for the delivery's log line.
+	var started int64
 	if st.verifier != nil {
 		current, enabled := s.p.currentInstallation(st.client)
 		if !enabled {
@@ -630,6 +633,7 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 							http.Error(w, "automation admission failed", http.StatusServiceUnavailable)
 							return
 						}
+						started++
 					}
 				}
 				if repo, number, ok := current.MentionOnPullRequest(kind, body); ok {
@@ -653,6 +657,7 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 								http.Error(w, "automatic review admission failed", http.StatusServiceUnavailable)
 								return
 							}
+							started++
 						}
 					}
 				}
@@ -665,7 +670,7 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 	before := st.raised.Load()
 	rec := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 	st.peer.ServeHTTP(rec, r)
-	s.logDelivery(r, body, st.client, rec.status, st.raised.Load()-before)
+	s.logDelivery(r, body, st.client, rec.status, st.raised.Load()-before+started)
 }
 
 // Deliver gives a run's event to the client that carries it.
