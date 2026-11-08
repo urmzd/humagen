@@ -471,6 +471,71 @@ export interface Marks {
   since?: string;
 }
 
+/** A provider kind an administrator may set up. */
+export type ModelProviderKind = "anthropic" | "google" | "openai";
+
+/** A provider agents may run on: the deployment's, or one the workspace set up. */
+export interface ModelProviderChoice {
+  name: string;
+  declared: boolean;
+  kind?: ModelProviderKind;
+  source?: "deployment" | "workspace";
+}
+
+/** Where a google provider's calls go on Vertex AI. */
+export interface VertexLocation {
+  project: string;
+  location: string;
+}
+
+/** A model provider the workspace's administrators set up. Its key is never returned. */
+export interface ModelProvider {
+  name: string;
+  kind: ModelProviderKind;
+  base_url?: string;
+  vertex?: VertexLocation;
+  /** The key's env:NAME reference, when it is one. */
+  key_ref?: string;
+  /** A value is kept for it in the secret store. */
+  key_stored?: boolean;
+  added_by?: string;
+  added_at?: string;
+}
+
+/** A provider as an administrator writes it: a key as a value or a reference, or neither to keep it. */
+export interface ModelProviderInput {
+  kind: ModelProviderKind;
+  base_url?: string;
+  vertex?: VertexLocation;
+  key_ref?: string;
+  key?: string;
+}
+
+export interface ModelProviderSetup {
+  providers: ModelProviderChoice[];
+  kinds: ModelProviderKind[];
+  /** The workspace's own providers, for someone who may manage them. */
+  workspace?: ModelProvider[];
+}
+
+/** A provider's answer to a check, as a health component. */
+export interface ModelProviderCheck {
+  id: string;
+  name: string;
+  status: "operational" | "degraded" | "down";
+  detail?: string;
+  latency_ms: number;
+}
+
+/** One of the platform's agent packages, and what the workspace installed of it. */
+export interface AgentPackageListing {
+  name: string;
+  title: string;
+  description: string;
+  installed: number;
+  agents: { name: string; description: string; installed: boolean }[];
+}
+
 /** One agent's answer to whether it would take a message that names no agent. */
 export interface JoinDecision {
   agent: string;
@@ -479,12 +544,11 @@ export interface JoinDecision {
 }
 
 /**
- * The dynamic router: when on, every available agent is asked whether it
- * should take a message that names no agent. The provider is one the
- * deployment declares; its key never lives here.
+ * The model that asks every available agent whether it should take a message
+ * that names no agent. There is no switch: routing runs once both are set,
+ * on a provider the deployment declares or the workspace set up.
  */
 export interface RouterSettings {
-  enabled: boolean;
   provider?: string;
   model?: string;
 }
@@ -502,8 +566,10 @@ export interface Settings {
   workspace_name?: string;
   /** Named model lists agents run on with provider "policy". */
   model_policies?: ModelPolicy[];
-  /** Whether agents decide for themselves to take a message that names no agent. */
+  /** The model that routes a message that names no agent. */
   router: RouterSettings;
+  /** The model providers the workspace's administrators set up, with no key. */
+  model_providers?: ModelProvider[];
   /** Set once by the server when an admin first saves settings. */
   setup_at?: string;
   setup_by?: string;
@@ -1015,9 +1081,24 @@ export const api = {
     call<AgentSetup>("POST", `/api/agent-setups/${encodeURIComponent(name)}/test`, { text }),
   activateAgentSetup: (name: string) =>
     call<AgentSetup>("POST", `/api/agent-setups/${encodeURIComponent(name)}/activate`),
-  modelProviders: () =>
-    call<{ providers: { name: string; declared: boolean }[] }>("GET", "/api/model-providers").then(
-      (response) => response.providers,
+  modelProviders: () => api.modelProviderSetup().then((response) => response.providers),
+  /** What agents may run on, the kinds an admin may add, and, for an admin, the workspace's own. */
+  modelProviderSetup: () => call<ModelProviderSetup>("GET", "/api/model-providers"),
+  setModelProvider: (name: string, input: ModelProviderInput) =>
+    call<ModelProvider>("PUT", `/api/model-providers/${encodeURIComponent(name)}`, input),
+  deleteModelProvider: (name: string) =>
+    call<void>("DELETE", `/api/model-providers/${encodeURIComponent(name)}`),
+  checkModelProvider: (name: string) =>
+    call<ModelProviderCheck>("POST", `/api/model-providers/${encodeURIComponent(name)}/check`),
+  agentPackages: () =>
+    call<{ packages: AgentPackageListing[] }>("GET", "/api/agent-packages").then(
+      (response) => response.packages,
+    ),
+  installAgentPackage: (name: string, model: ModelRef) =>
+    call<AgentPackageListing>(
+      "POST",
+      `/api/agent-packages/${encodeURIComponent(name)}/install`,
+      model,
     ),
   agentList: () =>
     call<{

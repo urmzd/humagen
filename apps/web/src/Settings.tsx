@@ -47,6 +47,7 @@ import {
 import { BillingSettings } from "./Billing.tsx";
 import { ClientSettings } from "./Clients.tsx";
 import { DeletionQueue } from "./DeletionQueue.tsx";
+import { ModelProviderSettings } from "./ModelProviders.tsx";
 import { PersonalPreferences } from "./PersonalPreferences.tsx";
 import type { PrefsRead } from "./preferences.ts";
 import { ReadAudit } from "./ReadAudit.tsx";
@@ -239,6 +240,21 @@ export function Settings({
               </>
             ))}
 
+          {section === "providers" && (
+            <>
+              <header className="pb-2">
+                <h1 className={pageTitle}>Model providers</h1>
+                <p className={pageLede}>
+                  What agents and routing run on. There is no built-in model.
+                </p>
+              </header>
+              <ModelProviderSettings
+                canEdit={me.permissions.includes("clients:write")}
+                onAgents={onNavigate ? () => onNavigate({ page: "agents" }) : undefined}
+              />
+            </>
+          )}
+
           {section === "routing" && (
             <>
               <header className="pb-2">
@@ -253,9 +269,10 @@ export function Settings({
               {workspace && (
                 <RouterControl
                   key={JSON.stringify(workspace.router ?? null)}
-                  saved={workspace.router ?? { enabled: false }}
+                  saved={workspace.router ?? {}}
                   canEdit={canAdmin}
                   onSave={(router) => saveWorkspace({ router })}
+                  onProviders={() => setSection("providers")}
                 />
               )}
               <section className={`${card} flex flex-col gap-3`}>
@@ -632,19 +649,21 @@ export function Settings({
 }
 
 /**
- * Whether agents decide for themselves to take a message that names no agent,
- * and the model that asks them. The provider is one this deployment declares;
- * its key comes from an environment variable or a secrets manager, never from
- * here.
+ * The model that asks each agent whether to take a message that names none.
+ * There is no switch: routing runs once a model is picked, on a provider the
+ * deployment declares or an administrator set up under Model providers.
  */
 function RouterControl({
   saved,
   canEdit,
   onSave,
+  onProviders,
 }: {
   saved: RouterSettings;
   canEdit: boolean;
   onSave: (next: RouterSettings) => void;
+  /** Opens Model providers, where a provider is set up. */
+  onProviders?: () => void;
 }) {
   const [draft, setDraft] = useState<RouterSettings>(saved);
   const [providers, setProviders] = useState<string[] | null>(null);
@@ -652,11 +671,7 @@ function RouterControl({
     let live = true;
     api
       .modelProviders()
-      .then(
-        (all) =>
-          live &&
-          setProviders(all.filter((p) => p.declared && p.name !== "offline").map((p) => p.name)),
-      )
+      .then((all) => live && setProviders(all.filter((p) => p.declared).map((p) => p.name)))
       .catch(() => live && setProviders([]));
     return () => {
       live = false;
@@ -664,68 +679,69 @@ function RouterControl({
   }, []);
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
   const problem =
-    draft.enabled && !draft.provider
-      ? "Choose a provider."
-      : draft.enabled && !draft.model?.trim()
-        ? "Name a model."
+    draft.provider && !draft.model?.trim()
+      ? "Name a model."
+      : !draft.provider && draft.model?.trim()
+        ? "Choose a provider."
         : null;
   const choices = providers ?? [];
-  // A saved provider stays listed even when this deployment no longer declares it, so the field shows what is saved.
+  // A saved provider stays listed even when it is gone, so the field shows what is saved.
   const listed =
     draft.provider && !choices.includes(draft.provider) ? [draft.provider, ...choices] : choices;
+  const none = providers !== null && listed.length === 0;
   return (
-    <section className={`${card} flex flex-col gap-3`} aria-label="Agents decide for themselves">
-      <SettingsFormRow
-        id="workspace-router"
-        label="Agents decide for themselves"
-        description="On, every agent available where an untagged message is posted is asked, all at once, whether it should answer. Off, no agent takes a message on its own."
-        compact
-      >
-        <SettingSwitch
-          id="workspace-router"
-          aria-describedby="workspace-router-hint"
-          checked={draft.enabled}
-          disabled={!canEdit}
-          onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
-        />
-      </SettingsFormRow>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Label text="Provider" hint="One this deployment declares.">
-          <NativeSelect
-            aria-label="Router provider"
-            value={draft.provider ?? ""}
-            disabled={!canEdit || !draft.enabled}
-            onChange={(e) => setDraft((d) => ({ ...d, provider: e.target.value || undefined }))}
-          >
-            <option value="">
-              {providers === null
-                ? "Loading providers"
-                : listed.length === 0
-                  ? "No provider declared"
-                  : "Choose a provider"}
-            </option>
-            {listed.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </NativeSelect>
-        </Label>
-        <Label text="Model" hint="A small, fast model is enough: each agent answers yes or no.">
-          <input
-            className={field}
-            maxLength={200}
-            value={draft.model ?? ""}
-            disabled={!canEdit || !draft.enabled}
-            onChange={(e) => setDraft((d) => ({ ...d, model: e.target.value || undefined }))}
-          />
-        </Label>
+    <section className={`${card} flex flex-col gap-3`} aria-label="Routing model">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-aui-sm font-medium text-aui-fg">Routing model</h2>
+        <p className="text-aui-xs text-aui-muted">
+          {saved.provider && saved.model
+            ? `Untagged messages are routed by ${saved.model} on ${saved.provider}.`
+            : "Untagged messages are not routed until a model is picked."}
+        </p>
       </div>
-      <p className="text-aui-xs text-aui-muted">
-        No credential is stored here. The provider's key comes from an environment variable or a
-        secrets manager.
-      </p>
-      {canEdit && (
+      {none ? (
+        <p className="text-aui-sm text-aui-muted">
+          No model provider is set up.{" "}
+          {onProviders && (
+            <button
+              type="button"
+              className="rounded-aui text-aui-fg underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+              onClick={onProviders}
+            >
+              Set Up a Provider
+            </button>
+          )}
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Label text="Provider">
+            <NativeSelect
+              aria-label="Routing provider"
+              value={draft.provider ?? ""}
+              disabled={!canEdit}
+              onChange={(e) => setDraft((d) => ({ ...d, provider: e.target.value || undefined }))}
+            >
+              <option value="">{providers === null ? "Loading providers" : "None"}</option>
+              {listed.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </NativeSelect>
+          </Label>
+          <Label text="Model" hint="A small, fast model is enough: each agent answers yes or no.">
+            <input
+              className={field}
+              aria-label="Routing model name"
+              maxLength={200}
+              value={draft.model ?? ""}
+              disabled={!canEdit}
+              onChange={(e) => setDraft((d) => ({ ...d, model: e.target.value || undefined }))}
+            />
+          </Label>
+        </div>
+      )}
+      {canEdit && !none && (
         <div className="flex flex-wrap items-center justify-end gap-2">
           {problem && dirty && <span className="text-aui-xs text-aui-bad">{problem}</span>}
           {dirty && (
@@ -839,6 +855,7 @@ export function SettingsNav({
   const workspaceEntries: Entry[] = admin
     ? [
         { id: "workspace", label: "Workspace", icon: <ServerIcon size={16} /> },
+        { id: "providers", label: "Model providers", icon: <BrainIcon size={16} /> },
         { id: "routing", label: "Agent routing", icon: <BotIcon size={16} /> },
         { id: "limits", label: "Limits", icon: <GaugeIcon size={16} /> },
         { id: "access", label: "Access", icon: <ShieldIcon size={16} /> },
