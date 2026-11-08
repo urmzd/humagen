@@ -43,6 +43,7 @@ import { DirectoryPage } from "./Directory.tsx";
 import { ForkProject } from "./ForkProject.tsx";
 import { Health } from "./Health.tsx";
 import { Integrations } from "./Integrations.tsx";
+import { ItemPage } from "./ItemPage.tsx";
 import { Knowledge } from "./Knowledge.tsx";
 import { MemoryLibrary } from "./MemoryLibrary.tsx";
 import { MessageFocus } from "./MessageFocus.tsx";
@@ -789,6 +790,20 @@ function Console({
                       <MessageFocus key={route.id} id={route.id} go={go} />
                     ) : (
                       <Page title="Message">
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "item" &&
+                    (can("runs:read") ? (
+                      <ItemPage
+                        key={route.address}
+                        address={route.address}
+                        go={go}
+                        alerts={attention.alerts}
+                        tick={tick}
+                      />
+                    ) : (
+                      <Page title="Item">
                         <Problem message={defaultCopy.noPermission} />
                       </Page>
                     ))}

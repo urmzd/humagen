@@ -174,9 +174,23 @@ export type HistorySource = "all" | "chat" | "github" | "slack" | "scheduled" | 
 export type HistoryStatus = "needs" | "running" | "failed";
 export type CustomizeSection = "agents" | "skills" | "connections" | "tools";
 export type SessionStatus = "working" | "waiting" | "done" | "failed" | "stopped";
+/** Where a session started, as the Sessions list filters it. */
+export const SESSION_PLACES = ["slack", "github", "schedule", "console"] as const;
+export type SessionPlaceFilter = (typeof SESSION_PLACES)[number];
 export type Route =
   | { page: "not-found"; path: string }
-  | { page: "sessions"; status?: SessionStatus; agent?: string; project?: string; q?: string }
+  | {
+      page: "sessions";
+      status?: SessionStatus;
+      agent?: string;
+      project?: string;
+      q?: string;
+      place?: SessionPlaceFilter;
+      /** An item's address, such as `github://o/r/pull/5`: the sessions that worked on it. */
+      item?: string;
+    }
+  /** An item people pointed at (a PR, an issue, a Slack thread, a URL), by its address. */
+  | { page: "item"; address: string }
   /** One message inside a session, focused: it and its direct children, under a breadcrumb back to the root. */
   | { page: "message"; id: string }
   | {
@@ -297,6 +311,7 @@ const pick = <T extends string>(value: string | undefined, allowed: readonly T[]
 const PAGE_TITLES: Record<Page, string> = {
   "not-found": "Page not found",
   message: "Message",
+  item: "Item",
   sessions: "Sessions",
   alerts: "Alerts",
   history: defaultCopy.history.title,
@@ -373,12 +388,14 @@ export function href(r: Route): string {
       return r.path;
     case "sessions": {
       const q = new URLSearchParams();
-      for (const key of ["q", "status", "agent", "project"] as const)
+      for (const key of ["q", "status", "agent", "project", "place", "item"] as const)
         if (r[key]) q.set(key, r[key]);
       return `/sessions${q.size ? `?${q}` : ""}`;
     }
     case "message":
       return `/messages/${enc(r.id)}`;
+    case "item":
+      return `/items/${enc(r.address)}`;
     case "alerts": {
       const q = new URLSearchParams();
       for (const key of ["state", "priority", "source", "alert"] as const)
@@ -670,6 +687,8 @@ function read(pathname: string, search: string): Route {
           agent: queryText(q, "agent", 200),
           project: queryText(q, "project", 200),
           q: queryText(q, "q", 200),
+          place: oneOf(q.get("place"), SESSION_PLACES),
+          item: queryText(q, "item", 2048),
         };
       if (b) return read(`/conversations/${enc(a)}/${parts.slice(2).map(enc).join("/")}`, search);
       const panels: Record<string, ConversationPanel> = {
@@ -877,6 +896,9 @@ function read(pathname: string, search: string): Route {
         };
       }
       return { page: "conversation", id: a, message: q.get("message") || undefined };
+    case "items":
+      // An address holds slashes, so it is one encoded segment; a raw one is joined back.
+      return a ? { page: "item", address: parts.slice(1).join("/") } : { page: "sessions" };
     case "projects": {
       if (!a)
         return {
