@@ -611,8 +611,17 @@ import type {
   CatalogConnectorView,
   CatalogEntry,
   CatalogPage,
+  Corpus,
+  CorpusChange,
+  CorpusCreate,
+  CorpusMember,
+  CorpusMemberRef,
+  CorpusReader,
 } from "../../../packages/client/src/generated/types.ts";
 export type { CatalogConnector, CatalogConnectorView, CatalogEntry, CatalogPage };
+export type { Corpus, CorpusChange, CorpusCreate, CorpusMember, CorpusMemberRef, CorpusReader };
+
+const corpusPath = (name: string) => `/api/corpora/${encodeURIComponent(name)}`;
 
 export interface Measure {
   used: number;
@@ -1525,6 +1534,22 @@ export const api = {
     ).then((r) => r.hits),
   catalog: (q?: string) =>
     call<CatalogPage>("GET", `/api/catalog${q ? `?${new URLSearchParams({ q })}` : ""}`),
+  /** The corpora the caller may read, by name (docs/architecture/sources.md#corpora). */
+  corpora: () => call<{ corpora: Corpus[] }>("GET", "/api/corpora").then((r) => r.corpora),
+  corpus: (name: string) => call<Corpus>("GET", corpusPath(name)),
+  createCorpus: (input: CorpusCreate) => call<Corpus>("POST", "/api/corpora", input),
+  /** Only the owner changes a corpus; with `version`, a change after someone else's is refused (409). */
+  updateCorpus: (name: string, change: CorpusChange) =>
+    call<Corpus>("PATCH", corpusPath(name), change),
+  deleteCorpus: (name: string, version?: number) =>
+    call<void>("DELETE", `${corpusPath(name)}${version ? `?version=${version}` : ""}`),
+  addCorpusMember: (name: string, member: CorpusMemberRef) =>
+    call<Corpus>("POST", `${corpusPath(name)}/members`, member),
+  removeCorpusMember: (name: string, member: CorpusMemberRef) =>
+    call<Corpus>(
+      "DELETE",
+      `${corpusPath(name)}/members/${member.kind}/${encodeURIComponent(member.name)}`,
+    ),
   crawlCatalogConnector: (name: string) =>
     call<CatalogConnector>("POST", `/api/catalog/connectors/${encodeURIComponent(name)}/crawl`),
   publishCatalogConnector: (name: string) =>
