@@ -2219,7 +2219,6 @@ change in the project's history records them the same way.
   updated_by?: string;
   /** When the record last changed. What happened in it is `active_at` on a view. */
   updated_at: string;
-  approve_reviews?: boolean;
 }
 
 /** One project on the way down to another. */
@@ -2295,7 +2294,6 @@ export interface ProjectUpdate {
   kinds?: ProjectKindSpec[];
   /** What a scheduled agent's announcement here does, `publish` or `review`. Empty takes the kind's default. */
   agent_posts?: "" | "publish" | "review";
-  approve_reviews?: boolean;
 }
 
 /** A caller's role in a project, where it comes from, and the entry or rule that gave it. */

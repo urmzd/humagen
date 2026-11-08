@@ -12786,9 +12786,6 @@ components:
             on a view.
           type: string
           format: date-time
-        approve_reviews:
-          type: boolean
-          default: false
     ProjectStep:
       description: One project on the way down to another.
       type: object
@@ -12986,9 +12983,6 @@ components:
           - ''
           - publish
           - review
-        approve_reviews:
-          type: boolean
-          default: false
     ProjectAccess:
       description: A caller's role in a project, where it comes from, and the entry or rule that gave it.
       type: object
