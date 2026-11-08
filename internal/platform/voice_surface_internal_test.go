@@ -81,10 +81,7 @@ func TestASpokenSlackAnswerIsUploadedInItsThread(t *testing.T) {
 	if err := p.settings.open(nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.settings.update("acme", func(v *storedSettings) error {
-		v.VoiceProvider = &VoiceProvider{Kind: speech.KindGroq, Price: speech.GroqPrice, KeyStored: true}
-		return nil
-	}); err != nil {
+	if err := p.writeVoiceProvider("acme", &VoiceProvider{Kind: speech.KindGroq, Price: speech.GroqPrice, KeyStored: true}); err != nil {
 		t.Fatal(err)
 	}
 	up := &uploads{}

@@ -126,10 +126,6 @@ type storedSettings struct {
 	// The root's default replaces it: the migration reads it once, and it is
 	// never written again.
 	LegacyBaseline *string `json:"baseline,omitempty"`
-	// VoiceProvider is the workspace's voice provider (voice_provider.go).
-	// It is kept here, not in Settings, so the settings routes neither show
-	// nor replace it.
-	VoiceProvider *VoiceProvider `json:"voice_provider,omitempty"`
 }
 
 // legacyProject is a project as settings kept it.
