@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.98.0 (2026-11-08)
+
+### Features
+
+- **console**: the composer picks no project; approvals are one press (#275) ([f43380f](https://github.com/urmzd/humagen/commit/f43380fec141d26d67103c1401a07f587883e306))
+- **console**: an agent's home is its Access, never where it lives (#274) ([7e77aba](https://github.com/urmzd/humagen/commit/7e77aba7fe2206834389949b496f6954a390b165))
+- **console**: a project is one page beside its sessions, on the shared patterns (#272) ([eef7233](https://github.com/urmzd/humagen/commit/eef7233fea5d0d7c7ccac753ad8879f316c24433))
+- **console**: a response is one message; its activity is folded from its stream (#287) ([ef37149](https://github.com/urmzd/humagen/commit/ef37149f81ea2a30a63a471758f25a8e0985d10e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.97.1...v0.98.0)
+
+
 ## 0.97.1 (2026-11-08)
 
 ### Bug Fixes
