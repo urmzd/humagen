@@ -39,7 +39,7 @@ Decisions:
    answers, or all of them. On Slack and GitHub, where
    mentioning the app is what asks, an untagged message goes to the default
    the thread inherits, if one is set, else it starts no run. A default of
-   `*` asks every agent available there whether to join (see
+   `*` searches the agents available there and asks the best few whether to join (see
    [The dynamic router](#the-dynamic-router)). The workspace
    baseline setting is replaced by the root's default.
 5. **Context is layered and explicit**: the project chain's instructions and
@@ -946,13 +946,26 @@ its home. The spec says the same on Humagen's wrapper:
 ### The dynamic router
 
 A message that names no agent, where the default it inherits is `*`
-("everyone decides"), asks every agent available there one low-effort
-question, all at once: "should I be involved?" (`pkg/join`). Each that says
-yes joins and answers in the same thread, each reply posted and streamed on
-its own; in Slack, in the same Slack thread. At most 64 agents are asked and
-at most 5 join one message. When none says yes, nothing starts: the message
-waits for a person to answer or to tag an agent. There is no fallback to a
-named default.
+("everyone decides"), is routed by search, not by asking every agent
+(`pkg/join`). The agents available there are searched first: BM25 over each
+one's name, system prompt and the asks it answered well (an answer a person
+rated up files its ask under the agent, `pkg/goodasks`; a rating taken back
+or turned down drops it, and a run that read private context is never
+filed). An agent needs no description written for routing. Only the best 3
+matches are asked one low-effort question, all at once: "should I be
+involved?". Each that says yes joins and answers in the same thread, each
+reply posted and streamed on its own; in Slack, in the same Slack thread. At
+most 64 agents are searched and at most 5 join one message. When search
+finds nobody, nobody is asked. When none says yes on Slack or GitHub,
+nothing starts: the message waits for a person to answer or to tag an agent.
+
+In the console a message always lands or says why. A session started with
+no mention, where the default is `*` or unset, goes to the best match that
+said yes, or with none saying yes to the best match search found; the run
+records why in `warp.picked` ("Joined on its own: ...", or "Picked by
+search: matched deploy, cost."), which the console shows with the answer,
+never before it. A message search finds nobody for is refused with "no
+agent here is about this yet; mention one with @".
 
 - `*` is a default, never an agent's name. A default that names an agent
   still answers alone, and an unset default still inherits. A default stored
@@ -976,7 +989,8 @@ named default.
   <reason>".
 - `GET /api/join?q=<message>&project=<name>` (`agents:read`) previews each
   agent's answer, `{decisions: [{agent, join, reason}]}`, without starting
-  anything. Agents the caller may not read are left out.
+  anything: the agents search found answer, every other one says search
+  passed it over. Agents the caller may not read are left out.
 - `POST /api/runs` with `agent` omitted uses the default chain, and with none
   answers 409 "tag an agent". `agent: "*"` (or `auto`) asks everyone: the
   first run that joined is returned and the others start in the same
