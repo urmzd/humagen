@@ -523,6 +523,11 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+Session persistence now has a shared-state adapter for stable identities, read
+grants, child admission, usage receipts and an append-only transcript. Thread
+records can carry one immutable session agent. Runtime and console integration
+are delivered by subsequent layers.
+
 The platform and presentation sources now share this repository. UI packages use the `@humagen/*` scope and one pnpm workspace; GitHub presentation belongs to the main Go module. No sibling UI checkout is required.
 
 Releases run the reusable CI workflow before publishing a versioned Go module

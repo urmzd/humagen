@@ -192,6 +192,8 @@ github.com/urmzd/orchagent v0.2.1-0.20261105161001-f7054ba64ec5 h1:uDKMBxxGPVu9X
 github.com/urmzd/orchagent v0.2.1-0.20261105161001-f7054ba64ec5/go.mod h1:e3cUDXVlNLwS4kvnWo2PG0BrQE/e0P0y9btnW8oUxqg=
 github.com/urmzd/orchagent v0.3.0 h1:mWgDqrv1WS55cCXoZNCuRqDBdqfE859LTBwVmcE/wSc=
 github.com/urmzd/orchagent v0.3.0/go.mod h1:e3cUDXVlNLwS4kvnWo2PG0BrQE/e0P0y9btnW8oUxqg=
+github.com/urmzd/orchagent v0.4.1-0.20261107212003-256db7b4956f h1:6urddUe4W4y4sX1WlW4pVpbJs7hctAwBPi9kK4ZEVfA=
+github.com/urmzd/orchagent v0.4.1-0.20261107212003-256db7b4956f/go.mod h1:e3cUDXVlNLwS4kvnWo2PG0BrQE/e0P0y9btnW8oUxqg=
 github.com/urmzd/saige v0.44.0 h1:tNrk9C7+u9HRvH6F03OKHYV0KPlGEStSCoWKtlGWlGk=
 github.com/urmzd/saige v0.44.0/go.mod h1:qRqdoUGPB1UswjfivAGDYFGyMmbI9+28syfXkc6Zje4=
 github.com/yosida95/uritemplate/v3 v3.0.2 h1:Ed3Oyj9yrmi9087+NczuL5BwkIc4wvTb5zIM+UJPGz4=

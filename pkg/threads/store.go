@@ -828,6 +828,8 @@ func (s *Store) update(tenantName, id string, version int, at time.Time, fn func
 		}
 		moves := next.Project != cur.Project || next.Channel != cur.Channel
 		switch {
+		case (next.Session == nil) != (cur.Session == nil) || next.Session != nil && *next.Session != *cur.Session:
+			return fmt.Errorf("%w: session identity is immutable", ErrInvalid)
 		case next.ReadOnly != cur.ReadOnly:
 			return fmt.Errorf("%w: archive status is immutable", ErrInvalid)
 		case !sameArchive(next.Archive, cur.Archive):
@@ -1046,6 +1048,15 @@ func (s *Store) Get(tenantName, id string) (Thread, error) {
 		return Thread{}, err
 	}
 	return h.Thread, nil
+}
+
+// Summary reads the retained message count beside one conversation's record.
+func (s *Store) Summary(tenantName, id string) (Summary, error) {
+	h, _, err := s.lookup(tenantName, id)
+	if err != nil {
+		return Summary{}, err
+	}
+	return Summary{Thread: h.Thread, Messages: h.Head, First: h.First}, nil
 }
 
 // Message returns one of a thread's messages.
