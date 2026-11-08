@@ -138,6 +138,12 @@ type AgentSpec struct {
 	// FallbackOnAny. It is a set, sorted by Normalize, and naming it without
 	// any Fallbacks is invalid: there is nothing to fall back to.
 	FallbackOn []string `json:"fallback_on,omitempty"`
+	// Effort is the reasoning effort the agent's own primary model is asked
+	// for, such as low, medium or high. Empty leaves the model's default. It
+	// reaches the primary only, and only when that model takes it: a run
+	// moved to a fallback, or on a model that takes no such effort, runs at
+	// the model's default.
+	Effort string `json:"effort,omitempty"`
 	// Approvals names the tools whose every call waits for a person to
 	// approve it. Each must be a tool the agent is granted: one in Tools, one
 	// in a tool group Tools grants (see MCPGroupPrefix), or the delegation
@@ -330,6 +336,7 @@ func (s AgentSpec) Normalize() AgentSpec {
 		Tools:        normalizeSet(s.Tools, false),
 		Fallbacks:    normalizeFallbacks(s.Fallbacks),
 		FallbackOn:   normalizeSet(s.FallbackOn, true),
+		Effort:       strings.ToLower(strings.TrimSpace(s.Effort)),
 		Approvals:    normalizeSet(s.Approvals, false),
 		Approvers:    normalizeSet(s.Approvers, false),
 		SelfApproval: s.SelfApproval,
@@ -397,6 +404,8 @@ func (s AgentSpec) ValidateAccepting(providers []string, accept func(string) boo
 		return fmt.Errorf("%w: agent %q names no provider", ErrInvalidAgent, c.Name)
 	case c.SystemPrompt == "":
 		return fmt.Errorf("%w: agent %q has an empty system prompt; an agent with no instructions is a definition of nothing", ErrInvalidAgent, c.Name)
+	case c.Effort != "" && !validEffort(c.Effort):
+		return fmt.Errorf("%w: agent %q asks for reasoning effort %q; an effort is one word, such as low, medium or high", ErrInvalidAgent, c.Name, c.Effort)
 	}
 	// The charset is pkg/topic's to decide, not this package's. An agent
 	// name becomes a topic segment the moment the agent emits anything, so a
@@ -492,6 +501,16 @@ func (s AgentSpec) ValidateAccepting(providers []string, accept func(string) boo
 		seen[src.Name] = struct{}{}
 	}
 	return nil
+}
+
+// MaxEffortLen bounds a reasoning effort's name.
+const MaxEffortLen = 16
+
+// validEffort is the shape of a reasoning effort: one lowercase word. Which
+// efforts a model takes is its own; a run sends one only to a model that
+// takes it.
+func validEffort(e string) bool {
+	return len(e) <= MaxEffortLen && strings.TrimFunc(e, func(r rune) bool { return r >= 'a' && r <= 'z' }) == ""
 }
 
 // validFallbacks holds every fallback to the rules the primary model is held

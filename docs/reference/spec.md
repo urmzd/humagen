@@ -772,8 +772,12 @@ saige's format does not: `approvers`, `self_approval`, `answerers`,
 tools it may call), `knowledge` and `fallback_on`. Left out, it grants
 nothing beyond the file.
 
-People pick agents, not models: an agent's model chain is its definition's,
-and nothing overrides it per message. A `choices` block from an older policy
+People pick agents, not models: an agent's model chain and reasoning effort
+are its definition's, and nothing overrides them per message. saige's format
+has no effort field, so an `.agent.md` file sets it in its metadata,
+`metadata: {humagen_effort: high}`, and the API as the agent's `effort`. It
+is sent only to the chain's first model, and only when that model takes it;
+a run moved to a fallback answers at the model's default. A `choices` block from an older policy
 is not read. `subscriptions` is refused: the platform decides
 what wakes an agent. saige checks the file at start, then the platform's
 own rules apply as to any spec. The file's `version` is not kept: the store

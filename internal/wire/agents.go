@@ -240,11 +240,20 @@ func RecordOf(spec AgentSpec, rev int) (definition.Record, error) {
 		}
 		return definition.Record{}, fmt.Errorf("%w: %w", ErrInvalidAgent, err)
 	}
+	// What saige's format has no field for goes in its metadata extension,
+	// without rewriting files from before it was used.
+	var metadata []string
 	if spec.Package != nil {
-		// Use saige's metadata extension without rewriting pre-package files.
-		metadata, _ := json.Marshal(spec.Package.Name)
+		name, _ := json.Marshal(spec.Package.Name)
 		version, _ := json.Marshal(spec.Package.Version)
-		rec.Content = strings.Replace(rec.Content, "---\n", "---\nmetadata:\n  humagen_package: "+string(metadata)+"\n  humagen_package_version: "+string(version)+"\n", 1)
+		metadata = append(metadata, "  humagen_package: "+string(name), "  humagen_package_version: "+string(version))
+	}
+	if effort := strings.ToLower(strings.TrimSpace(spec.Effort)); effort != "" {
+		value, _ := json.Marshal(effort)
+		metadata = append(metadata, "  humagen_effort: "+string(value))
+	}
+	if len(metadata) > 0 {
+		rec.Content = strings.Replace(rec.Content, "---\n", "---\nmetadata:\n"+strings.Join(metadata, "\n")+"\n", 1)
 	}
 	return rec, nil
 }

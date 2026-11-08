@@ -130,7 +130,8 @@ func IsBuiltin(name string) bool {
 // BuiltinChain is the model chain the platform's agents ship with: each
 // answers on the first of these whose provider the workspace has enabled,
 // declared in the spec or set up by an administrator (resolveModel), and
-// says which it needs when none is. Edited like any agent's.
+// says which it needs when none is. Edited like any agent's. Each built-in
+// also sets its reasoning effort, which reaches the chain's first model.
 var BuiltinChain = []wire.ModelRef{
 	{Provider: KindAnthropic, Model: "claude-sonnet-5-5"},
 	{Provider: KindOpenAI, Model: "gpt-5.1"},
@@ -154,6 +155,7 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 		Provider:     chain[0].Provider,
 		Model:        chain[0].Model,
 		Fallbacks:    slices.Clone(chain[1:]),
+		Effort:       "medium",
 		SystemPrompt: writerPrompt,
 		Tools:        FileTools(),
 	}, {
@@ -162,6 +164,7 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 		Provider:     chain[0].Provider,
 		Model:        chain[0].Model,
 		Fallbacks:    slices.Clone(chain[1:]),
+		Effort:       "medium",
 		SystemPrompt: analystPrompt,
 		Tools:        append(AnalystTools(), FileTools()...),
 	}, {
@@ -170,6 +173,7 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 		Provider:     chain[0].Provider,
 		Model:        chain[0].Model,
 		Fallbacks:    slices.Clone(chain[1:]),
+		Effort:       "medium",
 		SystemPrompt: builderPrompt,
 		Tools:        BuilderTools(),
 		// Changing an agent is a manager's or an admin's call, and the
@@ -183,6 +187,7 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 		Provider:     chain[0].Provider,
 		Model:        chain[0].Model,
 		Fallbacks:    slices.Clone(chain[1:]),
+		Effort:       "high",
 		SystemPrompt: codeReviewerPrompt,
 		Tools:        reviewTools(),
 		Access:       wire.Access{Spawn: []string{BuiltinSecurityReviewer, BuiltinArchitectReviewer, BuiltinQAReviewer}},
@@ -192,6 +197,7 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 		Provider:     chain[0].Provider,
 		Model:        chain[0].Model,
 		Fallbacks:    slices.Clone(chain[1:]),
+		Effort:       "high",
 		SystemPrompt: securityReviewerPrompt,
 		Tools:        reviewTools(),
 	}, {
@@ -200,6 +206,7 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 		Provider:     chain[0].Provider,
 		Model:        chain[0].Model,
 		Fallbacks:    slices.Clone(chain[1:]),
+		Effort:       "high",
 		SystemPrompt: architectReviewerPrompt,
 		Tools:        reviewTools(),
 	}, {
@@ -208,6 +215,7 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 		Provider:     chain[0].Provider,
 		Model:        chain[0].Model,
 		Fallbacks:    slices.Clone(chain[1:]),
+		Effort:       "high",
 		SystemPrompt: qaReviewerPrompt,
 		Tools:        reviewTools(),
 	}}

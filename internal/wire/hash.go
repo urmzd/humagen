@@ -120,6 +120,10 @@ func (s AgentSpec) HashIn(domain string) string {
 		writeString(h, "fallback_on")
 		writeStrings(h, c.FallbackOn)
 	}
+	if c.Effort != "" {
+		writeString(h, "effort")
+		writeString(h, c.Effort)
+	}
 	if c.Package != nil {
 		writeString(h, "package")
 		writeString(h, c.Package.Name)
