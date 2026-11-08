@@ -44,16 +44,18 @@ import { ForkContext } from "./ForkConversation.tsx";
 import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { OLD_SYSTEM_SENDER } from "./legacy.ts";
-import { AnswerRefs, OriginRef, ResponseActivity } from "./MessageRefs.tsx";
+import { AnswerRefs, OriginRef } from "./MessageRefs.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { PersonMark } from "./PersonMark.tsx";
 import { mentionPicks, PlusMenu, SelectionChips } from "./Plus.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { openPane } from "./pane.ts";
+import { ResponseActivityPanel } from "./ResponseActivity.tsx";
 import { RunFeedbackHost } from "./RunFeedback.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
+import { runSource } from "./responseSource.ts";
 import { followRoom } from "./roomFollow.ts";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { SessionActions } from "./SessionActions.tsx";
@@ -482,6 +484,7 @@ function AnswerView({
   onReply,
   onRedirect,
   onActivity,
+  activityOpen,
   actions,
   canStop = false,
   focused = false,
@@ -489,8 +492,10 @@ function AnswerView({
   run: Run;
   canStop?: boolean;
   focused?: boolean;
-  /** Open this answer's activity in Details, when more than one agent worked on it. */
+  /** Open or close this answer's activity in Details. */
   onActivity?: (run: string) => void;
+  /** This answer's activity is open in Details. */
+  activityOpen?: boolean;
   me: string;
   live: boolean;
   ask?: ThreadAsk;
@@ -552,7 +557,7 @@ function AnswerView({
           )}
         </RunFeedbackHost>
       </AgentTint>
-      <AnswerRefs run={run} onActivity={onActivity} />
+      <AnswerRefs run={run} open={activityOpen} onActivity={onActivity} />
       {refused && stillAsks(shown, refused.question) && (
         <div className="pl-11">
           <Problem message={refused.why} />
@@ -1100,7 +1105,12 @@ export function ThreadRoom({
                         ) : undefined
                       }
                       routed={routedOf(t.run)}
-                      onActivity={(run) => openPanel("response", { run })}
+                      activityOpen={shownView.panel === "response" && shownView.run === t.run.id}
+                      onActivity={(run) =>
+                        shownView.panel === "response" && shownView.run === run
+                          ? openPanel()
+                          : openPanel("response", { run })
+                      }
                       onAsk={
                         posts
                           ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" })
@@ -1328,7 +1338,11 @@ export function ThreadRoom({
           {(leaving) => {
             const run = turns.find((t) => t.run?.id === shownView.run)?.run;
             return run ? (
-              <ResponseActivity run={run} leaving={leaving} onClose={() => openPanel()} />
+              <ResponseActivityPanel
+                source={runSource(run)}
+                leaving={leaving}
+                onClose={() => openPanel()}
+              />
             ) : null;
           }}
         </Presence>

@@ -1,0 +1,14 @@
+{"type":"message_start","t_ms":0,"message":{"id":"msg_nested","role":"assistant","content":[],"humagen":{"request_id":"m_3","root_run":"r_lead","agent":"lead","ref":"slack://T1/C1/1700000500.000100","trace_url":"/messages/msg_nested"}}}
+{"type":"content_block_start","t_ms":20,"index":0,"content_block":{"type":"text","text":"I'll have ops look at the failed deploy."}}
+{"type":"content_block_stop","index":0}
+{"type":"content_block_start","t_ms":40,"index":1,"content_block":{"type":"server_tool_use","id":"htu_r_lead_1","name":"agent","kind":"agent","title":"Find why the deploy failed","input":{"agent":"ops","title":"Find why the deploy failed","brief":"The nightly deploy failed. Find out why and fix it."}}}
+{"type":"content_block_stop","index":1}
+{"type":"humagen.tool_status","t_ms":41,"tool_use_id":"htu_r_lead_1","path":["htu_r_lead_1"],"status":"running","elapsed_ms":0}
+{"type":"humagen.nested","t_ms":300,"parent_tool_use_id":"htu_r_lead_1","agent_run_id":"r_ops","depth":1,"event":{"type":"content_block_start","index":0,"content_block":{"type":"server_tool_use","id":"htu_r_ops_1","name":"deploy_logs","kind":"tool","title":"Read the deploy logs","input":{"job":"nightly"}}}}
+{"type":"humagen.nested","t_ms":900,"parent_tool_use_id":"htu_r_lead_1","agent_run_id":"r_ops","depth":1,"event":{"type":"content_block_start","index":1,"content_block":{"type":"server_tool_result","tool_use_id":"htu_r_ops_1","is_error":true,"content":"403: the deploy token expired"}}}
+{"type":"humagen.tool_status","t_ms":901,"tool_use_id":"htu_r_lead_1","path":["htu_r_lead_1","htu_r_ops_1"],"status":"error","elapsed_ms":600}
+{"type":"humagen.nested","t_ms":1000,"parent_tool_use_id":"htu_r_lead_1","agent_run_id":"r_ops","depth":1,"event":{"type":"content_block_start","index":2,"content_block":{"type":"server_tool_use","id":"htu_r_ops_2","name":"agent","kind":"agent","title":"Rotate the deploy token","input":{"agent":"deployer","title":"Rotate the deploy token","brief":"Rotate the nightly deploy token and retry."}}}}
+{"type":"humagen.tool_status","t_ms":1001,"tool_use_id":"htu_r_lead_1","path":["htu_r_lead_1","htu_r_ops_2"],"status":"running","elapsed_ms":0}
+{"type":"humagen.nested","t_ms":1400,"parent_tool_use_id":"htu_r_ops_2","agent_run_id":"r_deployer","depth":2,"event":{"type":"content_block_start","index":0,"content_block":{"type":"server_tool_use","id":"htu_r_deployer_1","name":"rotate_secret","kind":"tool","title":"Rotate the deploy token","input":{"secret":"nightly-deploy"}}}}
+{"type":"humagen.progress","t_ms":1401,"parent_tool_use_id":"htu_r_ops_2","text":"Waiting for approval to rotate the token"}
+{"type":"humagen.tool_status","t_ms":1402,"tool_use_id":"htu_r_lead_1","path":["htu_r_lead_1","htu_r_ops_2","htu_r_deployer_1"],"status":"awaiting_approval","elapsed_ms":0,"question":{"kind":"approval","prompt":"Rotate the nightly deploy token?","choices":["Approve","Deny"],"who":["ana"]}}
