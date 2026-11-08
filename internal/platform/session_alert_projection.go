@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -46,8 +47,9 @@ func (p *Platform) projectSessionAlert(tenant, key string, m inbox.Message, at t
 		if agent == "" {
 			agent = th.Default
 		}
-		if agent == "" {
-			agent = BuiltinAnalyst
+		agent, err = p.sessionAlertAgent(tenant, agent)
+		if err != nil || agent == "" {
+			return err
 		}
 		sessionID, err = p.EnsureAlertSessionFromThread(context.Background(), tenant, th.ID, agent, m.Subject)
 		if err != nil {
@@ -58,9 +60,9 @@ func (p *Platform) projectSessionAlert(tenant, key string, m inbox.Message, at t
 			return err
 		}
 	} else if err != nil {
-		agent := m.Source.Agent
-		if agent == "" {
-			agent = BuiltinAnalyst
+		agent, err := p.sessionAlertAgent(tenant, m.Source.Agent)
+		if err != nil || agent == "" {
+			return err
 		}
 		owner := m.To
 		if owner == "" && m.Source.Run != "" {
@@ -98,8 +100,53 @@ func (p *Platform) projectSessionAlert(tenant, key string, m inbox.Message, at t
 	}
 	if answeredSessionAlert(m) {
 		_, err = p.Alerts.ChangeState(tenant, a.ID, "system", alerts.Resolved, time.Time{}, p.now())
+	} else if outcome, ok := decidedSessionAlert(m); ok {
+		_, err = p.Alerts.ChangeState(tenant, a.ID, outcome.By, alerts.Resolved, time.Time{}, outcome.At)
 	}
 	return err
+}
+
+// Legacy human-only work can exist before a model is configured. Keep its
+// authoritative inbox action working when no fallback agent is available;
+// never invent an agent or bypass validation of an explicitly named one.
+func (p *Platform) sessionAlertAgent(tenant, explicit string) (string, error) {
+	if explicit != "" {
+		return explicit, nil
+	}
+	ctx := context.Background()
+	if err := p.EnsureBuiltins(ctx, tenant); err != nil {
+		return "", err
+	}
+	if _, err := p.Catalog().Get(ctx, tenant, BuiltinAnalyst, 0); err != nil {
+		if errors.Is(err, wire.ErrNotFound) {
+			return "", nil
+		}
+		return "", err
+	}
+	return BuiltinAnalyst, nil
+}
+
+// A recorded human decision on non-question attention resolves its projection.
+// Reading, hiding, expiry and a terminal run carry no such outcome.
+func decidedSessionAlert(m inbox.Message) (inbox.Outcome, bool) {
+	if m.State != inbox.Resolved {
+		return inbox.Outcome{}, false
+	}
+	switch m.Kind {
+	case inbox.KindFailure, inbox.KindSource, inbox.KindBudget, inbox.KindOperation:
+	default:
+		return inbox.Outcome{}, false
+	}
+	for _, part := range m.Parts {
+		if part.Outcome == nil || part.Outcome.By == "" || part.Outcome.At.IsZero() {
+			continue
+		}
+		switch part.Outcome.Action {
+		case ActAcknowledge, ActRetry, ActRaiseLimit:
+			return *part.Outcome, true
+		}
+	}
+	return inbox.Outcome{}, false
 }
 
 // settleSessionAlerts resolves question/approval alerts when their authoritative
