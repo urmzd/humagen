@@ -24,15 +24,7 @@ import {
 import { Input } from "@humagen/render-web/ui/input";
 import { NativeSelect } from "@humagen/render-web/ui/native-select";
 import { Switch as SettingSwitch } from "@humagen/render-web/ui/switch";
-import {
-  type FormEvent,
-  Fragment,
-  type MouseEvent,
-  type ReactNode,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type FormEvent, Fragment, type MouseEvent, type ReactNode, useRef, useState } from "react";
 import { AccessExplain } from "./AccessExplain.tsx";
 import { doing } from "./access.ts";
 import {
@@ -41,7 +33,6 @@ import {
   type Me,
   type Preferences,
   type Revision,
-  type RouterSettings,
   type Settings as Workspace,
 } from "./api.ts";
 import { BillingSettings } from "./Billing.tsx";
@@ -151,8 +142,6 @@ export function Settings({
   onNavigate?: (route: Route) => void;
 }) {
   const setSection = onSection;
-  // Bumped when a provider is enabled or turned off, so the routing picker reads them again.
-  const [providersRead, setProvidersRead] = useState(0);
   const [problem, setProblem] = useState<string | null>(null);
   // What the person typed, or null to show the saved name. A copy taken once
   // would be the empty default on a page opened before the saved name is read.
@@ -244,22 +233,10 @@ export function Settings({
               <header className="pb-2">
                 <h1 className={pageTitle}>Model providers</h1>
                 <p className={pageLede}>
-                  What agents and routing run on. An agent runs once a provider its models name is
-                  enabled.
+                  What agents run on. An agent runs once a provider its models name is enabled.
                 </p>
               </header>
-              <ModelProviderSettings
-                canEdit={me.permissions.includes("clients:write")}
-                onChanged={() => setProvidersRead((n) => n + 1)}
-              />
-              {workspace && (
-                <RouterControl
-                  key={`${providersRead}:${JSON.stringify(workspace.router ?? null)}`}
-                  saved={workspace.router ?? {}}
-                  canEdit={canAdmin}
-                  onSave={(router) => saveWorkspace({ router })}
-                />
-              )}
+              <ModelProviderSettings canEdit={me.permissions.includes("clients:write")} />
             </>
           )}
 
@@ -594,107 +571,6 @@ export function Settings({
         </div>
       </div>
     </div>
-  );
-}
-
-/**
- * The model that asks each agent whether to take a message that names none.
- * There is no switch: routing runs once a model is picked, on a provider the
- * deployment declares or an administrator set up under Model providers.
- */
-function RouterControl({
-  saved,
-  canEdit,
-  onSave,
-}: {
-  saved: RouterSettings;
-  canEdit: boolean;
-  onSave: (next: RouterSettings) => void;
-}) {
-  const [draft, setDraft] = useState<RouterSettings>(saved);
-  const [providers, setProviders] = useState<string[] | null>(null);
-  useEffect(() => {
-    let live = true;
-    api
-      .modelProviders()
-      .then((all) => live && setProviders(all.filter((p) => p.declared).map((p) => p.name)))
-      .catch(() => live && setProviders([]));
-    return () => {
-      live = false;
-    };
-  }, []);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
-  const problem =
-    draft.provider && !draft.model?.trim()
-      ? "Name a model."
-      : !draft.provider && draft.model?.trim()
-        ? "Choose a provider."
-        : null;
-  const choices = providers ?? [];
-  // A saved provider stays listed even when it is gone, so the field shows what is saved.
-  const listed =
-    draft.provider && !choices.includes(draft.provider) ? [draft.provider, ...choices] : choices;
-  const none = providers !== null && listed.length === 0;
-  return (
-    <section className={`${card} flex flex-col gap-3`} aria-label="Routing model">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-aui-sm font-medium text-aui-fg">Routing model</h2>
-        <p className="text-aui-xs text-aui-muted">
-          {saved.provider && saved.model
-            ? `Untagged messages are routed by ${saved.model} on ${saved.provider}.`
-            : "Untagged messages are not routed until a model is picked."}
-        </p>
-      </div>
-      {none ? (
-        <p className="text-aui-sm text-aui-muted">Enable a provider above, then pick one here.</p>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Label text="Provider">
-            <NativeSelect
-              aria-label="Routing provider"
-              value={draft.provider ?? ""}
-              disabled={!canEdit}
-              onChange={(e) => setDraft((d) => ({ ...d, provider: e.target.value || undefined }))}
-            >
-              <option value="">{providers === null ? "Loading providers" : "None"}</option>
-              {listed.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </NativeSelect>
-          </Label>
-          <Label text="Model" hint="A small, fast model is enough: each agent answers yes or no.">
-            <input
-              className={field}
-              aria-label="Routing model name"
-              maxLength={200}
-              value={draft.model ?? ""}
-              disabled={!canEdit}
-              onChange={(e) => setDraft((d) => ({ ...d, model: e.target.value || undefined }))}
-            />
-          </Label>
-        </div>
-      )}
-      {canEdit && !none && (
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {problem && dirty && <span className="text-aui-xs text-aui-bad">{problem}</span>}
-          {dirty && (
-            <button type="button" className={button} onClick={() => setDraft(saved)}>
-              Discard
-            </button>
-          )}
-          <button
-            type="button"
-            className={primary}
-            disabled={!dirty || problem !== null}
-            onClick={() => onSave(draft)}
-          >
-            Save Routing
-          </button>
-        </div>
-      )}
-    </section>
   );
 }
 
