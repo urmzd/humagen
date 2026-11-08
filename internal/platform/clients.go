@@ -475,6 +475,7 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		}
 		_, cfg.StatusReactions = api.(slacktransport.ReactionAPI)
 		cfg.FileTokenSource = tokenSource
+		cfg.Interact = p.slackInteract(c)
 		if c.Slack != nil {
 			cfg.Sessions = c.Slack.Sessions
 			cfg.ActionChannels = c.Slack.ActionChannels

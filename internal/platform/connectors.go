@@ -720,6 +720,7 @@ func (p *Platform) IngressHandler() http.Handler {
 	mux.Handle("POST /connectors/github", p.Webhook("github"))
 	mux.Handle("POST /connectors/slack", p.Webhook("slack"))
 	mux.Handle("POST /connectors/slack/commands", p.Webhook("slack"))
+	mux.Handle("POST /connectors/slack/interactive", p.Webhook("slack"))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		seated := 0
 		for _, s := range p.surfaces {

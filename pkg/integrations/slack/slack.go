@@ -51,6 +51,11 @@ type Config struct {
 	// through connector rebuilds. Replicas must share both.
 	DeliveryState deliverystate.Store
 	DeliveryScope string
+	// Interact hears a person press a button on the app's messages or choose
+	// one of its shortcuts. Nil ignores them.
+	Interact func(context.Context, transport.Interaction) error
+	// Socket turns on Socket Mode, so the server needs no public URL.
+	Socket *transport.SocketConfig
 }
 type Connector struct {
 	*transport.Connector
@@ -75,6 +80,7 @@ func New(cfg Config) (*Connector, error) {
 	c.live.open, c.live.asked = map[string]session{}, map[string]bool{}
 	base := transport.Config{Tenant: cfg.Tenant, Files: cfg.Files, FileToken: cfg.FileToken, AppID: cfg.AppID, API: cfg.API, Verifier: cfg.Verifier, Team: cfg.Team, Bots: cfg.Bots, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
 	base.FileTokenSource = cfg.FileTokenSource
+	base.Interact, base.Socket = cfg.Interact, cfg.Socket
 	base.DeliveryState, base.DeliveryScope = cfg.DeliveryState, cfg.DeliveryScope
 	base.Feedback, base.ObserveDelivery, base.ContinueThread, base.StatusReactions, base.ActionChannels = cfg.Feedback, cfg.ObserveDelivery, cfg.ContinueThread, cfg.StatusReactions, cfg.ActionChannels
 	base.Prepare = func(_ context.Context, tag *event.Envelope) error {

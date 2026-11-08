@@ -91,6 +91,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /connectors/github", s.P.Webhook("github"))
 	mux.Handle("POST /connectors/slack", s.P.Webhook("slack"))
 	mux.Handle("POST /connectors/slack/commands", s.P.Webhook("slack"))
+	mux.Handle("POST /connectors/slack/interactive", s.P.Webhook("slack"))
 
 	mux.HandleFunc("GET /auth/login", s.Authn.handleLogin)
 	mux.HandleFunc("GET /auth/callback", s.Authn.handleCallback)

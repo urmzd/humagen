@@ -174,7 +174,17 @@ func (p *Platform) surfacePerson(c clients.Client, tag event.Envelope) string {
 		}
 		return c.GitHub.People[wire.ActorOf(tag).ID]
 	}
-	if c.Surface != clients.Slack || wire.ActorOf(tag).Bot || id == "" || c.Identity.Team == "" {
+	if wire.ActorOf(tag).Bot {
+		return ""
+	}
+	return p.slackPersonFor(c, id)
+}
+
+// slackPersonFor is the person the Slack clients of c's team map a Slack user
+// to: the same person wherever they are mapped, or nobody when two clients
+// disagree or none maps them.
+func (p *Platform) slackPersonFor(c clients.Client, id string) string {
+	if c.Surface != clients.Slack || id == "" || c.Identity.Team == "" {
 		return ""
 	}
 	person := ""
