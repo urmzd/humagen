@@ -4811,7 +4811,7 @@ export interface ConnectionCallback {
 
 export interface BigQuerySetupCredential {
   kind?: "oauth" | "adc" | "reference";
-  /** A permitted personal credential reference */
+  /** A permitted personal credential reference, required only for reference kind. */
   ref?: string;
 }
 

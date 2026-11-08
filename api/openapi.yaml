@@ -17168,8 +17168,7 @@ components:
         ref:
           type: string
           maxLength: 512
-          description: A permitted personal credential reference
-          required only for reference kind.:
+          description: A permitted personal credential reference, required only for reference kind.
     BigQuerySetupInput:
       type: object
       additionalProperties: false
