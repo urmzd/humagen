@@ -88,3 +88,24 @@ func TestOnePartIsBounded(t *testing.T) {
 		t.Fatalf("first part of short sentences = %d runes", n)
 	}
 }
+
+func TestAnAnswerClipIsBoundedAndSaysTheRestIsInTheThread(t *testing.T) {
+	short, whole := answerParts("The room is booked. Invites are out.")
+	if !whole || strings.Join(short, " ") != "The room is booked. Invites are out." {
+		t.Fatalf("short: %q %v", short, whole)
+	}
+	long, whole := answerParts(strings.Repeat("This sentence is part of a long answer. ", 80))
+	size := 0
+	for _, p := range long {
+		size += utf8.RuneCountInString(p)
+	}
+	if whole || long[len(long)-1] != RestInThread || size > MaxSpokenAnswer+utf8.RuneCountInString(RestInThread) {
+		t.Fatalf("long: %d parts, %d runes, whole %v", len(long), size, whole)
+	}
+	if none, _ := answerParts("```\ncode only\n```"); len(none) != 1 || none[0] != CodeSpoken {
+		t.Fatalf("code only: %q", none)
+	}
+	if empty, _ := answerParts(""); len(empty) != 0 {
+		t.Fatalf("empty: %q", empty)
+	}
+}

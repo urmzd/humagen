@@ -37,11 +37,19 @@ const VoiceNoteMark = "[Voice note"
 // is said to be so, and the message still posts. The result stays within
 // threads.MaxText.
 func (p *Platform) TranscribeVoiceNotes(ctx context.Context, tenant, text string, files []attachment.Attachment) string {
+	out, _ := p.transcribeVoiceNotes(ctx, tenant, text, files)
+	return out
+}
+
+// transcribeVoiceNotes is TranscribeVoiceNotes, and whether any note's words
+// were heard: such a message was spoken, and its answer can be spoken back.
+func (p *Platform) transcribeVoiceNotes(ctx context.Context, tenant, text string, files []attachment.Attachment) (string, bool) {
 	h := p.heardBy(tenant)
 	if h.t == nil || p.files == nil {
-		return text
+		return text, false
 	}
 	var notes []string
+	heard := false
 	for _, a := range files {
 		if len(notes) == MaxVoiceNotes {
 			break
@@ -49,10 +57,12 @@ func (p *Platform) TranscribeVoiceNotes(ctx context.Context, tenant, text string
 		if a.Unread != "" || a.Kind() != attachment.KindAudio && !speech.IsAudio(a.MediaType) {
 			continue
 		}
-		notes = append(notes, p.voiceNote(ctx, tenant, a, h))
+		note, ok := p.voiceNote(ctx, tenant, a, h)
+		notes = append(notes, note)
+		heard = heard || ok
 	}
 	if len(notes) == 0 {
-		return text
+		return text, false
 	}
 	out := strings.TrimSpace(text)
 	for _, n := range notes {
@@ -61,16 +71,16 @@ func (p *Platform) TranscribeVoiceNotes(ctx context.Context, tenant, text string
 		}
 		out += n
 	}
-	return clipRunes(out, threads.MaxText)
+	return clipRunes(out, threads.MaxText), heard
 }
 
-// voiceNote is one attachment's transcript, marked, or a note that it
-// could not be heard.
-func (p *Platform) voiceNote(ctx context.Context, tenant string, a attachment.Attachment, h hearing) string {
+// voiceNote is one attachment's transcript, marked, and true; or a note
+// that it could not be heard, and false.
+func (p *Platform) voiceNote(ctx context.Context, tenant string, a attachment.Attachment, h hearing) (string, bool) {
 	r, _, err := p.files.Get(ctx, tenant, filesblob.Digest(a.Digest))
 	if err != nil {
 		p.log.Warn("voice note: read", "tenant", tenant, "file", a.Label(), "err", err)
-		return VoiceNoteMark + ": " + a.Label() + " could not be read]"
+		return VoiceNoteMark + ": " + a.Label() + " could not be read]", false
 	}
 	defer r.Close()
 	heard, err := speech.Hear(ctx, h.t, r, a.MediaType)
@@ -80,17 +90,17 @@ func (p *Platform) voiceNote(ctx context.Context, tenant string, a attachment.At
 	text, lang := heard.Text, heard.Language
 	switch {
 	case errors.Is(err, speech.ErrTooLarge):
-		return VoiceNoteMark + ": " + a.Label() + " is too long to transcribe]"
+		return VoiceNoteMark + ": " + a.Label() + " is too long to transcribe]", false
 	case errors.Is(err, speech.ErrEmpty):
-		return VoiceNoteMark + ": " + a.Label() + " had no words in it]"
+		return VoiceNoteMark + ": " + a.Label() + " had no words in it]", false
 	case err != nil:
 		p.log.Warn("voice note: transcribe", "tenant", tenant, "file", a.Label(), "err", err)
-		return VoiceNoteMark + ": " + a.Label() + " could not be transcribed]"
+		return VoiceNoteMark + ": " + a.Label() + " could not be transcribed]", false
 	}
 	if lang != "" {
-		return fmt.Sprintf("%s, %s] %s", VoiceNoteMark, lang, text)
+		return fmt.Sprintf("%s, %s] %s", VoiceNoteMark, lang, text), true
 	}
-	return VoiceNoteMark + "] " + text
+	return VoiceNoteMark + "] " + text, true
 }
 
 // MaxRecordingBytes bounds a recording the console sends to be

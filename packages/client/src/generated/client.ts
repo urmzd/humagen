@@ -220,6 +220,7 @@ import type {
   SourceLinkRule,
   SourceLinkRuleInput,
   SourceLinkSuggestion,
+  SpokenAnswer,
   SpokenCorrection,
   StopSessionBody,
   StorageUsage,
@@ -2838,6 +2839,31 @@ a member of the run's project, and in a private thread a participant
     return this.rawRequest<Run>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Speaks the answer of a run that has ended with the workspace's voice
+provider, as one clip: plain words, at most 1,200 characters, a longer
+answer cut at a sentence and ending "The rest is in the thread."
+(`whole` false). For a surface that replies with a file: a Slack
+thread answers a voice clip with one. The text is the run's own; a
+client cannot name it. Each part spoken is counted in the usage
+ledger and on the run's session. 409 while the run works or with no
+voice provider, 402 at a spend limit, 422 for an answer with no words.
+ */
+  async speakAnswer(id: string, options?: RequestOptions): Promise<SpokenAnswer> {
+    let path = "/api/runs/{id}/speech";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<SpokenAnswer>("POST", path, {
+      ...options,
+    });
+  }
+
+  async speakAnswerRaw(id: string, options?: RequestOptions): Promise<ApiResponse<SpokenAnswer>> {
+    let path = "/api/runs/{id}/speech";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<SpokenAnswer>("POST", path, {
       ...options,
     });
   }

@@ -127,7 +127,7 @@ func slackManifest(name, command string, c slackCopy) SlackManifest {
 	m.OAuth.Scopes.Bot = []string{
 		"app_mentions:read", "assistant:write", "channels:history", "chat:write", "commands",
 		"groups:history", "im:history", "mpim:history", "reactions:write", "users:read",
-		"files:read", "canvases:write",
+		"files:read", "files:write", "canvases:write",
 	}
 	m.Settings.Events.Bot = []string{"agent_session_stopped", "app_home_opened", "app_mention", "assistant_thread_started", "message.im"}
 	m.Settings.Interactivity.Enabled = true

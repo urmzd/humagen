@@ -28,8 +28,26 @@ func (s *Server) voiceRoutes(mux *http.ServeMux) {
 	// spoken a few sentences at a time.
 	mux.HandleFunc("POST /api/sessions/{id}/voice/transcriptions", s.authed(auth.SpeechWrite, s.seenSession(s.hearInSession)))
 	mux.HandleFunc("POST /api/sessions/{id}/voice/speech", s.authed(auth.SpeechWrite, s.seenSession(s.speakInSession)))
+	// A finished run's answer as one clip, for a surface that replies with a
+	// file: a Slack thread answers a voice clip with one.
+	mux.HandleFunc("POST /api/runs/{id}/speech", s.authed(auth.SpeechWrite, s.seenRun(s.speakAnswer)))
 	// A spoken message's words, put right by its author.
 	mux.HandleFunc("PATCH /api/sessions/{id}/messages/{mid}", s.authed(auth.RunsWrite, s.seenSession(s.correctSpoken)))
+}
+
+func (s *Server) speakAnswer(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	got, err := s.P.SpeakAnswer(r.Context(), who, r.PathValue("id"))
+	switch {
+	case errors.Is(err, platform.ErrRunWorking):
+		fail(w, http.StatusConflict, "the run is still working; ask when it has ended")
+	case errors.Is(err, speech.ErrEmpty):
+		fail(w, http.StatusUnprocessableEntity, "the answer has no words to say")
+	default:
+		if s.voiceRefused(w, who, err) {
+			return
+		}
+		ok(w, http.StatusOK, got)
+	}
 }
 
 // correction is a spoken message's words, put right.

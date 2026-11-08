@@ -642,7 +642,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"MentionKind": {typ: platform.MentionKind{}}, "MentionItem": {typ: platform.MentionItem{}},
 		"VoiceSettings": {typ: platform.VoiceSettings{}}, "VoiceProvider": {typ: platform.VoiceProvider{}}, "VoiceKind": {typ: platform.VoiceKind{}},
 		"VoiceProviderInput": {typ: platform.VoiceProviderInput{}, written: true}, "VoicePrice": {typ: speech.Price{}}, "VoiceCheck": {typ: platform.VoiceCheck{}},
-		"VoiceUsage": {typ: platform.VoiceUsage{}}, "VoiceSpeech": {typ: platform.VoiceSpeech{}}, "VoiceSpeechInput": {typ: speakInput{}, written: true}, "SpokenCorrection": {typ: correction{}, written: true},
+		"VoiceUsage": {typ: platform.VoiceUsage{}}, "VoiceSpeech": {typ: platform.VoiceSpeech{}}, "VoiceSpeechInput": {typ: speakInput{}, written: true}, "SpokenCorrection": {typ: correction{}, written: true}, "SpokenAnswer": {typ: platform.SpokenAnswer{}},
 		"ProjectInput": {typ: platform.ProjectInput{}, written: true}, "ProjectUpdate": {typ: platform.ProjectUpdate{}, written: true},
 		"ProjectAgents": {typ: projects.Agents{}}, "AgentAvailability": {typ: projects.Availability{}}, "AgentOffer": {typ: platform.Offer{}},
 		"DefaultResolved": {typ: platform.Nearer{}}, "ProjectAgentsView": {typ: platform.ProjectAgents{}},
@@ -2762,6 +2762,9 @@ var unexercised = map[string]string{
 	"POST /api/sessions/{id}/voice/transcriptions 422": "no words heard, covered by TestVoiceModeHearsAndSpeaksInASession",
 	"POST /api/sessions/{id}/voice/transcriptions 503": "a provider that fails, covered by TestVoiceModeHearsAndSpeaksInASession",
 	"POST /api/sessions/{id}/voice/speech 503":         "a provider that fails, covered by TestVoiceModeHearsAndSpeaksInASession",
+	"POST /api/runs/{id}/speech 402":                   "a spend limit reached, the same check TestVoiceModeStopsAtTheSpendLimit covers",
+	"POST /api/runs/{id}/speech 422":                   "an answer with no words, covered by TestAFinishedAnswerIsOneClip",
+	"POST /api/runs/{id}/speech 503":                   "a provider that fails, covered by TestAFinishedAnswerIsOneClip",
 
 	"POST /api/voice/transcriptions 404":            "a deployment with speech left out, covered by TestWithoutSpeechTheConsoleHasNoVoiceNotes",
 	"POST /api/catalog/connectors/{name}/crawl 409": "a crawl asked for while another of the same connector runs; the guard is in platform.crawl",

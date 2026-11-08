@@ -690,7 +690,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error
 	if p.cfg.Runtime != nil {
 		inner := sandbox.Sandboxed(p.cfg.Runtime, sandbox.Plane{Control: plane, Tools: tools},
 			sandbox.WithReplicas(p.slots()), sandbox.WithLogger(p.log))
-		return callExecutor{inner: inner, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding}, nil
+		return callExecutor{inner: inner, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding, hear: p.hearTurn}, nil
 	}
 	exec, err := runtime.NewSandbox(plane, tools, p.Agents.Resolver(),
 		runtime.WithCatalog(p.operationsCatalog(p.cfg.Ext.catalog(p.fileTools(p.connectorTools)), groups)),
@@ -712,7 +712,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error
 	if err != nil {
 		return nil, fmt.Errorf("platform: sandbox: %w", err)
 	}
-	return callExecutor{inner: exec, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding}, nil
+	return callExecutor{inner: exec, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding, hear: p.hearTurn}, nil
 }
 
 // Invoke accepts an event for the one agent it names and starts its run. The

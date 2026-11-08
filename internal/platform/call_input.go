@@ -13,6 +13,7 @@ import (
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/orchagent/durable"
+	"github.com/urmzd/orchagent/flow/attachment"
 	"github.com/urmzd/orchagent/flow/event"
 	"github.com/urmzd/orchagent/flow/runtime"
 	"github.com/urmzd/orchagent/flow/turn"
@@ -131,6 +132,10 @@ type callExecutor struct {
 	// (resolveRevision). Nil leaves the definition as it is.
 	resolve func(runtime.Request) (runtime.Request, error)
 	release func(runtime.Request)
+	// hear puts the words of a voice note that arrived with the turn's
+	// event, from a surface that posts it as a run (a Slack clip), in its
+	// text (voice_turn.go). Nil hears nothing.
+	hear func(ctx context.Context, tenant, run, text string, files []attachment.Attachment) (string, bool)
 }
 
 var _ turn.Runtime = callExecutor{}
@@ -158,6 +163,13 @@ func (e callExecutor) Turn(ctx context.Context, def turn.Pinned, in turn.Input, 
 	if e.bind != nil {
 		done := e.bind(ctx, req)
 		defer done()
+	}
+	if e.hear != nil && req.Origin != call.Origin {
+		if text, heard := e.hear(ctx, req.Tenant, req.RunID, req.Text, wire.AttachmentsOf(in.Trigger)); heard {
+			req.Text = text
+			in.Trigger = wire.Clone(in.Trigger)
+			wire.SetText(&in.Trigger, text)
+		}
 	}
 	var format call.ResponseFormat
 	if req.Origin == call.Origin {
