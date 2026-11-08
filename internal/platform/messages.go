@@ -326,7 +326,7 @@ func (p *Platform) SendMessages(ctx context.Context, who auth.Principal, in Mess
 		// Slack thread, through the origin's client, for the user who wrote.
 		thread := cmpOr(origin.ThreadTS, origin.TS)
 		at := address.Address{Connector: "slack", Workspace: origin.Team, Path: []string{origin.Channel}}.WithParam("thread", thread)
-		ctx = withDelivery(ctx, delivery{channel: at.String(), client: origin.Client, user: origin.User})
+		ctx = withDelivery(ctx, delivery{channel: at.String(), client: origin.Client, user: origin.User, slackChannel: origin.Channel})
 	}
 	out, err := p.sendUnder(ctx, who, root, origin, in.Messages)
 	out.Created = created
@@ -460,6 +460,13 @@ func (p *Platform) rootAt(ctx context.Context, who auth.Principal, place string,
 		return threads.Thread{}, false, err
 	}
 	owner := p.entryFor(ctx, who.Tenant, project, p.Seer(who).Agent)
+	if owner == "" && c != nil && origin.Type == RefSlack {
+		// Without the entry agent, the Slack channel's binding answers first:
+		// the bound channel's own default, then the client's.
+		if bound, ok := p.Projects.BoundTo(who.Tenant, c.ID, origin.Channel); ok && bound.Default != "" && bound.Default != Open {
+			owner = bound.Default
+		}
+	}
 	if owner == "" && c != nil && c.DefaultAgent != Open {
 		owner = c.DefaultAgent
 	}
@@ -573,7 +580,7 @@ func (p *Platform) firstMentioned(ctx context.Context, who auth.Principal, m Mes
 // delivery is where runs a surface's message starts answer: the surface's
 // channel (a Slack thread's address), the client that reaches it, and the
 // surface's user who wrote the message.
-type delivery struct{ channel, client, user string }
+type delivery struct{ channel, client, user, slackChannel string }
 
 type deliveryKey struct{}
 

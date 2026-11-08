@@ -11,6 +11,7 @@ import (
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/orchagent/flow/runtime"
 	"github.com/urmzd/orchagent/flow/turn/native/agenttest"
@@ -254,5 +255,37 @@ func TestAPickThatIsNotAPickFallsBackToTheBestSearchMatch(t *testing.T) {
 	m := pickOf(t, p, v.ID)
 	if len(m.Parts) != 2 || m.Parts[1].Agent != "ops" || !strings.HasPrefix(m.Parts[0].Text, "Picked by search: matched") {
 		t.Fatalf("fallback pick = %+v", m.Parts)
+	}
+}
+
+func TestARootLeavesOutADelegatedAnswerItsReaderMayNotRead(t *testing.T) {
+	c := entryCast([][]saigetypes.Delta{
+		pickJSON(platform.PickDelegate, "Deploys are ops's and spend is analyst's.", "ops", "analyst"),
+	}, map[string][][]saigetypes.Delta{"ops": {say("A migration was missing.")}, "analyst": {say("It cost three dollars.")}})
+	p := stageEntry(t, c)
+	seePeople(t, p, operator)
+	v, err := p.StartSession(t.Context(), operator, platform.SessionInput{Project: "~", Text: "Why did the deploy fail and what did it cost?"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := pickOf(t, p, v.ID); len(m.Parts) != 3 {
+		t.Fatalf("before, the pick shows %d parts", len(m.Parts))
+	}
+	if _, err := p.CreateProject(t.Context(), tenant, projects.Writer{By: "olu"}, platform.ProjectInput{Name: "Vault", Kind: projects.Account}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetAgentHome(t.Context(), tenant, "analyst", "Vault", govern); err != nil {
+		t.Fatal(err)
+	}
+	view, err := p.ReadSession(t.Context(), operator, v.ID, "", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range view.Messages {
+		for _, part := range m.Parts {
+			if part.Agent == "analyst" || strings.Contains(part.Text, "three dollars") {
+				t.Fatalf("the reader is shown analyst's answer: %+v", m.Parts)
+			}
+		}
 	}
 }
