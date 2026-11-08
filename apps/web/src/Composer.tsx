@@ -162,6 +162,7 @@ export type ComposerSeed =
  */
 export function Composer({
   queue,
+  placeholder,
   emptyText,
   autoFocus,
   onDraft,
@@ -291,8 +292,6 @@ export function Composer({
     value,
     (tags?.options ?? []).filter((option) => option.kind === "agent").map((option) => option.token),
   );
-  const audience = [...mentioned];
-  if (!audience.length && tags?.defaultAgent) audience.push(tags.defaultAgent);
   const backdrop = useRef<HTMLDivElement>(null);
   const [listAt, setListAt] = useState<{ up: boolean; max: number }>({ up: true, max: 256 });
   useLayoutEffect(() => {
@@ -874,13 +873,11 @@ export function Composer({
           ref={input}
           rows={1}
           value={value}
-          // Words of the caller's own win over the default agent, but never over a mention.
+          // Who a mention asks, else the caller's own words: never the default agent's token.
           placeholder={
-            mentioned.length === 0 && emptyText
-              ? emptyText
-              : audience.length > 0
-                ? `Message ${audience.map((name) => `@${name}`).join(", ")}`
-                : defaultCopy.chat.placeholder
+            mentioned.length > 0
+              ? `Message ${mentioned.map((name) => `@${name}`).join(", ")}`
+              : emptyText || placeholder || defaultCopy.chat.placeholder
           }
           onChange={(e) => {
             change(e.target.value);
