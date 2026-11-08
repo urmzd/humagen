@@ -2569,12 +2569,14 @@ export const defaultCopy = {
   /** A conversation's approval mode, a text control under the composer (DES-057). */
   approvals: {
     label: "Approvals",
-    ask: "Default",
-    askHint: "Ask a person before a gated action runs.",
-    auto: "Approve for Me",
+    ask: "Ask Me",
+    askHint: "Every gated action waits for you.",
+    auto: "Run",
     autoHint:
-      "Approve gated actions as you, within policy. Budget requests and actions the agent or the policy always asks about still come to a person. Every approval is audited.",
-    autoFor: (name: string) => `Approved for ${name}`,
+      "The approval agent decides each action the policy asks about, and hands you anything it is unsure of. Every decision is audited.",
+    autoFor: (name: string) => `Run, chosen by ${name}`,
+    waiting:
+      "No model is enabled for the approval agent yet, so every action waits for a person.",
     failed: "Could not change approvals. Try again.",
   },
   /** Over Home's chat bar: the person's own project, where a conversation in no project is filed (DES-057). */
@@ -2797,7 +2799,7 @@ export const defaultCopy = {
   },
   chat: {
     /** The + button, which opens the menu. */
-    plus: "Add files, agents or a project",
+    plus: "Add files or agents",
     /** The shortcut that opens it, said in its tooltip: Cmd+/ on a Mac, Ctrl+/ elsewhere. */
     plusShortcut: (mac: boolean) => (mac ? "Cmd+/" : "Ctrl+/"),
     /** The sidebar's filter of conversations, and how many filters are on. */

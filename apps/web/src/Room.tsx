@@ -13,7 +13,7 @@ import {
 } from "@humagen/web";
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
-import { ApprovalModePicker } from "./ApprovalModePicker.tsx";
+import { ApprovalToggle } from "./ApprovalToggle.tsx";
 import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
 import {
   ApiError,
@@ -853,6 +853,8 @@ export function ThreadRoom({
               onChanged={onChanged}
               onUpdated={(next) => setPage((p) => ({ ...p, thread: next }))}
               onShare={shareable ? () => onSharing?.(!sharing) : undefined}
+              projects={projects}
+              personalProject={personalProject}
             />
           }
           title={title}
@@ -1136,7 +1138,7 @@ export function ThreadRoom({
                   turn.run && actedFor(turn.run) === me ? [turn.run] : [],
                 )}
                 thread={id}
-                trailing={<ApprovalModePicker thread={th} me={handle || me} />}
+                trailing={<ApprovalToggle thread={th} me={handle || me} />}
                 seed={seed}
                 placeholder={
                   th.visibility === "private" ? words.message : words.channel(th.channel)
