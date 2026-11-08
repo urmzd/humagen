@@ -1589,6 +1589,8 @@ export interface ThreadMessage {
   /** `console`, or the id of the client it came through. */
   via: string;
   surface_id?: string;
+  /** Said in voice mode and transcribed. */
+  spoken?: boolean;
   at: string;
 }
 
@@ -1761,6 +1763,8 @@ export interface ThreadMessageInput {
   answers?: ThreadAnswerRef;
   act_as?: ActAs;
   surface?: SurfaceRef;
+  /** The person said it in voice mode and the words were transcribed. It only marks the message. */
+  spoken?: boolean;
 }
 
 /** How a thread's selected agents answer an untagged message a person
@@ -2534,6 +2538,40 @@ export interface VoiceKind {
 export interface VoiceProviderView {
   provider?: VoiceProvider;
   kinds: VoiceKind[];
+}
+
+/** What voice mode has used in a session, counted also in the workspace's usage. */
+export interface VoiceUsage {
+  /** How long the person spoke */
+  heard_ms: number;
+  spoken_chars: number;
+  /** What it cost */
+  micros: number;
+  calls: number;
+  unpriced_calls?: number;
+}
+
+export interface VoiceSpeechInput {
+  /** A run of this session whose answer is spoken. */
+  run: string;
+  /** The offset to speak from: 0, then each answer's `next`. */
+  from?: number;
+}
+
+/** The next part of a run's answer, spoken. */
+export interface VoiceSpeech {
+  /** The sound */
+  audio?: Blob;
+  media_type?: string;
+  /** What was said */
+  text: string;
+  /** The offset to ask from next. */
+  next: number;
+  /** The answer is still being written and has no whole sentence after the offset yet; ask again when more arrives. */
+  pending?: boolean;
+  /** The answer has ended and has been said in full. */
+  done?: boolean;
+  cost_micros: number;
 }
 
 /** The sample a check spoke, and what was heard back from it. */
@@ -4603,6 +4641,8 @@ export interface SessionPostInput {
   answers?: ThreadAnswerRef;
   act_as?: ActAs;
   surface?: SurfaceRef;
+  /** The person said it in voice mode and the words were transcribed. It only marks the message. */
+  spoken?: boolean;
   /** The @agent in text whose child receives this request. */
   agent?: string;
   /** Start an independent child instead of continuing its existing session. */
@@ -4667,6 +4707,7 @@ export interface AgentSession {
   /** More changed messages remain after cursor; continue with since until false. */
   more?: boolean;
   usage?: RunUsage;
+  voice?: VoiceUsage;
   conversation: ThreadSummary;
   thread: Thread;
   id: string;

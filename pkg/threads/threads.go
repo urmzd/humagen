@@ -333,6 +333,8 @@ type Message struct {
 	Answers *AnswerRef `json:"answers,omitempty"`
 	// Via is where it was posted: console, or a client's id.
 	Via string `json:"via"`
+	// Spoken is a message said in voice mode and transcribed.
+	Spoken bool `json:"spoken,omitempty"`
 	// SurfaceID is the surface's own id for it, such as a Slack ts. A second
 	// post with the same one is the first.
 	SurfaceID string    `json:"surface_id,omitempty"`

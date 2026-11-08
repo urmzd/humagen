@@ -104,6 +104,9 @@ type MessageInput struct {
 	// only by the client's machine. Its message ts makes a second post of it
 	// change nothing.
 	Surface *SurfaceRef `json:"surface,omitempty"`
+	// Spoken says the person said it in voice mode, and the words were
+	// transcribed. It is theirs to say, and only marks the message.
+	Spoken bool `json:"spoken,omitempty"`
 	// reply is a reply to a mention, from the inbox.
 	reply bool
 }
@@ -892,7 +895,7 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		return Posted{}, err
 	}
 	mentions = p.checkTags(who.Tenant, tree, th.Project, mentions)
-	msg := threads.Message{By: by, Name: name, Text: text, Mentions: mentions, Via: via, Prev: prev, SurfaceID: surfaceID}
+	msg := threads.Message{By: by, Name: name, Text: text, Mentions: mentions, Via: via, Prev: prev, SurfaceID: surfaceID, Spoken: in.Spoken}
 	if on != nil && on.ref.Files {
 		msg.Attachments, err = p.surfaceFiles(ctx, who, on.ref, in.ActAs)
 		if err != nil {

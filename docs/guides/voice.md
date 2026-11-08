@@ -32,6 +32,34 @@ A transcription whose length the provider did not say is counted as an
 unpriced call, never as free. The API: `GET`, `PUT` and `DELETE
 /api/voice/provider`, and `POST /api/voice/provider/check`.
 
+## Voice mode in a session
+
+With a workspace voice provider set up, a session's composer has a voice
+mode button beside the microphone. In voice mode you talk with the session's
+agent: what you say is heard by the provider and sent as an ordinary message,
+marked spoken, so the agent (and the entry agent's routing) answers it as it
+would a typed one, with its own model, tools and approvals. The answer is
+written in the session as usual and spoken a few sentences at a time.
+
+| Call | What it does |
+|------|--------------|
+| `POST /api/sessions/{id}/voice/transcriptions` | Hears a recording (its own bytes, at most 10 MiB) and answers its words. Nothing is kept |
+| `POST /api/sessions/{id}/messages` with `"spoken": true` | Sends the words; `spoken` only marks the message |
+| `POST /api/sessions/{id}/voice/speech` with `{"run", "from"}` | Speaks the next few sentences of that run's answer, from offset `from` (0, then each answer's `next`) |
+
+What is spoken is read on the server from the answer of a run of that
+session, never sent by the client, so voice mode cannot speak anything else
+on the workspace's account. It is plain words: no Markdown, a link by its
+text, an address as "a link", a table left out, a code block as "The code is
+in the session." While the answer is still being written and has no whole
+sentence after `from`, the answer is `pending` and nothing is spent.
+
+Each call is counted in the usage ledger, toward the session's project, its
+agent and the workspace, and on the session's own `voice` usage (seconds
+heard, characters spoken, cost). When a spend limit over any of them is
+reached, the calls answer 402 and nothing is sent to the provider. Both take
+`speech:write` and a session the caller can see.
+
 ## A deployment speech kind
 
 Groq transcribes with Whisper. Set `GROQ_API_KEY` in the server's

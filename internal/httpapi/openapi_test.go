@@ -642,6 +642,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"MentionKind": {typ: platform.MentionKind{}}, "MentionItem": {typ: platform.MentionItem{}},
 		"VoiceSettings": {typ: platform.VoiceSettings{}}, "VoiceProvider": {typ: platform.VoiceProvider{}}, "VoiceKind": {typ: platform.VoiceKind{}},
 		"VoiceProviderInput": {typ: platform.VoiceProviderInput{}, written: true}, "VoicePrice": {typ: speech.Price{}}, "VoiceCheck": {typ: platform.VoiceCheck{}},
+		"VoiceUsage": {typ: platform.VoiceUsage{}}, "VoiceSpeech": {typ: platform.VoiceSpeech{}}, "VoiceSpeechInput": {typ: speakInput{}, written: true},
 		"ProjectInput": {typ: platform.ProjectInput{}, written: true}, "ProjectUpdate": {typ: platform.ProjectUpdate{}, written: true},
 		"ProjectAgents": {typ: projects.Agents{}}, "AgentAvailability": {typ: projects.Availability{}}, "AgentOffer": {typ: platform.Offer{}},
 		"DefaultResolved": {typ: platform.Nearer{}}, "ProjectAgentsView": {typ: platform.ProjectAgents{}},
@@ -1173,6 +1174,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(auditAdmin, "PUT", provider, provider, `{"kind":"openai","key":"sk_contract"}`, http.StatusOK)
 	c.call(auditAdmin, "POST", provider+"/check", provider+"/check", "", http.StatusBadGateway)
 	c.call(auditAdmin, "DELETE", provider, provider, "", http.StatusNoContent)
+	exerciseSessionVoiceContract(t, c)
 
 	c.call(auditAdmin, "GET", "/api/audit", "/api/audit?limit=501", "", http.StatusBadRequest)
 	c.call(auditAdmin, "GET", "/api/read-audit", "/api/read-audit?limit=501", "", http.StatusBadRequest)
@@ -2534,6 +2536,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/sessions/{id}":                         {"id": sessionContract["id"]},
 		"/api/sessions/{id}/messages":                {"id": sessionContract["id"]},
 		"/api/sessions/{id}/stream":                  {"id": sessionContract["id"]},
+		"/api/sessions/{id}/voice/transcriptions":    {"id": sessionContract["id"]},
+		"/api/sessions/{id}/voice/speech":            {"id": sessionContract["id"]},
 		"/api/sessions/{id}/stop":                    {"id": sessionContract["id"]},
 		"/api/sessions/{id}/people":                  {"id": sessionContract["id"]},
 		"/api/sessions/{id}/links":                   {"id": sessionContract["id"]},
@@ -2750,8 +2754,14 @@ var unexercised = map[string]string{
 	"POST /api/sessions/{id}/alerts 409":                 "random alert identity collision fails CreateSession CAS; callers cannot supply the ID",
 	"PUT /api/sessions/{id}/messages/{mid}/feedback 409": "same putFeedback handler unfinished-run409 is exercised via legacy feedback route",
 
-	"POST /api/voice/transcriptions 404":            "a deployment with speech left out, covered by TestWithoutSpeechTheConsoleHasNoVoiceNotes",
-	"POST /api/catalog/connectors/{name}/crawl 409": "a crawl asked for while another of the same connector runs; the guard is in platform.crawl",
+	"POST /api/voice/transcriptions 404":               "a deployment with speech left out, covered by TestWithoutSpeechTheConsoleHasNoVoiceNotes",
+	"POST /api/sessions/{id}/voice/transcriptions 402": "a spend limit reached, covered by TestVoiceModeStopsAtTheSpendLimit",
+	"POST /api/sessions/{id}/voice/speech 402":         "a spend limit reached, covered by TestVoiceModeStopsAtTheSpendLimit",
+	"POST /api/sessions/{id}/voice/transcriptions 413": "a recording over the body cap, the same MaxBytesReader TestTheConsoleTranscribesARecording covers",
+	"POST /api/sessions/{id}/voice/transcriptions 422": "no words heard, covered by TestVoiceModeHearsAndSpeaksInASession",
+	"POST /api/sessions/{id}/voice/transcriptions 503": "a provider that fails, covered by TestVoiceModeHearsAndSpeaksInASession",
+	"POST /api/sessions/{id}/voice/speech 503":         "a provider that fails, covered by TestVoiceModeHearsAndSpeaksInASession",
+	"POST /api/catalog/connectors/{name}/crawl 409":    "a crawl asked for while another of the same connector runs; the guard is in platform.crawl",
 	// The atomic source configuration race is covered by TestPromotionGuardAndProvenanceSurviveRestart.
 	"POST /api/artifacts/{id}/promote-knowledge 409": "source audience changed concurrently",
 	"POST /api/projects/{name}/fork 429":             "bounded private operation-plan capacity, covered by projectforks store tests",

@@ -244,6 +244,8 @@ import type {
   VoiceProviderInput,
   VoiceProviderView,
   VoiceSettings,
+  VoiceSpeech,
+  VoiceSpeechInput,
   VoiceTranscript,
   WorkspaceFileContent,
   WorkspaceFileList,
@@ -6763,6 +6765,65 @@ not answer in time.
     return this.rawRequest<VoiceTranscript>("POST", path, {
       body,
       contentType: "application/octet-stream",
+      ...options,
+    });
+  }
+
+  /** The body is the recording's own bytes, at most `max_bytes` from
+`GET /api/voice`. It is heard by the workspace's voice provider and
+not kept; the words come back to be sent as a message with `spoken`
+set, or read as an answer to an approval. What it costs is counted in
+the usage ledger and on the session's `voice` usage. 409 when the
+workspace has no voice provider, 402 when a spend limit over the
+session is reached (nothing is sent to the provider), 422 when no
+words were heard.
+ */
+  async hearInSession(id: string, body: Blob, options?: RequestOptions): Promise<VoiceTranscript> {
+    let path = "/api/sessions/{id}/voice/transcriptions";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<VoiceTranscript>("POST", path, {
+      body,
+      contentType: "application/octet-stream",
+      ...options,
+    });
+  }
+
+  async hearInSessionRaw(id: string, body: Blob, options?: RequestOptions): Promise<ApiResponse<VoiceTranscript>> {
+    let path = "/api/sessions/{id}/voice/transcriptions";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<VoiceTranscript>("POST", path, {
+      body,
+      contentType: "application/octet-stream",
+      ...options,
+    });
+  }
+
+  /** Speaks the next few sentences of the answer of `run`, a run of this
+session, from `from` (0, then each answer's `next`), as plain words:
+no Markdown, links by their text, a code block as "The code is in the
+session." The text is read on the server; a client cannot name it.
+While the answer is still being written and has no whole sentence
+after `from`, the answer is `pending` and nothing is spent; once it
+has ended and been said in full, `done`. What it costs is counted. 404
+for a run that is not this session's, 409 when the workspace has no
+voice provider, 402 when a spend limit is reached.
+ */
+  async speakInSession(id: string, body: VoiceSpeechInput, options?: RequestOptions): Promise<VoiceSpeech> {
+    let path = "/api/sessions/{id}/voice/speech";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<VoiceSpeech>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async speakInSessionRaw(id: string, body: VoiceSpeechInput, options?: RequestOptions): Promise<ApiResponse<VoiceSpeech>> {
+    let path = "/api/sessions/{id}/voice/speech";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<VoiceSpeech>("POST", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }
