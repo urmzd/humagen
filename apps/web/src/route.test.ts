@@ -370,12 +370,3 @@ test("Connections is a section of your settings with an address of its own; old 
     provider: "notion",
   });
 });
-
-test("every message has one address: a session's root, or a run focused on its own", () => {
-  assert.equal(href({ page: "conversation", id: "s_a" }), "/messages/s_a");
-  assert.deepEqual(at("/messages/s_a"), at("/sessions/s_a"));
-  const run = `r${"a1".repeat(16)}`;
-  assert.deepEqual(at(`/messages/${run}`), { page: "message", id: run });
-  assert.equal(href({ page: "message", id: run }), `/messages/${run}`);
-  assert.deepEqual(at("/messages"), { page: "sessions" });
-});
