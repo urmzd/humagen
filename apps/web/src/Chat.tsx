@@ -29,7 +29,7 @@ import { FindHelp, type HelpSuggestion } from "./FindHelp.tsx";
 import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { type HomeAnnouncement, HomePage } from "./HomePage.tsx";
 import { itemActions } from "./itemActions.tsx";
-import { AnswerRefs, OriginRef } from "./MessageRefs.tsx";
+import { AnswerRefs, OriginRef, ResponseActivity } from "./MessageRefs.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { ModelPicker } from "./ModelPicker.tsx";
 import { keptPick, namedIn, offersFor } from "./modelPick.ts";
@@ -162,9 +162,12 @@ function TurnView({
   actions,
   canStop = false,
   origin,
+  onActivity,
 }: {
   run: Run;
   canStop?: boolean;
+  /** Open this answer's activity in Details, when more than one agent worked on it. */
+  onActivity?: (run: string) => void;
   /** Where the session started, as a chip under the first message. */
   origin?: ReactNode;
   /** The reader's subject. */
@@ -233,7 +236,7 @@ function TurnView({
           )}
         </RunFeedbackHost>
       </AgentTint>
-      <AnswerRefs run={run} />
+      <AnswerRefs run={run} onActivity={onActivity} />
 
       <div className="flex flex-wrap items-center gap-2 pl-11 text-aui-xs text-aui-muted">
         {siblings.length > 1 && (
@@ -1127,6 +1130,7 @@ export function Chat({
                   key={run.id}
                   run={run}
                   origin={i === 0 ? <OriginRef origin={referenceOfPlace(chatPlace)} /> : undefined}
+                  onActivity={(id) => openPanel("response", { run: id })}
                   canStop={canRun && !room?.thread.read_only}
                   actions={
                     !room?.thread.read_only && run.status === "completed" ? (
@@ -1283,6 +1287,14 @@ export function Chat({
               }
             />
           )}
+        </Presence>
+        <Presence when={shownView.panel === "response" && !!shownView.run} ms={220}>
+          {(leaving) => {
+            const run = turns.find((t) => t.id === shownView.run);
+            return run ? (
+              <ResponseActivity run={run} leaving={leaving} onClose={() => openPanel()} />
+            ) : null;
+          }}
         </Presence>
         <Presence when={activity !== null} ms={220}>
           {(leaving) => (

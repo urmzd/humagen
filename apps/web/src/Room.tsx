@@ -44,7 +44,7 @@ import { ForkContext } from "./ForkConversation.tsx";
 import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { OLD_SYSTEM_SENDER } from "./legacy.ts";
-import { AnswerRefs, OriginRef } from "./MessageRefs.tsx";
+import { AnswerRefs, OriginRef, ResponseActivity } from "./MessageRefs.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { PersonMark } from "./PersonMark.tsx";
@@ -481,6 +481,7 @@ function AnswerView({
   onAsk,
   onReply,
   onRedirect,
+  onActivity,
   actions,
   canStop = false,
   focused = false,
@@ -488,6 +489,8 @@ function AnswerView({
   run: Run;
   canStop?: boolean;
   focused?: boolean;
+  /** Open this answer's activity in Details, when more than one agent worked on it. */
+  onActivity?: (run: string) => void;
   me: string;
   live: boolean;
   ask?: ThreadAsk;
@@ -549,7 +552,7 @@ function AnswerView({
           )}
         </RunFeedbackHost>
       </AgentTint>
-      <AnswerRefs run={run} />
+      <AnswerRefs run={run} onActivity={onActivity} />
       {refused && stillAsks(shown, refused.question) && (
         <div className="pl-11">
           <Problem message={refused.why} />
@@ -1097,6 +1100,7 @@ export function ThreadRoom({
                         ) : undefined
                       }
                       routed={routedOf(t.run)}
+                      onActivity={(run) => openPanel("response", { run })}
                       onAsk={
                         posts
                           ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" })
@@ -1319,6 +1323,14 @@ export function ThreadRoom({
               }
             />
           )}
+        </Presence>
+        <Presence when={shownView.panel === "response" && !!shownView.run} ms={220}>
+          {(leaving) => {
+            const run = turns.find((t) => t.run?.id === shownView.run)?.run;
+            return run ? (
+              <ResponseActivity run={run} leaving={leaving} onClose={() => openPanel()} />
+            ) : null;
+          }}
         </Presence>
         <Presence when={shownView.panel === "activity"} ms={220}>
           {(leaving) => (

@@ -4,7 +4,7 @@ import { type MouseEvent, useEffect, useState } from "react";
 import type { Run } from "./adapter.ts";
 import { api, coworking, type Thread } from "./api.ts";
 import { took, usd } from "./format.ts";
-import { Chips, loadTrace, SubItems, type TraceLoader } from "./MessageRefs.tsx";
+import { ActivityList, Chips, loadTrace, type TraceLoader } from "./MessageRefs.tsx";
 import { href, type Route } from "./route.ts";
 import { OriginButton, usePlace } from "./SessionPlace.tsx";
 import { chipsOf, type TraceNode } from "./trace.ts";
@@ -187,7 +187,14 @@ export function MessageFocus({
               node.error && <p className="text-aui-bad text-aui-sm">{node.error}</p>
             )}
             <Chips chips={chipsOf(node)} />
-            <SubItems nodes={node.children} />
+            {node.children.length > 0 && (
+              <section aria-labelledby="focus-activity" className="mt-4 flex flex-col gap-3">
+                <h2 id="focus-activity" className="font-medium text-aui-fg text-aui-sm">
+                  {words.activity}
+                </h2>
+                <ActivityList node={node} skipRoot />
+              </section>
+            )}
           </article>
         ) : null}
       </div>

@@ -64,7 +64,9 @@ export type TraceNode = {
   pick?: string;
   /** The model its last call used, as the runtime reported it. */
   model?: string;
-  /** What it answered, for a delegated run shown as a sub-item. */
+  /** What it was asked: the person's message, or the brief its caller gave it. */
+  ask?: string;
+  /** What it answered. */
   answer?: string;
   /** Why it failed, when it did. */
   error?: string;
@@ -112,8 +114,12 @@ export function firstLines(text: string): string {
 type ContextResult = {
   text?: string;
   sources?: { title?: string; url?: string }[];
+  /** Where it read: the message's origin. Early builds called it `reference`. */
+  origin?: string;
   reference?: string;
   truncated?: boolean;
+  /** Why less came back than asked, such as a place it may only link to. */
+  note?: string;
 };
 
 function parseContext(result: string | undefined): ContextResult {
@@ -206,8 +212,8 @@ export function readEvents(events: RunEvent[]): {
       context.push({
         id,
         request: typeof input?.request === "string" ? input.request : "",
-        reference: out.reference ?? "",
-        summary: firstLines(out.text ?? ""),
+        reference: out.origin ?? out.reference ?? "",
+        summary: firstLines(out.text || out.note || ""),
         sources: (out.sources ?? [])
           .filter((s) => s.title || s.url)
           .map((s) => ({ title: s.title || s.url || "", url: s.url })),
@@ -307,6 +313,7 @@ export function buildTrace(
       cost: costOf(run),
       pick: run.picked || undefined,
       model: "model" in what ? what.model : undefined,
+      ask: run.text || undefined,
       answer: run.answer || undefined,
       error: run.status === "failed" ? run.error || undefined : undefined,
       tools: what.tools,
@@ -519,4 +526,14 @@ export function chipsOf(node: TraceNode, origin?: Reference): Chip[] {
   // A tool name is the label; the page says it failed.
   for (const t of node.tools) if (t.error) add({ kind: "failure", label: t.name, detail: t.error });
   return chips;
+}
+
+/** Every run behind a response, flat and in the order they started, whatever their depth. */
+export function flatten(node: TraceNode): TraceNode[] {
+  return walk(node).sort((a, b) => a.started_at.localeCompare(b.started_at));
+}
+
+/** The agents behind a response, each once, in the order they first ran. */
+export function agentsOf(node: TraceNode): string[] {
+  return [...new Set(flatten(node).map((n) => n.agent))];
 }

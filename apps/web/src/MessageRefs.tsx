@@ -1,11 +1,6 @@
 import { defaultCopy } from "@humagen/components";
-import {
-  CalendarIcon,
-  ChevronRightIcon,
-  GitHubIcon,
-  MaximizeIcon,
-  SlackIcon,
-} from "@humagen/render-web";
+import { CalendarIcon, GitHubIcon, MaximizeIcon, SlackIcon } from "@humagen/render-web";
+import { Inspector } from "@humagen/web";
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
 import type { Run, RunEvent } from "./adapter.ts";
 import { api, type Span } from "./api.ts";
@@ -13,14 +8,16 @@ import { Pill, type ReferenceKind, Reference as SharedReference } from "./cards.
 import { took, usd } from "./format.ts";
 import { href } from "./route.ts";
 import {
+  agentsOf,
   buildTrace,
   type Chip,
   chipsOf,
+  flatten,
   type Reference,
   TRACE_RUN_CAP,
   type TraceNode,
 } from "./trace.ts";
-import { AgentMark } from "./ui.tsx";
+import { AgentMark, SkeletonRows } from "./ui.tsx";
 
 const words = defaultCopy.trace;
 
@@ -188,90 +185,116 @@ export function Chips({ chips, origin }: { chips: Chip[]; origin?: Reference }) 
   );
 }
 
-/** How many messages sit under a node, at any depth. */
-function under(node: TraceNode): number {
-  return node.children.reduce((n, c) => n + 1 + under(c), 0);
+/** A run's time, what it cost when metered, and its model: "5.5s · $0.01 · claude-sonnet". */
+function timeAndCost(n: TraceNode): string {
+  return [n.ended_at ? took(n.ms) : "", n.cost ? usd(n.cost) : "", n.model ?? ""]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /**
- * A delegated run under the message that started it: one row that opens
- * inline, one level at a time, with a quiet count of what is under it, and a
- * link that focuses it at its own address.
+ * Every run behind a response as one flat list in time order, whatever the
+ * nesting: the pick and its reason first, then each agent with what it was
+ * asked, what it answered, its references, its time and cost, and a link that
+ * opens it at its own address.
  */
-function SubItem({ node }: { node: TraceNode }) {
-  const [open, setOpen] = useState(false);
-  const status = node.status === "completed" ? "" : node.status;
-  const more = under(node);
-  const to = href({ page: "message", id: node.run });
+export function ActivityList({ node, skipRoot = false }: { node: TraceNode; skipRoot?: boolean }) {
+  const rows = flatten(node).filter((n) => !skipRoot || n.run !== node.run);
   return (
-    <li data-testid="sub-item" data-run={node.run} className="flex flex-col gap-1">
-      <span className="group/sub inline-flex items-center gap-1">
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-          className="inline-flex min-h-6 items-center gap-1.5 self-start rounded-aui px-1 text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-        >
-          <ChevronRightIcon
-            size={12}
-            aria-hidden
-            className={`shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
-          />
-          <AgentMark name={node.agent} size={16} />
-          <span className="text-aui-fg">{node.agent}</span>
-          {status && <span>{status}</span>}
-          {more > 0 && !open && <span>{words.more(more)}</span>}
-        </button>
-        <a
-          href={to}
-          onClick={inApp}
-          aria-label={words.focus(node.agent)}
-          title={words.focus(node.agent)}
-          className="inline-flex size-6 items-center justify-center rounded-aui text-aui-muted opacity-0 hover:bg-aui-hover hover:text-aui-fg focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-aui-accent group-hover/sub:opacity-100 pointer-coarse:opacity-100"
-        >
-          <MaximizeIcon size={12} />
-        </a>
-      </span>
-      {open && (
-        <div className="ml-2 flex flex-col gap-1.5 border-[var(--humagen-rule)] border-l pl-4">
-          {node.pick && <p className="text-aui-2xs text-aui-muted">{words.picked(node.pick)}</p>}
-          {node.answer ? (
-            <p className="whitespace-pre-wrap break-words text-aui-fg text-aui-sm">{node.answer}</p>
-          ) : (
-            node.error && <p className="text-aui-bad text-aui-sm">{node.error}</p>
-          )}
-          <Chips chips={chipsOf(node)} />
-          <SubItems nodes={node.children} />
-        </div>
+    <div className="flex flex-col gap-4" data-testid="activity-list">
+      {node.pick && !skipRoot && (
+        <p className="text-aui-muted text-aui-xs" data-testid="activity-pick">
+          {words.picked(node.pick)}
+        </p>
       )}
-    </li>
-  );
-}
-
-export function SubItems({ nodes }: { nodes: TraceNode[] }) {
-  if (!nodes.length) return null;
-  return (
-    <ul className="flex flex-col gap-0.5" aria-label={words.delegated}>
-      {nodes.map((n) => (
-        <SubItem key={n.run} node={n} />
-      ))}
-    </ul>
+      <ol className="flex flex-col gap-4">
+        {rows.map((n) => (
+          <li
+            key={n.run}
+            data-testid="activity-row"
+            data-run={n.run}
+            className="flex flex-col gap-1.5 border-[var(--humagen-rule)] border-t pt-3 first:border-t-0 first:pt-0"
+          >
+            <p className="flex min-w-0 items-center gap-2 text-aui-sm">
+              <AgentMark name={n.agent} size={18} />
+              <span className="min-w-0 truncate font-medium text-aui-fg">{n.agent}</span>
+              {n.status !== "completed" && (
+                <span className="text-aui-muted text-aui-xs">{n.status}</span>
+              )}
+              <span className="ml-auto shrink-0 text-aui-muted text-aui-xs tabular-nums">
+                {timeAndCost(n)}
+              </span>
+              <a
+                href={href({ page: "message", id: n.run })}
+                onClick={inApp}
+                aria-label={words.focus(n.agent)}
+                title={words.focus(n.agent)}
+                className="inline-flex size-7 shrink-0 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+              >
+                <MaximizeIcon size={14} />
+              </a>
+            </p>
+            {n.ask && (
+              <p className="line-clamp-3 whitespace-pre-wrap text-aui-muted text-aui-xs">
+                <span className="sr-only">{words.asked}: </span>
+                {n.ask}
+              </p>
+            )}
+            {n.answer ? (
+              <p className="whitespace-pre-wrap break-words text-aui-fg text-aui-sm">{n.answer}</p>
+            ) : (
+              n.error && <p className="text-aui-bad text-aui-sm">{n.error}</p>
+            )}
+            <Chips chips={chipsOf(n)} />
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 
 /**
- * Under an answer: its references as quiet chips, and the work it
- * delegated, each a sub-item that opens into its own tree. Time, cost and
- * model are in Details, not here.
+ * Under an answer that more than one agent worked on: one quiet control, the
+ * agents' marks and how many, that opens the response's activity in Details.
+ */
+function ViewActivity({ node, onOpen }: { node: TraceNode; onOpen: () => void }) {
+  const agents = agentsOf(node);
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      data-testid="view-activity"
+      className="inline-flex min-h-7 items-center gap-2 self-start rounded-aui px-1.5 text-aui-muted text-aui-xs hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+    >
+      <span aria-hidden className="flex -space-x-1.5">
+        {agents.slice(0, 3).map((a) => (
+          <span key={a} className="inline-flex rounded-full ring-2 ring-[var(--aui-bg)]">
+            <AgentMark name={a} size={16} />
+          </span>
+        ))}
+      </span>
+      <span>{words.viewActivity}</span>
+      <span>· {words.agents(agents.length)}</span>
+    </button>
+  );
+}
+
+/**
+ * Under an answer: its references as quiet chips and, when more than one
+ * agent worked on it, one control that opens its activity in Details. Time,
+ * cost and model are in Details, not here.
  */
 export function AnswerRefs({
   run,
   eager,
   loader,
+  onActivity,
 }: {
   run: Run;
   eager?: boolean;
   loader?: TraceLoader;
+  /** Open this response's activity in Details. Without it, no control is offered. */
+  onActivity?: (run: string) => void;
 }) {
   const { at, node } = useTrace(run, { eager, loader });
   const fallback = (run.citations ?? []).map(
@@ -281,7 +304,9 @@ export function AnswerRefs({
   return (
     <div ref={at} className="flex flex-col gap-1" data-testid="answer-refs">
       <Chips chips={chips} />
-      {node && <SubItems nodes={node.children} />}
+      {node && onActivity && agentsOf(node).length > 1 && (
+        <ViewActivity node={node} onOpen={() => onActivity(run.id)} />
+      )}
     </div>
   );
 }
@@ -374,5 +399,30 @@ export function SessionReferences({
         ))}
       </ul>
     </section>
+  );
+}
+
+/**
+ * One response's activity in the Details panel: every run behind it, flat and
+ * in time order, read from the response's own run.
+ */
+export function ResponseActivity({
+  run,
+  leaving,
+  onClose,
+  loader,
+}: {
+  run: Run;
+  leaving?: boolean;
+  onClose: () => void;
+  loader?: TraceLoader;
+}) {
+  const { at, node } = useTrace(run, { eager: true, loader });
+  return (
+    <Inspector open={!leaving} title={words.activity} wide onClose={onClose}>
+      <div ref={at} data-testid="response-activity">
+        {node ? <ActivityList node={node} /> : <SkeletonRows count={3} />}
+      </div>
+    </Inspector>
   );
 }

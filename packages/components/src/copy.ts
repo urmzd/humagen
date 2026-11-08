@@ -3400,10 +3400,13 @@ export const defaultCopy = {
   trace: {
     /** The section in Details that collects every message's references. */
     references: "References",
-    delegated: "Delegated work",
     delegatedTo: (agents: string) => `Delegated to ${agents}`,
-    /** Under a delegated message, how many more sit under it. */
-    more: (n: number) => `${n} more`,
+    /** Under an answer more than one agent worked on: it opens the response's activity in Details. */
+    viewActivity: "View activity",
+    agents: (n: number) => `${n} agents`,
+    /** Every run behind a response, flat, in Details and on a focused message. */
+    activity: "Activity",
+    asked: "Asked",
     focus: (agent: string) => `Open ${agent}'s message on its own`,
     message: "Message",
     messageBy: (agent: string) => `${agent}'s message`,

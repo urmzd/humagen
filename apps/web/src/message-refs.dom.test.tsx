@@ -6,7 +6,12 @@ import type { Run, RunEvent } from "./adapter.ts";
 import type { Thread } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { type FocusLoader, MessageFocus } from "./MessageFocus.tsx";
-import { AnswerRefs, SessionReferences, type TraceLoader } from "./MessageRefs.tsx";
+import {
+  AnswerRefs,
+  ResponseActivity,
+  SessionReferences,
+  type TraceLoader,
+} from "./MessageRefs.tsx";
 import { OriginButton, SessionPlace } from "./SessionPlace.tsx";
 import { placeOf, referenceOf } from "./trace.ts";
 
@@ -119,37 +124,65 @@ const loader: TraceLoader = {
   events: async (id) => ({ events: events[id] ?? [] }),
 };
 
-test("under an answer: quiet chips for what it read and touched, and delegated work one level at a time", async () => {
-  render(<AnswerRefs run={root} eager loader={loader} />);
+test("under an answer: quiet chips, and one View activity when more than one agent worked on it", async () => {
+  const opened: string[] = [];
+  render(<AnswerRefs run={root} eager loader={loader} onActivity={(id) => opened.push(id)} />);
   const refs = await screen.findByTestId("answer-refs");
   await within(refs).findByText("#eng thread");
   const chips = [...refs.querySelectorAll("[data-chip]")].map((c) => [
     c.getAttribute("data-chip"),
     c.textContent,
   ]);
-  // A tool that worked is not a chip; it lives in Details.
+  // A tool that worked is not a chip; it lives in the activity.
   assert.deepEqual(chips, [
     ["context", "#eng thread"],
     ["source", "Deploy runbook"],
   ]);
   assert.equal(within(refs).queryByText(/took|\$0\.01|14s/), null, "no time or cost inline");
-  const sub = within(refs).getByRole("button", { name: /ops/ });
-  assert.match(sub.textContent ?? "", new RegExp(words.more(1)));
+  // Nothing nested in the message column: no rows, no chevrons, one control.
+  assert.equal(within(refs).queryByText("Migration 0042 timed out."), null);
+  assert.equal(refs.querySelectorAll("[aria-expanded]").length, 0);
+  const view = within(refs).getByTestId("view-activity");
+  assert.match(view.textContent ?? "", new RegExp(`${words.viewActivity}.*${words.agents(3)}`));
+  fireEvent.click(view);
+  assert.deepEqual(opened, [R1]);
+});
+
+test("a single-agent answer has its chips and no View activity", async () => {
+  const alone = run(R1, { calls: 0 });
+  const one: TraceLoader = {
+    trace: async () => ({ runs: [alone], spans: [] }),
+    events: loader.events,
+  };
+  render(<AnswerRefs run={alone} eager loader={one} onActivity={() => {}} />);
+  const refs = await screen.findByTestId("answer-refs");
+  await within(refs).findByText("#eng thread");
+  assert.equal(within(refs).queryByTestId("view-activity"), null);
+});
+
+test("a response's activity is every run behind it, flat and in time order, with references, time and cost", async () => {
+  render(<ResponseActivity run={root} onClose={() => {}} loader={loader} />);
+  const list = await screen.findByTestId("activity-list");
+  assert.match(screen.getByTestId("activity-pick").textContent ?? "", /It asks about a deploy/);
+  const rows = within(list).getAllByTestId("activity-row");
+  assert.deepEqual(
+    rows.map((r) => r.getAttribute("data-run")),
+    [R1, R2, R3],
+    "parent, child and grandchild, flattened by start time",
+  );
+  const [first, second, third] = rows;
+  assert.match(first?.textContent ?? "", /14s · \$0\.01 · anthropic\/claude-sonnet/);
+  assert.ok(within(second!).getByText("Migration 0042 timed out."));
+  // What a person should see sits with its run: the approval and who decided, the tool that failed.
+  assert.ok(within(second!).getByText(`${words.decided.allow} retry_deploy ${words.by("Ana")}`));
+  assert.ok(within(second!).getByText(words.failedTool("deploy_logs")));
+  assert.ok(within(third!).getByText("It took 41s."));
   assert.equal(
-    within(refs)
+    within(second!)
       .getByRole("link", { name: words.focus("ops") })
       .getAttribute("href"),
     `/messages/${R2}`,
   );
-  fireEvent.click(sub);
-  assert.ok(await within(refs).findByText("Migration 0042 timed out."));
-  // What a person should see stays inline: the approval and who decided, the tool that failed.
-  assert.ok(within(refs).getByText(`${words.decided.allow} retry_deploy ${words.by("Ana")}`));
-  assert.ok(within(refs).getByText(words.failedTool("deploy_logs")));
-  // The grandchild is one more level, closed until opened.
-  assert.equal(within(refs).queryByText("It took 41s."), null);
-  fireEvent.click(within(refs).getByRole("button", { name: /analyst/ }));
-  assert.ok(await within(refs).findByText("It took 41s."));
 });
 
 test("Details collects each message's references, with its time, cost and model, origin first", async () => {
@@ -242,7 +275,12 @@ test("a nested message opens at its own address under a breadcrumb back to the r
   );
   fireEvent.click(within(crumbs).getByRole("link", { name: "Nightly deploy" }));
   assert.deepEqual(went, [{ page: "conversation", id: "s_root" }]);
-  assert.ok(screen.getByRole("button", { name: /analyst/ }));
+  // Its own activity, flat: the grandchild under it, opening at its own address.
+  const rows = within(screen.getByTestId("activity-list")).getAllByTestId("activity-row");
+  assert.deepEqual(
+    rows.map((r) => r.getAttribute("data-run")),
+    [R3],
+  );
   await waitFor(() => assert.ok(screen.getByRole("link", { name: words.place.openIn("Slack") })));
 });
 
@@ -271,9 +309,7 @@ test("the session menu is a compact list: plain rows, Delete last after a rule",
   );
   fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
   const menu = await screen.findByRole("menu", { name: "Session actions" });
-  const kids = [...menu.children].map((el) =>
-    el.tagName === "HR" ? "—" : el.textContent,
-  );
+  const kids = [...menu.children].map((el) => (el.tagName === "HR" ? "—" : el.textContent));
   assert.deepEqual(kids, ["Rename", "Archive", "—", "Delete"]);
   for (const item of within(menu).getAllByRole("menuitem"))
     assert.doesNotMatch(item.className, /\bborder\b/, `${item.textContent} has no border`);

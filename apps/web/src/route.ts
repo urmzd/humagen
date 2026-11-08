@@ -101,6 +101,8 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
 export type ConversationPanel =
   | "overview"
   | "activity"
+  /** One response's activity: every run behind it, flat and in time order. Needs `run`. */
+  | "response"
   | "context"
   | "people"
   | "deliverables"
@@ -108,6 +110,7 @@ export type ConversationPanel =
 const CONVERSATION_PANELS: ConversationPanel[] = [
   "overview",
   "activity",
+  "response",
   "context",
   "people",
   "deliverables",
@@ -459,6 +462,7 @@ export function href(r: Route): string {
         workspace: "files",
         context: "sources",
         activity: "steps",
+        response: "activity",
         overview: "sessions",
         people: "people",
         deliverables: "files",
@@ -671,7 +675,7 @@ function read(pathname: string, search: string): Route {
         people: "people",
         workspace: "workspace",
         context: "context",
-        activity: "activity",
+        activity: "response",
         overview: "overview",
         deliverables: "deliverables",
       };

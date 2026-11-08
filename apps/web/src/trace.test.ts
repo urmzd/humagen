@@ -101,7 +101,7 @@ test("get_context shows the request, the origin it read, the first lines and the
         result: JSON.stringify({
           text: "Ana: the deploy failed at 02:10.\n\nBo: it was the migration.\nCy: agreed.",
           sources: [{ title: "#eng thread", url: "https://app.slack.com/x" }],
-          reference: "slack://T1/C1/1699.1",
+          origin: "slack://T1/C1/1699.1",
           truncated: true,
         }),
       },
