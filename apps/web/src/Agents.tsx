@@ -254,14 +254,14 @@ export function Agents({
                       <div className="flex min-w-0 items-center gap-3">
                         <AgentMark name={name} size={28} state={busy ? "thinking" : "idle"} />
                         <div className="min-w-0 flex-1">
-                          <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+                          <div className="flex min-w-0 flex-wrap items-center gap-1.5 overflow-hidden">
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onOpen(name);
                               }}
-                              className="min-h-6 min-w-6 truncate font-medium text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+                              className="min-h-6 min-w-6 max-w-full truncate font-medium text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                             >
                               {name}
                             </button>
