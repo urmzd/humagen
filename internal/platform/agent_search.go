@@ -2,7 +2,6 @@ package platform
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -117,23 +116,32 @@ func (p *Platform) search(ctx context.Context, tenant string, tree *projects.Tre
 }
 
 // routeSession picks who answers a console message that names nobody where
-// no agent is set to answer: the best match that takes it, or with none
-// taking it the best match search found, so the message lands. The reason
-// is shown with the answer, never before it. A message search finds nobody
-// for is refused, saying to mention an agent.
+// no agent is set to answer, so the message always lands: the best match
+// that takes it, or with none taking it the best match search found. When
+// search matches nobody, the workspace's named default answers, else the
+// first agent available here. The reason is shown with the answer, never
+// before it. Only a place with no agent the poster may ask is refused.
 func (p *Platform) routeSession(ctx context.Context, who auth.Principal, project, text string) (agent, picked string, err error) {
 	sees := p.Seer(who).Agent
-	found, joined, err := p.search(ctx, who.Tenant, p.Projects.Tree(who.Tenant), projects.NameOf(project), text, func(a string) bool { return sees(a) })
-	if errors.Is(err, ErrNoTakers) {
-		return "", "", fmt.Errorf("%w: no agent here is about this yet; mention one with @", threads.ErrInvalid)
-	}
+	tree := p.Projects.Tree(who.Tenant)
+	project = projects.NameOf(project)
+	cs, err := p.candidates(ctx, who.Tenant, tree, project, func(a string) bool { return sees(a) })
 	if err != nil {
 		return "", "", err
 	}
-	if len(joined) > 0 {
-		return joined[0].Agent, joinedReason(joined[0]), nil
+	if found := join.Search(cs, text, join.Shortlist); len(found) > 0 {
+		if joined := join.Joined(join.Route(ctx, p.asker(who.Tenant), join.Candidates(found), text)); len(joined) > 0 {
+			return joined[0].Agent, joinedReason(joined[0]), nil
+		}
+		return found[0].Name, "Picked by search: matched " + strings.Join(found[0].Terms, ", ") + ".", nil
 	}
-	return found[0].Name, "Picked by search: matched " + strings.Join(found[0].Terms, ", ") + ".", nil
+	if d := tree.Root().Agents.Default; d != "" && d != Open && sees(d) && tree.IsAvailable(project, d) {
+		return d, "No agent matched it, so the workspace default answered.", nil
+	}
+	if len(cs) > 0 {
+		return cs[0].Name, "No agent matched it, so the first agent available here answered.", nil
+	}
+	return "", "", fmt.Errorf("%w: no agent is available here to answer; mention one with @", threads.ErrInvalid)
 }
 
 type pickedKey struct{}

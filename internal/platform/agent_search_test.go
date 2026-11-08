@@ -2,7 +2,6 @@ package platform_test
 
 import (
 	"context"
-	"errors"
 	"slices"
 	"strings"
 	"sync"
@@ -14,7 +13,6 @@ import (
 	"github.com/urmzd/humagen/pkg/feedback"
 	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/runs"
-	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // specialists adds agents whose prompts say what they are for, and makes
@@ -78,16 +76,26 @@ func TestWithNobodyTakingItTheBestSearchMatchStillAnswers(t *testing.T) {
 	}
 }
 
-func TestAConsoleMessageSearchFindsNobodyForIsRefusedSayingWhy(t *testing.T) {
+func TestAConsoleMessageSearchMatchesNobodyForStillLands(t *testing.T) {
 	p := start(t, call.Limits{})
 	specialists(t, p)
-	before := len(p.Runs.List(tenant, 100))
-	_, err := p.StartSession(t.Context(), admin, platform.SessionInput{Project: "~", Text: "zzz qqq"})
-	if !errors.Is(err, threads.ErrInvalid) || !strings.Contains(err.Error(), "mention one with @") {
-		t.Fatalf("a message nobody is about = %v, want a refusal saying to mention an agent", err)
+	v, err := p.StartSession(t.Context(), admin, platform.SessionInput{Project: "~", Text: "zzz qqq"})
+	if err != nil {
+		t.Fatalf("an unmatched console message did not land: %v", err)
 	}
-	if after := len(p.Runs.List(tenant, 100)); after != before {
-		t.Fatalf("%d runs started for it", after-before)
+	if r := sessionRun(t, v); r.Picked != "No agent matched it, so the first agent available here answered." || v.Agent != "analyst" {
+		t.Fatalf("answered by %q, picked %q; want the first agent available, saying so", v.Agent, r.Picked)
+	}
+	field(t, p)
+	// A workspace that names its default sends an unmatched message there.
+	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "writer"})
+	setAgents(t, p, "Field", platform.AgentsInput{Enable: []string{}, Default: "*"})
+	v, err = p.StartSession(t.Context(), admin, platform.SessionInput{Project: "Field", Text: "zzz qqq"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := sessionRun(t, v); v.Agent != "writer" || r.Picked != "No agent matched it, so the workspace default answered." {
+		t.Fatalf("answered by %q, picked %q; want the workspace default", v.Agent, r.Picked)
 	}
 }
 
@@ -129,9 +137,17 @@ func TestAnAnswerRatedUpTeachesRoutingAndTakingItBackUnteaches(t *testing.T) {
 	p := start(t, call.Limits{})
 	specialists(t, p)
 	ask := "Summarise the quarterly board pack"
-	if _, err := p.StartSession(t.Context(), admin, platform.SessionInput{Project: "~", Text: ask}); !errors.Is(err, threads.ErrInvalid) {
-		t.Fatalf("before any rating, the ask was routed: %v", err)
+	unmatched := func(when string) {
+		t.Helper()
+		v, err := p.StartSession(t.Context(), admin, platform.SessionInput{Project: "~", Text: ask})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r := sessionRun(t, v); v.Agent == "writer" || !strings.HasPrefix(r.Picked, "No agent matched it") {
+			t.Fatalf("%s, answered by %q (picked %q); want no match", when, v.Agent, r.Picked)
+		}
 	}
+	unmatched("before any rating")
 	r, err := p.Invoke(t.Context(), wire.NewEvent(wire.Raise{ID: "praised", Tenant: tenant, Agent: "writer", Origin: "api", Text: ask}))
 	if err != nil {
 		t.Fatal(err)
@@ -145,9 +161,7 @@ func TestAnAnswerRatedUpTeachesRoutingAndTakingItBackUnteaches(t *testing.T) {
 	if err := p.RecordFeedbackCandidate(tenant, finding); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.StartSession(t.Context(), admin, platform.SessionInput{Project: "~", Text: ask}); !errors.Is(err, threads.ErrInvalid) {
-		t.Fatalf("a finding's rating taught routing: %v", err)
-	}
+	unmatched("after a finding's rating")
 	up, err := p.Feedback.Save(tenant, feedback.Record{Run: r.ID, Subject: admin.Subject, Rating: "up"})
 	if err != nil {
 		t.Fatal(err)
@@ -163,9 +177,7 @@ func TestAnAnswerRatedUpTeachesRoutingAndTakingItBackUnteaches(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.RefreshGoodAsk(tenant, r.ID)
-	if _, err := p.StartSession(t.Context(), admin, platform.SessionInput{Project: "~", Text: ask}); !errors.Is(err, threads.ErrInvalid) {
-		t.Fatalf("a rating taken back still routes: %v", err)
-	}
+	unmatched("after the rating was taken back")
 }
 
 func TestAPreviewOfRoutingSaysWhoSearchPassedOver(t *testing.T) {

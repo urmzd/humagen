@@ -964,8 +964,10 @@ no mention, where the default is `*` or unset, goes to the best match that
 said yes, or with none saying yes to the best match search found; the run
 records why in `warp.picked` ("Joined on its own: ...", or "Picked by
 search: matched deploy, cost."), which the console shows with the answer,
-never before it. A message search finds nobody for is refused with "no
-agent here is about this yet; mention one with @".
+never before it. When search matches nobody, the workspace's named default
+answers ("No agent matched it, so the workspace default answered."), else
+the first agent available there. Only a place with no agent the poster may
+ask refuses the message.
 
 - `*` is a default, never an agent's name. A default that names an agent
   still answers alone, and an unset default still inherits. A default stored
