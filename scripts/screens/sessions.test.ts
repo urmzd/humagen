@@ -121,9 +121,16 @@ test("navigation checks every current destination as a real link", async () => {
     ?.act?.(page);
   assert.deepEqual(
     calls.filter((call) => call.action === "wait").map((call) => call.selector),
-    ["New", "Sessions", "Alerts", "Agents", "Connections", "Artifacts", "Settings"].map(
-      (name) => `navigation:Sections>link:/^${name}(?:,|$)/`,
-    ),
+    [
+      "New",
+      "Sessions",
+      "Alerts",
+      "Projects",
+      "Agents",
+      "Connections",
+      "Scheduled",
+      "Artifacts",
+    ].map((name) => `navigation:Sections>link:/^${name}(?:,|$)/`),
   );
 });
 
