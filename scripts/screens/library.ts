@@ -655,13 +655,10 @@ export function libraryScreens(call: Call): Screen[] {
           await call("PUT", `/api/agents/${name}/home`, { project: home });
         await page.reload();
         await page.getByRole("heading", { name, exact: true }).waitFor();
-        await page.locator("summary").filter({ hasText: "Add to a Project" }).first().click();
-        await page
-          .getByLabel("Destination Project", { exact: true })
-          .first()
-          .selectOption("Launch");
-        await page.getByRole("button", { name: "Review Audience", exact: true }).click();
-        await page.getByRole("button", { name: "Move Agent to Project", exact: true }).waitFor();
+        await page.locator("summary").filter({ hasText: "Change Access" }).first().click();
+        await page.getByLabel("Access", { exact: true }).first().selectOption("Launch");
+        await page.getByRole("button", { name: "Review Access", exact: true }).click();
+        await page.getByRole("button", { name: "Confirm Access", exact: true }).waitFor();
       },
     },
     ...[false, true].map(
