@@ -555,15 +555,25 @@ func (p *Platform) keepPick(tenant, root, message string, rec pickRecord) {
 // agent's answer, so nobody has to open a child to read it. It is false for
 // a message nothing was picked for.
 func (p *Platform) pickMessage(tenant string, root threads.Thread, m threads.Message) (SessionMessage, bool) {
+	out, _, ok := p.pickFor(tenant, root, m, nil)
+	return out, ok
+}
+
+// pickFor is pickMessage with only the calls into sessions sees passes
+// (every call, when sees is nil), and the runs those calls led to.
+func (p *Platform) pickFor(tenant string, root threads.Thread, m threads.Message, sees func(session string) bool) (SessionMessage, []runs.Run, bool) {
 	it, err := p.picks.Lookup(tenant, pickKey(root.ID, m.ID))
 	if err != nil {
-		return SessionMessage{}, false
+		return SessionMessage{}, nil, false
 	}
 	rec := it.Value
 	display := p.wording(tenant).Name
 	out := SessionMessage{ID: "pick-" + m.ID, Session: root.ID, Author: SessionAuthor{Kind: "agent", Name: p.cfg.EntryAgent, Display: display}, Status: "done", At: rec.At, Parts: []SessionPart{{Type: "pick", Text: pickLine(rec.Pick)}}}
 	var status []runs.Run
 	for _, c := range rec.Children {
+		if sees != nil && !sees(c.Session) {
+			continue
+		}
 		part := SessionPart{Type: "call", Session: c.Session, Agent: c.Agent, Status: "working"}
 		if r, err := p.Runs.Get(tenant, c.Run); err == nil {
 			part.Status, part.Text = sessionStatus([]runs.Run{r}), r.Answer
@@ -574,5 +584,5 @@ func (p *Platform) pickMessage(tenant string, root threads.Thread, m threads.Mes
 	if len(status) > 0 {
 		out.Status = sessionStatus(status)
 	}
-	return out, true
+	return out, status, true
 }

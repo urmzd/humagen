@@ -151,6 +151,7 @@ import type {
   MemoryFiles,
   MemoryRestoreInput,
   MessageCreated,
+  MessageNode,
   MessagesInput,
   Note,
   NoteInput,
@@ -199,6 +200,7 @@ import type {
   ReviewedPullsResponse,
   ReviseAgentBody,
   Revision,
+  RootMessagePage,
   Run,
   RunFeedback,
   RunList,
@@ -581,6 +583,39 @@ export class ApiClient {
     return response.data;
   }
 
+  /** The root sessions the caller may read, each as its first message: its
+place (parent), who started it, the agent that owns it, its status
+(that of the runs beneath it), how many children it has and when
+anything beneath it last changed. Newest first by latest_at. roots
+is required and true, the one listing this route answers. Page with
+after, the next of the previous page.
+ */
+  async listMessages(roots: boolean, limit?: number, after?: string, options?: RequestOptions): Promise<RootMessagePage> {
+    let path = "/api/messages";
+    const _q = new URLSearchParams();
+    if (roots !== undefined && roots !== null) _q.set("roots", String(roots));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (after !== undefined && after !== null) _q.set("after", String(after));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<RootMessagePage>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listMessagesRaw(roots: boolean, limit?: number, after?: string, options?: RequestOptions): Promise<ApiResponse<RootMessagePage>> {
+    let path = "/api/messages";
+    const _q = new URLSearchParams();
+    if (roots !== undefined && roots !== null) _q.set("roots", String(roots));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (after !== undefined && after !== null) _q.set("after", String(after));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<RootMessagePage>("GET", path, {
+      ...options,
+    });
+  }
+
   /** People's messages from one origin, under the root session of the
 origin's place: found by its address, or started on its first message
 and owned by the entry agent, so work asked for in a place is picked
@@ -609,8 +644,15 @@ messages. 201 when the root was started, 200 otherwise.
     });
   }
 
-  /** The session a message is in, with its messages, the entry agent's picks and each delegated answer, its children and links. id is a session id, or a message id (session:message). */
-  async getMessage(id: string, since?: string, before?: string, around?: string, summary?: boolean, options?: RequestOptions): Promise<AgentSession> {
+  /** Without depth, the session a message is in, with its messages, the
+entry agent's picks and each delegated answer, its children and
+links (AgentSession). With depth, the message as a tree
+(MessageNode): the message and its children in time order, each with
+children_count and latest_at, depth levels deep. A session id reads
+as the session's first message, and that message's own id reads the
+same. id is a session id, or a message id (session:message).
+ */
+  async getMessage(id: string, since?: string, before?: string, around?: string, summary?: boolean, depth?: number, options?: RequestOptions): Promise<AgentSession | MessageNode> {
     let path = "/api/messages/{id}";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     const _q = new URLSearchParams();
@@ -618,14 +660,15 @@ messages. 201 when the root was started, 200 otherwise.
     if (before !== undefined && before !== null) _q.set("before", String(before));
     if (around !== undefined && around !== null) _q.set("around", String(around));
     if (summary !== undefined && summary !== null) _q.set("summary", String(summary));
+    if (depth !== undefined && depth !== null) _q.set("depth", String(depth));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
-    return this.request<AgentSession>("GET", path, {
+    return this.request<AgentSession | MessageNode>("GET", path, {
       ...options,
     });
   }
 
-  async getMessageRaw(id: string, since?: string, before?: string, around?: string, summary?: boolean, options?: RequestOptions): Promise<ApiResponse<AgentSession>> {
+  async getMessageRaw(id: string, since?: string, before?: string, around?: string, summary?: boolean, depth?: number, options?: RequestOptions): Promise<ApiResponse<AgentSession | MessageNode>> {
     let path = "/api/messages/{id}";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     const _q = new URLSearchParams();
@@ -633,9 +676,10 @@ messages. 201 when the root was started, 200 otherwise.
     if (before !== undefined && before !== null) _q.set("before", String(before));
     if (around !== undefined && around !== null) _q.set("around", String(around));
     if (summary !== undefined && summary !== null) _q.set("summary", String(summary));
+    if (depth !== undefined && depth !== null) _q.set("depth", String(depth));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
-    return this.rawRequest<AgentSession>("GET", path, {
+    return this.rawRequest<AgentSession | MessageNode>("GET", path, {
       ...options,
     });
   }

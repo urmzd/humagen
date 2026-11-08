@@ -529,16 +529,9 @@ func (p *Platform) ReadSession(ctx context.Context, who auth.Principal, id, sinc
 	}
 	var changes []changedMessage
 	for _, t := range turns {
-		var m SessionMessage
-		var updated time.Time
-		if t.Message != nil {
-			m = SessionMessage{ID: t.Message.ID, Session: id, Author: SessionAuthor{Kind: "person", Name: t.Message.Name}, Status: "done", Parts: []SessionPart{{Type: "text", Text: t.Message.Text}}, At: t.Message.At, Message: t.Message}
-			updated = m.At
-		}
+		m, updated, _ := sessionMessageOf(id, t)
 		if t.Run != nil {
 			r := *t.Run
-			m = SessionMessage{ID: r.ID, Session: id, Author: SessionAuthor{Kind: "agent", Name: r.Agent, Version: fmt.Sprintf("%d.0.0", r.Rev)}, Status: sessionStatus([]runs.Run{r}), Parts: []SessionPart{{Type: "text", Text: r.Answer}}, At: r.CreatedAt, Run: &r, Ask: t.Ask}
-			updated = r.UpdatedAt
 			changed, err := p.Feedback.ChangedAt(who.Tenant, r.ID, who.Subject)
 			if err != nil {
 				return view, err
@@ -635,6 +628,21 @@ func (p *Platform) ReadSession(ctx context.Context, who auth.Principal, id, sinc
 	}
 	return view, nil
 }
+
+// sessionMessageOf is a turn of session as a session message, and when it
+// last changed: an agent's run, or a person's message. It is false for any
+// other turn.
+func sessionMessageOf(session string, t ThreadTurn) (SessionMessage, time.Time, bool) {
+	if t.Run != nil {
+		r := *t.Run
+		return SessionMessage{ID: r.ID, Session: session, Author: SessionAuthor{Kind: "agent", Name: r.Agent, Version: fmt.Sprintf("%d.0.0", r.Rev)}, Status: sessionStatus([]runs.Run{r}), Parts: []SessionPart{{Type: "text", Text: r.Answer}}, At: r.CreatedAt, Run: &r, Ask: t.Ask}, r.UpdatedAt, true
+	}
+	if t.Message != nil {
+		return SessionMessage{ID: t.Message.ID, Session: session, Author: SessionAuthor{Kind: "person", Name: t.Message.Name}, Status: "done", Parts: []SessionPart{{Type: "text", Text: t.Message.Text}}, At: t.Message.At, Message: t.Message}, t.Message.At, true
+	}
+	return SessionMessage{}, time.Time{}, false
+}
+
 func (p *Platform) LinkSession(ctx context.Context, who auth.Principal, id, target, kind string) error {
 	th, err := p.SessionRecord(ctx, who, id)
 	if err != nil {
