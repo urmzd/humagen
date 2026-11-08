@@ -60,76 +60,19 @@ function open({ canWrite = true, builtin = false, fail = false } = {}) {
   );
   return { saved, changed: () => changed };
 }
-const models = () => screen.getByLabelText("Allowed models") as HTMLTextAreaElement;
-const efforts = () => screen.getByLabelText("Allowed reasoning efforts") as HTMLTextAreaElement;
-const save = () => screen.getByRole("button", { name: "Save as Revision 5" }) as HTMLButtonElement;
-
-test("agent message choices load, edit and save one canonical versioned revision", async () => {
+// Message choices are the workspace's now, set on Settings › Model providers. The agent's
+// Model tab has none, and a save keeps the choices an agent had from before, which apply
+// for one release where the workspace offers none.
+test("the agent's Model tab has no message choices, and a save keeps the agent's old ones", async () => {
   const result = open();
-  assert.equal(models().value, "offline/alternate");
-  assert.equal(efforts().value, "low");
-  assert.ok(save().disabled);
-  fireEvent.change(models(), {
-    target: { value: " openai/org/model \noffline/alternate\nopenai/org/model\n" },
+  assert.equal(screen.queryByLabelText("Allowed models"), null);
+  assert.equal(screen.queryByLabelText("Allowed reasoning efforts"), null);
+  assert.equal(screen.queryByText("Message choices"), null);
+  fireEvent.click(screen.getByRole("tab", { name: "Prompt" }));
+  fireEvent.change(screen.getByLabelText("System prompt"), {
+    target: { value: "Review it well." },
   });
-  fireEvent.change(efforts(), { target: { value: " HIGH \nlow\nhigh\n" } });
-  assert.ok(!save().disabled);
-  fireEvent.click(save());
+  fireEvent.click(screen.getByRole("button", { name: "Save as Revision 5" }));
   await waitFor(() => assert.equal(result.changed(), 1));
-  assert.deepEqual(result.saved, [
-    {
-      expected_rev: 4,
-      spec: {
-        ...revision.spec,
-        choices: { models: ["offline/alternate", "openai/org/model"], efforts: ["high", "low"] },
-      },
-    },
-  ]);
+  assert.deepEqual(result.saved[0]?.spec.choices, revision.spec.choices);
 });
-
-test("invalid choices block saving across tabs; discard restores saved choices", () => {
-  open();
-  fireEvent.change(models(), { target: { value: "missing-provider" } });
-  assert.equal(models().getAttribute("aria-invalid"), "true");
-  assert.match(screen.getByRole("alert").textContent ?? "", /provider\/model/);
-  assert.ok(save().disabled);
-  fireEvent.click(screen.getByRole("tab", { name: /^Prompt/ }));
-  assert.ok(save().disabled);
-  fireEvent.click(screen.getByRole("button", { name: "Discard" }));
-  fireEvent.click(screen.getByRole("tab", { name: /^Model/ }));
-  assert.equal(models().value, "offline/alternate");
-  for (const value of ["very high", "high-1", "a".repeat(33)]) {
-    fireEvent.change(efforts(), { target: { value } });
-    assert.ok(save().disabled);
-    assert.equal(efforts().getAttribute("aria-invalid"), "true");
-  }
-});
-
-test("clearing both choices removes overrides without changing the default model", async () => {
-  const result = open();
-  fireEvent.change(models(), { target: { value: "\n " } });
-  fireEvent.change(efforts(), { target: { value: "" } });
-  fireEvent.click(save());
-  await waitFor(() => assert.equal(result.changed(), 1));
-  const { choices: _choices, ...withoutChoices } = revision.spec;
-  assert.deepEqual(result.saved[0]?.spec, withoutChoices);
-});
-
-test("a failed choice save preserves the draft and does not report success", async () => {
-  const result = open({ fail: true });
-  fireEvent.change(efforts(), { target: { value: "high" } });
-  fireEvent.click(save());
-  await screen.findByText("Provider is unavailable.");
-  assert.equal(result.changed(), 0);
-  assert.equal(efforts().value, "high");
-  assert.ok(!save().disabled);
-});
-
-for (const permission of [{ canWrite: false }, { builtin: true }]) {
-  test(`message choices are read only for ${JSON.stringify(permission)}`, () => {
-    open(permission);
-    assert.ok(models().disabled);
-    assert.ok(efforts().disabled);
-    assert.ok(!screen.queryByRole("button", { name: /Save as Revision/ }));
-  });
-}

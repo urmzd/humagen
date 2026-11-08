@@ -471,6 +471,12 @@ export interface Marks {
   since?: string;
 }
 
+/** The models ("provider/model") and reasoning efforts a person may pick for one message. */
+export interface MessageChoices {
+  models?: string[];
+  efforts?: string[];
+}
+
 /** A provider kind an administrator may set up. */
 export type ModelProviderKind = "anthropic" | "google" | "openai";
 
@@ -561,6 +567,8 @@ export interface Settings {
   router: RouterSettings;
   /** The model providers the workspace's administrators set up, with no key. */
   model_providers?: ModelProvider[];
+  /** What a person may pick for one message, for every agent it starts. Absent offers none. */
+  message_choices?: MessageChoices;
   /** Set once by the server when an admin first saves settings. */
   setup_at?: string;
   setup_by?: string;

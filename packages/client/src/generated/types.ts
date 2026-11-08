@@ -2572,6 +2572,12 @@ cannot be removed (409).
  */
   model_policies: ModelPolicy[];
   router: RouterSettings;
+  /** The models and reasoning efforts a person may pick for one message,
+for every agent it starts; each agent's own models are the default.
+Each model is provider/model on a provider the workspace has; each
+effort is low, medium or high. Absent offers none.
+ */
+  message_choices?: AgentChoices;
   /** The model providers the workspace's administrators set up, with no
 key. A settings write keeps them as they are; they change through
 `/api/model-providers/{name}`.

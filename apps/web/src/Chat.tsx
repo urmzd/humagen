@@ -11,6 +11,7 @@ import {
   ApiError,
   api,
   coworking,
+  type MessageChoices,
   type MessagePick,
   type ProjectView,
   type Revision,
@@ -352,6 +353,7 @@ export function Chat({
   summary,
   tick,
   agents,
+  messageChoices,
   agentsRead = true,
   homes = {},
   projects,
@@ -406,6 +408,8 @@ export function Chat({
   /** Changes whenever any run starts or ends. */
   tick: number;
   agents: Revision[];
+  /** What the workspace lets a person pick for one message, for every agent. */
+  messageChoices?: MessageChoices;
   /** Whether the agents have been read. Until they are, Home holds the composer's place rather than saying none are set up. */
   agentsRead?: boolean;
   /** Where each agent that lives in a project lives, so completion offers only what may answer here. */
@@ -802,7 +806,7 @@ export function Chat({
     targets.push(...(room.thread.agents ?? []));
     if (room.thread.default) targets.push(room.thread.default);
   }
-  const offers = offersFor(agents, targets);
+  const offers = offersFor(agents, targets, messageChoices);
   const shownPick = keptPick(pick, offers);
   // Sending records the pick with the message and resets it: it is for
   // this message alone.

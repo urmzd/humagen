@@ -44,3 +44,22 @@ test("names a model without its provider", () => {
   assert.equal(modelName("anthropic/opus"), "opus");
   assert.equal(modelName("bare"), "bare");
 });
+
+test("the workspace's offer applies to every agent, over what any agent's spec offered", () => {
+  const agents = [
+    { spec: { name: "a", choices: { models: ["openai/old"], efforts: ["max"] } } },
+    { spec: { name: "b" } },
+  ] as unknown as Parameters<typeof offersFor>[0];
+  assert.deepEqual(
+    offersFor(agents, ["b"], {
+      models: ["openai/gpt-5.1", "anthropic/claude-haiku-5-5"],
+      efforts: ["high", "low"],
+    }),
+    { models: ["anthropic/claude-haiku-5-5", "openai/gpt-5.1"], efforts: ["low", "high"] },
+  );
+  // Until an administrator offers something, an agent's own offer still applies.
+  assert.deepEqual(offersFor(agents, ["a"], { models: [], efforts: [] }), {
+    models: ["openai/old"],
+    efforts: ["max"],
+  });
+});

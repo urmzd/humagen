@@ -7,6 +7,7 @@ import (
 
 	"github.com/urmzd/orchagent/flow/definition"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/personctx"
 	"github.com/urmzd/humagen/pkg/runctx"
 	runsettings "github.com/urmzd/humagen/pkg/settings"
@@ -26,6 +27,12 @@ func TestAMessageChoiceAppliesWhereTheAgentOffersIt(t *testing.T) {
 		t.Fatalf("no pick pinned %v; a pick the meta held must be dropped", m)
 	}
 
+	p, err := New(Config{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.Close() })
+	// The workspace offers nothing here, so each agent's own offer applies.
 	offers := &definition.Choices{Models: []string{"openai/gpt"}, Efforts: []string{"high"}}
 	turn := func(ws runsettings.Layer, choices *definition.Choices, c messageChoice) (string, string, string, error) {
 		req := requestWith(t, runctx.New("ada", runsettings.Resolve(ws), personctx.Context{}))
@@ -37,7 +44,7 @@ func TestAMessageChoiceAppliesWhereTheAgentOffersIt(t *testing.T) {
 		if err != nil {
 			return "", "", "", err
 		}
-		req, err = boundRunContext(chooseForMessage(req))
+		req, err = boundRunContext(p.chooseForMessage(req))
 		s := req.Definition.Spec
 		return s.Provider, s.Model, s.Effort, err
 	}
@@ -75,5 +82,55 @@ func TestCheckMessageChoiceRefusesWhatCannotBeApplied(t *testing.T) {
 		if _, err := checkMessageChoice(bad[0], bad[1]); !errors.Is(err, threads.ErrInvalid) {
 			t.Errorf("checkMessageChoice(%q, %q) = %v, want ErrInvalid", bad[0], bad[1], err)
 		}
+	}
+}
+
+// The workspace's offer applies to every agent, whatever each one's spec
+// offered, and an administrator can only offer what can run.
+func TestTheWorkspacesMessageChoicesApplyToEveryAgent(t *testing.T) {
+	p, err := New(Config{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.Close() })
+	ctx := context.Background()
+	set := p.Settings("acme")
+	set.MessageChoices = &wire.Choices{Models: []string{" openai/gpt ", "anthropic/fast", "openai/gpt"}, Efforts: []string{"High", "low"}}
+	if err := p.SetSettings(ctx, "acme", set); err != nil {
+		t.Fatal(err)
+	}
+	got := p.Settings("acme").MessageChoices
+	if got == nil || len(got.Models) != 2 || got.Models[0] != "anthropic/fast" || got.Efforts[0] != "low" || got.Efforts[1] != "high" {
+		t.Fatalf("kept = %+v", got)
+	}
+	run := func(agentOffers *definition.Choices, c messageChoice) (string, string) {
+		req := requestWith(t, runctx.New("ada", runsettings.Resolve(runsettings.Layer{}), personctx.Context{}))
+		req.Tenant = "acme"
+		pinMessageChoice(withMessageChoice(ctx, c), req.Meta)
+		req.Policy.Choices = agentOffers
+		s := p.chooseForMessage(req).Definition.Spec
+		return s.Provider + "/" + s.Model, s.Effort
+	}
+	if m, e := run(nil, messageChoice{Model: "openai/gpt", Effort: "high"}); m != "openai/gpt" || e != "high" {
+		t.Fatalf("an agent with no offer of its own ran on %s at %q", m, e)
+	}
+	if m, _ := run(&definition.Choices{Models: []string{"openai/other"}}, messageChoice{Model: "openai/other"}); m != "anthropic/a" {
+		t.Fatalf("an agent's own offer applied over the workspace's: %s", m)
+	}
+	for name, c := range map[string]*wire.Choices{
+		"no provider":     {Models: []string{"gpt"}},
+		"unknown":         {Models: []string{"nowhere/x"}},
+		"effort too high": {Efforts: []string{"max"}},
+	} {
+		next := p.Settings("acme")
+		next.MessageChoices = c
+		if err := p.SetSettings(ctx, "acme", next); !errors.Is(err, ErrSettings) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	empty := p.Settings("acme")
+	empty.MessageChoices = &wire.Choices{}
+	if err := p.SetSettings(ctx, "acme", empty); err != nil || p.Settings("acme").MessageChoices != nil {
+		t.Fatalf("an empty offer = %+v, %v", p.Settings("acme").MessageChoices, err)
 	}
 }

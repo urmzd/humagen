@@ -596,8 +596,9 @@ spec:
   agents:
     - spec:
         name: lead
-        provider: policy
-        model: default
+        provider: anthropic     # a model, never a nickname: the chain is the agent's own
+        model: claude-sonnet-5-5
+        fallbacks: [{provider: openai, model: gpt-5.1}]
         system_prompt: You coordinate work.
         access: {spawn: [helper]}
     - spec: {name: helper, provider: local, model: YOUR_LOCAL_MODEL, system_prompt: Do one task well.}
