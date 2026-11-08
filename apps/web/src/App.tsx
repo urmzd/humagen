@@ -315,6 +315,7 @@ function Console({
   const [builtin, setBuiltin] = useState<string[]>([]);
   // The project each agent is homed in, which says who sees it.
   const [homes, setHomes] = useState<Record<string, string>>({});
+  const [enabledIn, setEnabledIn] = useState<Record<string, string[]>>({});
   // Who answers a message that tags no agent in the workspace itself: the Workspace Default.
   const [workspaceDefault, setWorkspaceDefault] = useState("");
   const [schedules, setSchedules] = useState<ScheduleView[]>([]);
@@ -399,6 +400,7 @@ function Console({
         setAgentRead("ready");
         setBuiltin(r.builtin ?? []);
         setHomes(r.homes ?? {});
+        setEnabledIn(r.enabled_in ?? {});
       })
       .catch(() => setAgentRead("error"));
     api
@@ -1149,6 +1151,7 @@ function Console({
                       schedules={schedules}
                       agents={agents}
                       homes={homes}
+                      enabledIn={enabledIn}
                       can={can}
                       tick={tick}
                       onOpen={openProject}
