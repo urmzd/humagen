@@ -908,7 +908,7 @@ test("all starter suggestions stay in one centered row that scrolls past its wid
   const builtin = [
     ...agents,
     agent("humagen-analyst"),
-    agent("humagen-builder"),
+    agent("humagen"),
     agent("humagen-writer"),
   ];
   openChat(workspace("lead"), { agents: builtin });

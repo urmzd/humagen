@@ -144,13 +144,14 @@ func TestBuiltinRenameKeepsTheOriginalColor(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		current, err := after.Assign("a", []string{"humagen-analyst", "humagen-writer", "humagen-builder", "helper"})
+		// The builder is the entry agent now, humagen, which keeps its color.
+		current, err := after.Assign("a", []string{"humagen-analyst", "humagen-writer", "humagen", "helper"})
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, suffix := range []string{"analyst", "writer", "builder"} {
-			if current["humagen-"+suffix] != old["warp-"+suffix] {
-				t.Fatalf("%s changed color", suffix)
+		for now, was := range map[string]string{"humagen-analyst": "warp-analyst", "humagen-writer": "warp-writer", "humagen": "warp-builder"} {
+			if current[now] != old[was] {
+				t.Fatalf("%s changed color", now)
 			}
 		}
 		if current["helper"] != old["helper"] {

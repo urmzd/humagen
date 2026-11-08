@@ -69,7 +69,7 @@ func TestSharedPromptOverrideRequiresCompletedScoresReasonAndIndependentApproval
 	if got := p.Settings("acme"); got.Prompts != config || got.WorkspaceName != "Concurrent name" {
 		t.Fatalf("settings changed incorrectly: %+v", got)
 	}
-	kept, err := p.Evals.Change("acme", BuiltinBuilder, card.ID)
+	kept, err := p.Evals.Change("acme", BuiltinEntry, card.ID)
 	if err != nil || kept.OverrideReason != "Accepted tradeoff" {
 		t.Fatalf("override not retained: %+v %v", kept, err)
 	}

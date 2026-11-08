@@ -47,14 +47,25 @@ When you are asked to decide who answers a message, do only that: reply with the
 // entrySpec is the entry agent's definition, on the same models as base, the
 // first of the platform's other agents. Its spawn list is filled per
 // workspace (entrySpawn), so it starts empty here.
+//
+// It is also the workspace's helper: it builds and changes agents, sets up
+// connections and explains how the workspace is doing, with the tools the
+// builder had and the analyst's reads. Saving an agent waits for a manager or
+// an admin, and the person who asked may approve it when they hold one of
+// those roles.
 func (p *Platform) entrySpec(base wire.AgentSpec) wire.AgentSpec {
 	return wire.AgentSpec{
 		Name:         p.cfg.EntryAgent,
-		Description:  "Answers for the workspace and calls the right specialists",
+		Description:  "Answers for the workspace, calls the right specialists, and builds and changes agents with you",
 		Provider:     base.Provider,
 		Model:        base.Model,
 		Fallbacks:    slices.Clone(base.Fallbacks),
-		SystemPrompt: entryPrompt,
+		Effort:       "medium",
+		SystemPrompt: entryPrompt + "\n\n" + helperPrompt + "\n\nTo explain how agents are doing or why something failed, read runs_summary and list_alerts first.",
+		Tools:        append(BuilderTools(), AnalystTools()...),
+		Approvals:    []string{ToolSaveAgent},
+		Approvers:    []string{"role:admin", "role:manager"},
+		SelfApproval: true,
 	}
 }
 
