@@ -58,9 +58,10 @@ type ExternalRef struct {
 	// reply. Audience is the conversation's kind and members now.
 	Team    string `json:"team,omitempty"`
 	Channel string `json:"channel,omitempty"`
-	// User is the Slack user who wrote the message, which runs it starts
-	// carry as their actor's id. Only a surface built into the server, which
-	// verified the user, sets it; the API ignores it.
+	// User is who wrote the message on the surface (a Slack user id, a
+	// GitHub login), which runs it starts carry as their actor's id. Only a
+	// surface built into the server, which verified the user, sets it; the
+	// API ignores it.
 	User     string           `json:"user,omitempty"`
 	TS       string           `json:"ts,omitempty"`
 	ThreadTS string           `json:"thread_ts,omitempty"`
@@ -327,6 +328,10 @@ func (p *Platform) SendMessages(ctx context.Context, who auth.Principal, in Mess
 		thread := cmpOr(origin.ThreadTS, origin.TS)
 		at := address.Address{Connector: "slack", Workspace: origin.Team, Path: []string{origin.Channel}}.WithParam("thread", thread)
 		ctx = withDelivery(ctx, delivery{channel: at.String(), client: origin.Client, user: origin.User, slackChannel: origin.Channel})
+	}
+	if in.surface && origin.Type == RefGitHub && origin.Client != "" {
+		// A pull request's or an issue's runs answer on it, as its login.
+		ctx = withDelivery(ctx, delivery{channel: place, client: origin.Client, user: origin.User})
 	}
 	out, err := p.sendUnder(ctx, who, root, origin, in.Messages)
 	out.Created = created

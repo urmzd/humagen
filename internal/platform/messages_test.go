@@ -253,3 +253,23 @@ func TestASurfaceRunsApprovalIsAddressedOnlyToItsApprovers(t *testing.T) {
 		t.Fatalf("the approval is shown to ada %v (want false) and olu %v (want true)", sees(p, adaOp, m.ID), sees(p, olu, m.ID))
 	}
 }
+
+func TestAGitHubMessagesRunsAnswerOnItsPullRequest(t *testing.T) {
+	p, ana := slackWorkspace(t)
+	create(t, p, tenant, platform.ClientInput{
+		Client: clients.Client{ID: "gh", Name: "gh", Surface: clients.GitHub, Enabled: true, Identity: clients.Identity{Owners: []string{"acme"}}, DefaultAgent: "ops"},
+		Token:  clients.SecretInput{Value: "token-gh"}, SigningSecret: clients.SecretInput{Value: "secret-gh"},
+	})
+	ref := &platform.ExternalRef{Type: platform.RefGitHub, Client: "gh", Repo: "acme/web", Kind: "pull", Number: 7, User: "ana-gh"}
+	out, err := p.SendSurfaceMessages(t.Context(), ana, sayIn("@ops why did the checks fail?", ref))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Posted.Runs) != 1 {
+		t.Fatalf("runs = %+v", out.Posted.Runs)
+	}
+	tag := out.Posted.Runs[0].Tag()
+	if tag.Channel != "github://acme/web/pull/7" || wire.ActorOf(tag).ID != "ana-gh" || out.Posted.Runs[0].Client != "gh" {
+		t.Fatalf("run channel %q, actor %+v, client %q", tag.Channel, wire.ActorOf(tag), out.Posted.Runs[0].Client)
+	}
+}
