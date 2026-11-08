@@ -1298,6 +1298,9 @@ func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.T
 		if surfaced {
 			mt = maps.Clone(mt)
 			mt[runs.MetaClient] = surface.client
+			if surface.slackChannel != "" {
+				mt[wire.MetaSlackChannel] = surface.slackChannel
+			}
 		}
 		run, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{
 			ID: a.tag, Tenant: tenant, Agent: a.agent, Origin: runs.OriginAPI, Channel: surface.channel,
