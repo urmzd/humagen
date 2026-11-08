@@ -25,12 +25,9 @@ import (
 
 // SlackManifest is a Slack app manifest: what the Slack app asks Slack for.
 // humagen writes it, so the scopes and events always match what the app it runs
-// uses, and apps/slack/manifest.json is this output, checked by a test.
+// uses. apps/slack/manifest.json is this output, checked by a test, and the Slack
+// CLI project in deploy/slack generates it from here when it pushes the app.
 type SlackManifest struct {
-	Metadata struct {
-		Major int `json:"major_version"`
-		Minor int `json:"minor_version"`
-	} `json:"_metadata"`
 	DisplayInformation struct {
 		Name            string `json:"name"`
 		Description     string `json:"description"`
@@ -41,6 +38,7 @@ type SlackManifest struct {
 			HomeTab             bool `json:"home_tab_enabled"`
 			MessagesTab         bool `json:"messages_tab_enabled"`
 			MessagesTabReadOnly bool `json:"messages_tab_read_only_enabled"`
+			AgentTasks          bool `json:"agent_tasks_enabled"`
 		} `json:"app_home"`
 		BotUser struct {
 			DisplayName  string `json:"display_name"`
@@ -49,13 +47,15 @@ type SlackManifest struct {
 		Shortcuts     []slackShortcut `json:"shortcuts"`
 		SlashCommands []slackCommand  `json:"slash_commands"`
 		AgentView     struct {
-			Description string `json:"agent_description"`
+			Description      string   `json:"agent_description"`
+			SuggestedPrompts []string `json:"suggested_prompts"`
 		} `json:"agent_view"`
 	} `json:"features"`
 	OAuth struct {
 		Scopes struct {
 			Bot []string `json:"bot"`
 		} `json:"scopes"`
+		PKCE bool `json:"pkce_enabled"`
 	} `json:"oauth_config"`
 	Settings struct {
 		Events struct {
@@ -64,9 +64,11 @@ type SlackManifest struct {
 		Interactivity struct {
 			Enabled bool `json:"is_enabled"`
 		} `json:"interactivity"`
-		OrgDeploy     bool `json:"org_deploy_enabled"`
-		SocketMode    bool `json:"socket_mode_enabled"`
-		TokenRotation bool `json:"token_rotation_enabled"`
+		OrgDeploy        bool `json:"org_deploy_enabled"`
+		SocketMode       bool `json:"socket_mode_enabled"`
+		MCP              bool `json:"is_mcp_enabled"`
+		TokenRotation    bool `json:"token_rotation_enabled"`
+		AppTokenRotation bool `json:"app_level_token_rotation_enabled"`
 	} `json:"settings"`
 }
 
@@ -97,7 +99,6 @@ type slackCopy struct {
 
 func slackManifest(name, command string, c slackCopy) SlackManifest {
 	var m SlackManifest
-	m.Metadata.Major, m.Metadata.Minor = 2, 1
 	m.DisplayInformation.Name = name
 	m.DisplayInformation.Description = "Your workspace's agents in Slack. Ask a question, or review what one is waiting on."
 	if c.Description != "" {
@@ -114,8 +115,8 @@ func slackManifest(name, command string, c slackCopy) SlackManifest {
 	if c.CommandUsageHint != "" {
 		usageHint = c.CommandUsageHint
 	}
-	m.Features.AppHome.HomeTab, m.Features.AppHome.MessagesTab = true, true
-	m.Features.BotUser.DisplayName, m.Features.BotUser.AlwaysOnline = strings.ToLower(name), true
+	m.Features.AppHome.HomeTab, m.Features.AppHome.MessagesTab, m.Features.AppHome.AgentTasks = true, true, true
+	m.Features.BotUser.DisplayName, m.Features.BotUser.AlwaysOnline = name, true
 	m.Features.Shortcuts = []slackShortcut{
 		{Name: "Ask " + name, Type: "global", CallbackID: "aui_ask", Description: "Ask from anywhere. The answer arrives in the app's messages."},
 		{Name: "Ask " + name + " about this", Type: "message", CallbackID: "aui_ask_about", Description: "Answer in this message's thread, using the message as the question."},
@@ -124,10 +125,11 @@ func slackManifest(name, command string, c slackCopy) SlackManifest {
 	// Slack delivers a channel message to the app only when it mentions the
 	// app, so the agent is named after it.
 	m.Features.AgentView.Description = "Your workspace's agents in Slack. Mention @" + name + " and the agent you want, such as @" + name + " @analyst, or message it."
+	m.Features.AgentView.SuggestedPrompts = []string{}
 	m.OAuth.Scopes.Bot = []string{
 		"app_mentions:read", "assistant:write", "channels:history", "chat:write", "commands",
 		"groups:history", "im:history", "mpim:history", "reactions:write", "users:read",
-		"files:read", "canvases:write",
+		"files:read", "files:write", "canvases:write",
 	}
 	m.Settings.Events.Bot = []string{"agent_session_stopped", "app_home_opened", "app_mention", "assistant_thread_started", "message.im"}
 	m.Settings.Interactivity.Enabled = true
