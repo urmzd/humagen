@@ -92,11 +92,11 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 		{"usage", func() error { return p.settleUsage(ctx, run) }},
 		{"alerts", func() error { return p.raise(run) }},
 		{"online_eval", func() error { return p.scoreOnline(run) }},
+		{"spoken", func() error { return p.speakToSurface(ctx, run) }},
 		{"questions", func() error { return p.settleQuestionsOf(run) }},
 		{"session_alerts", func() error { return p.settleSessionAlerts(run.Tenant, run.Thread) }},
 		{"cascade", func() error { return p.cascade(ctx, run) }},
 		{"answer", func() error { return p.deliverAnswer(ctx, run) }},
-		{"spoken", func() error { return p.speakToSurface(ctx, run) }},
 		{"housekeeping", func() error {
 			if IsEvaluation(run) {
 				return nil
