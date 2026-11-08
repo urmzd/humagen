@@ -295,6 +295,9 @@ type Config struct {
 
 // Platform is the assembled system.
 type Platform struct {
+	// systemTools is the registry's own tools and how its API operations
+	// reach the routes (systemtools.go).
+	systemTools systemRegistry
 	// renamedProviders notes, once per workspace and name, a stored model
 	// provider name read as the name it was renamed to (readProvider).
 	renamedProviders sync.Map

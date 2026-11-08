@@ -122,7 +122,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/me", s.authed("", s.me))
 	// The humagen MCP: the API's management operations as tools, each served
 	// by its own route below as the caller (mcp.go).
-	mux.HandleFunc("POST /api/mcp", s.authed("", s.mcpEndpoint(mux)))
+	mux.HandleFunc("POST /api/mcp", s.authed("", s.mcpEndpoint))
+	s.installDispatch(mux)
 	// Any signed-in caller may ask, and only about themselves: it takes a
 	// permission and no subject.
 	mux.HandleFunc("GET /api/access/explain", s.authed("", s.explainAccess))

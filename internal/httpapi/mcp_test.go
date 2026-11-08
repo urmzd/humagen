@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -11,7 +10,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/urmzd/humagen/api"
+	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 )
 
@@ -78,8 +77,8 @@ func TestTheMCPOffersOnlyWhatTheCallerMayDo(t *testing.T) {
 			t.Errorf("an admin is not offered %s: %v", want, all)
 		}
 	}
-	if len(all) != len(mcpOperations) {
-		t.Errorf("an admin is offered %d tools, the MCP has %d", len(all), len(mcpOperations))
+	if len(all) != len(platform.SystemOperations) {
+		t.Errorf("an admin is offered %d tools, the registry has %d", len(all), len(platform.SystemOperations))
 	}
 	read := toolNames(t, f.mcpSession(t, viewer))
 	if !slices.Contains(read, "list_agents") || !slices.Contains(read, "list_alerts") {
@@ -142,35 +141,70 @@ func TestAnMCPToolCallIsTheAPICallAsTheCaller(t *testing.T) {
 	}
 }
 
-// Every tool is served by a route that needs the permission the contract
-// gives its operation: a caller who holds nothing is refused by the route
-// itself, naming that permission.
-func TestEveryMCPToolIsItsRouteWithItsPermission(t *testing.T) {
-	tools, err := loadMCPTools(api.OpenAPI, mcpOperations)
+// Every tool of the contract is served by a route that needs the permission
+// the contract gives its operation: a caller who holds nothing is refused by
+// the route itself, naming that permission.
+func TestEveryContractToolIsItsRouteWithItsPermission(t *testing.T) {
+	f := newFixture(t)
+	tools, err := f.p.SystemTools()
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := newFixture(t)
-	routes := (&Server{P: f.p, Log: slog.New(slog.DiscardHandler), Branding: fixtureBranding(t)}).Handler()
 	nobody := auth.Principal{Subject: "nobody", Tenant: "acme", Kind: auth.User}
 	for _, tl := range tools {
-		if tl.perm == "" {
-			t.Errorf("%s needs no permission", tl.tool.Name)
+		if tl.Permission == "" {
+			t.Errorf("%s needs no permission", tl.Name)
 			continue
 		}
-		path := tl.path
-		for _, p := range tl.params {
-			path = strings.Replace(path, "{"+p+"}", "x", 1)
+		args := map[string]any{}
+		required, _ := tl.Input["required"].([]string)
+		for _, name := range required {
+			if name != "body" {
+				args[name] = "x"
+			}
 		}
-		status, out := dispatch(context.Background(), routes, nobody, tl.method, path, nil, strings.NewReader("{}"))
-		if status != http.StatusForbidden || !strings.Contains(string(out), "you need "+string(tl.perm)) {
-			t.Errorf("%s (%s %s) = %d %s, want 403 for %s", tl.tool.Name, tl.method, tl.path, status, out, tl.perm)
+		if props, _ := tl.Input["properties"].(map[string]any); props["body"] != nil {
+			args["body"] = map[string]any{}
 		}
-		if tl.tool.Description == "" || tl.tool.InputSchema == nil {
-			t.Errorf("%s has no description or input", tl.tool.Name)
+		raw, _ := json.Marshal(args)
+		res, err := tl.Call(context.Background(), platform.SystemCall{Who: nobody}, raw)
+		if err != nil || !res.IsError || !strings.HasPrefix(res.Text, "403") || !strings.Contains(res.Text, "you need "+string(tl.Permission)) {
+			t.Errorf("%s = %+v, %v, want 403 for %s", tl.Name, res, err, tl.Permission)
+		}
+		if tl.Description == "" || tl.Input == nil {
+			t.Errorf("%s has no description or input", tl.Name)
 		}
 	}
-	if _, err := loadMCPTools(api.OpenAPI, []string{"noSuchOperation"}); err == nil {
-		t.Fatal("an operation the contract lacks was offered")
+}
+
+// A tool the platform registers itself is offered and called like the
+// contract's: to those its permission admits, as the caller.
+func TestARegisteredSystemToolIsOfferedAndCalledAsTheCaller(t *testing.T) {
+	f := newFixture(t)
+	var called platform.SystemCall
+	err := f.p.RegisterSystemTool(platform.SystemTool{
+		Name: "echo_caller", Title: "Echo the caller", Description: "Says who called.",
+		Input:      map[string]any{"type": "object", "properties": map[string]any{}},
+		Permission: auth.AgentsWrite,
+		Call: func(_ context.Context, c platform.SystemCall, _ json.RawMessage) (platform.SystemResult, error) {
+			called = c
+			return platform.SystemResult{Text: "called by " + c.Who.Subject}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.p.RegisterSystemTool(platform.SystemTool{Name: "list_agents", Input: map[string]any{"type": "object"}, Call: func(context.Context, platform.SystemCall, json.RawMessage) (platform.SystemResult, error) {
+		return platform.SystemResult{}, nil
+	}}); err == nil {
+		t.Fatal("a name the contract has was registered again")
+	}
+	admin := f.mcpSession(t, f.person(t, "acme", "ada", "Ada", "humagen-admins"))
+	res, err := admin.CallTool(t.Context(), &mcp.CallToolParams{Name: "echo_caller", Arguments: map[string]any{}})
+	if err != nil || res.IsError || textOf(res) != "called by ada" || called.Who.Tenant != "acme" {
+		t.Fatalf("echo_caller = %s, %v (%+v)", textOf(res), err, called)
+	}
+	if slices.Contains(toolNames(t, f.mcpSession(t, f.person(t, "acme", "vic", "Vic", "humagen-viewers"))), "echo_caller") {
+		t.Fatal("a viewer is offered a tool that needs agents:write")
 	}
 }
