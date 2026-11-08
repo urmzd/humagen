@@ -140,10 +140,160 @@ scheduled ingestion have separate authority and retention requirements. The
 [conversation-first collection design](../rfcs/0003-conversation-first-delivery.md)
 records that follow-on work.
 
-## Proposed native corpora
+## Corpora
 
-The next backend delivery will structure knowledge as a stable tenant-scoped
-corpus, its runs, corpus-owned files, immutable file versions and version-bound
+A corpus is a named body of knowledge, such as "HR policies", that holds the
+sources one useful body of knowledge comes from. People create and manage
+corpora in Agents > Knowledge, and add sources inside a corpus. `pkg/corpora`
+keeps each workspace's corpora on `pkg/state`, per request.
+
+| Field | Meaning |
+| --- | --- |
+| `name`, `title`, `description` | The name is lower case letters, digits and dashes and never changes; the title is what people call it, such as "HR policies" |
+| `owner` | The person who manages it. Only the owner changes, hands off or deletes it |
+| `readers` | Who may read it: people by subject, everyone who sees a project, or the workspace. Default deny |
+| `members` | Up to 50 knowledge sources (`source`) and catalog connectors (`catalog`), by name |
+| `agents` | The agents granted it. A run of one reads only as the person it acts for, who must be a reader too |
+| `links` | `isolated` (default) or `shared`: whether its part of the workspace graph links to other corpora |
+
+A member is a reference, never a copy. What it brings depends on the source:
+
+| Holds | From | Kept | Searched |
+| --- | --- | --- | --- |
+| Files | An indexed source | Passages and vectors | The corpus's own indexes |
+| References | A live source | A pointer and its metadata | At the source, with the reader's credential |
+| Records | A catalog connector (Snowflake, BigQuery) | Schema and owners. Never rows | A read-only query at the warehouse, under the reader's own login |
+
+Holding a source never widens who may read it. A reader sees each member by
+the source's own rules; one they may not see is listed as `hidden`, without
+its name (the owner alone sees its name, to remove it), and an owner's new
+members list keeps the members the owner can no longer see. A member whose source was deleted shows as `missing` until the
+owner removes it. Deleting a corpus leaves its sources as they are.
+
+Routes, all behind `knowledge:read` or `knowledge:write`: `GET` and `POST
+/api/corpora`, `GET`, `PATCH` and `DELETE /api/corpora/{name}`, `POST
+/api/corpora/{name}/members` and `DELETE
+/api/corpora/{name}/members/{kind}/{member}`. A corpus the caller may not read
+answers 404; a change from someone other than the owner answers 403; a change
+or delete naming an old `version` answers 409.
+
+### Warehouses: queried live as the reader
+
+A Snowflake or BigQuery connector in a corpus keeps schema only: its owner's
+login crawls tables, views, columns and comments, never rows. Every data
+question is a read-only query run with the reader's own login
+(`catalog.ReaderQuerier`), so the warehouse's grants, row access and masking
+decide what each person reads.
+
+| Warehouse | Set up | Each reader's login |
+| --- | --- | --- |
+| Snowflake | `POST /api/catalog/connectors/snowflake`: account, database, warehouse, an optional crawl role, `token_type` (`OAUTH` or `PROGRAMMATIC_ACCESS_TOKEN`). It holds no credential | `PUT /api/catalog/connectors/{name}/login` with a reference under a start the workspace lists, or the token where the workspace keeps values. Queries leave the role out, so the reader's default role applies |
+| BigQuery | `POST /api/catalog/connectors/bigquery` (managed) or a Platform document | The reader's own BigQuery connection (OAuth, `bigquery.readonly`). Queries go through `jobs.query`, which that scope authorizes; the connector's datasets, byte cap and row bound still apply |
+
+`GET /api/catalog` tells each reader whether they have a login (`login`:
+`connected`, `missing` or `unavailable`). A login is kept under an `hcat-`
+credential id that is never offered to a tool server.
+
+The `corpus_query` tool runs the query. It answers only in the reader's own
+private conversation, for a corpus granted to the run's agent that the reader
+may read, on a warehouse the corpus holds and the reader may see. The result
+carries the corpus, the connector, the SQL and when it ran; no row is stored.
+
+### Search
+
+A corpus search fans one query out to every member the reader may see, by
+what each holds, and merges the answers:
+
+| Member | Searched by |
+| --- | --- |
+| Files | Lexical (BM25) and, with an embedder, vectors, fused, over the indexed passages (`pkg/knowledge`), one ranked list per source |
+| References | The source's own search, live, with the reader's access; only when the answer reaches the reader alone |
+| Records | The catalog: tables and views by their names, descriptions and columns, never rows |
+
+The lists merge by reciprocal rank (k = 60), so no one scoring scale
+decides. The same passage reached through two members (equal words,
+ignoring case, spacing and punctuation) is one hit whose `also` names the
+others. A member that fails or times out (20 s for a live search) is named in
+`warnings` and left out; it never fails the search.
+
+`GET /api/corpora/{name}/search?q=` runs it for the caller (the Try a search
+box). The `corpus_search` tool runs it for a run's agent over every corpus
+granted to it that the person the run acts for may read, at most 8, only in
+that person's own private conversation, and keeps citation evidence for every
+source hit before the model reads it. Graph retrieval joins the fan-out once
+the workspace graph is built.
+
+### The workspace graph
+
+One knowledge graph per workspace (`pkg/graph`); corpora are slices of it.
+The structural layer is built from what members already say about
+themselves, with no model calls, on the leader every 10 minutes (a slice
+older than 30 minutes or than its corpus's last change is rebuilt) and when
+first read:
+
+| Node | From | Relations |
+| --- | --- | --- |
+| Document | Each indexed document of a source (not a provider's retained copy, whose files need the reader's own access), and each warehouse table or view | `authored` from who added it; `part_of` its warehouse |
+| System | Each warehouse connector | `owns` from its connection's owner |
+| Person | Who added a document or owns a connection | Resolves once across the workspace |
+
+A shared corpus's documents and systems merge with other shared corpora's; an
+isolated corpus keeps its own (people always resolve once). A reader sees a
+node only when they may see the member it came from, and a person only
+through what they may see, so a hidden document never shows who wrote it.
+
+**Owners.** The graph suggests an owner: who added a document, or whose
+connection a table comes through. That person confirms it, declines it or
+hands it to someone else (`PUT /api/graph/nodes/{id}/owner`); a confirmed
+owner wins over the suggestion. An owner who left the workspace owns nothing,
+and the owner of a corpus that holds an unowned node may claim it or hand it
+on.
+
+**Staleness.** Each document scores 0 when new and nears 1 as its age passes
+its half-life (365 days for files, 90 for warehouse tables, from the source's
+own change time). It is stale at 0.75, when a newer document supersedes it,
+or when its source's last sync failed; being unowned is a reason shown beside
+it. Stale documents rank lower and are labelled, never hidden.
+
+**Reading it.** `GET /api/corpora/{name}/graph` (a slice and its health:
+nodes and edges by type, unowned and stale counts, when built),
+`POST /api/corpora/{name}/graph/build` (the owner rebuilds now),
+`GET /api/graph?q=` (every corpus the reader may read, narrowed to what a
+query names and its neighbors), and the `corpus_graph` tool for a granted
+agent in the reader's own private conversation. A corpus with `graph_search`
+adds graph retrieval to its search: documents whose names, owners or systems
+hold the query's words, with their owner and staleness, fresh before stale.
+
+### Ontologies
+
+A corpus's ontology is the types it adds to the workspace graph, written as a
+JSON Schema (2020-12): each entity type is an object schema under `$defs`,
+with its properties and required fields. Three extensions say what plain JSON
+Schema cannot: `x-relations` (a name, the two types it joins and one or many),
+`x-metadata` (passage fields search can filter on), and, on a type,
+`x-matches` (table names or title words of that type) and `x-half-life-days`.
+A corpus extends the core types and never redefines them; an unknown keyword
+is an error, not a silently ignored rule.
+
+| Mode | How |
+| --- | --- |
+| Declared | `PATCH /api/corpora/{name}` with `ontology`; `{}` clears it |
+| Inferred | `POST /api/corpora/{name}/ontology/infer`: from the warehouse tables the corpus holds, with no model calls, a type per table, its columns as properties, and a relation for each column that names another table's type with `_id`. Kept as `proposed_ontology`; it adds nothing until accepted |
+| Hybrid | `POST /api/corpora/{name}/ontology/accept` adds the proposed types (all, or those named) to the declared ones; a declared type keeps its declaration. `.../discard` drops the proposal |
+
+The graph builder types what an ontology names: a table or a document title
+that matches a type gets `entity_type` and that type's half-life, and the
+ontology's relations join the typed tables of one warehouse (an Order table's
+`customer`). Only the owner changes, infers, accepts or discards.
+
+Not built yet: the semantic layer (content extraction against the ontology:
+topics, mentions, contradictions, metadata filters), the maintenance agent,
+freshness alerts and sensitivity labels.
+
+## Proposed versioned source files
+
+The next backend delivery will structure each source's content as a stable
+tenant-scoped record, its runs, corpus-owned files, immutable file versions and version-bound
 chunks. Runs attach the exact file version through a membership record; a
 refresh does not duplicate the file identity. This is a proposed extension of
 the current source lifecycle, not a new API already shipped in this UI pass.

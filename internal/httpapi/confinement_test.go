@@ -17,6 +17,7 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/catalog"
+	"github.com/urmzd/humagen/pkg/graph"
 	"github.com/urmzd/orchagent/flow/event"
 	"github.com/urmzd/orchagent/flow/toolprovider"
 
@@ -74,7 +75,10 @@ type hidden struct {
 	personalNote                                                  string
 	// connector is a catalog connector of the hidden project, owned by the
 	// workspace's machine and published to that project.
-	connector                                      string
+	connector string
+	// corpus is a corpus of the workspace's machine read only by the hidden
+	// project, holding the hidden connector.
+	corpus                                         string
 	handle, alert, channel, announcement, provider string
 	// open is, in a sweep inside the workspace, a Slack client the outsider
 	// may read, with the hidden channel bound to it: its bindings must not
@@ -198,6 +202,8 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	if _, err := f.p.CatalogStore.Publish("acme", h.connector, "svc-acme", time.Now()); err != nil {
 		t.Fatal(err)
 	}
+	h.corpus = "canary-" + marker
+	must("POST", "/api/corpora", `{"name":"`+h.corpus+`","readers":[{"kind":"project","name":"`+h.project+`"}],"members":[{"kind":"catalog","name":"`+h.connector+`"}]}`, http.StatusCreated)
 
 	must("PUT", "/api/agents/"+h.agent+"/call-policy", `{"callers":"anyone","approval":"never"}`, http.StatusOK)
 
@@ -603,6 +609,8 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.schedule, true
 		case prefix("/api/catalog/connectors/"):
 			return h.connector, true
+		case prefix("/api/corpora/"):
+			return h.corpus, true
 		case prefix("/api/alert-rules/"):
 			return h.rule, true
 		case prefix("/api/knowledge/"):
@@ -655,8 +663,20 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.client, true
 		case prefix("/api/alerts/"):
 			return h.alert, true
+		case prefix("/api/graph/nodes/"):
+			// The hidden corpus is isolated, so its warehouse's system node
+			// is keyed under it.
+			return graph.ID("corpus:" + h.corpus + "/system:catalog/" + h.connector), h.corpus != ""
 		case prefix("/api/projects/{name}/announcements/"):
 			return h.announcement, true
+		}
+	case "kind":
+		if prefix("/api/corpora/") {
+			return "catalog", true
+		}
+	case "member":
+		if prefix("/api/corpora/") {
+			return h.connector, true
 		}
 	case "channel":
 		return h.channel, true

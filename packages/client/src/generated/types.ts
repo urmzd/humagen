@@ -3409,6 +3409,181 @@ export interface KnowledgeVariant {
   excluded: string[];
 }
 
+/** A source or catalog connector a corpus holds, by kind and name. */
+export interface CorpusMemberRef {
+  /** `source` is a knowledge source; `catalog` is a catalog connector (a warehouse). */
+  kind: "source" | "catalog";
+  name: string;
+}
+
+/** A member as the reader sees it. One the reader may not see has
+status `hidden` and no name, except to the corpus's owner, who sees its
+name so they can remove it; one whose source was deleted is `missing`.
+ */
+export interface CorpusMember {
+  kind: "source" | "catalog";
+  name: string;
+  /** files are indexed text; references are searched live at the
+source; records are warehouse tables kept as schema only and
+queried live.
+ */
+  holds?: "files" | "references" | "records";
+  /** manual, drive, notion, s3, gcs, bigquery, snowflake and so on. */
+  provider?: string;
+  /** Indexed documents, or the tables and views a warehouse lists. */
+  items: number;
+  status: "ready" | "syncing" | "failed" | "missing" | "hidden";
+}
+
+export interface CorpusReader {
+  kind: "person" | "project" | "workspace";
+  /** A person's subject or a project's name; none for the workspace. */
+  name?: string;
+}
+
+export interface Corpus {
+  name: string;
+  /** What people call it, such as HR policies. Absent shows the name. */
+  title?: string;
+  description?: string;
+  /** The subject of the person who manages it. */
+  owner: string;
+  readers: CorpusReader[];
+  members: CorpusMember[];
+  /** The agents granted it that the reader can see. A run of one reads only as the person it acts for, who must be a reader too. */
+  agents: string[];
+  /** A JSON Schema (2020-12) of the types it adds to the graph: $defs, x-relations, x-metadata. */
+  ontology?: Record<string, unknown>;
+  /** An inferred ontology waiting for its owner to accept it. */
+  proposed_ontology?: Record<string, unknown>;
+  /** Adds the workspace graph to its search. */
+  graph_search?: boolean;
+  /** Whether its graph links to other shared corpora. Isolated by default. */
+  links: "isolated" | "shared";
+  created_at: string;
+  updated_at: string;
+  version: number;
+  /** Set for its owner, who alone changes it. */
+  mine: boolean;
+}
+
+export interface GraphNode {
+  id: string;
+  key: string;
+  /** person, team, project, system, topic, document, or a corpus ontology's type. */
+  type: string;
+  name: string;
+  uri?: string;
+  /** The corpus member it was built from, as source/<name> or catalog/<name>. */
+  member?: string;
+  props?: Record<string, string>;
+  changed_at?: string;
+  suggested_owner?: string;
+  out_of_date?: boolean;
+  corpora?: string[];
+}
+
+export interface GraphEdge {
+  from: string;
+  to: string;
+  /** authored, edited, owns, about, mentions, supersedes, contradicts, depends_on or part_of. */
+  type: string;
+  corpora?: string[];
+}
+
+export interface GraphStaleness {
+  score: number;
+  stale: boolean;
+  reasons?: ("old" | "unowned" | "out_of_date" | "superseded")[];
+}
+
+export type GraphNodeView = GraphNode & { owner?: string; owner_state: "" | "suggested" | "confirmed" | "unowned"; staleness?: GraphStaleness };
+
+export interface GraphHealth {
+  nodes: number;
+  edges: number;
+  by_type: Record<string, number>;
+  unowned: number;
+  stale: number;
+  built_at?: string;
+  truncated?: boolean;
+}
+
+export interface GraphView {
+  nodes: GraphNodeView[];
+  edges: GraphEdge[];
+  health: GraphHealth;
+  more?: boolean;
+}
+
+export interface OwnerAction {
+  action: "confirm" | "decline" | "hand_off";
+  /** Who it is handed to, for hand_off. */
+  to?: string;
+}
+
+export interface CorpusHit {
+  corpus: string;
+  member: CorpusMemberRef;
+  holds: "files" | "references" | "records";
+  document_id?: string;
+  /** A document's title, or a warehouse table's path. */
+  title: string;
+  uri?: string;
+  index?: number;
+  text: string;
+  /** The fused rank score, comparable within one answer. */
+  score: number;
+  /** Other members the same passage came through. */
+  also?: CorpusMemberRef[];
+  /** Who owns the document, when graph retrieval found it. */
+  owner?: string;
+  stale?: boolean;
+}
+
+export interface CorpusSearchWarning {
+  corpus: string;
+  member?: CorpusMemberRef;
+  cause: string;
+}
+
+export interface CorpusSearch {
+  hits: CorpusHit[];
+  warnings: CorpusSearchWarning[];
+  /** Kept for a search an agent ran; absent here. */
+  citations?: RunCitation[];
+}
+
+export interface CorpusCreate {
+  name: string;
+  title?: string;
+  description?: string;
+  readers?: CorpusReader[];
+  members?: CorpusMemberRef[];
+  agents?: string[];
+  ontology?: Record<string, unknown>;
+  /** Adds the workspace graph to its search. */
+  graph_search?: boolean;
+  links?: "isolated" | "shared";
+}
+
+export interface CorpusChange {
+  title?: string;
+  description?: string;
+  readers?: CorpusReader[];
+  members?: CorpusMemberRef[];
+  /** Replaces its declared ontology; {} clears it. */
+  ontology?: Record<string, unknown>;
+  /** Adds the workspace graph to its search. */
+  graph_search?: boolean;
+  links?: "isolated" | "shared";
+  /** Replaces the agents granted it; agents the owner can no longer see are kept. */
+  agents?: string[];
+  /** Hands the corpus to another person. */
+  owner?: string;
+  version?: number;
+}
+
 export interface KnowledgeSource {
   lifecycle?: KnowledgeLifecycle;
   content_version?: number;
@@ -3565,7 +3740,33 @@ export interface CatalogConnector {
   generation: number;
 }
 
-export type CatalogConnectorView = CatalogConnector & { capabilities: ("catalog" | "live")[]; mine: boolean; last_error?: string };
+export interface SnowflakeSetupInput {
+  name: string;
+  /** The account identifier, such as myorg-myaccount. */
+  account: string;
+  database: string;
+  warehouse: string;
+  /** The role the owner's crawl uses; empty is their default role. Queries use each reader's own default role. */
+  role?: string;
+  /** How logins are given. Defaults to OAUTH. */
+  token_type?: "OAUTH" | "PROGRAMMATIC_ACCESS_TOKEN";
+  /** Defaults to 200. */
+  max_rows?: number;
+  /** Defaults to 60. */
+  timeout_seconds?: number;
+  /** How often the schema is crawled again. Defaults to 24. */
+  refresh_hours?: number;
+}
+
+/** Exactly one of ref and value. */
+export interface CatalogLoginInput {
+  /** A reference to your token, under a start the workspace lists. */
+  ref?: string;
+  /** Your token, where the workspace lets people keep values. */
+  value?: string;
+}
+
+export type CatalogConnectorView = CatalogConnector & { capabilities: ("catalog" | "live")[]; mine: boolean; last_error?: string; login?: "connected" | "missing" | "unavailable" };
 
 export interface CatalogPage {
   connectors: CatalogConnectorView[];
@@ -5360,6 +5561,14 @@ export interface ListEvalSuitesResponse {
 
 export interface ListEvalRunsResponse {
   runs: EvalRun[];
+}
+
+export interface ListCorporaResponse {
+  corpora: Corpus[];
+}
+
+export interface AcceptCorpusOntologyBody {
+  types?: string[];
 }
 
 export interface ListKnowledgeSourcesResponse {

@@ -49,9 +49,11 @@ import (
 	"github.com/urmzd/humagen/pkg/catalog"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/connectionauth"
+	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/evals"
+	"github.com/urmzd/humagen/pkg/graph"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/join"
@@ -681,9 +683,14 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"EvalRun": {typ: evals.Run{}}, "EvalSuiteView": {typ: suiteView{}, written: true},
 		"BigQuerySetupInput": {typ: platform.BigQuerySetupInput{}, written: true}, "BigQuerySetupCredential": {typ: platform.BigQuerySetupCredential{}, written: true},
 		"BigQuerySetupView": {typ: platform.BigQuerySetupView{}}, "BigQueryADCScope": {typ: platform.BigQueryADCScope{}},
+		"SnowflakeSetupInput": {typ: platform.SnowflakeSetupInput{}, written: true}, "CatalogLoginInput": {typ: platform.CatalogLoginInput{}, written: true},
 		"CatalogColumn": {typ: catalog.Column{}}, "CatalogStats": {typ: catalog.Stats{}}, "CatalogEntry": {typ: catalog.Entry{}}, "CatalogMark": {typ: catalog.Mark{}},
 		"CatalogConnector": {typ: catalog.Connector{}}, "CatalogConnectorView": {typ: platform.CatalogConnectorView{}}, "CatalogPage": {typ: platform.CatalogPage{}},
 		"KnowledgeVariant": {typ: knowledge.Variant{}}, "KnowledgeSource": {typ: knowledge.Source{}},
+		"Corpus": {typ: platform.CorpusView{}}, "CorpusMember": {typ: platform.CorpusMemberView{}}, "CorpusReader": {typ: corpora.Reader{}},
+		"GraphNode": {typ: graph.Node{}}, "GraphEdge": {typ: graph.Edge{}}, "GraphStaleness": {typ: graph.Staleness{}}, "GraphNodeView": {typ: platform.GraphNodeView{}}, "GraphHealth": {typ: platform.GraphHealth{}}, "GraphView": {typ: platform.GraphView{}}, "OwnerAction": {typ: platform.OwnerAction{}, written: true},
+		"CorpusHit": {typ: platform.CorpusHit{}}, "CorpusSearchWarning": {typ: platform.CorpusSearchWarning{}}, "CorpusSearch": {typ: platform.CorpusSearch{}},
+		"CorpusMemberRef": {typ: corpora.Member{}, written: true}, "CorpusCreate": {typ: platform.CorpusCreate{}, written: true}, "CorpusChange": {typ: platform.CorpusChange{}, written: true},
 		"KnowledgeDocument": {typ: knowledge.Document{}}, "KnowledgeHit": {typ: knowledge.Hit{}},
 		"PolicyScope": {typ: policy.Scope{}}, "Policy": {typ: policyView{}}, "PolicyChange": {typ: policyChangeView{}},
 		"Measure": {typ: measure{}}, "ScopeUsage": {typ: scopeUsage{}}, "UsageEntry": {typ: usage.Entry{}},
@@ -1227,6 +1234,21 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/me/credentials", "/api/me/credentials", "", http.StatusOK)
 	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNoContent)
 	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNotFound)
+
+	// A Snowflake warehouse holds no credential: each person keeps their own
+	// login to it, and a value never comes back out.
+	const login = "/api/catalog/connectors/{name}/login"
+	c.call(ana, "POST", "/api/catalog/connectors/snowflake", "/api/catalog/connectors/snowflake", `{"name":"finance","account":"acme-test","database":"ANALYTICS","warehouse":"READ_WH"}`, http.StatusCreated)
+	c.call(ana, "POST", "/api/catalog/connectors/snowflake", "/api/catalog/connectors/snowflake", `{"name":"finance","account":"acme-test","database":"ANALYTICS","warehouse":"READ_WH"}`, http.StatusConflict)
+	c.call(ana, "POST", "/api/catalog/connectors/snowflake", "/api/catalog/connectors/snowflake", `{"name":"bad","account":"acme-test","database":"ANALYTICS; DROP","warehouse":"READ_WH"}`, http.StatusBadRequest)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{"ref":"op://People/ana/snowflake"}`, http.StatusNoContent)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{"value":"pat-ana-contract"}`, http.StatusNoContent)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{"ref":"op://People/ben/snowflake"}`, http.StatusBadRequest)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{}`, http.StatusBadRequest)
+	if catalogView := c.call(ana, "GET", "/api/catalog", "/api/catalog", "", http.StatusOK); strings.Contains(string(catalogView.raw), "pat-ana-contract") || !strings.Contains(string(catalogView.raw), `"login":"connected"`) {
+		t.Errorf("the catalog after ana's login = %s", catalogView.raw)
+	}
+	c.call(ana, "DELETE", login, "/api/catalog/connectors/finance/login", "", http.StatusNoContent)
 
 	// A person's own context: theirs to read and narrow, a reference under
 	// their own start, the version they read.
@@ -1883,6 +1905,51 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/knowledge/{name}/variants", "/api/knowledge/handbook/variants", `{"name":"lean"}`, http.StatusCreated)
 	docPath := "/api/knowledge/handbook/documents/" + doc.str("id")
 	c.call(acme, "PUT", "/api/knowledge/{name}/documents/{id}", docPath, `{"excluded":true}`, http.StatusOK)
+
+	// Corpora hold sources; another tenant never sees one.
+	c.call(acme, "POST", "/api/corpora", "/api/corpora", `{"name":"policies","description":"How we work.","members":[{"kind":"source","name":"handbook"}],"readers":[{"kind":"workspace"}]}`, http.StatusCreated)
+	c.call(acme, "POST", "/api/corpora", "/api/corpora", `{"name":"policies"}`, http.StatusConflict)
+	c.call(acme, "POST", "/api/corpora", "/api/corpora", `{"name":"ghosts","members":[{"kind":"source","name":"ghost"}]}`, http.StatusBadRequest)
+	c.call(acme, "GET", "/api/corpora", "/api/corpora", "", http.StatusOK)
+	policies := c.call(acme, "GET", "/api/corpora/{name}", "/api/corpora/policies", "", http.StatusOK)
+	c.call(acme, "PATCH", "/api/corpora/{name}", "/api/corpora/policies", `{"links":"shared","version":999999}`, http.StatusConflict)
+	c.call(acme, "PATCH", "/api/corpora/{name}", "/api/corpora/policies", fmt.Sprintf(`{"links":"shared","version":%v}`, policies.field("version")), http.StatusOK)
+	c.call(acme, "DELETE", "/api/corpora/{name}/members/{kind}/{member}", "/api/corpora/policies/members/source/handbook", "", http.StatusOK)
+	c.call(acme, "DELETE", "/api/corpora/{name}/members/{kind}/{member}", "/api/corpora/policies/members/source/handbook", "", http.StatusNotFound)
+	c.call(acme, "POST", "/api/corpora/{name}/members", "/api/corpora/policies/members", `{"kind":"source","name":"handbook"}`, http.StatusOK)
+	c.call(acme, "GET", "/api/corpora/{name}/search", "/api/corpora/policies/search?q=refunds", "", http.StatusOK)
+	c.call(acme, "GET", "/api/corpora/{name}/search", "/api/corpora/policies/search?q=", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/corpora/{name}/graph", "/api/corpora/policies/graph", "", http.StatusOK)
+	c.call(acme, "GET", "/api/corpora/{name}/graph", "/api/corpora/policies/graph?limit=0", "", http.StatusBadRequest)
+	c.call(acme, "POST", "/api/corpora/{name}/graph/build", "/api/corpora/policies/graph/build", "", http.StatusOK)
+	c.call(acme, "GET", "/api/graph", "/api/graph?q=refunds", "", http.StatusOK)
+	c.call(acme, "GET", "/api/graph", "/api/graph?limit=x", "", http.StatusBadRequest)
+	// A person confirms owning a document the graph suggests is theirs.
+	c.call(ana, "POST", "/api/knowledge/{name}/documents", "/api/knowledge/handbook/documents", `{"title":"Leave","text":"Parental leave is sixteen weeks."}`, http.StatusCreated)
+	c.call(ana, "POST", "/api/corpora", "/api/corpora", `{"name":"ana-docs","members":[{"kind":"source","name":"handbook"}]}`, http.StatusCreated)
+	leave := ""
+	for _, n := range sliceOf(c.call(ana, "GET", "/api/corpora/{name}/graph", "/api/corpora/ana-docs/graph", "", http.StatusOK).field("nodes")) {
+		if node := obj(n); node["name"] == "Leave" {
+			leave, _ = node["id"].(string)
+		}
+	}
+	if leave == "" {
+		t.Fatal("the graph has no node for ana's document")
+	}
+	c.call(ana, "PUT", "/api/graph/nodes/{id}/owner", "/api/graph/nodes/"+leave+"/owner", `{"action":"confirm"}`, http.StatusOK)
+	c.call(ana, "PUT", "/api/graph/nodes/{id}/owner", "/api/graph/nodes/"+leave+"/owner", `{"action":"hand_off","to":"nobody"}`, http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/graph/nodes/{id}/owner", "/api/graph/nodes/"+leave+"/owner", `{"action":"confirm"}`, http.StatusNotFound)
+	// An ontology is declared, inferred from a warehouse, accepted or discarded.
+	const infer, accept, discard = "/api/corpora/{name}/ontology/infer", "/api/corpora/{name}/ontology/accept", "/api/corpora/{name}/ontology/discard"
+	c.call(ana, "POST", "/api/corpora", "/api/corpora", `{"name":"ledger","members":[{"kind":"catalog","name":"finance"}],"ontology":{"$defs":{"Invoice":{"type":"object"}}}}`, http.StatusCreated)
+	c.call(ana, "POST", accept, "/api/corpora/ledger/ontology/accept", "", http.StatusBadRequest)
+	c.call(ana, "POST", infer, "/api/corpora/ledger/ontology/infer", "", http.StatusOK)
+	c.call(ana, "POST", accept, "/api/corpora/ledger/ontology/accept", `{"types":["Invoice"]}`, http.StatusOK)
+	c.call(ana, "POST", infer, "/api/corpora/ana-docs/ontology/infer", "", http.StatusBadRequest)
+	c.call(ana, "POST", discard, "/api/corpora/ledger/ontology/discard", "", http.StatusOK)
+	c.call(ana, "PATCH", "/api/corpora/{name}", "/api/corpora/ledger", `{"ontology":{"$defs":{"Person":{"type":"object"}}}}`, http.StatusBadRequest)
+	c.call(ana, "PATCH", "/api/corpora/{name}", "/api/corpora/ledger", `{"ontology":{}}`, http.StatusOK)
+	c.call(acme, "DELETE", "/api/corpora/{name}", "/api/corpora/policies?version=x", "", http.StatusBadRequest)
 
 	c.call(acme, "POST", "/api/evals", "/api/evals", `{"name":"smoke","target":"agent","subject":"helper","cases":[{"id":"says-offline","input":"hello","checks":[{"kind":"contains","value":"offline provider"}]}]}`, http.StatusCreated)
 	c.call(acme, "POST", "/api/evals", "/api/evals", `{"name":"lost","target":"agent","subject":"ghost","cases":[{"id":"a","input":"hello","checks":[{"kind":"contains","value":"x"}]}]}`, http.StatusNotFound)
@@ -2556,8 +2623,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/clients/{id}":                          {"id": "support"}, "/api/clients/{id}/bindings": {"id": "app"}, "/api/evals/{name}": {"name": "smoke"}, "/api/evals/{name}/runs": {"name": "smoke"},
 		"/api/evals/{name}/run": {"name": "smoke"}, "/api/knowledge/{name}": {"name": "handbook"},
 		"/api/knowledge/{name}/resources": {"name": "handbook"}, "/api/knowledge/{name}/snapshot": {"name": "handbook"}, "/api/knowledge/{name}/replace": {"name": "handbook"}, "/api/knowledge/{name}/sync-settings": {"name": "handbook"},
-		"/api/knowledge/{name}/dependencies":  {"name": "handbook"},
-		"/api/knowledge/{name}/configuration": {"name": "handbook"}, "/api/knowledge/{name}/credential": {"name": "handbook"}, "/api/knowledge/{name}/sync": {"name": "handbook"},
+		"/api/knowledge/{name}/dependencies": {"name": "handbook"},
+		"/api/corpora/{name}":                {"name": "policies"}, "/api/corpora/{name}/members": {"name": "policies"}, "/api/corpora/{name}/search": {"name": "policies"}, "/api/corpora/{name}/graph": {"name": "policies"}, "/api/corpora/{name}/graph/build": {"name": "policies"}, "/api/corpora/{name}/ontology/infer": {"name": "policies"}, "/api/corpora/{name}/ontology/accept": {"name": "policies"}, "/api/corpora/{name}/ontology/discard": {"name": "policies"},
+		"/api/corpora/{name}/members/{kind}/{member}": {"name": "policies", "kind": "source", "member": "handbook"},
+		"/api/knowledge/{name}/configuration":         {"name": "handbook"}, "/api/knowledge/{name}/credential": {"name": "handbook"}, "/api/knowledge/{name}/sync": {"name": "handbook"},
 		"/api/knowledge/{name}/documents": {"name": "handbook"}, "/api/knowledge/{name}/documents/{id}": {"name": "handbook", "id": doc.str("id")},
 		"/api/knowledge/{name}/variants": {"name": "handbook"}, "/api/knowledge/{name}/variants/{variant}": {"name": "handbook"},
 		"/api/project-forks/{name}": {"name": "Forked"}, "/api/projects/{name}/fork": {"name": "Field"},
@@ -2613,6 +2682,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}/members": `{"version":1,"members":[{"who":"*","role":"member"}]}`, "/api/projects/{name}/move": `{"version":1,"parent":""}`,
 		"/api/projects/{name}/limits": `{"period":"day","max_runs":1}`, "/api/projects/{name}/announcements": `{"subject":"Hi","text":"Hi."}`,
 		"/api/memory/files/proposals/{id}": `{"scope":"project","decision":"discard"}`,
+		"/api/corpora/{name}":              `{}`, "/api/corpora/{name}/members": `{"kind":"source","name":"handbook"}`,
+		"/api/catalog/connectors/{name}/login": `{"ref":"op://People/svc-globex/x"}`,
+		"/api/graph/nodes/{id}/owner":          `{"action":"confirm"}`,
 	}
 	for _, op := range c.spec.ops {
 		params := pathParams(op.path)
@@ -2651,6 +2723,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "DELETE", "/api/clients/{id}", "/api/clients/support", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/clients/{id}", "/api/clients/support", "", http.StatusNotFound)
 	c.call(acme, "DELETE", "/api/evals/{name}", "/api/evals/smoke", "", http.StatusNoContent)
+	c.call(acme, "DELETE", "/api/corpora/{name}", "/api/corpora/policies?version=999999", "", http.StatusConflict)
+	c.call(acme, "DELETE", "/api/corpora/{name}", "/api/corpora/policies", "", http.StatusNoContent)
+	c.call(acme, "DELETE", "/api/corpora/{name}", "/api/corpora/policies", "", http.StatusNotFound)
 	c.call(acme, "DELETE", "/api/knowledge/{name}/variants/{variant}", "/api/knowledge/handbook/variants/lean", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/knowledge/{name}/documents/{id}", docPath, "", http.StatusNoContent)
 	// A source a project names is not deleted from under it: Field names
@@ -2731,6 +2806,11 @@ var unexercised = map[string]string{
 
 	"POST /api/voice/transcriptions 404":            "a deployment with speech left out, covered by TestWithoutSpeechTheConsoleHasNoVoiceNotes",
 	"POST /api/catalog/connectors/{name}/crawl 409": "a crawl asked for while another of the same connector runs; the guard is in platform.crawl",
+	"POST /api/corpora/{name}/ontology/infer 409":   "the corpus changed between its owner check and the write; the store's version check, covered in pkg/corpora",
+	"POST /api/corpora/{name}/ontology/accept 409":  "the corpus changed between its owner check and the write; the store's version check, covered in pkg/corpora",
+	"POST /api/corpora/{name}/ontology/discard 409": "the corpus changed between its owner check and the write; the store's version check, covered in pkg/corpora",
+	"PUT /api/graph/nodes/{id}/owner 429":           "MaxDecisions owner decisions per workspace, a bound in pkg/graph",
+	"POST /api/corpora 429":                         "MaxCorpora per workspace, covered by TestTwoProcessesAgreeOnCorpora in pkg/corpora",
 	// The atomic source configuration race is covered by TestPromotionGuardAndProvenanceSurviveRestart.
 	"POST /api/artifacts/{id}/promote-knowledge 409": "source audience changed concurrently",
 	"POST /api/projects/{name}/fork 429":             "bounded private operation-plan capacity, covered by projectforks store tests",
