@@ -25,6 +25,8 @@ create the default client, `default-github`:
 | `HUMAGEN_GITHUB_READ_REPOSITORIES` | `github.read_repositories` |
 | `HUMAGEN_GITHUB_LOGIN` | `github.login` |
 | `HUMAGEN_GITHUB_DEFAULT_AGENT` | `default_agent` |
+| `HUMAGEN_GITHUB_AUTO_REVIEW` | `github.auto_review.enabled`: `false` switches automatic review off. Unset, it is on |
+| `HUMAGEN_GITHUB_AUTO_REVIEW_REPOSITORIES` | `github.auto_review.repositories`, as `owner/repo=on` or `owner/repo=off` pairs, comma separated |
 
 `HUMAGEN_GITHUB_AUTO_LABELS` is retired: labels start nothing, and the server
 refuses to start while it is set. Use [Automatic review](#automatic-review).
@@ -76,6 +78,15 @@ nothing. It is on unless switched off, and labels start nothing:
 
 ```json
 {"github":{"auto_review":{"enabled":true,"repositories":{"acme/handbook":false}}}}
+```
+
+A client configured by environment variables takes these from
+`HUMAGEN_GITHUB_AUTO_REVIEW` and `HUMAGEN_GITHUB_AUTO_REVIEW_REPOSITORIES`;
+for example, off everywhere but one test repository:
+
+```sh
+export HUMAGEN_GITHUB_AUTO_REVIEW=false
+export HUMAGEN_GITHUB_AUTO_REVIEW_REPOSITORIES=acme/review-sandbox=on
 ```
 
 `enabled` is the connection's switch, on when left out. `repositories` turns it

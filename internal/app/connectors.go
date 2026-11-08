@@ -41,8 +41,13 @@ const (
 	EnvGitHubInstallation     = "HUMAGEN_GITHUB_INSTALLATION"
 	EnvGitHubBots             = "HUMAGEN_GITHUB_BOTS"
 	EnvGitHubChecks           = "HUMAGEN_GITHUB_CHECKS"
-	EnvGitHubGuides           = "HUMAGEN_GITHUB_GUIDES"
-	EnvGitHubMutations        = "HUMAGEN_GITHUB_MUTATIONS"
+	// EnvGitHubAutoReview switches automatic review of pull requests off
+	// (false) or on; unset, it is on. EnvGitHubAutoReviewRepositories turns
+	// it on or off for single repositories, as owner/repo=on|off pairs.
+	EnvGitHubAutoReview             = "HUMAGEN_GITHUB_AUTO_REVIEW"
+	EnvGitHubAutoReviewRepositories = "HUMAGEN_GITHUB_AUTO_REVIEW_REPOSITORIES"
+	EnvGitHubGuides                 = "HUMAGEN_GITHUB_GUIDES"
+	EnvGitHubMutations              = "HUMAGEN_GITHUB_MUTATIONS"
 	// EnvGitHubLogin is the app's own login. A comment that mentions it and
 	// names no agent is answered by the client's default (EnvGitHubDefault),
 	// else by the default chain of the client's home.
@@ -176,6 +181,41 @@ func boolEnv(env func(string) string, name string) (bool, error) {
 	return v, nil
 }
 
+// autoReviewEnv reads automatic review's switch and its per-repository
+// overrides. Neither set leaves it on, as a client with no setting is.
+func autoReviewEnv(env func(string) string) (*clients.AutoReview, error) {
+	raw, repos := env(EnvGitHubAutoReview), env(EnvGitHubAutoReviewRepositories)
+	if raw == "" && repos == "" {
+		return nil, nil
+	}
+	a := &clients.AutoReview{}
+	if raw != "" {
+		on, err := strconv.ParseBool(raw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid $%s: %v", EnvGitHubAutoReview, err)
+		}
+		a.Enabled = &on
+	}
+	for _, entry := range list(repos) {
+		repo, value, ok := strings.Cut(entry, "=")
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "on", "true":
+		case "off", "false":
+		default:
+			ok = false
+		}
+		if !ok {
+			return nil, fmt.Errorf("invalid $%s: %q is not owner/repo=on or owner/repo=off", EnvGitHubAutoReviewRepositories, entry)
+		}
+		if a.Repositories == nil {
+			a.Repositories = map[string]bool{}
+		}
+		v := strings.ToLower(strings.TrimSpace(value))
+		a.Repositories[strings.TrimSpace(repo)] = v == "on" || v == "true"
+	}
+	return a, nil
+}
+
 func slackClient(env func(string) string) (*platform.ClientInput, error) {
 	token, secret := env(EnvSlackToken), env(EnvSlackSecret)
 	if token == "" && secret == "" {
@@ -233,6 +273,9 @@ func githubClient(env func(string) string) (*platform.ClientInput, error) {
 		return nil, err
 	}
 	if opts.Checks, err = boolEnv(env, EnvGitHubChecks); err != nil {
+		return nil, err
+	}
+	if opts.AutoReview, err = autoReviewEnv(env); err != nil {
 		return nil, err
 	}
 	// Labels start nothing. A deployment that still sets the

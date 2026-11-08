@@ -62,6 +62,8 @@ func TestAMalformedEnvironmentIsAnError(t *testing.T) {
 		"slack commands not json":       {EnvSlackToken: "t", EnvSlackSecret: "s", EnvSlackTeam: "T01", EnvSlackCommands: "create-pr"},
 		"a github secret with no token": {EnvGitHubSecret: "s"},
 		"github with no owners":         {EnvGitHubToken: "t", EnvGitHubSecret: "s"},
+		"auto review not a boolean":     {EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "acme", EnvGitHubAutoReview: "sometimes"},
+		"auto review repo not on/off":   {EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "acme", EnvGitHubAutoReviewRepositories: "acme/site=maybe"},
 		"github labels, now retired":    {EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "acme", retiredGitHubAutoLabels: `{"acme/site":{"auto":"helper"}}`},
 	} {
 		if _, err := defaultClients(envOf(vars)); err == nil {
@@ -458,5 +460,34 @@ func TestEnabledFalseTurnsTheFilesGitHubClientOff(t *testing.T) {
 	}
 	if kept := apply(console, off); !kept.Enabled || kept.Managed != "" || kept.Version != 1 {
 		t.Fatalf("the file turned off the console's client: %+v", kept)
+	}
+}
+
+// Automatic review is on unless the environment switches it off, and single
+// repositories can be turned back on or off, so a deployment configured by
+// its environment controls it without the API.
+func TestTheEnvironmentSwitchesAutomaticReview(t *testing.T) {
+	base := map[string]string{EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "acme"}
+	read := func(extra map[string]string) *clients.AutoReview {
+		t.Helper()
+		vars := map[string]string{}
+		for k, v := range base {
+			vars[k] = v
+		}
+		for k, v := range extra {
+			vars[k] = v
+		}
+		defaults, err := defaultClients(envOf(vars))
+		if err != nil || len(defaults) != 1 {
+			t.Fatalf("defaults = %v, %v", defaults, err)
+		}
+		return defaults[0].Client.GitHub.AutoReview
+	}
+	if a := read(nil); a != nil || !a.Reviews("acme/site") {
+		t.Fatalf("unset: %+v", a)
+	}
+	a := read(map[string]string{EnvGitHubAutoReview: "false", EnvGitHubAutoReviewRepositories: "acme/test=on, acme/site=off"})
+	if a.Reviews("acme/site") || a.Reviews("acme/other") || !a.Reviews("acme/test") {
+		t.Fatalf("switched off with acme/test on: %+v", a)
 	}
 }
