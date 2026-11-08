@@ -97,6 +97,16 @@ Set `ANTHROPIC_API_KEY` before starting and configure an agent with provider `an
 
 A workspace answers through one or more [clients](docs/reference/clients.md): a Slack app or a GitHub installation, each with its own identity, secrets, agents and limits. Follow the [integration guide](docs/guides/integrations.md), then [Slack](docs/reference/slack.md) or [GitHub](docs/reference/github.md).
 
+### Manage the workspace from an MCP client
+
+`POST /api/mcp` is the humagen MCP. Each management operation of the API is a tool: agents, evals, sessions and runs, alerts, connections, model providers, schedules and settings. A call is made as you, through the same route, so you are offered only what your permissions allow. Add it to an MCP client with your workspace's address and a bearer token, for example in Claude Code:
+
+```sh
+claude mcp add --transport http humagen https://YOUR_HOST/api/mcp --header "Authorization: Bearer $HUMAGEN_TOKEN"
+```
+
+A local preview with dev sign-in needs no token.
+
 ### Deploy
 
 Run the same config on your own infrastructure with compose, Helm or Flux. Point `stores` at Postgres, `blobs` at S3 and `auth` at your identity provider. See [deploy](docs/guides/deploy.md) and [security](docs/architecture/security.md) for real sign-in, roles and machine tokens.
