@@ -215,7 +215,7 @@ function Sources({ project }: { project: string }) {
           <LayersIcon size={24} className="text-aui-muted" />
           <p className="text-aui-sm text-aui-muted">{words.sourcesEmpty}</p>
           <a
-            href={href({ page: "project", name: project, tab: "context" })}
+            href={href({ page: "project", name: project })}
             className="inline-flex min-h-9 items-center rounded-aui text-aui-xs font-medium text-aui-fg underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-aui-accent"
           >
             {words.artifactOpenContext}

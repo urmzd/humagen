@@ -1048,22 +1048,27 @@ function screens(ids: Ids, call: Call): Screen[] {
         await page.getByRole("textbox", { name: "Name", exact: true }).fill("Q4 launch");
       },
     },
-    { name: "project-initiative", path: "/projects/Strategy/overview" },
-    { name: "project-fork-ready", path: "/projects/Launch%20Copy/overview" },
+    { name: "project-initiative", path: "/projects/Strategy" },
+    { name: "project-fork-ready", path: "/projects/Launch%20Copy" },
+    // A project is one page: its old tabs open it too, so each is captured once.
+    { name: "project", path: "/projects/Launch" },
     ...[
-      "inbox",
-      "overview",
-      "context",
-      "agents",
-      "channels",
-      "schedules",
-      "people",
-      "limits",
-      "history",
-    ].map((tab) => ({
-      name: `project-${tab}`,
-      path: tab === "inbox" ? "/projects/Launch" : `/projects/Launch/${tab}`,
-    })),
+      ["project-instructions", /^(Add|Edit) Instructions$/, "Instructions"],
+      ["project-memory", /^View Memory$/, "Memory"],
+      ["project-access", /^Change Access$/, "Who can see this project"],
+    ].map(
+      ([name, action, sheet]): Screen => ({
+        name: name as string,
+        path: "/projects/Launch",
+        act: async (page) => {
+          await page
+            .getByRole("complementary", { name: "Project settings" })
+            .getByRole("button", { name: action as RegExp })
+            .click();
+          await page.getByRole("dialog", { name: sheet as string }).waitFor();
+        },
+      }),
+    ),
     { name: "project-more", path: "/projects/Launch", act: more },
     { name: "schedule-more", path: `/schedules/${ids.schedule}`, act: more },
     {
@@ -1075,18 +1080,6 @@ function screens(ids: Ids, call: Call): Screen[] {
       },
     },
     { name: "workspace", path: "/projects/~" },
-    { name: "workspace-overview", path: "/projects/~/overview" },
-    { name: "workspace-context", path: "/projects/~/context" },
-    {
-      name: "project-context-preview",
-      path: "/projects/Launch/context",
-      act: async (page) => {
-        await page.getByRole("textbox", { name: "Preview agent" }).fill("lead");
-        await page.getByRole("textbox", { name: "Preview channel" }).fill("general");
-        await page.getByRole("button", { name: "Preview Turn" }).click();
-        await page.getByRole("heading", { name: "Skill names" }).waitFor();
-      },
-    },
     { name: "inbox", path: "/inbox" },
     ...[false, true].map(
       (expanded): Screen => ({

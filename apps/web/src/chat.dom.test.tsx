@@ -1520,3 +1520,18 @@ test("the console reads cited lines from the source route", async () => {
     `/api/github/source?repo=o%2Fr&sha=${"x".repeat(40)}&file=pkg%2Fa.go&start=2&end=2&context=3`,
   );
 });
+
+test("composer only, as a project's page draws it: no greeting, its own words, and what it starts is filed in the project", async () => {
+  const { opened } = openChat(workspace("lead"), {
+    startIn: "Globex",
+    composerOnly: true,
+    placeholder: "New session in Globex",
+  });
+  assert.ok(!screen.queryByRole("heading", { level: 1 }), "no greeting");
+  assert.equal(box().getAttribute("placeholder"), "New session in Globex");
+  fireEvent.change(box(), { target: { value: "Draft the renewal note" } });
+  fireEvent.keyDown(box(), { key: "Enter" });
+  await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ab"]));
+  const started = net?.seen.find((s) => s.method === "POST");
+  assert.deepEqual(started?.body, { project: "Globex", text: "Draft the renewal note" });
+});

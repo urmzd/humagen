@@ -3168,6 +3168,7 @@ export const defaultCopy = {
     companyStart: "Start in the workspace",
     unreadUpdates: "Unread updates",
     loading: "Loading projects",
+    pinned: "Pinned",
     title: "Projects",
     /** A kind in words, on a row and in a project's meta line. */
     kind: { company: "Company-wide", team: "Team", account: "Account" } as Record<string, string>,
@@ -3311,6 +3312,134 @@ export const defaultCopy = {
     managed: "The platform file declares this project. Fields it sets can't be changed here.",
     governed: "Only those who govern projects change the workspace and company-wide projects.",
     stale: "Someone changed this project since you opened it. Its latest version is shown now.",
+    /**
+     * One project's page: Home's composer over its recent sessions, and
+     * beside them what every session in it is given.
+     */
+    page: {
+      /** The composer's placeholder: "New session in Globex". */
+      composer: (title: string) => `New session in ${title}`,
+      recents: "Recents",
+      /** A session in Recents: where it started. */
+      trace: {
+        slack: "Slack",
+        github: "GitHub",
+        console: "Console",
+        scheduled: "Scheduled",
+        /** A schedule's run: "Scheduled: weekly-recap". */
+        schedule: (name: string) => `Scheduled: ${name}`,
+        /** More agents or people than the row shows: "+2". */
+        more: (n: number) => `+${n}`,
+      },
+      noSessions: "No sessions yet",
+      untitled: "Untitled session",
+      showMore: "Show More",
+      loadingMore: "Loading…",
+      sessionsFailed: "The sessions could not be loaded.",
+      retry: "Try Again",
+      /** The side column, for assistive technology. */
+      side: "Project settings",
+      editHeading: "Edit project",
+      save: "Save",
+      saving: "Saving…",
+      cancel: "Cancel",
+      instructions: {
+        title: "Instructions",
+        none: "No instructions",
+        add: "Add",
+        edit: "Edit",
+        addLabel: "Add Instructions",
+        editLabel: "Edit Instructions",
+        /** Under the editor: "120 / 4,000". */
+        count: (n: number) => `${n.toLocaleString()} / 4,000`,
+        failed: "The instructions could not be saved. Try again.",
+      },
+      context: {
+        title: "Context",
+        none: "No corpora",
+        /** A corpus on the card: "HR policies, 3 sources". */
+        corpus: (title: string, sources: number) =>
+          `${title}, ${sources} ${sources === 1 ? "source" : "sources"}`,
+        add: "Add",
+        edit: "Edit",
+        addLabel: "Add Context",
+        editLabel: "Edit Context",
+        /** The sheet, when the reader may read no corpus. */
+        noCorpora: "No corpora to attach",
+        failed: "The context could not be saved. Try again.",
+        stale:
+          "Someone changed this project's context since you opened it. Its latest is shown now.",
+      },
+      memory: {
+        title: "Memory",
+        /** The card: "3 notes, 1 waiting". */
+        summary: (notes: number, waiting: number) =>
+          [
+            `${notes} ${notes === 1 ? "note" : "notes"}`,
+            ...(waiting > 0 ? [`${waiting} waiting`] : []),
+          ].join(", "),
+        view: "View",
+        viewLabel: "View Memory",
+        none: "No notes",
+        waiting: "Waiting for approval",
+        kept: "Notes",
+        keep: "Keep",
+        discard: "Discard",
+        forget: "Forget",
+        /** A pending note's controls: "Keep note: The launch is Tuesday". */
+        keepLabel: (text: string) => `Keep note: ${text}`,
+        discardLabel: (text: string) => `Discard note: ${text}`,
+        forgetLabel: (text: string) => `Forget note: ${text}`,
+        note: "New note",
+        add: "Add Note",
+        failed: "The notes could not be changed. Try again.",
+      },
+      scheduled: {
+        title: "Scheduled",
+        none: "Nothing scheduled",
+        add: "Add",
+        addLabel: "Add Schedule",
+        heading: "New schedule",
+        name: "Name",
+        when: "When",
+        custom: "Custom",
+        expression: "Cron expression",
+        expressionHint: "Minute, hour, day, month and weekday, in UTC",
+        agent: "Agent",
+        text: "What to ask",
+        create: "Create Schedule",
+        paused: "Paused",
+        failed: "The schedule could not be saved. Try again.",
+      },
+      slack: {
+        title: "Slack",
+        none: "No channels linked",
+        add: "Add",
+        addLabel: "Add Slack Channel",
+        heading: "Link a Slack channel",
+        client: "Slack app",
+        channel: "Slack channel ID",
+        channelHint: "Starts with C, or G for a private channel",
+        invalid: "Use a Slack channel ID that starts with C or G.",
+        noClients: "No Slack app is connected",
+        link: "Link Channel",
+        remove: "Remove",
+        /** One link on the card: "#C0123 via Acme Slack". */
+        via: (channel: string, client: string) => `#${channel} via ${client}`,
+        removeLabel: (channel: string) => `Remove #${channel}`,
+        failed: "The Slack channel could not be linked. Try again.",
+        removeFailed: "The Slack channel could not be removed. Try again.",
+      },
+      visibility: {
+        title: "Access",
+        private: "Private",
+        shared: "Shared",
+        workspace: "Workspace",
+        change: "Change",
+        changeLabel: "Change Access",
+        heading: "Who can see this project",
+      },
+    },
     failed: {
       create: "The project could not be created. Try again.",
       save: "The project could not be saved. Try again.",

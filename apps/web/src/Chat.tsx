@@ -346,6 +346,8 @@ function ChatBar({
  * and a message posted to it makes it a room. `threadId` null is Home.
  */
 export function Chat({
+  composerOnly = false,
+  placeholder: placeholderFor,
   threadId,
   me,
   handle = "",
@@ -385,6 +387,13 @@ export function Chat({
 }: {
   /** The workspace's suggestions on an empty conversation. Null or left out is the console's own. */
   starters?: Starter[] | null;
+  /**
+   * Only the composer that starts a session, as Home draws it but without its
+   * greeting, suggestions or lists: a project's page starts sessions with it.
+   */
+  composerOnly?: boolean;
+  /** What the empty composer says, over Home's own words. */
+  placeholder?: string;
   /** Quiet lines under the prompt on Home: what needs the person, and what is new. */
   home?: ReactNode;
   banner?: HomeAnnouncement;
@@ -811,7 +820,13 @@ export function Chat({
     sendNow: (text) => queue.sendNow(text),
   };
   const composer = canRun && agents.length > 0 && (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
+    <div
+      className={
+        composerOnly
+          ? "flex w-full min-w-0 flex-col gap-2"
+          : "mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4"
+      }
+    >
       <Problem message={problem} />
       <ChatBar
         project={where}
@@ -822,12 +837,14 @@ export function Chat({
         me={me}
         handle={handle}
         placeholder={
-          !threadId
+          placeholderFor ??
+          (!threadId
             ? startChannel
               ? words.startThread
               : defaultCopy.chat.placeholder
-            : words.message
+            : words.message)
         }
+        emptyText={placeholderFor}
         disclaimer={!threadId || path.length === 0 ? null : undefined}
         queue={sending}
         autoFocus={!threadId}
@@ -1026,6 +1043,8 @@ export function Chat({
       </ConversationLoading>
     );
   }
+
+  if (!threadId && composerOnly) return composer || null;
 
   if (!threadId || path.length === 0) {
     return (

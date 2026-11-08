@@ -59,7 +59,6 @@ import {
   documentTitle,
   href,
   kindParam,
-  type ProjectTab,
   type Route,
   type SettingsSection,
   useRoute,
@@ -328,7 +327,7 @@ function Console({
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   // Until the saved preferences are read, defaults only draw the page: a save
   // sends every field, so nothing is saved over values not read yet.
-  const { prefs, prefsRead, setPrefs, pin, pinProject, mute } = usePreferences();
+  const { prefs, prefsRead, setPrefs, pin, pinProject } = usePreferences();
   const [day, setDay] = useState<Summary | null>(null);
   const [live, setLive] = useState(false);
   // Bumped whenever a run starts or ends, so pages that aggregate refetch.
@@ -573,12 +572,9 @@ function Console({
       .then((r) => openThread(r.thread ?? id))
       .catch(() => openThread(id));
   };
-  // A new conversation is home: the same empty composer, at the bare address.
-  const newChat = (inProject?: string) => go({ page: "new", project: inProject });
   // "~" is how an address or a message names the workspace, which is the project "".
-  // A project opens on its inbox.
-  const openProject = (name: string, tab: ProjectTab = "inbox") =>
-    go({ page: "project", name: name === "~" ? "" : name, tab });
+  // A project is one page, with no tabs.
+  const openProject = (name: string) => go({ page: "project", name: name === "~" ? "" : name });
   const projectNames = useMemo(() => (projects ?? []).map((p) => p.name), [projects]);
   const workspaceName = workspace?.workspace_name || defaultCopy.projects.companyName;
   const policyScope =
@@ -1149,56 +1145,56 @@ function Console({
                   {route.page === "project" && (
                     <ProjectPage
                       key={route.name}
+                      self={me.handle ?? ""}
+                      composer={(placeholder) => (
+                        // Home's own composer, filing what it starts in this project.
+                        <Chat
+                          key={`project:${route.name}`}
+                          composerOnly
+                          placeholder={placeholder}
+                          threadId={null}
+                          me={me.principal.subject}
+                          handle={me.handle ?? ""}
+                          startIn={route.name}
+                          root={root}
+                          workspaceName={workspaceName}
+                          summary={undefined}
+                          tick={tick}
+                          agents={agents}
+                          agentsRead={agentRead !== "loading"}
+                          homes={homes}
+                          projects={can("projects:read") ? projects : []}
+                          canRun={can("runs:write")}
+                          canCreateProject={can("projects:write")}
+                          personalProject={me.personal_project}
+                          findHelp={can("projects:read") ? api.findHelp : undefined}
+                          greeting=""
+                          onProjectCreated={() => loadProjects()}
+                          onThread={(id) => go({ page: "conversation", id })}
+                          onChanged={loadRuns}
+                        />
+                      )}
                       name={route.name}
-                      tab={route.tab}
-                      onTab={(tab) =>
-                        go({ page: "project", name: route.name, tab }, { replace: true })
-                      }
-                      message={route.message}
-                      onMessage={(id) =>
-                        go(
-                          {
-                            page: "project",
-                            name: route.name,
-                            tab: "inbox",
-                            message: id ?? undefined,
-                          },
-                          { replace: true },
-                        )
-                      }
-                      me={me.principal.subject}
-                      inboxTick={inboxTick}
-                      muted={prefs.muted}
-                      onMute={mute}
                       pinned={prefs.pinned_projects?.includes(route.name || "~") ?? false}
                       onPin={pinProject}
-                      onOpenSource={openSource}
                       workspaceName={workspaceName}
                       projects={projects ?? []}
-                      schedules={schedules}
                       agents={agents}
-                      homes={homes}
-                      enabledIn={enabledIn}
                       can={can}
                       tick={tick}
                       onOpen={openProject}
                       onFork={() => go({ ...route, fork: true })}
                       onOpenAll={() => go({ page: "projects" })}
-                      onNewChat={() => newChat(route.name)}
                       onOpenThread={openThread}
                       onChanged={() => {
                         loadProjects();
                         loadInbox();
                       }}
                       onSchedulesChanged={loadSchedules}
-                      onAgentsChanged={loadAgents}
                       onDeleted={() => {
                         loadProjects();
                         go({ page: "projects" }, { replace: true });
                       }}
-                      onOpenChannel={(channel) =>
-                        go({ page: "channel", project: route.name, channel })
-                      }
                     />
                   )}
                   {route.page === "project" && (

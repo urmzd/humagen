@@ -796,6 +796,37 @@ export interface SuiteView extends Suite {
   runs: EvalRun[];
 }
 
+/**
+ * How widely a project is read: by one person, by named people or roles, or
+ * by everyone in the workspace. The server sends it on a project as
+ * `visibility`; until the client is regenerated it is declared here.
+ */
+export type ProjectVisibility = "private" | "shared" | "workspace";
+
+/**
+ * One corpus a project attaches, as `GET /api/projects/{name}/corpora` reads
+ * it: its title when it has one, and how many of its sources the reader sees.
+ * Declared here until the client is regenerated.
+ */
+export interface ProjectCorpus {
+  name: string;
+  title?: string;
+  sources: number;
+}
+
+/** The corpora a project attaches, at the project's version, and what a session filed there searches. */
+export interface ProjectCorpora {
+  version: number;
+  corpora: ProjectCorpus[];
+  given: { name: string; from: string }[];
+}
+
+/** A corpus as `GET /api/corpora` lists it, by what a project page needs of it. */
+export interface CorpusBrief {
+  name: string;
+  title?: string;
+}
+
 /** A project in a path: `~` is the workspace, which is the project named "". */
 export function projectPath(name: string): string {
   return name === "" ? "~" : encodeURIComponent(name);
@@ -1317,6 +1348,35 @@ export const api = {
       "DELETE",
       `/api/projects/${projectPath(name)}/announcements/${encodeURIComponent(id)}`,
     ),
+  /** The corpora a project attaches, its context. "" is the workspace. */
+  projectCorpora: (name: string) =>
+    call<ProjectCorpora>("GET", `/api/projects/${projectPath(name)}/corpora`),
+  /** Replaces the corpora a project attaches, as a whole, from the version read. */
+  setProjectCorpora: (name: string, version: number, corpora: string[]) =>
+    call<ProjectCorpora>("PUT", `/api/projects/${projectPath(name)}/corpora`, {
+      version,
+      corpora,
+    }),
+  /** Every corpus the reader may read. */
+  corpora: () => call<{ corpora: CorpusBrief[] }>("GET", "/api/corpora").then((r) => r.corpora),
+  /**
+   * The schedules filed in one project, "" for the workspace. A server that
+   * does not filter by project lists every schedule, so the list is narrowed
+   * here as well.
+   */
+  projectSchedules: (project: string) =>
+    call<{ schedules: ScheduleView[] }>(
+      "GET",
+      `/api/schedules?${new URLSearchParams({ project: project === "" ? "~" : project })}`,
+    ).then((r) =>
+      r.schedules.filter((s) => (s.project === "~" ? "" : (s.project ?? "")) === project),
+    ),
+  /** Starts a session filed in a project, "" for the workspace, from its first message. */
+  startSession: (input: { text: string; project: string }) =>
+    call<AgentSession>("POST", "/api/sessions", {
+      text: input.text,
+      project: input.project === "" ? "~" : input.project,
+    }),
   projectMemory: (project: string) =>
     call<{ notes: Note[] }>("GET", `/api/projects/${projectPath(project)}/memory`).then(
       (r) => r.notes,
@@ -1972,7 +2032,7 @@ export const coworking = {
     call<{ channels: Channel[] }>("GET", `${projectAt(project)}/channels`).then((r) => r.channels),
   createChannel: (
     project: string,
-    c: { name: string; title?: string; purpose?: string; default?: string },
+    c: { name: string; title?: string; purpose?: string; default?: string; slack?: SlackBinding },
   ) => call<Channel>("POST", `${projectAt(project)}/channels`, c),
   updateChannel: (
     project: string,
