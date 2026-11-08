@@ -147,10 +147,7 @@ export function ScheduleForm({
         {editing ? `Change ${editing.name}` : "New schedule"}
       </h2>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Label
-          text="Name"
-          hint={editing ? "A schedule's name cannot change." : "Letters, digits, dashes."}
-        >
+        <Label text="Name">
           <input
             className={field}
             value={draft.name}
@@ -159,7 +156,7 @@ export function ScheduleForm({
             onChange={(e) => set({ name: e.target.value })}
           />
         </Label>
-        <Label text="Agent" hint="Who gets the request.">
+        <Label text="Agent">
           <Menu
             label="Agent"
             value={agent}
@@ -167,10 +164,7 @@ export function ScheduleForm({
             onChange={(next) => set({ agent: next })}
           />
         </Label>
-        <Label
-          text="Project"
-          hint="Where its conversations are filed. A project's shared memory is sent with each one."
-        >
+        <Label text="Project">
           <Menu
             label="Project"
             value={draft.project ?? ""}
@@ -184,10 +178,7 @@ export function ScheduleForm({
           />
         </Label>
       </div>
-      <Label
-        text="When"
-        hint={`${inWords(draft.expression)}. Fields: minute hour day month weekday, in UTC.`}
-      >
+      <Label text="When" hint={`${inWords(draft.expression)} (UTC)`}>
         <input
           className={`${field} font-aui-mono`}
           value={draft.expression}
@@ -208,10 +199,7 @@ export function ScheduleForm({
           </button>
         ))}
       </div>
-      <Label
-        text="What to ask"
-        hint="Nobody is typing when a schedule fires, so this is the whole message the agent gets."
-      >
+      <Label text="What to ask">
         <textarea
           className={`${field} min-h-20`}
           value={draft.text}
@@ -219,10 +207,7 @@ export function ScheduleForm({
           onChange={(e) => set({ text: e.target.value })}
         />
       </Label>
-      <Label
-        text="Description"
-        hint="Why it exists, for the people reading this page. The agent is not shown it."
-      >
+      <Label text="Description">
         <input
           className={field}
           maxLength={500}
