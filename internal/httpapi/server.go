@@ -631,7 +631,7 @@ func (s *Server) removeMemory(w http.ResponseWriter, r *http.Request, who auth.P
 
 func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	seer := s.P.Seer(who)
-	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(s.P.ShownRunsAs(who, slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) })))})
+	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(s.P.ShownRunsAs(who, slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) || platform.IsEvaluation(r) })))})
 }
 
 func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {
