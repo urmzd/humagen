@@ -70,7 +70,6 @@ import (
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
 	"github.com/urmzd/humagen/pkg/githubinstall"
-	"github.com/urmzd/humagen/pkg/goodasks"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/integrations/slack"
@@ -288,7 +287,7 @@ type Platform struct {
 	files    filesblob.Store
 	// GoodAsks are the asks each agent answered well, which routing
 	// searches beside its prompt (pkg/goodasks).
-	GoodAsks *goodasks.Store
+	GoodAsks goodAsksStore
 	// health is the last health report and each component's recent checks.
 	health healthBook
 

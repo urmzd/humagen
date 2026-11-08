@@ -10,8 +10,15 @@ import (
 	"github.com/urmzd/humagen/pkg/goodasks"
 	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
 )
+
+// goodAsksStore is where the asks each agent answered well are kept.
+type goodAsksStore = *goodasks.Store
+
+// openGoodAsks opens it on st, or in memory without one.
+func openGoodAsks(st state.Store) goodAsksStore { return goodasks.Open(st) }
 
 // RefreshGoodAsk files a run's ask under its agent while anyone rates the
 // whole answer up, and drops it once nobody does, so routing finds an agent

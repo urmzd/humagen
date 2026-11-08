@@ -32,7 +32,6 @@ import (
 	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
-	"github.com/urmzd/humagen/pkg/goodasks"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
@@ -235,7 +234,7 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("evals", err)
 	p.Feedback, err = feedback.Open(perRequest)
 	keep("feedback", err)
-	p.GoodAsks = goodasks.Open(perRequest)
+	p.GoodAsks = openGoodAsks(perRequest)
 	p.Prefs, err = prefs.Open(perRequest)
 	keep("prefs", err)
 	p.Marks, err = marks.Open(perRequest)
