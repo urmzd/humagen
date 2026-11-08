@@ -2,8 +2,8 @@ import { EllipsisIcon } from "@humagen/render-web";
 import { Modal } from "@humagen/web";
 import { useRef, useState } from "react";
 import { coworking, type ProjectView, type Thread } from "./api.ts";
-import { publishMarks } from "./marks.ts";
 import { ProjectChoices } from "./ProjectPicker.tsx";
+import { publishMarks } from "./marks.ts";
 import { button, field, Popover, Problem, primary } from "./ui.tsx";
 
 /** The header uses the same ownership and governed deletion as the session list. */
