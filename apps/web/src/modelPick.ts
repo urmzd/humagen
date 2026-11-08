@@ -10,10 +10,16 @@ export interface Offers {
 const effortOrder = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 /**
- * The picks the named agents offer, together: a message may start several,
- * and each applies only what it offers. No names offers nothing.
+ * What the next message may pick. The workspace's offer applies to every agent; until an
+ * administrator sets one, the picks the named agents' own specs offer, together, as before.
  */
-export function offersFor(agents: Revision[], names: string[]): Offers {
+export function offersFor(
+  agents: Revision[],
+  names: string[],
+  workspace?: { models?: string[]; efforts?: string[] },
+): Offers {
+  if (workspace && ((workspace.models?.length ?? 0) > 0 || (workspace.efforts?.length ?? 0) > 0))
+    return offersOf([...(workspace.models ?? [])], [...(workspace.efforts ?? [])]);
   const models = new Set<string>();
   const efforts = new Set<string>();
   for (const a of agents) {
@@ -21,13 +27,18 @@ export function offersFor(agents: Revision[], names: string[]): Offers {
     for (const m of a.spec.choices?.models ?? []) models.add(m);
     for (const e of a.spec.choices?.efforts ?? []) efforts.add(e);
   }
+  return offersOf([...models], [...efforts]);
+}
+
+/** Offers in the order the control shows them: models by name, efforts lightest first. */
+function offersOf(models: string[], efforts: string[]): Offers {
   const rank = (e: string) => {
     const i = effortOrder.indexOf(e);
     return i < 0 ? effortOrder.length : i;
   };
   return {
-    models: [...models].sort(),
-    efforts: [...efforts].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b)),
+    models: [...new Set(models)].sort(),
+    efforts: [...new Set(efforts)].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b)),
   };
 }
 

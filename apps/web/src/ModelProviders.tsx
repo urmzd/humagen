@@ -4,6 +4,7 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import {
   ApiError,
   api,
+  type MessageChoices,
   type ModelProvider,
   type ModelProviderCheck,
   type ModelProviderChoice,
@@ -11,7 +12,8 @@ import {
   type ModelProviderKind,
 } from "./api.ts";
 import { Pill } from "./cards.tsx";
-import { forgetConfiguredProviders, ProviderMark } from "./ModelChain.tsx";
+import { forgetConfiguredProviders, ProviderMark, useConfiguredProviders } from "./ModelChain.tsx";
+import { catalogFor } from "./models.ts";
 import { button, card, field, Label, Problem, primary } from "./ui.tsx";
 
 /** The providers an administrator enables by name. Agents, the platform's included, name these. */
@@ -439,5 +441,192 @@ function ProviderForm({
         </button>
       </div>
     </form>
+  );
+}
+
+const EFFORTS = ["low", "medium", "high"] as const;
+
+/**
+ * What a person may pick for one message, for every agent it starts: models from the
+ * providers enabled here, and reasoning efforts. Each agent's own models stay the default.
+ */
+export function MessageChoicesControl({
+  saved,
+  canEdit,
+  onSave,
+}: {
+  saved?: MessageChoices;
+  canEdit: boolean;
+  onSave: (next: MessageChoices | undefined) => void;
+}) {
+  const configured = useConfiguredProviders();
+  const [models, setModels] = useState<string[]>(saved?.models ?? []);
+  const [efforts, setEfforts] = useState<string[]>(saved?.efforts ?? []);
+  const [adding, setAdding] = useState({ provider: "", model: "" });
+  const dirty =
+    JSON.stringify([...models].sort()) !== JSON.stringify([...(saved?.models ?? [])].sort()) ||
+    JSON.stringify([...efforts].sort()) !== JSON.stringify([...(saved?.efforts ?? [])].sort());
+  const toggle = (list: string[], set: (next: string[]) => void, value: string, on: boolean) =>
+    set(on ? [...list, value] : list.filter((v) => v !== value));
+
+  const groups = (configured ?? []).map((c) => {
+    const kind = c.kind ?? catalogFor(c.name)?.id;
+    const offered = (catalogFor(kind)?.models ?? []).map((m) => ({
+      ref: `${c.name}/${m.id}`,
+      label: m.name,
+    }));
+    const extra = models
+      .filter((m) => m.startsWith(`${c.name}/`) && !offered.some((o) => o.ref === m))
+      .map((m) => ({ ref: m, label: m.slice(c.name.length + 1) }));
+    return { name: c.name, kind: kind ?? c.name, options: [...offered, ...extra] };
+  });
+  const stranded = models.filter((m) => !groups.some((g) => m.startsWith(`${g.name}/`)));
+  const add = () => {
+    const ref = `${adding.provider}/${adding.model.trim()}`;
+    if (!adding.provider || !adding.model.trim() || models.includes(ref)) return;
+    setModels([...models, ref]);
+    setAdding({ ...adding, model: "" });
+  };
+
+  return (
+    <section className={`${card} flex min-w-0 flex-col gap-3`} aria-label="Message choices">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-aui-sm font-medium text-aui-fg">Message choices</h2>
+        <p className="text-aui-xs text-aui-muted">
+          What people may pick for one message. Each agent's own models are the default.
+        </p>
+      </div>
+      {configured !== null && configured.length === 0 ? (
+        <p className="text-aui-sm text-aui-muted">Enable a provider above to offer its models.</p>
+      ) : (
+        <div className="flex min-w-0 flex-col gap-3">
+          {groups.map((g) => (
+            <fieldset key={g.name} className="flex min-w-0 flex-col gap-1.5">
+              <legend className="mb-1 flex items-center gap-2 text-aui-xs font-medium text-aui-fg">
+                <ProviderMark provider={g.kind} size={14} />
+                {g.name}
+              </legend>
+              <div className="flex min-w-0 flex-wrap gap-x-4 gap-y-1.5">
+                {g.options.map((o) => (
+                  <label key={o.ref} className="flex items-center gap-2 text-aui-sm">
+                    <input
+                      type="checkbox"
+                      disabled={!canEdit}
+                      checked={models.includes(o.ref)}
+                      onChange={(e) => toggle(models, setModels, o.ref, e.target.checked)}
+                    />
+                    {o.label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ))}
+          {stranded.length > 0 && (
+            <fieldset className="flex min-w-0 flex-col gap-1.5">
+              <legend className="mb-1 text-aui-xs font-medium text-aui-muted">
+                On a provider that is not enabled
+              </legend>
+              <div className="flex min-w-0 flex-wrap gap-x-4 gap-y-1.5">
+                {stranded.map((m) => (
+                  <label key={m} className="flex items-center gap-2 text-aui-sm text-aui-muted">
+                    <input
+                      type="checkbox"
+                      disabled={!canEdit}
+                      checked
+                      onChange={() => setModels(models.filter((v) => v !== m))}
+                    />
+                    {m}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
+          {canEdit && groups.length > 0 && (
+            <div className="flex min-w-0 flex-wrap items-end gap-2">
+              <Label text="Another model">
+                <NativeSelect
+                  aria-label="Provider of another model"
+                  value={adding.provider || groups[0]?.name || ""}
+                  onChange={(e) => setAdding({ ...adding, provider: e.target.value })}
+                >
+                  {groups.map((g) => (
+                    <option key={g.name} value={g.name}>
+                      {g.name}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </Label>
+              <input
+                className={`${field} min-w-0 flex-1`}
+                aria-label="Model id"
+                placeholder="Model id"
+                value={adding.model}
+                onFocus={() =>
+                  !adding.provider && setAdding({ ...adding, provider: groups[0]?.name ?? "" })
+                }
+                onChange={(e) =>
+                  setAdding({
+                    provider: adding.provider || groups[0]?.name || "",
+                    model: e.target.value,
+                  })
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    add();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className={button}
+                onClick={add}
+                disabled={!adding.model.trim()}
+              >
+                Add
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      <fieldset className="flex min-w-0 flex-wrap items-center gap-2">
+        <legend className="mb-1.5 text-aui-xs font-medium text-aui-fg">Reasoning effort</legend>
+        {EFFORTS.map((e) => (
+          <button
+            key={e}
+            type="button"
+            disabled={!canEdit}
+            aria-pressed={efforts.includes(e)}
+            onClick={() => toggle(efforts, setEfforts, e, !efforts.includes(e))}
+            className={`${button} aria-pressed:border-aui-fg aria-pressed:text-aui-fg`}
+          >
+            {e.charAt(0).toUpperCase() + e.slice(1)}
+          </button>
+        ))}
+      </fieldset>
+      {canEdit && dirty && (
+        <div className="flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            className={button}
+            onClick={() => {
+              setModels(saved?.models ?? []);
+              setEfforts(saved?.efforts ?? []);
+            }}
+          >
+            Discard
+          </button>
+          <button
+            type="button"
+            className={primary}
+            onClick={() =>
+              onSave(models.length || efforts.length ? { models, efforts } : undefined)
+            }
+          >
+            Save Choices
+          </button>
+        </div>
+      )}
+    </section>
   );
 }

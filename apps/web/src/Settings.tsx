@@ -47,7 +47,7 @@ import {
 import { BillingSettings } from "./Billing.tsx";
 import { ClientSettings } from "./Clients.tsx";
 import { DeletionQueue } from "./DeletionQueue.tsx";
-import { ModelProviderSettings } from "./ModelProviders.tsx";
+import { MessageChoicesControl, ModelProviderSettings } from "./ModelProviders.tsx";
 import { PersonalPreferences } from "./PersonalPreferences.tsx";
 import type { PrefsRead } from "./preferences.ts";
 import { ReadAudit } from "./ReadAudit.tsx";
@@ -258,6 +258,14 @@ export function Settings({
                   saved={workspace.router ?? {}}
                   canEdit={canAdmin}
                   onSave={(router) => saveWorkspace({ router })}
+                />
+              )}
+              {workspace && (
+                <MessageChoicesControl
+                  key={`${providersRead}:${JSON.stringify(workspace.message_choices ?? null)}`}
+                  saved={workspace.message_choices}
+                  canEdit={canAdmin}
+                  onSave={(message_choices) => saveWorkspace({ message_choices })}
                 />
               )}
             </>

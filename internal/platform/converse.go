@@ -82,6 +82,10 @@ type Settings struct {
 	// Router is the model each agent is asked on about a message that
 	// names none: "should I be involved?".
 	Router RouterSettings `json:"router"`
+	// MessageChoices are the models and reasoning efforts a person may pick
+	// for one message, for every agent it starts (chooseForMessage). Nil
+	// offers none: each agent runs on its own models.
+	MessageChoices *wire.Choices `json:"message_choices,omitempty"`
 	// ModelProviders are the model providers the workspace's
 	// administrators set up. Only SetModelProvider and DeleteModelProvider
 	// change them; a settings write keeps them as they are.
@@ -324,6 +328,11 @@ func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings
 	if err := p.checkRouter(tenant, &next.Router); err != nil {
 		return err
 	}
+	choices, err := p.checkMessageChoices(tenant, next.MessageChoices)
+	if err != nil {
+		return err
+	}
+	next.MessageChoices = choices
 	// A policy an agent still runs on cannot be removed, or that agent would
 	// have no model at its next call.
 	for _, old := range stored.ModelPolicies {

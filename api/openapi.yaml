@@ -13504,6 +13504,14 @@ components:
             $ref: "#/components/schemas/ModelPolicy"
         router:
           $ref: "#/components/schemas/RouterSettings"
+        message_choices:
+          description: |
+            The models and reasoning efforts a person may pick for one message,
+            for every agent it starts; each agent's own models are the default.
+            Each model is provider/model on a provider the workspace has; each
+            effort is low, medium or high. Absent offers none.
+          allOf:
+            - $ref: "#/components/schemas/AgentChoices"
         model_providers:
           description: |
             The model providers the workspace's administrators set up, with no
