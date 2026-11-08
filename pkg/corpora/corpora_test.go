@@ -18,6 +18,7 @@ var at = time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
 func hr() Corpus {
 	return Corpus{
 		Name:        "hr-policies",
+		Title:       " HR policies ",
 		Description: "  Leave, pay and conduct policies  ",
 		Owner:       "00u-ana",
 		Readers:     []Reader{{Kind: Project, Name: "People"}, {Kind: Person, Name: "00u-bo"}, {Kind: Person, Name: "00u-bo"}},
@@ -35,7 +36,7 @@ func TestCorpusLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if made.Description != "Leave, pay and conduct policies" || made.Links != Isolated || made.Version == 0 || !made.CreatedAt.Equal(at) {
+		if made.Description != "Leave, pay and conduct policies" || made.Title != "HR policies" || made.Links != Isolated || made.Version == 0 || !made.CreatedAt.Equal(at) {
 			t.Fatalf("created %+v", made)
 		}
 		if len(made.Members) != 2 || len(made.Readers) != 2 {
@@ -91,6 +92,7 @@ func TestCorpusIsChecked(t *testing.T) {
 		"no owner":         {Name: "hr"},
 		"long description": {Name: "hr", Owner: "o", Description: string(make([]byte, MaxDescription+1))},
 		"bad links":        {Name: "hr", Owner: "o", Links: "open"},
+		"two-line title":   {Name: "hr", Owner: "o", Title: "HR\npolicies"},
 		"bad member kind":  {Name: "hr", Owner: "o", Members: []Member{{Kind: "drive", Name: "x"}}},
 		"bad member name":  {Name: "hr", Owner: "o", Members: []Member{{Kind: Source, Name: "X Y"}}},
 		"unnamed person":   {Name: "hr", Owner: "o", Readers: []Reader{{Kind: Person}}},

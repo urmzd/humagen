@@ -29,8 +29,8 @@ func TestACorpusIsReadByItsReadersAndChangedByItsOwner(t *testing.T) {
 	if code, out := status(t, f, cy, "POST", "/api/corpora", `{"name":"theirs","members":[{"kind":"catalog","name":"warehouse"}]}`); code != http.StatusBadRequest {
 		t.Fatalf("a corpus holding a warehouse its maker cannot see = %d %v", code, out)
 	}
-	made := want(t, f, ana, "POST", "/api/corpora", `{"name":"hr","members":[{"kind":"source","name":"handbook"},{"kind":"catalog","name":"warehouse"}],"readers":[{"kind":"person","name":"00u-bo"},{"kind":"person","name":"00u-dee"}]}`, http.StatusCreated)
-	if made["owner"] != "00u-ana" || made["mine"] != true || made["links"] != "isolated" {
+	made := want(t, f, ana, "POST", "/api/corpora", `{"name":"hr","title":"HR policies","members":[{"kind":"source","name":"handbook"},{"kind":"catalog","name":"warehouse"}],"readers":[{"kind":"person","name":"00u-bo"},{"kind":"person","name":"00u-dee"}]}`, http.StatusCreated)
+	if made["owner"] != "00u-ana" || made["mine"] != true || made["links"] != "isolated" || made["title"] != "HR policies" {
 		t.Fatalf("made %v", made)
 	}
 	if got := fmt.Sprint(made["members"]); got != "[map[holds:files items:0 kind:source name:handbook provider:manual status:ready] map[holds:records items:0 kind:catalog name:warehouse provider:bigquery status:syncing]]" {
@@ -88,8 +88,8 @@ func TestACorpusIsReadByItsReadersAndChangedByItsOwner(t *testing.T) {
 	}
 	// Dee cannot see Ana's warehouse, and keeps it when she sets members.
 	kept := want(t, f, dee, "PATCH", "/api/corpora/hr", `{"members":[{"kind":"source","name":"handbook"}]}`, http.StatusOK)
-	if got := fmt.Sprint(kept["members"]); got != "[map[holds:files items:0 kind:source name:handbook provider:manual status:ready] map[items:0 kind:catalog name: status:hidden]]" {
-		t.Fatalf("a member the owner cannot see was dropped: %s", got)
+	if got := fmt.Sprint(kept["members"]); got != "[map[holds:files items:0 kind:source name:handbook provider:manual status:ready] map[items:0 kind:catalog name:warehouse status:hidden]]" {
+		t.Fatalf("a member the owner cannot see was dropped, or not named to its owner: %s", got)
 	}
 	want(t, f, dee, "DELETE", "/api/corpora/hr", "", http.StatusNoContent)
 }

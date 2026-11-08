@@ -14795,7 +14795,8 @@ components:
       type: object
       description: |
         A member as the reader sees it. One the reader may not see has
-        status `hidden` and no name; one whose source was deleted is `missing`.
+        status `hidden` and no name, except to the corpus's owner, who sees its
+        name so they can remove it; one whose source was deleted is `missing`.
       required: [kind, name, items, status]
       properties:
         kind: {type: string, enum: [source, catalog]}
@@ -14821,6 +14822,7 @@ components:
       required: [name, owner, readers, members, links, created_at, updated_at, version, mine]
       properties:
         name: {type: string}
+        title: {type: string, description: "What people call it, such as HR policies. Absent shows the name."}
         description: {type: string}
         owner: {type: string, description: The subject of the person who manages it.}
         readers:
@@ -14844,6 +14846,7 @@ components:
       required: [name]
       properties:
         name: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}
+        title: {type: string, maxLength: 120}
         description: {type: string, maxLength: 500}
         readers:
           type: array
@@ -14857,6 +14860,7 @@ components:
     CorpusChange:
       type: object
       properties:
+        title: {type: string, maxLength: 120}
         description: {type: string, maxLength: 500}
         readers:
           type: array

@@ -3417,7 +3417,8 @@ export interface CorpusMemberRef {
 }
 
 /** A member as the reader sees it. One the reader may not see has
-status `hidden` and no name; one whose source was deleted is `missing`.
+status `hidden` and no name, except to the corpus's owner, who sees its
+name so they can remove it; one whose source was deleted is `missing`.
  */
 export interface CorpusMember {
   kind: "source" | "catalog";
@@ -3442,6 +3443,8 @@ export interface CorpusReader {
 
 export interface Corpus {
   name: string;
+  /** What people call it, such as HR policies. Absent shows the name. */
+  title?: string;
   description?: string;
   /** The subject of the person who manages it. */
   owner: string;
@@ -3458,6 +3461,7 @@ export interface Corpus {
 
 export interface CorpusCreate {
   name: string;
+  title?: string;
   description?: string;
   readers?: CorpusReader[];
   members?: CorpusMemberRef[];
@@ -3465,6 +3469,7 @@ export interface CorpusCreate {
 }
 
 export interface CorpusChange {
+  title?: string;
   description?: string;
   readers?: CorpusReader[];
   members?: CorpusMemberRef[];

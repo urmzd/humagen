@@ -149,7 +149,7 @@ keeps each workspace's corpora on `pkg/state`, per request.
 
 | Field | Meaning |
 | --- | --- |
-| `name`, `description` | Lower case letters, digits and dashes; the name later prefixes the tools a corpus gives agents |
+| `name`, `title`, `description` | The name is lower case letters, digits and dashes and never changes; the title is what people call it, such as "HR policies" |
 | `owner` | The person who manages it. Only the owner changes, hands off or deletes it |
 | `readers` | Who may read it: people by subject, everyone who sees a project, or the workspace. Default deny |
 | `members` | Up to 50 knowledge sources (`source`) and catalog connectors (`catalog`), by name |
@@ -165,8 +165,8 @@ A member is a reference, never a copy. What it brings depends on the source:
 
 Holding a source never widens who may read it. A reader sees each member by
 the source's own rules; one they may not see is listed as `hidden`, without
-its name, and an owner's new members list keeps the members the owner can no
-longer see. A member whose source was deleted shows as `missing` until the
+its name (the owner alone sees its name, to remove it), and an owner's new
+members list keeps the members the owner can no longer see. A member whose source was deleted shows as `missing` until the
 owner removes it. Deleting a corpus leaves its sources as they are.
 
 Routes, all behind `knowledge:read` or `knowledge:write`: `GET` and `POST

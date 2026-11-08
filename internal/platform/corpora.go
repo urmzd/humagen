@@ -59,6 +59,7 @@ type CorpusView struct {
 // CorpusCreate is what a person sets when making a corpus.
 type CorpusCreate struct {
 	Name        string           `json:"name"`
+	Title       string           `json:"title"`
 	Description string           `json:"description"`
 	Readers     []corpora.Reader `json:"readers"`
 	Members     []corpora.Member `json:"members"`
@@ -68,6 +69,7 @@ type CorpusCreate struct {
 // CorpusChange is a partial change to a corpus. A nil field is kept.
 // Version, when set, must be the corpus's current version.
 type CorpusChange struct {
+	Title       *string           `json:"title,omitempty"`
 	Description *string           `json:"description,omitempty"`
 	Readers     *[]corpora.Reader `json:"readers,omitempty"`
 	Members     *[]corpora.Member `json:"members,omitempty"`
@@ -128,8 +130,14 @@ func (p *Platform) memberVisible(who auth.Principal, m corpora.Member) bool {
 	return false
 }
 
-func (p *Platform) memberView(who auth.Principal, m corpora.Member) CorpusMemberView {
+// memberView is one member as who sees it. owner is set for the corpus's
+// owner, who added every member and so sees the name of one they can no
+// longer read, to remove it; nothing else about it is shown.
+func (p *Platform) memberView(who auth.Principal, m corpora.Member, owner bool) CorpusMemberView {
 	hidden := CorpusMemberView{Member: corpora.Member{Kind: m.Kind}, Status: MemberHidden}
+	if owner {
+		hidden.Name = m.Name
+	}
 	switch m.Kind {
 	case corpora.Source:
 		src, err := p.Knowledge.Get(who.Tenant, m.Name)
@@ -178,7 +186,7 @@ func (p *Platform) memberView(who auth.Principal, m corpora.Member) CorpusMember
 func (p *Platform) corpusView(who auth.Principal, c corpora.Corpus) CorpusView {
 	v := CorpusView{Corpus: c, Members: make([]CorpusMemberView, 0, len(c.Members)), Mine: c.Owner == who.Subject}
 	for _, m := range c.Members {
-		v.Members = append(v.Members, p.memberView(who, m))
+		v.Members = append(v.Members, p.memberView(who, m, v.Mine))
 	}
 	return v
 }
@@ -243,7 +251,7 @@ func (p *Platform) CreateCorpus(who auth.Principal, in CorpusCreate) (CorpusView
 	if err := p.addable(who, in.Members); err != nil {
 		return CorpusView{}, err
 	}
-	c, err := p.Corpora.Create(who.Tenant, corpora.Corpus{Name: in.Name, Description: in.Description, Owner: who.Subject, Readers: in.Readers, Members: in.Members, Links: in.Links}, p.now())
+	c, err := p.Corpora.Create(who.Tenant, corpora.Corpus{Name: in.Name, Title: in.Title, Description: in.Description, Owner: who.Subject, Readers: in.Readers, Members: in.Members, Links: in.Links}, p.now())
 	if err != nil {
 		return CorpusView{}, err
 	}
@@ -270,6 +278,9 @@ func (p *Platform) UpdateCorpus(who auth.Principal, name string, ch CorpusChange
 	c, err := p.Corpora.Update(who.Tenant, name, ch.Version, p.now(), func(c *corpora.Corpus) error {
 		if c.Owner != who.Subject {
 			return fmt.Errorf("%w: only %s's owner may change it", ErrForbidden, name)
+		}
+		if ch.Title != nil {
+			c.Title = *ch.Title
 		}
 		if ch.Description != nil {
 			c.Description = *ch.Description

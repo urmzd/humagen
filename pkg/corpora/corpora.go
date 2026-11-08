@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/urmzd/humagen/pkg/state"
@@ -30,6 +31,7 @@ const (
 	MaxMembers     = 50
 	MaxReaders     = 50
 	MaxDescription = 500
+	MaxTitle       = 120
 )
 
 var (
@@ -90,7 +92,10 @@ const (
 
 // Corpus is one named body of knowledge.
 type Corpus struct {
-	Name        string    `json:"name"`
+	Name string `json:"name"`
+	// Title is what people call it, such as "HR policies". Empty shows
+	// the name.
+	Title       string    `json:"title,omitempty"`
 	Description string    `json:"description,omitempty"`
 	Owner       string    `json:"owner"`
 	Readers     []Reader  `json:"readers"`
@@ -116,12 +121,14 @@ func ValidName(name string) bool { return validName.MatchString(name) }
 // normal checks a corpus and returns it with its lists deduplicated, in the
 // order given, and its links defaulted.
 func normal(c Corpus) (Corpus, error) {
-	c.Description = strings.TrimSpace(c.Description)
+	c.Description, c.Title = strings.TrimSpace(c.Description), strings.TrimSpace(c.Title)
 	switch {
 	case !ValidName(c.Name):
 		return c, fmt.Errorf("%w: a corpus name is lower case letters, digits and dashes, at most 63", ErrInvalid)
 	case len(c.Description) > MaxDescription || !utf8.ValidString(c.Description):
 		return c, fmt.Errorf("%w: a description is at most %d bytes", ErrInvalid, MaxDescription)
+	case len(c.Title) > MaxTitle || !utf8.ValidString(c.Title) || strings.ContainsFunc(c.Title, unicode.IsControl):
+		return c, fmt.Errorf("%w: a title is one line of at most %d bytes", ErrInvalid, MaxTitle)
 	case c.Owner == "" || len(c.Owner) > 200:
 		return c, fmt.Errorf("%w: a corpus needs an owner", ErrInvalid)
 	}
