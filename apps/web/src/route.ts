@@ -240,7 +240,13 @@ export type Route =
    * One project: a page of its own, with no tabs. The workspace itself is the
    * project named "", written `~`. `fork` opens the Fork Project sheet over it.
    */
-  | { page: "project"; name: string; fork?: boolean }
+  | {
+      page: "project";
+      name: string;
+      fork?: boolean;
+      /** A tab an older link named. Projects have one page now, so it is ignored. */
+      tab?: string;
+    }
   /** One of a project's channels, with its shared threads. */
   | { page: "channel"; project: string; channel: string }
   | { page: "schedules"; name?: string }

@@ -1458,7 +1458,7 @@ function Console({
                       projects={projectNames}
                       onOpenProjects={() => go({ page: "projects" })}
                       onOpenWorkspace={() => openProject("")}
-                      onOpenWorkspaceAgents={() => go({ page: "project", name: "" })}
+                      onOpenWorkspaceAgents={() => go({ page: "project", name: "", tab: "agents" })}
                     />
                   )}
                 </>
