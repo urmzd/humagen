@@ -98,8 +98,8 @@ func TestCorpusSearchMergesMembersForOneReader(t *testing.T) {
 	}
 	// A shared conversation with someone who may not read the corpus is
 	// shown nothing (the rules by label are in corpus_audience_test.go).
-	if _, err := search("bo-shared", "bo", "worker", false, "bo", "eve"); err == nil {
-		t.Fatal("searched where someone may not read the corpus")
+	if out, err := search("bo-shared", "bo", "worker", false, "bo", "eve"); err == nil && (strings.Contains(out, "sixteen weeks") || !strings.Contains(out, "held_back")) {
+		t.Fatalf("searched where someone may not read the corpus: %s", out)
 	}
 }
 
