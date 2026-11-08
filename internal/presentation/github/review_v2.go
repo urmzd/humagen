@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	transport "github.com/urmzd/orchagent/flow/connectors/github"
 )
 
 // ReviewScope pins the review to the exact source revision it inspected.
@@ -44,4 +46,55 @@ func validateV2(r ReviewReport) error {
 		seen[f.ID] = true
 	}
 	return nil
+}
+
+// NativeReview prepares a real pull request review, preserving invalid anchors
+// in the body. The transport checks every anchor against the actual diff and
+// degrades approval unless project policy explicitly allows it.
+func NativeReview(report ReviewReport, files []transport.ContextFile, allowApprove bool) (transport.Review, error) {
+	body, err := FormatReview(report)
+	if err != nil {
+		return transport.Review{}, err
+	}
+	if report.Format != ReviewFormatV2 {
+		return transport.Review{}, fmt.Errorf("github: native reviews require %s", ReviewFormatV2)
+	}
+	r := transport.Review{CommitID: report.Scope.Commit, Body: body, Event: "COMMENT"}
+	switch report.Verdict {
+	case "approve":
+		if allowApprove {
+			r.Event = "APPROVE"
+		} else {
+			r.Body += "\n\nApproval was not submitted because project policy permits comments only."
+		}
+	case "request_changes":
+		r.Event = "REQUEST_CHANGES"
+	}
+	for _, f := range report.Findings {
+		if f.Location == nil {
+			continue
+		}
+		l := f.Location
+		side := l.Side
+		if side == "" {
+			side = "RIGHT"
+		}
+		var evidence strings.Builder
+		for _, e := range f.Evidence {
+			fmt.Fprintf(&evidence, "- %s (%s)", reviewText(e.Observation), reviewPointer(e.Source))
+			if e.Step != "" {
+				fmt.Fprintf(&evidence, " step %s", reviewText(e.Step))
+			}
+			if e.Session != "" {
+				fmt.Fprintf(&evidence, " session %s", reviewText(e.Session))
+			}
+			if e.Step == "" && e.Session == "" {
+				evidence.WriteString(" (unverified)")
+			}
+			evidence.WriteString("\n")
+		}
+		text := fmt.Sprintf("**%s**\n\n%s\n\n<details><summary>Evidence</summary>\n\n%s\n</details>", reviewText(f.Title), reviewText(f.Suggestion), evidence.String())
+		r.Comments = append(r.Comments, transport.ReviewComment{FindingID: f.ID, Path: l.Path, Body: text, Line: l.Line, Side: side, StartLine: l.StartLine, StartSide: side, Change: f.Change})
+	}
+	return transport.PrepareReview(r, files, allowApprove)
 }

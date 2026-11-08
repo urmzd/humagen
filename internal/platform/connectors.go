@@ -246,6 +246,15 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag event.Envelope) []eve
 	}
 	agent := wire.AgentOf(tag)
 	if agent == "" {
+		if place, err := address.Parse(tag.Channel); err == nil {
+			if prior, ok, err := s.p.resolveSurface(c, place); err == nil && ok {
+				if run, err := s.p.Runs.Get(c.Tenant, prior.Run); err == nil && run.Client == c.ID {
+					agent = run.Agent
+				}
+			}
+		}
+	}
+	if agent == "" {
 		if agent = s.p.untaggedFor(c, project, channel, from.SlackChannel); agent == "" {
 			s.p.log.Warn("platform: no default answers an untagged message where a client's run is filed", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "channel", channel, "event", tag.ID)
 			return nil
@@ -615,6 +624,10 @@ func (s *surface) Deliver(ctx context.Context, to address.Address, e event.Envel
 		}
 	}
 
+	e, err = s.p.reviewPublication(ctx, e)
+	if err != nil {
+		return err
+	}
 	return st.peer.Deliver(ctx, to, e)
 }
 
@@ -777,6 +790,9 @@ func (p *Platform) flushConnections(ctx context.Context) error {
 					// its connection and lets the next client make progress.
 					flushCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 					err := st.peer.Flush(flushCtx)
+					if err == nil {
+						err = p.pollSurfaceFeedback(flushCtx, st)
+					}
 					cancel()
 					if err != nil && !errors.Is(err, context.Canceled) {
 						p.log.Warn("connector flush", "connector", name, "client", st.client.ID, "error", err)

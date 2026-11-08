@@ -1126,6 +1126,7 @@ export interface RunFeedback {
   reason?: string;
   comment?: string;
   updated_at: string;
+  finding_id?: string;
 }
 
 /** A current confined authored outcome snapshot for explicit human review. Personal scope is the default; project scope is derived from current placement and ordinary ownership. */
@@ -2216,6 +2217,7 @@ change in the project's history records them the same way.
   updated_by?: string;
   /** When the record last changed. What happened in it is `active_at` on a view. */
   updated_at: string;
+  approve_reviews?: boolean;
 }
 
 /** One project on the way down to another. */
@@ -2291,6 +2293,7 @@ export interface ProjectUpdate {
   kinds?: ProjectKindSpec[];
   /** What a scheduled agent's announcement here does, `publish` or `review`. Empty takes the kind's default. */
   agent_posts?: "" | "publish" | "review";
+  approve_reviews?: boolean;
 }
 
 /** A caller's role in a project, where it comes from, and the entry or rule that gave it. */
@@ -3818,6 +3821,7 @@ export interface GitHubOptions {
   /** The app's own GitHub login, such as `humagen[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default (see docs/reference/github.md). */
   login?: string;
   action_repositories?: string[];
+  fix_pull_requests?: boolean;
 }
 
 /** A client as a caller writes it. The tenant, who manages it and its version are the server's to say. */
@@ -4496,6 +4500,8 @@ export interface SessionIdentity {
   agent: string;
   parent: string;
   label?: string;
+  /** The readable session alert that anchors this fix conversation. */
+  source_alert?: string;
 }
 
 export interface SessionInput {
@@ -4507,6 +4513,8 @@ export interface SessionInput {
   project?: string;
   model?: string;
   effort?: string;
+  /** The readable session alert that anchors this fix conversation. */
+  source_alert?: string;
 }
 
 /** A session message with optional routing to a mentioned agent. */
@@ -4889,6 +4897,7 @@ export interface SaveSessionFeedbackBody {
   rating: "up" | "down";
   reason?: string;
   comment?: string;
+  finding_id?: string;
 }
 
 export interface LinkSessionBody {
@@ -5064,6 +5073,7 @@ export interface ListRunFeedbackResponse {
 }
 
 export interface SaveRunFeedbackBody {
+  finding_id?: string;
   rating: "up" | "down";
   reason?: string;
   comment?: string;

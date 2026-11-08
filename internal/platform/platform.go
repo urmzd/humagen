@@ -102,6 +102,9 @@ var ErrForbidden = errors.New("platform: forbidden")
 // Config is what a running platform needs. Nothing here reads the environment,
 // so a test can build a second platform in the same process.
 type Config struct {
+	// PublicURL is the configured canonical console URL for trusted backlinks.
+	// It is not an input accepted from an agent or webhook.
+	PublicURL string
 	// Rooms is how conversations with many viewers are read and how fast
 	// runs are admitted into them (pkg/rooms). Zero fields are its defaults.
 	Rooms rooms.Config
@@ -266,8 +269,9 @@ type Config struct {
 
 // Platform is the assembled system.
 type Platform struct {
-	Sessions session.Store
-	app      *flow.App
+	surfaceRecords *surfaceRecords
+	Sessions       session.Store
+	app            *flow.App
 	// Rooms holds the conversations followed on this server (pkg/rooms).
 	Rooms    *rooms.Hub
 	roomGate *rooms.Gate
@@ -707,6 +711,10 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 		tag.Time = p.now()
 	}
 	wire.DeleteMeta(&tag, wire.MetaSession)
+	wire.DeleteMeta(&tag, wire.MetaSourceAlert)
+	if err := p.pinSessionSourceAlert(ctx, &tag); err != nil {
+		return runs.Run{}, err
+	}
 	agent := wire.AgentOf(tag)
 	if agent == "" {
 		return runs.Run{}, fmt.Errorf("%w: event %q names no agent", runtime.ErrInvalid, tag.ID)
@@ -1153,7 +1161,7 @@ func (p *Platform) raise(run runs.Run) error {
 
 // RunTypes are the type prefixes the platform observes: every run event,
 // the opt-in usage and compaction families among them.
-var RunTypes = []string{"run", "run.usage", "run.context"}
+var RunTypes = []string{"run", "run.usage", "run.context", "run.feedback"}
 
 // channels are the channel roots every run publishes under: one per
 // registered connector's scheme, and the channel of a run Humagen raises

@@ -156,13 +156,13 @@ func categoryOf(name string) operations.Category {
 	switch name {
 	case ToolCallAgent, ToolDelegate:
 		return operations.CallAgents
-	case "github_read_context", "github_read_file", "github_workflow_status", ToolFileRead, ToolFileList, ToolRunsSummary, ToolListAlerts, ToolListAgents, ToolReadAgent, "source_search", ToolCatalogSearch, ToolCatalogQuery:
+	case "github_read_context", "github_fix_base", "github_read_file", "github_workflow_status", ToolFileRead, ToolFileList, ToolRunsSummary, ToolListAlerts, ToolListAgents, ToolReadAgent, "source_search", ToolCatalogSearch, ToolCatalogQuery:
 		return operations.ReadContext
 	case ToolFileWrite, ToolSaveAgent, ToolShell:
 		return operations.WriteFiles
 	case ToolPublish:
 		return operations.PublishArtifacts
-	case "github_comment", "github_request_review", "github_add_labels", "github_apply_changes", "slack_add_reaction":
+	case "github_comment", "github_create_fix_pr", "github_create_review", "github_request_review", "github_add_labels", "github_apply_changes", "slack_add_reaction":
 		return operations.ExternalMessages
 	}
 	if strings.HasPrefix(name, "tag_") {
@@ -251,7 +251,7 @@ type operationTool struct {
 
 func (p *Platform) operationTool(req runtime.Request, t saigetypes.Tool, c operations.Category) saigetypes.Tool {
 	wrapped := &operationTool{Tool: t, p: p, req: req, category: c}
-	if t.Definition().Name == "github_apply_changes" {
+	if t.Definition().Name == "github_apply_changes" || t.Definition().Name == "github_create_fix_pr" {
 		wrapped.extra = operations.WriteFiles
 	}
 	return wrapped
@@ -564,6 +564,16 @@ func (p *Platform) operationTools(req runtime.Request) ([]string, bool, error) {
 
 func (t *operationTool) decision() operations.Level {
 	level := t.p.operationDecision(t.req, t.category)
+	if t.Definition().Name == "github_create_fix_pr" {
+		files := t.p.operationDecision(t.req, operations.WriteFiles)
+		if level == operations.Never || files == operations.Never {
+			return operations.Never
+		}
+		if level != operations.Allow || files != operations.Allow {
+			return operations.Ask
+		}
+		return operations.Allow
+	}
 	if t.extra != "" {
 		extra := t.p.operationDecision(t.req, t.extra)
 		if extra == operations.Never || extra == operations.Ask && level != operations.Never {

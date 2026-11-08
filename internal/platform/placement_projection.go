@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 // moved conversation's operational event view. Durable journal bytes are never
 // rewritten. The publication preview names this exclusion explicitly.
 func (p *Platform) ShownEvent(who auth.Principal, e event.Envelope) event.Envelope {
+	e = p.reviewEvent(context.Background(), e, &who)
 	hidden, moved := p.movedContext(who.Tenant, e.Run)
 	if !moved || e.Data == nil {
 		return e
@@ -60,6 +62,7 @@ func (p *Platform) ShownAPI(who auth.Principal, e event.Envelope) (APIEvent, boo
 	if event.Family(e.Type) != "run" || e.Tenant != who.Tenant {
 		return APIEvent{}, false
 	}
+	e = p.reviewEvent(context.Background(), e, &who)
 	var raw []byte
 	switch {
 	case e.Type == event.TypeCitation:

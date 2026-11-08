@@ -247,7 +247,8 @@ type Project struct {
 	// AgentPosts is what becomes of what an agent scheduled here posts:
 	// publish, or review by the project's owners. Left out, it is the
 	// console's, and a new project takes its kind's default.
-	AgentPosts string `json:"agent_posts,omitempty"`
+	AgentPosts     string `json:"agent_posts,omitempty"`
+	ApproveReviews *bool  `json:"approve_reviews,omitempty"`
 	// Run is the project's level of the run settings, for every run filed
 	// here and below: ceilings that tighten the levels above, and
 	// preferences that override theirs. It is the file's alone: the

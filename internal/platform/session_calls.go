@@ -35,7 +35,7 @@ func (p *Platform) startSessionChild(ctx context.Context, parent runtime.Input, 
 	if parent.Session == nil || th.Session == nil || parent.Session.ID != th.ID {
 		return "", fmt.Errorf("%w: caller has no session", call.ErrInvalid)
 	}
-	child := threads.Thread{ID: req.Session.ID, Project: th.Project, Channel: th.Channel, Visibility: th.Visibility, CreatedBy: th.CreatedBy, Participants: slices.Clone(th.Participants), Default: req.Agent, Agents: []string{req.Agent}, Title: firstWords(req.Text, threads.MaxTitle), Session: &threads.SessionIdentity{Agent: req.Agent, Parent: th.ID, Label: req.Session.Key.Label}}
+	child := threads.Thread{ID: req.Session.ID, Project: th.Project, Channel: th.Channel, Visibility: th.Visibility, CreatedBy: th.CreatedBy, Participants: slices.Clone(th.Participants), Default: req.Agent, Agents: []string{req.Agent}, Title: firstWords(req.Text, threads.MaxTitle), Session: &threads.SessionIdentity{Agent: req.Agent, Parent: th.ID, Label: req.Session.Key.Label, SourceAlert: th.Session.SourceAlert}}
 	if _, err = p.Threads.Create(pr.Tenant, child, p.now()); err != nil && !errors.Is(err, threads.ErrExists) {
 		return "", err
 	}

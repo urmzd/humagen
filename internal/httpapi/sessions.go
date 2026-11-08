@@ -351,6 +351,12 @@ func (s *Server) sessionEvents(w http.ResponseWriter, r *http.Request, who auth.
 			if !belongs || !s.P.SeesSession(who, id) || !s.P.CitationEventVisible(who, e) {
 				continue
 			}
+			if e.Type == event.TypeFeedback {
+				if err = snapshot("session", false); err != nil {
+					return
+				}
+				continue
+			}
 			if e.Seq <= cur.Runs[e.Run] {
 				continue
 			}

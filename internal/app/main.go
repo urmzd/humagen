@@ -440,9 +440,10 @@ func serve(o Options, args []string, d serveDefaults) error {
 		return err
 	}
 	cfg := platform.Config{
-		Email:    emailConfiguration(file.cfg.System, *publicURL, keys),
-		Wording:  brand.Wording,
-		Backends: backends,
+		PublicURL: *publicURL,
+		Email:     emailConfiguration(file.cfg.System, *publicURL, keys),
+		Wording:   brand.Wording,
+		Backends:  backends,
 		// A client may keep its secrets in this process's environment, under
 		// the names the operator gave its tenant.
 		Env:        legacy.LookupEnv,

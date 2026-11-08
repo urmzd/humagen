@@ -3,6 +3,8 @@ package github
 import (
 	"strings"
 	"testing"
+
+	transport "github.com/urmzd/orchagent/flow/connectors/github"
 )
 
 func reviewV2() ReviewReport {
@@ -32,5 +34,32 @@ func TestReviewV2RequiresPinnedScopeAndUniqueFindings(t *testing.T) {
 	body, err := FormatReview(r)
 	if err != nil || !strings.Contains(body, "unverified") {
 		t.Fatalf("missing provenance was trusted: %s %v", body, err)
+	}
+}
+func TestNativeReviewChecksDiffAndSuggestions(t *testing.T) {
+	r := reviewV2()
+	replacement := "return nil"
+	r.Findings[0].Location = &ReviewLocation{Path: "a.go", Line: 2}
+	r.Findings[0].Change = &replacement
+	files := []transport.ContextFile{{Filename: "a.go", Patch: "@@ -1,2 +1,2 @@\n unchanged\n-old\n+new"}}
+	review, err := NativeReview(r, files, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(review.Comments) != 1 || !strings.Contains(review.Comments[0].Body, "```suggestion") {
+		t.Fatalf("suggestion missing: %+v", review)
+	}
+	r.Findings[0].Location.Line = 100
+	review, err = NativeReview(r, files, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(review.Comments) != 0 || !strings.Contains(review.Body, "location unverified") {
+		t.Fatal("outside diff did not degrade")
+	}
+	r.Verdict = "approve"
+	review, err = NativeReview(r, files, false)
+	if err == nil && review.Event == "APPROVE" {
+		t.Fatal("ungranted approval")
 	}
 }

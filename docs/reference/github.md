@@ -325,3 +325,109 @@ or `check_run.check_suite.head_commit.author`); missing evidence is ignored.
 A GitHub delivery ID, installation and rule name identify the run, so a
 webhook redelivery does not start a second run. The existing `auto_labels`
 map remains supported and is listed alongside event rules.
+
+## Native reviews and feedback
+
+Managed installations submit validated `humagen.review.v2` results as native
+reviews when `github.login` is configured. The reviewed head is pinned; a moved
+head refuses publication. Each applicable finding gets a line comment and an
+optional committable suggestion. Missing diff locations become review-body text.
+Approval additionally requires `approve_reviews: true` on the destination
+repository's currently linked project, or the installation's configured home
+when no link exists. Ambiguous or unavailable placement denies approval, even
+when a cross-repository action grant permits posting. The default emits comments
+and change requests. Review recovery uses
+an app-owned marker and the durable delivery store to avoid duplicate reviews.
+
+The host verifies evidence references against recorded tool results and session
+reads before rendering a native review, Slack output, or console history. A
+continued reviewer can cite an earlier helper turn after reading that session;
+sharing a session still requires a current read grant. Evidence added after the
+review completed cannot retroactively substantiate it. Unknown references show
+as unverified, and denied source content requires an authorized summary.
+Publication retries while the completed review is not yet in the journal.
+
+`github.checks: true` already creates an in-progress check on that pinned commit
+and edits its summary through completion. It needs Checks write permission.
+Automatic reviews remain explicit per repository, for example:
+
+```json
+{"github":{"checks":true,"auto_labels":{"acme/service":{"humagen:auto":"reviewer"}}}}
+```
+
+Applying the configured label triggers a review; later pushes with the label
+trigger a new review. Unlabeled pull requests do not start automatically. Existing
+check conclusion behavior is preserved; no fixed push limit or label precedence
+is introduced.
+
+Thumb reactions on delivered answers are polled in bounded pages, at most one
+page per installation every 15 seconds, for answers delivered in the last 30
+days. `/feedback up|down [comment]` records feedback on the known session, or on
+an inline finding when replying to its comment. Signed review-thread resolution
+and reopening record and remove the corresponding finding assessment. Native
+event IDs deduplicate retries across replicas. `/stop` uses the existing
+installation-scoped stop policy. Subscribe to `pull_request_review_thread` for
+resolution feedback and grant the `reaction` capability for polling.
+
+Native actions may target another surface only when the exact repository is in
+`github.action_repositories`; `read_repositories` never grants writes. All runtime
+and installation action policies still apply. Reactions use GitHub's supported
+emoji: eyes, rocket, -1 and confused. Slack's stop-hand emoji is not a GitHub
+reaction, so GitHub uses `/stop`.
+
+Thumb removals require two identical complete polling snapshots. Partial,
+failed or over-limit scans withdraw nothing. The original reaction ID owns its
+assessment, so removing an old thumb cannot clear a newer same-rating or console
+assessment, and replaying its addition cannot restore a removed rating. Poll
+progress and removals survive replica changes through the delivery store. GitHub
+pagination is not a transactional snapshot; changing collections delay the
+stable-snapshot check. At most 10,000 reactions are tracked per delivered answer.
+
+Delivered native suggestions retain their exact path, line range, replacement
+and reviewed SHA. Polling records `suggestion_committed` only when the current
+PR head is a single-parent commit directly after that SHA, its diff includes the
+target file, and the complete immutable file equals exactly that replacement.
+The head is checked again after reading evidence. A reserved system actor links
+the verified commit. Commit author and committer metadata cannot create a human
+rating or evaluation candidate. This establishes the proposed edit was committed;
+it does not claim a person used GitHub's Apply Suggestion button or approved the review.
+
+Non-adjacent history, merges, additional edits in the same file,
+omitted patches, unavailable/binary/oversized files and changed heads
+remain unverified. A verified commit is historical evidence and is not erased
+by a later revert. A moved head, resolved thread or outdated comment alone never
+establishes a committed suggestion. See GitHub's [reaction API](https://docs.github.com/en/rest/reactions/reactions#list-reactions-for-a-pull-request-review-comment),
+[commit API](https://docs.github.com/en/rest/commits/commits#get-a-commit), and
+[review-thread fields](https://docs.github.com/en/graphql/reference/pulls#pullrequestreviewthread).
+
+## Separate fix pull requests
+
+Set `github.fix_pull_requests: true` to offer `github_fix_base` and
+`github_create_fix_pr`. This preserves the existing `/fix` behavior. The first
+action returns the repository's default branch and immutable SHA so the agent can
+read complete files before preparing replacements. The second checks that base
+and creates a new generated `humagen/fix-…` branch and a draft PR whose title ends
+in `[humagen]`. Its body links the verified source issue or PR; issue links use
+`Fixes`. It never updates the default or source branch and rejects changes under
+`.github/workflows`.
+
+The requester must have a verified GitHub identity with current repository write
+permission. For console/Slack requests, `github.people` maps their workspace
+subject to a GitHub login; ambiguous mappings deny. An explicit cross-surface
+repository write grant is also required. Creating a fix PR asks for human approval
+by default. Only explicit allow policies for both `write_files` and
+`external_messages` skip that approval; a deny in either category wins.
+Installation capability and agent tool grants continue to apply.
+
+Retries recover the same branch, commit and PR using a request marker. A changed
+fix branch is never overwritten. Opening the PR does not run tests, change
+branch protection, merge, or deploy. Contents write and Pull requests write
+permissions are required; workflow write permission is unnecessary.
+
+Fix sessions started with a validated `source_alert` retain that alert in their
+canonical session identity. Before creating a fix PR, the host reloads the run,
+source alert and both sessions, checks the requester's current access and their
+shared current project, and adds the source session and alert links. Links use
+the existing `server.public_url`; model arguments cannot supply these fields.
+Missing canonical URL omits console backlinks. An invalid or revoked pinned
+source fails closed. No alert is guessed from other open alerts in a session.
