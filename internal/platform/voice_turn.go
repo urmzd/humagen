@@ -19,6 +19,10 @@ import (
 // A message posted through the API was heard when it was posted, so its
 // text already holds the mark and nothing is heard twice.
 
+// hearFunc hears the voice notes among a turn's files into its text
+// (Platform.hearTurn), and says whether the text changed.
+type hearFunc func(ctx context.Context, tenant, run, text string, files []attachment.Attachment) (string, bool)
+
 // voiceTurn is a run's text with its voice notes heard, kept so a turn run
 // again (a retry, a resume after an approval) neither hears nor pays twice.
 type voiceTurn struct {
