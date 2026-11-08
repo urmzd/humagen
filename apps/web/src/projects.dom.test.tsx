@@ -208,9 +208,7 @@ test("a project's header is one primary action and a More menu, with Archive and
   fireEvent.keyDown(more, { key: "ArrowDown" });
   const menu = screen.getByRole("menu", { name: "More" });
   assert.equal(more.getAttribute("aria-expanded"), "true");
-  const children = [...menu.children].map((el) =>
-    el.getAttribute("role") === "separator" ? "---" : el.textContent,
-  );
+  const children = [...menu.children].map((el) => (el.tagName === "HR" ? "---" : el.textContent));
   assert.deepEqual(children, [
     "Mute Project",
     "Edit Project",
