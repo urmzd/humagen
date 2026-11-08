@@ -324,9 +324,7 @@ test("under *, the typeahead never offers an agent that lives in another project
       onChanged={() => {}}
     />,
   );
-  const box = (await screen.findByPlaceholderText(
-    defaultCopy.chat.placeholder,
-  )) as HTMLTextAreaElement;
+  const box = (await screen.findByPlaceholderText(words.message)) as HTMLTextAreaElement;
   await waitFor(() => assert.ok(net?.seen.some((s) => s.path === "/api/projects/Globex/agents")));
   fireEvent.change(box, { target: { value: "ask @" } });
   const list = await screen.findByRole("listbox");
@@ -357,9 +355,7 @@ test("@ opens completion, Enter picks the highlighted, and an untagged message p
       reason: "Nobody answers untagged messages here.",
     }),
   });
-  const box = (await screen.findByPlaceholderText(
-    defaultCopy.chat.placeholder,
-  )) as HTMLTextAreaElement;
+  const box = (await screen.findByPlaceholderText(words.message)) as HTMLTextAreaElement;
   assert.ok(!screen.queryByText(words.postOnly), "there is no Post Only");
   fireEvent.change(box, { target: { value: "ask @he" } });
   const list = await screen.findByRole("listbox");
@@ -1460,9 +1456,7 @@ test("the typeahead never offers the person writing", async () => {
       next: null,
     }),
   });
-  const box = (await screen.findByPlaceholderText(
-    defaultCopy.chat.placeholder,
-  )) as HTMLTextAreaElement;
+  const box = (await screen.findByPlaceholderText(words.message)) as HTMLTextAreaElement;
   fireEvent.change(box, { target: { value: "@" } });
   const list = await screen.findByRole("listbox");
   await waitFor(() => assert.ok(list.textContent?.includes("@dana"), list.textContent ?? ""));
