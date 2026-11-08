@@ -316,6 +316,19 @@ test("project chat addresses migrate to context or filtered sessions", () => {
     "/projects/Launch/context",
   );
 });
+test("the Projects page keeps its search, kind and sort in its address, last activity left out", () => {
+  const routes: Route[] = [
+    { page: "projects" },
+    { page: "projects", q: "globex", kind: "partner", sort: "name" },
+    { page: "projects", sort: "created" },
+  ];
+  for (const route of routes) assert.deepEqual(at(href(route)), route, href(route));
+  assert.equal(href({ page: "projects" }), "/projects");
+  assert.equal(href({ page: "projects", sort: "name" }), "/projects?sort=name");
+  // Last activity is the default, so naming it, or an order there is not, reads as the default.
+  assert.equal((at("/projects?sort=activity") as { sort?: string }).sort, undefined);
+  assert.equal((at("/projects?sort=size") as { sort?: string }).sort, undefined);
+});
 test("old hubs resolve to the seven-entry information architecture", () => {
   const links: [string, Route][] = [
     ["/history?status=needs&q=review", { page: "sessions", status: "waiting", q: "review" }],
