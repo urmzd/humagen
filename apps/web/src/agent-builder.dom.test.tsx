@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
+import { defaultCopy } from "@humagen/components";
 import type { Turn } from "@humagen/core";
 import { WebSurface } from "@humagen/render-web";
 import { AgentMessage } from "@humagen/web";

@@ -671,7 +671,8 @@ function Console({
         >
           <HubTabLabel.Provider
             value={
-              workspaceHub(route)
+              // A hub with one tab shows no strip; its page keeps its own title.
+              workspaceHub(route) && hubTabs(workspaceHub(route)!, route, can).length > 1
                 ? hubTabs(workspaceHub(route)!, route, can).find((tab) => tab.active)?.label
                 : undefined
             }
@@ -704,7 +705,7 @@ function Console({
                       </a>
                     </Page>
                   )}
-                  {workspaceHub(route) && (
+                  {workspaceHub(route) && hubTabs(workspaceHub(route)!, route, can).length > 1 && (
                     <WorkspaceTabs
                       label={defaultCopy.navigation[workspaceHub(route)!]}
                       items={hubTabs(workspaceHub(route)!, route, can)}
@@ -1427,7 +1428,6 @@ function Console({
                         onHomed={loadAgents}
                         onOpenProject={openProject}
                         policies={workspace?.model_policies ?? []}
-                        onManagePolicies={() => openSettings("models")}
                         viewer={me.principal.subject}
                       />
                     ))}

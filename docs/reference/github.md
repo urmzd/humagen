@@ -302,7 +302,8 @@ permissions, tenant boundary and agent visibility rules apply. A rule is:
   "conclusion": "failure",
   "agent": "reviewer",
   "instructions": "Investigate this check failure and report the smallest fix.",
-  "paused": false
+  "paused": false,
+  "deliver": "github"
 }
 ```
 
@@ -318,6 +319,17 @@ and repository owners must already be allowed by that client. Runs have no
 person's credentials and use the client's existing home and runtime policy.
 The prompt receives the rule's instructions and bounded repository, issue/PR
 number and head SHA identifiers, never arbitrary text from the webhook.
+
+Every run is a session, kept and readable in the console whatever `deliver`
+says. `deliver` adds where the answer is also sent:
+
+| `deliver` | The answer also goes to |
+|---|---|
+| `github` | The pull request or issue that triggered it (`github://owner/repo/pull/7` or `.../issues/7`). A push, or a check run with no pull request, has no thread and stays in its session |
+| `slack` | `slack_channel` (a channel id such as `C0123ABC`), posted through the Slack connection `slack_client`, which must route to the rule's agent. A missing or disabled connection keeps the answer in its session and logs a warning |
+| `none`, or unset | Nowhere else. Rules saved before `deliver` existed behave this way |
+
+`slack_client` and `slack_channel` are refused unless `deliver` is `slack`.
 
 Own bot events and bot-authored commits do not trigger automation. Push and
 check-run payloads must include commit author evidence (`head_commit.author`

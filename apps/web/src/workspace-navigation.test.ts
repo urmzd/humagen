@@ -7,11 +7,11 @@ test("Settings pages have one navigation frame without a legacy Operations tab s
   for (const [path, label] of [
     ["/settings/people", "People"],
     ["/projects", "Projects"],
-    ["/scheduled", "Schedules"],
     ["/settings/usage", "Usage"],
     ["/settings/health", "Health"],
     ["/operations/policies", "Policies"],
     ["/settings/audit", "Audit"],
+    ["/agent-controls", "Agent controls"],
   ] as const) {
     const route = parse(path, "");
     assert.equal(settingsPageLabel(route), label, path);

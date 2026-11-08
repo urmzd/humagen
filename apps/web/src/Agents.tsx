@@ -197,7 +197,11 @@ export function Agents({
           {canWrite ? "Create one to start running work." : "Ask an admin to define one."}
         </Empty>
       ) : shown.length === 0 ? (
-        <p className="text-aui-sm text-aui-muted">No agent matches “{query}”.</p>
+        <p className="text-aui-sm text-aui-muted">
+          {query.trim()
+            ? `No agent matches “${query.trim()}”.`
+            : "No agent is in this state right now."}
+        </p>
       ) : (
         // One table, so agents compare at a glance: health, model and the day's numbers line up.
         <div className="-mx-1 overflow-x-auto">

@@ -138,7 +138,9 @@ test("a built-in agent: the spec cannot be changed or saved, nor moved into a pr
   assert.ok(lives.disabled, "the platform's own agents live nowhere");
 
   tab("Model");
-  const model = screen.getByDisplayValue("offline") as HTMLInputElement;
+  const model = screen.getByRole("button", {
+    name: "Model, primary: Offline",
+  }) as HTMLButtonElement;
   assert.ok(model.disabled);
 
   tab("Revisions");
@@ -217,7 +219,10 @@ test("the same agent, not built in: editing makes a save, and an older revision 
   assert.ok(!save.disabled);
 
   tab("Model");
-  assert.ok(!(screen.getByDisplayValue("offline") as HTMLInputElement).disabled);
+  assert.ok(
+    !(screen.getByRole("button", { name: "Model, primary: Offline" }) as HTMLButtonElement)
+      .disabled,
+  );
   tab("Revisions");
   assert.ok(await screen.findByRole("button", { name: "Restore as Revision 3" }));
 });

@@ -13,6 +13,49 @@ export const defaultModel: Record<string, string> = {
   openai: "gpt-5.1",
 };
 
+/** A provider as a person picks it: its name, the models offered under it, and a note. */
+export type ProviderInfo = {
+  id: string;
+  name: string;
+  hint?: string;
+  models: { id: string; name: string }[];
+};
+
+/**
+ * The providers and models the picker groups, in the order shown. Any other model id is
+ * still accepted through "Another model", so a new release needs no console change first.
+ */
+export const providerCatalog: ProviderInfo[] = [
+  {
+    id: "anthropic",
+    name: "Anthropic",
+    models: [
+      { id: "claude-opus-5-5", name: "Claude Opus 5.5" },
+      { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" },
+      { id: "claude-haiku-5-5", name: "Claude Haiku 5.5" },
+      { id: "claude-fable-5-1", name: "Claude Fable 5.1" },
+    ],
+  },
+  {
+    id: "openai",
+    name: "OpenAI",
+    hint: "Or a server that speaks its API, such as Ollama or vLLM",
+    models: [{ id: "gpt-5.1", name: "GPT-5.1" }],
+  },
+  {
+    id: "google",
+    name: "Google",
+    models: [{ id: "gemini-3-flash-preview", name: "Gemini 3 Flash (preview)" }],
+  },
+];
+
+/** A provider's display name, falling back to its id. */
+export const providerName = (id: string) => providerCatalog.find((p) => p.id === id)?.name ?? id;
+
+/** A model's display name within its provider, falling back to its id. */
+export const modelName = (provider: string, model: string) =>
+  providerCatalog.find((p) => p.id === provider)?.models.find((m) => m.id === model)?.name ?? model;
+
 export const providers = [
   { value: "anthropic", label: "anthropic" },
   {

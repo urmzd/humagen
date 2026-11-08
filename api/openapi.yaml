@@ -15140,6 +15140,14 @@ components:
         agent: {type: string}
         instructions: {type: string, maxLength: 16000}
         paused: {type: boolean}
+        deliver:
+          description: Where each run's answer goes besides its session, which always keeps it.
+            github answers on the pull request or issue that triggered it; slack posts in slack_channel
+            through the Slack connection slack_client; none or unset keeps it in the session only.
+          type: string
+          enum: [github, slack, none]
+        slack_client: {type: string, maxLength: 128, description: "The Slack connection that posts, when deliver is slack."}
+        slack_channel: {type: string, pattern: "^[CGD][A-Z0-9]{2,31}$", description: "The Slack channel id, such as C0123ABC, when deliver is slack."}
     GitHubOptions:
       type: object
       properties:

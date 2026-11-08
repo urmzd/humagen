@@ -3808,6 +3808,12 @@ export interface GitHubAutomation {
   agent: string;
   instructions: string;
   paused: boolean;
+  /** Where each run's answer goes besides its session, which always keeps it. github answers on the pull request or issue that triggered it; slack posts in slack_channel through the Slack connection slack_client; none or unset keeps it in the session only. */
+  deliver?: "github" | "slack" | "none";
+  /** The Slack connection that posts, when deliver is slack. */
+  slack_client?: string;
+  /** The Slack channel id, such as C0123ABC, when deliver is slack. */
+  slack_channel?: string;
 }
 
 export interface GitHubOptions {

@@ -1,11 +1,23 @@
 import { defaultCopy } from "@humagen/components";
+import { GitHubIcon, SlackIcon } from "@humagen/render-web";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import type { GitHubAutomation } from "../../../packages/client/src/generated/types.ts";
 import { api, type Client, type Revision, type ScheduleView } from "./api.ts";
 import type { ProjectRef } from "./projects.ts";
 import { href } from "./route.ts";
 import { ScheduleForm } from "./Schedules.tsx";
-import { AgentMark, button, card, field, Label, Page, Problem, primary } from "./ui.tsx";
+import {
+  AgentMark,
+  agentOptions,
+  button,
+  card,
+  field,
+  Label,
+  Menu,
+  Page,
+  Problem,
+  primary,
+} from "./ui.tsx";
 
 const words = defaultCopy.automations;
 const blank: GitHubAutomation = {
@@ -17,7 +29,18 @@ const blank: GitHubAutomation = {
   agent: "",
   instructions: "",
   paused: false,
+  deliver: "github",
 };
+
+/** Where a rule's answers go, in a few words, for its row in the list. */
+function sentTo(rule: GitHubAutomation, slack: Client[]): string {
+  if (rule.deliver === "github") return words.sentToGitHub;
+  if (rule.deliver === "slack") {
+    const via = slack.find((c) => c.id === rule.slack_client)?.name ?? rule.slack_client;
+    return words.sentToSlack(rule.slack_channel ?? "", via ?? "");
+  }
+  return words.sentToSession;
+}
 
 export function Automations({
   schedules,
@@ -35,6 +58,7 @@ export function Automations({
   onSchedule: (name: string) => void;
 }) {
   const [clients, setClients] = useState<Client[]>([]);
+  const [slack, setSlack] = useState<Client[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
   const [kind, setKind] = useState<"schedule" | "github" | null>(null);
   const [editing, setEditing] = useState<{ client: string; name: string } | null>(null);
@@ -50,7 +74,10 @@ export function Automations({
     if (can("clients:read"))
       api
         .clients()
-        .then((r) => setClients(r.clients.filter((c) => c.surface === "github")))
+        .then((r) => {
+          setClients(r.clients.filter((c) => c.surface === "github"));
+          setSlack(r.clients.filter((c) => c.surface === "slack" && c.enabled));
+        })
         .catch(fail);
   }, [can, fail]);
   useEffect(() => {
@@ -145,25 +172,21 @@ export function Automations({
               />
             </Label>
             <Label text={words.labels.installation}>
-              <select
-                className={field}
-                required
+              <Menu
+                label={words.labels.installation}
                 value={clientID}
-                onChange={(e) => {
-                  setClientID(e.target.value);
+                disabled={!!editing}
+                options={[
+                  { value: "", label: "Choose installation" },
+                  ...clients
+                    .filter((c) => !c.managed)
+                    .map((c) => ({ value: c.id, label: c.name, mark: <GitHubIcon size={14} /> })),
+                ]}
+                onChange={(id) => {
+                  setClientID(id);
                   patch({ agent: "" });
                 }}
-                disabled={!!editing}
-              >
-                <option value="">Choose installation</option>
-                {clients
-                  .filter((c) => !c.managed)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-              </select>
+              />
             </Label>
             <Label text={words.labels.repository}>
               <input
@@ -175,11 +198,17 @@ export function Automations({
               />
             </Label>
             <Label text={words.labels.event}>
-              <select
-                className={field}
+              <Menu
+                label={words.labels.event}
                 value={draft.event}
-                onChange={(e) => {
-                  const event = e.target.value as GitHubAutomation["event"];
+                options={[
+                  { value: "check_run", label: "Check run" },
+                  { value: "issues", label: "Issue" },
+                  { value: "pull_request", label: "Pull request" },
+                  { value: "push", label: "Push" },
+                ]}
+                onChange={(value) => {
+                  const event = value as GitHubAutomation["event"];
                   patch({
                     event,
                     action: event === "push" ? "" : event === "check_run" ? "completed" : "labeled",
@@ -187,12 +216,7 @@ export function Automations({
                     label: "",
                   });
                 }}
-              >
-                <option value="check_run">Check run</option>
-                <option value="issues">Issue webhook</option>
-                <option value="pull_request">Pull request webhook</option>
-                <option value="push">Push webhook</option>
-              </select>
+              />
             </Label>
             {draft.event !== "push" && (
               <Label text={words.labels.action}>
@@ -207,17 +231,18 @@ export function Automations({
             )}
             {draft.event === "check_run" && (
               <Label text={words.labels.conclusion}>
-                <select
-                  className={field}
+                <Menu
+                  label={words.labels.conclusion}
                   value={draft.conclusion ?? ""}
-                  onChange={(e) => patch({ conclusion: e.target.value })}
-                >
-                  <option value="">Any conclusion</option>
-                  <option value="failure">Failure</option>
-                  <option value="success">Success</option>
-                  <option value="cancelled">Cancelled</option>
-                  <option value="timed_out">Timed out</option>
-                </select>
+                  options={[
+                    { value: "", label: "Any conclusion" },
+                    { value: "failure", label: "Failure" },
+                    { value: "success", label: "Success" },
+                    { value: "cancelled", label: "Cancelled" },
+                    { value: "timed_out", label: "Timed out" },
+                  ]}
+                  onChange={(conclusion) => patch({ conclusion })}
+                />
               </Label>
             )}
             {(draft.event === "issues" || draft.event === "pull_request") && (
@@ -231,20 +256,79 @@ export function Automations({
               </Label>
             )}
             <Label text={words.labels.agent}>
-              <select
-                className={field}
-                required
+              <Menu
+                label={words.labels.agent}
                 value={draft.agent}
-                onChange={(e) => patch({ agent: e.target.value })}
-              >
-                <option value="">Choose agent</option>
-                {allowedAgents.map((a) => (
-                  <option key={a.spec.name} value={a.spec.name}>
-                    {a.spec.name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: "", label: "Choose agent" },
+                  ...agentOptions(allowedAgents.map((a) => a.spec.name)),
+                ]}
+                onChange={(agent) => patch({ agent })}
+              />
             </Label>
+            <Label text={words.labels.deliver}>
+              <Menu
+                label={words.labels.deliver}
+                value={draft.deliver ?? "none"}
+                options={[
+                  {
+                    value: "github",
+                    label: words.deliverGitHub,
+                    hint: words.deliverGitHubHint,
+                    mark: <GitHubIcon size={14} />,
+                  },
+                  {
+                    value: "slack",
+                    label: words.deliverSlack,
+                    hint: words.deliverSlackHint,
+                    mark: <SlackIcon size={14} />,
+                  },
+                  { value: "none", label: words.deliverNone, hint: words.deliverNoneHint },
+                ]}
+                onChange={(deliver) =>
+                  patch(
+                    deliver === "slack"
+                      ? { deliver: "slack", slack_client: slack[0]?.id ?? "" }
+                      : {
+                          deliver: deliver as GitHubAutomation["deliver"],
+                          slack_client: undefined,
+                          slack_channel: undefined,
+                        },
+                  )
+                }
+              />
+            </Label>
+            {draft.deliver === "slack" &&
+              (slack.length === 0 ? (
+                <p className="text-aui-sm text-aui-muted sm:col-span-2">{words.noSlack}</p>
+              ) : (
+                <>
+                  <Label text={words.labels.slackClient}>
+                    <Menu
+                      label={words.labels.slackClient}
+                      value={draft.slack_client ?? ""}
+                      options={slack.map((c) => ({
+                        value: c.id,
+                        label: c.name,
+                        mark: <SlackIcon size={14} />,
+                      }))}
+                      onChange={(slack_client) => patch({ slack_client })}
+                    />
+                  </Label>
+                  <Label text={words.labels.slackChannel}>
+                    <input
+                      className={field}
+                      required
+                      pattern="[CGD][A-Z0-9]{2,31}"
+                      placeholder="C0123ABC"
+                      value={draft.slack_channel ?? ""}
+                      onChange={(e) =>
+                        patch({ slack_channel: e.target.value.trim().toUpperCase() })
+                      }
+                    />
+                  </Label>
+                </>
+              ))}
           </div>
           <Label text={words.labels.instructions}>
             <textarea
@@ -314,6 +398,7 @@ export function Automations({
                   {rule.conclusion ? ` | ${rule.conclusion}` : ""}
                   {rule.label ? ` | ${rule.label}` : ""}
                 </p>
+                <p className="text-aui-sm text-aui-muted">{sentTo(rule, slack)}</p>
                 <p>{rule.instructions}</p>
               </div>
               <span>{rule.paused || !c.enabled ? "Paused" : "Active"}</span>

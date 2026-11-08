@@ -52,7 +52,8 @@ test("the builder saves instructions and conditions through the installation API
     fireEvent.click(screen.getByRole("button", { name: "New GitHub Automation" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "failed-check" } });
     fireEvent.change(screen.getByLabelText("Repository"), { target: { value: "acme/app" } });
-    fireEvent.change(screen.getByLabelText("Target agent"), { target: { value: "lead" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Target agent:/ }));
+    fireEvent.click(screen.getByRole("option", { name: "lead" }));
     fireEvent.change(screen.getByLabelText("Instructions"), {
       target: { value: "Investigate this failure." },
     });
@@ -69,6 +70,7 @@ test("the builder saves instructions and conditions through the installation API
         agent: "lead",
         instructions: "Investigate this failure.",
         paused: false,
+        deliver: "github",
       },
     ]);
     assert.deepEqual(github.auto_labels, client.github.auto_labels);
@@ -91,13 +93,63 @@ test("readers see no create buttons and cannot load installations without read p
       />,
     );
     assert.equal(seen.length, 0);
-    assert.ok(screen.getByRole("heading", { name: "Schedules", level: 1 }));
+    assert.ok(screen.getByRole("heading", { name: "Scheduled", level: 1 }));
     assert.equal(
       screen.getByRole("link", { name: "Open Sessions" }).getAttribute("href"),
       "/sessions",
     );
     assert.equal(screen.queryByRole("button", { name: "New Schedule" }), null);
     assert.equal(screen.queryByRole("button", { name: "New GitHub Automation" }), null);
+  } finally {
+    restore();
+  }
+});
+
+test("an automation can send its answers to a Slack channel, and its row says where", async () => {
+  let saved: Record<string, unknown> | undefined;
+  const slackApp = {
+    ...client,
+    id: "slack-app",
+    name: "Team Slack",
+    surface: "slack",
+    github: undefined,
+  };
+  const { restore } = stubFetch({
+    "GET /api/clients": () => ({ clients: [client, slackApp], caps: {} }),
+    "PUT /api/clients/github": (body) => {
+      saved = body as Record<string, unknown>;
+      return { ...client, ...saved };
+    },
+  });
+  try {
+    render(
+      <Automations
+        schedules={[]}
+        agents={agents}
+        projects={[]}
+        can={can}
+        onChanged={() => {}}
+        onSchedule={() => {}}
+      />,
+    );
+    await screen.findByText(/agent:review/);
+    fireEvent.click(screen.getByRole("button", { name: "New GitHub Automation" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "failed-check" } });
+    fireEvent.change(screen.getByLabelText("Repository"), { target: { value: "acme/app" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Target agent:/ }));
+    fireEvent.click(screen.getByRole("option", { name: "lead" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Send to:/ }));
+    fireEvent.click(screen.getByRole("option", { name: /A Slack channel/ }));
+    fireEvent.change(screen.getByLabelText("Slack channel id"), { target: { value: "c0alerts1" } });
+    fireEvent.change(screen.getByLabelText("Instructions"), {
+      target: { value: "Investigate this failure." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Automation" }));
+    await waitFor(() => assert.ok(saved));
+    const [rule] = (saved?.github as { automations: Record<string, unknown>[] }).automations;
+    assert.equal(rule?.deliver, "slack");
+    assert.equal(rule?.slack_client, "slack-app");
+    assert.equal(rule?.slack_channel, "C0ALERTS1");
   } finally {
     restore();
   }

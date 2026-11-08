@@ -218,6 +218,16 @@ func (c Client) ActsFor(machine, user string) (string, bool) {
 	return who, ok && who != ""
 }
 
+// Where an automation's answer goes besides its session. See GitHubAutomation.Deliver.
+const (
+	DeliverGitHub = "github"
+	DeliverSlack  = "slack"
+	DeliverNone   = "none"
+)
+
+// slackChannelPattern is a Slack channel id: public (C), private (G) or a DM (D).
+var slackChannelPattern = regexp.MustCompile(`^[CGD][A-Z0-9]{2,31}$`)
+
 // GitHubOptions are the options of a GitHub client.
 type GitHubAutomation struct {
 	Name         string `json:"name"`
@@ -229,6 +239,14 @@ type GitHubAutomation struct {
 	Agent        string `json:"agent"`
 	Instructions string `json:"instructions"`
 	Paused       bool   `json:"paused"`
+	// Deliver is where each run's answer goes besides its session, which always
+	// keeps it: "github" answers on the pull request or issue that triggered it
+	// (an event with neither answers nowhere else), "slack" posts in SlackChannel
+	// through the Slack connection SlackClient, and "none" or "" keeps it in the
+	// session only, as every automation did before this field existed.
+	Deliver      string `json:"deliver,omitempty"`
+	SlackClient  string `json:"slack_client,omitempty"`
+	SlackChannel string `json:"slack_channel,omitempty"`
 }
 
 type GitHubOptions struct {
@@ -555,6 +573,18 @@ func (c Client) validateGitHub() error {
 		}
 		if len(a.Action) > 64 || len(a.Conclusion) > 64 || len(a.Label) > 128 {
 			return bad("automation conditions are too long")
+		}
+		switch a.Deliver {
+		case "", DeliverGitHub, DeliverNone:
+			if a.SlackClient != "" || a.SlackChannel != "" {
+				return bad("only an automation that delivers to Slack names a Slack channel")
+			}
+		case DeliverSlack:
+			if a.SlackClient == "" || len(a.SlackClient) > 128 || !slackChannelPattern.MatchString(a.SlackChannel) {
+				return bad("an automation that delivers to Slack needs a Slack connection and a channel id such as C0123ABC")
+			}
+		default:
+			return bad("an automation delivers to github, slack or none")
 		}
 	}
 	if len(g.ReadRepositories) > maxRepos || len(g.AutoLabels) > maxRepos {

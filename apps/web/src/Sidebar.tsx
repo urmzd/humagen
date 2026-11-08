@@ -854,6 +854,13 @@ export function Sidebar({
         (route.page === "library" && ["sources", "catalog"].includes(route.section)),
     },
     {
+      to: { page: "automations" } as Route,
+      label: "Scheduled",
+      icon: <CalendarIcon />,
+      show: can("schedules:read"),
+      active: here("automations", "schedules"),
+    },
+    {
       to: { page: "artifacts" } as Route,
       label: "Artifacts",
       icon: <LayersIcon />,
@@ -876,10 +883,9 @@ export function Sidebar({
         "you",
         "projects",
         "project",
-        "automations",
-        "schedules",
         "monitor",
         "action-policy",
+        "agent-control",
       ),
     },
   ];

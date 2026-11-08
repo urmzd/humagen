@@ -82,3 +82,54 @@ func TestAutomationContextNeverIncludesWebhookInstructions(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestAnAutomationNamesOnlyTheDeliveryItUses(t *testing.T) {
+	c := githubOf("gh", "acme")
+	rule := GitHubAutomation{Name: "review", Repository: "acme/app", Event: "issues", Action: "opened", Agent: "lead", Instructions: "Review the issue."}
+	for name, deliver := range map[string]GitHubAutomation{
+		"default": rule,
+		"github":  {Name: rule.Name, Repository: rule.Repository, Event: rule.Event, Action: rule.Action, Agent: rule.Agent, Instructions: rule.Instructions, Deliver: DeliverGitHub},
+		"none":    {Name: rule.Name, Repository: rule.Repository, Event: rule.Event, Action: rule.Action, Agent: rule.Agent, Instructions: rule.Instructions, Deliver: DeliverNone},
+		"slack":   {Name: rule.Name, Repository: rule.Repository, Event: rule.Event, Action: rule.Action, Agent: rule.Agent, Instructions: rule.Instructions, Deliver: DeliverSlack, SlackClient: "slack-app", SlackChannel: "C0123ABC"},
+		"private": {Name: rule.Name, Repository: rule.Repository, Event: rule.Event, Action: rule.Action, Agent: rule.Agent, Instructions: rule.Instructions, Deliver: DeliverSlack, SlackClient: "slack-app", SlackChannel: "G0123ABC"},
+	} {
+		next := c.clone()
+		next.GitHub = &GitHubOptions{Automations: []GitHubAutomation{deliver}}
+		if err := next.Validate(); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	for name, deliver := range map[string]GitHubAutomation{
+		"unknown":           {Name: rule.Name, Repository: rule.Repository, Event: rule.Event, Action: rule.Action, Agent: rule.Agent, Instructions: rule.Instructions, Deliver: "email"},
+		"slack, no channel": {Name: rule.Name, Repository: rule.Repository, Event: rule.Event, Action: rule.Action, Agent: rule.Agent, Instructions: rule.Instructions, Deliver: DeliverSlack, SlackClient: "slack-app"},
+		"slack, a name":     {Name: rule.Name, Repository: rule.Repository, Event: rule.Event, Action: rule.Action, Agent: rule.Agent, Instructions: rule.Instructions, Deliver: DeliverSlack, SlackClient: "slack-app", SlackChannel: "#alerts"},
+		"slack, no app":     {Name: rule.Name, Repository: rule.Repository, Event: rule.Event, Action: rule.Action, Agent: rule.Agent, Instructions: rule.Instructions, Deliver: DeliverSlack, SlackChannel: "C0123ABC"},
+		"github with slack": {Name: rule.Name, Repository: rule.Repository, Event: rule.Event, Action: rule.Action, Agent: rule.Agent, Instructions: rule.Instructions, Deliver: DeliverGitHub, SlackChannel: "C0123ABC"},
+		"none with slack":   {Name: rule.Name, Repository: rule.Repository, Event: rule.Event, Action: rule.Action, Agent: rule.Agent, Instructions: rule.Instructions, Deliver: DeliverNone, SlackClient: "slack-app"},
+	} {
+		next := c.clone()
+		next.GitHub = &GitHubOptions{Automations: []GitHubAutomation{deliver}}
+		if err := next.Validate(); err == nil {
+			t.Fatalf("%s: accepted", name)
+		}
+	}
+}
+
+func TestAnAutomationFindsTheThreadThatTriggeredIt(t *testing.T) {
+	for _, tc := range []struct {
+		kind, body, want string
+		ok               bool
+	}{
+		{"pull_request", `{"pull_request":{"number":12}}`, "pull/12", true},
+		{"issues", `{"issue":{"number":7}}`, "issues/7", true},
+		{"check_run", `{"check_run":{"pull_requests":[{"number":3}]}}`, "pull/3", true},
+		{"check_run", `{"check_run":{"pull_requests":[]}}`, "", false},
+		{"push", `{"ref":"refs/heads/main"}`, "", false},
+		{"issues", `not json`, "", false},
+	} {
+		got, ok := AutomationThread(tc.kind, []byte(tc.body))
+		if got != tc.want || ok != tc.ok {
+			t.Fatalf("%s %s = %q %v, want %q %v", tc.kind, tc.body, got, ok, tc.want, tc.ok)
+		}
+	}
+}
