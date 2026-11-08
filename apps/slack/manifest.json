@@ -1,53 +1,31 @@
 {
-  "_metadata": {
-    "major_version": 2,
-    "minor_version": 1
-  },
   "display_information": {
     "name": "Humagen",
-    "description": "Your workspace's agents in Slack. Ask a question, or review what one is waiting on.",
+    "description": "Mention @Humagen in any channel, thread or DM. It brings in the right agents and answers where you asked.",
     "background_color": "#2b50c8"
   },
   "features": {
     "app_home": {
       "home_tab_enabled": true,
       "messages_tab_enabled": true,
-      "messages_tab_read_only_enabled": false
+      "messages_tab_read_only_enabled": false,
+      "agent_tasks_enabled": true
     },
     "bot_user": {
-      "display_name": "humagen",
+      "display_name": "Humagen",
       "always_online": true
     },
     "shortcuts": [
       {
-        "name": "Ask Humagen",
-        "type": "global",
-        "callback_id": "aui_ask",
-        "description": "Ask from anywhere. The answer arrives in the app's messages."
-      },
-      {
-        "name": "Ask Humagen about this",
+        "name": "Ask about this",
         "type": "message",
         "callback_id": "aui_ask_about",
-        "description": "Answer in this message's thread, using the message as the question."
-      }
-    ],
-    "slash_commands": [
-      {
-        "command": "/agent",
-        "description": "Ask Humagen in this channel",
-        "usage_hint": "[question], skills, connections or canvas RUN_ID",
-        "should_escape": false
-      },
-      {
-        "command": "/skill",
-        "description": "Run a configured agent skill",
-        "usage_hint": "[name] [arguments]",
-        "should_escape": false
+        "description": "Answers in this message's thread, with the message as the question."
       }
     ],
     "agent_view": {
-      "agent_description": "Your workspace's agents in Slack. Mention @Humagen and the agent you want, such as @Humagen @analyst, or message it."
+      "agent_description": "Ask anything. Humagen brings in the right agents and answers here.",
+      "suggested_prompts": []
     }
   },
   "oauth_config": {
@@ -64,9 +42,11 @@
         "reactions:write",
         "users:read",
         "files:read",
+        "files:write",
         "canvases:write"
       ]
-    }
+    },
+    "pkce_enabled": false
   },
   "settings": {
     "event_subscriptions": {
@@ -83,6 +63,8 @@
     },
     "org_deploy_enabled": false,
     "socket_mode_enabled": true,
-    "token_rotation_enabled": false
+    "is_mcp_enabled": false,
+    "token_rotation_enabled": false,
+    "app_level_token_rotation_enabled": false
   }
 }

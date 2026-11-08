@@ -120,7 +120,7 @@ spec:
       # kind: hashing
       # hashing: {dimensions: 256}   # no model: matches words and word stems, not meaning
 
-  speech:                   # slot: none | groq. Left out: none, a voice note stays an attachment no agent hears
+  speech:                   # slot: none | groq | openai. Left out: none, a voice note stays an attachment no agent hears
     kind: groq              # transcribes voice notes before a run starts (Voice notes)
     groq:
       key: {ref: env:GROQ_API_KEY}           # the default; left out, the same
@@ -343,6 +343,7 @@ marked the same way, for the person to read and send
 |------|-------|-------------|
 | `none` | none | Nothing is transcribed, the default |
 | `groq` | `base_url`, `key`, `model`, `speech_model`, `voice`, `max_bytes`, `timeout`, every one optional | `key`, a reference, `env:GROQ_API_KEY` when left out |
+| `openai` | The same block as `groq` | `key`, a reference, `env:OPENAI_API_KEY` when left out |
 
 `groq` sends each recording to `POST /audio/transcriptions` on Groq's
 OpenAI-compatible API, with `whisper-large-v3-turbo` unless `model` says
@@ -352,8 +353,15 @@ otherwise. A recording over `max_bytes` (25 MiB when left out, at most
 long, has no words or reaches a provider that fails is said to be so in the
 message, which still posts. `speech_model` and `voice` (Groq's
 `canopylabs/orpheus-v1-english` and `autumn` when left out) are for speaking
-replies, which nothing uses yet. A binary adds a kind with
+replies. `openai` is the same API on OpenAI's, with `whisper-1`, `tts-1` and
+`alloy` when left out. A binary adds a kind with
 `humagen.WithKind(humagen.Speech, ...)`, building a `speech.Transcriber`.
+
+This slot is the deployment's, and the deployment pays for it. A workspace
+admin can set up a voice provider of the workspace's own in Workspace
+settings, which is used before this slot, turns voice mode on, and counts
+what each call costs in the workspace's usage
+([docs/guides/voice.md](../guides/voice.md#a-workspace-voice-provider)).
 
 A model can be Groq too: `kind: groq` under `models` is `openai` with Groq's
 base URL and `env:GROQ_API_KEY` filled in, and an agent names it as its

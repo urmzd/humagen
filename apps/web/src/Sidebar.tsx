@@ -37,7 +37,7 @@ import {
   type ProjectView,
   type ThreadSummary,
 } from "./api.ts";
-import { type Branding, servedBranding } from "./branding.ts";
+import { agentShown, type Branding, servedBranding } from "./branding.ts";
 import {
   age,
   GROUP_ROWS,
@@ -1163,22 +1163,14 @@ export function Sidebar({
                         <Item
                           icon={<ProjectIcon />}
                           label={projectTitle(project)}
-                          href={href({
-                            page: "project",
-                            name: project === "~" ? "" : project,
-                            tab: "inbox",
-                          })}
+                          href={href({ page: "project", name: project === "~" ? "" : project })}
                           active={
                             route.page === "project" &&
                             route.name === (project === "~" ? "" : project)
                           }
                           open
                           onClick={() =>
-                            go({
-                              page: "project",
-                              name: project === "~" ? "" : project,
-                              tab: "inbox",
-                            })
+                            go({ page: "project", name: project === "~" ? "" : project })
                           }
                         />
                       </div>
@@ -1261,7 +1253,7 @@ export function Sidebar({
                                 { value: "", label: "Any" },
                                 ...answering.map((a) => ({
                                   value: a,
-                                  label: a,
+                                  label: agentShown(a),
                                   mark: <AgentMark name={a} size={12} />,
                                 })),
                               ]}

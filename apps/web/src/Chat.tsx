@@ -5,7 +5,7 @@ import { ForkIcon, WebSurface } from "@humagen/render-web";
 import { AgentMessage, messageActionButton, railEntry, Thread, useQueue } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
-import { ApprovalModePicker } from "./ApprovalModePicker.tsx";
+import { type ApprovalMode, ApprovalToggle } from "./ApprovalToggle.tsx";
 import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
 import {
   ApiError,
@@ -341,6 +341,8 @@ function ChatBar({
  * and a message posted to it makes it a room. `threadId` null is Home.
  */
 export function Chat({
+  composerOnly = false,
+  placeholder: placeholderFor,
   threadId,
   me,
   handle = "",
@@ -380,6 +382,13 @@ export function Chat({
 }: {
   /** The workspace's suggestions on an empty conversation. Null or left out is the console's own. */
   starters?: Starter[] | null;
+  /**
+   * Only the composer that starts a session, as Home draws it but without its
+   * greeting, suggestions or lists: a project's page starts sessions with it.
+   */
+  composerOnly?: boolean;
+  /** What the empty composer says, over Home's own words. */
+  placeholder?: string;
   /** Quiet lines under the prompt on Home: what needs the person, and what is new. */
   home?: ReactNode;
   banner?: HomeAnnouncement;
@@ -642,6 +651,9 @@ export function Chat({
             visibility: startChannel ? "shared" : "private",
           })
           .then((p) => {
+            // Run, chosen before the session started, is applied to it now.
+            if (pendingApproval === "auto")
+              void coworking.setApprovalMode(p.thread.id, "auto").catch(() => undefined);
             onThread(p.thread.id);
             done(p.runs);
           })
@@ -775,29 +787,10 @@ export function Chat({
       agents.some((a) => a.spec.name === st.agent) && offered !== null && offered.has(st.agent),
   );
 
-  // Where a new conversation is filed, in the toolbar at every width (DES-057).
-  const homeChips = (
-    <SelectionChips
-      personalProject={personalProject}
-      selection={selection}
-      projects={projects}
-      workspace={workspaceName}
-      onChange={select}
-      projectControl={
-        <ProjectPicker
-          projects={projects ?? null}
-          kinds={root?.kinds}
-          value={selection.project}
-          personalProject={personalProject}
-          personalLabel={defaultCopy.projects.personalTitle}
-          channel={selection.channel}
-          canCreate={canCreateProject}
-          onCreated={onProjectCreated}
-          onChange={(project) => select({ ...selection, project, channel: "general" })}
-        />
-      }
-    />
-  );
+  // A session from Home is filed in the person's Personal project, and one
+  // from a project's page in that project: the composer picks no project.
+  // Its approval mode is held until the session starts.
+  const [pendingApproval, setPendingApproval] = useState<ApprovalMode>("ask");
   // A message here is its text alone: the agent it goes to is the one its
   // tags or the conversation name, never a pick the composer carries.
   const sending: typeof queue = {
@@ -806,7 +799,13 @@ export function Chat({
     sendNow: (text) => queue.sendNow(text),
   };
   const composer = canRun && agents.length > 0 && (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
+    <div
+      className={
+        composerOnly
+          ? "flex w-full min-w-0 flex-col gap-2"
+          : "mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4"
+      }
+    >
       <Problem message={problem} />
       <ChatBar
         project={where}
@@ -817,19 +816,29 @@ export function Chat({
         me={me}
         handle={handle}
         placeholder={
-          !threadId
+          placeholderFor ??
+          (!threadId
             ? startChannel
               ? words.startThread
               : defaultCopy.chat.placeholder
-            : words.message
+            : words.message)
         }
+        emptyText={placeholderFor}
         disclaimer={!threadId || path.length === 0 ? null : undefined}
         queue={sending}
         autoFocus={!threadId}
         seed={seed}
         onDraft={setDraft}
         trailing={
-          threadId && room?.thread && <ApprovalModePicker thread={room.thread} me={handle || me} />
+          threadId ? (
+            room?.thread && <ApprovalToggle thread={room.thread} me={handle || me} />
+          ) : (
+            <ApprovalToggle
+              me={handle || me}
+              pending={pendingApproval}
+              onPending={setPendingApproval}
+            />
+          )
         }
         // An agent the project picked does not offer is not kept for it.
         onAvailable={
@@ -838,13 +847,6 @@ export function Chat({
             : (available) => {
                 const names = new Set(available.map((a) => a.name));
                 setOffered(names);
-                // An agent a link named that lives in a project opens that project, the first time.
-                const named =
-                  startAgent && !startIn && project === null ? homes[startAgent] : undefined;
-                if (named && !names.has(startAgent ?? "")) {
-                  setSelection((sel) => ({ ...sel, project: named }));
-                  return;
-                }
                 // A mention of an agent that cannot answer here says so; its words stay the person's.
                 const dropped = mentionsIn(
                   draft,
@@ -872,45 +874,6 @@ export function Chat({
                     onChange={runs.select}
                     onAttach={attach}
                     onClose={close}
-                    projects={projects}
-                    personalProject={personalProject}
-                    kinds={root?.kinds}
-                    projectFixed={defaultCopy.threads.shareProjectFixed}
-                  />
-                ),
-                chips: (
-                  <SelectionChips
-                    personalProject={personalProject}
-                    selection={runs.selection}
-                    projects={projects}
-                    workspace={workspaceName}
-                    onChange={runs.select}
-                    projectFixed
-                    // The prompt bar is where a conversation's project is chosen and changed.
-                    projectControl={
-                      room?.thread ? (
-                        <ProjectPicker
-                          locked={defaultCopy.threads.shareProjectFixed}
-                          projects={projects ?? null}
-                          kinds={root?.kinds}
-                          value={room.thread.project}
-                          personalProject={personalProject}
-                          channel={room.thread.channel}
-                          canCreate={canCreateProject}
-                          onCreated={onProjectCreated}
-                          onChange={(next) => {
-                            if (next === room.thread.project) return;
-                            coworking.move(room.thread.id, next).then(
-                              (t) => {
-                                setRoom((r) => (r ? { ...r, thread: t } : r));
-                                onChanged();
-                              },
-                              (e) => setProblem(e instanceof Error ? e.message : String(e)),
-                            );
-                          }}
-                        />
-                      ) : undefined
-                    }
                   />
                 ),
               })
@@ -929,11 +892,6 @@ export function Chat({
                     onChange={select}
                     onAttach={attach}
                     onClose={close}
-                    projects={projects}
-                    personalProject={personalProject}
-                    kinds={root?.kinds}
-                    canCreateProject={canCreateProject}
-                    onProjectCreated={onProjectCreated}
                     finder={
                       findHelp ? (
                         <FindHelp
@@ -941,7 +899,6 @@ export function Chat({
                           onSearch={findHelp}
                           canChoose={canRun}
                           onChoose={(match, description) => {
-                            select({ ...selection, project: match.project, channel: "general" });
                             // The match is mentioned: ahead of what was described, or where the cursor was.
                             setSeed(
                               draft.trim()
@@ -955,7 +912,6 @@ export function Chat({
                     }
                   />
                 ),
-                chips: homeChips,
               })
         }
       />
@@ -1021,6 +977,8 @@ export function Chat({
       </ConversationLoading>
     );
   }
+
+  if (!threadId && composerOnly) return composer || null;
 
   if (!threadId || path.length === 0) {
     return (

@@ -538,9 +538,8 @@ export const defaultCopy = {
     description: "Description",
     template: "Starting Template",
     roles: { analyst: "Analyst", writer: "Writer", coordinator: "Coordinator" },
-    project: "Home Project",
-    projectHint:
-      "People who can read this project can read the agent’s specification. Personal keeps it in your own project.",
+    project: "Access",
+    projectHint: "Who can see the agent and read its specification. Private keeps it to you.",
     provider: "Model Provider",
     workspaceModelPolicy: "Workspace Model Policy",
     model: "Model",
@@ -741,6 +740,10 @@ export const defaultCopy = {
     manualHint: "A searchable collection you manage. Upload UTF-8 text, Markdown, CSV or JSON.",
     drive: "Google Drive",
     driveHint: "Google Docs and text files in the selected folder. Query live or collect a copy.",
+    onedrive: "OneDrive",
+    onedriveHint:
+      "Text, Markdown, CSV, JSON and HTML files in the selected folder. Query live or collect a copy.",
+    onedriveOrigin: "OneDrive folder ID, or root",
     notion: "Notion",
     notionHint:
       "Text from a selected page and supported nested blocks. Query live or collect a copy.",
@@ -1098,6 +1101,7 @@ export const defaultCopy = {
     providers: {
       manual: "Manual",
       drive: "Google Drive",
+      onedrive: "OneDrive",
       notion: "Notion",
       gcs: "Google Cloud Storage",
       s3: "Amazon S3",
@@ -1962,18 +1966,19 @@ export const defaultCopy = {
   },
   personalAgents: {
     title: "My Agents",
-    description: "Agents whose home is your personal project.",
-    empty: "No personal agents yet.",
+    description: "Your private agents. Only you see them.",
+    empty: "No private agents yet.",
     failed: "Your agents could not be loaded or changed.",
     pause: "Pause",
     resume: "Resume",
     settings: "Agent Settings",
-    add: "Add to a Project",
-    project: "Destination Project",
-    review: "Review Audience",
-    confirm: "Move Agent to Project",
+    add: "Change Access",
+    project: "Access",
+    review: "Review Access",
+    confirm: "Confirm Access",
     cancel: "Cancel",
-    audience: "Members of the destination can use this agent and read its configuration.",
+    audience:
+      "Members of this project will see this agent and read its configuration. It will no longer be private.",
     create: "Create Agent",
   },
   emailNotifications: {
@@ -2570,12 +2575,13 @@ export const defaultCopy = {
   /** A conversation's approval mode, a text control under the composer (DES-057). */
   approvals: {
     label: "Approvals",
-    ask: "Default",
-    askHint: "Ask a person before a gated action runs.",
-    auto: "Approve for Me",
+    ask: "Ask Me",
+    askHint: "Every gated action waits for you.",
+    auto: "Run",
     autoHint:
-      "Approve gated actions as you, within policy. Budget requests and actions the agent or the policy always asks about still come to a person. Every approval is audited.",
-    autoFor: (name: string) => `Approved for ${name}`,
+      "The approval agent decides each action the policy asks about, and hands you anything it is unsure of. Every decision is audited.",
+    autoFor: (name: string) => `Run, chosen by ${name}`,
+    waiting: "No model is enabled for the approval agent yet, so every action waits for a person.",
     failed: "Could not change approvals. Try again.",
   },
   /** Over Home's chat bar: the person's own project, where a conversation in no project is filed (DES-057). */
@@ -2779,6 +2785,58 @@ export const defaultCopy = {
   },
   /** The chat bar's + menu and what it selects for a conversation. */
   /** Voice notes recorded in the composer and transcribed by the deployment's speech kind. */
+  voiceSettings: {
+    /** The settings section and its nav entry. */
+    title: "Voice",
+    lede: "The service that hears people and speaks agents' answers. With one set up, a voice clip sent in Slack is heard and answered out loud as well as in writing, and the console's microphone uses it too. Without one, the microphone uses the browser's own dictation.",
+    /** The kinds, by name. */
+    kinds: { groq: "Groq", openai: "OpenAI" } as Record<string, string>,
+    off: "Not set up",
+    on: "On",
+    setUp: "Set Up",
+    replaces: (other: string) => `Replaces ${other}`,
+    edit: "Edit",
+    turnOff: "Turn Off",
+    keep: "Keep",
+    confirmOff: "Turn Off Voice",
+    tryVoice: "Try Voice",
+    trying: "Speaking a sample",
+    /** What a check heard back from its own sample. */
+    heard: (text: string) => `Heard back: "${text}"`,
+    /** One line saying how it is set up, never its key. */
+    summary: (model: string, voice: string, key: string) => `${model} · voice ${voice} · ${key}`,
+    keyKept: "key kept",
+    noKey: "no key",
+    formTitle: (kind: string) => `Set up ${kind}`,
+    changeTitle: (kind: string) => `Change ${kind}`,
+    key: "Key",
+    keyWay: "How the key is given",
+    pasteIt: "Paste it",
+    envVar: "Environment variable",
+    value: "Value",
+    keepsKey: "Leave empty to keep the key it has.",
+    keptHint: "Kept in the secret store, never shown again.",
+    reference: "Reference",
+    referenceHint: "An env:HUMAGEN_ name this server gives the workspace.",
+    voice: "Voice",
+    more: "Models and prices",
+    hearModel: "Transcription model",
+    speakModel: "Speech model",
+    hearPrice: "Dollars an hour of audio heard",
+    minSeconds: "Least seconds billed a recording",
+    speakPrice: "Dollars a million characters spoken",
+    priceHint:
+      "The provider's published price unless you change it. Every call is counted in Usage.",
+    badPrice: "A price is dollars, such as 0.04, up to 1000.",
+    cancel: "Cancel",
+    save: "Save",
+    saving: "Saving",
+    readOnly: "Only someone who manages the workspace's connections can change voice.",
+    loadFailed: "Voice settings could not be read.",
+    saveFailed: "Voice could not be saved.",
+    offFailed: "Voice could not be turned off.",
+    checkFailed: (why: string) => `The sample could not be spoken: ${why}`,
+  },
   voice: {
     /** The microphone button, before recording. */
     record: "Record a voice note",
@@ -2799,7 +2857,7 @@ export const defaultCopy = {
   },
   chat: {
     /** The + button, which opens the menu. */
-    plus: "Add files, agents or a project",
+    plus: "Add files or agents",
     /** The shortcut that opens it, said in its tooltip: Cmd+/ on a Mac, Ctrl+/ elsewhere. */
     plusShortcut: (mac: boolean) => (mac ? "Cmd+/" : "Ctrl+/"),
     /** The sidebar's filter of conversations, and how many filters are on. */
@@ -2843,7 +2901,7 @@ export const defaultCopy = {
     notHere: (agents: string[]) =>
       `${agents.join(", ")} can't answer in this project. Pick another project, or mention another agent.`,
     /** The chat bar's prompt. */
-    placeholder: "Message @agent",
+    placeholder: "Ask anything",
     /** Under an answer that went to an agent because it was selected, not tagged. */
     routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,
     routed: (agent: string) => `Routed to ${agent}`,
@@ -2884,25 +2942,25 @@ export const defaultCopy = {
   workspaceDefault: "Workspace Default",
   /** The control that makes an agent live in a project. */
   livesHere: "Lives Here",
-  /** Where an agent can answer, on its Access tab and in the Directory. */
+  /** Where an agent comes from, on a project's Agents tab. */
   agentPlace: {
     livesIn: (project: string) => `Lives in ${project}`,
-    availableIn: "Available in",
-    platform: "Workspace agent: available wherever a project enables it",
-    everywhere: "Available everywhere",
-    nowhere: "Not enabled in any project yet.",
     loses: (n: number) => `${n} ${n === 1 ? "place" : "places"} will lose this agent.`,
-    /** On an agent's Access tab. */
-    title: "Where it answers",
-    hint: "Workspace agents answer wherever a project enables them. An agent with another project as its home answers there and below.",
-    home: "Lives in",
-    noHome: "Workspace",
     livesHere: "Lives here",
-    /** Where a project agent answers: its home and everything below it. */
-    homeAndBelow: (title: string) => `${title} and the projects below it`,
     fromProject: (title: string) => `from ${title}`,
-    moved: "Saved. It answers where it lives now.",
     failed: "Where the agent lives could not be changed.",
+  },
+  /** Who sees an agent, on its Access tab and in the agent list. */
+  agentAccess: {
+    title: "Who sees it",
+    label: "Access",
+    private: "Private",
+    privateHint: "Only you see it. It answers only where you alone read.",
+    workspace: "Workspace",
+    workspaceHint: "Everyone in the workspace sees it.",
+    membersOf: (project: string) => `Members of ${project}`,
+    membersHint: (project: string) => `Only members of ${project} see it.`,
+    failed: "Who sees the agent could not be changed.",
   },
   /** Who and what is in the workspace, readable by everyone in it. */
   directory: {
@@ -2923,11 +2981,6 @@ export const defaultCopy = {
       `${names.join(", ")}${more ? ` and ${more} more` : ""}`,
     more: "Show More",
     failed: "The directory could not be read.",
-    /** An agent's row: where it lives or that it is a platform agent, and where it is enabled. */
-    platformAgent: "Workspace agent",
-    enabledIn: (places: string) => `Enabled in ${places}`,
-    enabledEverywhere: "Enabled everywhere",
-    notEnabled: "Not enabled anywhere",
     /** A project's row: what it holds besides its tasks. */
     holds: (schedules: number, notes: number) =>
       [
@@ -2936,7 +2989,6 @@ export const defaultCopy = {
       ]
         .filter(Boolean)
         .join(", "),
-    livingHere: (agents: string) => `Agents living here: ${agents}`,
     /** People are tagged by handle; agents by name. */
     roles: (roles: string[]) => (roles.length ? roles.join(", ") : "No role"),
   },
@@ -3166,6 +3218,7 @@ export const defaultCopy = {
     companyStart: "Start in the workspace",
     unreadUpdates: "Unread updates",
     loading: "Loading projects",
+    pinned: "Pinned",
     title: "Projects",
     /** A kind in words, on a row and in a project's meta line. */
     kind: { company: "Company-wide", team: "Team", account: "Account" } as Record<string, string>,
@@ -3309,6 +3362,134 @@ export const defaultCopy = {
     managed: "The platform file declares this project. Fields it sets can't be changed here.",
     governed: "Only those who govern projects change the workspace and company-wide projects.",
     stale: "Someone changed this project since you opened it. Its latest version is shown now.",
+    /**
+     * One project's page: Home's composer over its recent sessions, and
+     * beside them what every session in it is given.
+     */
+    page: {
+      /** The composer's placeholder: "New session in Globex". */
+      composer: (title: string) => `New session in ${title}`,
+      recents: "Recents",
+      /** A session in Recents: where it started. */
+      trace: {
+        slack: "Slack",
+        github: "GitHub",
+        console: "Console",
+        scheduled: "Scheduled",
+        /** A schedule's run: "Scheduled: weekly-recap". */
+        schedule: (name: string) => `Scheduled: ${name}`,
+        /** More agents or people than the row shows: "+2". */
+        more: (n: number) => `+${n}`,
+      },
+      noSessions: "No sessions yet",
+      untitled: "Untitled session",
+      showMore: "Show More",
+      loadingMore: "Loading…",
+      sessionsFailed: "The sessions could not be loaded.",
+      retry: "Try Again",
+      /** The side column, for assistive technology. */
+      side: "Project settings",
+      editHeading: "Edit project",
+      save: "Save",
+      saving: "Saving…",
+      cancel: "Cancel",
+      instructions: {
+        title: "Instructions",
+        none: "No instructions",
+        add: "Add",
+        edit: "Edit",
+        addLabel: "Add Instructions",
+        editLabel: "Edit Instructions",
+        /** Under the editor: "120 / 4,000". */
+        count: (n: number) => `${n.toLocaleString()} / 4,000`,
+        failed: "The instructions could not be saved. Try again.",
+      },
+      context: {
+        title: "Context",
+        none: "No corpora",
+        /** A corpus on the card: "HR policies, 3 sources". */
+        corpus: (title: string, sources: number) =>
+          `${title}, ${sources} ${sources === 1 ? "source" : "sources"}`,
+        add: "Add",
+        edit: "Edit",
+        addLabel: "Add Context",
+        editLabel: "Edit Context",
+        /** The sheet, when the reader may read no corpus. */
+        noCorpora: "No corpora to attach",
+        failed: "The context could not be saved. Try again.",
+        stale:
+          "Someone changed this project's context since you opened it. Its latest is shown now.",
+      },
+      memory: {
+        title: "Memory",
+        /** The card: "3 notes, 1 waiting". */
+        summary: (notes: number, waiting: number) =>
+          [
+            `${notes} ${notes === 1 ? "note" : "notes"}`,
+            ...(waiting > 0 ? [`${waiting} waiting`] : []),
+          ].join(", "),
+        view: "View",
+        viewLabel: "View Memory",
+        none: "No notes",
+        waiting: "Waiting for approval",
+        kept: "Notes",
+        keep: "Keep",
+        discard: "Discard",
+        forget: "Forget",
+        /** A pending note's controls: "Keep note: The launch is Tuesday". */
+        keepLabel: (text: string) => `Keep note: ${text}`,
+        discardLabel: (text: string) => `Discard note: ${text}`,
+        forgetLabel: (text: string) => `Forget note: ${text}`,
+        note: "New note",
+        add: "Add Note",
+        failed: "The notes could not be changed. Try again.",
+      },
+      scheduled: {
+        title: "Scheduled",
+        none: "Nothing scheduled",
+        add: "Add",
+        addLabel: "Add Schedule",
+        heading: "New schedule",
+        name: "Name",
+        when: "When",
+        custom: "Custom",
+        expression: "Cron expression",
+        expressionHint: "Minute, hour, day, month and weekday, in UTC",
+        agent: "Agent",
+        text: "What to ask",
+        create: "Create Schedule",
+        paused: "Paused",
+        failed: "The schedule could not be saved. Try again.",
+      },
+      slack: {
+        title: "Slack",
+        none: "No channels linked",
+        add: "Add",
+        addLabel: "Add Slack Channel",
+        heading: "Link a Slack channel",
+        client: "Slack app",
+        channel: "Slack channel ID",
+        channelHint: "Starts with C, or G for a private channel",
+        invalid: "Use a Slack channel ID that starts with C or G.",
+        noClients: "No Slack app is connected",
+        link: "Link Channel",
+        remove: "Remove",
+        /** One link on the card: "#C0123 via Acme Slack". */
+        via: (channel: string, client: string) => `#${channel} via ${client}`,
+        removeLabel: (channel: string) => `Remove #${channel}`,
+        failed: "The Slack channel could not be linked. Try again.",
+        removeFailed: "The Slack channel could not be removed. Try again.",
+      },
+      visibility: {
+        title: "Access",
+        private: "Private",
+        shared: "Shared",
+        workspace: "Workspace",
+        change: "Change",
+        changeLabel: "Change Access",
+        heading: "Who can see this project",
+      },
+    },
     failed: {
       create: "The project could not be created. Try again.",
       save: "The project could not be saved. Try again.",
@@ -3510,7 +3691,7 @@ export const defaultCopy = {
     privateHint: "Only the people in it read a private thread. Tagging a person invites them.",
     /** Who takes part, in the meta line. */
     participants: (n: number) => `${n} ${n === 1 ? "person" : "people"}`,
-    startThread: "Message @agent",
+    startThread: "Ask anything",
     reply: "Reply",
     send: "Send",
     /** The control that posts a message no agent answers, unless it tags one. */
@@ -3565,6 +3746,12 @@ export const defaultCopy = {
       "This turn acted for nobody, so anyone who may start runs can retry it from the inbox.",
     answer: "Answer",
     answered: "Answered",
+    /** In a root session, what its entry agent (by the workspace's name) picked, as a screen reader names it. */
+    pickedBy: (by: string) => `Picked by ${by}`,
+    /** An agent's answer, as a screen reader names it. */
+    answeredBy: (agent: string) => `Answered by ${agent}`,
+    /** Opens the child session an answer shown inline in its root came from. */
+    openSession: "Open Session",
     typeahead: "People and agents to tag",
     /** The `/` command menu, as a screen reader names it. */
     commands: "Slash commands",
@@ -3577,7 +3764,7 @@ export const defaultCopy = {
     /** A mention kind, as completion offers `@kind:`: its title, or what it is. */
     mentionKind: (kind: string, title?: string) => title || `Mention by ${kind}`,
     /** The chat bar's prompt in a conversation. Nothing runs until a message tags an agent. */
-    message: "Message @agent",
+    message: "Reply",
     /** The control at the top of a private conversation that shares it in a project's channel. */
     share: "Share",
     shareTitle: "Share this conversation",

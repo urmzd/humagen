@@ -103,3 +103,52 @@ func TestVoiceNotesAreBounded(t *testing.T) {
 		t.Fatalf("%d notes transcribed, want %d", len(heard), MaxVoiceNotes)
 	}
 }
+
+// A message whose voice note was heard was spoken; one whose note could not
+// be heard was not.
+func TestAHeardVoiceNoteMarksTheMessageSpoken(t *testing.T) {
+	p, put := voicePlatform(t, &speech.Fake{Text: "Ship it.", Language: "english"})
+	ctx := context.Background()
+	note := put("clip.webm", "audio/webm", "OggS-recording")
+	if text, spoken := p.transcribeVoiceNotes(ctx, "acme", "", []attachment.Attachment{note}); !spoken || !strings.Contains(text, "Ship it.") {
+		t.Fatalf("heard: %q %v", text, spoken)
+	}
+	if _, spoken := p.transcribeVoiceNotes(ctx, "acme", "hi", nil); spoken {
+		t.Fatal("a message with no audio was spoken")
+	}
+	failing, put2 := voicePlatform(t, &speech.Fake{Err: speech.ErrUnavailable})
+	if text, spoken := failing.transcribeVoiceNotes(ctx, "acme", "", []attachment.Attachment{put2("clip.webm", "audio/webm", "OggS")}); spoken || !strings.Contains(text, "could not be transcribed") {
+		t.Fatalf("not heard: %q %v", text, spoken)
+	}
+}
+
+// The voice provider is a record of its own: a writer of the settings record
+// that does not know it, such as an older server mid-rollout, cannot drop it.
+func TestASettingsWriteCannotDropTheVoiceProvider(t *testing.T) {
+	p := &Platform{log: slog.New(slog.DiscardHandler)}
+	if err := p.settings.open(nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.writeVoiceProvider("acme", &VoiceProvider{Kind: speech.KindOpenAI, Model: "whisper-1", KeyRef: "env:HUMAGEN_KEY"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.settings.update("acme", func(v *storedSettings) error {
+		*v = storedSettings{}
+		v.WorkspaceName = "Acme"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := p.VoiceProvider("acme"); !ok || v.Kind != speech.KindOpenAI {
+		t.Fatalf("after a settings write: %+v %v", v, ok)
+	}
+	if _, ok := p.VoiceProvider("globex"); ok {
+		t.Fatal("another workspace has the provider")
+	}
+	if err := p.writeVoiceProvider("acme", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := p.VoiceProvider("acme"); ok {
+		t.Fatal("a removed provider is still there")
+	}
+}

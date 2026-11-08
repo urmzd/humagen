@@ -41,6 +41,16 @@ func TestTheSpecChoosesTheTranscriber(t *testing.T) {
 	if _, ok := tr.(speech.Synthesizer); !ok {
 		t.Fatal("groq does not speak")
 	}
+	// openai is the same API on OpenAI's, keyed by OPENAI_API_KEY.
+	keys.LookupEnv = func(k string) (string, bool) { return "sk_" + k, k == "OPENAI_API_KEY" }
+	l.cfg.System.Spec.Speech = spec.Slot{Kind: "openai", Block: spec.MustJSON(spec.GroqSpeech{BaseURL: srv.URL})}
+	tr, err = openSpeech(ctx, Options{}, l, keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text, _, err := tr.Transcribe(ctx, strings.NewReader("x"), "audio/ogg"); err != nil || text != "hello" || auth != "Bearer sk_OPENAI_API_KEY" {
+		t.Fatalf("openai with OPENAI_API_KEY by default: %q %q %v", text, auth, err)
+	}
 }
 
 // A groq model is the OpenAI-compatible adapter on Groq's API, keyed by

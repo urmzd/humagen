@@ -72,7 +72,7 @@ func TestValidateRefusesWhatASurfaceCannotBe(t *testing.T) {
 		}
 	}
 	gh := githubOf("gh", "acme")
-	gh.GitHub = &GitHubOptions{AutoLabels: map[string]map[string]string{"acme/handbook": {"agent:auto": "lead"}}, Login: "humagen-app[bot]"}
+	gh.GitHub = &GitHubOptions{AutoReview: &AutoReview{Repositories: map[string]bool{"acme/handbook": false}}, Login: "humagen-app[bot]"}
 	if err := gh.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -80,8 +80,9 @@ func TestValidateRefusesWhatASurfaceCannotBe(t *testing.T) {
 		"no owners":                     func(c *Client) { c.Identity.Owners = nil },
 		"team on github":                func(c *Client) { c.Identity.Team = "T01ABCDEF" },
 		"installation not a number":     func(c *Client) { c.Identity.Installation = "abc" },
-		"label for a foreign agent":     func(c *Client) { c.GitHub.AutoLabels["acme/handbook"]["x"] = "billing" },
-		"label outside the accounts":    func(c *Client) { c.GitHub.AutoLabels["globex/site"] = map[string]string{"x": "lead"} },
+		"review outside the accounts":   func(c *Client) { c.GitHub.AutoReview.Repositories["globex/site"] = true },
+		"review of a non-repository":    func(c *Client) { c.GitHub.AutoReview.Repositories["acme"] = true },
+		"review of one repo twice":      func(c *Client) { c.GitHub.AutoReview.Repositories["ACME/Handbook"] = true },
 		"guides with no bot":            func(c *Client) { c.GitHub.Guides = true },
 		"read repository not a repo":    func(c *Client) { c.GitHub.ReadRepositories = []string{"acme"} },
 		"the same account twice":        func(c *Client) { c.Identity.Owners = []string{"acme", "ACME"} },

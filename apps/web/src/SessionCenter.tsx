@@ -1,6 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type AlertRuleConfig, api, type ProjectView } from "./api.ts";
+import { agentShown } from "./branding.ts";
 import { AgentTag, FilterSelect, ItemCard, PriorityPill, StatusPill, Tag } from "./cards.tsx";
 import { type ProjectRef, readableProject } from "./projects.ts";
 import { href, type Route, SESSION_PLACES, type SessionPlaceFilter } from "./route.ts";
@@ -138,7 +139,7 @@ export function SessionRow({
   return (
     <li className={nested ? "ml-4 border-aui-border border-l pt-3 pl-4" : ""}>
       <ItemCard
-        title={session.title || session.agent}
+        title={session.title || agentShown(session.agent)}
         href={href({ page: "conversation", id: session.id })}
         time={<time dateTime={session.updated_at}>{ago(session.updated_at)}</time>}
         onOpen={() => go({ page: "conversation", id: session.id })}
@@ -154,7 +155,7 @@ export function SessionRow({
         actions={
           <button
             type="button"
-            aria-label={`${expanded ? "Collapse" : "Show"} children of ${session.title || session.agent}`}
+            aria-label={`${expanded ? "Collapse" : "Show"} children of ${session.title || agentShown(session.agent)}`}
             aria-expanded={expanded}
             onClick={expand}
             className={textAction}
@@ -878,7 +879,7 @@ export function HomeSessionGlance({
             {sessions.slice(0, 3).map((s) => (
               <li key={s.id}>
                 <ItemCard
-                  title={s.title || s.agent}
+                  title={s.title || agentShown(s.agent)}
                   time={ago(s.updated_at)}
                   onOpen={() => go({ page: "conversation", id: s.id })}
                   facts={

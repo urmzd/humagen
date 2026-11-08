@@ -40,6 +40,8 @@ tags:
     description: Personal authorizations and installed service connections.
   - name: sessions
     description: Continuing conversations with one agent and their child sessions.
+  - name: messages
+    description: One way in for every surface; people's messages from an origin, under the root session of its place.
   - name: health
     description: Liveness.
   - name: auth
@@ -109,6 +111,189 @@ security:
   - bearerToken: []
   - sessionCookie: []
 paths:
+  /api/messages:
+    post:
+      operationId: "sendMessages"
+      tags:
+        - "messages"
+      summary: "Send messages"
+      description: |
+        People's messages from one origin, under the root session of the
+        origin's place: found by its address, or started on its first message
+        and owned by the entry agent, so work asked for in a place is picked
+        up there later. With no ref (or type web) the message starts a new
+        console conversation. Agents a message mentions answer in their own
+        child sessions under the root; with no mention the entry agent
+        picks. Earlier messages in a batch are posted as said and start
+        nothing. Callers send role user; the platform writes the agents'
+        messages. 201 when the root was started, 200 otherwise.
+      x-permission: "runs:write"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessagesInput"
+      responses:
+        "200":
+          description: "Posted under the place's existing root"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageCreated"
+        "201":
+          description: "Posted, starting the place's root"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageCreated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    get:
+      operationId: "listMessages"
+      tags:
+        - "messages"
+      summary: "List root messages"
+      description: |
+        The root sessions the caller may read, each as its first message: its
+        place (parent), who started it, the agent that owns it, its status
+        (that of the runs beneath it), how many children it has and when
+        anything beneath it last changed. Newest first by latest_at. roots
+        is required and true, the one listing this route answers. Page with
+        after, the next of the previous page.
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "roots", "in": "query", "required": true, "description": "true; the one listing this route answers.", "schema": {"type": "boolean"}}
+        - {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}}
+        - {"name": "after", "in": "query", "required": false, "schema": {"type": "string"}}
+      responses:
+        "200":
+          description: "A page of roots"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RootMessagePage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/messages/{id}:
+    post:
+      operationId: "sendMessagesUnder"
+      tags:
+        - "messages"
+      summary: "Send messages under a message"
+      description: "People's messages beneath a message or its session, as a follow-up in that conversation. id is a session id, or a message id (session:message)."
+      x-permission: "runs:write"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessagesInput"
+      responses:
+        "200":
+          description: "Posted"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageCreated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    get:
+      operationId: "getMessage"
+      tags:
+        - "messages"
+      summary: "Get message"
+      description: |
+        Without depth, the session a message is in, with its messages, the
+        entry agent's picks and each delegated answer, its children and
+        links (AgentSession). With depth, the message as a tree
+        (MessageNode): the message and its children in time order, each with
+        children_count and latest_at, depth levels deep. A session id reads
+        as the session's first message, and that message's own id reads the
+        same. id is a session id, or a message id (session:message).
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "since", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "before", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "around", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "summary", "in": "query", "required": false, "schema": {"type": "boolean"}}
+        - {"name": "depth", "in": "query", "required": false, "description": "Read the message as a tree this many levels deep; empty is 1. Not with since, before, around or summary.", "schema": {"type": "integer", "minimum": 0, "maximum": 5}}
+      responses:
+        "200":
+          description: "The message's session, or with depth the message as a tree"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/AgentSession"
+                  - $ref: "#/components/schemas/MessageNode"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/messages/{id}/stream:
+    get:
+      operationId: "streamMessage"
+      tags:
+        - "messages"
+      summary: "Stream message"
+      description: "What happens beneath a message: its session's snapshots and run events, as GET /api/sessions/{id}/stream. Resume with Last-Event-ID."
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "Last-Event-ID", "in": "header", "required": false, "schema": {"type": "string"}}
+      responses:
+        "200":
+          description: "Session snapshots and run events; reconnect using the last event ID."
+          content:
+            text/event-stream:
+              schema:
+                type: "string"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
   /api/sessions/{id}/stream:
     get:
       operationId: "streamSession"
@@ -467,6 +652,12 @@ paths:
             schema:
               $ref: "#/components/schemas/SessionInput"
       responses:
+        "200":
+          description: "A chat surface's message landed in its thread's root session, which already existed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSession"
         "201":
           description: "Successful session operation"
           content:
@@ -2988,6 +3179,45 @@ paths:
         "429": {$ref: "#/components/responses/Refused"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/runs/{id}/speech:
+    post:
+      operationId: speakAnswer
+      tags: [voice]
+      summary: A finished run's answer as one audio clip
+      description: |
+        Speaks the answer of a run that has ended with the workspace's voice
+        provider, as one clip: plain words, at most 1,200 characters, a longer
+        answer cut at a sentence and ending "The rest is in the thread."
+        (`whole` false). For a surface that replies with a file: a Slack
+        thread answers a voice clip with one. The text is the run's own; a
+        client cannot name it. Each part spoken is counted in the usage
+        ledger and on the run's session. 409 while the run works or with no
+        voice provider, 402 at a spend limit, 422 for an answer with no words.
+      x-permission: speech:write
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      responses:
+        "200":
+          description: The answer, spoken.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SpokenAnswer"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "402": {$ref: "#/components/responses/Refused"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422":
+          description: The answer has no words to say.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
+        "500": {$ref: "#/components/responses/ServerError"}
+        "503":
+          description: The voice provider failed or did not answer in time.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
   /api/runs/{id}/stop:
     post:
       operationId: stopRun
@@ -6307,6 +6537,7 @@ paths:
                   type: string
                   enum:
                   - drive
+                  - onedrive
               oneOf:
               - required:
                 - ref
@@ -7978,11 +8209,14 @@ paths:
     get:
       operationId: getVoice
       tags: [voice]
-      summary: Whether voice notes are transcribed here
+      summary: What voice this workspace has
       description: |
-        `transcribe` is false when the System spec has no speech kind; the
-        console then offers no recording. `max_bytes` is the largest
-        recording `POST /api/voice/transcriptions` takes.
+        `transcribe` is whether a recording is turned into words: by the
+        workspace's voice provider, else the System spec's speech kind.
+        Without either the console's microphone uses the browser's own
+        dictation. `speak` is whether voice mode is on, which takes a
+        workspace voice provider; `provider` is its kind. `max_bytes` is the
+        largest recording `POST /api/voice/transcriptions` takes.
       x-permission: speech:write
       responses:
         "200":
@@ -8001,7 +8235,9 @@ paths:
         The body is the recording's own bytes, at most `max_bytes` from
         `GET /api/voice` (10 MiB). What it is is decided from the bytes, not
         the Content-Type. The words come back for the person to read and
-        send; the recording is not kept. 404 when voice notes are off, 422
+        send; the recording is not kept. It is transcribed by the workspace's
+        voice provider, whose cost is counted, else the System spec's speech
+        kind. 404 when neither is set up, 422
         when no words were heard, 503 when the speech provider failed or did
         not answer in time.
       x-permission: speech:write
@@ -8036,6 +8272,214 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/ErrorBody"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/sessions/{id}/messages/{mid}:
+    patch:
+      operationId: correctSpokenMessage
+      tags: [voice]
+      summary: Put right the words of a spoken message
+      description: |
+        Replaces the text of a message its author said in voice mode
+        (`spoken`), so a word the transcription heard wrong is right for
+        every later turn. Only the author may, only a spoken message can be
+        corrected (400 for any other), its tags stay as posted, and the runs
+        it already started are not changed. The message gets `edited_at`.
+      x-permission: runs:write
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "mid", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SpokenCorrection"}
+      responses:
+        "200":
+          description: The session, with the message corrected.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSession"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/sessions/{id}/voice/transcriptions:
+    post:
+      operationId: hearInSession
+      tags: [voice]
+      summary: Hear what a person said in voice mode
+      description: |
+        The body is the recording's own bytes, at most `max_bytes` from
+        `GET /api/voice`. It is heard by the workspace's voice provider and
+        not kept; the words come back to be sent as a message with `spoken`
+        set, or read as an answer to an approval. What it costs is counted in
+        the usage ledger and on the session's `voice` usage. 409 when the
+        workspace has no voice provider, 402 when a spend limit over the
+        session is reached (nothing is sent to the provider), 422 when no
+        words were heard.
+      x-permission: speech:write
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      responses:
+        "200":
+          description: What was said.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VoiceTranscript"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "402": {$ref: "#/components/responses/Refused"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413":
+          description: The recording is over `max_bytes`.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
+        "422":
+          description: No words were heard.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
+        "500": {$ref: "#/components/responses/ServerError"}
+        "503":
+          description: The voice provider failed or did not answer in time.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
+  /api/sessions/{id}/voice/speech:
+    post:
+      operationId: speakInSession
+      tags: [voice]
+      summary: Speak the next part of a run's answer
+      description: |
+        Speaks the next few sentences of the answer of `run`, a run of this
+        session, from `from` (0, then each answer's `next`), as plain words:
+        no Markdown, links by their text, a code block as "The code is in the
+        session." The text is read on the server; a client cannot name it.
+        While the answer is still being written and has no whole sentence
+        after `from`, the answer is `pending` and nothing is spent; once it
+        has ended and been said in full, `done`. What it costs is counted. 404
+        for a run that is not this session's, 409 when the workspace has no
+        voice provider, 402 when a spend limit is reached.
+      x-permission: speech:write
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/VoiceSpeechInput"}
+      responses:
+        "200":
+          description: The words, spoken, or pending, or done.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VoiceSpeech"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "402": {$ref: "#/components/responses/Refused"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+        "503":
+          description: The voice provider failed or did not answer in time.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
+  /api/voice/provider:
+    get:
+      operationId: getVoiceProvider
+      tags: [voice]
+      summary: The workspace's voice provider and the kinds it can be
+      description: |
+        `provider` is left out until an admin sets one up; voice mode is off
+        until then. Its key is never returned: `key_stored` says a value is
+        kept, `key_ref` names the reference it is read from. `kinds` are the
+        kinds a provider can be, with their default models, voices and
+        published prices in micro-USD.
+      x-permission: clients:write
+      responses:
+        "200":
+          description: The voice provider, if any, and the kinds.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VoiceProviderView"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    put:
+      operationId: setVoiceProvider
+      tags: [voice]
+      summary: Set up the workspace's voice provider, or replace it
+      description: |
+        An empty model or voice is the kind's default, and no `price` the
+        kind's published one (or the one it had, when the kind is
+        unchanged). Give `key`, kept in the server's secret store, or
+        `key_ref`, an `env:HUMAGEN_*` reference this server grants the
+        workspace; with neither, a provider of the same kind keeps its key.
+        Everyone in the workspace who may record (`speech:write`) spends it,
+        and what each call costs is counted in the usage ledger.
+      x-permission: clients:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/VoiceProviderInput"}
+      responses:
+        "200":
+          description: The voice provider as set up.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VoiceProvider"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: deleteVoiceProvider
+      tags: [voice]
+      summary: Turn the workspace's voice off
+      description: Forgets the provider and any key kept for it. Voice mode stops; the microphone falls back to the deployment's speech kind or the browser's dictation.
+      x-permission: clients:write
+      responses:
+        "204":
+          description: Voice is off.
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/voice/provider/check:
+    post:
+      operationId: checkVoiceProvider
+      tags: [voice]
+      summary: Hear the voice and check both ways work
+      description: |
+        Speaks a fixed sample with the provider and transcribes it back, so
+        an admin hears the voice and sees it heard. What it costs is
+        counted. 404 with no provider, 502 when the provider refused or did
+        not answer, with its own reason.
+      x-permission: clients:write
+      responses:
+        "200":
+          description: The sample spoken, and what was heard back.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VoiceCheck"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+        "502":
+          description: The voice provider refused or did not answer.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
   /api/people/{handle}/photo:
     get:
       operationId: getPersonPhoto
@@ -8236,7 +8680,7 @@ paths:
       description: |
         A workspace at its cap of clients answers 429 with a plain error
         body. Every agent the client names, as its default, in its list, for
-        a bot or for an auto-label, is an agent that exists and that the
+        a bot or in an event rule, is an agent that exists and that the
         caller may read; any other is 400, in the same words whether it does
         not exist or lives in a project the caller may not read.
       x-permission: clients:write
@@ -8315,7 +8759,7 @@ paths:
         naming one they may read replaces it. The agents it names that the
         caller is not shown are kept the same way: its default unless they
         name another, its list unless they write `*`, its bots and its
-        auto-labels unless they map the same bot or label, and an agent it
+        event rules unless they map the same bot or write the same rule, and an agent it
         routed to stays one it routes to. Every other agent named is one that
         exists and that the caller may read, or one the record already holds
         (400 otherwise, as on create). A client the server's configuration
@@ -12234,6 +12678,13 @@ components:
           description: "`console`, or the id of the client it came through."
           type: string
         surface_id: {type: string}
+        spoken:
+          description: Said in voice mode and transcribed.
+          type: boolean
+        edited_at:
+          description: When its author last corrected a spoken message's words.
+          type: string
+          format: date-time
         at: {type: string, format: date-time}
     ThreadAnnouncement:
       description: |
@@ -12456,6 +12907,9 @@ components:
         answers: {$ref: "#/components/schemas/ThreadAnswerRef"}
         act_as: {$ref: "#/components/schemas/ActAs"}
         surface: {$ref: "#/components/schemas/SurfaceRef"}
+        spoken:
+          description: The person said it in voice mode and the words were transcribed. It only marks the message.
+          type: boolean
     ThreadMode:
       description: |
         How a thread's selected agents answer an untagged message a person
@@ -12760,6 +13214,52 @@ components:
           description: The app's own bot user id, whose mention is not a tag.
           type: string
           maxLength: 32
+        audience: {$ref: "#/components/schemas/SurfaceAudience"}
+        action_token:
+          description: Slack's short-lived token for acting for the person in this turn. Accepted and never kept or passed on.
+          type: string
+          maxLength: 512
+    SurfaceAudience:
+      description: |
+        Who is in the Slack conversation a message was asked in. A root
+        session's audience follows it: a public channel's is shared where it
+        is filed; a private channel's or a group direct message's is private
+        to the members the client maps to people, kept to the members of the
+        latest message; a direct message's is private to its person. Absent,
+        a D channel is a direct message and anything else is private to the
+        person asking: a channel id never says the channel is public.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type: {type: string, enum: [public_channel, private_channel, mpim, im]}
+        members:
+          description: The conversation's members by Slack user id, for a private channel or a group direct message.
+          type: array
+          maxItems: 500
+          items: {type: string, maxLength: 32}
+    SessionPosted:
+      description: What one message posted to a chat surface's root session did.
+      type: object
+      additionalProperties: false
+      required: [message, runs, notified, refused, rule]
+      properties:
+        message:
+          type: object
+          additionalProperties: false
+          required: [id, text]
+          properties:
+            id: {type: string}
+            text: {type: string, description: The text as read, Slack markup reduced.}
+        runs:
+          description: The runs it started, in the root or in the child of the agent it named.
+          type: array
+          items: {$ref: "#/components/schemas/Run"}
+        notified: {type: array, items: {type: string}}
+        refused: {type: array, items: {$ref: "#/components/schemas/ThreadMention"}}
+        rule: {type: string}
+        reason: {type: string}
+        repeated: {type: boolean, description: The message was already posted; nothing started again.}
     ThreadSurface:
       description: The thread on a client's surface this thread is. It never changes.
       type: object
@@ -13765,12 +14265,124 @@ components:
             agent: {type: string}
         - {$ref: "#/components/schemas/AgentPlace"}
     VoiceSettings:
-      description: Whether voice notes are transcribed, and the largest recording taken.
+      description: What voice a workspace has, and the largest recording taken.
       type: object
-      required: [transcribe, max_bytes]
+      required: [transcribe, speak, max_bytes]
       properties:
         transcribe: {type: boolean}
+        speak: {type: boolean}
+        provider: {type: string, enum: [groq, openai]}
         max_bytes: {type: integer, format: int64}
+    VoicePrice:
+      description: What a voice provider charges, in micro-USD. Zero is unpriced.
+      type: object
+      additionalProperties: false
+      required: [hear_per_hour, min_seconds, speak_per_million_chars]
+      properties:
+        hear_per_hour: {type: integer, format: int64, minimum: 0, maximum: 1000000000}
+        min_seconds: {type: integer, format: int64, minimum: 0, maximum: 3600}
+        speak_per_million_chars: {type: integer, format: int64, minimum: 0, maximum: 1000000000}
+    VoiceProvider:
+      description: A workspace's voice provider. Its key is never shown.
+      type: object
+      required: [kind, model, speech_model, voice, price, key_stored, set_by, set_at]
+      properties:
+        kind: {type: string, enum: [groq, openai]}
+        model: {type: string, description: Transcribes.}
+        speech_model: {type: string, description: Speaks.}
+        voice: {type: string}
+        price: {$ref: "#/components/schemas/VoicePrice"}
+        key_ref: {type: string}
+        key_stored: {type: boolean}
+        set_by: {type: string}
+        set_at: {type: string, format: date-time}
+    VoiceProviderInput:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [groq, openai]}
+        model: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._/-]{0,79}$"}
+        speech_model: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._/-]{0,79}$"}
+        voice: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._/-]{0,79}$"}
+        price: {$ref: "#/components/schemas/VoicePrice"}
+        key_ref: {type: string, maxLength: 256}
+        key: {type: string, maxLength: 4096, writeOnly: true}
+    VoiceKind:
+      description: A kind a voice provider can be, with its defaults and the voices it is known to offer.
+      type: object
+      required: [kind, model, speech_model, voice, voices, price]
+      properties:
+        kind: {type: string, enum: [groq, openai]}
+        model: {type: string}
+        speech_model: {type: string}
+        voice: {type: string}
+        voices:
+          type: array
+          items: {type: string}
+        price: {$ref: "#/components/schemas/VoicePrice"}
+    VoiceProviderView:
+      type: object
+      required: [kinds]
+      properties:
+        provider: {$ref: "#/components/schemas/VoiceProvider"}
+        kinds:
+          type: array
+          items: {$ref: "#/components/schemas/VoiceKind"}
+    VoiceUsage:
+      description: What voice mode has used in a session, counted also in the workspace's usage.
+      type: object
+      required: [heard_ms, spoken_chars, micros, calls]
+      properties:
+        heard_ms: {type: integer, format: int64, description: "How long the person spoke, as the provider measured it."}
+        spoken_chars: {type: integer, format: int64}
+        micros: {type: integer, format: int64, description: "What it cost, in micro-USD."}
+        calls: {type: integer}
+        unpriced_calls: {type: integer}
+    SpokenAnswer:
+      description: A finished run's answer as one clip.
+      type: object
+      required: [audio, media_type, text, whole, cost_micros]
+      properties:
+        audio: {type: string, format: byte, description: "The clip, base64."}
+        media_type: {type: string}
+        text: {type: string, description: What the clip says.}
+        whole: {type: boolean, description: "The answer is said in full, not cut at 1,200 characters."}
+        cost_micros: {type: integer, format: int64}
+    SpokenCorrection:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text: {type: string, minLength: 1, maxLength: 8000}
+    VoiceSpeechInput:
+      type: object
+      additionalProperties: false
+      required: [run]
+      properties:
+        run: {type: string, description: A run of this session whose answer is spoken.}
+        from: {type: integer, minimum: 0, description: "The offset to speak from: 0, then each answer's `next`."}
+    VoiceSpeech:
+      description: The next part of a run's answer, spoken.
+      type: object
+      required: [text, next, cost_micros]
+      properties:
+        audio: {type: string, format: byte, description: "The sound, base64. Left out while pending."}
+        media_type: {type: string}
+        text: {type: string, description: "What was said, for captions."}
+        next: {type: integer, description: The offset to ask from next.}
+        pending: {type: boolean, description: The answer is still being written and has no whole sentence after the offset yet; ask again when more arrives.}
+        done: {type: boolean, description: The answer has ended and has been said in full.}
+        cost_micros: {type: integer, format: int64}
+    VoiceCheck:
+      description: The sample a check spoke, and what was heard back from it.
+      type: object
+      required: [audio, media_type, heard, cost_micros]
+      properties:
+        audio: {type: string, format: byte, description: "The spoken sample, base64."}
+        media_type: {type: string}
+        heard: {type: string}
+        cost_micros: {type: integer, format: int64}
     VoiceTranscript:
       description: What a recording said, and the language it was said in when the speech kind reports one.
       type: object
@@ -15127,7 +15739,7 @@ components:
             files are indexed text; references are searched live at the
             source; records are warehouse tables kept as schema only and
             queried live.
-        provider: {type: string, description: "manual, drive, notion, s3, gcs, bigquery, snowflake and so on."}
+        provider: {type: string, description: "manual, drive, onedrive, notion, s3, gcs, bigquery, snowflake and so on."}
         items: {type: integer, minimum: 0, description: "Indexed documents, or the tables and views a warehouse lists."}
         status: {type: string, enum: [ready, syncing, failed, missing, hidden]}
     CorpusReader:
@@ -15245,7 +15857,7 @@ components:
       type: object
       required: [provider, attribute, pattern, project]
       properties:
-        provider: {type: string, enum: [github, slack, drive, notion]}
+        provider: {type: string, enum: [github, slack, drive, onedrive, notion]}
         attribute: {type: string, maxLength: 64}
         pattern: {type: string, minLength: 1, maxLength: 256}
         project: {type: string, minLength: 1, maxLength: 64}
@@ -15778,12 +16390,15 @@ components:
         name: {type: string, maxLength: 64}
         repository: {type: string}
         event: {type: string, enum: [check_run, issues, pull_request, push]}
-        action: {type: string, maxLength: 64}
+        action: {type: string, maxLength: 64, description: "Never `labeled` or `unlabeled`: labels start nothing. A rule stored on one reads paused, with a note."}
         conclusion: {type: string, maxLength: 64}
-        label: {type: string, maxLength: 128}
         agent: {type: string}
         instructions: {type: string, maxLength: 16000}
         paused: {type: boolean}
+        note:
+          description: Read-only. What of a rule stored earlier is ignored now, such as a label (labels start nothing). Dropped when the rule is saved.
+          type: string
+          readOnly: true
     GitHubOptions:
       type: object
       properties:
@@ -15802,12 +16417,22 @@ components:
           maxProperties: 500
           additionalProperties:
             type: string
-        auto_labels:
+        auto_review:
+          description: |
+            Reviews a pull request when it opens or reopens ready for review,
+            leaves draft, or gets a push, by the client's default agent.
+            Left out, it is on. Labels start nothing.
           type: object
-          additionalProperties:
-            type: object
-            additionalProperties:
-              type: string
+          additionalProperties: false
+          properties:
+            enabled:
+              description: The connection's switch. Left out, it is on.
+              type: boolean
+            repositories:
+              description: Exact `owner/repo` names reviewed (true) or not (false), whatever `enabled` says.
+              type: object
+              maxProperties: 64
+              additionalProperties: {type: boolean}
         checks:
           type: boolean
         guides:
@@ -15905,7 +16530,7 @@ components:
           description: |
             The agents it may route to besides its default, leaving out every
             agent that lives in a project the caller may not read, as `bots`
-            and `github.auto_labels` do. The machine that hosts the client's
+            and `github.automations` do. The machine that hosts the client's
             surface, its `slack.machine`, is shown every agent it names.
           type: array
           items: {type: string}
@@ -17077,6 +17702,166 @@ components:
         source_alert:
           type: string
           description: The readable session alert that anchors this fix conversation.
+    MessagesInput:
+      description: People's messages from one origin. Who said them is the caller.
+      type: object
+      additionalProperties: false
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: {$ref: "#/components/schemas/InMessage"}
+        ref: {$ref: "#/components/schemas/ExternalRef"}
+        stream:
+          type: boolean
+          description: Accepted; follow GET /api/messages/{id}/stream for what happens beneath.
+    InMessage:
+      description: One person's message. role is user; the platform writes the agents' messages.
+      type: object
+      additionalProperties: false
+      required: [role, content]
+      properties:
+        role: {type: string, enum: [user]}
+        content: {$ref: "#/components/schemas/MessageContent"}
+        ref:
+          $ref: "#/components/schemas/ExternalRef"
+          description: This message's own origin when it differs from the batch's (a Slack reply's ts); it also makes the message post once.
+    MessageContent:
+      description: A string, or content blocks.
+      oneOf:
+        - {type: string}
+        - type: array
+          items: {$ref: "#/components/schemas/ContentBlock"}
+    ContentBlock:
+      description: |
+        One block of a message: text; a mention of an agent or a person a
+        surface already resolved, which picks who answers as an @mention in
+        the text does; or a link to another place. image, document, audio and
+        answer blocks are refused for now.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type: {type: string, enum: [text, mention, link, image, document, audio, answer]}
+        text: {type: string}
+        agent: {type: string}
+        person: {type: string}
+        ref: {$ref: "#/components/schemas/ExternalRef"}
+    ExternalRef:
+      description: |
+        Where a message came from, its origin: a union on type. slack (team,
+        channel, ts, thread_ts for a reply, audience), github (repo as
+        owner/name, kind pull, issue or comment, number, comment_id; a
+        comment on a pull request sends kind pull), schedule (name,
+        occurrence), url (url) or web (the console). A place has one root
+        session, keyed slack://team/channel/thread_ts,
+        github://owner/repo/pull/N or issues/N, schedule://name/occurrence or
+        the normalized URL. client is the Humagen client the origin is
+        reached through: it files the root where the client's channel is
+        bound and maps a Slack conversation's members to people.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type: {type: string, enum: [slack, github, schedule, url, web]}
+        client: {type: string}
+        team: {type: string}
+        channel: {type: string}
+        user: {type: string, description: "Who wrote the message on the surface (a Slack user id, a GitHub login). Set by surfaces built into the server; the API ignores it, since the token says who speaks."}
+        ts: {type: string}
+        thread_ts: {type: string}
+        audience: {$ref: "#/components/schemas/SurfaceAudience"}
+        repo: {type: string}
+        kind: {type: string, enum: [pull, issue, comment]}
+        number: {type: integer, minimum: 1}
+        comment_id: {type: integer, format: int64}
+        name: {type: string}
+        occurrence: {type: string}
+        url: {type: string, maxLength: 2048}
+    MessageCreated:
+      description: The message a request created, the root it is under, and what it did.
+      type: object
+      additionalProperties: false
+      required: [id, root, role, content, created, posted]
+      properties:
+        id: {type: string, description: "The message's id, session:message."}
+        root: {type: string, description: The root session's id.}
+        role: {type: string, enum: [user]}
+        content: {$ref: "#/components/schemas/MessageContent"}
+        created: {type: boolean, description: This request started the root.}
+        posted: {$ref: "#/components/schemas/SessionPosted"}
+    MessageAudience:
+      description: Who a root's place was asked in front of, by kind alone. Who was there is never shown.
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [public, private, group, direct]}
+    MessageNode:
+      description: |
+        One message of a tree. A session stands as its first message: beneath
+        it are the agents' messages that follow it up to the next person's
+        message (answers, and the entry agent's pick with its calls), the
+        child sessions started for it, and the session's later people's
+        messages. Beneath a later person's message are the agents' messages
+        that follow it and the child sessions started for it. A child session
+        is a node whose id is the session's. A child session the caller may
+        not read is left out and not counted.
+      type: object
+      additionalProperties: false
+      required: [id, session, role, author, status, content, at, children_count, latest_at, children]
+      properties:
+        id: {type: string, description: "A session's id for a session's node, else session:message."}
+        session: {type: string, description: The session the message is in.}
+        role: {type: string, enum: [user, assistant]}
+        author: {$ref: "#/components/schemas/SessionAuthor"}
+        status:
+          type: string
+          description: That of the runs beneath the message; done when there are none.
+          enum: [working, waiting, done, failed, stopped]
+        content:
+          type: array
+          description: Text, or the entry agent's pick and a call part for each child session it handed the message to.
+          items: {$ref: "#/components/schemas/SessionPart"}
+        at: {type: string, format: date-time}
+        children_count: {type: integer, minimum: 0, description: "How many children the message has, shown or not."}
+        latest_at: {type: string, format: date-time, description: When anything beneath the message last changed.}
+        audience:
+          $ref: "#/components/schemas/MessageAudience"
+          description: On the node read, the audience its root's place reported, when one did.
+        children:
+          type: array
+          description: The latest 200 children at most, in time order, while depth lasts; empty beyond it.
+          items: {$ref: "#/components/schemas/MessageNode"}
+    RootMessage:
+      description: One root session, as its first message.
+      type: object
+      additionalProperties: false
+      required: [id, title, status, agent, author, parent, project, latest_at, children_count]
+      properties:
+        id: {type: string}
+        title: {type: string}
+        status: {type: string, enum: [working, waiting, done, failed, stopped]}
+        agent: {type: string, description: The agent that owns the root.}
+        author: {$ref: "#/components/schemas/SessionAuthor"}
+        parent: {type: string, description: "The root's place: its address, such as slack://team/channel/ts or github://owner/repo/pull/N."}
+        project: {type: string}
+        latest_at: {type: string, format: date-time}
+        children_count: {type: integer, minimum: 0}
+        audience: {$ref: "#/components/schemas/MessageAudience"}
+    RootMessagePage:
+      description: A page of roots, newest first.
+      type: object
+      additionalProperties: false
+      required: [messages, next]
+      properties:
+        messages:
+          type: array
+          maxItems: 200
+          items: {$ref: "#/components/schemas/RootMessage"}
+        next: {type: string, description: "The after of the next page; empty on the last."}
     SessionInput:
       type: object
       additionalProperties: false
@@ -17098,6 +17883,17 @@ components:
         source_alert:
           type: string
           description: The readable session alert that anchors this fix conversation.
+        surface:
+          $ref: "#/components/schemas/SurfaceRef"
+          description: "A chat surface's thread. Only that client's machine sends it, with act_as; the thread's root session (keyed by slack://<team>/<channel>/<ts>, owned by the entry agent) is found or started, filed where the Slack channel is bound. project, parent, agent, label, fresh and source_alert are refused with it."
+        act_as:
+          $ref: "#/components/schemas/ActAs"
+        surface_kind:
+          type: string
+          description: "The kind of chat surface: slack, the default and only one taken today."
+        post_only:
+          type: boolean
+          description: "With surface: post the message without starting anything."
     SessionPostInput:
       description: A session message with optional routing to a mentioned agent.
       type: object
@@ -17112,6 +17908,9 @@ components:
         answers: {$ref: "#/components/schemas/ThreadAnswerRef"}
         act_as: {$ref: "#/components/schemas/ActAs"}
         surface: {$ref: "#/components/schemas/SurfaceRef"}
+        spoken:
+          description: The person said it in voice mode and the words were transcribed. It only marks the message.
+          type: boolean
         agent: {type: string, description: "The @agent in text whose child receives this request."}
         fresh: {type: boolean, description: "Start an independent child instead of continuing its existing session."}
         label: {type: string}
@@ -17276,10 +18075,14 @@ components:
         - "cursor"
         - "thread"
       properties:
+        posted:
+          $ref: "#/components/schemas/SessionPosted"
+          description: Only on POST /api/sessions with a surface.
         more:
           type: boolean
           description: More changed messages remain after cursor; continue with since until false.
         usage: {$ref: "#/components/schemas/RunUsage"}
+        voice: {$ref: "#/components/schemas/VoiceUsage"}
         conversation: {$ref: "#/components/schemas/ThreadSummary"}
         thread: {$ref: "#/components/schemas/Thread"}
         id:

@@ -1609,6 +1609,10 @@ export interface ThreadMessage {
   /** `console`, or the id of the client it came through. */
   via: string;
   surface_id?: string;
+  /** Said in voice mode and transcribed. */
+  spoken?: boolean;
+  /** When its author last corrected a spoken message's words. */
+  edited_at?: string;
   at: string;
 }
 
@@ -1773,6 +1777,8 @@ export interface ThreadMessageInput {
   answers?: ThreadAnswerRef;
   act_as?: ActAs;
   surface?: SurfaceRef;
+  /** The person said it in voice mode and the words were transcribed. It only marks the message. */
+  spoken?: boolean;
 }
 
 /** How a thread's selected agents answer an untagged message a person
@@ -1993,6 +1999,36 @@ export interface SurfaceRef {
   message?: string;
   /** The app's own bot user id, whose mention is not a tag. */
   app_user?: string;
+  audience?: SurfaceAudience;
+  /** Slack's short-lived token for acting for the person in this turn. Accepted and never kept or passed on. */
+  action_token?: string;
+}
+
+/** Who is in the Slack conversation a message was asked in. A root
+session's audience follows it: a public channel's is shared where it
+is filed; a private channel's or a group direct message's is private
+to the members the client maps to people, kept to the members of the
+latest message; a direct message's is private to its person. Absent,
+a D channel is a direct message and anything else is private to the
+person asking: a channel id never says the channel is public.
+ */
+export interface SurfaceAudience {
+  type: "public_channel" | "private_channel" | "mpim" | "im";
+  /** The conversation's members by Slack user id, for a private channel or a group direct message. */
+  members?: string[];
+}
+
+/** What one message posted to a chat surface's root session did. */
+export interface SessionPosted {
+  message: SessionPostedMessage;
+  /** The runs it started, in the root or in the child of the agent it named. */
+  runs: Run[];
+  notified: string[];
+  refused: ThreadMention[];
+  rule: string;
+  reason?: string;
+  /** The message was already posted; nothing started again. */
+  repeated?: boolean;
 }
 
 /** The thread on a client's surface this thread is. It never changes. */
@@ -2529,10 +2565,118 @@ export interface AgentPlace {
 /** Who now sees an agent, as its home. */
 export type AgentHome = { agent: string } & AgentPlace;
 
-/** Whether voice notes are transcribed, and the largest recording taken. */
+/** What voice a workspace has, and the largest recording taken. */
 export interface VoiceSettings {
   transcribe: boolean;
+  speak: boolean;
+  provider?: "groq" | "openai";
   max_bytes: number;
+}
+
+/** What a voice provider charges, in micro-USD. Zero is unpriced. */
+export interface VoicePrice {
+  hear_per_hour: number;
+  min_seconds: number;
+  speak_per_million_chars: number;
+}
+
+/** A workspace's voice provider. Its key is never shown. */
+export interface VoiceProvider {
+  kind: "groq" | "openai";
+  /** Transcribes. */
+  model: string;
+  /** Speaks. */
+  speech_model: string;
+  voice: string;
+  price: VoicePrice;
+  key_ref?: string;
+  key_stored: boolean;
+  set_by: string;
+  set_at: string;
+}
+
+export interface VoiceProviderInput {
+  kind: "groq" | "openai";
+  model?: string;
+  speech_model?: string;
+  voice?: string;
+  price?: VoicePrice;
+  key_ref?: string;
+  key?: string;
+}
+
+/** A kind a voice provider can be, with its defaults and the voices it is known to offer. */
+export interface VoiceKind {
+  kind: "groq" | "openai";
+  model: string;
+  speech_model: string;
+  voice: string;
+  voices: string[];
+  price: VoicePrice;
+}
+
+export interface VoiceProviderView {
+  provider?: VoiceProvider;
+  kinds: VoiceKind[];
+}
+
+/** What voice mode has used in a session, counted also in the workspace's usage. */
+export interface VoiceUsage {
+  /** How long the person spoke, as the provider measured it. */
+  heard_ms: number;
+  spoken_chars: number;
+  /** What it cost, in micro-USD. */
+  micros: number;
+  calls: number;
+  unpriced_calls?: number;
+}
+
+/** A finished run's answer as one clip. */
+export interface SpokenAnswer {
+  /** The clip, base64. */
+  audio: Blob;
+  media_type: string;
+  /** What the clip says. */
+  text: string;
+  /** The answer is said in full, not cut at 1,200 characters. */
+  whole: boolean;
+  cost_micros: number;
+}
+
+export interface SpokenCorrection {
+  text: string;
+}
+
+export interface VoiceSpeechInput {
+  /** A run of this session whose answer is spoken. */
+  run: string;
+  /** The offset to speak from: 0, then each answer's `next`. */
+  from?: number;
+}
+
+/** The next part of a run's answer, spoken. */
+export interface VoiceSpeech {
+  /** The sound, base64. Left out while pending. */
+  audio?: Blob;
+  media_type?: string;
+  /** What was said, for captions. */
+  text: string;
+  /** The offset to ask from next. */
+  next: number;
+  /** The answer is still being written and has no whole sentence after the offset yet; ask again when more arrives. */
+  pending?: boolean;
+  /** The answer has ended and has been said in full. */
+  done?: boolean;
+  cost_micros: number;
+}
+
+/** The sample a check spoke, and what was heard back from it. */
+export interface VoiceCheck {
+  /** The spoken sample, base64. */
+  audio: Blob;
+  media_type: string;
+  heard: string;
+  cost_micros: number;
 }
 
 /** What a recording said, and the language it was said in when the speech kind reports one. */
@@ -3482,7 +3626,7 @@ source; records are warehouse tables kept as schema only and
 queried live.
  */
   holds?: "files" | "references" | "records";
-  /** manual, drive, notion, s3, gcs, bigquery, snowflake and so on. */
+  /** manual, drive, onedrive, notion, s3, gcs, bigquery, snowflake and so on. */
   provider?: string;
   /** Indexed documents, or the tables and views a warehouse lists. */
   items: number;
@@ -3569,7 +3713,7 @@ export interface SourceLinkSuggestion {
 }
 
 export interface SourceLinkRuleInput {
-  provider: "github" | "slack" | "drive" | "notion";
+  provider: "github" | "slack" | "drive" | "onedrive" | "notion";
   attribute: string;
   pattern: string;
   project: string;
@@ -3970,12 +4114,14 @@ export interface GitHubAutomation {
   name: string;
   repository: string;
   event: "check_run" | "issues" | "pull_request" | "push";
+  /** Never `labeled` or `unlabeled`: labels start nothing. A rule stored on one reads paused, with a note. */
   action: string;
   conclusion?: string;
-  label?: string;
   agent: string;
   instructions: string;
   paused: boolean;
+  /** Read-only. What of a rule stored earlier is ignored now, such as a label (labels start nothing). Dropped when the rule is saved. */
+  note?: string;
 }
 
 export interface GitHubOptions {
@@ -3983,7 +4129,11 @@ export interface GitHubOptions {
   automations?: GitHubAutomation[];
   /** Exact verified non-bot GitHub logins mapped explicitly by this installation to workspace subjects. No inferred identity or cross-installation fallback. */
   people?: Record<string, string>;
-  auto_labels?: Record<string, Record<string, string>>;
+  /** Reviews a pull request when it opens or reopens ready for review,
+leaves draft, or gets a push, by the client's default agent.
+Left out, it is on. Labels start nothing.
+ */
+  auto_review?: GitHubOptionsAutoReview;
   checks?: boolean;
   guides?: boolean;
   mutations?: boolean;
@@ -4036,7 +4186,7 @@ export interface ClientView {
   default_agent?: string;
   /** The agents it may route to besides its default, leaving out every
 agent that lives in a project the caller may not read, as `bots`
-and `github.auto_labels` do. The machine that hosts the client's
+and `github.automations` do. The machine that hosts the client's
 surface, its `slack.machine`, is shown every agent it names.
  */
   agents?: string[];
@@ -4674,6 +4824,138 @@ export interface SessionIdentity {
   source_alert?: string;
 }
 
+/** People's messages from one origin. Who said them is the caller. */
+export interface MessagesInput {
+  messages: InMessage[];
+  ref?: ExternalRef;
+  /** Accepted; follow GET /api/messages/{id}/stream for what happens beneath. */
+  stream?: boolean;
+}
+
+/** One person's message. role is user; the platform writes the agents' messages. */
+export interface InMessage {
+  role: "user";
+  content: MessageContent;
+  ref?: ExternalRef;
+}
+
+/** A string, or content blocks. */
+export type MessageContent = string | ContentBlock[];
+
+/** One block of a message: text; a mention of an agent or a person a
+surface already resolved, which picks who answers as an @mention in
+the text does; or a link to another place. image, document, audio and
+answer blocks are refused for now.
+ */
+export interface ContentBlock {
+  type: "text" | "mention" | "link" | "image" | "document" | "audio" | "answer";
+  text?: string;
+  agent?: string;
+  person?: string;
+  ref?: ExternalRef;
+}
+
+/** Where a message came from, its origin: a union on type. slack (team,
+channel, ts, thread_ts for a reply, audience), github (repo as
+owner/name, kind pull, issue or comment, number, comment_id; a
+comment on a pull request sends kind pull), schedule (name,
+occurrence), url (url) or web (the console). A place has one root
+session, keyed slack://team/channel/thread_ts,
+github://owner/repo/pull/N or issues/N, schedule://name/occurrence or
+the normalized URL. client is the Humagen client the origin is
+reached through: it files the root where the client's channel is
+bound and maps a Slack conversation's members to people.
+ */
+export interface ExternalRef {
+  type: "slack" | "github" | "schedule" | "url" | "web";
+  client?: string;
+  team?: string;
+  channel?: string;
+  /** Who wrote the message on the surface (a Slack user id, a GitHub login). Set by surfaces built into the server; the API ignores it, since the token says who speaks. */
+  user?: string;
+  ts?: string;
+  thread_ts?: string;
+  audience?: SurfaceAudience;
+  repo?: string;
+  kind?: "pull" | "issue" | "comment";
+  number?: number;
+  comment_id?: number;
+  name?: string;
+  occurrence?: string;
+  url?: string;
+}
+
+/** The message a request created, the root it is under, and what it did. */
+export interface MessageCreated {
+  /** The message's id, session:message. */
+  id: string;
+  /** The root session's id. */
+  root: string;
+  role: "user";
+  content: MessageContent;
+  /** This request started the root. */
+  created: boolean;
+  posted: SessionPosted;
+}
+
+/** Who a root's place was asked in front of, by kind alone. Who was there is never shown. */
+export interface MessageAudience {
+  kind: "public" | "private" | "group" | "direct";
+}
+
+/** One message of a tree. A session stands as its first message: beneath
+it are the agents' messages that follow it up to the next person's
+message (answers, and the entry agent's pick with its calls), the
+child sessions started for it, and the session's later people's
+messages. Beneath a later person's message are the agents' messages
+that follow it and the child sessions started for it. A child session
+is a node whose id is the session's. A child session the caller may
+not read is left out and not counted.
+ */
+export interface MessageNode {
+  /** A session's id for a session's node, else session:message. */
+  id: string;
+  /** The session the message is in. */
+  session: string;
+  role: "user" | "assistant";
+  author: SessionAuthor;
+  /** That of the runs beneath the message; done when there are none. */
+  status: "working" | "waiting" | "done" | "failed" | "stopped";
+  /** Text, or the entry agent's pick and a call part for each child session it handed the message to. */
+  content: SessionPart[];
+  at: string;
+  /** How many children the message has, shown or not. */
+  children_count: number;
+  /** When anything beneath the message last changed. */
+  latest_at: string;
+  audience?: MessageAudience;
+  /** The latest 200 children at most, in time order, while depth lasts; empty beyond it. */
+  children: MessageNode[];
+}
+
+/** One root session, as its first message. */
+export interface RootMessage {
+  id: string;
+  title: string;
+  status: "working" | "waiting" | "done" | "failed" | "stopped";
+  /** The agent that owns the root. */
+  agent: string;
+  author: SessionAuthor;
+  /** The root's place: its address, such as slack://team/channel/ts or github://owner/repo/pull/N. */
+  parent: string;
+  project: string;
+  latest_at: string;
+  children_count: number;
+  audience?: MessageAudience;
+}
+
+/** A page of roots, newest first. */
+export interface RootMessagePage {
+  messages: RootMessage[];
+  /** The after of the next page; empty on the last. */
+  next: string;
+}
+
 export interface SessionInput {
   text: string;
   agent?: string;
@@ -4683,6 +4965,12 @@ export interface SessionInput {
   project?: string;
   /** The readable session alert that anchors this fix conversation. */
   source_alert?: string;
+  surface?: SurfaceRef;
+  act_as?: ActAs;
+  /** The kind of chat surface: slack, the default and only one taken today. */
+  surface_kind?: string;
+  /** With surface: post the message without starting anything. */
+  post_only?: boolean;
 }
 
 /** A session message with optional routing to a mentioned agent. */
@@ -4694,6 +4982,8 @@ export interface SessionPostInput {
   answers?: ThreadAnswerRef;
   act_as?: ActAs;
   surface?: SurfaceRef;
+  /** The person said it in voice mode and the words were transcribed. It only marks the message. */
+  spoken?: boolean;
   /** The @agent in text whose child receives this request. */
   agent?: string;
   /** Start an independent child instead of continuing its existing session. */
@@ -4758,9 +5048,11 @@ export interface SessionLink {
 }
 
 export interface AgentSession {
+  posted?: SessionPosted;
   /** More changed messages remain after cursor; continue with since until false. */
   more?: boolean;
   usage?: RunUsage;
+  voice?: VoiceUsage;
   conversation: ThreadSummary;
   thread: Thread;
   id: string;
@@ -5114,6 +5406,11 @@ export interface ThreadForkContextItem {
   at: string;
 }
 
+export interface SessionPostedMessage {
+  id: string;
+  text: string;
+}
+
 export interface ProjectFork {
   operation: string;
   source?: string;
@@ -5147,6 +5444,11 @@ export interface KnowledgeLifecycleAttemptsItem {
 export interface UsageEntryGrant {
   spend?: number;
   tokens?: number;
+}
+
+export interface GitHubOptionsAutoReview {
+  enabled?: boolean;
+  repositories?: Record<string, boolean>;
 }
 
 export interface ClientInputCredentials {

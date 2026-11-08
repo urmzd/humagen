@@ -24,11 +24,16 @@ type ResourceProvider interface {
 }
 
 func (p HTTPProvider) Resources(ctx context.Context, origin string, secret mcptools.Secret) ([]Resource, error) {
-	if !resourceID.MatchString(origin) {
+	if !validResourceID(p.Kind, origin) {
 		return nil, ProviderError{Unsupported}
 	}
 	resources := []Resource{}
 	switch p.Kind {
+	case "onedrive":
+		var err error
+		if resources, err = p.oneDriveResources(ctx, origin, secret); err != nil {
+			return nil, err
+		}
 	case "drive":
 		var listing struct {
 			Next       string `json:"nextPageToken"`
@@ -99,7 +104,7 @@ func (p HTTPProvider) FetchSelected(ctx context.Context, origin string, selected
 		return nil, ProviderError{Unsupported}
 	}
 	for _, id := range selected {
-		if !resourceID.MatchString(id) {
+		if !validResourceID(p.Kind, id) {
 			return nil, ProviderError{Unsupported}
 		}
 	}
@@ -109,12 +114,15 @@ func (p HTTPProvider) FetchSelected(ctx context.Context, origin string, selected
 		}
 		return p.Fetch(ctx, origin, secret)
 	}
-	if p.Kind != "drive" {
+	if p.Kind != "drive" && p.Kind != "onedrive" {
 		return nil, ProviderError{Unsupported}
 	}
-	return p.driveSelected(ctx, origin, selected, secret)
+	return p.folderFiles(ctx, origin, selected, secret)
 }
-func (p HTTPProvider) driveSelected(ctx context.Context, origin string, selected []string, secret mcptools.Secret) ([]ImportDocument, error) {
+
+// folderFiles reads a Drive or OneDrive folder's direct children, or only the
+// selected ones. An unsupported or missing selected file fails the whole read.
+func (p HTTPProvider) folderFiles(ctx context.Context, origin string, selected []string, secret mcptools.Secret) ([]ImportDocument, error) {
 	resources, err := p.Resources(ctx, origin, secret)
 	if err != nil {
 		return nil, err
@@ -130,13 +138,18 @@ func (p HTTPProvider) driveSelected(ctx context.Context, origin string, selected
 		if !r.Supported {
 			return nil, ProviderError{Unsupported}
 		}
-		address := "https://www.googleapis.com/drive/v3/files/" + r.ID
-		if r.Kind == "application/vnd.google-apps.document" {
-			address += "/export?mimeType=text%2Fplain"
+		var body []byte
+		if p.Kind == "onedrive" {
+			body, err = p.oneDriveContent(ctx, secret, r.ID)
 		} else {
-			address += "?alt=media"
+			address := "https://www.googleapis.com/drive/v3/files/" + r.ID
+			if r.Kind == "application/vnd.google-apps.document" {
+				address += "/export?mimeType=text%2Fplain"
+			} else {
+				address += "?alt=media"
+			}
+			body, err = p.read(ctx, secret, address, nil)
 		}
-		body, err := p.read(ctx, secret, address, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -164,7 +177,8 @@ func SafeResources(resources []Resource, secret mcptools.Secret) ([]Resource, er
 	}
 	out := slices.Clone(resources)
 	for i, r := range out {
-		if !resourceID.MatchString(r.ID) || len(r.Name) > 4096 || len(r.URI) > 2048 || len(r.Kind) > 128 || len(r.UnsupportedReason) > 256 {
+		// The widest provider ID alphabet; configuration rechecks IDs per provider.
+		if !oneDriveID.MatchString(r.ID) || len(r.Name) > 4096 || len(r.URI) > 2048 || len(r.Kind) > 128 || len(r.UnsupportedReason) > 256 {
 			return nil, ProviderError{Unsupported}
 		}
 		parsed, err := url.Parse(r.URI)

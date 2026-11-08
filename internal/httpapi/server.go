@@ -155,6 +155,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/agents/{name}/changes", s.authed(auth.AgentsRead, s.seenAgent(s.agentChanges)))
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
 	s.sessionRoutes(mux)
+	s.messageRoutes(mux)
 	mux.HandleFunc("GET /api/catalog/connectors/bigquery/setup", s.authed(auth.KnowledgeWrite, s.getBigQuerySetup))
 	mux.HandleFunc("POST /api/catalog/connectors/bigquery", s.authed(auth.KnowledgeWrite, s.createBigQueryConnector))
 	mux.HandleFunc("POST /api/catalog/connectors/{name}/reconnect", s.authed(auth.KnowledgeWrite, s.reconnectBigQueryConnector))
@@ -326,7 +327,7 @@ func (s *Server) authed(perm auth.Permission, h handler) http.HandlerFunc {
 			bodyLimit = 6*platform.MaxFileBytes + 4096
 		case "POST /api/threads/{id}/scratchpads", "PUT /api/threads/{id}/scratchpads/{pad}":
 			bodyLimit = 6*scratchpads.MaxContent + 4096
-		case "POST /api/voice/transcriptions":
+		case "POST /api/voice/transcriptions", "POST /api/sessions/{id}/voice/transcriptions":
 			bodyLimit = platform.MaxRecordingBytes
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, bodyLimit)

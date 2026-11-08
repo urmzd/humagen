@@ -211,6 +211,9 @@ type Config struct {
 	// Speech transcribes voice notes when a message arrives, before the run
 	// it starts (TranscribeVoiceNotes). Nil transcribes nothing.
 	Speech speech.Transcriber
+	// VoiceBuild builds a workspace's voice provider from its kind. Nil is
+	// speech.New: groq or openai.
+	VoiceBuild VoiceBuild
 	// Connectors are the catalog connectors the Platform documents declare.
 	// The store's connectors become exactly these at start.
 	Connectors []CatalogConnector
@@ -302,8 +305,10 @@ type Platform struct {
 	ConnectionAuth   *connectionauth.Manager
 	GitHubInstall    *githubinstall.Manager
 	connectionHealth *state.Table[connectionObservation]
-	Sessions         session.Store
-	app              *flow.App
+	// pullReviews keeps automatic review's count and pause per pull request.
+	pullReviews *state.Table[PullReview]
+	Sessions    session.Store
+	app         *flow.App
 	// Rooms holds the conversations followed on this server (pkg/rooms).
 	Rooms    *rooms.Hub
 	roomGate *rooms.Gate
@@ -315,6 +320,10 @@ type Platform struct {
 	// each of its picks came to (entry.go).
 	entry entrySpawns
 	picks *state.Table[pickRecord]
+	// audiences is the latest audience of each surface root (surface_sessions.go).
+	audiences *state.Table[SessionAudience]
+	// deliveries is where each surface root answers (messages.go).
+	deliveries *state.Table[rootDelivery]
 	// health is the last health report and each component's recent checks.
 	health healthBook
 
@@ -729,7 +738,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error
 	if p.cfg.Runtime != nil {
 		inner := sandbox.Sandboxed(p.cfg.Runtime, sandbox.Plane{Control: plane, Tools: tools},
 			sandbox.WithReplicas(p.slots()), sandbox.WithLogger(p.log))
-		return callExecutor{inner: inner, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding}, nil
+		return callExecutor{inner: inner, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding, hear: p.hearTurn}, nil
 	}
 	exec, err := runtime.NewSandbox(plane, tools, p.Agents.Resolver(),
 		runtime.WithCatalog(p.operationsCatalog(p.cfg.Ext.catalog(p.fileTools(p.connectorTools)), groups)),
@@ -751,7 +760,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error
 	if err != nil {
 		return nil, fmt.Errorf("platform: sandbox: %w", err)
 	}
-	return callExecutor{inner: exec, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding}, nil
+	return callExecutor{inner: exec, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding, hear: p.hearTurn}, nil
 }
 
 // Invoke accepts an event for the one agent it names and starts its run. The

@@ -217,16 +217,23 @@ export function composerChrome(conversation: string): Scene[] {
         assert.equal(await page.locator("[data-home-above]").count(), 0);
         await page
           .locator(".humagen-home")
-          .getByRole("button", { name: /^Select project/ })
+          .getByRole("button", { name: /^Approvals: / })
           .waitFor();
+        assert.equal(await page.getByRole("button", { name: /^Select project/ }).count(), 0);
       },
     },
     {
       name: "composer-approval-mode",
       path: `/conversations/${conversation}`,
       act: async (page) => {
-        await page.getByRole("button", { name: /^Approvals: / }).click();
-        await page.getByRole("menuitemradio", { name: /^Approve for Me/ }).waitFor();
+        const toggle = page.getByRole("button", { name: /^Approvals: / });
+        const before = await toggle.getAttribute("aria-label");
+        await toggle.click();
+        await page.waitForFunction(
+          (was) =>
+            document.querySelector("[data-approval-mode]")?.getAttribute("aria-label") !== was,
+          before,
+        );
       },
     },
   ];

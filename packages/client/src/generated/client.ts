@@ -152,6 +152,9 @@ import type {
   MemoryFile,
   MemoryFiles,
   MemoryRestoreInput,
+  MessageCreated,
+  MessageNode,
+  MessagesInput,
   ModelProvider,
   Note,
   NoteInput,
@@ -202,6 +205,7 @@ import type {
   ReviewedPullsResponse,
   ReviseAgentBody,
   Revision,
+  RootMessagePage,
   Run,
   RunFeedback,
   RunList,
@@ -232,6 +236,8 @@ import type {
   SourceLinkRule,
   SourceLinkRuleInput,
   SourceLinkSuggestion,
+  SpokenAnswer,
+  SpokenCorrection,
   StopSessionBody,
   StorageUsage,
   StreamEventsStreamEvent,
@@ -251,7 +257,13 @@ import type {
   ToolCredentialInput,
   ToolCredentials,
   UpdatePreferencesBody,
+  VoiceCheck,
+  VoiceProvider,
+  VoiceProviderInput,
+  VoiceProviderView,
   VoiceSettings,
+  VoiceSpeech,
+  VoiceSpeechInput,
   VoiceTranscript,
   WorkspaceFileContent,
   WorkspaceFileList,
@@ -584,6 +596,143 @@ export class ApiClient {
       );
     }
     return response.data;
+  }
+
+  /** The root sessions the caller may read, each as its first message: its
+place (parent), who started it, the agent that owns it, its status
+(that of the runs beneath it), how many children it has and when
+anything beneath it last changed. Newest first by latest_at. roots
+is required and true, the one listing this route answers. Page with
+after, the next of the previous page.
+ */
+  async listMessages(roots: boolean, limit?: number, after?: string, options?: RequestOptions): Promise<RootMessagePage> {
+    let path = "/api/messages";
+    const _q = new URLSearchParams();
+    if (roots !== undefined && roots !== null) _q.set("roots", String(roots));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (after !== undefined && after !== null) _q.set("after", String(after));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<RootMessagePage>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listMessagesRaw(roots: boolean, limit?: number, after?: string, options?: RequestOptions): Promise<ApiResponse<RootMessagePage>> {
+    let path = "/api/messages";
+    const _q = new URLSearchParams();
+    if (roots !== undefined && roots !== null) _q.set("roots", String(roots));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (after !== undefined && after !== null) _q.set("after", String(after));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<RootMessagePage>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** People's messages from one origin, under the root session of the
+origin's place: found by its address, or started on its first message
+and owned by the entry agent, so work asked for in a place is picked
+up there later. With no ref (or type web) the message starts a new
+console conversation. Agents a message mentions answer in their own
+child sessions under the root; with no mention the entry agent
+picks. Earlier messages in a batch are posted as said and start
+nothing. Callers send role user; the platform writes the agents'
+messages. 201 when the root was started, 200 otherwise.
+ */
+  async sendMessages(body: MessagesInput, options?: RequestOptions): Promise<MessageCreated> {
+    const path = "/api/messages";
+    return this.request<MessageCreated>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async sendMessagesRaw(body: MessagesInput, options?: RequestOptions): Promise<ApiResponse<MessageCreated>> {
+    const path = "/api/messages";
+    return this.rawRequest<MessageCreated>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Without depth, the session a message is in, with its messages, the
+entry agent's picks and each delegated answer, its children and
+links (AgentSession). With depth, the message as a tree
+(MessageNode): the message and its children in time order, each with
+children_count and latest_at, depth levels deep. A session id reads
+as the session's first message, and that message's own id reads the
+same. id is a session id, or a message id (session:message).
+ */
+  async getMessage(id: string, since?: string, before?: string, around?: string, summary?: boolean, depth?: number, options?: RequestOptions): Promise<AgentSession | MessageNode> {
+    let path = "/api/messages/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (since !== undefined && since !== null) _q.set("since", String(since));
+    if (before !== undefined && before !== null) _q.set("before", String(before));
+    if (around !== undefined && around !== null) _q.set("around", String(around));
+    if (summary !== undefined && summary !== null) _q.set("summary", String(summary));
+    if (depth !== undefined && depth !== null) _q.set("depth", String(depth));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<AgentSession | MessageNode>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getMessageRaw(id: string, since?: string, before?: string, around?: string, summary?: boolean, depth?: number, options?: RequestOptions): Promise<ApiResponse<AgentSession | MessageNode>> {
+    let path = "/api/messages/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (since !== undefined && since !== null) _q.set("since", String(since));
+    if (before !== undefined && before !== null) _q.set("before", String(before));
+    if (around !== undefined && around !== null) _q.set("around", String(around));
+    if (summary !== undefined && summary !== null) _q.set("summary", String(summary));
+    if (depth !== undefined && depth !== null) _q.set("depth", String(depth));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<AgentSession | MessageNode>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** People's messages beneath a message or its session, as a follow-up in that conversation. id is a session id, or a message id (session:message). */
+  async sendMessagesUnder(id: string, body: MessagesInput, options?: RequestOptions): Promise<MessageCreated> {
+    let path = "/api/messages/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<MessageCreated>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async sendMessagesUnderRaw(id: string, body: MessagesInput, options?: RequestOptions): Promise<ApiResponse<MessageCreated>> {
+    let path = "/api/messages/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<MessageCreated>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** What happens beneath a message: its session's snapshots and run events, as GET /api/sessions/{id}/stream. Resume with Last-Event-ID. */
+  async *streamMessage(id: string, lastEventId?: string, options?: SSEOptions): AsyncGenerator<SSEEvent<string>> {
+    let path = "/api/messages/{id}/stream";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    let url = `${this.baseUrl}${path}`;
+    const _hdr: Record<string, string> = {};
+    for (const [k, v] of Object.entries({ "Last-Event-ID": lastEventId })) {
+      if (v !== undefined && v !== null) _hdr[k] = String(v);
+    }
+    yield* streamSse<string>(url, {
+      method: "GET",
+      headers: { ...this.headers, ..._hdr, ...options?.headers },
+    }, options, this.requestInterceptor, this.fetchFn);
   }
 
   /** Emits session snapshots and run events. Resume with Last-Event-ID.
@@ -2976,6 +3125,31 @@ a member of the run's project, and in a private thread a participant
     return this.rawRequest<Run>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Speaks the answer of a run that has ended with the workspace's voice
+provider, as one clip: plain words, at most 1,200 characters, a longer
+answer cut at a sentence and ending "The rest is in the thread."
+(`whole` false). For a surface that replies with a file: a Slack
+thread answers a voice clip with one. The text is the run's own; a
+client cannot name it. Each part spoken is counted in the usage
+ledger and on the run's session. 409 while the run works or with no
+voice provider, 402 at a spend limit, 422 for an answer with no words.
+ */
+  async speakAnswer(id: string, options?: RequestOptions): Promise<SpokenAnswer> {
+    let path = "/api/runs/{id}/speech";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<SpokenAnswer>("POST", path, {
+      ...options,
+    });
+  }
+
+  async speakAnswerRaw(id: string, options?: RequestOptions): Promise<ApiResponse<SpokenAnswer>> {
+    let path = "/api/runs/{id}/speech";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<SpokenAnswer>("POST", path, {
       ...options,
     });
   }
@@ -7079,9 +7253,12 @@ end; pass it back as `before`.
     });
   }
 
-  /** `transcribe` is false when the System spec has no speech kind; the
-console then offers no recording. `max_bytes` is the largest
-recording `POST /api/voice/transcriptions` takes.
+  /** `transcribe` is whether a recording is turned into words: by the
+workspace's voice provider, else the System spec's speech kind.
+Without either the console's microphone uses the browser's own
+dictation. `speak` is whether voice mode is on, which takes a
+workspace voice provider; `provider` is its kind. `max_bytes` is the
+largest recording `POST /api/voice/transcriptions` takes.
  */
   async getVoice(options?: RequestOptions): Promise<VoiceSettings> {
     const path = "/api/voice";
@@ -7100,7 +7277,9 @@ recording `POST /api/voice/transcriptions` takes.
   /** The body is the recording's own bytes, at most `max_bytes` from
 `GET /api/voice` (10 MiB). What it is is decided from the bytes, not
 the Content-Type. The words come back for the person to read and
-send; the recording is not kept. 404 when voice notes are off, 422
+send; the recording is not kept. It is transcribed by the workspace's
+voice provider, whose cost is counted, else the System spec's speech
+kind. 404 when neither is set up, 422
 when no words were heard, 503 when the speech provider failed or did
 not answer in time.
  */
@@ -7118,6 +7297,173 @@ not answer in time.
     return this.rawRequest<VoiceTranscript>("POST", path, {
       body,
       contentType: "application/octet-stream",
+      ...options,
+    });
+  }
+
+  /** Replaces the text of a message its author said in voice mode
+(`spoken`), so a word the transcription heard wrong is right for
+every later turn. Only the author may, only a spoken message can be
+corrected (400 for any other), its tags stay as posted, and the runs
+it already started are not changed. The message gets `edited_at`.
+ */
+  async correctSpokenMessage(id: string, mid: string, body: SpokenCorrection, options?: RequestOptions): Promise<AgentSession> {
+    let path = "/api/sessions/{id}/messages/{mid}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{mid}", encodeURIComponent(String(mid)));
+    return this.request<AgentSession>("PATCH", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async correctSpokenMessageRaw(id: string, mid: string, body: SpokenCorrection, options?: RequestOptions): Promise<ApiResponse<AgentSession>> {
+    let path = "/api/sessions/{id}/messages/{mid}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{mid}", encodeURIComponent(String(mid)));
+    return this.rawRequest<AgentSession>("PATCH", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The body is the recording's own bytes, at most `max_bytes` from
+`GET /api/voice`. It is heard by the workspace's voice provider and
+not kept; the words come back to be sent as a message with `spoken`
+set, or read as an answer to an approval. What it costs is counted in
+the usage ledger and on the session's `voice` usage. 409 when the
+workspace has no voice provider, 402 when a spend limit over the
+session is reached (nothing is sent to the provider), 422 when no
+words were heard.
+ */
+  async hearInSession(id: string, body: Blob, options?: RequestOptions): Promise<VoiceTranscript> {
+    let path = "/api/sessions/{id}/voice/transcriptions";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<VoiceTranscript>("POST", path, {
+      body,
+      contentType: "application/octet-stream",
+      ...options,
+    });
+  }
+
+  async hearInSessionRaw(id: string, body: Blob, options?: RequestOptions): Promise<ApiResponse<VoiceTranscript>> {
+    let path = "/api/sessions/{id}/voice/transcriptions";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<VoiceTranscript>("POST", path, {
+      body,
+      contentType: "application/octet-stream",
+      ...options,
+    });
+  }
+
+  /** Speaks the next few sentences of the answer of `run`, a run of this
+session, from `from` (0, then each answer's `next`), as plain words:
+no Markdown, links by their text, a code block as "The code is in the
+session." The text is read on the server; a client cannot name it.
+While the answer is still being written and has no whole sentence
+after `from`, the answer is `pending` and nothing is spent; once it
+has ended and been said in full, `done`. What it costs is counted. 404
+for a run that is not this session's, 409 when the workspace has no
+voice provider, 402 when a spend limit is reached.
+ */
+  async speakInSession(id: string, body: VoiceSpeechInput, options?: RequestOptions): Promise<VoiceSpeech> {
+    let path = "/api/sessions/{id}/voice/speech";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<VoiceSpeech>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async speakInSessionRaw(id: string, body: VoiceSpeechInput, options?: RequestOptions): Promise<ApiResponse<VoiceSpeech>> {
+    let path = "/api/sessions/{id}/voice/speech";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<VoiceSpeech>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** `provider` is left out until an admin sets one up; voice mode is off
+until then. Its key is never returned: `key_stored` says a value is
+kept, `key_ref` names the reference it is read from. `kinds` are the
+kinds a provider can be, with their default models, voices and
+published prices in micro-USD.
+ */
+  async getVoiceProvider(options?: RequestOptions): Promise<VoiceProviderView> {
+    const path = "/api/voice/provider";
+    return this.request<VoiceProviderView>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getVoiceProviderRaw(options?: RequestOptions): Promise<ApiResponse<VoiceProviderView>> {
+    const path = "/api/voice/provider";
+    return this.rawRequest<VoiceProviderView>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** An empty model or voice is the kind's default, and no `price` the
+kind's published one (or the one it had, when the kind is
+unchanged). Give `key`, kept in the server's secret store, or
+`key_ref`, an `env:HUMAGEN_*` reference this server grants the
+workspace; with neither, a provider of the same kind keeps its key.
+Everyone in the workspace who may record (`speech:write`) spends it,
+and what each call costs is counted in the usage ledger.
+ */
+  async setVoiceProvider(body: VoiceProviderInput, options?: RequestOptions): Promise<VoiceProvider> {
+    const path = "/api/voice/provider";
+    return this.request<VoiceProvider>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setVoiceProviderRaw(body: VoiceProviderInput, options?: RequestOptions): Promise<ApiResponse<VoiceProvider>> {
+    const path = "/api/voice/provider";
+    return this.rawRequest<VoiceProvider>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Forgets the provider and any key kept for it. Voice mode stops; the microphone falls back to the deployment's speech kind or the browser's dictation. */
+  async deleteVoiceProvider(options?: RequestOptions): Promise<void> {
+    const path = "/api/voice/provider";
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteVoiceProviderRaw(options?: RequestOptions): Promise<ApiResponse<void>> {
+    const path = "/api/voice/provider";
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Speaks a fixed sample with the provider and transcribes it back, so
+an admin hears the voice and sees it heard. What it costs is
+counted. 404 with no provider, 502 when the provider refused or did
+not answer, with its own reason.
+ */
+  async checkVoiceProvider(options?: RequestOptions): Promise<VoiceCheck> {
+    const path = "/api/voice/provider/check";
+    return this.request<VoiceCheck>("POST", path, {
+      ...options,
+    });
+  }
+
+  async checkVoiceProviderRaw(options?: RequestOptions): Promise<ApiResponse<VoiceCheck>> {
+    const path = "/api/voice/provider/check";
+    return this.rawRequest<VoiceCheck>("POST", path, {
       ...options,
     });
   }
@@ -7276,7 +7622,7 @@ read, or a limit on either, is left out.
 
   /** A workspace at its cap of clients answers 429 with a plain error
 body. Every agent the client names, as its default, in its list, for
-a bot or for an auto-label, is an agent that exists and that the
+a bot or in an event rule, is an agent that exists and that the
 caller may read; any other is 400, in the same words whether it does
 not exist or lives in a project the caller may not read.
  */
@@ -7340,7 +7686,7 @@ may not read, which they are not shown: naming none keeps it, and
 naming one they may read replaces it. The agents it names that the
 caller is not shown are kept the same way: its default unless they
 name another, its list unless they write `*`, its bots and its
-auto-labels unless they map the same bot or label, and an agent it
+event rules unless they map the same bot or write the same rule, and an agent it
 routed to stays one it routes to. Every other agent named is one that
 exists and that the caller may read, or one the record already holds
 (400 otherwise, as on create). A client the server's configuration

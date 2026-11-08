@@ -619,7 +619,9 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"SessionPart": {typ: platform.SessionPart{}}, "SessionFeedback": {typ: platform.SessionFeedback{}},
 		"SessionMessage": {typ: platform.SessionMessage{}}, "SessionLink": {typ: orchsession.Link{}},
 		"AgentSession": {typ: platform.SessionView{}},
-		"Principal":    {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: wire.AgentSpec{}}, "AgentSource": {typ: wire.Source{}},
+		"MessageNode":  {typ: platform.MessageNode{}}, "MessageAudience": {typ: platform.MessageAudience{}},
+		"RootMessage": {typ: platform.RootMessage{}}, "RootMessagePage": {typ: platform.RootMessagePage{}},
+		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: wire.AgentSpec{}}, "AgentSource": {typ: wire.Source{}},
 		"PackageBase": {typ: wire.PackageBase{}}, "AgentPackage": {typ: wire.AgentPackage{}}, "AgentAccess": {typ: wire.Access{}}, "Revision": {typ: revisionView{}}, "JoinDecision": {typ: join.Decision{}},
 		"Note": {typ: noteView{}}, "DriveTree": {typ: drive.Tree{}}, "DriveEntry": {typ: drive.Entry{}}, "DriveChange": {typ: drive.Change{}}, "DriveProposal": {typ: drive.Proposal{}}, "DriveVersion": {typ: drive.Version{}}, "DriveHit": {typ: drive.Hit{}}, "MemoryFiles": {typ: memoryTree{}}, "MemoryFile": {typ: memoryFile{}}, "MemoryRestoreInput": {typ: memoryRestore{}, written: true}, "MemoryDecisionInput": {typ: memoryDecision{}, written: true}, "LibraryScope": {typ: library.Scope{}}, "MemoryFolder": {typ: platform.MemoryFolder{}}, "LibrarySkillFile": {typ: library.File{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: event.Actor{}}, "Run": {typ: runs.Run{}},
 
@@ -641,6 +643,9 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ProjectKnowledge": {typ: platform.ProjectKnowledge{}}, "ProjectKnowledgeSource": {typ: projects.KnowledgeSource{}}, "ProjectKnowledgeInput": {typ: platform.KnowledgeInput{}, written: true},
 		"ProjectSkill": {typ: platform.SkillDetail{}}, "ProjectSkillRef": {typ: projects.SkillRef{}}, "ProjectSkills": {typ: platform.ProjectSkills{}}, "ProjectSkillsInput": {typ: platform.SkillsInput{}, written: true},
 		"MentionKind": {typ: platform.MentionKind{}}, "MentionItem": {typ: platform.MentionItem{}},
+		"VoiceSettings": {typ: platform.VoiceSettings{}}, "VoiceProvider": {typ: platform.VoiceProvider{}}, "VoiceKind": {typ: platform.VoiceKind{}},
+		"VoiceProviderInput": {typ: platform.VoiceProviderInput{}, written: true}, "VoicePrice": {typ: speech.Price{}}, "VoiceCheck": {typ: platform.VoiceCheck{}},
+		"VoiceUsage": {typ: platform.VoiceUsage{}}, "VoiceSpeech": {typ: platform.VoiceSpeech{}}, "VoiceSpeechInput": {typ: speakInput{}, written: true}, "SpokenCorrection": {typ: correction{}, written: true}, "SpokenAnswer": {typ: platform.SpokenAnswer{}},
 		"ProjectInput": {typ: platform.ProjectInput{}, written: true}, "ProjectUpdate": {typ: platform.ProjectUpdate{}, written: true},
 		"ProjectAgents": {typ: projects.Agents{}}, "AgentAvailability": {typ: projects.Availability{}}, "AgentOffer": {typ: platform.Offer{}},
 		"DefaultResolved": {typ: platform.Nearer{}}, "ProjectAgentsView": {typ: platform.ProjectAgents{}},
@@ -1044,6 +1049,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		},
 		GitHubAPI: func(string) github.API { return sourceFake },
 		Speech:    contractSpeech{},
+		VoiceBuild: func(kind string, _ speech.Config) (platform.Voice, error) {
+			if kind == speech.KindOpenAI {
+				return &speech.Fake{Err: speech.ErrUnavailable}, nil
+			}
+			return &speech.Fake{Text: "Voice is set up.", Language: "english", Duration: 3 * time.Second}, nil
+		},
 	})
 	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
 	exerciseEvaluationPolicyContract(t, c)
@@ -1156,6 +1167,20 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", transcribe, transcribe, "not audio", http.StatusBadRequest, octets...)
 	c.call(acme, "POST", transcribe, transcribe, webmVoice+"silence", http.StatusUnprocessableEntity, octets...)
 	c.call(acme, "POST", transcribe, transcribe, webmVoice+"offline", http.StatusServiceUnavailable, octets...)
+
+	// The workspace's voice provider: none, set up, checked, broken, off.
+	const provider = "/api/voice/provider"
+	c.call(auditAdmin, "GET", provider, provider, "", http.StatusOK)
+	c.call(auditAdmin, "POST", provider+"/check", provider+"/check", "", http.StatusNotFound)
+	c.call(auditAdmin, "PUT", provider, provider, `{"kind":"elevenlabs","key":"k"}`, http.StatusBadRequest)
+	c.call(auditAdmin, "PUT", provider, provider, `{"kind":"groq","key":"gsk_contract"}`, http.StatusOK)
+	c.call(auditAdmin, "GET", provider, provider, "", http.StatusOK)
+	c.call(auditAdmin, "POST", provider+"/check", provider+"/check", "", http.StatusOK)
+	c.call(acme, "GET", "/api/voice", "/api/voice", "", http.StatusOK)
+	c.call(auditAdmin, "PUT", provider, provider, `{"kind":"openai","key":"sk_contract"}`, http.StatusOK)
+	c.call(auditAdmin, "POST", provider+"/check", provider+"/check", "", http.StatusBadGateway)
+	c.call(auditAdmin, "DELETE", provider, provider, "", http.StatusNoContent)
+	exerciseSessionVoiceContract(t, c)
 
 	c.call(auditAdmin, "GET", "/api/audit", "/api/audit?limit=501", "", http.StatusBadRequest)
 	c.call(auditAdmin, "GET", "/api/read-audit", "/api/read-audit?limit=501", "", http.StatusBadRequest)
@@ -1827,6 +1852,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/knowledge/{name}/configuration", "/api/knowledge/remote/configuration", `{"mode":"indexed","provider":"drive","origin":"folder1","project":"~"}`, http.StatusOK)
 	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote/credential", `{"ref":"op://People/ana/drive"}`, http.StatusOK)
 	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote/credential", `{"oauth":"drive"}`, http.StatusServiceUnavailable)
+	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote/credential", `{"oauth":"onedrive"}`, http.StatusBadRequest)
+	c.call(acme, "POST", "/api/knowledge", "/api/knowledge", `{"name":"remote-onedrive","configuration":{"mode":"indexed","provider":"onedrive","origin":"D4648F06C91D9D3D!54927","project":"~"}}`, http.StatusCreated)
+	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote-onedrive/credential", `{"oauth":"onedrive"}`, http.StatusServiceUnavailable)
+	c.call(acme, "DELETE", "/api/knowledge/{name}", "/api/knowledge/remote-onedrive", "", http.StatusNoContent)
 	capReader := f.person(t, "acme", "source-cap", "Source capacity reader", "humagen-admins")
 	for i := 0; i < credentials.MaxPerPerson; i++ {
 		if _, err := f.p.Credentials.Put("acme", "source-cap", fmt.Sprintf("cap-%d", i), credentials.Input{Ref: fmt.Sprintf("op://People/source-cap/cap-%d", i)}, time.Now()); err != nil {
@@ -2570,8 +2599,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	freshPersonalNote := c.call(auditAdmin, "POST", "/api/me/memory", "/api/me/memory", `{"text":"Personal correction source"}`, http.StatusCreated)
 	real := map[string]map[string]string{
 		"/api/sessions/{id}":                         {"id": sessionContract["id"]},
+		"/api/messages/{id}":                         {"id": sessionContract["id"]},
 		"/api/sessions/{id}/messages":                {"id": sessionContract["id"]},
 		"/api/sessions/{id}/stream":                  {"id": sessionContract["id"]},
+		"/api/sessions/{id}/voice/transcriptions":    {"id": sessionContract["id"]},
+		"/api/sessions/{id}/voice/speech":            {"id": sessionContract["id"]},
+		"/api/sessions/{id}/messages/{mid}":          {"id": sessionContract["id"], "mid": "m-1"},
 		"/api/sessions/{id}/stop":                    {"id": sessionContract["id"]},
 		"/api/sessions/{id}/people":                  {"id": sessionContract["id"]},
 		"/api/sessions/{id}/links":                   {"id": sessionContract["id"]},
@@ -2700,7 +2733,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}
 		if refusesUnknownFields(op) {
 			caller := acme
-			if strings.HasPrefix(op.path, "/api/sessions/") || op.path == "/api/alerts/{id}" {
+			if strings.HasPrefix(op.path, "/api/sessions/") || strings.HasPrefix(op.path, "/api/messages/") || op.path == "/api/alerts/{id}" {
 				caller = sessionContract["token"]
 			}
 			if strings.HasPrefix(op.path, "/api/me/memory") || strings.HasPrefix(op.path, "/api/agent-setups/") || strings.HasSuffix(op.path, "/skill-draft") || strings.HasSuffix(op.path, "/decision-memory") {
@@ -2801,10 +2834,24 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 var unexercised = map[string]string{
 	"PUT /api/agents/{name}/home 409":                    "a home is refused only while the agent's default skills would not fit it; the guard is in platform.homeUsers",
 	"POST /api/sessions 409":                             "governed admission to a deleted project uses the same path tested by POST /api/runs deleted-project response",
+	"POST /api/sessions 200":                             "a chat surface's reply landing in its existing root, covered by TestAChatServiceFindsOrStartsASlackThreadsRootSession",
+	"POST /api/messages/{id} 409":                        "a full or moved conversation, the same PostMessage path POST /api/sessions/{id}/messages takes",
+	"POST /api/messages 409":                             "a place nobody answers (no entry agent, no client default, no mention), covered by TestAPlaceNobodyAnswersIsRefusedSayingWhy",
 	"POST /api/sessions/{id}/messages 409":               "deleted-project admission uses the same PostMessage path tested by thread/run responses",
 	"POST /api/sessions/{id}/people 409":                 "concurrent participant changes fail thread version CAS covered by participant race tests",
 	"POST /api/sessions/{id}/alerts 409":                 "random alert identity collision fails CreateSession CAS; callers cannot supply the ID",
 	"PUT /api/sessions/{id}/messages/{mid}/feedback 409": "same putFeedback handler unfinished-run409 is exercised via legacy feedback route",
+
+	// Voice mode's refusals, each covered by its own test in voice_session_test.go.
+	"POST /api/sessions/{id}/voice/transcriptions 402": "a spend limit reached, covered by TestVoiceModeStopsAtTheSpendLimit",
+	"POST /api/sessions/{id}/voice/speech 402":         "a spend limit reached, covered by TestVoiceModeStopsAtTheSpendLimit",
+	"POST /api/sessions/{id}/voice/transcriptions 413": "a recording over the body cap, the same MaxBytesReader TestTheConsoleTranscribesARecording covers",
+	"POST /api/sessions/{id}/voice/transcriptions 422": "no words heard, covered by TestVoiceModeHearsAndSpeaksInASession",
+	"POST /api/sessions/{id}/voice/transcriptions 503": "a provider that fails, covered by TestVoiceModeHearsAndSpeaksInASession",
+	"POST /api/sessions/{id}/voice/speech 503":         "a provider that fails, covered by TestVoiceModeHearsAndSpeaksInASession",
+	"POST /api/runs/{id}/speech 402":                   "a spend limit reached, the same check TestVoiceModeStopsAtTheSpendLimit covers",
+	"POST /api/runs/{id}/speech 422":                   "an answer with no words, covered by TestAFinishedAnswerIsOneClip",
+	"POST /api/runs/{id}/speech 503":                   "a provider that fails, covered by TestAFinishedAnswerIsOneClip",
 
 	"POST /api/voice/transcriptions 404":            "a deployment with speech left out, covered by TestWithoutSpeechTheConsoleHasNoVoiceNotes",
 	"POST /api/catalog/connectors/{name}/crawl 409": "a crawl asked for while another of the same connector runs; the guard is in platform.crawl",

@@ -51,7 +51,7 @@ var Builtin = map[string][]string{
 	SlotModels:     {"anthropic", "openai", "google", "groq"},
 	SlotTools:      {"mcp"},
 	SlotConnectors: {"bigquery", "snowflake", "gcs", "s3"},
-	SlotSpeech:     {"none", "groq"},
+	SlotSpeech:     {"none", "groq", "openai"},
 }
 
 // System is how and where humagen runs.
@@ -358,21 +358,23 @@ type Knowledge struct {
 	Embedder Slot `json:"embedder,omitzero"`
 }
 
-// GroqSpeech is the groq speech kind's block: Groq's OpenAI-compatible
-// audio API. Every field has a default, so `kind: groq` alone is enough
-// with GROQ_API_KEY set.
+// GroqSpeech is the block of the groq and openai speech kinds: an
+// OpenAI-compatible audio API, Groq's or OpenAI's. Every field has a
+// default, so `kind: groq` alone is enough with GROQ_API_KEY set, and
+// `kind: openai` with OPENAI_API_KEY.
 type GroqSpeech struct {
-	// BaseURL is where the API is. Empty is GroqBaseURL.
+	// BaseURL is where the API is. Empty is the kind's own.
 	BaseURL string `json:"base_url,omitempty"`
-	// Key is the API key's reference. Left out: env:GROQ_API_KEY.
+	// Key is the API key's reference. Left out: env:GROQ_API_KEY, or
+	// env:OPENAI_API_KEY for openai.
 	Key *Ref `json:"key,omitempty"`
-	// Model transcribes. Empty is whisper-large-v3-turbo.
+	// Model transcribes. Empty is whisper-large-v3-turbo, or whisper-1.
 	Model string `json:"model,omitempty"`
 	// SpeechModel and Voice speak. Empty are canopylabs/orpheus-v1-english
-	// and autumn.
+	// and autumn, or tts-1 and alloy.
 	SpeechModel string `json:"speech_model,omitempty"`
 	Voice       string `json:"voice,omitempty"`
-	// MaxBytes caps one voice note. Empty is 25 MiB, Groq's own cap.
+	// MaxBytes caps one voice note. Empty is 25 MiB, each provider's cap.
 	MaxBytes int64 `json:"max_bytes,omitempty"`
 	// Timeout bounds one request. Empty is 60s.
 	Timeout string `json:"timeout,omitempty"`
@@ -382,6 +384,8 @@ type GroqSpeech struct {
 const (
 	GroqBaseURL = speech.GroqBaseURL
 	GroqKey     = "env:GROQ_API_KEY"
+	// OpenAISpeechKey is the openai speech kind's key when left out.
+	OpenAISpeechKey = "env:OPENAI_API_KEY"
 	// MaxSpeechBytes bounds max_bytes.
 	MaxSpeechBytes int64 = 100 << 20
 	// MaxSpeechTimeout bounds timeout.
@@ -397,31 +401,37 @@ func (g GroqSpeech) TimeoutOr(def time.Duration) time.Duration {
 }
 
 // KeyRef is the block's key reference, or env:GROQ_API_KEY.
-func (g GroqSpeech) KeyRef() string {
-	if g.Key.Set() {
+func (g GroqSpeech) KeyRef() string { return g.KeyRefFor("groq") }
+
+// KeyRefFor is the block's key reference, or the kind's default.
+func (g GroqSpeech) KeyRefFor(kind string) string {
+	switch {
+	case g.Key.Set():
 		return g.Key.Ref
+	case kind == "openai":
+		return OpenAISpeechKey
 	}
 	return GroqKey
 }
 
 // checkSpeech refuses a speech kind that could not be built at start.
 func checkSpeech(s Slot) error {
-	if s.Kind != "groq" {
+	if s.Kind != "groq" && s.Kind != "openai" {
 		return nil
 	}
 	b, err := Block[GroqSpeech](s)
 	if err != nil {
-		return fmt.Errorf("system: speech: groq: %w", err)
+		return fmt.Errorf("system: speech: %s: %w", s.Kind, err)
 	}
 	if err := checkBaseURL(b.BaseURL); err != nil {
-		return fmt.Errorf("system: speech: groq: %w", err)
+		return fmt.Errorf("system: speech: %s: %w", s.Kind, err)
 	}
 	if b.MaxBytes < 0 || b.MaxBytes > MaxSpeechBytes {
-		return fmt.Errorf("system: speech: groq: max_bytes is at most %d", MaxSpeechBytes)
+		return fmt.Errorf("system: speech: %s: max_bytes is at most %d", s.Kind, MaxSpeechBytes)
 	}
 	if b.Timeout != "" {
 		if d, err := time.ParseDuration(b.Timeout); err != nil || d <= 0 || d > MaxSpeechTimeout {
-			return fmt.Errorf("system: speech: groq: timeout is a duration up to %s, such as 60s", MaxSpeechTimeout)
+			return fmt.Errorf("system: speech: %s: timeout is a duration up to %s, such as 60s", s.Kind, MaxSpeechTimeout)
 		}
 	}
 	return nil
@@ -725,7 +735,7 @@ func builtinBlock(slot, kind string) (any, bool) {
 		return &VertexEmbedder{}, true
 	case "models.anthropic", "models.openai", "models.google", "models.groq":
 		return &ModelBlock{}, true
-	case "speech.groq":
+	case "speech.groq", "speech.openai":
 		return &GroqSpeech{}, true
 	case "connectors.snowflake":
 		return &SnowflakeConnector{}, true

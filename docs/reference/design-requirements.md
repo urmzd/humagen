@@ -60,7 +60,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-028 | Share and People & Access are one panel | Implemented: the Share drawer is People & Access; room tests pass |
 | DES-029 | A turn shows a status only when it adds information | Implemented; checked in the browser |
 | DES-030 | One AI disclaimer, centered under the prompt bar | Implemented in `Composer`; checked in the browser |
-| DES-031 | A message names no agent under it; a router's pick is a checkpoint | Implemented: `Checkpoint` in Chat and Room; checked in the browser for a direct answer |
+| DES-031 | A message names no agent under it; a router's pick is a checkpoint | Implemented: `Checkpoint` in Chat and Room, and the entry agent's pick in a root session (`PickView` in `Room.tsx`, `session-picks.dom.test.tsx`); checked in the browser for a direct answer |
 | DES-032 | The conversation header shows which agents took part, not a count | Implemented: `Involved` in `ConversationShell.tsx`; `ui.test.tsx` passes; checked in the browser |
 | DES-033 | A turn shows its thinking and steps inline, where they happened, with what each was given and returned | Implemented in `WorkSteps.tsx` and render-web `StepIO`; web and core tests pass; checked live |
 | DES-034 | A finished turn says how long it worked | Implemented: `turn.completed` carries `durationMs`, from the run's events or its record; adapter and core tests pass |

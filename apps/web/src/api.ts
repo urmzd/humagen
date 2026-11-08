@@ -607,7 +607,8 @@ export interface Client {
   };
   github?: {
     automations?: GitHubAutomation[];
-    auto_labels?: Record<string, Record<string, string>>;
+    /** Automatic review of pull requests: on unless switched off, per repository too. */
+    auto_review?: { enabled?: boolean; repositories?: Record<string, boolean> };
     checks?: boolean;
     guides?: boolean;
     mutations?: boolean;
@@ -796,6 +797,37 @@ export interface SuiteView extends Suite {
   runs: EvalRun[];
 }
 
+/**
+ * How widely a project is read: by one person, by named people or roles, or
+ * by everyone in the workspace. The server sends it on a project as
+ * `visibility`; until the client is regenerated it is declared here.
+ */
+export type ProjectVisibility = "private" | "shared" | "workspace";
+
+/**
+ * One corpus a project attaches, as `GET /api/projects/{name}/corpora` reads
+ * it: its title when it has one, and how many of its sources the reader sees.
+ * Declared here until the client is regenerated.
+ */
+export interface ProjectCorpus {
+  name: string;
+  title?: string;
+  sources: number;
+}
+
+/** The corpora a project attaches, at the project's version, and what a session filed there searches. */
+export interface ProjectCorpora {
+  version: number;
+  corpora: ProjectCorpus[];
+  given: { name: string; from: string }[];
+}
+
+/** A corpus as `GET /api/corpora` lists it, by what a project page needs of it. */
+export interface CorpusBrief {
+  name: string;
+  title?: string;
+}
+
 /** A project in a path: `~` is the workspace, which is the project named "". */
 export function projectPath(name: string): string {
   return name === "" ? "~" : encodeURIComponent(name);
@@ -804,6 +836,48 @@ export function projectPath(name: string): string {
 // Same-origin only. The session is an HttpOnly cookie the page cannot read,
 // so there is no token here to leak.
 // Reads are tracked, so a change of screen can wait for the next one's (transition.ts).
+// The workspace voice provider's shapes, as api/openapi.yaml has them on
+// feat/voice-provider. They move to the generated client once it lands.
+export type VoiceKindName = "groq" | "openai";
+/** What voice mode adds to the voice settings. */
+export type VoiceModeSettings = { speak?: boolean; provider?: VoiceKindName };
+/** What a voice provider charges, in micro-USD. */
+export type VoicePrice = {
+  hear_per_hour: number;
+  min_seconds: number;
+  speak_per_million_chars: number;
+};
+export type VoiceProvider = {
+  kind: VoiceKindName;
+  model: string;
+  speech_model: string;
+  voice: string;
+  price: VoicePrice;
+  key_ref?: string;
+  key_stored: boolean;
+  set_by: string;
+  set_at: string;
+};
+export type VoiceProviderInput = {
+  kind: VoiceKindName;
+  model?: string;
+  speech_model?: string;
+  voice?: string;
+  price?: VoicePrice;
+  key_ref?: string;
+  key?: string;
+};
+export type VoiceKind = {
+  kind: VoiceKindName;
+  model: string;
+  speech_model: string;
+  voice: string;
+  voices: string[];
+  price: VoicePrice;
+};
+export type VoiceProviderView = { provider?: VoiceProvider; kinds: VoiceKind[] };
+export type VoiceCheck = { audio: string; media_type: string; heard: string; cost_micros: number };
+
 export function call<T>(method: string, path: string, json?: unknown): Promise<T> {
   return method === "GET" ? track(send<T>(method, path, json)) : send<T>(method, path, json);
 }
@@ -1030,10 +1104,6 @@ export const api = {
     call<AccessDecision>("GET", `/api/access/explain?${new URLSearchParams({ permission })}`),
   agents: () => call<{ agents: Revision[] }>("GET", "/api/agents").then((r) => r.agents),
   /** Every agent, and the names of those the platform provides, which cannot be edited. */
-  /**
-   * Every agent, the platform's own by name, where each that lives in a
-   * project lives, and which projects enable each ("~" is the workspace).
-   */
   agentHues: (names: string[], path = "/api/agent-hues") =>
     call<{ hues: Record<string, number> }>(
       "GET",
@@ -1059,6 +1129,10 @@ export const api = {
     call<void>("DELETE", `/api/model-providers/${encodeURIComponent(name)}`),
   checkModelProvider: (name: string) =>
     call<ModelProviderCheck>("POST", `/api/model-providers/${encodeURIComponent(name)}/check`),
+  /**
+   * Every agent, the platform's own by name, and the project each is homed in,
+   * which says who sees it. `enabled_in` is always empty now.
+   */
   agentList: () =>
     call<{
       agents: Revision[];
@@ -1067,7 +1141,7 @@ export const api = {
       enabled_in?: Record<string, string[]>;
       hues?: Record<string, number>;
     }>("GET", "/api/agents"),
-  /** Make an agent live in a project, "" for none: available there and below, and nowhere else. */
+  /** Says who sees an agent: a project's members, Private in a Personal project, or "~" for the workspace. */
   setAgentHome: (agent: string, project: string) =>
     call<AgentHome>("PUT", `/api/agents/${encodeURIComponent(agent)}/home`, { project }),
   createAgent: (spec: AgentSpec) => call<Revision>("POST", "/api/agents", spec),
@@ -1317,6 +1391,35 @@ export const api = {
       "DELETE",
       `/api/projects/${projectPath(name)}/announcements/${encodeURIComponent(id)}`,
     ),
+  /** The corpora a project attaches, its context. "" is the workspace. */
+  projectCorpora: (name: string) =>
+    call<ProjectCorpora>("GET", `/api/projects/${projectPath(name)}/corpora`),
+  /** Replaces the corpora a project attaches, as a whole, from the version read. */
+  setProjectCorpora: (name: string, version: number, corpora: string[]) =>
+    call<ProjectCorpora>("PUT", `/api/projects/${projectPath(name)}/corpora`, {
+      version,
+      corpora,
+    }),
+  /** Every corpus the reader may read. */
+  corpora: () => call<{ corpora: CorpusBrief[] }>("GET", "/api/corpora").then((r) => r.corpora),
+  /**
+   * The schedules filed in one project, "" for the workspace. A server that
+   * does not filter by project lists every schedule, so the list is narrowed
+   * here as well.
+   */
+  projectSchedules: (project: string) =>
+    call<{ schedules: ScheduleView[] }>(
+      "GET",
+      `/api/schedules?${new URLSearchParams({ project: project === "" ? "~" : project })}`,
+    ).then((r) =>
+      r.schedules.filter((s) => (s.project === "~" ? "" : (s.project ?? "")) === project),
+    ),
+  /** Starts a session filed in a project, "" for the workspace, from its first message. */
+  startSession: (input: { text: string; project: string }) =>
+    call<AgentSession>("POST", "/api/sessions", {
+      text: input.text,
+      project: input.project === "" ? "~" : input.project,
+    }),
   projectMemory: (project: string) =>
     call<{ notes: Note[] }>("GET", `/api/projects/${projectPath(project)}/memory`).then(
       (r) => r.notes,
@@ -1346,8 +1449,15 @@ export const api = {
       personal?: PersonalPreferences;
     },
   ) => call<Preferences>("PUT", "/api/preferences", p),
-  /** Whether this deployment transcribes voice notes, and the largest recording it takes. */
-  voice: () => call<VoiceSettings>("GET", "/api/voice"),
+  /** What voice the workspace has: whether recordings are heard, voice mode, the largest recording. */
+  voice: () => call<VoiceSettings & VoiceModeSettings>("GET", "/api/voice"),
+  /** The workspace's voice provider, if any, and the kinds it can be. */
+  voiceProvider: () => call<VoiceProviderView>("GET", "/api/voice/provider"),
+  setVoiceProvider: (input: VoiceProviderInput) =>
+    call<VoiceProvider>("PUT", "/api/voice/provider", input),
+  deleteVoiceProvider: () => call<void>("DELETE", "/api/voice/provider"),
+  /** Speaks a sample with the provider and hears it back. */
+  checkVoiceProvider: () => call<VoiceCheck>("POST", "/api/voice/provider/check"),
   /** A recording's words. It is sent as its own bytes; the server decides what it is and keeps nothing. */
   transcribeVoice: async (audio: Blob) => {
     const res = await fetch("/api/voice/transcriptions", {
@@ -1842,11 +1952,41 @@ export interface ThreadAsk {
   owners_of?: string;
 }
 
+/** An agent a root session's entry agent handed a message to, answering in a child session. */
+export interface PickCall {
+  /** The child session it answers in. */
+  session: string;
+  agent: string;
+  status: "working" | "waiting" | "done" | "failed" | "stopped";
+  /** Its answer, empty until it has one. */
+  text: string;
+}
+
+/**
+ * What a root session's entry agent picked for a person's message: why, and
+ * each agent it handed the message to. Answering itself, it hands it to
+ * nobody, and its own answer says why above it (`run.picked`).
+ */
+export interface SessionPick {
+  id: string;
+  /** The entry agent's own name, which colors its mark. */
+  agent: string;
+  /** The name people see it by: the workspace's. */
+  by: string;
+  reason: string;
+  /** The person's message it was picked for, as the session read it. */
+  message: string;
+  at: string;
+  calls: PickCall[];
+}
+
 export interface ThreadTurn {
-  kind: "message" | "run" | "announcement";
+  kind: "message" | "run" | "announcement" | "pick";
   message?: ThreadMessage;
   run?: Run;
   announcement?: ThreadAnnouncement;
+  /** In a root session, what its entry agent picked for the message before it. */
+  pick?: SessionPick;
   /** On a run parked on a question a person answers. */
   ask?: ThreadAsk;
 }
@@ -1972,7 +2112,7 @@ export const coworking = {
     call<{ channels: Channel[] }>("GET", `${projectAt(project)}/channels`).then((r) => r.channels),
   createChannel: (
     project: string,
-    c: { name: string; title?: string; purpose?: string; default?: string },
+    c: { name: string; title?: string; purpose?: string; default?: string; slack?: SlackBinding },
   ) => call<Channel>("POST", `${projectAt(project)}/channels`, c),
   updateChannel: (
     project: string,
