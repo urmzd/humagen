@@ -308,6 +308,10 @@ func shown(it state.Item[record]) (Corpus, bool) {
 	if c.Agents == nil {
 		c.Agents = []string{}
 	}
+	if c.Label == "" {
+		// Kept before corpora had labels: internal, the default.
+		c.Label = Internal
+	}
 	c.Version = it.Version
 	return c, true
 }
