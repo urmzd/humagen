@@ -139,6 +139,8 @@ test("an unknown page stays visible as not found while legacy tabs fall back saf
 });
 
 test("the read audit has a Settings address", () => {
+  assert.equal(href({ page: "settings", section: "voice" }), "/settings/voice");
+  assert.deepEqual(at("/settings/voice"), { page: "settings", section: "voice" });
   assert.equal(href({ page: "settings", section: "read-audit" }), "/settings/read-audit");
   assert.deepEqual(at("/settings/read-audit"), { page: "settings", section: "read-audit" });
   assert.equal(href({ page: "settings", section: "providers" }), "/settings/providers");

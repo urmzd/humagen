@@ -7,6 +7,7 @@ import {
   ClipboardListIcon,
   GaugeIcon,
   ListChecksIcon,
+  MicIcon,
   MonitorIcon,
   MoonIcon,
   PaletteIcon,
@@ -58,6 +59,7 @@ import {
   SkeletonRows,
   useStrip,
 } from "./ui.tsx";
+import { VoiceSettings } from "./VoiceSettings.tsx";
 
 export type Section = SettingsSection;
 
@@ -217,6 +219,16 @@ export function Settings({
                 <Problem message={defaultCopy.readAudit.denied} />
               </>
             ))}
+
+          {section === "voice" && (
+            <>
+              <header className="pb-2">
+                <h1 className={pageTitle}>{defaultCopy.voiceSettings.title}</h1>
+                <p className={pageLede}>{defaultCopy.voiceSettings.lede}</p>
+              </header>
+              <VoiceSettings canEdit={me.permissions.includes("clients:write")} />
+            </>
+          )}
 
           {section === "deletions" &&
             (canGovern ? (
@@ -668,6 +680,7 @@ export function SettingsNav({
         { id: "workspace", label: "Workspace", icon: <ServerIcon size={16} /> },
         { id: "providers", label: "Model providers", icon: <BrainIcon size={16} /> },
         { id: "limits", label: "Limits", icon: <GaugeIcon size={16} /> },
+        { id: "voice", label: defaultCopy.voiceSettings.title, icon: <MicIcon size={16} /> },
         { id: "access", label: "Access", icon: <ShieldIcon size={16} /> },
         ...(canReadAudit
           ? [

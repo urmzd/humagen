@@ -802,6 +802,48 @@ export function projectPath(name: string): string {
 // Same-origin only. The session is an HttpOnly cookie the page cannot read,
 // so there is no token here to leak.
 // Reads are tracked, so a change of screen can wait for the next one's (transition.ts).
+// The workspace voice provider's shapes, as api/openapi.yaml has them on
+// feat/voice-provider. They move to the generated client once it lands.
+export type VoiceKindName = "groq" | "openai";
+/** What voice mode adds to the voice settings. */
+export type VoiceModeSettings = { speak?: boolean; provider?: VoiceKindName };
+/** What a voice provider charges, in micro-USD. */
+export type VoicePrice = {
+  hear_per_hour: number;
+  min_seconds: number;
+  speak_per_million_chars: number;
+};
+export type VoiceProvider = {
+  kind: VoiceKindName;
+  model: string;
+  speech_model: string;
+  voice: string;
+  price: VoicePrice;
+  key_ref?: string;
+  key_stored: boolean;
+  set_by: string;
+  set_at: string;
+};
+export type VoiceProviderInput = {
+  kind: VoiceKindName;
+  model?: string;
+  speech_model?: string;
+  voice?: string;
+  price?: VoicePrice;
+  key_ref?: string;
+  key?: string;
+};
+export type VoiceKind = {
+  kind: VoiceKindName;
+  model: string;
+  speech_model: string;
+  voice: string;
+  voices: string[];
+  price: VoicePrice;
+};
+export type VoiceProviderView = { provider?: VoiceProvider; kinds: VoiceKind[] };
+export type VoiceCheck = { audio: string; media_type: string; heard: string; cost_micros: number };
+
 export function call<T>(method: string, path: string, json?: unknown): Promise<T> {
   return method === "GET" ? track(send<T>(method, path, json)) : send<T>(method, path, json);
 }
@@ -1344,8 +1386,15 @@ export const api = {
       personal?: PersonalPreferences;
     },
   ) => call<Preferences>("PUT", "/api/preferences", p),
-  /** Whether this deployment transcribes voice notes, and the largest recording it takes. */
-  voice: () => call<VoiceSettings>("GET", "/api/voice"),
+  /** What voice the workspace has: whether recordings are heard, voice mode, the largest recording. */
+  voice: () => call<VoiceSettings & VoiceModeSettings>("GET", "/api/voice"),
+  /** The workspace's voice provider, if any, and the kinds it can be. */
+  voiceProvider: () => call<VoiceProviderView>("GET", "/api/voice/provider"),
+  setVoiceProvider: (input: VoiceProviderInput) =>
+    call<VoiceProvider>("PUT", "/api/voice/provider", input),
+  deleteVoiceProvider: () => call<void>("DELETE", "/api/voice/provider"),
+  /** Speaks a sample with the provider and hears it back. */
+  checkVoiceProvider: () => call<VoiceCheck>("POST", "/api/voice/provider/check"),
   /** A recording's words. It is sent as its own bytes; the server decides what it is and keeps nothing. */
   transcribeVoice: async (audio: Blob) => {
     const res = await fetch("/api/voice/transcriptions", {
