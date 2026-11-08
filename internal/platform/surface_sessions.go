@@ -295,7 +295,7 @@ func (p *Platform) SessionAudience(tenant, session string) (SessionAudience, boo
 }
 
 // surfaceAudience is who a surface thread's root session is for, by the
-// place it was asked in (owner rule, 2026-11-07): a public channel's is
+// place it was asked in: a public channel's is
 // shared where it is filed; a private channel's or a group direct message's
 // is private to the conversation's members now, those the client maps to a
 // person; a direct message's is private to its person. The entry agent and
