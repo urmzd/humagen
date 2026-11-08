@@ -912,6 +912,8 @@ func (s *Store) updateOnce(tenantName, name string, version int, w Writer, at ti
 		return Project{}, fmt.Errorf("%w: a project's knowledge sources are set on their own", ErrInvalid)
 	case what != SkillsChanged && !slices.Equal(next.Skills, cur.Skills):
 		return Project{}, fmt.Errorf("%w: a project's skills are set on their own", ErrInvalid)
+	case what != ContextChanged && !slices.Equal(next.Context.Corpora, cur.Context.Corpora):
+		return Project{}, fmt.Errorf("%w: a project's context is set on its own", ErrInvalid)
 	case next.Kind == Company && !w.Govern:
 		return Project{}, fmt.Errorf("%w: company projects need projects:govern", ErrForbidden)
 	}
@@ -988,7 +990,8 @@ func same(a, b Project) bool {
 			return false
 		}
 	}
-	return a.Managed == b.Managed && slices.Equal(a.FileOwns, b.FileOwns) && a.Archived == b.Archived && a.Announce == b.Announce
+	return a.Managed == b.Managed && slices.Equal(a.FileOwns, b.FileOwns) && a.Archived == b.Archived && a.Announce == b.Announce &&
+		slices.Equal(a.Context.Corpora, b.Context.Corpora)
 }
 
 func sameField(a, b Project, field string) bool {

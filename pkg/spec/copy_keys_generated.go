@@ -1403,6 +1403,7 @@ var copyKeyList = []string{
 	"project.what.agents",
 	"project.what.archived",
 	"project.what.channel",
+	"project.what.context",
 	"project.what.created",
 	"project.what.deleted",
 	"project.what.experts",
