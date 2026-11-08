@@ -149,10 +149,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/model-providers/{name}", s.authed(auth.ClientsWrite, s.putModelProvider))
 	mux.HandleFunc("DELETE /api/model-providers/{name}", s.authed(auth.ClientsWrite, s.deleteModelProvider))
 	mux.HandleFunc("POST /api/model-providers/{name}/check", s.authed(auth.ClientsWrite, s.checkModelProvider))
-	// The platform's agents come in packages an administrator installs on a
-	// model they pick; nothing is installed until then.
-	mux.HandleFunc("GET /api/agent-packages", s.authed(auth.AgentsRead, s.agentPackages))
-	mux.HandleFunc("POST /api/agent-packages/{name}/install", s.authed(auth.AgentsWrite, s.installAgentPackage))
+
 	mux.HandleFunc("GET /api/agents/{name}/health", s.authed(auth.AgentsRead, s.seenAgent(s.agentHealth)))
 	mux.HandleFunc("GET /api/agents/{name}/changes", s.authed(auth.AgentsRead, s.seenAgent(s.agentChanges)))
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
@@ -1471,28 +1468,6 @@ func (s *Server) checkModelProvider(w http.ResponseWriter, r *http.Request, who 
 		return
 	}
 	ok(w, http.StatusOK, c)
-}
-
-func (s *Server) agentPackages(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	list, err := s.P.AgentPackages(r.Context(), who.Tenant)
-	if err != nil {
-		s.problem(w, err)
-		return
-	}
-	ok(w, http.StatusOK, map[string]any{"packages": list})
-}
-
-func (s *Server) installAgentPackage(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	var in wire.ModelRef
-	if !decode(w, r, &in) {
-		return
-	}
-	pkg, err := s.P.InstallPackage(r.Context(), who, r.PathValue("name"), in)
-	if err != nil {
-		s.problem(w, err)
-		return
-	}
-	ok(w, http.StatusOK, pkg)
 }
 
 func (s *Server) resetAgent(w http.ResponseWriter, r *http.Request, who auth.Principal) {

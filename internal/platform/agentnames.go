@@ -541,11 +541,14 @@ func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *w
 }
 
 // agentProviders are the providers an agent's spec may name in tenant's
-// workspace: those the deployment declares, the workspace's own, and a model
-// policy. Fiber's built-in offline, anthropic and openai count only when the
-// platform is not held to configured models (Config.ConfiguredModelsOnly).
+// workspace: those the deployment declares, the workspace's own, a model
+// policy, and the kinds an administrator may enable (anthropic, google,
+// openai), which an agent may name before one is: it runs once one is
+// (resolveModel). Fiber's offline counts only when the platform is not held
+// to configured models (Config.ConfiguredModelsOnly).
 func (p *Platform) agentProviders(tenant string) []string {
 	out := append([]string{PolicyProvider}, p.cfg.Ext.ProviderNames()...)
+	out = append(out, ModelProviderKinds()...)
 	if !p.cfg.ConfiguredModelsOnly {
 		out = append(out, wire.KnownProviders()...)
 	}

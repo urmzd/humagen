@@ -86,14 +86,15 @@ func TestSessionAlertFallbackRequiresAnAvailableAgent(t *testing.T) {
 			name = "with_model"
 		}
 		t.Run(name, func(t *testing.T) {
-			p, err := New(Config{Workspace: t.TempDir()})
+			cfg := Config{Workspace: t.TempDir()}
+			if configured {
+				cfg.TestBuiltinProvider, cfg.TestBuiltinModel = "offline", "offline"
+			}
+			p, err := New(cfg)
 			if err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = p.Close() })
-			if configured {
-				InstallPackagesForTest(t, p, "acme")
-			}
 			at := time.Now().UTC()
 			m, _, err := p.Inbox.RaiseOnce("acme", "budget", inbox.Message{Kind: inbox.KindBudget, To: "ada", Subject: "Budget review"}, at)
 			if err != nil {

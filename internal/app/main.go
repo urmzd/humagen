@@ -465,6 +465,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 		// spec declares, and each workspace's own, which its
 		// administrators add in the console.
 		ConfiguredModelsOnly: true,
+		ShipBuiltins:         true,
 		ModelKinds:           platform.ModelKinds{Build: workspaceModel, Probe: workspaceProbe},
 		DeclaredKinds:        declaredKinds(file.cfg),
 		Blobs:                blobs,

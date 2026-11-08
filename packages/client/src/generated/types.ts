@@ -770,15 +770,6 @@ export interface ModelProvider {
   added_at?: string;
 }
 
-/** One of the platform's agent packages, as the workspace has it. */
-export interface AgentPackageListing {
-  name: string;
-  title: string;
-  description: string;
-  installed: number;
-  agents: AgentPackageListingAgentsItem[];
-}
-
 /** One agent's answer to whether it should take a message that names no agent. */
 export interface JoinDecision {
   agent: string;
@@ -4950,12 +4941,6 @@ export interface AgentSetupPlanAssignment {
   source?: string;
 }
 
-export interface AgentPackageListingAgentsItem {
-  name: string;
-  description: string;
-  installed: boolean;
-}
-
 export interface PreparedCallInputMessagesItem {
   role: "user" | "assistant";
   text: string;
@@ -5172,10 +5157,6 @@ export interface SetModelProviderBody {
   vertex?: ModelProviderVertex;
   key_ref?: string;
   key?: string;
-}
-
-export interface ListAgentPackagesResponse {
-  packages: AgentPackageListing[];
 }
 
 export interface ListAgentsResponse {

@@ -248,10 +248,7 @@ export function Settings({
                   What agents and routing run on. There is no built-in model.
                 </p>
               </header>
-              <ModelProviderSettings
-                canEdit={me.permissions.includes("clients:write")}
-                onAgents={onNavigate ? () => onNavigate({ page: "agents" }) : undefined}
-              />
+              <ModelProviderSettings canEdit={me.permissions.includes("clients:write")} />
             </>
           )}
 

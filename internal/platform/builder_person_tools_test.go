@@ -23,12 +23,11 @@ func TestBuilderPersonalToolsRequireExplicitReviewedChange(t *testing.T) {
 		}
 		return flowturn.Result{Text: "safe"}, nil
 	})
-	p, err := New(Config{Workspace: t.TempDir(), Runtime: engine})
+	p, err := New(Config{Workspace: t.TempDir(), Runtime: engine, TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = p.Close() }()
-	InstallPackagesForTest(t, p, "t")
 	before := wire.AgentSpec{Name: "writer", Provider: "offline", Model: "offline", SystemPrompt: "Write clearly"}
 	if _, err = p.Agents.Create(t.Context(), "t", before, "test"); err != nil {
 		t.Fatal(err)

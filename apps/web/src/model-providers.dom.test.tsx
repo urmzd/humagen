@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { ModelProvider } from "./api.ts";
+import type { ModelProvider, ModelRef } from "./api.ts";
 import { stubFetch } from "./dom.ts";
-import { forgetConfiguredProviders } from "./ModelChain.tsx";
-import { AgentPackages, ModelProviderSettings } from "./ModelProviders.tsx";
+import { forgetConfiguredProviders, ModelChain } from "./ModelChain.tsx";
+import { ModelProviderSettings } from "./ModelProviders.tsx";
 
-// There is no built-in model: an administrator sets up each provider, and the
-// platform's agents are installed on a model they pick.
+// There is no built-in model: an administrator enables Anthropic, OpenAI or Google by
+// name, which agents' models name, or adds an OpenAI-compatible server.
 
 let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
@@ -17,140 +17,127 @@ afterEach(() => {
   forgetConfiguredProviders();
 });
 
-const groq: ModelProvider = {
-  name: "groq",
-  kind: "openai",
-  base_url: "https://api.groq.com/openai/v1",
-  key_stored: true,
-};
-
-test("with no provider, the page says agents can't answer and offers to add one", async () => {
-  net = stubFetch({
-    "GET /api/model-providers": () => ({
-      providers: [],
-      kinds: ["anthropic", "google", "openai"],
-      workspace: [],
-    }),
-    "GET /api/agent-packages": () => ({ packages: [] }),
-  });
-  render(<ModelProviderSettings canEdit />);
-  await screen.findByText(/No model provider yet/);
-  fireEvent.click(screen.getByRole("button", { name: "Add Provider" }));
-  assert.ok(screen.getByRole("form", { name: "Model provider" }));
+const setup = (workspace: ModelProvider[], deployment: string[] = []) => ({
+  providers: deployment.map((name) => ({
+    name,
+    declared: true,
+    kind: name as "anthropic",
+    source: "deployment" as const,
+  })),
+  kinds: ["anthropic", "google", "openai"],
+  workspace,
 });
 
-test("a provider is added with its key as a value, never shown again, then checked", async () => {
+test("the three kinds are listed, and enabling one sends its key under its own name", async () => {
   let workspace: ModelProvider[] = [];
   net = stubFetch({
-    "GET /api/model-providers": () => ({
-      providers: [],
-      kinds: ["anthropic", "google", "openai"],
-      workspace,
-    }),
-    "GET /api/agent-packages": () => ({ packages: [] }),
-    "PUT /api/model-providers/groq": (body) => {
-      workspace = [groq];
-      return { ...groq, ...(body as object), key: undefined };
+    "GET /api/model-providers": () => setup(workspace),
+    "PUT /api/model-providers/anthropic": () => {
+      workspace = [{ name: "anthropic", kind: "anthropic", key_stored: true }];
+      return workspace[0];
     },
-    "POST /api/model-providers/groq/check": () => ({
-      id: "provider:groq",
-      name: "groq",
+    "POST /api/model-providers/anthropic/check": () => ({
+      id: "provider:anthropic",
+      name: "anthropic",
       status: "operational",
       detail: "Reachable, key accepted",
       latency_ms: 40,
     }),
   });
   render(<ModelProviderSettings canEdit />);
-  await screen.findByText(/No model provider yet/);
-  fireEvent.click(screen.getByRole("button", { name: "Add Provider" }));
+  const list = await screen.findByRole("list", { name: "Model providers" });
+  assert.deepEqual(
+    within(list)
+      .getAllByRole("listitem")
+      .map((li) => li.querySelector("span")?.textContent),
+    ["Anthropic", "OpenAI", "Google"],
+  );
+  assert.equal(within(list).getAllByText("Not enabled").length, 3);
+  fireEvent.click(within(list).getAllByRole("button", { name: "Enable" })[0] as HTMLElement);
   const form = screen.getByRole("form", { name: "Model provider" });
-  fireEvent.click(within(form).getByRole("button", { name: /OpenAI/ }));
+  assert.equal(within(form).queryByLabelText(/^Name/), null, "a kind is enabled by its own name");
+  fireEvent.change(within(form).getByLabelText(/^Value/), { target: { value: "sk-secret" } });
+  fireEvent.click(within(form).getByRole("button", { name: "Enable" }));
+  await screen.findByText("Answering");
+  const put = net.seen.find((r) => r.method === "PUT");
+  assert.equal(put?.path, "/api/model-providers/anthropic");
+  assert.deepEqual(put?.body, { kind: "anthropic", key: "sk-secret" });
+  assert.equal(screen.queryByText(/sk-secret/), null, "the key is never shown");
+});
+
+test("an OpenAI-compatible server is added by name and address", async () => {
+  let workspace: ModelProvider[] = [];
+  net = stubFetch({
+    "GET /api/model-providers": () => setup(workspace),
+    "PUT /api/model-providers/groq": (body) => {
+      workspace = [
+        {
+          name: "groq",
+          kind: "openai",
+          base_url: "https://api.groq.com/openai/v1",
+          key_stored: true,
+        },
+      ];
+      return { ...workspace[0], ...(body as object) };
+    },
+    "POST /api/model-providers/groq/check": () => ({
+      id: "provider:groq",
+      name: "groq",
+      status: "operational",
+      latency_ms: 1,
+    }),
+  });
+  render(<ModelProviderSettings canEdit />);
+  fireEvent.click(await screen.findByRole("button", { name: "Add OpenAI-Compatible Server" }));
+  const form = screen.getByRole("form", { name: "Model provider" });
   fireEvent.change(within(form).getByLabelText(/^Name/), { target: { value: "groq" } });
   fireEvent.change(within(form).getByLabelText(/^Base URL/), {
     target: { value: "https://api.groq.com/openai/v1" },
   });
-  fireEvent.change(within(form).getByLabelText(/^Value/), { target: { value: "gsk-secret" } });
-  fireEvent.click(within(form).getByRole("button", { name: "Add Provider" }));
-  await screen.findByText("groq");
+  fireEvent.change(within(form).getByLabelText(/^Value/), { target: { value: "gsk" } });
+  fireEvent.click(within(form).getByRole("button", { name: "Add Server" }));
+  await screen.findByText(/api\.groq\.com · key kept/);
   const put = net.seen.find((r) => r.method === "PUT");
   assert.deepEqual(put?.body, {
     kind: "openai",
     base_url: "https://api.groq.com/openai/v1",
-    key: "gsk-secret",
+    key: "gsk",
   });
-  await screen.findByText("Answering");
-  assert.equal(screen.queryByText(/gsk-secret/), null, "the key is never shown");
-  assert.ok(screen.getByText(/api\.groq\.com · key kept/));
 });
 
-test("removing a provider asks once, and a refusal names what still runs on it", async () => {
+test("a provider the deployment declares is read only, and turning one off names what uses it", async () => {
   net = stubFetch({
-    "GET /api/model-providers": () => ({ providers: [], kinds: [], workspace: [groq] }),
-    "GET /api/agent-packages": () => ({ packages: [] }),
-    "DELETE /api/model-providers/groq": () =>
-      new Response(JSON.stringify({ error: 'model provider in use: "groq" is used by @writer' }), {
-        status: 409,
-      }),
+    "GET /api/model-providers": () =>
+      setup([{ name: "openai", kind: "openai", key_stored: true }], ["anthropic"]),
+    "DELETE /api/model-providers/openai": () =>
+      new Response(
+        JSON.stringify({ error: 'model provider in use: "openai" is used by @writer' }),
+        {
+          status: 409,
+        },
+      ),
   });
   render(<ModelProviderSettings canEdit />);
-  fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
-  fireEvent.click(screen.getByRole("button", { name: "Remove groq" }));
+  const list = await screen.findByRole("list", { name: "Model providers" });
+  const anthropic = within(list).getAllByRole("listitem")[0] as HTMLElement;
+  assert.ok(within(anthropic).getByText("Deployment"));
+  assert.equal(within(anthropic).queryByRole("button"), null);
+  fireEvent.click(within(list).getByRole("button", { name: "Turn Off" }));
+  fireEvent.click(screen.getByRole("button", { name: "Turn Off openai" }));
   await screen.findByText(/@writer/);
 });
 
-test("the built-in agents install on the model picked, from the providers set up", async () => {
-  let installed = 0;
-  net = stubFetch({
-    "GET /api/model-providers": () => ({
-      providers: [{ name: "groq", declared: true, kind: "openai", source: "workspace" }],
-      kinds: [],
-    }),
-    "GET /api/agent-packages": () => ({
-      packages: [
-        {
-          name: "core",
-          title: "Core",
-          description: "A writer, an analyst and a builder",
-          installed,
-          agents: [{ name: "humagen-writer", description: "Writes", installed: installed > 0 }],
-        },
-      ],
-    }),
-    "POST /api/agent-packages/core/install": () => {
-      installed = 1;
-      return {};
-    },
-  });
-  let done = 0;
-  render(<AgentPackages canInstall onInstalled={() => done++} />);
-  const model = await screen.findByLabelText("Install on model");
-  await waitFor(() => assert.equal((model as HTMLInputElement).value, "gpt-5.1"));
-  fireEvent.change(model, { target: { value: "openai/gpt-oss-20b" } });
-  fireEvent.click(screen.getByRole("button", { name: "Install Core" }));
-  await waitFor(() => assert.equal(done, 1));
-  const post = net.seen.find((r) => r.method === "POST");
-  assert.deepEqual(post?.body, { provider: "groq", model: "openai/gpt-oss-20b" });
-  await waitFor(() => assert.equal(screen.queryByRole("button", { name: "Install Core" }), null));
-});
-
-test("with no provider set up, the install card points to setting one up", async () => {
+test("a chain no enabled provider answers says which it needs", async () => {
   net = stubFetch({
     "GET /api/model-providers": () => ({ providers: [], kinds: [] }),
-    "GET /api/agent-packages": () => ({
-      packages: [
-        {
-          name: "core",
-          title: "Core",
-          description: "",
-          installed: 0,
-          agents: [{ name: "w", description: "", installed: false }],
-        },
-      ],
-    }),
   });
-  let opened = 0;
-  render(<AgentPackages canInstall onProviders={() => opened++} />);
-  fireEvent.click(await screen.findByRole("button", { name: "Set Up a Provider" }));
-  assert.equal(opened, 1);
-  assert.equal(screen.queryByRole("button", { name: /^Install/ }), null);
+  const models: ModelRef[] = [
+    { provider: "anthropic", model: "claude-sonnet-5-5" },
+    { provider: "openai", model: "gpt-5.1" },
+    { provider: "google", model: "gemini-3-flash-preview" },
+  ];
+  render(<ModelChain models={models} fallbackOn={[]} editable={false} onChange={() => {}} />);
+  await waitFor(() =>
+    assert.ok(screen.getByText(/Runs once an administrator enables anthropic, openai or google/)),
+  );
 });
