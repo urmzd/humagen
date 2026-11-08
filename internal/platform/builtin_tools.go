@@ -410,9 +410,16 @@ func (p *Platform) prepareBuilderAgent(ctx context.Context, tenant string, args 
 		if err := p.CheckAgentName(tenant, name); err != nil {
 			return wire.AgentSpec{}, wire.Revision{}, false, fmt.Errorf("%w: %w", ErrBuilder, err)
 		}
+		// A new agent starts on the model the builder was installed on:
+		// an administrator picked it, and the person approving the save
+		// sees it. They change it afterwards on the agent's Model tab.
+		builder, err := p.Catalog().Get(ctx, tenant, BuiltinBuilder, 0)
+		if err != nil {
+			return wire.AgentSpec{}, wire.Revision{}, false, fmt.Errorf("%w: the builder has no model to start an agent on: %w", ErrBuilder, err)
+		}
 		spec := wire.AgentSpec{
 			Name: name, Description: description, SystemPrompt: prompt, Tools: tools,
-			Provider: p.cfg.BuiltinProvider, Model: p.cfg.BuiltinModel,
+			Provider: builder.Spec.Provider, Model: builder.Spec.Model,
 		}
 		if err := p.CheckAgentModel(tenant, spec); err != nil {
 			return wire.AgentSpec{}, wire.Revision{}, false, err

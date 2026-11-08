@@ -1492,17 +1492,24 @@ paths:
     get:
       operationId: listModelProviders
       tags: [agents]
-      summary: List bounded supported and declared model provider names
-      description: Names are runtime configuration metadata, never keys or credential references. Declared does not mean a live call has been verified; a dry run checks the actual adapter and credential.
+      summary: List the model providers agents may run on
+      description: |
+        The providers an agent, a model policy or routing may name in the
+        caller's workspace: those the deployment declares and those the
+        workspace's administrators set up. There is no built-in model and no
+        stand-in. Names are configuration, never keys. Declared does not mean a
+        live call has been verified. A caller who may manage the workspace's
+        providers (clients:write) also reads how each of its own is set up,
+        with no key.
       x-permission: agents:read
       responses:
         "200":
-          description: At most 100 supported provider choices, sorted by name.
+          description: At most 100 provider choices, sorted by name.
           content:
             application/json:
               schema:
                 type: object
-                required: [providers]
+                required: [providers, kinds]
                 properties:
                   providers:
                     type: array
@@ -1513,8 +1520,141 @@ paths:
                       properties:
                         name: {type: string}
                         declared: {type: boolean}
+                        kind: {type: string, enum: [anthropic, google, openai]}
+                        source: {type: string, enum: [deployment, workspace]}
+                  kinds:
+                    description: The kinds an administrator may set up.
+                    type: array
+                    items: {type: string, enum: [anthropic, google, openai]}
+                  workspace:
+                    description: The workspace's own providers, for a caller with clients:write.
+                    type: array
+                    maxItems: 16
+                    items: {$ref: "#/components/schemas/ModelProvider"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/model-providers/{name}:
+    put:
+      operationId: setModelProvider
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}}
+      tags: [agents]
+      summary: Set up, or replace, one of the workspace's model providers
+      description: |
+        A key is given as a value, kept in the secret store and never
+        returned, or as `key_ref`, an `env:NAME` the server's configuration
+        gives this workspace. With neither, a replaced provider keeps its key.
+        A google provider may instead run on Vertex AI with the server's own
+        credentials. A name the deployment declares, `policy`, `offline` and
+        names starting `ws-` are refused.
+      x-permission: clients:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              properties:
+                kind: {type: string, enum: [anthropic, google, openai]}
+                base_url: {type: string, format: uri}
+                vertex: {$ref: "#/components/schemas/ModelProviderVertex"}
+                key_ref: {type: string}
+                key: {type: string, maxLength: 4096, writeOnly: true}
+      responses:
+        "200":
+          description: The provider as set up, with no key.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ModelProvider"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: deleteModelProvider
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}}
+      tags: [agents]
+      summary: Remove one of the workspace's model providers and its key
+      description: Refused (409) while an agent, a model policy or routing runs on it; the refusal names each.
+      x-permission: clients:write
+      responses:
+        "204": {description: Removed}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/model-providers/{name}/check:
+    post:
+      operationId: checkModelProvider
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}}
+      tags: [agents]
+      summary: Ask one of the workspace's providers, with its key, whether it answers
+      description: Lists the provider's models, spending no tokens. Vertex AI has no check.
+      x-permission: clients:write
+      responses:
+        "200":
+          description: The provider's state, as a health component.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/HealthComponent"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/agent-packages:
+    get:
+      operationId: listAgentPackages
+      tags: [agents]
+      summary: List the platform's agent packages and what the workspace installed
+      x-permission: agents:read
+      responses:
+        "200":
+          description: Every package, with each agent and whether it is installed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [packages]
+                properties:
+                  packages:
+                    type: array
+                    items: {$ref: "#/components/schemas/AgentPackageListing"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/agent-packages/{name}/install:
+    post:
+      operationId: installAgentPackage
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      tags: [agents]
+      summary: Install a package's agents on a model the caller picks
+      description: |
+        The platform's agents run only once installed: there is no built-in
+        model. The model is one of the workspace's providers. An agent of the
+        package the workspace already has keeps its own model.
+      x-permission: agents:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ModelRef"}
+      responses:
+        "200":
+          description: The package, as installed.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentPackageListing"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/agents:
     get:
@@ -10492,17 +10632,53 @@ components:
           type: string
     RouterSettings:
       description: |
-        Whether each agent is asked, about a message that names no agent,
-        "should I be involved?", and the model that asks. The provider is one
-        the deployment declares; its key is a reference (an environment
-        variable or a secrets manager), never stored here. Off by default:
-        no agent takes a message on its own.
+        The model that asks each agent, about a message that names no agent,
+        "should I be involved?". There is no switch: routing runs once an
+        administrator picks its model, on a provider the deployment declares
+        or the workspace set up. Until then no agent takes a message on its
+        own.
       type: object
-      required: [enabled]
       properties:
-        enabled: {type: boolean}
         provider: {type: string, maxLength: 64}
         model: {type: string, maxLength: 200}
+    ModelProviderVertex:
+      description: Vertex AI, where a google provider's calls go. With no key the server's own credentials are used.
+      type: object
+      required: [project, location]
+      properties:
+        project: {type: string}
+        location: {type: string}
+    ModelProvider:
+      description: A model provider the workspace's administrators set up. Its key is never returned.
+      type: object
+      required: [name, kind]
+      properties:
+        name: {type: string}
+        kind: {type: string, enum: [anthropic, google, openai]}
+        base_url: {type: string}
+        vertex: {$ref: "#/components/schemas/ModelProviderVertex"}
+        key_ref: {type: string, description: "The key's env:NAME reference, when it is one."}
+        key_stored: {type: boolean, description: A value is kept for it in the secret store.}
+        added_by: {type: string}
+        added_at: {type: string, format: date-time}
+    AgentPackageListing:
+      description: One of the platform's agent packages, as the workspace has it.
+      type: object
+      required: [name, title, description, agents, installed]
+      properties:
+        name: {type: string}
+        title: {type: string}
+        description: {type: string}
+        installed: {type: integer, minimum: 0}
+        agents:
+          type: array
+          items:
+            type: object
+            required: [name, description, installed]
+            properties:
+              name: {type: string}
+              description: {type: string}
+              installed: {type: boolean}
     JoinDecision:
       description: One agent's answer to whether it should take a message that names no agent.
       type: object
@@ -13361,6 +13537,7 @@ components:
         - workspace_name
         - model_policies
         - router
+        - model_providers
       properties:
         history:
           description: Whether an agent is sent the conversation so far.
@@ -13394,6 +13571,15 @@ components:
             $ref: "#/components/schemas/ModelPolicy"
         router:
           $ref: "#/components/schemas/RouterSettings"
+        model_providers:
+          description: |
+            The model providers the workspace's administrators set up, with no
+            key. A settings write keeps them as they are; they change through
+            `/api/model-providers/{name}`.
+          type: array
+          maxItems: 16
+          items:
+            $ref: "#/components/schemas/ModelProvider"
         setup_at:
           description: Set once by the server when an admin first saves settings.
           type: string

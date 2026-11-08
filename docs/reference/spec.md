@@ -133,7 +133,9 @@ spec:
     concurrency: 4          # a run that calls another agent waits in one place while it runs in another
     max_depth: 4            # 1 to 7: a deeper call would pass the bus's hop limit of 8
     max_fan_out: 16
-    builtin: {provider: "", model: ""}       # the platform's own agents
+    # There is no built-in model. The platform's own agents (writer, analyst,
+    # builder, reviewers) are installed by an administrator on a model they
+    # pick, from the providers declared here or added in Settings.
 
   sandbox:                  # slot: docker | local | unisolated. Where a run's tools execute
     kind: docker            # the default: an instance per run, destroyed when the run ends

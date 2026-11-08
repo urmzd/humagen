@@ -10,6 +10,7 @@ import (
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/prompts"
 	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/orchagent/flow/runtime"
 	"github.com/urmzd/orchagent/flow/turn"
 	"github.com/urmzd/orchagent/flow/turn/native"
 )
@@ -37,6 +38,13 @@ func (p *Platform) evaluateCandidate(ctx context.Context, tenant string, spec wi
 			return "", err
 		}
 		def.Spec.Sources = sources
+		// The candidate runs on its model as a run would: a policy in place,
+		// and a workspace provider by the name the runtime resolves.
+		resolved, err := p.resolveModel(runtime.Request{Tenant: tenant, Definition: def})
+		if err != nil {
+			return "", err
+		}
+		def = resolved.Definition
 		engine := p.cfg.Runtime
 		if retriever != nil {
 			// Recorded context always takes the isolated native path, never a
@@ -47,7 +55,7 @@ func (p *Platform) evaluateCandidate(ctx context.Context, tenant string, spec wi
 			if c.Trace == nil && (len(spec.Tools) > 0 || len(spec.Access.Spawn) > 0 || len(spec.Sources) > 0) {
 				return "", fmt.Errorf("agent %s requires an isolated tool replay runtime before its change can be evaluated", spec.Name)
 			}
-			options := slices.Concat(p.cfg.Ext.agentOptions(), p.cfg.AgentOptions)
+			options := slices.Concat(p.nativeOptions(), p.cfg.AgentOptions)
 			if c.Trace != nil {
 				replay, replayErr := evals.NewReplay(*c.Trace)
 				if replayErr != nil {

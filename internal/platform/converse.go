@@ -79,9 +79,13 @@ type Settings struct {
 	// call moves from one to the next. An agent runs on one by naming the
 	// provider "policy" and the policy's name as its model.
 	ModelPolicies []ModelPolicy `json:"model_policies"`
-	// Router is whether, and on which model, each agent is asked about a
-	// message that names none: "should I be involved?".
+	// Router is the model each agent is asked on about a message that
+	// names none: "should I be involved?".
 	Router RouterSettings `json:"router"`
+	// ModelProviders are the model providers the workspace's
+	// administrators set up. Only SetModelProvider and DeleteModelProvider
+	// change them; a settings write keeps them as they are.
+	ModelProviders []ModelProvider `json:"model_providers"`
 	// SetupAt and SetupBy record the first time an admin saved the
 	// workspace's settings. The server sets them once. A value sent by a
 	// client is ignored.
@@ -98,6 +102,9 @@ func (s Settings) withDefaults() Settings {
 	}
 	if s.ModelPolicies == nil {
 		s.ModelPolicies = []ModelPolicy{}
+	}
+	if s.ModelProviders == nil {
+		s.ModelProviders = []ModelProvider{}
 	}
 	return s
 }
@@ -311,10 +318,10 @@ func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings
 	case next.HistoryLimit < MinHistory || next.HistoryLimit > MaxHistory:
 		return fmt.Errorf("%w: the history limit is from %d to %d characters", ErrSettings, MinHistory, MaxHistory)
 	}
-	if err := checkModelPolicies(next.ModelPolicies, p.cfg.Ext.ProviderNames()...); err != nil {
+	if err := checkPoliciesAgainst(next.ModelPolicies, p.modelNames(tenant)); err != nil {
 		return err
 	}
-	if err := p.checkRouter(&next.Router); err != nil {
+	if err := p.checkRouter(tenant, &next.Router); err != nil {
 		return err
 	}
 	// A policy an agent still runs on cannot be removed, or that agent would
@@ -332,6 +339,7 @@ func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings
 			return wire.ErrConflict
 		}
 		next.SetupAt, next.SetupBy = v.SetupAt, v.SetupBy
+		next.ModelProviders = v.ModelProviders
 		v.Settings = next
 		return nil
 	})

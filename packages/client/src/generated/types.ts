@@ -739,16 +739,44 @@ export interface Revision {
   created_by_name?: string;
 }
 
-/** Whether each agent is asked, about a message that names no agent,
-"should I be involved?", and the model that asks. The provider is one
-the deployment declares; its key is a reference (an environment
-variable or a secrets manager), never stored here. Off by default:
-no agent takes a message on its own.
+/** The model that asks each agent, about a message that names no agent,
+"should I be involved?". There is no switch: routing runs once an
+administrator picks its model, on a provider the deployment declares
+or the workspace set up. Until then no agent takes a message on its
+own.
  */
 export interface RouterSettings {
-  enabled: boolean;
   provider?: string;
   model?: string;
+}
+
+/** Vertex AI, where a google provider's calls go. With no key the server's own credentials are used. */
+export interface ModelProviderVertex {
+  project: string;
+  location: string;
+}
+
+/** A model provider the workspace's administrators set up. Its key is never returned. */
+export interface ModelProvider {
+  name: string;
+  kind: "anthropic" | "google" | "openai";
+  base_url?: string;
+  vertex?: ModelProviderVertex;
+  /** The key's env:NAME reference, when it is one. */
+  key_ref?: string;
+  /** A value is kept for it in the secret store. */
+  key_stored?: boolean;
+  added_by?: string;
+  added_at?: string;
+}
+
+/** One of the platform's agent packages, as the workspace has it. */
+export interface AgentPackageListing {
+  name: string;
+  title: string;
+  description: string;
+  installed: number;
+  agents: AgentPackageListingAgentsItem[];
 }
 
 /** One agent's answer to whether it should take a message that names no agent. */
@@ -2553,6 +2581,11 @@ cannot be removed (409).
  */
   model_policies: ModelPolicy[];
   router: RouterSettings;
+  /** The model providers the workspace's administrators set up, with no
+key. A settings write keeps them as they are; they change through
+`/api/model-providers/{name}`.
+ */
+  model_providers: ModelProvider[];
   /** Set once by the server when an admin first saves settings. */
   setup_at?: string;
   setup_by?: string;
@@ -4917,6 +4950,12 @@ export interface AgentSetupPlanAssignment {
   source?: string;
 }
 
+export interface AgentPackageListingAgentsItem {
+  name: string;
+  description: string;
+  installed: boolean;
+}
+
 export interface PreparedCallInputMessagesItem {
   role: "user" | "assistant";
   text: string;
@@ -5117,10 +5156,26 @@ export interface AmendAgentSetupBody {
 export interface ListModelProvidersResponseProvidersItem {
   name: string;
   declared: boolean;
+  kind?: "anthropic" | "google" | "openai";
+  source?: "deployment" | "workspace";
 }
 
 export interface ListModelProvidersResponse {
   providers: ListModelProvidersResponseProvidersItem[];
+  kinds: ("anthropic" | "google" | "openai")[];
+  workspace?: ModelProvider[];
+}
+
+export interface SetModelProviderBody {
+  kind: "anthropic" | "google" | "openai";
+  base_url?: string;
+  vertex?: ModelProviderVertex;
+  key_ref?: string;
+  key?: string;
+}
+
+export interface ListAgentPackagesResponse {
+  packages: AgentPackageListing[];
 }
 
 export interface ListAgentsResponse {

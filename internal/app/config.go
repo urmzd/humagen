@@ -281,8 +281,6 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 	set("room-tail-interval", sp.Rooms.TailInterval)
 	set("room-max-runs-per-minute", strconv.Itoa(sp.Rooms.MaxRunsPerMinute))
 	set("room-max-runs-per-person", strconv.Itoa(sp.Rooms.MaxRunsPerPerson))
-	set("builtin-provider", sp.Execution.Builtin.Provider)
-	set("builtin-model", sp.Execution.Builtin.Model)
 	if len(sp.SecretEnv) > 0 {
 		var parts []string
 		for _, t := range slices.Sorted(maps.Keys(sp.SecretEnv)) {
