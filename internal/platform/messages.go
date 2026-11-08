@@ -14,6 +14,7 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/orchagent/flow/address"
 	"github.com/urmzd/orchagent/flow/session"
@@ -333,6 +334,12 @@ func (p *Platform) SendMessages(ctx context.Context, who auth.Principal, in Mess
 		// A pull request's or an issue's runs answer on it, as its login.
 		ctx = withDelivery(ctx, delivery{channel: place, client: origin.Client, user: origin.User})
 	}
+	if d, ok := deliveryOf(ctx); ok {
+		// The place keeps where it answers, so a later message there from
+		// anywhere (a queued follow-up, a reply in the console) answers on
+		// the surface too.
+		p.keepDelivery(who.Tenant, root.ID, d)
+	}
 	out, err := p.sendUnder(ctx, who, root, origin, in.Messages)
 	out.Created = created
 	return out, err
@@ -586,6 +593,58 @@ func (p *Platform) firstMentioned(ctx context.Context, who auth.Principal, m Mes
 // channel (a Slack thread's address), the client that reaches it, and the
 // surface's user who wrote the message.
 type delivery struct{ channel, client, user, slackChannel string }
+
+// rootDelivery is where a surface's root answers, kept so every message
+// under it answers there, whoever posts it and from wherever.
+type rootDelivery struct {
+	Channel      string `json:"channel"`
+	Client       string `json:"client"`
+	SlackChannel string `json:"slack_channel,omitempty"`
+}
+
+func deliveryStore(st state.Store) *state.Table[rootDelivery] {
+	if st == nil {
+		st = state.NewMemory()
+	}
+	return state.NewTable[rootDelivery](st, "root-deliveries")
+}
+
+func (p *Platform) keepDelivery(tenant, root string, d delivery) {
+	if err := p.deliveries.Put(tenant, root, rootDelivery{Channel: d.channel, Client: d.client, SlackChannel: d.slackChannel}); err != nil {
+		p.log.Warn("platform: where a place answers could not be kept", "root", root, "error", err)
+	}
+}
+
+// keptDelivery is where th's root answers, if a surface built into the
+// server started it. The user who wrote is the message's own, so it is left
+// out: the run acts for the person who posted.
+func (p *Platform) keptDelivery(tenant string, th threads.Thread) (delivery, bool) {
+	root, _, err := p.sessionRoot(tenant, th)
+	if err != nil {
+		return delivery{}, false
+	}
+	it, err := p.deliveries.Lookup(tenant, root)
+	if err != nil {
+		return delivery{}, false
+	}
+	return delivery{channel: it.Value.Channel, client: it.Value.Client, slackChannel: it.Value.SlackChannel}, true
+}
+
+// sessionRoot is the root of th's session tree and its place.
+func (p *Platform) sessionRoot(tenant string, th threads.Thread) (root, place string, err error) {
+	for range 64 {
+		if th.Session == nil {
+			return "", "", threads.ErrNotFound
+		}
+		if !strings.HasPrefix(th.Session.Parent, "s_") {
+			return th.ID, th.Session.Parent, nil
+		}
+		if th, err = p.Threads.Get(tenant, th.Session.Parent); err != nil {
+			return "", "", err
+		}
+	}
+	return "", "", fmt.Errorf("%w: a session nests too deep", threads.ErrInvalid)
+}
 
 type deliveryKey struct{}
 

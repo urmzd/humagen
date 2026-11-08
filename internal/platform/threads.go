@@ -1230,6 +1230,9 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 // or for Open each agent that joins.
 func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, routed string, actor event.Actor, tagID string, keeps bool, sees func(string) bool) ([]runs.Run, error) {
 	surface, surfaced := deliveryOf(ctx)
+	if !surfaced && th.Session != nil {
+		surface, surfaced = p.keptDelivery(tenant, th)
+	}
 	if surfaced {
 		// A surface's message answers where it was asked, through its client,
 		// which holds the run to the agents it routes to.
