@@ -678,7 +678,8 @@ test("an MCP on a host the workspace does not allow says so, and an administrato
           endpoint: "https://mcp.notion.com/mcp",
           available: false,
           connected: false,
-          reason: "No MCP hosts are allowed yet. Ask a workspace administrator to allow this service in Limits.",
+          reason:
+            "No MCP hosts are allowed yet. Ask a workspace administrator to allow this service in Limits.",
         },
       ],
     }),
