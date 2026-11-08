@@ -34,10 +34,19 @@ type Conversation struct {
 
 var errTooManyMembers = errors.New("slack: the conversation has more members than are read")
 
+// ConversationAPI is an API that reads conversations itself, as a test's
+// fake does. The connector asks it before calling Slack's Web API.
+type ConversationAPI interface {
+	Conversation(ctx context.Context, channel string) (Conversation, error)
+}
+
 // Conversation reads a conversation's type with conversations.info and, for
 // a private channel or a group DM, its members with conversations.members,
 // with this installation's bot token.
 func (c *Connector) Conversation(ctx context.Context, channel string) (Conversation, error) {
+	if api, ok := c.cfg.API.(ConversationAPI); ok {
+		return api.Conversation(ctx, channel)
+	}
 	var info struct {
 		Channel struct {
 			IsIM      bool `json:"is_im"`

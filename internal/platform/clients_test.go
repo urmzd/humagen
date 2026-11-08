@@ -63,10 +63,25 @@ func (f *fakes) githubFor(token string) *github.Fake {
 
 func (f *fakes) config() platform.Config {
 	return platform.Config{
-		SlackAPI:       func(token string) slack.API { return f.slackFor(token) },
+		SlackAPI:       func(token string) slack.API { return conversations{f.slackFor(token)} },
 		GitHubAPI:      func(token string) github.API { return f.githubFor(token) },
 		ClientInterval: -1,
 	}
+}
+
+// conversations is a client's fake Slack API that also answers who can read
+// a conversation, offline: D is a DM, G a private channel, anything else a
+// public channel.
+type conversations struct{ *slack.Fake }
+
+func (conversations) Conversation(_ context.Context, channel string) (slack.Conversation, error) {
+	switch {
+	case strings.HasPrefix(channel, "D"):
+		return slack.Conversation{Type: slack.DirectMessage}, nil
+	case strings.HasPrefix(channel, "G"):
+		return slack.Conversation{Type: slack.PrivateChannel}, nil
+	}
+	return slack.Conversation{Type: slack.PublicChannel}, nil
 }
 
 // operators is a workspace policy granting the operator role to people by
