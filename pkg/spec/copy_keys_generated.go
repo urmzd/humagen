@@ -1643,6 +1643,7 @@ var copyKeyList = []string{
 	"projects.noSubProjects",
 	"projects.noTasks",
 	"projects.personalTitle",
+	"projects.pinned",
 	"projects.private",
 	"projects.saveChanges",
 	"projects.saving",

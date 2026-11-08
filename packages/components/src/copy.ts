@@ -3191,6 +3191,7 @@ export const defaultCopy = {
     companyStart: "Start in the workspace",
     unreadUpdates: "Unread updates",
     loading: "Loading projects",
+    pinned: "Pinned",
     title: "Projects",
     /** A kind in words, on a row and in a project's meta line. */
     kind: { company: "Company-wide", team: "Team", account: "Account" } as Record<string, string>,

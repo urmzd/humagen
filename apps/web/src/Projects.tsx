@@ -27,7 +27,7 @@ import {
   type ThreadSummary,
 } from "./api.ts";
 import { AUTO } from "./availability.ts";
-import { FilterSelect, Pill } from "./cards.tsx";
+import { FilterSelect, ItemCard, itemGrid, Pill, Tag } from "./cards.tsx";
 import { inWords } from "./cron.ts";
 import type { Source } from "./mail.ts";
 import { ProjectAgentsTab } from "./ProjectAgents.tsx";
@@ -429,14 +429,14 @@ export function ProjectsPage({
 }
 
 /** The cards' grid: as many 20rem columns as fit, one on a phone. */
-const grid = "grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] gap-3";
+const grid = itemGrid;
 /** The cards that stand in for the grid while it loads. */
 const LOADING_CARDS = ["a", "b", "c", "d", "e", "f"];
 
 /**
- * One project as a card: its title, which opens it, when something last
- * happened in it, and a pin. The whole card is the link; the pin sits above
- * it, shown on hover or focus and always once pinned.
+ * One project as the shared card: its title, which opens it, a folder mark (a
+ * pin once pinned), when something last happened in it at the top right,
+ * Private when only one person reads it, and Pin or Unpin in its ⋯ menu.
  */
 function ProjectCard({
   project,
@@ -452,44 +452,43 @@ function ProjectCard({
   const title = titleOf(project);
   const when = lastActive(project);
   const { flash, say, clear } = useFlash();
-  const label = defaultCopy.sidebar.pinProject(title, pinned);
+  const pin = () => {
+    clear();
+    onPin?.(project.name, !pinned).catch(() =>
+      say(pinned ? defaultCopy.pins.unpinFailed : defaultCopy.pins.pinFailed, true),
+    );
+  };
   return (
-    <article className="group/card relative flex h-full min-h-32 min-w-0 flex-col gap-3 rounded-aui-lg border border-[var(--humagen-rule)] bg-[var(--humagen-panel)] p-4 shadow-[var(--humagen-bevel)] transition-colors hover:border-aui-ring/50 has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-aui-accent motion-reduce:transition-none">
-      <div className="flex min-w-0 items-start gap-2">
-        <Go
-          to={projectHref(project.name)}
-          onGo={onOpen}
-          className="line-clamp-2 min-w-0 flex-1 break-words font-medium text-aui-base text-aui-fg outline-none after:absolute after:inset-0 after:rounded-aui-lg after:content-['']"
-        >
-          {title}
-        </Go>
-        {onPin && (
-          <div className="relative -mt-1 -mr-1.5 shrink-0">
-            <button
-              type="button"
-              aria-pressed={pinned}
-              aria-label={label}
-              title={label}
-              onClick={() => {
-                clear();
-                onPin(project.name, !pinned).catch(() =>
-                  say(pinned ? defaultCopy.pins.unpinFailed : defaultCopy.pins.pinFailed, true),
-                );
-              }}
-              className={`relative z-10 inline-flex size-8 items-center justify-center rounded-aui hover:bg-aui-hover hover:text-aui-fg focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-aui-accent group-hover/card:opacity-100 group-focus-within/card:opacity-100 pointer-coarse:size-11 pointer-coarse:opacity-100 ${pinned ? "text-aui-fg opacity-100" : "text-aui-muted opacity-0"}`}
-            >
-              <PinIcon size={14} fill={pinned ? "currentColor" : "none"} />
-            </button>
-            <FlashNote flash={flash} align="right" />
-          </div>
-        )}
-      </div>
-      <div className="mt-auto flex min-w-0 flex-wrap items-center gap-2 text-aui-xs text-aui-muted">
-        <time dateTime={when}>{words.updated(ago(when))}</time>
-        {/* A personal project is always its owner's alone, so it does not say so. */}
-        {isPrivate(project) && !project.personal_owner && <Pill>{words.private}</Pill>}
-      </div>
-    </article>
+    <div className="relative h-full min-w-0">
+      <ItemCard
+        title={title}
+        href={projectHref(project.name)}
+        onOpen={onOpen}
+        mark={
+          pinned ? (
+            <PinIcon size={14} fill="currentColor" aria-label={words.pinned} />
+          ) : (
+            <FolderIcon size={16} className="text-aui-muted" />
+          )
+        }
+        time={<time dateTime={when}>{words.updated(ago(when))}</time>}
+        // A personal project is always its owner's alone, so it does not say so.
+        facts={
+          isPrivate(project) && !project.personal_owner ? <Tag>{words.private}</Tag> : undefined
+        }
+        menu={
+          onPin
+            ? [
+                {
+                  label: pinned ? defaultCopy.pins.unpinProject : defaultCopy.pins.pinProject,
+                  onSelect: pin,
+                },
+              ]
+            : undefined
+        }
+      />
+      <FlashNote flash={flash} align="right" />
+    </div>
   );
 }
 

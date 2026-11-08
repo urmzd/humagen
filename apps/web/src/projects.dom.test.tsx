@@ -584,10 +584,10 @@ test("the Projects page is a grid of cards, pinned first, each opening its proje
   assert.deepEqual(opened, ["Globex"]);
   const card = globexLink.closest("article") as HTMLElement;
   assert.ok(within(card).getByText(/^Updated /));
-  assert.equal(within(card).getAllByRole("button").length, 1, "the pin is its one control");
+  assert.equal(within(card).getAllByRole("button").length, 1, "its ⋯ menu is its one control");
 });
 
-test("a card's pin pins and unpins its project, and says so when that fails", async () => {
+test("a card's ⋯ menu pins and unpins its project, and says so when that fails", async () => {
   const calls: unknown[] = [];
   list({
     pinned: ["Globex"],
@@ -596,12 +596,16 @@ test("a card's pin pins and unpins its project, and says so when that fails", as
       if (project === "Globex") throw new Error("refused");
     },
   });
-  const pin = screen.getByRole("button", { name: "Pin project Platform" });
-  assert.equal(pin.getAttribute("aria-pressed"), "false");
-  fireEvent.click(pin);
-  const unpin = screen.getByRole("button", { name: "Unpin project Globex" });
-  assert.equal(unpin.getAttribute("aria-pressed"), "true");
-  fireEvent.click(unpin);
+  const cardOf = (name: string) =>
+    screen.getByRole("link", { name }).closest("article") as HTMLElement;
+  const choose = (name: string, item: string) => {
+    const more = within(cardOf(name)).getByRole("button", { name: "More" });
+    fireEvent.keyDown(more, { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("menuitem", { name: item }));
+  };
+  assert.ok(within(cardOf("Globex").parentElement as HTMLElement).getByLabelText("Pinned"));
+  choose("Platform", "Pin Project");
+  choose("Globex", "Unpin Project");
   assert.deepEqual(calls, [
     ["Platform", true],
     ["Globex", false],
