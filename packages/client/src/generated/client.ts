@@ -152,6 +152,7 @@ import type {
   MemoryRestoreInput,
   MessageCreated,
   MessageNode,
+  MessageTrace,
   MessagesInput,
   Note,
   NoteInput,
@@ -718,6 +719,33 @@ same. id is a session id, or a message id (session:message).
       method: "GET",
       headers: { ...this.headers, ..._hdr, ...options?.headers },
     }, options, this.requestInterceptor, this.fetchFn);
+  }
+
+  /** What ran to answer a message, one node per run (TraceNode). For a
+session id or a person's message id: the runs that answered that
+message, the entry agent's pick (pick set) with the answers it led to
+beneath it, its own and those of the child sessions it handed the
+message to. For an agent's message (session:run): that run. Beneath
+each run are the runs it called. A run or child session the caller
+may not read is left out with everything beneath it, and counted in
+hidden. At most 500 nodes, and 200 tools per node; truncated says
+when a bound cut it. id is a session id, or a message id
+(session:message).
+ */
+  async traceMessage(id: string, options?: RequestOptions): Promise<MessageTrace> {
+    let path = "/api/messages/{id}/trace";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<MessageTrace>("GET", path, {
+      ...options,
+    });
+  }
+
+  async traceMessageRaw(id: string, options?: RequestOptions): Promise<ApiResponse<MessageTrace>> {
+    let path = "/api/messages/{id}/trace";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<MessageTrace>("GET", path, {
+      ...options,
+    });
   }
 
   /** Emits session snapshots and run events. Resume with Last-Event-ID.

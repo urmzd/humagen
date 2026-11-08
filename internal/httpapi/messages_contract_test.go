@@ -33,6 +33,13 @@ func exerciseMessagesContract(t *testing.T, c *contract, token, other string) {
 	c.call(token, "GET", "/api/messages/{id}", "/api/messages/"+root+"?depth=9", "", http.StatusBadRequest)
 	c.call(token, "GET", "/api/messages/{id}", "/api/messages/"+root+"?depth=1&summary=true", "", http.StatusBadRequest)
 	c.call(token, "GET", "/api/messages/{id}", "/api/messages/"+root+":m-999?depth=1", "", http.StatusNotFound)
+	trace := c.call(token, "GET", "/api/messages/{id}/trace", "/api/messages/"+root+"/trace", "", http.StatusOK)
+	if trace.str("message") != root || trace.field("nodes") == nil {
+		t.Fatalf("the root's trace = %s", trace.raw)
+	}
+	c.call(token, "GET", "/api/messages/{id}/trace", "/api/messages/"+id+"/trace", "", http.StatusOK)
+	c.call(token, "GET", "/api/messages/{id}/trace", "/api/messages/"+root+":m-999/trace", "", http.StatusNotFound)
+	c.call(other, "GET", "/api/messages/{id}/trace", "/api/messages/"+root+"/trace", "", http.StatusNotFound)
 	roots := c.call(token, "GET", "/api/messages", "/api/messages?roots=true&limit=1", "", http.StatusOK)
 	if list := sliceOf(roots.field("messages")); len(list) != 1 || roots.str("next") == "" {
 		t.Fatalf("a page of one root = %s", roots.raw)

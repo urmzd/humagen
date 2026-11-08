@@ -294,6 +294,41 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/ServerError"
+  /api/messages/{id}/trace:
+    get:
+      operationId: "traceMessage"
+      tags:
+        - "messages"
+      summary: "Trace message"
+      description: |
+        What ran to answer a message, one node per run (TraceNode). For a
+        session id or a person's message id: the runs that answered that
+        message, the entry agent's pick (pick set) with the answers it led to
+        beneath it, its own and those of the child sessions it handed the
+        message to. For an agent's message (session:run): that run. Beneath
+        each run are the runs it called. A run or child session the caller
+        may not read is left out with everything beneath it, and counted in
+        hidden. At most 500 nodes, and 200 tools per node; truncated says
+        when a bound cut it. id is a session id, or a message id
+        (session:message).
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      responses:
+        "200":
+          description: "The message's trace"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageTrace"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
   /api/sessions/{id}/stream:
     get:
       operationId: "streamSession"
@@ -17108,6 +17143,122 @@ components:
           type: array
           description: The latest 200 children at most, in time order, while depth lasts; empty beyond it.
           items: {$ref: "#/components/schemas/MessageNode"}
+    MessageTrace:
+      description: What ran to answer a message.
+      type: object
+      additionalProperties: false
+      required: [message, nodes, hidden, truncated]
+      properties:
+        message: {type: string, description: "The id asked for."}
+        nodes:
+          type: array
+          maxItems: 500
+          description: The runs that answered the message, in the order they started, each with what it called beneath it.
+          items: {$ref: "#/components/schemas/TraceNode"}
+        hidden: {type: integer, minimum: 0, description: "How many runs and child sessions were left out because the caller may not read them."}
+        truncated: {type: boolean, description: "A bound cut the trace: at most 500 nodes, and 200 tools, context reads, sources and approvals per node."}
+    TraceNode:
+      description: |
+        One run and what it did, each as the caller may see it: the tools it
+        called, the context it pulled with get_context, the sources it cited
+        and the approvals it waited on.
+      type: object
+      additionalProperties: false
+      required: [run, agent, status, started_at, ms, tools, context, sources, approvals, children]
+      properties:
+        run: {type: string}
+        agent: {type: string}
+        status: {type: string, enum: [accepted, running, parked, completed, failed, stopped]}
+        started_at: {type: string, format: date-time}
+        ended_at: {type: string, format: date-time, description: "When the run ended; absent while it works."}
+        ms: {type: integer, format: int64, minimum: 0, description: "How long it ran, or has run so far."}
+        cost: {type: integer, format: int64, minimum: 0, description: "What it spent in micro-USD, what it called included once they ended. Absent when nothing was metered."}
+        pick: {$ref: "#/components/schemas/TracePick"}
+        model: {type: string, description: "The model its latest call used, when that was recorded."}
+        answer: {type: string, description: "What it answered. A pick's answer is its pick."}
+        error: {type: string, description: "Why it failed, when it did."}
+        tools:
+          type: array
+          maxItems: 200
+          items: {$ref: "#/components/schemas/TraceTool"}
+        context:
+          type: array
+          maxItems: 200
+          items: {$ref: "#/components/schemas/TraceContext"}
+        sources:
+          type: array
+          maxItems: 200
+          description: The run's citations as the caller is shown them.
+          items: {$ref: "#/components/schemas/TraceSource"}
+        approvals:
+          type: array
+          maxItems: 200
+          items: {$ref: "#/components/schemas/TraceApproval"}
+        children:
+          type: array
+          description: The runs it called, and for a pick the answers it led to, in the order they started.
+          items: {$ref: "#/components/schemas/TraceNode"}
+    TracePick:
+      description: The entry agent's decision about a message, on the run that made it.
+      type: object
+      additionalProperties: false
+      required: [decision, agents, reason, matched]
+      properties:
+        decision: {type: string, enum: [answer_myself, delegate]}
+        agents: {type: array, maxItems: 3, description: "The agents it handed the message to that the caller may read.", items: {type: string}}
+        reason: {type: string}
+        matched: {type: array, description: "The words of the message that matched.", items: {type: string}}
+    TraceTool:
+      description: One tool call. Input and output are left out when withheld.
+      type: object
+      additionalProperties: false
+      required: [id, name, at, withheld]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        at: {type: string, format: date-time, description: "When it was asked."}
+        ms: {type: integer, format: int64, minimum: 0, description: "How long it ran; absent while it runs."}
+        input: {type: object, additionalProperties: true, description: "The arguments it ran with."}
+        output: {type: string, description: "What it returned, cut at 4000 bytes and ending in an ellipsis when cut."}
+        error: {type: string}
+        withheld: {type: boolean, description: "The caller may not see its input or output."}
+    TraceContext:
+      description: One get_context call. Request, reference, summary and sources are empty when withheld.
+      type: object
+      additionalProperties: false
+      required: [id, request, reference, summary, sources, truncated, withheld]
+      properties:
+        id: {type: string}
+        request: {type: string, description: "What the agent asked for, in words."}
+        reference: {type: string, description: "The place it read, such as slack://team/channel/ts: the message's own, bound by the platform."}
+        summary: {type: string, description: "The start of what came back, or why nothing could be."}
+        sources:
+          type: array
+          maxItems: 20
+          items: {$ref: "#/components/schemas/TraceSource"}
+        truncated: {type: boolean, description: "What came back was cut."}
+        error: {type: string}
+        withheld: {type: boolean}
+    TraceSource:
+      description: Something a run cited or a context read drew on.
+      type: object
+      additionalProperties: false
+      required: [title]
+      properties:
+        title: {type: string}
+        url: {type: string}
+    TraceApproval:
+      description: An action a run waited on a person for, and how it was decided. ask is one still waiting.
+      type: object
+      additionalProperties: false
+      required: [id, action, decision]
+      properties:
+        id: {type: string, description: "The question's id."}
+        action: {type: string, description: "The tool it would call, or what it asked."}
+        decision: {type: string, enum: [allow, deny, ask]}
+        by: {type: string, description: "Who decided, by name."}
+        note: {type: string}
+        at: {type: string, format: date-time}
     RootMessage:
       description: One root session, as its first message.
       type: object
