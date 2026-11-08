@@ -251,8 +251,16 @@ test("the directory keeps empty and populated statistics in the same three field
     const headings = [...html.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g)].map((m) =>
       text(m[1]!).trim(),
     );
-    assert.deepEqual(headings, ["Agent", "Model", "Activity", "Runs (24h)", "Success", "Median"]);
-    assert.equal((html.match(/<th\b[^>]*scope="col"/g) ?? []).length, 6);
+    assert.deepEqual(headings, [
+      "Agent",
+      "Model",
+      "Working",
+      "Waiting",
+      "Runs (24h)",
+      "Success",
+      "Median",
+    ]);
+    assert.equal((html.match(/<th\b[^>]*scope="col"/g) ?? []).length, 7);
     assert.equal(cells(html).length, headings.length, "every row aligns with the same columns");
     assert.match(cells(html)[0]!, /humagen-writer Built in Writes a document\./);
     assert.equal(cells(html)[1], "offline", "the model has its own labeled column");

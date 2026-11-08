@@ -119,7 +119,7 @@ test("agent health shows actual failed checks and before-after scores, then refr
   assert.ok(screen.getByText("review: 100% → 50% | Regression"));
 });
 
-test("the Needs review agent filter includes failed runs and eval regressions and preserves the chosen address state", async () => {
+test("every agent is listed whatever its sessions are doing, and eval regressions show as health", async () => {
   const revisions = ["failed-agent", "eval-agent", "ready-agent"].map(
     (name) =>
       ({
@@ -148,31 +148,21 @@ test("the Needs review agent filter includes failed runs and eval regressions an
       ]),
     ),
   });
-  const states: string[] = [];
   render(
     <Agents
       operational
       agents={revisions}
       stats={new Map()}
-      state="needs_review"
-      onState={(state) => states.push(state)}
       canWrite
       onOpen={() => {}}
       onNew={() => {}}
     />,
   );
   await screen.findByRole("button", { name: /failed-agent/ });
-  await screen.findByRole("button", { name: /eval-agent/ });
-  assert.equal(screen.queryByRole("button", { name: /ready-agent/ }), null);
-  const filter = screen.getByRole("combobox", { name: "Operational state" });
-  filter.focus();
-  fireEvent.keyDown(filter, { key: "ArrowDown" });
-  const draft = await screen.findByRole("option", { name: "Review drafts" });
-  draft.focus();
-  fireEvent.keyDown(draft, { key: "Enter" });
-  await waitFor(() => assert.deepEqual(states, ["draft"]));
-  await waitFor(() => assert.equal(screen.queryByRole("listbox"), null));
-  await waitFor(() => assert.equal(document.activeElement === filter, true));
+  assert.ok(await screen.findByRole("button", { name: /ready-agent/ }));
+  const row = screen.getByRole("button", { name: /eval-agent/ }).closest("tr");
+  await waitFor(() => assert.match(row?.textContent ?? "", /review/i));
+  assert.equal(screen.queryByRole("combobox", { name: "Operational state" }), null);
 });
 
 test("a recorded builder preview renders a prompt diff and eval regression without an unapproved apply action", () => {

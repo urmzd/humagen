@@ -501,6 +501,10 @@ export const defaultCopy = {
     runs: "Runs (24h)",
     success: "Success",
     median: "Median",
+    working: "Working",
+    waiting: "Waiting",
+    draft: "Draft",
+    pausedByAdmin: "Paused by an admin",
     skillsReview:
       "Default skills require review against the current agent revision before work can run.",
     reviewSkills: "Review Default Skills",

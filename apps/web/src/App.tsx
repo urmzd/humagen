@@ -1322,10 +1322,6 @@ function Console({
                       canWrite={can("agents:write")}
                       onOpen={(name) => openAgent(name)}
                       onNew={() => openAgent(null)}
-                      state={route.page === "agents" ? route.state : undefined}
-                      onState={(state) =>
-                        go({ page: "agents", ...(state ? { state } : {}) }, { replace: true })
-                      }
                       onBuilderSession={canAsk(BUILTIN_BUILDER) ? openThread : undefined}
                       onBuild={
                         canAsk(BUILTIN_BUILDER)
