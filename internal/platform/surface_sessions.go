@@ -314,13 +314,12 @@ func (p *Platform) audienceOf(c clients.Client, ref SurfaceRef, person auth.Prin
 		kind, members = ref.Audience.Type, ref.Audience.Members
 	}
 	if kind == "" {
-		switch {
-		case directMessage(ref.Channel):
+		// Nothing reported: a direct message by its id, and anything else
+		// private to the person asking. A channel id does not say whether
+		// the channel is public, so it is never assumed to be.
+		kind = ChannelPrivate
+		if directMessage(ref.Channel) {
 			kind = ChannelDM
-		case strings.HasPrefix(ref.Channel, "G"):
-			kind = ChannelPrivate
-		default:
-			kind = ChannelPublic
 		}
 	}
 	if len(members) > maxSurfaceMembers {

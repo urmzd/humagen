@@ -318,7 +318,7 @@ func (r *treeReader) turns(th threads.Thread) []*treeTurn {
 		if !it.person {
 			continue
 		}
-		pm, called, ok := r.p.pickFor(tenant, th, *t.Message, r.see)
+		pm, called, ok := r.p.pickFor(r.who, th, *t.Message, r.see)
 		if !ok {
 			continue
 		}

@@ -1989,8 +1989,9 @@ export interface SurfaceRef {
 session's audience follows it: a public channel's is shared where it
 is filed; a private channel's or a group direct message's is private
 to the members the client maps to people, kept to the members of the
-latest message; a direct message's is private to its person. Absent
-is read from the channel id.
+latest message; a direct message's is private to its person. Absent,
+a D channel is a direct message and anything else is private to the
+person asking: a channel id never says the channel is public.
  */
 export interface SurfaceAudience {
   type: "public_channel" | "private_channel" | "mpim" | "im";
@@ -4665,6 +4666,8 @@ export interface ExternalRef {
   client?: string;
   team?: string;
   channel?: string;
+  /** The Slack user who wrote the message. Set by surfaces built into the server; the API ignores it, since the token says who speaks. */
+  user?: string;
   ts?: string;
   thread_ts?: string;
   audience?: SurfaceAudience;

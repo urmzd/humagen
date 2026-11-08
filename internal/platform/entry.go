@@ -14,6 +14,7 @@ import (
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/projects"
@@ -550,18 +551,20 @@ func (p *Platform) keepPick(tenant, root, message string, rec pickRecord) {
 	}
 }
 
-// pickMessage is how a root shows what its entry agent picked for a person's
-// message: the reason, then each agent it handed the message to, with that
-// agent's answer, so nobody has to open a child to read it. It is false for
-// a message nothing was picked for.
-func (p *Platform) pickMessage(tenant string, root threads.Thread, m threads.Message) (SessionMessage, bool) {
-	out, _, ok := p.pickFor(tenant, root, m, nil)
+// pickMessage is how a root shows who reads it what its entry agent picked
+// for a person's message: the reason, then each agent it handed the message
+// to, with that agent's answer, so nobody has to open a child to read it. A
+// child session the reader may not read is left out, answer and all. It is
+// false for a message nothing was picked for.
+func (p *Platform) pickMessage(who auth.Principal, root threads.Thread, m threads.Message) (SessionMessage, bool) {
+	out, _, ok := p.pickFor(who, root, m, func(session string) bool { return p.SeesSession(who, session) })
 	return out, ok
 }
 
-// pickFor is pickMessage with only the calls into sessions sees passes
-// (every call, when sees is nil), and the runs those calls led to.
-func (p *Platform) pickFor(tenant string, root threads.Thread, m threads.Message, sees func(session string) bool) (SessionMessage, []runs.Run, bool) {
+// pickFor is pickMessage with only the calls into sessions sees passes, and
+// the runs those calls led to.
+func (p *Platform) pickFor(who auth.Principal, root threads.Thread, m threads.Message, sees func(session string) bool) (SessionMessage, []runs.Run, bool) {
+	tenant := who.Tenant
 	it, err := p.picks.Lookup(tenant, pickKey(root.ID, m.ID))
 	if err != nil {
 		return SessionMessage{}, nil, false
@@ -571,12 +574,12 @@ func (p *Platform) pickFor(tenant string, root threads.Thread, m threads.Message
 	out := SessionMessage{ID: "pick-" + m.ID, Session: root.ID, Author: SessionAuthor{Kind: "agent", Name: p.cfg.EntryAgent, Display: display}, Status: "done", At: rec.At, Parts: []SessionPart{{Type: "pick", Text: pickLine(rec.Pick)}}}
 	var status []runs.Run
 	for _, c := range rec.Children {
-		if sees != nil && !sees(c.Session) {
+		if !sees(c.Session) {
 			continue
 		}
 		part := SessionPart{Type: "call", Session: c.Session, Agent: c.Agent, Status: "working"}
 		if r, err := p.Runs.Get(tenant, c.Run); err == nil {
-			part.Status, part.Text = sessionStatus([]runs.Run{r}), r.Answer
+			part.Status, part.Text = sessionStatus([]runs.Run{r}), p.ShownRunAs(who, r).Answer
 			status = append(status, r)
 		}
 		out.Parts = append(out.Parts, part)
