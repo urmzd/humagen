@@ -29,6 +29,7 @@ import { FindHelp, type HelpSuggestion } from "./FindHelp.tsx";
 import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { type HomeAnnouncement, HomePage } from "./HomePage.tsx";
 import { itemActions } from "./itemActions.tsx";
+import { AnswerRefs, OriginRef } from "./MessageRefs.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { ModelPicker } from "./ModelPicker.tsx";
 import { keptPick, namedIn, offersFor } from "./modelPick.ts";
@@ -43,9 +44,8 @@ import { useRunTurn } from "./Runs.tsx";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { Scroller } from "./Scroller.tsx";
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
-import { SessionPlace, usePlace } from "./SessionPlace.tsx";
+import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./SessionPlace.tsx";
 import { useThreadSelection } from "./selection.ts";
-import { TurnTrace } from "./TurnTrace.tsx";
 import { mentionsIn } from "./tags.ts";
 import { readFromStart } from "./turns.ts";
 import {
@@ -161,9 +161,12 @@ function TurnView({
   onRedirect,
   actions,
   canStop = false,
+  origin,
 }: {
   run: Run;
   canStop?: boolean;
+  /** Where the session started, as a chip under the first message. */
+  origin?: ReactNode;
   /** The reader's subject. */
   me: string;
   siblings: Run[];
@@ -207,6 +210,7 @@ function TurnView({
       <p className="humagen-glass max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">
         <Mentioned text={run.text} />
       </p>
+      {origin && <div className="flex justify-end">{origin}</div>}
       {/* The answer names its agent. Only a router's pick, which it does not show, is said. */}
       {run.picked && <Checkpoint agent={run.agent}>{run.picked}</Checkpoint>}
 
@@ -229,7 +233,7 @@ function TurnView({
           )}
         </RunFeedbackHost>
       </AgentTint>
-      <TurnTrace run={run} />
+      <AnswerRefs run={run} />
 
       <div className="flex flex-wrap items-center gap-2 pl-11 text-aui-xs text-aui-muted">
         {siblings.length > 1 && (
@@ -1094,7 +1098,10 @@ export function Chat({
             defaultCopy.projects.workspace
           }
           private={room?.thread.visibility === "private"}
-          location={chatPlace && chatPlace.kind !== "console" && <SessionPlace place={chatPlace} />}
+          origin={<OriginButton place={chatPlace} />}
+          location={
+            chatPlace && <SessionPlace place={chatPlace} sender={path[0]?.actor?.display} />
+          }
           agents={summary?.agents ?? [...new Set(turns.map((t) => t.agent))]}
           people={room?.thread.participants?.filter((p) => p.kind === "person").map((p) => p.name)}
           onPanel={(next) => openPanel(next)}
@@ -1119,6 +1126,7 @@ export function Chat({
                 <TurnView
                   key={run.id}
                   run={run}
+                  origin={i === 0 ? <OriginRef origin={referenceOfPlace(chatPlace)} /> : undefined}
                   canStop={canRun && !room?.thread.read_only}
                   actions={
                     !room?.thread.read_only && run.status === "completed" ? (
@@ -1190,6 +1198,7 @@ export function Chat({
         </ConversationPage>
         {room && (
           <ConversationInfo
+            origin={referenceOfPlace(chatPlace)}
             canWrite={canRun}
             runs={turns}
             view={shownView}

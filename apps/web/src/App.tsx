@@ -45,6 +45,7 @@ import { Health } from "./Health.tsx";
 import { Integrations } from "./Integrations.tsx";
 import { Knowledge } from "./Knowledge.tsx";
 import { MemoryLibrary } from "./MemoryLibrary.tsx";
+import { MessageFocus } from "./MessageFocus.tsx";
 import { Monitor } from "./Monitor.tsx";
 import type { Source as About } from "./mail.ts";
 import { NotificationsPage, useNotifications } from "./Notifications.tsx";
@@ -761,6 +762,14 @@ function Console({
                       />
                     ) : (
                       <Page title="Sessions">
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "message" &&
+                    (can("runs:read") ? (
+                      <MessageFocus key={route.id} id={route.id} go={go} />
+                    ) : (
+                      <Page title="Message">
                         <Problem message={defaultCopy.noPermission} />
                       </Page>
                     ))}

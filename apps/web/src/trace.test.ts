@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type { Run, RunEvent } from "./adapter.ts";
 import {
   buildTrace,
+  chipsOf,
   firstLines,
   placeOf,
   readEvents,
@@ -252,4 +253,68 @@ test("a session's place: Slack by its surface, PRs by the root's parent, else th
     label: "Console",
     audience: "private",
   });
+});
+
+test("a message's chips: origin first, what get_context pulled, sources, then approvals and failures only", () => {
+  const node = buildTrace(
+    "r1",
+    [run("r1", { citations: [{ id: "c", title: "Runbook", url: "https://d/rb" }] })],
+    [],
+    {
+      r1: [
+        env(
+          "run.delta.tool.call.v1",
+          {
+            id: "g",
+            name: "get_context",
+            phase: "requested",
+            arguments: { request: "the thread" },
+          },
+          1,
+        ),
+        env(
+          "run.delta.tool.done.v1",
+          {
+            id: "g",
+            result: JSON.stringify({
+              text: "x",
+              sources: [{ title: "#eng thread", url: "https://s/t" }],
+            }),
+          },
+          2,
+        ),
+        env("run.delta.tool.call.v1", { id: "a", name: "search", phase: "requested" }, 3),
+        env("run.delta.tool.done.v1", { id: "a", result: "ok" }, 4),
+        env("run.delta.tool.call.v1", { id: "b", name: "deploy_logs", phase: "requested" }, 5),
+        env("run.delta.tool.done.v1", { id: "b", error: "403" }, 6),
+        env(
+          "run.parked.v1",
+          {
+            question: {
+              id: "q",
+              kind: "approval",
+              prompt: "p",
+              tool: { name: "retry", call_id: "x" },
+            },
+          },
+          7,
+        ),
+        env("run.resumed.v1", { answer: { question_id: "q", decision: "deny", by_name: "Bo" } }, 8),
+        env("run.usage.v1", { accounting_id: "a", model: "anthropic/claude-sonnet" }, 9),
+      ],
+    },
+  );
+  assert.ok(node);
+  assert.equal(node.model, "anthropic/claude-sonnet");
+  const chips = chipsOf(node, referenceOf("github://o/r/pull/5"));
+  assert.deepEqual(
+    chips.map((c) => [c.kind, c.label, c.url, c.decision, c.by]),
+    [
+      ["origin", "o/r PR #5", "https://github.com/o/r/pull/5", undefined, undefined],
+      ["context", "#eng thread", "https://s/t", undefined, undefined],
+      ["source", "Runbook", "https://d/rb", undefined, undefined],
+      ["approval", "retry", undefined, "deny", "Bo"],
+      ["failure", "deploy_logs", undefined, undefined, undefined],
+    ],
+  );
 });

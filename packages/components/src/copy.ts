@@ -3396,48 +3396,35 @@ export const defaultCopy = {
     },
   },
   /** Channels and shared threads: where people and agents work together in a project. */
-  /** A message's trace: what ran to answer it, shown under the answer. */
+  /** A message's references and the work under it: its origin, what it read and touched, what it delegated. */
   trace: {
-    /** The line under an answer that opens its trace. */
-    open: "Trace",
-    show: "Show trace",
-    hide: "Hide trace",
-    label: (agent: string) => `Trace of ${agent}'s answer`,
-    loading: "Loading trace…",
-    failed: "Could not load the trace.",
-    retry: "Try Again",
+    /** The section in Details that collects every message's references. */
+    references: "References",
+    delegated: "Delegated work",
+    delegatedTo: (agents: string) => `Delegated to ${agents}`,
+    /** Under a delegated message, how many more sit under it. */
+    more: (n: number) => `${n} more`,
+    focus: (agent: string) => `Open ${agent}'s message on its own`,
+    message: "Message",
+    messageBy: (agent: string) => `${agent}'s message`,
+    breadcrumb: "Where this message sits",
+    root: "Session",
+    notFound: "This message could not be found.",
     picked: (reason: string) => `Picked: ${reason}`,
-    tools: (n: number) => `${n} ${n === 1 ? "tool" : "tools"}`,
-    sources: (n: number) => `${n} ${n === 1 ? "source" : "sources"}`,
-    agents: (n: number) => `${n} agents`,
-    reads: (n: number) => `${n} context ${n === 1 ? "read" : "reads"}`,
-    approvals: (n: number) => `${n} ${n === 1 ? "approval" : "approvals"}`,
-    input: "Input",
-    output: "Output",
-    noOutput: "No output",
-    withheld: "Some details are hidden because you may not see them.",
-    hiddenHere: "Hidden",
-    /** A `get_context` call: what the agent asked for, from where. */
-    context: "Read context",
-    contextFrom: "from",
-    contextOrigin: "this session's origin",
-    truncated: "Cut short. Open the source for all of it.",
-    sourcesTitle: "Sources",
+    failedTool: (tool: string) => `${tool} failed`,
     decided: {
       allow: "Approved",
       deny: "Denied",
-      ask: "Waiting for a decision",
+      ask: "Waiting for",
     },
     by: (who: string) => `by ${who}`,
-    unread: (n: number) =>
-      `${n} ${n === 1 ? "run is" : "runs are"} shown without tool inputs and outputs`,
     /** Where a session started, in its header. */
     place: {
       label: "Started in",
-      console: "Console",
-      slackThread: "Slack thread",
-      slackDm: "Slack DM",
       openIn: (where: string) => `Open in ${where}`,
+      openSchedule: "Open schedule",
+      /** Who sent the root message. */
+      from: (who: string) => `from ${who}`,
     },
     /** Who can read the session where it started. */
     audience: {

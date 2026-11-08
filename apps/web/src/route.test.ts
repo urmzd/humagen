@@ -257,7 +257,7 @@ test("canonical sessions and alerts retain filters and anchors", () => {
   for (const route of routes) assert.deepEqual(at(href(route)), route);
   assert.equal(
     href({ page: "conversation", id: "s_a", panel: "activity", step: "step1" }),
-    "/sessions/s_a?panel=steps&step=step1",
+    "/messages/s_a?panel=steps&step=step1",
   );
   assert.deepEqual(at("/sessions/s_a?panel=steps&step=step1"), {
     page: "conversation",
@@ -300,7 +300,7 @@ test("old conversation and panel URLs retain selections under canonical sessions
   ];
   for (const [url, route] of links) {
     assert.deepEqual(at(url), route);
-    assert.match(href(at(url)), /^\/sessions\//);
+    assert.match(href(at(url)), /^\/messages\//);
   }
 });
 test("project chat addresses migrate to context or filtered sessions", () => {
@@ -369,4 +369,13 @@ test("Connections is a section of your settings with an address of its own; old 
     page: "connections",
     provider: "notion",
   });
+});
+
+test("every message has one address: a session's root, or a run focused on its own", () => {
+  assert.equal(href({ page: "conversation", id: "s_a" }), "/messages/s_a");
+  assert.deepEqual(at("/messages/s_a"), at("/sessions/s_a"));
+  const run = `r${"a1".repeat(16)}`;
+  assert.deepEqual(at(`/messages/${run}`), { page: "message", id: run });
+  assert.equal(href({ page: "message", id: run }), `/messages/${run}`);
+  assert.deepEqual(at("/messages"), { page: "sessions" });
 });

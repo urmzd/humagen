@@ -62,6 +62,12 @@ export type TraceNode = {
   cost?: number;
   /** Why the platform chose this agent, when the caller left it to the platform. */
   pick?: string;
+  /** The model its last call used, as the runtime reported it. */
+  model?: string;
+  /** What it answered, for a delegated run shown as a sub-item. */
+  answer?: string;
+  /** Why it failed, when it did. */
+  error?: string;
   tools: TraceTool[];
   context: TraceContext[];
   sources: TraceSource[];
@@ -128,7 +134,9 @@ export function readEvents(events: RunEvent[]): {
   context: TraceContext[];
   sources: TraceSource[];
   approvals: TraceApproval[];
+  model?: string;
 } {
+  let model: string | undefined;
   const calls: Calls = new Map();
   const sources: TraceSource[] = [];
   const approvals = new Map<string, TraceApproval>();
@@ -152,6 +160,10 @@ export function readEvents(events: RunEvent[]): {
         const title = s.document_title || e.data.label || s.source_uri || "";
         if (title && !sources.some((x) => x.title === title))
           sources.push({ title, url: s.source_uri || undefined });
+        break;
+      }
+      case "run.usage.v1": {
+        if (e.data.model) model = e.data.model;
         break;
       }
       case "run.parked.v1": {
@@ -219,7 +231,7 @@ export function readEvents(events: RunEvent[]): {
     });
   }
   tools.sort((a, b) => a.at.localeCompare(b.at));
-  return { tools, context, sources, approvals: [...approvals.values()] };
+  return { tools, context, sources, approvals: [...approvals.values()], model };
 }
 
 /** Tool spans for a run whose events were not read: the call tree still says what it used. */
@@ -294,6 +306,9 @@ export function buildTrace(
       ms: msOf(run),
       cost: costOf(run),
       pick: run.picked || undefined,
+      model: "model" in what ? what.model : undefined,
+      answer: run.answer || undefined,
+      error: run.status === "failed" ? run.error || undefined : undefined,
       tools: what.tools,
       context: what.context,
       sources,
@@ -453,4 +468,54 @@ export function placeOf(
     label: "Console",
     audience: thread.visibility === "private" ? "private" : "shared",
   };
+}
+
+/** One reference under a message: where it came from, what it read, what it touched, and what a person should see. */
+export type Chip = {
+  kind: "origin" | "context" | "source" | "approval" | "failure";
+  label: string;
+  url?: string;
+  /** A short line on hover. */
+  detail?: string;
+  /** An approval's decision and who made it; the label is the action. */
+  decision?: TraceApproval["decision"];
+  by?: string;
+};
+
+/**
+ * A message's references, in the order a reader wants them: its origin (on
+ * the root message only), what `get_context` pulled, the sources it cited,
+ * then only what changed something a person should see: approvals and who
+ * decided, and tools that failed. Children are not chips; they are sub-items.
+ */
+export function chipsOf(node: TraceNode, origin?: Reference): Chip[] {
+  const chips: Chip[] = [];
+  if (origin) chips.push({ kind: "origin", label: origin.label, url: origin.url });
+  const seen = new Set<string>();
+  const add = (c: Chip) => {
+    const key = `${c.kind}:${c.url ?? c.label}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    chips.push(c);
+  };
+  for (const c of node.context) {
+    if (c.sources.length)
+      for (const s of c.sources)
+        add({ kind: "context", label: s.title, url: s.url, detail: c.request || undefined });
+    else {
+      const ref = c.reference ? referenceOf(c.reference) : undefined;
+      add({
+        kind: "context",
+        label: ref?.label ?? "Context",
+        url: ref?.url,
+        detail: c.request || undefined,
+      });
+    }
+  }
+  for (const s of node.sources) add({ kind: "source", label: s.title, url: s.url });
+  for (const a of node.approvals)
+    add({ kind: "approval", label: a.action, decision: a.decision, by: a.by, detail: a.note });
+  // A tool name is the label; the page says it failed.
+  for (const t of node.tools) if (t.error) add({ kind: "failure", label: t.name, detail: t.error });
+  return chips;
 }

@@ -1,7 +1,8 @@
 import { defaultCopy } from "@humagen/components";
 import { useEffect, useState } from "react";
 import { api } from "./api.ts";
-import { type Place, placeOf } from "./trace.ts";
+import { OriginMark } from "./MessageRefs.tsx";
+import { type Place, placeOf, type Reference } from "./trace.ts";
 
 const words = defaultCopy.trace;
 
@@ -39,33 +40,71 @@ export function usePlace(thread: ThreadPlace | undefined): Place | undefined {
       live = false;
     };
   }, [client]);
-  return thread ? placeOf(thread, team) : undefined;
+  return thread ? withScheduleLink(placeOf(thread, team)) : undefined;
 }
 
-const link =
-  "min-h-6 rounded-aui underline decoration-aui-border underline-offset-2 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
+/** A schedule opens on its own page here; Slack and GitHub open where they live. */
+function withScheduleLink(place: Place): Place {
+  if (place.kind !== "schedule" || !place.origin) return place;
+  const name = place.origin.slice("schedule://".length);
+  return { ...place, url: `/schedules/${encodeURIComponent(name)}` };
+}
+
+/** A place as a reference, for the origin chip under the root message. */
+export function referenceOfPlace(place: Place | undefined): Reference | undefined {
+  if (!place || place.kind === "console") return undefined;
+  return { kind: place.kind, label: place.label, url: place.url };
+}
+
+function openWords(place: Place): string {
+  return place.kind === "slack"
+    ? words.place.openIn("Slack")
+    : place.kind === "github"
+      ? words.place.openIn("GitHub")
+      : place.kind === "schedule"
+        ? words.place.openSchedule
+        : words.place.openIn(place.label);
+}
 
 /**
- * Where a session started, linked back for the full conversation, and who
- * can read it there: "Slack thread · Slack channel", "urmzd/humagen PR #5 ·
- * Shared", "Console · Private". It sits in the session header's meta line.
+ * The header's first icon: the origin's own mark (Slack, GitHub, a calendar
+ * for a schedule) linking to where the session started. A session started
+ * on the web has none.
  */
-export function SessionPlace({ place }: { place: Place }) {
+export function OriginButton({ place }: { place: Place | undefined }) {
+  if (!place || place.kind === "console" || !place.url) return null;
+  const label = openWords(place);
+  const external = place.kind !== "schedule";
+  return (
+    <a
+      href={place.url}
+      aria-label={label}
+      title={label}
+      data-testid="origin-button"
+      {...(external ? { target: "_blank", rel: "noreferrer" } : {})}
+      className="inline-flex size-9 shrink-0 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:size-11"
+    >
+      <OriginMark kind={place.kind} size={18} />
+    </a>
+  );
+}
+
+/**
+ * The root message in the header's meta line: where it came from and who
+ * sent it, and who can read it there. "Slack thread · from Ana · Slack
+ * channel". A session started on the web needs no line.
+ */
+export function SessionPlace({ place, sender }: { place: Place; sender?: string }) {
+  if (place.kind === "console") return null;
   return (
     <span className="inline-flex flex-wrap items-center gap-x-2" data-testid="session-place">
       <span className="sr-only">{words.place.label}</span>
-      {place.url ? (
-        <a
-          href={place.url}
-          target="_blank"
-          rel="noreferrer"
-          className={link}
-          title={words.place.openIn(place.label)}
-        >
-          {place.label}
-        </a>
-      ) : (
-        <span>{place.label}</span>
+      <span>{place.label}</span>
+      {sender && (
+        <>
+          <span aria-hidden>·</span>
+          <span>{words.place.from(sender)}</span>
+        </>
       )}
       <span aria-hidden>·</span>
       <span>

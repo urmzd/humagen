@@ -170,6 +170,8 @@ export type SessionStatus = "working" | "waiting" | "done" | "failed" | "stopped
 export type Route =
   | { page: "not-found"; path: string }
   | { page: "sessions"; status?: SessionStatus; agent?: string; project?: string; q?: string }
+  /** One message inside a session, focused: it and its direct children, under a breadcrumb back to the root. */
+  | { page: "message"; id: string }
   | {
       page: "alerts";
       tab?: "watching";
@@ -287,6 +289,7 @@ const pick = <T extends string>(value: string | undefined, allowed: readonly T[]
 
 const PAGE_TITLES: Record<Page, string> = {
   "not-found": "Page not found",
+  message: "Message",
   sessions: "Sessions",
   alerts: "Alerts",
   history: defaultCopy.history.title,
@@ -367,6 +370,8 @@ export function href(r: Route): string {
         if (r[key]) q.set(key, r[key]);
       return `/sessions${q.size ? `?${q}` : ""}`;
     }
+    case "message":
+      return `/messages/${enc(r.id)}`;
     case "alerts": {
       const q = new URLSearchParams();
       for (const key of ["state", "priority", "source", "alert"] as const)
@@ -486,7 +491,7 @@ export function href(r: Route): string {
       if (r.expanded) q.set("full", "1");
       if (r.split) q.set("split", "1");
       if (r.slide) q.set("slide", String(r.slide));
-      return `/sessions/${enc(r.id)}${q.size ? `?${q}` : ""}`;
+      return `/messages/${enc(r.id)}${q.size ? `?${q}` : ""}`;
     }
     case "projects": {
       const q = new URLSearchParams();
@@ -620,6 +625,9 @@ export function parse(pathname: string, search = ""): Route {
   ) as Route;
 }
 
+/** A run's id: `r` and 32 hex digits. */
+const RUN_ID = /^r[0-9a-f]{32}$/;
+
 function queryText(q: URLSearchParams, key: string, max: number): string | undefined {
   const value = q.get(key);
   // biome-ignore lint/suspicious/noControlCharactersInRegex: a NUL in a query value is refused on purpose
@@ -630,6 +638,14 @@ function read(pathname: string, search: string): Route {
   const q = new URLSearchParams(search);
   const parts = pathname.split("/").filter(Boolean).map(dec);
   const [head, a, b, c] = parts;
+  // Every message has one address, a session's root included: `/messages/<id>`.
+  // A run's id (`r` and 32 hex digits) opens that message on its own; any other
+  // id is a session's root. `/sessions/<id>` links from before still open it.
+  if (head === "messages") {
+    if (!a) return { page: "sessions" };
+    if (RUN_ID.test(a) && !b) return { page: "message", id: a };
+    return read(`/sessions/${parts.slice(1).map(enc).join("/")}`, search);
+  }
   switch (head) {
     case "sessions": {
       if (!a)
