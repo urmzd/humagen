@@ -37,6 +37,7 @@ var connectionPresets = []ConnectionPreset{
 	{ID: "linear", Name: "Linear", Kind: "oauth", Endpoint: "https://mcp.linear.app/mcp", Scope: "person"},
 	{ID: "granola", Name: "Granola", Kind: "oauth", Endpoint: "https://mcp.granola.ai/mcp", Scope: "person"},
 	{ID: "drive", Name: "Google Drive", Kind: "source_oauth", Endpoint: "https://www.googleapis.com/drive/v3/", Scope: "person"},
+	{ID: "onedrive", Name: "OneDrive", Kind: "source_oauth", Endpoint: "https://graph.microsoft.com/v1.0/", Scope: "person"},
 	{ID: "bigquery", Name: "BigQuery", Kind: "catalog_oauth", Endpoint: "https://bigquery.googleapis.com/bigquery/v2/", Scope: "person"},
 	{ID: "other", Name: "Other MCP", Kind: "tools", Scope: "person"},
 }
@@ -271,7 +272,7 @@ func (p *Platform) AuthorizeConnection(ctx context.Context, who auth.Principal, 
 	if base == "slack" && (!shared || !who.Can(auth.ClientsWrite)) {
 		return connectionauth.Authorization{}, ErrForbidden
 	}
-	if (base == "drive" || base == "bigquery") && shared {
+	if (oauthSource(base) || base == "bigquery") && shared {
 		return connectionauth.Authorization{}, personctx.ErrInvalid
 	}
 	resource := in.Endpoint
@@ -326,7 +327,7 @@ func (p *Platform) CompleteConnection(ctx context.Context, who auth.Principal, n
 	if !known && !strings.HasPrefix(base, "other-") {
 		return ErrProviderNotFound
 	}
-	if (base == "drive" || base == "bigquery") && strings.HasPrefix(name, "workspace-") {
+	if (oauthSource(base) || base == "bigquery") && strings.HasPrefix(name, "workspace-") {
 		return personctx.ErrInvalid
 	}
 	owner := connectionOwner(who, name)

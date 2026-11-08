@@ -76,7 +76,7 @@ func (p *Platform) sourceProvider(kind string) knowledge.Provider {
 	if kind == "gcs" || kind == "s3" {
 		return objectstorage.Provider{System: kind}
 	}
-	if kind == "drive" || kind == "notion" {
+	if kind == "drive" || kind == "notion" || kind == "onedrive" {
 		return knowledge.HTTPProvider{Kind: kind}
 	}
 	return nil
@@ -123,7 +123,7 @@ func (p *Platform) sourceSecret(ctx context.Context, who auth.Principal, src kno
 		return mcptools.Secret{}, knowledge.ProviderError{Cause: knowledge.AuthExpired}
 	}
 	if marker != "" {
-		if src.Lifecycle.Provider != "drive" || provider != "drive" {
+		if !oauthSource(src.Lifecycle.Provider) || provider != src.Lifecycle.Provider {
 			return mcptools.Secret{}, knowledge.ProviderError{Cause: knowledge.AuthExpired}
 		}
 		token, err := p.ConnectionAuth.BoundToken(ctx, who.Tenant, who.Subject, sourceCredentialID(src), provider)

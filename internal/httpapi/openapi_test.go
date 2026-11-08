@@ -1811,6 +1811,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/knowledge/{name}/configuration", "/api/knowledge/remote/configuration", `{"mode":"indexed","provider":"drive","origin":"folder1","project":"~"}`, http.StatusOK)
 	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote/credential", `{"ref":"op://People/ana/drive"}`, http.StatusOK)
 	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote/credential", `{"oauth":"drive"}`, http.StatusServiceUnavailable)
+	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote/credential", `{"oauth":"onedrive"}`, http.StatusBadRequest)
+	c.call(acme, "POST", "/api/knowledge", "/api/knowledge", `{"name":"remote-onedrive","configuration":{"mode":"indexed","provider":"onedrive","origin":"D4648F06C91D9D3D!54927","project":"~"}}`, http.StatusCreated)
+	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote-onedrive/credential", `{"oauth":"onedrive"}`, http.StatusServiceUnavailable)
+	c.call(acme, "DELETE", "/api/knowledge/{name}", "/api/knowledge/remote-onedrive", "", http.StatusNoContent)
 	capReader := f.person(t, "acme", "source-cap", "Source capacity reader", "humagen-admins")
 	for i := 0; i < credentials.MaxPerPerson; i++ {
 		if _, err := f.p.Credentials.Put("acme", "source-cap", fmt.Sprintf("cap-%d", i), credentials.Input{Ref: fmt.Sprintf("op://People/source-cap/cap-%d", i)}, time.Now()); err != nil {

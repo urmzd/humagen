@@ -97,7 +97,7 @@ func sourceResource(src knowledge.Source) sourcelinks.Resource {
 			origin = src.Lifecycle.Origin
 		}
 		switch provider {
-		case "drive":
+		case "drive", "onedrive":
 			attribute = "folder"
 		case "notion":
 			attribute = "parent"
