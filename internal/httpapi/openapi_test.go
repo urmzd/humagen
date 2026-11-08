@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -989,7 +990,14 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	})
 	notesServer := httptest.NewTLSServer(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return notes }, nil))
 	t.Cleanup(notesServer.Close)
-	f := newFixtureWith(t, platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
+	var quotaClock atomic.Pointer[time.Time]
+	now := func() time.Time {
+		if at := quotaClock.Load(); at != nil {
+			return *at
+		}
+		return time.Now()
+	}
+	f := newFixtureWith(t, platform.Config{Now: now, BuiltinProvider: "offline", BuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
 		native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
 		}),
@@ -2398,19 +2406,29 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// A workspace that has spent its spend limit refuses a new run with 402.
 	// The offline provider prices nothing, so the spend is written to the
 	// ledger as a priced call would be.
+	// Hold this fixture's quota window steady even across UTC midnight.
+	quotaAt := time.Now()
+	quotaClock.Store(&quotaAt)
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"tenant"},"period":"day","max_runs":100,"max_concurrent":50,"spend_limit":5000}`, http.StatusOK)
 	if _, err := c.f.p.Usage.Append(usage.Entry{Kind: usage.Spent, Tenant: "acme", Agent: "helper", RunID: "r-spent", Key: "r-spent/a1/1",
-		At: time.Now(), Spend: &usage.Spend{Micros: 5000, ModelCalls: 1, Tokens: 1000}}); err != nil {
+		At: quotaAt, Spend: &usage.Spend{Micros: 5000, ModelCalls: 1, Tokens: 1000}}); err != nil {
 		t.Fatal(err)
 	}
 	c.call(acme, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"hi"}`, http.StatusPaymentRequired)
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"tenant"},"period":"day","max_runs":100,"max_concurrent":50,"spend_limit":1000000}`, http.StatusOK)
 	// With the agent at its day's limit, everything that would start it is
-	// told so.
+	// told so. Seed a completed admission in this window: earlier contract
+	// requests may have run on the previous UTC day.
+	for _, kind := range []usage.Kind{usage.Admitted, usage.Ended} {
+		if _, err := c.f.p.Usage.Append(usage.Entry{Kind: kind, Tenant: "acme", Agent: "helper", RunID: "r-quota", At: quotaAt}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"agent","name":"helper"},"period":"day","max_runs":1}`, http.StatusOK)
 	c.call(acme, "POST", "/api/schedules/{name}/run", "/api/schedules/nightly/run", "", http.StatusTooManyRequests)
 	c.callFromLiveRun(acme, `{"key":"k429","agent":"helper","text":"hi","mode":"delegate"}`, http.StatusTooManyRequests)
 	c.call(acme, "DELETE", "/api/policies", "/api/policies?kind=agent&name=helper", "", http.StatusNoContent)
+	quotaClock.Store(nil)
 
 	// Durable agent operations use the same contract and admission path.
 	for _, path := range []string{"/api/agent-controls", "/api/agents/helper/control"} {
