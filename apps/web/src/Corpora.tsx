@@ -1084,8 +1084,14 @@ function SearchTab({
       {result && (
         <>
           {result.warnings.map((w) => (
-            <p key={w.member ? `${w.member.kind}:${w.member.name}` : "graph"} className="text-aui-xs text-aui-muted">
-              {words.search.warning(w.member ? w.member.name : words.search.graph, causeOf(w.cause))}
+            <p
+              key={w.member ? `${w.member.kind}:${w.member.name}` : "graph"}
+              className="text-aui-xs text-aui-muted"
+            >
+              {words.search.warning(
+                w.member ? w.member.name : words.search.graph,
+                causeOf(w.cause),
+              )}
             </p>
           ))}
           {result.hits.length === 0 ? (
