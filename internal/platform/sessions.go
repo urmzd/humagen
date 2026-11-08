@@ -51,6 +51,9 @@ type SessionAuthor struct {
 	Kind    string `json:"kind"`
 	Name    string `json:"name"`
 	Version string `json:"version,omitempty"`
+	// Display is the name people see when it differs from Name: the
+	// workspace's for its entry agent.
+	Display string `json:"display,omitempty"`
 }
 type SessionPart struct {
 	Type    string `json:"type"`
@@ -149,11 +152,16 @@ func (p *Platform) sessionAgent(ctx context.Context, who auth.Principal, project
 		explicit = d.Agent
 	}
 	if explicit == "" || explicit == Open {
-		// Nobody named and no agent set to answer: routing picks, so a
-		// message in the console always reaches someone or says why not.
-		var err error
-		if explicit, picked, err = p.routeSession(ctx, who, project, text); err != nil {
-			return "", "", err
+		// Nobody named and no agent set to answer: the entry agent owns the
+		// session and calls whoever fits. Without one, routing picks, so a
+		// message in the console always reaches someone.
+		if entry := p.entryFor(ctx, who.Tenant, project, p.Seer(who).Agent); entry != "" {
+			explicit = entry
+		} else {
+			var err error
+			if explicit, picked, err = p.routeSession(ctx, who, project, text); err != nil {
+				return "", "", err
+			}
 		}
 	}
 	if err := p.checkDefault(ctx, who.Tenant, project, explicit, p.Seer(who).Agent); err != nil {
@@ -526,6 +534,21 @@ func (p *Platform) ReadSession(ctx context.Context, who auth.Principal, id, sinc
 			view.Messages = append(view.Messages, m)
 		} else if m.ID != "" && (updated.After(after.At) || (updated.Equal(after.At) && (after.ID == "" || m.ID > after.ID))) {
 			changes = append(changes, changedMessage{message: m, at: updated})
+		}
+		if t.Message != nil {
+			// What the entry agent picked follows the message it was for,
+			// with each answer it led to inline.
+			if pm, ok := p.pickMessage(who.Tenant, th, *t.Message); ok {
+				at := pm.At
+				if at.After(last) {
+					last = at
+				}
+				if since == "" {
+					view.Messages = append(view.Messages, pm)
+				} else if at.After(after.At) {
+					changes = append(changes, changedMessage{message: pm, at: at})
+				}
+			}
 		}
 	}
 	view.Cursor = sessionCursor(last)

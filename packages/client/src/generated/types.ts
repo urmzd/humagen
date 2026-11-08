@@ -2584,6 +2584,8 @@ export interface PersonalPreferences {
 export interface Branding {
   /** The product's name. */
   name: string;
+  /** The entry agent's agent name. People see it as name, never as this. */
+  entry_agent: string;
   /** The text beside the logo in the sidebar. Empty shows the logo alone. */
   wordmark: string;
   /** What follows the page's name in the browser tab. */
@@ -4568,9 +4570,12 @@ export interface SessionAuthor {
   kind: string;
   name: string;
   version?: string;
+  /** The name people see when it differs from name: the workspace's own name for its entry agent. */
+  display?: string;
 }
 
 export interface SessionPart {
+  /** text, call (a child session, with its answer as text once it has one) or pick (why the entry agent chose who answers, as text). */
   type: string;
   text?: string;
   session?: string;

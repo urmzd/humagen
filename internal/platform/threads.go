@@ -1212,6 +1212,15 @@ func answerTagID(thread, message, agent string) string {
 // a turn does (Turn.KeepsNotes). sees is the agents that person may read:
 // one they may not read is never asked.
 func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, routed string, actor event.Actor, tagID string, keeps bool, sees func(string) bool) ([]runs.Run, error) {
+	if p.entryRoot(ctx, tenant, th, agent) {
+		return p.answerAsEntry(ctx, tenant, th, m, via, actor, tagID, keeps, sees)
+	}
+	return p.answerDirect(ctx, tenant, th, m, via, agent, among, routed, actor, tagID, keeps, sees)
+}
+
+// answerDirect is answerMessage once who answers is settled: agent itself,
+// or for Open each agent that joins.
+func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, routed string, actor event.Actor, tagID string, keeps bool, sees func(string) bool) ([]runs.Run, error) {
 	meta := map[string]string{
 		runs.MetaAsk: m.Text, runs.MetaThread: th.ID, runs.MetaPrev: m.ID, runs.MetaMessage: m.ID,
 		runs.MetaChannel: th.Channel, runs.MetaProject: th.Project,
@@ -1260,6 +1269,10 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 			continue
 		}
 		a.picked = cmp.Or(a.picked, pickedOf(ctx))
+		text := body
+		if hints := p.entryHintsFor(ctx, tenant, th.Project, a.agent, m.Text, sees); hints != "" {
+			text = hints + "\n\n" + body
+		}
 		mt := meta
 		if a.picked != "" {
 			mt = maps.Clone(meta)
@@ -1268,7 +1281,7 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 		run, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{
 			ID: a.tag, Tenant: tenant, Agent: a.agent, Origin: runs.OriginAPI,
 			Attachments: m.Attachments, Actor: actor, Context: mt,
-			Text: p.turnContext(tenant, th.Project, th.Channel, a.agent, actor.User, body, mt),
+			Text: p.turnContext(tenant, th.Project, th.Channel, a.agent, actor.User, text, mt),
 		}))
 		if err != nil {
 			firstErr = cmp.Or(firstErr, err)
