@@ -42,7 +42,7 @@ func TestNativeReviewChecksDiffAndSuggestions(t *testing.T) {
 	r.Findings[0].Location = &ReviewLocation{Path: "a.go", Line: 2}
 	r.Findings[0].Change = &replacement
 	files := []transport.ContextFile{{Filename: "a.go", Patch: "@@ -1,2 +1,2 @@\n unchanged\n-old\n+new"}}
-	review, err := NativeReview(r, files, false)
+	review, err := NativeReview(r, files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestNativeReviewChecksDiffAndSuggestions(t *testing.T) {
 		t.Fatalf("suggestion missing: %+v", review)
 	}
 	r.Findings[0].Location.Line = 100
-	review, err = NativeReview(r, files, false)
+	review, err = NativeReview(r, files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,8 +58,49 @@ func TestNativeReviewChecksDiffAndSuggestions(t *testing.T) {
 		t.Fatal("outside diff did not degrade")
 	}
 	r.Verdict = "approve"
-	review, err = NativeReview(r, files, false)
-	if err == nil && review.Event == "APPROVE" {
-		t.Fatal("ungranted approval")
+	review, err = NativeReview(r, files)
+	if err != nil || review.Event != "COMMENT" || strings.Contains(review.Body, "policy") {
+		t.Fatalf("an approve verdict was not posted as a plain comment: %+v %v", review, err)
+	}
+}
+
+// Agents never approve. Recovery reproduces an approval posted before that
+// rule, so a retried delivery matches it, and reproduces anything else as new.
+func TestRecoveredReviewReproducesWhatWasPosted(t *testing.T) {
+	r := reviewV2()
+	r.Verdict = "approve"
+	files := []transport.ContextFile{{Filename: "a.go", Patch: "@@ -1,2 +1,2 @@\n unchanged\n-old\n+new"}}
+	if review, err := RecoveredReview(r, files, "APPROVE"); err != nil || review.Event != "APPROVE" {
+		t.Fatalf("a posted approval was not reproduced: %+v %v", review, err)
+	}
+	if review, err := RecoveredReview(r, files, "COMMENT"); err != nil || review.Event != "COMMENT" {
+		t.Fatalf("a posted comment was not reproduced: %+v %v", review, err)
+	}
+	r.Verdict = "comment"
+	if review, err := RecoveredReview(r, files, "APPROVE"); err != nil || review.Event != "COMMENT" {
+		t.Fatalf("a comment verdict became an approval: %+v %v", review, err)
+	}
+}
+
+func TestFoundByNamesTheSpecialistOnEachFinding(t *testing.T) {
+	r := reviewV2()
+	r.Findings[0].FoundBy = "security-reviewer#a"
+	r.Findings[0].Location = &ReviewLocation{Path: "a.go", Line: 2}
+	files := []transport.ContextFile{{Filename: "a.go", Patch: "@@ -1,2 +1,2 @@\n unchanged\n-old\n+new"}}
+	review, err := NativeReview(r, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(review.Comments) != 1 || !strings.Contains(review.Comments[0].Body, "Found by security-reviewer#a") {
+		t.Fatalf("inline comment does not say who found it: %+v", review.Comments)
+	}
+	if !strings.Contains(review.Body, "<br>Found by security-reviewer#a") {
+		t.Fatalf("findings table does not say who found it: %s", review.Body)
+	}
+	for _, bad := range []string{"@everyone", "Security Reviewer", "a b", strings.Repeat("x", 65), "x#" + strings.Repeat("y", 33)} {
+		r.Findings[0].FoundBy = bad
+		if _, err := FormatReview(r); err == nil {
+			t.Fatalf("found_by %q accepted", bad)
+		}
 	}
 }

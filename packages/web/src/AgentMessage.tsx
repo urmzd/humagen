@@ -33,6 +33,7 @@ import {
   useVerbSequence,
 } from "@humagen/render-web";
 import {
+  Children,
   type CSSProperties,
   type ReactNode,
   useContext,
@@ -362,38 +363,45 @@ function MessageActions({
           prompt={copy.feedbackPrompt}
         />
       )}
-      {(turn.usage || actions || regenerate || (turn.outcome && onRedirect)) && (
-        <MessageMore>
-          {turn.outcome && onRedirect && (
-            <button
-              type="button"
-              className={actionBtn}
-              aria-label={copy.conversation.redirect}
-              title={copy.conversation.redirect}
-              onClick={onRedirect}
-            >
-              <RedirectIcon size={16} />
-            </button>
-          )}
-          {regenerate && (
-            <button
-              type="button"
-              aria-label="Regenerate"
-              title="Regenerate"
-              className={actionBtn}
-              onClick={() =>
-                onAction({ id: ActionId.retry, payload: { turnId: turn.id, target: "regenerate" } })
-              }
-            >
-              <RefreshIcon size={16} />
-            </button>
-          )}
-          {turn.usage && <UsageChip usage={turn.usage} />}
-          {actions}
-        </MessageMore>
-      )}
+      {/* The host's actions (Fork, and Make a skill or Remember after an outcome) sit in the row. */}
+      {actions}
+      <Less>
+        {turn.outcome && onRedirect && (
+          <button
+            type="button"
+            className={actionBtn}
+            aria-label={copy.conversation.redirect}
+            title={copy.conversation.redirect}
+            onClick={onRedirect}
+          >
+            <RedirectIcon size={16} />
+          </button>
+        )}
+        {regenerate && (
+          <button
+            type="button"
+            aria-label="Regenerate"
+            title="Regenerate"
+            className={actionBtn}
+            onClick={() =>
+              onAction({ id: ActionId.retry, payload: { turnId: turn.id, target: "regenerate" } })
+            }
+          >
+            <RefreshIcon size={16} />
+          </button>
+        )}
+        {turn.usage && <UsageChip usage={turn.usage} />}
+      </Less>
     </MessageActionRow>
   );
+}
+
+/** Less frequent actions: in the row when there is one, behind More actions when there are several. */
+function Less({ children }: { children: ReactNode }) {
+  const shown = Children.toArray(children);
+  if (shown.length === 0) return null;
+  if (shown.length === 1) return <>{shown}</>;
+  return <MessageMore>{shown}</MessageMore>;
 }
 
 /**

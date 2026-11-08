@@ -38,7 +38,7 @@ var connectionPresets = []ConnectionPreset{
 	{ID: "granola", Name: "Granola", Kind: "oauth", Endpoint: "https://mcp.granola.ai/mcp", Scope: "person"},
 	{ID: "drive", Name: "Google Drive", Kind: "source_oauth", Endpoint: "https://www.googleapis.com/drive/v3/", Scope: "person"},
 	{ID: "bigquery", Name: "BigQuery", Kind: "catalog_oauth", Endpoint: "https://bigquery.googleapis.com/bigquery/v2/", Scope: "person"},
-	{ID: "other", Name: "Other tool server", Kind: "tools", Scope: "person"},
+	{ID: "other", Name: "Other MCP", Kind: "tools", Scope: "person"},
 }
 
 // DefaultConnectionProviders supplies stable service endpoints. Configuration
@@ -167,7 +167,7 @@ func (p *Platform) ConnectionPresets(who auth.Principal) ([]ConnectionPreset, er
 					continue
 				}
 				base := strings.TrimPrefix(item.Provider, "workspace-")
-				name := "Other tool server"
+				name := "Other MCP"
 				if preset, ok := preset(base); ok {
 					name = preset.Name
 				}
@@ -196,9 +196,9 @@ func (p *Platform) ConnectionPresets(who auth.Principal) ([]ConnectionPreset, er
 }
 func (p *Platform) toolHostRefusal(hosts []string) string {
 	if len(hosts) == 0 {
-		return "No tool server hosts are allowed yet. Ask a workspace administrator to allow this service in Limits."
+		return "No MCP hosts are allowed yet. Ask a workspace administrator to allow this service in Limits."
 	}
-	return "Allowed tool server hosts: " + strings.Join(hosts, ", ") + ". Ask an administrator to allow another host."
+	return "Allowed MCP hosts: " + strings.Join(hosts, ", ") + ". Ask an administrator to allow another host."
 }
 
 // ConnectionAuthorizationInput describes consent requested by the person. The
@@ -226,7 +226,7 @@ func (p *Platform) connectionAllowed(who auth.Principal, name string) (Connectio
 		if err != nil {
 			return c, err
 		}
-		c = ConnectionPreset{ID: name, Name: "Other tool server", Kind: "oauth", Endpoint: endpoint, Scope: "person"}
+		c = ConnectionPreset{ID: name, Name: "Other MCP", Kind: "oauth", Endpoint: endpoint, Scope: "person"}
 		ok = true
 	}
 	if !ok || (c.Kind != "oauth" && c.Kind != "source_oauth" && c.Kind != "client_oauth" && c.Kind != "catalog_oauth") {

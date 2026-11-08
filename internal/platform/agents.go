@@ -152,6 +152,7 @@ func (p *Platform) unavailableAlert(tenant, schedule, agent, project string, err
 // every one. An agent whose spec is tagged_only is never asked.
 func (p *Platform) candidates(ctx context.Context, tenant string, tree *projects.Tree, project string, keep func(string) bool) ([]join.Candidate, error) {
 	var out []join.Candidate
+	asks := p.goodAsks(tenant)
 	page := wire.Page{Size: 100}
 	for {
 		revs, next, err := p.Catalog().List(ctx, tenant, page)
@@ -162,7 +163,7 @@ func (p *Platform) candidates(ctx context.Context, tenant string, tree *projects
 			if wire.PolicyOf(r.Spec).TaggedOnly || !tree.IsAvailable(project, r.Spec.Name) || (keep != nil && !keep(r.Spec.Name)) {
 				continue
 			}
-			out = append(out, join.Candidate{Name: r.Spec.Name, Description: r.Spec.Description, Prompt: r.Spec.SystemPrompt})
+			out = append(out, join.Candidate{Name: r.Spec.Name, Description: r.Spec.Description, Prompt: r.Spec.SystemPrompt, Asks: asks[r.Spec.Name]})
 			if len(out) == join.MaxCandidates {
 				return out, nil
 			}
@@ -236,17 +237,17 @@ func (p *Platform) Route(ctx context.Context, tenant, project, message string) (
 	if err != nil {
 		return nil, err
 	}
-	return join.Route(ctx, p.asker(tenant), cs, message), nil
+	return routePreview(ctx, p.asker(tenant), cs, message), nil
 }
 
-// join asks every candidate in a project at once and returns those that
-// take the message, in order. With none it is ErrNoTakers.
+// join searches the candidates in a project for the message, asks the best
+// few at once, and returns those that take it, best match first. With none
+// it is ErrNoTakers.
 func (p *Platform) join(ctx context.Context, tenant string, tree *projects.Tree, project, message string, keep func(string) bool) ([]join.Decision, error) {
-	cs, err := p.candidates(ctx, tenant, tree, project, keep)
+	_, joined, err := p.search(ctx, tenant, tree, project, message, keep)
 	if err != nil {
 		return nil, err
 	}
-	joined := join.Joined(join.Route(ctx, p.asker(tenant), cs, message))
 	if len(joined) == 0 {
 		return nil, fmt.Errorf("%w: it waits for a person to answer or tag an agent", ErrNoTakers)
 	}

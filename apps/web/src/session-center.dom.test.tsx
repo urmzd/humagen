@@ -189,7 +189,7 @@ test("Sessions fetches mine roots and expands children beneath their parent", as
   assert.ok(child.closest("ul")?.closest("li")?.textContent?.includes("Work s_root"));
   assert.ok(net.seen.some((r) => r.path.includes("roots=true") && r.path.includes("mine=true")));
 });
-test("the main navigation has eight destinations, Projects and Scheduled among them, and one alert count", async () => {
+test("the main navigation has seven destinations, Projects and Scheduled among them, and one alert count", async () => {
   net = stubFetch({
     "GET /api/sessions": () => ({ sessions: [], next: "" }),
     "GET /api/marks": () => ({ archived: [], read: {}, tips: [] }),
@@ -218,16 +218,7 @@ test("the main navigation has eight destinations, Projects and Scheduled among t
   const links = within(screen.getByRole("navigation", { name: "Sections" })).getAllByRole("link");
   assert.deepEqual(
     links.map((a) => a.getAttribute("href")),
-    [
-      "/",
-      "/sessions",
-      "/alerts",
-      "/projects",
-      "/agents",
-      "/connections",
-      "/scheduled",
-      "/artifacts",
-    ],
+    ["/", "/sessions", "/alerts", "/projects", "/agents", "/scheduled", "/artifacts"],
   );
   assert.equal(links[2]?.getAttribute("aria-label"), "Alerts, 2 need you");
 });

@@ -106,36 +106,17 @@ test("the theme and accent are not offered, so not saved, before the saved ones 
   assert.ok(!screen.queryByRole("button", { name: "Dark" }));
 });
 
-test("appearance saves red and green accents without rewriting a saved legacy choice on open", async () => {
-  let shown: Preferences = { ...saved, accent: "purple" };
-  net = stubFetch({
-    "PUT /api/preferences": (body) => ({ ...shown, ...(body as Partial<Preferences>) }),
-  });
-  const { rerender } = render(
-    page(shown, "read", "appearance", (next) => {
-      shown = next;
-    }),
-  );
+test("appearance is the theme alone: no accent presets, no font specimen, nothing saved on open", () => {
+  net = stubFetch({});
+  render(page({ ...saved, accent: "purple" }, "read", "appearance"));
   assert.equal(
     net.seen.some((request) => request.method === "PUT"),
     false,
   );
-  assert.equal(screen.getByRole("button", { name: "Purple" }).getAttribute("aria-pressed"), "true");
-  for (const [label, accent] of [
-    ["Red", "red"],
-    ["Green", "green"],
-  ] as const) {
-    fireEvent.click(screen.getByRole("button", { name: label }));
-    await waitFor(() => assert.equal(shown.accent, accent));
-    const request = net.seen.filter((request) => request.method === "PUT").at(-1);
-    assert.equal((request?.body as { accent: string }).accent, accent);
-    rerender(
-      page(shown, "read", "appearance", (next) => {
-        shown = next;
-      }),
-    );
-    assert.equal(screen.getByRole("button", { name: label }).getAttribute("aria-pressed"), "true");
-  }
+  assert.ok(screen.getByRole("button", { name: "System" }));
+  assert.equal(screen.queryByRole("button", { name: "Purple" }), null);
+  assert.equal(screen.queryByText(/IBM Plex/), null);
+  assert.equal(screen.queryByText("These follow you to any browser you sign in from."), null);
 });
 
 test("the audit address refuses a reader without governance", async () => {
