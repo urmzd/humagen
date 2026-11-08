@@ -340,9 +340,7 @@ export function workspaceScreens(call: Call): Screen[] {
           const draft = "Keep this message while I choose the right agent.";
           await composer.fill(draft);
           assert.equal(await page.getByRole("region", { name: c.title, exact: true }).count(), 0);
-          await page
-            .getByRole("button", { name: defaultCopy.chat.plus, exact: true })
-            .click();
+          await page.getByRole("button", { name: defaultCopy.chat.plus, exact: true }).click();
           await page
             .getByRole("dialog", { name: defaultCopy.chat.menu, exact: true })
             .getByRole("button", { name: /^Agents\b/ })

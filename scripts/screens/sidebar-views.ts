@@ -215,7 +215,10 @@ export function composerChrome(conversation: string): Scene[] {
       path: "/",
       act: async (page) => {
         assert.equal(await page.locator("[data-home-above]").count(), 0);
-        await page.locator(".humagen-home").getByRole("button", { name: /^Approvals: / }).waitFor();
+        await page
+          .locator(".humagen-home")
+          .getByRole("button", { name: /^Approvals: / })
+          .waitFor();
         assert.equal(await page.getByRole("button", { name: /^Select project/ }).count(), 0);
       },
     },
@@ -227,7 +230,8 @@ export function composerChrome(conversation: string): Scene[] {
         const before = await toggle.getAttribute("aria-label");
         await toggle.click();
         await page.waitForFunction(
-          (was) => document.querySelector('[data-approval-mode]')?.getAttribute("aria-label") !== was,
+          (was) =>
+            document.querySelector("[data-approval-mode]")?.getAttribute("aria-label") !== was,
           before,
         );
       },
