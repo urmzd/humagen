@@ -265,3 +265,43 @@ export function updateOf(
     ...(next.instructions?.trim() ? { instructions: next.instructions } : {}),
   };
 }
+
+/** Who sees an agent: everyone in the workspace, one person, or a project's members. */
+export type AgentAccess =
+  | { kind: "workspace" }
+  | { kind: "private"; project: string }
+  | { kind: "members"; project: string; title: string };
+
+/** A home as a project name: "" for the workspace (none or "~"), "personal-x" for "~personal-x". */
+export const homeName = (home?: string): string => (home ?? "").replace(/^~/, "");
+
+/**
+ * Who sees an agent homed in `home`. A home in a Personal project (the
+ * reader's, or one the tree marks as someone's) is private; any other
+ * project's members see it; no home is the workspace.
+ */
+export function accessOf(
+  home: string | undefined,
+  personal: string | undefined,
+  tree: readonly ProjectView[],
+): AgentAccess {
+  const project = homeName(home);
+  if (!project) return { kind: "workspace" };
+  const p = tree.find((x) => x.name === project);
+  if (
+    project === homeName(personal) ||
+    p?.personal_owner ||
+    (!p && /^personal-[a-z0-9-]+$/i.test(project))
+  ) {
+    return { kind: "private", project };
+  }
+  return { kind: "members", project, title: p ? titleOf(p) : project };
+}
+
+/** Who sees an agent, in words: "Workspace", "Private", "Members of Field". */
+export function accessLabel(access: AgentAccess): string {
+  const w = defaultCopy.agentAccess;
+  if (access.kind === "private") return w.private;
+  if (access.kind === "members") return w.membersOf(access.title);
+  return w.workspace;
+}

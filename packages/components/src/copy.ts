@@ -538,9 +538,8 @@ export const defaultCopy = {
     description: "Description",
     template: "Starting Template",
     roles: { analyst: "Analyst", writer: "Writer", coordinator: "Coordinator" },
-    project: "Home Project",
-    projectHint:
-      "People who can read this project can read the agent’s specification. Personal keeps it in your own project.",
+    project: "Access",
+    projectHint: "Who can see the agent and read its specification. Private keeps it to you.",
     provider: "Model Provider",
     workspaceModelPolicy: "Workspace Model Policy",
     model: "Model",
@@ -1962,18 +1961,19 @@ export const defaultCopy = {
   },
   personalAgents: {
     title: "My Agents",
-    description: "Agents whose home is your personal project.",
-    empty: "No personal agents yet.",
+    description: "Your private agents. Only you see them.",
+    empty: "No private agents yet.",
     failed: "Your agents could not be loaded or changed.",
     pause: "Pause",
     resume: "Resume",
     settings: "Agent Settings",
-    add: "Add to a Project",
-    project: "Destination Project",
-    review: "Review Audience",
-    confirm: "Move Agent to Project",
+    add: "Change Access",
+    project: "Access",
+    review: "Review Access",
+    confirm: "Confirm Access",
     cancel: "Cancel",
-    audience: "Members of the destination can use this agent and read its configuration.",
+    audience:
+      "Members of this project will see this agent and read its configuration. It will no longer be private.",
     create: "Create Agent",
   },
   emailNotifications: {
@@ -2886,25 +2886,25 @@ export const defaultCopy = {
   workspaceDefault: "Workspace Default",
   /** The control that makes an agent live in a project. */
   livesHere: "Lives Here",
-  /** Where an agent can answer, on its Access tab and in the Directory. */
+  /** Where an agent comes from, on a project's Agents tab. */
   agentPlace: {
     livesIn: (project: string) => `Lives in ${project}`,
-    availableIn: "Available in",
-    platform: "Workspace agent: available wherever a project enables it",
-    everywhere: "Available everywhere",
-    nowhere: "Not enabled in any project yet.",
     loses: (n: number) => `${n} ${n === 1 ? "place" : "places"} will lose this agent.`,
-    /** On an agent's Access tab. */
-    title: "Where it answers",
-    hint: "Workspace agents answer wherever a project enables them. An agent with another project as its home answers there and below.",
-    home: "Lives in",
-    noHome: "Workspace",
     livesHere: "Lives here",
-    /** Where a project agent answers: its home and everything below it. */
-    homeAndBelow: (title: string) => `${title} and the projects below it`,
     fromProject: (title: string) => `from ${title}`,
-    moved: "Saved. It answers where it lives now.",
     failed: "Where the agent lives could not be changed.",
+  },
+  /** Who sees an agent, on its Access tab and in the agent list. */
+  agentAccess: {
+    title: "Who sees it",
+    label: "Access",
+    private: "Private",
+    privateHint: "Only you see it. It answers only where you alone read.",
+    workspace: "Workspace",
+    workspaceHint: "Everyone in the workspace sees it.",
+    membersOf: (project: string) => `Members of ${project}`,
+    membersHint: (project: string) => `Only members of ${project} see it.`,
+    failed: "Who sees the agent could not be changed.",
   },
   /** Who and what is in the workspace, readable by everyone in it. */
   directory: {
@@ -2925,11 +2925,6 @@ export const defaultCopy = {
       `${names.join(", ")}${more ? ` and ${more} more` : ""}`,
     more: "Show More",
     failed: "The directory could not be read.",
-    /** An agent's row: where it lives or that it is a platform agent, and where it is enabled. */
-    platformAgent: "Workspace agent",
-    enabledIn: (places: string) => `Enabled in ${places}`,
-    enabledEverywhere: "Enabled everywhere",
-    notEnabled: "Not enabled anywhere",
     /** A project's row: what it holds besides its tasks. */
     holds: (schedules: number, notes: number) =>
       [
@@ -2938,7 +2933,6 @@ export const defaultCopy = {
       ]
         .filter(Boolean)
         .join(", "),
-    livingHere: (agents: string) => `Agents living here: ${agents}`,
     /** People are tagged by handle; agents by name. */
     roles: (roles: string[]) => (roles.length ? roles.join(", ") : "No role"),
   },
