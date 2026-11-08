@@ -82,6 +82,8 @@ import type {
   GetUsageResponse,
   GitHubIssue,
   GitHubPull,
+  GraphNodeView,
+  GraphView,
   HandoffContract,
   HandoffUpdate,
   Health,
@@ -157,6 +159,7 @@ import type {
   NoteList,
   NoteSelection,
   OutcomeLearningPreview,
+  OwnerAction,
   PersonContext,
   PersonContextInput,
   PersonToolServer,
@@ -5272,6 +5275,101 @@ named in `warnings` and left out.
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<CorpusSearch>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Documents, warehouse tables, the systems they sit in and the people
+who added or own them, as the caller may see them, with who owns each
+and how stale each document is. Built from source metadata with no
+model calls, on the leader every 10 minutes and when first read.
+ */
+  async getCorpusGraph(name: string, limit?: number, options?: RequestOptions): Promise<GraphView> {
+    let path = "/api/corpora/{name}/graph";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<GraphView>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getCorpusGraphRaw(name: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<GraphView>> {
+    let path = "/api/corpora/{name}/graph";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<GraphView>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Only the corpus's owner asks. */
+  async buildCorpusGraph(name: string, options?: RequestOptions): Promise<GraphView> {
+    let path = "/api/corpora/{name}/graph/build";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<GraphView>("POST", path, {
+      ...options,
+    });
+  }
+
+  async buildCorpusGraphRaw(name: string, options?: RequestOptions): Promise<ApiResponse<GraphView>> {
+    let path = "/api/corpora/{name}/graph/build";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<GraphView>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** With `q`, only the nodes whose names hold its words and their neighbors one step away. */
+  async getWorkspaceGraph(q?: string, limit?: number, options?: RequestOptions): Promise<GraphView> {
+    let path = "/api/graph";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<GraphView>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getWorkspaceGraphRaw(q?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<GraphView>> {
+    let path = "/api/graph";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<GraphView>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Its current owner decides, suggested or confirmed. An unowned node may be
+claimed or handed on by the owner of a corpus that holds it. A
+confirmed owner wins over what the graph infers.
+ */
+  async decideGraphOwner(id: string, body: OwnerAction, options?: RequestOptions): Promise<GraphNodeView> {
+    let path = "/api/graph/nodes/{id}/owner";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<GraphNodeView>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async decideGraphOwnerRaw(id: string, body: OwnerAction, options?: RequestOptions): Promise<ApiResponse<GraphNodeView>> {
+    let path = "/api/graph/nodes/{id}/owner";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<GraphNodeView>("PUT", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }

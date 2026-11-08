@@ -71,6 +71,7 @@ import (
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
 	"github.com/urmzd/humagen/pkg/githubinstall"
+	"github.com/urmzd/humagen/pkg/graph"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/integrations/slack"
@@ -310,7 +311,9 @@ type Platform struct {
 	catalog      catalogState
 	// Corpora are named bodies of knowledge, each holding sources and
 	// connectors (docs/architecture/sources.md#corpora).
-	Corpora     *corpora.Store
+	Corpora *corpora.Store
+	// Graph is each workspace's knowledge graph, one slice per corpus.
+	Graph       *graph.Store
 	SourceLinks *sourcelinks.Store
 	Evals       *evals.Store
 	Feedback    *feedback.Store
@@ -1400,6 +1403,7 @@ func (p *Platform) Run(ctx context.Context) error {
 		"email notifications": p.runEmailNotifications,
 		"source refresh":      p.refreshSources,
 		"catalog crawl":       p.crawlCatalog,
+		"knowledge graph":     p.refreshGraphs,
 		"inbox retention": func(ctx context.Context) error {
 			tick := time.NewTicker(retainEvery)
 			defer tick.Stop()

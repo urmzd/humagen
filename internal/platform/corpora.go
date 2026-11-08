@@ -66,7 +66,8 @@ type CorpusCreate struct {
 	Members     []corpora.Member `json:"members"`
 	Links       corpora.Links    `json:"links"`
 	// Agents are the agents granted the corpus.
-	Agents []string `json:"agents"`
+	Agents      []string `json:"agents"`
+	GraphSearch bool     `json:"graph_search"`
 }
 
 // CorpusChange is a partial change to a corpus. A nil field is kept.
@@ -77,6 +78,7 @@ type CorpusChange struct {
 	Readers     *[]corpora.Reader `json:"readers,omitempty"`
 	Members     *[]corpora.Member `json:"members,omitempty"`
 	Links       *corpora.Links    `json:"links,omitempty"`
+	GraphSearch *bool             `json:"graph_search,omitempty"`
 	// Agents replaces the agents granted the corpus. Agents the owner can
 	// no longer see are kept.
 	Agents *[]string `json:"agents,omitempty"`
@@ -273,7 +275,7 @@ func (p *Platform) CreateCorpus(who auth.Principal, in CorpusCreate) (CorpusView
 	if err := p.grantable(who, in.Agents); err != nil {
 		return CorpusView{}, err
 	}
-	c, err := p.Corpora.Create(who.Tenant, corpora.Corpus{Name: in.Name, Title: in.Title, Description: in.Description, Owner: who.Subject, Readers: in.Readers, Members: in.Members, Agents: in.Agents, Links: in.Links}, p.now())
+	c, err := p.Corpora.Create(who.Tenant, corpora.Corpus{Name: in.Name, Title: in.Title, Description: in.Description, Owner: who.Subject, Readers: in.Readers, Members: in.Members, Agents: in.Agents, Links: in.Links, GraphSearch: in.GraphSearch}, p.now())
 	if err != nil {
 		return CorpusView{}, err
 	}
@@ -317,6 +319,9 @@ func (p *Platform) UpdateCorpus(who auth.Principal, name string, ch CorpusChange
 		}
 		if ch.Links != nil {
 			c.Links = *ch.Links
+		}
+		if ch.GraphSearch != nil {
+			c.GraphSearch = *ch.GraphSearch
 		}
 		if ch.Members != nil {
 			next := slices.Clone(*ch.Members)
@@ -405,5 +410,8 @@ func (p *Platform) DeleteCorpus(who auth.Principal, name string, version int64) 
 		// Delete the record whose owner was just checked, not a later one.
 		version = c.Version
 	}
-	return p.Corpora.Delete(who.Tenant, name, version)
+	if err := p.Corpora.Delete(who.Tenant, name, version); err != nil {
+		return err
+	}
+	return p.Graph.DeleteSlice(who.Tenant, name)
 }

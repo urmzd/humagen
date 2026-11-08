@@ -377,7 +377,7 @@ Entries are searched like knowledge, with `knowledge.embedder` when one is set.
 | `s3` | `bucket` (required), `prefix`, `region` (`us-east-1`) | `credential`, a required reference to JSON with `access_key_id`, `secret_access_key`, and optional `session_token` |
 | `bigquery` | `project` (required), `datasets`, `location`, `max_bytes_billed` (1 GiB), `max_rows` (200, at most 10000), `timeout` (60s, at most 10m) | `credential`, a reference to a service account key in JSON; left out, Application Default Credentials: the VM's service account on GCE |
 
-Four tools use the catalog and corpora, granted to an agent by name like any tool:
+Five tools use the catalog and corpora, granted to an agent by name like any tool:
 
 - `catalog_search` finds entries: a published connector's when everyone the
   answer reaches reads its project, and the owner's own only in the owner's
@@ -397,6 +397,9 @@ Four tools use the catalog and corpora, granted to an agent by name like any too
 - `corpus_search` searches the corpora granted to the agent with the reader's
   own access: files by words and meaning, references live, warehouse tables by
   what they hold. Only in the reader's own private conversation.
+- `corpus_graph` reads the workspace graph of the corpora granted to the agent:
+  documents, tables and systems, who owns each and how stale each is. Only in
+  the reader's own private conversation.
 
 The credential needs `roles/bigquery.metadataViewer` (or `dataViewer`) on the
 datasets to crawl them, `roles/bigquery.dataViewer` to read them, and

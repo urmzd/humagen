@@ -104,10 +104,13 @@ type Corpus struct {
 	// Agents are the agents granted the corpus: they may search it and
 	// query its warehouses, always as the person a run acts for, who must
 	// be a reader too.
-	Agents    []string  `json:"agents"`
-	Links     Links     `json:"links"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Agents []string `json:"agents"`
+	Links  Links    `json:"links"`
+	// GraphSearch adds the workspace graph to its search: documents by who
+	// owns them, the systems they sit in and how stale they are.
+	GraphSearch bool      `json:"graph_search,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 	// Version is the stored record's version. An update or delete that
 	// names it fails with ErrConflict once someone else changed the corpus.
 	Version int64 `json:"version"`

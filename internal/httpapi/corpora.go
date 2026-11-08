@@ -21,6 +21,51 @@ func (s *Server) corpusRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/corpora/{name}/members", s.authed(auth.KnowledgeWrite, s.addCorpusMember))
 	mux.HandleFunc("DELETE /api/corpora/{name}/members/{kind}/{member}", s.authed(auth.KnowledgeWrite, s.removeCorpusMember))
 	mux.HandleFunc("GET /api/corpora/{name}/search", s.authed(auth.KnowledgeRead, s.searchCorpus))
+	mux.HandleFunc("GET /api/corpora/{name}/graph", s.authed(auth.KnowledgeRead, s.corpusGraph))
+	mux.HandleFunc("POST /api/corpora/{name}/graph/build", s.authed(auth.KnowledgeWrite, s.buildCorpusGraph))
+	mux.HandleFunc("GET /api/graph", s.authed(auth.KnowledgeRead, s.workspaceGraph))
+	mux.HandleFunc("PUT /api/graph/nodes/{id}/owner", s.authed(auth.KnowledgeRead, s.decideOwner))
+}
+
+func (s *Server) corpusGraph(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	view, err := s.P.CorpusGraphAs(who, r.PathValue("name"), r.URL.Query().Get("limit"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, view)
+}
+
+func (s *Server) buildCorpusGraph(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	view, err := s.P.RebuildCorpusGraph(who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, view)
+}
+
+func (s *Server) workspaceGraph(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	q := r.URL.Query()
+	view, err := s.P.WorkspaceGraphAs(who, q.Get("q"), q.Get("limit"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, view)
+}
+
+func (s *Server) decideOwner(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body platform.OwnerAction
+	if !decode(w, r, &body) {
+		return
+	}
+	node, err := s.P.DecideOwner(who, r.PathValue("id"), body)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, node)
 }
 
 func (s *Server) searchCorpus(w http.ResponseWriter, r *http.Request, who auth.Principal) {

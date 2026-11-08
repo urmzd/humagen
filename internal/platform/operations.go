@@ -156,7 +156,7 @@ func categoryOf(name string) operations.Category {
 	switch name {
 	case ToolCallAgent, ToolDelegate:
 		return operations.CallAgents
-	case "github_read_context", "github_fix_base", "github_read_file", "github_workflow_status", ToolFileRead, ToolFileList, ToolRunsSummary, ToolListAlerts, ToolListAgents, ToolReadAgent, "source_search", ToolCatalogSearch, ToolCatalogQuery, ToolCorpusQuery, ToolCorpusSearch:
+	case "github_read_context", "github_fix_base", "github_read_file", "github_workflow_status", ToolFileRead, ToolFileList, ToolRunsSummary, ToolListAlerts, ToolListAgents, ToolReadAgent, "source_search", ToolCatalogSearch, ToolCatalogQuery, ToolCorpusQuery, ToolCorpusSearch, ToolCorpusGraph:
 		return operations.ReadContext
 	case ToolFileWrite, ToolSaveAgent, ToolShell:
 		return operations.WriteFiles
