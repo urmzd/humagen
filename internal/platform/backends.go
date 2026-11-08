@@ -205,6 +205,7 @@ func (p *Platform) openStores(cfg Config) error {
 	if perRequest == nil {
 		perRequest = st
 	}
+	p.surfaceRecords = newSurfaceRecords(perRequest)
 	p.Sessions = sessionstate.New(perRequest)
 	var err error
 	p.AgentColors, err = agentcolors.Open(perRequest)

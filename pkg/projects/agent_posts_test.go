@@ -46,3 +46,20 @@ func TestAgentPostsAreReviewedWhereEveryoneReads(t *testing.T) {
 		t.Fatalf("an unknown setting = %v", err)
 	}
 }
+
+func TestReviewApprovalIsAnExplicitVersionedProjectGrant(t *testing.T) {
+	s := projects.NewStore()
+	mustCreate(t, s, "acme", team("Field", ""), ada)
+	p, _ := s.Tree("acme").Get("Field")
+	if p.ApproveReviews {
+		t.Fatal("zero project grants approval")
+	}
+	p, err := s.Update("acme", "Field", p.Version, ada, t0, func(p *projects.Project) error { p.ApproveReviews = true; return nil })
+	if err != nil || !p.ApproveReviews || p.Version != 2 {
+		t.Fatalf("grant not stored: %+v %v", p, err)
+	}
+	other, _ := s.Tree("other").Get("Field")
+	if other.ApproveReviews {
+		t.Fatal("grant crossed tenant")
+	}
+}

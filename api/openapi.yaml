@@ -139,77 +139,100 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/ServerError"
-  /api/sessions/{id}/messages/{mid}/feedback:
+  "/api/sessions/{id}/messages/{mid}/feedback":
     put:
-      operationId: "saveSessionFeedback"
+      operationId: saveSessionFeedback
       tags:
-        - "sessions"
-      summary: "Save session feedback"
-      x-permission: "runs:read"
+      - sessions
+      summary: Save session feedback
+      x-permission: runs:read
       parameters:
-        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
-        - {"name": "mid", "in": "path", "required": true, "schema": {"type": "string"}}
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: mid
+        in: path
+        required: true
+        schema:
+          type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: "object"
+              type: object
               additionalProperties: false
               required:
-                - "rating"
+              - rating
               properties:
                 rating:
-                  type: "string"
+                  type: string
                   enum:
-                    - "up"
-                    - "down"
+                  - up
+                  - down
                 reason:
-                  type: "string"
+                  type: string
                   maxLength: 80
                 comment:
-                  type: "string"
+                  type: string
                   maxLength: 4000
+                finding_id:
+                  type: string
+                  maxLength: 200
       responses:
-        "200":
-          description: "Successful session operation"
+        '200':
+          description: Successful session operation
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RunFeedback"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/ServerError"
+                "$ref": "#/components/schemas/RunFeedback"
+        '400':
+          "$ref": "#/components/responses/BadRequest"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '409':
+          "$ref": "#/components/responses/Conflict"
+        '500':
+          "$ref": "#/components/responses/ServerError"
     delete:
-      operationId: "deleteSessionFeedback"
+      operationId: deleteSessionFeedback
       tags:
-        - "sessions"
-      summary: "Delete session feedback"
-      x-permission: "runs:read"
+      - sessions
+      summary: Delete session feedback
+      x-permission: runs:read
       parameters:
-        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
-        - {"name": "mid", "in": "path", "required": true, "schema": {"type": "string"}}
-        - {"name": "finding_id", "in": "query", "required": false, "schema": {"type": "string"}}
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: mid
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: finding_id
+        in: query
+        required: false
+        schema:
+          type: string
       responses:
-        "204":
-          description: "Successful session operation"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/ServerError"
+        '204':
+          description: Successful session operation
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '500':
+          "$ref": "#/components/responses/ServerError"
   /api/sessions/{id}/links:
     post:
       operationId: "linkSession"
@@ -2620,34 +2643,43 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
-  /api/runs/{id}/feedback:
+  "/api/runs/{id}/feedback":
     delete:
-      operationId: "deleteRunFeedback"
+      operationId: deleteRunFeedback
       tags:
-        - "sessions"
-      summary: "Delete run feedback"
-      x-permission: "runs:read"
+      - sessions
+      summary: Delete run feedback
+      x-permission: runs:read
       parameters:
-        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
-        - {"name": "finding_id", "in": "query", "required": false, "schema": {"type": "string"}}
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: finding_id
+        in: query
+        required: false
+        schema:
+          type: string
       responses:
-        "204":
-          description: "Successful session operation"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/ServerError"
+        '204':
+          description: Successful session operation
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '500':
+          "$ref": "#/components/responses/ServerError"
     put:
       operationId: saveRunFeedback
-      tags: [runs]
+      tags:
+      - runs
       summary: Save a rating and optional reason and comment linked to a run
       x-permission: runs:read
       parameters:
-        - {$ref: "#/components/parameters/RunID"}
+      - "$ref": "#/components/parameters/RunID"
       requestBody:
         required: true
         content:
@@ -2655,54 +2687,91 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [rating]
+              required:
+              - rating
               properties:
-                rating: {type: string, enum: [up, down]}
-                reason: {type: string, maxLength: 80}
-                comment: {type: string, maxLength: 4000}
-                act_as: {$ref: "#/components/schemas/ActAs"}
+                finding_id:
+                  type: string
+                  maxLength: 200
+                rating:
+                  type: string
+                  enum:
+                  - up
+                  - down
+                reason:
+                  type: string
+                  maxLength: 80
+                comment:
+                  type: string
+                  maxLength: 4000
+                act_as:
+                  "$ref": "#/components/schemas/ActAs"
       responses:
-        "200":
-          description: The caller's feedback. Retrieve context through the referenced run.
+        '200':
+          description: The caller's feedback. Retrieve context through the referenced
+            run.
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/RunFeedback"}
-        "400": {$ref: "#/components/responses/BadRequest"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {$ref: "#/components/responses/Forbidden"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "409": {$ref: "#/components/responses/Conflict"}
-        "413": {$ref: "#/components/responses/TooLarge"}
-        "500": {$ref: "#/components/responses/ServerError"}
+              schema:
+                "$ref": "#/components/schemas/RunFeedback"
+        '400':
+          "$ref": "#/components/responses/BadRequest"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '409':
+          "$ref": "#/components/responses/Conflict"
+        '413':
+          "$ref": "#/components/responses/TooLarge"
+        '500':
+          "$ref": "#/components/responses/ServerError"
     get:
       operationId: listRunFeedback
-      tags: [runs]
+      tags:
+      - runs
       summary: Collect feedback for a visible run, at most 200 records per page
       x-permission: runs:read
       parameters:
-        - {$ref: "#/components/parameters/RunID"}
-        - name: after
-          in: query
-          schema: {type: string, pattern: "^[1-9][0-9]{0,18}$"}
-          description: The `next` cursor of the previous page, a positive number. It is not a subject.
+      - "$ref": "#/components/parameters/RunID"
+      - name: after
+        in: query
+        schema:
+          type: string
+          pattern: "^[1-9][0-9]{0,18}$"
+        description: The `next` cursor of the previous page, a positive number. It is
+          not a subject.
       responses:
-        "200":
-          description: Feedback in the order it was first given (ratings kept before feedback was numbered come first, in the order they were last rated), and a cursor for the next page, empty at the end.
+        '200':
+          description: Feedback in the order it was first given (ratings kept before
+            feedback was numbered come first, in the order they were last rated), and
+            a cursor for the next page, empty at the end.
           content:
             application/json:
               schema:
                 type: object
-                required: [feedback, next]
+                required:
+                - feedback
+                - next
                 properties:
                   feedback:
                     type: array
-                    items: {$ref: "#/components/schemas/RunFeedback"}
-                  next: {type: string}
-        "400": {$ref: "#/components/responses/BadRequest"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {$ref: "#/components/responses/Forbidden"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "500": {$ref: "#/components/responses/ServerError"}
+                    items:
+                      "$ref": "#/components/schemas/RunFeedback"
+                  next:
+                    type: string
+        '400':
+          "$ref": "#/components/responses/BadRequest"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '500':
+          "$ref": "#/components/responses/ServerError"
   /api/runs/{id}/tree:
     get:
       operationId: getRunTree
@@ -10590,22 +10659,41 @@ components:
         handle and by name, never by the subject they sign in with, which may
         hold an address.
       type: object
-      required: [run, by, by_name, mine, rating, updated_at]
+      required:
+      - run
+      - by
+      - by_name
+      - mine
+      - rating
+      - updated_at
       properties:
-        run: {type: string}
+        run:
+          type: string
         by:
-          description: The rater's handle, else their subject when it holds no address (a machine's), else "".
+          description: The rater's handle, else their subject when it holds no address
+            (a machine's), else "".
           type: string
         by_name:
-          description: What the rater is called, their name, else their handle, else their subject when it holds no address, else "someone". Never an address.
+          description: What the rater is called, their name, else their handle, else their
+            subject when it holds no address, else "someone". Never an address.
           type: string
         mine:
           description: Whether this is the rating of the person asking.
           type: boolean
-        rating: {type: string, enum: [up, down]}
-        reason: {type: string}
-        comment: {type: string}
-        updated_at: {type: string, format: date-time}
+        rating:
+          type: string
+          enum:
+          - up
+          - down
+        reason:
+          type: string
+        comment:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+        finding_id:
+          type: string
     OutcomeLearningPreview:
       description: A current confined authored outcome snapshot for explicit human review. Personal scope is the default; project scope is derived from current placement and ordinary ownership.
       type: object
@@ -12183,37 +12271,64 @@ components:
         a path), which has no title, parent or account: show the workspace's
         name for it. It reads as version 0 until it is first changed.
       type: object
-      required: [name, kind, experts, members, agents, version, created_at, updated_at]
+      required:
+      - name
+      - kind
+      - experts
+      - members
+      - agents
+      - version
+      - created_at
+      - updated_at
       properties:
-        template: {type: string}
+        template:
+          type: string
         initiative:
-          description: An initiative coordinates child projects. Its agents cannot run directly in descendants.
+          description: An initiative coordinates child projects. Its agents cannot run
+            directly in descendants.
           type: boolean
         fork:
           type: object
           additionalProperties: false
-          required: [operation, by, at, ready]
+          required:
+          - operation
+          - by
+          - at
+          - ready
           properties:
-            operation: {type: string}
-            source: {type: string}
-            by: {type: string}
-            at: {type: string, format: date-time}
-            ready: {type: boolean}
+            operation:
+              type: string
+            source:
+              type: string
+            by:
+              type: string
+            at:
+              type: string
+              format: date-time
+            ready:
+              type: boolean
         personal_owner:
           description: Immutable human subject for a server-provisioned personal project.
           type: string
-        name: {type: string, maxLength: 63}
+        name:
+          type: string
+          maxLength: 63
         title:
           description: What people see. Shown instead of the name when set.
           type: string
           maxLength: 80
-        description: {type: string, maxLength: 500}
-        kind: {$ref: "#/components/schemas/ProjectKind"}
+        description:
+          type: string
+          maxLength: 500
+        kind:
+          "$ref": "#/components/schemas/ProjectKind"
         parent:
-          description: The project it sits under, fixed when it was created. Absent for the top level.
+          description: The project it sits under, fixed when it was created. Absent for
+            the top level.
           type: string
           maxLength: 63
-        account: {$ref: "#/components/schemas/ProjectAccount"}
+        account:
+          "$ref": "#/components/schemas/ProjectAccount"
         instructions:
           description: |
             Sent to every agent answering here and below, after the
@@ -12229,7 +12344,9 @@ components:
             projects, which everyone reads, and publish in team and account
             projects.
           type: string
-          enum: [publish, review]
+          enum:
+          - publish
+          - review
         members:
           description: |
             Who holds a role here. `*` is everyone who can see the parent (at
@@ -12240,18 +12357,23 @@ components:
             is members only unless everyone owns a project above it.
           type: array
           maxItems: 100
-          items: {$ref: "#/components/schemas/ProjectEntry"}
+          items:
+            "$ref": "#/components/schemas/ProjectEntry"
         kinds:
-          description: The workspace's own kinds, each a label over `team` or `account`. Only the workspace carries them.
+          description: The workspace's own kinds, each a label over `team` or `account`.
+            Only the workspace carries them.
           type: array
           maxItems: 16
-          items: {$ref: "#/components/schemas/ProjectKindSpec"}
+          items:
+            "$ref": "#/components/schemas/ProjectKindSpec"
         experts:
           description: Who answers for some topics here and below. Set with `PUT /api/projects/{name}/experts`.
           type: array
           maxItems: 50
-          items: {$ref: "#/components/schemas/ProjectExpert"}
-        agents: {$ref: "#/components/schemas/ProjectAgents"}
+          items:
+            "$ref": "#/components/schemas/ProjectExpert"
+        agents:
+          "$ref": "#/components/schemas/ProjectAgents"
         knowledge:
           description: |
             The knowledge sources every run filed here and below is grounded
@@ -12260,7 +12382,9 @@ components:
             for a caller without `knowledge:read`.
           type: array
           maxItems: 8
-          items: {type: string, maxLength: 63}
+          items:
+            type: string
+            maxLength: 63
         skills:
           description: |
             Named instructions a message posted here and below can tell an
@@ -12270,27 +12394,43 @@ components:
             change in the project's history records them the same way.
           type: array
           maxItems: 32
-          items: {$ref: "#/components/schemas/ProjectSkillBrief"}
+          items:
+            "$ref": "#/components/schemas/ProjectSkillBrief"
         archived:
-          description: An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived.
+          description: An archived project takes no new sub-projects and nothing moves
+            under it. The workspace is never archived.
           type: boolean
         announce:
-          description: The lowest role that may post an announcement here. Absent reads as owner.
+          description: The lowest role that may post an announcement here. Absent reads
+            as owner.
           type: string
-          enum: [viewer, member, owner]
+          enum:
+          - viewer
+          - member
+          - owner
         managed:
-          description: "`file` when the platform file declares the project, and absent otherwise. The fields the file sets answer 409 here, and the project cannot be deleted here."
+          description: "`file` when the platform file declares the project, and absent
+            otherwise. The fields the file sets answer 409 here, and the project cannot
+            be deleted here."
           type: string
         version:
           description: Counts writes, from 1. A change names the version it read.
           type: integer
-        created_by: {type: string}
-        created_at: {type: string, format: date-time}
-        updated_by: {type: string}
-        updated_at:
-          description: When the record last changed. What happened in it is `active_at` on a view.
+        created_by:
+          type: string
+        created_at:
           type: string
           format: date-time
+        updated_by:
+          type: string
+        updated_at:
+          description: When the record last changed. What happened in it is `active_at`
+            on a view.
+          type: string
+          format: date-time
+        approve_reviews:
+          type: boolean
+          default: false
     ProjectStep:
       description: One project on the way down to another.
       type: object
@@ -12439,35 +12579,58 @@ components:
         `kind`, `archived`, `announce`, `kinds` and `agent_posts` change only
         when given.
       type: object
-      required: [version]
+      required:
+      - version
       properties:
         version:
           description: The version the caller read.
           type: integer
-        title: {type: string, maxLength: 80}
-        description: {type: string, maxLength: 500}
-        account: {$ref: "#/components/schemas/ProjectAccount"}
-        instructions: {type: string, maxLength: 4000}
+        title:
+          type: string
+          maxLength: 80
+        description:
+          type: string
+          maxLength: 500
+        account:
+          "$ref": "#/components/schemas/ProjectAccount"
+        instructions:
+          type: string
+          maxLength: 4000
         kind:
-          description: A built-in kind or one the workspace defines. To or from `company` needs `projects:govern`.
+          description: A built-in kind or one the workspace defines. To or from `company`
+            needs `projects:govern`.
           type: string
           maxLength: 32
         archived:
-          description: Archives the project, or brings it back. An archived project takes no new sub-projects.
+          description: Archives the project, or brings it back. An archived project takes
+            no new sub-projects.
           type: boolean
         announce:
           description: The lowest role that may post an announcement. Empty reads as owner.
           type: string
-          enum: ["", viewer, member, owner]
+          enum:
+          - ''
+          - viewer
+          - member
+          - owner
         kinds:
-          description: The workspace's own kinds, on the workspace only. A kind a project still has cannot be removed (409).
+          description: The workspace's own kinds, on the workspace only. A kind a project
+            still has cannot be removed (409).
           type: array
           maxItems: 16
-          items: {$ref: "#/components/schemas/ProjectKindSpec"}
+          items:
+            "$ref": "#/components/schemas/ProjectKindSpec"
         agent_posts:
-          description: What a scheduled agent's announcement here does, `publish` or `review`. Empty takes the kind's default.
+          description: What a scheduled agent's announcement here does, `publish` or `review`.
+            Empty takes the kind's default.
           type: string
-          enum: ["", publish, review]
+          enum:
+          - ''
+          - publish
+          - review
+        approve_reviews:
+          type: boolean
+          default: false
     ProjectAccess:
       description: A caller's role in a project, where it comes from, and the entry or rule that gave it.
       type: object
@@ -14662,6 +14825,9 @@ components:
           type: array
           items:
             type: string
+        fix_pull_requests:
+          type: boolean
+          default: false
     ClientInput:
       description: A client as a caller writes it. The tenant, who manages it and its version are the server's to say.
       type: object
@@ -15894,40 +16060,46 @@ components:
               description: Every run's own calls in the tree, once each, attached and delegated runs alike.
               $ref: "#/components/schemas/Usage"
     SessionIdentity:
-      type: "object"
+      type: object
       additionalProperties: false
       required:
-        - "agent"
-        - "parent"
+      - agent
+      - parent
       properties:
         agent:
-          type: "string"
+          type: string
         parent:
-          type: "string"
+          type: string
         label:
-          type: "string"
+          type: string
+        source_alert:
+          type: string
+          description: The readable session alert that anchors this fix conversation.
     SessionInput:
-      type: "object"
+      type: object
       additionalProperties: false
       required:
-        - "text"
+      - text
       properties:
         text:
-          type: "string"
+          type: string
         agent:
-          type: "string"
+          type: string
         parent:
-          type: "string"
+          type: string
         label:
-          type: "string"
+          type: string
         fresh:
-          type: "boolean"
+          type: boolean
         project:
-          type: "string"
+          type: string
         model:
-          type: "string"
+          type: string
         effort:
-          type: "string"
+          type: string
+        source_alert:
+          type: string
+          description: The readable session alert that anchors this fix conversation.
     SessionPostInput:
       description: A session message with optional routing to a mentioned agent.
       type: object

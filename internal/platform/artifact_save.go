@@ -65,7 +65,7 @@ func isReview(text string) bool {
 	var head struct {
 		Format string `json:"format"`
 	}
-	return json.Unmarshal([]byte(strings.TrimSpace(body)), &head) == nil && head.Format == github.ReviewFormat
+	return json.Unmarshal([]byte(strings.TrimSpace(body)), &head) == nil && github.IsReviewFormat(head.Format)
 }
 
 // fileTitle makes a file name of a title, with ext unless it has one.
