@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	transport "github.com/urmzd/orchagent/flow/connectors/github"
+	transport "github.com/urmzd/saige/flow/connectors/github"
 )
 
 // AppConfig configures a GitHub App installation token source.

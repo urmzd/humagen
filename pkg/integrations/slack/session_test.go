@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/urmzd/humagen/pkg/integrations/slack"
-	"github.com/urmzd/orchagent/flow/address"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/address"
+	"github.com/urmzd/saige/flow/event"
 )
 
 var commands = []slack.Command{

@@ -267,7 +267,7 @@ Flags override the block: `-sandbox`, `-sandbox-runtime`,
 `-sandbox-connectors-image`, `-sandbox-work-root`, `-sandbox-host` and
 `-sandbox-tls-dir`. A binary can register
 another kind with `humagen.WithKind(humagen.Sandbox, name, factory)`, whose
-factory returns an `isolation.Leaser` (`orchagent/flow/isolation`).
+factory returns an `isolation.Leaser` (`saige/flow/isolation`).
 
 ### Egress
 
@@ -1216,11 +1216,25 @@ unknown-field errors as the built-ins'. Sign-in and stores are built in only,
 for now.
 
 `humagen.WithRuntime(rt)` runs every turn on your own `turn.Runtime`
-(`github.com/urmzd/orchagent/flow/turn`) in place of the native saige
+(`github.com/urmzd/saige/flow/turn`) in place of the native saige
 turn. It is handed the pinned definition and the triggering event and streams
 back catalog event bodies. It runs inside the same sandbox and on
 the same durable runs; it brings its own models and tools, so the spec's
 `models` and `WithModelProvider` do not reach it.
+
+### Since orchagent moved into saige
+
+orchagent's `flow`, `durable` and `sandbox` now live in saige
+(`github.com/urmzd/saige/flow/...`, `.../durable/...`, `.../sandbox/...`), and
+Humagen's `go.mod` requires saige alone. A program built on the `humagen`
+package changes `github.com/urmzd/orchagent/` to `github.com/urmzd/saige/` in
+its imports; `scripts/rewrite-orchagent-imports.sh` does it. What did not move
+into saige moved into Humagen: the run schema (`internal/runschema`), the MCP
+tool provider store and its tools (`internal/toolprovider`,
+`internal/mcptools`) and the embedders (`pkg/dense`). `flow.App`, `Ask` and
+`Reply` are gone; Humagen composes `runtime.New` itself. Agents never approve
+a pull request: `github.PrepareReview` takes `(Review, []ContextFile)`. Stored
+names (`fiber_*` tables, `fiber://` URIs, `fiber.*` event kinds) are unchanged.
 
 ### Since fiber moved into orchagent
 

@@ -16055,6 +16055,31 @@ components:
           description: Host context shown to the model next to the body's own fields.
           type: object
           additionalProperties: {type: string}
+        references:
+          description: The agents, people, places and links the request's text refers to, in the order they appear.
+          type: array
+          items: {$ref: "#/components/schemas/EventReference"}
+    EventReference:
+      description: Something an ingress request's text refers to.
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          description: An agent, a person, a place named without a URL (a channel, `#12`), or a link.
+          type: string
+          enum: [agent, person, place, link]
+        name:
+          description: What a person saw in the text, such as `@ada`, `#general` or a link's label; for an agent, its name.
+          type: string
+        id:
+          description: The native id on the surface the event came from, such as a Slack user or channel id or a GitHub login.
+          type: string
+        address:
+          description: The canonical address of what is referred to, when known, such as `slack://T01/C02`.
+          type: string
+        url:
+          description: The link exactly as it was written.
+          type: string
     SlackRef:
       description: Where in Slack a message was posted.
       type: object

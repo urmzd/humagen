@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/urmzd/humagen/pkg/agents"
-	"github.com/urmzd/orchagent/flow/definition"
+	"github.com/urmzd/saige/flow/definition"
 )
 
 // TestDefinitionCatalogReadsWhatTheRegistryHeld moves revisions through

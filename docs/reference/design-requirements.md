@@ -331,7 +331,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 - Evidence: `model-picker.dom.test.tsx`, `modelPick.test.ts`,
   `TestAMessagePicksItsRunsModelAndEffort`,
   `TestAMessageChoiceAppliesWhereTheAgentOffersIt`,
-  `TestAgentChoicesRoundTrip`, and orchagent's `TestEffortReachesThePrimaryOnly`
+  `TestAgentChoicesRoundTrip`, and saige's `TestEffortReachesThePrimaryOnly`
   and `TestAnthropicEffortIsSentOrRefused`. The agent editor does not yet edit
   `choices`; a spec or the API sets them. Screens are not yet captured.
 

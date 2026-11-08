@@ -5,7 +5,7 @@ import (
 
 	"github.com/urmzd/humagen/internal/wire"
 	githubflow "github.com/urmzd/humagen/pkg/integrations/github"
-	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/saige/flow/runtime"
 )
 
 func TestConnectorToolsBelongOnlyToTheirInstallationTenant(t *testing.T) {

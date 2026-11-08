@@ -45,7 +45,7 @@ Environment variables use `HUMAGEN_` (`WARP_` is still read), `FIBER_`,
 ## Fiber
 
 Fiber was called Mandatum. Its code now lives in
-`github.com/urmzd/orchagent/flow`, and the old name is read only by `internal/legacy/fiber.go`. Its
+`github.com/urmzd/saige/flow`, and the old name is read only by `internal/legacy/fiber.go`. Its
 ecosystem table had this row:
 
 | Previous | Current |
@@ -66,7 +66,7 @@ they moved to are now kept names themselves.
 |------|--------|-----|
 | Postgres tables, indexes and constraints | `mandatum_*` | `fiber_*` |
 | anchor activities and records | `mandatum.turn`, `mandatum.turn.agent`, `mandatum.turn.resume`, `mandatum.park`, `mandatum.stop`, `mandatum.question.*`, `mandatum.answer.*`, `mandatum.usage.*`, `mandatum.child.*` | the same under `fiber.` |
-| Agent hash domain | the old spec domain under `mandatum/` | the same under `fiber/`, retired with the event union (see [events.md](https://github.com/urmzd/orchagent/blob/main/flow/docs/architecture/events.md#10-upgrade)) |
+| Agent hash domain | the old spec domain under `mandatum/` | the same under `fiber/`, retired with the event union (see [events.md](https://github.com/urmzd/saige/blob/main/docs/architecture/flow-events.md#10-upgrade)) |
 | Knowledge document hash domain | `mandatum.knowledge.v1` | `fiber.knowledge.v1` |
 
 ### Upgrading a deployment
@@ -117,12 +117,12 @@ they moved to are now kept names themselves.
    of the migration, so rows are kept and the order stores migrate in does not
    matter. The old agent registry tables are no longer read: agents are
    saige definitions in `fiber_definitions` (see
-   [events.md](https://github.com/urmzd/orchagent/blob/main/flow/docs/architecture/events.md#7-definitions)). `internal/legacy` (`FiberTablesSQL`) is the only code that knows the old names.
+   [events.md](https://github.com/urmzd/saige/blob/main/docs/architecture/flow-events.md#7-definitions)). `internal/legacy` (`FiberTablesSQL`) is the only code that knows the old names.
 4. **Knowledge re-embeds once.** A document's hash includes its domain, so
    the first re-index after the upgrade treats every document as changed.
 5. **Anything that stored a revision hash** outside fiber (a link, an audit
    log) holds the old address. The new one is the definition content hash,
    `App.Definitions().Get(ctx, tenant, name, version)` then `.Digest` (see
-   [events.md](https://github.com/urmzd/orchagent/blob/main/flow/docs/architecture/events.md#7-definitions)).
+   [events.md](https://github.com/urmzd/saige/blob/main/docs/architecture/flow-events.md#7-definitions)).
 
 Historical changelog entries keep the names they were written with.

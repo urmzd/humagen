@@ -12,11 +12,11 @@ import (
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/runschema"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/spec"
-	"github.com/urmzd/orchagent/flow/runschema"
-	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/saige/flow/runtime"
 )
 
 // These names are stored in run records, schedules, the ledger and the
@@ -81,12 +81,9 @@ var keptFiberTables = []string{
 	"fiber_consumers",
 	"fiber_definition_retirements",
 	"fiber_definitions",
-	"fiber_dispatch_runs",
 	"fiber_event_runs",
 	"fiber_event_tenants",
 	"fiber_events",
-	"fiber_knowledge_chunks",
-	"fiber_knowledge_documents",
 	"fiber_memberships",
 	"fiber_run_queue",
 	"fiber_run_records",
@@ -110,21 +107,20 @@ var keptFiberTables = []string{
 // here instead of silently leaving the stored fiber_ table behind.
 var createTable = regexp.MustCompile(`CREATE TABLE IF NOT EXISTS ((?:fiber|flow|durable|sandbox)_\w+)`)
 
-// The tables are read from the stores' source in the orchagent version
-// go.mod pins (flow, which was fiber), so a renamed or a new table fails here
-// until it is listed.
+// The tables are read from the stores' source: flow (which was fiber) in the
+// saige version go.mod pins, and Humagen's own run schema and tool provider
+// store, so a renamed or a new table fails here until it is listed.
 func TestFiberTablesAreKept(t *testing.T) {
-	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/urmzd/orchagent").Output()
+	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/urmzd/saige").Output()
 	if err != nil {
-		t.Fatalf("locate orchagent: %v", err)
+		t.Fatalf("locate saige: %v", err)
 	}
 	dir := strings.TrimSpace(string(out))
 	if dir == "" {
-		t.Fatal("orchagent is not downloaded: run go mod download")
+		t.Fatal("saige is not downloaded: run go mod download")
 	}
-	root := filepath.Join(dir, "flow")
 	seen := map[string]bool{}
-	err = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+	walk := func(p string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
 			return err
 		}
@@ -136,9 +132,11 @@ func TestFiberTablesAreKept(t *testing.T) {
 			seen[m[1]] = true
 		}
 		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
+	}
+	for _, root := range []string{filepath.Join(dir, "flow"), filepath.Join("..", "runschema"), filepath.Join("..", "toolprovider")} {
+		if err := filepath.WalkDir(root, walk); err != nil {
+			t.Fatal(err)
+		}
 	}
 	var got []string
 	for name := range seen {

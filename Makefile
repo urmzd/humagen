@@ -31,7 +31,7 @@ test:
 
 # The fiber upgrade test against Postgres (pgvector) from the compose
 # integration profile. Without this variable it skips. flow's own backend
-# suites run in github.com/urmzd/orchagent.
+# suites run in github.com/urmzd/saige.
 integration:
 	$(COMPOSE) --profile integration up -d --wait fiber-postgres
 	FLOW_POSTGRES_TEST_URL=postgres://fiber:fiber@localhost:$${FLOW_POSTGRES_PORT:-5433}/fiber?sslmode=disable \

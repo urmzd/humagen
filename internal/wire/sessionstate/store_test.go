@@ -11,10 +11,10 @@ import (
 	"github.com/urmzd/humagen/internal/wire/sessionstate"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/session"
-	"github.com/urmzd/orchagent/flow/thread"
-	"github.com/urmzd/orchagent/flow/thread/threadtest"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/session"
+	"github.com/urmzd/saige/flow/thread"
+	"github.com/urmzd/saige/flow/thread/threadtest"
 )
 
 func TestJournalConformance(t *testing.T) {

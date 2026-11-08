@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	render "github.com/urmzd/orchagent/flow/connectors/github"
+	render "github.com/urmzd/saige/flow/connectors/github"
 )
 
 func testReport() ReviewReport {

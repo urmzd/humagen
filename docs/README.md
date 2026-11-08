@@ -3,7 +3,7 @@
 | Document | Kind | Purpose |
 |----------|------|---------|
 | [Architecture](architecture/overview.md) | Architecture | Plan of record: what Humagen composes and the status table of what exists |
-| [The ecosystem](architecture/ecosystem.md) | Architecture | The layers (Humagen, saige, and orchagent: flow, sandbox, durable) and the rules each keeps |
+| [The ecosystem](architecture/ecosystem.md) | Architecture | The layers (Humagen and saige, with saige's flow, sandbox and durable) and the rules each keeps |
 | [One model, two surfaces](architecture/surfaces.md) | Architecture | How each agent concept reaches the web and Slack, and the open gaps |
 | [Projects](architecture/projects.md) | Architecture | Design of record for nested projects, policies, agents, inboxes and shared threads |
 | [Company, personal work and finding help](architecture/company-workspace.md) | Architecture | The Company root project, personal projects, publishing work and Find Help |

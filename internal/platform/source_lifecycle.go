@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/urmzd/humagen/internal/mcptools"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
@@ -19,7 +20,6 @@ import (
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/projects"
-	"github.com/urmzd/orchagent/flow/mcptools"
 )
 
 // SourceHealth is safe for internal assignment admission. Public callers must filter source access first.

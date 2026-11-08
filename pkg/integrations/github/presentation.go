@@ -2,7 +2,7 @@ package github
 
 import (
 	presentation "github.com/urmzd/humagen/internal/presentation/github"
-	transport "github.com/urmzd/orchagent/flow/connectors/github"
+	transport "github.com/urmzd/saige/flow/connectors/github"
 )
 
 // Review contract aliases keep presentation owned by humagen.
