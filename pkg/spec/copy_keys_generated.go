@@ -727,6 +727,7 @@ var copyKeyList = []string{
 	"corpora.remove",
 	"corpora.search.action",
 	"corpora.search.failed",
+	"corpora.search.graph",
 	"corpora.search.label",
 	"corpora.search.none",
 	"corpora.search.searching",

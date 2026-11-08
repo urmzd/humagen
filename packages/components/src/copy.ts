@@ -876,6 +876,7 @@ export const defaultCopy = {
       none: "Nothing matches.",
       failed: "The search failed.",
       warning: (member: string, cause: string) => `${member} could not be searched: ${cause}`,
+      graph: "The workspace graph",
     },
     agents: {
       title: "Agents",
