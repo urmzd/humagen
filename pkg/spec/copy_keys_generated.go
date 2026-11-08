@@ -1767,6 +1767,7 @@ var copyKeyList = []string{
 	"sidebar.archived",
 	"sidebar.archivedNote",
 	"sidebar.dismiss",
+	"sidebar.earlier",
 	"sidebar.noArchived",
 	"sidebar.noConversations",
 	"sidebar.outsideProject",
