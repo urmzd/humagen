@@ -838,6 +838,13 @@ export function Sidebar({
       badge: inboxCount,
     },
     {
+      to: { page: "projects" } as Route,
+      label: "Projects",
+      icon: <ProjectIcon />,
+      show: can("projects:read"),
+      active: here("projects", "project"),
+    },
+    {
       to: { page: "agents" } as Route,
       label: "Agents",
       icon: <BotIcon />,
@@ -881,8 +888,6 @@ export function Sidebar({
         "usage",
         "audit",
         "you",
-        "projects",
-        "project",
         "monitor",
         "action-policy",
         "agent-control",

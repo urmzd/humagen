@@ -2925,8 +2925,8 @@ export const defaultCopy = {
   },
   /** Who and what is in the workspace, readable by everyone in it. */
   directory: {
-    title: "Directory",
-    lede: "Who and what is in this workspace.",
+    title: "People",
+    lede: "Everyone in this workspace and their role.",
     tabs: { people: "People", agents: "Agents", projects: "Projects" },
     search: "Search the directory",
     empty: {

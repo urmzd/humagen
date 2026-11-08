@@ -6,7 +6,6 @@ import { hubTabs, settingsPageLabel, workspaceHub } from "./workspace-navigation
 test("Settings pages have one navigation frame without a legacy Operations tab strip", () => {
   for (const [path, label] of [
     ["/settings/people", "People"],
-    ["/projects", "Projects"],
     ["/settings/usage", "Usage"],
     ["/settings/health", "Health"],
     ["/operations/policies", "Policies"],
@@ -17,6 +16,8 @@ test("Settings pages have one navigation frame without a legacy Operations tab s
     assert.equal(settingsPageLabel(route), label, path);
     assert.equal(workspaceHub(route), null, path);
   }
+  // Projects has its own place in the sidebar, not under Settings.
+  assert.equal(settingsPageLabel(parse("/projects", "")), undefined);
   assert.equal(workspaceHub({ page: "operations", section: "context" }), "operations");
   assert.equal(settingsPageLabel({ page: "operations", section: "context" }), undefined);
 });

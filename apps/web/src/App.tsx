@@ -1431,21 +1431,7 @@ function Console({
                         viewer={me.principal.subject}
                       />
                     ))}
-                  {route.page === "directory" && (
-                    <DirectoryPage
-                      tab={route.tab}
-                      onTab={(tab) => go({ page: "directory", tab }, { replace: true })}
-                      can={can}
-                      agents={agents}
-                      homes={homes}
-                      enabledIn={enabledIn}
-                      projects={projects}
-                      kinds={root?.kinds ?? []}
-                      workspaceName={workspaceName}
-                      onOpenAgent={(name) => openAgent(name, "access")}
-                      onOpenProject={openProject}
-                    />
-                  )}
+                  {route.page === "directory" && <DirectoryPage can={can} />}
                   {(route.page === "artifacts" ||
                     (route.page === "library" && route.section === "deliverables")) && (
                     <Storage

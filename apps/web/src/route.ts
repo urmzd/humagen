@@ -923,7 +923,10 @@ function read(pathname: string, search: string): Route {
         return { page: "library", section: "catalog", catalogQuery: queryText(q, "q", 1000) };
       return { page: "connections", provider: a };
     case "directory":
-      return { page: "directory", tab: pick(a, DIRECTORY_TABS, "people") };
+      // People is the directory; agents and projects have pages of their own.
+      if (a === "agents") return { page: "agents" };
+      if (a === "projects") return { page: "projects" };
+      return { page: "directory", tab: "people" };
     case "settings":
       if (a === "people") return { page: "directory", tab: "people" };
       if (a === "health") return { page: "monitor", tab: "health" };

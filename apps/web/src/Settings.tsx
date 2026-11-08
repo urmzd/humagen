@@ -884,12 +884,6 @@ export function SettingsNav({
       permission: "people:read",
     },
     {
-      label: "Projects",
-      icon: <ProjectIcon size={16} />,
-      route: { page: "projects" } as Route,
-      permission: "projects:read",
-    },
-    {
       label: "Usage",
       icon: <ClipboardListIcon size={16} />,
       route: { page: "usage" } as Route,
