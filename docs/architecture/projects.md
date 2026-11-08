@@ -948,7 +948,7 @@ change back. The spec says the same on Humagen's wrapper:
 ### The dynamic router
 
 A message that names no agent, where the default it inherits is `*`
-("everyone decides"), asks every agent that answers there one low-effort
+("everyone decides"), asks every agent available there one low-effort
 question, all at once: "should I be involved?" (`pkg/join`). Each that says
 yes joins and answers in the same thread, each reply posted and streamed on
 its own; in Slack, in the same Slack thread. At most 64 agents are asked and
