@@ -87,6 +87,9 @@ type ThreadInput struct {
 // MessageInput posts a message into a thread.
 type MessageInput struct {
 	Text string `json:"text"`
+	// messageKey is the message's identity at its origin, which makes it
+	// post once (SendMessages). It is never read from a request.
+	messageKey string
 	// After is the turn it follows: a message of the thread, a run answering
 	// one, or a run of a conversation from before threads. "" follows the
 	// latest.
@@ -879,6 +882,11 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	if on != nil {
 		text, unmapped = p.surfaceText(who.Tenant, on.client, on.ref, in.Text)
 		surfaceID, slack = on.ref.message(), nil
+	}
+	if surfaceID == "" {
+		// A message from an origin with its own identity (a Slack ts, a
+		// GitHub comment) posts once, however often it is sent.
+		surfaceID = in.messageKey
 	}
 	sees := p.Seer(person).Agent
 	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: sees, tree: tree, project: th.Project, person: humanSubject(person), console: on == nil})
