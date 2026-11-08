@@ -773,6 +773,11 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	if err := p.admit(tag, edge, project, within, client); err != nil {
 		return runs.Run{}, err
 	}
+	// A schedule's run is a session in the schedule's project, made once
+	// the run is admitted.
+	if edge.Parent == "" && scheduledOrigin(tag) {
+		tag = p.fileInScheduleSession(ctx, tag, project)
+	}
 	if wire.Meta(tag)[MetaPersonalMemoryContext] == "true" || wire.Meta(tag)[MetaPrivateLibraryContext] == "true" {
 		if err := p.ContextFlags.Mark(tag.Tenant, runID); err != nil {
 			p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
