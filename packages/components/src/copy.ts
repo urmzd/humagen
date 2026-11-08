@@ -2572,12 +2572,13 @@ export const defaultCopy = {
   /** A conversation's approval mode, a text control under the composer (DES-057). */
   approvals: {
     label: "Approvals",
-    ask: "Default",
-    askHint: "Ask a person before a gated action runs.",
-    auto: "Approve for Me",
+    ask: "Ask Me",
+    askHint: "Every gated action waits for you.",
+    auto: "Run",
     autoHint:
-      "Approve gated actions as you, within policy. Budget requests and actions the agent or the policy always asks about still come to a person. Every approval is audited.",
-    autoFor: (name: string) => `Approved for ${name}`,
+      "The approval agent decides each action the policy asks about, and hands you anything it is unsure of. Every decision is audited.",
+    autoFor: (name: string) => `Run, chosen by ${name}`,
+    waiting: "No model is enabled for the approval agent yet, so every action waits for a person.",
     failed: "Could not change approvals. Try again.",
   },
   /** Over Home's chat bar: the person's own project, where a conversation in no project is filed (DES-057). */
@@ -2801,7 +2802,7 @@ export const defaultCopy = {
   },
   chat: {
     /** The + button, which opens the menu. */
-    plus: "Add files, agents or a project",
+    plus: "Add files or agents",
     /** The shortcut that opens it, said in its tooltip: Cmd+/ on a Mac, Ctrl+/ elsewhere. */
     plusShortcut: (mac: boolean) => (mac ? "Cmd+/" : "Ctrl+/"),
     /** The sidebar's filter of conversations, and how many filters are on. */
@@ -2845,7 +2846,7 @@ export const defaultCopy = {
     notHere: (agents: string[]) =>
       `${agents.join(", ")} can't answer in this project. Pick another project, or mention another agent.`,
     /** The chat bar's prompt. */
-    placeholder: "Message @agent",
+    placeholder: "Ask anything",
     /** Under an answer that went to an agent because it was selected, not tagged. */
     routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,
     routed: (agent: string) => `Routed to ${agent}`,
@@ -3672,7 +3673,7 @@ export const defaultCopy = {
     privateHint: "Only the people in it read a private thread. Tagging a person invites them.",
     /** Who takes part, in the meta line. */
     participants: (n: number) => `${n} ${n === 1 ? "person" : "people"}`,
-    startThread: "Message @agent",
+    startThread: "Ask anything",
     reply: "Reply",
     send: "Send",
     /** The control that posts a message no agent answers, unless it tags one. */
@@ -3739,7 +3740,7 @@ export const defaultCopy = {
     /** A mention kind, as completion offers `@kind:`: its title, or what it is. */
     mentionKind: (kind: string, title?: string) => title || `Mention by ${kind}`,
     /** The chat bar's prompt in a conversation. Nothing runs until a message tags an agent. */
-    message: "Message @agent",
+    message: "Reply",
     /** The control at the top of a private conversation that shares it in a project's channel. */
     share: "Share",
     shareTitle: "Share this conversation",

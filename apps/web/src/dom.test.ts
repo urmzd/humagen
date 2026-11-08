@@ -41,7 +41,7 @@ await loadTests([
   "/src/item-page.dom.test.tsx",
   "/src/wave.dom.test.tsx",
   "/src/sidebar-views.dom.test.tsx",
-  "/src/approval-mode.dom.test.tsx",
+  "/src/approval-toggle.dom.test.tsx",
   "/src/replay.dom.test.tsx",
   "/src/usage-page.dom.test.tsx",
   "/src/operations.dom.test.tsx",

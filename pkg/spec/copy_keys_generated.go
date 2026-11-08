@@ -231,6 +231,7 @@ var copyKeyList = []string{
 	"approvals.autoHint",
 	"approvals.failed",
 	"approvals.label",
+	"approvals.waiting",
 	"approve",
 	"approveSelected",
 	"ask",

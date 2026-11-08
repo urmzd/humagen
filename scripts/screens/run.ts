@@ -128,7 +128,7 @@ const more = (page: Page) =>
 
 /** The chat bar's textarea. */
 const bar = (page: Page) => page.locator("form[aria-label='Message'] textarea");
-const plus = (page: Page) => page.getByRole("button", { name: "Add files, agents or a project" });
+const plus = (page: Page) => page.getByRole("button", { name: defaultCopy.chat.plus });
 
 /** Open an installed-app form without sending credentials to an external service. */
 async function connectSystem(page: Page, surface: "slack" | "github" = "slack"): Promise<void> {
@@ -806,25 +806,14 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       },
     },
     {
-      name: "chat-plus-project",
-      path: "/",
-      act: async (page) => {
-        await plus(page).click();
-        const menu = page.getByRole("dialog", { name: "Add to this conversation" });
-        await menu.getByRole("button", { name: /^Projects\b/ }).click();
-        await menu.getByRole("button", { name: /^Launch(?:\s+Team)?$/ }).click();
-        await menu.getByRole("radio", { name: "#deals" }).click();
-      },
-    },
-    {
       name: "chat-conversation-plus",
       path: `/conversations/${ids.privateChat}`,
       act: async (page) => {
         await plus(page).click();
-        await page
-          .getByText("The project can't change once an agent has answered here.")
-          .first()
-          .waitFor();
+        const menu = page.getByRole("dialog", { name: defaultCopy.chat.menu, exact: true });
+        await menu.getByRole("button", { name: /^Agents\b/ }).waitFor();
+        // The composer picks no project: a session moves from its menu.
+        assert.equal(await menu.getByRole("button", { name: /^Projects\b/ }).count(), 0);
       },
     },
     {
@@ -881,58 +870,11 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       act: async (page) => {
         await plus(page).click();
         const menu = page.getByRole("dialog", { name: defaultCopy.chat.menu, exact: true });
-        for (const name of [/^Agents\b/, /^Projects\b/, /^Skills\b/])
+        for (const name of [/^Agents\b/, /^Skills\b/])
           await menu.getByRole("button", { name }).waitFor();
+        assert.equal(await menu.getByRole("button", { name: /^Projects\b/ }).count(), 0);
         assert.equal(await menu.getByRole("radio").count(), 0);
         assert.equal(await menu.getByText("#general", { exact: true }).count(), 0);
-      },
-    },
-    {
-      name: "composer-menu-projects",
-      path: "/",
-      act: async (page) => {
-        await plus(page).click();
-        const menu = page.getByRole("dialog", { name: defaultCopy.chat.menu, exact: true });
-        await menu.getByRole("button", { name: /^Projects\b/ }).click();
-        await menu.getByRole("button", { name: "Personal", exact: true }).waitFor();
-        assert.equal(await menu.getByText("#general", { exact: true }).count(), 0);
-      },
-    },
-    {
-      name: "composer-menu-channels",
-      path: "/?project=Launch&channel=deals",
-      act: async (page) => {
-        await plus(page).click();
-        const menu = page.getByRole("dialog", { name: defaultCopy.chat.menu, exact: true });
-        await menu.getByRole("button", { name: /^Projects\b/ }).click();
-        await menu.getByRole("button", { name: /^Launch(?:\s+Team)?$/ }).click();
-        const group = menu.getByRole("radiogroup", { name: "Channels in Launch", exact: true });
-        const general = group.getByRole("radio", { name: "#general", exact: true });
-        await general.waitFor();
-        await group.getByRole("radio", { name: "#deals", exact: true }).waitFor();
-        assert.equal(
-          await group
-            .getByRole("radio", { name: "#deals", exact: true })
-            .getAttribute("aria-checked"),
-          "true",
-          "Browsing channels must preserve the selected destination",
-        );
-        const geometry = await general.evaluate((element) => ({
-          width: element.getBoundingClientRect().width,
-          height: element.getBoundingClientRect().height,
-          decoration: getComputedStyle(element).textDecorationLine,
-        }));
-        const panel = await menu.boundingBox();
-        assert.ok(
-          panel && geometry.width >= panel.width * 0.8,
-          "Channel choices must use full-width rows",
-        );
-        assert.ok(geometry.height >= 44, "Channel choices must keep a comfortable target");
-        assert.equal(
-          geometry.decoration,
-          "none",
-          "The selected channel uses a check, not an underlined loose link",
-        );
       },
     },
     ...[false, true].map(

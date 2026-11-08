@@ -5,7 +5,7 @@ import { ForkIcon, WebSurface } from "@humagen/render-web";
 import { AgentMessage, messageActionButton, railEntry, Thread, useQueue } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
-import { ApprovalModePicker } from "./ApprovalModePicker.tsx";
+import { type ApprovalMode, ApprovalToggle } from "./ApprovalToggle.tsx";
 import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
 import {
   ApiError,
@@ -31,8 +31,7 @@ import { itemActions } from "./itemActions.tsx";
 import { AnswerRefs, OriginRef } from "./MessageRefs.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
-import { emptySelection, mentionPicks, PlusMenu, type Selection, SelectionChips } from "./Plus.tsx";
-import { ProjectPicker } from "./ProjectPicker.tsx";
+import { emptySelection, mentionPicks, PlusMenu, type Selection } from "./Plus.tsx";
 import { openPane } from "./pane.ts";
 import { ResponseActivityPanel } from "./ResponseActivity.tsx";
 import { ThreadRoom, topicsOf } from "./Room.tsx";
@@ -656,6 +655,9 @@ export function Chat({
             visibility: startChannel ? "shared" : "private",
           })
           .then((p) => {
+            // Run, chosen before the session started, is applied to it now.
+            if (pendingApproval === "auto")
+              void coworking.setApprovalMode(p.thread.id, "auto").catch(() => undefined);
             onThread(p.thread.id);
             done(p.runs);
           })
@@ -789,29 +791,10 @@ export function Chat({
       agents.some((a) => a.spec.name === st.agent) && offered !== null && offered.has(st.agent),
   );
 
-  // Where a new conversation is filed, in the toolbar at every width (DES-057).
-  const homeChips = (
-    <SelectionChips
-      personalProject={personalProject}
-      selection={selection}
-      projects={projects}
-      workspace={workspaceName}
-      onChange={select}
-      projectControl={
-        <ProjectPicker
-          projects={projects ?? null}
-          kinds={root?.kinds}
-          value={selection.project}
-          personalProject={personalProject}
-          personalLabel={defaultCopy.projects.personalTitle}
-          channel={selection.channel}
-          canCreate={canCreateProject}
-          onCreated={onProjectCreated}
-          onChange={(project) => select({ ...selection, project, channel: "general" })}
-        />
-      }
-    />
-  );
+  // A session from Home is filed in the person's Personal project, and one
+  // from a project's page in that project: the composer picks no project.
+  // Its approval mode is held until the session starts.
+  const [pendingApproval, setPendingApproval] = useState<ApprovalMode>("ask");
   // A message here is its text alone: the agent it goes to is the one its
   // tags or the conversation name, never a pick the composer carries.
   const sending: typeof queue = {
@@ -851,7 +834,15 @@ export function Chat({
         seed={seed}
         onDraft={setDraft}
         trailing={
-          threadId && room?.thread && <ApprovalModePicker thread={room.thread} me={handle || me} />
+          threadId ? (
+            room?.thread && <ApprovalToggle thread={room.thread} me={handle || me} />
+          ) : (
+            <ApprovalToggle
+              me={handle || me}
+              pending={pendingApproval}
+              onPending={setPendingApproval}
+            />
+          )
         }
         // An agent the project picked does not offer is not kept for it.
         onAvailable={
@@ -860,13 +851,6 @@ export function Chat({
             : (available) => {
                 const names = new Set(available.map((a) => a.name));
                 setOffered(names);
-                // An agent a link named that lives in a project opens that project, the first time.
-                const named =
-                  startAgent && !startIn && project === null ? homes[startAgent] : undefined;
-                if (named && !names.has(startAgent ?? "")) {
-                  setSelection((sel) => ({ ...sel, project: named }));
-                  return;
-                }
                 // A mention of an agent that cannot answer here says so; its words stay the person's.
                 const dropped = mentionsIn(
                   draft,
@@ -894,45 +878,6 @@ export function Chat({
                     onChange={runs.select}
                     onAttach={attach}
                     onClose={close}
-                    projects={projects}
-                    personalProject={personalProject}
-                    kinds={root?.kinds}
-                    projectFixed={defaultCopy.threads.shareProjectFixed}
-                  />
-                ),
-                chips: (
-                  <SelectionChips
-                    personalProject={personalProject}
-                    selection={runs.selection}
-                    projects={projects}
-                    workspace={workspaceName}
-                    onChange={runs.select}
-                    projectFixed
-                    // The prompt bar is where a conversation's project is chosen and changed.
-                    projectControl={
-                      room?.thread ? (
-                        <ProjectPicker
-                          locked={defaultCopy.threads.shareProjectFixed}
-                          projects={projects ?? null}
-                          kinds={root?.kinds}
-                          value={room.thread.project}
-                          personalProject={personalProject}
-                          channel={room.thread.channel}
-                          canCreate={canCreateProject}
-                          onCreated={onProjectCreated}
-                          onChange={(next) => {
-                            if (next === room.thread.project) return;
-                            coworking.move(room.thread.id, next).then(
-                              (t) => {
-                                setRoom((r) => (r ? { ...r, thread: t } : r));
-                                onChanged();
-                              },
-                              (e) => setProblem(e instanceof Error ? e.message : String(e)),
-                            );
-                          }}
-                        />
-                      ) : undefined
-                    }
                   />
                 ),
               })
@@ -951,11 +896,6 @@ export function Chat({
                     onChange={select}
                     onAttach={attach}
                     onClose={close}
-                    projects={projects}
-                    personalProject={personalProject}
-                    kinds={root?.kinds}
-                    canCreateProject={canCreateProject}
-                    onProjectCreated={onProjectCreated}
                     finder={
                       findHelp ? (
                         <FindHelp
@@ -963,7 +903,6 @@ export function Chat({
                           onSearch={findHelp}
                           canChoose={canRun}
                           onChoose={(match, description) => {
-                            select({ ...selection, project: match.project, channel: "general" });
                             // The match is mentioned: ahead of what was described, or where the cursor was.
                             setSeed(
                               draft.trim()
@@ -977,7 +916,6 @@ export function Chat({
                     }
                   />
                 ),
-                chips: homeChips,
               })
         }
       />
