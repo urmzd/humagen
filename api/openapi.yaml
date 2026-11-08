@@ -13437,7 +13437,7 @@ components:
       type: object
       required: [audio, media_type, heard, cost_micros]
       properties:
-        audio: {type: string, format: byte, description: The spoken sample, base64.}
+        audio: {type: string, format: byte, description: "The spoken sample, base64."}
         media_type: {type: string}
         heard: {type: string}
         cost_micros: {type: integer, format: int64}

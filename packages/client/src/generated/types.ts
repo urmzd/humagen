@@ -2538,7 +2538,7 @@ export interface VoiceProviderView {
 
 /** The sample a check spoke, and what was heard back from it. */
 export interface VoiceCheck {
-  /** The spoken sample */
+  /** The spoken sample, base64. */
   audio: Blob;
   media_type: string;
   heard: string;
