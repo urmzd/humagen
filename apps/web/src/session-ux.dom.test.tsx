@@ -646,3 +646,26 @@ test("session UX synthetic sessions show alerts before any message and load an o
     restoreEvents();
   }
 });
+
+test("an empty composer says its own words, never the default agent's token, and a mention names who it asks", () => {
+  function Box() {
+    const queue = useQueue({ onStart: () => {}, onInterrupt() {} });
+    return (
+      <Composer
+        queue={queue}
+        placeholder="Reply"
+        tags={{
+          label: "Agents",
+          defaultAgent: "*",
+          options: [{ kind: "agent", token: "lead", label: "Lead" }],
+        }}
+      />
+    );
+  }
+  render(<Box />);
+  const box = screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement;
+  assert.equal(box.getAttribute("placeholder"), "Reply");
+  fireEvent.change(box, { target: { value: "@lead " } });
+  assert.equal(box.getAttribute("placeholder"), "Message @lead");
+  cleanup();
+});

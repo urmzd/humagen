@@ -162,6 +162,8 @@ export type ComposerSeed =
  */
 export function Composer({
   queue,
+  placeholder,
+  emptyText,
   autoFocus,
   onDraft,
   leading,
@@ -184,6 +186,8 @@ export function Composer({
   /** Text to start from, such as a question picked from a list. Each new object replaces what is typed. */
   seed?: ComposerSeed;
   placeholder: string;
+  /** What the empty box says when nobody is mentioned. Left out, Home's words. */
+  emptyText?: string;
   queue: QueueControls;
   autoFocus?: boolean;
   /** Called as the text changes, for anything that previews it. */
@@ -284,11 +288,10 @@ export function Composer({
     ...commandTokens(value, skillNames),
     ...mentionTokens(value, tags?.options ?? []),
   ].sort((a, b) => a.start - b.start);
-  const audience = mentionsIn(
+  const mentioned = mentionsIn(
     value,
     (tags?.options ?? []).filter((option) => option.kind === "agent").map((option) => option.token),
   );
-  if (!audience.length && tags?.defaultAgent) audience.push(tags.defaultAgent);
   const backdrop = useRef<HTMLDivElement>(null);
   const [listAt, setListAt] = useState<{ up: boolean; max: number }>({ up: true, max: 256 });
   useLayoutEffect(() => {
@@ -870,10 +873,11 @@ export function Composer({
           ref={input}
           rows={1}
           value={value}
+          // Who a mention asks, else the caller's own words: never the default agent's token.
           placeholder={
-            audience.length > 0
-              ? `Message ${audience.map((name) => `@${name}`).join(", ")}`
-              : defaultCopy.chat.placeholder
+            mentioned.length > 0
+              ? `Message ${mentioned.map((name) => `@${name}`).join(", ")}`
+              : emptyText || placeholder || defaultCopy.chat.placeholder
           }
           onChange={(e) => {
             change(e.target.value);

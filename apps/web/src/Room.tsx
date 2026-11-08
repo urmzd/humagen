@@ -1139,9 +1139,7 @@ export function ThreadRoom({
                 thread={id}
                 trailing={<ApprovalToggle thread={th} me={handle || me} />}
                 seed={seed}
-                placeholder={
-                  th.visibility === "private" ? words.message : words.channel(th.channel)
-                }
+                placeholder={words.message}
                 tags={tags}
                 onDraft={setDraft}
                 plus={{
