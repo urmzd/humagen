@@ -428,9 +428,6 @@ func (p *Platform) providerUsers(ctx context.Context, tenant, name string) []str
 			users = append(users, "the model policy "+m.Name)
 		}
 	}
-	if cfg.Router.Provider == name {
-		users = append(users, "routing")
-	}
 	return users
 }
 

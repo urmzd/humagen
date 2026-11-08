@@ -10565,17 +10565,6 @@ components:
         created_by_name:
           description: What whoever saved it is called, their name, else their handle, never a subject that holds an address. `created_by` is the subject.
           type: string
-    RouterSettings:
-      description: |
-        The model that asks each agent, about a message that names no agent,
-        "should I be involved?". There is no switch: routing runs once an
-        administrator picks its model, on a provider the deployment declares
-        or the workspace set up. Until then no agent takes a message on its
-        own.
-      type: object
-      properties:
-        provider: {type: string, maxLength: 64}
-        model: {type: string, maxLength: 200}
     ModelProviderVertex:
       description: Vertex AI, where a google provider's calls go. With no key the server's own credentials are used.
       type: object
@@ -13435,7 +13424,6 @@ components:
         - memory_auto_approve
         - workspace_name
         - model_policies
-        - router
         - model_providers
       properties:
         history:
@@ -13468,8 +13456,6 @@ components:
           maxItems: 32
           items:
             $ref: "#/components/schemas/ModelPolicy"
-        router:
-          $ref: "#/components/schemas/RouterSettings"
         model_providers:
           description: |
             The model providers the workspace's administrators set up, with no

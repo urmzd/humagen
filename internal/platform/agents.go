@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/turn/native"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
@@ -174,52 +173,15 @@ func (p *Platform) candidates(ctx context.Context, tenant string, tree *projects
 	}
 }
 
-// RouterSettings is the model that asks a workspace's agents about a
-// message that names none. There is no switch: routing runs once an
-// administrator picks its model, on a provider the deployment declares or
-// the workspace set up. Until then no agent takes a message on its own.
-type RouterSettings struct {
-	Provider string `json:"provider,omitempty"`
-	Model    string `json:"model,omitempty"`
-}
-
-// checkRouter holds router settings to the providers tenant's workspace has.
-func (p *Platform) checkRouter(tenant string, r *RouterSettings) error {
-	r.Provider, r.Model = strings.TrimSpace(r.Provider), strings.TrimSpace(r.Model)
-	switch {
-	case r.Provider == "" && r.Model == "":
-		return nil
-	case !slices.Contains(p.modelNames(tenant), r.Provider):
-		return fmt.Errorf("%w: routing's provider %q is not one this workspace has; an administrator sets one up first", ErrSettings, r.Provider)
-	case r.Model == "" || len(r.Model) > 200:
-		return fmt.Errorf("%w: name routing's model at %s", ErrSettings, r.Provider)
-	}
-	return nil
-}
-
 // asker is what asks a workspace's agents whether to join: a program's own
-// (Config.Router), else the model the workspace's settings name, built for
-// this message so a changed key or model applies at once. It is nil when no
-// model is picked or it cannot be built, and then no agent takes a message
-// on its own.
+// (Config.Router), else nobody, so no agent takes a message on its own.
+// Routing moves to the entry agent, which picks on its own chain; until then
+// only a program, or a test, routes.
 func (p *Platform) asker(tenant string) join.Asker {
 	if p.cfg.Router != nil {
 		return p.cfg.Router(tenant)
 	}
-	r := p.Settings(tenant).Router
-	if r.Provider == "" || r.Model == "" {
-		return nil
-	}
-	fn := p.providerFunc(tenant, r.Provider)
-	if fn == nil {
-		return nil
-	}
-	prov, err := fn(native.Spec{Name: "join", Provider: r.Provider, Model: r.Model})
-	if err != nil {
-		p.log.Warn("platform: the router's model could not be built", "tenant", tenant, "provider", r.Provider, "error", err)
-		return nil
-	}
-	return join.Model{Provider: prov}
+	return nil
 }
 
 // Route is what would happen to a message posted in a project ("" or "~"
