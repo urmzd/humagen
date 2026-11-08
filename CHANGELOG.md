@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.99.0 (2026-11-08)
+
+### Features
+
+- **github**: review pull requests automatically; labels start nothing (#259) ([cdc0dd3](https://github.com/urmzd/humagen/commit/cdc0dd3331aaa86fd6503be1eb6a5765dec27179))
+- **console**: one Details panel: progress, agents, outputs, environment and what a session used (#293) ([26a466c](https://github.com/urmzd/humagen/commit/26a466c7154a66a3815231156c6913bcf7e3ee94))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.98.0...v0.99.0)
+
+
 ## 0.97.1 (2026-11-08)
 
 ### Bug Fixes
