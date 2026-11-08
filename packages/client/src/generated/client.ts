@@ -52,6 +52,10 @@ import type {
   ConnectionPreset,
   ConversationMemory,
   ConversationSandboxes,
+  Corpus,
+  CorpusChange,
+  CorpusCreate,
+  CorpusMemberRef,
   CreateCallRequest,
   CreateKnowledgeSourceBody,
   CreateRunRequest,
@@ -101,6 +105,7 @@ import type {
   ListChannelsResponse,
   ListClientBindingsResponse,
   ListClientsResponse,
+  ListCorporaResponse,
   ListDeletionsResponse,
   ListEvalRunsResponse,
   ListEvalSuitesResponse,
@@ -5032,6 +5037,153 @@ in a project takes a member of that project (403).
     let path = "/api/evals/{name}/runs";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<ListEvalRunsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** A corpus is a named body of knowledge that holds sources and catalog
+connectors. The caller sees the corpora they own and the
+ones whose readers name them, a project they see, or the workspace.
+ */
+  async listCorpora(options?: RequestOptions): Promise<ListCorporaResponse> {
+    const path = "/api/corpora";
+    return this.request<ListCorporaResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listCorporaRaw(options?: RequestOptions): Promise<ApiResponse<ListCorporaResponse>> {
+    const path = "/api/corpora";
+    return this.rawRequest<ListCorporaResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Every member must be a knowledge source or catalog connector the
+caller can see. Holding a source never widens who may read it.
+ */
+  async createCorpus(body: CorpusCreate, options?: RequestOptions): Promise<Corpus> {
+    const path = "/api/corpora";
+    return this.request<Corpus>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async createCorpusRaw(body: CorpusCreate, options?: RequestOptions): Promise<ApiResponse<Corpus>> {
+    const path = "/api/corpora";
+    return this.rawRequest<Corpus>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Read a corpus */
+  async getCorpus(name: string, options?: RequestOptions): Promise<Corpus> {
+    let path = "/api/corpora/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<Corpus>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getCorpusRaw(name: string, options?: RequestOptions): Promise<ApiResponse<Corpus>> {
+    let path = "/api/corpora/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<Corpus>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Delete a corpus; its sources stay */
+  async deleteCorpus(name: string, version?: number, options?: RequestOptions): Promise<void> {
+    let path = "/api/corpora/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (version !== undefined && version !== null) _q.set("version", String(version));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteCorpusRaw(name: string, version?: number, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/corpora/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (version !== undefined && version !== null) _q.set("version", String(version));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Only the owner changes a corpus. Fields left out are kept. A new
+members list keeps the members the owner can no longer see. With
+`version`, the change is refused (409) once someone else changed it.
+ */
+  async updateCorpus(name: string, body: CorpusChange, options?: RequestOptions): Promise<Corpus> {
+    let path = "/api/corpora/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<Corpus>("PATCH", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async updateCorpusRaw(name: string, body: CorpusChange, options?: RequestOptions): Promise<ApiResponse<Corpus>> {
+    let path = "/api/corpora/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<Corpus>("PATCH", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Adding a member the corpus holds changes nothing. */
+  async addCorpusMember(name: string, body: CorpusMemberRef, options?: RequestOptions): Promise<Corpus> {
+    let path = "/api/corpora/{name}/members";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<Corpus>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async addCorpusMemberRaw(name: string, body: CorpusMemberRef, options?: RequestOptions): Promise<ApiResponse<Corpus>> {
+    let path = "/api/corpora/{name}/members";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<Corpus>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Remove a member from a corpus; the source itself stays */
+  async removeCorpusMember(name: string, kind: "source" | "catalog", member: string, options?: RequestOptions): Promise<Corpus> {
+    let path = "/api/corpora/{name}/members/{kind}/{member}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    path = path.replace("{kind}", encodeURIComponent(String(kind)));
+    path = path.replace("{member}", encodeURIComponent(String(member)));
+    return this.request<Corpus>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async removeCorpusMemberRaw(name: string, kind: "source" | "catalog", member: string, options?: RequestOptions): Promise<ApiResponse<Corpus>> {
+    let path = "/api/corpora/{name}/members/{kind}/{member}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    path = path.replace("{kind}", encodeURIComponent(String(kind)));
+    path = path.replace("{member}", encodeURIComponent(String(member)));
+    return this.rawRequest<Corpus>("DELETE", path, {
       ...options,
     });
   }

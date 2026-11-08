@@ -3407,6 +3407,76 @@ export interface KnowledgeVariant {
   excluded: string[];
 }
 
+/** A source or catalog connector a corpus holds, by kind and name. */
+export interface CorpusMemberRef {
+  /** `source` is a knowledge source; `catalog` is a catalog connector (a warehouse). */
+  kind: "source" | "catalog";
+  name: string;
+}
+
+/** A member as the reader sees it. One the reader may not see has
+status `hidden` and no name, except to the corpus's owner, who sees its
+name so they can remove it; one whose source was deleted is `missing`.
+ */
+export interface CorpusMember {
+  kind: "source" | "catalog";
+  name: string;
+  /** files are indexed text; references are searched live at the
+source; records are warehouse tables kept as schema only and
+queried live.
+ */
+  holds?: "files" | "references" | "records";
+  /** manual, drive, notion, s3, gcs, bigquery, snowflake and so on. */
+  provider?: string;
+  /** Indexed documents, or the tables and views a warehouse lists. */
+  items: number;
+  status: "ready" | "syncing" | "failed" | "missing" | "hidden";
+}
+
+export interface CorpusReader {
+  kind: "person" | "project" | "workspace";
+  /** A person's subject or a project's name; none for the workspace. */
+  name?: string;
+}
+
+export interface Corpus {
+  name: string;
+  /** What people call it, such as HR policies. Absent shows the name. */
+  title?: string;
+  description?: string;
+  /** The subject of the person who manages it. */
+  owner: string;
+  readers: CorpusReader[];
+  members: CorpusMember[];
+  /** Whether its graph links to other shared corpora. Isolated by default. */
+  links: "isolated" | "shared";
+  created_at: string;
+  updated_at: string;
+  version: number;
+  /** Set for its owner, who alone changes it. */
+  mine: boolean;
+}
+
+export interface CorpusCreate {
+  name: string;
+  title?: string;
+  description?: string;
+  readers?: CorpusReader[];
+  members?: CorpusMemberRef[];
+  links?: "isolated" | "shared";
+}
+
+export interface CorpusChange {
+  title?: string;
+  description?: string;
+  readers?: CorpusReader[];
+  members?: CorpusMemberRef[];
+  links?: "isolated" | "shared";
+  /** Hands the corpus to another person. */
+  owner?: string;
+  version?: number;
+}
+
 export interface KnowledgeSource {
   lifecycle?: KnowledgeLifecycle;
   content_version?: number;
@@ -5358,6 +5428,10 @@ export interface ListEvalSuitesResponse {
 
 export interface ListEvalRunsResponse {
   runs: EvalRun[];
+}
+
+export interface ListCorporaResponse {
+  corpora: Corpus[];
 }
 
 export interface ListKnowledgeSourcesResponse {

@@ -65,6 +65,7 @@ import (
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/connectionauth"
 	"github.com/urmzd/humagen/pkg/contextflags"
+	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/evals"
@@ -310,10 +311,13 @@ type Platform struct {
 	// CatalogStore is the catalog: what exists in connected systems.
 	CatalogStore *catalog.Store
 	catalog      catalogState
-	SourceLinks  *sourcelinks.Store
-	Evals        *evals.Store
-	Feedback     *feedback.Store
-	Prefs        *prefs.Store
+	// Corpora are named bodies of knowledge, each holding sources and
+	// connectors (docs/architecture/sources.md#corpora).
+	Corpora     *corpora.Store
+	SourceLinks *sourcelinks.Store
+	Evals       *evals.Store
+	Feedback    *feedback.Store
+	Prefs       *prefs.Store
 	// Marks is what each person marked on the conversations they read:
 	// archived for them, when last read, and the tips they dismissed.
 	Marks *marks.Store
