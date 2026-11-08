@@ -184,7 +184,7 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 	if err := threads.CheckText(in.Text); err != nil {
 		return SessionView{}, err
 	}
-	if _, _, _, _, err := p.author(who, in.ActAs); err != nil {
+	if _, _, _, _, err := p.author(who, nil); err != nil {
 		return SessionView{}, err
 	}
 	if in.SourceAlert != "" {
@@ -272,7 +272,7 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 	if existing.Session == nil || existing.Session.SourceAlert != in.SourceAlert {
 		return SessionView{}, fmt.Errorf("%w: this session belongs to another source alert", threads.ErrInvalid)
 	}
-	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: in.Text, Model: in.Model, Effort: in.Effort, ActAs: in.ActAs}); err != nil {
+	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: in.Text, Model: in.Model, Effort: in.Effort}); err != nil {
 		return SessionView{}, err
 	}
 	return p.ReadSession(ctx, who, rec.ID, "", "", false)
@@ -328,13 +328,16 @@ func (p *Platform) PostSession(ctx context.Context, who auth.Principal, id strin
 		if target == "" && (option.Fresh || option.Label != "" || (option.Agent != "" && option.Agent != th.Session.Agent)) {
 			return SessionView{}, fmt.Errorf("%w: child routing must name an @agent in the message", threads.ErrInvalid)
 		}
+		if target != "" && (in.Surface != nil || in.ActAs != nil) {
+			return p.postSurfaceChild(ctx, who, th, in, text, target, option)
+		}
 		if target != "" {
 			posted := in
 			posted.PostOnly = true
 			if _, err := p.PostMessage(ctx, who, id, posted); err != nil {
 				return SessionView{}, err
 			}
-			if _, err := p.StartSession(ctx, who, SessionInput{Text: text, Agent: target, Parent: id, Model: in.Model, Effort: in.Effort, Fresh: option.Fresh, Label: option.Label, ActAs: in.ActAs}); err != nil {
+			if _, err := p.StartSession(ctx, who, SessionInput{Text: in.Text, Agent: target, Parent: id, Model: in.Model, Effort: in.Effort, Fresh: option.Fresh, Label: option.Label}); err != nil {
 				return SessionView{}, err
 			}
 			return p.ReadSession(ctx, who, id, "", "", false)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/urmzd/humagen/internal/wire"
@@ -118,4 +119,28 @@ func (p *Platform) sessionReading(who auth.Principal, in MessageInput) (string, 
 	}
 	text, _ := p.surfaceText(who.Tenant, c, *in.Surface, in.Text)
 	return text, reader, nil
+}
+
+// postSurfaceChild posts a surface's message that names another agent: into
+// the root, starting nothing there, then into that agent's child session
+// under the root (continued, or fresh or labelled as asked), as the person
+// it is posted for, where the agent answers it.
+func (p *Platform) postSurfaceChild(ctx context.Context, who auth.Principal, root threads.Thread, in MessageInput, text, agent string, option SessionMessageOptions) (SessionView, error) {
+	posted := in
+	posted.PostOnly = true
+	if _, err := p.PostMessage(ctx, who, root.ID, posted); err != nil {
+		return SessionView{}, err
+	}
+	rec, err := p.Sessions.Open(ctx, who.Tenant, session.Open{Parent: root.ID, Agent: agent, Label: option.Label, Fresh: option.Fresh, Channel: wire.Channel(who.Tenant)})
+	if err != nil {
+		return SessionView{}, err
+	}
+	child := threads.Thread{ID: rec.ID, Project: root.Project, Channel: root.Channel, Visibility: root.Visibility, CreatedBy: root.CreatedBy, Participants: slices.Clone(root.Participants), Default: agent, Agents: []string{agent}, Title: firstWords(text, threads.MaxTitle), Session: &threads.SessionIdentity{Agent: agent, Parent: root.ID, Label: rec.Key.Label, SourceAlert: root.Session.SourceAlert}}
+	if _, err := p.Threads.Create(who.Tenant, child, p.now()); err != nil && !errors.Is(err, threads.ErrExists) {
+		return SessionView{}, err
+	}
+	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: text, ActAs: in.ActAs}); err != nil {
+		return SessionView{}, err
+	}
+	return p.ReadSession(ctx, who, root.ID, "", "", false)
 }
