@@ -72,7 +72,7 @@ func ProbeNative(ctx context.Context, name, token, team string, provided *http.C
 	}
 	switch name {
 	case "slack":
-		if result.Error == "invalid_auth" || result.Error == "token_revoked" || result.Error == "token_expired" || result.Error == "account_inactive" {
+		if !result.OK && SlackAuthRejected(result.Error) {
 			return errors.Join(ErrReconnect, ErrRejected)
 		}
 		if !result.OK || team == "" || result.Team != team {
@@ -94,11 +94,17 @@ func ProbeNative(ctx context.Context, name, token, team string, provided *http.C
 	return nil
 }
 
+// SlackAuthRejected excludes scope refusals, rate limits and transient errors.
+func SlackAuthRejected(code string) bool {
+	return code == "invalid_auth" || code == "token_revoked" || code == "token_expired" || code == "account_inactive"
+}
+
 func (m *Manager) CheckNative(ctx context.Context, tenant, owner, provider string) error {
 	if m == nil {
 		return ErrUnavailable
 	}
 	base := strings.TrimPrefix(provider, "workspace-")
+	revision := m.Revision(tenant, owner, provider)
 	token, err := m.Token(ctx, tenant, owner, provider)
 	if err != nil {
 		return err
@@ -113,7 +119,7 @@ func (m *Manager) CheckNative(ctx context.Context, tenant, owner, provider strin
 	}
 	err = ProbeNative(ctx, base, token, team, m.client)
 	if errors.Is(err, ErrRejected) {
-		m.ReportRejected(ctx, tenant, owner, provider)
+		m.ReportTokenRejected(ctx, tenant, owner, provider, revision, token)
 	}
 	return err
 }

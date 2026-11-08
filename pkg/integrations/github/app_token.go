@@ -36,6 +36,10 @@ type AppConfig struct {
 	PrivateKey     string
 	HTTPClient     *http.Client
 	Clock          func() time.Time
+	// AuthRevision snapshots host consent before a mint attempt. Only a
+	// confirmed HTTP 401 reports it back; network and permission failures do not.
+	AuthRevision   func(context.Context) string
+	OnAuthRejected func(context.Context, string)
 }
 
 // IsPrivateKeyPEM reports whether s looks like a PEM-encoded private key
@@ -106,6 +110,8 @@ type AppTokenSource struct {
 	key            *rsa.PrivateKey
 	httpClient     *http.Client
 	clock          func() time.Time
+	authRevision   func(context.Context) string
+	onAuthRejected func(context.Context, string)
 
 	mu        sync.Mutex
 	token     string
@@ -149,6 +155,8 @@ func NewAppTokenSource(base string, cfg AppConfig) (*AppTokenSource, error) {
 		key:            key,
 		httpClient:     client,
 		clock:          cfg.Clock,
+		authRevision:   cfg.AuthRevision,
+		onAuthRejected: cfg.OnAuthRejected,
 	}, nil
 }
 
@@ -164,7 +172,13 @@ func (s *AppTokenSource) owns(u *url.URL) bool {
 // cached token is missing or within 2 minutes of expiring.
 func (s *AppTokenSource) Token(ctx context.Context) (string, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	rejected, revision := false, ""
+	defer func() {
+		s.mu.Unlock()
+		if rejected && revision != "" && s.onAuthRejected != nil {
+			s.onAuthRejected(ctx, revision)
+		}
+	}()
 
 	now := time.Now().UTC()
 	if s.clock != nil {
@@ -172,6 +186,9 @@ func (s *AppTokenSource) Token(ctx context.Context) (string, error) {
 	}
 	if s.token != "" && now.Add(2*time.Minute).Before(s.expiresAt) {
 		return s.token, nil
+	}
+	if s.authRevision != nil {
+		revision = s.authRevision(ctx)
 	}
 
 	jwtToken, err := SignAppJWT(s.appID, s.key, now)
@@ -196,6 +213,7 @@ func (s *AppTokenSource) Token(ctx context.Context) (string, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		rejected = resp.StatusCode == http.StatusUnauthorized
 		return "", fmt.Errorf("github: installation token request returned status %d", resp.StatusCode)
 	}
 	var out struct {

@@ -97,7 +97,9 @@ func (p *Platform) CheckClientConnection(ctx context.Context, who auth.Principal
 		return p.healthResult(err), nil
 	}
 	token := secrets.token
+	slackRevision := ""
 	if c.Surface == clients.Slack && c.Credentials.Token.Ref == slackOAuthRef {
+		slackRevision = p.ConnectionAuth.Revision(c.Tenant, connectionauth.WorkspaceOwner, slackProvider(c))
 		source, err := p.slackClientToken(c)
 		if err != nil {
 			return p.healthResult(err), nil
@@ -113,7 +115,7 @@ func (p *Platform) CheckClientConnection(ctx context.Context, who auth.Principal
 			out.Message = "Use a GitHub App installation to verify its identity. A saved token alone does not verify this installation."
 			return out, nil
 		}
-		source, err := github.NewAppTokenSource("", github.AppConfig{AppID: c.Identity.AppID, InstallationID: c.Identity.Installation, PrivateKey: token, HTTPClient: p.cfg.ConnectionCheckHTTP, Clock: p.now})
+		source, err := github.NewAppTokenSource("", p.observeGitHubAppAuth(c, github.AppConfig{AppID: c.Identity.AppID, InstallationID: c.Identity.Installation, PrivateKey: token, HTTPClient: p.cfg.ConnectionCheckHTTP, Clock: p.now}))
 		if err != nil {
 			return p.healthResult(err), nil
 		}
@@ -126,7 +128,7 @@ func (p *Platform) CheckClientConnection(ctx context.Context, who auth.Principal
 	if errors.Is(err, connectionauth.ErrRejected) && c.Surface == clients.Slack && c.Credentials.Token.Ref == slackOAuthRef {
 		provider, _, bindingErr := p.ConnectionAuth.Binding(who.Tenant, connectionauth.WorkspaceOwner, "client:"+id)
 		if bindingErr == nil {
-			p.ConnectionAuth.ReportRejected(ctx, who.Tenant, connectionauth.WorkspaceOwner, provider)
+			p.ConnectionAuth.ReportTokenRejected(ctx, who.Tenant, connectionauth.WorkspaceOwner, provider, slackRevision, token)
 		}
 	}
 	return p.healthResult(err), nil

@@ -142,6 +142,7 @@ func TestNativeGitHubInstallCreatesDisabledPinnedClientAndSurvivesRestart(t *tes
 	if retained.Version != updated.Version || !retained.Enabled {
 		t.Fatal("idempotent callback reset chosen client configuration")
 	}
+	assertGitHubAuthFailureOwnership(t, p, other, who, retained, cfg.PrivateKey)
 	if err := other.DisconnectGitHubInstall(ctx, who); err != nil {
 		t.Fatal(err)
 	}

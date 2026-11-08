@@ -1,10 +1,14 @@
 package platform
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
@@ -101,12 +105,19 @@ func (p *Platform) slackClientToken(c clients.Client) (func(context.Context) (st
 // The installation token is fetched for every API request and sent only to the
 // fixed Slack API origin. Failed refresh and redirects cannot use a stale token.
 type slackOAuthTransport struct {
-	token func(context.Context) (string, error)
+	token    func(context.Context) (string, error)
+	revision func() string
+	rejected func(context.Context, string, string)
+	base     http.RoundTripper
 }
 
 func (t *slackOAuthTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	if r.URL.Scheme != "https" || r.URL.Host != "slack.com" || !strings.HasPrefix(r.URL.Path, "/api/") {
 		return nil, connectionauth.ErrInvalid
+	}
+	revision := ""
+	if t.revision != nil {
+		revision = t.revision()
 	}
 	token, err := t.token(r.Context())
 	if err != nil {
@@ -115,9 +126,49 @@ func (t *slackOAuthTransport) RoundTrip(r *http.Request) (*http.Response, error)
 	copy := r.Clone(r.Context())
 	copy.Header = r.Header.Clone()
 	copy.Header.Set("Authorization", "Bearer "+token)
-	response, err := http.DefaultTransport.RoundTrip(copy)
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	response, err := base.RoundTrip(copy)
 	if err != nil {
 		return nil, connectionauth.ErrReconnect
 	}
+	if t.rejected != nil && slackResponseRejected(response) {
+		t.rejected(r.Context(), revision, token)
+	}
 	return response, nil
+}
+
+func (p *Platform) slackOAuthClient(c clients.Client, token func(context.Context) (string, error)) *http.Client {
+	provider := slackProvider(c)
+	return &http.Client{Timeout: 15 * time.Second, Transport: &slackOAuthTransport{token: token,
+		revision: func() string { return p.ConnectionAuth.Revision(c.Tenant, connectionauth.WorkspaceOwner, provider) },
+		rejected: func(ctx context.Context, revision, used string) {
+			p.ConnectionAuth.ReportTokenRejected(ctx, c.Tenant, connectionauth.WorkspaceOwner, provider, revision, used)
+		},
+	}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+}
+
+// Slack reports credential rejection in HTTP 200 envelopes. Inspect a bounded
+// prefix and restore every byte and the original closer for the API decoder.
+func slackResponseRejected(response *http.Response) bool {
+	if response.StatusCode == http.StatusUnauthorized {
+		return true
+	}
+	if response.StatusCode != http.StatusOK || response.Body == nil {
+		return false
+	}
+	const limit = 64 << 10
+	body := response.Body
+	raw, err := io.ReadAll(io.LimitReader(body, limit+1))
+	response.Body = struct {
+		io.Reader
+		io.Closer
+	}{io.MultiReader(bytes.NewReader(raw), body), body}
+	var result struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	return err == nil && len(raw) <= limit && json.Unmarshal(raw, &result) == nil && !result.OK && connectionauth.SlackAuthRejected(result.Error)
 }

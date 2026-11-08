@@ -457,7 +457,7 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 			if err != nil {
 				return nil, refused(err)
 			}
-			api = slack.NewHTTPAPI("", &http.Client{Transport: &slackOAuthTransport{token: tokenSource}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }})
+			api = slack.NewHTTPAPI("", p.slackOAuthClient(c, tokenSource))
 		}
 		if p.cfg.SlackAPI != nil {
 			api = p.cfg.SlackAPI(secrets.token)
@@ -490,13 +490,13 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 	case clients.GitHub:
 		var api github.API
 		if github.IsPrivateKeyPEM(secrets.token) {
-			appAPI, err := github.NewAppHTTPAPI(github.AppConfig{
+			appAPI, err := github.NewAppHTTPAPI(p.observeGitHubAppAuth(c, github.AppConfig{
 				AppID:          c.Identity.AppID,
 				InstallationID: c.Identity.Installation,
 				PrivateKey:     secrets.token,
 				HTTPClient:     http.DefaultClient,
 				Clock:          p.now,
-			})
+			}))
 			if err != nil {
 				return nil, refused(err)
 			}

@@ -65,10 +65,11 @@ func (m *Manager) authFailure(ctx context.Context, tenant string, tx transaction
 	_ = m.cfg.OnAuthFailure(ctx, tenant, tx.Person, tx.Provider)
 }
 
-// ReportRejected binds a confirmed provider rejection to the original consenting
-// person, including workspace accounts. Missing/disconnected grants do not alert.
-func (m *Manager) ReportRejected(ctx context.Context, tenant, owner, provider string) {
-	if m == nil {
+// ReportTokenRejected records an API rejection only for the exact consent and
+// access token used by that request. Capture Revision before obtaining the token.
+// A late response cannot reject a reconnected or refreshed account.
+func (m *Manager) ReportTokenRejected(ctx context.Context, tenant, owner, provider, revision, token string) {
+	if m == nil || revision == "" || token == "" {
 		return
 	}
 	row, err := m.records.Lookup(tenant, recordKey("account", owner, provider))
@@ -77,6 +78,9 @@ func (m *Manager) ReportRejected(ctx context.Context, tenant, owner, provider st
 	}
 	var held account
 	if m.open(tenant, row.Key, row.Value, &held) != nil || held.Transaction.Owner != owner || held.Transaction.Provider != provider {
+		return
+	}
+	if grantRevision(held.Transaction.Grant) != revision || held.Token.AccessToken != token || held.LeaseUntil.After(m.now()) {
 		return
 	}
 	if !held.Rejected {
@@ -108,7 +112,11 @@ func (m *Manager) Revision(tenant, owner, provider string) string {
 	if m.open(tenant, row.Key, row.Value, &held) != nil || held.Transaction.Owner != owner || held.Transaction.Provider != provider {
 		return ""
 	}
-	sum := sha256.Sum256([]byte(held.Transaction.Grant))
+	return grantRevision(held.Transaction.Grant)
+}
+
+func grantRevision(grant string) string {
+	sum := sha256.Sum256([]byte(grant))
 	return hex.EncodeToString(sum[:])
 }
 

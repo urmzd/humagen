@@ -73,6 +73,8 @@ func (p *Platform) DiscoverPersonTools(ctx context.Context, who auth.Principal, 
 func (p *Platform) discoverPersonToolsFor(ctx context.Context, tenant, person string, server personctx.ToolServer) ([]toolprovider.Tool, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
+	// Snapshot consent before resolving the bearer used by discovery.
+	oauthClient := p.personOAuthHTTPClient(tenant, person, server)
 	var secret mcptools.Secret
 	if server.OAuth != "" {
 		var err error
@@ -88,7 +90,7 @@ func (p *Platform) discoverPersonToolsFor(ctx context.Context, tenant, person st
 			return nil, errors.New("personal tool credential could not be resolved")
 		}
 	}
-	client := &http.Client{Transport: personBearer{secret: secret, next: p.personOAuthHTTPClient(tenant, person, server).Transport}, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{Transport: personBearer{secret: secret, next: oauthClient.Transport}, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "humagen", Version: "1"}, nil).Connect(ctx, &mcp.StreamableClientTransport{Endpoint: server.URL, HTTPClient: client, DisableStandaloneSSE: true, MaxRetries: -1, MaxEventSize: 1 << 20}, nil)
 	if err != nil {
 		return nil, errors.New("personal tool server could not be reached")
