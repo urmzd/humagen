@@ -1364,7 +1364,7 @@ function screens(ids: Ids, call: Call): Screen[] {
       "profile",
       "appearance",
       "workspace",
-      "routing",
+      "providers",
       "models",
       "limits",
       "connections",
