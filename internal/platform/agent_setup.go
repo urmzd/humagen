@@ -268,7 +268,7 @@ func (p *Platform) validateSetupPlan(ctx context.Context, who auth.Principal, pl
 	if err != nil {
 		return AgentSetupPlan{}, err
 	}
-	canonical, err := wire.NewRevisionWith(spec, 1, who.Subject, p.now(), p.agentProviders())
+	canonical, err := wire.NewRevisionWith(spec, 1, who.Subject, p.now(), p.agentProviders(who.Tenant))
 	if err != nil {
 		return AgentSetupPlan{}, err
 	}

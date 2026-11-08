@@ -108,8 +108,9 @@ func (p *Platform) everyoneReads(tenant, own string) func(project string) bool {
 }
 
 // agentsEveryoneReads reports, for a recap of own, whether everyone it
-// reaches may read an agent: a platform agent, or one that lives in a project
-// everyoneReads. A row about configuration names no other. A row about what
+// reaches may read an agent: one with no home, or one homed in a project
+// everyoneReads. The call tool and the router ask it too, for the readers of
+// the place a run is filed in. A row about configuration names no other. A row about what
 // was done (runs, conversations, files, announcements) names who did it,
 // even an agent moved since into a members-only project: it ran where
 // everyone the recap reaches reads.

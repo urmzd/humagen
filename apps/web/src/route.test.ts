@@ -141,6 +141,9 @@ test("an unknown page stays visible as not found while legacy tabs fall back saf
 test("the read audit has a Settings address", () => {
   assert.equal(href({ page: "settings", section: "read-audit" }), "/settings/read-audit");
   assert.deepEqual(at("/settings/read-audit"), { page: "settings", section: "read-audit" });
+  assert.equal(href({ page: "settings", section: "providers" }), "/settings/providers");
+  assert.deepEqual(at("/settings/providers"), { page: "settings", section: "providers" });
+  assert.deepEqual(at("/settings/routing"), { page: "settings", section: "providers" });
 });
 
 test("the tab title names the place, then the product, with unread in front", () => {
@@ -315,6 +318,19 @@ test("project chat addresses migrate to context or filtered sessions", () => {
     href({ page: "project", name: "Launch", tab: "inbox", message: "old" }),
     "/projects/Launch/context",
   );
+});
+test("the Projects page keeps its search, kind and sort in its address, last activity left out", () => {
+  const routes: Route[] = [
+    { page: "projects" },
+    { page: "projects", q: "globex", kind: "partner", sort: "name" },
+    { page: "projects", sort: "created" },
+  ];
+  for (const route of routes) assert.deepEqual(at(href(route)), route, href(route));
+  assert.equal(href({ page: "projects" }), "/projects");
+  assert.equal(href({ page: "projects", sort: "name" }), "/projects?sort=name");
+  // Last activity is the default, so naming it, or an order there is not, reads as the default.
+  assert.equal((at("/projects?sort=activity") as { sort?: string }).sort, undefined);
+  assert.equal((at("/projects?sort=size") as { sort?: string }).sort, undefined);
 });
 test("old hubs resolve to the seven-entry information architecture", () => {
   const links: [string, Route][] = [

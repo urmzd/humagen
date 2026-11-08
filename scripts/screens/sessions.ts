@@ -182,9 +182,11 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       act: async (page) => {
         await page.getByRole("heading", { name: "Deliverables", exact: true }).waitFor();
         await page.getByRole("searchbox", { name: "Search artifacts", exact: true }).waitFor();
+        // The empty state is its title as text, not a heading. Nothing seeds an
+        // artifact here: there is no model to seed one with.
         await page
           .getByRole("list", { name: "Artifacts", exact: true })
-          .or(page.getByRole("heading", { name: "No artifacts yet", exact: true }))
+          .or(page.getByText("No artifacts yet", { exact: true }))
           .waitFor();
       },
     },

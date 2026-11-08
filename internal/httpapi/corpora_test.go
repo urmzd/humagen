@@ -62,6 +62,15 @@ func TestACorpusIsReadByItsReadersAndChangedByItsOwner(t *testing.T) {
 		}
 	}
 
+	// Only agents that exist are granted it.
+	want(t, f, ana, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	if code, _ := status(t, f, ana, "PATCH", "/api/corpora/hr", `{"agents":["nobody"]}`); code != http.StatusBadRequest {
+		t.Fatalf("granted to an agent that does not exist: %d", code)
+	}
+	if granted := want(t, f, ana, "PATCH", "/api/corpora/hr", `{"agents":["helper"]}`, http.StatusOK); fmt.Sprint(granted["agents"]) != "[helper]" {
+		t.Fatalf("granted %v", granted["agents"])
+	}
+
 	// Dee reads it and may write knowledge, but is not its owner.
 	if code, _ := status(t, f, dee, "PATCH", "/api/corpora/hr", `{"links":"shared"}`); code != http.StatusForbidden {
 		t.Fatalf("a reader who is not the owner changed it: %d", code)
@@ -69,6 +78,7 @@ func TestACorpusIsReadByItsReadersAndChangedByItsOwner(t *testing.T) {
 
 	// The owner opens it to the workspace and drops the handbook; the
 	// warehouse she can see stays because she sent it.
+	made = want(t, f, ana, "GET", "/api/corpora/hr", "", http.StatusOK)
 	changed := want(t, f, ana, "PATCH", "/api/corpora/hr", fmt.Sprintf(`{"version":%v,"readers":[{"kind":"workspace"}],"members":[{"kind":"catalog","name":"warehouse"}]}`, made["version"]), http.StatusOK)
 	if len(sliceOf(changed["members"])) != 1 {
 		t.Fatalf("changed %v", changed)

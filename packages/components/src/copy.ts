@@ -2578,31 +2578,6 @@ export const defaultCopy = {
     autoFor: (name: string) => `Approved for ${name}`,
     failed: "Could not change approvals. Try again.",
   },
-  /**
-   * Under the composer: the model and reasoning effort for the next message
-   * alone, from what the agents it may start offer (DES-067).
-   */
-  pick: {
-    label: "Model and effort for this message",
-    agentModel: "Agent's model",
-    agentEffort: "Default effort",
-    models: "Model",
-    efforts: "Effort",
-    hint: "Applies to this message only, for agents that offer it.",
-    effort: (effort: string) => effort.charAt(0).toUpperCase() + effort.slice(1),
-  },
-  agentChoices: {
-    title: "Message choices",
-    hint: "Let people choose a model or reasoning effort for each message. Leave both lists empty to use only this agent's model and default effort.",
-    models: "Allowed models",
-    modelsHint:
-      "One provider/model per line. The agent's own model is always available. Only configured providers can be saved.",
-    efforts: "Allowed reasoning efforts",
-    effortsHint:
-      "One effort per line, such as low, medium or high. Choose efforts supported by the models you offer; unsupported efforts fail before a model call.",
-    modelProblem: "Enter each model as provider/model, with no spaces.",
-    effortProblem: "Enter each effort as a word, such as low or high, with no spaces.",
-  },
   /** Over Home's chat bar: the person's own project, where a conversation in no project is filed (DES-057). */
   noProject: "No project",
   /**
@@ -2726,6 +2701,7 @@ export const defaultCopy = {
       home: "An agent's home changed",
       experts: "Experts changed",
       knowledge: "Knowledge sources changed",
+      context: "Corpora changed",
       skills: "Skills changed",
       channel: "A channel changed",
     } as Record<string, string>,
@@ -3189,18 +3165,29 @@ export const defaultCopy = {
     personalTitle: "Personal",
     companyStart: "Start in the workspace",
     unreadUpdates: "Unread updates",
+    loading: "Loading projects",
     title: "Projects",
-    lede: "Where work belongs. A project's instructions, notes and limits reach everything below it.",
     /** A kind in words, on a row and in a project's meta line. */
     kind: { company: "Company-wide", team: "Team", account: "Account" } as Record<string, string>,
-    /** The Projects page's groups, in the order they are shown. */
+    /** Projects of a kind, as the Projects page's kind filter names them. */
     group: { company: "Company-wide", team: "Teams", account: "Accounts" } as Record<
       string,
       string
     >,
-    anyKind: "All",
+    anyKind: "All kinds",
     kindFilter: "Kind",
     search: "Search projects",
+    /** How the Projects page orders its cards. Pinned ones come first in any order. */
+    sort: {
+      label: "Sort by",
+      activity: "Last activity",
+      name: "Name",
+      created: "Created",
+    },
+    /** A card's last activity: "Updated 2 days ago". */
+    updated: (when: string) => `Updated ${when}`,
+    /** On a card whose project only its members read. */
+    private: "Private",
     details: "Details",
     moreAgents: (count: number) => `+${count} more agents`,
     /** The workspace is the root of the tree. */
@@ -3208,8 +3195,7 @@ export const defaultCopy = {
     workspaceHint: "Holds every project. Its instructions and notes reach every agent.",
     /** Where a row sits when the row above it is not its parent: "in Field › Globex". */
     within: (path: string[]) => `in ${path.join(" › ")}`,
-    empty: "No projects yet.",
-    emptyCreate: "No projects yet. Make one to keep related conversations together.",
+    empty: "No projects yet",
     noMatch: "No project matches.",
     allProjects: "All projects",
     /** Before the agent that answers a project's untagged Slack and GitHub messages, in its meta line: "Lead globex-helper". */
@@ -3241,6 +3227,14 @@ export const defaultCopy = {
       externalId: "Customer id elsewhere (optional)",
       url: "Link to the customer's record (optional)",
       governed: "Only those who govern projects make company-wide ones.",
+      /** Who reads a project made from the Projects page. */
+      access: "Access",
+      accessPrivate: "Private",
+      accessPrivateHint: "You and the people you add",
+      accessWorkspace: "Workspace",
+      accessWorkspaceHint: "Everyone in the workspace",
+      /** A name with nothing in it a project's name can hold. */
+      nameNeeded: "Use at least one letter or digit.",
       /** Under the kind, for an account: who sees it. */
       accountMembersOnly:
         "Accounts are members only: you, the people you add and the owners above see it. Under a project everyone owns, everyone sees it.",
@@ -3396,6 +3390,36 @@ export const defaultCopy = {
     },
   },
   /** Channels and shared threads: where people and agents work together in a project. */
+  /** An item people pointed at: a PR, an issue, a Slack thread, a URL. */
+  items: {
+    kind: (kind: string) =>
+      kind === "github"
+        ? "GitHub"
+        : kind === "slack"
+          ? "Slack"
+          : kind === "url"
+            ? "Web page"
+            : kind === "schedule"
+              ? "Schedule"
+              : "Item",
+    sessions: "Sessions",
+    noSessions: "No sessions yet",
+    /** Places that mentioned the item: a pasted link, a permalink, "#243". */
+    backlinks: "Also discussed in",
+    /** The header's link to the session's item. */
+    open: "Item",
+  },
+  /** Where a session started, as the Sessions list filters it. */
+  places: {
+    label: "Session place",
+    any: "All places",
+    slack: "Slack",
+    github: "GitHub",
+    schedule: "Scheduled",
+    console: "Console",
+    item: (label: string) => `On ${label}`,
+    clearItem: "Clear Item",
+  },
   /** A message's references and the work under it: its origin, what it read and touched, what it delegated. */
   trace: {
     /** The section in Details that collects every message's references. */
@@ -3565,6 +3589,12 @@ export const defaultCopy = {
     inSlack: "Also in Slack",
     /** A message posted in Slack, beside when it was posted. */
     fromSlack: "From Slack",
+    /** Beside a message posted while an agent worked: what it did to that work. */
+    followup: {
+      queued: "Queued until the current answer finishes",
+      replaced: "Replaced the current answer",
+      stopped: (reason: string) => (reason ? `Stopped: ${reason}` : "Stopped"),
+    },
     /** A failed answer to the reader's own message: it is asked again for them from their inbox. */
     retryFromInbox: "Retry it from your inbox, where it answers your message again.",
     /** A failed turn that acted for nobody, such as a machine's from before threads: it is retried for nobody, by anyone who may start runs. */

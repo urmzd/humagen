@@ -229,6 +229,63 @@ test("the reader's messages sit on the right, everyone else's on the left under 
     assert.ok(within(a).getByRole("button", { name: defaultCopy.conversation.copyMessage }));
 });
 
+test("a message posted while an agent worked says quietly what it did to that work", async () => {
+  const run = "r0123456789abcdef0123456789abcdef";
+  const message = (
+    id: string,
+    text: string,
+    followup?: NonNullable<ThreadTurn["message"]>["followup"],
+  ): ThreadTurn => ({
+    kind: "message",
+    message: {
+      id,
+      thread: page.thread.id,
+      by: "dana",
+      name: "Dana Scully",
+      text,
+      mentions: [],
+      via: "console",
+      at,
+      ...(followup ? { followup } : {}),
+    },
+  });
+  room(
+    {},
+    {
+      ...page,
+      turns: [
+        message("m-1", "Waiting", { outcome: "queue", reason: "Adds a detail.", waiting: [run] }),
+        message("m-2", "Ran already", {
+          outcome: "queue",
+          reason: "Adds a detail.",
+          waiting: [run],
+          handled: true,
+        }),
+        message("m-3", "Instead", { outcome: "replace", reason: "A new task.", waiting: [run] }),
+        message("m-4", "stop: wrong repository", {
+          outcome: "stop",
+          reason: "wrong repository",
+          waiting: [run],
+          handled: true,
+        }),
+        message("m-5", "stop", { outcome: "stop", reason: "", waiting: [run], handled: true }),
+        message("m-6", "Plain"),
+      ],
+    },
+  );
+  const all = await screen.findAllByRole("article", { name: /^Message from/ });
+  const notes = all.map((a) => a.querySelector("[data-followup]")?.textContent ?? "");
+  assert.deepEqual(notes, [
+    words.followup.queued,
+    "",
+    words.followup.replaced,
+    words.followup.stopped("wrong repository"),
+    words.followup.stopped(""),
+    "",
+  ]);
+  assert.equal(words.followup.stopped("wrong repository"), "Stopped: wrong repository");
+});
+
 test("message dates reveal the exact local date, time and timezone on hover, focus and tap", async () => {
   room();
   const message = await screen.findByRole("article", { name: "Message from Ana" });

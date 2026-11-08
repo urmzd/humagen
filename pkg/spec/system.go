@@ -465,11 +465,10 @@ type S3 struct {
 
 // Execution bounds what runs.
 type Execution struct {
-	Workspace   string       `json:"workspace,omitempty"`
-	Concurrency int          `json:"concurrency,omitempty"`
-	MaxDepth    int          `json:"max_depth,omitempty"`
-	MaxFanOut   int          `json:"max_fan_out,omitempty"`
-	Builtin     BuiltinModel `json:"builtin,omitzero"`
+	Workspace   string `json:"workspace,omitempty"`
+	Concurrency int    `json:"concurrency,omitempty"`
+	MaxDepth    int    `json:"max_depth,omitempty"`
+	MaxFanOut   int    `json:"max_fan_out,omitempty"`
 }
 
 // Rooms is how a conversation with many readers is read, and how fast runs
@@ -505,12 +504,6 @@ func (r Rooms) Config() (rooms.Config, error) {
 		return c, err
 	}
 	return c.Defaults(), nil
-}
-
-// BuiltinModel is the model the platform's own agents run on.
-type BuiltinModel struct {
-	Provider string `json:"provider,omitempty"`
-	Model    string `json:"model,omitempty"`
 }
 
 var (
