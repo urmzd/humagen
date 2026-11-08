@@ -15,6 +15,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/threads"
+	"github.com/urmzd/orchagent/flow/address"
 	"github.com/urmzd/orchagent/flow/session"
 )
 
@@ -55,8 +56,12 @@ type ExternalRef struct {
 	Client string `json:"client,omitempty"`
 	// Slack: the team, channel and message ts, and the thread's ts for a
 	// reply. Audience is the conversation's kind and members now.
-	Team     string           `json:"team,omitempty"`
-	Channel  string           `json:"channel,omitempty"`
+	Team    string `json:"team,omitempty"`
+	Channel string `json:"channel,omitempty"`
+	// User is the Slack user who wrote the message, which runs it starts
+	// carry as their actor's id. Only a surface built into the server, which
+	// verified the user, sets it; the API ignores it.
+	User     string           `json:"user,omitempty"`
 	TS       string           `json:"ts,omitempty"`
 	ThreadTS string           `json:"thread_ts,omitempty"`
 	Audience *SurfaceAudience `json:"audience,omitempty"`
@@ -250,6 +255,10 @@ type MessagesInput struct {
 	Messages []Message    `json:"messages"`
 	Ref      *ExternalRef `json:"ref,omitempty"`
 	Stream   bool         `json:"stream,omitempty"`
+	// surface is set only by a surface built into the server, which verified
+	// the person and the place (SendSurfaceMessages): its runs answer on the
+	// surface, and its refs' User is believed. No request can set it.
+	surface bool
 }
 
 // MessageView is the message a request created: its id
@@ -294,6 +303,9 @@ func (p *Platform) SendMessages(ctx context.Context, who auth.Principal, in Mess
 	if err := in.check(); err != nil {
 		return MessageView{}, err
 	}
+	if !in.surface {
+		in.dropUnverified()
+	}
 	origin := ExternalRef{Type: RefWeb}
 	if in.Ref != nil {
 		origin = *in.Ref
@@ -309,9 +321,42 @@ func (p *Platform) SendMessages(ctx context.Context, who auth.Principal, in Mess
 	if err != nil {
 		return MessageView{}, err
 	}
+	if in.surface && origin.Type == RefSlack && origin.Client != "" {
+		// Answers go where they were asked: runs started here answer on the
+		// Slack thread, through the origin's client, for the user who wrote.
+		thread := cmpOr(origin.ThreadTS, origin.TS)
+		at := address.Address{Connector: "slack", Workspace: origin.Team, Path: []string{origin.Channel}}.WithParam("thread", thread)
+		ctx = withDelivery(ctx, delivery{channel: at.String(), client: origin.Client, user: origin.User, slackChannel: origin.Channel})
+	}
 	out, err := p.sendUnder(ctx, who, root, origin, in.Messages)
 	out.Created = created
 	return out, err
+}
+
+// SendSurfaceMessages is SendMessages for a surface built into the server
+// (the Slack and GitHub ingress), which verified who wrote the messages and
+// where: runs they start answer on the surface, through the origin's client,
+// and carry the surface user who wrote as their actor's id.
+func (p *Platform) SendSurfaceMessages(ctx context.Context, who auth.Principal, in MessagesInput) (MessageView, error) {
+	in.surface = true
+	return p.SendMessages(ctx, who, in)
+}
+
+// dropUnverified forgets what only a surface built into the server may say:
+// the surface user who wrote a message. Who speaks is the caller.
+func (in *MessagesInput) dropUnverified() {
+	if in.Ref != nil {
+		r := *in.Ref
+		r.User = ""
+		in.Ref = &r
+	}
+	for i := range in.Messages {
+		if in.Messages[i].Ref != nil {
+			r := *in.Messages[i].Ref
+			r.User = ""
+			in.Messages[i].Ref = &r
+		}
+	}
 }
 
 // SendMessagesUnder posts a batch beneath a session (or one of its
@@ -320,6 +365,7 @@ func (p *Platform) SendMessagesUnder(ctx context.Context, who auth.Principal, id
 	if err := in.check(); err != nil {
 		return MessageView{}, err
 	}
+	in.dropUnverified()
 	sessionID, _ := SplitMessageID(id)
 	th, err := p.SessionRecord(ctx, who, sessionID)
 	if err != nil {
@@ -414,6 +460,13 @@ func (p *Platform) rootAt(ctx context.Context, who auth.Principal, place string,
 		return threads.Thread{}, false, err
 	}
 	owner := p.entryFor(ctx, who.Tenant, project, p.Seer(who).Agent)
+	if owner == "" && c != nil && origin.Type == RefSlack {
+		// Without the entry agent, the Slack channel's binding answers first:
+		// the bound channel's own default, then the client's.
+		if bound, ok := p.Projects.BoundTo(who.Tenant, c.ID, origin.Channel); ok && bound.Default != "" && bound.Default != Open {
+			owner = bound.Default
+		}
+	}
 	if owner == "" && c != nil && c.DefaultAgent != Open {
 		owner = c.DefaultAgent
 	}
@@ -522,4 +575,20 @@ func (p *Platform) firstMentioned(ctx context.Context, who auth.Principal, m Mes
 		return agents[0]
 	}
 	return ""
+}
+
+// delivery is where runs a surface's message starts answer: the surface's
+// channel (a Slack thread's address), the client that reaches it, and the
+// surface's user who wrote the message.
+type delivery struct{ channel, client, user, slackChannel string }
+
+type deliveryKey struct{}
+
+func withDelivery(ctx context.Context, d delivery) context.Context {
+	return context.WithValue(ctx, deliveryKey{}, d)
+}
+
+func deliveryOf(ctx context.Context) (delivery, bool) {
+	d, ok := ctx.Value(deliveryKey{}).(delivery)
+	return d, ok
 }

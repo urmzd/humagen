@@ -14,6 +14,7 @@ import (
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/projects"
@@ -553,11 +554,13 @@ func (p *Platform) keepPick(tenant, root, message string, rec pickRecord) {
 	}
 }
 
-// pickMessage is how a root shows what its entry agent picked for a person's
-// message: the reason, then each agent it handed the message to, with that
-// agent's answer, so nobody has to open a child to read it. It is false for
-// a message nothing was picked for.
-func (p *Platform) pickMessage(tenant string, root threads.Thread, m threads.Message) (SessionMessage, bool) {
+// pickMessage is how a root shows who reads it what its entry agent picked
+// for a person's message: the reason, then each agent it handed the message
+// to, with that agent's answer, so nobody has to open a child to read it. A
+// child session the reader may not read is left out, answer and all. It is
+// false for a message nothing was picked for.
+func (p *Platform) pickMessage(who auth.Principal, root threads.Thread, m threads.Message) (SessionMessage, bool) {
+	tenant := who.Tenant
 	it, err := p.picks.Lookup(tenant, pickKey(root.ID, m.ID))
 	if err != nil {
 		return SessionMessage{}, false
@@ -567,9 +570,12 @@ func (p *Platform) pickMessage(tenant string, root threads.Thread, m threads.Mes
 	out := SessionMessage{ID: "pick-" + m.ID, Session: root.ID, Author: SessionAuthor{Kind: "agent", Name: p.cfg.EntryAgent, Display: display}, Status: "done", At: rec.At, Parts: []SessionPart{{Type: "pick", Text: pickLine(rec.Pick)}}}
 	var status []runs.Run
 	for _, c := range rec.Children {
+		if !p.SeesSession(who, c.Session) {
+			continue
+		}
 		part := SessionPart{Type: "call", Session: c.Session, Agent: c.Agent, Status: "working"}
 		if r, err := p.Runs.Get(tenant, c.Run); err == nil {
-			part.Status, part.Text = sessionStatus([]runs.Run{r}), r.Answer
+			part.Status, part.Text = sessionStatus([]runs.Run{r}), p.ShownRunAs(who, r).Answer
 			status = append(status, r)
 		}
 		out.Parts = append(out.Parts, part)

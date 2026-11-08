@@ -6,10 +6,13 @@ import (
 	"testing"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
+	saigetypes "github.com/urmzd/saige/agent/types"
 )
 
 // slackWorkspace is a platform that ships its agents, the entry agent among
@@ -185,5 +188,68 @@ func TestAPlaceNobodyAnswersIsRefusedSayingWhy(t *testing.T) {
 	out, err := p.SendMessages(t.Context(), admin, sayIn("@helper summarise this page", &platform.ExternalRef{Type: platform.RefURL, URL: "https://example.com/page"}))
 	if err != nil || len(out.Posted.Runs) != 1 || out.Posted.Runs[0].Agent != "helper" {
 		t.Fatalf("with a mention, the agent named answers: %+v, %v", out.Posted.Runs, err)
+	}
+}
+
+func TestASlackMessagesRunsAnswerOnItsThreadThroughItsClient(t *testing.T) {
+	p, ana := slackWorkspace(t)
+	ref := slackRef("C01ANY", "1700000000.000100", "")
+	ref.User = "U0ANA"
+	out, err := p.SendSurfaceMessages(t.Context(), ana, sayIn("@ops why did the deploy fail?", ref))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Posted.Runs) != 1 {
+		t.Fatalf("runs = %+v", out.Posted.Runs)
+	}
+	r := out.Posted.Runs[0]
+	tag := r.Tag()
+	if r.Client != "app" || wire.ActorOf(tag).ID != "U0ANA" || wire.ActorOf(tag).User != "ana" || !strings.HasPrefix(tag.Channel, "slack://T0TEAM/C01ANY") || !strings.Contains(tag.Channel, "1700000000.000100") {
+		t.Fatalf("run client %q, actor %+v, channel %q", r.Client, wire.ActorOf(tag), tag.Channel)
+	}
+	// Over the API the same Slack ref answers in the platform, never through
+	// the client: only a surface built into the server delivers.
+	api, err := p.SendMessages(t.Context(), ana, sayIn("@ops and the cost?", &platform.ExternalRef{Type: platform.RefSlack, Client: "app", Team: "T0TEAM", Channel: "C01OTHER", TS: "1700000000.000900", User: "U0SPOOF"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	console, err := p.SendMessages(t.Context(), ana, sayIn("@ops why did the deploy fail?", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range append(api.Posted.Runs, console.Posted.Runs...) {
+		if r.Client != "" || strings.HasPrefix(r.Tag().Channel, "slack://") || wire.ActorOf(r.Tag()).ID == "U0SPOOF" {
+			t.Fatalf("a run started over the API answers on %q through %q as %+v", r.Tag().Channel, r.Client, wire.ActorOf(r.Tag()))
+		}
+	}
+}
+
+func TestASurfaceRunsApprovalIsAddressedOnlyToItsApprovers(t *testing.T) {
+	f := &fakes{}
+	cfg := f.config()
+	cfg.Policy = operators(t, "ada")
+	p := stage(t, &cast{continues: true,
+		says:  map[string][][]saigetypes.Delta{"deployer": {writing("plan.md", "ship"), say("Written.")}},
+		tools: map[string][]string{"deployer": {platform.ToolFileWrite}},
+		shape: map[string]func(*wire.AgentSpec){"deployer": func(s *wire.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} }},
+	}, cfg)
+	in := slackClient("app", "A0APP", team, "deployer")
+	in.Slack.Machine, in.Slack.People = "svc-slack", map[string]string{"U0HUMAN1": "ada", "U0OLU": "olu"}
+	create(t, p, tenant, in)
+	ada := auth.Principal{Subject: "ada", Tenant: tenant, Kind: auth.User}.WithPolicy(cfg.Policy)
+	ref := &platform.ExternalRef{Type: platform.RefSlack, Client: "app", Team: team, Channel: "C01", TS: "1700000000.000100", User: "U0HUMAN1", Audience: &platform.SurfaceAudience{Type: platform.ChannelPublic}}
+	if _, err := p.SendSurfaceMessages(t.Context(), ada, sayIn("@deployer go", ref)); err != nil {
+		t.Fatal(err)
+	}
+	var run runs.Run
+	within(t, "the mention parked on its approval", func() bool {
+		r, ok := runOf(p, tenant, "deployer")
+		run = r
+		return ok && r.Status == runs.Parked && r.Question != nil
+	})
+	m := questionFor(t, p, run.ID)
+	adaOp := auth.Principal{Subject: "ada", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	if sees(p, adaOp, m.ID) || !sees(p, olu, m.ID) {
+		t.Fatalf("the approval is shown to ada %v (want false) and olu %v (want true)", sees(p, adaOp, m.ID), sees(p, olu, m.ID))
 	}
 }
