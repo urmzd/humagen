@@ -151,3 +151,28 @@ test("an existing server's changed list is reviewed before a new snapshot is sav
   assert.equal(saved.version, 2);
   assert.equal(saved.tool_servers?.[0]?.tools?.[0]?.name, "delete_note");
 });
+
+test("tool connections name allowed hosts and refuse unknown hosts before discovery", async () => {
+  net = stubFetch(serve({ run: {}, tool_servers: [], version: 0 }));
+  render(<YourToolServers references={[]} allowedHosts={["allowed.example.com"]} />);
+  await screen.findByText("No tool servers");
+  assert.ok(screen.getByText("Allowed hosts: allowed.example.com."));
+  fireEvent.click(screen.getByRole("button", { name: "Add Tool Server" }));
+  fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: "notes" } });
+  fireEvent.change(screen.getByLabelText(/^Address/), {
+    target: { value: "https://other.example.com/mcp" },
+  });
+  fireEvent.submit(screen.getByRole("form", { name: "New tool server" }));
+  await screen.findByText("This host is not allowed. Allowed hosts: allowed.example.com.");
+  assert.equal(net.seen.filter((r) => r.method === "POST").length, 0);
+});
+
+test("empty tool connection submission explains the missing name", async () => {
+  net = stubFetch(serve({ run: {}, tool_servers: [], version: 0 }));
+  render(<YourToolServers references={[]} />);
+  await screen.findByText("No tool servers");
+  fireEvent.click(screen.getByRole("button", { name: "Add Tool Server" }));
+  fireEvent.submit(screen.getByRole("form", { name: "New tool server" }));
+  await screen.findByText("A name is lower case letters, digits and dashes, at most 63.");
+  assert.equal(net.seen.filter((r) => r.method === "POST").length, 0);
+});

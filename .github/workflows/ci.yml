@@ -156,12 +156,22 @@ jobs:
           ! grep -q '# SKIP' server-test.log
 
   screens:
-    name: Console screens
+    name: Console screens (${{ matrix.color-scheme }})
     # On pull requests that change the console, the shared UI or this check,
     # and on every push to main, so a break that lands is seen when it lands.
     # Release calls this workflow too; it is checked once, by CI itself.
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.workflow == 'CI')
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        color-scheme: [light, dark]
+    env:
+      SCREENS_SUITE: sessions
+      SCREENS_VIEWPORTS: 390x844,480x900,768x1024,1024x768,1280x800
+      SCREENS_COLOR_SCHEME: ${{ matrix.color-scheme }}
+      SCREENS_OUT: .screens/${{ matrix.color-scheme }}
+      SCREENS_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -193,7 +203,7 @@ jobs:
         if: always() && steps.changed.outputs.ui == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: console-screens
+          name: console-screens-${{ matrix.color-scheme }}
           path: .screens/
           include-hidden-files: true
           if-no-files-found: ignore

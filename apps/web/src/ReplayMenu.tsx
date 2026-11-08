@@ -1,6 +1,6 @@
 import { defaultCopy } from "@humagen/components";
 import { PlayIcon } from "@humagen/render-web";
-import { messageActionButton } from "@humagen/web";
+import { messageActionButton, Modal } from "@humagen/web";
 import { useState } from "react";
 import { replayText, replayWith } from "./replay.ts";
 import { AgentMark, Popover } from "./ui.tsx";
@@ -30,11 +30,12 @@ export function ReplayMenu({
   const words = defaultCopy.forking;
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
+  const [selected, setSelected] = useState<string>();
   const order = [...agents.filter((a) => a !== answered), ...agents.filter((a) => a === answered)];
   if (order.length === 0 || !prompt.trim()) return null;
-  const run = (agent: string, close: () => void) => {
+  const run = (agent: string) => {
     if (busy) return;
-    close();
+    setSelected(undefined);
     setBusy(true);
     setProblem("");
     replayWith({ thread, point, text: replayText(agent, prompt) })
@@ -64,7 +65,7 @@ export function ReplayMenu({
                 type="button"
                 role="menuitem"
                 disabled={busy}
-                onClick={() => run(agent, close)}
+                onClick={() => { close(); setSelected(agent); }}
                 className="flex h-11 shrink-0 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50"
               >
                 <AgentMark name={agent} size={18} />
@@ -74,6 +75,9 @@ export function ReplayMenu({
           </div>
         )}
       </Popover>
+      {selected && <Modal title={`Replay with @${selected}`} onClose={() => setSelected(undefined)}>
+        <div className="flex flex-col gap-4 p-5"><h2 className="font-medium">Replay with @{selected}</h2><p className="text-aui-sm">This starts a new session with the selected agent and the original session as context.</p><blockquote className="whitespace-pre-wrap rounded-aui bg-aui-hover p-3 text-aui-sm">{replayText(selected, prompt)}</blockquote><div className="flex justify-end gap-2"><button type="button" className="rounded-aui px-3 py-2" onClick={() => setSelected(undefined)}>Cancel</button><button type="button" className="rounded-aui bg-aui-primary px-3 py-2 text-aui-primary-fg" onClick={() => run(selected)}>Start replay</button></div></div>
+      </Modal>}
       {problem && (
         <span role="alert" className="ml-1 text-aui-2xs text-aui-bad">
           {problem}

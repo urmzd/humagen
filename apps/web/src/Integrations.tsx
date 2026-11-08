@@ -16,6 +16,9 @@ import {
 } from "./api.ts";
 import { AUTO } from "./availability.ts";
 import { ClientConnect } from "./ClientConnect.tsx";
+import { ConnectionHealth } from "./ConnectionHealth.tsx";
+import { ConnectionSection } from "./ConnectionSection.tsx";
+import { InstalledClientSetup } from "./InstalledClientSetup.tsx";
 import { CatalogBrowser } from "./SourceCatalog.tsx";
 import {
   SourceAccessMode,
@@ -44,7 +47,12 @@ export function Integrations({
   onSelect,
   onOpenSource,
   onOpenProject,
+  embedded = false,
+  only,
 }: {
+  embedded?: boolean;
+  /** Shows only messaging apps (workspace installs) or only knowledge sources. */
+  only?: "client" | "source";
   canWrite: boolean;
   canKnowledgeWrite: boolean;
   selected?: string;
@@ -60,7 +68,7 @@ export function Integrations({
   const [local, setLocal] = useState(selected);
   const [localTab, setLocalTab] = useState<IntegrationTab>(tab);
   const [creating, setCreating] = useState(false);
-  const [newKind, setNewKind] = useState(canKnowledgeWrite ? "source" : "client");
+  const [newKind, setNewKind] = useState<string>(only ?? (canKnowledgeWrite ? "source" : "client"));
   const load = useCallback(() => {
     setProblem(null);
     setLoading(true);
@@ -95,16 +103,37 @@ export function Integrations({
       setProblem(sourceProblem(error));
     }
   };
+  const shownClients = only === "source" ? [] : clients;
+  const shownSources = only === "client" ? [] : sources;
+  const mayCreate =
+    only === "client"
+      ? canWrite
+      : only === "source"
+        ? canKnowledgeWrite
+        : canWrite || canKnowledgeWrite;
   return (
-    <Page
-      title={words.integrations}
-      lede={words.integrationsHint}
+    <ConnectionSection
+      embedded={embedded}
+      title={
+        only === "client"
+          ? "Messaging apps"
+          : only === "source"
+            ? "Knowledge sources"
+            : words.integrations
+      }
+      lede={
+        only === "client"
+          ? "Slack and GitHub apps the workspace installs, so agents can answer there."
+          : only === "source"
+            ? "Documents and data indexed for search. Agents cite what they find here; they do not act through it."
+            : words.integrationsHint
+      }
       actions={
         <div className="flex flex-wrap gap-2">
           <button type="button" className={button} onClick={load}>
             {words.refresh}
           </button>
-          {(canWrite || canKnowledgeWrite) && (
+          {mayCreate && (
             <button type="button" className={primary} onClick={() => setCreating(true)}>
               {words.connectSystem}
             </button>
@@ -124,8 +153,10 @@ export function Integrations({
               value={newKind}
               onChange={(e) => setNewKind(e.target.value)}
             >
-              {canKnowledgeWrite && <option value="source">{words.externalSource}</option>}
-              {canWrite && <option value="client">{words.messaging}</option>}
+              {canKnowledgeWrite && only !== "client" && (
+                <option value="source">{words.externalSource}</option>
+              )}
+              {canWrite && only !== "source" && <option value="client">{words.messaging}</option>}
             </select>
           </Label>
           {newKind === "source" && canKnowledgeWrite ? (
@@ -152,7 +183,7 @@ export function Integrations({
         <nav aria-label={words.systems} className="min-w-0">
           <h2 className="mb-2 text-aui-sm font-semibold">{words.systems}</h2>
           <ul className="flex min-w-0 flex-col gap-1">
-            {clients.map((c) => (
+            {shownClients.map((c) => (
               <li key={`client:${c.id}`}>
                 <button
                   type="button"
@@ -165,12 +196,12 @@ export function Integrations({
                     {c.surface === "slack"
                       ? defaultCopy.clientConnect.slack
                       : defaultCopy.clientConnect.github}
-                    : {c.enabled ? words.enabled : words.disabled}
+                    : {c.enabled ? "Enabled, credentials not verified" : words.disabled}
                   </span>
                 </button>
               </li>
             ))}
-            {sources.map((s) => (
+            {shownSources.map((s) => (
               <li key={`source:${s.name}`}>
                 <button
                   type="button"
@@ -191,7 +222,7 @@ export function Integrations({
               </li>
             ))}
           </ul>
-          {!loading && clients.length + sources.length === 0 && (
+          {!loading && shownClients.length + shownSources.length === 0 && (
             <p className="text-aui-sm text-aui-muted">{words.empty}</p>
           )}
         </nav>
@@ -229,7 +260,12 @@ export function Integrations({
                   client && (
                     <section className="flex flex-col gap-3">
                       <Chip>{words.configured}</Chip>
-                      <p className="text-aui-sm text-aui-muted">{words.noLiveTest}</p>
+                      <ConnectionHealth
+                        key={`${client.id}:${client.version}`}
+                        client={client.id}
+                        provider={client.surface}
+                        canCheck={canWrite}
+                      />
                       <dl className="grid grid-cols-1 gap-2 text-aui-sm">
                         <dt className="text-aui-muted">{words.routing}</dt>
                         <dd>
@@ -255,6 +291,13 @@ export function Integrations({
                         >
                           {client.enabled ? words.disabled : words.enabled}
                         </button>
+                      )}
+                      {canWrite && client.managed === "installation" && (
+                        <InstalledClientSetup
+                          key={`${client.id}:${client.version}`}
+                          client={client}
+                          onChanged={load}
+                        />
                       )}
                     </section>
                   )
@@ -355,7 +398,7 @@ export function Integrations({
           )}
         </section>
       </div>
-    </Page>
+    </ConnectionSection>
   );
 }
 
@@ -373,6 +416,19 @@ export function ConnectSource({
   const [provider, setProvider] = useState<string>(initialProvider);
   const [origin, setOrigin] = useState("");
   const [project, setProject] = useState("~");
+  const [projects, setProjects] = useState<Awaited<ReturnType<typeof api.projects>>>([]);
+  useEffect(() => {
+    let active = true;
+    api
+      .projects()
+      .then((items) => {
+        if (active) setProjects(items);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
   const [mode, setMode] = useState<"indexed" | "live" | "hybrid">(
     initialProvider === "gcs" || initialProvider === "s3" ? "indexed" : "live",
   );
@@ -413,7 +469,7 @@ export function ConnectSource({
           required
           disabled={busy}
           maxLength={40}
-          pattern="[a-z0-9][a-z0-9-]{0,39}"
+          pattern={"[a-z0-9][a-z0-9\\-]{0,39}"}
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
@@ -490,7 +546,17 @@ export function ConnectSource({
           )}
         </>
       )}
-      <Label text={words.origin}>
+      <Label
+        text={
+          provider === "notion"
+            ? "Notion page ID"
+            : provider === "drive"
+              ? "Google Drive folder ID"
+              : provider === "gcs"
+                ? "Cloud Storage bucket"
+                : "S3 bucket"
+        }
+      >
         <input
           className={field}
           required
@@ -500,13 +566,21 @@ export function ConnectSource({
         />
       </Label>
       <Label text={words.project} hint={words.scopeHint}>
-        <input
+        <select
           aria-label={words.project}
           className={field}
-          required
           value={project}
           onChange={(e) => setProject(e.target.value)}
-        />
+        >
+          <option value="~">Workspace</option>
+          {projects
+            .filter((p) => p.name !== "")
+            .map((p) => (
+              <option key={p.name} value={p.name}>
+                {p.title || p.name}
+              </option>
+            ))}
+        </select>
       </Label>
       <div className="flex flex-wrap gap-2">
         <button type="submit" className={primary} disabled={busy}>

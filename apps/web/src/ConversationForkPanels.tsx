@@ -60,6 +60,13 @@ export function ConversationForkPanels({
             through={actions.point ?? ""}
             onClose={() => actions.onClose?.()}
             onForked={(next) => actions.onOpenThread?.(next.id)}
+            onBringBack={
+              thread.fork &&
+              actions.onBringBack &&
+              runs.some((run) => run.id === actions.point && run.status === "completed")
+                ? () => actions.onBringBack?.(actions.point!)
+                : undefined
+            }
           />
         )}
       </Presence>

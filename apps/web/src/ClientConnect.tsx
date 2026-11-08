@@ -9,11 +9,13 @@ const words = defaultCopy.clientConnect;
 export function ClientConnect({
   onCreated,
   onCancel,
+  initialSurface = "slack",
 }: {
+  initialSurface?: ClientCreateInput["surface"];
   onCreated: () => void;
   onCancel: () => void;
 }) {
-  const [surface, setSurface] = useState<ClientCreateInput["surface"]>("slack");
+  const [surface, setSurface] = useState<ClientCreateInput["surface"]>(initialSurface);
   const [id, setId] = useState("");
   const [name, setName] = useState("");
   const [team, setTeam] = useState("");
@@ -107,11 +109,10 @@ export function ClientConnect({
       },
     };
     setBusy(true);
-    // Values leave the form as soon as they are submitted, also on a refusal.
-    setToken("");
-    setSigning("");
     try {
       await api.createClient(input);
+      setToken("");
+      setSigning("");
       onCreated();
     } catch (error) {
       setProblem(error instanceof ApiError ? error.message : words.failed);
@@ -123,7 +124,6 @@ export function ClientConnect({
     <form className={`${card} flex flex-col gap-3`} aria-label={words.heading} onSubmit={submit}>
       <h2 className="text-aui-sm font-medium text-aui-fg">{words.heading}</h2>
       <p className="text-aui-sm text-aui-muted">{words.intro}</p>
-      <Problem message={problem} />
       <fieldset disabled={busy} className="flex min-w-0 flex-col gap-3">
         <Label text={words.system}>
           <select
@@ -279,6 +279,10 @@ export function ClientConnect({
           />
         </Label>
         <p className="text-aui-xs text-aui-muted">{words.webhook(surface)}</p>
+        <Problem message={problem} />
+        <p className="text-aui-xs text-aui-muted">
+          Credentials are saved as unverified. Sending a test message confirms delivery.
+        </p>
         <div className="flex flex-wrap gap-2">
           <button type="submit" className={primary}>
             {busy ? words.connecting : words.connect}

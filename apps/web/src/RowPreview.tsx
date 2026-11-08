@@ -29,9 +29,11 @@ export function usePeek() {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
     window.addEventListener("keydown", onKey);
     window.addEventListener("scroll", close, true);
+    document.addEventListener("pointerdown", close, true);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", close, true);
+      document.removeEventListener("pointerdown", close, true);
     };
   }, [at, close]);
   useEffect(() => stop, [stop]);

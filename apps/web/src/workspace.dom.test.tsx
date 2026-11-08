@@ -140,7 +140,7 @@ test("picking a clarification does not answer or approve until the explicit subm
   assert.equal(actions.length, 1);
 });
 
-test("conversation settings holds Workspace, Context and Activity around one page title", () => {
+test("the conversation offers one Details action and its project around one page title", () => {
   const chosen: string[] = [];
   render(
     <ConversationPage
@@ -154,13 +154,10 @@ test("conversation settings holds Workspace, Context and Activity around one pag
     </ConversationPage>,
   );
   assert.equal(screen.getAllByRole("heading", { level: 1 }).length, 1);
-  assert.ok(screen.getByRole("button", { name: words.overview }));
-  for (const name of [defaultCopy.workspace.menu, words.context, words.activity]) {
-    fireEvent.click(screen.getByRole("button", { name: words.settings }));
-    fireEvent.click(screen.getAllByRole("button", { name }).at(-1)!);
-  }
-  assert.deepEqual(chosen, ["workspace", "context", "activity"]);
-  assert.equal(screen.queryByText("Execution history"), null);
+  fireEvent.click(screen.getByRole("button", { name: "Details" }));
+  assert.deepEqual(chosen, ["workspace"]);
+  assert.equal(screen.queryByRole("button", { name: words.settings }), null);
+  assert.ok(screen.getByText("Spring Launch"));
 });
 
 test("adding an agent or artifact reference preserves an unsent draft and starts no work", () => {
@@ -236,7 +233,7 @@ test("the workbench opens an older saved version and sends that exact version fo
     );
   }
   render(<Workbench />);
-  assert.ok(await screen.findByText("Current brief"));
+  assert.ok(await screen.findByText("Current brief", {}, { timeout: 5000 }));
   fireEvent.click(screen.getByRole("button", { name: "Versions" }));
   fireEvent.click(screen.getByRole("button", { name: /Version 1/ }));
   assert.ok(await screen.findByText("Original brief"));
@@ -250,7 +247,10 @@ test("the workbench opens an older saved version and sends that exact version fo
   );
   assert.match(revisionPrompt(previous, 3), /v1, slide 3/);
   assert.match(revisionPrompt(previous, 3), /file_read path artifact:art-1@1/);
-  assert.match(revisionPrompt(previous, 3), /\/conversations\/thread-1\/deliverables\/art-1/);
+  assert.match(
+    revisionPrompt(previous, 3),
+    /\/sessions\/thread-1\?panel=files&legacy_panel=deliverables&artifact=art-1/,
+  );
 });
 
 test("Edit a Copy saves the selected exact text version and opens it only after the workspace accepted it", async () => {

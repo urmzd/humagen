@@ -1,18 +1,25 @@
 import { defaultCopy } from "@humagen/components";
 import {
+  BellIcon,
   BotIcon,
   BrainIcon,
+  CalendarIcon,
+  CheckCircleIcon,
+  ClipboardListIcon,
   GaugeIcon,
+  ListChecksIcon,
   MonitorIcon,
   MoonIcon,
   PaletteIcon,
-  PlugIcon,
+  ProjectIcon,
   ScrollTextIcon,
   ServerIcon,
   ShieldIcon,
+  SlidersIcon,
   SunIcon,
   TrashIcon,
   UserIcon,
+  UsersIcon,
 } from "@humagen/render-web";
 import { Input } from "@humagen/render-web/ui/input";
 import { NativeSelect } from "@humagen/render-web/ui/native-select";
@@ -26,6 +33,7 @@ import {
   useState,
 } from "react";
 import { AccessExplain } from "./AccessExplain.tsx";
+import { doing } from "./access.ts";
 import {
   ApiError,
   api,
@@ -41,9 +49,10 @@ import { accentAttribute } from "./branding.ts";
 import { ClientSettings } from "./Clients.tsx";
 import { DeletionQueue } from "./DeletionQueue.tsx";
 import { chainProblem, ModelChain, POLICY, starterPolicy } from "./ModelChain.tsx";
+import { PersonalPreferences } from "./PersonalPreferences.tsx";
 import type { PrefsRead } from "./preferences.ts";
 import { ReadAudit } from "./ReadAudit.tsx";
-import { href, type SettingsSection } from "./route.ts";
+import { href, type Route, type SettingsSection } from "./route.ts";
 import { SettingsFormRow } from "./SettingsFormRow.tsx";
 import {
   agentOptions,
@@ -65,7 +74,7 @@ export type Section = SettingsSection;
 const accents = (["workspace", "red", "yellow", "green", "purple", "blue", "teal"] as const).map(
   (id) => ({
     id,
-    label: defaultCopy.accentPresets[id],
+    label: id === "workspace" ? "Workspace default" : defaultCopy.accentPresets[id],
     icon: (
       <span
         aria-hidden
@@ -134,6 +143,7 @@ export function Settings({
   onOpenWorkspace,
   onOpenWorkspaceAgents = onOpenWorkspace,
   onConnections,
+  onNavigate,
 }: {
   me: Me;
   /** The saved preferences once prefsRead is "read"; until then, defaults that only draw the page. */
@@ -159,6 +169,7 @@ export function Settings({
   onOpenWorkspaceAgents?: () => void;
   /** Opens Your connections, the tools that act as you. */
   onConnections?: () => void;
+  onNavigate?: (route: Route) => void;
 }) {
   const setSection = onSection;
   const [problem, setProblem] = useState<string | null>(null);
@@ -209,68 +220,24 @@ export function Settings({
   const canReadAudit =
     me.principal.roles?.includes("admin") && me.permissions.includes("projects:govern");
   const canGovern = me.permissions.includes("projects:govern");
-  const sections: { id: Section; label: string; icon: ReactNode }[] = [
-    { id: "profile", label: "Profile", icon: <UserIcon size={16} /> },
-    { id: "appearance", label: "Appearance", icon: <PaletteIcon size={16} /> },
-    { id: "workspace", label: "Workspace", icon: <ServerIcon size={16} /> },
-    { id: "routing", label: "Agent routing", icon: <BotIcon size={16} /> },
-    { id: "models", label: "Models", icon: <BrainIcon size={16} /> },
-    { id: "limits", label: "Limits", icon: <GaugeIcon size={16} /> },
-    { id: "connections", label: "Connections", icon: <PlugIcon size={16} /> },
-    { id: "access", label: "Access", icon: <ShieldIcon size={16} /> },
-    ...(canReadAudit
-      ? [
-          {
-            id: "read-audit" as const,
-            label: defaultCopy.readAudit.label,
-            icon: <ScrollTextIcon size={16} />,
-          },
-        ]
-      : []),
-    ...(canGovern
-      ? [
-          {
-            id: "deletions" as const,
-            label: defaultCopy.deletions.title,
-            icon: <TrashIcon size={16} />,
-          },
-        ]
-      : []),
-  ];
-  // On a phone the sections are a row that scrolls inside itself, kept on the open one.
-  const strip = useStrip<HTMLElement>(section);
 
   return (
     <div className="humagen-fade flex min-h-0 flex-1 flex-col md:flex-row">
-      {/* The rule is drawn on a frame around the sections, so it runs the full width while the row's ends fade. */}
-      {/* On a phone the row scrolls inside the 16px gutter, never under the screen's edge. */}
-      <div className="shrink-0 border-aui-border border-b px-4 md:w-52 md:border-r md:border-b-0 md:px-0">
-        <nav
-          ref={strip}
-          aria-label="Settings sections"
-          className="humagen-strip flex gap-0.5 overflow-x-auto py-2 md:flex-col md:p-3"
-        >
-          {sections.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              aria-current={section === s.id ? "page" : undefined}
-              onClick={() => {
-                setSection(s.id);
-                setProblem(null);
-              }}
-              className="inline-flex min-h-9 pointer-coarse:min-h-11 shrink-0 items-center gap-2.5 whitespace-nowrap rounded-aui px-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
-            >
-              {s.icon}
-              {s.label}
-            </button>
-          ))}
-        </nav>
-      </div>
-
+      <SettingsNav
+        me={me}
+        section={section}
+        onSection={(next) => {
+          setSection(next);
+          setProblem(null);
+        }}
+        onNavigate={onNavigate}
+      />
       <div className="aui-scroll min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-5 pt-8 pb-12 md:px-10">
           <Problem message={problem} />
+          {section === "notifications" && (
+            <PersonalPreferences section="notifications" onSaved={onPrefs} />
+          )}
           {section === "read-audit" &&
             (canReadAudit ? (
               <ReadAudit />
@@ -487,7 +454,7 @@ export function Settings({
                     <span>
                       <span className="block text-aui-sm text-aui-fg">Accent</span>
                       <span className="block text-aui-xs text-aui-muted">
-                        Used for focus, selection and progress.
+                        Workspace default follows the workspace's brand. Other colors stay fixed.
                       </span>
                     </span>
                     <Segmented
@@ -716,7 +683,9 @@ export function Settings({
                   <dt className="text-aui-muted">Signed in as</dt>
                   <dd className="text-aui-fg">{who.email || who.name || who.subject}</dd>
                   <dt className="text-aui-muted">Workspace</dt>
-                  <dd className="text-aui-fg">{who.tenant}</dd>
+                  <dd className="text-aui-fg">
+                    {workspace?.workspace_name || defaultCopy.projects.workspace}
+                  </dd>
                   <dt className="text-aui-muted">Roles</dt>
                   <dd className="text-aui-fg">
                     {who.roles?.length ? who.roles.join(", ") : "None"}
@@ -735,12 +704,16 @@ export function Settings({
                   {me.permissions.map((p) => (
                     <li
                       key={p}
-                      className="rounded-full border border-aui-border px-2 py-0.5 font-aui-mono text-aui-2xs text-aui-muted"
+                      className="rounded-full border border-aui-border px-2 py-0.5 text-aui-xs text-aui-muted"
                     >
-                      {p}
+                      {doing[p] || "Additional workspace access"}
                     </li>
                   ))}
                 </ul>
+                <details className="text-aui-xs text-aui-muted">
+                  <summary className="cursor-pointer">Technical permission names</summary>
+                  <p className="mt-2 break-words font-aui-mono">{me.permissions.join(", ")}</p>
+                </details>
               </section>
               <AccessExplain name={shown} permission={explain} onPermission={onExplain} />
             </>
@@ -990,6 +963,162 @@ function ModelPolicies({
           </span>
         </div>
       )}
+    </div>
+  );
+}
+
+/** The settings sections, and the workspace pages that live inside settings. */
+export function SettingsNav({
+  me,
+  section,
+  active,
+  onSection,
+  onNavigate,
+}: {
+  me: Me;
+  section?: Section;
+  /** The label of a linked page on screen, which then shows as current. */
+  active?: string;
+  onSection: (next: Section) => void;
+  onNavigate?: (route: Route) => void;
+}) {
+  const canReadAudit =
+    me.principal.roles?.includes("admin") && me.permissions.includes("projects:govern");
+  const canGovern = me.permissions.includes("projects:govern");
+  const sections: { id: Section; label: string; icon: ReactNode }[] = [
+    { id: "profile", label: "Profile", icon: <UserIcon size={16} /> },
+    { id: "notifications", label: "Notifications", icon: <BellIcon size={16} /> },
+    { id: "appearance", label: "Appearance", icon: <PaletteIcon size={16} /> },
+    { id: "workspace", label: "Workspace", icon: <ServerIcon size={16} /> },
+    { id: "routing", label: "Agent routing", icon: <BotIcon size={16} /> },
+    { id: "models", label: "Models", icon: <BrainIcon size={16} /> },
+    { id: "limits", label: "Limits", icon: <GaugeIcon size={16} /> },
+    { id: "access", label: "Access", icon: <ShieldIcon size={16} /> },
+    ...(canReadAudit
+      ? [
+          {
+            id: "read-audit" as const,
+            label: defaultCopy.readAudit.label,
+            icon: <ScrollTextIcon size={16} />,
+          },
+        ]
+      : []),
+    ...(canGovern
+      ? [
+          {
+            id: "deletions" as const,
+            label: defaultCopy.deletions.title,
+            icon: <TrashIcon size={16} />,
+          },
+        ]
+      : []),
+  ];
+  // On a phone the sections are a row that scrolls inside itself, kept on the open one.
+  const strip = useStrip<HTMLElement>(active ?? section ?? "");
+  return (
+    <>
+      {/* The rule is drawn on a frame around the sections, so it runs the full width while the row's ends fade. */}
+      {/* On a phone the row scrolls inside the 16px gutter, never under the screen's edge. */}
+      <div className="shrink-0 border-aui-border border-b px-4 md:w-52 md:border-r md:border-b-0 md:px-0">
+        <nav
+          ref={strip}
+          aria-label="Settings sections"
+          className="humagen-strip flex gap-0.5 overflow-x-auto py-2 md:flex-col md:p-3"
+        >
+          {sections.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              aria-current={!active && section === s.id ? "page" : undefined}
+              onClick={() => onSection(s.id)}
+              className="inline-flex min-h-9 pointer-coarse:min-h-11 shrink-0 items-center gap-2.5 whitespace-nowrap rounded-aui px-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
+            >
+              {s.icon}
+              {s.label}
+            </button>
+          ))}
+          {onNavigate &&
+            [
+              {
+                label: "People",
+                icon: <UsersIcon size={16} />,
+                route: { page: "directory", tab: "people" } as Route,
+                permission: "people:read",
+              },
+              {
+                label: "Projects",
+                icon: <ProjectIcon size={16} />,
+                route: { page: "projects" } as Route,
+                permission: "projects:read",
+              },
+              {
+                label: "Schedules",
+                icon: <CalendarIcon size={16} />,
+                route: { page: "automations" } as Route,
+                permission: "schedules:read",
+              },
+              {
+                label: "Usage",
+                icon: <ClipboardListIcon size={16} />,
+                route: { page: "usage" } as Route,
+                permission: "runs:read",
+              },
+              {
+                label: "Health",
+                icon: <CheckCircleIcon size={16} />,
+                route: { page: "monitor", tab: "health" } as Route,
+                permission: "alerts:read",
+              },
+              {
+                label: "Policies",
+                icon: <SlidersIcon size={16} />,
+                route: { page: "action-policy" } as Route,
+                permission: "agents:read",
+              },
+              {
+                label: "Audit",
+                icon: <ListChecksIcon size={16} />,
+                route: { page: "audit" } as Route,
+                permission: "projects:govern",
+              },
+            ]
+              .filter((item) => me.permissions.includes(item.permission))
+              .map((item) => (
+                <a
+                  key={item.label}
+                  href={href(item.route)}
+                  onClick={follow(() => onNavigate(item.route))}
+                  aria-current={active === item.label ? "page" : undefined}
+                  className="inline-flex min-h-9 pointer-coarse:min-h-11 shrink-0 items-center gap-2.5 whitespace-nowrap rounded-aui px-2.5 text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
+                >
+                  {item.icon}
+                  {item.label}
+                </a>
+              ))}
+        </nav>
+      </div>
+    </>
+  );
+}
+
+/** A workspace page shown inside settings, beside the settings sections. */
+export function SettingsFrame({
+  me,
+  active,
+  onSection,
+  onNavigate,
+  children,
+}: {
+  me: Me;
+  active: string;
+  onSection: (next: Section) => void;
+  onNavigate: (route: Route) => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="humagen-fade flex min-h-0 flex-1 flex-col md:flex-row">
+      <SettingsNav me={me} active={active} onSection={onSection} onNavigate={onNavigate} />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
     </div>
   );
 }

@@ -79,7 +79,7 @@ test("overview reads environment, latest context, delegated agents and changes w
   assert.ok(screen.getAllByText("+2 -1").length >= 1);
   assert.ok(screen.getByText("Merged"));
   const link = screen.getByRole("link", { name: /Merged acme\/api #12 Repair lease/ });
-  assert.ok(link.getAttribute("href")?.includes("/conversations/c1/workspace"));
+  assert.ok(link.getAttribute("href")?.includes("/sessions/c1?panel=files"));
   assert.ok(link.getAttribute("href")?.includes("pull%3Aacme%2Fapi%2312"));
   const context = screen.getByRole("heading", { name: "Context" }).closest("details")!;
   fireEvent.click(within(context).getByText("Context"));
@@ -94,7 +94,10 @@ test("overview reads environment, latest context, delegated agents and changes w
   const workspace = within(agents).getByRole("link", {
     name: defaultCopy.conversation.overviewSections.sandbox,
   });
-  assert.ok(workspace.getAttribute("href")?.endsWith("/workspace/sandboxes/r1"));
+  assert.equal(
+    new URL(workspace.getAttribute("href")!, window.location.origin).searchParams.get("sandbox"),
+    "r1",
+  );
   assert.equal(screen.queryByText("r1", { exact: true }), null);
 });
 
@@ -124,7 +127,7 @@ test("overview shows calm empty states and retries failed reads", async () => {
   assert.equal(screen.queryByRole("button", { name: "Create PR" }), null);
 });
 
-test("header panel glyphs are unique and each panel toggles aria-pressed", async () => {
+test("one Details control opens and closes the session inspector", async () => {
   function Header() {
     const [panel, setPanel] = useState<ConversationPanel>();
     return (
@@ -147,17 +150,11 @@ test("header panel glyphs are unique and each panel toggles aria-pressed", async
       <Header />
     </WebSurface>,
   );
-  const labels = ["Overview", defaultCopy.workspace.menu, "Context", "Activity"];
-  const glyphs = [...labels, defaultCopy.threads.share, defaultCopy.conversation.settings].map(
-    (name) => screen.getByRole("button", { name }).querySelector("svg")?.innerHTML,
-  );
-  assert.equal(new Set(glyphs).size, glyphs.length);
-  for (const name of labels) {
-    const button = screen.getByRole("button", { name });
-    assert.equal(button.title, name);
-    fireEvent.click(button);
-    await waitFor(() => assert.equal(button.getAttribute("aria-pressed"), "true"));
-    fireEvent.click(button);
-    assert.equal(button.getAttribute("aria-pressed"), "false");
-  }
+  const button = screen.getByRole("button", { name: "Details" });
+  assert.equal(button.getAttribute("aria-expanded"), "false");
+  fireEvent.click(button);
+  await waitFor(() => assert.equal(button.getAttribute("aria-expanded"), "true"));
+  fireEvent.click(button);
+  assert.equal(button.getAttribute("aria-expanded"), "false");
+  assert.ok(!screen.queryByRole("button", { name: "Overview" }));
 });

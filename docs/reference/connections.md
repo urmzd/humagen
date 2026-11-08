@@ -45,4 +45,17 @@ use and recheck the approved resource and tool list.
 Offline provider and HTTP contract tests cover consent isolation, replay,
 unsafe discovery, managed installation, health, reference redaction and API
 shapes. Live provider registration and consent are not part of that evidence.
-Native response-token rejection hardening is a separate following layer.
+
+Native Slack API calls also recognize confirmed authentication errors inside
+HTTP 200 responses. A rejection is tied to both the token sent and its consent
+revision; a delayed response cannot reject renewed consent or a refreshed token.
+GitHub App token-mint HTTP 401 failures use a private, verified installation
+receipt to find the current consenting person. Reconnecting replaces that
+receipt, and disabling installations invalidates it and pending callbacks.
+Legacy installations without this receipt do not guess a recipient from the
+client creator. Network errors, HTTP 5xx and ordinary HTTP 403 permission refusals
+do not create reconnect alerts. These boundaries are tested with fake providers;
+live provider behavior has not been exercised.
+
+Provider error references: [Slack authentication errors](https://docs.slack.dev/reference/methods/auth.test/)
+and [GitHub installation access tokens](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app).

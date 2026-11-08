@@ -209,11 +209,11 @@ test("the projects page heads Company-wide with the workspace, links every row, 
     `groups in order: ${heads}`,
   );
   assert.ok(
-    out.indexOf('href="/projects/~"') < out.indexOf('href="/projects/Company%20news"'),
+    out.indexOf('href="/projects/~/context"') < out.indexOf('href="/projects/Company%20news/context"'),
     "the workspace comes first",
   );
   assert.match(out, />Acme</);
-  assert.match(out, /href="\/projects\/Globex"/);
+  assert.match(out, /href="\/projects\/Globex\/context"/);
   for (const label of ["Globex Inc", "in Field engineering"]) assert.ok(out.includes(label));
   assert.match(out, />1 running<\/span>/);
   assert.match(out, />4 conversations<\/span>/);
@@ -223,7 +223,7 @@ test("the projects page heads Company-wide with the workspace, links every row, 
   assert.match(page({ projects: [], root: null, canCreate: true }), /No projects yet. Make one/);
   assert.match(page({ q: "zzz" }), /No project matches/);
   // A search leaves the workspace row out: it is the page, not a match.
-  assert.doesNotMatch(page({ q: "globex" }), /href="\/projects\/~"/);
+  assert.doesNotMatch(page({ q: "globex" }), /href="\/projects\/~\/context"/);
   assert.match(page({ projects: null }), /data-testid="skeleton"/);
 });
 
@@ -365,7 +365,7 @@ test("settings no longer edit projects: the workspace section links to Projects 
   assert.doesNotMatch(out, /Add Project/);
   assert.doesNotMatch(out, /No projects yet/);
   assert.match(out, /href="\/projects"[^>]*>Open Projects</);
-  assert.match(out, /href="\/projects\/~"[^>]*>Open the Workspace</);
+  assert.match(out, /href="\/projects\/~\/context"[^>]*>Open the Workspace</);
 });
 
 test("every kind of change in a project's history reads as words", () => {

@@ -192,3 +192,32 @@ describe("reviewSource", () => {
     expect(reviewSource(source)).toEqual({ label });
   });
 });
+
+it("reads v2 provenance and preserves a pinned commit, location and empty replacement", () => {
+  const text = JSON.stringify({
+    format: "humagen.review.v2",
+    title: "Fix boundary",
+    verdict: "comment",
+    scope: { commit: "a".repeat(40) },
+    summary: "One issue",
+    findings: [
+      {
+        id: "boundary",
+        severity: "error",
+        title: "Boundary",
+        suggestion: "Remove the line",
+        prompt: "Recheck",
+        location: { path: "a.ts", line: 4 },
+        change: "",
+        evidence: [{ observation: "Test fails", step: "test-1", session: "s_child" }],
+      },
+    ],
+  });
+  const result = readReview(text);
+  expect(result.kind).toBe("review");
+  if (result.kind !== "review") return;
+  expect(result.report.scope?.commit).toBe("a".repeat(40));
+  expect(result.report.findings[0]?.change).toBe("");
+  expect(result.report.findings[0]?.evidence[0]?.session).toBe("s_child");
+  expect(readReview(text.replace("a".repeat(40), "main")).kind).toBe("text");
+});

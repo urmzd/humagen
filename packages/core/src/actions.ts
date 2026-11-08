@@ -79,6 +79,8 @@ export type FeedbackReason = (typeof FEEDBACK_REASONS)[number];
 
 export interface ActionPayload {
   turnId: string;
+  /** Stable finding id for feedback on a structured review finding. */
+  findingId?: string;
   /** Interrupt id, option id, or rating, depending on the action. */
   target: string;
   /** Present for clarification picks. */

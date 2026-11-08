@@ -1029,13 +1029,13 @@ body {
   mask:
     linear-gradient(#000 0 0) content-box exclude,
     linear-gradient(#000 0 0);
-  opacity: 0.7;
+  opacity: 0.25;
 }
 /* The halo, under the bar's own surface. */
 .humagen-glow-halo {
   z-index: -1;
   filter: blur(18px);
-  opacity: 0.16;
+  opacity: 0;
 }
 .humagen-glow-sweep {
   position: absolute;
@@ -1068,57 +1068,16 @@ body {
   }
 }
 
-/*
- * On a phone the chat bar is one line, a pill: +, the project picker as its
- * folder alone (its name is in its label and its sheet), the field, and
- * Dictate or Send. A conversation's fixed project is left out here; it is in
- * the header's menu. Agents are @mentions in the field.
- */
-@media (max-width: 47.99rem) {
-  .humagen-composer {
-    flex-flow: row wrap;
-    align-items: flex-end;
-    column-gap: 0.125rem;
-    border-radius: 1.625rem;
-    padding: 0.375rem;
-  }
-  .humagen-composer > * { flex-basis: 100%; }
-  .humagen-composer > [role="status"] { order: 5; }
-  .humagen-composer > .humagen-composer-input {
-    order: 2;
-    flex: 1 1 0;
-    min-width: 0;
-    padding: 0.625rem 0.25rem;
-  }
-  .humagen-composer-input::placeholder {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .humagen-composer-bar { display: contents; }
-  .humagen-composer-bar > * { order: 4; flex-basis: 100%; }
-  .humagen-composer-bar > .humagen-composer-plus,
-  .humagen-composer-bar > .humagen-composer-send {
-    flex-basis: auto;
-    align-self: flex-end;
-  }
-  .humagen-composer-bar > .humagen-composer-plus { order: 1; }
-  .humagen-composer-bar > .humagen-composer-send { order: 3; }
-  .humagen-composer-bar > .humagen-composer-chips {
-    order: 1;
-    flex: 0 0 auto;
-    align-self: flex-end;
-  }
-  .humagen-composer-bar > .humagen-composer-chips:has(li:not(.humagen-chip-project)) {
-    order: 4;
-    flex-basis: 100%;
-    padding-inline: 0.25rem;
-  }
-  .humagen-composer .humagen-chip-project:not(.humagen-chip-picker) { display: none; }
-  .humagen-composer .humagen-project-picker button > .truncate { display: none; }
-  .humagen-composer-chips:not(:has(li:not(.humagen-chip-project))):not(:has(.humagen-chip-picker)) {
-    display: none;
-  }
+/* Composer controls adapt to their own column, including beside Details. */
+.humagen-composer-container { container: composer / inline-size; }
+.humagen-composer-bar { flex-wrap: wrap; }
+.humagen-composer-input { min-width: 0; }
+@container composer (max-width: 36rem) {
+  .humagen-composer { border-radius: 1rem; }
+  .humagen-composer-bar { gap: .125rem; }
+  .humagen-composer-chips { flex: 1 1 8rem; }
+  .humagen-composer-send { margin-left: auto; }
+  .humagen-composer-bar .humagen-project-picker { max-width: 11rem; }
 }
 
 /*

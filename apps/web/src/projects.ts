@@ -74,6 +74,20 @@ export function titleOf(
 /** A project the reader can name, for a picker or a sentence that names one by its title. */
 export type ProjectRef = Pick<Project, "name" | "title">;
 
+/** Display context names without exposing generated personal project identifiers. */
+export function readableProject(
+  name: string,
+  projects: readonly ProjectRef[] = [],
+  workspace = words.workspace,
+  personal?: string,
+): string {
+  if (!name || name === "~") return workspace;
+  if (name === personal) return words.personalTitle;
+  const title = projects.find((project) => project.name === name)?.title;
+  if (title && title !== name) return title;
+  return /^personal-[a-z0-9-]+$/i.test(name) ? words.personalTitle : title || name;
+}
+
 /**
  * A project by what people see for it, its title, found by name among the
  * projects the reader has. One they do not have is named as it was given.

@@ -51,7 +51,7 @@ test("workspace search requests indexed content and opens exact message, file an
   const message = await screen.findByRole("link", { name: /^Launch evidence/ });
   assert.equal(query?.get("content"), "true");
   assert.equal(query?.get("limit"), "20");
-  assert.equal(message.getAttribute("href"), "/conversations/th-a?message=m-2");
+  assert.equal(message.getAttribute("href"), "/sessions/th-a?message=m-2");
   assert.equal(
     screen.getByRole("link", { name: /^evidence.docx/ }).getAttribute("href"),
     "/artifacts/art-a",
@@ -71,4 +71,33 @@ test("workspace search reports a refused request without showing stale destinati
   assert.ok(await screen.findByRole("alert"));
   assert.ok(screen.getByText(words.failed));
   assert.equal(screen.queryByRole("link"), null);
+});
+
+test("search names personal and titled project contexts while preserving exact addresses", async () => {
+  net = stubFetch({
+    "GET /api/discovery": () => ({
+      items: [
+        {
+          kind: "conversation",
+          id: "s_private",
+          title: "Draft reply",
+          project: "personal-7e5222",
+          channel: "private-channel-raw",
+        },
+        { kind: "project", id: "launch", title: "Spring launch" },
+        { kind: "project", id: "personal-7e5222", title: "personal-7e5222" },
+      ],
+    }),
+  });
+  render(<QuickSwitcher personalProject="personal-7e5222" onClose={() => {}} onGo={() => {}} />);
+  const privateSession = await screen.findByRole("link", { name: /^Draft reply/ });
+  assert.match(privateSession.textContent ?? "", /Personal/);
+  assert.doesNotMatch(privateSession.textContent ?? "", /personal-7e5222|private-channel-raw/);
+  assert.equal(privateSession.getAttribute("href"), "/sessions/s_private");
+  assert.equal(
+    screen.getByRole("link", { name: /^Spring launch/ }).getAttribute("href"),
+    "/projects/launch/context",
+  );
+  const personal = screen.getByRole("link", { name: /^Personal/ });
+  assert.equal(personal.getAttribute("href"), "/projects/personal-7e5222/context");
 });

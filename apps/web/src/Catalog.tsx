@@ -2,6 +2,7 @@ import { defaultCopy } from "@humagen/components";
 import { type FormEvent, useEffect, useState } from "react";
 import type { CatalogPage } from "../../../packages/client/src/generated/types.ts";
 import { api } from "./api.ts";
+import { href } from "./route.ts";
 import { button, field, Label, Page, Problem } from "./ui.tsx";
 
 /** Metadata discovery and owner actions share the server's visibility rules. */
@@ -127,6 +128,11 @@ export function Catalog({
                 <p className="mt-2 text-sm text-aui-muted">
                   {page.connectors.length ? copy.noMatch : copy.emptyHint}
                 </p>
+                {!page.connectors.length && (
+                  <a className={`${button} mt-3`} href={href({ page: "connections" })}>
+                    Open Connections
+                  </a>
+                )}
               </div>
             )}
             {entries.map((entry) => (

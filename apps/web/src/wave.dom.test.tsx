@@ -85,5 +85,40 @@ test("a turn's preview carries its author's mark: an agent's initials, a person'
   assert.match(person.textContent ?? "", /Can we ship Friday\?/);
   fireEvent.keyDown(wave, { key: "End" });
   const agent = screen.getByRole("tooltip");
-  assert.equal(agent.querySelector(".aui-initials")?.textContent, "LA");
+  assert.equal(agent.querySelector(".aui-initials")?.textContent, "LE");
+});
+
+test("an addressed message scrolls only its transcript once, including a later loaded page", () => {
+  const moves: Element[] = [];
+  const old = HTMLElement.prototype.scrollTo;
+  HTMLElement.prototype.scrollTo = function () {
+    moves.push(this);
+  };
+  try {
+    const view = render(
+      <Thread focus="b" turns={turns.slice(0, 1)}>
+        <article data-turn-id="a" />
+      </Thread>,
+    );
+    assert.equal(moves.length, 0);
+    view.rerender(
+      <Thread focus="b" turns={turns}>
+        <article data-turn-id="a" />
+        <article data-turn-id="b" />
+      </Thread>,
+    );
+    assert.deepEqual(
+      moves.map((element) => element.getAttribute("role")),
+      ["log"],
+    );
+    view.rerender(
+      <Thread focus="b" turns={[...turns]}>
+        <article data-turn-id="a" />
+        <article data-turn-id="b" />
+      </Thread>,
+    );
+    assert.equal(moves.length, 1, "new stream content does not pull the reader back to the anchor");
+  } finally {
+    HTMLElement.prototype.scrollTo = old;
+  }
 });

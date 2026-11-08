@@ -1,14 +1,7 @@
-import { ActionId, FEEDBACK_CLEAR } from "@humagen/core";
+import { ActionId, FEEDBACK_CLEAR, type UiAction } from "@humagen/core";
 import type { FeedbackPromptLabels, PrimitiveProps } from "@humagen/primitives";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ActionContext, buttonClass } from "./buttons";
 import { ThumbsDownIcon, ThumbsUpIcon } from "./icons";
 import { SuppressContext } from "./meta";
@@ -33,6 +26,11 @@ const DEFAULT_PROMPT: FeedbackPromptLabels = {
 
 type Rated = "up" | "down";
 
+/** The surface host supplies durable per-answer and per-finding selections. */
+export const RatingSelectionContext = createContext<
+  ((action: UiAction) => Rated | undefined) | null
+>(null);
+
 /**
  * Thumbs up and down, then an optional comment.
  *
@@ -44,20 +42,28 @@ type Rated = "up" | "down";
  */
 export function Rating({ up, down, selected, labels, prompt }: PrimitiveProps["Feedback"]) {
   const onAction = useContext(ActionContext);
+  const selection = useContext(RatingSelectionContext);
+  const saved = selection ? selection(up) : selected;
   const asks = useContext(FeedbackPromptContext) && prompt !== false;
   const words = { ...DEFAULT_PROMPT, ...(prompt || {}) };
+  const positiveReasons = [
+    { id: "accurate", label: "Accurate" },
+    { id: "clear", label: "Clear" },
+    { id: "useful", label: "Useful" },
+    { id: "other", label: "Other" },
+  ];
   // Shows the click at once; the host's own `selected` takes over when it arrives.
   const [local, setLocal] = useState<Rated | null | undefined>(undefined);
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset when the host's value changes
-  useEffect(() => setLocal(undefined), [selected]);
-  const current = local === undefined ? selected : (local ?? undefined);
+  useEffect(() => setLocal(undefined), [saved]);
+  const current = selection ? saved : local === undefined ? saved : (local ?? undefined);
   const [asking, setAsking] = useState<Rated | null>(null);
   const [thanked, setThanked] = useState(false);
   const [comment, setComment] = useState("");
   const [reason, setReason] = useState<string | null>(null);
   const root = useRef<HTMLFieldSetElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
-  const dialog = useRef<HTMLFormElement>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
   const buttons = useRef<Partial<Record<Rated, HTMLButtonElement | null>>>({});
   const title = useId();
 
@@ -101,39 +107,17 @@ export function Rating({ up, down, selected, labels, prompt }: PrimitiveProps["F
     close(rating);
   };
 
-  // The prompt opens under the thumbs, which can sit far enough right on a
-  // phone that it would end past the viewport; it moves left to fit.
-  useLayoutEffect(() => {
-    const el = dialog.current;
-    if (!asking || !el) return;
-    const margin = 16;
-    el.style.transform = "";
-    const box = el.getBoundingClientRect();
-    const over = box.right - (window.innerWidth - margin);
-    if (over > 0) {
-      el.style.transform = `translateX(${-Math.min(over, Math.max(0, box.left - margin))}px)`;
-    }
-  }, [asking]);
-
   useEffect(() => {
     if (!asking) return;
+    const element = dialog.current;
+    element?.showModal();
     field.current?.focus();
-    // Clicking away is the same as Skip.
-    const away = (e: MouseEvent) => {
-      if (!root.current?.contains(e.target as Node)) {
-        setAsking(null);
-        setThanked(true);
-      }
-    };
-    document.addEventListener("mousedown", away);
-    return () => document.removeEventListener("mousedown", away);
+    return () => element?.close();
   }, [asking]);
 
   const btn = (on: boolean) =>
     `inline-flex size-8 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-aui-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-aui-accent ${
-      on
-        ? "bg-aui-accent-soft text-aui-accent"
-        : "text-aui-muted hover:bg-aui-hover hover:text-aui-fg"
+      on ? "bg-aui-hover text-aui-fg" : "text-aui-muted hover:bg-aui-hover hover:text-aui-fg"
     }`;
   const thumb = (rating: Rated) => {
     const label = rating === "up" ? (labels?.up ?? "Helpful") : (labels?.down ?? "Not helpful");
@@ -164,75 +148,83 @@ export function Rating({ up, down, selected, labels, prompt }: PrimitiveProps["F
     >
       {thumb("up")}
       {thumb("down")}
-      {thanked && !asking && current && (
-        <output className="ml-1.5 text-aui-muted text-aui-xs">{words.thanks}</output>
-      )}
-      {asking && (
-        <form
-          ref={dialog}
-          role="dialog"
-          aria-labelledby={title}
-          data-aui="feedback-prompt"
-          className="absolute top-full left-0 z-20 mt-1 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 rounded-aui border border-aui-border bg-aui-bg p-2.5 shadow-lg"
-          onSubmit={(e) => {
-            e.preventDefault();
-            send(asking);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              e.preventDefault();
-              e.stopPropagation();
+      {thanked && !asking && current && <output className="sr-only">{words.thanks}</output>}
+      {asking &&
+        createPortal(
+          <dialog
+            ref={dialog}
+            aria-modal="true"
+            onCancel={(event) => {
+              event.preventDefault();
               close(asking);
-            }
-          }}
-        >
-          <p id={title} className="font-medium text-aui-sm">
-            {asking === "up" ? words.askUp : words.askDown}
-          </p>
-          {asking === "down" && words.reasons.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {words.reasons.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  aria-pressed={reason === r.id}
-                  onClick={() => setReason(reason === r.id ? null : r.id)}
-                  className="inline-flex h-6 items-center rounded-full border border-aui-border px-2 text-aui-muted text-aui-xs hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:border-aui-accent aria-pressed:bg-aui-accent-soft aria-pressed:text-aui-fg"
-                >
-                  {r.label}
-                </button>
-              ))}
-            </div>
-          )}
-          <textarea
-            ref={field}
-            rows={3}
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
+            }}
+            aria-labelledby={title}
+            data-aui="feedback-prompt"
+            className="m-auto w-96 max-w-[calc(100vw-2rem)] rounded-aui border border-aui-border bg-aui-bg p-4 text-aui-fg shadow-lg backdrop:bg-black/40"
             onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              if (e.key === "Escape") {
                 e.preventDefault();
-                send(asking);
+                e.stopPropagation();
+                close(asking);
               }
             }}
-            aria-label={asking === "up" ? words.askUp : words.askDown}
-            placeholder={words.placeholder}
-            className="w-full resize-none rounded-aui-sm border border-aui-border bg-transparent px-2 py-1 text-aui-sm outline-none placeholder:text-aui-muted focus:border-aui-accent/60"
-          />
-          <div className="flex justify-end gap-1.5">
-            <button
-              type="button"
-              className={`${buttonClass("default")} h-6 px-2`}
-              onClick={() => close(asking)}
+          >
+            <form
+              className="flex flex-col gap-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                send(asking);
+              }}
             >
-              {words.skip}
-            </button>
-            <button type="submit" className={`${buttonClass("primary")} h-6 px-2`}>
-              {words.send}
-            </button>
-          </div>
-        </form>
-      )}
+              <p id={title} className="font-medium text-aui-sm">
+                {asking === "up" ? words.askUp : words.askDown}
+              </p>
+              {words.reasons.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {(asking === "up" ? positiveReasons : words.reasons).map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      aria-pressed={reason === r.id}
+                      onClick={() => setReason(reason === r.id ? null : r.id)}
+                      className="inline-flex h-6 items-center rounded-full border border-aui-border px-2 text-aui-muted text-aui-xs hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:border-aui-accent aria-pressed:bg-aui-accent-soft aria-pressed:text-aui-fg"
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <textarea
+                ref={field}
+                rows={3}
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    send(asking);
+                  }
+                }}
+                aria-label={asking === "up" ? words.askUp : words.askDown}
+                placeholder={words.placeholder}
+                className="w-full resize-none rounded-aui-sm border border-aui-border bg-transparent px-2 py-1 text-aui-sm outline-none placeholder:text-aui-muted focus:border-aui-accent/60"
+              />
+              <div className="flex justify-end gap-1.5">
+                <button
+                  type="button"
+                  className={`${buttonClass("default")} h-6 px-2`}
+                  onClick={() => close(asking)}
+                >
+                  {words.skip}
+                </button>
+                <button type="submit" className={`${buttonClass("primary")} h-6 px-2`}>
+                  {words.send}
+                </button>
+              </div>
+            </form>
+          </dialog>,
+          document.body,
+        )}
     </fieldset>
   );
 }

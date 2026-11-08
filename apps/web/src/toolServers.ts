@@ -49,6 +49,7 @@ export function withToolServer(c: PersonContext, s: PersonToolServer): PersonCon
   const added: PersonToolServer = {
     name: s.name,
     url: s.url.trim(),
+    ...(s.oauth ? { oauth: s.oauth } : {}),
     ...(s.tools ? { tools: s.tools } : {}),
   };
   if (ref) added.credential = ref;
@@ -66,6 +67,7 @@ export function withoutToolServer(c: PersonContext, name: string): PersonContext
 
 /** How a server's credential is reached, in words. A reference is shown; it names no secret. */
 export function credentialWords(s: PersonToolServer): string {
+  if (s.oauth) return "Connected through your account. Credentials stay with Humagen.";
   if (!s.credential) return "Reached without a credential.";
   return `Humagen reads ${s.credential} when a run uses it, and stores only the reference.`;
 }

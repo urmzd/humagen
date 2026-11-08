@@ -275,7 +275,7 @@ test("maps a GitHub client's logins to people and counts them, never sending a b
   assert.ok(await screen.findByText("2 mapped"));
 });
 
-test("a refused connection preserves non-secret details and clears credential values", async () => {
+test("a refused connection preserves all entered details for correction", async () => {
   net = stubFetch({
     "GET /api/clients": () => ({ clients: [], caps: clientsCaps }),
     "POST /api/clients": () =>
@@ -287,8 +287,8 @@ test("a refused connection preserves non-secret details and clears credential va
   changeConnection("Signing secret", "discard-signing");
   submitConnection();
   await screen.findByText("Connection limit reached.");
-  assert.equal(connectField("Token").value, "");
-  assert.equal(connectField("Signing secret").value, "");
+  assert.equal(connectField("Token").value, "discard-token");
+  assert.equal(connectField("Signing secret").value, "discard-signing");
   assert.equal(connectField("Name").value, "Trial connection");
   assert.equal(connectField("Slack team ID").value, "T0123ABC");
 });

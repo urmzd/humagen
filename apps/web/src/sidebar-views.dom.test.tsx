@@ -79,8 +79,9 @@ function Bar({
 }
 
 const view = async (name: "Recents" | "Projects" | RegExp) => {
-  fireEvent.click(await screen.findByRole("button", { name: /^Filter conversations/ }));
-  fireEvent.click(await screen.findByRole("button", { name }));
+  fireEvent.change(await screen.findByRole("combobox", { name: "Sidebar session view" }), {
+    target: { value: typeof name === "string" ? name.toLowerCase() : "archived" },
+  });
 };
 
 test("Recents lists every project newest first, each row one line with one dot", async () => {
@@ -99,6 +100,14 @@ test("Recents lists every project newest first, each row one line with one dot",
     }),
   });
   render(<Bar projects={[{ name: "Launch", title: "Spring launch" } as ProjectView]} />);
+  const start = screen.getByRole("link", { name: "New" });
+  assert.ok(start.closest("[data-sidebar-start]"));
+  assert.equal(
+    start.closest("[data-sidebar-scroll]"),
+    null,
+    "starting work stays outside the scrolling list",
+  );
+  assert.ok(screen.getByRole("combobox", { name: "Sidebar session view" }));
   const list = within(await screen.findByRole("list", { name: "Recents" }));
   const waiting = await list.findByRole("button", { name: /^Waiting on me/ });
   assert.doesNotMatch(waiting.textContent ?? "", /Spring launch/);
@@ -127,7 +136,7 @@ test("Recents lists every project newest first, each row one line with one dot",
   assert.equal(quiet.querySelector("[data-standing]"), null);
 });
 
-test("hover actions pin and archive a row, and Archived brings it back", async () => {
+test("the row menu archives a session, and Archived brings it back", async () => {
   let marks: Marks = { archived: [], read: {}, tips: [] };
   net = stubFetch({
     "GET /api/marks": () => marks,
@@ -139,12 +148,20 @@ test("hover actions pin and archive a row, and Archived brings it back", async (
     "GET /api/threads": () => ({ threads: [task("t1", "Put me away")], next: null }),
   });
   render(<Bar />);
-  fireEvent.click(await screen.findByRole("button", { name: "Archive Put me away" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Manage Put me away" }));
+  await waitFor(() =>
+    assert.equal(
+      screen.getByRole("button", { name: "Manage Put me away" }).getAttribute("aria-expanded"),
+      "true",
+    ),
+  );
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
   await waitFor(() => assert.ok(!screen.queryByRole("button", { name: /^Put me away/ })));
   assert.ok(screen.getByText("Archived for you. Others still see it."));
   await view(/^Archived/);
   const archived = within(await screen.findByRole("list", { name: "Archived" }));
-  fireEvent.click(await archived.findByRole("button", { name: "Unarchive Put me away" }));
+  fireEvent.click(await archived.findByRole("button", { name: "Manage Put me away" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Unarchive" }));
   await waitFor(() => assert.deepEqual(marks.archived, []));
   await view("Recents");
   await screen.findByRole("button", { name: /^Put me away/ });

@@ -7,6 +7,7 @@
 
 /** The format id, the first key of a review report. */
 export const REVIEW_FORMAT = "humagen.github.review.v1";
+export const REVIEW_FORMAT_V2 = "humagen.review.v2";
 
 export type ReviewSeverity = "error" | "warning" | "info";
 
@@ -14,12 +15,17 @@ export type ReviewSeverity = "error" | "warning" | "info";
 export const REVIEW_SEVERITIES: readonly ReviewSeverity[] = ["error", "warning", "info"];
 
 export interface ReviewEvidence {
+  step?: string;
+  session?: string;
   observation: string;
   /** A commit-pinned permalink, a `file:line`, or an exact command. */
   source: string;
 }
 
 export interface ReviewFinding {
+  id?: string;
+  location?: { path: string; line: number; side?: "LEFT" | "RIGHT"; start_line?: number };
+  change?: string;
   severity: ReviewSeverity;
   title: string;
   suggestion: string;
@@ -34,6 +40,9 @@ export interface ReviewLink {
 }
 
 export interface ReviewReport {
+  title?: string;
+  verdict?: "approve" | "comment" | "request_changes";
+  scope?: { commit: string };
   format: string;
   summary: string;
   comments: string[];
@@ -75,21 +84,64 @@ const filled = (v: unknown): v is string => typeof v === "string" && v.trim() !=
 function asReport(value: unknown): ReviewReport | null {
   if (typeof value !== "object" || value === null) return null;
   const r = value as Record<string, unknown>;
-  if (r.format !== REVIEW_FORMAT || !filled(r.summary)) return null;
+  if ((r.format !== REVIEW_FORMAT && r.format !== REVIEW_FORMAT_V2) || !filled(r.summary))
+    return null;
+  const v2 = r.format === REVIEW_FORMAT_V2;
+  if (
+    v2 &&
+    (!filled(r.title) ||
+      r.title.length > 200 ||
+      !["approve", "comment", "request_changes"].includes(String(r.verdict)) ||
+      typeof r.scope !== "object" ||
+      !r.scope ||
+      !/^[a-f0-9]{40}$/i.test(String((r.scope as Record<string, unknown>).commit)))
+  )
+    return null;
+  const ids = new Set<string>();
   if (r.findings !== undefined && !Array.isArray(r.findings)) return null;
   const findings: ReviewFinding[] = [];
+  if (v2 && Array.isArray(r.findings) && r.findings.length > 100) return null;
   for (const f of (r.findings ?? []) as Record<string, unknown>[]) {
     if (typeof f !== "object" || f === null) return null;
     if (!REVIEW_SEVERITIES.includes(f.severity as ReviewSeverity)) return null;
+    if (v2) {
+      if (!filled(f.id) || f.id.length > 100 || ids.has(f.id)) return null;
+      ids.add(f.id);
+    }
     if (!filled(f.title) || !filled(f.suggestion) || !filled(f.prompt)) return null;
     if (!Array.isArray(f.evidence) || f.evidence.length === 0) return null;
     const evidence: ReviewEvidence[] = [];
     for (const e of f.evidence as Record<string, unknown>[]) {
       if (typeof e !== "object" || e === null) return null;
-      if (!filled(e.observation) || !filled(e.source)) return null;
-      evidence.push({ observation: e.observation, source: e.source });
+      if (
+        !filled(e.observation) ||
+        (!filled(e.source) && (!v2 || (!filled(e.step) && !filled(e.session))))
+      )
+        return null;
+      evidence.push({
+        observation: e.observation,
+        source: filled(e.source) ? e.source : "",
+        ...(filled(e.step) ? { step: e.step } : {}),
+        ...(filled(e.session) ? { session: e.session } : {}),
+      });
     }
+    const location = f.location as Record<string, unknown> | undefined;
+    const at =
+      location &&
+      filled(location.path) &&
+      Number.isInteger(location.line) &&
+      Number(location.line) > 0 &&
+      (location.side === undefined || location.side === "LEFT" || location.side === "RIGHT") &&
+      (location.start_line === undefined ||
+        (Number.isInteger(location.start_line) &&
+          Number(location.start_line) > 0 &&
+          Number(location.start_line) <= Number(location.line)))
+        ? (location as unknown as NonNullable<ReviewFinding["location"]>)
+        : undefined;
     findings.push({
+      ...(filled(f.id) ? { id: f.id } : {}),
+      ...(at ? { location: at } : {}),
+      ...(typeof f.change === "string" ? { change: f.change } : {}),
       severity: f.severity as ReviewSeverity,
       title: f.title,
       suggestion: f.suggestion,
@@ -103,7 +155,20 @@ function asReport(value: unknown): ReviewReport | null {
         l && filled(l.title) && filled(l.url) ? [{ title: l.title, url: l.url }] : [],
       )
     : [];
-  return { format: REVIEW_FORMAT, summary: r.summary, comments, findings, related };
+  return {
+    format: String(r.format),
+    summary: r.summary,
+    comments,
+    findings,
+    related,
+    ...(v2
+      ? {
+          title: r.title as string,
+          verdict: r.verdict as ReviewReport["verdict"],
+          scope: r.scope as { commit: string },
+        }
+      : {}),
+  };
 }
 
 /**
@@ -123,9 +188,14 @@ export function readReview(text: string, streaming = false): ReviewRead {
     if (!streaming) return { kind: "text" };
   }
   const compact = body.replace(/\s+/g, "");
-  const named = body.includes(REVIEW_FORMAT);
+  const named = body.includes(REVIEW_FORMAT) || body.includes(REVIEW_FORMAT_V2);
   // Before the format id arrives, only a beginning of the header is held back.
-  if (!named && !HEADER.startsWith(compact)) return { kind: "text" };
+  if (
+    !named &&
+    !HEADER.startsWith(compact) &&
+    !`{"format":"${REVIEW_FORMAT_V2}"`.startsWith(compact)
+  )
+    return { kind: "text" };
   const m = SUMMARY.exec(body);
   if (!m) return { kind: "partial" };
   try {
@@ -216,6 +286,7 @@ export function reviewSource(source: string): ReviewSource {
 
 /** The commit a review read, from its pinned evidence or a full SHA in its words. */
 export function reviewCommit(report: ReviewReport): { sha: string; url?: string } | undefined {
+  if (report.scope) return { sha: report.scope.commit };
   for (const f of report.findings) {
     for (const e of f.evidence) {
       const u = safeUrl(e.source);

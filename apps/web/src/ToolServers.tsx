@@ -20,9 +20,11 @@ import { button, card, Empty, field, Label, Problem, primary, rows } from "./ui.
 export function YourToolServers({
   references,
   canConnect = true,
+  allowedHosts,
 }: {
   /** How references you may give start, from your connections. */
   references: string[];
+  allowedHosts?: string[];
   /** May add or remove a server, which the server holds to runs:write. */
   canConnect?: boolean;
 }) {
@@ -105,9 +107,16 @@ export function YourToolServers({
       </div>
       <p className="text-aui-sm text-aui-muted">
         MCP servers you add for yourself. They go with the runs that act for you, on hosts the
-        workspace allows, and with nobody else's. Only agents granted person_tools can use them.
-        Review each tool list before connecting. A changed list needs approval again.
+        workspace allows, and with nobody else's. Only agents you permit can use them. Review each
+        tool list before connecting. A changed list needs approval again.
       </p>
+      {allowedHosts && (
+        <p className="text-aui-sm text-aui-muted">
+          {allowedHosts.length
+            ? `Allowed hosts: ${allowedHosts.join(", ")}.`
+            : "No tool server hosts are allowed yet. Ask a workspace administrator to allow a service in Limits."}
+        </p>
+      )}
       <Problem message={problem} />
       {reviewing && (
         <section aria-label="Review tool list" className={card}>
@@ -166,6 +175,7 @@ export function YourToolServers({
           <AddToolServer
             context={context}
             references={references}
+            allowedHosts={allowedHosts}
             onCancel={() => setAdding(false)}
             onAdded={(next) => {
               setContext(next);
@@ -184,11 +194,13 @@ export function AddToolServer({
   references,
   onCancel,
   onAdded,
+  allowedHosts,
 }: {
   context: PersonContext;
   references: string[];
   onCancel: () => void;
   onAdded: (next: PersonContext) => void;
+  allowedHosts?: string[];
 }) {
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
@@ -204,6 +216,14 @@ export function AddToolServer({
       setProblem(why);
       return;
     }
+    if (allowedHosts && !allowedHosts.includes(hostOf(server.url))) {
+      setProblem(
+        allowedHosts.length
+          ? `This host is not allowed. Allowed hosts: ${allowedHosts.join(", ")}.`
+          : "No tool server hosts are allowed yet. Ask an administrator to allow this service in Limits.",
+      );
+      return;
+    }
     setBusy(true);
     setProblem(null);
     const action = preview
@@ -216,7 +236,7 @@ export function AddToolServer({
       .finally(() => setBusy(false));
   };
   return (
-    <form aria-label="New tool server" className="flex flex-col gap-3" onSubmit={submit}>
+    <form aria-label="New tool server" className="flex flex-col gap-3" onSubmit={submit} noValidate>
       <Problem message={problem} />
       {preview && <ToolList server={preview} />}
       <fieldset disabled={busy || preview !== null} className="contents">

@@ -167,3 +167,26 @@ writers and apply the same server-side filter before the row cap. Handoff review
 shows its actual typed inputs, accountable person's name and immutable artifact
 revision links after each referenced object passes its own read rule. Reviewing a contract
 cannot remove or replace its original conversation boundary.
+
+## Builder and health console integration
+
+The console creates a canonical `humagen-builder` session for New Agent.
+Management sessions use a per-agent label and reopen an existing personal
+session before posting any new intent. Agent setup aliases remain explicit
+builder entry points. The directory's operational filter is addressable and
+combines authoritative roster failures with read-confined evaluation health.
+
+`AgentHealth` reads `/api/agents/{name}/health` and `/changes`; it shows counts,
+failed checks and retained score summaries, without reconstructing omitted
+candidate prompts or case text. Prompt diffs and tools come only from a recorded
+`preview_agent_change` or `preview_workspace_prompt` tool result. `AgentChangeCards` renders that result as
+presentation data and performs no API calls or approval writes. Applying the
+change still uses the runtime's governed `apply_agent_change` approval.
+
+Console interaction tests exercise session reuse, permission-preserving
+creation, health refresh, state filters, and incomplete/regressed change cards.
+Real native-provider delivery and responsive browser checks are not established
+by those fixture tests. Optional authorized connection and listening summaries
+show current configured routing and status. Omitted metadata is not a claim of
+no connections, and configured placement is not evidence of live delivery or
+proposed installation.
