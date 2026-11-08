@@ -34,6 +34,11 @@ const (
 	RuleUntagged Rule = "untagged"
 	// RuleDefault: the default the thread inherits answers, if there is one.
 	RuleDefault Rule = "default"
+	// RuleFollowup: it was posted while agents worked in the thread, so its
+	// follow-up decides (Message.Followup): what it calls for starts once
+	// that work has ended, or, for a stop, never. The platform applies it
+	// before Decide.
+	RuleFollowup Rule = "followup"
 )
 
 // Where a default is set.

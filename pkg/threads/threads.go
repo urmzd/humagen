@@ -314,8 +314,71 @@ type Mention struct {
 	Refused string `json:"refused,omitempty"`
 }
 
+// What a message posted while an agent worked does to that work
+// (Followup.Outcome).
+const (
+	FollowupQueue   = "queue"
+	FollowupReplace = "replace"
+	FollowupStop    = "stop"
+)
+
+// Follow-up bounds.
+const (
+	// MaxFollowupReason bounds a follow-up's reason, in characters.
+	MaxFollowupReason = 300
+	// MaxFollowupWaiting is how many runs one follow-up waits on.
+	MaxFollowupWaiting = 64
+)
+
+// Followup is what a message posted while agents worked in its thread does
+// to that work: queued until it settles, replacing it, or stopping it
+// (pkg/join decides). A queue or a replace starts what the message calls for
+// once every run it waits on has ended; a stop starts nothing.
+type Followup struct {
+	// Outcome is FollowupQueue, FollowupReplace or FollowupStop.
+	Outcome string `json:"outcome"`
+	// Reason is why, in one line. A stop the poster forced says what they
+	// wrote after "stop", which may be nothing.
+	Reason string `json:"reason"`
+	// Waiting are the runs it waits on: those working when it was posted
+	// that its poster could stop, which a replace or a stop asked to stop.
+	Waiting []string `json:"waiting"`
+	// Handled is set once it was carried out: what it calls for was
+	// started, or it was a stop.
+	Handled bool `json:"handled,omitempty"`
+	// Model and Effort are the poster's choice for the runs it starts.
+	Model  string `json:"model,omitempty"`
+	Effort string `json:"effort,omitempty"`
+}
+
+func (f *Followup) validate() error {
+	chars := utf8.RuneCountInString
+	switch {
+	case f.Outcome != FollowupQueue && f.Outcome != FollowupReplace && f.Outcome != FollowupStop:
+		return fmt.Errorf("%w: a follow-up queues, replaces or stops", ErrInvalid)
+	case chars(f.Reason) > MaxFollowupReason || !oneLine(f.Reason):
+		return fmt.Errorf("%w: a follow-up's reason is one line of at most %d characters", ErrInvalid, MaxFollowupReason)
+	case len(f.Waiting) == 0 || len(f.Waiting) > MaxFollowupWaiting:
+		return fmt.Errorf("%w: a follow-up waits on 1 to %d runs", ErrInvalid, MaxFollowupWaiting)
+	case chars(f.Model) > MaxName || !oneLine(f.Model) || chars(f.Effort) > 32 || !oneLine(f.Effort):
+		return fmt.Errorf("%w: a follow-up's model or effort is too long", ErrInvalid)
+	}
+	for _, r := range f.Waiting {
+		if r == "" || len(r) > MaxName || strings.ContainsFunc(r, func(c rune) bool { return unicode.IsSpace(c) || unicode.IsControl(c) }) {
+			return fmt.Errorf("%w: a follow-up waits on runs by their ids", ErrInvalid)
+		}
+	}
+	return nil
+}
+
+// Pending reports whether a follow-up is still to be carried out.
+func (f *Followup) Pending() bool { return f != nil && !f.Handled }
+
 // Message is a person's turn in a thread. It starts no run of its own.
 type Message struct {
+	// Followup is set on a message posted while agents worked in the
+	// thread: what it does to that work.
+	Followup    *Followup               `json:"followup,omitempty"`
 	Attachments []attachment.Attachment `json:"attachments,omitempty"`
 	// ID is "m-" and the message's place in the thread, from 1.
 	ID     string `json:"id"`
@@ -340,6 +403,11 @@ type Message struct {
 }
 
 func (m Message) clone() Message {
+	if m.Followup != nil {
+		f := *m.Followup
+		f.Waiting = slices.Clone(f.Waiting)
+		m.Followup = &f
+	}
 	m.Attachments = slices.Clone(m.Attachments)
 	m.Mentions = cloneMentions(m.Mentions)
 	if m.Answers != nil {
@@ -534,6 +602,13 @@ func (m Message) validate() error {
 		return fmt.Errorf("%w: an answer names a run and its question", ErrInvalid)
 	case m.Prev != "" && !validRun.MatchString(m.Prev) && !strings.HasPrefix(m.Prev, "m-"):
 		return fmt.Errorf("%w: a message follows a message of its thread or a run", ErrInvalid)
+	case m.Followup != nil && m.Answers != nil:
+		return fmt.Errorf("%w: an answer is no follow-up", ErrInvalid)
+	}
+	if m.Followup != nil {
+		if err := m.Followup.validate(); err != nil {
+			return err
+		}
 	}
 	for _, mention := range m.Mentions {
 		if err := mention.validate(); err != nil {
