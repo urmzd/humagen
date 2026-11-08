@@ -52,7 +52,7 @@ func (a *audiences) put(key string, e audienceEntry) {
 }
 
 // sendSlackMessage sends a Slack message a person the client maps wrote to
-// the root of its thread through the messages API (SendMessages): the entry
+// the root of its thread through the messages API (SendSurfaceMessages): the entry
 // agent owns the root, and a mentioned agent answers in its child session.
 // It reports whether it took the message. A message with files still goes
 // the connector's way, which hears voice notes and reads attachments, until
@@ -88,11 +88,13 @@ func (s *surface) sendSlackMessage(ctx context.Context, st *seat, c clients.Clie
 		thread = ""
 	}
 	ref := &ExternalRef{
-		Type: RefSlack, Client: c.ID, Team: msg.Team, Channel: msg.Channel, TS: msg.TS, ThreadTS: thread,
+		Type: RefSlack, Client: c.ID, Team: msg.Team, Channel: msg.Channel, TS: msg.TS, ThreadTS: thread, User: msg.User,
 		Audience: s.audienceOf(ctx, st, c, msg),
 	}
 	in := MessagesInput{Messages: []Message{{Role: "user", Content: content}}, Ref: ref}
-	if _, err := s.p.SendMessages(ctx, s.p.byPolicy(c.Tenant, person), in); err != nil {
+	// The in-process entry: only a surface built into the server may name
+	// the Slack user and have its answer delivered to the thread.
+	if _, err := s.p.SendSurfaceMessages(ctx, s.p.byPolicy(c.Tenant, person), in); err != nil {
 		s.p.log.Warn("platform: a Slack message was not sent to its session", "tenant", c.Tenant, "client", c.ID, "event", tag.ID, "error", err)
 	}
 	return true
