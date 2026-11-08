@@ -104,39 +104,15 @@ export function MessageFocus({
         .filter(Boolean)
         .join(" · ")
     : "";
+  // The root's title can be a whole first message; the breadcrumb keeps its start.
+  const rootLabel = (() => {
+    const t = thread?.title || words.root;
+    return t.length > 40 ? `${t.slice(0, 40).trimEnd()}…` : t;
+  })();
   return (
     <Page
-      title={self ? words.messageBy(self.agent) : defaultCopy.trace.message}
-      icon={self ? <AgentMark name={self.agent} size={24} /> : undefined}
-      crumbs={
-        self ? (
-          <nav aria-label={words.breadcrumb} className="flex flex-wrap items-center gap-x-1.5">
-            <a
-              href={href({ page: "conversation", id: self.thread })}
-              onClick={(e) => open(e, { page: "conversation", id: self.thread })}
-              className={crumb}
-            >
-              {thread?.title || words.root}
-            </a>
-            {path.map((r) => (
-              <span key={r.id} className="inline-flex items-center gap-x-1.5">
-                <span aria-hidden>›</span>
-                <a
-                  href={href({ page: "message", id: r.id })}
-                  onClick={(e) => open(e, { page: "message", id: r.id })}
-                  className={crumb}
-                >
-                  {r.agent}
-                </a>
-              </span>
-            ))}
-            <span aria-hidden>›</span>
-            <span aria-current="page" className="text-aui-fg">
-              {self.agent}
-            </span>
-          </nav>
-        ) : undefined
-      }
+      layout="conversation"
+      title={self ? words.messageBy(self.agent) : words.message}
       actions={
         <>
           <OriginButton place={place} />
@@ -153,29 +129,68 @@ export function MessageFocus({
         </>
       }
     >
-      <Problem message={problem ?? null} />
-      {!node && !problem ? (
-        <SkeletonRows count={3} />
-      ) : node && self ? (
-        <article
-          className="mx-auto flex w-full max-w-4xl flex-col gap-4"
-          aria-label={words.messageBy(self.agent)}
-        >
-          {self.text && (
-            <p className="humagen-glass max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-fg text-aui-sm">
-              {self.text}
+      <div className="aui-scroll min-h-0 flex-1 overflow-y-auto">
+        <Problem message={problem ?? null} />
+        {!node && !problem ? (
+          <div className="mx-auto w-full max-w-4xl px-4 py-6">
+            <SkeletonRows count={3} />
+          </div>
+        ) : node && self ? (
+          <article
+            className="mx-auto flex w-full max-w-4xl flex-col gap-3 px-4 py-6"
+            aria-label={words.messageBy(self.agent)}
+          >
+            <nav
+              aria-label={words.breadcrumb}
+              className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-aui-muted text-aui-xs"
+            >
+              <a
+                href={href({ page: "conversation", id: self.thread })}
+                onClick={(e) => open(e, { page: "conversation", id: self.thread })}
+                title={thread?.title}
+                className={crumb}
+              >
+                {rootLabel}
+              </a>
+              {path.map((r) => (
+                <span key={r.id} className="inline-flex items-center gap-x-1.5">
+                  <span aria-hidden>›</span>
+                  <a
+                    href={href({ page: "message", id: r.id })}
+                    onClick={(e) => open(e, { page: "message", id: r.id })}
+                    className={crumb}
+                  >
+                    {r.agent}
+                  </a>
+                </span>
+              ))}
+              <span aria-hidden>›</span>
+              <span aria-current="page" className="text-aui-fg">
+                {self.agent}
+              </span>
+            </nav>
+            {self.text && (
+              <p className="humagen-glass max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-fg text-aui-sm">
+                {self.text}
+              </p>
+            )}
+            <p className="flex items-center gap-2 font-medium text-aui-fg text-aui-sm">
+              <AgentMark name={self.agent} size={24} />
+              {self.agent}
             </p>
-          )}
-          {node.pick && <p className="text-aui-2xs text-aui-muted">{words.picked(node.pick)}</p>}
-          {node.answer ? (
-            <p className="whitespace-pre-wrap break-words text-aui-fg text-aui-sm">{node.answer}</p>
-          ) : (
-            node.error && <p className="text-aui-bad text-aui-sm">{node.error}</p>
-          )}
-          <Chips chips={chipsOf(node)} />
-          <SubItems nodes={node.children} />
-        </article>
-      ) : null}
+            {node.pick && <p className="text-aui-2xs text-aui-muted">{words.picked(node.pick)}</p>}
+            {node.answer ? (
+              <p className="whitespace-pre-wrap break-words text-aui-fg text-aui-sm">
+                {node.answer}
+              </p>
+            ) : (
+              node.error && <p className="text-aui-bad text-aui-sm">{node.error}</p>
+            )}
+            <Chips chips={chipsOf(node)} />
+            <SubItems nodes={node.children} />
+          </article>
+        ) : null}
+      </div>
     </Page>
   );
 }

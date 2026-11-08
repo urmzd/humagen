@@ -279,7 +279,7 @@ export function AnswerRefs({
   );
   const chips = node ? chipsOf(node) : fallback;
   return (
-    <div ref={at} className="flex flex-col gap-1 pl-11" data-testid="answer-refs">
+    <div ref={at} className="flex flex-col gap-1" data-testid="answer-refs">
       <Chips chips={chips} />
       {node && <SubItems nodes={node.children} />}
     </div>
