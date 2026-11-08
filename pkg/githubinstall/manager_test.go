@@ -174,12 +174,14 @@ func TestInstallationVerificationSurvivesRestartWithoutPersistingCredentials(t *
 		t.Fatalf("idempotent completion=%+v err=%v exchanges=%d", again, err, f.exchanges.Load())
 	}
 	records, err := store.Load(context.Background(), namespace)
-	if err != nil || len(records) != 1 {
-		t.Fatalf("pending records=%d err=%v", len(records), err)
+	if err != nil || len(records) != 3 {
+		t.Fatalf("pending, epoch and owner records=%d err=%v", len(records), err)
 	}
-	for _, sensitive := range []string{nonce, "one-use-code", "ghu_user_secret", "ghr_refresh_secret", f.cfg.ClientSecret, f.cfg.PrivateKey, f.cfg.SigningSecret} {
-		if strings.Contains(string(records[0].Value), sensitive) {
-			t.Fatal("stored installation contains authorization material")
+	for _, record := range records {
+		for _, sensitive := range []string{nonce, "one-use-code", "ghu_user_secret", "ghr_refresh_secret", f.cfg.ClientSecret, f.cfg.PrivateKey, f.cfg.SigningSecret} {
+			if strings.Contains(string(record.Value), sensitive) {
+				t.Fatal("stored installation contains authorization material")
+			}
 		}
 	}
 }

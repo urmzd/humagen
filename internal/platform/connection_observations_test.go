@@ -82,7 +82,13 @@ func TestConnectionHTTP401RequiresReconnectButOutageDoesNot(t *testing.T) {
 		who := auth.Principal{Tenant: "tenant", Subject: "alice", Kind: auth.User}
 		authorizeNative(t, p, who, "drive", "person")
 		client := p.personOAuthHTTPClient(who.Tenant, who.Subject, personctx.ToolServer{OAuth: "drive"})
-		response, err := client.Get("https://service.example/mcp")
+		token, err := p.ConnectionAuth.Token(t.Context(), who.Tenant, who.Subject, "drive")
+		if err != nil {
+			t.Fatal(err)
+		}
+		request, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://service.example/mcp", nil)
+		request.Header.Set("Authorization", "Bearer "+token)
+		response, err := client.Do(request)
 		if err != nil {
 			t.Fatal(err)
 		}
