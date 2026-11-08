@@ -307,7 +307,7 @@ function CorpusForm({
   const name = corpus?.name ?? (nameFromTitle(title) || spare);
   const [description, setDescription] = useState(corpus?.description ?? "");
   const [readers, setReaders] = useState(draftOf(corpus));
-  const [label, setLabel] = useState<CorpusLabel>(corpus?.label ?? "internal");
+  const [label, setLabel] = useState<CorpusLabel>(corpus?.label || "internal");
   const [purpose, setPurpose] = useState(corpus?.purpose ?? "");
   const [graphSearch, setGraphSearch] = useState(corpus?.graph_search ?? false);
   const [busy, setBusy] = useState(false);
@@ -553,19 +553,38 @@ export function KnowledgePage({
               <li
                 key={c.name}
                 aria-label={title}
-                className={`${card} flex h-full min-w-0 flex-col gap-2`}
+                className={`${card} relative flex h-full min-w-0 flex-col gap-2`}
               >
                 <div className="flex min-w-0 items-center gap-2">
-                  <h2 className="min-w-0 flex-1 truncate font-medium text-aui-fg">{title}</h2>
-                  <Pill>{words.labels[c.label ?? "internal"]}</Pill>
+                  <h2 className="min-w-0 flex-1 truncate font-medium text-aui-fg">
+                    {/* The whole card opens the corpus: the link covers it, and ⋯ sits above it. */}
+                    <a
+                      href={href({ page: "corpus", name: c.name, tab: "sources" })}
+                      onClick={follow(() => onOpen(c.name))}
+                      className="after:absolute after:inset-0 after:rounded-aui-lg hover:underline focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-aui-accent"
+                    >
+                      {title}
+                    </a>
+                  </h2>
+                  {/* A corpus made before labels has none: it reads as internal, the default. */}
+                  <Pill>{words.labels[c.label || "internal"]}</Pill>
                   {owner && (
-                    <More
-                      label={words.more(title)}
-                      items={[
-                        { label: words.edit, run: () => setSheet({ kind: "edit", name: c.name }) },
-                        { label: words.delete, destructive: true, run: () => setDeleting(c.name) },
-                      ]}
-                    />
+                    <div className="relative z-[1]">
+                      <More
+                        label={words.more(title)}
+                        items={[
+                          {
+                            label: words.edit,
+                            run: () => setSheet({ kind: "edit", name: c.name }),
+                          },
+                          {
+                            label: words.delete,
+                            destructive: true,
+                            run: () => setDeleting(c.name),
+                          },
+                        ]}
+                      />
+                    </div>
                   )}
                 </div>
                 {c.description && (
@@ -581,25 +600,16 @@ export function KnowledgePage({
                     {words.items(itemsOf(c))}
                   </span>
                 </div>
-                <div className="mt-auto pt-1">
-                  {deleting === c.name ? (
+                {deleting === c.name && (
+                  <div className="relative z-[1] mt-auto pt-1">
                     <Confirm
                       question={words.deleteAsk(title)}
                       action={words.deleteAction}
                       onKeep={() => setDeleting(null)}
                       onConfirm={() => void remove(c)}
                     />
-                  ) : (
-                    <a
-                      href={href({ page: "corpus", name: c.name, tab: "sources" })}
-                      onClick={follow(() => onOpen(c.name))}
-                      className={button}
-                      aria-label={`${words.open} ${title}`}
-                    >
-                      {words.open}
-                    </a>
-                  )}
-                </div>
+                  </div>
+                )}
               </li>
             );
           })}

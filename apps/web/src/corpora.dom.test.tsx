@@ -124,9 +124,7 @@ test("Knowledge lists corpora as cards by title: providers, items, one pill, Ope
   assert.ok(within(hr).getByText(words.items(19)));
   assert.ok(within(hr).getByText(words.labels.internal));
   assert.equal(
-    within(hr)
-      .getByRole("link", { name: `${words.open} HR policies` })
-      .getAttribute("href"),
+    within(hr).getByRole("link", { name: "HR policies" }).getAttribute("href"),
     "/knowledge/hr-policies",
   );
   assert.ok(within(hr).getByRole("button", { name: words.more("HR policies") }));
@@ -1232,4 +1230,46 @@ test("a knowledge alert reads as one and opens where its decision is made, with 
     { page: "corpus", name: "hr-policies", tab: "types" },
     { page: "corpus", name: "hr-policies", tab: "sources" },
   ]);
+});
+
+test("the whole card opens its corpus, with no Open button, and its menu stays apart", async () => {
+  const opened: string[] = [];
+  net = stubFetch({ "GET /api/corpora": () => ({ corpora: [corpus()] }) });
+  render(<KnowledgePage sources={[]} canWrite onOpen={(name) => opened.push(name)} />);
+  const card = await screen.findByRole("listitem", { name: "HR policies" });
+  assert.equal(within(card).queryByRole("button", { name: new RegExp(`^${words.open}`) }), null);
+  assert.equal(within(card).getAllByRole("link").length, 1);
+  const link = within(card).getByRole("link", { name: "HR policies" });
+  link.focus();
+  assert.equal(document.activeElement, link);
+  fireEvent.click(link);
+  assert.deepEqual(opened, ["hr-policies"]);
+  // A modified click is the browser's: a new tab, not a move in place.
+  fireEvent.click(link, { metaKey: true });
+  assert.deepEqual(opened, ["hr-policies"]);
+  await openMenu("HR policies");
+  await choose(words.edit);
+  await screen.findByRole("form", { name: words.form.editTitle("HR policies") });
+  assert.deepEqual(opened, ["hr-policies"]);
+});
+
+test("a corpus made before labels reads as internal, never an empty pill", async () => {
+  net = stubFetch({
+    "GET /api/corpora": () => ({ corpora: [corpus({ label: "" as Corpus["label"] })] }),
+    ...directory,
+  });
+  render(<KnowledgePage sources={[]} canWrite onOpen={() => {}} />);
+  const card = await screen.findByRole("listitem", { name: "HR policies" });
+  assert.ok(within(card).getByText(words.labels.internal));
+  await openMenu("HR policies");
+  await choose(words.edit);
+  const form = await screen.findByRole("form", { name: words.form.editTitle("HR policies") });
+  assert.equal(
+    (
+      within(form).getByRole("combobox", {
+        name: new RegExp(`^${words.labels.title}`),
+      }) as HTMLSelectElement
+    ).value,
+    "internal",
+  );
 });
