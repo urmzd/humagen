@@ -44,6 +44,7 @@ import { ForkContext } from "./ForkConversation.tsx";
 import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { OLD_SYSTEM_SENDER } from "./legacy.ts";
+import { AnswerRefs, OriginRef, ResponseActivity } from "./MessageRefs.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { PersonMark } from "./PersonMark.tsx";
@@ -58,6 +59,7 @@ import { type ConversationPanel, type ConversationView, href } from "./route.ts"
 import { SessionActions } from "./SessionActions.tsx";
 import { alertAnchor, SessionAlerts, useSessionAlerts } from "./SessionAlerts.tsx";
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
+import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./SessionPlace.tsx";
 import { ShareDialog } from "./Share.tsx";
 import { useThreadSelection } from "./selection.ts";
 import { mergeTurns } from "./turns.ts";
@@ -329,11 +331,17 @@ function MessageView({
   focused,
   mine = false,
   continued = false,
+  fromWeb = false,
+  refs,
   onReply,
   actions,
 }: {
   m: ThreadMessage;
   focused: boolean;
+  /** Its references, as chips under it: the root message's origin. */
+  refs?: ReactNode;
+  /** Posted from the console in a session that started in Slack or GitHub, so the record says it did not come from there. */
+  fromWeb?: boolean;
   /** Posted by the reader. */
   mine?: boolean;
   /** Follows a message from the same person. */
@@ -346,6 +354,7 @@ function MessageView({
   const notes = (
     <>
       {m.surface_id && <span>{words.fromSlack}</span>}
+      {fromWeb && <span>{defaultCopy.trace.postedFromWeb}</span>}
       {m.answers && <span>{words.answered}</span>}
       {followup && <span data-followup={m.followup?.outcome}>{followup}</span>}
     </>
@@ -377,6 +386,7 @@ function MessageView({
           <MessageTime at={m.at} />
         </p>
         <div className="flex justify-end">{row}</div>
+        {refs && <div className="flex justify-end">{refs}</div>}
       </article>
     );
   return (
@@ -410,6 +420,7 @@ function MessageView({
             skills={m.mentions.filter((t) => t.kind === "skill" && !t.refused).map((t) => t.name)}
           />
         </p>
+        {refs}
         {row}
       </div>
     </article>
@@ -492,6 +503,7 @@ function AnswerView({
   onAsk,
   onReply,
   onRedirect,
+  onActivity,
   actions,
   canStop = false,
   focused = false,
@@ -499,6 +511,8 @@ function AnswerView({
   run: Run;
   canStop?: boolean;
   focused?: boolean;
+  /** Open this answer's activity in Details, when more than one agent worked on it. */
+  onActivity?: (run: string) => void;
   me: string;
   live: boolean;
   ask?: ThreadAsk;
@@ -560,6 +574,7 @@ function AnswerView({
           )}
         </RunFeedbackHost>
       </AgentTint>
+      <AnswerRefs run={run} onActivity={onActivity} />
       {refused && stillAsks(shown, refused.question) && (
         <div className="pl-11">
           <Problem message={refused.why} />
@@ -725,6 +740,9 @@ export function ThreadRoom({
   }, [id, focus]);
 
   const th = page.thread;
+  const place = usePlace(th);
+  // The root message: the first a person posted. Its sender and origin head the session.
+  const rootMessage = turns.find((t) => t.message)?.message;
   const tags = useCompletion(
     th.project,
     agents,
@@ -882,6 +900,7 @@ export function ThreadRoom({
           private={th.visibility === "private"}
           agents={answering}
           people={th.participants.filter((p) => p.kind === "person").map((p) => p.name)}
+          origin={<OriginButton place={place} />}
           location={
             <>
               {th.visibility !== "private" && !id.startsWith("s_") && (
@@ -897,7 +916,9 @@ export function ThreadRoom({
                   {words.channel(th.channel)}
                 </button>
               )}
-              {th.surface && <span className="ml-3">{words.inSlack}</span>}
+              {place && (
+                <SessionPlace place={place} sender={rootMessage?.name || rootMessage?.by} />
+              )}
             </>
           }
           projectRef={shareButton}
@@ -1040,6 +1061,12 @@ export function ThreadRoom({
                       mine={t.message.by === me || (!!handle && t.message.by === handle)}
                       continued={turns[i - 1]?.message?.by === t.message.by}
                       focused={focus === t.message.id}
+                      fromWeb={place?.kind !== "console" && t.message.via === "console"}
+                      refs={
+                        t.message.id === rootMessage?.id ? (
+                          <OriginRef origin={referenceOfPlace(place)} />
+                        ) : undefined
+                      }
                       actions={
                         posts ? (
                           <>
@@ -1095,6 +1122,7 @@ export function ThreadRoom({
                         ) : undefined
                       }
                       routed={routedOf(t.run)}
+                      onActivity={(run) => openPanel("response", { run })}
                       onAsk={
                         posts
                           ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" })
@@ -1241,6 +1269,7 @@ export function ThreadRoom({
           </div>
         </ConversationPage>
         <ConversationInfo
+          origin={referenceOfPlace(place)}
           canWrite={canRun}
           runs={turns.flatMap((turn) => (turn.run ? [turn.run] : []))}
           view={shownView}
@@ -1316,6 +1345,14 @@ export function ThreadRoom({
               }
             />
           )}
+        </Presence>
+        <Presence when={shownView.panel === "response" && !!shownView.run} ms={220}>
+          {(leaving) => {
+            const run = turns.find((t) => t.run?.id === shownView.run)?.run;
+            return run ? (
+              <ResponseActivity run={run} leaving={leaving} onClose={() => openPanel()} />
+            ) : null;
+          }}
         </Presence>
         <Presence when={shownView.panel === "activity"} ms={220}>
           {(leaving) => (

@@ -260,7 +260,7 @@ test("canonical sessions and alerts retain filters and anchors", () => {
   for (const route of routes) assert.deepEqual(at(href(route)), route);
   assert.equal(
     href({ page: "conversation", id: "s_a", panel: "activity", step: "step1" }),
-    "/sessions/s_a?panel=steps&step=step1",
+    "/messages/s_a?panel=steps&step=step1",
   );
   assert.deepEqual(at("/sessions/s_a?panel=steps&step=step1"), {
     page: "conversation",
@@ -303,7 +303,7 @@ test("old conversation and panel URLs retain selections under canonical sessions
   ];
   for (const [url, route] of links) {
     assert.deepEqual(at(url), route);
-    assert.match(href(at(url)), /^\/sessions\//);
+    assert.match(href(at(url)), /^\/messages\//);
   }
 });
 test("project chat addresses migrate to context or filtered sessions", () => {

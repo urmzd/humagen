@@ -85,7 +85,7 @@ async function filesReady(page: Page): Promise<void> {
 
 /** A bounded acceptance set. Every state is captured at each configured width and theme. */
 export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
-  const session = `/sessions/${ids.work.id}`;
+  const session = `/messages/${ids.work.id}`;
   return [
     {
       name: "new",
@@ -239,7 +239,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
     })),
     {
       name: "session-approval",
-      path: `/sessions/${ids.approval.id}`,
+      path: `/messages/${ids.approval.id}`,
       act: async (page) => {
         await readySession(page);
         await page.getByRole("button", { name: "Ask a question", exact: true }).first().waitFor();
@@ -251,7 +251,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
     },
     {
       name: "session-review",
-      path: `/sessions/${ids.review.id}`,
+      path: `/messages/${ids.review.id}`,
       act: async (page) => {
         await readySession(page);
         await page.getByText(REVIEW_TITLE, { exact: true }).waitFor();

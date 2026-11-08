@@ -35,6 +35,9 @@ const helper = {
   rev: 1,
 } as unknown as Revision;
 
+// Declared before the first test: node:test may start a test as soon as it is registered.
+let net: ReturnType<typeof stubFetch> | undefined;
+
 test("a channel's Plus picker offers explicit Company-home agents and excludes unavailable scoped homes", async () => {
   net = stubFetch({
     "GET /api/projects/Globex/channels": () => ({
@@ -130,7 +133,6 @@ const page: ThreadPage = {
 
 // Hooks at the top level run after every DOM file's tests, so this one
 // restores only a fetch it stubbed.
-let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
   cleanup();
   net?.restore();
@@ -1583,7 +1585,10 @@ test("a thread started in Slack says so, and so does each message posted there; 
         onChanged={() => {}}
       />,
     );
-    assert.ok(await screen.findByText(words.inSlack));
+    // The header's first icon links back to the Slack thread it started in; its meta line names it.
+    const back = await screen.findByRole("link", { name: defaultCopy.trace.place.openIn("Slack") });
+    assert.match(back.getAttribute("href") ?? "", /C0123GLOBEX/);
+    assert.match(screen.getByTestId("session-place").textContent ?? "", /Slack thread/);
     assert.equal(
       screen.getAllByText(words.fromSlack).length,
       1,

@@ -3390,6 +3390,50 @@ export const defaultCopy = {
     },
   },
   /** Channels and shared threads: where people and agents work together in a project. */
+  /** A message's references and the work under it: its origin, what it read and touched, what it delegated. */
+  trace: {
+    /** The section in Details that collects every message's references. */
+    references: "References",
+    delegatedTo: (agents: string) => `Delegated to ${agents}`,
+    /** Under an answer more than one agent worked on: it opens the response's activity in Details. */
+    viewActivity: "View activity",
+    agents: (n: number) => `${n} agents`,
+    /** Every run behind a response, flat, in Details and on a focused message. */
+    activity: "Activity",
+    asked: "Asked",
+    focus: (agent: string) => `Open ${agent}'s message on its own`,
+    message: "Message",
+    messageBy: (agent: string) => `${agent}'s message`,
+    breadcrumb: "Where this message sits",
+    root: "Session",
+    notFound: "This message could not be found.",
+    picked: (reason: string) => `Picked: ${reason}`,
+    failedTool: (tool: string) => `${tool} failed`,
+    decided: {
+      allow: "Approved",
+      deny: "Denied",
+      ask: "Waiting for",
+    },
+    by: (who: string) => `by ${who}`,
+    /** Where a session started, in its header. */
+    place: {
+      label: "Started in",
+      openIn: (where: string) => `Open in ${where}`,
+      openSchedule: "Open schedule",
+      /** Who sent the root message. */
+      from: (who: string) => `from ${who}`,
+    },
+    /** Who can read the session where it started. */
+    audience: {
+      label: "Audience",
+      dm: "Direct message",
+      channel: "Slack channel",
+      private: "Private",
+      shared: "Shared",
+    },
+    /** A person's message in a session that started in Slack or GitHub, posted from the console instead. */
+    postedFromWeb: "Posted from the web",
+  },
   threads: {
     posted: (at: string) => `Posted ${at}`,
     /** A channel's title on its page: "#renewals". */
