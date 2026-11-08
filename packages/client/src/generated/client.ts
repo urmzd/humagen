@@ -50,6 +50,7 @@ import type {
   ConnectionDetail,
   ConnectionHealth,
   ConnectionPreset,
+  ContextResult,
   ConversationMemory,
   ConversationSandboxes,
   Corpus,
@@ -74,6 +75,7 @@ import type {
   GetAgentRosterResponse,
   GetInboxMessageResponse,
   GetLibrarySkillResponse,
+  GetMessageContextBody,
   GetProjectAgentHuesResponse,
   GetProjectInboxResponse,
   GetRunTraceResponse,
@@ -151,6 +153,7 @@ import type {
   MemoryFiles,
   MemoryRestoreInput,
   MessageCreated,
+  MessageFeedbackInput,
   MessagesInput,
   Note,
   NoteInput,
@@ -227,6 +230,7 @@ import type {
   SourceLinkRule,
   SourceLinkRuleInput,
   SourceLinkSuggestion,
+  StopMessageBody,
   StopSessionBody,
   StorageUsage,
   StreamEventsStreamEvent,
@@ -655,6 +659,75 @@ messages. 201 when the root was started, 200 otherwise.
     let path = "/api/messages/{id}";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<MessageCreated>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Rates an agent's message (id is session:run): up or down with an optional note, one rating per person per message, saved again in place. Surfaces send reactions and buttons here. */
+  async rateMessage(id: string, body: MessageFeedbackInput, options?: RequestOptions): Promise<RunFeedback> {
+    let path = "/api/messages/{id}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<RunFeedback>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async rateMessageRaw(id: string, body: MessageFeedbackInput, options?: RequestOptions): Promise<ApiResponse<RunFeedback>> {
+    let path = "/api/messages/{id}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<RunFeedback>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Stops the work beneath a message's session; with children, its child sessions' work too. */
+  async stopMessage(id: string, body: StopMessageBody, options?: RequestOptions): Promise<void> {
+    let path = "/api/messages/{id}/stop";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    await this.request<void>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async stopMessageRaw(id: string, body: StopMessageBody, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/messages/{id}/stop";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<void>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Pulls context from the place the message's session came from (the
+Slack thread or channel, the GitHub pull request or issue, a page),
+for what is asked in words. The place is the session's origin, never
+chosen by the caller. Resolvers read with the server's access and
+answer only what the place's audience may read. note says why nothing
+could be pulled, when nothing could.
+ */
+  async getMessageContext(id: string, body: GetMessageContextBody, options?: RequestOptions): Promise<ContextResult> {
+    let path = "/api/messages/{id}/context";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ContextResult>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async getMessageContextRaw(id: string, body: GetMessageContextBody, options?: RequestOptions): Promise<ApiResponse<ContextResult>> {
+    let path = "/api/messages/{id}/context";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ContextResult>("POST", path, {
       body,
       contentType: "application/json",
       ...options,
