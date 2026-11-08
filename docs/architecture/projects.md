@@ -958,6 +958,35 @@ Schedules, alert rules, clients and defaults that use the agent hold no
 change back. The spec says the same on Humagen's wrapper:
 `agents: [{project: Globex, spec: {...}}]`.
 
+### The entry agent
+
+Every workspace has one entry agent, `humagen` unless the spec names another
+(`branding.entry_agent`), shipped with the platform's own agents on the same
+models (package `humagen/entry`). It is the agent people talk to the workspace
+through: a console session started with no mention, where no named default
+answers, belongs to it. It answers simple asks itself and calls specialists
+with `session_call`, each in a child session under the root, then answers once,
+naming who did what. Routing has no page and no switch of its own: it is this
+agent, on its own model.
+
+- **Who answers a console session**, in order: an agent the message mentions;
+  a default that names an agent (thread, client, workspace); the entry agent;
+  without one (a server that ships no agents of its own), routing by search
+  (below), so the message still lands.
+- **It is told who may fit.** Each message it answers comes with the best 3
+  agents search finds (their names, the words that matched and their
+  instructions, loaded only for these) and the names of the others it may call,
+  leaving out agents the poster may not read.
+- **It may call every other agent whose definition pins** (`Access.Spawn`,
+  kept by the platform). A run pins its whole call tree, so an agent that no
+  longer pins is left out rather than stopping the entry agent. The list is
+  worked out again only when an agent is added, revised or retired, and the
+  entry agent is revised only when it changes. Each call is still held to the
+  place: an agent not available in the session's project is refused there, as
+  are call policy, budget and depth.
+- `EntryAgent(tenant)` gives its name and the name people see (the
+  workspace's branding, else Humagen), which the GitHub check run uses.
+
 ### The dynamic router
 
 A message that names no agent, where the default it inherits is `*`

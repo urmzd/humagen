@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -97,6 +98,9 @@ func OpenAgents(st state.Store, providers ...string) (*Agents, error) {
 // Source is the definition source the store writes, which a runtime resolves
 // pins from.
 func (a *Agents) Source() *agents.Store { return a.src }
+
+// Knows reports whether a definition naming provider pins here.
+func (a *Agents) Knows(provider string) bool { return slices.Contains(a.providers, provider) }
 
 // Resolver pins definitions from the store, checked against its providers.
 func (a *Agents) Resolver() *definition.Resolver {

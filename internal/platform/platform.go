@@ -122,6 +122,9 @@ type Config struct {
 	// Wording is each workspace's product name and the welcome and email
 	// text its branding replaces. Nil is Humagen's own.
 	Wording func(tenant string) Wording
+	// EntryAgent names the workspace's entry agent, which owns each root
+	// session that names nobody (entry.go). Empty is BuiltinEntry.
+	EntryAgent string
 
 	// AssignmentSources overrides the native resident source cursor for an embedding boundary. Nil uses this platform.
 	AssignmentSources operations.SourceChanges
@@ -289,6 +292,10 @@ type Platform struct {
 	// GoodAsks are the asks each agent answered well, which routing
 	// searches beside its prompt (pkg/goodasks).
 	GoodAsks goodAsksStore
+	// entry is the entry agent's spawn list per workspace, and picks what
+	// each of its picks came to (entry.go).
+	entry entrySpawns
+	picks *state.Table[pickRecord]
 	// health is the last health report and each component's recent checks.
 	health healthBook
 
@@ -475,6 +482,12 @@ type Platform struct {
 
 // New assembles a platform. Nothing runs until Run is called.
 func New(cfg Config) (*Platform, error) {
+	if cfg.EntryAgent == "" {
+		cfg.EntryAgent = BuiltinEntry
+	}
+	if !projects.ValidAgent(cfg.EntryAgent) {
+		return nil, fmt.Errorf("platform: the entry agent's name %q is not an agent name", cfg.EntryAgent)
+	}
 	if cfg.ProjectTemplates == nil {
 		cfg.ProjectTemplates = projects.DefaultTemplates()
 	}
@@ -943,6 +956,9 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	}
 	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) || sees != nil && !sees(req.Agent) {
 		return runs.Run{}, fmt.Errorf("%w: refused by the caller: %q may not call %q, which its spec's spawn allowlist does not name", ErrForbidden, parent.Agent, req.Agent)
+	}
+	if err := p.entryMayCall(tenant, rev, parent.Project, req.Agent); err != nil {
+		return runs.Run{}, err
 	}
 	if err := p.checkOperationCall(ctx, parent, req); err != nil {
 		return runs.Run{}, err

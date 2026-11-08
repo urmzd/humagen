@@ -171,6 +171,7 @@ spec:
 
   branding:                 # the console's look and name; see Branding below
     name: Acme              # the product's name. Left out: metadata.display_name
+    entry_agent: humagen    # the default: the agent people talk to the deployment through, owning each root session that names nobody. System document only
     logo: {path: ./brand/logo.svg, dark: ./brand/logo-dark.svg, alt: Acme}
     icons: ./brand/icons    # favicon.svg, icon-192.png and the rest, by the console's own names
     manifest: {short_name: Acme, theme_color: "#1a1a2e", background_color: "#fafafa"}
@@ -656,6 +657,7 @@ the workspace signs in.
 | `manifest` | The installable app's `name`, `short_name`, `description`, `theme_color` and `background_color` | System |
 | `palette` | `accent`, `surface` (the page), `plane` (the sidebar and panels), `text` and `rule` (lines), each `{light, dark}` or one color for both themes | both |
 | `fonts` | CSS font-family lists for `ui`, `heading` and `mono` text, and `files`: up to 12 `{family, path, weight, style}` faces (`.woff2`, `.woff`, `.ttf` or `.otf`, at most 2 MiB each) the server serves for those lists to name. A face named without a file must be installed on the device. A workspace's files replace the deployment's | both |
+| `entry_agent` | The agent people talk to the deployment through, `humagen` when left out: lowercase kebab case. It owns each root session that names nobody, answers simple asks and calls specialists as child sessions (docs/architecture/projects.md#the-entry-agent). The GitHub check run is named for it by `name` | System |
 | `welcome` | `{title, text}` of the announcement a workspace's people find first in its inbox. Left out, Humagen's, with the product's name in place of Humagen. It is posted once, so a change reaches only a workspace not yet welcomed | both |
 | `starters` | Up to 6 `{agent, label, text}` suggestions on an empty conversation, each shown only where its agent can answer. `[]` shows none | both |
 | `copy` | The console's own text by key, such as `navigation.agents: Assistants`. `humagen config copy-keys` lists the keys; an unknown one is an error. A workspace's keys are merged over the deployment's | both |

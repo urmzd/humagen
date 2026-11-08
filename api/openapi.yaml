@@ -13755,9 +13755,10 @@ components:
     Branding:
       description: How the console brands itself for the caller's workspace.
       type: object
-      required: [name, wordmark, title, logo, logo_dark, logo_alt, style, starters, copy]
+      required: [name, wordmark, title, logo, logo_dark, logo_alt, style, starters, copy, entry_agent]
       properties:
         name: {type: string, description: The product's name.}
+        entry_agent: {type: string, description: "The entry agent's agent name. People see it as name, never as this."}
         wordmark: {type: string, description: The text beside the logo in the sidebar. Empty shows the logo alone.}
         title: {type: string, description: What follows the page's name in the browser tab.}
         logo:
@@ -16968,6 +16969,9 @@ components:
           type: "string"
         version:
           type: "string"
+        display:
+          type: "string"
+          description: "The name people see when it differs from name: the workspace's own name for its entry agent."
     SessionPart:
       type: "object"
       additionalProperties: false
@@ -16976,6 +16980,7 @@ components:
       properties:
         type:
           type: "string"
+          description: "text, call (a child session, with its answer as text once it has one) or pick (why the entry agent chose who answers, as text)."
         text:
           type: "string"
         session:
