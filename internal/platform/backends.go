@@ -143,7 +143,7 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 		return Backends{}, nil, err
 	}
 	names := append(providers(), providerNames...)
-	defs, err := wire.OpenAgents(shared, names...)
+	defs, err := wire.OpenAgentsAccepting(shared, acceptProviderName, names...)
 	if err != nil {
 		return Backends{}, nil, err
 	}
@@ -240,6 +240,7 @@ func (p *Platform) openStores(cfg Config) error {
 	p.Feedback, err = feedback.Open(perRequest)
 	keep("feedback", err)
 	p.GoodAsks = openGoodAsks(perRequest)
+	p.picks = pickStore(perRequest)
 	p.Prefs, err = prefs.Open(perRequest)
 	keep("prefs", err)
 	p.Marks, err = marks.Open(perRequest)

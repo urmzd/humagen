@@ -60,7 +60,7 @@ func (p *Platform) FindHelp(ctx context.Context, who auth.Principal, description
 				continue
 			}
 			for _, pr := range visible {
-				if !tree.IsAvailable(pr.Name, agent.Spec.Name) {
+				if !p.answersIn(who.Tenant, tree, pr.Name, agent.Spec.Name) {
 					continue
 				}
 				title := titleOf(pr, p.Settings(who.Tenant).WorkspaceName)

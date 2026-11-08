@@ -646,8 +646,8 @@ export function libraryScreens(call: Call): Screen[] {
           await call("POST", "/api/agents", {
             name,
             description: "A helper for the developer's internal work",
-            provider: "offline",
-            model: "offline",
+            provider: "screens-native",
+            model: "screens-native",
             system_prompt: "Summarize internal project updates concisely.",
           });
         const home = me.personal_project.replace(/^~/, "");

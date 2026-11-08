@@ -81,12 +81,16 @@ const KIND_SHAPE = /^[a-z][a-z0-9-]{0,31}$/;
 export const kindParam = (value: string | null | undefined): ProjectKindFilter | undefined =>
   value && KIND_SHAPE.test(value) ? value : undefined;
 
+/** How the Projects page orders its cards besides last activity, the default, which the address leaves out. */
+export type ProjectSort = "name" | "created";
+export const PROJECT_SORTS: ProjectSort[] = ["name", "created"];
+
 export type SettingsSection =
   | "notifications"
   | "profile"
   | "appearance"
   | "workspace"
-  | "routing"
+  | "providers"
   | "models"
   | "limits"
   | "connections"
@@ -98,7 +102,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   "profile",
   "appearance",
   "workspace",
-  "routing",
+  "providers",
   "models",
   "limits",
   "connections",
@@ -110,6 +114,8 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
 export type ConversationPanel =
   | "overview"
   | "activity"
+  /** One response's activity: every run behind it, flat and in time order. Needs `run`. */
+  | "response"
   | "context"
   | "people"
   | "deliverables"
@@ -117,6 +123,7 @@ export type ConversationPanel =
 const CONVERSATION_PANELS: ConversationPanel[] = [
   "overview",
   "activity",
+  "response",
   "context",
   "people",
   "deliverables",
@@ -176,9 +183,25 @@ export type HistorySource = "all" | "chat" | "github" | "slack" | "scheduled" | 
 export type HistoryStatus = "needs" | "running" | "failed";
 export type CustomizeSection = "agents" | "skills" | "connections" | "tools";
 export type SessionStatus = "working" | "waiting" | "done" | "failed" | "stopped";
+/** Where a session started, as the Sessions list filters it. */
+export const SESSION_PLACES = ["slack", "github", "schedule", "console"] as const;
+export type SessionPlaceFilter = (typeof SESSION_PLACES)[number];
 export type Route =
   | { page: "not-found"; path: string }
-  | { page: "sessions"; status?: SessionStatus; agent?: string; project?: string; q?: string }
+  | {
+      page: "sessions";
+      status?: SessionStatus;
+      agent?: string;
+      project?: string;
+      q?: string;
+      place?: SessionPlaceFilter;
+      /** An item's address, such as `github://o/r/pull/5`: the sessions that worked on it. */
+      item?: string;
+    }
+  /** An item people pointed at (a PR, an issue, a Slack thread, a URL), by its address. */
+  | { page: "item"; address: string }
+  /** One message inside a session, focused: it and its direct children, under a breadcrumb back to the root. */
+  | { page: "message"; id: string }
   | {
       page: "alerts";
       tab?: "watching";
@@ -256,8 +279,8 @@ export type Route =
       fork?: string;
       bringBack?: string;
     } & ConversationView)
-  /** Every project, searched with `q` and narrowed to one kind. */
-  | { page: "projects"; q?: string; kind?: ProjectKindFilter }
+  /** Every project, searched with `q`, narrowed to one kind and ordered by `sort`, last activity when absent. */
+  | { page: "projects"; q?: string; kind?: ProjectKindFilter; sort?: ProjectSort }
   /** One project at a tab, and in its inbox, at a message. The workspace itself is the project named "", written `~`. */
   | { page: "project"; name: string; tab: ProjectTab; message?: string; fork?: boolean }
   /** One of a project's channels, with its shared threads. */
@@ -301,6 +324,8 @@ const pick = <T extends string>(value: string | undefined, allowed: readonly T[]
 
 const PAGE_TITLES: Record<Page, string> = {
   "not-found": "Page not found",
+  message: "Message",
+  item: "Item",
   sessions: "Sessions",
   alerts: "Alerts",
   history: defaultCopy.history.title,
@@ -381,10 +406,14 @@ export function href(r: Route): string {
       return r.path;
     case "sessions": {
       const q = new URLSearchParams();
-      for (const key of ["q", "status", "agent", "project"] as const)
+      for (const key of ["q", "status", "agent", "project", "place", "item"] as const)
         if (r[key]) q.set(key, r[key]);
       return `/sessions${q.size ? `?${q}` : ""}`;
     }
+    case "message":
+      return `/messages/${enc(r.id)}`;
+    case "item":
+      return `/items/${enc(r.address)}`;
     case "alerts": {
       const q = new URLSearchParams();
       for (const key of ["state", "priority", "source", "alert"] as const)
@@ -472,6 +501,7 @@ export function href(r: Route): string {
         workspace: "files",
         context: "sources",
         activity: "steps",
+        response: "activity",
         overview: "sessions",
         people: "people",
         deliverables: "files",
@@ -504,12 +534,13 @@ export function href(r: Route): string {
       if (r.expanded) q.set("full", "1");
       if (r.split) q.set("split", "1");
       if (r.slide) q.set("slide", String(r.slide));
-      return `/sessions/${enc(r.id)}${q.size ? `?${q}` : ""}`;
+      return `/messages/${enc(r.id)}${q.size ? `?${q}` : ""}`;
     }
     case "projects": {
       const q = new URLSearchParams();
       if (r.q) q.set("q", r.q);
       if (r.kind) q.set("kind", r.kind);
+      if (r.sort) q.set("sort", r.sort);
       const query = q.toString();
       return query ? `/projects?${query}` : "/projects";
     }
@@ -649,6 +680,9 @@ export function parse(pathname: string, search = ""): Route {
   ) as Route;
 }
 
+/** A run's id: `r` and 32 hex digits. */
+const RUN_ID = /^r[0-9a-f]{32}$/;
+
 function queryText(q: URLSearchParams, key: string, max: number): string | undefined {
   const value = q.get(key);
   // biome-ignore lint/suspicious/noControlCharactersInRegex: a NUL in a query value is refused on purpose
@@ -659,6 +693,14 @@ function read(pathname: string, search: string): Route {
   const q = new URLSearchParams(search);
   const parts = pathname.split("/").filter(Boolean).map(dec);
   const [head, a, b, c] = parts;
+  // Every message has one address, a session's root included: `/messages/<id>`.
+  // A run's id (`r` and 32 hex digits) opens that message on its own; any other
+  // id is a session's root. `/sessions/<id>` links from before still open it.
+  if (head === "messages") {
+    if (!a) return { page: "sessions" };
+    if (RUN_ID.test(a) && !b) return { page: "message", id: a };
+    return read(`/sessions/${parts.slice(1).map(enc).join("/")}`, search);
+  }
   switch (head) {
     case "sessions": {
       if (!a)
@@ -674,6 +716,8 @@ function read(pathname: string, search: string): Route {
           agent: queryText(q, "agent", 200),
           project: queryText(q, "project", 200),
           q: queryText(q, "q", 200),
+          place: oneOf(q.get("place"), SESSION_PLACES),
+          item: queryText(q, "item", 2048),
         };
       if (b) return read(`/conversations/${enc(a)}/${parts.slice(2).map(enc).join("/")}`, search);
       const panels: Record<string, ConversationPanel> = {
@@ -684,7 +728,7 @@ function read(pathname: string, search: string): Route {
         people: "people",
         workspace: "workspace",
         context: "context",
-        activity: "activity",
+        activity: "response",
         overview: "overview",
         deliverables: "deliverables",
       };
@@ -881,9 +925,17 @@ function read(pathname: string, search: string): Route {
         };
       }
       return { page: "conversation", id: a, message: q.get("message") || undefined };
+    case "items":
+      // An address holds slashes, so it is one encoded segment; a raw one is joined back.
+      return a ? { page: "item", address: parts.slice(1).join("/") } : { page: "sessions" };
     case "projects": {
       if (!a)
-        return { page: "projects", q: q.get("q") || undefined, kind: kindParam(q.get("kind")) };
+        return {
+          page: "projects",
+          q: q.get("q") || undefined,
+          kind: kindParam(q.get("kind")),
+          sort: oneOf(q.get("sort"), PROJECT_SORTS),
+        };
       if (b === "fork")
         return { page: "project", name: a === "~" ? "" : a, tab: "inbox", fork: true };
       // A channel is a page of its own, under the project's Channels tab.
@@ -986,6 +1038,8 @@ function read(pathname: string, search: string): Route {
       if (a === "usage") return read("/operations/usage", search);
       // Models are chosen per agent now; an old link lands on the agents.
       if (a === "models") return { page: "agents" };
+      // Routing has only its model left, which sits with the model providers.
+      if (a === "routing") return { page: "settings", section: "providers" };
       return {
         page: "settings",
         section: pick(a, SETTINGS_SECTIONS, "profile"),

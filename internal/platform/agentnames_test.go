@@ -10,6 +10,7 @@ import (
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -26,28 +27,32 @@ func vault(t *testing.T, p *platform.Platform) {
 	}
 }
 
-// A refusal says where an agent lives only when everyone in the workspace
-// reads that project: it reaches whoever reads where it was made, such as a
-// run's events or a message's tags.
-func TestARefusalNamesWhereAnAgentLivesOnlyWhereEveryoneReadsIt(t *testing.T) {
+// A refusal names the agent and where the run is, and never where the agent
+// lives: it reaches whoever reads where it was made, such as a run's events
+// or a message's tags, and a home in a project they may not read would leak.
+// An allow list refuses an agent, and so does a place read by more than its
+// private agent's readers.
+func TestARefusalNamesWhereTheRunIsAndNeverWhereTheAgentLives(t *testing.T) {
 	p := start(t, call.Limits{})
 	project(t, p, "Field")
-	if err := p.SetAgentHome(t.Context(), tenant, "lead", "Field", govern); err != nil {
-		t.Fatal(err)
-	}
 	vault(t, p)
-	if err := p.Available(tenant, "~", "lead"); !errors.Is(err, platform.ErrNotAvailable) || !strings.Contains(err.Error(), "it lives in Field") {
-		t.Errorf("lead at the workspace = %v", err)
+	if err := p.Available(tenant, "~", "helper"); !errors.Is(err, platform.ErrNotAvailable) || !strings.Contains(err.Error(), "helper is private") || strings.Contains(err.Error(), "Vault") {
+		t.Errorf("helper at the workspace, homed in Vault = %v", err)
 	}
-	if err := p.Available(tenant, "~", "helper"); !errors.Is(err, platform.ErrNotAvailable) || strings.Contains(err.Error(), "Vault") {
-		t.Errorf("helper at the workspace = %v", err)
+	if err := p.Available(tenant, "Vault", "helper"); err != nil {
+		t.Errorf("helper in Vault, its home = %v", err)
+	}
+	setAgents(t, p, "Field", platform.AgentsInput{Enable: []string{}, Allow: []string{"lead"}})
+	if err := p.Available(tenant, "Field", "helper"); !errors.Is(err, platform.ErrNotAvailable) || !strings.Contains(err.Error(), "helper is not allowed in Field") || strings.Contains(err.Error(), "Vault") {
+		t.Errorf("helper in Field, which allows only lead = %v", err)
 	}
 }
 
 // A turn asked through a client whose default lives in a project its person
 // may not read is answered as through a client with no default: the default
 // is passed over for them, so they are never told the agent's name; nor does
-// @auto fall back to it.
+// @auto fall back to it. A person who reads that project is told it is not
+// available, as a private agent answers only where its readers alone read.
 func TestATurnNamesNoDefaultItsPersonMayNotRead(t *testing.T) {
 	f := &fakes{}
 	p := startWith(t, f.config())
@@ -56,8 +61,8 @@ func TestATurnNamesNoDefaultItsPersonMayNotRead(t *testing.T) {
 	create(t, p, tenant, slackClient("app", "A0APP", team, "helper"))
 	olu := auth.Principal{Subject: "olu", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
 
-	if _, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-olu", Text: "Hello", Client: "app", Sees: p.Seer(olu).Agent}); !errors.Is(err, platform.ErrNotAvailable) || !strings.Contains(err.Error(), "helper") {
-		t.Fatalf("a turn through app for olu, who reads Vault = %v", err)
+	if _, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-olu", Text: "Hello", Client: "app", Sees: p.Seer(olu).Agent}); !errors.Is(err, platform.ErrNotAvailable) {
+		t.Fatalf("a turn through app for olu, who reads Vault = %v, want ErrNotAvailable", err)
 	}
 	plain := slackClient("plain", "A0PLN", "T0PLN", "")
 	plain.Agents = []string{"helper"}
@@ -72,17 +77,38 @@ func TestATurnNamesNoDefaultItsPersonMayNotRead(t *testing.T) {
 }
 
 // The call tool offers a run only the agents available where its calls are
-// filed: one living in a project the run's readers may not read would be
-// refused, and is never named.
+// filed: one an allow list there leaves out would be refused, and is never
+// named.
 func TestTheCallToolOffersOnlyAgentsAvailableWhereTheRunIs(t *testing.T) {
 	p := start(t, call.Limits{})
 	run, _ := turn(t, p, "api-1", "")
 	if got := p.CallTargets(tenant, run.ID, "lead", []string{"helper"}); !slices.Equal(got, []string{"helper"}) {
 		t.Fatalf("targets of a run at the workspace = %v", got)
 	}
-	vault(t, p)
+	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Allow: []string{"lead"}})
 	if got := p.CallTargets(tenant, run.ID, "lead", []string{"helper"}); len(got) != 0 {
-		t.Errorf("targets once helper lives in Vault = %v", got)
+		t.Errorf("targets once the workspace allows only lead = %v", got)
+	}
+}
+
+// An agent homed where a run's readers may not read is never offered to the
+// run's call tool, nor asked to take an untagged message there, though it is
+// allowed to answer there: agents are independent of projects, but who sees
+// one is not. In its home it is offered and asked as any agent is.
+func TestAHiddenAgentIsNeverOfferedOrAskedWhereItsReadersCannotSeeIt(t *testing.T) {
+	p := start(t, call.Limits{})
+	vault(t, p)
+	run, _ := turn(t, p, "api-1", "")
+	if got := p.CallTargets(tenant, run.ID, "lead", []string{"helper"}); len(got) != 0 {
+		t.Fatalf("targets of a run at the workspace, helper homed in Vault = %v", got)
+	}
+	ds, err := p.Route(t.Context(), tenant, "", "Help, please.")
+	if err != nil || slices.ContainsFunc(ds, func(d join.Decision) bool { return d.Agent == "helper" }) {
+		t.Fatalf("helper was asked at the workspace: %+v, %v", ds, err)
+	}
+	ds, err = p.Route(t.Context(), tenant, "Vault", "Help, please.")
+	if err != nil || !slices.ContainsFunc(ds, func(d join.Decision) bool { return d.Agent == "helper" }) {
+		t.Fatalf("helper was not asked in its home: %+v, %v", ds, err)
 	}
 }
 

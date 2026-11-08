@@ -1229,7 +1229,7 @@ test("a knowledge alert reads as one and opens where its decision is made, with 
   assert.equal(alone.getAttribute("href"), "/knowledge/hr-policies/graph");
   assert.equal(
     screen.getByRole("link", { name: /\(a2\)/ }).getAttribute("href"),
-    "/sessions/s_builder",
+    "/messages/s_builder",
   );
   assert.ok(screen.getAllByText("Knowledge").length >= 3);
   assert.equal(screen.queryByText("/knowledge/hr-policies/graph"), null);

@@ -54,32 +54,3 @@ func TestTemplatesWriteStructureAndSkillsAtomicallyAndSurviveRestart(t *testing.
 		t.Fatal("partial template project visible")
 	}
 }
-func TestInitiativeAgentsCannotExecuteInChildProjects(t *testing.T) {
-	s := projects.NewStore()
-	var initiative projects.Template
-	for _, template := range projects.DefaultTemplates() {
-		if template.Initiative {
-			initiative = template
-		}
-	}
-	pr, err := s.CreateTemplate("acme", team("Strategy", ""), initiative, ada, t0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !pr.Initiative {
-		t.Fatal("initiative marker not stored")
-	}
-	mustCreate(t, s, "acme", team("Delivery", "Strategy"), ada)
-	if err := s.SetHome("acme", "coordinator", "Strategy", ada, t0, nil); err != nil {
-		t.Fatal(err)
-	}
-	tree := s.Tree("acme")
-	if !tree.IsAvailable("Strategy", "coordinator") || tree.IsAvailable("Delivery", "coordinator") {
-		t.Fatal("initiative agent escaped coordination project")
-	}
-	for _, name := range tree.Available("Delivery").Names {
-		if name == "coordinator" {
-			t.Fatal("initiative agent offered for direct child execution")
-		}
-	}
-}

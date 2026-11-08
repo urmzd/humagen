@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 
 	sdef "github.com/urmzd/saige/agent/definition"
@@ -115,12 +114,10 @@ func RevisionOf(rec definition.Record, rev int) (Revision, error) {
 		TaggedOnly:   p.TaggedOnly,
 		Access:       Access{WorkspaceAreas: p.WorkspaceAreas},
 	}
-	if c := p.Choices; c != nil {
-		spec.Choices = &Choices{Models: slices.Clone(c.Models), Efforts: slices.Clone(c.Efforts)}
-	}
 	if name := d.Metadata["humagen_package"]; name != "" {
 		spec.Package = &PackageBase{Name: name, Version: d.Metadata["humagen_package_version"]}
 	}
+	spec.Effort = d.Metadata["humagen_effort"]
 	if d.Model != nil {
 		spec.Provider, spec.Model, _ = strings.Cut(d.Model.Use, "/")
 		for _, f := range d.Model.Fallback {

@@ -44,8 +44,10 @@ import { DirectoryPage } from "./Directory.tsx";
 import { ForkProject } from "./ForkProject.tsx";
 import { Health } from "./Health.tsx";
 import { Integrations } from "./Integrations.tsx";
+import { ItemPage } from "./ItemPage.tsx";
 import { Knowledge } from "./Knowledge.tsx";
 import { MemoryLibrary } from "./MemoryLibrary.tsx";
+import { MessageFocus } from "./MessageFocus.tsx";
 import { Monitor } from "./Monitor.tsx";
 import type { Source as About } from "./mail.ts";
 import { NotificationsPage, useNotifications } from "./Notifications.tsx";
@@ -371,6 +373,25 @@ function Console({
     });
   const narrow = useNarrow();
   const drawer = open && narrow;
+
+  // With no model provider at all, nothing can answer: an administrator's first stop is
+  // enabling one. Asked once per load; a person who cannot set one up is not moved, and
+  // later navigation is the person's own.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on arrival only, not on every route
+  useEffect(() => {
+    if (!can("clients:write")) return;
+    let live = true;
+    api
+      .modelProviders()
+      .then((all) => {
+        if (live && !all.some((p) => p.declared) && route.page !== "settings")
+          go({ page: "settings", section: "providers" }, { replace: true });
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [can]);
 
   const loadAgents = useCallback(() => {
     if (!can("agents:read")) return;
@@ -776,6 +797,28 @@ function Console({
                         <Problem message={defaultCopy.noPermission} />
                       </Page>
                     ))}
+                  {route.page === "message" &&
+                    (can("runs:read") ? (
+                      <MessageFocus key={route.id} id={route.id} go={go} />
+                    ) : (
+                      <Page title="Message">
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "item" &&
+                    (can("runs:read") ? (
+                      <ItemPage
+                        key={route.address}
+                        address={route.address}
+                        go={go}
+                        alerts={attention.alerts}
+                        tick={tick}
+                      />
+                    ) : (
+                      <Page title="Item">
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
                   {route.page === "alerts" &&
                     (can("alerts:read") ? (
                       <AlertsPage
@@ -1094,17 +1137,20 @@ function Console({
                     <ProjectsPage
                       projects={projects}
                       root={root}
-                      workspaceName={workspaceName}
                       q={route.q ?? ""}
                       kind={route.kind}
-                      onFilter={(q, kind) =>
+                      sort={route.sort}
+                      onFilter={({ q, kind, sort }) =>
                         go(
-                          { page: "projects", q: q || undefined, kind: kindParam(kind) },
+                          { page: "projects", q: q || undefined, kind: kindParam(kind), sort },
                           { replace: true },
                         )
                       }
                       canCreate={can("projects:write")}
                       canGovern={can("projects:govern")}
+                      me={me.principal.subject}
+                      pinned={prefs.pinned_projects ?? []}
+                      onPin={pinProject}
                       onOpen={openProject}
                       onCreated={(project) => {
                         loadProjects();
@@ -1554,7 +1600,6 @@ function Console({
                       projects={projectNames}
                       onOpenProjects={() => go({ page: "projects" })}
                       onOpenWorkspace={() => openProject("")}
-                      onOpenWorkspaceAgents={() => go({ page: "project", name: "", tab: "agents" })}
                     />
                   )}
                 </>

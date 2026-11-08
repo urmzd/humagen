@@ -20,6 +20,10 @@ const DefaultName = "Humagen"
 // signs in: the tab title, icons and the installable app's manifest. In a
 // Platform document it is that workspace's, over the deployment's, and is
 // applied once a person of the workspace signs in. Everything left out is
+// entryName is what an entry agent may be called: lowercase kebab case, an
+// agent name a mention can reach.
+var entryName = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
 // Humagen's own.
 type Branding struct {
 	// Name is the product's name: the tab title's suffix, the sidebar's
@@ -47,6 +51,10 @@ type Branding struct {
 	// Fonts replaces the console's typefaces, with font files the server
 	// serves for them, or faces installed on the device.
 	Fonts *Fonts `json:"fonts,omitempty"`
+	// EntryAgent is the agent people talk to the deployment through: it owns
+	// each root session that names nobody and calls specialists. Left out,
+	// it is "humagen". The System document's only.
+	EntryAgent string `json:"entry_agent,omitempty"`
 	// Welcome is the announcement a workspace's people find first in its
 	// inbox. Left out, Humagen's, under the product's name.
 	Welcome *Welcome `json:"welcome,omitempty"`
@@ -295,6 +303,12 @@ func (b Branding) check(system bool) error {
 		if err := checkName(l.Alt); err != nil {
 			return fmt.Errorf("branding.logo.alt: %w", err)
 		}
+	}
+	if b.EntryAgent != "" && (!system || !entryName.MatchString(b.EntryAgent)) {
+		if !system {
+			return errors.New("branding.entry_agent: the entry agent is the deployment's; set it in the System document")
+		}
+		return fmt.Errorf("branding.entry_agent: %q is not lowercase kebab case, such as humagen", b.EntryAgent)
 	}
 	if !system && b.Icons != "" {
 		return errors.New("branding.icons: icons are served before anyone signs in, so they are the deployment's; set them in the System document")
