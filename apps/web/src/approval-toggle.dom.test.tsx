@@ -6,7 +6,7 @@ import { stubFetch } from "./dom.ts";
 import { forgetConfiguredProviders } from "./ModelChain.tsx";
 
 // A session's approval mode: a two-state icon button under the composer,
-// always shown, ✋ Ask Me or ▶ Run, with what it does in its tooltip.
+// always shown, ✋ Ask Me or ⏩ Run, with what it does in its tooltip.
 
 let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {

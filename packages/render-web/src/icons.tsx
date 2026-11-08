@@ -167,6 +167,13 @@ export const HourglassIcon = icon(
 );
 export const PauseIcon = icon(<path d="M9 5v14M15 5v14" />, "PauseIcon");
 export const PlayIcon = icon(<path d="M7 4.5v15l12-7.5z" />, "PlayIcon");
+export const FastForwardIcon = icon(
+  <>
+    <path d="M3 6v12l9-6z" />
+    <path d="M12 6v12l9-6z" />
+  </>,
+  "FastForwardIcon",
+);
 export const HandIcon = icon(
   <>
     <path d="M18 11V6a2 2 0 0 0-4 0" />

@@ -1,11 +1,11 @@
 import { defaultCopy } from "@humagen/components";
-import { HandIcon, PlayIcon } from "@humagen/render-web";
+import { FastForwardIcon, HandIcon } from "@humagen/render-web";
 import { useEffect, useState } from "react";
 import { ApiError, api, coworking, type Revision, type Thread } from "./api.ts";
 import { useConfiguredProviders } from "./ModelChain.tsx";
 import { POLICY } from "./models.ts";
 
-/** How a session's gated actions are approved: ✋ a person, or ▶ the approval agent. */
+/** How a session's gated actions are approved: ✋ a person, or ⏩ the approval agent. */
 export type ApprovalMode = "ask" | "auto";
 
 /** The built-in that decides gated actions in a session set to Run. */
@@ -51,7 +51,7 @@ export function useApproverReady(): boolean | null {
 
 /**
  * A session's approval mode under the composer, always shown: a two-state
- * icon button, ✋ Ask Me (every gated action waits for a person) or ▶ Run
+ * icon button, ✋ Ask Me (every gated action waits for a person) or ⏩ Run
  * (the approval agent decides each, handing a person anything it is unsure
  * of). Its tooltip says what the mode does, and when the approval agent has
  * no model to run on, that every action waits for a person. With no session
@@ -105,7 +105,7 @@ export function ApprovalToggle({
       },
     );
   };
-  const Icon = mode === "ask" ? HandIcon : PlayIcon;
+  const Icon = mode === "ask" ? HandIcon : FastForwardIcon;
   return (
     <span className="inline-flex min-w-0 items-center gap-1">
       <button
