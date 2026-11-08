@@ -2,6 +2,9 @@ import { answerOf, foldAll } from "@humagen/core";
 import { responseStreams } from "@humagen/core/fixtures/responses";
 import { useState } from "react";
 import { ActivityLanes, costOf, WorkedButton } from "./ResponseActivity.tsx";
+import { SessionPanel } from "./SessionPanel.tsx";
+import { summarize } from "./sessionSummary.ts";
+import { referenceOf } from "./trace.ts";
 import { AgentMark } from "./ui.tsx";
 
 const streams = [
@@ -49,5 +52,55 @@ function Example({ name, events }: { name: string; events: (typeof streams)[numb
         </div>
       )}
     </article>
+  );
+}
+
+const files = [
+  {
+    id: "a1",
+    title: "Austin apartment options.xlsx",
+    kind: "spreadsheet",
+    mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  },
+  { id: "a2", title: "Lease summary.pdf", kind: "pdf", mime: "application/pdf" },
+];
+
+const panels = [
+  ["Running", [foldAll(responseStreams.parallelAgents.slice(0, 12))]],
+  ["Waiting for you", [foldAll(responseStreams.nestedApproval)]],
+  [
+    "Done",
+    [
+      foldAll(responseStreams.parallelAgents),
+      foldAll(responseStreams.singleAgent),
+      foldAll(responseStreams.usedTools),
+    ],
+  ],
+] as const;
+
+/** The session's Details panel while a response runs, while it waits on a person, and once done. */
+export function SessionPanelGallery() {
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      {panels.map(([name, responses]) => (
+        <div
+          key={name}
+          aria-label={name}
+          data-testid="gallery-session-panel"
+          className="relative flex h-[44rem] overflow-hidden rounded-aui-lg border border-[var(--humagen-rule)] [transform:translateZ(0)] [&>aside]:w-full"
+        >
+          <SessionPanel
+            responses={[...responses]}
+            summary={summarize([...responses], {
+              files: name === "Done" ? files : [],
+              uploads: name === "Done" ? ["leases.pdf", "budget.csv", "notes.txt"] : [],
+            })}
+            origin={referenceOf("slack://T1/C1/1700000000.000100")}
+            onClose={() => {}}
+            onOpenFile={() => {}}
+          />
+        </div>
+      ))}
+    </div>
   );
 }

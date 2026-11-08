@@ -148,6 +148,16 @@ describe("folding", () => {
     expect(live.tools.htu_r_entry_1?.content.length).toBeGreaterThan(0);
   });
 
+  it("reads past a hole a late join leaves", () => {
+    const state = foldAll([
+      { type: "message_start", message: { id: "m" } },
+      { type: "content_block_start", index: 2, content_block: { type: "text", text: "Done." } },
+      { type: "message_stop" },
+    ]);
+    expect(allTools(state)).toEqual([]);
+    expect(answerOf(state).text).toBe("Done.");
+  });
+
   it("stubs a block the reader may not read, so indices hold", () => {
     const state = foldAll([
       { type: "message_start", message: { id: "m" } },

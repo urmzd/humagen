@@ -1806,6 +1806,8 @@ export interface ThreadMessage {
   followup?: ThreadFollowup;
   via: string;
   surface_id?: string;
+  /** Files posted with it, by name where the poster gave one. */
+  attachments?: { name?: string; alt?: string; media_type: string }[];
   at: string;
 }
 
