@@ -324,7 +324,8 @@ looks at every corpus, with no model calls, and tells the person who can act:
 Alerts are kind `knowledge`, at most one open per cause, in the person's own
 session with the builder; before a workspace has a model there is no built-in
 to hold that session, and the alert stays in the person's alert center. Each
-names up to 10 items. The low-risk changes need no proposal: staleness marks
+names up to 10 items and opens where its decision is made: the corpus's
+sources, its graph (stale and unowned documents) or its types (proposals). The low-risk changes need no proposal: staleness marks
 and facts retired with their source are applied as the graph rebuilds.
 `(*Platform).MaintainKnowledge` runs one pass.
 
