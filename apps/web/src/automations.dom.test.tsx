@@ -73,7 +73,7 @@ test("readers see no New Schedule", () => {
   }
 });
 
-test("a schedule sends its answer to a Slack channel through the connection picked", async () => {
+test("a schedule is a session, and picking Slack also posts its answer through the connection picked", async () => {
   let saved: Record<string, unknown> | undefined;
   const { restore } = stubFetch({
     "GET /api/clients": () => ({
@@ -101,8 +101,9 @@ test("a schedule sends its answer to a Slack channel through the connection pick
     fireEvent.change(screen.getByLabelText("What to ask"), {
       target: { value: "What failed overnight?" },
     });
-    fireEvent.click(await screen.findByRole("button", { name: /^Send to:/ }));
-    fireEvent.click(await screen.findByRole("option", { name: /A Slack channel/ }));
+    // No Send to field: a schedule is a session unless Slack or GitHub is picked.
+    assert.equal(screen.queryByRole("button", { name: /^Send to:/ }), null);
+    fireEvent.click(await screen.findByRole("button", { name: "Slack" }));
     fireEvent.change(screen.getByLabelText("Slack channel id"), { target: { value: "c0alerts1" } });
     fireEvent.click(screen.getByRole("button", { name: "Create Schedule" }));
     await waitFor(() => assert.ok(saved));

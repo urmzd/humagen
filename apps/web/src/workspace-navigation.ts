@@ -119,12 +119,6 @@ export function hubTabs(
                 active: route.page === "context",
                 visible: can("knowledge:read"),
               },
-              {
-                label: nav.memory,
-                route: { page: "library", section: "memory" },
-                active: route.page === "library" && route.section === "memory",
-                visible: can("runs:read") || can("projects:read") || can("agents:read"),
-              },
             ]
           : [
               {

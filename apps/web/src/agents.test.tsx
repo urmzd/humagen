@@ -234,7 +234,6 @@ test("the directory keeps empty and populated statistics in the same three field
       <Agents
         agents={[writer]}
         stats={stats}
-        builtin={[writer.spec.name]}
         homes={{ [writer.spec.name]: "~" }}
         canWrite
         onOpen={noop}
@@ -251,19 +250,12 @@ test("the directory keeps empty and populated statistics in the same three field
     const headings = [...html.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g)].map((m) =>
       text(m[1]!).trim(),
     );
-    assert.deepEqual(headings, [
-      "Agent",
-      "Model",
-      "Working",
-      "Waiting",
-      "Runs (24h)",
-      "Success",
-      "Median",
-    ]);
-    assert.equal((html.match(/<th\b[^>]*scope="col"/g) ?? []).length, 7);
+    assert.deepEqual(headings, ["Agent", "Working", "Waiting", "Runs (24h)", "Success", "Median"]);
+    assert.equal((html.match(/<th\b[^>]*scope="col"/g) ?? []).length, 6);
     assert.equal(cells(html).length, headings.length, "every row aligns with the same columns");
-    assert.match(cells(html)[0]!, /humagen-writer Built in Writes a document\./);
-    assert.equal(cells(html)[1], "offline", "the model has its own labeled column");
+    // Every agent reads alike: no Built in tag and no model column; the store says where one came from.
+    assert.match(cells(html)[0]!, /^humagen-writer\s*Writes a document\./);
+    assert.doesNotMatch(html, /Built in/);
     assert.match(html, /<p[^>]*class="truncate[^"]*">Writes a document\.<\/p>/);
     assert.doesNotMatch(html, /title="Writes a document\."/);
     assert.doesNotMatch(html, /Lives in Workspace|Built in, read only|No runs in the last/);

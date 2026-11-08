@@ -1313,7 +1313,6 @@ function Console({
                     (route.page === "customize" && route.section === "agents")) && (
                     <Agents
                       operational
-                      builtin={builtin}
                       agents={agents}
                       runs={runs}
                       stats={stats}

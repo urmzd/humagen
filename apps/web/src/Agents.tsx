@@ -19,7 +19,6 @@ export function Agents({
   agents,
   stats,
   runs = [],
-  builtin = [],
   workspaceDefault = "",
   homes = {},
   canWrite,
@@ -38,8 +37,6 @@ export function Agents({
   stats: Map<string, Group>;
   /** Recent runs across the tenant, drawn on each agent's tape. */
   runs?: Run[];
-  /** Agents the platform provides. They can be opened and read, not changed. */
-  builtin?: string[];
   /** Who answers a message that tags no agent in the workspace itself. */
   workspaceDefault?: string;
   /** Where each agent that lives in a project lives. */
@@ -158,9 +155,6 @@ export function Agents({
                     Health
                   </th>
                 )}
-                <th scope="col" className="w-36 px-2 py-2 font-normal">
-                  Model
-                </th>
                 {[words.working, words.waiting].map((label) => (
                   <th key={label} scope="col" className="w-20 px-2 py-2 text-right font-normal">
                     {label}
@@ -217,15 +211,6 @@ export function Agents({
                             >
                               {name}
                             </button>
-                            {(a.package || builtin.includes(name)) && (
-                              <span title={a.package ? words.packageHint : undefined}>
-                                <Tag>Built in</Tag>
-                              </span>
-                            )}
-                            {a.customized && <Pill>{words.customized}</Pill>}
-                            {a.update_available && (
-                              <Pill tone="accent">{words.updateAvailable}</Pill>
-                            )}
                             {control?.pause_reason === "setup" && <Tag>{words.draft}</Tag>}
                             {control?.effective_paused && control.pause_reason !== "setup" && (
                               <Tag>{words.pausedByAdmin}</Tag>
@@ -253,9 +238,6 @@ export function Agents({
                         )}
                       </td>
                     )}
-                    <td className="whitespace-nowrap px-2 py-3">
-                      <div className="truncate text-aui-sm">{a.spec.model}</div>
-                    </td>
                     {(
                       [
                         ["working", working],

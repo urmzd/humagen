@@ -77,17 +77,19 @@ export function Automations({
                     </Pill>
                     <Tag icon={<CalendarIcon size={12} />}>{inWords(s.expression)}</Tag>
                     <AgentTag name={s.agent} />
-                    <Tag
-                      icon={
-                        s.deliver === "slack" ? (
-                          <SlackIcon size={12} />
-                        ) : s.deliver === "github" ? (
-                          <GitHubIcon size={12} />
-                        ) : undefined
-                      }
-                    >
-                      {sends.sentTo(s.deliver, s.deliver_to)}
-                    </Tag>
+                    {s.deliver && (
+                      <Tag
+                        icon={
+                          s.deliver === "slack" ? (
+                            <SlackIcon size={12} />
+                          ) : s.deliver === "github" ? (
+                            <GitHubIcon size={12} />
+                          ) : undefined
+                        }
+                      >
+                        {sends.sentTo(s.deliver, s.deliver_to)}
+                      </Tag>
+                    )}
                   </>
                 }
               />

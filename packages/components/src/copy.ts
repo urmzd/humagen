@@ -2991,9 +2991,7 @@ export const defaultCopy = {
   schedules: {
     deliver: "Send to",
     deliverHint: "Where each run's answer goes. A recap that finds nothing to say sends nothing.",
-    sendSession: "Only its session",
-    sendSlack: "A Slack channel",
-    sendGitHub: "A GitHub issue",
+    alsoPost: "Also post the answer to",
     sendInbox: "Its creator (older)",
     sendProject: "Its project (older)",
     connection: "Connection",
@@ -3008,7 +3006,7 @@ export const defaultCopy = {
             ? "Its project"
             : deliver === "inbox"
               ? "Its creator"
-              : "Its session",
+              : "",
     deliverNone: "Keep in the conversation",
     /** A new schedule is the reader's own; an existing one goes to whoever created it. */
     deliverInbox: (mine: boolean) => (mine ? "Send to my inbox" : "Send to its creator's inbox"),

@@ -548,9 +548,10 @@ export function Schedules({
 }
 
 /**
- * Where a schedule's answer goes: its session, a Slack channel or a GitHub
- * issue, each through one connection the reader picks. Older schedules that
- * still say inbox or project keep that choice until it is changed.
+ * A schedule always makes a session. Picking Slack or GitHub also posts its
+ * answer there, through one connection; picking neither keeps it in the
+ * session. Older schedules that still say inbox or project show that choice
+ * until it is turned off.
  */
 function SendTo({
   draft,
@@ -565,69 +566,89 @@ function SendTo({
 }) {
   const slack = connections.filter((c) => c.surface === "slack");
   const github = connections.filter((c) => c.surface === "github");
-  const through = draft.deliver === "slack" ? slack : draft.deliver === "github" ? github : [];
-  const options = [
-    { value: "", label: copy.sendSession },
-    ...(slack.length
-      ? [{ value: "slack", label: copy.sendSlack, mark: <SlackIcon size={14} /> }]
-      : []),
-    ...(github.length
-      ? [{ value: "github", label: copy.sendGitHub, mark: <GitHubIcon size={14} /> }]
-      : []),
-    ...(legacy === "inbox" ? [{ value: "inbox", label: copy.sendInbox }] : []),
-    ...(legacy === "project" ? [{ value: "project", label: copy.sendProject }] : []),
-  ];
+  const older = legacy === "inbox" || legacy === "project" ? legacy : undefined;
+  if (!slack.length && !github.length && !older) return null;
+  const pool = draft.deliver === "slack" ? slack : draft.deliver === "github" ? github : [];
+  const toggle = (kind: NonNullable<Schedule["deliver"]>, from: Client[]) =>
+    set(
+      draft.deliver === kind
+        ? { deliver: undefined, deliver_client: undefined, deliver_to: undefined }
+        : { deliver: kind, deliver_client: from[0]?.id, deliver_to: undefined },
+    );
+  const choice = `${button} gap-1.5 aria-pressed:border-aui-fg aria-pressed:text-aui-fg`;
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      <Label text={copy.deliver}>
-        <Menu
-          label={copy.deliver}
-          value={draft.deliver ?? ""}
-          options={options}
-          onChange={(next) => {
-            const deliver = (next || undefined) as Schedule["deliver"];
-            const pool = next === "slack" ? slack : next === "github" ? github : [];
-            set({
-              deliver,
-              deliver_client: pool[0]?.id,
-              deliver_to: pool.length ? draft.deliver_to : undefined,
-            });
-          }}
-        />
-      </Label>
-      {through.length > 1 && (
-        <Label text={copy.connection}>
-          <Menu
-            label={copy.connection}
-            value={draft.deliver_client ?? ""}
-            options={through.map((c) => ({ value: c.id, label: c.name }))}
-            onChange={(deliver_client) => set({ deliver_client })}
-          />
-        </Label>
-      )}
-      {draft.deliver === "slack" && (
-        <Label text={copy.slackChannel}>
-          <input
-            className={field}
-            required
-            pattern="[CG][A-Z0-9]{2,31}"
-            placeholder="C0123ABC"
-            value={draft.deliver_to ?? ""}
-            onChange={(e) => set({ deliver_to: e.target.value.trim().toUpperCase() })}
-          />
-        </Label>
-      )}
-      {draft.deliver === "github" && (
-        <Label text={copy.githubIssue}>
-          <input
-            className={field}
-            required
-            pattern="[A-Za-z0-9-]+/[A-Za-z0-9._-]+#[1-9][0-9]*"
-            placeholder="owner/repo#12"
-            value={draft.deliver_to ?? ""}
-            onChange={(e) => set({ deliver_to: e.target.value.trim() })}
-          />
-        </Label>
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-aui-sm text-aui-muted">{copy.alsoPost}</span>
+        {slack.length > 0 && (
+          <button
+            type="button"
+            className={choice}
+            aria-pressed={draft.deliver === "slack"}
+            onClick={() => toggle("slack", slack)}
+          >
+            <SlackIcon size={14} />
+            Slack
+          </button>
+        )}
+        {github.length > 0 && (
+          <button
+            type="button"
+            className={choice}
+            aria-pressed={draft.deliver === "github"}
+            onClick={() => toggle("github", github)}
+          >
+            <GitHubIcon size={14} />
+            GitHub
+          </button>
+        )}
+        {older && (
+          <button
+            type="button"
+            className={choice}
+            aria-pressed={draft.deliver === older}
+            onClick={() => toggle(older, [])}
+          >
+            {older === "project" ? copy.sendProject : copy.sendInbox}
+          </button>
+        )}
+      </div>
+      {(draft.deliver === "slack" || draft.deliver === "github") && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {pool.length > 1 && (
+            <Label text={copy.connection}>
+              <Menu
+                label={copy.connection}
+                value={draft.deliver_client ?? ""}
+                options={pool.map((c) => ({ value: c.id, label: c.name }))}
+                onChange={(deliver_client) => set({ deliver_client })}
+              />
+            </Label>
+          )}
+          {draft.deliver === "slack" ? (
+            <Label text={copy.slackChannel}>
+              <input
+                className={field}
+                required
+                pattern="[CG][A-Z0-9]{2,31}"
+                placeholder="C0123ABC"
+                value={draft.deliver_to ?? ""}
+                onChange={(e) => set({ deliver_to: e.target.value.trim().toUpperCase() })}
+              />
+            </Label>
+          ) : (
+            <Label text={copy.githubIssue}>
+              <input
+                className={field}
+                required
+                pattern="[A-Za-z0-9-]+/[A-Za-z0-9._-]+#[1-9][0-9]*"
+                placeholder="owner/repo#12"
+                value={draft.deliver_to ?? ""}
+                onChange={(e) => set({ deliver_to: e.target.value.trim() })}
+              />
+            </Label>
+          )}
+        </div>
       )}
     </div>
   );
