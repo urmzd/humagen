@@ -1591,6 +1591,8 @@ export interface ThreadMessage {
   surface_id?: string;
   /** Said in voice mode and transcribed. */
   spoken?: boolean;
+  /** When its author last corrected a spoken message's words. */
+  edited_at?: string;
   at: string;
 }
 
@@ -2549,6 +2551,10 @@ export interface VoiceUsage {
   micros: number;
   calls: number;
   unpriced_calls?: number;
+}
+
+export interface SpokenCorrection {
+  text: string;
 }
 
 export interface VoiceSpeechInput {

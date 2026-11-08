@@ -46,6 +46,7 @@ written in the session as usual and spoken a few sentences at a time.
 | `POST /api/sessions/{id}/voice/transcriptions` | Hears a recording (its own bytes, at most 10 MiB) and answers its words. Nothing is kept |
 | `POST /api/sessions/{id}/messages` with `"spoken": true` | Sends the words; `spoken` only marks the message |
 | `POST /api/sessions/{id}/voice/speech` with `{"run", "from"}` | Speaks the next few sentences of that run's answer, from offset `from` (0, then each answer's `next`) |
+| `PATCH /api/sessions/{id}/messages/{mid}` with `{"text"}` | Puts right a spoken message's words, for its author only, so a misheard word is right in every later turn; the runs it already started are not changed |
 
 What is spoken is read on the server from the answer of a run of that
 session, never sent by the client, so voice mode cannot speak anything else

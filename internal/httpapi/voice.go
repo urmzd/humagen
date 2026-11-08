@@ -28,6 +28,26 @@ func (s *Server) voiceRoutes(mux *http.ServeMux) {
 	// spoken a few sentences at a time.
 	mux.HandleFunc("POST /api/sessions/{id}/voice/transcriptions", s.authed(auth.SpeechWrite, s.seenSession(s.hearInSession)))
 	mux.HandleFunc("POST /api/sessions/{id}/voice/speech", s.authed(auth.SpeechWrite, s.seenSession(s.speakInSession)))
+	// A spoken message's words, put right by its author.
+	mux.HandleFunc("PATCH /api/sessions/{id}/messages/{mid}", s.authed(auth.RunsWrite, s.seenSession(s.correctSpoken)))
+}
+
+// correction is a spoken message's words, put right.
+type correction struct {
+	Text string `json:"text"`
+}
+
+func (s *Server) correctSpoken(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var in correction
+	if !decode(w, r, &in) {
+		return
+	}
+	got, err := s.P.CorrectSpoken(r.Context(), who, r.PathValue("id"), r.PathValue("mid"), in.Text)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, got)
 }
 
 func (s *Server) hearInSession(w http.ResponseWriter, r *http.Request, who auth.Principal) {

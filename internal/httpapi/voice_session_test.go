@@ -182,3 +182,42 @@ func TestVoiceModeTakesSpeechWriteAndAProvider(t *testing.T) {
 		t.Fatalf("voice off = %d", res)
 	}
 }
+
+// A spoken message's words are put right by its author, for later turns;
+// nobody else can, and a typed message cannot be.
+func TestASpokenMessageIsCorrectedByItsAuthor(t *testing.T) {
+	f := newFixtureWith(t, platform.Config{VoiceBuild: (&swappableVoice{fake: &speech.Fake{Text: "hi"}}).build})
+	ada := f.person(t, "acme", "00u-ada", "Ada", "humagen-admins")
+	id, _ := voiceSession(t, f, ada)
+	posted := want(t, f, ada, "POST", "/api/sessions/"+id+"/messages", `{"text":"Invite John to Fryday","spoken":true}`, http.StatusCreated)
+	mid := ""
+	for _, m := range posted["messages"].([]any) {
+		if msg, ok := m.(map[string]any)["message"].(map[string]any); ok && msg["text"] == "Invite John to Fryday" {
+			mid = msg["id"].(string)
+		}
+	}
+	if mid == "" {
+		t.Fatal("no spoken message")
+	}
+	path := "/api/sessions/" + id + "/messages/" + mid
+	got := want(t, f, ada, "PATCH", path, `{"text":"  Invite Jon to Friday "}`, http.StatusOK)
+	corrected := false
+	for _, m := range got["messages"].([]any) {
+		if msg, ok := m.(map[string]any)["message"].(map[string]any); ok && msg["id"] == mid {
+			corrected = msg["text"] == "Invite Jon to Friday" && msg["spoken"] == true && msg["edited_at"] != nil
+		}
+	}
+	if !corrected {
+		t.Fatalf("not corrected: %v", got["messages"])
+	}
+	ben := f.person(t, "acme", "00u-ben", "Ben", "humagen-admins")
+	if res, _ := rawCall(t, f, ben, "PATCH", path, `{"text":"mine now"}`); res != http.StatusForbidden && res != http.StatusNotFound {
+		t.Fatalf("someone else correcting = %d", res)
+	}
+	if res, _ := rawCall(t, f, ada, "PATCH", "/api/sessions/"+id+"/messages/m-1", `{"text":"typed"}`); res != http.StatusBadRequest {
+		t.Fatalf("correcting a typed message = %d", res)
+	}
+	if res, _ := rawCall(t, f, ada, "PATCH", path, `{"text":"   "}`); res != http.StatusBadRequest {
+		t.Fatalf("an empty correction = %d", res)
+	}
+}

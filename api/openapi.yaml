@@ -7630,6 +7630,37 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/ErrorBody"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/sessions/{id}/messages/{mid}:
+    patch:
+      operationId: correctSpokenMessage
+      tags: [voice]
+      summary: Put right the words of a spoken message
+      description: |
+        Replaces the text of a message its author said in voice mode
+        (`spoken`), so a word the transcription heard wrong is right for
+        every later turn. Only the author may, only a spoken message can be
+        corrected (400 for any other), its tags stay as posted, and the runs
+        it already started are not changed. The message gets `edited_at`.
+      x-permission: runs:write
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "mid", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SpokenCorrection"}
+      responses:
+        "200":
+          description: The session, with the message corrected.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSession"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/sessions/{id}/voice/transcriptions:
     post:
       operationId: hearInSession
@@ -11980,6 +12011,10 @@ components:
         spoken:
           description: Said in voice mode and transcribed.
           type: boolean
+        edited_at:
+          description: When its author last corrected a spoken message's words.
+          type: string
+          format: date-time
         at: {type: string, format: date-time}
     ThreadAnnouncement:
       description: |
@@ -13539,6 +13574,12 @@ components:
         micros: {type: integer, format: int64, description: What it cost, in micro-USD.}
         calls: {type: integer}
         unpriced_calls: {type: integer}
+    SpokenCorrection:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text: {type: string, minLength: 1, maxLength: 8000}
     VoiceSpeechInput:
       type: object
       additionalProperties: false

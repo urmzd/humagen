@@ -49,5 +49,21 @@ func exerciseSessionVoiceContract(t *testing.T, c *contract) {
 	if v := obj(session.field("voice")); v == nil || fmt.Sprint(v["calls"]) != "2" {
 		t.Fatalf("session voice usage = %v", session.field("voice"))
 	}
+	// A spoken message is put right by its author; a typed one is not.
+	posted := c.call(token, "POST", "/api/sessions/{id}/messages", "/api/sessions/"+id+"/messages", `{"text":"Book the room for Fryday","spoken":true}`, 201)
+	mid := ""
+	for _, m := range sliceOf(posted.field("messages")) {
+		if msg := obj(obj(m)["message"]); msg != nil && msg["text"] == "Book the room for Fryday" {
+			mid, _ = msg["id"].(string)
+		}
+	}
+	if mid == "" {
+		t.Fatal("the spoken message is not in the session")
+	}
+	edit := "/api/sessions/{id}/messages/{mid}"
+	c.call(token, "PATCH", edit, "/api/sessions/"+id+"/messages/"+mid, `{"text":"Book the room for Friday"}`, 200)
+	c.call(token, "PATCH", edit, "/api/sessions/"+id+"/messages/m-1", `{"text":"Something else"}`, 400)
+	other := f.person(t, "voice-contract", "wes", "Wes", "humagen-admins")
+	c.call(other, "PATCH", edit, "/api/sessions/"+id+"/messages/"+mid, `{"text":"Not mine"}`, 403)
 	c.call(token, "DELETE", "/api/voice/provider", "/api/voice/provider", "", 204)
 }

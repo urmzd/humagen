@@ -335,6 +335,8 @@ type Message struct {
 	Via string `json:"via"`
 	// Spoken is a message said in voice mode and transcribed.
 	Spoken bool `json:"spoken,omitempty"`
+	// EditedAt is when its author last corrected a spoken message's words.
+	EditedAt *time.Time `json:"edited_at,omitempty"`
 	// SurfaceID is the surface's own id for it, such as a Slack ts. A second
 	// post with the same one is the first.
 	SurfaceID string    `json:"surface_id,omitempty"`
@@ -342,6 +344,10 @@ type Message struct {
 }
 
 func (m Message) clone() Message {
+	if m.EditedAt != nil {
+		at := *m.EditedAt
+		m.EditedAt = &at
+	}
 	m.Attachments = slices.Clone(m.Attachments)
 	m.Mentions = cloneMentions(m.Mentions)
 	if m.Answers != nil {

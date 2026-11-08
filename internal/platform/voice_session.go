@@ -186,6 +186,21 @@ func (p *Platform) SpeakInSession(ctx context.Context, who auth.Principal, id, r
 	return VoiceSpeech{Audio: audio, MediaType: mt, Text: say, Next: next, Done: done, CostMicros: micros}, nil
 }
 
+// CorrectSpoken puts right the words of a spoken message its author posted in
+// a session, for every later turn; the runs it started are not changed.
+func (p *Platform) CorrectSpoken(ctx context.Context, who auth.Principal, id, mid, text string) (SessionView, error) {
+	if _, err := p.SessionRecord(ctx, who, id); err != nil {
+		return SessionView{}, err
+	}
+	if _, err := p.Threads.Correct(who.Tenant, id, mid, who.Subject, strings.TrimSpace(text), p.now()); err != nil {
+		if errors.Is(err, threads.ErrNotAuthor) {
+			return SessionView{}, fmt.Errorf("%w: %w", auth.ErrForbidden, err)
+		}
+		return SessionView{}, err
+	}
+	return p.ReadSession(ctx, who, id, "", "", false)
+}
+
 // answerSoFar is a run's answer: its final text once it has ended, else the
 // text it has streamed, read from the journal.
 func (p *Platform) answerSoFar(tenant string, run runs.Run) (string, bool, error) {

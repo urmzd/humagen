@@ -220,6 +220,7 @@ import type {
   SourceLinkRule,
   SourceLinkRuleInput,
   SourceLinkSuggestion,
+  SpokenCorrection,
   StopSessionBody,
   StorageUsage,
   StreamEventsStreamEvent,
@@ -6765,6 +6766,34 @@ not answer in time.
     return this.rawRequest<VoiceTranscript>("POST", path, {
       body,
       contentType: "application/octet-stream",
+      ...options,
+    });
+  }
+
+  /** Replaces the text of a message its author said in voice mode
+(`spoken`), so a word the transcription heard wrong is right for
+every later turn. Only the author may, only a spoken message can be
+corrected (400 for any other), its tags stay as posted, and the runs
+it already started are not changed. The message gets `edited_at`.
+ */
+  async correctSpokenMessage(id: string, mid: string, body: SpokenCorrection, options?: RequestOptions): Promise<AgentSession> {
+    let path = "/api/sessions/{id}/messages/{mid}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{mid}", encodeURIComponent(String(mid)));
+    return this.request<AgentSession>("PATCH", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async correctSpokenMessageRaw(id: string, mid: string, body: SpokenCorrection, options?: RequestOptions): Promise<ApiResponse<AgentSession>> {
+    let path = "/api/sessions/{id}/messages/{mid}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{mid}", encodeURIComponent(String(mid)));
+    return this.rawRequest<AgentSession>("PATCH", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }
