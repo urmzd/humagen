@@ -900,7 +900,7 @@ An agent's home survives only as who sees the agent, its Access:
 - **Workspace**: no home, or the root. Everyone sees it, and it answers
   anywhere it is allowed. The built-ins `humagen-writer`, `humagen-analyst`,
   `humagen-builder`, `code-reviewer`, `security-reviewer`,
-  `architect-reviewer` and `qa-reviewer` are the workspace's.
+  `architect-reviewer`, `qa-reviewer` and `approver` are the workspace's.
 - **Members of a project**: homed in a project. Its readers see it. Homed in
   a project everyone reads, it answers anywhere; homed in one kept to its
   members, it answers only where its readers alone read (that project and
