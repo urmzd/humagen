@@ -355,7 +355,10 @@ function ReferenceRow({
     <li ref={at as never} className="flex flex-col gap-1" data-testid="reference-row">
       <p className="flex flex-wrap items-center gap-x-2 text-aui-xs">
         <AgentMark name={run.agent} size={16} />
-        <a href={`#turn-${run.id}`} className="text-aui-fg hover:underline">
+        <a
+          href={`#turn-${run.id}`}
+          className="inline-flex min-h-6 items-center rounded-aui text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
+        >
           {run.agent}
         </a>
         {meta && <span className="text-aui-muted">{meta}</span>}
