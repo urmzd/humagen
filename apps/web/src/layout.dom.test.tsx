@@ -232,7 +232,8 @@ test("a popover near the left edge of a phone moves inside the gutter", () => {
     </Popover>,
   );
   fireEvent.click(screen.getByRole("button", { name: "Choose who answers" }));
-  assert.equal(screen.getByRole("dialog").style.translate, `${GUTTER_PX - left}px 0`);
+  assert.equal(screen.getByRole("dialog").style.left, "12px");
+  assert.ok(screen.getByRole("dialog").className.includes("fixed"));
 });
 
 const options = ["lead", "helper"].map((value) => ({ value, label: value }));

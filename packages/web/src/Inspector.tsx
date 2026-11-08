@@ -10,6 +10,7 @@ export function Inspector({
   children,
   onClose,
   onEscape,
+  modal = false,
   wide = false,
   expanded = false,
   footer,
@@ -24,6 +25,8 @@ export function Inspector({
   onClose: () => void;
   /** A nested selection can step back before closing its inspector. */
   onEscape?: () => void;
+  /** A nested picker stays in the native modal layer instead of the desktop dock. */
+  modal?: boolean;
   wide?: boolean;
   /** Docked beside the page, it fills the page. */
   expanded?: boolean;
@@ -40,8 +43,8 @@ export function Inspector({
   if (open) snapshot.current = { children, title, footer, lead };
   const shown = open ? { children, title, footer, lead } : snapshot.current;
   useLayoutEffect(() => {
-    setDock(document.getElementById("humagen-inspector-dock"));
-  }, []);
+    setDock(modal ? null : document.getElementById("humagen-inspector-dock"));
+  }, [modal]);
   useEffect(() => {
     if (!open || !root.current) return;
     const dialog = root.current;
@@ -50,7 +53,7 @@ export function Inspector({
     const media = window.matchMedia("(max-width: 1023px)");
     const show = () => {
       if (dialog.open) dialog.close();
-      if (media.matches) dialog.showModal();
+      if (modal || media.matches) dialog.showModal();
       else dialog.show();
       heading.current?.focus({ preventScroll: true });
     };
@@ -60,8 +63,12 @@ export function Inspector({
       media.removeEventListener("change", show);
       if (dialog.open) dialog.close();
       if (opener?.isConnected) opener.focus({ preventScroll: true });
+      else
+        document
+          .querySelector<HTMLElement>("[data-session-details]")
+          ?.focus({ preventScroll: true });
     };
-  }, [open, dock]);
+  }, [open, dock, modal]);
   if (!mounted) return null;
   const content = (
     <dialog
@@ -117,5 +124,5 @@ export function Inspector({
       )}
     </dialog>
   );
-  return dock ? createPortal(content, dock) : content;
+  return !modal && dock ? createPortal(content, dock) : content;
 }

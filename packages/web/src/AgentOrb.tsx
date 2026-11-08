@@ -130,7 +130,7 @@ export function agentInitials(name: string): string {
     .filter((w) => /[a-z0-9]/i.test(w));
   const [first = "", second] = words;
   if (!first) return "A";
-  return `${first[0]}${second ? second[0] : "A"}`.toUpperCase();
+  return `${first[0]}${second ? second[0] : (first[1] ?? "")}`.toUpperCase();
 }
 
 /**

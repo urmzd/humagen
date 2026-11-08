@@ -743,6 +743,8 @@ class Serializer {
         this.text({
           text: `${prefix ? `${prefix} ` : ""}**${f.title}**\n${f.suggestion}`,
         });
+        if (f.location) this.context({ items: [link(f.location.label, f.location.url)] });
+        if (f.feedback) this.feedback(f.feedback);
         this.context({
           items: [
             ...f.evidence.map(

@@ -74,8 +74,8 @@ test("the Directory's people: each by name and handle with their own picture, an
   openDirectory("people");
   assert.ok(screen.getByRole("heading", { name: "Directory" }));
   await screen.findByText("Dana Scully");
-  assert.ok(screen.getByText(/@dana-scully · operator/));
-  assert.ok(screen.getByText(/@fox · No role/));
+  assert.ok(screen.getByText(/@dana-scully | operator/));
+  assert.ok(screen.getByText(/@fox | No role/));
   const pictures = document.querySelectorAll("img");
   assert.equal(pictures.length, 1);
   assert.equal(pictures[0]?.getAttribute("src"), "/api/people/dana-scully/photo?v=2");
@@ -87,7 +87,7 @@ test("the Directory's agents: where each lives or that it is a platform agent, a
   const { opened } = openDirectory("agents");
   assert.ok(screen.getByText("@globex-helper"));
   assert.ok(screen.getByText("Globex"));
-  assert.equal(screen.getAllByText(/Company agent.*Enabled everywhere/).length, 2);
+  assert.equal(screen.getAllByText(/Workspace agent.*Enabled everywhere/).length, 2);
   fireEvent.click(screen.getByText("@lead"));
   assert.deepEqual(opened, ["agent:lead"]);
 });
@@ -116,8 +116,8 @@ test("the Directory's projects: a workspace's own kind is called by its title, a
     { name: "partner", title: "Partner", like: "account" },
   ];
   openDirectory("projects", undefined, [...tree, launch, northwind], kinds);
-  assert.ok(screen.getByText(/^Initiative · /));
-  assert.ok(screen.getByText(/^Partner · /));
+  assert.ok(screen.getByText(/^Initiative \| /));
+  assert.ok(screen.getByText(/^Partner \| /));
   assert.ok(!screen.queryByText(/^initiative|^partner/), "not by its lowercase name");
 });
 

@@ -1,6 +1,7 @@
 /**
- * Captures every main console screen at phone and desktop width, and fails
- * when one breaks the layout checks in checks.ts.
+ * Captures canonical console sessions at five responsive widths and fails
+ * when one breaks the layout checks in checks.ts. SCREENS_SUITE=legacy retains
+ * the historical screen/showcase fixtures for their older interfaces.
  *
  * It starts humagen on a free loopback port with the development sign-in, the
  * seeded agents on the offline provider and state in memory, adds a little
@@ -16,11 +17,13 @@
  * for primitives and approval; requires all screens). SCREENS_VIEWPORTS can
  * override sizes with comma-separated WIDTHxHEIGHT values; SCREENS_COLOR_SCHEME
  * accepts light (default) or dark for explicit responsive/theme acceptance.
- * SCREENS_SHOWCASE_ONLY=1 exports from an existing complete passing report.
+ * SCREENS_SHOWCASE_ONLY=1 exports from an existing complete passing legacy report.
+ * Canonical runs write incremental reports plus metadata identifying the tested SHA;
+ * only metadata.complete=true represents the entire requested width/state set.
  */
 
 import assert from "node:assert/strict";
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import {
   copyFileSync,
   existsSync,
@@ -38,7 +41,7 @@ import { fileURLToPath } from "node:url";
 import { type Browser, chromium, type Page } from "playwright-core";
 import { defaultCopy } from "../../packages/components/src/copy.ts";
 import { automationScreens } from "./automations.ts";
-import { collect, DESKTOP, judge, LANDSCAPE, PHONE, type Problem, type Rules } from "./checks.ts";
+import { collect, DESKTOP, judge, PHONE, type Problem, type Rules } from "./checks.ts";
 import { revealConversationControls } from "./conversation-controls.ts";
 import { conversationDeletions } from "./deletions.ts";
 import { emailScreens, notificationEmailFixture } from "./email.ts";
@@ -46,61 +49,47 @@ import { ideScreens } from "./ide.ts";
 import { libraryScreens } from "./library.ts";
 import { startNativeModel } from "./native.ts";
 import { usageScreens } from "./observability.ts";
+import { screenOutput } from "./output.ts";
 import { replayScreens } from "./replay.ts";
 import { reviewScreens } from "./review.ts";
+import { seedSessionFixtures } from "./session-fixtures.ts";
+import { sessionScreens } from "./sessions.ts";
 import { sidebarParticipants } from "./sidebar-participants.ts";
 import { sidebarScroll } from "./sidebar-scroll.ts";
 import { composerChrome, sidebarViews, wavePreview } from "./sidebar-views.ts";
+import { handheld, type Viewport, viewports } from "./viewports.ts";
 import { workspaceScreens } from "./workspace.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
 const bin = resolve(process.env.HUMAGEN_BIN ?? join(repo, "bin/humagen"));
 const web = resolve(process.env.HUMAGEN_WEB ?? join(repo, "apps/web/dist"));
-const out = resolve(process.env.SCREENS_OUT ?? join(repo, ".screens"));
+const out = screenOutput(repo, process.env.SCREENS_OUT);
 const showcaseOnly = process.env.SCREENS_SHOWCASE_ONLY === "1";
 const showcase = process.env.SCREENS_SHOWCASE === "1" || showcaseOnly;
 const only = (process.env.SCREENS_ONLY ?? "").split(",").filter(Boolean);
 
-interface Viewport {
-  name: string;
-  width: number;
-  height: number;
-  rules: Rules;
-}
-
-const defaultViewports: Viewport[] = [
+const suite = process.env.SCREENS_SUITE ?? (showcase ? "legacy" : "sessions");
+assert.ok(suite === "sessions" || suite === "legacy", "SCREENS_SUITE must be sessions or legacy");
+const legacyViewports: Viewport[] = [
   { name: "phone", width: 390, height: 844, rules: PHONE },
   { name: "desktop", width: 1280, height: 800, rules: DESKTOP },
 ];
+let expectedScreens: string[] = [];
+const sourceSHA =
+  process.env.GITHUB_SHA ??
+  execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
 const colorScheme: "light" | "dark" = (() => {
   const value = process.env.SCREENS_COLOR_SCHEME ?? "light";
   if (value !== "light" && value !== "dark")
     throw new Error("SCREENS_COLOR_SCHEME must be light or dark");
   return value;
 })();
-const VIEWPORTS: Viewport[] = process.env.SCREENS_VIEWPORTS
-  ? process.env.SCREENS_VIEWPORTS.split(",").map((value) => {
-      const match = /^(\d+)x(\d+)$/.exec(value);
-      const width = Number(match?.[1]);
-      const height = Number(match?.[2]);
-      assert.ok(
-        width >= 240 && width <= 2560 && height >= 320 && height <= 2160,
-        "Invalid SCREENS_VIEWPORTS size",
-      );
-      return { name: value, width, height, rules: rulesFor(width, height) };
-    })
-  : defaultViewports;
-
-/** A phone held either way is touched; only one held upright has the phone layout. */
-function handheld(width: number, height: number): boolean {
-  return Math.min(width, height) < 600;
-}
-
-function rulesFor(width: number, height: number): Rules {
-  if (width < 768) return PHONE;
-  return handheld(width, height) ? LANDSCAPE : DESKTOP;
-}
+const VIEWPORTS = process.env.SCREENS_VIEWPORTS
+  ? viewports(process.env.SCREENS_VIEWPORTS)
+  : suite === "legacy"
+    ? legacyViewports
+    : viewports();
 
 interface Screen {
   name: string;
@@ -1459,6 +1448,15 @@ async function startHumagen(
       `No built console at ${web}. Run pnpm --filter @humagen/console build, or set HUMAGEN_WEB.`,
     );
   const dir = mkdtempSync(join(tmpdir(), "humagen-screens-"));
+  // The canonical review fixture uses the normal host with an in-memory GitHub
+  // API seam. Its tool result still passes through grants, the runtime journal
+  // and production provenance projection. No live provider is contacted.
+  const host = suite === "sessions" ? join(dir, "humagen-screens-host") : bin;
+  if (suite === "sessions")
+    execFileSync("go", ["build", "-p", "2", "-o", host, "./scripts/screens/fixture-host"], {
+      cwd: repo,
+      stdio: "inherit",
+    });
   const model = await startNativeModel();
   const email = await notificationEmailFixture(dir, `http://127.0.0.1:${port}`, "default", "dev");
   const spec = join(dir, "screens-native.yaml");
@@ -1481,7 +1479,7 @@ spec:
   // A model key would let the agents seeded to fail succeed.
   for (const k of Object.keys(env)) if (/_API_KEY$/.test(k)) delete env[k];
   const proc = spawn(
-    bin,
+    host,
     [
       "serve",
       "-f",
@@ -2002,6 +2000,7 @@ async function capture(
         ...(full ? { full: `${vp.name}/${screen}.full.png` } : {}),
         problems,
       });
+      report(results);
       const mark = problems.length ? `FAIL ${problems.length}` : "ok";
       console.log(`${mark.padEnd(7)} ${vp.name.padEnd(8)} ${screen}`);
       for (const p of problems) console.log("   ", p.check, p.detail);
@@ -2011,7 +2010,26 @@ async function capture(
   return results;
 }
 
-function report(results: Result[]): void {
+function report(results: Result[], complete = false): void {
+  writeFileSync(
+    join(out, "metadata.json"),
+    `${JSON.stringify(
+      {
+        complete,
+        passed: complete && results.every((result) => result.problems.length === 0),
+        source_sha: sourceSHA,
+        head_sha: process.env.SCREENS_HEAD_SHA ?? sourceSHA,
+        suite,
+        color_scheme: colorScheme,
+        viewports: VIEWPORTS.map(({ name, width, height }) => ({ name, width, height })),
+        expected_screens: expectedScreens,
+        captured: results.length,
+        captured_at: new Date().toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
+  );
   writeFileSync(join(out, "report.json"), `${JSON.stringify(results, null, 2)}\n`);
   const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
   const names = [...new Set(results.map((r) => r.screen))];
@@ -2029,7 +2047,7 @@ function report(results: Result[]): void {
     .join("\n");
   writeFileSync(
     join(out, "index.html"),
-    `<!doctype html><meta charset="utf-8"><title>Console screens</title><style>body{font:14px system-ui;margin:16px}th{text-align:left;vertical-align:top;padding-right:12px}td{vertical-align:top;padding:0 12px 24px 0}img{border:1px solid #ccc}li{color:#b00020;max-width:400px}</style><table>\n${rows}\n</table>\n`,
+    `<!doctype html><meta charset="utf-8"><title>Console screens</title><style>body{font:14px system-ui;margin:16px}th{text-align:left;vertical-align:top;padding-right:12px}td{vertical-align:top;padding:0 12px 24px 0}img{border:1px solid #ccc}li{color:#b00020;max-width:400px}</style><h1>${esc(suite)} · ${colorScheme}</h1><p>Tested commit ${esc(sourceSHA)} · ${complete ? "Complete" : "Partial capture"}</p><table><thead><tr><th>State</th>${VIEWPORTS.map((vp) => `<th>${vp.width} × ${vp.height}</th>`).join("")}</tr></thead><tbody>\n${rows}\n</tbody></table>\n`,
   );
 }
 
@@ -2151,10 +2169,38 @@ async function main(): Promise<void> {
   const { base, proc, dir, closeModel } = await startHumagen(await freePort());
   let browser: Browser | undefined;
   try {
+    if (suite === "sessions") {
+      assert.ok(!showcase, "Showcase export uses SCREENS_SUITE=legacy");
+      // Keep the server, development sign-in and local model fixtures shared.
+      // Only the page scenarios and their seed API are canonical-session specific.
+      const call = api(base);
+      const fixtures = await seedSessionFixtures(call);
+      const all = sessionScreens(fixtures);
+      const unknown = only.filter((name) => !all.some((screen) => screen.name === name));
+      assert.deepEqual(unknown, [], "SCREENS_ONLY names no canonical screen");
+      const list = only.length ? all.filter((screen) => only.includes(screen.name)) : all;
+      expectedScreens = list.map((screen) => screen.name);
+      report([]);
+      browser = await chromium.launch({ executablePath, args: ["--no-sandbox"] });
+      const results = await capture(browser, base, list);
+      assert.equal(
+        results.length,
+        list.length * VIEWPORTS.length,
+        "Every requested state and width must be captured",
+      );
+      report(results, true);
+      const failing = results.filter((result) => result.problems.length > 0);
+      console.log(
+        `\n${results.length} canonical screenshots in ${out}; ${failing.length} failed layout checks.`,
+      );
+      if (failing.length) process.exitCode = 1;
+      return;
+    }
     // A mistyped name would otherwise capture nothing and pass.
     const names = screens(ids0, async () => {
       throw new Error("Screen discovery cannot call the API.");
     }).map((screen) => screen.name);
+    expectedScreens = only.length ? only : ["home-new", ...names];
     const unknown = only.filter((n) => n !== "home-new" && !names.includes(n));
     if (unknown.length) throw new Error(`SCREENS_ONLY names no screen: ${unknown.join(", ")}`);
     browser = await chromium.launch({ executablePath, args: ["--no-sandbox"] });
@@ -2291,7 +2337,7 @@ async function main(): Promise<void> {
     };
     results.push(...(await capture(browser, base, screens(ids, call))));
 
-    report(results);
+    report(results, true);
     if (showcase && results.every((r) => r.problems.length === 0)) {
       await exportShowcase(browser, base);
     }

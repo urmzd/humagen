@@ -1,7 +1,9 @@
 import { defaultCopy } from "@humagen/components";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { BuilderButton } from "./AgentBuilder.tsx";
 import { AgentChoicesEditor, choicesProblem, cleanChoices } from "./AgentChoicesEditor.tsx";
 import { AgentDefaultSkills } from "./AgentDefaultSkills.tsx";
+import { AgentHealth } from "./AgentHealth.tsx";
 import {
   type AgentPlace,
   type AgentSpec,
@@ -364,6 +366,7 @@ export const BUILTIN_LOCKED =
 /** One agent: its prompt, its setup, how it is measured, and its history. */
 export function AgentDetail({
   operations,
+  onBuilderSession,
   revision,
   tab: wanted = "prompt",
   onTab,
@@ -400,6 +403,7 @@ export function AgentDetail({
   viewer,
 }: {
   operations?: ReactNode;
+  onBuilderSession?: (id: string) => void;
   /** null creates a new agent. */
   revision: Revision | null;
   /** The tab on screen. The address holds it, so a link can open any tab. */
@@ -623,6 +627,9 @@ export function AgentDetail({
       actions={
         editable ? (
           <>
+            {revision && onBuilderSession && (
+              <BuilderButton name={name} onOpen={onBuilderSession} />
+            )}
             {dirty && <span className="text-aui-xs text-aui-muted">Unsaved changes</span>}
             {dirty && revision && (
               <button type="button" className={button} onClick={() => setSpec(saved)}>
@@ -648,6 +655,7 @@ export function AgentDetail({
       tabs={<Tabs label="Agent sections" value={tab} onChange={setTab} tabs={tabs} />}
     >
       {operations}
+      {revision && (tab === "prompt" || tab === "evals") && <AgentHealth name={name} />}
       {revision && tab === "prompt" && (
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           {[
@@ -737,7 +745,8 @@ export function AgentDetail({
                 System prompt
               </label>
               <span className="text-aui-2xs tabular-nums text-aui-muted">
-                {spec.system_prompt.split("\n").length} lines,{" "}
+                {spec.system_prompt.split("\n").length}{" "}
+                {spec.system_prompt.includes("\n") ? "lines" : "line"},{" "}
                 {spec.system_prompt.length.toLocaleString()} characters, about{" "}
                 {approxTokens(spec.system_prompt).toLocaleString()} tokens
               </span>
@@ -784,6 +793,11 @@ export function AgentDetail({
 
       {tab === "access" && (
         <div className="flex flex-col gap-8">
+          <p className="text-aui-xs text-aui-muted">
+            Agent calls and approval settings below are saved with{" "}
+            {revision ? `Save as Revision ${revision.rev + 1}` : "Create Agent"}. Where it answers
+            and Who may call it have their own save controls and take effect immediately.
+          </p>
           {revision && place && (
             <WhereItAnswers
               name={name}
@@ -840,6 +854,41 @@ export function AgentDetail({
           )}
 
           <Section
+            title="Personal connections"
+            hint="Use only the tools that the person starting the work has connected and approved. This does not share their credentials or give this agent access to another person's connections."
+          >
+            <Switch
+              label="Use the requester's approved connection tools"
+              hint="Saved with this agent's next revision. Workspace policy and the person's current tool approval still apply to every call."
+              checked={(spec.tools ?? []).some(
+                (tool) => tool === "person_tools" || tool === "mcp:person_tools:write",
+              )}
+              disabled={!editable}
+              onChange={(on) =>
+                setSpec((current) => ({
+                  ...current,
+                  tools: [
+                    ...(current.tools ?? []).filter(
+                      (tool) => tool !== "person_tools" && tool !== "mcp:person_tools:write",
+                    ),
+                    ...(on ? ["person_tools"] : []),
+                  ],
+                  ...(!on
+                    ? {
+                        approvals: current.approvals?.filter(
+                          (tool) => tool !== "person_tools" && tool !== "mcp:person_tools:write",
+                        ),
+                      }
+                    : {}),
+                }))
+              }
+            />
+            <a href="/connections" className={textLink}>
+              Review Connections
+            </a>
+          </Section>
+
+          <Section
             title="People in the loop"
             hint="A question or an approval reaches the inboxes of the people who may answer it. Runs started before you save keep the rules they started with."
           >
@@ -852,7 +901,10 @@ export function AgentDetail({
                 onChange={(on) => setSpec((s) => withAsking(s, on))}
               />
               {approvable(spec)
-                .filter((t) => !t.startsWith("tag_"))
+                .filter(
+                  (t) =>
+                    !t.startsWith("tag_") && t !== "person_tools" && t !== "mcp:person_tools:write",
+                )
                 .map((tool) => (
                   <Switch
                     key={tool}

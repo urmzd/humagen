@@ -17,6 +17,7 @@ import {
   type Interrupt,
   isRetryable,
   type Notice,
+  readAgentChange,
   readReview,
   SERVICE_TONE,
   type Segment,
@@ -55,6 +56,7 @@ import {
   useSurface,
 } from "@humagen/primitives";
 import type { ReactNode } from "react";
+import { AgentChangeCards } from "./agent-change";
 import { type Copy, defaultCopy } from "./copy";
 import { AnswerText, reviewCountLine } from "./review";
 import { toolsLine } from "./timeline";
@@ -120,7 +122,7 @@ export function ApprovalCard({
   const approveLabel = approval.budget
     ? copy.budgetHold.grant(approval.budget.grant)
     : (approval.approveLabel ?? copy.approve);
-  const denyLabel = approval.budget ? copy.budgetHold.stop : copy.cancel;
+  const denyLabel = approval.budget ? copy.budgetHold.stop : copy.declineAction;
   const payload = { turnId, target: approval.id };
   const allowed = viewer === undefined || canDecide(approval, viewer);
 
@@ -143,7 +145,7 @@ export function ApprovalCard({
         <Text text={`**${approval.summary}**`} />
         {fields.length > 0 && <Fields items={fields} />}
         <Actions blockId={`approval:${approval.id}:r${approval.revision ?? 0}`}>
-          <Button label={copy.ask} action={{ id: ActionId.ask, payload }} />
+          <Button label={copy.askApproval} action={{ id: ActionId.ask, payload }} />
         </Actions>
         <Context items={[copy.notYours, ...(approval.actsForPerson ? [copy.actsForPerson] : [])]} />
       </>
@@ -175,7 +177,9 @@ export function ApprovalCard({
           {approval.editable && !approval.actsForPerson && (
             <Button label={copy.edit} action={{ id: ActionId.edit, payload }} />
           )}
-          {!approval.budget && <Button label={copy.ask} action={{ id: ActionId.ask, payload }} />}
+          {!approval.budget && (
+            <Button label={copy.askApproval} action={{ id: ActionId.ask, payload }} />
+          )}
           {approval.rememberable && (
             <Button
               label={copy.alwaysAllow(approval.tool)}
@@ -430,7 +434,7 @@ function capitalize(text: string) {
 }
 
 export function failureTitle(failure: Failure, copy: Copy = defaultCopy): string {
-  return capitalize(copy.failure[failure.kind](failure.service));
+  return failure.title || capitalize(copy.failure[failure.kind](failure.service));
 }
 
 /** Keep credential configuration paths in authorized run details, not the answer body. */
@@ -495,7 +499,6 @@ export function FailureAlert({
         <Context items={[copy.cantRetry]} />
       )}
       {notOffered && <Context items={[notOffered]} />}
-      {failure.reference && <Context items={[copy.reference(failure.reference)]} />}
     </>
   );
 }
@@ -594,6 +597,7 @@ export function TaskList({ turn, copy = defaultCopy }: { turn: Turn } & WithCopy
     <Task
       key={t.id}
       {...t}
+      output={inWords && readAgentChange(t) ? undefined : t.output}
       sourceLabels={copy.citation}
       title={subagent && inWords ? copy.delegated(subagent.name, t.title) : t.title}
       decision={taskDecision(turn, interruptId, copy)}
@@ -626,7 +630,7 @@ export function toolsLineText(
     line.waiting ? w.waiting : "",
   ]
     .filter(Boolean)
-    .join(" · ");
+    .join(" | ");
 }
 
 /**
@@ -815,6 +819,9 @@ export function TurnView({
       {turn.attachments?.map((a) => (
         <AttachmentView key={a.id} attachment={a} />
       ))}
+      <Only surface="slack">
+        <AgentChangeCards tasks={turn.tasks} />
+      </Only>
       {/* Gated tool rows hold their own controls on the web; Slack gets the cards. */}
       {pendingApprovals.length > 1 && owned.size > 0 ? (
         <Only surface="slack">

@@ -2,7 +2,8 @@ import { defaultCopy } from "@humagen/components";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, type Client, type ClientCaps } from "./api.ts";
 import { ClientConnect } from "./ClientConnect.tsx";
-import { button, card, Problem, pageLede, pageTitle, Switch } from "./ui.tsx";
+import { ConnectionHealth } from "./ConnectionHealth.tsx";
+import { button, Confirm, card, Problem, pageLede, pageTitle, Switch } from "./ui.tsx";
 
 const surfaces: Record<Client["surface"], string> = { slack: "Slack", github: "GitHub" };
 
@@ -51,6 +52,7 @@ export function ClientSettings({ canWrite }: { canWrite: boolean }) {
   const [caps, setCaps] = useState<ClientCaps | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
 
   const fail = (fallback: string) => (e: unknown) =>
     setProblem(e instanceof ApiError ? e.message : fallback);
@@ -121,8 +123,13 @@ export function ClientSettings({ canWrite }: { canWrite: boolean }) {
             <h3 className="text-aui-sm font-medium text-aui-fg">
               {c.name} <span className="font-normal text-aui-muted">{surfaces[c.surface]}</span>
             </h3>
-            <span className="font-aui-mono text-aui-2xs text-aui-muted">{c.id}</span>
           </div>
+          <ConnectionHealth
+            key={`${c.id}:${c.version}`}
+            client={c.id}
+            provider={c.surface}
+            canCheck={canWrite}
+          />
           <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-aui-sm">
             <dt className="text-aui-muted">Answers for</dt>
             <dd className="text-aui-fg">{identity(c) || "Not stated"}</dd>
@@ -147,7 +154,14 @@ export function ClientSettings({ canWrite }: { canWrite: boolean }) {
               </>
             )}
           </dl>
-          {c.managed ? (
+          {c.managed === "installation" ? (
+            <a
+              className="underline"
+              href={`/connections?provider=client:${encodeURIComponent(c.id)}`}
+            >
+              Configure installation in Connections
+            </a>
+          ) : c.managed ? (
             <p className="text-aui-xs text-aui-muted">
               Configured by the server's environment. It is changed there, not here.
             </p>
@@ -155,14 +169,26 @@ export function ClientSettings({ canWrite }: { canWrite: boolean }) {
             canWrite && (
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <Switch
-                  label="Enabled"
+                  label={c.enabled ? "Enabled" : "Disabled"}
                   hint="A disabled client answers nothing and carries nothing."
                   checked={c.enabled}
                   onChange={(next) => enable(c, next)}
                 />
-                <button type="button" className={button} onClick={() => remove(c)}>
-                  Remove
-                </button>
+                {removing === c.id ? (
+                  <Confirm
+                    question={`Remove ${c.name}? Agents will stop receiving messages from it.`}
+                    action="Remove"
+                    onConfirm={() => {
+                      setRemoving(null);
+                      remove(c);
+                    }}
+                    onKeep={() => setRemoving(null)}
+                  />
+                ) : (
+                  <button type="button" className={button} onClick={() => setRemoving(c.id)}>
+                    Remove
+                  </button>
+                )}
               </div>
             )
           )}

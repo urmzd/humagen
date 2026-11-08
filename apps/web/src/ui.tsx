@@ -1345,7 +1345,9 @@ export function Popover({
   side,
   tooltip,
   children,
+  onOpen,
 }: {
+  onOpen?: () => void;
   label: string;
   button: ReactNode;
   className?: string;
@@ -1364,7 +1366,51 @@ export function Popover({
   const panel = useRef<HTMLDivElement>(null);
   const id = useId();
   // A flyout is placed by hand beside its trigger; anything else hangs from it and is kept inside the gutter.
-  const shift = useInsideGutter(panel, root, open && side !== "right");
+  const [position, setPosition] = useState({ left: 16, top: 16, maxHeight: 320 });
+  useLayoutEffect(() => {
+    if (!open || !present.mounted) return;
+    const place = () => {
+      const anchor = root.current?.getBoundingClientRect();
+      const menu = panel.current?.getBoundingClientRect();
+      if (!anchor || !menu) return;
+      const gutter = 12;
+      const viewport = document.documentElement.clientWidth || window.innerWidth;
+      const preferredLeft =
+        side === "right"
+          ? anchor.right + 8
+          : align === "right"
+            ? anchor.right - menu.width
+            : anchor.left;
+      const left = Math.max(gutter, Math.min(preferredLeft, viewport - menu.width - gutter));
+      const below = window.innerHeight - anchor.bottom - gutter - 8;
+      const above = anchor.top - gutter - 8;
+      const useAbove =
+        side !== "right" &&
+        (up ? above >= Math.min(menu.height, below) : below < menu.height && above > below);
+      const maxHeight = Math.max(
+        80,
+        side === "right" ? window.innerHeight - 2 * gutter : useAbove ? above : below,
+      );
+      const desiredTop =
+        side === "right"
+          ? anchor.top
+          : useAbove
+            ? anchor.top - Math.min(menu.height, maxHeight) - 8
+            : anchor.bottom + 8;
+      const top = Math.max(
+        gutter,
+        Math.min(desiredTop, window.innerHeight - Math.min(menu.height, maxHeight) - gutter),
+      );
+      setPosition({ left, top, maxHeight });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, present.mounted, align, up, side]);
 
   useEffect(() => {
     if (!open) return;
@@ -1377,15 +1423,6 @@ export function Popover({
     return () => document.removeEventListener("mousedown", away);
   }, [open]);
 
-  const [flyout, setFlyout] = useState<{ left: number; top: number }>();
-  useEffect(() => {
-    if (side === "right" && open && present.mounted) {
-      root.current
-        ?.querySelector<HTMLElement>('[role="dialog"] button, [role="dialog"] input')
-        ?.focus();
-    }
-  }, [side, open, present.mounted]);
-
   const triggerButton = (
     <button
       type="button"
@@ -1394,14 +1431,7 @@ export function Popover({
       aria-expanded={open}
       aria-controls={open ? id : undefined}
       onClick={() => {
-        if (side === "right") {
-          const rect = root.current?.getBoundingClientRect();
-          if (rect)
-            setFlyout({
-              left: rect.right + 8,
-              top: Math.max(16, Math.min(rect.top, window.innerHeight - 320)),
-            });
-        }
+        if (!open) onOpen?.();
         setOpen(!open);
       }}
       className={className}
@@ -1412,21 +1442,19 @@ export function Popover({
   const flyoutPanel = (
     <div
       ref={panel}
+      data-floating-popover
       id={id}
       role="dialog"
       aria-label={label}
       data-leaving={present.leaving}
       style={
         {
-          ...(side === "right" ? flyout : {}),
-          ...(shift ? { translate: `${shift}px 0` } : {}),
+          ...position,
           "--humagen-pop-origin":
             side === "right" ? "top left" : `${up ? "bottom" : "top"} ${align}`,
         } as CSSProperties
       }
-      className={`humagen-glass-pop humagen-pop ${side === "right" ? "fixed" : "absolute"} z-40 max-w-[calc(100vw-2rem)] rounded-aui-lg p-1.5 ${narrow ? "w-56" : "w-80"} ${
-        side === "right" ? "" : align === "right" ? "right-0" : "left-0"
-      } ${side === "right" ? "" : up ? "bottom-full mb-2" : "top-full mt-2"}`}
+      className={`humagen-glass-pop humagen-pop fixed z-[80] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-aui-lg p-1.5 ${narrow ? "w-56" : "w-80"}`}
     >
       {children(() => {
         setOpen(false);
@@ -1449,7 +1477,7 @@ export function Popover({
       {tooltip ? <Tooltip label={tooltip}>{triggerButton}</Tooltip> : triggerButton}
       {present.mounted &&
         // A flyout leaves its column: a scrolling or blurred ancestor would clip it.
-        (side === "right" ? createPortal(flyoutPanel, document.body) : flyoutPanel)}
+        createPortal(flyoutPanel, document.body)}
     </div>
   );
 }

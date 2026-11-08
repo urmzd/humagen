@@ -1,7 +1,7 @@
 import { answerOfAction, answers } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
 import { ActionId, type UiAction } from "@humagen/core";
-import { BringBackIcon, ForkIcon, WebSurface } from "@humagen/render-web";
+import { ForkIcon, WebSurface } from "@humagen/render-web";
 import { AgentMessage, messageActionButton, railEntry, Thread, useQueue } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
@@ -38,11 +38,13 @@ import { ProjectPicker } from "./ProjectPicker.tsx";
 import { openPane } from "./pane.ts";
 import { ReplayMenu } from "./ReplayMenu.tsx";
 import { ThreadRoom, topicsOf } from "./Room.tsx";
+import { RunFeedbackHost } from "./RunFeedback.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { SaveAsArtifact } from "./SaveAsArtifact.tsx";
 import { Scroller } from "./Scroller.tsx";
+import { SessionDetailsProvider } from "./SessionDetails.tsx";
 import { useThreadSelection } from "./selection.ts";
 import { mentionsIn } from "./tags.ts";
 import { readFromStart } from "./turns.ts";
@@ -209,19 +211,23 @@ function TurnView({
       {run.picked && <Checkpoint agent={run.agent}>{run.picked}</Checkpoint>}
 
       <AgentTint name={run.agent}>
-        <AgentMessage
-          actions={actions}
-          stop={stop}
-          disclaimer={false}
-          timestamp={<MessageTime at={run.created_at} />}
-          turn={shown}
-          copy={copyFor(ask)}
-          itemActions={itemActions(run)}
-          capabilities={{ regenerate: !refused }}
-          onAskAgent={onAsk}
-          onReply={onReply}
-          onRedirect={onRedirect}
-        />
+        <RunFeedbackHost turn={shown}>
+          {(rated) => (
+            <AgentMessage
+              actions={actions}
+              stop={stop}
+              disclaimer={false}
+              timestamp={<MessageTime at={run.created_at} />}
+              turn={rated}
+              copy={copyFor(ask)}
+              itemActions={itemActions(run)}
+              capabilities={{ regenerate: !refused }}
+              onAskAgent={onAsk}
+              onReply={onReply}
+              onRedirect={onRedirect}
+            />
+          )}
+        </RunFeedbackHost>
       </AgentTint>
 
       <div className="flex flex-wrap items-center gap-2 pl-11 text-aui-xs text-aui-muted">
@@ -354,6 +360,7 @@ export function Chat({
   canRun,
   artifactActions,
   canLearn = false,
+  alertAccess,
   forkActions,
   canCreateProject,
   greeting,
@@ -409,6 +416,7 @@ export function Chat({
   projects: ProjectView[] | null;
   canRun: boolean;
   canLearn?: boolean;
+  alertAccess?: { write: boolean };
   artifactActions?: { knowledge: boolean; memory: boolean };
   forkActions?: ConversationForkActions;
   /** May make a project from the picker. */
@@ -504,7 +512,17 @@ export function Chat({
     let live = true;
     // The branch on screen is walked from the conversation's start, so every
     // page is read, not only the newest.
-    readFromStart((before) => coworking.thread(threadId, before))
+    (threadId.startsWith("s_")
+      ? coworking.thread(threadId, undefined, focus).catch((error) => {
+          if (focus && error instanceof ApiError && error.status === 404) {
+            if (live)
+              setProblem("That message is unavailable. Showing the latest session messages.");
+            return coworking.thread(threadId);
+          }
+          throw error;
+        })
+      : readFromStart((before) => coworking.thread(threadId, before))
+    )
       .then((p) => {
         if (!live) return;
         setRoom(p);
@@ -711,7 +729,8 @@ export function Chat({
 
   const onAction = (a: UiAction) => {
     // An agent drawn inside a turn opens the drawer on its run.
-    if (a.id === ActionId.openRun) return openPanel("activity", { run: a.payload.target });
+    if (a.id === ActionId.openRun)
+      return openPanel("activity", { run: a.payload.target, step: a.payload.option });
     if (a.id === ActionId.openReview && a.payload.target) {
       openPanel("workspace", reviewView(shownView, a.payload.target));
       return;
@@ -769,7 +788,7 @@ export function Chat({
           kinds={root?.kinds}
           value={selection.project}
           personalProject={personalProject}
-          personalLabel={wide ? defaultCopy.noProject : undefined}
+          personalLabel={defaultCopy.projects.personalTitle}
           channel={selection.channel}
           canCreate={canCreateProject}
           onCreated={onProjectCreated}
@@ -891,6 +910,7 @@ export function Chat({
                     projectControl={
                       room?.thread ? (
                         <ProjectPicker
+                          locked={defaultCopy.threads.shareProjectFixed}
                           projects={projects ?? null}
                           kinds={root?.kinds}
                           value={room.thread.project}
@@ -967,7 +987,10 @@ export function Chat({
     threadId &&
     room &&
     room.thread.id === threadId &&
-    (room.thread.read_only || room.turns.some((t) => t.message))
+    (threadId.startsWith("s_") ||
+      room.thread.read_only ||
+      room.thread.fork ||
+      room.turns.some((t) => t.message))
   ) {
     return (
       <ThreadRoom
@@ -986,6 +1009,7 @@ export function Chat({
         personalProject={personalProject}
         artifactActions={artifactActions}
         canLearn={canLearn}
+        alertAccess={alertAccess}
         forkActions={forkActions}
         focus={focus}
         sharing={sharing}
@@ -1042,7 +1066,7 @@ export function Chat({
               <li key={`${st.agent}:${st.label}`} className="shrink-0">
                 <button
                   type="button"
-                  onClick={() => setSeed({ text: `@${st.agent} ${st.text}` })}
+                  onClick={() => setSeed({ text: `@${st.agent} ${st.text}`, mode: "append" })}
                   className="inline-flex min-h-10 pointer-coarse:min-h-11 max-w-[calc(100vw-2rem)] items-center gap-2 whitespace-nowrap rounded-aui border border-aui-border px-3 py-2 text-left text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
                 >
                   <AgentMark name={st.agent} size={14} />
@@ -1057,199 +1081,174 @@ export function Chat({
   }
 
   return (
-    <section className="flex min-h-0 flex-1">
-      <ConversationPage
-        title={summary?.title ?? path[0]?.text ?? "Conversation"}
-        project={
-          projects?.find((p) => p.name === where)?.title ||
-          (where === personalProject ? defaultCopy.projects.personalTitle : where) ||
-          workspaceName ||
-          defaultCopy.projects.workspace
-        }
-        private={room?.thread.visibility === "private"}
-        agents={summary?.agents ?? [...new Set(turns.map((t) => t.agent))]}
-        people={room?.thread.participants?.filter((p) => p.kind === "person").map((p) => p.name)}
-        onPanel={(next) => openPanel(next)}
-        panel={shownView.panel}
-        onClosePanel={() => openPanel()}
-        onArtifact={(id) =>
-          openPanel("workspace", openPane(shownView, { kind: "artifact", ref: id }))
-        }
-      >
-        {room && canRun && !room.thread.read_only && (
-          <ConversationForkPanels thread={room.thread} runs={turns} actions={forkActions} />
-        )}
-        <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
-          <Thread
-            className="w-full flex-1"
-            column="mx-auto w-full max-w-4xl px-4"
-            busy={tailWorking}
-            label="Conversation"
-            turns={wave}
-          >
-            {path.map((run, i) => (
-              <TurnView
-                key={run.id}
-                run={run}
-                canStop={canRun && !room?.thread.read_only}
-                actions={
-                  !room?.thread.read_only && run.status === "completed" ? (
-                    <>
-                      <OutcomeActions run={run} canWrite={canLearn} />
-                      {canRun && threadId && (
-                        <SaveAsArtifact
-                          thread={threadId}
-                          what={{ source: "run", id: run.id }}
-                          className={messageActionButton}
-                          onSaved={(artifact) =>
-                            openPanel(
-                              "workspace",
-                              openPane(shownView, { kind: "artifact", ref: artifact.id }),
-                            )
-                          }
-                        />
-                      )}
-                      {canRun && forkActions?.onFork && (
-                        <button
-                          type="button"
-                          className={messageActionButton}
-                          aria-label={defaultCopy.forking.fromHere}
-                          title={defaultCopy.forking.fromHere}
-                          onClick={() => forkActions.onFork?.(run.id)}
-                        >
-                          <ForkIcon size={16} />
-                        </button>
-                      )}
-                      {canRun &&
-                        threadId &&
-                        run.status === "completed" &&
-                        !room?.thread.read_only && (
-                          <ReplayMenu
-                            agents={agents.map((a) => a.spec.name)}
-                            answered={run.agent}
-                            prompt={run.text}
-                            thread={threadId}
-                            point={run.id}
-                            onOpen={onThread}
-                          />
-                        )}
-                      {canRun && room?.thread.fork && forkActions?.onBringBack && (
-                        <button
-                          type="button"
-                          className={messageActionButton}
-                          aria-label={defaultCopy.forking.bringBack}
-                          title={defaultCopy.forking.bringBack}
-                          onClick={() => forkActions.onBringBack?.(run.id)}
-                        >
-                          <BringBackIcon size={16} />
-                        </button>
-                      )}
-                    </>
-                  ) : undefined
-                }
-                me={me}
-                ask={asks[run.id]}
-                siblings={siblingsOf(turns, run)}
-                live={
-                  i === path.length - 1 || (run.status !== "completed" && run.status !== "failed")
-                }
-                onSwitch={(id) => setChosen((c) => ({ ...c, [run.prev ?? ""]: id }))}
-                onAsk={
-                  canRun ? () => setSeed({ text: `@${run.agent} `, mode: "prepend" }) : undefined
-                }
-                onReply={
-                  canRun
-                    ? () =>
-                        setSeed({
-                          text: `@${run.agent} following up on [this answer](${href({ page: "conversation", id: threadId, panel: "activity", run: run.id })}): `,
-                          mode: "prepend",
-                        })
-                    : undefined
-                }
-                onRedirect={
-                  canRun
-                    ? () =>
-                        setSeed({
-                          text: defaultCopy.conversation.redirectPrompt(
-                            run.agent,
-                            href({
-                              page: "conversation",
-                              id: threadId,
-                              panel: "activity",
-                              run: run.id,
-                            }),
-                          ),
-                          mode: "prepend",
-                        })
-                    : undefined
-                }
-              />
-            ))}
-          </Thread>
-        </WebSurface>
-        {composer}
-      </ConversationPage>
-      {room && (
-        <ConversationInfo
-          runs={turns}
-          view={shownView}
-          panel={shownView.panel}
-          contextTab={shownView.contextTab}
-          onContextTab={(contextTab) => openPanel("context", { contextTab })}
-          thread={room.thread}
+    <SessionDetailsProvider panel={shownView.panel} onPanel={(panel) => openPanel(panel)}>
+      <section className="flex min-h-0 flex-1">
+        <ConversationPage
+          title={summary?.title ?? path[0]?.text ?? "Conversation"}
           project={
-            projects?.find((project) => project.name === where)?.title ||
+            projects?.find((p) => p.name === where)?.title ||
             (where === personalProject ? defaultCopy.projects.personalTitle : where) ||
             workspaceName ||
             defaultCopy.projects.workspace
           }
-          onClose={() => openPanel()}
-        />
-      )}
-      {threadId && (
-        <Workspace
-          extraTab={(tab) => {
-            if (!["review", "pull", "issue"].includes(tab.kind)) return undefined;
-            return <GitHubTab tab={tab} review={reviewText(turns, tab.ref)} />;
-          }}
-          key={threadId}
-          thread={threadId}
-          open={shownView.panel === "workspace"}
-          view={shownView}
-          onView={(next) => openPanel("workspace", next)}
-          onClose={() => openPanel()}
-          onRequest={
-            canRun && !room?.thread.read_only
-              ? (text) => {
-                  setSeed({ text, mode: "prepend" });
-                  openPanel();
-                }
-              : undefined
+          private={room?.thread.visibility === "private"}
+          agents={summary?.agents ?? [...new Set(turns.map((t) => t.agent))]}
+          people={room?.thread.participants?.filter((p) => p.kind === "person").map((p) => p.name)}
+          onPanel={(next) => openPanel(next)}
+          panel={shownView.panel}
+          onClosePanel={() => openPanel()}
+          onArtifact={(id) =>
+            openPanel("workspace", openPane(shownView, { kind: "artifact", ref: id }))
           }
-          promotion={
-            artifactActions
-              ? {
-                  project: room?.thread.project ?? where ?? "",
-                  shared: room?.thread.visibility === "shared",
-                  ...artifactActions,
-                }
-              : undefined
-          }
-          onRevise={
-            canRun
-              ? (file, slide) => {
-                  setSeed({ text: revisionPrompt(file, slide), mode: "prepend" });
-                  openPanel();
-                }
-              : undefined
-          }
-          onRun={(run) => openPanel("activity", { run })}
-        />
-      )}
-      <Presence when={shownView.panel === "deliverables"} ms={220}>
-        {(leaving) => (
-          <Deliverables
-            open={!leaving}
+        >
+          {room && canRun && !room.thread.read_only && (
+            <ConversationForkPanels thread={room.thread} runs={turns} actions={forkActions} />
+          )}
+          <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
+            <Thread
+              className="w-full flex-1"
+              column="mx-auto w-full max-w-4xl px-4"
+              busy={tailWorking}
+              label="Conversation"
+              turns={wave}
+            >
+              {path.map((run, i) => (
+                <TurnView
+                  key={run.id}
+                  run={run}
+                  canStop={canRun && !room?.thread.read_only}
+                  actions={
+                    !room?.thread.read_only && run.status === "completed" ? (
+                      <>
+                        <OutcomeActions run={run} canWrite={canLearn} />
+                        {canRun && threadId && (
+                          <SaveAsArtifact
+                            thread={threadId}
+                            what={{ source: "run", id: run.id }}
+                            className={messageActionButton}
+                            onSaved={(artifact) =>
+                              openPanel(
+                                "workspace",
+                                openPane(shownView, { kind: "artifact", ref: artifact.id }),
+                              )
+                            }
+                          />
+                        )}
+                        {canRun && forkActions?.onFork && (
+                          <button
+                            type="button"
+                            className={messageActionButton}
+                            aria-label={defaultCopy.forking.fromHere}
+                            title={defaultCopy.forking.fromHere}
+                            onClick={() => forkActions.onFork?.(run.id)}
+                          >
+                            <ForkIcon size={16} />
+                          </button>
+                        )}
+                        {canRun &&
+                          threadId &&
+                          run.status === "completed" &&
+                          !room?.thread.read_only && (
+                            <ReplayMenu
+                              agents={agents.map((a) => a.spec.name)}
+                              answered={run.agent}
+                              prompt={run.text}
+                              thread={threadId}
+                              point={run.id}
+                              onOpen={onThread}
+                            />
+                          )}
+                      </>
+                    ) : undefined
+                  }
+                  me={me}
+                  ask={asks[run.id]}
+                  siblings={siblingsOf(turns, run)}
+                  live={
+                    i === path.length - 1 || (run.status !== "completed" && run.status !== "failed")
+                  }
+                  onSwitch={(id) => setChosen((c) => ({ ...c, [run.prev ?? ""]: id }))}
+                  onAsk={
+                    canRun ? () => setSeed({ text: `@${run.agent} `, mode: "prepend" }) : undefined
+                  }
+                  onReply={
+                    canRun
+                      ? () =>
+                          setSeed({
+                            quote: {
+                              label: `${run.agent}'s answer`,
+                              agent: run.agent,
+                              url: href({
+                                page: "conversation",
+                                id: threadId,
+                                panel: "activity",
+                                run: run.id,
+                              }),
+                            },
+                          })
+                      : undefined
+                  }
+                  onRedirect={
+                    canRun
+                      ? () =>
+                          setSeed({
+                            text: defaultCopy.conversation.redirectPrompt(
+                              run.agent,
+                              href({
+                                page: "conversation",
+                                id: threadId,
+                                panel: "activity",
+                                run: run.id,
+                              }),
+                            ),
+                            mode: "prepend",
+                          })
+                      : undefined
+                  }
+                />
+              ))}
+            </Thread>
+          </WebSurface>
+          {composer}
+        </ConversationPage>
+        {room && (
+          <ConversationInfo
+            canWrite={canRun}
+            runs={turns}
+            view={shownView}
+            panel={shownView.panel}
+            contextTab={shownView.contextTab}
+            onContextTab={(contextTab) => openPanel("context", { contextTab })}
+            thread={room.thread}
+            project={
+              projects?.find((project) => project.name === where)?.title ||
+              (where === personalProject ? defaultCopy.projects.personalTitle : where) ||
+              workspaceName ||
+              defaultCopy.projects.workspace
+            }
+            onClose={() => openPanel()}
+          />
+        )}
+        {threadId && (
+          <Workspace
+            extraTab={(tab) => {
+              if (!["review", "pull", "issue"].includes(tab.kind)) return undefined;
+              return <GitHubTab tab={tab} review={reviewText(turns, tab.ref)} />;
+            }}
+            key={threadId}
+            thread={threadId}
+            open={shownView.panel === "workspace"}
+            view={shownView}
+            onView={(next) => openPanel("workspace", next)}
+            onClose={() => openPanel()}
+            onRequest={
+              canRun && !room?.thread.read_only
+                ? (text) => {
+                    setSeed({ text, mode: "prepend" });
+                    openPanel();
+                  }
+                : undefined
+            }
             promotion={
               artifactActions
                 ? {
@@ -1259,11 +1258,6 @@ export function Chat({
                   }
                 : undefined
             }
-            thread={threadId}
-            view={shownView}
-            onView={(next) => openPanel("deliverables", next)}
-            onEditCopy={(file) => openPanel("workspace", { file, workspaceTab: "edit" })}
-            onClose={() => openPanel()}
             onRevise={
               canRun
                 ? (file, slide) => {
@@ -1272,22 +1266,53 @@ export function Chat({
                   }
                 : undefined
             }
+            onRun={(run) => openPanel("activity", { run })}
           />
         )}
-      </Presence>
-      <Presence when={activity !== null} ms={220}>
-        {(leaving) => (
-          <Activity
-            leaving={leaving}
-            turns={path}
-            stamp={turns.map((t) => `${t.id}:${t.calls}:${t.status}`).join("|")}
-            focus={(activity ?? lastActivity.current)?.focus ?? null}
-            onClose={() => openPanel()}
-            onFocus={(run) => openPanel("activity", run ? { run } : {})}
-          />
-        )}
-      </Presence>
-    </section>
+        <Presence when={shownView.panel === "deliverables"} ms={220}>
+          {(leaving) => (
+            <Deliverables
+              open={!leaving}
+              promotion={
+                artifactActions
+                  ? {
+                      project: room?.thread.project ?? where ?? "",
+                      shared: room?.thread.visibility === "shared",
+                      ...artifactActions,
+                    }
+                  : undefined
+              }
+              thread={threadId}
+              view={shownView}
+              onView={(next) => openPanel("deliverables", next)}
+              onEditCopy={(file) => openPanel("workspace", { file, workspaceTab: "edit" })}
+              onClose={() => openPanel()}
+              onRevise={
+                canRun
+                  ? (file, slide) => {
+                      setSeed({ text: revisionPrompt(file, slide), mode: "prepend" });
+                      openPanel();
+                    }
+                  : undefined
+              }
+            />
+          )}
+        </Presence>
+        <Presence when={activity !== null} ms={220}>
+          {(leaving) => (
+            <Activity
+              step={shownView.step}
+              leaving={leaving}
+              turns={path}
+              stamp={turns.map((t) => `${t.id}:${t.calls}:${t.status}`).join("|")}
+              focus={(activity ?? lastActivity.current)?.focus ?? null}
+              onClose={() => openPanel()}
+              onFocus={(run) => openPanel("activity", run ? { run } : {})}
+            />
+          )}
+        </Presence>
+      </section>
+    </SessionDetailsProvider>
   );
 }
 

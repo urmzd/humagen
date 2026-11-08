@@ -1,6 +1,31 @@
 import { defaultCopy } from "@humagen/components";
-import { type FormEvent, type MouseEvent, useCallback, useEffect, useState } from "react";
+import { EllipsisIcon } from "@humagen/render-web";
+import { Alert, AlertDescription, AlertTitle } from "@humagen/render-web/ui/alert";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@humagen/render-web/ui/dropdown-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@humagen/render-web/ui/sheet";
+import { toast } from "@humagen/render-web/ui/sonner";
+import { type FormEvent, type MouseEvent, useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api, type ToolCredential, type ToolCredentials } from "./api.ts";
+import { BigQueryConnection } from "./BigQueryConnection.tsx";
+import { ClientConnect } from "./ClientConnect.tsx";
+import { ConnectionDetail } from "./ConnectionDetail.tsx";
+import { ConnectionHealth } from "./ConnectionHealth.tsx";
+import { ConnectionLogo } from "./ConnectionLogo.tsx";
+import { ConnectionSection } from "./ConnectionSection.tsx";
+import { Pill } from "./cards.tsx";
+import { type ConnectionPreset, connectionApi } from "./connectionApi.ts";
 import {
   CONNECT_PERMISSION,
   cannotConnect,
@@ -12,9 +37,21 @@ import {
   ways,
   whereReferences,
 } from "./connections.ts";
+import { ConnectSource, Integrations } from "./Integrations.tsx";
 import { href } from "./route.ts";
-import { YourToolServers } from "./ToolServers.tsx";
-import { button, card, Empty, field, Label, Page, Problem, primary, Segmented } from "./ui.tsx";
+import { ToolList, YourToolServers } from "./ToolServers.tsx";
+import {
+  button,
+  card,
+  Empty,
+  field,
+  Label,
+  Page,
+  Problem,
+  primary,
+  Segmented,
+  Tabs,
+} from "./ui.tsx";
 
 /** A plain click goes there in place; a modified one is the browser's. */
 const follow = (go: () => void) => (e: MouseEvent<HTMLAnchorElement>) => {
@@ -34,7 +71,9 @@ export function YourConnections({
   onOpen,
   canConnect = true,
   onWhy,
+  embedded = false,
 }: {
+  embedded?: boolean;
   open?: string;
   section?: "connections" | "tools";
   onOpen: (provider?: string) => void;
@@ -72,7 +111,8 @@ export function YourConnections({
   };
 
   return (
-    <Page
+    <ConnectionSection
+      embedded={embedded}
       title={section === "tools" ? "Your tool servers" : "Your connections"}
       lede="Some tools act as you: they reach their service with your own credential. Without one, an agent cannot use them for you, and nobody else's is used instead."
       narrow
@@ -97,7 +137,7 @@ export function YourConnections({
       )}
       {section !== "tools" && state && state.providers.length === 0 && (
         <Empty title="No tools here act as you">
-          A tool acts as each person when the workspace declares it with credential_scope: person.
+          Connect a service below to give agents access through your own account.
         </Empty>
       )}
       {section !== "tools" &&
@@ -117,9 +157,13 @@ export function YourConnections({
           />
         ))}
       {section !== "connections" && state && (
-        <YourToolServers references={state.references} canConnect={canConnect} />
+        <YourToolServers
+          references={state.references}
+          allowedHosts={state.allowed_hosts}
+          canConnect={canConnect}
+        />
       )}
-    </Page>
+    </ConnectionSection>
   );
 }
 
@@ -235,8 +279,6 @@ export function ConnectForm({
     e.preventDefault();
     if (text.trim() === "" || outside) return;
     onSave(way, text);
-    // A value is not kept on the page once it is sent.
-    setText("");
   };
   return (
     <form className="flex flex-col gap-3" onSubmit={submit}>
@@ -297,4 +339,560 @@ export function ConnectForm({
       </div>
     </form>
   );
+}
+
+/** One address for systems, personal accounts, and approved tool connections. */
+export function Connections({
+  provider,
+  canConnect = true,
+  canWrite = false,
+  canKnowledgeWrite = false,
+  onOpen,
+}: {
+  provider?: string;
+  canConnect?: boolean;
+  canWrite?: boolean;
+  canKnowledgeWrite?: boolean;
+  onOpen?: (id?: string) => void;
+}) {
+  const [presets, setPresets] = useState<ConnectionPreset[]>([]);
+  const [problem, setProblem] = useState<string | null>(null);
+  // Configured credentials have their own inline selection, separate from OAuth setup.
+  const [credentialProvider, setCredentialProvider] = useState<string | undefined>(
+    provider === "callback" ? undefined : provider,
+  );
+  const [selected, setSelected] = useState<string | undefined>(
+    provider === "callback" ? undefined : provider,
+  );
+  // Every connection belongs to one person; the workspace only decides which services are allowed.
+  const scope = "person" as "person" | "workspace";
+  const [tab, setTab] = useState<ConnectionTab>(() => tabFor(provider));
+  useEffect(() => {
+    if (provider && provider !== "callback") setTab(tabFor(provider));
+  }, [provider]);
+  const [endpoint, setEndpoint] = useState("");
+  const [registered, setRegistered] = useState(false);
+  const [issuer, setIssuer] = useState("");
+  const [clientID, setClientID] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const [review, setReview] = useState<{
+    provider: string;
+    server: Awaited<ReturnType<typeof api.reviewPersonTools>>;
+  } | null>(null);
+  const selectedRef = useRef(selected);
+  const reviewRequest = useRef(0);
+  const openers = useRef(new Map<string, HTMLButtonElement>());
+  const sheetOpener = useRef<HTMLElement | null>(null);
+  const selectConnection = useCallback((id?: string) => {
+    if (selectedRef.current === id) return;
+    if (id) {
+      sheetOpener.current =
+        openers.current.get(id) ??
+        (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    }
+    selectedRef.current = id;
+    reviewRequest.current++;
+    setReview(null);
+    setProblem(null);
+    setSelected(id);
+  }, []);
+  useEffect(() => {
+    setCredentialProvider(provider === "callback" ? undefined : provider);
+    if (provider !== "callback") selectConnection(provider);
+  }, [provider, selectConnection]);
+  const sheetOpen = !!selected && presets.some((p) => p.id === selected);
+  const callbackStarted = useRef(false);
+  const reload = useCallback(() => {
+    connectionApi
+      .presets()
+      .then(setPresets)
+      .catch((e: unknown) =>
+        setProblem(e instanceof Error ? e.message : "Connections could not be loaded."),
+      );
+  }, []);
+  useEffect(reload, [reload]);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("state") || callbackStarted.current) return;
+    callbackStarted.current = true;
+    const provider = sessionStorage.getItem("humagen.connection.provider");
+    const nonce = params.get("state");
+    const code = params.get("code");
+    const installation = params.get("installation_id") ?? undefined;
+    // Remove authorization material from browser history before any request.
+    window.history.replaceState(window.history.state, "", "/connections");
+    sessionStorage.removeItem("humagen.connection.provider");
+    if (!provider || !nonce || !code) {
+      setProblem("Connection was not authorized. Choose Connect to try again.");
+      return;
+    }
+    setBusy(true);
+    connectionApi
+      .complete(provider, nonce, code, installation)
+      .then(() => {
+        reload();
+        selectConnection(provider);
+        toast.success("Connected");
+      })
+      .catch((e: unknown) =>
+        setProblem(e instanceof Error ? e.message : "Connection could not be completed."),
+      )
+      .finally(() => setBusy(false));
+  }, [reload, selectConnection]);
+  const open = (id: string) => {
+    selectConnection(id);
+    onOpen?.(id);
+  };
+  const act = async (fn: () => Promise<unknown>) => {
+    if (busy) return;
+    const target = selectedRef.current;
+    setBusy(true);
+    setProblem(null);
+    try {
+      await fn();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "The connection could not be changed.";
+      // In an open setup form the error belongs beside the form; elsewhere it is a toast.
+      if (target && selectedRef.current === target) setProblem(message);
+      else toast.error(message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const connect = (
+    preset: ConnectionPreset,
+    requestedScope: "person" | "workspace" = preset.connected
+      ? preset.scope === "workspace"
+        ? "workspace"
+        : "person"
+      : scope,
+  ) =>
+    void act(async () => {
+      const auth = await connectionApi.authorize(preset.id, {
+        scope: requestedScope,
+        ...(preset.endpoint ? { endpoint: preset.endpoint } : {}),
+      });
+      sessionStorage.setItem("humagen.connection.provider", auth.provider ?? preset.id);
+      window.location.assign(auth.url);
+    });
+  const reviewTools = (preset: ConnectionPreset) => {
+    const endpoint = preset.endpoint;
+    if (busy || !endpoint) return;
+    open(preset.id);
+    setReview(null);
+    const request = ++reviewRequest.current;
+    void act(async () => {
+      const server = await api.reviewPersonTools({
+        name: preset.id,
+        url: endpoint,
+        oauth: preset.id,
+      });
+      if (request === reviewRequest.current && selectedRef.current === preset.id) {
+        setReview({ provider: preset.id, server });
+      }
+    });
+  };
+  const approve = () =>
+    void act(async () => {
+      if (!review || review.provider !== selectedRef.current) return;
+      const current = await api.personContext();
+      await api.setPersonContext({
+        run: current.run,
+        version: current.version,
+        tool_servers: [
+          ...current.tool_servers.filter((s) => s.name !== review.server.name),
+          review.server,
+        ],
+      });
+      setReview(null);
+      setRevision((v) => v + 1);
+    });
+  return (
+    <Page
+      title="Connections"
+      lede="Connect your own accounts. Agents act as you with them, nobody else uses your credentials, and you can revoke one at any time."
+    >
+      <Problem message={sheetOpen ? null : problem} />
+      <Tabs
+        label="Connection kinds"
+        value={tab}
+        onChange={(next) => {
+          setTab(next);
+          selectConnection(undefined);
+        }}
+        tabs={[
+          { id: "tools", label: "Agent tools" },
+          { id: "knowledge", label: "Data sources" },
+          ...(canWrite ? [{ id: "workspace" as const, label: "Workspace apps" }] : []),
+        ]}
+      />
+      <p className="text-aui-sm text-aui-muted">{tabLede[tab]}</p>
+      {busy && <output>Connecting…</output>}
+      {presets.some((p) => tabFor(p.id, p.kind) === tab && adminOff(p)) && (
+        <Alert>
+          <AlertTitle>Account connections are not enabled yet</AlertTitle>
+          <AlertDescription>
+            A workspace administrator turns on secure account connections, then each person connects
+            their own account here.
+          </AlertDescription>
+        </Alert>
+      )}
+      <ul
+        className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-3"
+        aria-label="Connect a service"
+      >
+        {presets
+          .filter((preset) => tabFor(preset.id, preset.kind) === tab)
+          .map((preset) => (
+            <li key={preset.id} className={`${card} flex h-full min-w-0 flex-col gap-3`}>
+              <div className="flex min-w-0 items-center gap-3">
+                <ConnectionLogo id={preset.id} name={preset.name} />
+                <h2 className="min-w-0 flex-1 truncate font-medium">{preset.name}</h2>
+                {preset.reconnect_required ? (
+                  <Pill tone="warn">Reconnect</Pill>
+                ) : preset.connected ? (
+                  <Pill tone="ok">
+                    {preset.kind === "github_install" ? "Installed" : "Connected"}
+                  </Pill>
+                ) : adminOff(preset) ? (
+                  <Pill>Not enabled</Pill>
+                ) : null}
+                {preset.id !== "other" && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      ref={(node) => {
+                        if (node) openers.current.set(preset.id, node);
+                        else openers.current.delete(preset.id);
+                      }}
+                      aria-label={`More for ${preset.name}`}
+                      className="-mr-1 inline-flex size-8 shrink-0 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:size-11"
+                    >
+                      <EllipsisIcon size={16} />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      onCloseAutoFocus={(event) => {
+                        if (selectedRef.current === preset.id) event.preventDefault();
+                      }}
+                    >
+                      <DropdownMenuItem onSelect={() => open(preset.id)}>Details</DropdownMenuItem>
+                      {(preset.connected || preset.reconnect_required) && canConnect && (
+                        <>
+                          {preset.kind === "oauth" && (
+                            <DropdownMenuItem disabled={busy} onSelect={() => reviewTools(preset)}>
+                              Review tools
+                            </DropdownMenuItem>
+                          )}
+                          {preset.kind === "catalog_oauth" && (
+                            <DropdownMenuItem onSelect={() => open(preset.id)}>
+                              Choose datasets
+                            </DropdownMenuItem>
+                          )}
+                          {preset.kind === "source_oauth" && (
+                            <DropdownMenuItem onSelect={() => open(preset.id)}>
+                              Choose a source
+                            </DropdownMenuItem>
+                          )}
+                          {(preset.scope !== "workspace" || canWrite) && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                variant="destructive"
+                                disabled={busy}
+                                onSelect={() =>
+                                  void act(async () => {
+                                    await connectionApi.disconnect(preset.id);
+                                    reload();
+                                    setRevision((v) => v + 1);
+                                    toast.success(
+                                      preset.kind === "github_install"
+                                        ? `${preset.name} installations disabled`
+                                        : `${preset.name} disconnected`,
+                                    );
+                                  })
+                                }
+                              >
+                                {preset.kind === "github_install"
+                                  ? "Disable installations"
+                                  : "Disconnect"}
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+              {preset.endpoint && (
+                <p className="truncate text-aui-xs text-aui-muted" title={preset.endpoint}>
+                  {preset.endpoint}
+                </p>
+              )}
+              {preset.reason && !adminOff(preset) && (
+                <p className="text-aui-sm text-aui-muted">{preset.reason}</p>
+              )}
+              {(preset.connected || preset.reconnect_required) && (
+                <ConnectionHealth
+                  key={`${preset.id}:${revision}`}
+                  provider={preset.id}
+                  initial={preset.health}
+                  canCheck={canConnect && (preset.scope !== "workspace" || canWrite)}
+                />
+              )}
+              <div className="mt-auto pt-1">
+                {preset.kind === "oauth" ||
+                preset.kind === "source_oauth" ||
+                preset.kind === "catalog_oauth" ||
+                preset.kind === "client_oauth" ||
+                preset.kind === "github_install"
+                  ? canConnect &&
+                    (preset.scope !== "workspace" || canWrite) && (
+                      <button
+                        type="button"
+                        className={button}
+                        disabled={busy || !preset.available}
+                        onClick={() =>
+                          connect(
+                            preset,
+                            preset.kind === "source_oauth" || preset.kind === "catalog_oauth"
+                              ? "person"
+                              : preset.kind === "client_oauth" || preset.kind === "github_install"
+                                ? "workspace"
+                                : undefined,
+                          )
+                        }
+                      >
+                        {preset.connected || preset.reconnect_required ? "Reconnect" : "Connect"}
+                      </button>
+                    )
+                  : canConnect && (
+                      <button type="button" className={button} onClick={() => open(preset.id)}>
+                        Connect with OAuth
+                      </button>
+                    )}
+              </div>
+            </li>
+          ))}
+      </ul>
+      <Sheet
+        open={sheetOpen}
+        onOpenChange={(next) => {
+          if (!next) selectConnection(undefined);
+        }}
+      >
+        <SheetContent
+          onCloseAutoFocus={(event) => {
+            if (sheetOpener.current?.isConnected) {
+              event.preventDefault();
+              sheetOpener.current.focus();
+            }
+          }}
+        >
+          <SheetHeader>
+            <SheetTitle>{presets.find((p) => p.id === selected)?.name ?? "Connection"}</SheetTitle>
+            <SheetDescription>Status, access and setup for this connection.</SheetDescription>
+          </SheetHeader>
+          {selected !== "other" && <Problem message={problem} />}
+          {selected && selected !== "other" && presets.some((p) => p.id === selected) && (
+            <ConnectionDetail key={`${selected}:${revision}`} provider={selected} />
+          )}
+          {review?.provider === selected && review && (
+            <section className={card} aria-label="Review connection tools">
+              <ToolList server={review.server} />
+              <div className="mt-3 flex gap-2">
+                <button className={button} type="button" onClick={() => setReview(null)}>
+                  Cancel
+                </button>
+                <button className={primary} type="button" disabled={busy} onClick={approve}>
+                  Approve Tool List
+                </button>
+              </div>
+            </section>
+          )}
+          {(selected === "slack" || selected === "github") &&
+            (canWrite ? (
+              <ClientConnect
+                key={selected}
+                initialSurface={selected}
+                onCancel={() => selectConnection(undefined)}
+                onCreated={() => {
+                  selectConnection(undefined);
+                  setRevision((v) => v + 1);
+                }}
+              />
+            ) : (
+              <p>A workspace administrator can connect messaging services.</p>
+            ))}
+          {selected === "drive" &&
+            (canKnowledgeWrite ? (
+              <ConnectSource
+                initialProvider="drive"
+                onCancel={() => selectConnection(undefined)}
+                onCreated={() => {
+                  selectConnection(undefined);
+                  setRevision((v) => v + 1);
+                }}
+              />
+            ) : (
+              <p>A workspace administrator can connect knowledge sources.</p>
+            ))}
+          {selected === "bigquery" && (
+            <BigQueryConnection
+              canWrite={canKnowledgeWrite}
+              onCancel={() => selectConnection(undefined)}
+              onVerified={() => setRevision((v) => v + 1)}
+              onAuthorize={() => {
+                const preset = presets.find((p) => p.id === "bigquery");
+                if (preset) connect(preset, "person");
+              }}
+            />
+          )}
+          {selected === "other" && (
+            <form
+              aria-label="Connect tool server with OAuth"
+              className={`${card} flex flex-col gap-3`}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void act(async () => {
+                  const auth = await connectionApi.authorize("other", {
+                    endpoint: endpoint.trim(),
+                    scope,
+                    ...(registered
+                      ? {
+                          registration: {
+                            issuer: issuer.trim(),
+                            client_id: clientID.trim(),
+                            ...(clientSecret ? { client_secret: clientSecret } : {}),
+                          },
+                        }
+                      : {}),
+                  });
+                  sessionStorage.setItem("humagen.connection.provider", auth.provider ?? "other");
+                  window.location.assign(auth.url);
+                });
+              }}
+            >
+              <label className="flex flex-col gap-1 text-aui-sm">
+                Tool server URL
+                <input
+                  className={field}
+                  type="url"
+                  required
+                  value={endpoint}
+                  onChange={(e) => setEndpoint(e.target.value)}
+                  placeholder="https://tools.example.com/mcp"
+                />
+              </label>
+              <p className="text-aui-xs text-aui-muted">
+                {scope === "workspace"
+                  ? "Your workspace will be able to use this account. Each person still approves the tools they use."
+                  : "Only agents acting for you can use this account."}{" "}
+                The service must be in your allowed tool hosts.
+              </p>
+              <label className="flex items-center gap-2 text-aui-sm">
+                <input
+                  type="checkbox"
+                  checked={registered}
+                  onChange={(e) => setRegistered(e.target.checked)}
+                />
+                Use a registered application
+              </label>
+              {registered && (
+                <div className="flex flex-col gap-3">
+                  <p className="text-aui-xs text-aui-muted">
+                    Use the application registered with this service when it does not register
+                    clients automatically. The issuer must match the service's authorization server.
+                  </p>
+                  <Label text="Authorization issuer">
+                    <input
+                      className={field}
+                      type="url"
+                      required
+                      value={issuer}
+                      onChange={(e) => setIssuer(e.target.value)}
+                      autoComplete="off"
+                    />
+                  </Label>
+                  <Label text="Client ID">
+                    <input
+                      className={field}
+                      required
+                      value={clientID}
+                      onChange={(e) => setClientID(e.target.value)}
+                      autoComplete="off"
+                    />
+                  </Label>
+                  <Label text="Client secret (if required)">
+                    <input
+                      className={field}
+                      type="password"
+                      value={clientSecret}
+                      onChange={(e) => setClientSecret(e.target.value)}
+                      autoComplete="off"
+                    />
+                  </Label>
+                </div>
+              )}
+              <Problem message={problem} />
+              <button
+                className={primary}
+                type="submit"
+                disabled={busy || !canConnect || !presets.find((p) => p.id === "other")?.available}
+              >
+                {busy ? "Connecting…" : "Connect with OAuth"}
+              </button>
+            </form>
+          )}
+        </SheetContent>
+      </Sheet>
+      {tab === "tools" && (
+        <YourConnections
+          key={`personal-${revision}`}
+          embedded
+          canConnect={canConnect}
+          open={credentialProvider}
+          onOpen={setCredentialProvider}
+        />
+      )}
+      {tab !== "tools" && (
+        <div id="workspace-connections">
+          <Integrations
+            key={`${tab}-${revision}`}
+            embedded
+            only={tab === "workspace" ? "client" : "source"}
+            canWrite={canWrite}
+            canKnowledgeWrite={canKnowledgeWrite}
+          />
+        </div>
+      )}
+    </Page>
+  );
+}
+
+type ConnectionTab = "tools" | "knowledge" | "workspace";
+
+const tabLede: Record<ConnectionTab, string> = {
+  tools:
+    "Accounts and MCP tool servers agents act through for you. Each is yours alone; the workspace decides which services are allowed.",
+  knowledge:
+    "Documents and data indexed for search. Agents read and cite them; they never act through them.",
+  workspace:
+    "Apps installed once for the whole workspace, so agents can answer in Slack and on GitHub. Only administrators manage these.",
+};
+
+/** Which tab a service belongs on: agent tools, knowledge, or workspace apps. */
+function tabFor(id?: string, kind?: string): ConnectionTab {
+  if (kind === "client_oauth" || kind === "github_install" || id === "slack" || id === "github")
+    return "workspace";
+  if (kind === "source_oauth" || kind === "catalog_oauth" || id === "drive" || id === "bigquery")
+    return "knowledge";
+  return "tools";
+}
+
+/** The workspace has not turned on account connections: said once above the cards, not on each. */
+function adminOff(preset: ConnectionPreset): boolean {
+  return !!preset.reason?.startsWith("An administrator must enable secure account connections");
 }

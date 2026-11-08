@@ -14,6 +14,7 @@ import { type TagOption, type Typing, tagOptions } from "./tags.ts";
 /** What the chat bar completes, and the call it makes as a tag is typed. */
 export interface Completion {
   label: string;
+  defaultAgent?: string;
   options: TagOption[];
   onQuery: (typing: Typing) => void;
   /** The agents that may answer in the project, for the + menu; null while they load. */
@@ -49,6 +50,7 @@ export function useCompletion(
   const [names, setNames] = useState<{ all: boolean; names: string[] } | null | undefined>(
     undefined,
   );
+  const [defaultAgent, setDefaultAgent] = useState<string>();
   const [people, setPeople] = useState<DirectoryPerson[]>([]);
   const [skills, setSkills] = useState<{ project: string; items: Skill[]; failed: boolean } | null>(
     null,
@@ -67,11 +69,17 @@ export function useCompletion(
     window.clearTimeout(timer.current);
     asked.current++;
     setNames(undefined);
+    setDefaultAgent(undefined);
     setPeople([]);
     setSkills(null);
     coworking
       .available(project)
-      .then((a) => live && setNames(a.available))
+      .then((a) => {
+        if (live) {
+          setNames(a.available);
+          setDefaultAgent(a.default_resolved?.agent);
+        }
+      })
       .catch(() => live && setNames(null));
     coworking
       .skills(project)
@@ -192,6 +200,7 @@ export function useCompletion(
 
   return {
     label: defaultCopy.threads.typeahead,
+    defaultAgent,
     options,
     onQuery,
     agents: names === undefined ? null : here,

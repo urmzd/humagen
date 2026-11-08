@@ -150,7 +150,7 @@ test("project switcher uses a bounded server search and preserves navigable link
   const link = await screen.findByRole("link", { name: /^Launch Plan/ });
   assert.equal(query?.get("limit"), "20");
   fireEvent.click(link);
-  assert.deepEqual(opened, [{ page: "project", name: "Launch", tab: "inbox" }]);
+  assert.deepEqual(opened, [{ page: "project", name: "Launch", tab: "context" }]);
 });
 
 test("project fork copies only selected confirmed memory and does not navigate before publication", async () => {
@@ -312,11 +312,11 @@ test("initiative rollup opens original child work and never invents progress", a
   assert.ok(await screen.findByText("Confirmed delivery risk"));
   assert.equal(
     screen.getByRole("link", { name: "Launch Plan" }).getAttribute("href"),
-    "/projects/Launch/overview",
+    "/projects/Launch/context",
   );
   assert.equal(
     screen.getByRole("link", { name: "Review: Launch" }).getAttribute("href"),
-    "/projects/Launch?message=i1",
+    "/projects/Launch/context",
   );
   assert.ok(screen.getByText("Runs in 30 Days"));
   assert.equal(screen.queryByRole("progressbar"), null);

@@ -41,9 +41,11 @@ import {
   useRef,
   useState,
 } from "react";
+import { AgentChangeCards } from "./AgentChangeCard.tsx";
 import { AgentInitials, AgentOrb, type OrbState, turnOrbState } from "./AgentOrb";
 import { StopBanner } from "./Alerts";
 import { MessageActionRow, messageActionButton } from "./MessageActionRow";
+import { MessageMore } from "./MessageMore";
 import { Reasoning } from "./Reasoning";
 import { TurnChanges } from "./TurnChanges";
 import { type Block, interleave, StepGroup, WorkedFor } from "./WorkSteps";
@@ -351,30 +353,6 @@ function MessageActions({
       copyControl={hostCopy}
       onReply={onReply}
     >
-      {turn.outcome && onRedirect && (
-        <button
-          type="button"
-          className={actionBtn}
-          aria-label={copy.conversation.redirect}
-          title={copy.conversation.redirect}
-          onClick={onRedirect}
-        >
-          <RedirectIcon size={16} />
-        </button>
-      )}
-      {regenerate && (
-        <button
-          type="button"
-          aria-label="Regenerate"
-          title="Regenerate"
-          className={actionBtn}
-          onClick={() =>
-            onAction({ id: ActionId.retry, payload: { turnId: turn.id, target: "regenerate" } })
-          }
-        >
-          <RefreshIcon size={16} />
-        </button>
-      )}
       {rate && (
         <Rating
           up={{ id: ActionId.feedback, payload: { turnId: turn.id, target: "up" } }}
@@ -384,8 +362,36 @@ function MessageActions({
           prompt={copy.feedbackPrompt}
         />
       )}
-      {turn.usage && <UsageChip usage={turn.usage} />}
-      {actions}
+      {(turn.usage || actions || regenerate || (turn.outcome && onRedirect)) && (
+        <MessageMore>
+          {turn.outcome && onRedirect && (
+            <button
+              type="button"
+              className={actionBtn}
+              aria-label={copy.conversation.redirect}
+              title={copy.conversation.redirect}
+              onClick={onRedirect}
+            >
+              <RedirectIcon size={16} />
+            </button>
+          )}
+          {regenerate && (
+            <button
+              type="button"
+              aria-label="Regenerate"
+              title="Regenerate"
+              className={actionBtn}
+              onClick={() =>
+                onAction({ id: ActionId.retry, payload: { turnId: turn.id, target: "regenerate" } })
+              }
+            >
+              <RefreshIcon size={16} />
+            </button>
+          )}
+          {turn.usage && <UsageChip usage={turn.usage} />}
+          {actions}
+        </MessageMore>
+      )}
     </MessageActionRow>
   );
 }
@@ -600,6 +606,7 @@ export function AgentMessage({
                   capabilities={{ ...capabilities, followUp }}
                   hideTasks
                 />
+                <AgentChangeCards tasks={turn.tasks} />
                 {rest.map(block)}
                 {turn.status === "stopped" && turn.stop && (
                   <StopBanner turnId={turn.id} stop={turn.stop} label={copy.stopPhase[turn.stop]} />

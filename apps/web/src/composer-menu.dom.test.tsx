@@ -11,11 +11,9 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { useState } from "react";
 import { useCompletion } from "./completion.ts";
 import { stubFetch } from "./dom.ts";
 import { PlusMenu, type Selection } from "./Plus.tsx";
-import { tree } from "./projects.fixtures.ts";
 
 let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
@@ -25,7 +23,7 @@ afterEach(() => {
   net = undefined;
 });
 
-test("the composer root groups Agents Projects and Skills without a loose default channel", async () => {
+test("the composer menu offers Agents and Skills while the persistent folder owns project selection", async () => {
   net = stubFetch({
     "GET /api/projects/personal/channels": () => ({ channels: [{ name: "general" }] }),
   });
@@ -43,11 +41,11 @@ test("the composer root groups Agents Projects and Skills without a loose defaul
     />,
   );
   const menu = screen.getByRole("dialog", { name: defaultCopy.chat.menu });
-  for (const name of ["Agents", "Projects", "Skills"])
+  for (const name of ["Agents", "Skills"])
     assert.ok(within(menu).getByRole("button", { name: new RegExp(`^${name}\\b`) }));
-  await waitFor(() =>
-    assert.equal(!!within(menu).queryByRole("radio", { name: "#general" }), false),
-  );
+  assert.equal(within(menu).queryByRole("button", { name: /^Projects\b/ }), null);
+  assert.equal(within(menu).queryByRole("radio", { name: "#general" }), null);
+  assert.equal(net.seen.length, 0, "the menu does not read legacy channels");
   assert.equal(
     !!within(menu).queryByRole("checkbox", { name: /^helper/ }),
     false,
@@ -151,107 +149,6 @@ test("a late skill lookup from the previous project cannot enter the current men
   );
 });
 
-function ProjectMenu({
-  onChange,
-  onClose,
-  project = "Globex",
-}: {
-  onChange: (selection: Selection) => void;
-  onClose: () => void;
-  project?: string;
-}) {
-  const [open, setOpen] = useState(true);
-  const [selection, setSelection] = useState<Selection>({
-    project,
-    channel: "deals",
-  });
-  if (!open) return null;
-  return (
-    <PlusMenu
-      agents={[{ name: "helper" }]}
-      skills={[]}
-      onSkill={() => {}}
-      projects={tree}
-      selection={selection}
-      onChange={(next) => {
-        setSelection(next);
-        onChange(next);
-      }}
-      onAttach={() => {}}
-      onClose={() => {
-        setOpen(false);
-        onClose();
-      }}
-    />
-  );
-}
-
-test("project selection resets the channel and real choices stay inside the project pane as full rows", async () => {
-  const changed: Selection[] = [];
-  net = stubFetch({
-    "GET /api/projects/Globex/channels": () => ({
-      channels: [{ name: "general" }, { name: "deals" }],
-    }),
-    "GET /api/projects/Initech/channels": () => ({
-      channels: [{ name: "general" }, { name: "triage" }],
-    }),
-  });
-  render(<ProjectMenu onChange={(next) => changed.push(next)} onClose={() => {}} />);
-  const menu = screen.getByRole("dialog", { name: defaultCopy.chat.menu });
-  assert.equal(!!within(menu).queryByRole("radiogroup"), false);
-  fireEvent.click(within(menu).getByRole("button", { name: /^Projects\b/ }));
-  fireEvent.click(await within(menu).findByRole("button", { name: /^Initech/ }));
-  await waitFor(() => assert.equal(changed.at(-1)?.project, "Initech"));
-  assert.equal(changed.at(-1)?.channel, "general");
-  const channels = await within(menu).findByRole("radiogroup");
-  assert.ok(
-    within(menu).getByRole("heading", { name: defaultCopy.chat.picker.channelsIn("Initech") }),
-    "channels identify their project",
-  );
-  assert.deepEqual(
-    within(channels)
-      .getAllByRole("radio")
-      .map((row) => row.textContent),
-    ["#general", "#triage"],
-  );
-  for (const row of within(channels).getAllByRole("radio"))
-    assert.match(row.className, /(?:^|\s)w-full(?:\s|$)/);
-  assert.equal(
-    within(channels).getByRole("radio", { name: "#general" }).getAttribute("aria-checked"),
-    "true",
-  );
-  fireEvent.click(within(channels).getByRole("radio", { name: "#triage" }));
-  assert.equal(changed.at(-1)?.channel, "triage");
-  assert.equal(net.seen.filter((request) => request.method === "POST").length, 0);
-});
-
-test("a project with only General is selected without showing a loose default channel", async () => {
-  let closed = 0;
-  const changed: Selection[] = [];
-  net = stubFetch({
-    "GET /api/projects/Initech/channels": () => ({
-      channels: [{ name: "general" }, { name: "deals" }],
-    }),
-    "GET /api/projects/Globex/channels": () => ({ channels: [{ name: "general" }] }),
-  });
-  render(
-    <ProjectMenu
-      project="Initech"
-      onChange={(next) => changed.push(next)}
-      onClose={() => {
-        closed++;
-      }}
-    />,
-  );
-  const menu = screen.getByRole("dialog", { name: defaultCopy.chat.menu });
-  fireEvent.click(within(menu).getByRole("button", { name: /^Projects\b/ }));
-  fireEvent.click(within(menu).getByRole("button", { name: /^Globex\s+Account/ }));
-  await waitFor(() => assert.equal(closed, 1));
-  assert.equal(changed.at(-1)?.channel, "general");
-  assert.equal(!!screen.queryByRole("dialog", { name: defaultCopy.chat.menu }), false);
-  assert.equal(!!screen.queryByRole("radio", { name: "#general" }), false);
-});
-
 test("Skills search Enter cannot submit work and Escape restores category focus before closing", async () => {
   net = stubFetch({});
   let closed = 0;
@@ -331,40 +228,6 @@ test("Skills loading and failure states never offer a stale skill choice", async
   );
 });
 
-test("a refused channel read exposes no manufactured General choice and retry uses the real read", async () => {
-  let refuse = true;
-  let reads = 0;
-  let closed = 0;
-  net = stubFetch({
-    "GET /api/projects/Globex/channels": () => {
-      reads++;
-      return refuse
-        ? new Response(null, { status: 403 })
-        : { channels: [{ name: "general" }, { name: "deals" }] };
-    },
-  });
-  render(
-    <ProjectMenu
-      onChange={() => {}}
-      onClose={() => {
-        closed++;
-      }}
-    />,
-  );
-  const menu = screen.getByRole("dialog", { name: defaultCopy.chat.menu });
-  fireEvent.click(within(menu).getByRole("button", { name: /^Projects\b/ }));
-  fireEvent.click(within(menu).getByRole("button", { pressed: true }));
-  await within(menu).findByRole("alert");
-  assert.equal(!!within(menu).queryByRole("radio"), false);
-  assert.equal(closed, 0);
-  const before = reads;
-  refuse = false;
-  fireEvent.click(within(menu).getByRole("button", { name: defaultCopy.chat.picker.retry }));
-  await within(menu).findByRole("radio", { name: "#deals" });
-  assert.equal(reads, before + 1);
-  assert.equal(net.seen.filter((request) => request.method === "POST").length, 0);
-});
-
 for (const category of ["Agents", "Skills"] as const) {
   test(`${category} search keeps native caret movement when ArrowLeft is pressed`, async () => {
     net = stubFetch({});
@@ -396,60 +259,3 @@ for (const category of ["Agents", "Skills"] as const) {
     assert.equal(closed, 0);
   });
 }
-
-test("browsing the selected project's channels preserves a nondefault channel until an explicit change", async () => {
-  net = stubFetch({
-    "GET /api/projects/Launch/channels": () => ({
-      channels: [{ name: "general" }, { name: "deals" }],
-    }),
-  });
-  const launch = {
-    ...tree.find((project) => project.name === "Globex")!,
-    name: "Launch",
-    title: "Launch",
-  };
-  const changes: Selection[] = [];
-  let current: Selection = { project: "Launch", channel: "deals" };
-  function ExistingProjectMenu() {
-    const [selection, setSelection] = useState(current);
-    current = selection;
-    return (
-      <PlusMenu
-        agents={[]}
-        skills={[]}
-        onSkill={() => {}}
-        projects={[launch]}
-        selection={selection}
-        onChange={(next) => {
-          changes.push(next);
-          setSelection(next);
-        }}
-        onAttach={() => {}}
-        onClose={() => {}}
-      />
-    );
-  }
-  render(<ExistingProjectMenu />);
-  const menu = screen.getByRole("dialog", { name: defaultCopy.chat.menu });
-  fireEvent.click(within(menu).getByRole("button", { name: /^Projects\b/ }));
-  fireEvent.click(within(menu).getByRole("button", { pressed: true }));
-  const channels = await within(menu).findByRole("radiogroup");
-  assert.equal(
-    within(channels).getByRole("radio", { name: "#deals" }).getAttribute("aria-checked"),
-    "true",
-    "browsing the current project must keep its selected channel",
-  );
-  assert.equal(current.channel, "deals");
-  assert.deepEqual(
-    changes,
-    [],
-    "opening the current project's channels does not change the unsent destination",
-  );
-  fireEvent.click(within(menu).getByRole("button", { name: defaultCopy.chat.picker.back }));
-  await within(menu).findByRole("searchbox", { name: defaultCopy.projects.search });
-  assert.equal(current.channel, "deals");
-  fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
-  assert.ok(within(menu).getByRole("button", { name: /^Projects\b/ }));
-  assert.equal(current.channel, "deals");
-  assert.deepEqual(changes, []);
-});

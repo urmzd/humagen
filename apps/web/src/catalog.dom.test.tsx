@@ -90,6 +90,18 @@ test("catalog reports request failures", async () => {
   }
 });
 
+test("an empty catalog leads to the canonical connection setup", async () => {
+  const { restore } = stubFetch({ "GET /api/catalog": () => ({ connectors: [], entries: [] }) });
+  try {
+    render(<Catalog canWrite />);
+    const link = await screen.findByRole("link", { name: "Open Connections" });
+    assert.equal(link.getAttribute("href"), "/connections");
+    assert.ok(screen.getByText(defaultCopy.catalog.emptyHint));
+  } finally {
+    restore();
+  }
+});
+
 test("New Source groups storage capability and configures indexed collection", async () => {
   const { SourceCatalog } = await import("./SourceCatalog.tsx");
   const { ConnectSource } = await import("./Integrations.tsx");

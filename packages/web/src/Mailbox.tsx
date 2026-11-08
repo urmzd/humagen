@@ -505,7 +505,7 @@ export function Mailbox({
             </span>
             <span className="flex min-w-0 items-baseline gap-2 text-aui-xs text-aui-muted">
               <span className="min-w-0 flex-1 truncate">
-                {m.from.name} · {messagePreview(m)}
+                {m.from.name} | {messagePreview(m)}
               </span>
               {!open && !views && (
                 <span className="shrink-0 text-aui-2xs capitalize">

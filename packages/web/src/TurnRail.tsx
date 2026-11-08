@@ -1,4 +1,4 @@
-import type { Turn, TurnStatus } from "@humagen/core";
+import { readReview, type Turn, type TurnStatus } from "@humagen/core";
 import {
   type CSSProperties,
   type KeyboardEvent,
@@ -28,7 +28,10 @@ export interface TurnRailEntry {
 
 /** A rail entry from a turn: weight grows with answer length and work done. */
 export function railEntry(turn: Turn, at?: string): TurnRailEntry {
-  const text = turn.text.replace(/\[\[[^\]]+\]\]/g, "").trim();
+  const review = readReview(turn.text);
+  const text = (review.kind === "review" ? review.report.summary : turn.text)
+    .replace(/\[\[[^\]]+\]\]/g, "")
+    .trim();
   return {
     id: turn.id,
     agent: turn.agent.name,
@@ -140,7 +143,12 @@ export function TurnRail({
     if (!t) return;
     const el = scroller.current?.querySelector(`[data-turn-id="${CSS.escape(t.id)}"]`);
     lockUntil.current = Date.now() + 900;
-    el?.scrollIntoView({ block: "start", behavior: smooth && !reduce() ? "smooth" : "auto" });
+    const root = scroller.current;
+    if (root && el)
+      root.scrollTo({
+        top: root.scrollTop + el.getBoundingClientRect().top - root.getBoundingClientRect().top,
+        behavior: smooth && !reduce() ? "smooth" : "auto",
+      });
     setActive(t.id);
     lastJump.current = i;
   };
@@ -230,7 +238,7 @@ export function TurnRail({
     <nav
       aria-label="Conversation wave"
       data-layer="wave"
-      className={`aui-wave absolute top-1/2 left-0 z-20 -translate-y-1/2 transition-opacity duration-(--aui-dur-page) focus-within:opacity-100 hover:opacity-100 ${lit ? "opacity-100" : "opacity-45"}`}
+      className={`aui-wave absolute top-1/2 left-0 z-20 -translate-y-1/2 transition-opacity duration-(--aui-dur-page) focus-within:opacity-100 hover:opacity-100 ${lit ? "opacity-100" : "opacity-75"}`}
     >
       <div
         ref={rail}
@@ -305,7 +313,7 @@ export function TurnRail({
               <AgentInitials name={shown.agent} size={16} />
             )}
             <span className="font-medium text-aui-fg">{shown.agent}</span>
-            <span>· {statusWord[shown.status]}</span>
+            <span>| {statusWord[shown.status]}</span>
             <span className="ml-auto tabular-nums">
               {shown.at
                 ? new Date(shown.at).toLocaleTimeString(undefined, {

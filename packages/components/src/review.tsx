@@ -1,6 +1,7 @@
 import {
   ActionId,
   reviewMarkdown as coreReviewMarkdown,
+  REVIEW_FORMAT_V2,
   REVIEW_SEVERITIES,
   type ReviewReport,
   type ReviewSeverity,
@@ -52,6 +53,7 @@ export function ReviewCard({
   const w = copy.reviewReport;
   const counts = reviewCounts(report);
   const commit = reviewCommit(report);
+  const pr = reviewPullRequest(report, pullRequestHint);
   let index = 0;
   const groups: ReviewProps["groups"] = REVIEW_SEVERITIES.map((severity) => ({
     id: severity,
@@ -64,14 +66,59 @@ export function ReviewCard({
     const text = reviewFollowUp(agent, f.prompt);
     groups[REVIEW_SEVERITIES.indexOf(f.severity)]?.findings.push({
       title: f.title,
+      ...(f.location
+        ? {
+            location: {
+              label: `${f.location.path}:${f.location.line}`,
+              ...(report.scope && pr
+                ? {
+                    url: `${pr.url.split("/pull/")[0]}/blob/${report.scope.commit}/${f.location.path.split("/").map(encodeURIComponent).join("/")}#L${f.location.start_line ?? f.location.line}-L${f.location.line}`,
+                  }
+                : {}),
+            },
+          }
+        : {}),
+      ...(f.change !== undefined ? { change: f.change } : {}),
+      ...(f.id
+        ? {
+            feedback: {
+              up: { id: ActionId.feedback, payload: { turnId, target: "up", findingId: f.id } },
+              down: { id: ActionId.feedback, payload: { turnId, target: "down", findingId: f.id } },
+            },
+          }
+        : {}),
       suggestion: f.suggestion,
       evidence: f.evidence.map((e) => ({
-        observation: e.observation,
-        source: (({ label, url, code }) => ({
+        observation:
+          report.format === REVIEW_FORMAT_V2 && !e.step && !e.session
+            ? `${e.observation} (${w.unverified})`
+            : e.observation,
+        source: (({
+          label,
+          url,
+          code,
+          action,
+        }: ReviewProps["groups"][number]["findings"][number]["evidence"][number]["source"]) => ({
           label,
           ...(url ? { url } : {}),
           ...(code ? { code } : {}),
-        }))(reviewSource(e.source)),
+          ...(action ? { action } : {}),
+        }))(
+          e.session
+            ? {
+                label: e.step ? w.openStep : w.openSession,
+                url: `/sessions/${encodeURIComponent(e.session)}${e.step ? `?panel=steps&step=${encodeURIComponent(e.step)}` : ""}`,
+              }
+            : e.step
+              ? {
+                  label: w.openStep,
+                  action: {
+                    id: ActionId.openRun,
+                    payload: { turnId, target: turnId, option: e.step },
+                  },
+                }
+              : { ...reviewSource(e.source), action: undefined },
+        ),
       })),
       prompt: text,
       ...(followUp
@@ -88,12 +135,11 @@ export function ReviewCard({
         : {}),
     });
   }
-  const pr = reviewPullRequest(report, pullRequestHint);
   return (
     <>
       <Summary text={w.point(reviewCountLine(report, copy), report.summary)} />
       <Review
-        title={w.title}
+        title={report.title ?? w.title}
         {...(commit
           ? {
               commit: {

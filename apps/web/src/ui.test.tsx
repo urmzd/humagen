@@ -82,40 +82,32 @@ function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
   );
 }
 
-test("the sidebar keeps daily work in view and the rest under More, each with its own icon", () => {
+test("the sidebar exposes seven canonical destinations with distinct icons and current-section state", () => {
   const out = sidebar();
-  for (const group of ["Work", "More"]) assert.match(out, new RegExp(`aria-label="${group}"`));
-  for (const route of ["/", "/history", "/scheduled", "/notifications", "/customize/agents"])
-    assert.ok(out.includes(`href="${route}"`), route);
-  // Projects, Library, People and Operations open from the More menu, not the list.
+  assert.match(out, /aria-label="Sections"/);
+  const nav = out.slice(out.indexOf('aria-label="Sections"'), out.indexOf("</nav>"));
   for (const route of [
-    "/projects",
-    "/library/sources",
-    "/operations/context",
-    "/library/skills",
-    "/library/memory",
-    "/assignments",
-    "/agent-network",
-    "/operations/usage",
+    "/",
+    "/sessions",
+    "/alerts",
+    "/agents",
+    "/connections",
+    "/artifacts",
+    "/settings/profile",
   ])
-    assert.ok(!out.includes(`href="${route}"`), route);
+    assert.ok(nav.includes(`href="${route}"`), route);
+  assert.equal([...nav.matchAll(/<a /g)].length, 7);
   assert.match(out, /href="\/" aria-current="page"/);
-  // No two places in the list share a glyph.
-  const nav = out.slice(
-    out.indexOf('aria-label="Sections"'),
-    out.indexOf('aria-label="Conversations"'),
-  );
-  const glyphs = [...nav.matchAll(/<a [^>]*>(<svg[\s\S]*?<\/svg>)/g)].map((m) => m[1]);
-  assert.ok(glyphs.length >= 5);
-  assert.equal(new Set(glyphs).size, glyphs.length, "two sidebar items share an icon");
-  // A page under More shows itself in the More row while it is open.
+  const glyphs = [...nav.matchAll(/<a [^>]*>(<svg[\s\S]*?<\/svg>)/g)].map((match) => match[1]);
+  assert.equal(glyphs.length, 7);
+  assert.equal(new Set(glyphs).size, 7);
   assert.match(
     sidebar({ route: { page: "library", section: "sources" } }),
-    /aria-label="More"[^>]*>[\s\S]*?Library<\/span>/,
+    /href="\/connections" aria-current="page"/,
   );
   assert.match(
     sidebar({ route: { page: "agent", name: "lead", tab: "model" } }),
-    /href="\/customize\/agents" aria-current="page"/,
+    /href="\/agents" aria-current="page"/,
   );
 });
 
@@ -162,7 +154,7 @@ test("project pins work without recent conversations and omit unreadable project
     onPinProject: async () => {},
   });
   assert.match(out, /aria-label="Pinned"/);
-  assert.match(out, /href="\/projects\/Launch"/);
+  assert.match(out, /href="\/projects\/Launch\/context"/);
   assert.match(out, /aria-label="Unpin project Spring launch"/);
   assert.doesNotMatch(out, /href="\/projects\/hidden"/);
   assert.doesNotMatch(
@@ -171,10 +163,10 @@ test("project pins work without recent conversations and omit unreadable project
   );
 });
 
-test("project selection: an empty directory offers the explicit Company home and project creation", () => {
+test("project selection: an empty directory offers the explicit Workspace home and project creation", () => {
   const actions = { onChange: () => {}, onCreated: () => {}, close: () => {} };
   const out = renderToStaticMarkup(<ProjectChoices projects={[]} value={null} {...actions} />);
-  assert.match(out, /Company/);
+  assert.match(out, /Workspace/);
   assert.match(out, /Create Project/);
   assert.match(out, /No projects yet/);
   assert.doesNotMatch(out, /<form/, "the picker must not nest a form inside the message form");
@@ -186,7 +178,7 @@ test("project selection: an empty directory offers the explicit Company home and
   const untouched = renderToStaticMarkup(<ProjectPicker projects={[]} value={null} {...actions} />);
   assert.match(untouched, /aria-label="Select project"/);
   const projectless = renderToStaticMarkup(<ProjectPicker projects={[]} value="" {...actions} />);
-  assert.match(projectless, /aria-label="Select project: Company"/);
+  assert.match(projectless, /aria-label="Select project: Workspace"/);
 });
 
 import { ActionId, messageState, messageTemplate, partTarget, type UiAction } from "@humagen/core";
@@ -926,7 +918,7 @@ test("MailboxView: an alert with recovery keeps diagnostic text behind a closed 
 
 test("MailboxView: severity and failure recovery use spacing rather than decorative dot separators", () => {
   for (const id of ["m-alert", "m-failure"]) {
-    assert.doesNotMatch(mailbox(id), /<span[^>]*aria-hidden[^>]*>·<\/span>/);
+    assert.doesNotMatch(mailbox(id), /<span[^>]*aria-hidden[^>]*>\|<\/span>/);
   }
 });
 
@@ -1022,7 +1014,7 @@ test("MailboxView: an artifact shows the file, opens it in Artifacts, and offers
   const out = mailbox("m-artifact");
   assert.match(out, /data-template="artifact"/);
   assert.match(out, /data-testid="part-artifact"/);
-  assert.match(out, /Document · 97 B · Version 2/);
+  assert.match(out, /Document | 97 B | Version 2/);
   assert.match(out, />Open in Artifacts</);
   assert.match(out, /href="\/api\/artifacts\/art-2\/content" download="launch-checklist.md"/);
   assert.match(out, /This replaces version 1/);
@@ -1569,7 +1561,7 @@ test("StorageUsed: a real meter in bytes, under, over and with no limit, and whe
   assert.match(under, /1\.7 MB of 5\.0 MB, 33%\. Under limit\./);
   assert.match(under, /Stored, 4 artifacts/);
   assert.match(under, /Launch/);
-  assert.match(under, /Company/);
+  assert.match(under, /Workspace/);
   const over = html(<StorageUsed use={sampleUse({ used_bytes: 6 * 1024 ** 2 })} />);
   assert.match(over, /data-usage="over"/);
   assert.match(over, /Over by 1\.0 MB/);
@@ -2145,7 +2137,7 @@ test("operation notices use canonical links on every mailbox host", () => {
   }
 });
 
-test("credential failures give an actionable answer and reference without exposing configuration paths", () => {
+test("credential failures give an actionable answer without exposing debug references or configuration paths", () => {
   const turn: Turn = {
     ...emptyTurn("r-credential", { name: "helper" }),
     status: "failed",
@@ -2162,7 +2154,7 @@ test("credential failures give an actionable answer and reference without exposi
     </WebSurface>,
   );
   assert.match(markup, /The model credential is unavailable/);
-  assert.match(markup, /r-credential/);
+  assert.doesNotMatch(markup, /Reference: r-credential/);
   assert.doesNotMatch(markup, /op:\/\/|max attempts|Private\/provider/);
 });
 
@@ -2176,8 +2168,10 @@ test("Involved: the first three agents by mark and name, then how many more, eve
   assert.doesNotMatch(html(<Involved agents={["lead"]} />), /\+\d/);
 });
 
-test("an agent's initials: two words give two letters, one word adds A for agent", () => {
-  assert.equal(agentInitials("lead"), "LA");
+test("an agent's initials use two word initials or the first two letters of one word", () => {
+  assert.equal(agentInitials("lead"), "LE");
+  assert.equal(agentInitials("helper"), "HE");
+  assert.equal(agentInitials("humagen-analyst"), "HA");
   assert.equal(agentInitials("code-reviewer"), "CR");
   assert.equal(agentInitials("dataAnalyst"), "DA");
   assert.equal(agentInitials("research_writer"), "RW");

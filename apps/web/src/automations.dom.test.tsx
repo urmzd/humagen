@@ -91,6 +91,11 @@ test("readers see no create buttons and cannot load installations without read p
       />,
     );
     assert.equal(seen.length, 0);
+    assert.ok(screen.getByRole("heading", { name: "Schedules", level: 1 }));
+    assert.equal(
+      screen.getByRole("link", { name: "Open Sessions" }).getAttribute("href"),
+      "/sessions",
+    );
     assert.equal(screen.queryByRole("button", { name: "New Schedule" }), null);
     assert.equal(screen.queryByRole("button", { name: "New GitHub Automation" }), null);
   } finally {

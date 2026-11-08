@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type ThreadSummary } from "./api.ts";
+import { sessionCenter, sessionThread } from "./sessionCenter.ts";
 import { within } from "./timeout.ts";
 
 export type Standing = "" | "running" | "failed";
@@ -8,9 +9,20 @@ export type Standing = "" | "running" | "failed";
 const PAGE = 30;
 
 const keep = (t: ThreadSummary, agent: string, standing: Standing) =>
-  t.origin === "api" &&
   (!agent || t.agents.includes(agent)) &&
   (standing === "" || (standing === "running" ? t.active > 0 : t.failed > 0));
+
+async function sessionPage(agent: string, standing: Standing, after?: string) {
+  const page = await sessionCenter.sessions({
+    roots: "true",
+    mine: "true",
+    limit: String(PAGE),
+    ...(agent ? { agent } : {}),
+    ...(standing ? { status: standing === "running" ? "working" : "failed" } : {}),
+    ...(after ? { after } : {}),
+  });
+  return { threads: page.sessions.map(sessionThread), next: page.next || null };
+}
 
 /**
  * The Recents list, a page at a time.
@@ -27,7 +39,12 @@ const keep = (t: ThreadSummary, agent: string, standing: Standing) =>
  * A server that does not page yet answers with everything and no cursor. The
  * same list is then paged here instead, so the screen behaves the same.
  */
-export function useRecents(agent: string, standing: Standing, signal: unknown) {
+export function useRecents(
+  agent: string,
+  standing: Standing,
+  signal: unknown,
+  sessionMode = false,
+) {
   const [rows, setRows] = useState<ThreadSummary[]>([]);
   // A cursor for the next page, null when there is none.
   const [next, setNext] = useState<string | null>(null);
@@ -56,7 +73,11 @@ export function useRecents(agent: string, standing: Standing, signal: unknown) {
       setFailed(false);
       setLoading("first");
     }
-    within(api.threadsPage({ limit: PAGE, origin: "api", agent, standing }))
+    within(
+      sessionMode
+        ? sessionPage(agent, standing)
+        : api.threadsPage({ limit: PAGE, origin: "api", agent, standing }),
+    )
       .then((page) => {
         if (current.current !== key) return;
         setStalled(false);
@@ -89,7 +110,7 @@ export function useRecents(agent: string, standing: Standing, signal: unknown) {
       .finally(() => {
         if (current.current === key) setLoading((l) => (l === "first" ? null : l));
       });
-  }, [key, signal, again]);
+  }, [key, signal, again, sessionMode]);
 
   const more = useCallback(() => {
     if (local !== null) {
@@ -99,7 +120,11 @@ export function useRecents(agent: string, standing: Standing, signal: unknown) {
     if (!next || loading) return;
     setLoading("more");
     setFailed(false);
-    within(api.threadsPage({ limit: PAGE, origin: "api", agent, standing, before: next }))
+    within(
+      sessionMode
+        ? sessionPage(agent, standing, next)
+        : api.threadsPage({ limit: PAGE, origin: "api", agent, standing, before: next }),
+    )
       .then((page) => {
         if (current.current !== key) return;
         setRows((old) => {
@@ -115,7 +140,7 @@ export function useRecents(agent: string, standing: Standing, signal: unknown) {
       .finally(() => {
         if (current.current === key) setLoading(null);
       });
-  }, [agent, standing, key, next, local, loading]);
+  }, [agent, standing, key, next, local, loading, sessionMode]);
 
   return {
     threads: local === null ? rows : rows.slice(0, local),

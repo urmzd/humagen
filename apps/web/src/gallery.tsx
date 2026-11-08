@@ -101,7 +101,7 @@ function Gallery() {
                   style={{ height: size }}
                 >
                   <AgentMark name="oncall" size={size} state={state} />
-                  <span>oncall · {size}px</span>
+                  <span>oncall | {size}px</span>
                 </div>
               ))}
             </div>

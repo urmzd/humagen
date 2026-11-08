@@ -21,7 +21,7 @@ export function AgentOperations({
   onRun: (id: string) => void;
 }) {
   const [control, setControl] = useState<AgentControl>();
-  const [draft, setDraft] = useState(false);
+  const draft = control?.pause_reason === "setup";
   const [staleSkills, setStaleSkills] = useState(false);
   const [problem, setProblem] = useState("");
   const [refresh, setRefresh] = useState(0);
@@ -52,13 +52,6 @@ export function AgentOperations({
       void read();
       void skills();
     }, 5000);
-    if (canWrite)
-      api
-        .agentSetup(name)
-        .then((setup) => {
-          if (live) setDraft(setup.phase !== "ready");
-        })
-        .catch(() => {});
     return () => {
       live = false;
       clearInterval(timer);

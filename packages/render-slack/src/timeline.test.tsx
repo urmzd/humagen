@@ -19,7 +19,7 @@ describe("a turn's steps in Slack", () => {
     const runs = [
       lines.findIndex((l) => l.includes("Checked urmzd/playscape#21")),
       lines.findIndex((l) =>
-        l.includes("Read 2 files, checked a source, ran a command · 1 failed"),
+        l.includes("Read 2 files, checked a source, ran a command | 1 failed"),
       ),
       lines.findIndex((l) => l.includes("Wrote scratchpads/review-notes.md +4")),
     ];

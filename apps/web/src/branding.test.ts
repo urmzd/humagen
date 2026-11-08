@@ -28,8 +28,8 @@ test("before the workspace's branding is read, the served name brands the consol
 });
 
 test("the tab title ends with the branded product's name", () => {
-  assert.equal(documentTitle({ page: "inbox" }, 0, "Acme"), "Notifications · Acme");
-  assert.equal(documentTitle({ page: "inbox" }, 2, "Acme"), "(2) Notifications · Acme");
+  assert.equal(documentTitle({ page: "inbox" }, 0, "Acme"), "Notifications - Acme");
+  assert.equal(documentTitle({ page: "inbox" }, 2, "Acme"), "(2) Notifications - Acme");
 });
 
 test("the workspace's text replaces the console's by key, and nothing else", () => {
@@ -63,7 +63,7 @@ test("a tab title follows the workspace's words for the page", async () => {
   const was = defaultCopy.navigation.agents;
   defaultCopy.navigation.agents = "Assistants";
   try {
-    assert.equal(documentTitle({ page: "agents" }, 0, "Acme"), "Assistants · Acme");
+    assert.equal(documentTitle({ page: "agents" }, 0, "Acme"), "Assistants - Acme");
   } finally {
     defaultCopy.navigation.agents = was;
   }

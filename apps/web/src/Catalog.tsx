@@ -2,6 +2,7 @@ import { defaultCopy } from "@humagen/components";
 import { type FormEvent, useEffect, useState } from "react";
 import type { CatalogPage } from "../../../packages/client/src/generated/types.ts";
 import { api } from "./api.ts";
+import { href } from "./route.ts";
 import { button, field, Label, Page, Problem } from "./ui.tsx";
 
 /** Metadata discovery and owner actions share the server's visibility rules. */
@@ -85,7 +86,7 @@ export function Catalog({
               <article key={c.name} className="min-w-0 border-b border-aui-border pb-4">
                 <h2 className="break-words text-sm font-medium">{c.name}</h2>
                 <p className="text-sm text-aui-muted">
-                  {c.system} · {c.entries} {copy.count}
+                  {c.system} | {c.entries} {copy.count}
                 </p>
                 <p className="text-sm text-aui-muted">
                   {c.published ? copy.published : copy.private}
@@ -127,6 +128,11 @@ export function Catalog({
                 <p className="mt-2 text-sm text-aui-muted">
                   {page.connectors.length ? copy.noMatch : copy.emptyHint}
                 </p>
+                {!page.connectors.length && (
+                  <a className={`${button} mt-3`} href={href({ page: "connections" })}>
+                    Open Connections
+                  </a>
+                )}
               </div>
             )}
             {entries.map((entry) => (
@@ -136,7 +142,7 @@ export function Catalog({
               >
                 <h2 className="break-all font-mono text-sm font-medium">{entry.path}</h2>
                 <p className="mt-1 text-sm text-aui-muted">
-                  {entry.connector} · {entry.kind}
+                  {entry.connector} | {entry.kind}
                 </p>
                 {entry.description && (
                   <p className="mt-2 whitespace-pre-wrap break-words text-sm">

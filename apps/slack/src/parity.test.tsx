@@ -21,7 +21,7 @@ import {
   type Turn,
   timeline,
 } from "@humagen/core";
-import { homeView, renderToSlack } from "@humagen/render-slack";
+import { decodeSlackAction, homeView, renderToSlack } from "@humagen/render-slack";
 import { WebSurface } from "@humagen/render-web";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -96,6 +96,33 @@ function live(events: RunEvent[], record?: Run): Turn {
 function slack(element: ReactElement): string {
   const out = renderToSlack(element);
   return JSON.stringify(out.pages).replace(/\\n/g, " ");
+}
+
+/** Visible text only: action payloads and block IDs are not response prose. */
+function slackVisibleText(element: ReactElement): string {
+  const text = (value: unknown): string => {
+    if (Array.isArray(value)) return value.map(text).join(" ");
+    if (!value || typeof value !== "object") return "";
+    return Object.entries(value)
+      .map(([key, item]) => (key === "text" && typeof item === "string" ? item : text(item)))
+      .join(" ");
+  };
+  return text(renderToSlack(element).pages);
+}
+
+function slackAction(element: ReactElement, id: string) {
+  const blocks = renderToSlack(element).pages.flat() as {
+    type: string;
+    elements?: { type: string; action_id: string; value?: string }[];
+  }[];
+  const found = blocks
+    .filter((block) => block.type === "actions")
+    .flatMap((block) => block.elements ?? [])
+    .filter((control) => control.type === "button")
+    .map((control) => decodeSlackAction(control))
+    .find((action) => action?.id === id);
+  assert.ok(found, `Slack must offer ${id}`);
+  return found;
 }
 
 /** What the console shows: the markup's text. */
@@ -270,8 +297,15 @@ test("a failed run is the same failure in both", () => {
     message: "provider: 529 overloaded",
     reference: RUN,
   });
-  // The reference is a copy chip on the web and a line of text on Slack: the same id either way.
-  bothSay(<TurnView turn={turn} />, defaultCopy.retry, RUN);
+  // Keep the diagnostic reference for explicit reporting, out of the everyday response.
+  const failed = <TurnView turn={turn} />;
+  bothSay(failed, defaultCopy.retry, defaultCopy.report);
+  assert.equal(web(failed).includes(RUN), false);
+  assert.equal(slackVisibleText(failed).includes(RUN), false);
+  assert.deepEqual(slackAction(failed, ActionId.report), {
+    id: ActionId.report,
+    payload: { turnId: RUN, target: "internal" },
+  });
   bothShow(turn);
 
   // A run whose final event is gone is ended from its record, to the same state.
@@ -473,7 +507,17 @@ for (const kind of ["approval", "choice", "reply"] as const) {
     assert.deepEqual(replay(run(), asked(kind)), waiting, "the console rebuilds the same state");
     const onRun = <TurnView turn={waiting} />;
     bothSay(onRun, QUESTIONS[kind].prompt);
-    if (kind === "approval") bothSay(onRun, defaultCopy.approve, defaultCopy.cancel);
+    if (kind === "approval") {
+      bothSay(onRun, defaultCopy.approve, defaultCopy.declineAction);
+      assert.ok(slackButtons(onRun).includes(defaultCopy.declineAction));
+      assert.ok(webButtons(onRun).includes(defaultCopy.declineAction));
+      for (const id of [ActionId.approve, ActionId.deny]) {
+        assert.deepEqual(slackAction(onRun, id), {
+          id,
+          payload: { turnId: RUN, target: QUESTIONS.approval.id },
+        });
+      }
+    }
     if (kind === "choice") bothSay(onRun, "us-east", "eu-west");
     if (kind === "reply") bothSay(onRun, defaultCopy.somethingElse);
     assert.deepEqual(
@@ -485,7 +529,15 @@ for (const kind of ["approval", "choice", "reply"] as const) {
     const mail = fromServer(questionMail(RUN, kind));
     const inMail = <MessageView message={forSlack(mail)} />;
     bothSay(<MessageView message={mail} />, QUESTIONS[kind].prompt);
-    if (kind === "approval") bothSay(inMail, defaultCopy.approve, defaultCopy.cancel);
+    if (kind === "approval") {
+      bothSay(inMail, defaultCopy.approve, defaultCopy.declineAction);
+      for (const id of [ActionId.approve, ActionId.deny]) {
+        assert.deepEqual(slackAction(inMail, id), {
+          id,
+          payload: { turnId: mail.id, target: QUESTIONS.approval.id },
+        });
+      }
+    }
     if (kind === "choice") bothSay(inMail, "us-east", "eu-west");
     if (kind === "reply") bothSay(inMail, defaultCopy.reply);
 

@@ -13,7 +13,7 @@ export interface QueuedMessage {
   text: string;
   queuedAt: string;
   /** The choices for this message, retained through editing and retry. */
-  pick?: { model?: string; effort?: string };
+  pick?: { model?: string; effort?: string; agent?: string; fresh?: boolean; label?: string };
 }
 
 /** When a turn ends, send the next queued message automatically or wait for the user. */

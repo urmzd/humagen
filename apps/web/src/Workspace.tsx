@@ -17,7 +17,14 @@ import {
 } from "@humagen/render-web";
 import { Button } from "@humagen/render-web/ui/button";
 import { Inspector } from "@humagen/web";
-import { type ComponentProps, type ReactNode, useCallback, useEffect, useState } from "react";
+import {
+  type ComponentProps,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import { Deliverables } from "./Deliverables.tsx";
 import { GitHubPicker, GitHubTab } from "./GitHubTab.tsx";
 import { Memories } from "./Memories.tsx";
@@ -35,6 +42,7 @@ import {
 import type { ConversationView } from "./route.ts";
 import { SaveAsArtifact } from "./SaveAsArtifact.tsx";
 import { Scratchpads, usePadDrafts } from "./Scratchpads.tsx";
+import { DetailsNavigation } from "./SessionDetails.tsx";
 import { AgentMark, ago, Popover, SkeletonRows } from "./ui.tsx";
 import { WorkspaceFiles } from "./WorkspaceFiles.tsx";
 import { type ConversationSandboxes, type RunSandbox, workspaceFiles } from "./workspace-files.ts";
@@ -327,6 +335,7 @@ export function Workspace({
   onRevise?: ComponentProps<typeof Deliverables>["onRevise"];
   promotion?: ComponentProps<typeof Deliverables>["promotion"];
 }) {
+  const navigation = useContext(DetailsNavigation);
   const [drafts, setDrafts] = usePadDrafts();
   const [labels, setLabels] = useState<Record<string, string>>({});
   const tabs = paneTabs(view);
@@ -587,11 +596,16 @@ export function Workspace({
       frame={(files) => (
         <Inspector
           open={open}
-          title={defaultCopy.workspace.title}
+          title={navigation ? "Details" : defaultCopy.workspace.title}
           onClose={onClose}
           wide
           expanded={!!view.expanded}
-          lead={strip}
+          lead={
+            <div className="flex min-w-0 flex-col gap-3">
+              {navigation}
+              {strip}
+            </div>
+          }
           actions={actions}
         >
           {second ? (

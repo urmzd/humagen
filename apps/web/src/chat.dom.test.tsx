@@ -50,9 +50,61 @@ afterEach(() => {
   net = undefined;
 });
 
+// Session requests reuse the same realistic thread/message fixtures. The adapter
+// returns the canonical envelope and tests assert the canonical request below.
+function stubChatFetch(routes: Parameters<typeof stubFetch>[0]) {
+  const start = routes["POST /api/threads"];
+  if (!start) return stubFetch(routes);
+  const { ["POST /api/threads"]: _, ...rest } = routes;
+  return stubFetch({
+    ...rest,
+    "POST /api/sessions": async (body, query) => {
+      const result = (await start(body, query)) as {
+        thread: { id: string; project: string };
+        message: { id: string; text: string; mentions?: unknown[] };
+        runs?: Run[];
+      };
+      if (result instanceof Response) return result;
+      return {
+        id: result.thread.id,
+        agent: "helper",
+        parent: "console://test",
+        project: result.thread.project,
+        title: result.message.text,
+        status: "done",
+        updated_at: at,
+        thread: result.thread,
+        children: [],
+        links: [],
+        people: [],
+        cursor: "cursor",
+        messages: [
+          {
+            id: result.message.id,
+            session: result.thread.id,
+            author: { kind: "person", name: "Ada" },
+            status: "done",
+            parts: [{ type: "text", text: result.message.text }],
+            at,
+            message: { ...result.message, mentions: result.message.mentions ?? [] },
+          },
+          ...(result.runs ?? []).map((run) => ({
+            id: run.id,
+            session: result.thread.id,
+            author: { kind: "agent", name: run.agent },
+            status: "done",
+            parts: [],
+            at,
+            run,
+          })),
+        ],
+      };
+    },
+  });
+}
 function openChat(view: ProjectAgentsView, props: Partial<Parameters<typeof Chat>[0]> = {}) {
   const opened: string[] = [];
-  net = stubFetch({
+  net = stubChatFetch({
     "GET /api/projects/~/agents": () => view,
     ...(props.personalProject
       ? { [`GET /api/projects/${encodeURIComponent(props.personalProject)}/agents`]: () => view }
@@ -175,11 +227,9 @@ test("Home's chat bar starts a private conversation in the picked project and op
   fireEvent.keyDown(box(), { key: "Enter" });
   await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ab"]));
   const started = net?.seen.find((s) => s.method === "POST");
-  assert.equal(started?.path, "/api/threads");
+  assert.equal(started?.path, "/api/sessions");
   assert.deepEqual(started?.body, {
-    visibility: "private",
     project: "Globex",
-    channel: "general",
     text: "What changed this week?",
   });
   assert.ok(!net?.seen.some((s) => s.path.startsWith("/api/runs")), "no run is asked for");
@@ -190,9 +240,9 @@ const chat = defaultCopy.chat;
 const chips = () =>
   (screen.queryByRole("list", { name: chat.selected })?.querySelectorAll("li") ?? []).length === 0
     ? []
-    : [...screen.getByRole("list", { name: chat.selected }).querySelectorAll("li")].map(
-        (li) => li.textContent ?? "",
-      );
+    : [...screen.getByRole("list", { name: chat.selected }).querySelectorAll("li")]
+        .map((li) => (li.textContent === "Select project" ? "" : (li.textContent ?? "")))
+        .filter(Boolean);
 
 test("a link or suggestion @mentions the agent without submitting, and suggestions remain while typing", async () => {
   openChat(workspace("lead"), { startAgent: "helper", startAsk: "Help with the launch." });
@@ -220,13 +270,13 @@ test("a link or suggestion @mentions the agent without submitting, and suggestio
   assert.ok(screen.getByRole("list", { name: chat.suggestions }));
 });
 
-test("+ opens a menu where agents are @mentioned in the box and the project with its channel is picked; the message routes by its mentions alone", async () => {
+test("+ picks mentions with Enter and the single project picker scopes a session", async () => {
   openChat(workspace("lead"), {
     projects: [{ ...globex, access: { role: "owner", from: "", via: "*" } }] as never,
   });
   net?.restore();
   const opened: string[] = [];
-  net = stubFetch({
+  net = stubChatFetch({
     "GET /api/projects/~/agents": () => workspace("lead"),
     "GET /api/projects/Globex/agents": () => ({
       ...workspace(),
@@ -315,26 +365,15 @@ test("+ opens a menu where agents are @mentioned in the box and the project with
   assert.deepEqual(chips(), [], "agents never show where the project is");
   assert.equal(screen.queryByRole("group", { name: /routed/i }), null, "no routing toggle");
 
-  // The project, then one of its channels, general first.
-  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
-  menu = await screen.findByRole("dialog", { name: chat.menu });
-  fireEvent.click(within(menu).getByRole("button", { name: /^Projects\b/ }));
-  fireEvent.click(await within(menu).findByRole("button", { name: /Globex/ }));
-  const channels = await within(menu).findByRole("radiogroup", {
-    name: chat.picker.channelsIn("Globex"),
-  });
-  await waitFor(() =>
-    assert.deepEqual(
-      within(channels)
-        .getAllByRole("radio")
-        .map((r) => r.textContent),
-      ["#general", "#deals"],
-    ),
+  // The project is chosen once, from the persistent composer control.
+  const projectPicker = screen.getByRole("button", { name: /^Select project/ });
+  fireEvent.click(projectPicker);
+  fireEvent.click(await screen.findByRole("button", { name: /^Globex/ }));
+  assert.ok(screen.getByRole("button", { name: "Select project: Globex" }));
+  assert.equal(
+    net?.seen.some((request) => request.path.includes("/channels")),
+    false,
   );
-  fireEvent.click(within(channels).getByRole("radio", { name: "#deals" }));
-  assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
-  assert.equal(document.activeElement, box(), "closing gives the box its focus back");
-  assert.ok(chips().includes("Globex / #deals"), JSON.stringify(chips()));
 
   // Deleting a mention's words takes the agent off: the menu reads the box.
   fireEvent.change(box(), { target: { value: "@lead " } });
@@ -354,9 +393,7 @@ test("+ opens a menu where agents are @mentioned in the box and the project with
   fireEvent.keyDown(box(), { key: "Enter" });
   await waitFor(() => assert.deepEqual(opened, ["started"]));
   assert.deepEqual(net?.seen.find((s) => s.method === "POST")?.body, {
-    visibility: "private",
     project: "Globex",
-    channel: "deals",
     text: "@helper @lead Plan the renewal",
   });
 });
@@ -402,7 +439,7 @@ const NOBODY_RETRY = "api-retry-3-ben-t0";
 function open(turn: Run, me: string, turns: Run[] = [turn]) {
   // A stream that never says anything: the retried run is followed, and nothing here needs its events.
   restoreEvents ??= stubEventSource();
-  net = stubFetch({
+  net = stubChatFetch({
     "GET /api/threads/t1": () => ({
       thread: {
         id: "t1",
@@ -574,6 +611,7 @@ test("Regenerate is offered only on an answered turn that acted for the reader",
     close();
   }
   open(answered({ id: "ben", display: "Ben", user: "ben" }), "ben");
+  fireEvent.click(await screen.findByRole("button", { name: "More actions" }));
   fireEvent.click(await screen.findByRole("button", { name: "Regenerate" }));
   await waitFor(() =>
     assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")),
@@ -590,6 +628,7 @@ test("a reader's own turn from before humagen said whom a run acts for may be as
   );
   close();
   open(answered(before, "api-3-ben-k1"), "ben");
+  fireEvent.click(await screen.findByRole("button", { name: "More actions" }));
   fireEvent.click(await screen.findByRole("button", { name: "Regenerate" }));
   await waitFor(() =>
     assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")),
@@ -642,7 +681,7 @@ test("a conversation longer than one page is read from its start, and the next m
       next,
       answers: { agent: "helper", from: "project:~" },
     }) as unknown as ThreadPage;
-  net = stubFetch({
+  net = stubChatFetch({
     [`GET /api/threads/${id}`]: (_, q) =>
       q.get("before") === "c1" ? pageOf(all.slice(0, 1), null) : pageOf(all.slice(1), "c1"),
     "GET /api/projects/~/agents": () => ({
@@ -778,7 +817,7 @@ test("a follow-up on a run's page is posted to the conversation, and runs only t
 test("a task the reader may not read reads as one that does not exist, never as Home with a composer", async () => {
   // The server answers a private thread the reader is not in as it does one
   // that is not there: 404, which stubFetch gives a route it was not told.
-  net = stubFetch({ "GET /api/projects/~/agents": () => workspace("lead") });
+  net = stubChatFetch({ "GET /api/projects/~/agents": () => workspace("lead") });
   const noop = () => {};
   render(
     <Chat
@@ -942,7 +981,7 @@ test("a suggestion @mentions its agent, and the + menu mentions as many agents a
 test("Home's first message says what it did in the conversation it opens", async () => {
   const { opened } = openChat(workspace("lead"));
   net?.restore();
-  net = stubFetch({
+  net = stubChatFetch({
     "GET /api/projects/~/agents": () => workspace("lead"),
     "POST /api/threads": (body) => ({
       thread: {
@@ -992,7 +1031,7 @@ test("a conversation of runs has the + menu: its agents are saved on its thread 
     created_at: at,
     updated_at: at,
   };
-  net = stubFetch({
+  net = stubChatFetch({
     "GET /api/threads/t1": () => ({
       thread: record,
       turns: [{ kind: "run", run: turn }],
@@ -1053,7 +1092,7 @@ test("a conversation of runs has the + menu: its agents are saved on its thread 
 
 test("a late personal-home address never becomes visible while project titles load", async () => {
   const personal = "~personal-opaque-address";
-  net = stubFetch({
+  net = stubChatFetch({
     "GET /api/projects/~/agents": () => workspace(),
     [`GET /api/projects/${encodeURIComponent(personal)}/agents`]: () => workspace(),
     "GET /api/skills": () => ({ skills: [] }),
@@ -1086,7 +1125,7 @@ test("a late personal-home address never becomes visible while project titles lo
   mounted.rerender(<Chat {...props} personalProject={personal} projects={null} />);
   // On a wide screen the pick is over the chat bar, the person's own project
   // reading as No project (DES-057).
-  const picker = `Select project: ${defaultCopy.noProject}`;
+  const picker = `Select project: ${defaultCopy.projects.personalTitle}`;
   await screen.findByRole("button", { name: picker });
   assert.ok(!document.body.textContent?.includes(personal));
   assert.ok(!screen.queryByRole("button", { name: new RegExp(personal) }));
@@ -1167,10 +1206,10 @@ test("the composer opens discovery in its picker and preserves the draft and att
   fireEvent.keyDown(box(), { key: "Enter" });
   await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ab"]));
   const started = net?.seen.find(
-    (request) => request.method === "POST" && request.path === "/api/threads",
+    (request) => request.method === "POST" && request.path === "/api/sessions",
   )?.body as { project: string; channel: string; agents?: string[]; text: string };
   assert.equal(started.project, "Globex");
-  assert.equal(started.channel, "general");
+  assert.equal(started.channel, undefined, "sessions have no channel");
   assert.equal(started.agents, undefined, "the mention routes it, as any tag does");
   assert.equal(
     started.text,
@@ -1232,7 +1271,9 @@ test("Escape returns from discovery to its picker trigger before closing the pic
 test("the Personal project control opens a searchable chooser and keeps an unsent draft when switching", async () => {
   openChat(workspace("lead"), { personalProject: "Personal", projects: [globex] as never });
   fireEvent.change(box(), { target: { value: "Preserve this draft" } });
-  fireEvent.click(screen.getByRole("button", { name: `Select project: ${defaultCopy.noProject}` }));
+  fireEvent.click(
+    screen.getByRole("button", { name: `Select project: ${defaultCopy.projects.personalTitle}` }),
+  );
   const drawer = await screen.findByRole("dialog", { name: chat.chooseProject });
   assert.ok(within(drawer).getByRole("button", { name: "Personal" }));
   fireEvent.change(within(drawer).getByRole("searchbox", { name: defaultCopy.projects.search }), {
@@ -1279,7 +1320,7 @@ test("choosing a project skill keeps the draft and attached file and waits for e
   fireEvent.click(screen.getByRole("button", { name: "Send message" }));
   await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ab"]));
   const started = net?.seen.find(
-    (request) => request.method === "POST" && request.path === "/api/threads",
+    (request) => request.method === "POST" && request.path === "/api/sessions",
   )?.body as { text: string };
   assert.equal(
     started.text,
@@ -1455,7 +1496,7 @@ test("a review's pinned evidence opens the cited lines in place, read through th
 });
 
 test("the console reads cited lines from the source route", async () => {
-  net = stubFetch({
+  net = stubChatFetch({
     "GET /api/github/source": (_, q) => ({
       repo: q.get("repo"),
       sha: q.get("sha"),

@@ -138,7 +138,7 @@ describe("Home notifications on Slack", () => {
 
   it("gives each row the item's console address, written out, and says severity in words", () => {
     const [alert, inbox] = notificationRows(homeView(<Home home={fx.homes.default} />).view.blocks);
-    expect(alert).toContain("Critical alert · <!date^");
+    expect(alert).toContain("Critical alert | <!date^");
     // Slack escapes "&" in what it shows, and shows it as "&".
     const url = "https://example.com/console/?view=alerts&alert=al-deploy-failed";
     expect(alert).toContain(`<${url}|${url.replace("&", "&amp;")}>`);
@@ -193,7 +193,7 @@ describe("Home notifications on Slack", () => {
 
   it("shows only alerts when the inbox is clear", () => {
     const rows = notificationRows(homeView(<Home home={fx.homes.alertsOnly} />).view.blocks);
-    expect(rows.every((r) => r.includes("alert ·"))).toBe(true);
+    expect(rows.every((r) => r.includes("alert |"))).toBe(true);
     expect(rows).toHaveLength(2);
   });
 
@@ -231,7 +231,7 @@ describe("What's new and Your projects on Slack", () => {
       "*The Field offsite moves to Lisbon, in May*",
       "Weekly recap: three renewals closed",
     ]);
-    expect(textOf(rows[0] as Block)).toContain("Unread · Posted in Field engineering · <!date^");
+    expect(textOf(rows[0] as Block)).toContain("Unread | Posted in Field engineering | <!date^");
     expect(textOf(rows[1] as Block)).not.toContain("Unread");
     const open = rows[0]?.accessory as { text: { text: string }; url: string; action_id: string };
     expect(open.text.text).toBe("Open");
@@ -243,8 +243,8 @@ describe("What's new and Your projects on Slack", () => {
   it("shows the person's projects, the busiest first, with their kind and where they sit", () => {
     const rows = under(homeView(<Home home={fx.home} />).view.blocks, "Your projects");
     expect(rows.map((r) => textOf(r).split("\n"))).toEqual([
-      ["*Field engineering*", expect.stringMatching(/^Team · 1 running · active <!date\^\d+\^/)],
-      ["*Globex*", expect.stringMatching(/^Account · in Field engineering · active <!date/)],
+      ["*Field engineering*", expect.stringMatching(/^Team \| 1 running \| active <!date\^\d+\^/)],
+      ["*Globex*", expect.stringMatching(/^Account \| in Field engineering \| active <!date/)],
       ["*Launch*", "Team"],
     ]);
     expect((rows[2]?.accessory as { url: string }).url).toBe(

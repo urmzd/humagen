@@ -1,17 +1,13 @@
 import { defaultCopy } from "@humagen/components";
 import {
   ArtifactOpenContext,
-  EllipsisIcon,
-  FolderIcon,
-  HistoryIcon,
   InfoIcon,
   LayersIcon,
-  ProjectIcon,
   ShareIcon,
   UsersIcon,
 } from "@humagen/render-web";
 import { Inspector } from "@humagen/web";
-import { type ReactNode, type RefObject, useEffect, useState } from "react";
+import { type ReactNode, type RefObject, useContext, useEffect, useState } from "react";
 import type { Run } from "./adapter.ts";
 import {
   api,
@@ -22,12 +18,12 @@ import {
   type Thread,
 } from "./api.ts";
 import { ConversationAccess } from "./ConversationAccess.tsx";
-import { ConversationOverview } from "./ConversationOverview.tsx";
 import { ForkContext } from "./ForkConversation.tsx";
 import { PersonMark } from "./PersonMark.tsx";
 import { ProjectContextPreview } from "./ProjectContextPreview.tsx";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
-import { AgentMark, Page, Popover, Problem, SkeletonRows, Tabs } from "./ui.tsx";
+import { DetailsNavigation, SessionRelations } from "./SessionDetails.tsx";
+import { AgentMark, Page, Problem, SkeletonRows, Tabs } from "./ui.tsx";
 
 const words = defaultCopy.conversation;
 const focus =
@@ -37,12 +33,6 @@ const control = `inline-flex min-h-9 pointer-coarse:min-h-11 items-center gap-2 
 /** Header actions are dense, like the console's other headers: icon-sized, one 4px gap, no side padding. */
 const headerIcon = `inline-flex size-9 shrink-0 pointer-coarse:size-11 items-center justify-center ${focus}`;
 const headerLabeled = `inline-flex h-9 min-w-9 shrink-0 pointer-coarse:h-11 pointer-coarse:min-w-11 items-center justify-center gap-1.5 px-1.5 text-aui-xs ${focus}`;
-const panelActions = [
-  { panel: "overview", label: words.overview, Icon: InfoIcon },
-  { panel: "workspace", label: defaultCopy.workspace.menu, Icon: FolderIcon },
-  { panel: "context", label: words.context, Icon: LayersIcon },
-  { panel: "activity", label: words.activity, Icon: HistoryIcon },
-] as const;
 
 /**
  * Who took part, at a glance: the first few agents by mark and name, then how
@@ -105,7 +95,9 @@ export function ConversationPage({
   onClosePanel,
   onArtifact,
   children,
+  actions,
 }: {
+  actions?: ReactNode;
   title: string;
   project: string;
   private: boolean;
@@ -129,27 +121,27 @@ export function ConversationPage({
         layout="conversation"
         title={title}
         meta={
-          location ? (
-            <span className="inline-flex flex-wrap items-center gap-x-3">{location}</span>
-          ) : undefined
+          <span className="inline-flex flex-wrap items-center gap-x-3">
+            <span>{project}</span>
+            {location}
+          </span>
         }
         actions={
           <>
-            <div className="hidden items-center gap-1 @3xl/conversation:flex">
-              {panelActions.map(({ panel, label, Icon }) => (
-                <button
-                  key={panel}
-                  type="button"
-                  className={`${headerIcon} aria-pressed:bg-aui-hover aria-pressed:text-aui-fg`}
-                  aria-label={label}
-                  title={label}
-                  aria-pressed={activePanel === panel}
-                  onClick={() => (activePanel === panel ? onClosePanel?.() : onPanel(panel))}
-                >
-                  <Icon size={18} />
-                </button>
-              ))}
-            </div>
+            {actions}
+            <button
+              type="button"
+              data-session-details
+              className={headerLabeled}
+              aria-label="Details"
+              aria-expanded={!!activePanel && activePanel !== "people"}
+              onClick={() =>
+                activePanel && activePanel !== "people" ? onClosePanel?.() : onPanel("workspace")
+              }
+            >
+              <InfoIcon size={18} />
+              Details
+            </button>
             {/* One control for who is in it: Share where it can be shared, else People & Access. Both open the same panel. */}
             {personal && onProject ? (
               <button
@@ -165,6 +157,7 @@ export function ConversationPage({
               </button>
             ) : (
               <button
+                ref={projectRef}
                 type="button"
                 className={headerIcon}
                 aria-label={words.people}
@@ -174,45 +167,6 @@ export function ConversationPage({
                 <UsersIcon size={18} />
               </button>
             )}
-            <Popover
-              label={words.settings}
-              button={<EllipsisIcon size={18} />}
-              className={`${headerIcon} @3xl/conversation:hidden`}
-              align="right"
-              narrow
-            >
-              {(close) => (
-                <div className="flex flex-col p-1">
-                  {/* On a phone the header is one line: where the conversation is and who is in it are here. */}
-                  <div className="flex flex-col gap-1.5 border-aui-border border-b px-2.5 pt-1.5 pb-2.5 text-aui-xs text-aui-muted md:hidden">
-                    <span className="inline-flex min-w-0 items-center gap-1.5" title={project}>
-                      <ProjectIcon size={14} />
-                      <span className="truncate">{project}</span>
-                    </span>
-                    {location}
-                  </div>
-                  {/* The conversation's own items: its Workspace, its Context and its Activity. */}
-                  {panelActions.map(({ panel, label, Icon }) => (
-                    <button
-                      key={panel}
-                      type="button"
-                      className={`${control} justify-start`}
-                      aria-label={label}
-                      title={label}
-                      aria-pressed={activePanel === panel}
-                      onClick={() => {
-                        close();
-                        if (activePanel === panel) onClosePanel?.();
-                        else onPanel(panel);
-                      }}
-                    >
-                      <Icon size={16} />
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </Popover>
           </>
         }
       >
@@ -383,13 +337,11 @@ function SourceCard({ source }: { source: Source }) {
 }
 
 export function ConversationInfo({
-  runs = [],
-  view = {},
+  canWrite = false,
   contextTab,
   onContextTab,
   panel,
   thread,
-  project,
   onClose,
 }: {
   runs?: Run[];
@@ -398,9 +350,11 @@ export function ConversationInfo({
   contextTab?: "sources" | "instructions";
   onContextTab?: (tab: "sources" | "instructions") => void;
   thread: Thread;
+  canWrite?: boolean;
   project: string;
   onClose: () => void;
 }) {
+  const navigation = useContext(DetailsNavigation);
   const [ownTab, setOwnTab] = useState<"sources" | "instructions">("sources");
   const selected = contextTab ?? ownTab;
   const select = (next: "sources" | "instructions") =>
@@ -408,11 +362,13 @@ export function ConversationInfo({
   return (
     <Inspector
       open={panel === "overview" || panel === "context" || panel === "people"}
-      title={words[panel === "overview" ? "overview" : panel === "people" ? "people" : "context"]}
+      title={panel === "people" ? "People" : "Details"}
+      wide
+      lead={panel === "people" ? undefined : navigation}
       onClose={onClose}
     >
       {panel === "overview" ? (
-        <ConversationOverview thread={thread} project={project} runs={runs} view={view} />
+        <SessionRelations id={thread.id} canWrite={canWrite && !thread.read_only} />
       ) : panel === "context" ? (
         <div className="flex flex-col gap-6">
           <ForkContext thread={thread} />

@@ -17,7 +17,7 @@ export {
   SourceMark,
 } from "./citations";
 export { CodeBlock, CopyButton, Terminal } from "./code";
-export { Feedback, FeedbackPromptContext, Rating } from "./feedback";
+export { Feedback, FeedbackPromptContext, Rating, RatingSelectionContext } from "./feedback";
 export { ArtifactIcon, FileTile, phaseLabel } from "./file";
 export { Checkboxes, FormContext, FormStore, useGroup } from "./form";
 export * from "./icons";
