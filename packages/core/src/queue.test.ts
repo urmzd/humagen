@@ -20,9 +20,9 @@ function run(actions: QueueAction[], start: QueueState = emptyQueue()) {
 }
 
 describe("queue", () => {
-  it("keeps distinct choices for identical messages through editing and retry", () => {
-    const first = { ...msg("a"), text: "same", pick: { model: "a/one", effort: "high" } };
-    const second = { ...msg("b"), text: "same", pick: { model: "b/two" } };
+  it("keeps distinct picks for identical messages through editing and retry", () => {
+    const first = { ...msg("a"), text: "same", pick: { agent: "writer", fresh: true } };
+    const second = { ...msg("b"), text: "same", pick: { agent: "analyst" } };
     const { state, effects } = run([
       { type: "send", message: msg("running") },
       { type: "send", message: first },

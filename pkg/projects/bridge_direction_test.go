@@ -2,12 +2,13 @@ package projects_test
 
 import (
 	"encoding/json"
-	"github.com/urmzd/humagen/pkg/projects"
-	"github.com/urmzd/humagen/pkg/state"
-	"github.com/urmzd/humagen/pkg/state/statetest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
 func TestBridgeDirectionIsRetainedInBindings(t *testing.T) {

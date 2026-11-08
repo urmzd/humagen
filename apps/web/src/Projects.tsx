@@ -1,6 +1,7 @@
 import { defaultCopy } from "@humagen/components";
-import { ChevronDownIcon, FolderIcon, FolderPlusIcon } from "@humagen/render-web";
+import { ChevronDownIcon, FolderIcon, FolderPlusIcon, PinIcon } from "@humagen/render-web";
 import { Badge } from "@humagen/render-web/ui/badge";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@humagen/render-web/ui/sheet";
 import {
   type FormEvent,
   type MouseEvent,
@@ -26,6 +27,7 @@ import {
   type ThreadSummary,
 } from "./api.ts";
 import { AUTO } from "./availability.ts";
+import { FilterSelect, Pill } from "./cards.tsx";
 import { inWords } from "./cron.ts";
 import type { Source } from "./mail.ts";
 import { ProjectAgentsTab } from "./ProjectAgents.tsx";
@@ -37,23 +39,25 @@ import { ProjectWork } from "./ProjectWork.tsx";
 import {
   above,
   accountOf,
+  cardsOf,
   groupWord,
   INDENT_PX,
+  isPrivate,
   kindsOf,
   kindsUnder,
   kindWord,
+  lastActive,
   likeOf,
   MAX_DEPTH,
   nameFrom,
-  narrowAt,
   type Place,
   titleOf,
-  treeOf,
   updateOf,
+  validName,
   WORKSPACE,
 } from "./projects.ts";
 import { deliverOptions, recapAgent, recapName, weeklyRecap } from "./recap.ts";
-import { href, PROJECT_TABS, type ProjectTab } from "./route.ts";
+import { href, PROJECT_TABS, type ProjectSort, type ProjectTab } from "./route.ts";
 import {
   AgentMark,
   agentOptions,
@@ -110,18 +114,6 @@ function Go({
 }
 
 const projectHref = (name: string) => href({ page: "project", name, tab: "context" });
-
-/** Whether the viewport is a phone's, where the tree stops nesting. Follows the window as it resizes. */
-export function useNarrow(): boolean {
-  const read = () => typeof window !== "undefined" && narrowAt(window.innerWidth);
-  const [narrow, setNarrow] = useState(read);
-  useEffect(() => {
-    const on = () => setNarrow(typeof window !== "undefined" && narrowAt(window.innerWidth));
-    window.addEventListener("resize", on);
-    return () => window.removeEventListener("resize", on);
-  }, []);
-  return narrow;
-}
 
 /** What is happening in a project, what waits, and how much it holds, most pressing first. */
 export function factsOf(p: ProjectView): string {
@@ -273,135 +265,373 @@ function ProjectRow({
 }
 
 /**
- * Every project, as a tree grouped by kind: Company-wide, then Teams, then
- * Accounts, then the workspace's own kinds by title. The workspace itself
- * heads Company-wide. A project is opened from
- * here, and made from here with an inline form.
+ * Every project the reader has, as a grid of cards: sub-projects too, none
+ * nested, and not the workspace itself. Pinned ones come first. A search, a
+ * sort and, only when the workspace defines kinds of its own, a kind filter
+ * narrow it. A project is opened from here, and made from here in a sheet.
  */
 export function ProjectsPage({
   projects,
   root,
-  workspaceName,
   q = "",
   kind,
+  sort,
   onFilter,
   canCreate,
   canGovern,
-  narrow: forced,
+  me,
+  pinned = [],
+  onPin,
   onOpen,
   onCreated,
 }: {
   /** Null while they load. */
   projects: ProjectView[] | null;
-  /** The workspace's own view, when it has been read. */
+  /** The workspace's own view, when it has been read: its kinds decide whether the kind filter shows. */
   root: ProjectView | null;
-  workspaceName: string;
   q?: string;
   kind?: ProjectKind;
-  onFilter: (q: string, kind?: ProjectKind) => void;
+  /** Last activity when absent. */
+  sort?: ProjectSort;
+  onFilter: (next: { q: string; kind?: ProjectKind; sort?: ProjectSort }) => void;
   canCreate: boolean;
-  /** May make company-wide projects. */
+  /** May make company-wide projects, offered only among the workspace's kinds. */
   canGovern: boolean;
-  /** Lays the tree out for a phone. Measured from the window when left out. */
-  narrow?: boolean;
+  /** The signed-in subject: the owner of a private project made here. */
+  me: string;
+  /** The names of the projects the reader pinned. */
+  pinned?: readonly string[];
+  onPin?: (project: string, pinned: boolean) => Promise<void>;
   onOpen: (name: string) => void;
   onCreated: (project: ProjectView) => void;
 }) {
-  const measured = useNarrow();
-  const narrow = forced ?? measured;
-  const [adding, setAdding] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const opener = useRef<HTMLElement | null>(null);
   const kinds = root?.kinds ?? [];
-  const groups = projects ? treeOf(projects, { narrow, q, kind, kinds }) : [];
-  const showRoot = root !== null && !q.trim() && (!kind || kind === "company");
-  const shown =
-    showRoot && !groups.some((g) => g.kind === "company")
-      ? [{ kind: "company" as const, title: words.group.company ?? "", rows: [] }, ...groups]
-      : groups;
+  // Kinds are the workspace's to name: without its own, there is nothing to filter by.
+  const narrowed = kinds.length > 0 ? kind : undefined;
+  const listed = projects?.filter((p) => p.name !== "") ?? null;
+  const cards = listed
+    ? cardsOf(listed, { q, kind: narrowed, sort: sort ?? "activity", pinned })
+    : null;
+  const empty = listed?.length === 0;
+  const set = (next: { q?: string; kind?: ProjectKind; sort?: ProjectSort }) =>
+    onFilter({ q, kind: narrowed, sort, ...next });
+  const shownKinds = kindsOf(kinds, listed ?? []).filter(
+    (k) => k === narrowed || listed?.some((p) => p.kind === k),
+  );
+  const create = canCreate && (
+    <button
+      type="button"
+      className={primary}
+      onClick={(e) => {
+        opener.current = e.currentTarget;
+        setCreating(true);
+      }}
+    >
+      <FolderPlusIcon size={16} /> {words.newProject}
+    </button>
+  );
 
   return (
-    <Page
-      title={words.title}
-      lede={words.lede}
-      actions={
-        canCreate && !adding ? (
-          <button type="button" className={primary} onClick={() => setAdding(true)}>
-            <FolderPlusIcon size={16} /> {words.newProject}
-          </button>
-        ) : undefined
-      }
-    >
-      {adding && (
-        <NewProject
-          places={projects ?? []}
-          kinds={kinds}
-          canGovern={canGovern}
-          onCancel={() => setAdding(false)}
-          onCreated={(p) => {
-            setAdding(false);
-            onCreated(p);
-          }}
-        />
+    <Page title={words.title} actions={empty ? undefined : create || undefined}>
+      {!empty && (
+        <div className="flex flex-wrap items-center gap-2">
+          <SearchField
+            label={words.search}
+            value={q}
+            onChange={(next) => set({ q: next })}
+            className="w-full min-w-0 sm:w-auto sm:max-w-sm sm:flex-1"
+          />
+          <div className="flex min-w-0 flex-wrap items-center gap-2 sm:ml-auto">
+            {kinds.length > 0 && (
+              <FilterSelect
+                label={words.kindFilter}
+                value={narrowed ?? ""}
+                options={[
+                  { value: "", label: words.anyKind },
+                  ...shownKinds.map((k) => ({ value: k, label: groupWord(k, kinds) })),
+                ]}
+                onChange={(next) => set({ kind: next || undefined })}
+              />
+            )}
+            <span aria-hidden className="text-aui-xs text-aui-muted">
+              {words.sort.label}
+            </span>
+            <FilterSelect<ProjectSort>
+              label={words.sort.label}
+              value={sort ?? ""}
+              options={[
+                { value: "", label: words.sort.activity },
+                { value: "name", label: words.sort.name },
+                { value: "created", label: words.sort.created },
+              ]}
+              onChange={(next) => set({ sort: next || undefined })}
+            />
+          </div>
+        </div>
       )}
-      <div className="flex flex-wrap items-center gap-2">
-        <SearchField
-          label={words.search}
-          value={q}
-          onChange={(next) => onFilter(next, kind)}
-          className="w-full min-w-0 sm:w-auto sm:max-w-xs sm:flex-1"
-        />
-        <Segmented
-          label={words.kindFilter}
-          value={kind ?? "all"}
-          options={[
-            { id: "all", label: words.anyKind },
-            ...kindsOf(kinds, projects ?? []).map((k) => ({ id: k, label: groupWord(k, kinds) })),
-          ]}
-          onChange={(next) => onFilter(q, next === "all" ? undefined : (next as ProjectKind))}
-        />
-      </div>
-      {projects === null ? (
-        <SkeletonRows count={5} height="2.75rem" />
-      ) : shown.length === 0 ? (
-        <p className="text-aui-sm text-aui-muted">
-          {projects.length > 0 ? words.noMatch : canCreate ? words.emptyCreate : words.empty}
-        </p>
+      {cards === null ? (
+        <output data-testid="skeleton" className={`aui-skeleton-delay ${grid}`}>
+          <span className="sr-only">{words.loading}</span>
+          {LOADING_CARDS.map((k) => (
+            <span key={k} aria-hidden className="aui-skeleton block h-32 rounded-aui-lg" />
+          ))}
+        </output>
+      ) : empty ? (
+        <div className="flex flex-col items-start gap-4 py-10">
+          <p className="humagen-display text-aui-lg font-medium text-aui-fg">{words.empty}</p>
+          {create}
+        </div>
+      ) : cards.length === 0 ? (
+        <output className="block text-aui-sm text-aui-muted">{words.noMatch}</output>
       ) : (
-        shown.map((g) => (
-          <section
-            key={g.kind}
-            aria-labelledby={`projects-${g.kind}`}
-            className="flex flex-col gap-1.5"
-          >
-            <h2 id={`projects-${g.kind}`} className="text-aui-xs font-medium text-aui-muted">
-              {g.title}
-            </h2>
-            <ul className="flex flex-col gap-2">
-              {g.kind === "company" && showRoot && root && (
-                <ProjectRow
-                  to={projectHref("")}
-                  title={workspaceName}
-                  about={words.workspaceHint}
-                  project={root}
-                  indent={0}
-                  onOpen={() => onOpen("")}
-                />
-              )}
-              {g.rows.map((r) => (
-                <ProjectRow
-                  key={r.project.name}
-                  to={projectHref(r.project.name)}
-                  title={titleOf(r.project)}
-                  about={aboutOf(r.project, r.path, kinds)}
-                  project={r.project}
-                  indent={r.indent}
-                  onOpen={() => onOpen(r.project.name)}
-                />
-              ))}
-            </ul>
-          </section>
-        ))
+        <ul aria-label={words.title} className={grid}>
+          {cards.map((p) => (
+            <li key={p.name} className="min-w-0">
+              <ProjectCard
+                project={p}
+                pinned={pinned.includes(p.name)}
+                onPin={onPin}
+                onOpen={() => onOpen(p.name)}
+              />
+            </li>
+          ))}
+        </ul>
       )}
+      <Sheet open={creating} onOpenChange={(next) => !next && setCreating(false)}>
+        <SheetContent
+          aria-describedby={undefined}
+          onCloseAutoFocus={(event) => {
+            if (opener.current?.isConnected) {
+              event.preventDefault();
+              opener.current.focus();
+            }
+          }}
+        >
+          <SheetHeader>
+            <SheetTitle className="text-aui-base">{words.form.heading}</SheetTitle>
+          </SheetHeader>
+          <CreateProject
+            me={me}
+            kinds={kinds}
+            canGovern={canGovern}
+            onCancel={() => setCreating(false)}
+            onCreated={(p) => {
+              setCreating(false);
+              onCreated(p);
+            }}
+          />
+        </SheetContent>
+      </Sheet>
     </Page>
+  );
+}
+
+/** The cards' grid: as many 20rem columns as fit, one on a phone. */
+const grid = "grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] gap-3";
+/** The cards that stand in for the grid while it loads. */
+const LOADING_CARDS = ["a", "b", "c", "d", "e", "f"];
+
+/**
+ * One project as a card: its title, which opens it, when something last
+ * happened in it, and a pin. The whole card is the link; the pin sits above
+ * it, shown on hover or focus and always once pinned.
+ */
+function ProjectCard({
+  project,
+  pinned,
+  onPin,
+  onOpen,
+}: {
+  project: ProjectView;
+  pinned: boolean;
+  onPin?: (project: string, pinned: boolean) => Promise<void>;
+  onOpen: () => void;
+}) {
+  const title = titleOf(project);
+  const when = lastActive(project);
+  const { flash, say, clear } = useFlash();
+  const label = defaultCopy.sidebar.pinProject(title, pinned);
+  return (
+    <article className="group/card relative flex h-full min-h-32 min-w-0 flex-col gap-3 rounded-aui-lg border border-[var(--humagen-rule)] bg-[var(--humagen-panel)] p-4 shadow-[var(--humagen-bevel)] transition-colors hover:border-aui-ring/50 has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-aui-accent motion-reduce:transition-none">
+      <div className="flex min-w-0 items-start gap-2">
+        <Go
+          to={projectHref(project.name)}
+          onGo={onOpen}
+          className="line-clamp-2 min-w-0 flex-1 break-words font-medium text-aui-base text-aui-fg outline-none after:absolute after:inset-0 after:rounded-aui-lg after:content-['']"
+        >
+          {title}
+        </Go>
+        {onPin && (
+          <div className="relative -mt-1 -mr-1.5 shrink-0">
+            <button
+              type="button"
+              aria-pressed={pinned}
+              aria-label={label}
+              title={label}
+              onClick={() => {
+                clear();
+                onPin(project.name, !pinned).catch(() =>
+                  say(pinned ? defaultCopy.pins.unpinFailed : defaultCopy.pins.pinFailed, true),
+                );
+              }}
+              className={`relative z-10 inline-flex size-8 items-center justify-center rounded-aui hover:bg-aui-hover hover:text-aui-fg focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-aui-accent group-hover/card:opacity-100 group-focus-within/card:opacity-100 pointer-coarse:size-11 pointer-coarse:opacity-100 ${pinned ? "text-aui-fg opacity-100" : "text-aui-muted opacity-0"}`}
+            >
+              <PinIcon size={14} fill={pinned ? "currentColor" : "none"} />
+            </button>
+            <FlashNote flash={flash} align="right" />
+          </div>
+        )}
+      </div>
+      <div className="mt-auto flex min-w-0 flex-wrap items-center gap-2 text-aui-xs text-aui-muted">
+        <time dateTime={when}>{words.updated(ago(when))}</time>
+        {/* A personal project is always its owner's alone, so it does not say so. */}
+        {isPrivate(project) && !project.personal_owner && <Pill>{words.private}</Pill>}
+      </div>
+    </article>
+  );
+}
+
+/**
+ * The New Project sheet: a name, a description and who reads it, at the top
+ * level. Private names the person making it its one owner; Workspace leaves
+ * the members to the platform's default. A kind is asked for only when the
+ * workspace defines kinds of its own.
+ */
+function CreateProject({
+  me,
+  kinds,
+  canGovern,
+  onCreated,
+  onCancel,
+}: {
+  me: string;
+  kinds: ProjectKindSpec[];
+  canGovern: boolean;
+  onCreated: (project: ProjectView) => void;
+  onCancel: () => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [access, setAccess] = useState<"private" | "workspace">(me ? "private" : "workspace");
+  const offered = kinds.length > 0 ? kindsUnder(WORKSPACE, canGovern, kinds) : [];
+  const [kind, setKind] = useState<ProjectKind>("team");
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (saving) return;
+    const shown = title.trim();
+    const name = nameFrom(shown);
+    if (!validName(name)) {
+      setProblem(words.form.nameNeeded);
+      return;
+    }
+    setSaving(true);
+    setProblem(null);
+    api
+      .createProject({
+        name,
+        ...(shown !== name ? { title: shown } : {}),
+        ...(description.trim() ? { description: description.trim() } : {}),
+        ...(offered.includes(kind) && kind !== "team" ? { kind } : {}),
+        ...(access === "private" && me ? { members: [{ who: me, role: "owner" as const }] } : {}),
+      })
+      .then(onCreated)
+      .catch(fail(setProblem, words.failed.create))
+      .finally(() => setSaving(false));
+  };
+
+  const choices = [
+    ...(me
+      ? [
+          {
+            id: "private" as const,
+            label: words.form.accessPrivate,
+            hint: words.form.accessPrivateHint,
+          },
+        ]
+      : []),
+    {
+      id: "workspace" as const,
+      label: words.form.accessWorkspace,
+      hint: words.form.accessWorkspaceHint,
+    },
+  ];
+
+  return (
+    <form onSubmit={submit} aria-label={words.form.heading} className="flex min-w-0 flex-col gap-4">
+      <Label text={words.form.name}>
+        <input
+          // biome-ignore lint/a11y/noAutofocus: the sheet opens because the person asked to make a project
+          autoFocus
+          className={field}
+          value={title}
+          required
+          maxLength={80}
+          disabled={saving}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+      </Label>
+      <Label text={words.form.description}>
+        <textarea
+          className={`${field} h-auto min-h-20 py-2`}
+          value={description}
+          maxLength={500}
+          disabled={saving}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+      </Label>
+      {offered.length > 0 && (
+        <Label text={words.form.kind}>
+          <select
+            className={field}
+            value={kind}
+            disabled={saving}
+            onChange={(e) => setKind(e.target.value)}
+          >
+            {offered.map((k) => (
+              <option key={k} value={k}>
+                {kindWord(k, kinds)}
+              </option>
+            ))}
+          </select>
+        </Label>
+      )}
+      <fieldset disabled={saving} className="flex min-w-0 flex-col gap-2">
+        <legend className="pb-1 text-aui-xs font-medium text-aui-muted">{words.form.access}</legend>
+        {choices.map((c) => (
+          <label
+            key={c.id}
+            className="flex min-h-11 cursor-pointer items-start gap-3 rounded-aui border border-aui-border px-3 py-2.5 has-[:checked]:border-aui-accent has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-aui-accent"
+          >
+            <input
+              type="radio"
+              name="access"
+              value={c.id}
+              checked={access === c.id}
+              onChange={() => setAccess(c.id)}
+              className="mt-0.5 size-4 shrink-0 accent-[var(--aui-accent)] outline-none"
+            />
+            <span className="min-w-0">
+              <span className="block text-aui-sm text-aui-fg">{c.label}</span>
+              <span className="block text-aui-xs text-aui-muted">{c.hint}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      <Problem message={problem} />
+      <div className="flex flex-wrap justify-end gap-2">
+        <button type="button" className={button} disabled={saving} onClick={onCancel}>
+          {words.cancel}
+        </button>
+        <button type="submit" className={primary} disabled={saving || !title.trim()}>
+          {saving ? words.creating : words.createProject}
+        </button>
+      </div>
+    </form>
   );
 }
 

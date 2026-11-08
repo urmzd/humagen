@@ -195,6 +195,8 @@ func TestAClientsListHoldsWhereverItPostsForAPerson(t *testing.T) {
 	if got := agents(posted); !slices.Equal(got, []string{"helper"}) || len(posted.Refused) != 1 || posted.Refused[0].Name != "lead" {
 		t.Fatalf("a message the client posted for ana in a console thread started %v, refusing %+v", got, posted.Refused)
 	}
+	// Once that answer is in, so ana's own message is no follow-up to it.
+	await(t, p, posted.Runs[0].ID, runs.Completed)
 	herself := auth.Principal{Subject: "ana", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
 	own, err := p.PostMessage(t.Context(), herself, room.Thread.ID, platform.MessageInput{Text: "@lead look"})
 	if err != nil {
@@ -234,14 +236,15 @@ func TestAMachineReadsAMappedPersonsInbox(t *testing.T) {
 // A run a client's in-process connector raises is filed by the binding: in
 // the channel its Slack channel is bound to, or else in the client's home,
 // whatever the payload said. A mention that names no agent is answered as
-// one in a thread there would be: in a bound channel by the channel's chain,
-// never the client's default, and in the home by the client's default.
+// one in a thread there would be: in a bound channel by the workspace
+// default, never the client's, and in the home by the client's default.
 func TestAConnectorsRunIsFiledByItsBinding(t *testing.T) {
 	f := &fakes{}
 	c := &cast{says: map[string][][]saigetypes.Delta{"docs": {say("Docs here."), say("Again.")}, "ops": {say("Ops here.")}}}
 	cfg := f.config()
 	cfg.Policy = operators(t, "ada")
 	p := stage(t, c, cfg)
+	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "ops"})
 	// mentionOf's Slack user is ada, mapped by the Slack app built on the
 	// API in the same team: only people the client maps ask in a bound
 	// channel.
@@ -257,7 +260,7 @@ func TestAConnectorsRunIsFiledByItsBinding(t *testing.T) {
 	in := slackClient("docs-app", "A0DOCS", team, "docs")
 	in.Home, in.Agents = &clients.Home{Project: "Launch"}, []string{"ops"}
 	create(t, p, tenant, in)
-	if _, err := p.CreateChannel(t.Context(), tenant, "Field", ada, platform.ChannelInput{Name: "docs", Default: "ops", Slack: &projects.SlackBinding{Client: "docs-app", Channel: "C01"}}); err != nil {
+	if _, err := p.CreateChannel(t.Context(), tenant, "Field", ada, platform.ChannelInput{Name: "docs", Slack: &projects.SlackBinding{Client: "docs-app", Channel: "C01"}}); err != nil {
 		t.Fatal(err)
 	}
 	ingress := p.IngressHandler()
@@ -301,6 +304,9 @@ func TestAConnectorsRunIsHeldToThePersonItActsFor(t *testing.T) {
 	said := &logs{}
 	cfg.Log = slog.New(slog.NewTextHandler(said, nil))
 	p := stage(t, c, cfg)
+	// In a bound channel the workspace default answers a mention that names
+	// no agent.
+	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "docs"})
 	if _, err := p.CreateProject(t.Context(), tenant, ada, platform.ProjectInput{Name: "Vault", Kind: projects.Account}); err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +314,7 @@ func TestAConnectorsRunIsHeldToThePersonItActsFor(t *testing.T) {
 	mapper := slackClient("api-app", "A0API", team, "docs")
 	mapper.Slack.Machine, mapper.Slack.People = "svc-slack", map[string]string{"U0ADA": "ada", "U0OLU": "olu", "U0VIC": "vic"}
 	create(t, p, tenant, mapper)
-	if _, err := p.CreateChannel(t.Context(), tenant, "Vault", ada, platform.ChannelInput{Name: "deals", Default: "docs", Slack: &projects.SlackBinding{Client: "docs-app", Channel: "C0VAULT"}}); err != nil {
+	if _, err := p.CreateChannel(t.Context(), tenant, "Vault", ada, platform.ChannelInput{Name: "deals", Slack: &projects.SlackBinding{Client: "docs-app", Channel: "C0VAULT"}}); err != nil {
 		t.Fatal(err)
 	}
 	ingress := p.IngressHandler()

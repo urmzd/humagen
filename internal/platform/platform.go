@@ -122,6 +122,9 @@ type Config struct {
 	// Wording is each workspace's product name and the welcome and email
 	// text its branding replaces. Nil is Humagen's own.
 	Wording func(tenant string) Wording
+	// EntryAgent names the workspace's entry agent, which owns each root
+	// session that names nobody (entry.go). Empty is BuiltinEntry.
+	EntryAgent string
 
 	// AssignmentSources overrides the native resident source cursor for an embedding boundary. Nil uses this platform.
 	AssignmentSources operations.SourceChanges
@@ -244,10 +247,26 @@ type Config struct {
 	// OfflineHooks lets housekeeping run on the offline provider. It exists
 	// for tests: an offline answer is a notice, not a title or a fact.
 	OfflineHooks bool
-	// BuiltinProvider and BuiltinModel are what the platform's own agents
-	// run on. With either empty there are no built-in agents.
-	BuiltinProvider string
-	BuiltinModel    string
+	// ConfiguredModelsOnly holds agents to the providers someone set up:
+	// those the deployment declares (Ext.Providers) and each workspace's
+	// own (ModelProviders). The runtime's own offline, anthropic and openai
+	// are refused, so nothing runs on a stand-in or on a key nobody chose
+	// for it. The server sets it; a test that scripts the offline provider
+	// leaves it off.
+	ConfiguredModelsOnly bool
+	// ModelKinds builds the providers workspaces set up. With Build nil no
+	// workspace provider can run.
+	ModelKinds ModelKinds
+	// ShipBuiltins gives every workspace the platform's agents, each on the
+	// model chain it ships with (BuiltinChain). The server sets it.
+	ShipBuiltins bool
+	// TestBuiltinProvider and TestBuiltinModel ship the platform's agents on
+	// one model instead, such as the offline one a test scripts. For tests
+	// only: nothing in the server sets them.
+	TestBuiltinProvider, TestBuiltinModel string
+	// DeclaredKinds is the kind of each provider the deployment declares,
+	// by name, so the console can show its logo. A name with none is plain.
+	DeclaredKinds map[string]string
 	// AgentOptions are passed to every agent the sandbox builds. A test
 	// uses them to script a model.
 	AgentOptions []native.Option
@@ -276,6 +295,9 @@ type Config struct {
 
 // Platform is the assembled system.
 type Platform struct {
+	// renamedProviders notes, once per workspace and name, a stored model
+	// provider name read as the name it was renamed to (readProvider).
+	renamedProviders sync.Map
 	surfaceRecords   *surfaceRecords
 	ConnectionAuth   *connectionauth.Manager
 	GitHubInstall    *githubinstall.Manager
@@ -289,6 +311,10 @@ type Platform struct {
 	// GoodAsks are the asks each agent answered well, which routing
 	// searches beside its prompt (pkg/goodasks).
 	GoodAsks goodAsksStore
+	// entry is the entry agent's spawn list per workspace, and picks what
+	// each of its picks came to (entry.go).
+	entry entrySpawns
+	picks *state.Table[pickRecord]
 	// health is the last health report and each component's recent checks.
 	health healthBook
 
@@ -475,6 +501,12 @@ type Platform struct {
 
 // New assembles a platform. Nothing runs until Run is called.
 func New(cfg Config) (*Platform, error) {
+	if cfg.EntryAgent == "" {
+		cfg.EntryAgent = BuiltinEntry
+	}
+	if !projects.ValidAgent(cfg.EntryAgent) {
+		return nil, fmt.Errorf("platform: the entry agent's name %q is not an agent name", cfg.EntryAgent)
+	}
 	if cfg.ProjectTemplates == nil {
 		cfg.ProjectTemplates = projects.DefaultTemplates()
 	}
@@ -523,7 +555,7 @@ func New(cfg Config) (*Platform, error) {
 		queue:  cfg.Backends.Queue,
 	}
 	if p.Agents == nil {
-		p.Agents = wire.NewMemoryAgents(append(providers(), cfg.Ext.ProviderNames()...)...)
+		p.Agents = wire.NewMemoryAgentsAccepting(acceptProviderName, append(providers(), cfg.Ext.ProviderNames()...)...)
 	}
 	if p.ledger == nil {
 		p.ledger, p.queue = ledger.NewMemory(), dqueue.NewMemory()
@@ -656,6 +688,9 @@ func New(cfg Config) (*Platform, error) {
 	for name, provider := range cfg.Ext.Providers {
 		flowOptions = append(flowOptions, flow.WithModelProvider(name, provider))
 	}
+	// A workspace's own providers are found when a turn runs: resolveModel
+	// names each by its workspaceRef, and resolveProvider builds it.
+	flowOptions = append(flowOptions, flow.WithModelProviderResolver(acceptProviderName, p.resolveProvider))
 	app, err := flow.New(startup, flowOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("platform: flow: %w", err)
@@ -710,7 +745,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error
 		// A run waiting on an attached run of the same agent holds one of
 		// that agent's nodes, so there are as many as there are places.
 		runtime.WithReplicas(p.slots()),
-		runtime.WithAgentOptions(slices.Concat(p.cfg.Ext.agentOptions(), p.cfg.AgentOptions, []native.Option{native.WithAttachments(resolve.New(p.files))})...),
+		runtime.WithAgentOptions(slices.Concat(p.nativeOptions(), p.cfg.AgentOptions, []native.Option{native.WithAttachments(resolve.New(p.files))})...),
 		runtime.WithSandboxLogger(p.log),
 	)
 	if err != nil {
@@ -943,6 +978,9 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	}
 	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) || sees != nil && !sees(req.Agent) {
 		return runs.Run{}, fmt.Errorf("%w: refused by the caller: %q may not call %q, which its spec's spawn allowlist does not name", ErrForbidden, parent.Agent, req.Agent)
+	}
+	if err := p.entryMayCall(tenant, rev, parent.Project, req.Agent); err != nil {
+		return runs.Run{}, err
 	}
 	if err := p.checkOperationCall(ctx, parent, req); err != nil {
 		return runs.Run{}, err
