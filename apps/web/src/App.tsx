@@ -1488,7 +1488,6 @@ function Console({
                       projects={projectNames}
                       onOpenProjects={() => go({ page: "projects" })}
                       onOpenWorkspace={() => openProject("")}
-                      onConnections={() => go({ page: "connections" })}
                       onOpenWorkspaceAgents={() => go({ page: "project", name: "", tab: "agents" })}
                     />
                   )}

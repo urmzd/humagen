@@ -127,7 +127,6 @@ test("navigation checks every current destination as a real link", async () => {
       "Alerts",
       "Projects",
       "Agents",
-      "Connections",
       "Scheduled",
       "Artifacts",
     ].map((name) => `navigation:Sections>link:/^${name}(?:,|$)/`),

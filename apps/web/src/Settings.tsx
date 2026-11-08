@@ -11,6 +11,7 @@ import {
   MoonIcon,
   PaletteIcon,
   PauseIcon,
+  PlugIcon,
   ScrollTextIcon,
   ServerIcon,
   ShieldIcon,
@@ -125,7 +126,6 @@ export function Settings({
   onOpenProjects,
   onOpenWorkspace,
   onOpenWorkspaceAgents = onOpenWorkspace,
-  onConnections,
   onNavigate,
 }: {
   me: Me;
@@ -150,8 +150,6 @@ export function Settings({
   onOpenWorkspace: () => void;
   /** Opens the workspace's Agents tab, where the Workspace Default is. */
   onOpenWorkspaceAgents?: () => void;
-  /** Opens Your connections, the tools that act as you. */
-  onConnections?: () => void;
   onNavigate?: (route: Route) => void;
 }) {
   const setSection = onSection;
@@ -384,23 +382,6 @@ export function Settings({
               ) : (
                 <section className={card} aria-label="Display name">
                   {notRead}
-                </section>
-              )}
-              {onConnections && (
-                <section className={`${card} flex flex-wrap items-center justify-between gap-3`}>
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <p className="text-aui-sm text-aui-fg">Your connections</p>
-                    <p className="text-aui-xs text-aui-muted">
-                      The tools that act as you, and the credential you gave each.
-                    </p>
-                  </div>
-                  <a
-                    href={href({ page: "connections" })}
-                    className={button}
-                    onClick={follow(onConnections)}
-                  >
-                    Open Your Connections
-                  </a>
                 </section>
               )}
             </>
@@ -808,6 +789,10 @@ const linked = [
 
 /** Your own settings; every other section is the workspace's. */
 const yours: Section[] = ["profile", "notifications", "appearance"];
+/** Pages shown inside Your settings. */
+const yourPages = [
+  { label: "Connections", icon: <PlugIcon size={16} />, route: { page: "connections" } as Route },
+];
 
 /**
  * Where Workspace settings opens for someone: its first section for an admin,
@@ -878,7 +863,11 @@ export function SettingsNav({
       ]
     : [];
   // Your settings and the workspace's are two places: the open section says which.
-  const scope = !active && section && yours.includes(section) ? "you" : "workspace";
+  const scope =
+    (!active && section && yours.includes(section)) ||
+    (active && yourPages.some((p) => p.label === active))
+      ? "you"
+      : "workspace";
   const groups = [
     scope === "you"
       ? { title: "Your settings", entries: personal }
@@ -915,6 +904,20 @@ export function SettingsNav({
                   {s.label}
                 </button>
               ))}
+              {scope === "you" &&
+                onNavigate &&
+                yourPages.map((item) => (
+                  <a
+                    key={item.label}
+                    href={href(item.route)}
+                    onClick={follow(() => onNavigate(item.route))}
+                    aria-current={active === item.label ? "page" : undefined}
+                    className={sectionLink}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </a>
+                ))}
               {scope === "workspace" &&
                 onNavigate &&
                 linked
