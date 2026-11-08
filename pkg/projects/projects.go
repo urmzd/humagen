@@ -229,6 +229,9 @@ type Project struct {
 	// Skills are named instructions a message posted here and below can
 	// tell an agent to use (Tree.Skills).
 	Skills []Skill `json:"skills,omitempty"`
+	// Context is what every session filed here and below is given besides
+	// its instructions: the corpora it searches (Tree.Corpora).
+	Context Context `json:"context,omitzero"`
 
 	Template   string `json:"template,omitempty"`
 	Initiative bool   `json:"initiative,omitempty"`
@@ -266,6 +269,7 @@ func (p Project) clone() Project {
 	p.Agents = p.Agents.clone()
 	p.Knowledge = slices.Clone(p.Knowledge)
 	p.Skills = slices.Clone(p.Skills)
+	p.Context = p.Context.clone()
 	return p
 }
 
@@ -417,6 +421,9 @@ func (p Project) validate() error {
 		return err
 	}
 	if err := validSkills(p.Skills); err != nil {
+		return err
+	}
+	if err := validContext(p.Context); err != nil {
 		return err
 	}
 	return p.Agents.validate()

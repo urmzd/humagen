@@ -7231,6 +7231,65 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/projects/{name}/corpora:
+    get:
+      operationId: getProjectCorpora
+      tags: [projects]
+      summary: Read the corpora a project attaches, its context, and what a session filed in it searches
+      description: |
+        A session filed in a project searches the corpora its project
+        attaches, then each project's above it, nearest first: `given`, each
+        corpus once, from the nearest project that attaches it, at most 40.
+        A sibling's or a sub-project's are never given. Attaching a corpus
+        makes no one its reader: a session searches it only as each reader
+        may. A corpus the caller may not read, or one deleted since, is left
+        out, as if it were not there.
+      x-permission: projects:read
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      responses:
+        "200":
+          description: The project's corpora.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectCorpora"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: setProjectCorpora
+      tags: [projects]
+      summary: Replace the corpora a project attaches
+      description: |
+        At most 20, attached once, each newly attached a corpus the caller
+        may read (400, in the words for one that does not exist). One
+        attached already stays when the caller may not read it, so saving
+        what they were shown drops nothing they were not shown. It needs
+        ownership of the project; the workspace and company projects need
+        `projects:govern` as well. `version` is the project's, as read; a
+        change made since answers 409.
+      x-permission: projects:write
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectCorporaInput"}
+      responses:
+        "200":
+          description: The project's corpora as they now stand.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectCorpora"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/projects/{name}/knowledge:
     get:
       operationId: getProjectKnowledge
@@ -12630,6 +12689,57 @@ components:
           type: array
           maxItems: 16
           items: {$ref: "#/components/schemas/ProjectKnowledgeSource"}
+    ProjectCorpora:
+      description: The corpora a project attaches, its context, at the project's version, and what a session filed in it searches.
+      type: object
+      additionalProperties: false
+      required: [version, corpora, given]
+      properties:
+        version: {type: integer}
+        corpora:
+          description: The corpora the project attaches itself, in its order, each one the caller may read.
+          type: array
+          maxItems: 20
+          items: {$ref: "#/components/schemas/ProjectCorpus"}
+        given:
+          description: |
+            What a session filed here searches: the project's corpora, then
+            each project's above it, nearest first, each once, at most 40,
+            each one the caller may read.
+          type: array
+          maxItems: 40
+          items: {$ref: "#/components/schemas/ProjectCorpusRef"}
+    ProjectCorpus:
+      description: One corpus a project attaches.
+      type: object
+      additionalProperties: false
+      required: [name, sources]
+      properties:
+        name: {type: string, maxLength: 63}
+        title: {type: string, maxLength: 120}
+        sources:
+          description: How many of its members the caller may see.
+          type: integer
+          minimum: 0
+    ProjectCorpusRef:
+      description: A corpus a session searches, and the project on its chain that attaches it (`""` is the workspace).
+      type: object
+      additionalProperties: false
+      required: [name, from]
+      properties:
+        name: {type: string, maxLength: 63}
+        from: {type: string}
+    ProjectCorporaInput:
+      description: The corpora a project attaches, as a whole, and the project's version as read.
+      type: object
+      additionalProperties: false
+      required: [version, corpora]
+      properties:
+        version: {type: integer}
+        corpora:
+          type: array
+          maxItems: 20
+          items: {type: string, maxLength: 63}
     ProjectKnowledgeInput:
       description: The knowledge sources a project names, as a whole, from the version read.
       type: object
@@ -12931,6 +13041,19 @@ components:
           maxItems: 32
           items:
             "$ref": "#/components/schemas/ProjectSkillBrief"
+        context:
+          description: |
+            What every session filed here and below is given besides its
+            instructions. Set with `PUT /api/projects/{name}/corpora`.
+            Absent when it attaches nothing.
+          type: object
+          additionalProperties: false
+          properties:
+            corpora:
+              description: The corpora it attaches, by name, leaving out each one the caller may not read.
+              type: array
+              maxItems: 20
+              items: {type: string, maxLength: 63}
         archived:
           description: An archived project takes no new sub-projects and nothing moves
             under it. The workspace is never archived.
@@ -13301,7 +13424,7 @@ components:
             names, and `channel` to one of its channels, which `channel`
             holds before and after.
           type: string
-          enum: [created, updated, deleted, managed, moved, archived, members, agents, home, experts, knowledge, skills, channel]
+          enum: [created, updated, deleted, managed, moved, archived, members, agents, home, experts, knowledge, skills, channel, context]
         agent:
           description: The agent a `home` change is about. Absent when it lives in a project the caller may not read.
           type: string

@@ -54,6 +54,8 @@ func (s *Server) projectRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/projects/{name}/context", s.authed(auth.ProjectsRead, s.seenProject(s.getProjectContext)))
 	mux.HandleFunc("GET /api/projects/{name}/knowledge", s.authed(auth.ProjectsRead, s.seenProject(s.getProjectKnowledge)))
 	mux.HandleFunc("PUT /api/projects/{name}/knowledge", s.authed(auth.ProjectsWrite, s.seenProject(s.putProjectKnowledge)))
+	mux.HandleFunc("GET /api/projects/{name}/corpora", s.authed(auth.ProjectsRead, s.seenProject(s.getProjectCorpora)))
+	mux.HandleFunc("PUT /api/projects/{name}/corpora", s.authed(auth.ProjectsWrite, s.seenProject(s.putProjectCorpora)))
 	mux.HandleFunc("GET /api/projects/{name}/skills", s.authed(auth.ProjectsRead, s.seenProject(s.getProjectSkills)))
 	mux.HandleFunc("PUT /api/projects/{name}/skills", s.authed(auth.ProjectsWrite, s.seenProject(s.putProjectSkills)))
 	mux.HandleFunc("GET /api/skills", s.authed(auth.ProjectsRead, s.listSkills))
@@ -142,11 +144,14 @@ type projectFacts struct {
 	named     map[string]bool
 	counts    map[string]runs.ProjectCount
 	schedules map[string]int
+	// corpora remembers, for this one read, whether the caller may read
+	// each corpus a project attaches.
+	corpora map[string]bool
 }
 
 func (s *Server) projectFacts(who auth.Principal) projectFacts {
 	tenant := who.Tenant
-	f := projectFacts{tenant: tenant, who: who, seer: s.P.Seer(who), tree: s.P.ProjectTree(tenant), named: map[string]bool{}, counts: s.P.ProjectCounts(who), schedules: map[string]int{}}
+	f := projectFacts{tenant: tenant, who: who, seer: s.P.Seer(who), tree: s.P.ProjectTree(tenant), named: map[string]bool{}, counts: s.P.ProjectCounts(who), schedules: map[string]int{}, corpora: map[string]bool{}}
 	f.access = f.tree.Roles(platform.ReaderOf(who))
 	for _, name := range f.tree.Named(platform.ReaderOf(who)) {
 		f.named[name] = true
@@ -211,6 +216,17 @@ func (s *Server) projectView(f projectFacts, p projects.Project) projectView {
 	chain := f.tree.Chain(p.Name)
 	p.Agents = f.seer.ProjectAgents(p.Agents)
 	p.Knowledge = f.seer.Sources(p.Knowledge)
+	p.Context.Corpora = slices.DeleteFunc(slices.Clone(p.Context.Corpora), func(n string) bool {
+		readable, known := f.corpora[n]
+		if !known {
+			readable = s.P.CorpusReadable(f.who, n)
+			f.corpora[n] = readable
+		}
+		return !readable
+	})
+	if len(p.Context.Corpora) == 0 {
+		p.Context.Corpora = nil
+	}
 	// A skill's instructions are read on the skills route alone.
 	p.Skills = projects.BriefSkills(p.Skills)
 	v := projectView{Project: p, Depth: max(len(chain)-1, 0), Path: []pathStep{}, Schedules: f.schedules[p.Name]}
@@ -694,6 +710,46 @@ func (s *Server) putProjectKnowledge(w http.ResponseWriter, r *http.Request, who
 		return
 	}
 	got, err := s.P.SetProjectKnowledge(who, pr.Name, writer(who), in)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, got)
+}
+
+// getProjectCorpora reads the corpora a project attaches, its context, and
+// what a session filed there searches, each one the caller may read.
+func (s *Server) getProjectCorpora(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	pr, _, found := s.visible(w, who, r.PathValue("name"), projects.Viewer)
+	if !found {
+		return
+	}
+	got, err := s.P.ProjectCorporaAs(who, pr.Name)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, got)
+}
+
+// putProjectCorpora replaces the corpora a project attaches, as a whole. It
+// needs ownership of the project, and each corpus newly attached must be one
+// the caller may read; the workspace and company projects need
+// projects:govern as well.
+func (s *Server) putProjectCorpora(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var in platform.CorporaInput
+	if !decode(w, r, &in) {
+		return
+	}
+	pr, _, found := s.visible(w, who, r.PathValue("name"), projects.Owner)
+	if !found {
+		return
+	}
+	if in.Corpora == nil {
+		fail(w, http.StatusBadRequest, "corpora is a list, [] for none")
+		return
+	}
+	got, err := s.P.SetProjectCorpora(who, pr.Name, writer(who), in)
 	if err != nil {
 		s.problem(w, err)
 		return
