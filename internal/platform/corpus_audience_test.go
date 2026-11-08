@@ -57,8 +57,8 @@ func TestACorpusIsUsedOnlyWhereEveryoneItReachesMayReadIt(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	audiences := map[string]SurfaceAudience{}
-	f.p.audienceSource = func(_, session string) (SurfaceAudience, bool) {
+	audiences := map[string]ReportedAudience{}
+	f.p.audienceSource = func(_, session string) (ReportedAudience, bool) {
 		a, ok := audiences[session]
 		return a, ok
 	}
@@ -89,7 +89,7 @@ func TestACorpusIsUsedOnlyWhereEveryoneItReachesMayReadIt(t *testing.T) {
 	dm := surfacedRun(t, f, "dm", "slack", "D01")
 	github := surfacedRun(t, f, "github", "github", "urmzd/repo#1")
 	privateRun, _ := f.p.Runs.Get("tenant", private.RunID)
-	audiences[privateRun.Thread] = SurfaceAudience{Kind: "private", Members: []string{"bo", "ana"}}
+	audiences[privateRun.Thread] = ReportedAudience{Kind: "private", Members: []string{"bo", "ana"}}
 
 	// Internal, read by the workspace: the public channel uses it; GitHub
 	// does not, being only for public corpora.
@@ -118,12 +118,12 @@ func TestACorpusIsUsedOnlyWhereEveryoneItReachesMayReadIt(t *testing.T) {
 		t.Fatal("a private channel's answer was marked private to one person")
 	}
 	// Someone joins who is not a reader: held back at once.
-	audiences[privateRun.Thread] = SurfaceAudience{Kind: "private", Members: []string{"bo", "ana", "eve"}}
+	audiences[privateRun.Thread] = ReportedAudience{Kind: "private", Members: []string{"bo", "ana", "eve"}}
 	if out := search(private); found(out) || !held(out) {
 		t.Fatalf("after a non-reader joined = %s", out)
 	}
 	// A member nobody can map fails closed.
-	audiences[privateRun.Thread] = SurfaceAudience{Kind: "private", Members: []string{"bo", "ana"}, Unmapped: 1}
+	audiences[privateRun.Thread] = ReportedAudience{Kind: "private", Members: []string{"bo", "ana"}, Unmapped: 1}
 	if out := search(private); found(out) {
 		t.Fatalf("with an unmapped member = %s", out)
 	}
