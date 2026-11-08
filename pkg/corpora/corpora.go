@@ -115,10 +115,13 @@ type Corpus struct {
 	// Ontology is the types the corpus adds to the workspace graph, a JSON
 	// Schema the platform checks (pkg/graph). Proposed is one inferred for
 	// the owner to accept; it adds nothing until accepted.
-	Ontology  json.RawMessage `json:"ontology,omitempty"`
-	Proposed  json.RawMessage `json:"proposed_ontology,omitempty"`
-	CreatedAt time.Time       `json:"created_at"`
-	UpdatedAt time.Time       `json:"updated_at"`
+	Ontology json.RawMessage `json:"ontology,omitempty"`
+	Proposed json.RawMessage `json:"proposed_ontology,omitempty"`
+	// OntologySeen marks the last inferred proposal, so one discarded or
+	// accepted is not proposed again.
+	OntologySeen string    `json:"ontology_seen,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 	// Version is the stored record's version. An update or delete that
 	// names it fails with ErrConflict once someone else changed the corpus.
 	Version int64 `json:"version"`

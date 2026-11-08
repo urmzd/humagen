@@ -14765,7 +14765,7 @@ components:
       description: |
         `budget` is raised by a billing policy, never by a rule, and a rule
         cannot be created with it.
-      enum: [run_failed, failure_rate, slow_run, eval_below, spend, budget, session, mention, source, approval, clarification, failure, operation, alert, connection]
+      enum: [run_failed, failure_rate, slow_run, eval_below, spend, budget, session, mention, source, approval, clarification, failure, operation, alert, connection, knowledge]
     AlertSeverity:
       type: string
       enum: [warning, critical]
@@ -15104,6 +15104,7 @@ components:
           items: {type: string}
         ontology: {type: object, additionalProperties: true, description: "A JSON Schema (2020-12) of the types it adds to the graph: $defs, x-relations, x-metadata."}
         proposed_ontology: {type: object, additionalProperties: true, description: "An inferred ontology waiting for its owner to accept it."}
+        ontology_seen: {type: string, description: "Marks the last inferred proposal, so one accepted or discarded is not proposed again."}
         graph_search: {type: boolean, description: "Adds the workspace graph to its search."}
         links:
           type: string

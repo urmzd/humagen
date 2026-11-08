@@ -2,6 +2,8 @@ package platform
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -486,8 +488,9 @@ func (p *Platform) InferOntology(who auth.Principal, name string) (CorpusView, e
 		return CorpusView{}, err
 	}
 	proposed := graph.Infer(entries).Raw()
+	digest := sha256.Sum256(proposed)
 	updated, err := p.Corpora.Update(who.Tenant, name, c.Version, p.now(), func(c *corpora.Corpus) error {
-		c.Proposed = proposed
+		c.Proposed, c.OntologySeen = proposed, hex.EncodeToString(digest[:12])
 		return nil
 	})
 	if err != nil {

@@ -286,9 +286,28 @@ that matches a type gets `entity_type` and that type's half-life, and the
 ontology's relations join the typed tables of one warehouse (an Order table's
 `customer`). Only the owner changes, infers, accepts or discards.
 
+### Maintenance
+
+After each graph refresh (every 10 minutes, on the leader) a maintenance pass
+looks at every corpus, with no model calls, and tells the person who can act:
+
+| Finds | Alert to | Resolved when |
+| --- | --- | --- |
+| A member whose sync failed or went stale, or a warehouse not crawled in twice its cadence | The corpus's owner | It syncs again |
+| Stale documents | Each document's owner, naming theirs | They are updated, replaced or handed on |
+| Documents nobody owns (declined, or their owner left) | The corpus's owner | Someone claims them or they are handed on |
+| Warehouse tables that would add types the ontology lacks | The corpus's owner, with the types kept as `proposed_ontology` | The proposal is accepted or discarded; one is never proposed twice |
+
+Alerts are kind `knowledge`, at most one open per cause, in the person's own
+session with the builder; before a workspace has a model there is no built-in
+to hold that session, and the alert stays in the person's alert center. Each
+names up to 10 items. The low-risk changes need no proposal: staleness marks
+and facts retired with their source are applied as the graph rebuilds.
+`(*Platform).MaintainKnowledge` runs one pass.
+
 Not built yet: the semantic layer (content extraction against the ontology:
-topics, mentions, contradictions, metadata filters), the maintenance agent,
-freshness alerts and sensitivity labels.
+topics, mentions, contradictions, metadata filters, duplicate entities), and
+sensitivity labels.
 
 ## Proposed versioned source files
 
