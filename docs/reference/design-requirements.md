@@ -1785,3 +1785,167 @@ pass at phone and desktop widths (14 captures): `customize-agents`,
 `home-project-picker`, `conversation-overview` and `conversation-jump-latest`.
 Overview captures Environment, Context and Agents with Changes collapsed;
 its existing small file-link target remains outside this review's fixes.
+
+### DES-070: One connections page with truthful authorization states
+
+The Connections page lists service presets and reuses the existing personal
+credential, tool-review and workspace-integration flows without nested page
+titles. OAuth accounts have Connect/Reconnect, explicit tool review and
+Disconnect. A preset explains why secure authorization or host access is
+unavailable. Saved messaging credentials remain visibly unverified. Refused
+forms keep their input and show errors next to the submit control. Tool forms
+show allowed hosts and report an empty submission.
+
+Implemented by `Connections.tsx`, `ConnectionSection.tsx`, `ToolServers.tsx`,
+`ClientConnect.tsx`, and `pkg/connectionauth`. OAuth unit/race evidence covers
+identity, replay, expiry, encryption, refresh and unsafe discovery metadata.
+Other supports an issuer-bound registered application when DCR is unavailable.
+The connection detail shows actual reported scopes and authorized configuration
+mappings. Check observations persist and are invalidated by renewed consent;
+confirmed credential rejection marks Reconnect required and targets a private
+owner alert. Five connection DOM checks cover input retention, explicit source
+consent, native setup, persisted observation display and actual scope mapping.
+Native failure regressions cover Slack HTTP 200 authentication errors, exact
+token/consent rejection fences and GitHub mint HTTP 401 attention to the current
+verified consenting person. Delayed failures after reconnect and ordinary
+permission/network failures do not raise reconnect attention.
+Real OAuth, browser layout and full end-to-end delivery remain unverified.
+
+The BigQuery preset obtains dedicated Google read-only consent, saves a bounded
+private connector, verifies metadata through owner-only crawl, and offers
+separate publication. Definitions survive restart without operator handoff.
+Failed verification retains the last successful count/time. Renewed Google
+consent is explicitly rebound to the existing connector. ADC/reference fallback
+is administrator-only and remains within deployment or personal reference
+grants. OAuth connectors expose metadata only, not unsupported live SQL.
+Evidence: `bigqueryConnection.test.ts`, `bigquery-connection.dom.test.tsx`,
+managed catalog and platform setup race tests; no live BigQuery or visual
+validation. See [the BigQuery guide](../guides/bigquery-connection.md).
+
+### DES-071: Sessions and a single alert center
+
+The primary navigation is New, Sessions, Alerts, Agents, Connections, Library and
+Settings. Sessions reads `/api/sessions?mine=true&roots=true`, expands children
+under their parent, and keeps state, project and agent filters in the address.
+Canonical details use `/sessions/{id}?panel=files|sources|steps|sessions`; old
+conversation paths retain their selections. Project inbox, history and channel
+addresses migrate to project context or filtered Sessions.
+
+The alert center reads session alerts, with Mine/Everyone, priority, state and
+source filters, bulk Resolve/Snooze, and Undo for successful changes.
+The backend filters source by alert kind and orders sessions using only visible
+open attention. Per-priority preferences govern delivery; an unset preference
+grants no delivery. Recorded answers settle question alerts, while reading or
+a terminal run without an answer does not. Connection authentication failures
+join a private owner session with sanitized reconnect attention. See
+[session alerts](../guides/session-alerts.md).
+Watching lists standing rules with Pause/Resume and confirmed Delete. The shared badge
+counts only the person's open Urgent and Normal alerts. Home shows at most three
+of those alerts or three recent root sessions, and puts its disclaimer directly
+under the composer. Sidebar hover controls contain one menu.
+
+Evidence: `session-center.dom.test.tsx` checks the seven destinations, attention
+priority and three-row cap, resolve/undo, and nested child reads. `route.test.ts`
+checks canonical paths, old panel aliases and project migration. The connection
+HTTP contract test uses an offline OAuth transport and passes with `-race`.
+Visual responsive checks and real provider authorizations remain unverified.
+Session summaries carry the retained conversation's origin, last-message author
+and last agent message. Sidebar unread dots use that metadata and do not infer
+an agent reply from a generic session update.
+
+### DES-072: Builder sessions and evaluation health
+
+New Agent opens a session with `humagen-builder`. An existing agent's Manage
+with builder action resumes its labeled management session, without sending
+another prompt merely to open it. Compatibility setup addresses provide the
+same explicit builder entry. The directory has one creation action, with no
+separate Pause All or Build With the Builder controls.
+
+The directory includes actual evaluation health and keeps its state filter in
+the URL. Needs review includes failed operational runs and eval regressions;
+inactive setup agents read as Draft. Agent detail shows recent failed checks,
+retained before/after suite scores and recorded override reasons. Missing health
+is not presented as healthy. The operational panel reads draft state from the
+roster instead of probing a setup endpoint that returns 404 for ordinary agents.
+
+A recorded `preview_agent_change` or `preview_workspace_prompt` result renders a shared change card: the web shows a prompt diff, while native surfaces show explicit before/after prompts. Both show proposed tools and per-suite scores. Incomplete evaluation is blocked;
+regression requires an authorized override reason. The card has no independent
+Apply operation: the runtime's governed approval remains authoritative.
+Optional authorized connection and listening summaries show current routing, not proposed installation or live health. Omitted metadata reads as not included; an empty authorized list means none. Configured or disabled status is preserved.
+
+Evidence: `agent-builder.dom.test.tsx` covers accepted session creation,
+management-session reuse without another message, refused health reads and
+refresh, actual eval regression filtering, and gated change previews.
+`agents.dom.test.tsx` covers the single creation action and existing permissions.
+`packages/render-slack/src/agent-change.test.tsx` checks both preview tools, prompt evidence, score regressions, placement status and the absence of an independent Apply action. Native preview JSON is replaced by the structured card. Live responsive acceptance remains unverified.
+
+### DES-073: Session continuation, attention and management
+
+Selecting an agent with an existing session offers Continue or Start fresh before
+sending. The choice stays attached to its queued message through wait/retry;
+removing its mention drops the draft choice. Canonical sessions use the generated
+post contract.
+
+Session alerts render beside their recorded message or above loaded history when
+the anchor is absent. Reading does not resolve them. Resolve and Snooze are
+permission-gated and offer Undo. Known actions lead to existing approval, answer,
+retry or connection controls; unknown actions open the session. A reviewed fix
+request carries `source_alert`, uses a permitted agent, and inherits its source
+audience. Alert-only sessions render before their first human message. An
+addressed older message uses a bounded `around` page read and scrolls only the
+transcript once, without pulling a reader back on later stream updates.
+
+The header has stable People and Details controls. Its action menu offers Share,
+Rename, personal Archive/Undo and governed deletion according to access. Rename
+preserves routing; Delete requests administrator review and does not remove the
+record directly. Canonical sharing uses project access without a channel picker.
+Bring Back is offered inside Fork for a completed fork result and retains the
+existing consent review. Approval controls say Ask a question and Decline action.
+Failure debug references are kept out of the everyday response and remain in the
+explicit issue-report draft.
+
+Evidence: `session-ux.dom.test.tsx` covers continuation metadata, header writes,
+archive synchronization, explicit deletion review, alert resolution/undo, fix
+review, canonical sharing and bounded old-anchor reads. `wave.dom.test.tsx` checks
+that addressed history scrolls only the transcript once. Existing fork, share,
+room and Slack interaction suites retain their governed approval checks. Browser
+host access was unavailable; real responsive layout, live OAuth and user-visible
+provider behavior are not claimed by these automated tests.
+
+### DES-074: Navigation recovery, readable context and priority preferences
+
+Unknown addresses stay on a Page not found screen with a Home link; compatibility
+routes retain their canonical destination. New and Search stay outside the
+sidebar's scrolling session list. Recents, Projects and Archived are directly
+selectable, and Failed has the same meaning in the sidebar and Sessions. A touch
+row reveals its menu when selected or previewed; keyboard focus keeps it usable.
+Appearance owns theme changes; the account menu links there. Normal navigation
+counts use neutral color, while Urgent alerts retain their priority mark.
+
+Search and session rows show project titles or Personal, preserving opaque IDs
+only in addresses. Sessions retains the age at narrow widths; Home Continue adds
+project and state. Schedules uses one label and links to Sessions. Empty Catalog
+links to Connections. Missing-provider health guidance names Models in Settings
+and the administrator who can configure it. Access shows human capabilities,
+with technical permission names in a disclosure. Workspace default appearance
+explains that it follows the workspace brand; fixed color choices do not.
+Agent Access distinguishes revision saves from independent immediate saves. Its
+Personal connections capability starts off and is saved only with the next
+agent revision, using requester-approved tools under existing workspace policy.
+Built-in agents and readers cannot grant it. Existing tools are preserved, and
+the grant is described as Personal connection tools in both preview renderers.
+
+Alert source filters are sent to the server. Delivery preferences use Urgent,
+Normal and Low keys; unset preferences remain off, and existing legacy keys are
+preserved during saves. Canonical pages no longer poll the dormant legacy
+notification feed.
+
+Evidence: route tests cover unknown-path retention and canonical aliases;
+workspace-search checks readable context with exact destinations; session-center
+checks server source filtering and context/age; sidebar/preferences tests cover
+visible view selection, independent scroll regions and keyboard pin/archive
+focus; catalog and automations tests cover next-step links; email-preferences
+checks priority defaults and saved quiet hours.
+Browser checks were unavailable during source validation. Phone, short-screen
+and split-pane visual acceptance, live provider behavior and measured browser
+request totals remain open.

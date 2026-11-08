@@ -6,7 +6,6 @@ import {
   CalendarIcon,
   CheckIcon,
   CodeIcon,
-  EllipsisIcon,
   EllipsisVerticalIcon,
   FolderIcon,
   FolderOpenIcon,
@@ -14,22 +13,19 @@ import {
   LayersIcon,
   LogOutIcon,
   MessageSquareIcon,
-  MonitorIcon,
-  MoonIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   PencilIcon,
   PinIcon,
+  PlugIcon,
   PlusIcon,
   ProjectIcon,
   SearchIcon,
   SettingsIcon,
   SlidersIcon,
-  SunIcon,
   Tooltip,
   TrashIcon,
   UserIcon,
-  UsersIcon,
 } from "@humagen/render-web";
 import { Separator } from "@humagen/render-web/ui/separator";
 import { HumagenMark } from "@humagen/web";
@@ -57,8 +53,9 @@ import { ConversationPeek, PeekCard, usePeek } from "./RowPreview.tsx";
 import { type Standing, useRecents } from "./recents.ts";
 import { href, type Route, type Page as RoutePage } from "./route.ts";
 import { Avatar } from "./Settings.tsx";
+import { type Alert, openAlert, orderAlerts, priorityRank } from "./sessionCenter.ts";
 import { AgentMark, type Flash, FlashNote, Popover, SkeletonRows, useFlash } from "./ui.tsx";
-import { hubTabs, workspaceHub } from "./workspace-navigation.ts";
+import { workspaceHub } from "./workspace-navigation.ts";
 
 /** A link to a view. A plain click opens it in place; a modified one, in a new tab. */
 export function SidebarItem({
@@ -102,15 +99,12 @@ export function SidebarItem({
         (open ? (
           <span
             aria-hidden
-            className="humagen-sidebar-reveal rounded-full bg-aui-accent-soft px-1.5 text-aui-2xs font-medium text-aui-fg"
+            className="humagen-sidebar-reveal rounded-full bg-aui-hover px-1.5 text-aui-2xs font-medium text-aui-fg"
           >
             {count}
           </span>
         ) : (
-          <span
-            aria-hidden
-            className="absolute top-1 right-1 size-1.5 rounded-full bg-aui-accent"
-          />
+          <span aria-hidden className="absolute top-1 right-1 size-1.5 rounded-full bg-aui-muted" />
         ))}
     </a>
   );
@@ -281,6 +275,7 @@ function TaskRow({
   task,
   projectLabel,
   projectTitle,
+  priority,
   current,
   pinned,
   archived = false,
@@ -299,6 +294,7 @@ function TaskRow({
   projectLabel?: string;
   /** The project's title for its preview card, shown even inside a group. */
   projectTitle?: string;
+  priority?: "urgent" | "normal" | "low";
   current: boolean;
   pinned: boolean;
   archived?: boolean;
@@ -363,9 +359,18 @@ function TaskRow({
           aria-describedby={peek.at ? peekId : undefined}
           data-thread-row={task.id}
           aria-current={current ? "page" : undefined}
-          className={`flex min-h-10 pointer-coarse:min-h-11 w-full items-start gap-2 rounded-aui py-1.5 pr-2 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-subtle aria-[current=page]:font-medium aria-[current=page]:text-aui-fg aria-[current=page]:shadow-[inset_2px_0_0_var(--aui-accent)] [@media(pointer:coarse)]:pr-12 ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:pr-20 [@media(pointer:fine)]:group-hover/task:pr-20" : ""}`}
+          className={`flex min-h-10 pointer-coarse:min-h-11 w-full items-start gap-2 rounded-aui py-1.5 pr-2 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-subtle aria-[current=page]:font-medium aria-[current=page]:text-aui-fg aria-[current=page]:shadow-[inset_2px_0_0_var(--aui-accent)] ${current || peek.at ? "[@media(pointer:coarse)]:pr-12" : ""} ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:pr-10 [@media(pointer:fine)]:group-hover/task:pr-10" : ""}`}
         >
-          {dot && (
+          {priority && (
+            <span
+              title={`${priority} alert`}
+              aria-label={`${priority} alert`}
+              className={`mt-0.5 text-aui-xs ${priority === "urgent" ? "text-aui-bad" : "text-aui-muted"}`}
+            >
+              {priority === "urgent" ? "!" : priority === "normal" ? "•" : "·"}
+            </span>
+          )}
+          {!priority && dot && (
             <span aria-hidden data-standing={standing} className="humagen-row-dot mt-[7px]" />
           )}
           <span className="flex min-w-0 flex-1 flex-col">
@@ -395,7 +400,10 @@ function TaskRow({
             {standing === "unread" ? (
               <span aria-hidden data-standing="unread" className="humagen-row-dot mt-1 block" />
             ) : (
-              (glyph ?? ageText)
+              <>
+                {glyph}
+                {ageText && <span>{ageText}</span>}
+              </>
             )}
           </span>
           {said && <span className="sr-only">, {said}</span>}
@@ -407,36 +415,12 @@ function TaskRow({
           data-pin-thread={task.id}
           className="absolute top-1 right-1 flex items-center [@media(pointer:coarse)]:top-0.5"
         >
-          {onPin && (
-            <button
-              type="button"
-              data-row-pin
-              aria-label={words.pin(title, pinned)}
-              aria-pressed={pinned}
-              title={words.pin(title, pinned)}
-              onClick={(e) => onPin(e.currentTarget)}
-              className={`${rowAction} opacity-0 group-hover/task:opacity-100 group-focus-within/task:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:hidden`}
-            >
-              <PinIcon size={14} fill={pinned ? "currentColor" : "none"} />
-            </button>
-          )}
-          {onArchive && (
-            <button
-              type="button"
-              aria-label={words.archive(title, archived)}
-              title={words.archive(title, archived)}
-              onClick={() => onArchive(!archived)}
-              className={`${rowAction} opacity-0 group-hover/task:opacity-100 group-focus-within/task:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:hidden`}
-            >
-              <ArchiveIcon size={14} />
-            </button>
-          )}
-          <div data-row-menu>
+          <div data-row-menu onPointerDown={peek.close} onFocus={peek.close}>
             <Popover
               narrow
               align="right"
               label={`Manage ${title}`}
-              className={`${rowAction} opacity-0 group-hover/task:opacity-100 group-focus-within/task:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 aria-expanded:bg-aui-hover aria-expanded:text-aui-fg [@media(pointer:coarse)]:size-11 [@media(pointer:coarse)]:opacity-100`}
+              className={`${rowAction} opacity-0 group-hover/task:opacity-100 group-focus-within/task:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 aria-expanded:bg-aui-hover aria-expanded:text-aui-fg [@media(pointer:coarse)]:size-11 ${current || peek.at ? "[@media(pointer:coarse)]:opacity-100" : "[@media(pointer:coarse)]:pointer-events-none [@media(pointer:coarse)]:group-focus-within/task:pointer-events-auto"}`}
               button={<EllipsisVerticalIcon size={15} />}
             >
               {(close) => (
@@ -579,12 +563,15 @@ function RowMenu({
           <button
             type="button"
             role="menuitem"
+            aria-keyshortcuts={i.key}
             onClick={i.run}
             className={`${menuItem} ${i.danger ? "text-aui-bad" : ""}`}
           >
             {i.icon}
             <span className="min-w-0 flex-1 truncate">{i.label}</span>
-            <kbd className="text-aui-2xs text-aui-muted">{i.key.toUpperCase()}</kbd>
+            <kbd aria-hidden="true" className="text-aui-2xs text-aui-muted">
+              {i.key.toUpperCase()}
+            </kbd>
           </button>
         </div>
       ))}
@@ -645,9 +632,9 @@ export function Sidebar({
   inboxCount,
   live,
   onSignOut,
-  onTheme,
   onSearch,
-  notificationCount,
+  sessionMode = false,
+  sessionAlerts = [],
   drawer = false,
 }: {
   open: boolean;
@@ -680,6 +667,8 @@ export function Sidebar({
   onTheme?: (theme: Preferences["theme"]) => void;
   onSearch?: () => void;
   notificationCount?: number;
+  sessionMode?: boolean;
+  sessionAlerts?: Alert[];
 }) {
   const projectTitle = (project?: string) =>
     me.personal_project && project === me.personal_project
@@ -710,7 +699,7 @@ export function Sidebar({
     stalled,
     retry,
     more,
-  } = useRecents(agent, standing, threads);
+  } = useRecents(agent, standing, threads, sessionMode);
   const filters = (agent ? 1 : 0) + (standing ? 1 : 0);
   // A pin that did not take is said beside the conversation it was for, in whichever
   // list the conversation is in by then.
@@ -768,11 +757,9 @@ export function Sidebar({
     // Keep focus at its remaining control or a stable navigation target.
     const fallback = projects
       ? sidebar.current?.querySelector<HTMLElement>(
-          'nav[aria-label="Sections"] a[href="/projects"], nav[aria-label="Sections"] button[aria-label="More"]',
+          'nav[aria-label="Sections"] a[href="/settings/profile"]',
         )
-      : sidebar.current?.querySelector<HTMLButtonElement>(
-          'section[aria-label="Conversations"] button',
-        );
+      : sidebar.current?.querySelector<HTMLButtonElement>('section[aria-label="Sessions"] button');
     (control ?? fallback)?.focus();
     pinFocus.current = null;
   }, [pinned, prefs?.pinned_projects]);
@@ -812,75 +799,64 @@ export function Sidebar({
   const here = (...pages: RoutePage[]) => pages.includes(route.page);
   const nav = defaultCopy.navigation;
   const hub = workspaceHub(route);
-  const notificationRoute: Route = { page: "notifications" };
-  const libraryTabs = hubTabs("library", route, can);
-  const customizeTabs = hubTabs("customize", route, can);
-  const operationTabs = hubTabs("operations", route, can);
-  // The few places people go every day stay in view; the rest wait under More.
-  const entries: {
-    to: Route;
-    label: string;
-    icon: ReactNode;
-    show: boolean;
-    active: boolean;
-    badge?: number;
-    group: "work" | "build" | "more";
-  }[] = [
+  const entries = [
     {
-      to: { page: "history" },
-      label: defaultCopy.history.title,
+      to: { page: "sessions" } as Route,
+      label: "Sessions",
       icon: <HistoryIcon />,
       show: can("runs:read"),
-      active: here("history"),
-      group: "work",
+      active: here("sessions", "history", "conversation"),
     },
     {
-      to: { page: "automations" },
-      label: defaultCopy.automations.title,
-      icon: <CalendarIcon />,
-      show: can("schedules:read") || can("clients:read"),
-      active: here("automations", "schedules"),
-      group: "work",
+      to: { page: "alerts" } as Route,
+      label: "Alerts",
+      icon: <BellIcon />,
+      show: can("alerts:read"),
+      active: here("alerts", "inbox", "notifications"),
+      badge: inboxCount,
     },
     {
-      to: { page: "projects" },
-      label: nav.projects,
-      icon: <ProjectIcon />,
-      show: can("projects:read"),
-      active: here("projects", "project", "channel"),
-      group: "more",
-    },
-    {
-      to: customizeTabs[0]?.route ?? { page: "customize", section: "agents" },
-      label: nav.customize,
+      to: { page: "agents" } as Route,
+      label: "Agents",
       icon: <BotIcon />,
-      show: customizeTabs.length > 0,
-      active: hub === "customize" || hub === "agents",
-      group: "build",
+      show: can("agents:read"),
+      active: hub === "agents" || hub === "customize",
     },
     {
-      to: { page: "directory", tab: "people" },
-      label: nav.people,
-      icon: <UsersIcon />,
-      show: can("people:read"),
-      active: here("directory"),
-      group: "more",
+      to: { page: "connections" } as Route,
+      label: "Connections",
+      icon: <PlugIcon />,
+      show: can("runs:read") || can("clients:read"),
+      active:
+        here("connections", "context") ||
+        (route.page === "library" && ["sources", "catalog"].includes(route.section)),
     },
     {
-      to: libraryTabs[0]?.route ?? { page: "library", section: "sources" },
-      label: nav.library,
+      to: { page: "library", section: "skills" } as Route,
+      label: "Library",
       icon: <LayersIcon />,
-      show: libraryTabs.length > 0,
+      show: can("projects:read") || can("artifacts:read"),
       active: hub === "library",
-      group: "more",
     },
     {
-      to: operationTabs[0]?.route ?? { page: "operations", section: "context" },
-      label: nav.operations,
-      icon: <SlidersIcon />,
-      show: operationTabs.length > 0,
-      active: hub === "operations",
-      group: "more",
+      to: { page: "settings", section: "profile" } as Route,
+      label: "Settings",
+      icon: <SettingsIcon />,
+      show: true,
+      active: here(
+        "settings",
+        "directory",
+        "operations",
+        "usage",
+        "audit",
+        "you",
+        "projects",
+        "project",
+        "automations",
+        "schedules",
+        "monitor",
+        "action-policy",
+      ),
     },
   ];
 
@@ -946,7 +922,7 @@ export function Sidebar({
       say("Could not rename. Try again.", true);
     });
   };
-  // Every conversation loaded, once each: the caller's live ones and the
+  // Every session loaded, once each: the caller's live ones and the
   // pages of Recents. Pinned and Archived come from these, so one that cannot
   // be found (deleted, or no longer readable) is not shown.
   const known = new Map(
@@ -962,9 +938,19 @@ export function Sidebar({
   // Recents is the paged list, so a filter narrows it; the open conversation
   // stays in it even when it is older than what is loaded.
   const archivedSet = new Set(marks.archived);
+  const priorityBySession = new Map<string, Alert["priority"]>();
+  for (const alert of orderAlerts(sessionAlerts.filter(openAlert)))
+    if (alert.session && !priorityBySession.has(alert.session))
+      priorityBySession.set(alert.session, alert.priority ?? "normal");
   const unpinned = recents
     .filter((t) => !pinnedSet.has(t.id) && !gone.has(t.id) && !archivedSet.has(t.id))
-    .map(shown);
+    .map(shown)
+    .sort(
+      (a, b) =>
+        (priorityBySession.has(a.id) ? priorityRank(priorityBySession.get(a.id)) : 3) -
+          (priorityBySession.has(b.id) ? priorityRank(priorityBySession.get(b.id)) : 3) ||
+        b.updated_at.localeCompare(a.updated_at),
+    );
   const currentThread = selected ? known.get(selected) : undefined;
   if (
     currentThread &&
@@ -999,14 +985,15 @@ export function Sidebar({
     <TaskRow
       key={t.id}
       task={t}
-      projectLabel={undefined}
+      projectLabel={sessionMode && opts.label ? projectTitle(t.project) : undefined}
       glyph={sourceGlyph(t.origin)}
       projectTitle={projectTitle(t.project)}
+      priority={priorityBySession.get(t.id)}
       current={isCurrent(t)}
       pinned={opts.pinned ?? false}
       archived={archivedSet.has(t.id)}
       standing={standingOf(t, marks)}
-      ageText=""
+      ageText={sessionMode ? age(t.updated_at, now) : ""}
       onSelect={() => go({ page: "conversation", id: t.id })}
       onPin={
         canPin && !archivedSet.has(t.id)
@@ -1094,16 +1081,16 @@ export function Sidebar({
           </button>
         </div>
 
-        {/* Everything between the top row and the account scrolls as one, so a short window never squeezes the lists into a sliver. */}
-        <div className="aui-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain">
-          <nav
-            aria-label="Sections"
+        <nav aria-label="Sections" className="flex min-h-0 flex-1 flex-col">
+          {/* Starting and finding work stay in reach while the session list scrolls. */}
+          <div
             className={`flex shrink-0 flex-col gap-1 ${open ? "px-2" : "items-center"}`}
+            data-sidebar-start
           >
             {can("runs:write") && (
               <Item
                 icon={<PlusIcon />}
-                label={nav.newConversation}
+                label="New"
                 href={href({ page: "new" })}
                 active={here("new")}
                 open={open}
@@ -1128,402 +1115,327 @@ export function Sidebar({
                 )}
               </button>
             )}
+          </div>
+          <div
+            data-sidebar-scroll
+            className="aui-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain"
+          >
+            <div className={`flex shrink-0 flex-col gap-1 ${open ? "px-2" : "items-center"}`}>
+              {entries
+                .filter((entry) => entry.show)
+                .map((entry) => (
+                  <Item
+                    key={entry.label}
+                    icon={entry.icon}
+                    label={entry.label}
+                    href={href(entry.to)}
+                    open={open}
+                    active={entry.active}
+                    badge={entry.badge}
+                    onClick={() => go(entry.to)}
+                  />
+                ))}
+            </div>
 
-            {(can("runs:read") || can("alerts:read")) && (
-              <Item
-                icon={<BellIcon />}
-                label={nav.notifications}
-                href={href(
-                  can("runs:read") ? notificationRoute : { page: "monitor", tab: "rules" },
-                )}
-                open={open}
-                active={hub === "notifications"}
-                badge={inboxCount}
-                badgeLabel={`${nav.notifications}, ${inboxCount} unread`}
-                onClick={() =>
-                  go(can("runs:read") ? notificationRoute : { page: "monitor", tab: "rules" })
-                }
-              />
-            )}
-            {(["work", "build"] as const).map((group) => {
-              const shown = entries.filter((entry) => entry.group === group && entry.show);
-              return (
-                shown.length > 0 && (
-                  <ul
-                    key={group}
-                    aria-label={nav.groups[group]}
-                    className={`flex flex-col gap-0.5 ${open ? "" : "items-center"}`}
-                  >
-                    {shown.map((entry) => (
-                      <li key={entry.label}>
+            {open && (pinnedRows.length > 0 || readableProjectPins.length > 0) && (
+              <section
+                aria-label="Pinned"
+                className="humagen-sidebar-reveal flex shrink-0 flex-col pt-4"
+              >
+                <Label>{defaultCopy.sidebar.pinned}</Label>
+                <ul className="px-2">
+                  {readableProjectPins.map((project) => (
+                    <li
+                      key={`project:${project}`}
+                      className={`group/project relative ${flashed === `project:${project}` && flash ? "z-20" : ""}`}
+                    >
+                      <div className="py-1 pr-10 [@media(pointer:coarse)]:pr-12">
                         <Item
-                          icon={entry.icon}
-                          label={entry.label}
-                          href={href(entry.to)}
-                          open={open}
-                          active={entry.active}
-                          badge={entry.badge}
-                          onClick={() => go(entry.to)}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                )
-              );
-            })}
-            {(() => {
-              const more = entries.filter((entry) => entry.group === "more" && entry.show);
-              if (more.length === 0) return null;
-              const current = more.find((entry) => entry.active);
-              return (
-                <Popover
-                  label={nav.more}
-                  narrow
-                  side="right"
-                  tooltip={open ? undefined : nav.more}
-                  className={`flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:size-[18px] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg ${
-                    current ? "bg-aui-hover font-medium text-aui-fg" : ""
-                  } ${open ? "w-full px-2.5" : "w-9 justify-center"}`}
-                  button={
-                    <>
-                      {current ? current.icon : <EllipsisIcon />}
-                      {open && (
-                        <span className="humagen-sidebar-reveal flex-1 truncate text-left">
-                          {current ? current.label : nav.more}
-                        </span>
-                      )}
-                    </>
-                  }
-                >
-                  {(close) => (
-                    <ul className="flex min-w-44 flex-col gap-0.5 p-1">
-                      {more.map((entry) => (
-                        <li key={entry.label}>
-                          <a
-                            href={href(entry.to)}
-                            aria-current={entry.active ? "page" : undefined}
-                            onClick={(e) => {
-                              if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
-                              e.preventDefault();
-                              close();
-                              go(entry.to);
-                            }}
-                            className="flex h-9 pointer-coarse:h-11 items-center gap-2.5 rounded-aui px-2.5 text-aui-sm text-aui-muted [&>svg]:size-[18px] hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:text-aui-fg aria-[current=page]:font-medium"
-                          >
-                            {entry.icon}
-                            {entry.label}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </Popover>
-              );
-            })()}
-          </nav>
-
-          {open && (pinnedRows.length > 0 || readableProjectPins.length > 0) && (
-            <section
-              aria-label="Pinned"
-              className="humagen-sidebar-reveal flex shrink-0 flex-col pt-4"
-            >
-              <Label>{defaultCopy.sidebar.pinned}</Label>
-              <ul className="px-2">
-                {readableProjectPins.map((project) => (
-                  <li
-                    key={`project:${project}`}
-                    className={`group/project relative ${flashed === `project:${project}` && flash ? "z-20" : ""}`}
-                  >
-                    <div className="py-1 pr-10 [@media(pointer:coarse)]:pr-12">
-                      <Item
-                        icon={<ProjectIcon />}
-                        label={projectTitle(project)}
-                        href={href({
-                          page: "project",
-                          name: project === "~" ? "" : project,
-                          tab: "inbox",
-                        })}
-                        active={
-                          route.page === "project" &&
-                          route.name === (project === "~" ? "" : project)
-                        }
-                        open
-                        onClick={() =>
-                          go({
+                          icon={<ProjectIcon />}
+                          label={projectTitle(project)}
+                          href={href({
                             page: "project",
                             name: project === "~" ? "" : project,
                             tab: "inbox",
-                          })
-                        }
-                      />
-                    </div>
-                    {onPinProject && (
-                      <PinButton
-                        pinned
-                        project
-                        projectId={project}
-                        label={defaultCopy.sidebar.pinProject(projectTitle(project), true)}
-                        onClick={(button) => toggleProjectPin(project, false, button)}
-                      />
-                    )}
-                    <FlashNote
-                      flash={flashed === `project:${project}` ? flash : null}
-                      align="right"
-                    />
-                  </li>
-                ))}
-                {pinnedRows.map((t) => row(t, { label: true, pinned: true }))}
-              </ul>
-            </section>
-          )}
-
-          {open && can("runs:read") && (
-            <section
-              aria-label="Conversations"
-              data-view={view}
-              className="humagen-sidebar-reveal flex shrink-0 flex-col pt-4"
-            >
-              {/* The label stays in reach while the list scrolls under it. */}
-              <Label
-                action={
-                  <Popover
-                    narrow
-                    align="right"
-                    label={defaultCopy.chat.filter(filters)}
-                    className="relative inline-flex size-6 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
-                    button={
-                      <>
-                        <SlidersIcon size={14} />
-                        {(filters > 0 || view !== "recents") && (
-                          <span
-                            aria-hidden
-                            className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-aui-accent"
-                          />
-                        )}
-                      </>
-                    }
-                  >
-                    {() => (
-                      <div className="aui-scroll flex max-h-[60vh] flex-col overflow-y-auto">
-                        <Choices
-                          title={defaultCopy.sidebar.view}
-                          value={view}
-                          options={[
-                            { value: "recents", label: defaultCopy.sidebar.recents },
-                            { value: "projects", label: defaultCopy.sidebar.projects },
-                            {
-                              value: "archived",
-                              label:
-                                marks.archived.length > 0
-                                  ? `${defaultCopy.sidebar.archived} (${marks.archived.length})`
-                                  : defaultCopy.sidebar.archived,
-                            },
-                          ]}
-                          onChange={setView}
+                          })}
+                          active={
+                            route.page === "project" &&
+                            route.name === (project === "~" ? "" : project)
+                          }
+                          open
+                          onClick={() =>
+                            go({
+                              page: "project",
+                              name: project === "~" ? "" : project,
+                              tab: "inbox",
+                            })
+                          }
                         />
-                        <Choices
-                          title="Show"
-                          value={standing}
-                          options={[
-                            { value: "", label: "Every conversation" },
-                            { value: "running", label: "Running now" },
-                            { value: "failed", label: "Needs attention" },
-                          ]}
-                          onChange={setStanding}
-                        />
-                        {answering.length > 1 && (
-                          <Choices
-                            title="Answered by"
-                            value={agent}
-                            options={[
-                              { value: "", label: "Any agent" },
-                              ...answering.map((a) => ({
-                                value: a,
-                                label: a,
-                                mark: <AgentMark name={a} size={12} />,
-                              })),
-                            ]}
-                            onChange={setAgent}
-                          />
-                        )}
-                        {filters > 0 && (
-                          <button
-                            type="button"
-                            onClick={clear}
-                            className="mt-1 rounded-aui border-[var(--humagen-rule)] border-t px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-                          >
-                            Clear filters
-                          </button>
-                        )}
                       </div>
-                    )}
-                  </Popover>
-                }
-              >
-                {viewTitle}
-              </Label>
-              {note && (
-                <p
-                  role="status"
-                  className="mx-3 mb-1 flex items-center gap-2 rounded-aui bg-aui-hover px-2.5 py-1.5 text-aui-xs text-aui-muted"
-                >
-                  <span className="min-w-0 flex-1">
-                    {note.archived
-                      ? defaultCopy.sidebar.archivedNote
-                      : defaultCopy.sidebar.unarchivedNote}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={undoArchive}
-                    className="shrink-0 rounded-aui px-1.5 font-medium text-aui-fg hover:bg-aui-bg focus-visible:outline-2 focus-visible:outline-aui-accent"
-                  >
-                    {defaultCopy.sidebar.undo}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNote(null)}
-                    aria-label="Dismiss"
-                    className="shrink-0 rounded-aui px-1 text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-                  >
-                    ×
-                  </button>
-                </p>
-              )}
-              <ul
-                className="px-2 pb-3"
-                aria-label={view === "recents" ? defaultCopy.sidebar.recents : viewTitle}
-                aria-busy={loading !== null}
-              >
-                {noConversations && loading === "first" && (
-                  <li className="px-2.5">
-                    <SkeletonRows count={5} height="1.25rem" />
-                  </li>
-                )}
-                {noConversations && loading !== "first" && stalled && (
-                  <li className="flex flex-col items-start gap-1.5 px-2.5 py-1.5 text-aui-xs text-aui-muted">
-                    Your conversations could not be loaded.
-                    <button
-                      type="button"
-                      onClick={retry}
-                      className="humagen-press inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-                    >
-                      Try Again
-                    </button>
-                  </li>
-                )}
-                {view !== "archived" && noConversations && loading !== "first" && !stalled && (
-                  <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
-                    {filters > 0
-                      ? "No conversation matches these filters."
-                      : "Your conversations appear here. Start with New."}
-                  </li>
-                )}
-                {view === "recents" &&
-                  byDay(unpinned, new Date(now)).map((g, i) => (
-                    <li key={g.day} className={i === 0 ? "" : "pt-3"}>
-                      {i > 0 && <p className="px-2.5 pb-1 text-aui-xs text-aui-muted">{g.day}</p>}
-                      <ul>{g.items.map((t) => row(t, { label: true }))}</ul>
-                    </li>
-                  ))}
-                {view === "archived" &&
-                  (lists.archived.length === 0 && loading !== "first" ? (
-                    <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
-                      {defaultCopy.sidebar.noArchived}
-                    </li>
-                  ) : (
-                    lists.archived.map((t) => row(t, { label: true }))
-                  ))}
-                {view === "projects" &&
-                  projectGroups.map((project) => {
-                    const inGroup = unpinned.filter((t) => (t.project || "~") === project);
-                    const all = expanded.has(project);
-                    const rows = all ? inGroup : inGroup.slice(0, GROUP_ROWS);
-                    return (
-                      <li
-                        key={project}
-                        className={`group/project relative min-w-0 pt-2 ${flashed === `project:${project}` && flash ? "z-20" : ""}`}
-                      >
-                        <ProjectGroup
-                          title={projectTitle(project)}
-                          startsOpen={inGroup.length > 0}
-                          holdsCurrent={inGroup.some(isCurrent)}
-                        >
-                          <ul className="ml-2 border-aui-border border-l pl-1">
-                            {inGroup.length === 0 && (
-                              <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
-                                {defaultCopy.sidebar.noConversations}
-                              </li>
-                            )}
-                            {rows.map((t) => row(t, { label: false }))}
-                            {inGroup.length > GROUP_ROWS && (
-                              <li>
-                                <button
-                                  type="button"
-                                  aria-expanded={all}
-                                  onClick={() =>
-                                    setExpanded((e) => {
-                                      const n = new Set(e);
-                                      if (all) n.delete(project);
-                                      else n.add(project);
-                                      return n;
-                                    })
-                                  }
-                                  className="flex h-8 w-full items-center rounded-aui px-2.5 text-left text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-                                >
-                                  {all
-                                    ? defaultCopy.sidebar.showFewer
-                                    : defaultCopy.sidebar.seeAll(inGroup.length)}
-                                </button>
-                              </li>
-                            )}
-                          </ul>
-                        </ProjectGroup>
-                        {onPinProject && can("projects:read") && (
-                          <div className="absolute top-2 right-0 h-10 w-10">
-                            <PinButton
-                              project
-                              projectId={project}
-                              pinned={pinnedProjects.has(project)}
-                              label={defaultCopy.sidebar.pinProject(
-                                projectTitle(project),
-                                pinnedProjects.has(project),
-                              )}
-                              onClick={(button) =>
-                                toggleProjectPin(project, !pinnedProjects.has(project), button)
-                              }
-                            />
-                          </div>
-                        )}
-                        <FlashNote
-                          flash={flashed === `project:${project}` ? flash : null}
-                          align="right"
+                      {onPinProject && (
+                        <PinButton
+                          pinned
+                          project
+                          projectId={project}
+                          label={defaultCopy.sidebar.pinProject(projectTitle(project), true)}
+                          onClick={(button) => toggleProjectPin(project, false, button)}
                         />
-                      </li>
-                    );
-                  })}
-                {/* Older conversations arrive a page at a time, when asked for. */}
-                {(hasMore || loading === "more") && (
-                  <li className="flex justify-center pt-2">
+                      )}
+                      <FlashNote
+                        flash={flashed === `project:${project}` ? flash : null}
+                        align="right"
+                      />
+                    </li>
+                  ))}
+                  {pinnedRows.map((t) => row(t, { label: true, pinned: true }))}
+                </ul>
+              </section>
+            )}
+
+            {open && can("runs:read") && (
+              <section
+                aria-label="Sessions"
+                data-view={view}
+                className="humagen-sidebar-reveal flex shrink-0 flex-col pt-4"
+              >
+                {/* The label stays in reach while the list scrolls under it. */}
+                <Label
+                  action={
+                    <Popover
+                      narrow
+                      align="right"
+                      label={defaultCopy.chat.filter(filters)}
+                      className="relative inline-flex size-6 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
+                      button={
+                        <>
+                          <SlidersIcon size={14} />
+                          {(filters > 0 || view !== "recents") && (
+                            <span
+                              aria-hidden
+                              className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-aui-accent"
+                            />
+                          )}
+                        </>
+                      }
+                    >
+                      {() => (
+                        <div className="aui-scroll flex max-h-[60vh] flex-col overflow-y-auto">
+                          <Choices
+                            title="Show"
+                            value={standing}
+                            options={[
+                              { value: "", label: "Every session" },
+                              { value: "running", label: "Running now" },
+                              { value: "failed", label: "Failed" },
+                            ]}
+                            onChange={setStanding}
+                          />
+                          {answering.length > 1 && (
+                            <Choices
+                              title="Answered by"
+                              value={agent}
+                              options={[
+                                { value: "", label: "Any agent" },
+                                ...answering.map((a) => ({
+                                  value: a,
+                                  label: a,
+                                  mark: <AgentMark name={a} size={12} />,
+                                })),
+                              ]}
+                              onChange={setAgent}
+                            />
+                          )}
+                          {filters > 0 && (
+                            <button
+                              type="button"
+                              onClick={clear}
+                              className="mt-1 rounded-aui border-[var(--humagen-rule)] border-t px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                            >
+                              Clear filters
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </Popover>
+                  }
+                >
+                  <select
+                    aria-label="Sidebar session view"
+                    value={view}
+                    onChange={(event) => setView(event.target.value as ListView)}
+                    className="min-w-0 max-w-full rounded-aui bg-transparent py-1 text-aui-xs focus-visible:outline-2 focus-visible:outline-aui-accent"
+                  >
+                    <option value="recents">{defaultCopy.sidebar.recents}</option>
+                    <option value="projects">{defaultCopy.sidebar.projects}</option>
+                    <option value="archived">
+                      {defaultCopy.sidebar.archived}
+                      {marks.archived.length ? ` (${marks.archived.length})` : ""}
+                    </option>
+                  </select>
+                </Label>
+                {note && (
+                  <p
+                    role="status"
+                    className="mx-3 mb-1 flex items-center gap-2 rounded-aui bg-aui-hover px-2.5 py-1.5 text-aui-xs text-aui-muted"
+                  >
+                    <span className="min-w-0 flex-1">
+                      {note.archived
+                        ? defaultCopy.sidebar.archivedNote
+                        : defaultCopy.sidebar.unarchivedNote}
+                    </span>
                     <button
                       type="button"
-                      onClick={more}
-                      disabled={loading === "more"}
-                      className="inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-default"
+                      onClick={undoArchive}
+                      className="shrink-0 rounded-aui px-1.5 font-medium text-aui-fg hover:bg-aui-bg focus-visible:outline-2 focus-visible:outline-aui-accent"
                     >
-                      {loading === "more" ? (
-                        <span className="aui-shimmer">Loading</span>
-                      ) : failed ? (
-                        "Could not load. Try again"
-                      ) : (
-                        "See more"
-                      )}
+                      {defaultCopy.sidebar.undo}
                     </button>
-                  </li>
+                    <button
+                      type="button"
+                      onClick={() => setNote(null)}
+                      aria-label="Dismiss"
+                      className="shrink-0 rounded-aui px-1 text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                    >
+                      ×
+                    </button>
+                  </p>
                 )}
-              </ul>
-            </section>
-          )}
-        </div>
+                <ul
+                  className="px-2 pb-3"
+                  aria-label={view === "recents" ? defaultCopy.sidebar.recents : viewTitle}
+                  aria-busy={loading !== null}
+                >
+                  {noConversations && loading === "first" && (
+                    <li className="px-2.5">
+                      <SkeletonRows count={5} height="1.25rem" />
+                    </li>
+                  )}
+                  {noConversations && loading !== "first" && stalled && (
+                    <li className="flex flex-col items-start gap-1.5 px-2.5 py-1.5 text-aui-xs text-aui-muted">
+                      Your sessions could not be loaded.
+                      <button
+                        type="button"
+                        onClick={retry}
+                        className="humagen-press inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                      >
+                        Try Again
+                      </button>
+                    </li>
+                  )}
+                  {view !== "archived" && noConversations && loading !== "first" && !stalled && (
+                    <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
+                      {filters > 0
+                        ? "No session matches these filters."
+                        : "Your sessions appear here. Start with New."}
+                    </li>
+                  )}
+                  {view === "recents" &&
+                    byDay(unpinned, new Date(now)).map((g, i) => (
+                      <li key={g.day} className={i === 0 ? "" : "pt-3"}>
+                        {i > 0 && <p className="px-2.5 pb-1 text-aui-xs text-aui-muted">{g.day}</p>}
+                        <ul>{g.items.map((t) => row(t, { label: true }))}</ul>
+                      </li>
+                    ))}
+                  {view === "archived" &&
+                    (lists.archived.length === 0 && loading !== "first" ? (
+                      <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
+                        {defaultCopy.sidebar.noArchived}
+                      </li>
+                    ) : (
+                      lists.archived.map((t) => row(t, { label: true }))
+                    ))}
+                  {view === "projects" &&
+                    projectGroups.map((project) => {
+                      const inGroup = unpinned.filter((t) => (t.project || "~") === project);
+                      const all = expanded.has(project);
+                      const rows = all ? inGroup : inGroup.slice(0, GROUP_ROWS);
+                      return (
+                        <li
+                          key={project}
+                          className={`group/project relative min-w-0 pt-2 ${flashed === `project:${project}` && flash ? "z-20" : ""}`}
+                        >
+                          <ProjectGroup
+                            title={projectTitle(project)}
+                            startsOpen={inGroup.length > 0}
+                            holdsCurrent={inGroup.some(isCurrent)}
+                          >
+                            <ul className="ml-2 border-aui-border border-l pl-1">
+                              {inGroup.length === 0 && (
+                                <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
+                                  {defaultCopy.sidebar.noConversations}
+                                </li>
+                              )}
+                              {rows.map((t) => row(t, { label: false }))}
+                              {inGroup.length > GROUP_ROWS && (
+                                <li>
+                                  <button
+                                    type="button"
+                                    aria-expanded={all}
+                                    onClick={() =>
+                                      setExpanded((e) => {
+                                        const n = new Set(e);
+                                        if (all) n.delete(project);
+                                        else n.add(project);
+                                        return n;
+                                      })
+                                    }
+                                    className="flex h-8 w-full items-center rounded-aui px-2.5 text-left text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                                  >
+                                    {all
+                                      ? defaultCopy.sidebar.showFewer
+                                      : defaultCopy.sidebar.seeAll(inGroup.length)}
+                                  </button>
+                                </li>
+                              )}
+                            </ul>
+                          </ProjectGroup>
+                          {onPinProject && can("projects:read") && (
+                            <div className="absolute top-2 right-0 h-10 w-10">
+                              <PinButton
+                                project
+                                projectId={project}
+                                pinned={pinnedProjects.has(project)}
+                                label={defaultCopy.sidebar.pinProject(
+                                  projectTitle(project),
+                                  pinnedProjects.has(project),
+                                )}
+                                onClick={(button) =>
+                                  toggleProjectPin(project, !pinnedProjects.has(project), button)
+                                }
+                              />
+                            </div>
+                          )}
+                          <FlashNote
+                            flash={flashed === `project:${project}` ? flash : null}
+                            align="right"
+                          />
+                        </li>
+                      );
+                    })}
+                  {/* Older conversations arrive a page at a time, when asked for. */}
+                  {(hasMore || loading === "more") && (
+                    <li className="flex justify-center pt-2">
+                      <button
+                        type="button"
+                        onClick={more}
+                        disabled={loading === "more"}
+                        className="inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-default"
+                      >
+                        {loading === "more" ? (
+                          <span className="aui-shimmer">Loading</span>
+                        ) : failed ? (
+                          "Could not load. Try again"
+                        ) : (
+                          "See more"
+                        )}
+                      </button>
+                    </li>
+                  )}
+                </ul>
+              </section>
+            )}
+          </div>
+        </nav>
 
         {!live && open && (
           <p className="px-4 pb-2 text-aui-2xs text-aui-muted">
@@ -1571,10 +1483,10 @@ export function Sidebar({
                     {
                       label: "Profile",
                       icon: <UserIcon size={14} />,
-                      to: { page: "you", section: "profile" } as Route,
+                      to: { page: "settings", section: "profile" } as Route,
                     },
                     {
-                      label: "Settings",
+                      label: "Appearance",
                       icon: <SettingsIcon size={14} />,
                       to: { page: "settings", section: "appearance" } as Route,
                     },
@@ -1592,18 +1504,6 @@ export function Sidebar({
                       <span className="min-w-0 flex-1 truncate">{item.label}</span>
                     </button>
                   ))}
-                  {onTheme && (
-                    <Choices
-                      title="Theme"
-                      value={prefs?.theme ?? "system"}
-                      options={[
-                        { value: "system", label: "Auto", mark: <MonitorIcon size={14} /> },
-                        { value: "light", label: "Light", mark: <SunIcon size={14} /> },
-                        { value: "dark", label: "Dark", mark: <MoonIcon size={14} /> },
-                      ]}
-                      onChange={onTheme}
-                    />
-                  )}
                   {!dev && (
                     <>
                       <Separator className="my-1" />

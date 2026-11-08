@@ -8,11 +8,28 @@ export interface HubTab {
   active: boolean;
 }
 
+/** Workspace pages use Settings navigation instead of a second hub tab strip. */
+export function settingsPageLabel(route: Route): string | undefined {
+  if (route.page === "directory" && route.tab === "people") return "People";
+  if (route.page === "projects") return "Projects";
+  if (route.page === "automations" || route.page === "schedules") return "Schedules";
+  if (route.page === "usage") return "Usage";
+  if (route.page === "monitor" && route.tab === "health") return "Health";
+  if (route.page === "action-policy") return "Policies";
+  if (route.page === "audit") return "Audit";
+  return undefined;
+}
+
 export function workspaceHub(route: Route): WorkspaceHub | null {
-  if (route.page === "customize") return "customize";
+  if (settingsPageLabel(route)) return null;
+  if (route.page === "customize")
+    return route.section === "skills" ? "library" : route.section === "agents" ? "agents" : null;
   if (route.page === "notifications" || route.page === "inbox") return "notifications";
   if (route.page === "monitor" && route.tab === "rules") return "notifications";
-  if (route.page === "library" || route.page === "artifacts" || route.page === "context")
+  if (
+    (route.page === "library" && !["sources", "catalog"].includes(route.section)) ||
+    route.page === "artifacts"
+  )
     return "library";
   if (
     ["agents", "agent", "agent-setup", "agent-network", "assignments", "agent-control"].includes(
@@ -55,20 +72,6 @@ export function hubTabs(
       : hub === "library"
         ? [
             {
-              label: nav.sources,
-              route: { page: "library", section: "sources" },
-              active:
-                route.page === "context" ||
-                (route.page === "library" && route.section === "sources"),
-              visible: can("knowledge:read"),
-            },
-            {
-              label: defaultCopy.catalog.title,
-              route: { page: "library", section: "catalog" },
-              active: route.page === "library" && route.section === "catalog",
-              visible: can("knowledge:read"),
-            },
-            {
               label: nav.skills,
               route: { page: "library", section: "skills" },
               active: route.page === "library" && route.section === "skills",
@@ -81,7 +84,7 @@ export function hubTabs(
               visible: can("runs:read") || can("projects:read") || can("agents:read"),
             },
             {
-              label: nav.deliverables,
+              label: "Saved files",
               route: { page: "library", section: "deliverables" },
               active:
                 route.page === "artifacts" ||

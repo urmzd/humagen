@@ -1,7 +1,25 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { href, parse, type Route } from "./route.ts";
-import { hubTabs, workspaceHub } from "./workspace-navigation.ts";
+import { hubTabs, settingsPageLabel, workspaceHub } from "./workspace-navigation.ts";
+
+test("Settings pages have one navigation frame without a legacy Operations tab strip", () => {
+  for (const [path, label] of [
+    ["/settings/people", "People"],
+    ["/projects", "Projects"],
+    ["/scheduled", "Schedules"],
+    ["/settings/usage", "Usage"],
+    ["/settings/health", "Health"],
+    ["/operations/policies", "Policies"],
+    ["/settings/audit", "Audit"],
+  ] as const) {
+    const route = parse(path, "");
+    assert.equal(settingsPageLabel(route), label, path);
+    assert.equal(workspaceHub(route), null, path);
+  }
+  assert.equal(workspaceHub({ page: "operations", section: "context" }), "operations");
+  assert.equal(settingsPageLabel({ page: "operations", section: "context" }), undefined);
+});
 
 test("Library has one hub and preserves selected files in its tabs", () => {
   const route: Route = {
@@ -18,7 +36,7 @@ test("Library has one hub and preserves selected files in its tabs", () => {
   const tabs = hubTabs("library", route, () => true);
   assert.deepEqual(
     tabs.map((tab) => tab.label),
-    ["Sources", "Catalog", "Skills", "Memory", "Deliverables"],
+    ["Skills", "Memory", "Saved files"],
   );
   assert.deepEqual(
     tabs.filter((tab) => tab.active).map((tab) => tab.label),
@@ -49,7 +67,7 @@ test("consolidated tabs retain native permissions and alert rule discovery", () 
       { page: "monitor", tab: "rules" },
       (permission) => permission === "alerts:read",
     ).map((tab) => ({ label: tab.label, active: tab.active, href: href(tab.route) })),
-    [{ label: "Health", active: false, href: "/monitor/health" }],
+    [{ label: "Health", active: false, href: "/settings/health" }],
   );
   assert.deepEqual(
     hubTabs("operations", { page: "new" }, () => false),
@@ -65,7 +83,10 @@ test("Notifications is one page with one title: no tab strip above it", () => {
   ] as const) {
     assert.equal(workspaceHub(route), "notifications");
     const link = new URL(href(route), "http://localhost");
-    assert.deepEqual(parse(link.pathname, link.search), route);
+    assert.deepEqual(
+      parse(link.pathname, link.search),
+      route.page === "monitor" ? { page: "alerts", tab: "watching" } : { page: "alerts" },
+    );
     assert.deepEqual(
       hubTabs("notifications", route, () => true),
       [],

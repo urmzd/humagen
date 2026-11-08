@@ -1,6 +1,8 @@
+import { sessionPage, sessionPosted } from "./sessionAdapter.ts";
 import { type AnswerRequest, answerPath } from "@humagen/adapter/question";
 import type {
   AgentHome,
+  AgentSession,
   AgentSetup,
   AgentSetupPlan,
   AgentSkillDefaults,
@@ -43,6 +45,7 @@ import type {
   ProjectUpdate,
   ProjectView,
   RoomPage,
+  SessionPostInput,
   SkillUsage,
   SourceDependencies,
   ThreadShare,
@@ -668,6 +671,8 @@ export interface ToolCredential {
 
 /** The tools that act as you, and what this workspace lets people give for them. */
 export interface ToolCredentials {
+ allowed_hosts?: string[];
+ oauth_available?: boolean;
   providers: ToolCredential[];
   /** Whether you may store the credential itself with humagen. */
   values: boolean;
@@ -760,7 +765,7 @@ export function projectPath(name: string): string {
 // Same-origin only. The session is an HttpOnly cookie the page cannot read,
 // so there is no token here to leak.
 // Reads are tracked, so a change of screen can wait for the next one's (transition.ts).
-function call<T>(method: string, path: string, json?: unknown): Promise<T> {
+export function call<T>(method: string, path: string, json?: unknown): Promise<T> {
   return method === "GET" ? track(send<T>(method, path, json)) : send<T>(method, path, json);
 }
 
@@ -1818,6 +1823,8 @@ export interface ThreadPage {
   turns: ThreadTurn[];
   next: string | null;
   answers: ThreadAnswers;
+  /** Existing agent sessions offered by the canonical mention chooser. */
+  sessionAgents?: string[];
 }
 
 export type ThreadRule =
@@ -1950,11 +1957,12 @@ export const coworking = {
     return call<{ threads: ThreadSummary[]; next: string | null }>("GET", `/api/threads?${q}`);
   },
   /** A thread and one page of its turns, the newest first; `before` reads the page above. */
-  thread: (id: string, before?: string) =>
-    call<ThreadPage>(
-      "GET",
-      before ? `${threadPath(id)}?${new URLSearchParams({ before })}` : threadPath(id),
-    ),
+  thread: (id: string, before?: string, around?: string) => {
+    const query = before ? `?${new URLSearchParams({ before })}` : around && id.startsWith("s_") ? `?${new URLSearchParams({ around })}` : "";
+    return id.startsWith("s_")
+      ? call<AgentSession>("GET", `/api/sessions/${encodeURIComponent(id)}${query}`).then(sessionPage)
+      : call<ThreadPage>("GET", `${threadPath(id)}${query}`);
+  },
   /**
    * Starts a thread: private unless `visibility` says shared, read then by
    * the people in it alone until it is shared. A message starts a run only
@@ -1970,7 +1978,9 @@ export const coworking = {
       agents?: string[];
       mode?: "join" | "all";
     } & MessagePick,
-  ) => call<ThreadPosted>("POST", "/api/threads", { visibility: "private", ...t }),
+  ) => t.visibility === "shared"
+    ? call<ThreadPosted>("POST", "/api/threads", t)
+    : call<AgentSession>("POST", "/api/sessions", { text: t.text, project: t.project, agent: t.agents?.[0], model: t.model, effort: t.effort }).then(sessionPosted),
   /**
    * Shares a private thread in a project's channel (general unless named)
    * and adds people by handle. The project may change only while the thread
@@ -2009,8 +2019,10 @@ export const coworking = {
     ).then((r) => r.items ?? []),
   post: (
     id: string,
-    m: { text: string; after?: string; answers?: { run: string; question: string } } & MessagePick,
-  ) => call<ThreadPosted>("POST", `${threadPath(id)}/messages`, m),
+    m: SessionPostInput,
+  ) => id.startsWith("s_")
+    ? call<AgentSession>("POST", `/api/sessions/${encodeURIComponent(id)}/messages`, m).then(sessionPosted)
+    : call<ThreadPosted>("POST", `${threadPath(id)}/messages`, m),
   /** Changes a thread's record: its title, visibility, default, the agents it routes to and how, and while it has no runs, where it lives. */
   update: (
     id: string,

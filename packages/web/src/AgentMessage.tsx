@@ -1,3 +1,4 @@
+import { AgentChangeCards } from "./AgentChangeCard.tsx";
 import {
   AnswerText,
   type Copy,
@@ -44,6 +45,7 @@ import {
 import { AgentInitials, AgentOrb, type OrbState, turnOrbState } from "./AgentOrb";
 import { StopBanner } from "./Alerts";
 import { MessageActionRow, messageActionButton } from "./MessageActionRow";
+import { MessageMore } from "./MessageMore";
 import { Reasoning } from "./Reasoning";
 import { TurnChanges } from "./TurnChanges";
 import { type Block, interleave, StepGroup, WorkedFor } from "./WorkSteps";
@@ -351,6 +353,16 @@ function MessageActions({
       copyControl={hostCopy}
       onReply={onReply}
     >
+      {rate && (
+        <Rating
+          up={{ id: ActionId.feedback, payload: { turnId: turn.id, target: "up" } }}
+          down={{ id: ActionId.feedback, payload: { turnId: turn.id, target: "down" } }}
+          selected={turn.feedback}
+          labels={{ up: copy.helpful, down: copy.notHelpful }}
+          prompt={copy.feedbackPrompt}
+        />
+      )}
+      {(turn.usage || actions || regenerate || (turn.outcome && onRedirect)) && <MessageMore>
       {turn.outcome && onRedirect && (
         <button
           type="button"
@@ -375,17 +387,9 @@ function MessageActions({
           <RefreshIcon size={16} />
         </button>
       )}
-      {rate && (
-        <Rating
-          up={{ id: ActionId.feedback, payload: { turnId: turn.id, target: "up" } }}
-          down={{ id: ActionId.feedback, payload: { turnId: turn.id, target: "down" } }}
-          selected={turn.feedback}
-          labels={{ up: copy.helpful, down: copy.notHelpful }}
-          prompt={copy.feedbackPrompt}
-        />
-      )}
-      {turn.usage && <UsageChip usage={turn.usage} />}
-      {actions}
+        {turn.usage && <UsageChip usage={turn.usage} />}
+        {actions}
+      </MessageMore>}
     </MessageActionRow>
   );
 }
@@ -600,6 +604,7 @@ export function AgentMessage({
                   capabilities={{ ...capabilities, followUp }}
                   hideTasks
                 />
+                <AgentChangeCards tasks={turn.tasks}/>
                 {rest.map(block)}
                 {turn.status === "stopped" && turn.stop && (
                   <StopBanner turnId={turn.id} stop={turn.stop} label={copy.stopPhase[turn.stop]} />

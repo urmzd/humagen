@@ -1,15 +1,16 @@
 import { defaultCopy } from "@humagen/components";
-import { EllipsisIcon } from "@humagen/render-web";
+import type { AgentEvaluationHealth } from "../../../packages/client/src/generated/types.ts";
+import { BuilderButton } from "./AgentBuilder.tsx";
+import { healthLabel } from "./AgentHealth.tsx";
 import { useEffect, useState } from "react";
 import type { Run } from "./adapter.ts";
-import { type AgentControl, api, type Group, type Revision } from "./api.ts";
+import { type AgentControl, api, call, type Group, type Revision } from "./api.ts";
 import {
   AgentMark,
   Empty,
   field,
   longest,
   Page,
-  Popover,
   Problem,
   primary,
   rows,
@@ -34,10 +35,16 @@ export function Agents({
   onOpen,
   onNew,
   onBuild,
+  onBuilderSession,
+  state: selectedState,
+  onState,
   operational = false,
 }: {
   /** Describe an agent to the built-in builder instead of writing it by hand, when the workspace has it. */
   onBuild?: () => void;
+  onBuilderSession?: (id: string) => void;
+  state?: string;
+  onState?: (state: string) => void;
   operational?: boolean;
   agents: Revision[];
   /** The last 24 hours, by agent name. */
@@ -56,10 +63,11 @@ export function Agents({
 }) {
   const words = defaultCopy.agentOperations;
   const [roster, setRoster] = useState<Record<string, AgentControl>>({});
-  const [workspace, setWorkspace] = useState<AgentControl>();
   const [problem, setProblem] = useState("");
-  const [busyPause, setBusyPause] = useState(false);
-  const [state, setState] = useState("");
+  const [localState, setLocalState] = useState("");
+  const state = selectedState ?? localState;
+  const setState = onState ?? setLocalState;
+  const [health, setHealth] = useState<Record<string, AgentEvaluationHealth>>({});
   const names = agents.map((agent) => agent.spec.name).join(",");
   useEffect(() => {
     if (!operational) return;
@@ -70,10 +78,8 @@ export function Agents({
         const pages = [];
         for (let i = 0; i < wanted.length; i += 100)
           pages.push(await api.agentRoster(wanted.slice(i, i + 100)));
-        const current = await api.agentControl();
         if (active) {
           setRoster(Object.assign({}, ...pages));
-          setWorkspace(current);
           setProblem("");
         }
       } catch {
@@ -87,25 +93,33 @@ export function Agents({
       clearInterval(timer);
     };
   }, [names, operational, words.failed]);
-  const pauseAll = async () => {
-    if (!workspace || busyPause) return;
-    setBusyPause(true);
-    try {
-      setWorkspace(
-        await api.saveAgentControl("", {
-          version: workspace.version,
-          paused: !workspace.paused,
-          manager: workspace.manager,
-          stop_rules: workspace.stop_rules,
-        }),
-      );
-      setProblem("");
-    } catch (error) {
-      setProblem(error instanceof Error ? error.message : words.failed);
-    } finally {
-      setBusyPause(false);
-    }
-  };
+  useEffect(() => {
+    if (!operational) return;
+    let live = true;
+    const wanted = names ? names.split(",") : [];
+    setHealth({});
+    const read = async () => {
+      for (let start = 0; live && start < wanted.length; start += 4) {
+        await Promise.all(
+          wanted.slice(start, start + 4).map(async (name) => {
+            try {
+              const next = await call<AgentEvaluationHealth>(
+                "GET",
+                `/api/agents/${encodeURIComponent(name)}/health`,
+              );
+              if (live) setHealth((current) => ({ ...current, [name]: next }));
+            } catch {
+              /* A missing evaluation stays unknown, never healthy. */
+            }
+          }),
+        );
+      }
+    };
+    void read();
+    return () => {
+      live = false;
+    };
+  }, [names, operational]);
   const scale = longest(runs);
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
@@ -119,53 +133,24 @@ export function Agents({
       !state ||
       (state === "draft"
         ? roster[agent.spec.name]?.pause_reason === "setup"
-        : roster[agent.spec.name]?.state === state),
+        : state === "needs_review"
+          ? health[agent.spec.name]?.status === "needs_review" ||
+            ["failed", "needs_review"].includes(roster[agent.spec.name]?.state ?? "")
+          : roster[agent.spec.name]?.state === state),
   );
   return (
     <Page
       title="Agents"
-      lede="An agent is a prompt with a model, the agents it may call, and the context it reads. Open one to change it, test it, and watch it."
+      lede="See how agents are performing. Create or change one in a builder session, then review its evaluations before approving the change."
       actions={
-        canWrite || onBuild ? (
-          <div className="flex max-w-full flex-wrap items-center gap-3">
-            {operational && canWrite && (
-              <Popover
-                label={words.more}
-                button={<EllipsisIcon size={18} />}
-                className="inline-flex size-9 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-                align="right"
-                narrow
-              >
-                {(close) => (
-                  <button
-                    type="button"
-                    className="min-h-9 w-full rounded-aui px-2.5 text-left text-aui-sm text-aui-bad hover:bg-aui-hover disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-aui-accent"
-                    disabled={!workspace || busyPause}
-                    onClick={() => {
-                      close();
-                      void pauseAll();
-                    }}
-                  >
-                    {workspace?.paused ? words.resumeAll : words.pauseAll}
-                  </button>
-                )}
-              </Popover>
-            )}
-            {onBuild && (
-              <button
-                type="button"
-                className="min-h-9 rounded-aui text-aui-sm text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-                onClick={onBuild}
-              >
-                {words.build}
-              </button>
-            )}
-            {canWrite && (
-              <button type="button" className={primary} onClick={onNew}>
-                {words.newAgent}
-              </button>
-            )}
-          </div>
+        canWrite || onBuild || onBuilderSession ? (
+          onBuilderSession ? (
+            <BuilderButton onOpen={onBuilderSession} />
+          ) : (
+            <button type="button" className={primary} onClick={onBuild ?? onNew}>
+              {words.newAgent}
+            </button>
+          )
         ) : undefined
       }
     >
@@ -185,7 +170,7 @@ export function Agents({
           {operational && (
             <select
               aria-label={words.filter}
-              className={`${field} h-8! w-36! shrink-0 py-0! text-aui-sm`}
+              className={`${field} min-h-11 w-auto! min-w-44 max-w-full py-0! text-aui-sm`}
               value={state}
               onChange={(event) => setState(event.target.value)}
             >
@@ -249,10 +234,7 @@ export function Agents({
                     </span>
                     <span className="min-w-0">
                       <span className="flex h-7 min-w-0 items-center gap-2 whitespace-nowrap">
-                        <span
-                          className="humagen-display min-w-0 truncate text-aui-lg font-semibold text-aui-fg"
-                          title={name}
-                        >
+                        <span className="humagen-display min-w-0 truncate text-aui-lg font-semibold text-aui-fg">
                           {name}
                         </span>
                         {a.package ? (
@@ -279,7 +261,11 @@ export function Agents({
                               aria-hidden
                               className="size-1.5 shrink-0 rounded-full bg-current"
                             />
-                            <span className="truncate">{words.directoryStates[status]}</span>
+                            <span className="truncate">
+                              {roster[name]?.pause_reason === "setup"
+                                ? "Draft"
+                                : words.directoryStates[status]}
+                            </span>
                           </span>
                         )}
                         {name === workspaceDefault && (
@@ -299,16 +285,19 @@ export function Agents({
                           </span>
                         )}
                       </span>
-                      <span
-                        className="block truncate text-aui-sm text-aui-muted"
-                        title={description}
-                      >
+                      {operational && (
+                        <span
+                          className={`block text-aui-xs ${health[name]?.status === "needs_review" ? "text-aui-warn" : "text-aui-muted"}`}
+                        >
+                          {health[name]
+                            ? `${healthLabel(health[name].status)}${health[name].samples ? ` · ${Math.round(health[name].pass_rate)}% passed` : ""}`
+                            : "Evaluation health unavailable"}
+                        </span>
+                      )}
+                      <span className="block truncate text-aui-sm text-aui-muted">
                         {description}
                       </span>
-                      <span
-                        className="block truncate pt-0.5 text-aui-xs text-aui-muted"
-                        title={`Revision ${a.rev} · ${a.spec.provider} / ${a.spec.model}`}
-                      >
+                      <span className="block truncate pt-0.5 text-aui-xs text-aui-muted">
                         Revision {a.rev} · {a.spec.provider} / {a.spec.model}
                       </span>
                     </span>

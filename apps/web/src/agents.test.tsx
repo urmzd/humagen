@@ -145,7 +145,7 @@ test("A built-in's spec is locked, and it lives in no project", () => {
 test("Access: an agent enabled in the workspace says it is available everywhere, and the workspace default says so", () => {
   const html = text(render(false, true, "access"));
   assert.match(html, /Where it answers/);
-  assert.match(html, /Lives in Company/);
+  assert.match(html, /Lives in Workspace/);
   assert.match(html, /Available everywhere/);
   assert.match(text(render(false, true, "prompt")), /Workspace Default/);
   assert.doesNotMatch(text(render(false, true, "prompt")), /Baseline/);
@@ -250,8 +250,9 @@ test("the directory keeps empty and populated statistics in the same three field
     assert.match(html, />Median</);
     assert.match(html, /Built-in/);
     assert.match(html, /Revision 2 · offline \/ offline/);
-    assert.match(html, /class="block truncate[^" ]*[^"]*" title="Writes a document\."/);
-    assert.doesNotMatch(html, /Lives in Company|Built in, read only|No runs in the last/);
+    assert.match(html, /class="block truncate[^" ]*[^"]*">Writes a document\.<\/span>/);
+    assert.doesNotMatch(html, /title="Writes a document\."/);
+    assert.doesNotMatch(html, /Lives in Workspace|Built in, read only|No runs in the last/);
     assert.doesNotMatch(html, /humagen-tape|humagen-stroke/);
   }
   assert.equal((empty.match(/>–</g) ?? []).length, 3);

@@ -1,9 +1,9 @@
 import { answerOfAction } from "@humagen/adapter/question";
-import { defaultCopy } from "@humagen/components";
+import { defaultCopy, TaskList } from "@humagen/components";
 import { ActionId, type UiAction } from "@humagen/core";
 import { CheckIcon, ChevronRightIcon, CopyIcon, WebSurface } from "@humagen/render-web";
 import { AgentMessage, Inspector, StoppableMark } from "@humagen/web";
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { type Run, turnOf } from "./adapter.ts";
 import { ApiError, api, type Span } from "./api.ts";
 import { statusWord } from "./copyas.ts";
@@ -13,6 +13,7 @@ import { forRun, type Limits } from "./limits.ts";
 import { MessageTime } from "./MessageTime.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
+import { DetailsNavigation } from "./SessionDetails.tsx";
 import { AgentMark, AgentTint, Empty, isEnded, Mentioned, SkeletonRows } from "./ui.tsx";
 
 /** One turn of the conversation and everything it called: the runs, and what each did. */
@@ -180,8 +181,8 @@ function RunRow({ run, by, onOpen }: { run: Run; by: string; onOpen: () => void 
  * its answer, tool steps and calls to other agents, drawn by the component
  * the conversation uses. A call to another agent opens that agent here.
  */
-function Call({ run, by, onOpen }: { run: Run; by: string; onOpen: (id: string) => void }) {
-  const streamed = useRunTurn(run);
+function Call({ run, by, onOpen, step }: { run: Run; by: string; onOpen: (id: string) => void; step?: string }) {
+  const streamed = useRunTurn(run, true);
   const turn = useMemo(() => streamed ?? turnOf(run), [streamed, run]);
   const { stop } = useRunStop(run, live(run));
   const [problem, setProblem] = useState<string | null>(null);
@@ -241,6 +242,12 @@ function Call({ run, by, onOpen }: { run: Run; by: string; onOpen: (id: string) 
       </div>
       <AgentTint name={run.agent}>
         <WebSurface onAction={onAction}>
+          {step && <section aria-label="Selected evidence step" className="mb-4 rounded-aui border border-aui-border p-3">
+            <h3 className="mb-2 text-aui-sm font-medium">Evidence step</h3>
+            {turn.tasks.some((task) => task.id === step)
+              ? <TaskList turn={{ ...turn, planTitle: undefined, tasks: turn.tasks.filter((task) => task.id === step) }} />
+              : <p className="text-aui-xs text-aui-muted">This step is unavailable in the retained history.</p>}
+          </section>}
           <AgentMessage
             turn={turn}
             itemActions={itemActions(run)}
@@ -269,6 +276,7 @@ function Call({ run, by, onOpen }: { run: Run; by: string; onOpen: (id: string) 
 export function ActivityPanel({
   trees,
   selected,
+  step,
   loading,
   leaving,
   limits,
@@ -283,10 +291,12 @@ export function ActivityPanel({
   trees: Tree[];
   /** The call open, by its run. Its agent's whole conversation is shown, at that call. */
   selected: string | null;
+  step?: string;
   loading?: boolean;
   onSelect: (id: string | null) => void;
   onClose: () => void;
 }) {
+  const navigation = useContext(DetailsNavigation);
   const runs = useMemo(
     () => new Map(trees.flatMap((t) => t.runs.map((r) => [r.id, r] as const))),
     [trees],
@@ -323,7 +333,9 @@ export function ActivityPanel({
   return (
     <Inspector
       open={!leaving}
-      title={defaultCopy.conversation.activity}
+      title={navigation ? "Details" : defaultCopy.conversation.activity}
+      wide
+      lead={navigation}
       onClose={onClose}
       onEscape={() => (selected ? onSelect(null) : onClose())}
       actions={
@@ -389,7 +401,7 @@ export function ActivityPanel({
                   {i > 0 && (
                     <hr aria-label={`Call ${i + 1}`} className="border-[var(--humagen-rule)]" />
                   )}
-                  <Call run={c} by={askedBy(c, runs)} onOpen={onSelect} />
+                  <Call run={c} by={askedBy(c, runs)} onOpen={onSelect} step={c.id === selected ? step : undefined} />
                 </div>
               ))}
               {limits && (
@@ -439,6 +451,7 @@ export function Activity({
   turns,
   stamp,
   focus,
+  step,
   leaving,
   limits,
   onClose,
@@ -450,6 +463,7 @@ export function Activity({
   stamp: string;
   /** A run to open first, such as the turn whose activity was asked for. */
   focus?: string | null;
+  step?: string;
   onClose: () => void;
   onFocus?: (id: string | null) => void;
 }) {
@@ -505,6 +519,7 @@ export function Activity({
     <ActivityPanel
       trees={trees}
       selected={selected}
+      step={step}
       loading={loading}
       leaving={leaving}
       limits={limits}

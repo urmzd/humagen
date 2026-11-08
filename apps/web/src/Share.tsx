@@ -194,6 +194,7 @@ export function ShareDialog({
   onPublished?: (thread: Thread) => void;
   onClose: () => void;
 }) {
+  const session = thread.id.startsWith("s_");
   const [project, setProject] = useState(thread.project);
   // The server refused a move (409): the project stays where it is.
   const [fixed, setFixed] = useState(false);
@@ -225,6 +226,7 @@ export function ShareDialog({
     let live = true;
     setChannel(project === thread.project ? thread.channel || "general" : "general");
     setChannels(null);
+    if (session) return;
     coworking
       .channels(project)
       .then((cs) => live && setChannels(cs.filter((c) => !c.archived)))
@@ -232,7 +234,7 @@ export function ShareDialog({
     return () => {
       live = false;
     };
-  }, [project]);
+  }, [project, session]);
 
   useEffect(() => {
     let live = true;
@@ -359,7 +361,11 @@ export function ShareDialog({
       {/* Who is in it first, then how to share it: one panel for both. */}
       <ConversationAccess thread={thread} />
       <h3 className="pt-2 font-medium text-aui-sm">{words.shareTitle}</h3>
-      <p className="text-aui-xs text-aui-muted">{words.shareLede}</p>
+      <p className="text-aui-xs text-aui-muted">
+        {session
+          ? "Share this session with the project's members. Review the audience and included context before sharing."
+          : words.shareLede}
+      </p>
       <form
         ref={form}
         className="flex flex-col gap-3"
@@ -386,20 +392,22 @@ export function ShareDialog({
                 ))}
             </select>
           </Label>
-          <Label text={words.shareChannel}>
-            <select
-              className={field}
-              value={channel}
-              disabled={fixed}
-              onChange={(e) => setChannel(e.target.value)}
-            >
-              {names.map((n) => (
-                <option key={n} value={n}>
-                  {words.channel(n)}
-                </option>
-              ))}
-            </select>
-          </Label>
+          {!session && (
+            <Label text={words.shareChannel}>
+              <select
+                className={field}
+                value={channel}
+                disabled={fixed}
+                onChange={(e) => setChannel(e.target.value)}
+              >
+                {names.map((n) => (
+                  <option key={n} value={n}>
+                    {words.channel(n)}
+                  </option>
+                ))}
+              </select>
+            </Label>
+          )}
         </div>
         {(needsReview || !preview) && (
           <section

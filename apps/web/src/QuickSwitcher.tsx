@@ -11,6 +11,7 @@ import { Modal } from "@humagen/web";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { setAgentHues } from "./agentHues.ts";
 import { api, type DiscoveryItem } from "./api.ts";
+import { type ProjectRef, readableProject } from "./projects.ts";
 import { href, type Route } from "./route.ts";
 import { AgentMark, Problem } from "./ui.tsx";
 
@@ -28,7 +29,7 @@ const kindLabel = (kind: string) =>
 
 function destination(item: DiscoveryItem): Route {
   if (item.kind === "project")
-    return { page: "project", name: item.id === "~" ? "" : item.id, tab: "inbox" };
+    return { page: "project", name: item.id === "~" ? "" : item.id, tab: "context" };
   if (item.kind === "agent") return { page: "agent", name: item.id, tab: "prompt" };
   if (item.kind === "source")
     return { page: "context", source: item.source ?? item.id, tab: "documents" };
@@ -45,7 +46,13 @@ export function QuickSwitcher({
   onClose,
   onGo,
   open = true,
+  projects = [],
+  personalProject,
+  workspaceName,
 }: {
+  projects?: ProjectRef[];
+  personalProject?: string;
+  workspaceName?: string;
   onClose: () => void;
   onGo: (route: Route) => void;
   open?: boolean;
@@ -204,12 +211,24 @@ export function QuickSwitcher({
                     )}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-aui-sm font-medium">{item.title}</span>
+                    <span className="block truncate text-aui-sm font-medium">
+                      {item.kind === "project"
+                        ? readableProject(
+                            item.id,
+                            [...projects, { name: item.id, title: item.title }],
+                            workspaceName,
+                            personalProject,
+                          )
+                        : item.title}
+                    </span>
                     <span className="mt-0.5 flex flex-wrap gap-x-2 text-aui-xs text-aui-muted">
                       <span>{kindLabel(item.kind)}</span>
-                      {item.project && <span>{item.project}</span>}
-                      {item.channel && <span>#{item.channel}</span>}
-                      {item.source && <span>{item.source}</span>}
+                      {item.project !== undefined && (
+                        <span className="min-w-0 truncate">
+                          {readableProject(item.project, projects, workspaceName, personalProject)}
+                        </span>
+                      )}
+                      {item.source && <span className="min-w-0 truncate">{item.source}</span>}
                     </span>
                     {item.snippet && (
                       <span className="mt-1 block line-clamp-2 break-words text-aui-xs text-aui-muted">

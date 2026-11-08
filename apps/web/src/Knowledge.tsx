@@ -24,6 +24,7 @@ import {
   ago,
   button,
   Chip,
+  Confirm,
   card,
   Empty,
   field,
@@ -280,6 +281,7 @@ function SourceDetail({
       (source.lifecycle.provider === "manual" && source.lifecycle.mode === "indexed"));
   const upstream = Boolean(source.lifecycle && source.lifecycle.provider !== "manual");
   const frozen = upstream && source.lifecycle?.snapshot;
+  const [deleting, setDeleting] = useState(false);
   const [docs, setDocs] = useState<Doc[]>([]);
   const [draft, setDraft] = useState({ title: "", uri: "", text: "" });
   const [query, setQuery] = useState("");
@@ -394,18 +396,24 @@ function SourceDetail({
       }
       actions={
         canWrite ? (
-          <button
-            type="button"
-            className={button}
-            onClick={() =>
-              api
-                .deleteSource(source.name)
-                .then(onDeleted)
-                .catch(fail("The source could not be deleted."))
-            }
-          >
-            Delete Source
-          </button>
+          deleting ? (
+            <Confirm
+              question={`Delete ${source.name} and its indexed documents?`}
+              action="Delete Source"
+              onKeep={() => setDeleting(false)}
+              onConfirm={() => {
+                setDeleting(false);
+                api
+                  .deleteSource(source.name)
+                  .then(onDeleted)
+                  .catch(fail("The source could not be deleted."));
+              }}
+            />
+          ) : (
+            <button type="button" className={button} onClick={() => setDeleting(true)}>
+              Delete Source
+            </button>
+          )
         ) : undefined
       }
     >

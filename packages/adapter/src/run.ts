@@ -1,4 +1,4 @@
-import type { ArtifactKind, Citation, Interrupt, Task, Turn, TurnEvent } from "@humagen/core";
+import type { ArtifactKind, Citation, Failure, Interrupt, Task, Turn, TurnEvent } from "@humagen/core";
 import type { RunEvent } from "@humagen/client/types";
 import { interruptOf, settledOf, type WireQuestion } from "./question.ts";
 
@@ -511,7 +511,7 @@ export function adapter(
         return [
           {
             type: "turn.failed",
-            failure: { kind: "internal", message: lastLine(l.error) || "The run failed.", reference: e.run ?? "" },
+            failure: failureOf(l.error, e.run ?? ""),
           },
         ];
       }
@@ -593,7 +593,28 @@ export function turnOf(run: Run): Turn {
     })(),
     failure:
       run.status === "failed"
-        ? { kind: "internal", message: lastLine(run.error) || "The run failed.", reference: run.id }
+        ? failureOf(run.error, run.id)
         : undefined,
   };
+}
+
+/** Classify known failure causes without copying credential paths into user-facing text. */
+export function failureOf(error: string | undefined, reference: string): Failure {
+  const text = error || "";
+  const base = { reference };
+  if (/budget|spend limit|insufficient (?:credit|fund)|(?:status|http)[: ]+402/i.test(text))
+    return { ...base, kind: "forbidden", title: "Budget reached", message: "Review the spending limit or provider balance before trying again.", retryable: false };
+  if (/credential|api[_ -]?key|secret reference|unauthorized|(?:status|http)[: ]+401/i.test(text)) {
+    const provider = /anthropic/i.test(text) ? "Anthropic" : /openai/i.test(text) ? "OpenAI" : /gemini|google/i.test(text) ? "Google" : "Model";
+    return { ...base, kind: "forbidden", title: `${provider} credential unavailable`, message: "Ask a workspace operator to check this provider's connection, then try again.", retryable: false };
+  }
+  if (/rate.?limit|too many requests|(?:status|http)[: ]+429/i.test(text))
+    return { ...base, kind: "rate_limited", message: "Wait a moment, then try again." };
+  if (/timed? ?out|deadline exceeded/i.test(text))
+    return { ...base, kind: "timeout", message: "The request took too long. Try again." };
+  if (/permission denied|forbidden|(?:status|http)[: ]+403/i.test(text))
+    return { ...base, kind: "forbidden", message: "The agent does not have access to complete this request.", retryable: false };
+  if (/unavailable|connection refused|(?:status|http)[: ]+50[234]/i.test(text))
+    return { ...base, kind: "unavailable", message: /connection refused/i.test(text) ? "The service could not be reached (connection refused). Try again shortly." : "The service is unavailable. Try again shortly." };
+  return { ...base, kind: "internal", message: lastLine(error) || "The run failed." };
 }

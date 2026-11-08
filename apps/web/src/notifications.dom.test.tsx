@@ -106,7 +106,7 @@ function Navigation({
       go={onGo}
       me={human ? me : { ...me, principal: { ...me.principal, kind: "machine" } }}
       prefs={null}
-      can={(permission) => allowed && permission === "runs:read"}
+      can={(permission) => allowed && ["runs:read", "alerts:read"].includes(permission)}
       threads={[]}
       pinned={[]}
       onPin={async () => {}}
@@ -121,29 +121,26 @@ function Navigation({
 test("Notifications is one active navigation destination in the sidebar and icon rail", () => {
   net = stubFetch({ "GET /api/threads": () => ({ threads: [], next: null }) });
   const { rerender } = render(<Navigation />);
-  let link = screen.getByRole("link", { name: "Notifications" });
-  assert.equal(link.getAttribute("href"), "/notifications");
+  let link = screen.getByRole("link", { name: "Alerts" });
+  assert.equal(link.getAttribute("href"), "/alerts");
   assert.equal(link.getAttribute("aria-current"), "page");
   assert.doesNotMatch(link.getAttribute("aria-label") ?? "", /need you/i);
   assert.equal(!!link.closest("details"), false);
   assert.equal(screen.queryAllByRole("link", { name: /^Needs You/ }).length, 0);
   rerender(<Navigation open={false} />);
-  link = screen.getByRole("link", { name: "Notifications" });
-  assert.equal(link.getAttribute("href"), "/notifications");
+  link = screen.getByRole("link", { name: "Alerts" });
+  assert.equal(link.getAttribute("href"), "/alerts");
   assert.equal(link.getAttribute("aria-current"), "page");
   assert.equal(!!link.closest("details"), false);
-  assert.equal(screen.getAllByRole("link", { name: /^Notifications/ }).length, 1);
+  assert.equal(screen.getAllByRole("link", { name: /^Alerts/ }).length, 1);
 });
 
 test("Notifications hides without run access and gives machines the same feed", () => {
   net = stubFetch({ "GET /api/threads": () => ({ threads: [], next: null }) });
   const { rerender } = render(<Navigation allowed={false} />);
-  assert.equal(!!screen.queryByRole("link", { name: /Notifications/ }), false);
+  assert.equal(!!screen.queryByRole("link", { name: /Alerts/ }), false);
   rerender(<Navigation human={false} />);
-  assert.equal(
-    screen.getByRole("link", { name: "Notifications" }).getAttribute("href"),
-    "/notifications",
-  );
+  assert.equal(screen.getByRole("link", { name: "Alerts" }).getAttribute("href"), "/alerts");
 });
 
 test("the Notifications badge counts unread work without switching destinations", () => {
@@ -151,19 +148,19 @@ test("the Notifications badge counts unread work without switching destinations"
   const visited: Route[] = [];
   const onGo = (route: Route) => visited.push(route);
   const { rerender } = render(<Navigation inboxCount={3} route={{ page: "inbox" }} onGo={onGo} />);
-  let link = screen.getByRole("link", { name: "Notifications, 3 unread" });
-  assert.equal(link.getAttribute("href"), "/notifications");
+  let link = screen.getByRole("link", { name: "Alerts, 3 need you" });
+  assert.equal(link.getAttribute("href"), "/alerts");
   assert.equal(link.getAttribute("aria-current"), "page");
   fireEvent.click(link, { metaKey: true });
   assert.deepEqual(visited, [], "modified clicks keep the native link destination");
   fireEvent.click(link);
-  assert.deepEqual(visited, [{ page: "notifications" }]);
+  assert.deepEqual(visited, [{ page: "alerts" }]);
   rerender(<Navigation inboxCount={3} open={false} onGo={onGo} />);
-  link = screen.getByRole("link", { name: "Notifications, 3 unread" });
-  assert.equal(link.getAttribute("href"), "/notifications");
+  link = screen.getByRole("link", { name: "Alerts, 3 need you" });
+  assert.equal(link.getAttribute("href"), "/alerts");
   rerender(<Navigation inboxCount={0} onGo={onGo} />);
-  link = screen.getByRole("link", { name: "Notifications" });
-  assert.equal(link.getAttribute("href"), "/notifications");
+  link = screen.getByRole("link", { name: "Alerts" });
+  assert.equal(link.getAttribute("href"), "/alerts");
   assert.equal(link.hasAttribute("aria-label"), false, "delivery count is not an actionable badge");
 });
 
@@ -298,7 +295,7 @@ test("one Notifications feed opens original work and keeps preferences separate"
     within(reader).getByRole("button", { name: defaultCopy.notifications.openSource.thread }),
   );
   const preferences = screen.getByRole("link", { name: defaultCopy.notifications.settings });
-  assert.equal(preferences.getAttribute("href"), "/you/notifications");
+  assert.equal(preferences.getAttribute("href"), "/settings/notifications");
   fireEvent.click(preferences);
   assert.deepEqual(visited, [
     { page: "conversation", id: "thread-one" },
@@ -438,7 +435,7 @@ test("notification preferences do not mount a second delivery feed", async () =>
     "GET /api/me/notifications": () => ({ notifications: [delivered] }),
   });
   render(<PersonalPreferences section="notifications" />);
-  await screen.findByText(defaultCopy.notifications.description);
+  await screen.findByText(defaultCopy.personalPreferences.priorityHint);
   assert.equal(
     net.seen.some((request) => request.path === "/api/me/notifications"),
     false,
@@ -446,111 +443,44 @@ test("notification preferences do not mount a second delivery feed", async () =>
   assert.equal(!!screen.queryByText("Review the release"), false);
 });
 
-test("notification selection, filters and copied links share one route and bare navigation clears the reader", async () => {
-  const previousAddress = window.location.pathname + window.location.search;
-  const second: PlatformMessage = {
-    ...original,
-    id: "in-two",
-    subject: "New release window",
-    kind: "announcement",
-    template: "announcement",
-    parts: [{ id: "body-two", type: "text", text: "The next release window is Friday." }],
-  };
-  const queries: Parameters<Transport["list"]>[0][] = [];
-  const loaded: string[] = [];
-  const via: Transport = {
-    list: async (query) => {
-      queries.push(query);
-      return { messages: query.kind ? [] : [original, second], next: null, open: 0, unread: 0 };
-    },
-    get: async (id) => {
-      loaded.push(id);
-      const found = [original, second].find((message) => message.id === id);
-      if (!found) throw new Error("Message not found");
-      return found;
-    },
-    send: async (message) => message,
-  };
-  net = stubFetch({ "GET /api/threads": () => ({ threads: [], next: null }) });
-  let routeAddress = "";
-  function RoutedNotifications() {
+test("old notification addresses open the alert center and alert filters survive reload", async () => {
+  const previous = window.location.pathname + window.location.search;
+  net = stubFetch({});
+  function Routed() {
     const [route, go] = useRoute();
-    routeAddress = href(route);
-    if (route.page !== "notifications" && route.page !== "inbox") return null;
     return (
       <>
-        <Navigation route={route} onGo={go} />
-        <NotificationsPage
-          signal={0}
-          via={via}
-          onGo={go}
-          onOpen={() => {}}
-          openId={route.message ?? null}
-          onSelection={(message) =>
-            go(
-              { page: "notifications", message: message ?? undefined, kind: route.kind },
-              { replace: true },
-            )
+        <output aria-label="Address">{href(route)}</output>
+        <button
+          type="button"
+          onClick={() =>
+            go({ page: "alerts", priority: "urgent", state: "open" }, { replace: true })
           }
-          kind={route.kind ?? ""}
-          onKind={(kind) =>
-            go(
-              { page: "notifications", message: route.message, kind: kind || undefined },
-              { replace: true },
-            )
-          }
-        />
+        >
+          Urgent alerts
+        </button>
       </>
     );
   }
   try {
-    window.history.replaceState(null, "", "/notifications?message=in-one");
-    const firstMount = render(<RoutedNotifications />);
-    const read = () => screen.getByRole("region", { name: "Message" });
-    await waitFor(() => assert.ok(within(read()).getByText("The release is ready for review.")));
-    const historyEntries = window.history.length;
-    const secondRow = document.querySelector<HTMLButtonElement>('[data-message="in-two"]');
-    assert.ok(secondRow);
-    fireEvent.click(secondRow);
-    await waitFor(() => assert.ok(within(read()).getByText("The next release window is Friday.")));
-    assert.equal(new URL(window.location.href).searchParams.get("message"), second.id);
-    assert.equal(routeAddress, "/notifications?message=in-two");
-    assert.equal(
-      window.history.length,
-      historyEntries,
-      "selection replaces its address without adding another page",
-    );
-
-    fireEvent.change(screen.getByRole("combobox", { name: "Type" }), {
-      target: { value: "alert" },
-    });
-    await waitFor(() => assert.equal(queries.at(-1)?.kind, "alert"));
-    assert.ok(within(read()).getByText("The next release window is Friday."));
-    const copiedAddress = window.location.href;
-    const copied = new URL(copiedAddress);
-    assert.equal(copied.searchParams.get("message"), second.id);
-    assert.equal(copied.searchParams.get("kind"), "alert");
-    assert.equal(routeAddress, copied.pathname + copied.search);
-
-    fireEvent.click(screen.getByRole("link", { name: "Notifications" }));
+    window.history.replaceState(null, "", "/notifications?message=old");
+    render(<Routed />);
+    assert.equal(screen.getByLabelText("Address").textContent, "/alerts");
+    fireEvent.click(screen.getByRole("button", { name: "Urgent alerts" }));
     await waitFor(() =>
-      assert.equal(Boolean(screen.queryByRole("region", { name: "Message" })), false),
+      assert.equal(
+        screen.getByLabelText("Address").textContent,
+        "/alerts?state=open&priority=urgent",
+      ),
     );
-    assert.equal(routeAddress, "/notifications");
-    assert.equal(new URL(window.location.href).searchParams.has("message"), false);
-
-    firstMount.unmount();
-    window.history.replaceState(null, "", copiedAddress);
-    render(<RoutedNotifications />);
-    await waitFor(() => assert.ok(within(read()).getByText("The next release window is Friday.")));
-    assert.ok(
-      loaded.includes(second.id),
-      "remount reads the selected message even when the type filter excludes it",
+    cleanup();
+    render(<Routed />);
+    assert.equal(
+      screen.getByLabelText("Address").textContent,
+      "/alerts?state=open&priority=urgent",
     );
-    assert.equal(routeAddress, copied.pathname + copied.search);
-    assert.equal(new URL(window.location.href).searchParams.get("message"), second.id);
   } finally {
-    window.history.replaceState(null, "", previousAddress);
+    window.history.replaceState(null, "", previous);
   }
 });
 
@@ -560,7 +490,7 @@ test("Alert Rules is a quiet page action beside notification settings", async ()
     <NotificationsPage signal={0} onGo={() => {}} onOpen={() => {}} openId={null} via={feed} />,
   );
   const rules = screen.getByRole("link", { name: defaultCopy.notifications.alertRules });
-  assert.equal(rules.getAttribute("href"), "/monitor/rules");
+  assert.equal(rules.getAttribute("href"), "/alerts/watching");
   assert.equal(
     rules.closest("header"),
     screen.getByRole("link", { name: defaultCopy.notifications.settings }).closest("header"),

@@ -83,7 +83,7 @@ test("resting the pointer on a row previews its title, project, update and last 
   assert.match(card.textContent ?? "", /Vendor contract/);
   assert.match(card.textContent ?? "", /Spring launch · Updated Oct 21/);
   assert.match(card.textContent ?? "", /Clause 4 caps liability/);
-  assert.equal(card.querySelector(".aui-initials")?.textContent, "LA");
+  assert.equal(card.querySelector(".aui-initials")?.textContent, "LE");
   assert.equal(button.getAttribute("aria-describedby"), card.id);
   fireEvent.pointerLeave(button, { pointerType: "mouse" });
   await waitFor(() => assert.equal(screen.queryByRole("tooltip"), null));

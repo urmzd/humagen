@@ -59,14 +59,14 @@ export function ApprovalModePicker({
         button={
           <>
             <span className="truncate" data-approval-mode={mode}>
-              {label}
+              {words.label}: {label}
             </span>
             <span aria-hidden>▾</span>
           </>
         }
       >
         {(close) => (
-          <div role="menu" className="flex w-72 max-w-[80vw] flex-col">
+          <div role="menu" className="flex w-full min-w-0 flex-col">
             {(
               [
                 ["ask", words.ask, words.askHint],

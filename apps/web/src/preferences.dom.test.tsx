@@ -115,8 +115,9 @@ const manage = (title: string) => screen.findByRole("button", { name: `Manage ${
 
 /** Switches the conversation list to its Projects view, from the filter menu. */
 async function projectsView() {
-  fireEvent.click(await screen.findByRole("button", { name: /^Filter conversations/ }));
-  fireEvent.click(await screen.findByRole("button", { name: "Projects" }));
+  fireEvent.change(await screen.findByRole("combobox", { name: "Sidebar session view" }), {
+    target: { value: "projects" },
+  });
 }
 const pinnedRegion = () => screen.queryByRole("region", { name: "Pinned" });
 
@@ -322,7 +323,7 @@ test("project and conversation pins persist independently through unpinning and 
   const pinned = within(await screen.findByRole("region", { name: "Pinned" }));
   assert.equal(
     pinned.getByRole("link", { name: "Launch" }).getAttribute("href"),
-    "/projects/Launch",
+    "/projects/Launch/context",
   );
   fireEvent.click(pinned.getByRole("button", { name: "Unpin project Launch" }));
   await waitFor(() => assert.deepEqual(stored.pinned_projects, []));
@@ -358,7 +359,7 @@ test("keyboard project pinning moves focus to its shortcut and unpinning returns
   assert.deepEqual(stored.pinned, [], "project pinning leaves conversation pins unchanged");
 });
 
-test("keyboard unpinning a project without recent conversations returns focus to More, where Projects lives", async () => {
+test("keyboard unpinning a project without recent conversations returns focus to Settings, where Projects lives", async () => {
   let stored: Preferences = { ...saved, pinned: [], pinned_projects: ["Launch"] };
   net = stubFetch({
     "GET /api/preferences": () => stored,
@@ -367,7 +368,7 @@ test("keyboard unpinning a project without recent conversations returns focus to
   });
   render(<Pins />);
   const unpin = await screen.findByRole("button", { name: "Unpin project Launch" });
-  const projects = screen.getByRole("button", { name: "More" });
+  const projects = screen.getByRole("link", { name: "Settings" });
   unpin.focus();
   fireEvent.click(unpin, { detail: 0 });
   await waitFor(() => assert.equal(document.activeElement === projects, true));

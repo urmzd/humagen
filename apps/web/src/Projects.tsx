@@ -32,7 +32,7 @@ import { ProjectAgentsTab } from "./ProjectAgents.tsx";
 import { ProjectContextPreview } from "./ProjectContextPreview.tsx";
 import { ProjectKnowledgeSection } from "./ProjectKnowledge.tsx";
 import { ProjectRollup } from "./ProjectRollup.tsx";
-import { ProjectHistory, ProjectInbox, ProjectLimits, ProjectPeople } from "./ProjectTabs.tsx";
+import { ProjectLimits, ProjectPeople } from "./ProjectTabs.tsx";
 import { ProjectWork } from "./ProjectWork.tsx";
 import {
   above,
@@ -52,7 +52,6 @@ import {
   updateOf,
   WORKSPACE,
 } from "./projects.ts";
-import { ChannelsTab } from "./Room.tsx";
 import { deliverOptions, recapAgent, recapName, weeklyRecap } from "./recap.ts";
 import { href, PROJECT_TABS, type ProjectTab } from "./route.ts";
 import {
@@ -110,7 +109,7 @@ function Go({
   );
 }
 
-const projectHref = (name: string) => href({ page: "project", name, tab: "inbox" });
+const projectHref = (name: string) => href({ page: "project", name, tab: "context" });
 
 /** Whether the viewport is a phone's, where the tree stops nesting. Follows the window as it resizes. */
 export function useNarrow(): boolean {
@@ -1450,6 +1449,16 @@ export function ContextTab({
           })}
         </section>
       )}
+      <section className="flex flex-col gap-2">
+        <h2 className={heading}>Connections</h2>
+        <p className="text-aui-sm text-aui-muted">
+          Choose the sources available to sessions in this project below. Repository and tool
+          connections are managed in Connections.
+        </p>
+        <a href="/connections" className="self-start text-aui-sm underline">
+          Manage connections
+        </a>
+      </section>
       <ProjectKnowledgeSection
         project={p.name}
         version={p.version}
@@ -1618,7 +1627,7 @@ export function ProjectPage({
   if (missing) {
     return (
       <Page
-        title={words.missing(name === "" ? "~" : name)}
+        title={words.missing(name === "" ? words.workspace : name)}
         lede={words.missingHint}
         back={{ label: words.allProjects, onClick: onOpenAll }}
       >
@@ -1706,7 +1715,7 @@ export function ProjectPage({
       lede={root ? words.workspaceHint : p.description}
       actions={
         <PageActions
-          primary={can("runs:write") ? { label: words.newTask, onSelect: onNewChat } : undefined}
+          primary={can("runs:write") ? { label: "New Session", onSelect: onNewChat } : undefined}
           actions={[
             ...(onPin
               ? [
@@ -1792,6 +1801,7 @@ export function ProjectPage({
           tabs={PROJECT_TABS.map((id) => ({
             id,
             label:
+              (id === "people" ? "Access" : id === "agents" ? "Default agents" : undefined) ??
               words.tab[id] ??
               defaultCopy.project.tabs[id as keyof typeof defaultCopy.project.tabs] ??
               id,
@@ -1889,18 +1899,7 @@ export function ProjectPage({
         />
       )}
 
-      {tab === "inbox" ? (
-        <ProjectInbox
-          key={p.name}
-          project={p}
-          me={me}
-          signal={inboxTick}
-          message={message}
-          onMessage={onMessage}
-          onOpen={onOpenSource}
-          onChanged={onChanged}
-        />
-      ) : tab === "people" ? (
+      {tab === "people" ? (
         <ProjectPeople key={`${p.name}:${p.version}`} project={p} onChanged={changed} />
       ) : tab === "limits" ? (
         <ProjectLimits
@@ -1911,8 +1910,6 @@ export function ProjectPage({
           above={parent ? titleOf(parent, workspaceName) : undefined}
           tick={tick}
         />
-      ) : tab === "history" ? (
-        <ProjectHistory project={p} tick={tick} />
       ) : tab === "agents" ? (
         <ProjectAgentsTab
           key={p.name}
@@ -1929,77 +1926,27 @@ export function ProjectPage({
             onAgentsChanged?.();
           }}
         />
-      ) : tab === "context" ? (
-        <ContextTab
-          key={p.name}
-          detail={detail}
-          workspaceName={workspaceName}
-          canWrite={canWrite}
-          canKnowledge={can("knowledge:read")}
-          onSaved={changed}
-        />
-      ) : tab === "schedules" ? (
-        <Scheduled
-          key={p.name}
-          name={p.name}
-          title={titleOf(p, workspaceName)}
-          schedules={schedules}
-          agents={agents}
-          canSchedule={can("schedules:write")}
-          recap
-          onOpenThread={onOpenThread}
-          onSchedulesChanged={onSchedulesChanged}
-          onChanged={changed}
-        />
-      ) : tab === "channels" ? (
-        <ChannelsTab
-          key={p.name}
-          project={p.name}
-          canWrite={canWrite}
-          onOpenChannel={(c) => onOpenChannel?.(c)}
-        />
       ) : (
-        // Tasks, what sits below and what holds the project take the wide column; what every task is sent and what runs on a timer sit beside them.
-        <div className="grid grid-cols-1 items-start gap-8 @4xl:grid-cols-[minmax(0,1fr)_20rem]">
-          <div className="flex flex-col gap-8">
-            {p.initiative && <ProjectRollup project={p.name} signal={tick} />}
-            <ProjectTasks
-              key={p.name}
-              name={p.name}
-              hasChildren={p.children > 0}
-              tick={tick}
-              onOpenThread={onOpenThread}
-            />
-            <SubProjects
-              detail={detail}
-              places={projects}
-              canCreate={may("create")}
-              canGovern={can("projects:govern")}
-              onOpen={onOpen}
-              onCreated={(created) => {
-                changed();
-                onOpen(created.name);
-              }}
-            />
-          </div>
-          <aside className="humagen-project-context flex min-w-0 flex-col gap-8">
-            <SharedMemory
-              project={p.name}
-              canWrite={may("notes")}
-              canPropose={may("propose")}
-              onChanged={changed}
-            />
-            <Scheduled
-              name={p.name}
-              title={titleOf(p, workspaceName)}
-              schedules={schedules}
-              agents={agents}
-              canSchedule={can("schedules:write")}
-              onOpenThread={onOpenThread}
-              onSchedulesChanged={onSchedulesChanged}
-              onChanged={changed}
-            />
-          </aside>
+        <div className="flex flex-col gap-8">
+          <ContextTab
+            key={p.name}
+            detail={detail}
+            workspaceName={workspaceName}
+            canWrite={canWrite}
+            canKnowledge={can("knowledge:read")}
+            onSaved={changed}
+          />
+          <SubProjects
+            detail={detail}
+            places={projects}
+            canCreate={may("create")}
+            canGovern={can("projects:govern")}
+            onOpen={onOpen}
+            onCreated={(created) => {
+              changed();
+              onOpen(created.name);
+            }}
+          />
         </div>
       )}
     </Page>

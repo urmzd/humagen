@@ -145,8 +145,8 @@ test("a project page shows where it sits, what sits below it, and every limit ab
     .getAllByRole("link")
     .map((a) => [a.textContent, a.getAttribute("href")]);
   assert.deepEqual(links, [
-    ["Acme", "/projects/~"],
-    ["Field engineering", "/projects/Field"],
+    ["Acme", "/projects/~/context"],
+    ["Field engineering", "/projects/Field/context"],
   ]);
   assert.equal(within(crumbs).getByText("Globex").getAttribute("aria-current"), "page");
   fireEvent.click(within(crumbs).getByText("Field engineering"));
@@ -157,15 +157,10 @@ test("a project page shows where it sits, what sits below it, and every limit ab
 
   const below = screen.getByRole("region", { name: "Sub-projects" });
   assert.ok(within(below).getByText("Globex renewals"));
-  assert.equal(within(below).getByRole("link").getAttribute("href"), "/projects/Globex%20renewals");
+  assert.equal(within(below).getByRole("link").getAttribute("href"), "/projects/Globex%20renewals/context");
 
-  // Its tasks are read from the server, filed in this project only. The read
-  // starts in an effect, so it may not have been sent when the page first shows.
-  await waitFor(() =>
-    assert.ok(
-      net.seen.some((r) => r.method === "GET" && r.path === "/api/threads?limit=20&project=Globex"),
-    ),
-  );
+  assert.ok(screen.getByRole("link", { name: "Manage connections" }));
+  assert.equal(net.seen.some((request) => request.path.startsWith("/api/threads")), false);
 });
 
 test("a project's meta line names its lead, the agent that answers what tags no agent there, in its color", async () => {
@@ -193,7 +188,7 @@ test("a project's header is one primary action and a More menu, with Archive and
   open(globexDetail, { onMute: async () => {} });
   const more = await screen.findByRole("button", { name: "More" });
   // Only New Conversation is a button of its own; the rest wait in the menu.
-  assert.ok(screen.getByRole("button", { name: "New Conversation" }));
+  assert.ok(screen.getByRole("button", { name: "New Session" }));
   for (const name of [
     "Mute Project",
     "Edit Project",
@@ -334,12 +329,13 @@ test("a Limits tab the reader cannot change says who can", async () => {
   assert.ok(!screen.queryByText(/Only an admin can change these/));
 });
 
-test("including sub-projects reads the tasks of everything below", async () => {
+test("projects expose context, default agents, access and limits without a conversation feed", async () => {
   open(globexDetail);
-  fireEvent.click(await screen.findByRole("checkbox", { name: "Include sub-projects" }));
-  await waitFor(() =>
-    assert.ok(net.seen.some((r) => r.path === "/api/threads?limit=20&within=Globex")),
-  );
+  await screen.findByRole("navigation", {name:"Where this project sits"});
+  const tabs = screen.getAllByRole("tab").map((tab) => tab.textContent);
+  assert.deepEqual(tabs, ["Context", "Default agents", "Access", "Limits"]);
+  assert.equal(screen.queryByRole("checkbox", {name:"Include sub-projects"}), null);
+  assert.equal(net.seen.some((request) => request.path.startsWith("/api/threads")), false);
 });
 
 const workThread = (id: string, active = 0, failed = 0): ThreadSummary => ({
@@ -378,44 +374,6 @@ test("project work filters loaded rows and opens their native conversation", () 
   assert.ok(screen.getByText(/Filters apply to the conversations loaded/));
   fireEvent.click(screen.getByRole("button", { name: /Work failed/ }));
   assert.deepEqual(opened, ["failed"]);
-});
-
-test("a failed project work read is recoverable and never presented as an empty project", async () => {
-  let failed = true;
-  open(globexDetail, {
-    routes: {
-      "GET /api/threads": () => {
-        if (failed)
-          return new Response(JSON.stringify({ error: "not available" }), { status: 503 });
-        return { threads: [workThread("recovered")], next: null };
-      },
-    },
-  });
-  await screen.findByText("Conversations could not be loaded");
-  assert.equal(screen.queryByText("A place to move work forward"), null);
-  failed = false;
-  fireEvent.click(screen.getByRole("button", { name: "Try Again" }));
-  await screen.findByRole("button", { name: /Work recovered/ });
-  assert.equal(screen.queryByText("Conversations could not be loaded"), null);
-});
-
-test("a project scope change discards an older conversation response", async () => {
-  let resolveOld: (value: unknown) => void = () => {};
-  const old = new Promise((resolve) => {
-    resolveOld = resolve;
-  });
-  open(globexDetail, {
-    routes: {
-      "GET /api/threads": (_body, query) =>
-        query.has("within") ? { threads: [workThread("within")], next: null } : old,
-    },
-  });
-  fireEvent.click(await screen.findByRole("checkbox", { name: "Include sub-projects" }));
-  await screen.findByRole("button", { name: /Work within/ });
-  resolveOld({ threads: [workThread("obsolete")], next: null });
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(screen.queryByRole("button", { name: /Work obsolete/ }), null);
-  assert.ok(screen.getByRole("button", { name: /Work within/ }));
 });
 
 test("the Context tab saves the instructions as a whole from the version read, and shows what comes from above, read only", async () => {
@@ -605,40 +563,11 @@ test("New Project offers company-wide only to those who govern, and puts the pro
   await waitFor(() => assert.deepEqual(made, ["Globex"]));
 });
 
-test("the Schedules tab: one rule under the tabs, and each schedule's time in words", async () => {
-  const recap: ScheduleView = {
-    name: "globex-recap",
-    expression: "9 8 * * 1",
-    agent: "recap-writer",
-    text: "What changed in Globex since the last recap?",
-    project: "Globex",
-    deliver: "project",
-    paused: false,
-    next: [],
-    recent: [],
-  };
-  open(globexDetail, {
-    tab: "schedules",
-    can: [...everything, "schedules:write"],
-    schedules: [recap],
-  });
-  const heading = await screen.findByRole("heading", { name: /^Scheduled ?, 1$/ });
-  const section = heading.closest("section");
-  assert.ok(section);
-  // The tab strip draws the rule under the tabs. The section draws its own only after another.
-  assert.equal(
-    section.parentElement?.firstElementChild === section,
-    true,
-    "it opens the tab's column",
-  );
-  assert.match(section.className, /first:border-t-0/);
-  assert.ok(screen.getByText("Mondays at 08:09 UTC"));
-  assert.ok(!screen.queryByText(/9 8 \* \* 1/), "not as cron");
-  assert.equal(
-    screen.getByText("Mondays at 08:09 UTC").getAttribute("title"),
-    "9 8 * * 1",
-    "the expression is a hover away",
-  );
+test("an old project schedules selection shows its context bundle", async () => {
+  open(globexDetail, {tab:"schedules"});
+  await screen.findByRole("link", {name:"Manage connections"});
+  assert.equal(screen.queryByRole("tab", {name:"Schedules"}), null);
+  assert.equal(screen.queryByText(/Scheduled ?,/), null);
 });
 
 const knows = [...everything, "knowledge:read"];

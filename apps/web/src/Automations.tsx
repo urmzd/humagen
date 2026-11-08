@@ -3,6 +3,7 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import type { GitHubAutomation } from "../../../packages/client/src/generated/types.ts";
 import { api, type Client, type Revision, type ScheduleView } from "./api.ts";
 import type { ProjectRef } from "./projects.ts";
+import { href } from "./route.ts";
 import { ScheduleForm } from "./Schedules.tsx";
 import { AgentMark, button, card, field, Label, Page, Problem, primary } from "./ui.tsx";
 
@@ -84,7 +85,17 @@ export function Automations({
     }
   };
   return (
-    <Page title={words.title} lede={words.lede}>
+    <Page
+      title={words.title}
+      lede={
+        <>
+          {words.lede}{" "}
+          <a className="underline underline-offset-2" href={href({ page: "sessions" })}>
+            Open Sessions
+          </a>
+        </>
+      }
+    >
       {problem && <Problem message={problem} />}
       {!kind && (
         <div className="flex flex-wrap gap-2">
