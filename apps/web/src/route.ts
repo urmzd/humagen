@@ -262,7 +262,7 @@ export type Route =
   | { page: "agents"; state?: string }
   | { page: "agent"; name: string | null; tab: AgentTab }
   | { page: "artifacts"; artifact?: string }
-  /** Your connections: the tools that act as you, and the credential you gave each. `provider` opens one to connect. */
+  /** Connections: apps and MCPs. `provider` opens one in the side sheet. */
   | { page: "connections"; provider?: string }
   | { page: "directory"; tab: DirectoryTab }
   | { page: "settings"; section: SettingsSection; permission?: string };
