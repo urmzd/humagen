@@ -204,9 +204,10 @@ type Participant struct {
 
 // SessionIdentity pins the agent and parent that own a session.
 type SessionIdentity struct {
-	Agent  string `json:"agent"`
-	Parent string `json:"parent"`
-	Label  string `json:"label,omitempty"`
+	Agent       string `json:"agent"`
+	Parent      string `json:"parent"`
+	Label       string `json:"label,omitempty"`
+	SourceAlert string `json:"source_alert,omitempty"`
 }
 
 // Thread retains storage compatibility while sessions have one immutable agent.

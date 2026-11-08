@@ -1005,6 +1005,8 @@ func sameField(a, b Project, field string) bool {
 		return (a.Account == nil) == (b.Account == nil) && (a.Account == nil || *a.Account == *b.Account)
 	case FieldInstructions:
 		return a.Instructions == b.Instructions
+	case FieldApproveReviews:
+		return a.ApproveReviews == b.ApproveReviews
 	case FieldAgentPosts:
 		return a.AgentPosts == b.AgentPosts
 	case FieldExperts:
@@ -1167,6 +1169,8 @@ func (s *Store) upsert(tenantName string, p Project, owns []string, by string, a
 			next.Members = slices.Clone(p.Members)
 		case FieldKinds:
 			next.Kinds = slices.Clone(p.Kinds)
+		case FieldApproveReviews:
+			next.ApproveReviews = p.ApproveReviews
 		case FieldAgentPosts:
 			next.AgentPosts = p.AgentPosts
 		case FieldAgents:

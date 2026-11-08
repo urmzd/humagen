@@ -277,7 +277,9 @@ func (s *Store) Save(tenant string, r Record) (Record, error) {
 // save reads what the run holds and writes the rating at the versions read.
 // It returns state.ErrConflict when another writer moved any of them.
 func (s *Store) save(tenant string, r Record, nativeID ...string) (Record, error) {
+	source := ""
 	if len(nativeID) > 0 {
+		source = nativeID[0]
 		var previous Record
 		_, err := s.lookup(tenant, "native:"+hash(nativeID[0]), &previous)
 		if err == nil {
@@ -312,6 +314,7 @@ func (s *Store) save(tenant string, r Record, nativeID ...string) (Record, error
 		}
 		w.put(tenant, recordKey(r.Run, n), r, at)
 		w.put(tenant, ownKey(r), r, 0)
+		w.put(tenant, nativeOwnerKey(r), source, 0)
 		if len(nativeID) > 0 {
 			w.put(tenant, "native:"+hash(nativeID[0]), r, state.Missing)
 		}
@@ -333,6 +336,7 @@ func (s *Store) save(tenant string, r Record, nativeID ...string) (Record, error
 	w.put(tenant, subjectKey(r.Run, r.Subject, r.FindingID), r.Seq, state.Missing)
 	w.put(tenant, recordKey(r.Run, r.Seq), r, state.Missing)
 	w.put(tenant, ownKey(r), r, 0)
+	w.put(tenant, nativeOwnerKey(r), source, 0)
 	if len(nativeID) > 0 {
 		w.put(tenant, "native:"+hash(nativeID[0]), r, state.Missing)
 	}

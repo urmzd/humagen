@@ -331,3 +331,7 @@ func Clone(e event.Envelope) event.Envelope {
 
 // MetaSession is pinned by platform admission, never accepted from ingress.
 const MetaSession = "_humagen.session"
+
+// MetaSourceAlert links a run to the authorized alert that initiated its session.
+// Ingress copies are stripped; only immutable session identity may pin it.
+const MetaSourceAlert = "_humagen.source_alert"

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/integrations/slack"
@@ -100,6 +101,10 @@ func TestClientDeliverySurvivesReseatingAndReplicaChanges(t *testing.T) {
 							Type: event.TypeText, Data: event.Text{Text: value}, Time: time.Now()}
 					}
 					dial := func(p *Platform, c clients.Client) Peer {
+						c.Managed, c.Enabled = clients.ManagedStatic, true
+						if err := p.Runs.Record("run", wire.NewEvent(wire.Raise{ID: "accepted", Tenant: c.Tenant, Origin: string(surface), Channel: to.String(), Agent: "lead", At: time.Now()}), 1); err != nil {
+							t.Fatal(err)
+						}
 						st, err := p.dial(c, resolved{token: "token", signing: "secret"})
 						if err != nil {
 							t.Fatal(err)

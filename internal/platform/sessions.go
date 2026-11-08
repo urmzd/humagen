@@ -26,14 +26,15 @@ import (
 // SessionInput selects one agent's continuing conversation. Parent is a session
 // ID; external places are accepted only by trusted connector ingress.
 type SessionInput struct {
-	Text    string `json:"text"`
-	Agent   string `json:"agent,omitempty"`
-	Parent  string `json:"parent,omitempty"`
-	Label   string `json:"label,omitempty"`
-	Fresh   bool   `json:"fresh,omitempty"`
-	Project string `json:"project,omitempty"`
-	Model   string `json:"model,omitempty"`
-	Effort  string `json:"effort,omitempty"`
+	Text        string `json:"text"`
+	Agent       string `json:"agent,omitempty"`
+	Parent      string `json:"parent,omitempty"`
+	Label       string `json:"label,omitempty"`
+	Fresh       bool   `json:"fresh,omitempty"`
+	Project     string `json:"project,omitempty"`
+	Model       string `json:"model,omitempty"`
+	Effort      string `json:"effort,omitempty"`
+	SourceAlert string `json:"source_alert,omitempty"`
 }
 
 // SessionMessageOptions choose a mentioned agent's continuing or fresh child.
@@ -155,11 +156,29 @@ func (p *Platform) sessionAgent(ctx context.Context, who auth.Principal, project
 	return explicit, nil
 }
 func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in SessionInput) (SessionView, error) {
+	ctx = context.WithValue(ctx, sessionReaderKey{}, who)
 	if err := threads.CheckText(in.Text); err != nil {
 		return SessionView{}, err
 	}
 	if _, _, _, _, err := p.author(who, nil); err != nil {
 		return SessionView{}, err
+	}
+	if in.SourceAlert != "" {
+		source, err := p.sourceAlertSession(ctx, who, in.SourceAlert)
+		if err != nil {
+			return SessionView{}, err
+		}
+		if in.Project != "" && projects.NameOf(in.Project) != source.Project {
+			return SessionView{}, fmt.Errorf("%w: a fix session stays in its source alert's project", threads.ErrInvalid)
+		}
+		if in.Parent == "" {
+			in.Parent = source.ID
+		} else if !p.sessionDescendantOf(who.Tenant, in.Parent, source.ID) {
+			return SessionView{}, fmt.Errorf("%w: a fix session stays in its source alert's session tree", threads.ErrInvalid)
+		}
+		if in.Label == "" {
+			in.Label = "fix-" + in.SourceAlert
+		}
 	}
 	project := in.Project
 	var parent threads.Thread
@@ -176,6 +195,9 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 			return SessionView{}, fmt.Errorf("%w: a child stays in its parent's project", threads.ErrInvalid)
 		}
 		project = parent.Project
+		if in.SourceAlert == "" {
+			in.SourceAlert = parent.Session.SourceAlert
+		}
 	}
 	if project == "" && in.Parent == "" {
 		pr, err := p.PersonalProject(who)
@@ -209,7 +231,7 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 	if err != nil {
 		return SessionView{}, err
 	}
-	th := threads.Thread{ID: rec.ID, Project: project, Channel: ch.Name, Title: firstWords(in.Text, threads.MaxTitle), Visibility: threads.Private, Default: agent, Agents: []string{agent}, CreatedBy: who.Subject, Session: &threads.SessionIdentity{Agent: agent, Parent: rec.Key.Parent, Label: rec.Key.Label}}
+	th := threads.Thread{ID: rec.ID, Project: project, Channel: ch.Name, Title: firstWords(in.Text, threads.MaxTitle), Visibility: threads.Private, Default: agent, Agents: []string{agent}, CreatedBy: who.Subject, Session: &threads.SessionIdentity{Agent: agent, Parent: rec.Key.Parent, Label: rec.Key.Label, SourceAlert: in.SourceAlert}}
 	if parent.ID != "" {
 		th.Participants = slices.Clone(parent.Participants)
 		th.Visibility = parent.Visibility
@@ -217,6 +239,13 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 	_, err = p.Threads.Create(who.Tenant, th, p.now())
 	if err != nil && !errors.Is(err, threads.ErrExists) {
 		return SessionView{}, err
+	}
+	existing, err := p.Threads.Get(who.Tenant, rec.ID)
+	if err != nil {
+		return SessionView{}, err
+	}
+	if existing.Session == nil || existing.Session.SourceAlert != in.SourceAlert {
+		return SessionView{}, fmt.Errorf("%w: this session belongs to another source alert", threads.ErrInvalid)
 	}
 	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: in.Text, Model: in.Model, Effort: in.Effort}); err != nil {
 		return SessionView{}, err
@@ -232,6 +261,7 @@ func firstWords(text string, n int) string {
 	return text
 }
 func (p *Platform) PostSession(ctx context.Context, who auth.Principal, id string, in MessageInput, options ...SessionMessageOptions) (SessionView, error) {
+	ctx = context.WithValue(ctx, sessionReaderKey{}, who)
 	var option SessionMessageOptions
 	if len(options) > 0 {
 		option = options[0]
@@ -597,7 +627,8 @@ func (p *Platform) sharedState() state.Store {
 	return p.cfg.Backends.State
 }
 
-// EnsureAlertSession gives a system problem a durable reply place without calling a model.
+// EnsureAlertSession gives a system problem a durable place where a person can
+// reply. It does not call a model or grant anyone access to an existing session.
 func (p *Platform) EnsureAlertSession(ctx context.Context, tenant, agent, project, owner, title string) (string, error) {
 	if agent == "" || agent == Open {
 		return "", fmt.Errorf("%w: an alert session needs one agent", threads.ErrInvalid)

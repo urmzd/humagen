@@ -232,6 +232,8 @@ type GitHubAutomation struct {
 }
 
 type GitHubOptions struct {
+	// FixPullRequests permits separately approved draft fix PRs; existing /fix is unchanged.
+	FixPullRequests bool `json:"fix_pull_requests,omitempty"`
 	// ActionRepositories explicitly grant writes from another surface to exact repositories.
 	ActionRepositories []string           `json:"action_repositories,omitempty"`
 	Automations        []GitHubAutomation `json:"automations,omitempty"`

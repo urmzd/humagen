@@ -9,8 +9,11 @@ import (
 	"net/http"
 	"slices"
 
+	"github.com/urmzd/orchagent/flow/address"
 	"github.com/urmzd/orchagent/flow/connectors"
+	ghtransport "github.com/urmzd/orchagent/flow/connectors/github"
 	"github.com/urmzd/orchagent/flow/connectors/mention"
+	slacktransport "github.com/urmzd/orchagent/flow/connectors/slack"
 	"github.com/urmzd/orchagent/flow/signature"
 
 	"github.com/urmzd/humagen/internal/legacy"
@@ -419,8 +422,14 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 			Interval: p.cfg.ClientInterval, Log: p.log,
 			DeliveryState: p.cfg.Backends.DeliveryState, DeliveryScope: clientDeliveryScope(c),
 		}
+		cfg.Feedback, cfg.ObserveDelivery = p.feedbackFor(c), p.deliveredFor(c)
+		cfg.ContinueThread = func(team, channel, thread string) bool {
+			return p.continueSurface(c, address.Address{Connector: "slack", Workspace: team, Path: []string{channel}}.WithParam("thread", thread))
+		}
+		_, cfg.StatusReactions = api.(slacktransport.ReactionAPI)
 		if c.Slack != nil {
 			cfg.Sessions = c.Slack.Sessions
+			cfg.ActionChannels = c.Slack.ActionChannels
 			for _, cmd := range c.Slack.Commands {
 				cfg.Commands = append(cfg.Commands, slack.Command{Name: cmd.Name, Description: cmd.Description, ArgumentHint: cmd.ArgumentHint})
 			}
@@ -464,7 +473,17 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		if g := c.GitHub; g != nil {
 			cfg.AutoLabels, cfg.Checks, cfg.Guides, cfg.Mutations, cfg.ReadRepositories = g.AutoLabels, g.Checks, g.Guides, g.Mutations, g.ReadRepositories
 			cfg.Login = g.Login
+			cfg.ActionRepositories = g.ActionRepositories
+			cfg.FixPullRequests = g.FixPullRequests
 		}
+		cfg.Feedback, cfg.ObserveDelivery = p.feedbackFor(c), p.deliveredFor(c)
+		cfg.AuthorizeFixPull = p.authorizeFixPull(c, api)
+		cfg.FixPullContext = p.fixPullContext(c)
+		cfg.ContinueThread = func(a address.Address) bool { return p.continueSurface(c, a) }
+		_, cfg.StatusReactions = api.(ghtransport.ReactionAPI)
+		cfg.StatusReactions = cfg.StatusReactions && cfg.Login != ""
+		cfg.ReviewApproval = func(v ghtransport.View) bool { return p.reviewApproval(c, v) }
+		cfg.ReviewText = func(v ghtransport.View) (string, error) { return p.reviewView(c, v) }
 		peer, err := github.New(cfg)
 		if err != nil {
 			return nil, refused(err)

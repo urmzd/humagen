@@ -1,6 +1,11 @@
 package httpapi
 
 import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	gh "github.com/urmzd/humagen/internal/presentation/github"
+	"github.com/urmzd/orchagent/flow/event"
 	"net/http"
 	"strconv"
 	"time"
@@ -12,10 +17,11 @@ import (
 
 func (s *Server) putFeedback(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
-		Rating  string          `json:"rating"`
-		Reason  string          `json:"reason"`
-		Comment string          `json:"comment"`
-		ActAs   *platform.ActAs `json:"act_as"`
+		FindingID string          `json:"finding_id,omitempty"`
+		Rating    string          `json:"rating"`
+		Reason    string          `json:"reason"`
+		Comment   string          `json:"comment"`
+		ActAs     *platform.ActAs `json:"act_as"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -42,12 +48,39 @@ func (s *Server) putFeedback(w http.ResponseWriter, r *http.Request, who auth.Pr
 		fail(w, http.StatusBadRequest, "invalid feedback")
 		return
 	}
-	record, err := s.P.Feedback.Save(who.Tenant, feedback.Record{Run: run.ID, Subject: actor.Subject, Rating: body.Rating, Reason: body.Reason, Comment: body.Comment})
+	if body.FindingID != "" {
+		var report gh.ReviewReport
+		if json.Unmarshal([]byte(gh.ReviewJSON(run.Answer)), &report) != nil || !gh.IsReviewFormat(report.Format) {
+			fail(w, 400, "finding does not belong to this answer")
+			return
+		}
+		found := false
+		for _, finding := range report.Findings {
+			if finding.ID == body.FindingID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			fail(w, 400, "finding does not belong to this answer")
+			return
+		}
+	}
+	record, err := s.P.Feedback.Save(who.Tenant, feedback.Record{Run: run.ID, Subject: actor.Subject, Rating: body.Rating, Reason: body.Reason, Comment: body.Comment, FindingID: body.FindingID})
 	if err != nil {
 		s.problem(w, err)
 		return
 	}
 	if err := s.P.RecordFeedbackCandidate(who.Tenant, record); err != nil {
+		s.problem(w, err)
+		return
+	}
+	reasons := []string(nil)
+	if record.Reason != "" {
+		reasons = []string{record.Reason}
+	}
+	identity := fmt.Sprintf("feedback-%x", sha256.Sum256([]byte(record.Run+"\x00"+record.Subject+"\x00"+record.FindingID+"\x00"+record.UpdatedAt.Format(time.RFC3339Nano))))
+	if err := s.P.PublishFeedback(r.Context(), who.Tenant, identity, record.UpdatedAt, event.Feedback{RunID: record.Run, MessageID: record.Run, FindingID: record.FindingID, Actor: event.Actor{ID: actor.Subject, User: actor.Subject}, Rating: record.Rating, Reasons: reasons, Comment: record.Comment, Surface: "console"}); err != nil {
 		s.problem(w, err)
 		return
 	}
@@ -58,6 +91,7 @@ func (s *Server) putFeedback(w http.ResponseWriter, r *http.Request, who auth.Pr
 // platform calls them, by handle and by name, and never by subject, which may
 // hold an address; mine marks the rating of the person asking.
 type shownFeedback struct {
+	FindingID string    `json:"finding_id,omitempty"`
 	Run       string    `json:"run"`
 	By        string    `json:"by"`
 	ByName    string    `json:"by_name"`
@@ -73,7 +107,7 @@ func (s *Server) shownFeedback(who auth.Principal, self string, records []feedba
 	out := make([]shownFeedback, len(records))
 	for i, r := range records {
 		out[i] = shownFeedback{
-			Run: r.Run, By: names.Key(r.Subject), ByName: names.Of(r.Subject), Mine: r.Subject == self,
+			FindingID: r.FindingID, Run: r.Run, By: names.Key(r.Subject), ByName: names.Of(r.Subject), Mine: r.Subject == self,
 			Rating: r.Rating, Reason: r.Reason, Comment: r.Comment, UpdatedAt: r.UpdatedAt,
 		}
 	}
@@ -110,6 +144,19 @@ func (s *Server) deleteFeedback(w http.ResponseWriter, r *http.Request, who auth
 	if err := s.P.Feedback.Remove(who.Tenant, r.PathValue("id"), who.Subject, r.URL.Query().Get("finding_id")); err != nil {
 		s.problem(w, err)
 		return
+	}
+	at, err := s.P.Feedback.ChangedAt(who.Tenant, r.PathValue("id"), who.Subject)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	if !at.IsZero() {
+		finding := r.URL.Query().Get("finding_id")
+		identity := fmt.Sprintf("feedback-removed-%x", sha256.Sum256([]byte(r.PathValue("id")+"\x00"+who.Subject+"\x00"+finding+"\x00"+at.Format(time.RFC3339Nano))))
+		if err := s.P.PublishFeedback(r.Context(), who.Tenant, identity, at, event.Feedback{RunID: r.PathValue("id"), MessageID: r.PathValue("id"), FindingID: finding, Actor: event.Actor{ID: who.Subject, User: who.Subject}, Removed: true, Surface: "console"}); err != nil {
+			s.problem(w, err)
+			return
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
