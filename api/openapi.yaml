@@ -422,8 +422,8 @@ paths:
         - {name: mine, in: query, required: false, schema: {type: boolean}}
         - {"name": "status", "in": "query", "required": false, "schema": {"type": "string"}}
         - {"name": "agent", "in": "query", "required": false, "schema": {"type": "string"}}
-        - {"name": "project", "in": "query", "required": false, "schema": {"type": "string"}}
-        - {"name": "parent", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "project", "in": "query", "required": false, "description": "A project's name, or `~` for the workspace itself.", "schema": {"type": "string"}}
+        - {"name": "parent", "in": "query", "required": false, "description": "A session's id, or `schedule://<name>` for a schedule's runs.", "schema": {"type": "string"}}
         - {"name": "after", "in": "query", "required": false, "schema": {"type": "string"}}
         - {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200}}
       responses:
@@ -4038,7 +4038,19 @@ paths:
       operationId: listSchedules
       tags: [schedules]
       summary: List schedules
+      description: |
+        Every schedule filed where the caller may read, or with `project`
+        those filed in one project (`~` is the workspace itself). Each run
+        of a schedule is a session in its project, under
+        `schedule://<name>`: `GET /api/sessions?parent=schedule://<name>`
+        lists them.
       x-permission: schedules:read
+      parameters:
+        - name: project
+          in: query
+          required: false
+          description: A project's name, or `~` for the workspace. One the caller may not read is 404.
+          schema: {type: string, minLength: 1, maxLength: 63}
       responses:
         "200":
           description: Every schedule, with its next fires and recent runs.
@@ -4051,8 +4063,10 @@ paths:
                   schedules:
                     type: array
                     items: {$ref: "#/components/schemas/ScheduleView"}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
     post:
       operationId: createSchedule
@@ -13086,9 +13100,6 @@ components:
             on a view.
           type: string
           format: date-time
-        approve_reviews:
-          type: boolean
-          default: false
     ProjectStep:
       description: One project on the way down to another.
       type: object
@@ -13102,8 +13113,16 @@ components:
       allOf:
         - {$ref: "#/components/schemas/Project"}
         - type: object
-          required: [depth, path, children, conversations, active, schedules, notes, proposed, access, actions, mine, unread, row_agents]
+          required: [depth, path, children, conversations, active, schedules, notes, proposed, access, actions, mine, unread, row_agents, visibility]
           properties:
+            visibility:
+              description: |
+                How widely the project is read by its own entries: `private`
+                (a Personal project, or one person alone), `shared` (named
+                people or roles), or `workspace` (an entry for everyone).
+                Owners above a members-only project read it too.
+              type: string
+              enum: [private, shared, workspace]
             unread:
               description: Unread open messages and announcements in the caller's own inbox filed directly in this project, excluding every message the reader cannot see.
               type: integer
@@ -13286,9 +13305,6 @@ components:
           - ''
           - publish
           - review
-        approve_reviews:
-          type: boolean
-          default: false
     ProjectAccess:
       description: A caller's role in a project, where it comes from, and the entry or rule that gave it.
       type: object

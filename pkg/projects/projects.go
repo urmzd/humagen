@@ -117,15 +117,14 @@ const ManagedFile = "file"
 // Fields the platform file can own. A field it owns is changed only by the
 // file, and a change through the API answers ErrManaged.
 const (
-	FieldTitle          = "title"
-	FieldDescription    = "description"
-	FieldKind           = "kind"
-	FieldParent         = "parent"
-	FieldAccount        = "account"
-	FieldInstructions   = "instructions"
-	FieldAgentPosts     = "agent_posts"
-	FieldApproveReviews = "approve_reviews"
-	FieldMembers        = "members"
+	FieldTitle        = "title"
+	FieldDescription  = "description"
+	FieldKind         = "kind"
+	FieldParent       = "parent"
+	FieldAccount      = "account"
+	FieldInstructions = "instructions"
+	FieldAgentPosts   = "agent_posts"
+	FieldMembers      = "members"
 	// FieldKinds is the root's own kinds.
 	FieldKinds = "kinds"
 )
@@ -204,8 +203,6 @@ type Project struct {
 	// writes: AgentPostsPublish or AgentPostsReview. Empty takes the
 	// default for the project's kind; see EffectiveAgentPosts.
 	AgentPosts string `json:"agent_posts,omitempty"`
-	// ApproveReviews explicitly permits agents to submit approving PR reviews here.
-	ApproveReviews bool `json:"approve_reviews,omitempty"`
 	// Experts are who answers for some topics here and below. Never nil.
 	Experts []Expert `json:"experts"`
 	// Members are who holds a role here. A stored project always lists
@@ -345,9 +342,14 @@ func ValidName(name string) bool { return validName.MatchString(name) }
 // builtIn reports whether a kind is one humagen defines.
 func builtIn(k Kind) bool { return k == Company || k == Team || k == Account }
 
+// retiredField names fields projects no longer have. A stored project may still
+// list one as the file's; reading it drops the name. approve_reviews went when
+// agents stopped approving pull requests (RFC 0009).
+var retiredField = map[string]bool{"approve_reviews": true}
+
 var validField = map[string]bool{
 	FieldTitle: true, FieldDescription: true, FieldKind: true, FieldParent: true, FieldAccount: true, FieldInstructions: true,
-	FieldAgentPosts: true, FieldApproveReviews: true, FieldExperts: true, FieldMembers: true, FieldKinds: true, FieldAgents: true, FieldKnowledge: true, FieldSkills: true,
+	FieldAgentPosts: true, FieldExperts: true, FieldMembers: true, FieldKinds: true, FieldAgents: true, FieldKnowledge: true, FieldSkills: true,
 }
 
 // validate checks a project on its own: its fields and bounds, not its place.
