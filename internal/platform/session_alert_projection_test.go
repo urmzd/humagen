@@ -78,3 +78,68 @@ func TestSessionAlertResolutionRequiresRecordedAnswer(t *testing.T) {
 		}
 	}
 }
+
+func TestSessionAlertFallbackRequiresAnAvailableAgent(t *testing.T) {
+	for _, configured := range []bool{false, true} {
+		name := "without_model"
+		if configured {
+			name = "with_model"
+		}
+		t.Run(name, func(t *testing.T) {
+			cfg := Config{Workspace: t.TempDir()}
+			if configured {
+				cfg.BuiltinProvider, cfg.BuiltinModel = "offline", "offline"
+			}
+			p, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = p.Close() })
+			at := time.Now().UTC()
+			m, _, err := p.Inbox.RaiseOnce("acme", "budget", inbox.Message{Kind: inbox.KindBudget, To: "ada", Subject: "Budget review"}, at)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := p.projectSessionAlert("acme", "budget", m, at); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := p.Inbox.ByID("acme", m.ID); !ok {
+				t.Fatal("legacy attention disappeared")
+			}
+			rows, err := p.Alerts.Alerts("acme")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !configured && len(rows) != 0 {
+				t.Fatal("unconfigured fallback fabricated a session alert")
+			}
+			if configured && (len(rows) != 1 || rows[0].Session == "" || len(rows[0].Who) != 1 || rows[0].Who[0] != "ada") {
+				t.Fatalf("configured fallback lost its private anchor: %+v", rows)
+			}
+			m.Source.Agent = "missing-explicit-agent"
+			if err := p.projectSessionAlert("acme", "explicit", m, at); err == nil {
+				t.Fatal("explicit missing agent was silently accepted")
+			}
+		})
+	}
+}
+
+func TestSessionAlertDecisionRequiresAnExplicitRecordedAction(t *testing.T) {
+	at := time.Now().UTC()
+	m := inbox.Message{Kind: inbox.KindFailure, State: inbox.Resolved, Parts: []inbox.Part{{Outcome: &inbox.Outcome{By: "ada", At: at}}}}
+	for _, action := range []string{"", "read", "hidden", "dismiss", "expired", "failed", "stopped", "settled"} {
+		m.Parts[0].Outcome.Action = action
+		if _, ok := decidedSessionAlert(m); ok {
+			t.Fatalf("%q resolved a failure alert without a decision", action)
+		}
+	}
+	m.Parts[0].Outcome.Action = ActAcknowledge
+	got, ok := decidedSessionAlert(m)
+	if !ok || got.By != "ada" || !got.At.Equal(at) {
+		t.Fatalf("explicit acknowledgement lost its actor or time: %+v %v", got, ok)
+	}
+	m.State = inbox.Open
+	if _, ok := decidedSessionAlert(m); ok {
+		t.Fatal("an unresolved message resolved its alert")
+	}
+}
