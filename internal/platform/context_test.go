@@ -112,3 +112,52 @@ func TestAnAgentPullsContextFromWhereItWasAsked(t *testing.T) {
 		t.Fatalf("the agent's get_context reached the resolver as %+v", a)
 	}
 }
+
+// The registry's get_context pulls, as its caller, from the place the message
+// it answers came from, for the run that calls; a caller answering no
+// message, or one who cannot read it, is told so.
+func TestTheSystemToolGetContextPullsForTheMessageAnswered(t *testing.T) {
+	p, ana := slackWorkspace(t)
+	got := echoSlack(t, p, 1)
+	out, err := p.SendMessages(t.Context(), ana, sayIn("what were they discussing?", slackRef("D0ANA", "1700000000.000100", "")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools, err := p.SystemTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var get platform.SystemTool
+	for _, tl := range tools {
+		if tl.Name == platform.ToolGetContext {
+			get = tl
+		}
+	}
+	if get.Call == nil {
+		t.Fatal("get_context is not in the registry")
+	}
+	res, err := get.Call(t.Context(), platform.SystemCall{Who: ana, Message: out.ID, Run: "run-9"}, []byte(`{"request":" the release date "}`))
+	if err != nil || res.IsError || !strings.Contains(res.Text, "They were discussing the release date.") || !strings.Contains(res.Text, "reference_only") {
+		t.Fatalf("get_context = %+v, %v", res, err)
+	}
+	if a := got(); len(a) != 1 || a[0].Request != "the release date" || a[0].Subject != "ana" || a[0].Run != "run-9" || a[0].Origin != "slack://T0TEAM/D0ANA/1700000000.000100" {
+		t.Fatalf("the resolver was asked %+v", a)
+	}
+	vic := auth.Principal{Subject: "vic", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Viewer}}
+	for name, c := range map[string]struct {
+		call platform.SystemCall
+		args string
+		want string
+	}{
+		"no message":        {platform.SystemCall{Who: ana}, `{"request":"anything"}`, "message context"},
+		"no request":        {platform.SystemCall{Who: ana, Message: out.ID}, `{"request":" "}`, "say in words"},
+		"an unseen message": {platform.SystemCall{Who: vic, Message: out.ID}, `{"request":"anything"}`, "not one you can read"},
+	} {
+		if res, err := get.Call(t.Context(), c.call, []byte(c.args)); err != nil || !res.IsError || !strings.Contains(res.Text, c.want) {
+			t.Errorf("%s = %+v, %v; want %q", name, res, err, c.want)
+		}
+	}
+	if len(got()) != 1 {
+		t.Fatalf("a refused call reached the resolver: %+v", got())
+	}
+}

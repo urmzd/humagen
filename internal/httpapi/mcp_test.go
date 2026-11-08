@@ -77,8 +77,12 @@ func TestTheMCPOffersOnlyWhatTheCallerMayDo(t *testing.T) {
 			t.Errorf("an admin is not offered %s: %v", want, all)
 		}
 	}
-	if len(all) != len(platform.SystemOperations) {
-		t.Errorf("an admin is offered %d tools, the registry has %d", len(all), len(platform.SystemOperations))
+	registry, err := f.p.SystemTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != len(registry) || !slices.Contains(all, platform.ToolAgent) || !slices.Contains(all, platform.ToolGetContext) {
+		t.Errorf("an admin is offered %d tools of the registry's %d: %v", len(all), len(registry), all)
 	}
 	read := toolNames(t, f.mcpSession(t, viewer))
 	if !slices.Contains(read, "list_agents") || !slices.Contains(read, "list_alerts") {
@@ -152,6 +156,9 @@ func TestEveryContractToolIsItsRouteWithItsPermission(t *testing.T) {
 	}
 	nobody := auth.Principal{Subject: "nobody", Tenant: "acme", Kind: auth.User}
 	for _, tl := range tools {
+		if tl.Name == platform.ToolAgent || tl.Name == platform.ToolGetContext {
+			continue
+		}
 		if tl.Permission == "" {
 			t.Errorf("%s needs no permission", tl.Name)
 			continue

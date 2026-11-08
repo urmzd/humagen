@@ -713,6 +713,9 @@ func New(cfg Config) (*Platform, error) {
 	if cfg.Stops != nil {
 		p.stops = stopFunc(cfg.Stops)
 	}
+	if err := p.registerOwnSystemTools(); err != nil {
+		return nil, err
+	}
 	return p, nil
 }
 

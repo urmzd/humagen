@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
 	"go.yaml.in/yaml/v3"
@@ -55,16 +56,13 @@ type SystemCall struct {
 	// tool that reads from it is bound to it. An MCP client names the
 	// message in its arguments instead.
 	Message string
+	// Run is the run that calls, and ToolUseID the id the platform minted
+	// for this call (htu_<run>_<seq>, runs.Run.CallID), when a run calls.
+	Run       string
+	ToolUseID string
 	// Progress, when set, receives what a long call does while it does it,
 	// such as the activity of an agent it calls. Nil discards it.
 	Progress func(SystemProgress)
-}
-
-// SystemProgress is one step of a call's nested activity.
-type SystemProgress struct {
-	Kind string          `json:"kind"`
-	Text string          `json:"text,omitempty"`
-	Data json.RawMessage `json:"data,omitempty"`
 }
 
 // SystemResult is what a call answered.
@@ -107,12 +105,13 @@ func (p *Platform) RegisterSystemTool(t SystemTool) error {
 	return nil
 }
 
-// systemRegistry is the platform's half of the registry: its own tools and
-// how the contract's reach the API.
+// systemRegistry is the platform's half of the registry: its own tools, how
+// the contract's reach the API, and the run machinery behind the agent call.
 type systemRegistry struct {
-	mu       sync.Mutex
-	dispatch APIDispatch
-	own      []SystemTool
+	mu        sync.Mutex
+	dispatch  APIDispatch
+	own       []SystemTool
+	callAgent AgentCaller
 }
 
 // SystemTools is the registry: the contract's operations, then the
@@ -417,4 +416,127 @@ func resolveSchema(node any, components map[string]any, depth int) any {
 	default:
 		return v
 	}
+}
+
+// SystemProgress is one step of a call's activity, as the response stream
+// carries it (StreamEventOf): an event of an agent it called, a change of a
+// call's status, or a passing status line.
+type SystemProgress struct {
+	Kind ProgressKind
+	// ToolUseID is the call the step is about.
+	ToolUseID string
+	// For ProgressNested: the called agent's run, how deep it is under the
+	// response's root (1 for a call the root made), and its event, an
+	// Anthropic stream event as the agent's own content produces it.
+	AgentRun string
+	Depth    int
+	Event    json.RawMessage
+	// For ProgressStatus: the call's state, the calls from the root down to
+	// it, its title, the question it waits on, and how long it has run.
+	Status   ToolStatus
+	Path     []string
+	Title    string
+	Question *ProgressQuestion
+	Elapsed  time.Duration
+	// For ProgressLine: the line.
+	Text string
+}
+
+// ProgressKind is which response stream event a step becomes.
+type ProgressKind string
+
+const (
+	// ProgressNested is a called agent's own event: humagen.nested.
+	ProgressNested ProgressKind = "nested"
+	// ProgressStatus is a call changing state: humagen.tool_status.
+	ProgressStatus ProgressKind = "status"
+	// ProgressLine is a passing status line: humagen.progress.
+	ProgressLine ProgressKind = "line"
+)
+
+// ToolStatus is a call's state in the response stream.
+type ToolStatus string
+
+// The states of a call.
+const (
+	ToolQueued           ToolStatus = "queued"
+	ToolRunning          ToolStatus = "running"
+	ToolAwaitingApproval ToolStatus = "awaiting_approval"
+	ToolAwaitingInput    ToolStatus = "awaiting_input"
+	ToolDone             ToolStatus = "done"
+	ToolError            ToolStatus = "error"
+	ToolDenied           ToolStatus = "denied"
+	ToolStopped          ToolStatus = "stopped"
+)
+
+var toolStatuses = []ToolStatus{ToolQueued, ToolRunning, ToolAwaitingApproval, ToolAwaitingInput, ToolDone, ToolError, ToolDenied, ToolStopped}
+
+// ProgressQuestion is what a call waits on a person for.
+type ProgressQuestion struct {
+	Kind    string   `json:"kind"`
+	Prompt  string   `json:"prompt"`
+	Choices []string `json:"choices,omitempty"`
+	// Who may answer: principals, and roles as "role:<name>".
+	Who []string `json:"who,omitempty"`
+}
+
+// The response stream's own event types.
+const (
+	EventNested     = "humagen.nested"
+	EventToolStatus = "humagen.tool_status"
+	EventProgress   = "humagen.progress"
+)
+
+// StreamEventOf is the response stream event a step of a call becomes: its
+// type and its body. A step that cannot be one is an error, so nothing
+// malformed reaches a reader.
+func StreamEventOf(s SystemProgress) (string, map[string]any, error) {
+	switch s.Kind {
+	case ProgressNested:
+		switch {
+		case s.ToolUseID == "" || s.AgentRun == "":
+			return "", nil, fmt.Errorf("platform: a nested event names its call and the agent's run")
+		case s.Depth < 1:
+			return "", nil, fmt.Errorf("platform: a nested event is at depth 1 or more")
+		case !json.Valid(s.Event):
+			return "", nil, fmt.Errorf("platform: a nested event carries an event")
+		}
+		return EventNested, map[string]any{
+			"parent_tool_use_id": s.ToolUseID,
+			"agent_run_id":       s.AgentRun,
+			"depth":              s.Depth,
+			"event":              json.RawMessage(s.Event),
+		}, nil
+	case ProgressStatus:
+		if s.ToolUseID == "" || !slices.Contains(toolStatuses, s.Status) {
+			return "", nil, fmt.Errorf("platform: a status names its call and one of its states, not %q", s.Status)
+		}
+		path := s.Path
+		if len(path) == 0 {
+			path = []string{s.ToolUseID}
+		}
+		body := map[string]any{
+			"tool_use_id": s.ToolUseID,
+			"path":        path,
+			"status":      s.Status,
+			"elapsed_ms":  s.Elapsed.Milliseconds(),
+		}
+		if s.Title != "" {
+			body["title"] = s.Title
+		}
+		if s.Question != nil {
+			body["question"] = s.Question
+		}
+		return EventToolStatus, body, nil
+	case ProgressLine:
+		if strings.TrimSpace(s.Text) == "" {
+			return "", nil, fmt.Errorf("platform: a progress line has text")
+		}
+		body := map[string]any{"text": s.Text}
+		if s.ToolUseID != "" {
+			body["parent_tool_use_id"] = s.ToolUseID
+		}
+		return EventProgress, body, nil
+	}
+	return "", nil, fmt.Errorf("platform: no stream event for progress %q", s.Kind)
 }
