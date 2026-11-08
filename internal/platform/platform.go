@@ -65,6 +65,7 @@ import (
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/connectionauth"
 	"github.com/urmzd/humagen/pkg/contextflags"
+	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/evals"
@@ -304,6 +305,9 @@ type Platform struct {
 	Rooms    *rooms.Hub
 	roomGate *rooms.Gate
 	files    filesblob.Store
+	// GoodAsks are the asks each agent answered well, which routing
+	// searches beside its prompt (pkg/goodasks).
+	GoodAsks goodAsksStore
 	// health is the last health report and each component's recent checks.
 	health healthBook
 
@@ -326,10 +330,13 @@ type Platform struct {
 	// CatalogStore is the catalog: what exists in connected systems.
 	CatalogStore *catalog.Store
 	catalog      catalogState
-	SourceLinks  *sourcelinks.Store
-	Evals        *evals.Store
-	Feedback     *feedback.Store
-	Prefs        *prefs.Store
+	// Corpora are named bodies of knowledge, each holding sources and
+	// connectors (docs/architecture/sources.md#corpora).
+	Corpora     *corpora.Store
+	SourceLinks *sourcelinks.Store
+	Evals       *evals.Store
+	Feedback    *feedback.Store
+	Prefs       *prefs.Store
 	// Marks is what each person marked on the conversations they read:
 	// archived for them, when last read, and the tips they dismissed.
 	Marks *marks.Store
@@ -791,6 +798,11 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	}
 	if err := p.admit(tag, edge, project, within, client); err != nil {
 		return runs.Run{}, err
+	}
+	// A schedule's run is a session in the schedule's project, made once
+	// the run is admitted.
+	if edge.Parent == "" && scheduledOrigin(tag) {
+		tag = p.fileInScheduleSession(ctx, tag, project)
 	}
 	if wire.Meta(tag)[MetaPersonalMemoryContext] == "true" || wire.Meta(tag)[MetaPrivateLibraryContext] == "true" {
 		if err := p.ContextFlags.Mark(tag.Tenant, runID); err != nil {

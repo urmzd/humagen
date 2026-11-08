@@ -35,6 +35,7 @@ await loadTests([
   "/src/catalog.dom.test.tsx",
   "/src/email-preferences.dom.test.tsx",
   "/src/activity.dom.test.tsx",
+  "/src/patterns.dom.test.tsx",
   "/src/wave.dom.test.tsx",
   "/src/sidebar-views.dom.test.tsx",
   "/src/approval-toggle.dom.test.tsx",

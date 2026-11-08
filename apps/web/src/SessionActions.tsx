@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { coworking, type ProjectView, type Thread } from "./api.ts";
 import { ProjectChoices } from "./ProjectPicker.tsx";
 import { publishMarks } from "./marks.ts";
-import { button, field, Popover, Problem, primary } from "./ui.tsx";
+import { button, field, MenuSeparator, menuRow, Popover, Problem, primary } from "./ui.tsx";
 
 /** The header uses the same ownership and governed deletion as the session list. */
 export function SessionActions({
@@ -76,12 +76,12 @@ export function SessionActions({
         }}
       >
         {(close) => (
-          <div role="menu" aria-label="Session actions" className="flex flex-col">
+          <div role="menu" aria-label="Session actions" className="flex min-w-40 flex-col">
             {onShare && (
               <button
                 type="button"
                 role="menuitem"
-                className={button}
+                className={menuRow()}
                 onClick={() => {
                   close();
                   onShare();
@@ -94,7 +94,7 @@ export function SessionActions({
               <button
                 type="button"
                 role="menuitem"
-                className={button}
+                className={menuRow()}
                 disabled={busy || deleted}
                 onClick={() => {
                   close();
@@ -122,7 +122,7 @@ export function SessionActions({
             <button
               type="button"
               role="menuitem"
-              className={button}
+              className={menuRow()}
               disabled={busy || deleted}
               onClick={() => {
                 close();
@@ -131,11 +131,12 @@ export function SessionActions({
             >
               {archived ? "Unarchive" : "Archive"}
             </button>
+            {canManage && <MenuSeparator />}
             {canManage && (
               <button
                 type="button"
                 role="menuitem"
-                className={`${button} text-aui-bad`}
+                className={menuRow(true)}
                 disabled={busy || deleted}
                 onClick={() => {
                   close();

@@ -1242,6 +1242,7 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 			out = append(out, existing)
 			continue
 		}
+		a.picked = cmp.Or(a.picked, pickedOf(ctx))
 		mt := meta
 		if a.picked != "" {
 			mt = maps.Clone(meta)

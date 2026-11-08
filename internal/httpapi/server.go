@@ -35,6 +35,7 @@ import (
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/connectionauth"
+	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/inbox"
@@ -242,6 +243,7 @@ func (s *Server) Handler() http.Handler {
 	s.workspaceFileRoutes(mux)
 	s.scratchpadRoutes(mux)
 	s.observeRoutes(mux)
+	s.corpusRoutes(mux)
 	s.preferenceRoutes(mux)
 	s.markRoutes(mux)
 	s.projectRoutes(mux)
@@ -1185,6 +1187,16 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, detail(err, library.ErrConflict))
 	case errors.Is(err, auth.ErrForbidden):
 		fail(w, http.StatusForbidden, detail(err, auth.ErrForbidden))
+	case errors.Is(err, corpora.ErrNotFound):
+		notFound(w)
+	case errors.Is(err, corpora.ErrInvalid):
+		fail(w, http.StatusBadRequest, detail(err, corpora.ErrInvalid))
+	case errors.Is(err, corpora.ErrExists):
+		fail(w, http.StatusConflict, "a corpus of that name already exists")
+	case errors.Is(err, corpora.ErrConflict):
+		fail(w, http.StatusConflict, "the corpus was changed by someone else; reload and try again")
+	case errors.Is(err, corpora.ErrLimit):
+		fail(w, http.StatusTooManyRequests, detail(err, corpora.ErrLimit))
 	case errors.Is(err, sourcelinks.ErrInvalid):
 		fail(w, http.StatusBadRequest, "invalid source link rule")
 	case errors.Is(err, sourcelinks.ErrNotFound):

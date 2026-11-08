@@ -347,6 +347,8 @@ export interface ReviewProps {
     tone: Tone;
     findings: {
       title: string;
+      /** Who found it, worded: "Found by security-reviewer". */
+      foundBy?: string;
       location?: { label: string; url?: string };
       change?: string;
       feedback?: FeedbackProps;
