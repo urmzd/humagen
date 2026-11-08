@@ -1,10 +1,10 @@
 import { defaultCopy } from "@humagen/components";
 import { useEffect, useState } from "react";
 import { ApiError, call } from "./api.ts";
+import { Reference } from "./cards.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { href, type Route } from "./route.ts";
 import { SessionRow } from "./SessionCenter.tsx";
-import { inApp } from "./MessageRefs.tsx";
 import { type AgentSessionSummary, type Alert, sessionCenter } from "./sessionCenter.ts";
 import { referenceOf } from "./trace.ts";
 import { Page, Problem, SkeletonRows } from "./ui.tsx";
@@ -134,19 +134,17 @@ export function ItemPage({
                       key={`${b.place}:${b.at}`}
                       className="flex flex-wrap items-baseline gap-x-2"
                     >
-                      {to ? (
-                        <a
-                          href={to}
-                          className={link}
-                          {...(b.session
-                            ? { onClick: inApp }
-                            : { target: "_blank", rel: "noreferrer" })}
-                        >
-                          {where.label}
-                        </a>
-                      ) : (
-                        <span>{where.label}</span>
-                      )}
+                      <Reference
+                        kind={
+                          where.kind === "slack" ||
+                          where.kind === "github" ||
+                          where.kind === "schedule"
+                            ? where.kind
+                            : "url"
+                        }
+                        label={where.label}
+                        href={to}
+                      />
                       <span className="text-aui-muted text-aui-xs">
                         <MessageTime at={b.at} />
                       </span>
