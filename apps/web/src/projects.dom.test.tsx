@@ -16,6 +16,7 @@ import {
   view,
   workspace,
 } from "./projects.fixtures.ts";
+import { href } from "./route.ts";
 import type { AgentSessionSummary } from "./sessionCenter.ts";
 
 const at = "2026-10-01T09:00:00Z";
@@ -313,8 +314,8 @@ test("Recents lists the project's own sessions newest first, each opening it, wi
     .getAllByRole("link")
     .map((a) => [a.querySelector("span")?.textContent, a.getAttribute("href")]);
   assert.deepEqual(links, [
-    ["Renewal call", "/sessions/s_1"],
-    ["Untitled session", "/sessions/s_2"],
+    ["Renewal call", href({ page: "conversation", id: "s_1" })],
+    ["Untitled session", href({ page: "conversation", id: "s_2" })],
   ]);
   fireEvent.click(within(recents).getByRole("link", { name: /^Renewal call/ }));
   assert.deepEqual(sessions, ["s_1"]);
