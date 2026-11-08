@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { defaultCopy as copy } from "@humagen/components";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { Me, Preferences, ProjectChange, Settings as Workspace } from "./api.ts";
+import type { Me, Preferences, ProjectChange, ProjectView, Settings as Workspace } from "./api.ts";
 import { KnowledgeLists, MAX_KNOWLEDGE } from "./ProjectKnowledge.tsx";
 import { ProjectChoices, ProjectPicker, placeOf } from "./ProjectPicker.tsx";
 import { ProjectsPage } from "./Projects.tsx";
@@ -15,6 +15,7 @@ import {
   initech,
   knowledgeSources,
   news,
+  projectView,
   renewals,
   retail,
   stores,
@@ -22,210 +23,185 @@ import {
   view,
   workspace,
 } from "./projects.fixtures.ts";
-import {
-  kindsUnder,
-  nameFrom,
-  narrowAt,
-  treeOf,
-  updateOf,
-  validName,
-  WORKSPACE,
-} from "./projects.ts";
+import { cardsOf, kindsUnder, nameFrom, updateOf, validName, WORKSPACE } from "./projects.ts";
 import { Settings } from "./Settings.tsx";
 
 const html = (el: ReactElement) => renderToStaticMarkup(el);
 const noop = () => {};
-const rowsOf = (
-  narrow: boolean,
-  opts: { q?: string; kind?: "company" | "team" | "account" } = {},
-) =>
-  treeOf(tree, { narrow, ...opts }).map((g) => [
-    g.title,
-    g.rows.map((r) => [r.project.name, r.indent, r.path.join(" › ")]),
-  ]);
-
-test("projects are grouped by kind, Company-wide, Teams, then Accounts, each in tree order", () => {
-  assert.deepEqual(
-    treeOf(tree, { narrow: false }).map((g) => [g.title, g.rows.map((r) => r.project.name)]),
-    [
-      ["Company-wide", ["Company news"]],
-      ["Teams", ["Field", "East", "Retail", "Stores", "Globex renewals", "Platform"]],
-      ["Accounts", ["Globex", "Initech"]],
-    ],
-  );
-});
-
-test("a project of the workspace's own kind is listed after humagen's kinds, in a group by its title", () => {
-  const partner = view("Reseller", { kind: "partner", parent: field });
-  const kinds = [{ name: "partner", title: "Partners", like: "account" as const }];
-  assert.deepEqual(
-    treeOf([...tree, partner], { narrow: false, kinds }).map((g) => [
-      g.title,
-      g.rows.map((r) => [r.project.name, r.path.join(" › ")]),
-    ]),
-    [
-      ["Company-wide", [["Company news", ""]]],
-      [
-        "Teams",
-        [
-          ["Field", ""],
-          ["East", ""],
-          ["Retail", ""],
-          ["Stores", ""],
-          ["Globex renewals", "Field engineering › Globex"],
-          ["Platform", ""],
-        ],
-      ],
-      [
-        "Accounts",
-        [
-          ["Globex", "Field engineering"],
-          ["Initech", "Field engineering"],
-        ],
-      ],
-      ["Partners", [["Reseller", "Field engineering"]]],
-    ],
-  );
-  // Narrowed to it, only it; and a kind the console was not told of still shows, by its name.
-  assert.deepEqual(
-    treeOf([...tree, partner], { narrow: false, kinds, kind: "partner" }).map((g) => g.title),
-    ["Partners"],
-  );
-  assert.deepEqual(treeOf([...tree, partner], { narrow: false }).at(-1)?.title, "partner");
-  // It behaves as an account: no account under it, and it never sits under one.
-  const reseller = { name: "Reseller", kind: "partner", depth: 2 };
-  assert.deepEqual(kindsUnder(reseller, true, kinds), ["team"]);
-  assert.deepEqual(kindsUnder(globex, true, kinds), ["team"]);
-  assert.deepEqual(kindsUnder(field, false, kinds), ["team", "account", "partner"]);
-});
-
-test("the tree at depth 4 indents one level at 390px, and deeper rows say where they sit", () => {
-  assert.equal(stores.depth, 4, "the fixture is as deep as the tree goes");
-  assert.ok(narrowAt(390), "390px is a phone");
-  assert.ok(!narrowAt(1280));
-  const teams = (narrow: boolean) => rowsOf(narrow)[1]?.[1]?.slice(0, 4);
-  assert.deepEqual(teams(narrowAt(390)), [
-    ["Field", 0, ""],
-    ["East", 1, ""],
-    ["Retail", 1, "Field engineering › East"],
-    ["Stores", 1, "Field engineering › East › Retail"],
-  ]);
-  // On a wide screen each level nests under its parent, so no row needs its path.
-  assert.deepEqual(teams(narrowAt(1280)), [
-    ["Field", 0, ""],
-    ["East", 1, ""],
-    ["Retail", 2, ""],
-    ["Stores", 3, ""],
-  ]);
-
-  // As drawn: nothing indents more than one 16px level, and the deep rows print where they are.
-  const phone = html(
+const page = (over: Partial<Parameters<typeof ProjectsPage>[0]> = {}) =>
+  html(
     <ProjectsPage
       projects={tree}
       root={workspace}
-      workspaceName="Acme"
-      onFilter={noop}
-      canCreate
+      canCreate={false}
       canGovern={false}
-      narrow={narrowAt(390)}
+      me="ada"
+      onFilter={noop}
       onOpen={noop}
       onCreated={noop}
+      {...over}
     />,
   );
-  const indents = [...phone.matchAll(/margin-left:(\d+)px/g)].map((m) => Number(m[1]));
-  assert.ok(indents.length > 0);
-  assert.ok(
-    indents.every((px) => px === 16),
-    `indents at 390px: ${indents}`,
+/** The cards' titles, in the order they are drawn, each with where it links. */
+const cardsIn = (out: string) =>
+  [...out.matchAll(/<a href="(\/projects\/[^"]+)"[^>]*>([^<]*)<\/a>/g)].map((m) => [m[2], m[1]]);
+/** A project made at `created`, last active at `active` when given, and changed when it was made. */
+const dated = (name: string, created: string, active?: string, over: Partial<ProjectView> = {}) =>
+  projectView({
+    name,
+    created_at: created,
+    updated_at: created,
+    ...(active ? { active_at: active } : {}),
+    ...over,
+  });
+const partners = {
+  ...workspace,
+  kinds: [{ name: "partner", title: "Partners", like: "account" as const }],
+};
+const reseller = view("Reseller", { kind: "partner", parent: field });
+
+test("the projects page is one title over a flat grid of cards: every project but the workspace, sub-projects too", () => {
+  const out = page();
+  assert.match(out, /<h1[^>]*>Projects<\/h1>/);
+  assert.doesNotMatch(out, /Where work belongs/, "no lede");
+  assert.deepEqual(
+    cardsIn(out).map(([title]) => title),
+    [
+      "Company news",
+      "East",
+      "Field engineering",
+      "Globex",
+      "Globex renewals",
+      "Initech",
+      "Platform",
+      "Retail",
+      "Stores",
+    ],
   );
-  assert.match(phone, /in Field engineering › East › Retail/);
-  const desk = html(
-    <ProjectsPage
-      projects={tree}
-      root={workspace}
-      workspaceName="Acme"
-      onFilter={noop}
-      canCreate
-      canGovern={false}
-      narrow={false}
-      onOpen={noop}
-      onCreated={noop}
-    />,
-  );
-  assert.match(desk, /margin-left:48px/);
-  assert.doesNotMatch(desk, /in Field engineering › East › Retail/);
+  assert.ok(cardsIn(out).some(([, to]) => to === "/projects/Globex/context"));
+  assert.doesNotMatch(out, /href="\/projects\/~\/context"/, "the workspace is not a card");
+  // No tree: no groups, no indent, no expander, and no counts.
+  for (const gone of [
+    /Company-wide/,
+    />Teams</,
+    />Accounts</,
+    /margin-left/,
+    /<details/,
+    /<h2/,
+    /conversations?</,
+    /running</,
+  ])
+    assert.doesNotMatch(out, gone);
+  assert.match(out, /<time dateTime="2026-10-01T09:00:00Z">Updated [^<]+<\/time>/);
+  assert.doesNotMatch(out, /New Project/);
+  assert.equal((page({ canCreate: true }).match(/New Project/g) ?? []).length, 1);
+  assert.match(page({ projects: null }), /data-testid="skeleton"/);
+  assert.match(page({ q: "zzz" }), /No project matches\./);
+  assert.ok(!out.includes(String.fromCharCode(0x2014)), "no em dashes");
 });
 
-test("a row whose parent is in another group says where it sits", () => {
-  const [, teams, accounts] = rowsOf(false);
-  assert.deepEqual(accounts?.[1], [
-    ["Globex", 0, "Field engineering"],
-    ["Initech", 0, "Field engineering"],
+test("with no projects the page is a title and one action", () => {
+  const empty = page({ projects: [], canCreate: true });
+  assert.match(empty, />No projects yet</);
+  assert.equal((empty.match(/New Project/g) ?? []).length, 1, "not in the header as well");
+  assert.doesNotMatch(empty, /Search projects/);
+  // The workspace alone is no project of the reader's.
+  assert.match(page({ projects: [workspace] }), />No projects yet</);
+  assert.doesNotMatch(page({ projects: [] }), /New Project/);
+});
+
+test("cards come pinned first, then by last activity, by title or newest made, as the address asks", () => {
+  const alpha = dated("alpha", "2026-01-01T00:00:00Z", "2026-10-05T00:00:00Z");
+  const bravo = dated("bravo", "2026-03-01T00:00:00Z");
+  const apex = dated("charlie", "2026-02-01T00:00:00Z", "2026-10-06T00:00:00Z", { title: "Apex" });
+  const all = [alpha, bravo, apex];
+  const order = (opts: Parameters<typeof cardsOf>[1]) => cardsOf(all, opts).map((p) => p.name);
+  assert.deepEqual(order({}), ["charlie", "alpha", "bravo"], "last activity, else last change");
+  assert.deepEqual(order({ sort: "name" }), ["alpha", "charlie", "bravo"], "by title, A to Z");
+  assert.deepEqual(order({ sort: "created" }), ["bravo", "charlie", "alpha"], "newest made");
+  assert.deepEqual(order({ pinned: ["bravo"] }), ["bravo", "charlie", "alpha"]);
+  assert.deepEqual(order({ sort: "name", pinned: ["bravo", "charlie"] }), [
+    "charlie",
+    "bravo",
+    "alpha",
   ]);
-  assert.deepEqual(teams?.[1]?.[4], ["Globex renewals", 0, "Field engineering › Globex"]);
-  // A top-level row has nothing above it to name.
-  assert.deepEqual(teams?.[1]?.[5], ["Platform", 0, ""]);
+  // As drawn, with the sort the address names.
+  const drawn = (over: Partial<Parameters<typeof ProjectsPage>[0]>) =>
+    cardsIn(page({ projects: all, ...over })).map(([title]) => title);
+  assert.deepEqual(drawn({}), ["Apex", "alpha", "bravo"]);
+  assert.deepEqual(drawn({ sort: "name" }), ["alpha", "Apex", "bravo"]);
+  assert.deepEqual(drawn({ sort: "created", pinned: ["alpha"] }), ["alpha", "bravo", "Apex"]);
 });
 
-test("a search finds a project by name, title, description or customer, and the rows it keeps say where they sit", () => {
-  const found = (q: string) =>
-    treeOf(tree, { narrow: false, q }).flatMap((g) => g.rows.map((r) => r.project.name));
-  assert.deepEqual(found("initech llc"), ["Initech"], "by customer");
+test("a search finds a project by its title, description or name, and leaves the rest out", () => {
+  const found = (q: string) => cardsOf(tree, { q, sort: "name" }).map((p) => p.name);
   assert.deepEqual(found("engineering"), ["Field"], "by title");
   assert.deepEqual(found("support for"), ["Globex"], "by description");
-  assert.deepEqual(found("RETAIL"), ["Retail"], "ignoring case");
+  assert.deepEqual(found("RETAIL"), ["Retail"], "by name, ignoring case");
   assert.deepEqual(found("nothing like it"), []);
-  // Retail's parent is not shown, so it starts the left edge and names its path.
-  assert.deepEqual(rowsOf(false, { q: "retail" }), [
-    ["Teams", [["Retail", 0, "Field engineering › East"]]],
-  ]);
   assert.deepEqual(
-    rowsOf(false, { kind: "account" }).map(([title]) => title),
-    ["Accounts"],
+    cardsIn(page({ q: "globex" })).map(([title]) => title),
+    ["Globex", "Globex renewals"],
   );
 });
 
-test("the projects page heads Company-wide with the workspace, links every row, and offers New Project only to those who may make one", () => {
-  const page = (over: Partial<Parameters<typeof ProjectsPage>[0]> = {}) =>
-    html(
-      <ProjectsPage
-        projects={tree}
-        root={workspace}
-        workspaceName="Acme"
-        onFilter={noop}
-        canCreate={false}
-        canGovern={false}
-        narrow={false}
-        onOpen={noop}
-        onCreated={noop}
-        {...over}
-      />,
-    );
-  const out = page();
-  assert.match(out, /<h1[^>]*>Projects</);
-  const heads = ["Company-wide", "Teams", "Accounts"].map((h) => out.indexOf(`>${h}</h2>`));
-  assert.ok(
-    heads.every((i) => i >= 0) && [...heads].sort((a, b) => a - b).join() === heads.join(),
-    `groups in order: ${heads}`,
+test("a kind filter shows only when the workspace defines kinds of its own", () => {
+  assert.doesNotMatch(page(), /aria-label="Kind"/);
+  // An old link's kind is not applied where there is no filter to show it.
+  assert.equal(cardsIn(page({ kind: "account" })).length, tree.length);
+  const own = page({ projects: [...tree, reseller], root: partners });
+  assert.match(own, /aria-label="Kind"/);
+  assert.deepEqual(
+    cardsIn(page({ projects: [...tree, reseller], root: partners, kind: "partner" })).map(
+      ([title]) => title,
+    ),
+    ["Reseller"],
   );
-  assert.ok(
-    out.indexOf('href="/projects/~/context"') <
-      out.indexOf('href="/projects/Company%20news/context"'),
-    "the workspace comes first",
+});
+
+test("a card is its title, when it last changed and a pin: no agents, counts or unread marks", () => {
+  const busy = {
+    ...dated("Busy", "2026-10-01T09:00:00Z", "2026-10-02T09:00:00Z"),
+    unread: 2,
+    active: 1,
+    conversations: 4,
+    row_agents: ["lead", "helper"],
+  };
+  const out = page({ projects: [busy], onPin: async () => {} });
+  assert.doesNotMatch(out, /\blead\b|\bhelper\b/);
+  assert.doesNotMatch(out, /Unread updates|1 running|4 conversations/);
+  assert.match(
+    out,
+    /<time dateTime="2026-10-02T09:00:00Z">Updated /,
+    "last activity, not last change",
   );
-  assert.match(out, />Acme</);
-  assert.match(out, /href="\/projects\/Globex\/context"/);
-  for (const label of ["Globex Inc", "in Field engineering"]) assert.ok(out.includes(label));
-  assert.match(out, />1 running<\/span>/);
-  assert.match(out, />4 conversations<\/span>/);
-  assert.doesNotMatch(out, /1 running \|/);
-  assert.doesNotMatch(out, /New Project/);
-  assert.match(page({ canCreate: true }), /New Project/);
-  assert.match(page({ projects: [], root: null, canCreate: true }), /No projects yet. Make one/);
-  assert.match(page({ q: "zzz" }), /No project matches/);
-  // A search leaves the workspace row out: it is the page, not a match.
-  assert.doesNotMatch(page({ q: "globex" }), /href="\/projects\/~\/context"/);
-  assert.match(page({ projects: null }), /data-testid="skeleton"/);
+  assert.doesNotMatch(out, /animate-/);
+});
+
+test("a pin says what it does to which project, and shows once pinned", () => {
+  const out = page({ pinned: ["Globex"], onPin: async () => {} });
+  assert.match(out, /aria-pressed="true" aria-label="Unpin project Globex"/);
+  assert.match(out, /aria-pressed="false" aria-label="Pin project Platform"/);
+  assert.equal((out.match(/aria-pressed="true"/g) ?? []).length, 1);
+  assert.equal(cardsIn(out)[0]?.[0], "Globex", "pinned first");
+  assert.doesNotMatch(page(), /aria-pressed/, "no pins without a way to save them");
+});
+
+test("a private project says so on its card; a workspace one and the reader's Personal project do not", () => {
+  const owned = [{ who: "ada", role: "owner" as const }];
+  const secret = dated("Secret", "2026-10-01T09:00:00Z", undefined, { members: owned });
+  const personal = dated("personal-ada", "2026-10-01T09:00:00Z", undefined, {
+    title: "Personal",
+    personal_owner: "ada",
+    members: owned,
+  });
+  const out = page({ projects: [secret, personal, ...tree], sort: "name" });
+  assert.equal((out.match(/>Private</g) ?? []).length, 1);
+  assert.ok(
+    cardsIn(out).some(([title]) => title === "Personal"),
+    "Personal is a card of its own",
+  );
+  assert.match(out, /Secret<\/a>(?:(?!<article).)*>Private</s);
 });
 
 test("the kind rules decide what may be made where", () => {
@@ -244,6 +220,13 @@ test("the kind rules decide what may be made where", () => {
   assert.deepEqual(kindsUnder(globex, true), ["team"], "an account never sits under an account");
   assert.deepEqual(kindsUnder(stores, true), [], "nothing goes below the fourth level");
   assert.deepEqual(kindsUnder(retail, false), ["team", "account"]);
+  // A workspace's own kind behaves as the built-in it is like: no account under it, and it never sits under one.
+  const kinds = partners.kinds;
+  assert.deepEqual(kindsUnder({ name: "Reseller", kind: "partner", depth: 2 }, true, kinds), [
+    "team",
+  ]);
+  assert.deepEqual(kindsUnder(globex, true, kinds), ["team"]);
+  assert.deepEqual(kindsUnder(field, false, kinds), ["team", "account", "partner"]);
 });
 
 test("a name offered from a title is one the platform accepts", () => {
@@ -343,7 +326,6 @@ test("settings no longer edit projects: the workspace section links to Projects 
     title_agent: "",
     memory_agent: "",
     memory_auto_approve: false,
-    router: { enabled: false },
   };
   const out = html(
     <Settings
@@ -465,26 +447,4 @@ test("knowledge: a list the platform file sets is read only, and says so", () =>
   assert.match(out, /The platform file sets these sources\./);
   assert.doesNotMatch(out, /Add Source|Save Knowledge/);
   assert.match(out, /<li[^>]*>globex-contracts<\/li>/);
-});
-
-test("project rows show named agents and a still unread indicator only for unread updates", () => {
-  const unread = { ...view("Unread"), unread: 2, row_agents: ["lead", "helper"] };
-  const read = { ...view("Read"), unread: 0, row_agents: [] };
-  const markup = html(
-    <ProjectsPage
-      projects={[unread, read]}
-      root={null}
-      workspaceName="Acme"
-      canCreate={false}
-      canGovern={false}
-      narrow={false}
-      onFilter={noop}
-      onOpen={noop}
-      onCreated={noop}
-    />,
-  );
-  assert.match(markup, />lead<\/span>/);
-  assert.match(markup, />helper<\/span>/);
-  assert.equal((markup.match(/aria-label="Unread updates"/g) ?? []).length, 1);
-  assert.doesNotMatch(markup, /animate-/);
 });

@@ -249,7 +249,7 @@ test("the workbench opens an older saved version and sends that exact version fo
   assert.match(revisionPrompt(previous, 3), /file_read path artifact:art-1@1/);
   assert.match(
     revisionPrompt(previous, 3),
-    /\/sessions\/thread-1\?panel=files&legacy_panel=deliverables&artifact=art-1/,
+    /\/messages\/thread-1\?panel=files&legacy_panel=deliverables&artifact=art-1/,
   );
 });
 

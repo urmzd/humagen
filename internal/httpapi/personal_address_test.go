@@ -12,7 +12,7 @@ import (
 
 func TestMePersonalProjectAddressIsDirectlyUsableForChat(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
-		f := newFixtureWith(t, platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline", Backends: platform.Backends{State: open(t)}})
+		f := newFixtureWith(t, platform.Config{TestBuiltinProvider: "offline", TestBuiltinModel: "offline", Backends: platform.Backends{State: open(t)}})
 		ana := f.person(t, "acme", "ana", "Ana", "humagen-admins")
 		want(t, f, ana, "GET", "/api/agents", "", http.StatusOK)
 		self := want(t, f, ana, "GET", "/api/me", "", http.StatusOK)

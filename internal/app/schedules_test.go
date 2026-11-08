@@ -107,12 +107,12 @@ func TestTheFileTakesOverAConsoleSchedule(t *testing.T) {
 	}
 }
 
-// A schedule whose agent is not available in its project fails the start,
-// rather than every occurrence later.
+// A schedule whose agent is not available in its project, as an allow list
+// leaves it out, fails the start, rather than every occurrence later.
 func TestAFileScheduleNeedsItsAgentAvailable(t *testing.T) {
 	p := newProjectsPlatform(t)
 	w := fileWithRecap("x")
-	w.Agents = &spec.Agents{Enable: []string{"lead"}}
+	w.Agents = &spec.Agents{Allow: []string{"lead"}}
 	if err := applyProjects(p, "acme", w); err != nil {
 		t.Fatal(err)
 	}

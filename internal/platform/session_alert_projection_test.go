@@ -88,7 +88,7 @@ func TestSessionAlertFallbackRequiresAnAvailableAgent(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			cfg := Config{Workspace: t.TempDir()}
 			if configured {
-				cfg.BuiltinProvider, cfg.BuiltinModel = "offline", "offline"
+				cfg.TestBuiltinProvider, cfg.TestBuiltinModel = "offline", "offline"
 			}
 			p, err := New(cfg)
 			if err != nil {

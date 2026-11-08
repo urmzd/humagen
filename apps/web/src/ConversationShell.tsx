@@ -19,10 +19,12 @@ import {
 } from "./api.ts";
 import { ConversationAccess } from "./ConversationAccess.tsx";
 import { ForkContext } from "./ForkConversation.tsx";
+import { SessionReferences } from "./MessageRefs.tsx";
 import { PersonMark } from "./PersonMark.tsx";
 import { ProjectContextPreview } from "./ProjectContextPreview.tsx";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { DetailsNavigation, SessionRelations } from "./SessionDetails.tsx";
+import type { Reference } from "./trace.ts";
 import { AgentMark, Page, Problem, SkeletonRows, Tabs } from "./ui.tsx";
 
 const words = defaultCopy.conversation;
@@ -32,7 +34,6 @@ const focus =
 const control = `inline-flex min-h-9 pointer-coarse:min-h-11 items-center gap-2 px-2.5 text-aui-xs ${focus}`;
 /** Header actions are dense, like the console's other headers: icon-sized, one 4px gap, no side padding. */
 const headerIcon = `inline-flex size-9 shrink-0 pointer-coarse:size-11 items-center justify-center ${focus}`;
-const headerLabeled = `inline-flex h-9 min-w-9 shrink-0 pointer-coarse:h-11 pointer-coarse:min-w-11 items-center justify-center gap-1.5 px-1.5 text-aui-xs ${focus}`;
 
 /**
  * Who took part, at a glance: the first few agents by mark and name, then how
@@ -88,6 +89,7 @@ export function ConversationPage({
   project,
   private: personal,
   location,
+  origin,
   onProject,
   projectRef,
   onPanel,
@@ -105,6 +107,8 @@ export function ConversationPage({
   /** The people in it, by name, drawn as overlapping faces on the Share or People control. */
   people?: string[];
   location?: ReactNode;
+  /** A link back to where the session started, first among the header's icons. */
+  origin?: ReactNode;
   onProject?: () => void;
   projectRef?: RefObject<HTMLButtonElement | null>;
   panel?: ConversationPanel;
@@ -128,32 +132,32 @@ export function ConversationPage({
         }
         actions={
           <>
-            {actions}
+            {/* Icons only, in a fixed order: where it started, Details, People, then the ⋯ menu. */}
+            {origin}
             <button
               type="button"
               data-session-details
-              className={headerLabeled}
+              className={headerIcon}
               aria-label="Details"
+              title="Details"
               aria-expanded={!!activePanel && activePanel !== "people"}
               onClick={() =>
                 activePanel && activePanel !== "people" ? onClosePanel?.() : onPanel("workspace")
               }
             >
               <InfoIcon size={18} />
-              Details
             </button>
             {/* One control for who is in it: Share where it can be shared, else People & Access. Both open the same panel. */}
             {personal && onProject ? (
               <button
                 ref={projectRef}
                 type="button"
-                className={headerLabeled}
+                className={headerIcon}
                 aria-label={defaultCopy.threads.share}
                 title={defaultCopy.threads.share}
                 onClick={onProject}
               >
                 <ShareIcon size={18} />
-                <span className="hidden @3xl/conversation:inline">{defaultCopy.threads.share}</span>
               </button>
             ) : (
               <button
@@ -167,6 +171,7 @@ export function ConversationPage({
                 <UsersIcon size={18} />
               </button>
             )}
+            {actions}
           </>
         }
       >
@@ -338,6 +343,8 @@ function SourceCard({ source }: { source: Source }) {
 
 export function ConversationInfo({
   canWrite = false,
+  runs = [],
+  origin,
   contextTab,
   onContextTab,
   panel,
@@ -345,6 +352,8 @@ export function ConversationInfo({
   onClose,
 }: {
   runs?: Run[];
+  /** Where the session started, the first reference of its root message. */
+  origin?: Reference;
   view?: ConversationView;
   panel?: ConversationPanel;
   contextTab?: "sources" | "instructions";
@@ -392,7 +401,10 @@ export function ConversationInfo({
               initialChannel={thread.channel}
             />
           ) : (
-            <Sources project={thread.project} />
+            <>
+              <SessionReferences runs={runs} origin={origin} />
+              <Sources project={thread.project} />
+            </>
           )}
         </div>
       ) : (
