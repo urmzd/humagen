@@ -13262,6 +13262,38 @@ components:
       type: object
       required: [id, rule, kind, severity, title, at]
       properties:
+        who:
+          type: "array"
+          items:
+            type: "string"
+        resolve_when:
+          type: "string"
+        action:
+          type: "string"
+        resolved_at:
+          type: "string"
+          format: "date-time"
+        resolved_by:
+          type: "string"
+        snoozed_until:
+          type: "string"
+          format: "date-time"
+        state:
+          type: "string"
+          enum:
+            - "open"
+            - "snoozed"
+            - "resolved"
+        priority:
+          type: "string"
+          enum:
+            - "urgent"
+            - "normal"
+            - "low"
+        message:
+          type: "string"
+        session:
+          type: "string"
         id: {type: string}
         rule: {type: string}
         kind: {$ref: "#/components/schemas/AlertKind"}

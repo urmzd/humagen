@@ -3273,6 +3273,16 @@ lists every alert to them. At most 20 entries.
 }
 
 export interface Alert {
+  who?: string[];
+  resolve_when?: string;
+  action?: string;
+  resolved_at?: string;
+  resolved_by?: string;
+  snoozed_until?: string;
+  state?: "open" | "snoozed" | "resolved";
+  priority?: "urgent" | "normal" | "low";
+  message?: string;
+  session?: string;
   id: string;
   rule: string;
   kind: AlertKind;
