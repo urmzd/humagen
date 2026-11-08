@@ -3970,12 +3970,14 @@ export interface GitHubAutomation {
   name: string;
   repository: string;
   event: "check_run" | "issues" | "pull_request" | "push";
+  /** Never `labeled` or `unlabeled`: labels start nothing. A rule stored on one reads paused, with a note. */
   action: string;
   conclusion?: string;
-  label?: string;
   agent: string;
   instructions: string;
   paused: boolean;
+  /** Read-only. What of a rule stored earlier is ignored now, such as a label (labels start nothing). Dropped when the rule is saved. */
+  note?: string;
 }
 
 export interface GitHubOptions {
@@ -3983,7 +3985,11 @@ export interface GitHubOptions {
   automations?: GitHubAutomation[];
   /** Exact verified non-bot GitHub logins mapped explicitly by this installation to workspace subjects. No inferred identity or cross-installation fallback. */
   people?: Record<string, string>;
-  auto_labels?: Record<string, Record<string, string>>;
+  /** Reviews a pull request when it opens or reopens ready for review,
+leaves draft, or gets a push, by the client's default agent.
+Left out, it is on. Labels start nothing.
+ */
+  auto_review?: GitHubOptionsAutoReview;
   checks?: boolean;
   guides?: boolean;
   mutations?: boolean;
@@ -4036,7 +4042,7 @@ export interface ClientView {
   default_agent?: string;
   /** The agents it may route to besides its default, leaving out every
 agent that lives in a project the caller may not read, as `bots`
-and `github.auto_labels` do. The machine that hosts the client's
+and `github.automations` do. The machine that hosts the client's
 surface, its `slack.machine`, is shown every agent it names.
  */
   agents?: string[];
@@ -5147,6 +5153,11 @@ export interface KnowledgeLifecycleAttemptsItem {
 export interface UsageEntryGrant {
   spend?: number;
   tokens?: number;
+}
+
+export interface GitHubOptionsAutoReview {
+  enabled?: boolean;
+  repositories?: Record<string, boolean>;
 }
 
 export interface ClientInputCredentials {

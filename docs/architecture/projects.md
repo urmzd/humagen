@@ -1048,8 +1048,8 @@ assistant pane, an unbound channel, a GitHub issue. The order there is the
 thread, then the client, then the client's home channel and its chain. In a
 bound Slack channel the bound Humagen channel's chain decides. The client's
 allow-list (`client.Routes`) still filters the result: a default the client
-may not route to is refused, never swapped. A GitHub label in `auto_labels`
-names an agent, so it is a tag. A client's default may be `*`, and fiber's
+may not route to is refused, never swapped. A GitHub label starts nothing:
+automatic review is the connection's switch. A client's default may be `*`, and fiber's
 in-process connectors may ask for it too; `surface.stamp` then asks the
 agents available where the run is filed that the client may route to, before
 admission, and each that joins gets a tag of its own. The Slack app built on
@@ -1955,8 +1955,7 @@ and its total, What's new and Your projects to the same on both renderers.
   posted as the person in their messages with the app, Build an Agent tagging
   `@humagen-builder` where the client reaches it; Search Context opens the
   console. Someone the client maps to nobody keeps the mailbox.
-- **GitHub.** The same rule: `@agent` in a comment or an `auto_labels` label is
-  a tag; otherwise the client's default; otherwise nothing. As Slack delivers
+- **GitHub.** The same rule: `@agent` in a comment is a tag; otherwise the client's default; otherwise nothing. As Slack delivers
   only what mentions the app, a comment that names no agent asks the client
   only when it mentions the app's own login (`github.login`): `@humagen what
   changed?`. One that mentions neither starts nothing, so a busy repository

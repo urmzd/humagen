@@ -8236,7 +8236,7 @@ paths:
       description: |
         A workspace at its cap of clients answers 429 with a plain error
         body. Every agent the client names, as its default, in its list, for
-        a bot or for an auto-label, is an agent that exists and that the
+        a bot or in an event rule, is an agent that exists and that the
         caller may read; any other is 400, in the same words whether it does
         not exist or lives in a project the caller may not read.
       x-permission: clients:write
@@ -8315,7 +8315,7 @@ paths:
         naming one they may read replaces it. The agents it names that the
         caller is not shown are kept the same way: its default unless they
         name another, its list unless they write `*`, its bots and its
-        auto-labels unless they map the same bot or label, and an agent it
+        event rules unless they map the same bot or write the same rule, and an agent it
         routed to stays one it routes to. Every other agent named is one that
         exists and that the caller may read, or one the record already holds
         (400 otherwise, as on create). A client the server's configuration
@@ -15778,12 +15778,15 @@ components:
         name: {type: string, maxLength: 64}
         repository: {type: string}
         event: {type: string, enum: [check_run, issues, pull_request, push]}
-        action: {type: string, maxLength: 64}
+        action: {type: string, maxLength: 64, description: "Never `labeled` or `unlabeled`: labels start nothing. A rule stored on one reads paused, with a note."}
         conclusion: {type: string, maxLength: 64}
-        label: {type: string, maxLength: 128}
         agent: {type: string}
         instructions: {type: string, maxLength: 16000}
         paused: {type: boolean}
+        note:
+          description: Read-only. What of a rule stored earlier is ignored now, such as a label (labels start nothing). Dropped when the rule is saved.
+          type: string
+          readOnly: true
     GitHubOptions:
       type: object
       properties:
@@ -15802,12 +15805,22 @@ components:
           maxProperties: 500
           additionalProperties:
             type: string
-        auto_labels:
+        auto_review:
+          description: |
+            Reviews a pull request when it opens or reopens ready for review,
+            leaves draft, or gets a push, by the client's default agent.
+            Left out, it is on. Labels start nothing.
           type: object
-          additionalProperties:
-            type: object
-            additionalProperties:
-              type: string
+          additionalProperties: false
+          properties:
+            enabled:
+              description: The connection's switch. Left out, it is on.
+              type: boolean
+            repositories:
+              description: Exact `owner/repo` names reviewed (true) or not (false), whatever `enabled` says.
+              type: object
+              maxProperties: 64
+              additionalProperties: {type: boolean}
         checks:
           type: boolean
         guides:
@@ -15905,7 +15918,7 @@ components:
           description: |
             The agents it may route to besides its default, leaving out every
             agent that lives in a project the caller may not read, as `bots`
-            and `github.auto_labels` do. The machine that hosts the client's
+            and `github.automations` do. The machine that hosts the client's
             surface, its `slack.machine`, is shown every agent it names.
           type: array
           items: {type: string}
