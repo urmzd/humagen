@@ -527,15 +527,6 @@ export interface ModelProviderCheck {
   latency_ms: number;
 }
 
-/** One of the platform's agent packages, and what the workspace installed of it. */
-export interface AgentPackageListing {
-  name: string;
-  title: string;
-  description: string;
-  installed: number;
-  agents: { name: string; description: string; installed: boolean }[];
-}
-
 /** One agent's answer to whether it would take a message that names no agent. */
 export interface JoinDecision {
   agent: string;
@@ -1090,16 +1081,6 @@ export const api = {
     call<void>("DELETE", `/api/model-providers/${encodeURIComponent(name)}`),
   checkModelProvider: (name: string) =>
     call<ModelProviderCheck>("POST", `/api/model-providers/${encodeURIComponent(name)}/check`),
-  agentPackages: () =>
-    call<{ packages: AgentPackageListing[] }>("GET", "/api/agent-packages").then(
-      (response) => response.packages,
-    ),
-  installAgentPackage: (name: string, model: ModelRef) =>
-    call<AgentPackageListing>(
-      "POST",
-      `/api/agent-packages/${encodeURIComponent(name)}/install`,
-      model,
-    ),
   agentList: () =>
     call<{
       agents: Revision[];

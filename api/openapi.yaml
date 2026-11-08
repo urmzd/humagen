@@ -1607,55 +1607,6 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/ServerError"}
-  /api/agent-packages:
-    get:
-      operationId: listAgentPackages
-      tags: [agents]
-      summary: List the platform's agent packages and what the workspace installed
-      x-permission: agents:read
-      responses:
-        "200":
-          description: Every package, with each agent and whether it is installed.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [packages]
-                properties:
-                  packages:
-                    type: array
-                    items: {$ref: "#/components/schemas/AgentPackageListing"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {$ref: "#/components/responses/Forbidden"}
-        "500": {$ref: "#/components/responses/ServerError"}
-  /api/agent-packages/{name}/install:
-    post:
-      operationId: installAgentPackage
-      parameters:
-        - {name: name, in: path, required: true, schema: {type: string}}
-      tags: [agents]
-      summary: Install a package's agents on a model the caller picks
-      description: |
-        The platform's agents run only once installed: there is no built-in
-        model. The model is one of the workspace's providers. An agent of the
-        package the workspace already has keeps its own model.
-      x-permission: agents:write
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: "#/components/schemas/ModelRef"}
-      responses:
-        "200":
-          description: The package, as installed.
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/AgentPackageListing"}
-        "400": {$ref: "#/components/responses/BadRequest"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {$ref: "#/components/responses/Forbidden"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "500": {$ref: "#/components/responses/ServerError"}
   /api/agents:
     get:
       operationId: listAgents
@@ -10661,24 +10612,6 @@ components:
         key_stored: {type: boolean, description: A value is kept for it in the secret store.}
         added_by: {type: string}
         added_at: {type: string, format: date-time}
-    AgentPackageListing:
-      description: One of the platform's agent packages, as the workspace has it.
-      type: object
-      required: [name, title, description, agents, installed]
-      properties:
-        name: {type: string}
-        title: {type: string}
-        description: {type: string}
-        installed: {type: integer, minimum: 0}
-        agents:
-          type: array
-          items:
-            type: object
-            required: [name, description, installed]
-            properties:
-              name: {type: string}
-              description: {type: string}
-              installed: {type: boolean}
     JoinDecision:
       description: One agent's answer to whether it should take a message that names no agent.
       type: object

@@ -27,11 +27,10 @@ func as(run runs.Run, agent string) runtime.Request {
 // revision when nothing changed, and the builder's saves wait for a manager.
 func TestBuiltinAnalystAndBuilder(t *testing.T) {
 	ctx := context.Background()
-	p, err := platform.New(platform.Config{Workspace: t.TempDir()})
+	p, err := platform.New(platform.Config{Workspace: t.TempDir(), TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	platform.InstallPackagesForTest(t, p, tenant)
 	for range 2 {
 		if err := p.EnsureBuiltins(ctx, tenant); err != nil {
 			t.Fatal(err)
@@ -92,9 +91,8 @@ func TestRunsSummaryTool(t *testing.T) {
 }
 
 func TestSaveAgentTool(t *testing.T) {
-	p := startWith(t, platform.Config{})
+	p := startWith(t, platform.Config{TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	ctx := t.Context()
-	platform.InstallPackagesForTest(t, p, tenant)
 	if err := p.EnsureBuiltins(ctx, tenant); err != nil {
 		t.Fatal(err)
 	}
@@ -166,9 +164,8 @@ func TestSaveAgentTool(t *testing.T) {
 // anywhere, as its save is approved by a manager who need not own the home.
 // A new agent's name is held to what the agents route holds it to.
 func TestTheBuilderNeverReadsOrRevisesAnAgentOutsideItsReach(t *testing.T) {
-	p := startWith(t, platform.Config{})
+	p := startWith(t, platform.Config{TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	ctx := t.Context()
-	platform.InstallPackagesForTest(t, p, tenant)
 	if err := p.EnsureBuiltins(ctx, tenant); err != nil {
 		t.Fatal(err)
 	}

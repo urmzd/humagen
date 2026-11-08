@@ -561,11 +561,6 @@ func (h hidden) holds(body string) bool {
 // unplaced are the path parameters that name something outside any project,
 // which a member of the workspace may see.
 func (h hidden) unplaced(path, param string) bool {
-	// A package is the platform's, named alike in every workspace: there is
-	// nothing of a workspace's in its name to hide.
-	if strings.HasPrefix(path, "/api/agent-packages/") {
-		return true
-	}
 	if h.private {
 		if strings.HasPrefix(path, "/api/sessions/") {
 			return false

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
@@ -128,25 +127,49 @@ func IsBuiltin(name string) bool {
 	return slices.Contains(Builtins(), wire.NormalizeName(name)) || legacy.IsBuiltinAgent(wire.NormalizeName(name))
 }
 
-// builtinSpecs are the platform's agents as its packages define them, with
-// no model: a workspace runs one only after an administrator installs its
-// package on a model they pick (InstallPackage), and an upgrade keeps that
-// model (withModelOf). The package version hashes the definitions without
-// any model, so it is the same in every workspace.
+// BuiltinChain is the model chain the platform's agents ship with: each
+// answers on the first of these whose provider the workspace has enabled,
+// declared in the spec or set up by an administrator (resolveModel), and
+// says which it needs when none is. Edited like any agent's.
+var BuiltinChain = []wire.ModelRef{
+	{Provider: KindAnthropic, Model: "claude-sonnet-5-5"},
+	{Provider: KindOpenAI, Model: "gpt-5.1"},
+	{Provider: KindGoogle, Model: "gemini-3-flash-preview"},
+}
+
+// builtinSpecs are the platform's agents, each on BuiltinChain, or on the
+// one model a test names (Config.TestBuiltinProvider). They exist only on a
+// platform that ships them (Config.ShipBuiltins), which the server is.
 func (p *Platform) builtinSpecs() []wire.AgentSpec {
+	chain := BuiltinChain
+	switch {
+	case p.cfg.TestBuiltinProvider != "":
+		chain = []wire.ModelRef{{Provider: p.cfg.TestBuiltinProvider, Model: p.cfg.TestBuiltinModel}}
+	case !p.cfg.ShipBuiltins:
+		return nil
+	}
 	specs := []wire.AgentSpec{{
 		Name:         BuiltinWriter,
 		Description:  "Writes documents, reports and tables, and publishes them as files",
+		Provider:     chain[0].Provider,
+		Model:        chain[0].Model,
+		Fallbacks:    slices.Clone(chain[1:]),
 		SystemPrompt: writerPrompt,
 		Tools:        FileTools(),
 	}, {
 		Name:         BuiltinAnalyst,
 		Description:  "Answers questions about runs, failures, speed, spend and alerts, writes reports and project recaps",
+		Provider:     chain[0].Provider,
+		Model:        chain[0].Model,
+		Fallbacks:    slices.Clone(chain[1:]),
 		SystemPrompt: analystPrompt,
 		Tools:        append(AnalystTools(), FileTools()...),
 	}, {
 		Name:         BuiltinBuilder,
 		Description:  "Creates and improves agents with you. You approve every change",
+		Provider:     chain[0].Provider,
+		Model:        chain[0].Model,
+		Fallbacks:    slices.Clone(chain[1:]),
 		SystemPrompt: builderPrompt,
 		Tools:        BuilderTools(),
 		// Changing an agent is a manager's or an admin's call, and the
@@ -157,22 +180,34 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 	}, {
 		Name:         BuiltinCodeReviewer,
 		Description:  "Reviews code and combines specialist findings into one verdict",
+		Provider:     chain[0].Provider,
+		Model:        chain[0].Model,
+		Fallbacks:    slices.Clone(chain[1:]),
 		SystemPrompt: codeReviewerPrompt,
 		Tools:        reviewTools(),
 		Access:       wire.Access{Spawn: []string{BuiltinSecurityReviewer, BuiltinArchitectReviewer, BuiltinQAReviewer}},
 	}, {
 		Name:         BuiltinSecurityReviewer,
 		Description:  "Reviews security risks and concrete exploit scenarios",
+		Provider:     chain[0].Provider,
+		Model:        chain[0].Model,
+		Fallbacks:    slices.Clone(chain[1:]),
 		SystemPrompt: securityReviewerPrompt,
 		Tools:        reviewTools(),
 	}, {
 		Name:         BuiltinArchitectReviewer,
 		Description:  "Reviews architecture, boundaries and contract compatibility",
+		Provider:     chain[0].Provider,
+		Model:        chain[0].Model,
+		Fallbacks:    slices.Clone(chain[1:]),
 		SystemPrompt: architectReviewerPrompt,
 		Tools:        reviewTools(),
 	}, {
 		Name:         BuiltinQAReviewer,
 		Description:  "Reviews behavior, regressions, reproductions and test coverage",
+		Provider:     chain[0].Provider,
+		Model:        chain[0].Model,
+		Fallbacks:    slices.Clone(chain[1:]),
 		SystemPrompt: qaReviewerPrompt,
 		Tools:        reviewTools(),
 	}}
@@ -192,11 +227,9 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 	return specs
 }
 
-// EnsureBuiltins keeps the platform's agents a tenant has installed at the
-// definition this server was started with, on the model each was installed
-// or last set on. It installs none: an agent with no model cannot run, so an
-// administrator installs a package, picking its model (InstallPackage). It
-// is safe to call on every request: when nothing has changed it only reads.
+// EnsureBuiltins makes sure a tenant has the platform's agents, at the
+// definition this server was started with. It is safe to call on every
+// request: when nothing has changed it only reads.
 func (p *Platform) EnsureBuiltins(ctx context.Context, tenant string) error {
 	specs := p.builtinSpecs()
 	// Keep compatibility definitions under the old keys. No stored revision,
@@ -230,17 +263,14 @@ func (p *Platform) EnsureBuiltins(ctx context.Context, tenant string) error {
 		}
 		switch {
 		case errors.Is(err, wire.ErrNotFound):
-			// Not installed here.
+			if _, err := p.Agents.Create(ctx, tenant, want, "platform"); err != nil && !errors.Is(err, wire.ErrExists) {
+				return fmt.Errorf("platform: built-in %s: %w", want.Name, err)
+			}
 		case err != nil:
 			return err
-		case have.CreatedBy != "platform":
-			// Customized: an upgrade is offered, never applied (PackageRevision).
-		default:
-			want = withModelOf(want, have.Spec)
-			if !have.Spec.SameContent(want) || have.Spec.Package == nil || *have.Spec.Package != *want.Package {
-				if _, err := p.Agents.Revise(ctx, tenant, want, have.Rev, "platform"); err != nil && !errors.Is(err, wire.ErrConflict) {
-					return fmt.Errorf("platform: built-in %s: %w", want.Name, err)
-				}
+		case have.CreatedBy == "platform" && (!have.Spec.SameContent(want) || have.Spec.Package == nil || *have.Spec.Package != *want.Package):
+			if _, err := p.Agents.Revise(ctx, tenant, want, have.Rev, "platform"); err != nil && !errors.Is(err, wire.ErrConflict) {
+				return fmt.Errorf("platform: built-in %s: %w", want.Name, err)
 			}
 		}
 	}
@@ -371,135 +401,10 @@ func (p *Platform) ResetAgent(ctx context.Context, who auth.Principal, name stri
 			if err := p.checkBuiltinOwner(ctx, who.Tenant, have); err != nil {
 				return wire.Revision{}, err
 			}
-			// A reset restores the package's definition on the model the
-			// agent runs on now: the package names none.
-			spec = withModelOf(spec, have.Spec)
 			spec.Name = have.Spec.Name
 			r, err := p.Agents.Revise(ctx, who.Tenant, spec, have.Rev, "platform")
 			return p.PackageRevision(r), err
 		}
 	}
 	return wire.Revision{}, fmt.Errorf("%w: agent has no available package to reset", wire.ErrInvalidAgent)
-}
-
-// withModelOf is a package's definition on the model an installed agent runs
-// on: its provider, model, fallbacks, when it falls back, and the models a
-// message may pick.
-func withModelOf(want, have wire.AgentSpec) wire.AgentSpec {
-	want.Provider, want.Model = have.Provider, have.Model
-	want.Fallbacks = slices.Clone(have.Fallbacks)
-	want.FallbackOn = slices.Clone(have.FallbackOn)
-	want.Choices = have.Choices
-	return want
-}
-
-// AgentPackage is one of the platform's packages as a workspace sees it:
-// the agents it holds and how many of them the workspace has installed.
-type AgentPackage struct {
-	Name        string              `json:"name"`
-	Title       string              `json:"title"`
-	Description string              `json:"description"`
-	Agents      []AgentPackageAgent `json:"agents"`
-	Installed   int                 `json:"installed"`
-}
-
-// AgentPackageAgent is one agent of a package.
-type AgentPackageAgent struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Installed   bool   `json:"installed"`
-}
-
-// packages are the platform's packages, by the name the API addresses them
-// by, with the name their agents record (wire.PackageBase).
-var packages = []struct{ name, base, title, description string }{
-	{"core", "humagen/core", "Core", "A writer that publishes documents, an analyst that reports on runs, and a builder that makes agents with you"},
-	{"review", "humagen/review", "Review", "A code reviewer that combines security, architecture and test findings into one verdict"},
-}
-
-// AgentPackages lists the platform's packages and what tenant has installed.
-func (p *Platform) AgentPackages(ctx context.Context, tenant string) ([]AgentPackage, error) {
-	out := make([]AgentPackage, 0, len(packages))
-	for _, pkg := range packages {
-		a := AgentPackage{Name: pkg.name, Title: pkg.title, Description: pkg.description, Agents: []AgentPackageAgent{}}
-		for _, spec := range p.builtinSpecs() {
-			if spec.Package == nil || spec.Package.Name != pkg.base {
-				continue
-			}
-			_, err := p.Catalog().Get(ctx, tenant, spec.Name, 0)
-			if err != nil && !errors.Is(err, wire.ErrNotFound) {
-				return nil, err
-			}
-			a.Agents = append(a.Agents, AgentPackageAgent{Name: spec.Name, Description: spec.Description, Installed: err == nil})
-			if err == nil {
-				a.Installed++
-			}
-		}
-		out = append(out, a)
-	}
-	return out, nil
-}
-
-// InstallPackage installs a package's agents in who's workspace on the model
-// they pick, one of the providers the workspace has. An agent of it the
-// workspace already has is left as it is, on its own model.
-func (p *Platform) InstallPackage(ctx context.Context, who auth.Principal, name string, model wire.ModelRef) (AgentPackage, error) {
-	if !who.Can(auth.AgentsWrite) {
-		return AgentPackage{}, auth.ErrForbidden
-	}
-	i := slices.IndexFunc(packages, func(pkg struct{ name, base, title, description string }) bool { return pkg.name == name })
-	if i < 0 {
-		return AgentPackage{}, fmt.Errorf("%w: no package is named %q", wire.ErrNotFound, name)
-	}
-	model.Provider, model.Model = strings.TrimSpace(model.Provider), strings.TrimSpace(model.Model)
-	if model.Provider == "" || model.Model == "" {
-		return AgentPackage{}, fmt.Errorf("%w: pick the model the package's agents run on", wire.ErrInvalidAgent)
-	}
-	var install []wire.AgentSpec
-	for _, spec := range p.builtinSpecs() {
-		if spec.Package == nil || spec.Package.Name != packages[i].base {
-			continue
-		}
-		spec.Provider, spec.Model = model.Provider, model.Model
-		if err := spec.Normalize().ValidateWith(p.agentProviders(who.Tenant)); err != nil {
-			return AgentPackage{}, err
-		}
-		if err := p.CheckAgentModel(who.Tenant, spec); err != nil {
-			return AgentPackage{}, err
-		}
-		install = append(install, spec)
-		// The compatibility definitions under the old keys come with it,
-		// as EnsureBuiltins keeps them, so an old grant still finds one.
-		for old, name := range legacy.BuiltinAgents() {
-			if name == spec.Name {
-				alias := spec
-				alias.Name = old
-				install = append(install, alias)
-			}
-		}
-	}
-	for _, spec := range install {
-		have, err := p.Catalog().Get(ctx, who.Tenant, spec.Name, 0)
-		switch {
-		case err == nil:
-			if err := p.checkBuiltinOwner(ctx, who.Tenant, have); err != nil {
-				return AgentPackage{}, err
-			}
-			continue
-		case !errors.Is(err, wire.ErrNotFound):
-			return AgentPackage{}, err
-		}
-		if _, err := p.Agents.Create(ctx, who.Tenant, spec, "platform"); err != nil && !errors.Is(err, wire.ErrExists) {
-			return AgentPackage{}, fmt.Errorf("platform: install %s: %w", spec.Name, err)
-		}
-	}
-	if err := p.EnsureAgentHomes(ctx, who.Tenant); err != nil {
-		return AgentPackage{}, err
-	}
-	p.log.Info("platform: package installed", "tenant", who.Tenant, "package", name, "provider", model.Provider, "model", model.Model, "by", who.Subject)
-	all, err := p.AgentPackages(ctx, who.Tenant)
-	if err != nil {
-		return AgentPackage{}, err
-	}
-	return all[i], nil
 }

@@ -253,6 +253,13 @@ type Config struct {
 	// ModelKinds builds the providers workspaces set up. With Build nil no
 	// workspace provider can run.
 	ModelKinds ModelKinds
+	// ShipBuiltins gives every workspace the platform's agents, each on the
+	// model chain it ships with (BuiltinChain). The server sets it.
+	ShipBuiltins bool
+	// TestBuiltinProvider and TestBuiltinModel ship the platform's agents on
+	// one model instead, such as the offline one a test scripts. For tests
+	// only: nothing in the server sets them.
+	TestBuiltinProvider, TestBuiltinModel string
 	// DeclaredKinds is the kind of each provider the deployment declares,
 	// by name, so the console can show its logo. A name with none is plain.
 	DeclaredKinds map[string]string

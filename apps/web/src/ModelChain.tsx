@@ -195,8 +195,22 @@ export function ModelChain({
     );
   };
 
+  // A chain no enabled provider answers says what it needs, rather than fail at its first run.
+  const needs =
+    configured !== null &&
+    models.length > 0 &&
+    !models.some((m) => configured.some((c) => c.name === m.provider))
+      ? [...new Set(models.map((m) => m.provider).filter(Boolean))]
+      : [];
+
   return (
     <div className="@container flex min-w-0 flex-col gap-4">
+      {needs.length > 0 && (
+        <p className="text-aui-sm text-aui-muted">
+          Runs once an administrator enables {needs.join(", ").replace(/, ([^,]*)$/, " or $1")} in
+          Settings, under Model providers.
+        </p>
+      )}
       <p aria-live="polite" className="sr-only">
         {said}
       </p>

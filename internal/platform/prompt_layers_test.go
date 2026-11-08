@@ -20,7 +20,6 @@ func TestRunUsesItsPinnedPromptAfterWorkspaceChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = p.Close() }()
-	InstallPackagesForTest(t, p, "acme")
 	s := p.Settings("acme")
 	s.Prompts.Workspace = "Use the old terminology."
 	if err := p.SetSettings(t.Context(), "acme", s); err != nil {
@@ -54,7 +53,7 @@ func TestBuilderRevisionGateChecksCandidateBeforePublishing(t *testing.T) {
 		}
 		return turn.Result{Text: "Verified evidence"}, nil
 	})
-	p, err := New(Config{Workspace: t.TempDir(), Runtime: engine})
+	p, err := New(Config{Workspace: t.TempDir(), Runtime: engine, TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,7 +10,6 @@ import type {
   AgentEvaluationHealth,
   AgentHome,
   AgentNetwork,
-  AgentPackageListing,
   AgentSession,
   AgentSetup,
   AgentSetupPlan,
@@ -93,7 +92,6 @@ import type {
   KnowledgeVariant,
   LibrarySkill,
   LinkSessionBody,
-  ListAgentPackagesResponse,
   ListAgentRevisionsResponse,
   ListAgentsResponse,
   ListAlertRulesResponse,
@@ -149,7 +147,6 @@ import type {
   MemoryFiles,
   MemoryRestoreInput,
   ModelProvider,
-  ModelRef,
   Note,
   NoteInput,
   NoteList,
@@ -1785,45 +1782,6 @@ names starting `ws-` are refused.
     let path = "/api/model-providers/{name}/check";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<HealthComponent>("POST", path, {
-      ...options,
-    });
-  }
-
-  /** List the platform's agent packages and what the workspace installed */
-  async listAgentPackages(options?: RequestOptions): Promise<ListAgentPackagesResponse> {
-    const path = "/api/agent-packages";
-    return this.request<ListAgentPackagesResponse>("GET", path, {
-      ...options,
-    });
-  }
-
-  async listAgentPackagesRaw(options?: RequestOptions): Promise<ApiResponse<ListAgentPackagesResponse>> {
-    const path = "/api/agent-packages";
-    return this.rawRequest<ListAgentPackagesResponse>("GET", path, {
-      ...options,
-    });
-  }
-
-  /** The platform's agents run only once installed: there is no built-in
-model. The model is one of the workspace's providers. An agent of the
-package the workspace already has keeps its own model.
- */
-  async installAgentPackage(name: string, body: ModelRef, options?: RequestOptions): Promise<AgentPackageListing> {
-    let path = "/api/agent-packages/{name}/install";
-    path = path.replace("{name}", encodeURIComponent(String(name)));
-    return this.request<AgentPackageListing>("POST", path, {
-      body,
-      contentType: "application/json",
-      ...options,
-    });
-  }
-
-  async installAgentPackageRaw(name: string, body: ModelRef, options?: RequestOptions): Promise<ApiResponse<AgentPackageListing>> {
-    let path = "/api/agent-packages/{name}/install";
-    path = path.replace("{name}", encodeURIComponent(String(name)));
-    return this.rawRequest<AgentPackageListing>("POST", path, {
-      body,
-      contentType: "application/json",
       ...options,
     });
   }

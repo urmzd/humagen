@@ -4,9 +4,9 @@
  * the historical screen/showcase fixtures for their older interfaces.
  *
  * It starts humagen on a free loopback port with the development sign-in, a
- * local OpenAI-compatible model fixture (there is no built-in or offline model),
- * the example agents and the built-in packages installed on it and state in
- * memory, adds a little
+ * local OpenAI-compatible model fixture (there is no offline model), declared
+ * as screens-native and as anthropic, which the platform's agents name first,
+ * the example agents on it and state in memory, adds a little
  * more through the API (announcements, a failed run whose alert waits in the
  * inbox, a schedule), and serves the built console from apps/web/dist. Run it
  * with `make screens`, which builds both first.
@@ -1457,6 +1457,10 @@ spec:
     - name: screens-native
       kind: openai
       openai: {base_url: "${model.base}", key: {ref: env:HUMAGEN_SCREENS_MODEL_KEY}}
+    # The platform's agents name anthropic first; here it is the same fixture.
+    - name: anthropic
+      kind: openai
+      openai: {base_url: "${model.base}", key: {ref: env:HUMAGEN_SCREENS_MODEL_KEY}}
     # Nothing answers here, so a run on it fails: what needs a person on Home.
     - name: screens-broken
       kind: openai
@@ -1523,24 +1527,24 @@ spec:
 
 /**
  * The agents every screen expects, on the local model fixture: the example lead and
- * helper, the lead answering the workspace's untagged messages, and the platform's
- * packages installed as an administrator would. Nothing runs on a built-in model.
+ * helper, and the lead answering the workspace's untagged messages. The platform's own
+ * agents exist already, on the chain they ship with, which anthropic answers here.
  */
 async function seedModels(call: Call): Promise<void> {
   const fixture = { provider: "screens-native", model: "screens-native" };
   for (const a of [
+    {
+      name: "helper",
+      description: "Does one piece of work for the lead.",
+      system_prompt: "You do one task well.",
+    },
     {
       name: "lead",
       description: "Takes a request and may call the helper.",
       system_prompt: "You coordinate work.",
       access: { spawn: ["helper"] },
     },
-    {
-      name: "helper",
-      description: "Does one piece of work for the lead.",
-      system_prompt: "You do one task well.",
-    },
-  ].reverse())
+  ])
     await call("POST", "/api/agents", { ...a, ...fixture });
   const root = await call<{ version: number; enable: string[] }>("GET", "/api/projects/~/agents");
   await call("PUT", "/api/projects/~/agents", {
@@ -1548,8 +1552,6 @@ async function seedModels(call: Call): Promise<void> {
     enable: root.enable,
     default: "lead",
   });
-  for (const name of ["core", "review"])
-    await call("POST", `/api/agent-packages/${name}/install`, fixture);
 }
 
 /** One call to the API, failing loudly: a seed that did not land would make every screen lie. */

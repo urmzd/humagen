@@ -178,6 +178,27 @@ func (p *Platform) resolveModel(req runtime.Request) (runtime.Request, error) {
 			spec.Fallbacks = nil
 		}
 	}
+	if p.cfg.ConfiguredModelsOnly {
+		// A model whose provider the workspace has not enabled is passed
+		// over, so a chain runs on what is set up; with none, the run says
+		// what it needs rather than reach for a key nobody chose.
+		chain := append([]native.ModelRef{{Provider: spec.Provider, Model: spec.Model}}, spec.Fallbacks...)
+		var named []string
+		kept := slices.DeleteFunc(slices.Clone(chain), func(m native.ModelRef) bool {
+			if !slices.Contains(named, m.Provider) {
+				named = append(named, m.Provider)
+			}
+			return !p.enabled(req.Tenant, m.Provider)
+		})
+		if len(kept) == 0 {
+			return req, fmt.Errorf("%w: @%s needs a model provider its models name (%s); an administrator enables one in Settings, under Model providers", ErrModelProvider, spec.Name, strings.Join(named, ", "))
+		}
+		spec.Provider, spec.Model = kept[0].Provider, kept[0].Model
+		spec.Fallbacks = kept[1:]
+		if len(spec.Fallbacks) == 0 {
+			spec.Fallbacks, spec.FallbackOn = nil, nil
+		}
+	}
 	spec.Provider = p.runName(req.Tenant, spec.Provider)
 	if len(spec.Fallbacks) > 0 {
 		spec.Fallbacks = slices.Clone(spec.Fallbacks)
@@ -187,6 +208,16 @@ func (p *Platform) resolveModel(req runtime.Request) (runtime.Request, error) {
 	}
 	req.Definition.Spec = spec
 	return req, nil
+}
+
+// enabled reports whether a provider can run in tenant's workspace: the
+// deployment declares it, or the workspace's administrators set it up.
+func (p *Platform) enabled(tenant, name string) bool {
+	if p.cfg.Ext.Providers[name] != nil {
+		return true
+	}
+	_, ok := p.workspaceProvider(tenant, name)
+	return ok
 }
 
 // ModelProviderChoice describes configuration names, never credential values.

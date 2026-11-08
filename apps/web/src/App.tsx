@@ -371,6 +371,25 @@ function Console({
   const narrow = useNarrow();
   const drawer = open && narrow;
 
+  // With no model provider at all, nothing can answer: an administrator's first stop is
+  // enabling one. Asked once per load; a person who cannot set one up is not moved, and
+  // later navigation is the person's own.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on arrival only, not on every route
+  useEffect(() => {
+    if (!can("clients:write")) return;
+    let live = true;
+    api
+      .modelProviders()
+      .then((all) => {
+        if (live && !all.some((p) => p.declared) && route.page !== "settings")
+          go({ page: "settings", section: "providers" }, { replace: true });
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [can]);
+
   const loadAgents = useCallback(() => {
     if (!can("agents:read")) return;
     api

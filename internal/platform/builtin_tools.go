@@ -410,16 +410,17 @@ func (p *Platform) prepareBuilderAgent(ctx context.Context, tenant string, args 
 		if err := p.CheckAgentName(tenant, name); err != nil {
 			return wire.AgentSpec{}, wire.Revision{}, false, fmt.Errorf("%w: %w", ErrBuilder, err)
 		}
-		// A new agent starts on the model the builder was installed on:
-		// an administrator picked it, and the person approving the save
-		// sees it. They change it afterwards on the agent's Model tab.
-		builder, err := p.Catalog().Get(ctx, tenant, BuiltinBuilder, 0)
-		if err != nil {
-			return wire.AgentSpec{}, wire.Revision{}, false, fmt.Errorf("%w: the builder has no model to start an agent on: %w", ErrBuilder, err)
+		// A new agent starts on the builder's own models, and the person
+		// approving the save sees them. They change them afterwards on the
+		// agent's Model tab.
+		builder, ok := p.builderModels(ctx, tenant)
+		if !ok {
+			return wire.AgentSpec{}, wire.Revision{}, false, fmt.Errorf("%w: the builder has no model to start an agent on", ErrBuilder)
 		}
 		spec := wire.AgentSpec{
 			Name: name, Description: description, SystemPrompt: prompt, Tools: tools,
-			Provider: builder.Spec.Provider, Model: builder.Spec.Model,
+			Provider: builder.Provider, Model: builder.Model,
+			Fallbacks: slices.Clone(builder.Fallbacks), FallbackOn: slices.Clone(builder.FallbackOn),
 		}
 		if err := p.CheckAgentModel(tenant, spec); err != nil {
 			return wire.AgentSpec{}, wire.Revision{}, false, err
@@ -459,4 +460,18 @@ func (p *Platform) saveAgent(ctx context.Context, tenant string, args map[string
 	}
 	rev, err := p.Agents.Revise(ctx, tenant, spec, have.Rev, "agent:"+BuiltinBuilder)
 	return rev, false, err
+}
+
+// builderModels are the models a new agent the builder makes starts on: the
+// builder's own as the workspace has it, else as the platform ships it.
+func (p *Platform) builderModels(ctx context.Context, tenant string) (wire.AgentSpec, bool) {
+	if have, err := p.Catalog().Get(ctx, tenant, BuiltinBuilder, 0); err == nil {
+		return have.Spec, true
+	}
+	for _, spec := range p.builtinSpecs() {
+		if spec.Name == BuiltinBuilder {
+			return spec, true
+		}
+	}
+	return wire.AgentSpec{}, false
 }
