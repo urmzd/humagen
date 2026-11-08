@@ -21,6 +21,7 @@ import { inputClass } from "@humagen/render-web/ui/input";
 import {
   type CSSProperties,
   createContext,
+  Fragment,
   type ReactNode,
   type RefObject,
   useContext,
@@ -1652,6 +1653,8 @@ export type Option<T extends string = string> = {
   hint?: string;
   /** Drawn before the label, such as an agent's mark. */
   mark?: ReactNode;
+  /** A heading the option sits under; consecutive options with the same group share one. */
+  group?: string;
 };
 
 /**
@@ -1851,26 +1854,35 @@ export function Menu<T extends string>({
               <li className="px-2.5 py-2 text-aui-sm text-aui-muted">Nothing matches.</li>
             )}
             {shown.map((o, i) => (
-              // biome-ignore lint/a11y/useKeyWithClickEvents: the listbox handles keys for its options
-              <li
-                key={o.value}
-                id={`${id}-${i}`}
-                role="option"
-                aria-selected={o.value === value}
-                data-active={i === active}
-                onMouseMove={() => setActive(i)}
-                onClick={() => pick(o)}
-                className="flex cursor-pointer items-center gap-2.5 rounded-aui px-2.5 py-1.5 text-aui-sm text-aui-fg data-[active=true]:bg-aui-hover"
-              >
-                {o.mark}
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">{o.label}</span>
-                  {o.hint && <span className="block text-aui-xs text-aui-muted">{o.hint}</span>}
-                </span>
-                {o.value === value && shows === undefined && (
-                  <CheckIcon size={14} className="text-aui-fg" />
+              <Fragment key={o.value}>
+                {o.group && o.group !== shown[i - 1]?.group && (
+                  <li
+                    role="presentation"
+                    className="px-2.5 pt-2 pb-1 text-aui-xs font-medium text-aui-muted first:pt-1"
+                  >
+                    {o.group}
+                  </li>
                 )}
-              </li>
+                {/* biome-ignore lint/a11y/useKeyWithClickEvents: the listbox handles keys for its options */}
+                <li
+                  id={`${id}-${i}`}
+                  role="option"
+                  aria-selected={o.value === value}
+                  data-active={i === active}
+                  onMouseMove={() => setActive(i)}
+                  onClick={() => pick(o)}
+                  className="flex cursor-pointer items-center gap-2.5 rounded-aui px-2.5 py-1.5 text-aui-sm text-aui-fg data-[active=true]:bg-aui-hover"
+                >
+                  {o.mark}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{o.label}</span>
+                    {o.hint && <span className="block text-aui-xs text-aui-muted">{o.hint}</span>}
+                  </span>
+                  {o.value === value && shows === undefined && (
+                    <CheckIcon size={14} className="text-aui-fg" />
+                  )}
+                </li>
+              </Fragment>
             ))}
           </ul>
         </div>

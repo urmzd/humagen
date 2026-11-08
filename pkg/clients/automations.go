@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -121,4 +122,36 @@ func AutomationContext(body []byte) string {
 		}
 	}
 	return text
+}
+
+// AutomationThread is the pull request or issue a signed payload is about, as
+// an address path under its repository ("pull/7", "issues/42"), so an
+// automation can answer where it was triggered. A push, or a check run with no
+// pull request, has none.
+func AutomationThread(kind string, body []byte) (string, bool) {
+	var p struct {
+		PullRequest *struct {
+			Number int `json:"number"`
+		} `json:"pull_request"`
+		Issue *struct {
+			Number int `json:"number"`
+		} `json:"issue"`
+		CheckRun struct {
+			PullRequests []struct {
+				Number int `json:"number"`
+			} `json:"pull_requests"`
+		} `json:"check_run"`
+	}
+	if json.Unmarshal(body, &p) != nil {
+		return "", false
+	}
+	switch {
+	case kind == "pull_request" && p.PullRequest != nil && p.PullRequest.Number > 0:
+		return "pull/" + strconv.Itoa(p.PullRequest.Number), true
+	case kind == "issues" && p.Issue != nil && p.Issue.Number > 0:
+		return "issues/" + strconv.Itoa(p.Issue.Number), true
+	case kind == "check_run" && len(p.CheckRun.PullRequests) > 0 && p.CheckRun.PullRequests[0].Number > 0:
+		return "pull/" + strconv.Itoa(p.CheckRun.PullRequests[0].Number), true
+	}
+	return "", false
 }

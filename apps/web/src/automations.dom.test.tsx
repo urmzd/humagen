@@ -8,33 +8,81 @@ const can = () => true;
 const agents = [
   {
     rev: 1,
-    spec: { name: "lead", provider: "offline", model: "offline", system_prompt: "Help." },
+    spec: {
+      name: "lead",
+      provider: "anthropic",
+      model: "claude-haiku-5-5",
+      system_prompt: "Help.",
+    },
     created_at: "2026-11-01T00:00:00Z",
     created_by: "owner",
     hash: "one",
   },
 ];
-const client = {
-  id: "github",
-  name: "GitHub",
-  surface: "github",
-  identity: { owners: ["acme"] },
-  default_agent: "lead",
+const connection = (id: string, surface: "slack" | "github") => ({
+  id,
+  name: id,
+  surface,
+  identity: surface === "slack" ? { team: "T0TEAM1" } : { owners: ["acme"] },
   enabled: true,
   version: 1,
   created_at: "2026-11-01T00:00:00Z",
   updated_at: "2026-11-01T00:00:00Z",
-  github: { auto_labels: { "acme/app": { "agent:review": "lead" } } },
-};
+});
 afterEach(cleanup);
 
-test("the builder saves instructions and conditions through the installation API", async () => {
+test("Scheduled is schedules only: one New Schedule, no GitHub event rules and no inline links", () => {
+  const { restore } = stubFetch({});
+  try {
+    render(
+      <Automations
+        schedules={[]}
+        agents={[]}
+        projects={[]}
+        can={can}
+        onChanged={() => {}}
+        onSchedule={() => {}}
+      />,
+    );
+    assert.ok(screen.getByRole("heading", { name: "Scheduled", level: 1 }));
+    assert.ok(screen.getByRole("button", { name: "New Schedule" }));
+    assert.equal(screen.queryByRole("button", { name: /GitHub/ }), null);
+    assert.equal(screen.queryByRole("link", { name: "Open Sessions" }), null);
+    assert.ok(screen.getByText("Nothing scheduled yet"));
+  } finally {
+    restore();
+  }
+});
+
+test("readers see no New Schedule", () => {
+  const { restore } = stubFetch({});
+  try {
+    render(
+      <Automations
+        schedules={[]}
+        agents={[]}
+        projects={[]}
+        can={() => false}
+        onChanged={() => {}}
+        onSchedule={() => {}}
+      />,
+    );
+    assert.equal(screen.queryByRole("button", { name: "New Schedule" }), null);
+  } finally {
+    restore();
+  }
+});
+
+test("a schedule is a session, and picking Slack also posts its answer through the connection picked", async () => {
   let saved: Record<string, unknown> | undefined;
   const { restore } = stubFetch({
-    "GET /api/clients": () => ({ clients: [client], caps: {} }),
-    "PUT /api/clients/github": (body) => {
+    "GET /api/clients": () => ({
+      clients: [connection("team-slack", "slack"), connection("acme-github", "github")],
+      caps: {},
+    }),
+    "POST /api/schedules": (body) => {
       saved = body as Record<string, unknown>;
-      return { ...client, ...saved };
+      return saved;
     },
   });
   try {
@@ -48,56 +96,53 @@ test("the builder saves instructions and conditions through the installation API
         onSchedule={() => {}}
       />,
     );
-    await screen.findByText(/agent:review/);
-    fireEvent.click(screen.getByRole("button", { name: "New GitHub Automation" }));
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "failed-check" } });
-    fireEvent.change(screen.getByLabelText("Repository"), { target: { value: "acme/app" } });
-    fireEvent.change(screen.getByLabelText("Target agent"), { target: { value: "lead" } });
-    fireEvent.change(screen.getByLabelText("Instructions"), {
-      target: { value: "Investigate this failure." },
+    fireEvent.click(screen.getByRole("button", { name: "New Schedule" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "nightly" } });
+    fireEvent.change(screen.getByLabelText("What to ask"), {
+      target: { value: "What failed overnight?" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save Automation" }));
+    // No Send to field: a schedule is a session unless Slack or GitHub is picked.
+    assert.equal(screen.queryByRole("button", { name: /^Send to:/ }), null);
+    fireEvent.click(await screen.findByRole("button", { name: "Slack" }));
+    fireEvent.change(screen.getByLabelText("Slack channel id"), { target: { value: "c0alerts1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create Schedule" }));
     await waitFor(() => assert.ok(saved));
-    const github = saved?.github as { automations: unknown[]; auto_labels: unknown };
-    assert.deepEqual(github.automations, [
-      {
-        name: "failed-check",
-        repository: "acme/app",
-        event: "check_run",
-        action: "completed",
-        conclusion: "failure",
-        agent: "lead",
-        instructions: "Investigate this failure.",
-        paused: false,
-      },
-    ]);
-    assert.deepEqual(github.auto_labels, client.github.auto_labels);
+    assert.equal(saved?.deliver, "slack");
+    assert.equal(saved?.deliver_client, "team-slack");
+    assert.equal(saved?.deliver_to, "C0ALERTS1");
   } finally {
     restore();
   }
 });
 
-test("readers see no create buttons and cannot load installations without read permission", () => {
-  const { restore, seen } = stubFetch({});
+test("a schedule's card says where its answer goes", () => {
+  const { restore } = stubFetch({});
   try {
     render(
       <Automations
-        schedules={[]}
-        agents={[]}
+        schedules={[
+          {
+            name: "nightly",
+            expression: "0 9 * * *",
+            agent: "lead",
+            text: "Report.",
+            deliver: "github",
+            deliver_client: "acme-github",
+            deliver_to: "acme/app#12",
+            paused: false,
+            next: [],
+            recent: [],
+          },
+        ]}
+        agents={agents}
         projects={[]}
-        can={() => false}
+        can={can}
         onChanged={() => {}}
         onSchedule={() => {}}
       />,
     );
-    assert.equal(seen.length, 0);
-    assert.ok(screen.getByRole("heading", { name: "Schedules", level: 1 }));
-    assert.equal(
-      screen.getByRole("link", { name: "Open Sessions" }).getAttribute("href"),
-      "/sessions",
-    );
-    assert.equal(screen.queryByRole("button", { name: "New Schedule" }), null);
-    assert.equal(screen.queryByRole("button", { name: "New GitHub Automation" }), null);
+    assert.ok(screen.getByText("GitHub acme/app#12"));
+    assert.ok(screen.getByText("Active"));
   } finally {
     restore();
   }

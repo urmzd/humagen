@@ -53,7 +53,7 @@ import { useMarks } from "./marks.ts";
 import { ConversationPeek, PeekCard, usePeek } from "./RowPreview.tsx";
 import { type Standing, useRecents } from "./recents.ts";
 import { href, type Route, type Page as RoutePage } from "./route.ts";
-import { Avatar } from "./Settings.tsx";
+import { Avatar, workspaceSettingsRoute } from "./Settings.tsx";
 import { type Alert, openAlert, orderAlerts, priorityRank } from "./sessionCenter.ts";
 import { AgentMark, type Flash, FlashNote, Popover, SkeletonRows, useFlash } from "./ui.tsx";
 import { workspaceHub } from "./workspace-navigation.ts";
@@ -704,6 +704,8 @@ export function Sidebar({
   const dev = who.subject === "dev";
   const name = prefs?.display_name || who.name || who.email || who.subject;
   const subtitle = dev ? "Dev mode, no sign-in" : (who.roles ?? []).join(", ") || who.tenant;
+  // Settings open from the account row: yours, and the workspace's when you may see any of it.
+  const workspaceSettings = workspaceSettingsRoute(can, who.roles ?? []);
   // Recents is what people asked for. Scheduled and eval runs live on their own
   // pages, so a timer cannot push a person's work off the list.
   const [standing, setStanding] = useState<Standing>("");
@@ -779,7 +781,7 @@ export function Sidebar({
     // Keep focus at its remaining control or a stable navigation target.
     const fallback = projects
       ? sidebar.current?.querySelector<HTMLElement>(
-          'nav[aria-label="Sections"] a[href="/settings/profile"]',
+          'nav[aria-label="Sections"] a[href="/projects"]',
         )
       : sidebar.current?.querySelector<HTMLButtonElement>('section[aria-label="Sessions"] button');
     (control ?? fallback)?.focus();
@@ -838,6 +840,13 @@ export function Sidebar({
       badge: inboxCount,
     },
     {
+      to: { page: "projects" } as Route,
+      label: "Projects",
+      icon: <ProjectIcon />,
+      show: can("projects:read"),
+      active: here("projects", "project"),
+    },
+    {
       to: { page: "agents" } as Route,
       label: "Agents",
       icon: <BotIcon />,
@@ -854,6 +863,13 @@ export function Sidebar({
         (route.page === "library" && ["sources", "catalog"].includes(route.section)),
     },
     {
+      to: { page: "automations" } as Route,
+      label: "Scheduled",
+      icon: <CalendarIcon />,
+      show: can("schedules:read"),
+      active: here("automations", "schedules"),
+    },
+    {
       to: { page: "artifacts" } as Route,
       label: "Artifacts",
       icon: <LayersIcon />,
@@ -861,26 +877,6 @@ export function Sidebar({
       active:
         route.page === "artifacts" ||
         (route.page === "library" && route.section === "deliverables"),
-    },
-    {
-      to: { page: "settings", section: "profile" } as Route,
-      label: "Settings",
-      icon: <SettingsIcon />,
-      show: true,
-      active: here(
-        "settings",
-        "directory",
-        "operations",
-        "usage",
-        "audit",
-        "you",
-        "projects",
-        "project",
-        "automations",
-        "schedules",
-        "monitor",
-        "action-policy",
-      ),
     },
   ];
 
@@ -1515,15 +1511,19 @@ export function Sidebar({
                   <Separator className="my-1" />
                   {[
                     {
-                      label: "Profile",
+                      label: "Your settings",
                       icon: <UserIcon size={14} />,
                       to: { page: "settings", section: "profile" } as Route,
                     },
-                    {
-                      label: "Appearance",
-                      icon: <SettingsIcon size={14} />,
-                      to: { page: "settings", section: "appearance" } as Route,
-                    },
+                    ...(workspaceSettings
+                      ? [
+                          {
+                            label: "Workspace settings",
+                            icon: <SettingsIcon size={14} />,
+                            to: workspaceSettings,
+                          },
+                        ]
+                      : []),
                   ].map((item) => (
                     <button
                       key={item.label}

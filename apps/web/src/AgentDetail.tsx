@@ -185,9 +185,9 @@ const presets: { label: string; rule: (agent: string) => AlertRule }[] = [
 ];
 
 /**
- * Which models an agent runs on, and when it moves to the next. It either
- * follows one of the workspace's policies, so the workspace can move every
- * such agent off a failing provider at once, or sets its own chain.
+ * Which models an agent runs on, in order, and when it moves to the next. Each
+ * agent owns its chain. An agent saved while following an old workspace policy
+ * shows that policy's models here, and saving makes them its own.
  */
 function ModelTab({
   spec,
@@ -195,7 +195,6 @@ function ModelTab({
   policies,
   others,
   onChange,
-  onManage,
 }: {
   spec: AgentSpec;
   editable: boolean;
@@ -205,133 +204,63 @@ function ModelTab({
   onManage?: () => void;
 }) {
   const onPolicy = spec.provider === POLICY;
-  const current = onPolicy ? policies.find((p) => p.name === spec.model) : undefined;
+  const followed = onPolicy ? policies.find((p) => p.name === spec.model) : undefined;
   const chain: ModelRef[] = onPolicy
-    ? []
+    ? (followed?.models ?? [{ provider: "anthropic", model: defaultModel.anthropic ?? "" }])
     : [{ provider: spec.provider, model: spec.model }, ...(spec.fallbacks ?? [])];
-  const writeChain = (models: ModelRef[], fallbackOn: string[]) => {
+  const fallbackOn = onPolicy ? (followed?.fallback_on ?? []) : (spec.fallback_on ?? []);
+  const writeChain = (models: ModelRef[], when: string[]) => {
     const [primary, ...rest] = models;
     if (!primary) return;
     onChange({
       provider: primary.provider,
       model: primary.model,
       fallbacks: rest.length > 0 ? rest : undefined,
-      fallback_on: rest.length > 0 && fallbackOn.length > 0 ? fallbackOn : undefined,
+      fallback_on: rest.length > 0 && when.length > 0 ? when : undefined,
     });
-  };
-  const choosePolicy = (name: string) =>
-    onChange({ provider: POLICY, model: name, fallbacks: undefined, fallback_on: undefined });
-  const useOwn = () => {
-    const from = current?.models ?? [
-      { provider: "anthropic", model: defaultModel.anthropic ?? "" },
-    ];
-    writeChain(from, current?.fallback_on ?? []);
   };
   const copyable = others.filter((a) => a.spec.provider !== POLICY);
 
   return (
     <div className="flex flex-col gap-6">
       <Section
-        title="Model policy"
+        title="Models"
         hint="Which models answer, in order, and which errors move a call to the next. A run keeps answering when one provider does not."
         actions={
-          onManage ? (
-            <button type="button" className={button} onClick={onManage}>
-              Workspace Policies
-            </button>
+          editable && copyable.length > 0 ? (
+            <Menu
+              label="Copy from an agent"
+              className="w-56"
+              value=""
+              options={[
+                { value: "", label: "Copy from an agent" },
+                ...copyable.map((a) => ({
+                  value: a.spec.name,
+                  label: a.spec.name,
+                  hint: chainWords([a.spec, ...(a.spec.fallbacks ?? [])], a.spec.fallback_on),
+                })),
+              ]}
+              onChange={(name) => {
+                const from = others.find((a) => a.spec.name === name)?.spec;
+                if (from) writeChain([from, ...(from.fallbacks ?? [])], from.fallback_on ?? []);
+              }}
+            />
           ) : undefined
         }
       >
-        <fieldset className={`${card} flex flex-col gap-3`}>
-          <legend className="sr-only">Where the models come from</legend>
-          <label className="flex items-start gap-2.5 text-aui-sm text-aui-fg">
-            <input
-              type="radio"
-              className="mt-1"
-              disabled={!editable || policies.length === 0}
-              checked={onPolicy}
-              onChange={() => policies[0] && choosePolicy(policies[0].name)}
-            />
-            <span className="min-w-0 flex-1">
-              Follow a workspace policy
-              <span className="block text-aui-xs text-aui-muted">
-                {policies.length === 0
-                  ? "The workspace has no policies yet. An admin adds them under Settings, Models."
-                  : "Changes to the policy apply from each agent's next call, so one change moves every agent on it."}
-              </span>
-              {onPolicy && (
-                <span className="flex flex-col gap-1 pt-2">
-                  <Menu
-                    label="Workspace policy"
-                    className="max-w-sm"
-                    value={spec.model}
-                    disabled={!editable}
-                    options={policies.map((p) => ({
-                      value: p.name,
-                      label: p.name,
-                      hint: chainWords(p.models, p.fallback_on),
-                    }))}
-                    onChange={choosePolicy}
-                  />
-                  {current ? (
-                    <span className="text-aui-xs text-aui-muted">
-                      {current.description || chainWords(current.models, current.fallback_on)}
-                    </span>
-                  ) : (
-                    <span role="alert" className="text-aui-xs text-aui-bad">
-                      The workspace has no policy named {spec.model}.
-                    </span>
-                  )}
-                </span>
-              )}
-            </span>
-          </label>
-          <label className="flex items-start gap-2.5 text-aui-sm text-aui-fg">
-            <input
-              type="radio"
-              className="mt-1"
-              disabled={!editable}
-              checked={!onPolicy}
-              onChange={useOwn}
-            />
-            <span>
-              Set its own models
-              <span className="block text-aui-xs text-aui-muted">
-                For an agent that needs something the workspace policies do not give it.
-              </span>
-            </span>
-          </label>
-        </fieldset>
-
-        {!onPolicy && (
-          <>
-            {editable && copyable.length > 0 && (
-              <Menu
-                label="Copy from an agent"
-                className="w-64"
-                value=""
-                options={[
-                  { value: "", label: "Copy from an agent" },
-                  ...copyable.map((a) => ({
-                    value: a.spec.name,
-                    label: a.spec.name,
-                    hint: chainWords([a.spec, ...(a.spec.fallbacks ?? [])], a.spec.fallback_on),
-                  })),
-                ]}
-                onChange={(name) => {
-                  const from = others.find((a) => a.spec.name === name)?.spec;
-                  if (from) writeChain([from, ...(from.fallbacks ?? [])], from.fallback_on ?? []);
-                }}
-              />
-            )}
-            <ModelChain
-              models={chain}
-              fallbackOn={spec.fallback_on ?? []}
-              editable={editable}
-              onChange={writeChain}
-            />
-          </>
+        {onPolicy && (
+          <p className="text-aui-xs text-aui-muted">
+            {followed
+              ? `These models come from the shared chain "${spec.model}" this agent used to follow. Saving keeps them as its own.`
+              : `This agent followed a shared chain named "${spec.model}" that no longer exists. Pick its models below.`}
+          </p>
         )}
+        <ModelChain
+          models={chain}
+          fallbackOn={fallbackOn}
+          editable={editable}
+          onChange={writeChain}
+        />
       </Section>
       <AgentChoicesEditor
         choices={spec.choices}

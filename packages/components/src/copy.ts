@@ -501,6 +501,10 @@ export const defaultCopy = {
     runs: "Runs (24h)",
     success: "Success",
     median: "Median",
+    working: "Working",
+    waiting: "Waiting",
+    draft: "Draft",
+    pausedByAdmin: "Paused by an admin",
     skillsReview:
       "Default skills require review against the current agent revision before work can run.",
     reviewSkills: "Review Default Skills",
@@ -2925,8 +2929,8 @@ export const defaultCopy = {
   },
   /** Who and what is in the workspace, readable by everyone in it. */
   directory: {
-    title: "Directory",
-    lede: "Who and what is in this workspace.",
+    title: "People",
+    lede: "Everyone in this workspace and their role.",
     tabs: { people: "People", agents: "Agents", projects: "Projects" },
     search: "Search the directory",
     empty: {
@@ -2977,35 +2981,32 @@ export const defaultCopy = {
   rated: { up: "Rated helpful", down: "Rated not helpful" },
   /** Where a schedule's answers go, and the weekly recap a project can add. */
   automations: {
-    labels: {
-      name: "Name",
-      installation: "GitHub installation",
-      repository: "Repository",
-      event: "Event",
-      action: "Action equals",
-      conclusion: "Conclusion equals",
-      label: "Label equals",
-      agent: "Target agent",
-      instructions: "Instructions",
-      paused: "Paused",
-    },
-    title: "Schedules",
-    lede: "Work that runs on a schedule or when GitHub sends an event. Follow its results in Sessions.",
+    title: "Scheduled",
+    lede: "Work that runs at set times. Each run is a session, and its answer goes where you choose.",
     newSchedule: "New Schedule",
-    newGitHub: "New GitHub Automation",
-    newTitle: "New GitHub Automation",
-    editTitle: "Edit Automation",
-    save: "Save Automation",
-    schedules: "Schedules",
-    triggers: "GitHub triggers",
-    noSchedules: "No schedules yet.",
-    noTriggers: "No GitHub triggers yet. Connect a GitHub installation in Settings to begin.",
-    guard:
-      "The bot’s own events and commits are ignored. Check runs without commit author evidence are ignored. The installation’s event permissions still apply.",
+    empty: "Nothing scheduled yet",
+    active: "Active",
+    paused: "Paused",
   },
   schedules: {
-    deliver: "Answer",
+    deliver: "Send to",
     deliverHint: "Where each run's answer goes. A recap that finds nothing to say sends nothing.",
+    alsoPost: "Also post the answer to",
+    sendInbox: "Its creator (older)",
+    sendProject: "Its project (older)",
+    connection: "Connection",
+    slackChannel: "Slack channel id",
+    githubIssue: "Issue",
+    sentTo: (deliver: string | undefined, to: string | undefined) =>
+      deliver === "slack"
+        ? `Slack ${to ?? ""}`
+        : deliver === "github"
+          ? `GitHub ${to ?? ""}`
+          : deliver === "project"
+            ? "Its project"
+            : deliver === "inbox"
+              ? "Its creator"
+              : "",
     deliverNone: "Keep in the conversation",
     /** A new schedule is the reader's own; an existing one goes to whoever created it. */
     deliverInbox: (mine: boolean) => (mine ? "Send to my inbox" : "Send to its creator's inbox"),

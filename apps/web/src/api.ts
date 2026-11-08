@@ -221,11 +221,15 @@ export interface Schedule {
   /** What the schedule is for, at most 500 characters. The agent is not shown it. */
   description?: string;
   /**
-   * Where the answer of each run goes: the creator's inbox, or posted in the
-   * project (held for its owners where agent posts are reviewed). Absent, it
-   * stays on the run.
+   * Where the answer of each run goes: a Slack channel or a GitHub issue,
+   * through the connection deliver_client names, at deliver_to. Older
+   * schedules may say inbox or project. Absent, it stays in its session.
    */
-  deliver?: "inbox" | "project";
+  deliver?: "slack" | "github" | "inbox" | "project";
+  /** The Slack or GitHub connection a slack or github delivery goes out through. */
+  deliver_client?: string;
+  /** A Slack channel id, or a GitHub issue as owner/repo#number. */
+  deliver_to?: string;
 }
 
 /**

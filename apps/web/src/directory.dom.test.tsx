@@ -6,7 +6,6 @@ import { DirectoryPage } from "./Directory.tsx";
 import { stubFetch } from "./dom.ts";
 import { ProjectAgentsTab } from "./ProjectAgents.tsx";
 import { field, globex, tree, view } from "./projects.fixtures.ts";
-import type { DirectoryTab } from "./route.ts";
 
 const at = "2026-10-01T09:00:00Z";
 const agent = (name: string, description = ""): Revision => ({
@@ -43,36 +42,14 @@ const dana: Person = {
 };
 const fox: Person = { subject: "okta|fox", handle: "fox", roles: [], picture: null };
 
-function openDirectory(
-  tab: DirectoryTab,
-  can = ["people:read", "agents:read", "projects:read"],
-  projects = tree,
-  kinds: ProjectKindSpec[] = [],
-  agentHomes: Record<string, string> = homes,
-) {
+function openPeople(can = ["people:read"]) {
   net = stubFetch({ "GET /api/people": () => ({ people: [dana, fox], next: null }) });
-  const opened: string[] = [];
-  render(
-    <DirectoryPage
-      tab={tab}
-      onTab={() => {}}
-      can={(p) => can.includes(p)}
-      agents={agents}
-      homes={agentHomes}
-      enabledIn={enabledIn}
-      projects={projects}
-      kinds={kinds}
-      workspaceName="Acme"
-      onOpenAgent={(n) => opened.push(`agent:${n}`)}
-      onOpenProject={(n) => opened.push(`project:${n}`)}
-    />,
-  );
-  return { opened };
+  render(<DirectoryPage can={(p) => can.includes(p)} />);
 }
 
-test("the Directory's people: each by name and handle with their own picture, and no letter in a box for one without", async () => {
-  openDirectory("people");
-  assert.ok(screen.getByRole("heading", { name: "Directory" }));
+test("People: each by name and handle with their own picture, and no letter in a box for one without", async () => {
+  openPeople();
+  assert.ok(screen.getByRole("heading", { name: "People" }));
   await screen.findByText("Dana Scully");
   assert.ok(screen.getByText(/@dana-scully | operator/));
   assert.ok(screen.getByText(/@fox | No role/));
@@ -83,48 +60,18 @@ test("the Directory's people: each by name and handle with their own picture, an
   assert.ok(!screen.queryByText("F"));
 });
 
-test("the Directory's agents: where each lives or that it is a platform agent, and where it is enabled", () => {
-  const { opened } = openDirectory("agents");
-  assert.ok(screen.getByText("@globex-helper"));
-  assert.ok(screen.getByText("Globex"));
-  assert.equal(screen.getAllByText(/Workspace agent.*Enabled everywhere/).length, 2);
-  fireEvent.click(screen.getByText("@lead"));
-  assert.deepEqual(opened, ["agent:lead"]);
+test("People is only people: no Agents or Projects tabs repeating their own pages", async () => {
+  openPeople();
+  await screen.findByText("Dana Scully");
+  assert.equal(screen.queryByRole("tab"), null);
+  assert.equal(screen.queryByText("@lead"), null);
 });
 
-test("Company home links use the workspace name, canonical route and a touch target", () => {
-  const { opened } = openDirectory("agents", undefined, tree, [], { lead: "~" });
-  const link = screen.getByRole("link", { name: "Acme" });
-  assert.equal(link.getAttribute("href"), "/projects/~/agents");
-  assert.match(link.className, /min-h-\[44px\]/);
-  fireEvent.click(link);
-  assert.deepEqual(opened, ["project:"]);
-});
-
-test("the Directory's projects: the tree in words, with the agents that live in each", () => {
-  openDirectory("projects");
-  assert.ok(screen.getByText("Acme"));
-  assert.ok(screen.getByText("Field engineering"));
-  assert.ok(screen.getByText("globex-helper"));
-});
-
-test("the Directory's projects: a workspace's own kind is called by its title, as the Projects page calls it", () => {
-  const launch = view("Launch", { title: "Q4 robot launch", kind: "initiative" });
-  const northwind = view("Northwind", { kind: "partner", customer: "Northwind Logistics" });
-  const kinds: ProjectKindSpec[] = [
-    { name: "initiative", title: "Initiative", like: "team" },
-    { name: "partner", title: "Partner", like: "account" },
-  ];
-  openDirectory("projects", undefined, [...tree, launch, northwind], kinds);
-  assert.ok(screen.getByText(/^Initiative \| /));
-  assert.ok(screen.getByText(/^Partner \| /));
-  assert.ok(!screen.queryByText(/^initiative|^partner/), "not by its lowercase name");
-});
-
-test("a tab someone may not read is not offered, and the page opens on one they may", async () => {
-  openDirectory("people", ["agents:read"]);
-  assert.ok(!screen.queryByRole("tab", { name: "People" }));
-  assert.ok(screen.getByText("@lead"));
+test("someone who may not read people is told so, and nothing is fetched", () => {
+  net = stubFetch({});
+  render(<DirectoryPage can={() => false} />);
+  assert.equal(net.seen.length, 0);
+  assert.ok(screen.getByRole("heading", { name: "People" }));
 });
 
 const fieldAgents: ProjectAgentsView = {

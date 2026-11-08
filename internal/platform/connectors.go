@@ -553,6 +553,16 @@ func (s *surface) route(w http.ResponseWriter, r *http.Request, body []byte, ref
 	}
 }
 
+// automationChannel is where an automation's run answers: the pull request or
+// issue that triggered it. An event with neither has no thread, and its answer
+// stays in its session.
+func automationChannel(rule clients.GitHubAutomation, kind string, body []byte) string {
+	if thread, ok := clients.AutomationThread(kind, body); ok {
+		return "github://" + rule.Repository + "/" + thread
+	}
+	return ""
+}
+
 // hand passes a request to one client's connector, which verifies it again
 // with the same secret before it parses anything.
 func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []byte) {
@@ -574,6 +584,7 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 					tag := wire.NewEvent(wire.Raise{
 						ID:     "automation/" + url.PathEscape(current.ID) + "/" + url.PathEscape(delivery) + "/" + url.PathEscape(rule.Name),
 						Tenant: current.Tenant, Origin: "github", Agent: rule.Agent,
+						Channel: automationChannel(rule, kind, body),
 						Text:    rule.Instructions + "\n\nRepository: " + rule.Repository + "\nEvent: " + kind + clients.AutomationContext(body),
 						At:      time.Now().UTC(),
 						Context: map[string]string{wire.MetaGitHubEvent: kind, wire.MetaGitHubOwner: strings.SplitN(rule.Repository, "/", 2)[0], wire.MetaGitHubRepo: strings.SplitN(rule.Repository, "/", 2)[1]},

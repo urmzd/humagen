@@ -671,7 +671,8 @@ function Console({
         >
           <HubTabLabel.Provider
             value={
-              workspaceHub(route)
+              // A hub with one tab shows no strip; its page keeps its own title.
+              workspaceHub(route) && hubTabs(workspaceHub(route)!, route, can).length > 1
                 ? hubTabs(workspaceHub(route)!, route, can).find((tab) => tab.active)?.label
                 : undefined
             }
@@ -704,7 +705,7 @@ function Console({
                       </a>
                     </Page>
                   )}
-                  {workspaceHub(route) && (
+                  {workspaceHub(route) && hubTabs(workspaceHub(route)!, route, can).length > 1 && (
                     <WorkspaceTabs
                       label={defaultCopy.navigation[workspaceHub(route)!]}
                       items={hubTabs(workspaceHub(route)!, route, can)}
@@ -1312,7 +1313,6 @@ function Console({
                     (route.page === "customize" && route.section === "agents")) && (
                     <Agents
                       operational
-                      builtin={builtin}
                       agents={agents}
                       runs={runs}
                       stats={stats}
@@ -1321,10 +1321,6 @@ function Console({
                       canWrite={can("agents:write")}
                       onOpen={(name) => openAgent(name)}
                       onNew={() => openAgent(null)}
-                      state={route.page === "agents" ? route.state : undefined}
-                      onState={(state) =>
-                        go({ page: "agents", ...(state ? { state } : {}) }, { replace: true })
-                      }
                       onBuilderSession={canAsk(BUILTIN_BUILDER) ? openThread : undefined}
                       onBuild={
                         canAsk(BUILTIN_BUILDER)
@@ -1427,25 +1423,10 @@ function Console({
                         onHomed={loadAgents}
                         onOpenProject={openProject}
                         policies={workspace?.model_policies ?? []}
-                        onManagePolicies={() => openSettings("models")}
                         viewer={me.principal.subject}
                       />
                     ))}
-                  {route.page === "directory" && (
-                    <DirectoryPage
-                      tab={route.tab}
-                      onTab={(tab) => go({ page: "directory", tab }, { replace: true })}
-                      can={can}
-                      agents={agents}
-                      homes={homes}
-                      enabledIn={enabledIn}
-                      projects={projects}
-                      kinds={root?.kinds ?? []}
-                      workspaceName={workspaceName}
-                      onOpenAgent={(name) => openAgent(name, "access")}
-                      onOpenProject={openProject}
-                    />
-                  )}
+                  {route.page === "directory" && <DirectoryPage can={can} />}
                   {(route.page === "artifacts" ||
                     (route.page === "library" && route.section === "deliverables")) && (
                     <Storage

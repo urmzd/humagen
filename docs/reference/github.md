@@ -289,8 +289,10 @@ related concepts, and native feedback instructions. It is not a repository revie
 
 ## Event automations
 
-The Automations page uses `GET /api/clients` and `PUT /api/clients/{id}` to
-manage `github.automations` on an installation. The same client read/write
+An event automation starts a session when GitHub sends a matching event. It
+is configured on the installation with `GET /api/clients` and
+`PUT /api/clients/{id}` (`github.automations`); it is not a schedule, so the
+console's Scheduled page does not list it. The same client read/write
 permissions, tenant boundary and agent visibility rules apply. A rule is:
 
 ```json
@@ -318,6 +320,13 @@ and repository owners must already be allowed by that client. Runs have no
 person's credentials and use the client's existing home and runtime policy.
 The prompt receives the rule's instructions and bounded repository, issue/PR
 number and head SHA identifiers, never arbitrary text from the webhook.
+
+Every run is a session, kept and readable in the console. It answers on the
+pull request or issue that triggered it (`github://owner/repo/pull/7` or
+`.../issues/7`), through the GitHub output policy every answer there passes.
+A push, or a check run with no pull request, has no thread, and its answer
+stays in its session. To send work somewhere else on a timetable, use a
+schedule: its `deliver` names a Slack channel or a GitHub issue.
 
 Own bot events and bot-authored commits do not trigger automation. Push and
 check-run payloads must include commit author evidence (`head_commit.author`

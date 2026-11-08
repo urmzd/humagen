@@ -218,7 +218,9 @@ func (c Client) ActsFor(machine, user string) (string, bool) {
 	return who, ok && who != ""
 }
 
-// GitHubOptions are the options of a GitHub client.
+// GitHubAutomation starts a session when GitHub sends a matching event. The
+// session answers on the pull request or issue that triggered it; a push, or
+// a check run with no pull request, has no thread and stays in its session.
 type GitHubAutomation struct {
 	Name         string `json:"name"`
 	Repository   string `json:"repository"`

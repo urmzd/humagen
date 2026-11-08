@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AgentDetail } from "./AgentDetail.tsx";
+import type { Run } from "./adapter.ts";
 import type { Note, ProjectView, Revision } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 
@@ -138,7 +139,9 @@ test("a built-in agent: the spec cannot be changed or saved, nor moved into a pr
   assert.ok(lives.disabled, "the platform's own agents live nowhere");
 
   tab("Model");
-  const model = screen.getByDisplayValue("offline") as HTMLInputElement;
+  const model = screen.getByRole("button", {
+    name: "Model, primary: Offline",
+  }) as HTMLButtonElement;
   assert.ok(model.disabled);
 
   tab("Revisions");
@@ -217,7 +220,10 @@ test("the same agent, not built in: editing makes a save, and an older revision 
   assert.ok(!save.disabled);
 
   tab("Model");
-  assert.ok(!(screen.getByDisplayValue("offline") as HTMLInputElement).disabled);
+  assert.ok(
+    !(screen.getByRole("button", { name: "Model, primary: Offline" }) as HTMLButtonElement)
+      .disabled,
+  );
   tab("Revisions");
   assert.ok(await screen.findByRole("button", { name: "Restore as Revision 3" }));
 });
@@ -236,7 +242,7 @@ test("an agent of the workspace's own comes to live in a project from its Access
   await waitFor(() => assert.equal(homed, 1));
 });
 
-test("the agent directory filters operational states and offers agent changes through the builder", async () => {
+test("the agent directory shows no agent state and offers agent changes through the builder", async () => {
   const { Agents } = await import("./Agents.tsx");
   const { defaultCopy } = await import("@humagen/components");
   net = stubFetch({
@@ -270,12 +276,9 @@ test("the agent directory filters operational states and offers agent changes th
   // An agent with no evaluations says nothing about health, rather than "Not evaluated" on every row.
   assert.ok(await screen.findByRole("button", { name: /humagen-writer/ }));
   assert.equal(screen.queryByText("Not evaluated"), null);
-  fireEvent.keyDown(screen.getByRole("combobox", { name: defaultCopy.agentOperations.filter }), {
-    key: "Enter",
-  });
-  const watching = defaultCopy.agentOperations.directoryStates.watching;
-  fireEvent.click(await screen.findByRole("option", { name: watching }));
-  assert.ok(await screen.findByRole("button", { name: /humagen-writer/ }));
+  // An agent has no state: the roster's "watching" is not shown and cannot be filtered on.
+  assert.equal(screen.queryByRole("combobox", { name: defaultCopy.agentOperations.filter }), null);
+  assert.equal(screen.queryByText(defaultCopy.agentOperations.directoryStates.watching), null);
   assert.equal(screen.queryByRole("button", { name: defaultCopy.agentOperations.pauseAll }), null);
   assert.equal(screen.queryByRole("button", { name: defaultCopy.agentOperations.build }), null);
   fireEvent.click(screen.getByRole("button", { name: defaultCopy.agentOperations.newAgent }));
@@ -286,52 +289,67 @@ test("the agent directory filters operational states and offers agent changes th
   );
 });
 
-test("the roster filters Needs Review without presenting stale skill bindings as ready", async () => {
+test("an agent's row counts its working and waiting sessions, each opening them, and shows no state", async () => {
   const { Agents } = await import("./Agents.tsx");
-  const { defaultCopy } = await import("@humagen/components");
   const state = {
     paused: false,
     version: 1,
     updated_at: "2026-10-01T00:00:00Z",
     updated_by: "ada",
   };
-  const ready = { ...writer, spec: { ...writer.spec, name: "ready-agent" } };
   net = stubFetch({
     "GET /api/agent-roster": () => ({
-      controls: {
-        "humagen-writer": {
-          ...state,
-          state: "needs_review",
-          needs_skill_review: true,
-          effective_paused: false,
-        },
-        "ready-agent": { ...state, state: "ready", effective_paused: false },
-      },
+      controls: { "humagen-writer": { ...state, state: "needs_review", effective_paused: false } },
       window_days: 31,
     }),
-    "GET /api/agent-controls": () => state,
+  });
+  const at = "2026-10-26T10:00:00Z";
+  const run = (id: string, status: Run["status"]): Run => ({
+    id,
+    tag_id: id,
+    tenant: "test",
+    agent: "humagen-writer",
+    rev: 1,
+    origin: "api",
+    text: id,
+    root: id,
+    depth: 0,
+    thread: id,
+    lease: 0,
+    granted: 0,
+    spent: 0,
+    calls: 0,
+    status,
+    created_at: at,
+    updated_at: at,
   });
   render(
     <Agents
       operational
-      agents={[writer, ready]}
+      agents={[writer]}
       stats={new Map()}
+      runs={[
+        run("r1", "running"),
+        run("r2", "parked"),
+        run("r3", "parked"),
+        run("r4", "completed"),
+      ]}
       canWrite
       onOpen={() => {}}
       onNew={() => {}}
     />,
   );
-  const rowText = (name: RegExp) =>
-    screen.getByRole("button", { name }).closest("tr")?.textContent ?? "";
-  await waitFor(() => assert.match(rowText(/humagen-writer/), /Needs review/));
-  assert.doesNotMatch(rowText(/ready-agent/), /Ready/);
-  // The state filter is a shadcn Select: open it from the keyboard, then pick.
-  fireEvent.keyDown(screen.getByRole("combobox", { name: defaultCopy.agentOperations.filter }), {
-    key: "Enter",
-  });
-  fireEvent.click(await screen.findByRole("option", { name: "Needs review" }));
-  await waitFor(() => assert.ok(!screen.queryByRole("button", { name: /ready-agent/ })));
-  assert.ok(screen.getByRole("button", { name: /humagen-writer/ }));
+  const row = (await screen.findByRole("button", { name: /humagen-writer/ })).closest("tr");
+  await waitFor(() => assert.ok(net?.seen.some((r) => r.path.includes("agent-roster"))));
+  assert.doesNotMatch(row?.textContent ?? "", /Needs review/);
+  const links = [...(row?.querySelectorAll("a") ?? [])].map((a) => [
+    a.textContent,
+    a.getAttribute("href"),
+  ]);
+  assert.deepEqual(links, [
+    ["1", "/sessions?status=working&agent=humagen-writer"],
+    ["2", "/sessions?status=waiting&agent=humagen-writer"],
+  ]);
 });
 
 test("agent detail offers Context review for native skill audience review even with current revision", async () => {

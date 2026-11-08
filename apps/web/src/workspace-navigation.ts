@@ -11,12 +11,11 @@ export interface HubTab {
 /** Workspace pages use Settings navigation instead of a second hub tab strip. */
 export function settingsPageLabel(route: Route): string | undefined {
   if (route.page === "directory" && route.tab === "people") return "People";
-  if (route.page === "projects") return "Projects";
-  if (route.page === "automations" || route.page === "schedules") return "Schedules";
   if (route.page === "usage") return "Usage";
   if (route.page === "monitor" && route.tab === "health") return "Health";
   if (route.page === "action-policy") return "Policies";
   if (route.page === "audit") return "Audit";
+  if (route.page === "agent-control") return "Agent controls";
   return undefined;
 }
 
@@ -119,12 +118,6 @@ export function hubTabs(
                 route: { page: "context" },
                 active: route.page === "context",
                 visible: can("knowledge:read"),
-              },
-              {
-                label: nav.memory,
-                route: { page: "library", section: "memory" },
-                active: route.page === "library" && route.section === "memory",
-                visible: can("runs:read") || can("projects:read") || can("agents:read"),
               },
             ]
           : [

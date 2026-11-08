@@ -59,10 +59,7 @@ export function AgentOperations({
   }, [name, revision, canWrite, refresh]);
   const needsReview = control?.needs_skill_review === true || staleSkills;
   return (
-    <section
-      aria-label={words.title}
-      className="flex flex-col gap-3 rounded-aui border border-aui-border p-3"
-    >
+    <section aria-label={words.title} className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-3 text-aui-sm">
         <output>{control ? words.states[control.state ?? "ready"] : words.loading}</output>
         {control?.manager_name && <span>{words.manager(control.manager_name)}</span>}
@@ -87,17 +84,6 @@ export function AgentOperations({
         </button>
       )}
       <nav aria-label={words.title} className="flex flex-wrap gap-2">
-        <a className={button} href={href({ page: "agent-control", agent: name })}>
-          {defaultCopy.navigation.controls}
-        </a>
-        <a className={button} href={href({ page: "action-policy", scope: "agent", name })}>
-          {defaultCopy.navigation.policies}
-        </a>
-        {canReadRuns && (
-          <a className={button} href={href({ page: "assignments", agent: name })}>
-            {words.addAssignment}
-          </a>
-        )}
         {control?.last_run && canReadRuns && (
           <button type="button" className={button} onClick={() => onRun(control.last_run!)}>
             {words.lastRun}

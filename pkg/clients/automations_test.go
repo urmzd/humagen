@@ -82,3 +82,22 @@ func TestAutomationContextNeverIncludesWebhookInstructions(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestAnAutomationFindsTheThreadThatTriggeredIt(t *testing.T) {
+	for _, tc := range []struct {
+		kind, body, want string
+		ok               bool
+	}{
+		{"pull_request", `{"pull_request":{"number":12}}`, "pull/12", true},
+		{"issues", `{"issue":{"number":7}}`, "issues/7", true},
+		{"check_run", `{"check_run":{"pull_requests":[{"number":3}]}}`, "pull/3", true},
+		{"check_run", `{"check_run":{"pull_requests":[]}}`, "", false},
+		{"push", `{"ref":"refs/heads/main"}`, "", false},
+		{"issues", `not json`, "", false},
+	} {
+		got, ok := AutomationThread(tc.kind, []byte(tc.body))
+		if got != tc.want || ok != tc.ok {
+			t.Fatalf("%s %s = %q %v, want %q %v", tc.kind, tc.body, got, ok, tc.want, tc.ok)
+		}
+	}
+}

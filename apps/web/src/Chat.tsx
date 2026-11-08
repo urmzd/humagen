@@ -36,13 +36,11 @@ import { OutcomeActions } from "./OutcomeActions.tsx";
 import { emptySelection, mentionPicks, PlusMenu, type Selection, SelectionChips } from "./Plus.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { openPane } from "./pane.ts";
-import { ReplayMenu } from "./ReplayMenu.tsx";
 import { ThreadRoom, topicsOf } from "./Room.tsx";
 import { RunFeedbackHost } from "./RunFeedback.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
-import { SaveAsArtifact } from "./SaveAsArtifact.tsx";
 import { Scroller } from "./Scroller.tsx";
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
 import { useThreadSelection } from "./selection.ts";
@@ -1121,19 +1119,6 @@ export function Chat({
                     !room?.thread.read_only && run.status === "completed" ? (
                       <>
                         <OutcomeActions run={run} canWrite={canLearn} />
-                        {canRun && threadId && (
-                          <SaveAsArtifact
-                            thread={threadId}
-                            what={{ source: "run", id: run.id }}
-                            className={messageActionButton}
-                            onSaved={(artifact) =>
-                              openPanel(
-                                "workspace",
-                                openPane(shownView, { kind: "artifact", ref: artifact.id }),
-                              )
-                            }
-                          />
-                        )}
                         {canRun && forkActions?.onFork && (
                           <button
                             type="button"
@@ -1145,19 +1130,6 @@ export function Chat({
                             <ForkIcon size={16} />
                           </button>
                         )}
-                        {canRun &&
-                          threadId &&
-                          run.status === "completed" &&
-                          !room?.thread.read_only && (
-                            <ReplayMenu
-                              agents={agents.map((a) => a.spec.name)}
-                              answered={run.agent}
-                              prompt={run.text}
-                              thread={threadId}
-                              point={run.id}
-                              onOpen={onThread}
-                            />
-                          )}
                       </>
                     ) : undefined
                   }

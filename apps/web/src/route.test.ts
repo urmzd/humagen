@@ -351,3 +351,8 @@ test("consolidated hubs preserve addressed handoffs and filtered assignments", (
   assert.deepEqual(at("/agent-network"), { page: "agents" });
   assert.deepEqual(at("/assignments"), { page: "sessions" });
 });
+
+test("models are chosen per agent: old shared-chain addresses land on the agents", () => {
+  assert.deepEqual(parse("/agent-models"), { page: "agents" });
+  assert.deepEqual(parse("/settings/models"), { page: "agents" });
+});

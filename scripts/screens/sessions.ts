@@ -101,14 +101,16 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
         const opener = page.getByRole("button", { name: /^Open sidebar/ });
         if (await opener.isVisible()) await opener.click();
         const sections = page.getByRole("navigation", { name: "Sections", exact: true });
+        // Settings opens from the account row, not from Sections.
         for (const name of [
           "New",
           "Sessions",
           "Alerts",
+          "Projects",
           "Agents",
           "Connections",
+          "Scheduled",
           "Artifacts",
-          "Settings",
         ])
           await sections.getByRole("link", { name: new RegExp(`^${name}(?:,|$)`) }).waitFor();
       },

@@ -6,22 +6,23 @@ import { hubTabs, settingsPageLabel, workspaceHub } from "./workspace-navigation
 test("Settings pages have one navigation frame without a legacy Operations tab strip", () => {
   for (const [path, label] of [
     ["/settings/people", "People"],
-    ["/projects", "Projects"],
-    ["/scheduled", "Schedules"],
     ["/settings/usage", "Usage"],
     ["/settings/health", "Health"],
     ["/operations/policies", "Policies"],
     ["/settings/audit", "Audit"],
+    ["/agent-controls", "Agent controls"],
   ] as const) {
     const route = parse(path, "");
     assert.equal(settingsPageLabel(route), label, path);
     assert.equal(workspaceHub(route), null, path);
   }
+  // Projects has its own place in the sidebar, not under Settings.
+  assert.equal(settingsPageLabel(parse("/projects", "")), undefined);
   assert.equal(workspaceHub({ page: "operations", section: "context" }), "operations");
   assert.equal(settingsPageLabel({ page: "operations", section: "context" }), undefined);
 });
 
-test("Agents holds skills, knowledge and memory in its tabs, and artifacts have their own page", () => {
+test("Agents holds skills and knowledge in its tabs (memory is each agent's own), and artifacts have their own page", () => {
   const route: Route = {
     page: "library",
     section: "skills",
@@ -37,7 +38,7 @@ test("Agents holds skills, knowledge and memory in its tabs, and artifacts have 
   const tabs = hubTabs("agents", route, () => true);
   assert.deepEqual(
     tabs.map((tab) => tab.label),
-    ["Agents", "Skills", "Knowledge", "Memory"],
+    ["Agents", "Skills", "Knowledge"],
   );
   assert.deepEqual(
     tabs.filter((tab) => tab.active).map((tab) => tab.label),
@@ -56,11 +57,12 @@ test("consolidated tabs retain native permissions and alert rule discovery", () 
     ),
     ["Memory"],
   );
+  // Memory is on each agent's page, not a tab of the Agents hub.
   assert.deepEqual(
     hubTabs("agents", { page: "new" }, (permission) => permission === "runs:read").map(
       (tab) => tab.label,
     ),
-    ["Memory"],
+    [],
   );
   assert.deepEqual(
     hubTabs(

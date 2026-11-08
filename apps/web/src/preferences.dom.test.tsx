@@ -364,7 +364,7 @@ test("keyboard project pinning moves focus to its shortcut and unpinning returns
   assert.deepEqual(stored.pinned, [], "project pinning leaves conversation pins unchanged");
 });
 
-test("keyboard unpinning a project without recent conversations returns focus to Settings, where Projects lives", async () => {
+test("keyboard unpinning a project without recent conversations returns focus to Projects in the sidebar", async () => {
   let stored: Preferences = { ...saved, pinned: [], pinned_projects: ["Launch"] };
   net = stubFetch({
     "GET /api/preferences": () => stored,
@@ -373,7 +373,7 @@ test("keyboard unpinning a project without recent conversations returns focus to
   });
   render(<Pins />);
   const unpin = await screen.findByRole("button", { name: "Unpin project Launch" });
-  const projects = screen.getByRole("link", { name: "Settings" });
+  const projects = screen.getByRole("link", { name: "Projects" });
   unpin.focus();
   fireEvent.click(unpin, { detail: 0 });
   await waitFor(() => assert.equal(document.activeElement === projects, true));

@@ -767,6 +767,9 @@ function read(pathname: string, search: string): Route {
     case "agent-network":
       return a === "handoffs" && b ? { page: "agent-network", handoff: b } : { page: "agents" };
     case "agent-controls":
+      return { page: "agent-control" };
+    case "agent-models":
+      // Shared model chains are gone; every agent sets its own.
       return { page: "agents" };
     case "you":
       return {
@@ -920,12 +923,17 @@ function read(pathname: string, search: string): Route {
         return { page: "library", section: "catalog", catalogQuery: queryText(q, "q", 1000) };
       return { page: "connections", provider: a };
     case "directory":
-      return { page: "directory", tab: pick(a, DIRECTORY_TABS, "people") };
+      // People is the directory; agents and projects have pages of their own.
+      if (a === "agents") return { page: "agents" };
+      if (a === "projects") return { page: "projects" };
+      return { page: "directory", tab: "people" };
     case "settings":
       if (a === "people") return { page: "directory", tab: "people" };
       if (a === "health") return { page: "monitor", tab: "health" };
       if (a === "audit") return { page: "audit" };
       if (a === "usage") return read("/operations/usage", search);
+      // Models are chosen per agent now; an old link lands on the agents.
+      if (a === "models") return { page: "agents" };
       return {
         page: "settings",
         section: pick(a, SETTINGS_SECTIONS, "profile"),
