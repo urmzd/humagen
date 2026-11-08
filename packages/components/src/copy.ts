@@ -3333,15 +3333,12 @@ export const defaultCopy = {
     governed: "Only those who govern projects change the workspace and company-wide projects.",
     stale: "Someone changed this project since you opened it. Its latest version is shown now.",
     /**
-     * One project's page: "Projects / <title>" over a composer and its recent
-     * sessions, and beside them what every session in it is given.
+     * One project's page: Home's composer over its recent sessions, and
+     * beside them what every session in it is given.
      */
     page: {
-      /** The composer's placeholder and name: "New session in Globex". */
+      /** The composer's placeholder: "New session in Globex". */
       composer: (title: string) => `New session in ${title}`,
-      send: "Send",
-      sending: "Sending…",
-      startFailed: "The session could not be started. Try again.",
       recents: "Recents",
       /** A session in Recents: where it started. */
       trace: {

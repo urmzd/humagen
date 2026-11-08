@@ -1102,6 +1102,35 @@ function Console({
                   {route.page === "project" && (
                     <ProjectPage
                       key={route.name}
+                      self={me.handle ?? ""}
+                      composer={(placeholder) => (
+                        // Home's own composer, filing what it starts in this project.
+                        <Chat
+                          key={`project:${route.name}`}
+                          composerOnly
+                          placeholder={placeholder}
+                          threadId={null}
+                          me={me.principal.subject}
+                          handle={me.handle ?? ""}
+                          startIn={route.name}
+                          root={root}
+                          workspaceName={workspaceName}
+                          summary={undefined}
+                          tick={tick}
+                          agents={agents}
+                          agentsRead={agentRead !== "loading"}
+                          homes={homes}
+                          projects={can("projects:read") ? projects : []}
+                          canRun={can("runs:write")}
+                          canCreateProject={can("projects:write")}
+                          personalProject={me.personal_project}
+                          findHelp={can("projects:read") ? api.findHelp : undefined}
+                          greeting=""
+                          onProjectCreated={() => loadProjects()}
+                          onThread={(id) => go({ page: "conversation", id })}
+                          onChanged={loadRuns}
+                        />
+                      )}
                       name={route.name}
                       pinned={prefs.pinned_projects?.includes(route.name || "~") ?? false}
                       onPin={pinProject}

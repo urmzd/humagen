@@ -162,6 +162,7 @@ export type ComposerSeed =
  */
 export function Composer({
   queue,
+  emptyText,
   autoFocus,
   onDraft,
   leading,
@@ -184,6 +185,8 @@ export function Composer({
   /** Text to start from, such as a question picked from a list. Each new object replaces what is typed. */
   seed?: ComposerSeed;
   placeholder: string;
+  /** What the empty box says when nobody is mentioned. Left out, Home's words. */
+  emptyText?: string;
   queue: QueueControls;
   autoFocus?: boolean;
   /** Called as the text changes, for anything that previews it. */
@@ -873,7 +876,7 @@ export function Composer({
           placeholder={
             audience.length > 0
               ? `Message ${audience.map((name) => `@${name}`).join(", ")}`
-              : defaultCopy.chat.placeholder
+              : emptyText || defaultCopy.chat.placeholder
           }
           onChange={(e) => {
             change(e.target.value);

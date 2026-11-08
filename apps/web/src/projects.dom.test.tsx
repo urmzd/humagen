@@ -133,8 +133,14 @@ function open(
   const noop = () => {};
   const opened: string[] = [];
   const sessions: string[] = [];
+  const placeholders: string[] = [];
   render(
     <ProjectPage
+      composer={(placeholder) => {
+        placeholders.push(placeholder);
+        return <form aria-label="Home composer" />;
+      }}
+      self="ada"
       name={detail.project.name}
       workspaceName="Acme"
       projects={tree}
@@ -151,20 +157,17 @@ function open(
       onFork={opts.onFork}
     />,
   );
-  return { opened, sessions };
+  return { opened, sessions, placeholders };
 }
 
 /** A side card, by its heading. */
 const card = async (title: string) =>
   (await screen.findByRole("heading", { level: 2, name: title })).closest("section") as HTMLElement;
 
-test("a project page is headed by Projects / its title: no tabs, no agents of its own, no lede and no turn preview", async () => {
+test("a project page is headed by its title under a way back to Projects: no tabs, no agents of its own, no lede and no turn preview", async () => {
   const { opened } = open(globexDetail);
   assert.ok(await screen.findByRole("heading", { level: 1, name: "Globex" }));
-  const crumbs = screen.getByRole("navigation", { name: "Where this project sits" });
-  const back = within(crumbs).getByRole("link", { name: "Projects" });
-  assert.equal(back.getAttribute("href"), "/projects");
-  fireEvent.click(back);
+  fireEvent.click(screen.getByRole("button", { name: /Projects$/ }));
   assert.deepEqual(opened, ["all"]);
   assert.ok(!screen.queryByRole("tablist"), "no tabs");
   for (const gone of [
@@ -284,30 +287,11 @@ test("Archive Project can be undone, so it acts at once", async () => {
   );
 });
 
-test("the composer starts a session filed in the project and opens it; Enter sends, Shift+Enter does not", async () => {
-  const posts: unknown[] = [];
-  const { sessions } = open(globexDetail, {
-    routes: { "POST /api/sessions": (body) => (posts.push(body), { id: "s_new" }) },
-  });
-  const box = await screen.findByRole("textbox", { name: "New session in Globex" });
-  assert.equal(box.getAttribute("placeholder"), "New session in Globex");
-  const send = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
-  assert.ok(send.disabled, "nothing to send yet");
-  fireEvent.change(box, { target: { value: "Draft the renewal note" } });
-  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
-  assert.equal(posts.length, 0);
-  fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => assert.deepEqual(sessions, ["s_new"]));
-  assert.deepEqual(posts, [{ text: "Draft the renewal note", project: "Globex" }]);
-});
-
-test("the composer is closed to a reader who may not start sessions", async () => {
-  open(globexDetail, { can: ["projects:read", "runs:read"] });
-  const box = (await screen.findByRole("textbox", {
-    name: "New session in Globex",
-  })) as HTMLTextAreaElement;
-  assert.ok(box.disabled);
-  assert.ok((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled);
+test("the page draws Home's composer, saying it starts a session in the project", async () => {
+  const { placeholders } = open(globexDetail);
+  assert.ok(await screen.findByRole("form", { name: "Home composer" }));
+  assert.ok(placeholders.includes("New session in Globex"));
+  assert.ok(!screen.queryByRole("button", { name: "Send" }), "no composer of its own");
 });
 
 test("Recents lists the project's own sessions newest first, each opening it, with Show More while there are more", async () => {
@@ -329,7 +313,7 @@ test("Recents lists the project's own sessions newest first, each opening it, wi
   assert.equal(asked[0]?.get("limit"), "20");
   const links = within(recents)
     .getAllByRole("link")
-    .map((a) => [a.querySelector("span span")?.textContent, a.getAttribute("href")]);
+    .map((a) => [a.querySelector("span")?.textContent, a.getAttribute("href")]);
   assert.deepEqual(links, [
     ["Renewal call", "/sessions/s_1"],
     ["Untitled session", "/sessions/s_2"],
@@ -385,7 +369,12 @@ test("each recent session says where it started, who answered it and its state",
   assert.match(await row("Review the PR"), /GitHub/);
   const busy = await row("Try it out");
   assert.match(busy, /Console/);
-  assert.match(busy, /\+2/, "past three, the rest are counted");
+  assert.doesNotMatch(busy, /@ada/, "the reader is not named among who answered");
+  assert.match(busy, /\+1/, "past three, the rest are counted");
+  assert.ok(
+    !within(recents).queryByText("Working", { selector: "[data-tone]" }),
+    "a state is quiet words, never a pill",
+  );
 });
 
 test("Recents with nothing in it says so in one line", async () => {

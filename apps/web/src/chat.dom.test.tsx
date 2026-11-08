@@ -235,6 +235,21 @@ test("Home's chat bar starts a private conversation in the picked project and op
   assert.ok(!net?.seen.some((s) => s.path.startsWith("/api/runs")), "no run is asked for");
 });
 
+test("composer only, as a project's page draws it: no greeting, its own words, and what it starts is filed in the project", async () => {
+  const { opened } = openChat(workspace("lead"), {
+    startIn: "Globex",
+    composerOnly: true,
+    placeholder: "New session in Globex",
+  });
+  assert.ok(!screen.queryByRole("heading", { level: 1 }), "no greeting");
+  assert.equal(box().getAttribute("placeholder"), "New session in Globex");
+  fireEvent.change(box(), { target: { value: "Draft the renewal note" } });
+  fireEvent.keyDown(box(), { key: "Enter" });
+  await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ab"]));
+  const started = net?.seen.find((s) => s.method === "POST");
+  assert.deepEqual(started?.body, { project: "Globex", text: "Draft the renewal note" });
+});
+
 const chat = defaultCopy.chat;
 /** What the bar's row under the box shows, in order: where the conversation is filed, never an agent. */
 const chips = () =>

@@ -1,5 +1,15 @@
 import { defaultCopy } from "@humagen/components";
-import { FolderPlusIcon, LayersIcon, PinIcon, UserIcon, UsersIcon } from "@humagen/render-web";
+import {
+  CalendarIcon,
+  FolderPlusIcon,
+  GitHubIcon,
+  LayersIcon,
+  MonitorIcon,
+  PinIcon,
+  SlackIcon,
+  UserIcon,
+  UsersIcon,
+} from "@humagen/render-web";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@humagen/render-web/ui/sheet";
 import {
   type FormEvent,
@@ -582,6 +592,9 @@ function EditProject({
 /** A card in the project page's side column: a panel on a hairline, like the Projects grid's. */
 const sideCard =
   "flex min-w-0 flex-col gap-2 rounded-aui-lg border border-[var(--humagen-rule)] bg-[var(--humagen-panel)] p-4";
+/** A card's one action: quiet text, no underline, a full hit area on touch. */
+const quietAction =
+  "inline-flex min-h-8 pointer-coarse:min-h-11 items-center rounded-aui px-2 -mr-2 text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent motion-reduce:transition-none";
 /** A card's summary: a few short lines, muted. */
 const summary = "min-w-0 text-aui-sm text-aui-muted";
 
@@ -620,7 +633,7 @@ function SideCard({
       ref={opener}
       type="button"
       aria-label={action.label}
-      className={`${textAction} shrink-0`}
+      className={`${quietAction} shrink-0`}
       onClick={() => setOpen(true)}
     >
       {action.text}
@@ -696,73 +709,6 @@ function SheetButtons({
   );
 }
 
-/**
- * The project page's composer: one box and Send, to try the project out. A
- * session started here is filed in the project, and opens once it exists.
- */
-function NewSession({
-  project,
-  title,
-  canStart,
-  onStarted,
-}: {
-  project: string;
-  title: string;
-  canStart: boolean;
-  onStarted: (session: string) => void;
-}) {
-  const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  const prompt = here.composer(title);
-  const send = () => {
-    const said = text.trim();
-    if (!said || sending || !canStart) return;
-    setSending(true);
-    setProblem(null);
-    api
-      .startSession({ text: said, project })
-      .then((session) => onStarted(session.id))
-      .catch((e: unknown) => {
-        fail(setProblem, here.startFailed)(e);
-        setSending(false);
-      });
-  };
-  return (
-    <form
-      aria-label={prompt}
-      onSubmit={(e) => {
-        e.preventDefault();
-        send();
-      }}
-      className="flex min-w-0 flex-col gap-2 rounded-aui-lg border border-[var(--humagen-rule)] bg-[var(--humagen-panel)] p-3 has-[textarea:focus-visible]:border-aui-ring"
-    >
-      <textarea
-        aria-label={prompt}
-        placeholder={prompt}
-        rows={3}
-        className="min-h-16 w-full min-w-0 resize-none bg-transparent px-1 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted disabled:cursor-not-allowed"
-        value={text}
-        disabled={!canStart || sending}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          // Enter sends; Shift+Enter, or Enter while composing a character, is a new line.
-          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-            e.preventDefault();
-            send();
-          }
-        }}
-      />
-      <div className="flex min-w-0 items-center justify-end gap-3">
-        <Problem message={problem} />
-        <button type="submit" className={primary} disabled={!canStart || sending || !text.trim()}>
-          {sending ? here.sending : here.send}
-        </button>
-      </div>
-    </form>
-  );
-}
-
 /** How many sessions Recents reads at a time. */
 const RECENT_PAGE = 20;
 
@@ -788,14 +734,32 @@ function originOf(s: AgentSessionSummary): string {
 /** How many agents, then people, a row names before it counts the rest. */
 const SHOWN = 3;
 
+/** The mark beside where a session started. */
+function OriginMark({ session: s }: { session: AgentSessionSummary }) {
+  const origin = s.conversation?.origin;
+  if (s.parent.startsWith(SCHEDULE_PARENT) || origin === "cron" || origin === "manual")
+    return <CalendarIcon size={13} />;
+  if (origin === "slack") return <SlackIcon size={13} />;
+  if (origin === "github") return <GitHubIcon size={13} />;
+  return <MonitorIcon size={13} />;
+}
+
 /**
- * One session in Recents: what it is, its state and when it last changed;
- * under that where it started and who answered, agents in their color, then
- * people. It opens the session.
+ * One session in Recents: its title, then one quiet line: where it started,
+ * the agents that answered and the people besides the reader, its state in
+ * words, and when it last changed. It opens the session.
  */
-function SessionRow({ session: s, onOpen }: { session: AgentSessionSummary; onOpen: () => void }) {
+function SessionRow({
+  session: s,
+  self,
+  onOpen,
+}: {
+  session: AgentSessionSummary;
+  self?: string;
+  onOpen: () => void;
+}) {
   const agents = s.conversation?.agents?.length ? s.conversation.agents : [s.agent];
-  const people = s.conversation?.people ?? [];
+  const people = (s.conversation?.people ?? []).filter((name) => name !== self);
   const who = [
     ...agents.map((name) => ({ kind: "agent" as const, name })),
     ...people.map((name) => ({ kind: "person" as const, name })),
@@ -805,19 +769,16 @@ function SessionRow({ session: s, onOpen }: { session: AgentSessionSummary; onOp
       <Go
         to={href({ page: "conversation", id: s.id })}
         onGo={onOpen}
-        className="flex min-h-11 min-w-0 flex-col gap-1 rounded-aui px-2 py-2.5 transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent motion-reduce:transition-none"
+        className="flex min-h-11 min-w-0 flex-col gap-1 rounded-aui px-2 py-2 transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent motion-reduce:transition-none"
       >
-        <span className="flex min-w-0 items-center gap-3">
-          <span className="min-w-0 flex-1 truncate text-aui-sm font-medium text-aui-fg">
-            {s.title || here.untitled}
-          </span>
-          <StatusPill status={s.status} />
-          <time dateTime={s.updated_at} className="shrink-0 text-aui-xs text-aui-muted">
-            {ago(s.updated_at)}
-          </time>
+        <span className="min-w-0 truncate text-aui-sm font-medium text-aui-fg">
+          {s.title || here.untitled}
         </span>
         <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-aui-xs text-aui-muted">
-          <span>{originOf(s)}</span>
+          <span className="inline-flex min-w-0 items-center gap-1">
+            <OriginMark session={s} />
+            <span className="truncate">{originOf(s)}</span>
+          </span>
           {who.slice(0, SHOWN).map((w) =>
             w.kind === "agent" ? (
               <span key={`a:${w.name}`} className="inline-flex min-w-0 items-center gap-1">
@@ -831,19 +792,44 @@ function SessionRow({ session: s, onOpen }: { session: AgentSessionSummary; onOp
             ),
           )}
           {who.length > SHOWN && <span>{here.trace.more(who.length - SHOWN)}</span>}
+          <span className="inline-flex items-center gap-1.5" data-status={s.status}>
+            <span
+              aria-hidden
+              className={`size-1.5 rounded-full ${statusDot[s.status] ?? "bg-aui-muted"}`}
+            />
+            {statusWords(s.status)}
+          </span>
+          <time dateTime={s.updated_at}>{ago(s.updated_at)}</time>
         </span>
       </Go>
     </li>
   );
 }
 
+/** A session's state as a small dot, not a pill: only trouble and waiting take a color. */
+const statusDot: Record<string, string> = {
+  working: "bg-aui-accent",
+  waiting: "bg-aui-warn",
+  failed: "bg-aui-bad",
+  done: "bg-aui-muted",
+  stopped: "bg-aui-muted",
+};
+
+/** A session's state in words, sentence case. */
+function statusWords(status: string): string {
+  return status ? `${status[0]?.toUpperCase()}${status.slice(1)}` : "";
+}
+
 /** The project's sessions, newest first, each opening where it lives. */
 function Recents({
   project,
+  self,
   tick,
   onOpen,
 }: {
   project: string;
+  /** The reader's handle: they are not named among who answered. */
+  self?: string;
   tick?: number;
   onOpen: (session: string) => void;
 }) {
@@ -910,7 +896,7 @@ function Recents({
       ) : (
         <ul className={rows}>
           {list.sessions.map((s) => (
-            <SessionRow key={s.id} session={s} onOpen={() => onOpen(s.id)} />
+            <SessionRow key={s.id} session={s} self={self} onOpen={() => onOpen(s.id)} />
           ))}
         </ul>
       )}
@@ -1649,6 +1635,8 @@ const VISIBILITY_ICON: Record<ProjectVisibility, ReactNode> = {
  * names who answered it.
  */
 export function ProjectPage({
+  composer,
+  self,
   name,
   pinned = false,
   onPin,
@@ -1665,6 +1653,13 @@ export function ProjectPage({
   onDeleted,
   onFork,
 }: {
+  /**
+   * The composer Home uses, drawn with the words given: a session started
+   * with it is filed in this project and opens once it exists.
+   */
+  composer?: (placeholder: string) => ReactNode;
+  /** The reader's handle, which Recents does not name among who answered. */
+  self?: string;
   /** "" is the workspace. */
   name: string;
   pinned?: boolean;
@@ -1719,20 +1714,6 @@ export function ProjectPage({
     setReads((n) => n + 1);
     onChanged();
   };
-  const crumbs = (
-    <nav aria-label={words.breadcrumb} className="flex shrink-0 items-center gap-3">
-      <Go
-        to={href({ page: "projects" })}
-        onGo={onOpenAll}
-        className={`${pageTitle} rounded-aui text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent motion-reduce:transition-none`}
-      >
-        {words.title}
-      </Go>
-      <span aria-hidden className={`${pageTitle} text-aui-muted`}>
-        /
-      </span>
-    </nav>
-  );
 
   if (missing) {
     return (
@@ -1748,7 +1729,10 @@ export function ProjectPage({
   if (!detail) {
     const listed = projects.find((p) => p.name === name);
     return (
-      <Page icon={crumbs} title={listed ? titleOf(listed) : name === "" ? workspaceName : name}>
+      <Page
+        back={{ label: words.title, onClick: onOpenAll }}
+        title={listed ? titleOf(listed) : name === "" ? workspaceName : name}
+      >
         <SkeletonRows count={4} />
       </Page>
     );
@@ -1802,7 +1786,7 @@ export function ProjectPage({
 
   return (
     <Page
-      icon={crumbs}
+      back={{ label: words.title, onClick: onOpenAll }}
       title={<span className="block whitespace-normal break-words">{title}</span>}
       meta={
         p.fork?.ready ? (
@@ -1855,13 +1839,10 @@ export function ProjectPage({
       )}
       <div className="grid min-w-0 grid-cols-1 gap-8 @3xl:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex min-w-0 flex-col gap-8">
-          <NewSession
-            project={p.name}
-            title={title}
-            canStart={can("runs:write")}
-            onStarted={onOpenThread}
-          />
-          {can("runs:read") && <Recents project={p.name} tick={tick} onOpen={onOpenThread} />}
+          {composer?.(here.composer(title))}
+          {can("runs:read") && (
+            <Recents project={p.name} self={self} tick={tick} onOpen={onOpenThread} />
+          )}
         </div>
         <aside aria-label={here.side} className="flex min-w-0 flex-col gap-3">
           <SideCard
