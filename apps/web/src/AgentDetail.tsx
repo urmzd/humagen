@@ -386,8 +386,9 @@ export function AgentDetail({
   const saved: AgentSpec = revision?.spec ?? {
     name: "",
     description: "",
-    provider: "offline",
-    model: "offline",
+    // No model until one is picked: an agent runs only on a provider someone set up.
+    provider: "",
+    model: "",
     system_prompt: "",
     access: { spawn: [] },
   };

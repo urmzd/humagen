@@ -122,7 +122,7 @@ test("someone who may not write sees no save, with or without the lock", () => {
 const text = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 // The controls, by what they hold: the model on the Model tab, where it lives on the Access tab.
 const model = (html: string) =>
-  /<button[^>]*aria-label="Model, primary: Offline"[^>]*>/.exec(html)?.[0] ?? "";
+  /<button[^>]*aria-label="Model, primary: offline"[^>]*>/.exec(html)?.[0] ?? "";
 const livesIn = (html: string) =>
   /<button[^>]*aria-label="Lives in: [^"]*"[^>]*>/.exec(html)?.[0] ?? "";
 
