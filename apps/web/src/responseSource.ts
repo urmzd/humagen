@@ -75,6 +75,20 @@ const runLoader: RunLoader = { tree: api.tree, events: api.runEvents };
 
 const ENDED = new Set(["completed", "failed", "stopped"]);
 
+/**
+ * The old ways one agent called another. Each became a run of its own, which
+ * the stream shows as the agent call, so the tool call that started it is
+ * not shown a second time.
+ */
+const DELEGATION = new Set([
+  "call_agent",
+  "session_call",
+  "session_listen",
+  "delegate_task",
+  "handoff",
+]);
+const isDelegation = (name: string) => DELEGATION.has(name) || name.startsWith("tag_");
+
 /** Today's run and the runs it called, as the response stream sends them. */
 export function runSource(run: Run, loader: RunLoader = runLoader): ResponseSource {
   return {
@@ -217,6 +231,7 @@ export function runEvents(
     const answers = new Map<string, { decision?: string; by?: string; at: string }>();
     for (const e of events[run.id] ?? []) {
       if (e.type === "run.delta.tool.call.v1") {
+        if (isDelegation(e.data.name)) continue;
         if (!calls.has(e.data.id)) {
           const step = {
             at: e.time,
@@ -229,6 +244,7 @@ export function runEvents(
           steps.push(step);
         }
       } else if (e.type === "run.delta.tool.done.v1") {
+        if (isDelegation(e.data.name ?? "")) continue;
         const step = calls.get(e.data.id);
         if (step) step.done = e;
         else {

@@ -94,6 +94,12 @@ const events: Record<string, RunEvent[]> = {
       { id: "g", result: JSON.stringify({ text: "Ana: it failed" }) },
       1,
     ),
+    ev(
+      "run.delta.tool.call.v1",
+      { id: "c", name: "call_agent", phase: "requested", arguments: { agent: "ops" } },
+      2,
+    ),
+    ev("run.delta.tool.done.v1", { id: "c", name: "call_agent", result: "done" }, 9),
     ev("run.usage.v1", { accounting_id: "a", model: "anthropic/claude-sonnet" }, 13),
   ],
   [R2]: [
@@ -148,6 +154,11 @@ test("today's runs read as one response: agent calls nested, tools, approvals, a
     state.tools[Object.keys(state.tools).find((k) => state.tools[k]?.agent === "analyst") ?? ""]
       ?.depth,
     2,
+  );
+  // The old delegation tool is the agent call itself, not a second row.
+  assert.equal(
+    Object.values(state.tools).some((t) => t.name === "call_agent"),
+    false,
   );
   assert.equal(state.costUsd, 0.012);
   assert.deepEqual(Object.keys(state.byModel ?? {}), ["anthropic/claude-sonnet"]);
