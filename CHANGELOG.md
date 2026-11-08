@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.96.0 (2026-11-08)
+
+### Features
+
+- **sessions**: the entry agent owns console roots and picks who answers (#264) ([c648026](https://github.com/urmzd/humagen/commit/c648026d2446c29594d8f7e262ab857f693d1e8c))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.95.0...v0.96.0)
+
+
 ## 0.95.0 (2026-11-08)
 
 ### Breaking
