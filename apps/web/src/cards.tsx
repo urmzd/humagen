@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@humagen/render-web/ui/select";
 import type { MouseEvent, ReactNode } from "react";
+import { ConnectionLogo } from "./ConnectionLogo.tsx";
 import { AgentMark, MoreMenu, type PageAction } from "./ui.tsx";
 
 /**
@@ -202,10 +203,28 @@ export type ReferenceKind =
   | "corpus"
   | "agent"
   | "session"
-  | "url";
+  | "url"
+  /** A connected provider (Snowflake, BigQuery, Drive, S3…): its own logo, from `provider`. */
+  | "provider";
 
-function referenceMark(kind: ReferenceKind | undefined, label: string): ReactNode {
+function referenceMark(
+  kind: ReferenceKind | undefined,
+  label: string,
+  provider?: string,
+): ReactNode {
   switch (kind) {
+    case "provider":
+      // Any provider ConnectionLogo knows draws its logo; one it does not, its initial.
+      return provider ? (
+        <span
+          aria-hidden="true"
+          className="inline-flex shrink-0 [&>*]:size-3 [&>span]:rounded-sm [&>span]:text-[0.5rem]"
+        >
+          <ConnectionLogo id={provider} name={provider} />
+        </span>
+      ) : (
+        <DatabaseIcon size={12} aria-hidden />
+      );
     case "slack":
       return <SlackIcon size={12} aria-hidden />;
     case "github":
@@ -235,6 +254,7 @@ function referenceMark(kind: ReferenceKind | undefined, label: string): ReactNod
  */
 export function Reference({
   kind,
+  provider,
   label,
   count,
   href,
@@ -242,6 +262,8 @@ export function Reference({
   title,
 }: {
   kind?: ReferenceKind;
+  /** With `kind: "provider"`, the provider's id, such as `snowflake`, `bigquery`, `drive` or `s3`. */
+  provider?: string;
   label: string;
   count?: number;
   href?: string;
@@ -251,7 +273,7 @@ export function Reference({
 }) {
   const body = (
     <>
-      {referenceMark(kind, label)}
+      {referenceMark(kind, label, provider)}
       <span className="min-w-0 truncate">{label}</span>
       {count !== undefined && <span className="shrink-0 tabular-nums">· {count}</span>}
     </>

@@ -77,3 +77,25 @@ test("a reference has a mark, a label, an optional count, and opens where it poi
   fireEvent.click(child);
   assert.equal(window.location.pathname, "/messages/s_child");
 });
+
+test("a provider reference leads with that provider's logo, and a neutral mark when it has none", () => {
+  render(
+    <ul>
+      <li>
+        <Reference kind="provider" provider="snowflake" label="Sales warehouse" count={12} />
+      </li>
+      <li>
+        <Reference kind="provider" provider="acme-crm" label="Acme CRM" />
+      </li>
+      <li>
+        <Reference kind="provider" label="Unknown source" />
+      </li>
+    </ul>,
+  );
+  const snow = screen.getByText("Sales warehouse").parentElement;
+  assert.ok(snow?.querySelector("svg path"), "Snowflake's logo");
+  assert.match(snow?.textContent ?? "", /· 12/);
+  // An unknown provider shows its initial; none at all shows a neutral mark.
+  assert.match(screen.getByText("Acme CRM").parentElement?.textContent ?? "", /^AAcme CRM/);
+  assert.ok(screen.getByText("Unknown source").parentElement?.querySelector("svg"));
+});
