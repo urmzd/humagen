@@ -47,8 +47,7 @@ import { OLD_SYSTEM_SENDER } from "./legacy.ts";
 import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { PersonMark } from "./PersonMark.tsx";
-import { mentionPicks, PlusMenu, SelectionChips } from "./Plus.tsx";
-import { ProjectPicker } from "./ProjectPicker.tsx";
+import { mentionPicks, PlusMenu } from "./Plus.tsx";
 import { openPane } from "./pane.ts";
 import { RunFeedbackHost } from "./RunFeedback.tsx";
 import { useRunStop } from "./RunStop.tsx";
@@ -1160,42 +1159,6 @@ export function ThreadRoom({
                       onChange={select}
                       onAttach={attach}
                       onClose={close}
-                      projects={projects.filter((p) => postsIn(projects, p.name))}
-                      personalProject={personalProject}
-                      kinds={root?.kinds}
-                      projectFixed={fixedWhy}
-                    />
-                  ),
-                  chips: (
-                    <SelectionChips
-                      personalProject={personalProject}
-                      selection={selection}
-                      projects={projects}
-                      workspace={workspaceName}
-                      onChange={select}
-                      projectFixed
-                      // The prompt bar is where a conversation's project is chosen and changed.
-                      projectControl={
-                        <ProjectPicker
-                          locked={fixedWhy}
-                          projects={projects}
-                          kinds={root?.kinds}
-                          value={th.project}
-                          personalProject={personalProject}
-                          channel={th.channel}
-                          onCreated={() => onChanged()}
-                          onChange={(next) => {
-                            if (next === th.project) return;
-                            coworking.move(th.id, next).then(
-                              (t) => {
-                                setPage((p) => ({ ...p, thread: t }));
-                                onChanged();
-                              },
-                              (e) => setProblem(e instanceof Error ? e.message : String(e)),
-                            );
-                          }}
-                        />
-                      }
                     />
                   ),
                 }}

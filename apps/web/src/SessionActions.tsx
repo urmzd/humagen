@@ -2,8 +2,8 @@ import { EllipsisIcon } from "@humagen/render-web";
 import { Modal } from "@humagen/web";
 import { useRef, useState } from "react";
 import { coworking, type ProjectView, type Thread } from "./api.ts";
-import { ProjectChoices } from "./ProjectPicker.tsx";
 import { publishMarks } from "./marks.ts";
+import { ProjectChoices } from "./ProjectPicker.tsx";
 import { button, field, MenuSeparator, menuRow, Popover, Problem, primary } from "./ui.tsx";
 
 /** The header uses the same ownership and governed deletion as the session list. */
@@ -109,7 +109,7 @@ export function SessionActions({
               <button
                 type="button"
                 role="menuitem"
-                className={button}
+                className={menuRow()}
                 disabled={busy || deleted}
                 onClick={() => {
                   close();
