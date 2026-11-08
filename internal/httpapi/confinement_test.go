@@ -819,6 +819,16 @@ func sweepGetsOf(t *testing.T, f *fixture, outsider string, h hidden) {
 		if op.method != http.MethodGet || !strings.HasPrefix(op.path, "/api/") || op.path == "/api/events" {
 			continue
 		}
+		outsider := outsider
+		if strings.HasPrefix(op.path, "/api/connections/") {
+			// Consent belongs to a person. A machine is refused before any
+			// provider lookup, so use an outsider who can reach that boundary.
+			tenant := "globex"
+			if h.inside {
+				tenant = "acme"
+			}
+			outsider = f.person(t, tenant, "00u-connection-outsider", "Outsider", "humagen-operators")
+		}
 		params := pathParams(op.path)
 		all, required := queryParams(s, op)
 		query := url.Values{}
