@@ -530,7 +530,6 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		cfg.ContinueThread = func(a address.Address) bool { return p.continueSurface(c, a) }
 		_, cfg.StatusReactions = api.(ghtransport.ReactionAPI)
 		cfg.StatusReactions = cfg.StatusReactions && cfg.Login != ""
-		cfg.ReviewApproval = func(v ghtransport.View) bool { return p.reviewApproval(c, v) }
 		cfg.ReviewText = func(v ghtransport.View) (string, error) { return p.reviewView(c, v) }
 		peer, err := github.New(cfg)
 		if err != nil {

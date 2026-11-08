@@ -95,7 +95,7 @@ test("an empty catalog leads to the canonical connection setup", async () => {
   try {
     render(<Catalog canWrite />);
     const link = await screen.findByRole("link", { name: "Open Connections" });
-    assert.equal(link.getAttribute("href"), "/connections");
+    assert.equal(link.getAttribute("href"), "/settings/connections");
     assert.ok(screen.getByText(defaultCopy.catalog.emptyHint));
   } finally {
     restore();
