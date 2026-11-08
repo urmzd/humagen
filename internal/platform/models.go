@@ -13,6 +13,7 @@ import (
 	"github.com/urmzd/saige/agent/provider/catalog"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 )
 
@@ -72,12 +73,16 @@ func (m ModelPolicy) spec(agent string) wire.AgentSpec {
 // providers this deployment has: fiber's built-in ones and every model the
 // spec names, such as a second OpenAI-compatible server.
 func checkModelPolicies(list []ModelPolicy, known ...string) error {
-	return checkPoliciesAgainst(list, append(wire.KnownProviders(), known...))
+	return checkPoliciesAgainst(list, append(wire.KnownProviders(), known...), nil)
 }
 
 // checkPoliciesAgainst checks each policy against exactly the providers
-// named, with none of fiber's built-ins added.
-func checkPoliciesAgainst(list []ModelPolicy, providers []string) error {
+// named, with none of fiber's built-ins added. A policy kept exactly as it
+// was stored (kept) is not held to them again: it was checked when it was
+// written, a provider it names may have left the deployment since, and a run
+// on it goes to the providers still enabled (resolveModel). So a settings
+// write, such as the one every start makes, never fails on stored data.
+func checkPoliciesAgainst(list []ModelPolicy, providers []string, kept []ModelPolicy) error {
 	if len(list) > MaxModelPolicies {
 		return fmt.Errorf("%w: a workspace keeps at most %d model policies", ErrModelPolicy, MaxModelPolicies)
 	}
@@ -99,12 +104,20 @@ func checkPoliciesAgainst(list []ModelPolicy, providers []string) error {
 			}
 		}
 		seen[m.Name] = true
+		if old, ok := policyIn(kept, m.Name); ok && samePolicy(old, m) {
+			continue
+		}
 		// A policy is checked exactly as fiber checks the agent fields it becomes.
 		if err := m.spec("policy-" + m.Name).ValidateWith(providers); err != nil {
 			return fmt.Errorf("%w: %q: %v", ErrModelPolicy, m.Name, err)
 		}
 	}
 	return nil
+}
+
+// samePolicy reports whether two policies say the same thing.
+func samePolicy(a, b ModelPolicy) bool {
+	return a.Name == b.Name && a.Description == b.Description && slices.Equal(a.Models, b.Models) && slices.Equal(a.FallbackOn, b.FallbackOn)
 }
 
 // policyIn finds a policy by name.
@@ -165,6 +178,15 @@ func (p *Platform) policyUsers(ctx context.Context, tenant, name string) []strin
 // that workspace's key (resolveProvider). A declared provider keeps its name.
 func (p *Platform) resolveModel(req runtime.Request) (runtime.Request, error) {
 	spec := req.Definition.Spec
+	// A provider stored under a name since renamed runs as the new one.
+	has := func(name string) bool { return p.hasProvider(req.Tenant, name) }
+	spec.Provider = p.readProvider(req.Tenant, spec.Provider, has)
+	if len(spec.Fallbacks) > 0 {
+		spec.Fallbacks = slices.Clone(spec.Fallbacks)
+		for i := range spec.Fallbacks {
+			spec.Fallbacks[i].Provider = p.readProvider(req.Tenant, spec.Fallbacks[i].Provider, has)
+		}
+	}
 	primary := native.ModelRef{Provider: spec.Provider, Model: spec.Model}
 	if spec.Provider == PolicyProvider {
 		m, ok := policyIn(p.Settings(req.Tenant).ModelPolicies, spec.Model)
@@ -295,4 +317,62 @@ func (p *Platform) withEffort(req runtime.Request) runtime.Request {
 		req.Definition.Spec.Effort = rev.Spec.Effort
 	}
 	return req
+}
+
+// readProvider is what a stored provider name reads as in tenant's workspace:
+// a name since renamed (legacy.ProviderName) reads as its new name, unless
+// something there still goes by the old one (has), and the first such read
+// for a workspace is noted. Any other name is itself.
+func (p *Platform) readProvider(tenant, name string, has func(string) bool) string {
+	to, renamed := legacy.ProviderName(name)
+	if !renamed || has(name) {
+		return name
+	}
+	if _, noted := p.renamedProviders.LoadOrStore(tenant+"\x00"+name, true); !noted {
+		p.log.Info("platform: a stored model provider name reads as its new name", "tenant", tenant, "stored", name, "reads_as", to)
+	}
+	return to
+}
+
+// hasProvider reports whether a provider by name is one tenant's agents may
+// name: the deployment's, the workspace's own, or a kind an administrator
+// may enable.
+func (p *Platform) hasProvider(tenant, name string) bool {
+	return slices.Contains(p.agentProviders(tenant), name)
+}
+
+// readPolicies is a workspace's stored model policies with each provider
+// name read as it is now. has says what the workspace has by name.
+func (p *Platform) readPolicies(tenant string, list []ModelPolicy, has func(string) bool) []ModelPolicy {
+	out, copied := list, false
+	for i := range out {
+		for j, ref := range out[i].Models {
+			now := p.readProvider(tenant, ref.Provider, has)
+			if now == ref.Provider {
+				continue
+			}
+			if !copied {
+				out = slices.Clone(list)
+				for k := range out {
+					out[k].Models = slices.Clone(out[k].Models)
+				}
+				copied = true
+			}
+			out[i].Models[j].Provider = now
+		}
+	}
+	return out
+}
+
+// readChain is spec with each provider name it names read as it is now.
+func (p *Platform) readChain(tenant string, spec wire.AgentSpec) wire.AgentSpec {
+	has := func(name string) bool { return p.hasProvider(tenant, name) }
+	spec.Provider = p.readProvider(tenant, spec.Provider, has)
+	if len(spec.Fallbacks) > 0 {
+		spec.Fallbacks = slices.Clone(spec.Fallbacks)
+		for i := range spec.Fallbacks {
+			spec.Fallbacks[i].Provider = p.readProvider(tenant, spec.Fallbacks[i].Provider, has)
+		}
+	}
+	return spec
 }

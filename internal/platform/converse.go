@@ -263,7 +263,11 @@ func (p *Platform) Settings(tenant string) Settings {
 	if err != nil {
 		p.log.Error("platform: settings could not be read", "tenant", tenant, "error", err)
 	}
-	return v.withDefaults()
+	s := v.withDefaults()
+	// A policy stored with a provider name since renamed reads as the new one.
+	names := p.providersIn(s)
+	s.ModelPolicies = p.readPolicies(tenant, s.ModelPolicies, func(n string) bool { return slices.Contains(names, n) })
+	return s
 }
 
 // SetSettings replaces a tenant's settings.
@@ -315,7 +319,7 @@ func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings
 	case next.HistoryLimit < MinHistory || next.HistoryLimit > MaxHistory:
 		return fmt.Errorf("%w: the history limit is from %d to %d characters", ErrSettings, MinHistory, MaxHistory)
 	}
-	if err := checkPoliciesAgainst(next.ModelPolicies, p.modelNames(tenant)); err != nil {
+	if err := checkPoliciesAgainst(next.ModelPolicies, p.modelNames(tenant), stored.ModelPolicies); err != nil {
 		return err
 	}
 	// A policy an agent still runs on cannot be removed, or that agent would

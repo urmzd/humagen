@@ -96,7 +96,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-064 | A connection maps its Slack members or GitHub logins to people, and a GitHub connection can be given its App's private key so the server mints installation tokens | Implemented: `ClientConnect.tsx`, `Clients.tsx`, `pkg/integrations/github/app_token.go`, `seeMapped` in `internal/platform/people.go`; web DOM, `pkg/integrations/github`, `pkg/people` and platform tests pass; live GitHub minting not yet tried |
 | DES-065 | Sources shows the data catalog a reader sees: connectors, tables and columns, never data, with Crawl, Publish and Withdraw for the owner | Implemented: `CatalogBrowser` in `SourceCatalog.tsx`, on `GET /api/catalog` and the connector routes; web DOM test passes; screens not yet captured |
 | DES-066 | A spend limit says what happens when it is reached, block or ask for approval with a grant cap, and the Directory names a person's projects | Implemented: `Billing.tsx` (`action`, `max_grant`, `max_grant_tokens`), `Directory.tsx` (`projects`, `projects_more`); web typecheck and tests pass; screens not yet captured |
-| DES-068 | The agent editor controls the models and reasoning efforts people may choose per message | Removed 2026-11-07 (owner): people pick agents, not models; see DES-067 |
+| DES-068 | The agent editor controls the models and reasoning efforts people may choose per message | Removed 2026-11-07: people pick agents, not models; see DES-067 |
 
 ### DES-001: Working integrations
 
@@ -315,7 +315,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 ### DES-067: Model and effort for one message
 
-Removed 2026-11-07 by owner decision: people pick agents, not models. Each
+Removed 2026-11-07: people pick agents, not models. Each
 agent's definition sets its model chain, and nothing overrides it per message.
 The picker, `model` and `effort` on posted messages, and `choices` on agent
 specs are gone.

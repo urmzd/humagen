@@ -291,6 +291,9 @@ type Config struct {
 
 // Platform is the assembled system.
 type Platform struct {
+	// renamedProviders notes, once per workspace and name, a stored model
+	// provider name read as the name it was renamed to (readProvider).
+	renamedProviders sync.Map
 	surfaceRecords   *surfaceRecords
 	ConnectionAuth   *connectionauth.Manager
 	GitHubInstall    *githubinstall.Manager
