@@ -58,8 +58,10 @@ import { type ConversationPanel, type ConversationView, href } from "./route.ts"
 import { SessionActions } from "./SessionActions.tsx";
 import { alertAnchor, SessionAlerts, useSessionAlerts } from "./SessionAlerts.tsx";
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
+import { SessionPlace, usePlace } from "./SessionPlace.tsx";
 import { ShareDialog } from "./Share.tsx";
 import { useThreadSelection } from "./selection.ts";
+import { TurnTrace } from "./TurnTrace.tsx";
 import { mergeTurns } from "./turns.ts";
 import {
   AgentMark,
@@ -315,11 +317,14 @@ function MessageView({
   focused,
   mine = false,
   continued = false,
+  fromWeb = false,
   onReply,
   actions,
 }: {
   m: ThreadMessage;
   focused: boolean;
+  /** Posted from the console in a session that started in Slack or GitHub, so the record says it did not come from there. */
+  fromWeb?: boolean;
   /** Posted by the reader. */
   mine?: boolean;
   /** Follows a message from the same person. */
@@ -331,6 +336,7 @@ function MessageView({
   const notes = (
     <>
       {m.surface_id && <span>{words.fromSlack}</span>}
+      {fromWeb && <span>{defaultCopy.trace.postedFromWeb}</span>}
       {m.answers && <span>{words.answered}</span>}
     </>
   );
@@ -467,6 +473,7 @@ function AnswerView({
   ask,
   refused,
   routed,
+  origin,
   onAsk,
   onReply,
   onRedirect,
@@ -477,6 +484,8 @@ function AnswerView({
   run: Run;
   canStop?: boolean;
   focused?: boolean;
+  /** The session's origin, such as `slack://T/C/ts`, for the answer's trace. */
+  origin?: string;
   me: string;
   live: boolean;
   ask?: ThreadAsk;
@@ -538,6 +547,7 @@ function AnswerView({
           )}
         </RunFeedbackHost>
       </AgentTint>
+      <TurnTrace run={run} origin={origin} />
       {refused && stillAsks(shown, refused.question) && (
         <div className="pl-11">
           <Problem message={refused.why} />
@@ -703,6 +713,7 @@ export function ThreadRoom({
   }, [id, focus]);
 
   const th = page.thread;
+  const place = usePlace(th);
   const tags = useCompletion(
     th.project,
     agents,
@@ -875,7 +886,7 @@ export function ThreadRoom({
                   {words.channel(th.channel)}
                 </button>
               )}
-              {th.surface && <span className="ml-3">{words.inSlack}</span>}
+              {place && place.kind !== "console" && <SessionPlace place={place} />}
             </>
           }
           projectRef={shareButton}
@@ -1018,6 +1029,7 @@ export function ThreadRoom({
                       mine={t.message.by === me || (!!handle && t.message.by === handle)}
                       continued={turns[i - 1]?.message?.by === t.message.by}
                       focused={focus === t.message.id}
+                      fromWeb={place?.kind !== "console" && t.message.via === "console"}
                       actions={
                         posts ? (
                           <>
@@ -1073,6 +1085,7 @@ export function ThreadRoom({
                         ) : undefined
                       }
                       routed={routedOf(t.run)}
+                      origin={place?.origin}
                       onAsk={
                         posts
                           ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" })

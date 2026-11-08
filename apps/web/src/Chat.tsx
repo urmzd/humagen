@@ -43,7 +43,9 @@ import { useRunTurn } from "./Runs.tsx";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { Scroller } from "./Scroller.tsx";
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
+import { SessionPlace, usePlace } from "./SessionPlace.tsx";
 import { useThreadSelection } from "./selection.ts";
+import { TurnTrace } from "./TurnTrace.tsx";
 import { mentionsIn } from "./tags.ts";
 import { readFromStart } from "./turns.ts";
 import {
@@ -227,6 +229,7 @@ function TurnView({
           )}
         </RunFeedbackHost>
       </AgentTint>
+      <TurnTrace run={run} />
 
       <div className="flex flex-wrap items-center gap-2 pl-11 text-aui-xs text-aui-muted">
         {siblings.length > 1 && (
@@ -429,6 +432,7 @@ export function Chat({
   const [room, setRoom] = useState<ThreadPage | null>(null);
   const wide = useWide();
   // The + selection of a conversation of runs, saved on its thread as a room's is.
+  const chatPlace = usePlace(room?.thread);
   const runs = useThreadSelection(threadId ?? "", room?.thread ?? noThread, {
     saved: (t) => {
       setRoom((r) => (r ? { ...r, thread: t } : r));
@@ -1090,6 +1094,7 @@ export function Chat({
             defaultCopy.projects.workspace
           }
           private={room?.thread.visibility === "private"}
+          location={chatPlace && chatPlace.kind !== "console" && <SessionPlace place={chatPlace} />}
           agents={summary?.agents ?? [...new Set(turns.map((t) => t.agent))]}
           people={room?.thread.participants?.filter((p) => p.kind === "person").map((p) => p.name)}
           onPanel={(next) => openPanel(next)}

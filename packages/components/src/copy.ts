@@ -3396,6 +3396,60 @@ export const defaultCopy = {
     },
   },
   /** Channels and shared threads: where people and agents work together in a project. */
+  /** A message's trace: what ran to answer it, shown under the answer. */
+  trace: {
+    /** The line under an answer that opens its trace. */
+    open: "Trace",
+    show: "Show trace",
+    hide: "Hide trace",
+    label: (agent: string) => `Trace of ${agent}'s answer`,
+    loading: "Loading trace…",
+    failed: "Could not load the trace.",
+    retry: "Try Again",
+    picked: (reason: string) => `Picked: ${reason}`,
+    tools: (n: number) => `${n} ${n === 1 ? "tool" : "tools"}`,
+    sources: (n: number) => `${n} ${n === 1 ? "source" : "sources"}`,
+    agents: (n: number) => `${n} agents`,
+    reads: (n: number) => `${n} context ${n === 1 ? "read" : "reads"}`,
+    approvals: (n: number) => `${n} ${n === 1 ? "approval" : "approvals"}`,
+    input: "Input",
+    output: "Output",
+    noOutput: "No output",
+    withheld: "Some details are hidden because you may not see them.",
+    hiddenHere: "Hidden",
+    /** A `get_context` call: what the agent asked for, from where. */
+    context: "Read context",
+    contextFrom: "from",
+    contextOrigin: "this session's origin",
+    truncated: "Cut short. Open the source for all of it.",
+    sourcesTitle: "Sources",
+    decided: {
+      allow: "Approved",
+      deny: "Denied",
+      ask: "Waiting for a decision",
+    },
+    by: (who: string) => `by ${who}`,
+    unread: (n: number) =>
+      `${n} ${n === 1 ? "run is" : "runs are"} shown without tool inputs and outputs`,
+    /** Where a session started, in its header. */
+    place: {
+      label: "Started in",
+      console: "Console",
+      slackThread: "Slack thread",
+      slackDm: "Slack DM",
+      openIn: (where: string) => `Open in ${where}`,
+    },
+    /** Who can read the session where it started. */
+    audience: {
+      label: "Audience",
+      dm: "Direct message",
+      channel: "Slack channel",
+      private: "Private",
+      shared: "Shared",
+    },
+    /** A person's message in a session that started in Slack or GitHub, posted from the console instead. */
+    postedFromWeb: "Posted from the web",
+  },
   threads: {
     posted: (at: string) => `Posted ${at}`,
     /** A channel's title on its page: "#renewals". */

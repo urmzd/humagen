@@ -1526,7 +1526,9 @@ test("a thread started in Slack says so, and so does each message posted there; 
         onChanged={() => {}}
       />,
     );
-    assert.ok(await screen.findByText(words.inSlack));
+    // The header names the Slack thread it started in and links back to it.
+    const back = await screen.findByRole("link", { name: defaultCopy.trace.place.slackThread });
+    assert.match(back.getAttribute("href") ?? "", /C0123GLOBEX/);
     assert.equal(
       screen.getAllByText(words.fromSlack).length,
       1,
