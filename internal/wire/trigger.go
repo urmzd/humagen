@@ -127,6 +127,32 @@ func TextOf(e event.Envelope) string { return RequestOf(e).Text }
 // ActorOf is who raised an event.
 func ActorOf(e event.Envelope) event.Actor { return RequestOf(e).Actor }
 
+// SlackMessage is where a Slack message was said and by whom: the team,
+// channel and the message's ts, its thread's ts (its own when it opens one),
+// the conversation's type (channel, group, mpim or im) and the Slack user.
+type SlackMessage struct {
+	Team, Channel, User, TS, ThreadTS, ChannelType string
+	// Mentions are the agents the message names, in order. The connector
+	// strips them from the text.
+	Mentions []string
+}
+
+// SlackMessageOf reads a Slack message event's place. ok is false for any
+// other event.
+func SlackMessageOf(e event.Envelope) (SlackMessage, bool) {
+	body, ok := e.Data.(event.MessagePosted)
+	if !ok {
+		if ptr, isPtr := e.Data.(*event.MessagePosted); isPtr && ptr != nil {
+			body, ok = *ptr, true
+		}
+	}
+	if !ok || body.Slack == nil {
+		return SlackMessage{}, false
+	}
+	s := body.Slack
+	return SlackMessage{Team: s.Team, Channel: s.Channel, User: s.User, TS: s.TS, ThreadTS: s.ThreadTS, ChannelType: s.ChannelType, Mentions: append([]string(nil), body.Mentions...)}, true
+}
+
 // AttachmentsOf are the files that arrived with an event.
 func AttachmentsOf(e event.Envelope) []attachment.Attachment { return RequestOf(e).Attachments }
 

@@ -110,6 +110,8 @@ type surface struct {
 	publish connector.Publish
 	// sources are files read at a commit for GitHubSource.
 	sources sourceFiles
+	// audiences are Slack conversations' audiences, read from Slack.
+	audiences audiences
 }
 
 var (
@@ -242,6 +244,9 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag event.Envelope) []eve
 	person := s.p.surfacePerson(c, tag)
 	if err := s.p.mayRaise(c, person, project, bound); err != nil {
 		s.p.log.Warn("platform: a client's message was refused", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "person", person, "event", tag.ID, "why", err.Error())
+		return nil
+	}
+	if handled := s.sendSlackMessage(ctx, st, c, person, tag); handled {
 		return nil
 	}
 	agent := wire.AgentOf(tag)

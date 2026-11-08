@@ -51,6 +51,8 @@ type Config struct {
 	// through connector rebuilds. Replicas must share both.
 	DeliveryState deliverystate.Store
 	DeliveryScope string
+	// WebAPI is Slack's Web API base URL, for tests. Empty is Slack's.
+	WebAPI string
 }
 type Connector struct {
 	*transport.Connector
