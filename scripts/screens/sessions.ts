@@ -108,7 +108,6 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
           "Alerts",
           "Projects",
           "Agents",
-          "Connections",
           "Scheduled",
           "Artifacts",
         ])
