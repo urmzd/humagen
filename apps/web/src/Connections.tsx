@@ -359,7 +359,7 @@ type Item = {
 
 /** Why an item is not available, as one pill. */
 function unavailable(reason?: string): { text: string; tone: Tone } {
-  return reason?.includes("tool server hosts")
+  return reason?.includes("MCP hosts")
     ? { text: "Host not allowed", tone: "neutral" }
     : { text: "Not enabled", tone: "neutral" };
 }
@@ -743,7 +743,7 @@ export function Connections({
   const enableNote = (reason?: string) => {
     if (!reason) return null;
     // An administrator reads how to turn it on; anyone else, why it is off.
-    if (canWrite && reason.includes("tool server hosts"))
+    if (canWrite && reason.includes("MCP hosts"))
       return (
         <p className="text-aui-sm text-aui-muted">
           Its host is not allowed yet.{" "}

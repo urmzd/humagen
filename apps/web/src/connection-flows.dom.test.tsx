@@ -23,7 +23,7 @@ test("custom OAuth is the person's own and keeps its endpoint after refusal", as
     "GET /api/connections/presets": () => [
       {
         id: "other",
-        name: "Other tool server",
+        name: "Other MCP",
         kind: "tools",
         available: true,
         connected: false,
@@ -357,7 +357,7 @@ function canonicalConnectionRoutes(credentials: ToolCredentials) {
     "GET /api/connections/presets": () => [
       {
         id: "other",
-        name: "Other tool server",
+        name: "Other MCP",
         kind: "tools",
         available: true,
         connected: false,
@@ -573,7 +573,7 @@ function offered(over: Record<string, (body: unknown) => unknown> = {}) {
   return {
     "GET /api/connections/presets": () => [
       preset("notion", "Notion", "oauth"),
-      preset("other", "Other tool server", "tools"),
+      preset("other", "Other MCP", "tools"),
       preset("drive", "Google Drive", "source_oauth"),
       preset("bigquery", "BigQuery", "catalog_oauth"),
       preset("slack", "Slack", "client_oauth", "workspace"),
@@ -619,7 +619,7 @@ test("Connections is Apps and MCPs, each item once, with what is connected on it
   await within(mcps).findByRole("listitem", { name: "my-tools" });
   assert.ok(within(mcps).getByRole("listitem", { name: "Notion" }));
   // Data sources are added inside a corpus, not here; Add MCP replaces a card for any server.
-  for (const name of ["Google Drive", "BigQuery", "Other tool server"]) {
+  for (const name of ["Google Drive", "BigQuery", "Other MCP"]) {
     assert.equal(screen.queryByRole("listitem", { name }), null, name);
   }
   assert.equal(screen.queryByRole("list", { name: "Data sources" }), null);
@@ -663,6 +663,33 @@ test("an item that is off says so on its card; an administrator sees Enable and 
   fireEvent.click(within(card).getByRole("button", { name: "Enable" }));
   const dialog = await sheet("Notion");
   assert.ok(within(dialog).getByText(/service connection authorization/));
+});
+
+// The reason is the server's own words (toolHostRefusal); the card matches "MCP hosts" in it.
+test("an MCP on a host the workspace does not allow says so, and an administrator is sent to Limits", async () => {
+  net = stubFetch(
+    offered({
+      "GET /api/connections/presets": () => [
+        {
+          id: "notion",
+          name: "Notion",
+          kind: "oauth",
+          scope: "person",
+          endpoint: "https://mcp.notion.com/mcp",
+          available: false,
+          connected: false,
+          reason: "No MCP hosts are allowed yet. Ask a workspace administrator to allow this service in Limits.",
+        },
+      ],
+    }),
+  );
+  render(<Connections canConnect canWrite />);
+  const card = await screen.findByRole("listitem", { name: "Notion" });
+  assert.ok(within(card).getByText("Host not allowed"));
+  fireEvent.click(within(card).getByRole("button", { name: "Enable" }));
+  const dialog = await sheet("Notion");
+  assert.ok(within(dialog).getByText(/Its host is not allowed yet/));
+  assert.ok(within(dialog).getByRole("link", { name: "Allow it in Limits" }));
 });
 
 test("an empty MCP group is its title and Add MCP; without the right to connect it is gone", async () => {
