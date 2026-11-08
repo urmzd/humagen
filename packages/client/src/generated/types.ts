@@ -2448,11 +2448,11 @@ export interface ProjectAgentsView {
   allow?: string[];
   default?: string;
   available: AgentAvailability;
-  /** Each available agent and where it comes from, `*` first when every platform agent is. */
+  /** Always empty. Projects no longer offer agents. */
   offers: AgentOffer[];
-  /** The agents that live here. */
+  /** The agents homed here, which this project's readers see. */
   homes: string[];
-  /** Who answers an untagged message here, or null when nothing does. */
+  /** Who answers an untagged message here, the workspace default, or null when nothing does. */
   default_resolved: DefaultResolved | null;
 }
 
@@ -2468,15 +2468,15 @@ empty list sends one back. Otherwise it names at least one agent.
   default?: string;
 }
 
-/** Where an agent lives and which projects enable it. */
+/** Who sees an agent, as its home. */
 export interface AgentPlace {
-  /** The project it lives in. Absent for a platform agent. */
+  /** The project whose readers see it. Absent when the whole workspace does. */
   home?: string;
-  /** The projects whose enable list names it, or holds `*` for a platform agent. `~` is the workspace. */
+  /** Always empty. Projects no longer enable agents; kept until the console stops reading it. */
   enabled_in: string[];
 }
 
-/** Where an agent now lives. */
+/** Who now sees an agent, as its home. */
 export type AgentHome = { agent: string } & AgentPlace;
 
 /** Whether voice notes are transcribed, and the largest recording taken. */

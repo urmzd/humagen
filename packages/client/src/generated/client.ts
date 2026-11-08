@@ -1808,18 +1808,18 @@ they were not shown, and the approvals of calls to them, are kept.
     });
   }
 
-  /** An agent that lives in a project is available there and in every
-project below it, and nowhere else: `*` never reaches it, and it is
-not available in the workspace itself. An empty `project`, or `~`,
-makes it a platform agent again, available wherever it is enabled.
+  /** An agent's home says only who sees it: a Personal project keeps it
+to that person, another project to that project's readers, and an
+empty `project`, or `~`, to the whole workspace. It decides nothing
+about where the agent answers: any agent answers in any project its
+allow lists permit, and a private one only where its readers alone
+read.
 
-Refused with 409, naming them, while something outside the new home
-would lose the agent: a project's default, enable or allow list, a
-channel's default (an archived channel's aside), a schedule filed
-elsewhere, an alert rule watching it elsewhere, or a client that
-routes to it. Homing an agent into or out of a company
-project needs `projects:govern`. The platform's own agents live
-nowhere (400).
+Refused with 409 only while the agent's default skills would not
+fit the new home; schedules, alert rules, clients and defaults that
+use the agent hold no change back. Homing an agent into or out of a
+company project needs `projects:govern`. The platform's own agents
+are the workspace's (400).
  */
   async setAgentHome(name: string, body: SetAgentHomeBody, options?: RequestOptions): Promise<AgentHome> {
     let path = "/api/agents/{name}/home";
@@ -6086,9 +6086,15 @@ conversations or files, the delete is refused with 429.
     });
   }
 
-  /** Every agent that lives in a project the caller may not read is left
-out of `enable`, `allow` and `default`, as if it were not there.
+  /** Projects no longer choose agents: any agent answers in any project
+its allow lists permit, and the workspace default answers untagged
+messages. `offers` is always empty, and `enable` and a project's own
+`default` are returned as stored but not read. Kept until the
+console stops reading it. Every agent homed in a project the caller
+may not read is left out of `enable`, `allow`, `default`,
+`available` and `homes`, as if it were not there.
  */
+  /** @deprecated */
   async getProjectAgents(name: string, options?: RequestOptions): Promise<ProjectAgentsView> {
     let path = "/api/projects/{name}/agents";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -6105,13 +6111,13 @@ out of `enable`, `allow` and `default`, as if it were not there.
     });
   }
 
-  /** The body replaces the three as a whole. `enable` adds platform agents
-here and below (`*` alone is every one); `allow`, when set, is the
+  /** The body replaces the three as a whole. `allow`, when set, is the
 only agents that may run here and below, and a child can only narrow
-it; `default` answers a message that tags no agent, here and below,
-and is an agent or `*`. Every name is an agent in the workspace
-that the caller may read, a named default is available where it is
-set, and an agent that lives in a project is not enabled (400). An
+it. On the workspace (`~`), `default` answers a message that tags no
+agent anywhere, and is an agent or `*`. `enable`, and a project's
+own `default`, are kept as written and not read. Every name is an
+agent in the workspace that the caller may read, and the workspace
+default is allowed at the workspace (400). An
 agent that lives in a project the caller may not read is refused in
 the words for one that does not exist. The names in `allow` the
 caller is not shown are kept; an `enable` entry or a `default`
@@ -6121,6 +6127,7 @@ hold the workspace default, and a company project's need
 `projects:govern`. `version` is the one the caller read (409 if it
 changed), and lists the platform file sets answer 409.
  */
+  /** @deprecated */
   async setProjectAgents(name: string, body: ProjectAgentsInput, options?: RequestOptions): Promise<ProjectAgentsView> {
     let path = "/api/projects/{name}/agents";
     path = path.replace("{name}", encodeURIComponent(String(name)));
