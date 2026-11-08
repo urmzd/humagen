@@ -540,7 +540,7 @@ export function Connections({
         </Alert>
       )}
       <ul
-        className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-3"
         aria-label="Connect a service"
       >
         {presets

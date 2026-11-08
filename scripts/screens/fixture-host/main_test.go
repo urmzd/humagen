@@ -190,9 +190,21 @@ func TestReviewFixtureSurvivesHTTPProjectionWithRecordedContext(t *testing.T) {
 	}, nil, http.StatusOK)
 	var session platform.SessionView
 	request("POST", "/api/sessions", platform.SessionInput{Agent: "screens-reviewer", Text: "Review the canonical session fixture."}, &session, http.StatusCreated)
-	for session.Status != "done" {
+	var runID, answer string
+	for {
 		if session.Status == "failed" || session.Status == "stopped" {
 			t.Fatalf("fixture session %s: %+v", session.Status, session.Messages)
+		}
+		// The summary can observe completion after the message snapshot was
+		// read. Wait for this review's terminal projection before checking it.
+		runID, answer = "", ""
+		for _, message := range session.Messages {
+			if message.Run != nil && message.Run.Agent == "screens-reviewer" && message.Status == "done" {
+				runID, answer = message.Run.ID, message.Run.Answer
+			}
+		}
+		if session.Status == "done" && runID != "" {
+			break
 		}
 		select {
 		case <-ctx.Done():
@@ -200,12 +212,6 @@ func TestReviewFixtureSurvivesHTTPProjectionWithRecordedContext(t *testing.T) {
 		case <-time.After(10 * time.Millisecond):
 		}
 		request("GET", "/api/sessions/"+session.ID, nil, &session, http.StatusOK)
-	}
-	var runID, answer string
-	for _, message := range session.Messages {
-		if message.Run != nil {
-			runID, answer = message.Run.ID, message.Run.Answer
-		}
 	}
 	var shown presentation.ReviewReport
 	if err := json.Unmarshal([]byte(answer), &shown); err != nil || shown.Format != "humagen.review.v2" || shown.Scope == nil || shown.Scope.Commit != reviewHead {
