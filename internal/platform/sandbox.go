@@ -338,6 +338,8 @@ type Publication struct {
 	Title       string
 	Kind        string
 	Description string
+	// saveIdentity is set only by SaveArtifact after source authorization.
+	saveIdentity string
 }
 
 // Publish copies a file out of a conversation's sandbox into storage.
@@ -376,10 +378,17 @@ func (p *Platform) publishFrom(ctx context.Context, area fileArea, pub Publicati
 		return artifacts.Artifact{}, fmt.Errorf("%w: kind %q is not one of %v", artifacts.ErrInvalid, kind, artifacts.Kinds())
 	}
 
-	// The check and the write are one step, so two publishes cannot both fit
-	// under a limit only one of them fits under.
+	// Serialize the check and write in this process. Another replica can
+	// publish a saved identity while this process checks its storage limits.
 	p.publishing.Lock()
 	defer p.publishing.Unlock()
+	if pub.saveIdentity != "" {
+		if saved, err := p.Artifacts.Saved(pub.Tenant, pub.saveIdentity); err == nil {
+			return saved, nil
+		} else if !errors.Is(err, artifacts.ErrNotFound) {
+			return artifacts.Artifact{}, err
+		}
+	}
 	// A project the tree no longer holds has no ancestors to read, and a
 	// file filed there would count toward none of their limits.
 	tree := p.Projects.Tree(pub.Tenant)
@@ -387,8 +396,12 @@ func (p *Platform) publishFrom(ctx context.Context, area fileArea, pub Publicati
 		return artifacts.Artifact{}, projectDeleted(pub.Project)
 	}
 	within := tree.Ancestors(pub.Project)
-	if err := p.storageAllows(pub.Tenant, tree, pub.Project, within, pub.Agent, int64(len(b))); err != nil {
+	existing, err := p.storageAllows(pub.Tenant, tree, pub.Project, within, pub.Agent, int64(len(b)), pub.saveIdentity)
+	if err != nil {
 		return artifacts.Artifact{}, err
+	}
+	if existing != nil {
+		return *existing, nil
 	}
 	id := p.Artifacts.NextID(pub.Tenant)
 	key := "artifacts/" + id
@@ -410,10 +423,19 @@ func (p *Platform) publishFrom(ctx context.Context, area fileArea, pub Publicati
 			a.SearchText = clip(extracted, textindex.MaxText)
 		}
 	}
-	saved, err := p.Artifacts.Publish(pub.Tenant, a)
+	var saved artifacts.Artifact
+	if pub.saveIdentity != "" {
+		saved, err = p.Artifacts.PublishOnce(pub.Tenant, a, pub.saveIdentity)
+	} else {
+		saved, err = p.Artifacts.Publish(pub.Tenant, a)
+	}
 	if err != nil {
 		_ = p.Blobs.Delete(ctx, dirName(pub.Tenant), key)
 		return artifacts.Artifact{}, err
+	}
+	if saved.ID != a.ID {
+		_ = p.Blobs.Delete(ctx, dirName(pub.Tenant), key)
+		return saved, nil
 	}
 	p.log.Info("platform: artifact published", "tenant", pub.Tenant, "artifact", saved.ID, "title", saved.Title, "version", saved.Version,
 		"size", saved.Size, "sha256", saved.SHA256, "run", saved.Run, "agent", saved.Agent, "by", saved.CreatedBy)
@@ -422,13 +444,14 @@ func (p *Platform) publishFrom(ctx context.Context, area fileArea, pub Publicati
 }
 
 // storageAllows checks a publish against every storage limit that applies, and
-// says so in the inbox when one refuses it. A file filed in a project counts
+// returns an existing save if another replica published it before a limit
+// refused it. Only a new publication refusal raises an inbox alert. A file counts
 // toward the project's limit and every ancestor's (within, pinned with the
 // file), and a project's use is what its whole subtree holds.
-func (p *Platform) storageAllows(tenant string, tree *projects.Tree, project string, within []string, agent string, size int64) error {
+func (p *Platform) storageAllows(tenant string, tree *projects.Tree, project string, within []string, agent string, size int64, saveIdentity string) (*artifacts.Artifact, error) {
 	pols, err := p.Policies.For(tenant, chainOf(project, within), agent, "")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, pol := range pols {
 		if pol.MaxStorage <= 0 {
@@ -452,9 +475,21 @@ func (p *Platform) storageAllows(tenant string, tree *projects.Tree, project str
 		}
 		if err != nil {
 			// A limit that cannot be checked refuses the publish.
-			return err
+			return nil, err
 		}
 		if used+size > pol.MaxStorage {
+			// The usage read may include a concurrent save that the initial
+			// identity lookup missed. Returning it adds no bytes or version,
+			// and must happen before creating a storage refusal alert.
+			if saveIdentity != "" {
+				saved, err := p.Artifacts.Saved(tenant, saveIdentity)
+				if err == nil {
+					return &saved, nil
+				}
+				if !errors.Is(err, artifacts.ErrNotFound) {
+					return nil, err
+				}
+			}
 			reason := fmt.Sprintf("%s has reached its storage limit of %d bytes", pol.Scope, pol.MaxStorage)
 			a, ok, err := p.Alerts.Raise(tenant, "storage: "+pol.Scope.String(), alerts.Alert{
 				Kind: alerts.Budget, Severity: alerts.Critical, Title: "Files are not being published: " + reason, At: p.now(),
@@ -465,10 +500,10 @@ func (p *Platform) storageAllows(tenant string, tree *projects.Tree, project str
 			if ok {
 				p.inboxAlert(tenant, a)
 			}
-			return fmt.Errorf("%w: %s", ErrStorage, reason)
+			return nil, fmt.Errorf("%w: %s", ErrStorage, reason)
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // storageUsed is what a project and every project below it hold, in bytes:

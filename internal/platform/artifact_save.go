@@ -2,6 +2,8 @@ package platform
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,8 +20,8 @@ import (
 // Save as Artifact: a message (an agent's answer or a person's message) or a
 // scratchpad, kept as a versioned artifact of its conversation through the
 // same publication files take (publishFrom): the same title versioning,
-// storage limits, provenance and inbox notice. Saving the same title again
-// makes a new version.
+// storage limits, provenance and inbox notice. Repeating the same save opens
+// its existing artifact; changed scratchpad content makes a new version.
 
 // ArtifactSave names what to save. Source is "run" (an agent's answer),
 // "message" (a person's message) or "scratchpad".
@@ -63,7 +65,7 @@ func isReview(text string) bool {
 	var head struct {
 		Format string `json:"format"`
 	}
-	return json.Unmarshal([]byte(strings.TrimSpace(body)), &head) == nil && github.IsReviewFormat(head.Format)
+	return json.Unmarshal([]byte(strings.TrimSpace(body)), &head) == nil && head.Format == github.ReviewFormat
 }
 
 // fileTitle makes a file name of a title, with ext unless it has one.
@@ -141,6 +143,9 @@ func (p *Platform) SaveArtifact(ctx context.Context, who auth.Principal, id stri
 		return artifacts.Artifact{}, err
 	}
 	pub.Path, pub.Title = clean, clean
+	identity, _ := json.Marshal([]string{th.ID, in.Source, in.ID, clean, content})
+	digest := sha256.Sum256(identity)
+	pub.saveIdentity = hex.EncodeToString(digest[:])
 	out, err := p.publishFrom(ctx, memArea{name: clean, data: []byte(content)}, pub)
 	if errors.Is(err, artifacts.ErrInvalid) {
 		return artifacts.Artifact{}, fmt.Errorf("%w: %v", ErrSandbox, err)
