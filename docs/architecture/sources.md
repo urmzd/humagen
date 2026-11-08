@@ -305,9 +305,35 @@ names up to 10 items. The low-risk changes need no proposal: staleness marks
 and facts retired with their source are applied as the graph rebuilds.
 `(*Platform).MaintainKnowledge` runs one pass.
 
-Not built yet: the semantic layer (content extraction against the ontology:
-topics, mentions, contradictions, metadata filters, duplicate entities), and
-sensitivity labels.
+### Sensitivity
+
+Every corpus has a label: `public`, `internal` (the default), `confidential`
+or `restricted` (pay, health, performance, investigations, personal records).
+
+| Where a corpus tool runs | It may show |
+| --- | --- |
+| The reader's own private conversation | Every corpus granted to the agent that the reader may read, at any label |
+| A shared conversation | Public and internal corpora that every person in it may read, and only members every one of them may see |
+| A Slack or GitHub thread, whose audience cannot be listed | Public and internal corpora the whole workspace reads |
+
+- Confidential and restricted content never leaves its reader's private
+  conversation. A run that reads there is marked private, so what it posts to
+  Slack or GitHub is a pointer back to the session, and nothing it read goes
+  into shared agent memory.
+- Every read of a confidential or restricted corpus is audited (`corpus.read`,
+  with the agent, the conversation and the corpus's purpose).
+- Granting a restricted corpus to an agent, or restricting one that agents
+  are granted, takes a workspace admin (`clients:write`) and a stated
+  `purpose`.
+- Live references and warehouse rows are read with the reader's own access,
+  so they are only ever searched or queried in the reader's private
+  conversation.
+
+Not built yet: labels read from the sources themselves (Drive labels,
+Snowflake and BigQuery policy tags) and per document, self access to records
+about oneself, personal corpora, and the semantic layer (content extraction
+against the ontology: topics, mentions, contradictions, metadata filters,
+duplicate entities).
 
 ## Proposed versioned source files
 

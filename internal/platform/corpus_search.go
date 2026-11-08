@@ -69,6 +69,8 @@ type CorpusHit struct {
 	// when graph retrieval found it.
 	Owner string `json:"owner,omitempty"`
 	Stale bool   `json:"stale,omitempty"`
+	// Label is its corpus's label.
+	Label corpora.Label `json:"label,omitempty"`
 }
 
 // CorpusSearchWarning is a member left out of an answer, and why.
@@ -326,26 +328,10 @@ func (p *Platform) SearchCorpusAs(ctx context.Context, who auth.Principal, name,
 	return out, nil
 }
 
-// grantedCorpora are the corpora granted to a run's agent that its reader
-// may read, by name.
-func (p *Platform) grantedCorpora(req runtime.Request, reader auth.Principal) ([]corpora.Corpus, error) {
-	all, err := p.Corpora.List(req.Tenant)
-	if err != nil {
-		return nil, err
-	}
-	out := []corpora.Corpus{}
-	for _, c := range all {
-		if c.Grants(req.Agent()) && p.corpusVisible(reader, c) {
-			out = append(out, c)
-		}
-	}
-	return out, nil
-}
-
 func (p *Platform) corpusSearchTool(req runtime.Request) saigetypes.Tool {
 	return &saigetypes.ToolFunc{
 		Def: saigetypes.ToolDef{Name: ToolCorpusSearch,
-			Description: "Search the corpora granted to this agent with your own access: indexed files by words and meaning, references live at their source, and warehouse tables by what they hold (never rows; read rows with corpus_query). Available only in your own private conversation. Results merge across sources, name every source a passage came from, and say which sources could not be searched. Cite the title and URI.",
+			Description: "Search the corpora granted to this agent: indexed files by words and meaning, references live at their source, and warehouse tables by what they hold (never rows; read rows with corpus_query). In your own private conversation it searches everything you may read; in a shared conversation, only public and internal corpora everyone in it may read. Results merge across sources, name every source a passage came from, and say which sources could not be searched. Cite the title and URI.",
 			Parameters: schema([]string{"query"}, map[string]string{
 				"query":  "What you are looking for, at most 1000 characters",
 				"corpus": "One corpus's name; leave it out to search every corpus granted to this agent",
@@ -360,23 +346,22 @@ func (p *Platform) corpusSearchTool(req runtime.Request) saigetypes.Tool {
 			if err != nil {
 				return "", err
 			}
-			_, person, err := p.ownPrivateConversation(req)
+			a, err := p.audienceOf(req)
 			if err != nil {
 				return "", err
 			}
-			reader := p.invitationReader(req.Tenant, person)
-			granted, err := p.grantedCorpora(req, reader)
+			granted, err := p.shownCorpora(req, a)
 			if err != nil {
 				return "", err
 			}
 			if name := strings.TrimSpace(arg(args, "corpus")); name != "" {
 				granted = slices.DeleteFunc(granted, func(c corpora.Corpus) bool { return c.Name != name })
 				if len(granted) == 0 {
-					return "", fmt.Errorf("%w: no corpus %q granted to this agent that you may read", corpora.ErrNotFound, name)
+					return "", fmt.Errorf("%w: no corpus %q granted to this agent that everyone here may read", corpora.ErrNotFound, name)
 				}
 			}
 			if len(granted) == 0 {
-				return "", fmt.Errorf("%w: no corpus is granted to this agent that you may read", corpora.ErrNotFound)
+				return "", fmt.Errorf("%w: no corpus is granted to this agent that everyone here may read", corpora.ErrNotFound)
 			}
 			if len(granted) > maxSearchedCorpora {
 				granted = granted[:maxSearchedCorpora]
@@ -384,12 +369,22 @@ func (p *Platform) corpusSearchTool(req runtime.Request) saigetypes.Tool {
 			var lists [][]rankedHit
 			out := CorpusSearch{Hits: []CorpusHit{}, Warnings: []CorpusSearchWarning{}, Citations: []runs.Citation{}}
 			for _, c := range granted {
-				hits, warnings := p.searchCorpus(ctx, reader, c, q, limit, true)
+				hits, warnings := p.searchCorpus(ctx, a.readers[0], c, q, limit, a.private)
+				if !a.private {
+					// Shared: only what every person here may see.
+					hits = slices.DeleteFunc(hits, func(h rankedHit) bool { return !p.memberShown(a, h.Member) })
+				}
+				for i := range hits {
+					hits[i].Label = c.Label
+				}
 				lists = append(lists, hits)
 				out.Warnings = append(out.Warnings, warnings...)
 			}
+			if err := p.readCorpora(ctx, req, a, granted); err != nil {
+				return "", err
+			}
 			hits := fuse(lists, limit)
-			if err := p.citeCorpusHits(req, person, hits, &out); err != nil {
+			if err := p.citeCorpusHits(req, a.person, hits, &out); err != nil {
 				return "", err
 			}
 			b, _ := json.Marshal(struct {

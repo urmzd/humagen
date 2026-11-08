@@ -82,8 +82,8 @@ func TestCorpusSearchMergesMembersForOneReader(t *testing.T) {
 		t.Fatalf("an empty query = %v", err)
 	}
 
-	// The tool searches only corpora granted to the agent, in the reader's
-	// own private conversation, and keeps citations for what it returns.
+	// The tool searches only corpora granted to the agent and keeps
+	// citations for what it returns.
 	search := func(id, actor, agent string, private bool, people ...string) (string, error) {
 		r := f.runIn(t, id, actor, private, people...)
 		r.Definition.Spec.Name = agent
@@ -96,8 +96,10 @@ func TestCorpusSearchMergesMembersForOneReader(t *testing.T) {
 	if _, err := search("bo-other", "bo", "other", true, "bo"); !errors.Is(err, corpora.ErrNotFound) {
 		t.Fatalf("an agent the corpus is not granted to = %v", err)
 	}
-	if _, err := search("bo-shared", "bo", "worker", false, "bo", "owner"); err == nil {
-		t.Fatal("searched in a shared conversation")
+	// A shared conversation with someone who may not read the corpus is
+	// shown nothing (the rules by label are in corpus_audience_test.go).
+	if _, err := search("bo-shared", "bo", "worker", false, "bo", "eve"); err == nil {
+		t.Fatal("searched where someone may not read the corpus")
 	}
 }
 

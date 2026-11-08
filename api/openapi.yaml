@@ -15083,7 +15083,7 @@ components:
         name: {type: string, maxLength: 200, description: "A person's subject or a project's name; none for the workspace."}
     Corpus:
       type: object
-      required: [name, owner, readers, members, agents, links, created_at, updated_at, version, mine]
+      required: [name, owner, readers, members, agents, links, label, created_at, updated_at, version, mine]
       properties:
         name: {type: string}
         title: {type: string, description: "What people call it, such as HR policies. Absent shows the name."}
@@ -15105,6 +15105,8 @@ components:
         ontology: {type: object, additionalProperties: true, description: "A JSON Schema (2020-12) of the types it adds to the graph: $defs, x-relations, x-metadata."}
         proposed_ontology: {type: object, additionalProperties: true, description: "An inferred ontology waiting for its owner to accept it."}
         ontology_seen: {type: string, description: "Marks the last inferred proposal, so one accepted or discarded is not proposed again."}
+        label: {type: string, enum: [public, internal, confidential, restricted], description: "How sensitive its content is. Confidential and restricted content stays in its reader's private conversation."}
+        purpose: {type: string, description: "Why its agents may read it; required to grant a restricted corpus."}
         graph_search: {type: boolean, description: "Adds the workspace graph to its search."}
         links:
           type: string
@@ -15197,6 +15199,7 @@ components:
           items: {$ref: "#/components/schemas/CorpusMemberRef"}
         owner: {type: string, description: "Who owns the document, when graph retrieval found it."}
         stale: {type: boolean}
+        label: {type: string, enum: [public, internal, confidential, restricted], description: "Its corpus's label."}
     CorpusSearchWarning:
       type: object
       required: [corpus, cause]
@@ -15238,6 +15241,8 @@ components:
           maxItems: 50
           items: {type: string}
         ontology: {type: object, additionalProperties: true}
+        label: {type: string, enum: [public, internal, confidential, restricted], default: internal}
+        purpose: {type: string, maxLength: 500}
         graph_search: {type: boolean, description: "Adds the workspace graph to its search."}
         links: {type: string, enum: [isolated, shared]}
     CorpusChange:
@@ -15254,6 +15259,8 @@ components:
           maxItems: 50
           items: {$ref: "#/components/schemas/CorpusMemberRef"}
         ontology: {type: object, additionalProperties: true, description: "Replaces its declared ontology; {} clears it."}
+        label: {type: string, enum: [public, internal, confidential, restricted], description: "Restricting a corpus that agents are granted takes a workspace admin and a purpose."}
+        purpose: {type: string, maxLength: 500}
         graph_search: {type: boolean, description: "Adds the workspace graph to its search."}
         links: {type: string, enum: [isolated, shared]}
         agents:

@@ -394,12 +394,14 @@ Five tools use the catalog and corpora, granted to an agent by name like any too
   of the corpus, and only for an agent the corpus is granted to
   ([sources.md](../architecture/sources.md#corpora)). Snowflake leaves the
   connector's role out, so each reader's default role applies.
-- `corpus_search` searches the corpora granted to the agent with the reader's
-  own access: files by words and meaning, references live, warehouse tables by
-  what they hold. Only in the reader's own private conversation.
+- `corpus_search` searches the corpora granted to the agent: files by words
+  and meaning, references live, warehouse tables by what they hold. In the
+  reader's own private conversation it reads everything they may read; in a
+  shared one, only public and internal corpora everyone there may read
+  ([sources.md](../architecture/sources.md#sensitivity)).
 - `corpus_graph` reads the workspace graph of the corpora granted to the agent:
-  documents, tables and systems, who owns each and how stale each is. Only in
-  the reader's own private conversation.
+  documents, tables and systems, who owns each and how stale each is, by the
+  same rules as `corpus_search`.
 
 The credential needs `roles/bigquery.metadataViewer` (or `dataViewer`) on the
 datasets to crawl them, `roles/bigquery.dataViewer` to read them, and

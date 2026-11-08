@@ -3458,6 +3458,10 @@ export interface Corpus {
   proposed_ontology?: Record<string, unknown>;
   /** Marks the last inferred proposal, so one accepted or discarded is not proposed again. */
   ontology_seen?: string;
+  /** How sensitive its content is. Confidential and restricted content stays in its reader's private conversation. */
+  label: "public" | "internal" | "confidential" | "restricted";
+  /** Why its agents may read it; required to grant a restricted corpus. */
+  purpose?: string;
   /** Adds the workspace graph to its search. */
   graph_search?: boolean;
   /** Whether its graph links to other shared corpora. Isolated by default. */
@@ -3541,6 +3545,8 @@ export interface CorpusHit {
   /** Who owns the document, when graph retrieval found it. */
   owner?: string;
   stale?: boolean;
+  /** Its corpus's label. */
+  label?: "public" | "internal" | "confidential" | "restricted";
 }
 
 export interface CorpusSearchWarning {
@@ -3564,6 +3570,8 @@ export interface CorpusCreate {
   members?: CorpusMemberRef[];
   agents?: string[];
   ontology?: Record<string, unknown>;
+  label?: "public" | "internal" | "confidential" | "restricted";
+  purpose?: string;
   /** Adds the workspace graph to its search. */
   graph_search?: boolean;
   links?: "isolated" | "shared";
@@ -3576,6 +3584,9 @@ export interface CorpusChange {
   members?: CorpusMemberRef[];
   /** Replaces its declared ontology; {} clears it. */
   ontology?: Record<string, unknown>;
+  /** Restricting a corpus that agents are granted takes a workspace admin and a purpose. */
+  label?: "public" | "internal" | "confidential" | "restricted";
+  purpose?: string;
   /** Adds the workspace graph to its search. */
   graph_search?: boolean;
   links?: "isolated" | "shared";
