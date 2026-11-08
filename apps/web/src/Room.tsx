@@ -305,10 +305,24 @@ function RoomComposer({
 }
 
 /**
+ * What a message posted while an agent worked did to that work, in a few
+ * words: queued until it ran, replacing the answer, or stopping it with its
+ * reason. A queued message that has run says nothing more.
+ */
+export function followupNote(m: ThreadMessage): string {
+  const f = m.followup;
+  if (!f) return "";
+  if (f.outcome === "stop") return words.followup.stopped(f.reason);
+  if (f.outcome === "replace") return words.followup.replaced;
+  return f.handled ? "" : words.followup.queued;
+}
+
+/**
  * A person's message: who posted it, when, and what it says. The reader's own
  * sit on the right as a compact bubble with no mark, as in any chat; everyone
  * else's sit on the left under their mark and name. A message that follows
- * one from the same person leaves the mark and name out.
+ * one from the same person leaves the mark and name out, but still says what
+ * it did to work going on (followupNote).
  */
 function MessageView({
   m,
@@ -328,10 +342,12 @@ function MessageView({
   actions?: ReactNode;
 }) {
   const who = m.name || m.by;
+  const followup = followupNote(m);
   const notes = (
     <>
       {m.surface_id && <span>{words.fromSlack}</span>}
       {m.answers && <span>{words.answered}</span>}
+      {followup && <span data-followup={m.followup?.outcome}>{followup}</span>}
     </>
   );
   const row = (
@@ -375,12 +391,18 @@ function MessageView({
     >
       {continued ? <span aria-hidden className="w-7 shrink-0" /> : <PersonMark name={who} />}
       <div className="min-w-0 flex-1">
-        {!continued && (
+        {!continued ? (
           <p className="flex flex-wrap items-baseline gap-x-2 text-aui-xs text-aui-muted">
             <span className="font-medium text-aui-fg">{who}</span>
             <MessageTime at={m.at} />
             {notes}
           </p>
+        ) : (
+          followup && (
+            <p className="flex flex-wrap items-baseline gap-x-2 text-aui-xs text-aui-muted">
+              {notes}
+            </p>
+          )
         )}
         <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">
           <Mentioned

@@ -47,6 +47,7 @@ import type {
   SessionPostInput,
   SkillUsage,
   SourceDependencies,
+  ThreadFollowup,
   ThreadShare,
   VoiceSettings,
   VoiceTranscript,
@@ -93,6 +94,7 @@ export type {
   ProjectUpdate,
   ProjectView,
   SourceDependencies,
+  ThreadFollowup,
 } from "../../../packages/client/src/generated/types.ts";
 
 /** What the caller may do on a project: their permission and their role together. */
@@ -1762,6 +1764,8 @@ export interface ThreadMessage {
   text: string;
   mentions: ThreadMention[];
   answers?: { run: string; question: string };
+  /** Set on a message posted while agents worked: queued, replacing that work, or stopping it. */
+  followup?: ThreadFollowup;
   via: string;
   surface_id?: string;
   at: string;
@@ -1838,7 +1842,8 @@ export type ThreadRule =
   | "post_only"
   | "routed"
   | "untagged"
-  | "default";
+  | "default"
+  | "followup";
 
 /** What posting a message did. */
 export interface ThreadPosted {

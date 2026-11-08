@@ -3503,6 +3503,12 @@ export const defaultCopy = {
     inSlack: "Also in Slack",
     /** A message posted in Slack, beside when it was posted. */
     fromSlack: "From Slack",
+    /** Beside a message posted while an agent worked: what it did to that work. */
+    followup: {
+      queued: "Queued until the current answer finishes",
+      replaced: "Replaced the current answer",
+      stopped: (reason: string) => (reason ? `Stopped: ${reason}` : "Stopped"),
+    },
     /** A failed answer to the reader's own message: it is asked again for them from their inbox. */
     retryFromInbox: "Retry it from your inbox, where it answers your message again.",
     /** A failed turn that acted for nobody, such as a machine's from before threads: it is retried for nobody, by anyone who may start runs. */

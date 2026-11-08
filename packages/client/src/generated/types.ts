@@ -1570,8 +1570,27 @@ export interface Attachment {
   unread?: string;
 }
 
+/** What a message posted while agents worked in its thread does to that
+work: `queue` (it starts once the work has ended), `replace` (the
+work is asked to stop, keeping what it has said, and the message
+starts once it has) or `stop` (the work is asked to stop and nothing
+starts). The first word after any leading mentions forces it:
+`queue`, `replace` or `stop`, with an optional colon. Otherwise a
+model decides, and when unsure, or when there is no model, it queues.
+ */
+export interface ThreadFollowup {
+  outcome: "queue" | "replace" | "stop";
+  /** Why, in one line. A stop forced by its first word says what was written after it, which may be nothing. */
+  reason: string;
+  /** The runs it waits on, which a replace or a stop asked to stop. */
+  waiting: string[];
+  /** It was carried out. A queue or a replace started what it calls for; a stop is handled as it is posted. */
+  handled?: boolean;
+}
+
 /** A person's turn in a thread. It starts no run of its own. Its author is always a person. */
 export interface ThreadMessage {
+  followup?: ThreadFollowup;
   attachments?: Attachment[];
   /** `m-` and its place in the thread, from 1. */
   id: string;
@@ -1819,10 +1838,11 @@ or experts), `reply` (it answers a question or replies to a
 mention), `post_only`, `routed` (it tags no agent, and the thread's
 selected agents answer it, see `ThreadMode`), `untagged` (posted by
 a person as themselves, as the console does, and it tags no agent,
-so nothing runs), or `default` (the inherited default answers, if
-there is one).
+so nothing runs), `default` (the inherited default answers, if
+there is one), or `followup` (it was posted while agents worked in
+the thread, so its `followup` decides what it starts and when).
  */
-export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "routed" | "untagged" | "default";
+export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "routed" | "untagged" | "default" | "followup";
 
 /** What posting a message did. */
 export interface ThreadPosted {

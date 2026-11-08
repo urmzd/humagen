@@ -12020,11 +12020,37 @@ components:
         alt: {type: string}
         origin: {type: string}
         unread: {type: string}
+    ThreadFollowup:
+      description: |
+        What a message posted while agents worked in its thread does to that
+        work: `queue` (it starts once the work has ended), `replace` (the
+        work is asked to stop, keeping what it has said, and the message
+        starts once it has) or `stop` (the work is asked to stop and nothing
+        starts). The first word after any leading mentions forces it:
+        `queue`, `replace` or `stop`, with an optional colon. Otherwise a
+        model decides, and when unsure, or when there is no model, it queues.
+      type: object
+      required: [outcome, reason, waiting]
+      properties:
+        outcome: {type: string, enum: [queue, replace, stop]}
+        reason:
+          description: Why, in one line. A stop forced by its first word says what was written after it, which may be nothing.
+          type: string
+          maxLength: 300
+        waiting:
+          description: The runs it waits on, which a replace or a stop asked to stop.
+          type: array
+          maxItems: 64
+          items: {type: string}
+        handled:
+          description: It was carried out. A queue or a replace started what it calls for; a stop is handled as it is posted.
+          type: boolean
     ThreadMessage:
       description: A person's turn in a thread. It starts no run of its own. Its author is always a person.
       type: object
       required: [id, thread, by, name, text, mentions, via, at]
       properties:
+        followup: {$ref: "#/components/schemas/ThreadFollowup"}
         attachments:
           type: array
           items: {$ref: "#/components/schemas/Attachment"}
@@ -12371,10 +12397,11 @@ components:
         mention), `post_only`, `routed` (it tags no agent, and the thread's
         selected agents answer it, see `ThreadMode`), `untagged` (posted by
         a person as themselves, as the console does, and it tags no agent,
-        so nothing runs), or `default` (the inherited default answers, if
-        there is one).
+        so nothing runs), `default` (the inherited default answers, if
+        there is one), or `followup` (it was posted while agents worked in
+        the thread, so its `followup` decides what it starts and when).
       type: string
-      enum: [tagged, people, reply, post_only, routed, untagged, default]
+      enum: [tagged, people, reply, post_only, routed, untagged, default, followup]
     ThreadPosted:
       description: What posting a message did.
       type: object

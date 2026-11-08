@@ -2211,6 +2211,8 @@ var copyKeyList = []string{
 	"threads.createChannel",
 	"threads.failed.channel",
 	"threads.failed.post",
+	"threads.followup.queued",
+	"threads.followup.replaced",
 	"threads.fromSlack",
 	"threads.general",
 	"threads.inSlack",
