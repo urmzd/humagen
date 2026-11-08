@@ -21,7 +21,7 @@ func TestBuilderScorecardRequiresExplicitRegressionOverrideAndRejectsStaleCard(t
 		}
 		return turn.Result{Text: "evidence"}, nil
 	})
-	p, err := New(Config{Workspace: t.TempDir(), Runtime: engine, BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p, err := New(Config{Workspace: t.TempDir(), Runtime: engine, TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	if err != nil {
 		t.Fatal(err)
 	}

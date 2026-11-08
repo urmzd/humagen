@@ -33,22 +33,44 @@ import (
 // is built, which is every turn, and is held only by the adapter that turn
 // uses.
 func modelProvider(kind, name string, b spec.ModelBlock, keys credref.Resolver) native.ProviderFunc {
+	return modelProviderKey(kind, name, b, refKey(b, keys))
+}
+
+// refKey reads a declared model's key reference with keys; a model with no
+// reference has no key.
+func refKey(b spec.ModelBlock, keys credref.Resolver) platform.KeyFunc {
+	return func(ctx context.Context) (string, error) {
+		if !b.Key.Set() {
+			return "", nil
+		}
+		return keys.Resolve(ctx, b.Key.Ref)
+	}
+}
+
+// workspaceModel builds a provider a workspace's administrators set up
+// (platform.ModelKinds.Build), with its key read by the platform.
+func workspaceModel(kind, name string, b spec.ModelBlock, key platform.KeyFunc) native.ProviderFunc {
+	return modelProviderKey(kind, name, spec.ModelDefaults(kind, b), key)
+}
+
+// workspaceProbe checks a provider a workspace set up, spending no tokens
+// (platform.ModelKinds.Probe).
+func workspaceProbe(kind string, b spec.ModelBlock, key platform.KeyFunc) platform.Probe {
+	return modelProbeKey(kind, spec.ModelDefaults(kind, b), key)
+}
+
+// modelProviderKey is modelProvider with its key read by key, when a turn
+// builds the provider.
+func modelProviderKey(kind, name string, b spec.ModelBlock, keyOf platform.KeyFunc) native.ProviderFunc {
 	return func(s native.Spec) (saigetypes.Provider, error) {
 		if s.Model == "" {
 			return nil, fmt.Errorf("%w: agent %q asks for the %s provider with no model", native.ErrInvalid, s.Name, name)
 		}
-		var key string
-		if b.Key.Set() {
-			v, err := keys.Resolve(context.Background(), b.Key.Ref)
-			if err != nil {
-				return nil, fmt.Errorf("%w: agent %q asks for the %s provider: %v", native.ErrInvalid, s.Name, name, err)
-			}
-			key = v
+		key, err := keyOf(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("%w: agent %q asks for the %s provider: %v", native.ErrInvalid, s.Name, name, err)
 		}
-		var (
-			p   saigetypes.Provider
-			err error
-		)
+		var p saigetypes.Provider
 		switch kind {
 		case "anthropic":
 			var opts []anthropic.Option
@@ -86,17 +108,27 @@ func modelProvider(kind, name string, b spec.ModelBlock, keys credref.Resolver) 
 // accepted, and spends no tokens. Vertex has no check, since its
 // credentials are the environment's, not a key.
 func modelProbe(kind string, b spec.ModelBlock, keys credref.Resolver) platform.Probe {
+	return modelProbeKey(kind, b, func(ctx context.Context) (string, error) {
+		if !b.Key.Set() {
+			return "", nil
+		}
+		v, err := keys.Resolve(ctx, b.Key.Ref)
+		if err != nil || v == "" {
+			return "", fmt.Errorf("key %s is not set", b.Key.Ref)
+		}
+		return v, nil
+	})
+}
+
+// modelProbeKey is modelProbe with its key read by keyOf.
+func modelProbeKey(kind string, b spec.ModelBlock, keyOf platform.KeyFunc) platform.Probe {
 	if b.Vertex != nil {
 		return nil
 	}
 	return func(ctx context.Context) error {
-		var key string
-		if b.Key.Set() {
-			v, err := keys.Resolve(ctx, b.Key.Ref)
-			if err != nil || v == "" {
-				return fmt.Errorf("key %s is not set", b.Key.Ref)
-			}
-			key = v
+		key, err := keyOf(ctx)
+		if err != nil {
+			return err
 		}
 		var (
 			url    string
@@ -134,4 +166,22 @@ func modelProbe(kind string, b spec.ModelBlock, keys credref.Resolver) platform.
 		}
 		return nil
 	}
+}
+
+// declaredKinds is the kind of each model the spec's Platform documents
+// declare, by name, so the console can show its logo. A kind that speaks the
+// OpenAI API, such as groq, is openai.
+func declaredKinds(cfg spec.Config) map[string]string {
+	out := map[string]string{}
+	for _, p := range cfg.Platforms {
+		for _, m := range p.Spec.Models {
+			switch m.Kind {
+			case "anthropic", "google", "openai":
+				out[m.Name] = m.Kind
+			case "groq":
+				out[m.Name] = "openai"
+			}
+		}
+	}
+	return out
 }

@@ -137,8 +137,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/me/context", s.authed(auth.RunsWrite, s.putPersonContext))
 	mux.HandleFunc("GET /api/agent-hues", s.authed(auth.RunsRead, s.agentHues))
 	// The deployment's status page: each component, checked at most every 30s.
-	mux.HandleFunc("GET /api/health", s.authed(auth.AlertsRead, func(w http.ResponseWriter, r *http.Request, _ auth.Principal) {
-		ok(w, http.StatusOK, s.P.Health(r.Context()))
+	mux.HandleFunc("GET /api/health", s.authed(auth.AlertsRead, func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+		ok(w, http.StatusOK, s.P.HealthFor(r.Context(), who.Tenant))
 	}))
 	mux.HandleFunc("GET /api/discovery", s.authed("", s.discover))
 	mux.HandleFunc("GET /api/project-templates", s.authed(auth.ProjectsRead, s.listProjectTemplates))
@@ -146,6 +146,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/project-forks/{name}", s.authed(auth.ProjectsRead, s.projectFork))
 	mux.HandleFunc("GET /api/project-agent-hues", s.authed(auth.ProjectsRead, s.agentHues))
 	mux.HandleFunc("GET /api/model-providers", s.authed(auth.AgentsRead, s.modelProviders))
+	// A workspace's own providers: an administrator sets each up with its key,
+	// as a client is, and agents and routing run on them by name.
+	mux.HandleFunc("PUT /api/model-providers/{name}", s.authed(auth.ClientsWrite, s.putModelProvider))
+	mux.HandleFunc("DELETE /api/model-providers/{name}", s.authed(auth.ClientsWrite, s.deleteModelProvider))
+	mux.HandleFunc("POST /api/model-providers/{name}/check", s.authed(auth.ClientsWrite, s.checkModelProvider))
+
 	mux.HandleFunc("GET /api/agents/{name}/health", s.authed(auth.AgentsRead, s.seenAgent(s.agentHealth)))
 	mux.HandleFunc("GET /api/agents/{name}/changes", s.authed(auth.AgentsRead, s.seenAgent(s.agentChanges)))
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
@@ -1278,9 +1284,9 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusNotFound, "not found")
 	case errors.Is(err, people.ErrInvalid):
 		fail(w, http.StatusBadRequest, detail(err, people.ErrInvalid))
-	case errors.Is(err, platform.ErrSettings), errors.Is(err, platform.ErrModelPolicy):
+	case errors.Is(err, platform.ErrSettings), errors.Is(err, platform.ErrModelPolicy), errors.Is(err, platform.ErrModelProvider):
 		fail(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, platform.ErrModelPolicyInUse):
+	case errors.Is(err, platform.ErrModelPolicyInUse), errors.Is(err, platform.ErrModelProviderInUse):
 		fail(w, http.StatusConflict, err.Error())
 	case errors.Is(err, platform.ErrSourceInUse):
 		fail(w, http.StatusConflict, detail(err, platform.ErrSourceInUse))
@@ -1443,8 +1449,45 @@ func APITagID(subject, key string) string {
 	return "api-" + strconv.Itoa(len(subject)) + "-" + subject + "-" + key
 }
 
-func (s *Server) modelProviders(w http.ResponseWriter, _ *http.Request, _ auth.Principal) {
-	ok(w, http.StatusOK, map[string]any{"providers": s.P.ModelProviderChoices()})
+// modelProviders lists what agents may run on. Someone who may manage the
+// workspace's providers also reads how each of its own is set up, with no
+// key: a reference by its name, a stored value only as kept.
+func (s *Server) modelProviders(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
+	out := map[string]any{"providers": s.P.ModelProviderChoices(who.Tenant), "kinds": platform.ModelProviderKinds()}
+	if who.Can(auth.ClientsWrite) {
+		out["workspace"] = s.P.ModelProviders(who.Tenant)
+	}
+	ok(w, http.StatusOK, out)
+}
+
+func (s *Server) putModelProvider(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var in platform.ModelProviderInput
+	if !decode(w, r, &in) {
+		return
+	}
+	m, err := s.P.SetModelProvider(r.Context(), who, r.PathValue("name"), in)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, m)
+}
+
+func (s *Server) deleteModelProvider(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	if err := s.P.DeleteModelProvider(r.Context(), who, r.PathValue("name")); err != nil {
+		s.problem(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) checkModelProvider(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	c, err := s.P.CheckModelProvider(r.Context(), who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, c)
 }
 
 func (s *Server) resetAgent(w http.ResponseWriter, r *http.Request, who auth.Principal) {

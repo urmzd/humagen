@@ -38,6 +38,8 @@ const namespace = "threads"
 //   - "s:<client>:<channel>:<ts>" the thread a surface's thread is.
 //   - "x:<thread>:<surface id>" the message a surface's id was posted as.
 //   - "w:<word>:<thread>" that a message of the thread says the word.
+//   - "f:<thread>:<seq>" that a message's follow-up waits to be carried out
+//     (Followup), written with the message and deleted when it is handled.
 //   - "c:counts" how many threads the tenant and each project hold.
 const (
 	keyThread    = "t:"
@@ -47,6 +49,7 @@ const (
 	keySurface   = "s:"
 	keyPosted    = "x:"
 	keyWord      = "w:"
+	keyFollowup  = "f:"
 	keyCounts    = "c:counts"
 )
 
@@ -68,6 +71,10 @@ func surfaceKey(sf Surface) string {
 }
 
 func postedKey(id, surfaceID string) string { return keyPosted + id + ":" + surfaceID }
+
+func followupKey(id string, n int) string { return keyFollowup + id + ":" + state.Seq(int64(n)) }
+
+func followupPrefix(id string) string { return keyFollowup + id + ":" }
 
 // stamp is a time as nanoseconds, within what an int64 holds.
 func stamp(at time.Time) int64 {
@@ -700,6 +707,9 @@ func (s *Store) Post(tenantName, id string, m Message, at time.Time) (Message, b
 		if next.SurfaceID != "" {
 			w.at(tenantName, postedKey(id, next.SurfaceID), n, 0)
 		}
+		if next.Followup.Pending() {
+			w.put(tenantName, followupKey(id, n), struct{}{})
+		}
 		w.said(tenantName, id, next.Text)
 		if err := w.commit(s); err != nil {
 			return err
@@ -750,6 +760,88 @@ func (s *Store) Settle(tenantName, id, mid string, mentions []Mention) (Message,
 		}
 		w := s.write()
 		w.at(tenantName, messageKey(id, n), m, v)
+		if err := w.commit(s); err != nil {
+			return err
+		}
+		out, changed = m, true
+		return nil
+	})
+	if err != nil {
+		return Message{}, err
+	}
+	if changed {
+		s.tell(tenantName, Notice{ID: id, Message: mid, At: out.At})
+	}
+	return settled(out), nil
+}
+
+// Pending returns a thread's messages whose follow-up is still to be carried
+// out, oldest first: at most limit, MaxPage when zero or more. It reads the
+// follow-up index, never the thread's other messages.
+func (s *Store) Pending(tenantName, id string, limit int) ([]Message, error) {
+	if limit <= 0 || limit > MaxPage {
+		limit = MaxPage
+	}
+	h, _, err := s.writable(tenantName, id)
+	if err != nil {
+		return nil, err
+	}
+	items, _, err := s.kept.List(tenantName, state.Query{Prefix: followupPrefix(id), Limit: limit})
+	if err != nil {
+		return nil, readErr(err)
+	}
+	out := make([]Message, 0, len(items))
+	for _, it := range items {
+		n, err := strconv.Atoi(strings.TrimPrefix(it.Key, followupPrefix(id)))
+		if err != nil || n < 1 || n > h.Head {
+			continue
+		}
+		m, _, err := s.message(tenantName, id, n)
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if m.Followup.Pending() {
+			out = append(out, m)
+		}
+	}
+	return out, nil
+}
+
+// HandleFollowup records that a message's follow-up was carried out, and
+// takes it off the follow-up index in the same write. Its decision is kept
+// as it was. A follow-up already handled is left, so a retry changes
+// nothing.
+func (s *Store) HandleFollowup(tenantName, id, mid string) (Message, error) {
+	var out Message
+	changed := false
+	err := state.Retry(func() error {
+		cur, _, err := s.writable(tenantName, id)
+		if err != nil {
+			return err
+		}
+		n := seqOf(mid, cur.Head)
+		if n == 0 {
+			return fmt.Errorf("%w: message %s of %q", ErrNotFound, mid, id)
+		}
+		was, v, err := s.message(tenantName, id, n)
+		if err != nil {
+			return err
+		}
+		if was.Followup == nil {
+			return fmt.Errorf("%w: message %s of %q is no follow-up", ErrInvalid, mid, id)
+		}
+		m := was.clone()
+		if m.Followup.Handled {
+			out, changed = m, false
+			return nil
+		}
+		m.Followup.Handled = true
+		w := s.write()
+		w.at(tenantName, messageKey(id, n), m, v)
+		w.del(tenantName, followupKey(id, n))
 		if err := w.commit(s); err != nil {
 			return err
 		}

@@ -211,3 +211,35 @@ share the same ancestor-aware access checks as transcript reads.
 `GET /api/sessions/{id}/stream` supports `Last-Event-ID` with one cursor per run.
 A `session-reset` event supplies the authoritative snapshot when completed run
 cursors are compacted; clients replace transient stream state with that snapshot.
+
+## Messages while an agent works
+
+A message posted to `/api/threads/{id}/messages` or `/api/sessions/{id}/messages`
+that would start agent work, while a top-level run its poster may stop is working
+in the conversation, is a follow-up. It starts nothing at once. Posting answers
+with `rule` `followup`, and the message carries `followup`:
+
+| Outcome | What happens |
+|---------|--------------|
+| `queue` | The message waits. Once every run in `waiting` has ended, and no run answering an earlier message is working, what it calls for starts. Queued messages start in the order they were posted. |
+| `replace` | The runs in `waiting` are asked to stop with the cause `replace: <reason>`, keeping what they have said. The message starts once they have ended. |
+| `stop` | The runs in `waiting` are asked to stop with the cause `stop: <reason>`. Nothing starts, and the reason stays on the message. |
+
+The first word after any leading mentions forces the outcome: `queue`, `replace`
+or `stop`, in any case, with an optional colon. After `stop` the rest is the
+reason; after `queue` or `replace` the rest is what runs, with the leading
+mentions kept. A message that starts with `stop` is a follow-up even when it
+would start no work itself. Otherwise the workspace's router model decides,
+given both texts as data. No model, a timeout, an error or an answer that is not
+exactly one JSON object with a known outcome and a reason all queue.
+
+`handled` is set once a follow-up was carried out. Release is a completion step of
+each run, retried until it succeeds, so it survives a worker restart. It reads the
+poster's access as it stands then, not as it stood when they posted: someone no
+longer allowed to post there starts nothing. The runs a released message starts
+are named by the message, so a retried release joins them instead of starting
+them again. The poster's `model` and `effort` choice is kept for them.
+
+A run the poster may not stop is neither waited on nor interrupted. A post with
+`post_only`, an answer to a question and a reply are never follow-ups. The
+console's composer still queues its own messages before sending them.

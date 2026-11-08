@@ -36,7 +36,6 @@ import (
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/spec"
-	"github.com/urmzd/orchagent/flow/event"
 )
 
 // Version is the build metadata `humagen version` reports.
@@ -173,7 +172,7 @@ func run(o Options, args []string) error {
 
 // serveDefaults are what a command changes of serve's own defaults, which
 // are a server's: OIDC sign-in, nothing seeded, no file but -f. start signs
-// in as the developer, seeds example agents and reads the spec in the config
+// in as the developer, seeds an example project and reads the spec in the config
 // directory. A System document sets sign-in over either, and a flag wins
 // over all of them.
 type serveDefaults struct {
@@ -224,11 +223,10 @@ func serve(o Options, args []string, d serveDefaults) error {
 	mockPersonas := fs.String("mock-personas", "", `with -auth=mock, a JSON file of {"people": [...], "machines": [...]} to sign in as. Empty means the built-in set`)
 	publicURL := fs.String("public-url", "http://localhost:8080", "where browsers reach this server")
 	webDir := fs.String("web", d.web, "directory of a built web console to serve")
+	entryAgent := fs.String("entry-agent", "humagen", "the workspace's entry agent, which owns each root session that names nobody")
 	maxDepth := fs.Int("max-depth", 4, "deepest an agent-to-agent call may land")
 	maxFanOut := fs.Int("max-fan-out", 16, "most calls one run may make")
-	seed := fs.Bool("seed", d.seed, "create example agents that need no model key")
-	builtinProvider := fs.String("builtin-provider", "", `model provider for the agents the platform provides, such as "anthropic" or "openai". Empty means none are provided`)
-	builtinModel := fs.String("builtin-model", "", "model for the agents the platform provides")
+	seed := fs.Bool("seed", d.seed, "create an example project and alert rule; agents wait for an administrator to set up a model provider")
 	personRefsFlag := fs.String("person-refs", "", `how the references each tenant's people may give for their own tool credentials start, with {subject} where each person's subject goes, as "tenant=op://People/{subject}/,keychain:humagen-people-{subject}/;tenant=env:HUMAGEN_PERSON_{subject}_". The server reads them with its own access, so a person may give only their own. A tenant not listed may reference nothing`)
 	secretRefsFlag := fs.String("secret-refs", "", `environment variables each tenant's clients may reference as secrets, as "tenant=NAME,NAME;tenant=NAME". A tenant not listed may reference none`)
 	agentSpecs := fs.String("agent-specs", "", "comma-separated agent JSON files to register on startup")
@@ -462,20 +460,26 @@ func serve(o Options, args []string, d serveDefaults) error {
 		// operator allows, values where the workspace keeps them.
 		CredentialRefs:   people,
 		CredentialValues: personValues(file.cfg),
+		EntryAgent:       *entryAgent,
 		Limits:           call.Limits{MaxDepth: *maxDepth, MaxFanOut: *maxFanOut},
 		Log:              log,
-		BuiltinProvider:  *builtinProvider,
-		BuiltinModel:     *builtinModel,
-		Blobs:            blobs,
-		Embedder:         embedder,
-		Speech:           transcriber,
-		Connectors:       connectors,
-		Bus:              broker,
-		Workspace:        *workspaceDir,
-		Sandbox:          sbx,
-		Concurrency:      *concurrency,
-		Role:             role,
-		Leader:           elector,
+		// Agents run only on a provider someone set up: the ones this
+		// spec declares, and each workspace's own, which its
+		// administrators add in the console.
+		ConfiguredModelsOnly: true,
+		ShipBuiltins:         true,
+		ModelKinds:           platform.ModelKinds{Build: workspaceModel, Probe: workspaceProbe},
+		DeclaredKinds:        declaredKinds(file.cfg),
+		Blobs:                blobs,
+		Embedder:             embedder,
+		Speech:               transcriber,
+		Connectors:           connectors,
+		Bus:                  broker,
+		Workspace:            *workspaceDir,
+		Sandbox:              sbx,
+		Concurrency:          *concurrency,
+		Role:                 role,
+		Leader:               elector,
 		// How a conversation with many readers is read and admitted.
 		Rooms: rooms.Config{CoalesceAbove: *roomCoalesce, TailInterval: *roomTail, RoomRunsPerMinute: *roomRate, PersonRuns: *personRuns},
 		Ext:   ext,
@@ -528,7 +532,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 		return err
 	}
 	if *seed {
-		if err := seedAgents(ctx, p, *tenant); err != nil {
+		if err := seedWorkspace(ctx, p, *tenant); err != nil {
 			return err
 		}
 	}
@@ -572,20 +576,6 @@ func serve(o Options, args []string, d serveDefaults) error {
 				log.Info("webhook ingress listening", "addr", *webhookAddr)
 				if err := ingress.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 					errc <- err
-				}
-			}()
-		}
-		if *seed {
-			go func() {
-				// After the platform is running, so the conversation the files
-				// belong to is a real one.
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(500 * time.Millisecond):
-				}
-				if err := seedFiles(ctx, p, *tenant); err != nil {
-					log.Warn("seed files", "error", err)
 				}
 			}()
 		}
@@ -721,41 +711,6 @@ func commandLineFlag(args []string, name string) (string, bool) {
 	return "", false
 }
 
-// seedFiles publishes a few example files, so the storage page has something
-// on it before any agent with a model has run.
-func seedFiles(ctx context.Context, p *platform.Platform, tenant string) error {
-	u, err := p.Artifacts.Usage(tenant)
-	if err != nil {
-		return err
-	}
-	if u.Count > 0 {
-		return nil
-	}
-	run, err := p.Converse(ctx, tenant, platform.Turn{
-		ID: "seed-files", Agent: "lead", Text: "Draft the launch checklist", Project: "Launch",
-		Actor: event.Actor{ID: "seed", Display: "Seed", Bot: true},
-	})
-	if err != nil {
-		return err
-	}
-	for _, f := range []struct{ path, content, description string }{
-		{"launch-checklist.md", "# Launch checklist\n\n- [ ] Freeze the release branch\n- [ ] Run the smoke tests\n", "The first draft"},
-		{"launch-checklist.md", "# Launch checklist\n\n- [x] Freeze the release branch\n- [ ] Run the smoke tests\n- [ ] Tell support\n", "With support added"},
-		{"signups.csv", "week,signups\n1,120\n2,164\n3,210\n", "Signups by week"},
-	} {
-		if err := p.PutFile(tenant, run.Thread, f.path, f.content); err != nil {
-			return err
-		}
-		if _, err := p.Publish(ctx, platform.Publication{
-			Tenant: tenant, Thread: run.Thread, Run: run.ID, Agent: "lead", Project: "Launch", By: "seed",
-			Path: f.path, Description: f.description,
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // loopback reports whether addr can only be reached from this machine.
 func loopback(addr string) bool {
 	host, _, err := net.SplitHostPort(addr)
@@ -769,36 +724,10 @@ func loopback(addr string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// seedAgents creates two agents on fiber's offline provider, so the console
-// has something to run before a model key is configured.
-func seedAgents(ctx context.Context, p *platform.Platform, tenant string) error {
-	for _, spec := range []wire.AgentSpec{
-		{
-			Name: "lead", Description: "Takes a request and may call the helper.",
-			Model: "offline", Provider: "offline", SystemPrompt: "You coordinate work.",
-			Access: wire.Access{Spawn: []string{"helper"}},
-		},
-		{
-			Name: "helper", Description: "Does one piece of work for the lead.",
-			Model: "offline", Provider: "offline", SystemPrompt: "You do one task well.",
-		},
-	} {
-		_, err := p.Agents.Create(ctx, tenant, spec, "seed")
-		if err != nil && !errors.Is(err, wire.ErrExists) {
-			return fmt.Errorf("seed %s: %w", spec.Name, err)
-		}
-	}
-	// The lead answers a message that tags no agent. A workspace kept from
-	// an earlier start is left as it is.
-	tree := p.ProjectTree(tenant)
-	if cfg := p.Settings(tenant); tree.Root().Version > 0 || tree.Len() > 0 || !cfg.SetupAt.IsZero() {
-		return nil
-	}
-	if _, err := p.SetProjectAgents(ctx, tenant, projects.RootAddress, projects.Writer{By: "seed", Govern: true}, platform.AgentsInput{
-		Version: tree.Root().Version, Enable: []string{projects.Everyone}, Default: "lead",
-	}); err != nil {
-		return fmt.Errorf("seed the workspace default: %w", err)
-	}
+// seedWorkspace creates an example project and one alert rule, so a
+// developer's console has somewhere to start. It creates no agent: an agent
+// needs a model, and a model needs a provider an administrator set up.
+func seedWorkspace(ctx context.Context, p *platform.Platform, tenant string) error {
 	if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: "seed"}, platform.ProjectInput{
 		Name: "Launch", Description: "Everything for the Q4 launch",
 	}); err != nil && !errors.Is(err, projects.ErrExists) {
@@ -808,9 +737,6 @@ func seedAgents(ctx context.Context, p *platform.Platform, tenant string) error 
 	err := p.Alerts.AddRule(tenant, alerts.Rule{Name: "any-run-fails", Kind: alerts.RunFailed, Severity: alerts.Critical, CreatedBy: "seed"})
 	if err != nil && !errors.Is(err, alerts.ErrExists) {
 		return fmt.Errorf("seed alert rule: %w", err)
-	}
-	if strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")) == "" {
-		slog.Default().Info("seeded agents use the offline provider and call no model")
 	}
 	return nil
 }
