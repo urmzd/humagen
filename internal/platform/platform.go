@@ -318,7 +318,7 @@ type Platform struct {
 	Graph *GraphStore
 	// audienceSource is who a surfaced session reaches, as its surface
 	// last reported; the session API sets it. Nil reads as unknown.
-	audienceSource func(tenant, session string) (SurfaceAudience, bool)
+	audienceSource func(tenant, session string) (ReportedAudience, bool)
 	SourceLinks    *sourcelinks.Store
 	Evals          *evals.Store
 	Feedback       *feedback.Store
