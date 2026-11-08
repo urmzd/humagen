@@ -4681,7 +4681,7 @@ export interface ExternalRef {
   client?: string;
   team?: string;
   channel?: string;
-  /** The Slack user who wrote the message. Set by surfaces built into the server; the API ignores it, since the token says who speaks. */
+  /** Who wrote the message on the surface (a Slack user id, a GitHub login). Set by surfaces built into the server; the API ignores it, since the token says who speaks. */
   user?: string;
   ts?: string;
   thread_ts?: string;

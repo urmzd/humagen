@@ -17136,7 +17136,7 @@ components:
         client: {type: string}
         team: {type: string}
         channel: {type: string}
-        user: {type: string, description: "The Slack user who wrote the message. Set by surfaces built into the server; the API ignores it, since the token says who speaks."}
+        user: {type: string, description: "Who wrote the message on the surface (a Slack user id, a GitHub login). Set by surfaces built into the server; the API ignores it, since the token says who speaks."}
         ts: {type: string}
         thread_ts: {type: string}
         audience: {$ref: "#/components/schemas/SurfaceAudience"}
