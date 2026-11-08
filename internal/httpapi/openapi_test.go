@@ -654,7 +654,8 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 			Text     string `json:"text"`
 			Severity string `json:"severity,omitempty"`
 		}{}, written: true},
-		"Settings": {typ: platform.Settings{}}, "RouterSettings": {typ: platform.RouterSettings{}}, "Preferences": {typ: prefs.Preferences{}},
+		"Settings": {typ: platform.Settings{}}, "VoiceSettings": {typ: platform.VoiceSettings{}}, "VoiceProvider": {typ: platform.VoiceProvider{}},
+		"VoiceProviderInput": {typ: platform.VoiceProviderInput{}}, "VoiceKind": {typ: platform.VoiceKind{}}, "VoicePrice": {typ: speech.Price{}}, "VoiceCheck": {typ: platform.VoiceCheck{}}, "RouterSettings": {typ: platform.RouterSettings{}}, "Preferences": {typ: prefs.Preferences{}},
 		"ConnectionHealth": {typ: platform.ConnectionHealth{}}, "ConnectionPreset": {typ: platform.ConnectionPreset{}}, "ConnectionAuthorization": {typ: connectionauth.Authorization{}},
 		"ConnectionAuthorizationInput": {typ: platform.ConnectionAuthorizationInput{}, written: true},
 		"ConnectionRegistration":       {typ: connectionauth.Registration{}, written: true},
@@ -1040,6 +1041,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		},
 		GitHubAPI: func(string) github.API { return sourceFake },
 		Speech:    contractSpeech{},
+		VoiceBuild: func(kind string, _ speech.Config) (platform.Voice, error) {
+			if kind == speech.KindOpenAI {
+				return &speech.Fake{Err: speech.ErrUnavailable}, nil
+			}
+			return &speech.Fake{Text: "Voice is set up.", Language: "english", Duration: 3 * time.Second}, nil
+		},
 	})
 	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
 	exerciseEvaluationPolicyContract(t, c)
@@ -1152,6 +1159,19 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", transcribe, transcribe, "not audio", http.StatusBadRequest, octets...)
 	c.call(acme, "POST", transcribe, transcribe, webmVoice+"silence", http.StatusUnprocessableEntity, octets...)
 	c.call(acme, "POST", transcribe, transcribe, webmVoice+"offline", http.StatusServiceUnavailable, octets...)
+
+	// The workspace's voice provider: none, set up, checked, broken, off.
+	const provider = "/api/voice/provider"
+	c.call(auditAdmin, "GET", provider, provider, "", http.StatusOK)
+	c.call(auditAdmin, "POST", provider+"/check", provider+"/check", "", http.StatusNotFound)
+	c.call(auditAdmin, "PUT", provider, provider, `{"kind":"elevenlabs","key":"k"}`, http.StatusBadRequest)
+	c.call(auditAdmin, "PUT", provider, provider, `{"kind":"groq","key":"gsk_contract"}`, http.StatusOK)
+	c.call(auditAdmin, "GET", provider, provider, "", http.StatusOK)
+	c.call(auditAdmin, "POST", provider+"/check", provider+"/check", "", http.StatusOK)
+	c.call(acme, "GET", "/api/voice", "/api/voice", "", http.StatusOK)
+	c.call(auditAdmin, "PUT", provider, provider, `{"kind":"openai","key":"sk_contract"}`, http.StatusOK)
+	c.call(auditAdmin, "POST", provider+"/check", provider+"/check", "", http.StatusBadGateway)
+	c.call(auditAdmin, "DELETE", provider, provider, "", http.StatusNoContent)
 
 	c.call(auditAdmin, "GET", "/api/audit", "/api/audit?limit=501", "", http.StatusBadRequest)
 	c.call(auditAdmin, "GET", "/api/read-audit", "/api/read-audit?limit=501", "", http.StatusBadRequest)

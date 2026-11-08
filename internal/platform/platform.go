@@ -207,6 +207,9 @@ type Config struct {
 	// Speech transcribes voice notes when a message arrives, before the run
 	// it starts (TranscribeVoiceNotes). Nil transcribes nothing.
 	Speech speech.Transcriber
+	// VoiceBuild builds a workspace's voice provider from its kind. Nil is
+	// speech.New: groq or openai.
+	VoiceBuild VoiceBuild
 	// Connectors are the catalog connectors the Platform documents declare.
 	// The store's connectors become exactly these at start.
 	Connectors []CatalogConnector

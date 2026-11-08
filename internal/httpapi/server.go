@@ -1179,6 +1179,8 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, detail(err, library.ErrConflict))
 	case errors.Is(err, auth.ErrForbidden):
 		fail(w, http.StatusForbidden, detail(err, auth.ErrForbidden))
+	case errors.Is(err, platform.ErrVoiceProvider):
+		fail(w, http.StatusBadRequest, detail(err, platform.ErrVoiceProvider))
 	case errors.Is(err, sourcelinks.ErrInvalid):
 		fail(w, http.StatusBadRequest, "invalid source link rule")
 	case errors.Is(err, sourcelinks.ErrNotFound):

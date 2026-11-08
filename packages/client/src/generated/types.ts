@@ -2481,10 +2481,68 @@ export interface AgentPlace {
 /** Where an agent now lives. */
 export type AgentHome = { agent: string } & AgentPlace;
 
-/** Whether voice notes are transcribed, and the largest recording taken. */
+/** What voice a workspace has, and the largest recording taken. */
 export interface VoiceSettings {
   transcribe: boolean;
+  speak: boolean;
+  provider?: "groq" | "openai";
   max_bytes: number;
+}
+
+/** What a voice provider charges, in micro-USD. Zero is unpriced. */
+export interface VoicePrice {
+  hear_per_hour: number;
+  min_seconds: number;
+  speak_per_million_chars: number;
+}
+
+/** A workspace's voice provider. Its key is never shown. */
+export interface VoiceProvider {
+  kind: "groq" | "openai";
+  /** Transcribes. */
+  model: string;
+  /** Speaks. */
+  speech_model: string;
+  voice: string;
+  price: VoicePrice;
+  key_ref?: string;
+  key_stored: boolean;
+  set_by: string;
+  set_at: string;
+}
+
+export interface VoiceProviderInput {
+  kind: "groq" | "openai";
+  model?: string;
+  speech_model?: string;
+  voice?: string;
+  price?: VoicePrice;
+  key_ref?: string;
+  key?: string;
+}
+
+/** A kind a voice provider can be, with its defaults and the voices it is known to offer. */
+export interface VoiceKind {
+  kind: "groq" | "openai";
+  model: string;
+  speech_model: string;
+  voice: string;
+  voices: string[];
+  price: VoicePrice;
+}
+
+export interface VoiceProviderView {
+  provider?: VoiceProvider;
+  kinds: VoiceKind[];
+}
+
+/** The sample a check spoke, and what was heard back from it. */
+export interface VoiceCheck {
+  /** The spoken sample */
+  audio: Blob;
+  media_type: string;
+  heard: string;
+  cost_micros: number;
 }
 
 /** What a recording said, and the language it was said in when the speech kind reports one. */

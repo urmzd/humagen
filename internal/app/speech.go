@@ -10,20 +10,21 @@ import (
 )
 
 // openSpeech builds the System spec's speech slot. None, the default, is
-// nil: voice notes stay attachments and nothing is transcribed. The key is a
-// reference read on every request, never held.
+// nil: voice notes stay attachments and nothing is transcribed, unless a
+// workspace sets up a voice provider of its own. The key is a reference
+// read on every request, never held.
 func openSpeech(ctx context.Context, o Options, l loaded, keys credref.Resolver) (speech.Transcriber, error) {
 	slot := l.cfg.System.Spec.Speech
 	switch slot.Kind {
 	case "", "none":
 		return nil, nil
-	case "groq":
+	case speech.KindGroq, speech.KindOpenAI:
 		b, err := spec.Block[spec.GroqSpeech](slot)
 		if err != nil {
 			return nil, fmt.Errorf("speech: %w", err)
 		}
-		ref := b.KeyRef()
-		return speech.NewGroq(speech.GroqConfig{
+		ref := b.KeyRefFor(slot.Kind)
+		return speech.New(slot.Kind, speech.Config{
 			BaseURL: b.BaseURL, Model: b.Model, SpeechModel: b.SpeechModel, Voice: b.Voice,
 			MaxBytes: b.MaxBytes, Timeout: b.TimeoutOr(speech.GroqTimeout),
 			Key: func(ctx context.Context) (string, error) { return keys.Resolve(ctx, ref) },

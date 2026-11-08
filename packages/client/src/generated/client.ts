@@ -239,6 +239,10 @@ import type {
   ToolCredentialInput,
   ToolCredentials,
   UpdatePreferencesBody,
+  VoiceCheck,
+  VoiceProvider,
+  VoiceProviderInput,
+  VoiceProviderView,
   VoiceSettings,
   VoiceTranscript,
   WorkspaceFileContent,
@@ -6715,9 +6719,12 @@ end; pass it back as `before`.
     });
   }
 
-  /** `transcribe` is false when the System spec has no speech kind; the
-console then offers no recording. `max_bytes` is the largest
-recording `POST /api/voice/transcriptions` takes.
+  /** `transcribe` is whether a recording is turned into words: by the
+workspace's voice provider, else the System spec's speech kind.
+Without either the console's microphone uses the browser's own
+dictation. `speak` is whether voice mode is on, which takes a
+workspace voice provider; `provider` is its kind. `max_bytes` is the
+largest recording `POST /api/voice/transcriptions` takes.
  */
   async getVoice(options?: RequestOptions): Promise<VoiceSettings> {
     const path = "/api/voice";
@@ -6736,7 +6743,9 @@ recording `POST /api/voice/transcriptions` takes.
   /** The body is the recording's own bytes, at most `max_bytes` from
 `GET /api/voice` (10 MiB). What it is is decided from the bytes, not
 the Content-Type. The words come back for the person to read and
-send; the recording is not kept. 404 when voice notes are off, 422
+send; the recording is not kept. It is transcribed by the workspace's
+voice provider, whose cost is counted, else the System spec's speech
+kind. 404 when neither is set up, 422
 when no words were heard, 503 when the speech provider failed or did
 not answer in time.
  */
@@ -6754,6 +6763,86 @@ not answer in time.
     return this.rawRequest<VoiceTranscript>("POST", path, {
       body,
       contentType: "application/octet-stream",
+      ...options,
+    });
+  }
+
+  /** `provider` is left out until an admin sets one up; voice mode is off
+until then. Its key is never returned: `key_stored` says a value is
+kept, `key_ref` names the reference it is read from. `kinds` are the
+kinds a provider can be, with their default models, voices and
+published prices in micro-USD.
+ */
+  async getVoiceProvider(options?: RequestOptions): Promise<VoiceProviderView> {
+    const path = "/api/voice/provider";
+    return this.request<VoiceProviderView>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getVoiceProviderRaw(options?: RequestOptions): Promise<ApiResponse<VoiceProviderView>> {
+    const path = "/api/voice/provider";
+    return this.rawRequest<VoiceProviderView>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** An empty model or voice is the kind's default, and no `price` the
+kind's published one (or the one it had, when the kind is
+unchanged). Give `key`, kept in the server's secret store, or
+`key_ref`, an `env:HUMAGEN_*` reference this server grants the
+workspace; with neither, a provider of the same kind keeps its key.
+Everyone in the workspace who may record (`speech:write`) spends it,
+and what each call costs is counted in the usage ledger.
+ */
+  async setVoiceProvider(body: VoiceProviderInput, options?: RequestOptions): Promise<VoiceProvider> {
+    const path = "/api/voice/provider";
+    return this.request<VoiceProvider>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setVoiceProviderRaw(body: VoiceProviderInput, options?: RequestOptions): Promise<ApiResponse<VoiceProvider>> {
+    const path = "/api/voice/provider";
+    return this.rawRequest<VoiceProvider>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Forgets the provider and any key kept for it. Voice mode stops; the microphone falls back to the deployment's speech kind or the browser's dictation. */
+  async deleteVoiceProvider(options?: RequestOptions): Promise<void> {
+    const path = "/api/voice/provider";
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteVoiceProviderRaw(options?: RequestOptions): Promise<ApiResponse<void>> {
+    const path = "/api/voice/provider";
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Speaks a fixed sample with the provider and transcribes it back, so
+an admin hears the voice and sees it heard. What it costs is
+counted. 404 with no provider, 502 when the provider refused or did
+not answer, with its own reason.
+ */
+  async checkVoiceProvider(options?: RequestOptions): Promise<VoiceCheck> {
+    const path = "/api/voice/provider/check";
+    return this.request<VoiceCheck>("POST", path, {
+      ...options,
+    });
+  }
+
+  async checkVoiceProviderRaw(options?: RequestOptions): Promise<ApiResponse<VoiceCheck>> {
+    const path = "/api/voice/provider/check";
+    return this.rawRequest<VoiceCheck>("POST", path, {
       ...options,
     });
   }
