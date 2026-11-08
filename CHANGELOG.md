@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.91.0 (2026-11-08)
+
+### Features
+
+- **catalog**: add durable managed BigQuery connection setup (#238) ([a6c2571](https://github.com/urmzd/humagen/commit/a6c2571cf91cfd1831ccf23e0c22c133948813df))
+- **connections**: add scoped consent health and private builder tools (#237) ([13bdf5c](https://github.com/urmzd/humagen/commit/13bdf5c71ef6d20f23aab04a2a62645dd9d68398))
+- **sessions**: connect native reviews feedback and source alerts (#236) ([b4004c7](https://github.com/urmzd/humagen/commit/b4004c7fccb7229f0f16afaa0c7ccced0e43b980))
+- **connections**: add durable consent and native installation foundation (#235) ([72ad896](https://github.com/urmzd/humagen/commit/72ad896fe9732792a2118c3db9976a0d854ae432))
+- **evals**: gate agent changes with pinned prompts and private trace evaluations (#234) ([5d2af9c](https://github.com/urmzd/humagen/commit/5d2af9c603b9f79f00d72b9eb0859a3f5345cb7b))
+- **alerts**: project actionable session alerts with private priority delivery (#233) ([d720871](https://github.com/urmzd/humagen/commit/d720871b9d56a82d7b16acf53f713b42afe2adc9))
+- **evals**: persist evaluation receipts and bounded prompt snapshots (#232) ([29465a0](https://github.com/urmzd/humagen/commit/29465a007a927fafdad8abac9fbbb4ba9e3fd49e))
+- expose governed agent sessions and resumable transcript APIs (#231) ([ac2a543](https://github.com/urmzd/humagen/commit/ac2a5431037737addce14d0663b5942076f98ddf))
+- persist session alert lifecycle and preserve pending attention (#230) ([097f63d](https://github.com/urmzd/humagen/commit/097f63d736dfa65bd3c979596a76bce46566a074))
+- persist agent session identity and admission state (#228) ([98942eb](https://github.com/urmzd/humagen/commit/98942ebea2c3af57a23f2f8596ce1481be0e0a5c))
+
+### Bug Fixes
+
+- **connections**: fence native rejection to current consent and owner (#239) ([9ae5e81](https://github.com/urmzd/humagen/commit/9ae5e81d2af85cb64a1f86715058f3f022260bcb))
+- **artifacts**: reuse saved content across retries and concurrent saves (#227) ([ea988a6](https://github.com/urmzd/humagen/commit/ea988a6b1db19542a61589bb421d6be26c230e0c))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.90.0...v0.91.0)
+
+
 ## 0.90.0 (2026-11-07)
 
 ### Features
