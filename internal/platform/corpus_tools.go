@@ -47,8 +47,8 @@ func (p *Platform) corpusTools(req runtime.Request) map[string]saigetypes.Tool {
 			name, connector, sql := strings.TrimSpace(arg(args, "corpus")), strings.TrimSpace(arg(args, "connector")), arg(args, "sql")
 			reader := p.invitationReader(req.Tenant, person)
 			c, err := p.Corpora.Get(req.Tenant, name)
-			if err != nil || !c.Grants(req.Agent()) || !p.corpusVisible(reader, c) {
-				return "", fmt.Errorf("%w: no corpus %q granted to this agent that you may read", corpora.ErrNotFound, name)
+			if err != nil || !reaches(req, p.attachedCorpora(req), c) || !p.corpusVisible(reader, c) {
+				return "", fmt.Errorf("%w: no corpus %q granted to this agent or attached here that you may read", corpora.ErrNotFound, name)
 			}
 			member := corpora.Member{Kind: corpora.Catalog, Name: connector}
 			if !c.Holds(member) || !p.memberVisible(reader, member) {
