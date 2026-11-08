@@ -1980,6 +1980,35 @@ export interface SurfaceRef {
   message?: string;
   /** The app's own bot user id, whose mention is not a tag. */
   app_user?: string;
+  audience?: SurfaceAudience;
+  /** Slack's short-lived token for acting for the person in this turn. Accepted and never kept or passed on. */
+  action_token?: string;
+}
+
+/** Who is in the Slack conversation a message was asked in. A root
+session's audience follows it: a public channel's is shared where it
+is filed; a private channel's or a group direct message's is private
+to the members the client maps to people, kept to the members of the
+latest message; a direct message's is private to its person. Absent
+is read from the channel id.
+ */
+export interface SurfaceAudience {
+  type: "public_channel" | "private_channel" | "mpim" | "im";
+  /** The conversation's members by Slack user id, for a private channel or a group direct message. */
+  members?: string[];
+}
+
+/** What one message posted to a chat surface's root session did. */
+export interface SessionPosted {
+  message: SessionPostedMessage;
+  /** The runs it started, in the root or in the child of the agent it named. */
+  runs: Run[];
+  notified: string[];
+  refused: ThreadMention[];
+  rule: string;
+  reason?: string;
+  /** The message was already posted; nothing started again. */
+  repeated?: boolean;
 }
 
 /** The thread on a client's surface this thread is. It never changes. */
@@ -4600,6 +4629,12 @@ export interface SessionInput {
   effort?: string;
   /** The readable session alert that anchors this fix conversation. */
   source_alert?: string;
+  surface?: SurfaceRef;
+  act_as?: ActAs;
+  /** The kind of chat surface: slack, the default and only one taken today. */
+  surface_kind?: string;
+  /** With surface: post the message without starting anything. */
+  post_only?: boolean;
 }
 
 /** A session message with optional routing to a mentioned agent. */
@@ -4679,6 +4714,7 @@ export interface SessionLink {
 }
 
 export interface AgentSession {
+  posted?: SessionPosted;
   /** More changed messages remain after cursor; continue with since until false. */
   more?: boolean;
   usage?: RunUsage;
@@ -5033,6 +5069,11 @@ export interface ThreadForkContextItem {
   name?: string;
   text: string;
   at: string;
+}
+
+export interface SessionPostedMessage {
+  id: string;
+  text: string;
 }
 
 export interface ProjectFork {
