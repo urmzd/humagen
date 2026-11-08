@@ -273,3 +273,24 @@ func TestAGitHubMessagesRunsAnswerOnItsPullRequest(t *testing.T) {
 		t.Fatalf("run channel %q, actor %+v, client %q", tag.Channel, wire.ActorOf(tag), out.Posted.Runs[0].Client)
 	}
 }
+
+func TestAReplyFromAnywhereUnderASlackRootAnswersInTheThread(t *testing.T) {
+	p, ana := slackWorkspace(t)
+	ref := slackRef("C01ANY", "1700000000.000100", "")
+	ref.User = "U0ANA"
+	first, err := p.SendSurfaceMessages(t.Context(), ana, sayIn("@ops why did the deploy fail?", ref))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reply, err := p.SendMessagesUnder(t.Context(), ana, first.Root, sayIn("@ops and what did it cost?", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reply.Posted.Runs) != 1 {
+		t.Fatalf("runs = %+v", reply.Posted.Runs)
+	}
+	tag := reply.Posted.Runs[0].Tag()
+	if !strings.HasPrefix(tag.Channel, "slack://T0TEAM/C01ANY") || reply.Posted.Runs[0].Client != "app" || wire.ActorOf(tag).User != "ana" {
+		t.Fatalf("a console reply answers on %q through %q as %+v", tag.Channel, reply.Posted.Runs[0].Client, wire.ActorOf(tag))
+	}
+}

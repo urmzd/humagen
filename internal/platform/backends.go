@@ -240,6 +240,7 @@ func (p *Platform) openStores(cfg Config) error {
 	p.GoodAsks = openGoodAsks(perRequest)
 	p.picks = pickStore(perRequest)
 	p.audiences = audienceStore(perRequest)
+	p.deliveries = deliveryStore(perRequest)
 	p.Prefs, err = prefs.Open(perRequest)
 	keep("prefs", err)
 	p.Marks, err = marks.Open(perRequest)
