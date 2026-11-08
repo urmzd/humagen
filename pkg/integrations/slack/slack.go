@@ -22,14 +22,15 @@ import (
 )
 
 type Config struct {
-	Tenant    string
-	Files     connectors.Files
-	FileToken string
-	AppID     string
-	API       transport.API
-	Verifier  transport.Verifier
-	Team      string
-	Bots      map[string]string
+	Tenant          string
+	Files           connectors.Files
+	FileToken       string
+	FileTokenSource func(context.Context) (string, error)
+	AppID           string
+	API             transport.API
+	Verifier        transport.Verifier
+	Team            string
+	Bots            map[string]string
 	// Agents is the set of names a plain "@name" in a message may name. A
 	// message no bot mention addressed names the first of them it mentions.
 	// Nil reads no plain names.
@@ -67,6 +68,7 @@ func New(cfg Config) (*Connector, error) {
 	c := &Connector{cfg: cfg, offered: offered{seen: map[string]bool{}}, statusSeq: map[string]uint64{}}
 	c.live.open, c.live.asked = map[string]session{}, map[string]bool{}
 	base := transport.Config{Tenant: cfg.Tenant, Files: cfg.Files, FileToken: cfg.FileToken, AppID: cfg.AppID, API: cfg.API, Verifier: cfg.Verifier, Team: cfg.Team, Bots: cfg.Bots, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
+	base.FileTokenSource = cfg.FileTokenSource
 	base.DeliveryState, base.DeliveryScope = cfg.DeliveryState, cfg.DeliveryScope
 	base.Prepare = func(_ context.Context, tag *event.Envelope) error {
 		if cfg.Agents != nil && wire.AgentOf(*tag) == "" {

@@ -10491,21 +10491,30 @@ components:
         schema_hash: {type: string}
         class: {type: string, enum: [read, write]}
     PersonToolServer:
-      description: An MCP server a person adds for themselves. Its credential is a reference, never a secret.
+      description: An MCP server a person adds for themselves. Its credential is a reference,
+        never a secret.
       type: object
-      required: [name, url]
+      required:
+      - name
+      - url
       properties:
         tools:
-          description: Exact tools approved by the person. Missing means unavailable to runs.
+          description: Exact tools approved by the person. Missing means unavailable to
+            runs.
           type: array
           maxItems: 64
-          items: {$ref: "#/components/schemas/PersonalApprovedTool"}
-        name: {type: string}
+          items:
+            "$ref": "#/components/schemas/PersonalApprovedTool"
+        name:
+          type: string
         url:
           description: The server's https address, with no user or password in it.
           type: string
         credential:
-          description: A reference (`env:`, `keychain:` or `op://`) under one of the person's own starts.
+          description: A reference (`env:`, `keychain:` or `op://`) under one of the person's
+            own starts.
+          type: string
+        oauth:
           type: string
     PersonContext:
       description: What one person brings to the runs that act for them.
@@ -14575,12 +14584,15 @@ components:
     SlackOptions:
       type: object
       properties:
-        sessions: {type: boolean}
+        sessions:
+          type: boolean
         commands:
           type: array
-          items: {$ref: "#/components/schemas/SlackCommand"}
+          items:
+            "$ref": "#/components/schemas/SlackCommand"
         machine:
-          description: The subject of the credential a Slack app signs in to the API with. Only it may act for `people`.
+          description: The subject of the credential a Slack app signs in to the API with.
+            Only it may act for `people`.
           type: string
         people:
           description: |
@@ -14588,7 +14600,12 @@ components:
             is in this workspace, by subject. An answer clicked in Slack by a
             person it maps is that principal's answer; anyone else is refused.
           type: object
-          additionalProperties: {type: string}
+          additionalProperties:
+            type: string
+        action_channels:
+          type: array
+          items:
+            type: string
     GitHubAutomation:
       type: object
       required: [name, repository, event, action, agent, instructions, paused]
@@ -14606,29 +14623,45 @@ components:
       type: object
       properties:
         automations:
-          description: Signed webhook rules. Own bot events and commits are always ignored. Check runs require commit author evidence in the payload.
+          description: Signed webhook rules. Own bot events and commits are always ignored.
+            Check runs require commit author evidence in the payload.
           type: array
           maxItems: 50
-          items: {$ref: "#/components/schemas/GitHubAutomation"}
+          items:
+            "$ref": "#/components/schemas/GitHubAutomation"
         people:
-          description: Exact verified non-bot GitHub logins mapped explicitly by this installation to workspace subjects. No inferred identity or cross-installation fallback.
+          description: Exact verified non-bot GitHub logins mapped explicitly by this
+            installation to workspace subjects. No inferred identity or cross-installation
+            fallback.
           type: object
           maxProperties: 500
-          additionalProperties: {type: string}
+          additionalProperties:
+            type: string
         auto_labels:
           type: object
           additionalProperties:
             type: object
-            additionalProperties: {type: string}
-        checks: {type: boolean}
-        guides: {type: boolean}
-        mutations: {type: boolean}
+            additionalProperties:
+              type: string
+        checks:
+          type: boolean
+        guides:
+          type: boolean
+        mutations:
+          type: boolean
         read_repositories:
           type: array
-          items: {type: string}
+          items:
+            type: string
         login:
-          description: The app's own GitHub login, such as `humagen[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default (see docs/reference/github.md).
+          description: The app's own GitHub login, such as `humagen[bot]`. A comment that
+            mentions it and names no agent is addressed to the client and answered by
+            its default (see docs/reference/github.md).
           type: string
+        action_repositories:
+          type: array
+          items:
+            type: string
     ClientInput:
       description: A client as a caller writes it. The tenant, who manages it and its version are the server's to say.
       type: object
@@ -14744,42 +14777,43 @@ components:
         know (`UnknownEvent`). This list is the catalog this build registers.
       type: string
       enum:
-        - control.compact.v1
-        - control.stop.v1
-        - cron.tick.v1
-        - github.issue_comment.created.v1
-        - github.issues.labeled.v1
-        - github.issues.opened.v1
-        - github.pull_request.labeled.v1
-        - github.pull_request.opened.v1
-        - github.pull_request.ready_for_review.v1
-        - github.pull_request.review_requested.v1
-        - github.pull_request.synchronize.v1
-        - github.pull_request_review.submitted.v1
-        - github.pull_request_review_comment.created.v1
-        - jira.comment.created.v1
-        - jira.issue.assigned.v1
-        - jira.issue.created.v1
-        - message.posted.v1
-        - run.accepted.v1
-        - run.action.taken.v1
-        - run.child.parked.v1
-        - run.completed.v1
-        - run.context.compacted.v1
-        - run.delta.citation.v1
-        - run.delta.text.v1
-        - run.delta.thinking.v1
-        - run.delta.tool.call.v1
-        - run.delta.tool.done.v1
-        - run.failed.v1
-        - run.parked.v1
-        - run.resumed.v1
-        - run.started.v1
-        - run.stopped.v1
-        - run.usage.child.v1
-        - run.usage.v1
-        - slack.command.invoked.v1
-        - slack.session.stopped.v1
+      - control.compact.v1
+      - control.stop.v1
+      - cron.tick.v1
+      - github.issue_comment.created.v1
+      - github.issues.labeled.v1
+      - github.issues.opened.v1
+      - github.pull_request.labeled.v1
+      - github.pull_request.opened.v1
+      - github.pull_request.ready_for_review.v1
+      - github.pull_request.review_requested.v1
+      - github.pull_request.synchronize.v1
+      - github.pull_request_review.submitted.v1
+      - github.pull_request_review_comment.created.v1
+      - jira.comment.created.v1
+      - jira.issue.assigned.v1
+      - jira.issue.created.v1
+      - message.posted.v1
+      - run.accepted.v1
+      - run.action.taken.v1
+      - run.child.parked.v1
+      - run.completed.v1
+      - run.context.compacted.v1
+      - run.delta.citation.v1
+      - run.delta.text.v1
+      - run.delta.thinking.v1
+      - run.delta.tool.call.v1
+      - run.delta.tool.done.v1
+      - run.failed.v1
+      - run.feedback.v1
+      - run.parked.v1
+      - run.resumed.v1
+      - run.started.v1
+      - run.stopped.v1
+      - run.usage.child.v1
+      - run.usage.v1
+      - slack.command.invoked.v1
+      - slack.session.stopped.v1
     TextPayload:
       description: One fragment of the agent's answer, in order. Concatenate fragments.
       type: object
@@ -15411,42 +15445,43 @@ components:
         The API sends run events only (`run.*`); the other types are listed
         so the union is the whole catalog.
       oneOf:
-        - $ref: "#/components/schemas/CompactRequestedEvent"
-        - $ref: "#/components/schemas/StopRequestedEvent"
-        - $ref: "#/components/schemas/CronTickEvent"
-        - $ref: "#/components/schemas/GitHubIssueCommentCreatedEvent"
-        - $ref: "#/components/schemas/GitHubIssueLabeledEvent"
-        - $ref: "#/components/schemas/GitHubIssueOpenedEvent"
-        - $ref: "#/components/schemas/GitHubPullLabeledEvent"
-        - $ref: "#/components/schemas/GitHubPullOpenedEvent"
-        - $ref: "#/components/schemas/GitHubPullReadyForReviewEvent"
-        - $ref: "#/components/schemas/GitHubReviewRequestedEvent"
-        - $ref: "#/components/schemas/GitHubPullSynchronizeEvent"
-        - $ref: "#/components/schemas/GitHubReviewSubmittedEvent"
-        - $ref: "#/components/schemas/GitHubReviewCommentCreatedEvent"
-        - $ref: "#/components/schemas/JiraCommentCreatedEvent"
-        - $ref: "#/components/schemas/JiraIssueAssignedEvent"
-        - $ref: "#/components/schemas/JiraIssueCreatedEvent"
-        - $ref: "#/components/schemas/MessagePostedEvent"
-        - $ref: "#/components/schemas/RunAcceptedEvent"
-        - $ref: "#/components/schemas/ActionTakenEvent"
-        - $ref: "#/components/schemas/ChildParkedEvent"
-        - $ref: "#/components/schemas/RunCompletedEvent"
-        - $ref: "#/components/schemas/ContextCompactedEvent"
-        - $ref: "#/components/schemas/CitationEvent"
-        - $ref: "#/components/schemas/TextDeltaEvent"
-        - $ref: "#/components/schemas/ThinkingDeltaEvent"
-        - $ref: "#/components/schemas/ToolCallEvent"
-        - $ref: "#/components/schemas/ToolDoneEvent"
-        - $ref: "#/components/schemas/RunFailedEvent"
-        - $ref: "#/components/schemas/RunParkedEvent"
-        - $ref: "#/components/schemas/RunResumedEvent"
-        - $ref: "#/components/schemas/RunStartedEvent"
-        - $ref: "#/components/schemas/RunStoppedEvent"
-        - $ref: "#/components/schemas/UsageChildEvent"
-        - $ref: "#/components/schemas/UsageCallEvent"
-        - $ref: "#/components/schemas/SlackCommandInvokedEvent"
-        - $ref: "#/components/schemas/SlackSessionStoppedEvent"
+      - "$ref": "#/components/schemas/CompactRequestedEvent"
+      - "$ref": "#/components/schemas/StopRequestedEvent"
+      - "$ref": "#/components/schemas/CronTickEvent"
+      - "$ref": "#/components/schemas/GitHubIssueCommentCreatedEvent"
+      - "$ref": "#/components/schemas/GitHubIssueLabeledEvent"
+      - "$ref": "#/components/schemas/GitHubIssueOpenedEvent"
+      - "$ref": "#/components/schemas/GitHubPullLabeledEvent"
+      - "$ref": "#/components/schemas/GitHubPullOpenedEvent"
+      - "$ref": "#/components/schemas/GitHubPullReadyForReviewEvent"
+      - "$ref": "#/components/schemas/GitHubReviewRequestedEvent"
+      - "$ref": "#/components/schemas/GitHubPullSynchronizeEvent"
+      - "$ref": "#/components/schemas/GitHubReviewSubmittedEvent"
+      - "$ref": "#/components/schemas/GitHubReviewCommentCreatedEvent"
+      - "$ref": "#/components/schemas/JiraCommentCreatedEvent"
+      - "$ref": "#/components/schemas/JiraIssueAssignedEvent"
+      - "$ref": "#/components/schemas/JiraIssueCreatedEvent"
+      - "$ref": "#/components/schemas/MessagePostedEvent"
+      - "$ref": "#/components/schemas/RunAcceptedEvent"
+      - "$ref": "#/components/schemas/ActionTakenEvent"
+      - "$ref": "#/components/schemas/ChildParkedEvent"
+      - "$ref": "#/components/schemas/RunCompletedEvent"
+      - "$ref": "#/components/schemas/ContextCompactedEvent"
+      - "$ref": "#/components/schemas/CitationEvent"
+      - "$ref": "#/components/schemas/TextDeltaEvent"
+      - "$ref": "#/components/schemas/ThinkingDeltaEvent"
+      - "$ref": "#/components/schemas/ToolCallEvent"
+      - "$ref": "#/components/schemas/ToolDoneEvent"
+      - "$ref": "#/components/schemas/RunFailedEvent"
+      - "$ref": "#/components/schemas/RunFeedbackEvent"
+      - "$ref": "#/components/schemas/RunParkedEvent"
+      - "$ref": "#/components/schemas/RunResumedEvent"
+      - "$ref": "#/components/schemas/RunStartedEvent"
+      - "$ref": "#/components/schemas/RunStoppedEvent"
+      - "$ref": "#/components/schemas/UsageChildEvent"
+      - "$ref": "#/components/schemas/UsageCallEvent"
+      - "$ref": "#/components/schemas/SlackCommandInvokedEvent"
+      - "$ref": "#/components/schemas/SlackSessionStoppedEvent"
       discriminator:
         propertyName: type
         mapping:
@@ -15478,6 +15513,7 @@ components:
           run.delta.tool.call.v1: "#/components/schemas/ToolCallEvent"
           run.delta.tool.done.v1: "#/components/schemas/ToolDoneEvent"
           run.failed.v1: "#/components/schemas/RunFailedEvent"
+          run.feedback.v1: "#/components/schemas/RunFeedbackEvent"
           run.parked.v1: "#/components/schemas/RunParkedEvent"
           run.resumed.v1: "#/components/schemas/RunResumedEvent"
           run.started.v1: "#/components/schemas/RunStartedEvent"
@@ -16374,3 +16410,46 @@ components:
         - evaluated
         - passed
         - at
+    FeedbackPayload:
+      type: object
+      required:
+      - run
+      - actor
+      - rating
+      - surface
+      properties:
+        run:
+          type: string
+        session:
+          type: string
+        message:
+          type: string
+        finding:
+          type: string
+        actor:
+          "$ref": "#/components/schemas/Actor"
+        rating:
+          type: string
+        reasons:
+          type: array
+          items:
+            type: string
+        comment:
+          type: string
+        surface:
+          type: string
+        removed:
+          type: boolean
+    RunFeedbackEvent:
+      allOf:
+      - "$ref": "#/components/schemas/EventEnvelope"
+      - type: object
+        required:
+        - type
+        - data
+        properties:
+          type:
+            type: string
+            const: run.feedback.v1
+          data:
+            "$ref": "#/components/schemas/FeedbackPayload"

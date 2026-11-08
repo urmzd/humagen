@@ -1056,6 +1056,7 @@ export interface PersonToolServer {
   url: string;
   /** A reference (`env:`, `keychain:` or `op://`) under one of the person's own starts. */
   credential?: string;
+  oauth?: string;
 }
 
 /** What one person brings to the runs that act for them. */
@@ -3789,6 +3790,7 @@ is in this workspace, by subject. An answer clicked in Slack by a
 person it maps is that principal's answer; anyone else is refused.
  */
   people?: Record<string, string>;
+  action_channels?: string[];
 }
 
 export interface GitHubAutomation {
@@ -3815,6 +3817,7 @@ export interface GitHubOptions {
   read_repositories?: string[];
   /** The app's own GitHub login, such as `humagen[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default (see docs/reference/github.md). */
   login?: string;
+  action_repositories?: string[];
 }
 
 /** A client as a caller writes it. The tenant, who manages it and its version are the server's to say. */
@@ -3889,7 +3892,7 @@ discriminator: dotted segments and a version, such as
 or one type. The set is open: a reader passes over a type it does not
 know (`UnknownEvent`). This list is the catalog this build registers.
  */
-export type EventType = "control.compact.v1" | "control.stop.v1" | "cron.tick.v1" | "github.issue_comment.created.v1" | "github.issues.labeled.v1" | "github.issues.opened.v1" | "github.pull_request.labeled.v1" | "github.pull_request.opened.v1" | "github.pull_request.ready_for_review.v1" | "github.pull_request.review_requested.v1" | "github.pull_request.synchronize.v1" | "github.pull_request_review.submitted.v1" | "github.pull_request_review_comment.created.v1" | "jira.comment.created.v1" | "jira.issue.assigned.v1" | "jira.issue.created.v1" | "message.posted.v1" | "run.accepted.v1" | "run.action.taken.v1" | "run.child.parked.v1" | "run.completed.v1" | "run.context.compacted.v1" | "run.delta.citation.v1" | "run.delta.text.v1" | "run.delta.thinking.v1" | "run.delta.tool.call.v1" | "run.delta.tool.done.v1" | "run.failed.v1" | "run.parked.v1" | "run.resumed.v1" | "run.started.v1" | "run.stopped.v1" | "run.usage.child.v1" | "run.usage.v1" | "slack.command.invoked.v1" | "slack.session.stopped.v1";
+export type EventType = "control.compact.v1" | "control.stop.v1" | "cron.tick.v1" | "github.issue_comment.created.v1" | "github.issues.labeled.v1" | "github.issues.opened.v1" | "github.pull_request.labeled.v1" | "github.pull_request.opened.v1" | "github.pull_request.ready_for_review.v1" | "github.pull_request.review_requested.v1" | "github.pull_request.synchronize.v1" | "github.pull_request_review.submitted.v1" | "github.pull_request_review_comment.created.v1" | "jira.comment.created.v1" | "jira.issue.assigned.v1" | "jira.issue.created.v1" | "message.posted.v1" | "run.accepted.v1" | "run.action.taken.v1" | "run.child.parked.v1" | "run.completed.v1" | "run.context.compacted.v1" | "run.delta.citation.v1" | "run.delta.text.v1" | "run.delta.thinking.v1" | "run.delta.tool.call.v1" | "run.delta.tool.done.v1" | "run.failed.v1" | "run.feedback.v1" | "run.parked.v1" | "run.resumed.v1" | "run.started.v1" | "run.stopped.v1" | "run.usage.child.v1" | "run.usage.v1" | "slack.command.invoked.v1" | "slack.session.stopped.v1";
 
 /** One fragment of the agent's answer, in order. Concatenate fragments. */
 export interface TextPayload {
@@ -4355,7 +4358,7 @@ which variant it is. A type not in the mapping is an `UnknownEvent`.
 The API sends run events only (`run.*`); the other types are listed
 so the union is the whole catalog.
  */
-export type RunEvent = CompactRequestedEvent | StopRequestedEvent | CronTickEvent | GitHubIssueCommentCreatedEvent | GitHubIssueLabeledEvent | GitHubIssueOpenedEvent | GitHubPullLabeledEvent | GitHubPullOpenedEvent | GitHubPullReadyForReviewEvent | GitHubReviewRequestedEvent | GitHubPullSynchronizeEvent | GitHubReviewSubmittedEvent | GitHubReviewCommentCreatedEvent | JiraCommentCreatedEvent | JiraIssueAssignedEvent | JiraIssueCreatedEvent | MessagePostedEvent | RunAcceptedEvent | ActionTakenEvent | ChildParkedEvent | RunCompletedEvent | ContextCompactedEvent | CitationEvent | TextDeltaEvent | ThinkingDeltaEvent | ToolCallEvent | ToolDoneEvent | RunFailedEvent | RunParkedEvent | RunResumedEvent | RunStartedEvent | RunStoppedEvent | UsageChildEvent | UsageCallEvent | SlackCommandInvokedEvent | SlackSessionStoppedEvent;
+export type RunEvent = CompactRequestedEvent | StopRequestedEvent | CronTickEvent | GitHubIssueCommentCreatedEvent | GitHubIssueLabeledEvent | GitHubIssueOpenedEvent | GitHubPullLabeledEvent | GitHubPullOpenedEvent | GitHubPullReadyForReviewEvent | GitHubReviewRequestedEvent | GitHubPullSynchronizeEvent | GitHubReviewSubmittedEvent | GitHubReviewCommentCreatedEvent | JiraCommentCreatedEvent | JiraIssueAssignedEvent | JiraIssueCreatedEvent | MessagePostedEvent | RunAcceptedEvent | ActionTakenEvent | ChildParkedEvent | RunCompletedEvent | ContextCompactedEvent | CitationEvent | TextDeltaEvent | ThinkingDeltaEvent | ToolCallEvent | ToolDoneEvent | RunFailedEvent | RunFeedbackEvent | RunParkedEvent | RunResumedEvent | RunStartedEvent | RunStoppedEvent | UsageChildEvent | UsageCallEvent | SlackCommandInvokedEvent | SlackSessionStoppedEvent;
 
 /** A request that a run compact its context. The runtime's traffic, never sent on this API. */
 export type CompactRequestedEvent = EventEnvelope & { type: "control.compact.v1"; data: CompactRequestPayload };
@@ -4714,6 +4717,21 @@ export interface AgentChange {
   override_by?: string;
   override_reason?: string;
 }
+
+export interface FeedbackPayload {
+  run: string;
+  session?: string;
+  message?: string;
+  finding?: string;
+  actor: Actor;
+  rating: string;
+  reasons?: string[];
+  comment?: string;
+  surface: string;
+  removed?: boolean;
+}
+
+export type RunFeedbackEvent = EventEnvelope & { type: "run.feedback.v1"; data: FeedbackPayload };
 
 export interface GitHubSubjectPullRequest {
   url?: string;
