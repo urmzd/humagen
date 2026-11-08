@@ -796,6 +796,37 @@ export interface SuiteView extends Suite {
   runs: EvalRun[];
 }
 
+/**
+ * How widely a project is read: by one person, by named people or roles, or
+ * by everyone in the workspace. The server sends it on a project as
+ * `visibility`; until the client is regenerated it is declared here.
+ */
+export type ProjectVisibility = "private" | "shared" | "workspace";
+
+/**
+ * One corpus a project attaches, as `GET /api/projects/{name}/corpora` reads
+ * it: its title when it has one, and how many of its sources the reader sees.
+ * Declared here until the client is regenerated.
+ */
+export interface ProjectCorpus {
+  name: string;
+  title?: string;
+  sources: number;
+}
+
+/** The corpora a project attaches, at the project's version, and what a session filed there searches. */
+export interface ProjectCorpora {
+  version: number;
+  corpora: ProjectCorpus[];
+  given: { name: string; from: string }[];
+}
+
+/** A corpus as `GET /api/corpora` lists it, by what a project page needs of it. */
+export interface CorpusBrief {
+  name: string;
+  title?: string;
+}
+
 /** A project in a path: `~` is the workspace, which is the project named "". */
 export function projectPath(name: string): string {
   return name === "" ? "~" : encodeURIComponent(name);
@@ -1030,10 +1061,6 @@ export const api = {
     call<AccessDecision>("GET", `/api/access/explain?${new URLSearchParams({ permission })}`),
   agents: () => call<{ agents: Revision[] }>("GET", "/api/agents").then((r) => r.agents),
   /** Every agent, and the names of those the platform provides, which cannot be edited. */
-  /**
-   * Every agent, the platform's own by name, where each that lives in a
-   * project lives, and which projects enable each ("~" is the workspace).
-   */
   agentHues: (names: string[], path = "/api/agent-hues") =>
     call<{ hues: Record<string, number> }>(
       "GET",
@@ -1059,6 +1086,10 @@ export const api = {
     call<void>("DELETE", `/api/model-providers/${encodeURIComponent(name)}`),
   checkModelProvider: (name: string) =>
     call<ModelProviderCheck>("POST", `/api/model-providers/${encodeURIComponent(name)}/check`),
+  /**
+   * Every agent, the platform's own by name, and the project each is homed in,
+   * which says who sees it. `enabled_in` is always empty now.
+   */
   agentList: () =>
     call<{
       agents: Revision[];
@@ -1067,7 +1098,7 @@ export const api = {
       enabled_in?: Record<string, string[]>;
       hues?: Record<string, number>;
     }>("GET", "/api/agents"),
-  /** Make an agent live in a project, "" for none: available there and below, and nowhere else. */
+  /** Says who sees an agent: a project's members, Private in a Personal project, or "~" for the workspace. */
   setAgentHome: (agent: string, project: string) =>
     call<AgentHome>("PUT", `/api/agents/${encodeURIComponent(agent)}/home`, { project }),
   createAgent: (spec: AgentSpec) => call<Revision>("POST", "/api/agents", spec),
@@ -1317,6 +1348,35 @@ export const api = {
       "DELETE",
       `/api/projects/${projectPath(name)}/announcements/${encodeURIComponent(id)}`,
     ),
+  /** The corpora a project attaches, its context. "" is the workspace. */
+  projectCorpora: (name: string) =>
+    call<ProjectCorpora>("GET", `/api/projects/${projectPath(name)}/corpora`),
+  /** Replaces the corpora a project attaches, as a whole, from the version read. */
+  setProjectCorpora: (name: string, version: number, corpora: string[]) =>
+    call<ProjectCorpora>("PUT", `/api/projects/${projectPath(name)}/corpora`, {
+      version,
+      corpora,
+    }),
+  /** Every corpus the reader may read. */
+  corpora: () => call<{ corpora: CorpusBrief[] }>("GET", "/api/corpora").then((r) => r.corpora),
+  /**
+   * The schedules filed in one project, "" for the workspace. A server that
+   * does not filter by project lists every schedule, so the list is narrowed
+   * here as well.
+   */
+  projectSchedules: (project: string) =>
+    call<{ schedules: ScheduleView[] }>(
+      "GET",
+      `/api/schedules?${new URLSearchParams({ project: project === "" ? "~" : project })}`,
+    ).then((r) =>
+      r.schedules.filter((s) => (s.project === "~" ? "" : (s.project ?? "")) === project),
+    ),
+  /** Starts a session filed in a project, "" for the workspace, from its first message. */
+  startSession: (input: { text: string; project: string }) =>
+    call<AgentSession>("POST", "/api/sessions", {
+      text: input.text,
+      project: input.project === "" ? "~" : input.project,
+    }),
   projectMemory: (project: string) =>
     call<{ notes: Note[] }>("GET", `/api/projects/${projectPath(project)}/memory`).then(
       (r) => r.notes,
@@ -1974,7 +2034,7 @@ export const coworking = {
     call<{ channels: Channel[] }>("GET", `${projectAt(project)}/channels`).then((r) => r.channels),
   createChannel: (
     project: string,
-    c: { name: string; title?: string; purpose?: string; default?: string },
+    c: { name: string; title?: string; purpose?: string; default?: string; slack?: SlackBinding },
   ) => call<Channel>("POST", `${projectAt(project)}/channels`, c),
   updateChannel: (
     project: string,

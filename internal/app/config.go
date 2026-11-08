@@ -452,8 +452,20 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 					if fromFile, err = wire.SpecOfAgentFile(string(raw), policy); err != nil {
 						return fmt.Errorf("platform %q: agents[%d] %s: %w", tenant, i, a.File, err)
 					}
-				} else if err := decodeStrict(raw, &fromFile); err != nil {
-					return fmt.Errorf("platform %q: agents[%d] %s: %w", tenant, i, a.File, err)
+				} else {
+					// A field the spec no longer reads is dropped, with a note.
+					kept, notes, err := wire.DropRetiredAgentFields(raw)
+					if err != nil {
+						return fmt.Errorf("platform %q: agents[%d] %s: %w", tenant, i, a.File, err)
+					}
+					for _, n := range notes {
+						if log != nil {
+							log.Warn("an agent file holds a field that is no longer read", "platform", tenant, "file", a.File, "note", n)
+						}
+					}
+					if err := decodeStrict(kept, &fromFile); err != nil {
+						return fmt.Errorf("platform %q: agents[%d] %s: %w", tenant, i, a.File, err)
+					}
 				}
 				s = &fromFile
 			}

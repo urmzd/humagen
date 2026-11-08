@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.97.1 (2026-11-08)
+
+### Bug Fixes
+
+- **sidebar**: Recents is one list by local day; Recents and Sessions list newest first (#291) ([03f5c1f](https://github.com/urmzd/humagen/commit/03f5c1f36d19453bab80cf3014dffae636588a12))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.97.0...v0.97.1)
+
+
+## 0.97.0 (2026-11-08)
+
+### Features
+
+- **console**: an item page and Sessions filters by place and item (#282) ([2a7d801](https://github.com/urmzd/humagen/commit/2a7d8014905ae644d1acddfac4dcba2a6a93d342))
+- **console**: every message has one address, its references and its delegated work (#281) ([a7a57f3](https://github.com/urmzd/humagen/commit/a7a57f3188bfcd872c6796c3994ceabbe12c6cc7))
+- **console**: one card, one reference chip and one menu for every page (#279) ([240ae87](https://github.com/urmzd/humagen/commit/240ae8737864d3ae461c372248d7a8833937c244))
+- **approvals**: the approval agent is a built-in that decides calls in Run (#255) ([5742393](https://github.com/urmzd/humagen/commit/574239398af3d6aa471e72426dedfdd1dba1227e))
+- **models**: admin model providers; no built-in or offline model (#254) ([ef75213](https://github.com/urmzd/humagen/commit/ef752139865715cf90bd6014d34740fc14ab3959))
+- **knowledge**: query a corpus's warehouses live with the reader's own login (#247) ([e71dc08](https://github.com/urmzd/humagen/commit/e71dc08634532ae3da4c5e2e1364737c62433bbc))
+- **followups**: queue, replace or stop work when a message arrives mid-run (#256) ([a3b0710](https://github.com/urmzd/humagen/commit/a3b07101a2f4f9995c8c833abb64f0af3a0eb89b))
+
+### Bug Fixes
+
+- **spec**: retired fields load with a note instead of stopping a start (#292) ([bc242a4](https://github.com/urmzd/humagen/commit/bc242a4ffb06537296e1d2eb9cde0ced23d77c7d))
+
+### Misc
+
+- **platform**: entry agent tests use the test builtin model fields (#290) ([51cb54f](https://github.com/urmzd/humagen/commit/51cb54fd2b157faeeb944c8572f8fb02ba550437))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.96.0...v0.97.0)
+
+
 ## 0.95.0 (2026-11-08)
 
 ### Breaking

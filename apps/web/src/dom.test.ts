@@ -22,6 +22,7 @@ GlobalRegistrator.register({ url: "http://localhost:5173/" });
 await loadTests([
   "/src/bigquery-connection.dom.test.tsx",
   "/src/connection-flows.dom.test.tsx",
+  "/src/sidebar-recents.dom.test.tsx",
   "/src/agent-builder.dom.test.tsx",
   "/src/session-panel.dom.test.tsx",
   "/src/session-center.dom.test.tsx",
@@ -41,7 +42,7 @@ await loadTests([
   "/src/item-page.dom.test.tsx",
   "/src/wave.dom.test.tsx",
   "/src/sidebar-views.dom.test.tsx",
-  "/src/approval-mode.dom.test.tsx",
+  "/src/approval-toggle.dom.test.tsx",
   "/src/replay.dom.test.tsx",
   "/src/usage-page.dom.test.tsx",
   "/src/operations.dom.test.tsx",

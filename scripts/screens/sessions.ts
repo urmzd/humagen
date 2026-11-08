@@ -120,9 +120,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: "/",
       act: async (page) => {
         await composer(page).fill("Keep this unsent draft while choosing context.");
-        await page
-          .getByRole("button", { name: "Add files, agents or a project", exact: true })
-          .click();
+        await page.getByRole("button", { name: defaultCopy.chat.plus, exact: true }).click();
         await page.getByRole("dialog", { name: "Add to this conversation", exact: true }).waitFor();
         assert.equal(
           await composer(page).inputValue(),

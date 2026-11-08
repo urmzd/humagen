@@ -13,7 +13,7 @@ import {
 } from "@humagen/web";
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
-import { ApprovalModePicker } from "./ApprovalModePicker.tsx";
+import { ApprovalToggle } from "./ApprovalToggle.tsx";
 import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
 import {
   ApiError,
@@ -48,8 +48,7 @@ import { AnswerRefs, OriginRef } from "./MessageRefs.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { PersonMark } from "./PersonMark.tsx";
-import { mentionPicks, PlusMenu, SelectionChips } from "./Plus.tsx";
-import { ProjectPicker } from "./ProjectPicker.tsx";
+import { mentionPicks, PlusMenu } from "./Plus.tsx";
 import { openPane } from "./pane.ts";
 import { ResponseActivityPanel } from "./ResponseActivity.tsx";
 import { RunFeedbackHost } from "./RunFeedback.tsx";
@@ -899,6 +898,8 @@ export function ThreadRoom({
               onChanged={onChanged}
               onUpdated={(next) => setPage((p) => ({ ...p, thread: next }))}
               onShare={shareable ? () => onSharing?.(!sharing) : undefined}
+              projects={projects}
+              personalProject={personalProject}
             />
           }
           title={title}
@@ -1198,11 +1199,9 @@ export function ThreadRoom({
                   turn.run && actedFor(turn.run) === me ? [turn.run] : [],
                 )}
                 thread={id}
-                trailing={<ApprovalModePicker thread={th} me={handle || me} />}
+                trailing={<ApprovalToggle thread={th} me={handle || me} />}
                 seed={seed}
-                placeholder={
-                  th.visibility === "private" ? words.message : words.channel(th.channel)
-                }
+                placeholder={words.message}
                 tags={tags}
                 onDraft={setDraft}
                 plus={{
@@ -1220,42 +1219,6 @@ export function ThreadRoom({
                       onChange={select}
                       onAttach={attach}
                       onClose={close}
-                      projects={projects.filter((p) => postsIn(projects, p.name))}
-                      personalProject={personalProject}
-                      kinds={root?.kinds}
-                      projectFixed={fixedWhy}
-                    />
-                  ),
-                  chips: (
-                    <SelectionChips
-                      personalProject={personalProject}
-                      selection={selection}
-                      projects={projects}
-                      workspace={workspaceName}
-                      onChange={select}
-                      projectFixed
-                      // The prompt bar is where a conversation's project is chosen and changed.
-                      projectControl={
-                        <ProjectPicker
-                          locked={fixedWhy}
-                          projects={projects}
-                          kinds={root?.kinds}
-                          value={th.project}
-                          personalProject={personalProject}
-                          channel={th.channel}
-                          onCreated={() => onChanged()}
-                          onChange={(next) => {
-                            if (next === th.project) return;
-                            coworking.move(th.id, next).then(
-                              (t) => {
-                                setPage((p) => ({ ...p, thread: t }));
-                                onChanged();
-                              },
-                              (e) => setProblem(e instanceof Error ? e.message : String(e)),
-                            );
-                          }}
-                        />
-                      }
                     />
                   ),
                 }}

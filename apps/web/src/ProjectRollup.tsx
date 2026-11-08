@@ -40,10 +40,10 @@ export function ProjectRollup({ project, signal = 0 }: { project: string; signal
         <>
           <p className="max-w-prose text-aui-sm text-aui-muted">{words.inherited}</p>
           <nav className="flex flex-wrap gap-4" aria-label={words.manage}>
-            <a className={link} href={href({ page: "project", name: project, tab: "context" })}>
+            <a className={link} href={href({ page: "project", name: project })}>
               {words.context}
             </a>
-            <a className={link} href={href({ page: "project", name: project, tab: "people" })}>
+            <a className={link} href={href({ page: "project", name: project })}>
               {words.manage}
             </a>
           </nav>
@@ -57,7 +57,7 @@ export function ProjectRollup({ project, signal = 0 }: { project: string; signal
                 <li key={row.name} className="flex min-w-0 flex-col gap-3 py-4">
                   <a
                     className={`${link} font-semibold break-words`}
-                    href={href({ page: "project", name: row.name, tab: "overview" })}
+                    href={href({ page: "project", name: row.name })}
                   >
                     {row.title}
                   </a>
@@ -75,10 +75,7 @@ export function ProjectRollup({ project, signal = 0 }: { project: string; signal
                       </div>
                     ))}
                   </dl>
-                  <a
-                    className={link}
-                    href={href({ page: "project", name: row.name, tab: "inbox" })}
-                  >
+                  <a className={link} href={href({ page: "project", name: row.name })}>
                     {words.review}
                   </a>
                 </li>
@@ -97,10 +94,7 @@ export function ProjectRollup({ project, signal = 0 }: { project: string; signal
                     {note.kind === "risk" ? words.risk : words.decision}
                   </span>
                   <p className="whitespace-pre-wrap break-words text-aui-sm">{note.text}</p>
-                  <a
-                    className={link}
-                    href={href({ page: "project", name: note.project, tab: "overview" })}
-                  >
+                  <a className={link} href={href({ page: "project", name: note.project })}>
                     {note.project}
                   </a>
                 </li>
@@ -116,15 +110,7 @@ export function ProjectRollup({ project, signal = 0 }: { project: string; signal
               {data.needs.map((need) => (
                 <li key={need.id} className="flex min-w-0 flex-col gap-2 py-3">
                   <p className="break-words text-aui-sm">{need.subject}</p>
-                  <a
-                    className={link}
-                    href={href({
-                      page: "project",
-                      name: need.project,
-                      tab: "inbox",
-                      message: need.id,
-                    })}
-                  >
+                  <a className={link} href={href({ page: "project", name: need.project })}>
                     {words.review}: {need.project}
                   </a>
                 </li>
