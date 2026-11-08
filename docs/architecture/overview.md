@@ -54,8 +54,9 @@ surface (console, Slack, GitHub, cron)
   catalog rendering, byte stable across replay. A sensitive body (human text,
   private host data) reaches the model but not egress logs or webhooks unless
   a subscriber opts in.
-- **Who answers.** Humagen picks agents itself, by name or through the
-  dynamic router (`pkg/join`). fiber's channel membership and dispatch
+- **Who answers.** Humagen picks agents itself: by name, through the entry
+  agent that owns each root session naming nobody (`internal/platform/entry.go`),
+  or through the dynamic router (`pkg/join`). fiber's channel membership and dispatch
   (`orchagent/flow/membership`, `orchagent/flow/dispatch`) are built but not wired in.
 
 ## One primitive: the call

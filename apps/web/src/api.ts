@@ -47,6 +47,7 @@ import type {
   SessionPostInput,
   SkillUsage,
   SourceDependencies,
+  ThreadFollowup,
   ThreadShare,
   VoiceSettings,
   VoiceTranscript,
@@ -93,6 +94,7 @@ export type {
   ProjectUpdate,
   ProjectView,
   SourceDependencies,
+  ThreadFollowup,
 } from "../../../packages/client/src/generated/types.ts";
 
 /** What the caller may do on a project: their permission and their role together. */
@@ -165,6 +167,8 @@ export interface AgentSpec {
   fallbacks?: ModelRef[];
   /** Which errors move a call to the next fallback. Absent means any recoverable error. */
   fallback_on?: string[];
+  /** How hard the first model thinks, such as low, medium or high. Sent only where that model takes it. */
+  effort?: string;
   system_prompt: string;
   tools?: string[];
   sources?: { name: string; uri: string }[];
@@ -179,20 +183,6 @@ export interface AgentSpec {
   tagged_only?: boolean;
   /** When set, the only people who may answer a question the agent asks. */
   answerers?: string[];
-  /** What a person may pick for one message in place of the agent's model and effort. Absent offers nothing. */
-  choices?: AgentChoices;
-}
-
-/** The models (`provider/model`) and reasoning efforts an agent offers per message. */
-export interface AgentChoices {
-  models?: string[];
-  efforts?: string[];
-}
-
-/** One message's model and effort, used where the agents it starts offer them. */
-export interface MessagePick {
-  model?: string;
-  effort?: string;
 }
 
 export interface Revision {
@@ -471,22 +461,67 @@ export interface Marks {
   since?: string;
 }
 
+/** A provider kind an administrator may set up. */
+export type ModelProviderKind = "anthropic" | "google" | "openai";
+
+/** A provider agents may run on: the deployment's, or one the workspace set up. */
+export interface ModelProviderChoice {
+  name: string;
+  declared: boolean;
+  kind?: ModelProviderKind;
+  source?: "deployment" | "workspace";
+}
+
+/** Where a google provider's calls go on Vertex AI. */
+export interface VertexLocation {
+  project: string;
+  location: string;
+}
+
+/** A model provider the workspace's administrators set up. Its key is never returned. */
+export interface ModelProvider {
+  name: string;
+  kind: ModelProviderKind;
+  base_url?: string;
+  vertex?: VertexLocation;
+  /** The key's env:NAME reference, when it is one. */
+  key_ref?: string;
+  /** A value is kept for it in the secret store. */
+  key_stored?: boolean;
+  added_by?: string;
+  added_at?: string;
+}
+
+/** A provider as an administrator writes it: a key as a value or a reference, or neither to keep it. */
+export interface ModelProviderInput {
+  kind: ModelProviderKind;
+  base_url?: string;
+  vertex?: VertexLocation;
+  key_ref?: string;
+  key?: string;
+}
+
+export interface ModelProviderSetup {
+  providers: ModelProviderChoice[];
+  kinds: ModelProviderKind[];
+  /** The workspace's own providers, for someone who may manage them. */
+  workspace?: ModelProvider[];
+}
+
+/** A provider's answer to a check, as a health component. */
+export interface ModelProviderCheck {
+  id: string;
+  name: string;
+  status: "operational" | "degraded" | "down";
+  detail?: string;
+  latency_ms: number;
+}
+
 /** One agent's answer to whether it would take a message that names no agent. */
 export interface JoinDecision {
   agent: string;
   join: boolean;
   reason: string;
-}
-
-/**
- * The dynamic router: when on, every available agent is asked whether it
- * should take a message that names no agent. The provider is one the
- * deployment declares; its key never lives here.
- */
-export interface RouterSettings {
-  enabled: boolean;
-  provider?: string;
-  model?: string;
 }
 
 /**
@@ -502,8 +537,8 @@ export interface Settings {
   workspace_name?: string;
   /** Named model lists agents run on with provider "policy". */
   model_policies?: ModelPolicy[];
-  /** Whether agents decide for themselves to take a message that names no agent. */
-  router: RouterSettings;
+  /** The model providers the workspace's administrators set up, with no key. */
+  model_providers?: ModelProvider[];
   /** Set once by the server when an admin first saves settings. */
   setup_at?: string;
   setup_by?: string;
@@ -762,6 +797,37 @@ export interface SuiteView extends Suite {
   runs: EvalRun[];
 }
 
+/**
+ * How widely a project is read: by one person, by named people or roles, or
+ * by everyone in the workspace. The server sends it on a project as
+ * `visibility`; until the client is regenerated it is declared here.
+ */
+export type ProjectVisibility = "private" | "shared" | "workspace";
+
+/**
+ * One corpus a project attaches, as `GET /api/projects/{name}/corpora` reads
+ * it: its title when it has one, and how many of its sources the reader sees.
+ * Declared here until the client is regenerated.
+ */
+export interface ProjectCorpus {
+  name: string;
+  title?: string;
+  sources: number;
+}
+
+/** The corpora a project attaches, at the project's version, and what a session filed there searches. */
+export interface ProjectCorpora {
+  version: number;
+  corpora: ProjectCorpus[];
+  given: { name: string; from: string }[];
+}
+
+/** A corpus as `GET /api/corpora` lists it, by what a project page needs of it. */
+export interface CorpusBrief {
+  name: string;
+  title?: string;
+}
+
 /** A project in a path: `~` is the workspace, which is the project named "". */
 export function projectPath(name: string): string {
   return name === "" ? "~" : encodeURIComponent(name);
@@ -996,10 +1062,6 @@ export const api = {
     call<AccessDecision>("GET", `/api/access/explain?${new URLSearchParams({ permission })}`),
   agents: () => call<{ agents: Revision[] }>("GET", "/api/agents").then((r) => r.agents),
   /** Every agent, and the names of those the platform provides, which cannot be edited. */
-  /**
-   * Every agent, the platform's own by name, where each that lives in a
-   * project lives, and which projects enable each ("~" is the workspace).
-   */
   agentHues: (names: string[], path = "/api/agent-hues") =>
     call<{ hues: Record<string, number> }>(
       "GET",
@@ -1016,10 +1078,19 @@ export const api = {
     call<AgentSetup>("POST", `/api/agent-setups/${encodeURIComponent(name)}/test`, { text }),
   activateAgentSetup: (name: string) =>
     call<AgentSetup>("POST", `/api/agent-setups/${encodeURIComponent(name)}/activate`),
-  modelProviders: () =>
-    call<{ providers: { name: string; declared: boolean }[] }>("GET", "/api/model-providers").then(
-      (response) => response.providers,
-    ),
+  modelProviders: () => api.modelProviderSetup().then((response) => response.providers),
+  /** What agents may run on, the kinds an admin may add, and, for an admin, the workspace's own. */
+  modelProviderSetup: () => call<ModelProviderSetup>("GET", "/api/model-providers"),
+  setModelProvider: (name: string, input: ModelProviderInput) =>
+    call<ModelProvider>("PUT", `/api/model-providers/${encodeURIComponent(name)}`, input),
+  deleteModelProvider: (name: string) =>
+    call<void>("DELETE", `/api/model-providers/${encodeURIComponent(name)}`),
+  checkModelProvider: (name: string) =>
+    call<ModelProviderCheck>("POST", `/api/model-providers/${encodeURIComponent(name)}/check`),
+  /**
+   * Every agent, the platform's own by name, and the project each is homed in,
+   * which says who sees it. `enabled_in` is always empty now.
+   */
   agentList: () =>
     call<{
       agents: Revision[];
@@ -1028,7 +1099,7 @@ export const api = {
       enabled_in?: Record<string, string[]>;
       hues?: Record<string, number>;
     }>("GET", "/api/agents"),
-  /** Make an agent live in a project, "" for none: available there and below, and nowhere else. */
+  /** Says who sees an agent: a project's members, Private in a Personal project, or "~" for the workspace. */
   setAgentHome: (agent: string, project: string) =>
     call<AgentHome>("PUT", `/api/agents/${encodeURIComponent(agent)}/home`, { project }),
   createAgent: (spec: AgentSpec) => call<Revision>("POST", "/api/agents", spec),
@@ -1278,6 +1349,35 @@ export const api = {
       "DELETE",
       `/api/projects/${projectPath(name)}/announcements/${encodeURIComponent(id)}`,
     ),
+  /** The corpora a project attaches, its context. "" is the workspace. */
+  projectCorpora: (name: string) =>
+    call<ProjectCorpora>("GET", `/api/projects/${projectPath(name)}/corpora`),
+  /** Replaces the corpora a project attaches, as a whole, from the version read. */
+  setProjectCorpora: (name: string, version: number, corpora: string[]) =>
+    call<ProjectCorpora>("PUT", `/api/projects/${projectPath(name)}/corpora`, {
+      version,
+      corpora,
+    }),
+  /** Every corpus the reader may read. */
+  corpora: () => call<{ corpora: CorpusBrief[] }>("GET", "/api/corpora").then((r) => r.corpora),
+  /**
+   * The schedules filed in one project, "" for the workspace. A server that
+   * does not filter by project lists every schedule, so the list is narrowed
+   * here as well.
+   */
+  projectSchedules: (project: string) =>
+    call<{ schedules: ScheduleView[] }>(
+      "GET",
+      `/api/schedules?${new URLSearchParams({ project: project === "" ? "~" : project })}`,
+    ).then((r) =>
+      r.schedules.filter((s) => (s.project === "~" ? "" : (s.project ?? "")) === project),
+    ),
+  /** Starts a session filed in a project, "" for the workspace, from its first message. */
+  startSession: (input: { text: string; project: string }) =>
+    call<AgentSession>("POST", "/api/sessions", {
+      text: input.text,
+      project: input.project === "" ? "~" : input.project,
+    }),
   projectMemory: (project: string) =>
     call<{ notes: Note[] }>("GET", `/api/projects/${projectPath(project)}/memory`).then(
       (r) => r.notes,
@@ -1763,8 +1863,12 @@ export interface ThreadMessage {
   text: string;
   mentions: ThreadMention[];
   answers?: { run: string; question: string };
+  /** Set on a message posted while agents worked: queued, replacing that work, or stopping it. */
+  followup?: ThreadFollowup;
   via: string;
   surface_id?: string;
+  /** Files posted with it, by name where the poster gave one. */
+  attachments?: { name?: string; alt?: string; media_type: string }[];
   at: string;
 }
 
@@ -1839,7 +1943,8 @@ export type ThreadRule =
   | "post_only"
   | "routed"
   | "untagged"
-  | "default";
+  | "default"
+  | "followup";
 
 /** What posting a message did. */
 export interface ThreadPosted {
@@ -1930,7 +2035,7 @@ export const coworking = {
     call<{ channels: Channel[] }>("GET", `${projectAt(project)}/channels`).then((r) => r.channels),
   createChannel: (
     project: string,
-    c: { name: string; title?: string; purpose?: string; default?: string },
+    c: { name: string; title?: string; purpose?: string; default?: string; slack?: SlackBinding },
   ) => call<Channel>("POST", `${projectAt(project)}/channels`, c),
   updateChannel: (
     project: string,
@@ -1979,25 +2084,21 @@ export const coworking = {
    * the people in it alone until it is shared. A message starts a run only
    * for the agents it tags.
    */
-  start: (
-    t: {
-      project: string;
-      channel: string;
-      text: string;
-      title?: string;
-      visibility?: "shared" | "private";
-      agents?: string[];
-      mode?: "join" | "all";
-    } & MessagePick,
-  ) =>
+  start: (t: {
+    project: string;
+    channel: string;
+    text: string;
+    title?: string;
+    visibility?: "shared" | "private";
+    agents?: string[];
+    mode?: "join" | "all";
+  }) =>
     t.visibility === "shared"
       ? call<ThreadPosted>("POST", "/api/threads", t)
       : call<AgentSession>("POST", "/api/sessions", {
           text: t.text,
           project: t.project,
           agent: t.agents?.[0],
-          model: t.model,
-          effort: t.effort,
         }).then(sessionPosted),
   /**
    * Shares a private thread in a project's channel (general unless named)

@@ -35,6 +35,7 @@ import type {
   CallPolicy,
   CallPolicyInput,
   CatalogConnector,
+  CatalogLoginInput,
   CatalogPage,
   ChangeAlertStateBody,
   ChannelInput,
@@ -83,6 +84,7 @@ import type {
   HandoffContract,
   HandoffUpdate,
   Health,
+  HealthComponent,
   InboxCounts,
   InboxDeliveryInput,
   InboxMessage,
@@ -150,6 +152,7 @@ import type {
   MemoryFile,
   MemoryFiles,
   MemoryRestoreInput,
+  ModelProvider,
   Note,
   NoteInput,
   NoteList,
@@ -218,9 +221,11 @@ import type {
   SetApprovalModeBody,
   SetKnowledgeDocumentExcludedBody,
   SetKnowledgeSyncSettingsBody,
+  SetModelProviderBody,
   Settings,
   SkillUsage,
   SnoozeInboxMessageBody,
+  SnowflakeSetupInput,
   SourceDependencies,
   SourceExcerpt,
   SourceLinkResource,
@@ -1707,7 +1712,14 @@ model provider set up, a `provider:none` component is down.
     });
   }
 
-  /** Names are runtime configuration metadata, never keys or credential references. Declared does not mean a live call has been verified; a dry run checks the actual adapter and credential. */
+  /** The providers an agent, a model policy or routing may name in the
+caller's workspace: those the deployment declares and those the
+workspace's administrators set up. There is no built-in model and no
+stand-in. Names are configuration, never keys. Declared does not mean a
+live call has been verified. A caller who may manage the workspace's
+providers (clients:write) also reads how each of its own is set up,
+with no key.
+ */
   async listModelProviders(options?: RequestOptions): Promise<ListModelProvidersResponse> {
     const path = "/api/model-providers";
     return this.request<ListModelProvidersResponse>("GET", path, {
@@ -1718,6 +1730,67 @@ model provider set up, a `provider:none` component is down.
   async listModelProvidersRaw(options?: RequestOptions): Promise<ApiResponse<ListModelProvidersResponse>> {
     const path = "/api/model-providers";
     return this.rawRequest<ListModelProvidersResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** A key is given as a value, kept in the secret store and never
+returned, or as `key_ref`, an `env:NAME` the server's configuration
+gives this workspace. With neither, a replaced provider keeps its key.
+A google provider may instead run on Vertex AI with the server's own
+credentials. A name the deployment declares, `policy`, `offline` and
+names starting `ws-` are refused.
+ */
+  async setModelProvider(name: string, body: SetModelProviderBody, options?: RequestOptions): Promise<ModelProvider> {
+    let path = "/api/model-providers/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ModelProvider>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setModelProviderRaw(name: string, body: SetModelProviderBody, options?: RequestOptions): Promise<ApiResponse<ModelProvider>> {
+    let path = "/api/model-providers/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ModelProvider>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Refused (409) while an agent, a model policy or routing runs on it; the refusal names each. */
+  async deleteModelProvider(name: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/model-providers/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteModelProviderRaw(name: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/model-providers/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Lists the provider's models, spending no tokens. Vertex AI has no check. */
+  async checkModelProvider(name: string, options?: RequestOptions): Promise<HealthComponent> {
+    let path = "/api/model-providers/{name}/check";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<HealthComponent>("POST", path, {
+      ...options,
+    });
+  }
+
+  async checkModelProviderRaw(name: string, options?: RequestOptions): Promise<ApiResponse<HealthComponent>> {
+    let path = "/api/model-providers/{name}/check";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<HealthComponent>("POST", path, {
       ...options,
     });
   }
@@ -2403,6 +2476,71 @@ path. Seeing an entry never grants reading the object.
     let path = "/api/catalog/connectors/{name}/publish";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<CatalogConnector>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** It holds no credential. Its owner's own login crawls the schema (tables,
+views, columns and comments, never rows); every query runs with the
+reader's own login, so Snowflake's grants, row access and masking apply.
+Each person gives their login with PUT /api/catalog/connectors/{name}/login.
+ */
+  async createSnowflakeConnector(body: SnowflakeSetupInput, options?: RequestOptions): Promise<CatalogConnector> {
+    const path = "/api/catalog/connectors/snowflake";
+    return this.request<CatalogConnector>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async createSnowflakeConnectorRaw(body: SnowflakeSetupInput, options?: RequestOptions): Promise<ApiResponse<CatalogConnector>> {
+    const path = "/api/catalog/connectors/snowflake";
+    return this.rawRequest<CatalogConnector>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Your login is yours alone: only queries you ask for use it. Give a
+reference under a start the workspace lists, or the token itself where
+the workspace lets people keep values. Warehouses signed in with OAuth,
+such as BigQuery, use your connection instead and refuse this (400).
+ */
+  async putCatalogLogin(name: string, body: CatalogLoginInput, options?: RequestOptions): Promise<void> {
+    let path = "/api/catalog/connectors/{name}/login";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    await this.request<void>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async putCatalogLoginRaw(name: string, body: CatalogLoginInput, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/catalog/connectors/{name}/login";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<void>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Forget your own login to a warehouse */
+  async deleteCatalogLogin(name: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/catalog/connectors/{name}/login";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteCatalogLoginRaw(name: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/catalog/connectors/{name}/login";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<void>("DELETE", path, {
       ...options,
     });
   }

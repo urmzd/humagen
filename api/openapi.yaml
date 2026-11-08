@@ -1492,17 +1492,24 @@ paths:
     get:
       operationId: listModelProviders
       tags: [agents]
-      summary: List bounded supported and declared model provider names
-      description: Names are runtime configuration metadata, never keys or credential references. Declared does not mean a live call has been verified; a dry run checks the actual adapter and credential.
+      summary: List the model providers agents may run on
+      description: |
+        The providers an agent, a model policy or routing may name in the
+        caller's workspace: those the deployment declares and those the
+        workspace's administrators set up. There is no built-in model and no
+        stand-in. Names are configuration, never keys. Declared does not mean a
+        live call has been verified. A caller who may manage the workspace's
+        providers (clients:write) also reads how each of its own is set up,
+        with no key.
       x-permission: agents:read
       responses:
         "200":
-          description: At most 100 supported provider choices, sorted by name.
+          description: At most 100 provider choices, sorted by name.
           content:
             application/json:
               schema:
                 type: object
-                required: [providers]
+                required: [providers, kinds]
                 properties:
                   providers:
                     type: array
@@ -1513,6 +1520,90 @@ paths:
                       properties:
                         name: {type: string}
                         declared: {type: boolean}
+                        kind: {type: string, enum: [anthropic, google, openai]}
+                        source: {type: string, enum: [deployment, workspace]}
+                  kinds:
+                    description: The kinds an administrator may set up.
+                    type: array
+                    items: {type: string, enum: [anthropic, google, openai]}
+                  workspace:
+                    description: The workspace's own providers, for a caller with clients:write.
+                    type: array
+                    maxItems: 16
+                    items: {$ref: "#/components/schemas/ModelProvider"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/model-providers/{name}:
+    put:
+      operationId: setModelProvider
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}}
+      tags: [agents]
+      summary: Set up, or replace, one of the workspace's model providers
+      description: |
+        A key is given as a value, kept in the secret store and never
+        returned, or as `key_ref`, an `env:NAME` the server's configuration
+        gives this workspace. With neither, a replaced provider keeps its key.
+        A google provider may instead run on Vertex AI with the server's own
+        credentials. A name the deployment declares, `policy`, `offline` and
+        names starting `ws-` are refused.
+      x-permission: clients:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              properties:
+                kind: {type: string, enum: [anthropic, google, openai]}
+                base_url: {type: string, format: uri}
+                vertex: {$ref: "#/components/schemas/ModelProviderVertex"}
+                key_ref: {type: string}
+                key: {type: string, maxLength: 4096, writeOnly: true}
+      responses:
+        "200":
+          description: The provider as set up, with no key.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ModelProvider"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: deleteModelProvider
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}}
+      tags: [agents]
+      summary: Remove one of the workspace's model providers and its key
+      description: Refused (409) while an agent, a model policy or routing runs on it; the refusal names each.
+      x-permission: clients:write
+      responses:
+        "204": {description: Removed}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/model-providers/{name}/check:
+    post:
+      operationId: checkModelProvider
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}}
+      tags: [agents]
+      summary: Ask one of the workspace's providers, with its key, whether it answers
+      description: Lists the provider's models, spending no tokens. Vertex AI has no check.
+      x-permission: clients:write
+      responses:
+        "200":
+          description: The provider's state, as a health component.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/HealthComponent"}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/ServerError"}
@@ -2298,6 +2389,75 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/CatalogConnector"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/catalog/connectors/snowflake:
+    post:
+      operationId: createSnowflakeConnector
+      tags: [knowledge]
+      summary: Save a Snowflake warehouse connector owned by the caller
+      description: |
+        It holds no credential. Its owner's own login crawls the schema (tables,
+        views, columns and comments, never rows); every query runs with the
+        reader's own login, so Snowflake's grants, row access and masking apply.
+        Each person gives their login with PUT /api/catalog/connectors/{name}/login.
+      x-permission: knowledge:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SnowflakeSetupInput"}
+      responses:
+        "201":
+          description: The saved connector, not yet crawled.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CatalogConnector"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/catalog/connectors/{name}/login:
+    put:
+      operationId: putCatalogLogin
+      tags: [knowledge]
+      summary: Keep your own login to a warehouse
+      description: |
+        Your login is yours alone: only queries you ask for use it. Give a
+        reference under a start the workspace lists, or the token itself where
+        the workspace lets people keep values. Warehouses signed in with OAuth,
+        such as BigQuery, use your connection instead and refuse this (400).
+      x-permission: knowledge:read
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CatalogLoginInput"}
+      responses:
+        "204":
+          description: Kept.
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: deleteCatalogLogin
+      tags: [knowledge]
+      summary: Forget your own login to a warehouse
+      x-permission: knowledge:read
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      responses:
+        "204":
+          description: Forgotten, or there was none.
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -10646,6 +10806,11 @@ components:
           description: When a call moves to the next fallback. Empty means any error another model could get past. Needs at least one fallback.
           type: array
           items: {$ref: "#/components/schemas/FallbackCondition"}
+        effort:
+          description: "The reasoning effort the agent's own first model is asked for, such as `low`, `medium` or `high`. Absent leaves the model's default. It is sent only when that model takes it: a run moved to a fallback, or on a model that takes no such effort, answers at the model's default."
+          type: string
+          maxLength: 16
+          pattern: "^[a-z]+$"
         system_prompt: {type: string}
         tools:
           type: array
@@ -10682,22 +10847,6 @@ components:
         tagged_only:
           description: The agent runs only when a message names it. It is never asked whether to take an untagged message. Off by default.
           type: boolean
-        choices: {$ref: "#/components/schemas/AgentChoices"}
-    AgentChoices:
-      description: "What a person may pick, for one message, in place of the agent's model and reasoning effort. Absent offers nothing, and a message runs on the agent's own model at its default effort."
-      type: object
-      additionalProperties: false
-      properties:
-        models:
-          description: "Models offered, each `provider/model`, sorted. The agent's own model needs no listing."
-          type: array
-          maxItems: 20
-          items: {type: string}
-        efforts:
-          description: "Reasoning efforts offered, such as `low` and `high`, sorted and in lower case. Whether a model takes one is checked when a run builds it."
-          type: array
-          maxItems: 10
-          items: {type: string, pattern: "^[a-z]+$"}
     FallbackCondition:
       description: A class of model error that moves a call on to the next model. `any` cannot be combined with another.
       type: string
@@ -10747,19 +10896,26 @@ components:
         created_by_name:
           description: What whoever saved it is called, their name, else their handle, never a subject that holds an address. `created_by` is the subject.
           type: string
-    RouterSettings:
-      description: |
-        Whether each agent is asked, about a message that names no agent,
-        "should I be involved?", and the model that asks. The provider is one
-        the deployment declares; its key is a reference (an environment
-        variable or a secrets manager), never stored here. Off by default:
-        no agent takes a message on its own.
+    ModelProviderVertex:
+      description: Vertex AI, where a google provider's calls go. With no key the server's own credentials are used.
       type: object
-      required: [enabled]
+      required: [project, location]
       properties:
-        enabled: {type: boolean}
-        provider: {type: string, maxLength: 64}
-        model: {type: string, maxLength: 200}
+        project: {type: string}
+        location: {type: string}
+    ModelProvider:
+      description: A model provider the workspace's administrators set up. Its key is never returned.
+      type: object
+      required: [name, kind]
+      properties:
+        name: {type: string}
+        kind: {type: string, enum: [anthropic, google, openai]}
+        base_url: {type: string}
+        vertex: {$ref: "#/components/schemas/ModelProviderVertex"}
+        key_ref: {type: string, description: "The key's env:NAME reference, when it is one."}
+        key_stored: {type: boolean, description: A value is kept for it in the secret store.}
+        added_by: {type: string}
+        added_at: {type: string, format: date-time}
     JoinDecision:
       description: One agent's answer to whether it should take a message that names no agent.
       type: object
@@ -12020,11 +12176,37 @@ components:
         alt: {type: string}
         origin: {type: string}
         unread: {type: string}
+    ThreadFollowup:
+      description: |
+        What a message posted while agents worked in its thread does to that
+        work: `queue` (it starts once the work has ended), `replace` (the
+        work is asked to stop, keeping what it has said, and the message
+        starts once it has) or `stop` (the work is asked to stop and nothing
+        starts). The first word after any leading mentions forces it:
+        `queue`, `replace` or `stop`, with an optional colon. Otherwise a
+        model decides, and when unsure, or when there is no model, it queues.
+      type: object
+      required: [outcome, reason, waiting]
+      properties:
+        outcome: {type: string, enum: [queue, replace, stop]}
+        reason:
+          description: Why, in one line. A stop forced by its first word says what was written after it, which may be nothing.
+          type: string
+          maxLength: 300
+        waiting:
+          description: The runs it waits on, which a replace or a stop asked to stop.
+          type: array
+          maxItems: 64
+          items: {type: string}
+        handled:
+          description: It was carried out. A queue or a replace started what it calls for; a stop is handled as it is posted.
+          type: boolean
     ThreadMessage:
       description: A person's turn in a thread. It starts no run of its own. Its author is always a person.
       type: object
       required: [id, thread, by, name, text, mentions, via, at]
       properties:
+        followup: {$ref: "#/components/schemas/ThreadFollowup"}
         attachments:
           type: array
           items: {$ref: "#/components/schemas/Attachment"}
@@ -12193,15 +12375,6 @@ components:
         post_only:
           description: Post without any agent answering, unless the message tags one. In the console this is what an untagged message does anyway.
           type: boolean
-        model:
-          description: "A model, `provider/model`, the runs this message starts use in place of their agent's own. Applied only for an agent whose `choices.models` offers it; any other runs on its own model. The run's model ceilings still apply."
-          type: string
-          maxLength: 200
-        effort:
-          description: "A reasoning effort, such as `low` or `high`, the runs this message starts use. Applied only for an agent whose `choices.efforts` offers it. A model that does not take it fails the run before any model call."
-          type: string
-          maxLength: 32
-          pattern: "^[a-z]+$"
         act_as: {$ref: "#/components/schemas/ActAs"}
         surface: {$ref: "#/components/schemas/SurfaceRef"}
     HelpSuggestion:
@@ -12280,15 +12453,6 @@ components:
           description: The turn it follows. Empty follows the latest.
           type: string
         post_only: {type: boolean}
-        model:
-          description: "A model, `provider/model`, the runs this message starts use in place of their agent's own. Applied only for an agent whose `choices.models` offers it; any other runs on its own model. The run's model ceilings still apply."
-          type: string
-          maxLength: 200
-        effort:
-          description: "A reasoning effort, such as `low` or `high`, the runs this message starts use. Applied only for an agent whose `choices.efforts` offers it. A model that does not take it fails the run before any model call."
-          type: string
-          maxLength: 32
-          pattern: "^[a-z]+$"
         answers: {$ref: "#/components/schemas/ThreadAnswerRef"}
         act_as: {$ref: "#/components/schemas/ActAs"}
         surface: {$ref: "#/components/schemas/SurfaceRef"}
@@ -12371,10 +12535,11 @@ components:
         mention), `post_only`, `routed` (it tags no agent, and the thread's
         selected agents answer it, see `ThreadMode`), `untagged` (posted by
         a person as themselves, as the console does, and it tags no agent,
-        so nothing runs), or `default` (the inherited default answers, if
-        there is one).
+        so nothing runs), `default` (the inherited default answers, if
+        there is one), or `followup` (it was posted while agents worked in
+        the thread, so its `followup` decides what it starts and when).
       type: string
-      enum: [tagged, people, reply, post_only, routed, untagged, default]
+      enum: [tagged, people, reply, post_only, routed, untagged, default, followup]
     ThreadPosted:
       description: What posting a message did.
       type: object
@@ -13683,7 +13848,7 @@ components:
         - memory_auto_approve
         - workspace_name
         - model_policies
-        - router
+        - model_providers
       properties:
         history:
           description: Whether an agent is sent the conversation so far.
@@ -13715,8 +13880,15 @@ components:
           maxItems: 32
           items:
             $ref: "#/components/schemas/ModelPolicy"
-        router:
-          $ref: "#/components/schemas/RouterSettings"
+        model_providers:
+          description: |
+            The model providers the workspace's administrators set up, with no
+            key. A settings write keeps them as they are; they change through
+            `/api/model-providers/{name}`.
+          type: array
+          maxItems: 16
+          items:
+            $ref: "#/components/schemas/ModelProvider"
         setup_at:
           description: Set once by the server when an admin first saves settings.
           type: string
@@ -13755,9 +13927,10 @@ components:
     Branding:
       description: How the console brands itself for the caller's workspace.
       type: object
-      required: [name, wordmark, title, logo, logo_dark, logo_alt, style, starters, copy]
+      required: [name, wordmark, title, logo, logo_dark, logo_alt, style, starters, copy, entry_agent]
       properties:
         name: {type: string, description: The product's name.}
+        entry_agent: {type: string, description: "The entry agent's agent name. People see it as name, never as this."}
         wordmark: {type: string, description: The text beside the logo in the sidebar. Empty shows the logo alone.}
         title: {type: string, description: What follows the page's name in the browser tab.}
         logo:
@@ -14965,7 +15138,7 @@ components:
         name: {type: string, maxLength: 200, description: "A person's subject or a project's name; none for the workspace."}
     Corpus:
       type: object
-      required: [name, owner, readers, members, links, created_at, updated_at, version, mine]
+      required: [name, owner, readers, members, agents, links, created_at, updated_at, version, mine]
       properties:
         name: {type: string}
         title: {type: string, description: "What people call it, such as HR policies. Absent shows the name."}
@@ -14979,6 +15152,11 @@ components:
           type: array
           maxItems: 50
           items: {$ref: "#/components/schemas/CorpusMember"}
+        agents:
+          type: array
+          maxItems: 50
+          description: The agents granted it that the reader can see. A run of one reads only as the person it acts for, who must be a reader too.
+          items: {type: string}
         links:
           type: string
           enum: [isolated, shared]
@@ -15002,6 +15180,10 @@ components:
           type: array
           maxItems: 50
           items: {$ref: "#/components/schemas/CorpusMemberRef"}
+        agents:
+          type: array
+          maxItems: 50
+          items: {type: string}
         links: {type: string, enum: [isolated, shared]}
     CorpusChange:
       type: object
@@ -15017,6 +15199,11 @@ components:
           maxItems: 50
           items: {$ref: "#/components/schemas/CorpusMemberRef"}
         links: {type: string, enum: [isolated, shared]}
+        agents:
+          type: array
+          maxItems: 50
+          description: Replaces the agents granted it; agents the owner can no longer see are kept.
+          items: {type: string}
         owner: {type: string, minLength: 1, maxLength: 200, description: Hands the corpus to another person.}
         version: {type: integer, format: int64, minimum: 1}
     KnowledgeSource:
@@ -15218,6 +15405,25 @@ components:
         crawled_at: {type: string, format: date-time}
         entries: {type: integer, minimum: 0}
         generation: {type: integer, minimum: 0}
+    SnowflakeSetupInput:
+      type: object
+      required: [name, account, database, warehouse]
+      properties:
+        name: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}
+        account: {type: string, description: "The account identifier, such as myorg-myaccount."}
+        database: {type: string}
+        warehouse: {type: string}
+        role: {type: string, description: "The role the owner's crawl uses; empty is their default role. Queries use each reader's own default role."}
+        token_type: {type: string, enum: [OAUTH, PROGRAMMATIC_ACCESS_TOKEN], description: "How logins are given. Defaults to OAUTH."}
+        max_rows: {type: integer, minimum: 1, maximum: 10000, description: "Defaults to 200."}
+        timeout_seconds: {type: integer, minimum: 1, maximum: 600, description: "Defaults to 60."}
+        refresh_hours: {type: integer, minimum: 1, maximum: 720, description: "How often the schema is crawled again. Defaults to 24."}
+    CatalogLoginInput:
+      type: object
+      description: Exactly one of ref and value.
+      properties:
+        ref: {type: string, maxLength: 512, description: "A reference to your token, under a start the workspace lists."}
+        value: {type: string, maxLength: 8192, writeOnly: true, description: "Your token, where the workspace lets people keep values."}
     CatalogConnectorView:
       allOf:
         - {$ref: "#/components/schemas/CatalogConnector"}
@@ -15229,6 +15435,10 @@ components:
               items: {type: string, enum: [catalog, live]}
             mine: {description: "You own it, so you may publish, withdraw and crawl it.", type: boolean}
             last_error: {description: "The last crawl's failure, shown to the owner only.", type: string}
+            login:
+              type: string
+              enum: [connected, missing, unavailable]
+              description: For a warehouse queried as each reader, whether you have your own login to it.
     CatalogPage:
       type: object
       required: [connectors, entries]
@@ -16898,10 +17108,6 @@ components:
           type: boolean
         project:
           type: string
-        model:
-          type: string
-        effort:
-          type: string
         source_alert:
           type: string
           description: The readable session alert that anchors this fix conversation.
@@ -16916,15 +17122,6 @@ components:
           description: The turn it follows. Empty follows the latest.
           type: string
         post_only: {type: boolean}
-        model:
-          description: "A model, `provider/model`, the runs this message starts use in place of their agent's own. Applied only for an agent whose `choices.models` offers it; any other runs on its own model. The run's model ceilings still apply."
-          type: string
-          maxLength: 200
-        effort:
-          description: "A reasoning effort, such as `low` or `high`, the runs this message starts use. Applied only for an agent whose `choices.efforts` offers it. A model that does not take it fails the run before any model call."
-          type: string
-          maxLength: 32
-          pattern: "^[a-z]+$"
         answers: {$ref: "#/components/schemas/ThreadAnswerRef"}
         act_as: {$ref: "#/components/schemas/ActAs"}
         surface: {$ref: "#/components/schemas/SurfaceRef"}
@@ -16981,6 +17178,9 @@ components:
           type: "string"
         version:
           type: "string"
+        display:
+          type: "string"
+          description: "The name people see when it differs from name: the workspace's own name for its entry agent."
     SessionPart:
       type: "object"
       additionalProperties: false
@@ -16989,6 +17189,7 @@ components:
       properties:
         type:
           type: "string"
+          description: "text, call (a child session, with its answer as text once it has one) or pick (why the entry agent chose who answers, as text)."
         text:
           type: "string"
         session:

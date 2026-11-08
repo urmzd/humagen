@@ -20,6 +20,7 @@ import {
 } from "./api.ts";
 import { askedOf, copyFor } from "./asks.ts";
 import { MessageTime } from "./MessageTime.tsx";
+import { accessLabel, accessOf } from "./projects.ts";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { href } from "./route.ts";
@@ -369,20 +370,16 @@ export function AgentSetupWizard({
                   setPlan((current) => ({ ...current, project: event.target.value }))
                 }
               >
-                <option value="~">{defaultCopy.projects.companyName}</option>
+                <option value="~">{defaultCopy.agentAccess.workspace}</option>
                 {me.personal_project &&
                   !projects.some((project) => project.name === me.personal_project) && (
-                    <option value={me.personal_project}>
-                      {defaultCopy.projects.personalTitle}
-                    </option>
+                    <option value={me.personal_project}>{defaultCopy.agentAccess.private}</option>
                   )}
                 {projects
                   .filter((project) => project.name !== "")
                   .map((project) => (
                     <option key={project.name} value={project.name}>
-                      {project.name === me.personal_project
-                        ? defaultCopy.projects.personalTitle
-                        : project.title || project.name}
+                      {accessLabel(accessOf(project.name, me.personal_project, projects))}
                     </option>
                   ))}
               </select>
@@ -769,14 +766,7 @@ export function AgentSetupWizard({
               </div>
               <div>
                 <dt className="text-aui-xs text-aui-muted">{words.project}</dt>
-                <dd>
-                  {plan.project === me.personal_project
-                    ? defaultCopy.projects.personalTitle
-                    : projects.find((project) => project.name === plan.project)?.title ||
-                      (plan.project === "~" || !plan.project
-                        ? defaultCopy.projects.companyName
-                        : plan.project)}
-                </dd>
+                <dd>{accessLabel(accessOf(plan.project, me.personal_project, projects))}</dd>
               </div>
             </dl>
             {!saved ? (
