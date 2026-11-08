@@ -1,15 +1,15 @@
 import { defaultCopy } from "@humagen/components";
-import { ChevronRightIcon, MaximizeIcon } from "@humagen/render-web";
 import {
-  type MouseEvent as ReactMouseEvent,
-  type ReactNode,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+  CalendarIcon,
+  ChevronRightIcon,
+  GitHubIcon,
+  MaximizeIcon,
+  SlackIcon,
+} from "@humagen/render-web";
+import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
 import type { Run, RunEvent } from "./adapter.ts";
 import { api, type Span } from "./api.ts";
-import { ConnectionLogo } from "./ConnectionLogo.tsx";
+import { Pill, type ReferenceKind, Reference as SharedReference } from "./cards.tsx";
 import { took, usd } from "./format.ts";
 import { href } from "./route.ts";
 import {
@@ -106,9 +106,6 @@ export function useTrace(
   return { at, node };
 }
 
-const chip =
-  "inline-flex min-h-6 max-w-full items-center gap-1 truncate rounded-aui px-1.5 text-aui-2xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
-
 function chipText(c: Chip): string {
   if (c.kind === "approval")
     return [words.decided[c.decision ?? "ask"], c.label, c.by ? words.by(c.by) : ""]
@@ -118,13 +115,18 @@ function chipText(c: Chip): string {
   return c.label;
 }
 
-/** The mark before a reference: the origin's own, or nothing. */
-function mark(c: Chip, origin?: Reference): ReactNode {
-  if (c.kind !== "origin" || !origin) return null;
-  return <OriginMark kind={origin.kind} size={12} />;
+/** What a chip's link points at, for its mark. */
+function kindOf(c: Chip, origin?: Reference): ReferenceKind {
+  if (c.kind === "origin" && origin)
+    return origin.kind === "slack" || origin.kind === "github" || origin.kind === "schedule"
+      ? origin.kind
+      : "url";
+  const host = c.url ? (/^https?:\/\/([^/]+)/.exec(c.url)?.[1] ?? "") : "";
+  if (host.endsWith("slack.com")) return "slack";
+  if (host === "github.com") return "github";
+  return c.kind === "source" ? "file" : "url";
 }
 
-/** Slack's or GitHub's mark, or a calendar for a schedule. */
 /**
  * Follow a link to another console page without reloading: a plain click
  * moves the address and tells the router, which reads it as Back would.
@@ -137,66 +139,47 @@ export function inApp(event: ReactMouseEvent<HTMLAnchorElement>) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
+/** Slack's or GitHub's mark, or a calendar for a schedule. */
 export function OriginMark({ kind, size = 16 }: { kind: Reference["kind"]; size?: number }) {
-  const style = { width: size, height: size };
-  if (kind === "slack" || kind === "github")
-    return (
-      <span aria-hidden className="inline-flex shrink-0 [&>svg]:size-full" style={style}>
-        <ConnectionLogo id={kind} name={kind} />
-      </span>
-    );
-  if (kind === "schedule")
-    return (
-      <svg
-        aria-hidden="true"
-        focusable="false"
-        viewBox="0 0 24 24"
-        style={style}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="shrink-0"
-      >
-        <rect x="3" y="4" width="18" height="18" rx="2" />
-        <path d="M16 2v4M8 2v4M3 10h18" />
-      </svg>
-    );
+  if (kind === "slack") return <SlackIcon size={size} aria-hidden />;
+  if (kind === "github") return <GitHubIcon size={size} aria-hidden />;
+  if (kind === "schedule") return <CalendarIcon size={size} aria-hidden />;
   return null;
 }
 
-/** A message's references as quiet chips: links where they lead somewhere. */
+/**
+ * A message's references as quiet chips, each the shared Reference: its
+ * origin, what it pulled in and the sources it cited, linked. An approval and
+ * who decided it, or a tool that failed, is a state, so it is a Pill.
+ */
 export function Chips({ chips, origin }: { chips: Chip[]; origin?: Reference }) {
   if (!chips.length) return null;
   return (
-    <ul className="flex flex-wrap gap-x-1 gap-y-0.5" aria-label={words.references}>
+    <ul className="flex flex-wrap gap-1" aria-label={words.references}>
       {chips.map((c) => {
         const text = chipText(c);
-        const tone =
-          c.kind === "failure" || c.decision === "deny"
-            ? "text-aui-bad"
-            : c.kind === "approval" && c.decision === "ask"
-              ? "text-aui-warn"
-              : "";
+        const hint = c.detail ? `${text}: ${c.detail}` : text;
         return (
-          <li key={`${c.kind}:${c.url ?? c.label}`} className="min-w-0" data-chip={c.kind}>
-            {c.url ? (
-              <a
-                href={c.url}
-                target="_blank"
-                rel="noreferrer"
-                title={c.detail ? `${text}: ${c.detail}` : text}
-                className={`${chip} ${tone}`}
+          <li
+            key={`${c.kind}:${c.url ?? c.label}`}
+            className="min-w-0"
+            data-chip={c.kind}
+            title={hint}
+          >
+            {c.kind === "approval" || c.kind === "failure" ? (
+              <Pill
+                tone={
+                  c.kind === "failure" || c.decision === "deny"
+                    ? "bad"
+                    : c.decision === "ask"
+                      ? "warn"
+                      : "ok"
+                }
               >
-                {mark(c, origin)}
-                <span className="truncate">{text}</span>
-              </a>
+                {text}
+              </Pill>
             ) : (
-              <span title={c.detail ? `${text}: ${c.detail}` : text} className={`${chip} ${tone}`}>
-                {mark(c, origin)}
-                <span className="truncate">{text}</span>
-              </span>
+              <SharedReference kind={kindOf(c, origin)} label={text} href={c.url} title={hint} />
             )}
           </li>
         );
