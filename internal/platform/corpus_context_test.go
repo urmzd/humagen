@@ -50,3 +50,29 @@ func TestACorpusItemResolvesForWhoMayReadIt(t *testing.T) {
 		t.Fatalf("a malformed address = %v", err)
 	}
 }
+
+// The on-demand context lookup resolves an address for a run by its id,
+// and for a person reading for themselves.
+func TestACorpusItemResolvesForARunOrAPerson(t *testing.T) {
+	f := graphFixture(t)
+	f.p.SourceEvidence = knowledge.NewEvidenceStore()
+	docs, _ := f.p.Knowledge.Documents("tenant", "handbook")
+	address := "corpus:hr/handbook/" + docs[0].ID
+	r := f.runIn(t, "bo-run", "bo", true, "bo")
+	run, _ := f.p.Runs.Get("tenant", r.RunID)
+	if run.Agent != "worker" {
+		t.Fatalf("the fixture's run agent is %q", run.Agent)
+	}
+	if got, err := f.p.ResolveCorpusItemForRun(t.Context(), "tenant", r.RunID, address); err != nil || !strings.Contains(got.Text, "sixteen weeks") {
+		t.Fatalf("for bo's run = %+v, %v", got, err)
+	}
+	if got, err := f.p.ResolveCorpusItemForPerson(t.Context(), "tenant", "bo", address); err != nil || !strings.Contains(got.Text, "sixteen weeks") {
+		t.Fatalf("for bo = %+v, %v", got, err)
+	}
+	if _, err := f.p.ResolveCorpusItemForPerson(t.Context(), "tenant", "eve", address); !errors.Is(err, corpora.ErrNotFound) {
+		t.Fatalf("for eve = %v", err)
+	}
+	if _, err := f.p.ResolveCorpusItemForRun(t.Context(), "tenant", "no-such-run", address); !errors.Is(err, corpora.ErrNotFound) {
+		t.Fatalf("for a missing run = %v", err)
+	}
+}

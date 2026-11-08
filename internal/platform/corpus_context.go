@@ -61,19 +61,46 @@ func ParseCorpusAddress(address string) (corpus, member, rest string, err error)
 	return parts[0], parts[1], parts[2], nil
 }
 
-// ResolveCorpusItem resolves a corpus item address for a run.
+// ResolveCorpusItem resolves a corpus item address for a run, by its
+// audience and the corpora its agent is granted or its project attaches.
 func (p *Platform) ResolveCorpusItem(ctx context.Context, req runtime.Request, address string) (CorpusItem, error) {
-	name, member, rest, err := ParseCorpusAddress(address)
+	a, err := p.corpusAudienceOf(req)
 	if err != nil {
 		return CorpusItem{}, err
 	}
-	a, err := p.corpusAudienceOf(req)
+	return p.resolveCorpusItem(ctx, req, a, func(c corpora.Corpus) bool { return reaches(req, p.attachedCorpora(req), c) }, address)
+}
+
+// ResolveCorpusItemForRun resolves an address for a run known by its id, as
+// an on-demand context lookup made inside a turn hands it.
+func (p *Platform) ResolveCorpusItemForRun(ctx context.Context, tenant, run, address string) (CorpusItem, error) {
+	r, err := p.Runs.Get(tenant, run)
+	if err != nil {
+		return CorpusItem{}, fmt.Errorf("%w: no run %q", corpora.ErrNotFound, run)
+	}
+	req := runtime.Request{Tenant: tenant, RunID: run}
+	req.Definition.Spec.Name = r.Agent
+	return p.ResolveCorpusItem(ctx, req, address)
+}
+
+// ResolveCorpusItemForPerson resolves an address for a person reading for
+// themselves, outside any run: their own access to the corpus and its
+// members decides, as it does in their own private conversation.
+func (p *Platform) ResolveCorpusItemForPerson(ctx context.Context, tenant, subject, address string) (CorpusItem, error) {
+	if subject == "" {
+		return CorpusItem{}, fmt.Errorf("%w: a corpus is read for a person", corpora.ErrInvalid)
+	}
+	return p.resolveCorpusItem(ctx, runtime.Request{Tenant: tenant}, p.directAudience(tenant, subject), func(corpora.Corpus) bool { return true }, address)
+}
+
+func (p *Platform) resolveCorpusItem(ctx context.Context, req runtime.Request, a corpusAudience, reached func(corpora.Corpus) bool, address string) (CorpusItem, error) {
+	name, member, rest, err := ParseCorpusAddress(address)
 	if err != nil {
 		return CorpusItem{}, err
 	}
 	notFound := fmt.Errorf("%w: no corpus item %q you may read", corpora.ErrNotFound, address)
 	c, err := p.Corpora.Get(req.Tenant, name)
-	if err != nil || !reaches(req, p.attachedCorpora(req), c) || !p.corpusVisible(a.readers[0], c) {
+	if err != nil || !reached(c) || !p.corpusVisible(a.readers[0], c) {
 		return CorpusItem{}, notFound
 	}
 	item := CorpusItem{Address: address, Corpus: c.Name, Label: c.Label}
@@ -167,7 +194,11 @@ func (p *Platform) resolveDocument(req runtime.Request, a corpusAudience, source
 	if item.Link == "" {
 		item.Link = "/knowledge/" + item.Corpus + "/sources/" + source
 	}
-	// Keep citation evidence for what the model is handed, as search does.
+	// Keep citation evidence for what a run's model is handed, as search
+	// does. A person reading for themselves has no run to cite in.
+	if req.RunID == "" {
+		return nil
+	}
 	_, err = p.recordSourceToolCitations(req, src, a.person, []knowledge.Hit{{Source: source, DocumentID: doc.ID, Title: doc.Title, URI: doc.URI, Text: item.Text, Mode: knowledge.Indexed}})
 	return err
 }
