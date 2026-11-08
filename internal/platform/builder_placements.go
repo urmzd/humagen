@@ -3,6 +3,7 @@ package platform
 import (
 	"cmp"
 	"slices"
+	"strings"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -140,6 +141,9 @@ func (p *Platform) builderPlacementPreview(req runtime.Request, spec wire.AgentS
 				status = "blocked_by_policy"
 			}
 			scope := "personal"
+			if strings.HasPrefix(server.OAuth, "workspace-") {
+				scope = "workspace"
+			}
 			connections = append(connections, builderConnection{Name: server.Name, Service: "tool_server", Scope: scope, Status: status})
 		}
 	}

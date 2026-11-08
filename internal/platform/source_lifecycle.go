@@ -107,6 +107,9 @@ func (p *Platform) ConnectSource(who auth.Principal, name, ref string) error {
 		return err
 	}
 	_, err = p.Credentials.Put(who.Tenant, who.Subject, sourceCredentialID(src), credentials.Input{Ref: ref}, p.now())
+	if err == nil {
+		err = p.ConnectionAuth.Unbind(who.Tenant, who.Subject, sourceCredentialID(src))
+	}
 	p.finishSourceAudit(attempt, err)
 	return err
 }
@@ -114,6 +117,20 @@ func (p *Platform) ConnectSource(who auth.Principal, name, ref string) error {
 func (p *Platform) sourceSecret(ctx context.Context, who auth.Principal, src knowledge.Source) (mcptools.Secret, error) {
 	if who.Kind == auth.Machine || who.Subject == "" {
 		return mcptools.Secret{}, knowledge.ProviderError{Cause: knowledge.AuthExpired}
+	}
+	provider, marker, bindingErr := p.ConnectionAuth.Binding(who.Tenant, who.Subject, sourceCredentialID(src))
+	if bindingErr != nil {
+		return mcptools.Secret{}, knowledge.ProviderError{Cause: knowledge.AuthExpired}
+	}
+	if marker != "" {
+		if src.Lifecycle.Provider != "drive" || provider != "drive" {
+			return mcptools.Secret{}, knowledge.ProviderError{Cause: knowledge.AuthExpired}
+		}
+		token, err := p.ConnectionAuth.BoundToken(ctx, who.Tenant, who.Subject, sourceCredentialID(src), provider)
+		if err != nil {
+			return mcptools.Secret{}, knowledge.ProviderError{Cause: knowledge.AuthExpired}
+		}
+		return mcptools.NewSecret(token), nil
 	}
 	c, ok, err := p.Credentials.Get(who.Tenant, who.Subject, sourceCredentialID(src))
 	if err != nil {
@@ -186,9 +203,19 @@ func (p *Platform) syncSourceExpected(ctx context.Context, who auth.Principal, n
 		return knowledge.Source{}, err
 	}
 	secret, fetchErr := p.sourceSecret(ctx, who, src)
+	proof, proofErr := p.sourceOAuthProof(who, src)
+	if proofErr != nil {
+		fetchErr = proofErr
+	}
 	var docs []knowledge.ImportDocument
 	if fetchErr == nil {
 		docs, fetchErr = fetchSourceDocuments(ctx, provider, src.Lifecycle.SourceConfig, secret)
+	}
+	if fetchErr == nil {
+		current, err := p.sourceOAuthProof(who, src)
+		if err != nil || current != proof {
+			fetchErr = knowledge.ProviderError{Cause: knowledge.AuthExpired}
+		}
 	}
 	if fetchErr != nil {
 		failed, err := p.Knowledge.FailSync(who.Tenant, name, id, knowledge.FailureCause(fetchErr), p.now())
@@ -494,6 +521,10 @@ func (p *Platform) searchSourceLive(ctx context.Context, who auth.Principal, src
 	if err != nil {
 		return nil, err
 	}
+	boundProvider, boundMarker, err := p.ConnectionAuth.Binding(who.Tenant, who.Subject, sourceCredentialID(src))
+	if err != nil {
+		return nil, knowledge.ProviderError{Cause: knowledge.AuthExpired}
+	}
 	secret, err := p.sourceSecret(ctx, who, src)
 	if err != nil {
 		return nil, err
@@ -509,7 +540,15 @@ func (p *Platform) searchSourceLive(ctx context.Context, who auth.Principal, src
 	if err != nil {
 		return nil, err
 	}
-	if !connected || currentConnection.Kind != credentials.Reference || currentConnection.Ref != connection.Ref || !currentConnection.UpdatedAt.Equal(connection.UpdatedAt) || !p.refAllowed(who.Tenant, who.Subject, currentConnection.Ref) {
+	currentProvider, currentMarker, bindingErr := p.ConnectionAuth.Binding(who.Tenant, who.Subject, sourceCredentialID(src))
+	if bindingErr != nil {
+		return nil, knowledge.ProviderError{Cause: knowledge.AuthExpired}
+	}
+	if boundMarker != "" {
+		if currentMarker != boundMarker || currentProvider != boundProvider {
+			return nil, knowledge.ProviderError{Cause: knowledge.AuthExpired}
+		}
+	} else if currentMarker != "" || !connected || currentConnection.Kind != credentials.Reference || currentConnection.Ref != connection.Ref || !currentConnection.UpdatedAt.Equal(connection.UpdatedAt) || !p.refAllowed(who.Tenant, who.Subject, currentConnection.Ref) {
 		return nil, knowledge.ProviderError{Cause: knowledge.AuthExpired}
 	}
 	ephemeral := knowledge.NewStore()

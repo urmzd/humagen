@@ -62,18 +62,25 @@ func (p *Platform) DiscoverPersonTools(ctx context.Context, who auth.Principal, 
 		return nil, err
 	}
 	if !resolved.Ceilings.AllowsToolServer(server.Host()) {
-		return nil, fmt.Errorf("%w: this server's host is not allowed", ErrForbidden)
+		return nil, fmt.Errorf("%w: %s", ErrForbidden, p.toolHostRefusal(resolved.Ceilings.ToolServers))
 	}
 	if server.Credential != "" && !p.refAllowed(who.Tenant, who.Subject, server.Credential) {
 		return nil, fmt.Errorf("%w: %w", personctx.ErrInvalid, errPersonRef)
 	}
-	return p.discoverPersonTools(ctx, server)
+	return p.discoverPersonToolsFor(ctx, who.Tenant, who.Subject, server)
 }
 
-func (p *Platform) discoverPersonTools(ctx context.Context, server personctx.ToolServer) ([]toolprovider.Tool, error) {
+func (p *Platform) discoverPersonToolsFor(ctx context.Context, tenant, person string, server personctx.ToolServer) ([]toolprovider.Tool, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	var secret mcptools.Secret
+	if server.OAuth != "" {
+		var err error
+		secret, err = p.personalOAuth(ctx, tenant, person, server)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if server.Credential != "" {
 		var err error
 		secret, err = p.personToolResolver().Resolve(ctx, server.Credential)
@@ -81,7 +88,7 @@ func (p *Platform) discoverPersonTools(ctx context.Context, server personctx.Too
 			return nil, errors.New("personal tool credential could not be resolved")
 		}
 	}
-	client := &http.Client{Transport: personBearer{secret: secret, next: p.personHTTPClient().Transport}, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{Transport: personBearer{secret: secret, next: p.personOAuthHTTPClient(tenant, person, server).Transport}, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "humagen", Version: "1"}, nil).Connect(ctx, &mcp.StreamableClientTransport{Endpoint: server.URL, HTTPClient: client, DisableStandaloneSSE: true, MaxRetries: -1, MaxEventSize: 1 << 20}, nil)
 	if err != nil {
 		return nil, errors.New("personal tool server could not be reached")
@@ -148,11 +155,11 @@ func (p *Platform) personalToolGroup(ctx context.Context, req runtime.Request) (
 			return native.ToolGroup{}, err
 		}
 		if !slices.ContainsFunc(own.ToolServers, func(s personctx.ToolServer) bool {
-			return s.Name == server.Name && s.URL == server.URL && s.Credential == server.Credential && samePersonTools(s.Tools, server.Tools)
+			return s.Name == server.Name && s.URL == server.URL && s.Credential == server.Credential && s.OAuth == server.OAuth && samePersonTools(s.Tools, server.Tools)
 		}) {
 			continue
 		}
-		offered, err := p.discoverPersonTools(ctx, server)
+		offered, err := p.discoverPersonToolsFor(ctx, req.Tenant, c.Person, server)
 		if err != nil {
 			return native.ToolGroup{}, err
 		}
@@ -160,7 +167,14 @@ func (p *Platform) personalToolGroup(ctx context.Context, req runtime.Request) (
 			return native.ToolGroup{}, fmt.Errorf("%w: %s tool list changed; approve it again in Customize", mcptools.ErrHeldBack, server.Name)
 		}
 		prov := toolprovider.Provider{Tenant: req.Tenant, Name: "person-" + server.Name, Transport: toolprovider.TransportHTTP, Endpoint: server.URL}
-		opts := []mcptools.Option{mcptools.WithResolver(p.personToolResolver()), mcptools.WithHTTPClient(p.personHTTPClient())}
+		opts := []mcptools.Option{mcptools.WithResolver(p.personToolResolver()), mcptools.WithHTTPClient(p.personOAuthHTTPClient(req.Tenant, c.Person, server))}
+		if server.OAuth != "" {
+			prov.CredentialScope = toolprovider.ScopePerson
+			source := mcptools.NewTokenSource(func(ctx context.Context) (mcptools.Secret, error) {
+				return p.personalOAuth(ctx, req.Tenant, c.Person, server)
+			})
+			opts = append(opts, mcptools.WithPersonCredential(mcptools.PersonCredential{Source: source}))
+		}
 		if server.Credential != "" {
 			prov.CredentialScope = toolprovider.ScopePerson
 			opts = append(opts, mcptools.WithPersonCredential(mcptools.PersonCredential{Ref: server.Credential}))
@@ -203,11 +217,11 @@ func (t *personalTool) Execute(ctx context.Context, args map[string]any) (string
 		return "", err
 	}
 	if !slices.ContainsFunc(own.ToolServers, func(s personctx.ToolServer) bool {
-		return s.Name == t.server.Name && s.URL == t.server.URL && s.Credential == t.server.Credential && samePersonTools(s.Tools, t.server.Tools)
+		return s.Name == t.server.Name && s.URL == t.server.URL && s.Credential == t.server.Credential && s.OAuth == t.server.OAuth && samePersonTools(s.Tools, t.server.Tools)
 	}) {
 		return "", mcptools.ErrHeldBack
 	}
-	offered, err := t.p.discoverPersonTools(ctx, t.server)
+	offered, err := t.p.discoverPersonToolsFor(ctx, t.req.Tenant, t.person, t.server)
 	if err != nil {
 		return "", err
 	}

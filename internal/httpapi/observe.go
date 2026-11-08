@@ -832,13 +832,24 @@ func (s *Server) configureSource(w http.ResponseWriter, r *http.Request, who aut
 }
 func (s *Server) connectSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
-		Ref string `json:"ref"`
+		Ref   string `json:"ref"`
+		OAuth string `json:"oauth"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	if err := s.P.ConnectSource(who, r.PathValue("name"), body.Ref); err != nil {
-		s.problem(w, err)
+	var connectErr error
+	if body.OAuth != "" {
+		if body.Ref != "" {
+			s.problem(w, knowledge.ErrInvalid)
+			return
+		}
+		connectErr = s.P.ConnectSourceOAuth(who, r.PathValue("name"), body.OAuth)
+	} else {
+		connectErr = s.P.ConnectSource(who, r.PathValue("name"), body.Ref)
+	}
+	if connectErr != nil {
+		s.problem(w, connectErr)
 		return
 	}
 	src, err := s.P.SourceAs(who, r.PathValue("name"))
@@ -848,6 +859,7 @@ func (s *Server) connectSource(w http.ResponseWriter, r *http.Request, who auth.
 	}
 	ok(w, http.StatusOK, platform.ShownSource(src))
 }
+
 func (s *Server) syncSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	src, err := s.P.SyncSource(r.Context(), who, r.PathValue("name"))
 	if err != nil {

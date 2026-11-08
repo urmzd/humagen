@@ -48,6 +48,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/catalog"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/connectionauth"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/evals"
@@ -654,7 +655,12 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 			Severity string `json:"severity,omitempty"`
 		}{}, written: true},
 		"Settings": {typ: platform.Settings{}}, "RouterSettings": {typ: platform.RouterSettings{}}, "Preferences": {typ: prefs.Preferences{}},
-		"ToolCredentials": {typ: platform.ToolCredentials{}}, "ToolCredential": {typ: platform.ToolCredential{}}, "ToolCredentialInput": {typ: credentials.Input{}, written: true}, "PersonContext": {typ: personctx.Context{}}, "PersonContextInput": {typ: personctx.Input{}, written: true}, "PersonToolServer": {typ: personctx.ToolServer{}}, "RunSettings": {typ: settings.Layer{}}, "RunCeilings": {typ: settings.Ceilings{}}, "RunPreferences": {typ: settings.Preferences{}},
+		"ConnectionHealth": {typ: platform.ConnectionHealth{}}, "ConnectionPreset": {typ: platform.ConnectionPreset{}}, "ConnectionAuthorization": {typ: connectionauth.Authorization{}},
+		"ConnectionAuthorizationInput": {typ: platform.ConnectionAuthorizationInput{}, written: true},
+		"ConnectionRegistration":       {typ: connectionauth.Registration{}, written: true},
+		"ConnectionDetail":             {typ: platform.ConnectionDetail{}}, "ConnectionMapping": {typ: platform.ConnectionMapping{}},
+		"ConnectionCallback": {typ: ConnectionCallback{}, written: true},
+		"ToolCredentials":    {typ: platform.ToolCredentials{}}, "ToolCredential": {typ: platform.ToolCredential{}}, "ToolCredentialInput": {typ: credentials.Input{}, written: true}, "PersonContext": {typ: personctx.Context{}}, "PersonContextInput": {typ: personctx.Input{}, written: true}, "PersonToolServer": {typ: personctx.ToolServer{}}, "RunSettings": {typ: settings.Layer{}}, "RunCeilings": {typ: settings.Ceilings{}}, "RunPreferences": {typ: settings.Preferences{}},
 		"RunFeedback": {typ: shownFeedback{}}, "Attachment": {typ: attachment.Attachment{}},
 		"Schedule": {typ: schedule{}}, "ScheduleView": {typ: scheduleView{}},
 		"InboxNotice": {typ: inboxNotice{}}, "InboxFrom": {typ: inbox.From{}}, "InboxSource": {typ: inbox.Source{}},
@@ -1034,6 +1040,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	})
 	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
 	exerciseEvaluationPolicyContract(t, c)
+	exerciseConnectionContract(t, c)
+	exerciseConnectionHealthContract(t, c)
 	sessionContract := exerciseSessionContract(t, c)
 	contractSource(t, f, c, sourceFake)
 	contractGitHubItems(t, f, c, sourceFake)
@@ -1041,6 +1049,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(pullToken, "GET", "/api/pull-requests", "/api/pull-requests", "", http.StatusOK)
 	c.call(pullToken, "GET", "/api/pull-requests", "/api/pull-requests?status=bad", "", http.StatusBadRequest)
 	acme, globex := f.machine(t, "acme", everything...), f.machine(t, "globex", everything...)
+	foreignPerson := f.person(t, "globex", "oauth-reader", "OAuth reader", "humagen-admins")
 	auditAdmin := f.person(t, "acme", "audit-admin", "Audit admin", "humagen-admins")
 	// The catalog: its owner crawls, publishes and withdraws a connector.
 	cataloger := f.person(t, "acme", "catalog-owner", "Catalog owner", "humagen-admins")
@@ -1783,6 +1792,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/knowledge/{name}/sync", "/api/knowledge/remote/sync", "", http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/knowledge/{name}/configuration", "/api/knowledge/remote/configuration", `{"mode":"indexed","provider":"drive","origin":"folder1","project":"~"}`, http.StatusOK)
 	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote/credential", `{"ref":"op://People/ana/drive"}`, http.StatusOK)
+	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote/credential", `{"oauth":"drive"}`, http.StatusServiceUnavailable)
 	capReader := f.person(t, "acme", "source-cap", "Source capacity reader", "humagen-admins")
 	for i := 0; i < credentials.MaxPerPerson; i++ {
 		if _, err := f.p.Credentials.Put("acme", "source-cap", fmt.Sprintf("cap-%d", i), credentials.Input{Ref: fmt.Sprintf("op://People/source-cap/cap-%d", i)}, time.Now()); err != nil {
@@ -2570,6 +2580,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/threads/{id}/fork":        {"id": tid}, "/api/threads/{id}/bring-back": {"id": tid},
 	}
 	valid := map[string]string{
+		"/api/connections/{provider}/callback":  `{"state":"unknown","code":"code"}`,
 		"/api/agent-setups/{name}":              `{"version":1,"plan":{"spec":{"name":"helper","provider":"openai","model":"gpt-4o-mini","system_prompt":"Help"},"project":"~"}}`,
 		"/api/agent-setups/{name}/test":         `{"text":"Setup check"}`,
 		"/api/artifacts/{id}/promote-memory":    `{"version":1,"accepted":true}`,
@@ -2613,7 +2624,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 			path = strings.ReplaceAll(path, "{"+name+"}", v)
 		}
 		if _, documents := op.schemas["404"]; documents {
-			c.call(globex, op.method, op.path, path, valid[op.path], http.StatusNotFound)
+			foreign := globex
+			if strings.HasPrefix(op.path, "/api/connections/") || op.path == "/api/clients/{id}/check" {
+				foreign = foreignPerson
+			}
+			c.call(foreign, op.method, op.path, path, valid[op.path], http.StatusNotFound)
 		}
 		if refusesUnknownFields(op) {
 			caller := acme

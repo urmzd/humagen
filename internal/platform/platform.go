@@ -63,11 +63,13 @@ import (
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/catalog"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/connectionauth"
 	"github.com/urmzd/humagen/pkg/contextflags"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
+	"github.com/urmzd/humagen/pkg/githubinstall"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/integrations/slack"
@@ -92,6 +94,7 @@ import (
 	"github.com/urmzd/humagen/pkg/scratchpads"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/speech"
+	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
 )
@@ -136,6 +139,9 @@ type Config struct {
 	// clients already in the store are started by New.
 	Clients clients.Store
 	Secrets clients.Secrets
+	// ConnectionAuth configures encrypted, person-scoped service authorizations.
+	ConnectionAuth *connectionauth.Config
+	GitHubInstall  *githubinstall.Config
 	// ConnectionCheckHTTP overrides native credential verification transport.
 	// Nil uses public HTTPS with redirects refused; supplied clients are trusted.
 	ConnectionCheckHTTP *http.Client
@@ -269,9 +275,12 @@ type Config struct {
 
 // Platform is the assembled system.
 type Platform struct {
-	surfaceRecords *surfaceRecords
-	Sessions       session.Store
-	app            *flow.App
+	surfaceRecords   *surfaceRecords
+	ConnectionAuth   *connectionauth.Manager
+	GitHubInstall    *githubinstall.Manager
+	connectionHealth *state.Table[connectionObservation]
+	Sessions         session.Store
+	app              *flow.App
 	// Rooms holds the conversations followed on this server (pkg/rooms).
 	Rooms    *rooms.Hub
 	roomGate *rooms.Gate

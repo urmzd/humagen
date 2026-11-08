@@ -439,11 +439,21 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if err != nil {
 		return err
 	}
+	connectionAuth, err := connectionAuthorization(ctx, file.cfg.System, keys)
+	if err != nil {
+		return err
+	}
+	githubInstall, err := githubInstallation(ctx, file.cfg.System, keys)
+	if err != nil {
+		return err
+	}
 	cfg := platform.Config{
-		PublicURL: *publicURL,
-		Email:     emailConfiguration(file.cfg.System, *publicURL, keys),
-		Wording:   brand.Wording,
-		Backends:  backends,
+		PublicURL:      *publicURL,
+		ConnectionAuth: connectionAuth,
+		GitHubInstall:  githubInstall,
+		Email:          emailConfiguration(file.cfg.System, *publicURL, keys),
+		Wording:        brand.Wording,
+		Backends:       backends,
 		// A client may keep its secrets in this process's environment, under
 		// the names the operator gave its tenant.
 		Env:        legacy.LookupEnv,

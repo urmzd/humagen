@@ -42,7 +42,12 @@ import type {
   ClientCapabilityPolicy,
   ClientInput,
   ClientView,
-  ConnectKnowledgeSourceBody,
+  ConnectionAuthorization,
+  ConnectionAuthorizationInput,
+  ConnectionCallback,
+  ConnectionDetail,
+  ConnectionHealth,
+  ConnectionPreset,
   ConversationMemory,
   ConversationSandboxes,
   CreateCallRequest,
@@ -5366,8 +5371,8 @@ in a project takes a member of that project (403).
     });
   }
 
-  /** Connect your own source credential reference */
-  async connectKnowledgeSource(name: string, body: ConnectKnowledgeSourceBody, options?: RequestOptions): Promise<KnowledgeSource> {
+  /** Connect your own source account or credential reference */
+  async connectKnowledgeSource(name: string, body: unknown | unknown, options?: RequestOptions): Promise<KnowledgeSource> {
     let path = "/api/knowledge/{name}/credential";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.request<KnowledgeSource>("PUT", path, {
@@ -5377,7 +5382,7 @@ in a project takes a member of that project (403).
     });
   }
 
-  async connectKnowledgeSourceRaw(name: string, body: ConnectKnowledgeSourceBody, options?: RequestOptions): Promise<ApiResponse<KnowledgeSource>> {
+  async connectKnowledgeSourceRaw(name: string, body: unknown | unknown, options?: RequestOptions): Promise<ApiResponse<KnowledgeSource>> {
     let path = "/api/knowledge/{name}/credential";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<KnowledgeSource>("PUT", path, {
@@ -7498,6 +7503,131 @@ owns cannot be changed here and answers 409.
     let path = "/api/agents/{name}/health";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<AgentEvaluationHealth>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Check currently granted connection access */
+  async checkConnection(provider: string, options?: RequestOptions): Promise<ConnectionHealth> {
+    let path = "/api/connections/{provider}/check";
+    path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    return this.request<ConnectionHealth>("POST", path, {
+      ...options,
+    });
+  }
+
+  async checkConnectionRaw(provider: string, options?: RequestOptions): Promise<ApiResponse<ConnectionHealth>> {
+    let path = "/api/connections/{provider}/check";
+    path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    return this.rawRequest<ConnectionHealth>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** Check currently granted connection access */
+  async checkClientConnection(id: string, options?: RequestOptions): Promise<ConnectionHealth> {
+    let path = "/api/clients/{id}/check";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ConnectionHealth>("POST", path, {
+      ...options,
+    });
+  }
+
+  async checkClientConnectionRaw(id: string, options?: RequestOptions): Promise<ApiResponse<ConnectionHealth>> {
+    let path = "/api/clients/{id}/check";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ConnectionHealth>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** List connection presets */
+  async listConnectionPresets(options?: RequestOptions): Promise<ConnectionPreset[]> {
+    const path = "/api/connections/presets";
+    return this.request<ConnectionPreset[]>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listConnectionPresetsRaw(options?: RequestOptions): Promise<ApiResponse<ConnectionPreset[]>> {
+    const path = "/api/connections/presets";
+    return this.rawRequest<ConnectionPreset[]>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** GitHub installation requires a person with clients:write in addition to runs:write. */
+  async authorizeConnection(provider: string, body?: ConnectionAuthorizationInput, options?: RequestOptions): Promise<ConnectionAuthorization> {
+    let path = "/api/connections/{provider}/authorize";
+    path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    return this.request<ConnectionAuthorization>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async authorizeConnectionRaw(provider: string, body?: ConnectionAuthorizationInput, options?: RequestOptions): Promise<ApiResponse<ConnectionAuthorization>> {
+    let path = "/api/connections/{provider}/authorize";
+    path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    return this.rawRequest<ConnectionAuthorization>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** GitHub installation requires a person with clients:write in addition to runs:write. */
+  async completeConnection(provider: string, body: ConnectionCallback, options?: RequestOptions): Promise<void> {
+    let path = "/api/connections/{provider}/callback";
+    path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    await this.request<void>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async completeConnectionRaw(provider: string, body: ConnectionCallback, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/connections/{provider}/callback";
+    path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    return this.rawRequest<void>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Read your connection and its visible configured uses */
+  async getConnection(provider: string, options?: RequestOptions): Promise<ConnectionDetail> {
+    let path = "/api/connections/{provider}";
+    path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    return this.request<ConnectionDetail>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getConnectionRaw(provider: string, options?: RequestOptions): Promise<ApiResponse<ConnectionDetail>> {
+    let path = "/api/connections/{provider}";
+    path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    return this.rawRequest<ConnectionDetail>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Disconnect connection */
+  async disconnectConnection(provider: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/connections/{provider}";
+    path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async disconnectConnectionRaw(provider: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/connections/{provider}";
+    path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    return this.rawRequest<void>("DELETE", path, {
       ...options,
     });
   }
