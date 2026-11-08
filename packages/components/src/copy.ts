@@ -793,6 +793,8 @@ export const defaultCopy = {
     isolated: "Isolated",
     shared: "Shared",
     openCorpus: "Open Corpus",
+    openGraph: "Open Graph",
+    openTypes: "Open Types",
     labels: {
       title: "Label",
       public: "Public",
@@ -862,6 +864,7 @@ export const defaultCopy = {
       failed: "The graph could not be loaded.",
       noOwner: "No owner",
       you: "You",
+      someone: "Someone",
       states: { suggested: "Suggested", confirmed: "Confirmed", unowned: "Unowned" },
       staleLabel: "Stale",
       reasons: {

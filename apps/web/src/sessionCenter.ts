@@ -73,9 +73,11 @@ export function alertDestination(a: Alert): Route | undefined {
 /** What an alert's action button says: the page it opens, or the action's own word. */
 export function alertActionLabel(a: Alert): string {
   const page = alertPage(a);
-  if (page)
-    return page.page === "corpus" || page.page === "knowledge" || page.page === "context"
-      ? defaultCopy.corpora.openCorpus
-      : "Open";
-  return a.action || "Open";
+  const words = defaultCopy.corpora;
+  if (!page) return a.action || "Open";
+  if (page.page === "corpus" && page.tab === "graph") return words.openGraph;
+  if (page.page === "corpus" && page.tab === "types") return words.openTypes;
+  if (page.page === "corpus" || page.page === "knowledge" || page.page === "context")
+    return words.openCorpus;
+  return "Open";
 }

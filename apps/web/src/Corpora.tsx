@@ -1986,7 +1986,12 @@ function GraphTab({
           ? gw.confirmed(node.name)
           : action.action === "decline"
             ? gw.declined(node.name)
-            : gw.handedOff(node.name, directory.personName(action.to ?? "")),
+            : gw.handedOff(
+                node.name,
+                next.owner_name ||
+                  directory.peopleOptions.find((p) => p.value === action.to)?.label ||
+                  gw.someone,
+              ),
       );
       return true;
     } catch (e) {
@@ -2018,12 +2023,13 @@ function GraphTab({
       ? corpus.members.find((m) => m.kind === ref.kind && m.name === ref.name)?.provider
       : undefined;
   };
+  // The graph names each owner itself; the reader's own rows say You.
   const ownerName = (node: GraphNodeView) =>
     !node.owner || node.owner_state === "unowned"
       ? gw.noOwner
       : node.owner === viewer
         ? gw.you
-        : directory.personName(node.owner);
+        : node.owner_name || gw.someone;
   const people = directory.peopleOptions.filter((p) => p.value !== handing?.owner);
 
   return (

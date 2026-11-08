@@ -874,6 +874,8 @@ const graphView = {
       name: "Benefits FAQ",
       member: "source/handbook",
       owner: "bob",
+      // The graph names its owners; the directory is never asked.
+      owner_name: "Bob Builder",
       owner_state: "confirmed",
       staleness: { score: 0.1, stale: false },
     },
@@ -907,6 +909,7 @@ test("the Graph tab shows its health and each document's owner and staleness, an
     "PUT /api/graph/nodes/n3/owner": (body) => ({
       ...graphView.nodes[2],
       owner: (body as { to: string }).to,
+      owner_name: "Robert",
       owner_state: "confirmed",
     }),
     ...directory,
@@ -923,7 +926,7 @@ test("the Graph tab shows its health and each document's owner and staleness, an
   assert.ok(within(leave).getByText(words.graph.staleLabel));
   assert.ok(within(leave).getByText("old, superseded"));
   const faq = screen.getByRole("listitem", { name: "Benefits FAQ" });
-  await within(faq).findByText("Bob");
+  assert.ok(within(faq).getByText("Bob Builder"));
   assert.ok(within(faq).getByText(words.graph.states.confirmed));
   assert.equal(within(faq).queryByText(words.graph.staleLabel), null);
   // Someone else's document is theirs to decide.
@@ -953,7 +956,7 @@ test("the Graph tab shows its health and each document's owner and staleness, an
     target: { value: "bob" },
   });
   fireEvent.click(within(form).getByRole("button", { name: words.graph.handOff }));
-  await screen.findByText(words.graph.handedOff("HR.PUBLIC.EMPLOYEES", "Bob"));
+  await screen.findByText(words.graph.handedOff("HR.PUBLIC.EMPLOYEES", "Robert"));
   assert.deepEqual(
     net.seen.filter((r) => r.method === "PUT").map((r) => [r.path, r.body]),
     [
@@ -1179,23 +1182,27 @@ test("Isolated or Shared is on the Access tab, where the owner changes it", asyn
   });
 });
 
-test("a knowledge alert reads as one and opens its corpus, with or without a session", async () => {
+test("a knowledge alert reads as one and opens where its decision is made, with or without a session", async () => {
   const { AlertsPage } = await import("./SessionCenter.tsx");
-  const knowledgeAlert = (id: string, session?: string) => ({
+  const knowledgeAlert = (id: string, action: string, session?: string) => ({
     id,
     rule: "knowledge",
     kind: "knowledge",
     severity: "warning",
     priority: "normal",
     state: "open",
-    title: `2 documents in HR policies have no owner (${id})`,
-    action: "/knowledge/hr-policies",
+    title: `HR policies needs you (${id})`,
+    action,
     at,
     ...(session ? { session } : {}),
   });
   net = stubFetch({
     "GET /api/alerts": () => ({
-      alerts: [knowledgeAlert("a1"), knowledgeAlert("a2", "s_builder")],
+      alerts: [
+        knowledgeAlert("a1", "/knowledge/hr-policies/graph"),
+        knowledgeAlert("a2", "/knowledge/hr-policies/types", "s_builder"),
+        knowledgeAlert("a3", "/knowledge/hr-policies"),
+      ],
     }),
   });
   const went: unknown[] = [];
@@ -1208,14 +1215,21 @@ test("a knowledge alert reads as one and opens its corpus, with or without a ses
       tick={0}
     />,
   );
+  // With no session, the alert itself opens the page it is about.
   const alone = await screen.findByRole("link", { name: /\(a1\)/ });
-  assert.equal(alone.getAttribute("href"), "/knowledge/hr-policies");
-  const inSession = screen.getByRole("link", { name: /\(a2\)/ });
-  assert.equal(inSession.getAttribute("href"), "/sessions/s_builder");
-  assert.equal(screen.getAllByText("Knowledge").length >= 2, true);
-  const open = screen.getAllByRole("button", { name: words.openCorpus });
-  assert.equal(open.length, 2);
-  assert.equal(screen.queryByText("/knowledge/hr-policies"), null);
-  fireEvent.click(open[1] as HTMLElement);
-  assert.deepEqual(went, [{ page: "corpus", name: "hr-policies", tab: "sources" }]);
+  assert.equal(alone.getAttribute("href"), "/knowledge/hr-policies/graph");
+  assert.equal(
+    screen.getByRole("link", { name: /\(a2\)/ }).getAttribute("href"),
+    "/sessions/s_builder",
+  );
+  assert.ok(screen.getAllByText("Knowledge").length >= 3);
+  assert.equal(screen.queryByText("/knowledge/hr-policies/graph"), null);
+  fireEvent.click(screen.getByRole("button", { name: words.openGraph }));
+  fireEvent.click(screen.getByRole("button", { name: words.openTypes }));
+  fireEvent.click(screen.getByRole("button", { name: words.openCorpus }));
+  assert.deepEqual(went, [
+    { page: "corpus", name: "hr-policies", tab: "graph" },
+    { page: "corpus", name: "hr-policies", tab: "types" },
+    { page: "corpus", name: "hr-policies", tab: "sources" },
+  ]);
 });
