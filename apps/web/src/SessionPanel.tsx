@@ -20,6 +20,7 @@ import { Inspector } from "@humagen/web";
 import { type ReactNode, useEffect, useState } from "react";
 import type { Run } from "./adapter.ts";
 import { Reference } from "./cards.tsx";
+import { took } from "./format.ts";
 import { ActivityLanes, AgentCallLane, outcomeOf } from "./ResponseActivity.tsx";
 import { OriginMark } from "./refChips.tsx";
 import { eventsOfRun, type RunLoader } from "./responseSource.ts";
@@ -174,7 +175,9 @@ export function progressWords(summary: SessionSummary, current?: ResponseState):
   const p = summary.progress;
   if (!p || !current) return "";
   if (p.status === "running") return p.waiting ? words.waiting : words.working(p.agents, p.tools);
-  return outcomeOf(current);
+  // A stopped or failed response says how it ended; a finished session says what it took.
+  if (p.status !== "done") return outcomeOf(current);
+  return defaultCopy.trace.worked(took(p.ms), p.agents, p.tools);
 }
 
 /**

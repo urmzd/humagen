@@ -282,19 +282,20 @@ export function summarize(
         ).length || 1;
   }
   const current = responses[responses.length - 1];
-  const w = current ? worked(current) : undefined;
+  // The progress line counts the whole session, so it agrees with the
+  // Agents section; its state is the current response's.
+  const totals = responses.map((r) => worked(r));
   return {
-    progress:
-      current && w
-        ? {
-            status: current.status,
-            waiting: waiting(current).length > 0,
-            agents: w.agents,
-            tools: w.tools,
-            ms: w.ms,
-            response: current.rootRun ?? current.id ?? "",
-          }
-        : undefined,
+    progress: current
+      ? {
+          status: current.status,
+          waiting: waiting(current).length > 0,
+          agents: agents.size,
+          tools: totals.reduce((n, w) => n + w.tools, 0),
+          ms: totals.reduce((n, w) => n + w.ms, 0),
+          response: current.rootRun ?? current.id ?? "",
+        }
+      : undefined,
     open,
     agents: [...agents].map(([name, calls]) => ({ name, calls })),
     outputs,

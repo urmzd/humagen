@@ -9,6 +9,13 @@ import { ConversationPage } from "./ConversationShell.tsx";
 import { SessionPanel, sessionProgress } from "./SessionPanel.tsx";
 import { connectorOf, fileType, shortList, summarize } from "./sessionSummary.ts";
 import { referenceOf } from "./trace.ts";
+import { hueOf, setAgentHues } from "./ui.tsx";
+
+// The server assigns each agent its color; here the test does.
+setAgentHues({
+  "security-reviewer": hueOf("security-reviewer"),
+  "perf-reviewer": hueOf("perf-reviewer"),
+});
 
 const words = defaultCopy.details;
 afterEach(() => cleanup());
@@ -103,7 +110,14 @@ test("the panel shows only sections with something in them, and each row opens w
     words.environment,
     words.usedTitle,
   ]);
-  assert.match(within(panel).getByTestId("details-progress").textContent ?? "", /Worked/);
+  // The progress line counts the whole session, as the Agents section does.
+  assert.equal(
+    within(panel).getByTestId("details-progress").textContent,
+    defaultCopy.trace.worked("15s", 2, 10),
+  );
+  // Each agent row carries its mark.
+  for (const row of within(panel).getAllByTestId("details-agent"))
+    assert.ok(row.querySelector("[data-accent=agent]"), "agent mark");
   const used = within(panel)
     .getAllByTestId("details-used")
     .map((r) => r.textContent ?? "");

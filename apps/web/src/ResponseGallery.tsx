@@ -5,7 +5,7 @@ import { ActivityLanes, costOf, WorkedButton } from "./ResponseActivity.tsx";
 import { SessionPanel } from "./SessionPanel.tsx";
 import { summarize } from "./sessionSummary.ts";
 import { referenceOf } from "./trace.ts";
-import { AgentMark } from "./ui.tsx";
+import { AgentMark, hueOf, setAgentHues } from "./ui.tsx";
 
 const streams = [
   ["One agent", responseStreams.singleAgent],
@@ -55,6 +55,15 @@ function Example({ name, events }: { name: string; events: (typeof streams)[numb
   );
 }
 
+// The recorded streams' agents are not in any workspace, so the gallery gives them their colors.
+setAgentHues(
+  Object.fromEntries(
+    ["humagen", "lead", "ops", "deployer", "analyst", "security-reviewer", "perf-reviewer"].map(
+      (name) => [name, hueOf(name)],
+    ),
+  ),
+);
+
 const files = [
   {
     id: "a1",
@@ -83,7 +92,7 @@ export function SessionPanelGallery() {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       {panels.map(([name, responses]) => (
-        <div
+        <section
           key={name}
           aria-label={name}
           data-testid="gallery-session-panel"
@@ -99,7 +108,7 @@ export function SessionPanelGallery() {
             onClose={() => {}}
             onOpenFile={() => {}}
           />
-        </div>
+        </section>
       ))}
     </div>
   );
