@@ -137,7 +137,9 @@ func cmpOr(a, b string) string {
 func (p *Platform) maintainCorpus(tenant string, c corpora.Corpus) ([]knowledgeAlert, error) {
 	var out []knowledgeAlert
 	name := corpusName(c)
-	link := "/knowledge/" + c.Name
+	// Each alert opens where its decision is made: the sources, the graph
+	// of documents and owners, or the proposed types.
+	link, graphLink, typesLink := "/knowledge/"+c.Name, "/knowledge/"+c.Name+"/graph", "/knowledge/"+c.Name+"/types"
 	if failing := p.failingMembers(tenant, c); len(failing) > 0 {
 		out = append(out, knowledgeAlert{key: knowledgeKey("freshness", c.Name), person: c.Owner,
 			title: "Sources in " + name + " need attention", action: link,
@@ -164,12 +166,12 @@ func (p *Platform) maintainCorpus(tenant string, c corpora.Corpus) ([]knowledgeA
 	}
 	for person, docs := range stale {
 		out = append(out, knowledgeAlert{key: knowledgeKey("stale", c.Name, person), person: person,
-			title: fmt.Sprintf("%s you own in %s %s stale", documents(len(docs)), name, isAre(len(docs))), action: link,
+			title: fmt.Sprintf("%s you own in %s %s stale", documents(len(docs)), name, isAre(len(docs))), action: graphLink,
 			body: "Update or replace them, or hand them to someone who owns them now: " + listed(docs) + "."})
 	}
 	if len(unowned) > 0 {
 		out = append(out, knowledgeAlert{key: knowledgeKey("unowned", c.Name), person: c.Owner,
-			title: fmt.Sprintf("%s in %s %s no owner", documents(len(unowned)), name, hasHave(len(unowned))), action: link,
+			title: fmt.Sprintf("%s in %s %s no owner", documents(len(unowned)), name, hasHave(len(unowned))), action: graphLink,
 			body: "Claim them or hand them to someone: " + listed(unowned) + "."})
 	}
 	proposal, err := p.proposeOntology(tenant, c)
@@ -178,7 +180,7 @@ func (p *Platform) maintainCorpus(tenant string, c corpora.Corpus) ([]knowledgeA
 	}
 	if proposal != "" {
 		out = append(out, knowledgeAlert{key: knowledgeKey("ontology", c.Name), person: c.Owner,
-			title: "New types proposed for " + name, action: link,
+			title: "New types proposed for " + name, action: typesLink,
 			body: "The warehouse tables in this corpus suggest types its ontology lacks: " + proposal + ". Accept or discard them on the corpus."})
 	}
 	return out, nil
