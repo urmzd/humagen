@@ -751,7 +751,6 @@ var copyKeyList = []string{
 	"corpora.login.valueLabel",
 	"corpora.newCorpus",
 	"corpora.noSources",
-	"corpora.open",
 	"corpora.openCorpus",
 	"corpora.openGraph",
 	"corpora.openTypes",

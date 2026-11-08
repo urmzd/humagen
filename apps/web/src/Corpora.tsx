@@ -1,18 +1,5 @@
 import { defaultCopy } from "@humagen/components";
-import {
-  ChevronRightIcon,
-  DatabaseIcon,
-  EllipsisIcon,
-  EyeOffIcon,
-  FileIcon,
-} from "@humagen/render-web";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@humagen/render-web/ui/dropdown-menu";
+import { ChevronRightIcon, DatabaseIcon, EyeOffIcon, FileIcon } from "@humagen/render-web";
 import { NativeSelect, NativeSelectOption } from "@humagen/render-web/ui/native-select";
 import {
   Sheet,
@@ -24,8 +11,6 @@ import {
 import { toast } from "@humagen/render-web/ui/sonner";
 import {
   type FormEvent,
-  Fragment,
-  type MouseEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -51,13 +36,12 @@ import {
 } from "./api.ts";
 import { BigQueryConnection } from "./BigQueryConnection.tsx";
 import { ConnectionLogo } from "./ConnectionLogo.tsx";
-import { Pill, Tag } from "./cards.tsx";
+import { ItemCard, itemGrid, Pill, Reference, type ReferenceKind, Tag } from "./cards.tsx";
 import { connectionApi } from "./connectionApi.ts";
 import {
   type CorpusLabel,
   holds,
   isDocumentNode,
-  itemsOf,
   LABELS,
   memberOfNode,
   namedReaders,
@@ -66,8 +50,8 @@ import {
   type OntologyType,
   ontologyTypes,
   ownerChoices,
+  providerItems,
   providerOfSource,
-  providersOf,
   type ReaderMode,
   readerMode,
   readersOf,
@@ -102,23 +86,24 @@ const words = defaultCopy.corpora;
 /** A corpus or source name (corpora.ts NAME) as an input's pattern, which is read with the `v` flag: a literal dash is escaped. */
 const NAME_PATTERN = "[a-z0-9][a-z0-9\\-]{0,62}";
 
-/** A plain click goes there in place; a modified one is the browser's. */
-const follow = (go: () => void) => (e: MouseEvent<HTMLAnchorElement>) => {
-  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-  e.preventDefault();
-  go();
-};
-
 const conflict = (e: unknown) => e instanceof ApiError && e.status === 409;
 const message = (e: unknown) => (e instanceof ApiError ? e.message : words.failed);
-
-const cardGrid = "grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))] gap-3";
-const moreButton =
-  "-mr-1 inline-flex size-8 shrink-0 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:size-11";
 
 export function providerLabel(provider: string): string {
   return words.providers[provider] ?? provider;
 }
+
+/** The Reference mark for a source from a provider: uploaded files, or a body of knowledge. */
+function referenceKind(provider: string): ReferenceKind {
+  return provider === "manual" ? "file" : "corpus";
+}
+
+/** The Reference mark for what a member holds. */
+const holdsKind: Record<NonNullable<CorpusMember["holds"]>, ReferenceKind> = {
+  files: "file",
+  references: "url",
+  records: "corpus",
+};
 
 /** A provider's mark: its logo, or a neutral one where a brand has none. */
 export function ProviderMark({ provider, small }: { provider?: string; small?: boolean }) {
@@ -134,48 +119,6 @@ export function ProviderMark({ provider, small }: { provider?: string; small?: b
     >
       <ConnectionLogo id={provider} name={providerLabel(provider)} />
     </span>
-  );
-}
-
-/** The ⋯ menu on a card. */
-function More({
-  label,
-  items,
-}: {
-  label: string;
-  items: { label: string; run: () => void; destructive?: boolean }[];
-}) {
-  // A choice runs once the menu has closed and given focus back to ⋯, so what
-  // it opens (a confirm, a sheet) takes focus from there and returns it there.
-  const pending = useRef<(() => void) | null>(null);
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger aria-label={label} className={moreButton}>
-        <EllipsisIcon size={16} />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        onCloseAutoFocus={() => {
-          const run = pending.current;
-          pending.current = null;
-          run?.();
-        }}
-      >
-        {items.map((item, i) => (
-          <Fragment key={item.label}>
-            {item.destructive && i > 0 && <DropdownMenuSeparator />}
-            <DropdownMenuItem
-              variant={item.destructive ? "destructive" : undefined}
-              onSelect={() => {
-                pending.current = item.run;
-              }}
-            >
-              {item.label}
-            </DropdownMenuItem>
-          </Fragment>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 
@@ -545,71 +488,57 @@ export function KnowledgePage({
           {newCorpus}
         </div>
       ) : (
-        <ul aria-label={words.title} className={cardGrid}>
+        <ul aria-label={words.title} className={itemGrid}>
           {list.map((c) => {
             const owner = c.mine && canWrite;
             const title = titleOf(c);
             return (
-              <li
-                key={c.name}
-                aria-label={title}
-                className={`${card} relative flex h-full min-w-0 flex-col gap-2`}
-              >
-                <div className="flex min-w-0 items-center gap-2">
-                  <h2 className="min-w-0 flex-1 truncate font-medium text-aui-fg">
-                    {/* The whole card opens the corpus: the link covers it, and ⋯ sits above it. */}
-                    <a
-                      href={href({ page: "corpus", name: c.name, tab: "sources" })}
-                      onClick={follow(() => onOpen(c.name))}
-                      className="after:absolute after:inset-0 after:rounded-aui-lg hover:underline focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-aui-accent"
-                    >
-                      {title}
-                    </a>
-                  </h2>
-                  {/* A corpus made before labels has none: it reads as internal, the default. */}
-                  <Pill>{words.labels[c.label || "internal"]}</Pill>
-                  {owner && (
-                    <div className="relative z-[1]">
-                      <More
-                        label={words.more(title)}
-                        items={[
+              <li key={c.name} aria-label={title}>
+                <ItemCard
+                  title={title}
+                  href={href({ page: "corpus", name: c.name, tab: "sources" })}
+                  onOpen={() => onOpen(c.name)}
+                  // A corpus made before labels has none: it reads as internal, the default.
+                  status={<Pill>{words.labels[c.label || "internal"]}</Pill>}
+                  description={c.description || undefined}
+                  facts={
+                    providerItems(c).length > 0
+                      ? providerItems(c).map(({ provider, items }) => (
+                          <Reference
+                            key={provider}
+                            kind={referenceKind(provider)}
+                            label={providerLabel(provider)}
+                            count={items}
+                          />
+                        ))
+                      : undefined
+                  }
+                  menu={
+                    owner
+                      ? [
                           {
                             label: words.edit,
-                            run: () => setSheet({ kind: "edit", name: c.name }),
+                            onSelect: () => setSheet({ kind: "edit", name: c.name }),
                           },
                           {
                             label: words.delete,
                             destructive: true,
-                            run: () => setDeleting(c.name),
+                            onSelect: () => setDeleting(c.name),
                           },
-                        ]}
+                        ]
+                      : undefined
+                  }
+                  actions={
+                    deleting === c.name ? (
+                      <Confirm
+                        question={words.deleteAsk(title)}
+                        action={words.deleteAction}
+                        onKeep={() => setDeleting(null)}
+                        onConfirm={() => void remove(c)}
                       />
-                    </div>
-                  )}
-                </div>
-                {c.description && (
-                  <p className="line-clamp-2 text-aui-sm text-aui-muted">{c.description}</p>
-                )}
-                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                  {providersOf(c).map((p) => (
-                    <Tag key={p} icon={<ProviderMark provider={p} small />}>
-                      {providerLabel(p)}
-                    </Tag>
-                  ))}
-                  <span className="text-aui-xs text-aui-muted tabular-nums">
-                    {words.items(itemsOf(c))}
-                  </span>
-                </div>
-                {deleting === c.name && (
-                  <div className="relative z-[1] mt-auto pt-1">
-                    <Confirm
-                      question={words.deleteAsk(title)}
-                      action={words.deleteAction}
-                      onKeep={() => setDeleting(null)}
-                      onConfirm={() => void remove(c)}
-                    />
-                  </div>
-                )}
+                    ) : undefined
+                  }
+                />
               </li>
             );
           })}
@@ -938,7 +867,7 @@ export function CorpusPage({
             {addSource}
           </div>
         ) : (
-          <ul aria-label={words.tabs.sources} className={cardGrid}>
+          <ul aria-label={words.tabs.sources} className={itemGrid}>
             {corpus.members.map((m, i) => (
               <MemberCard
                 // A member hidden from a reader has no name; its place in the list tells it apart.
@@ -1061,58 +990,52 @@ function MemberCard({
   const system = connector?.system ?? member.provider;
   const menu = [
     ...(login === "connected" && system !== "bigquery"
-      ? [{ label: words.login.forget, run: onForget }]
+      ? [{ label: words.login.forget, onSelect: onForget }]
       : []),
-    ...(owner && named ? [{ label: words.remove, destructive: true, run: onRemove }] : []),
+    ...(owner && named ? [{ label: words.remove, destructive: true, onSelect: onRemove }] : []),
   ];
-  const facts = [
-    member.holds ? words.holds[member.holds] : undefined,
-    member.status === "missing" ? undefined : words.items(member.items),
-  ].filter(Boolean);
+  const opens = member.kind === "source" && !hidden && member.status !== "missing";
   return (
-    <li aria-label={title} className={`${card} flex h-full min-w-0 flex-col gap-2`}>
-      <div className="flex min-w-0 items-center gap-2">
-        <ProviderMark provider={hidden ? undefined : (member.provider ?? "manual")} />
-        <h3
-          className={`min-w-0 flex-1 truncate font-medium ${hidden ? "text-aui-muted" : "text-aui-fg"}`}
-        >
-          {title}
-        </h3>
-        {!hidden && (
-          <Pill tone={member.status === "failed" ? "bad" : "neutral"}>
-            {words.status[member.status]}
-          </Pill>
-        )}
-        {menu.length > 0 && <More label={words.more(title)} items={menu} />}
-      </div>
-      {hidden && named && <p className="text-aui-xs text-aui-muted">{words.hiddenToOwner}</p>}
-      {!hidden && facts.length > 0 && (
-        <p className="text-aui-xs text-aui-muted tabular-nums">{facts.join(" | ")}</p>
-      )}
-      {(login === "connected" || login === "unavailable") && (
-        <p className="text-aui-xs text-aui-muted">
-          {login === "connected" ? words.login.connected : words.login.unavailable}
-        </p>
-      )}
-      {member.kind === "source" && !hidden && member.status !== "missing" && (
-        <div className="mt-auto pt-1">
-          <a
-            href={href({ page: "context", source: member.name, corpus })}
-            onClick={follow(onOpen)}
-            className={button}
-            aria-label={`${words.open} ${member.name}`}
-          >
-            {words.open}
-          </a>
-        </div>
-      )}
-      {login === "missing" && (
-        <div className="mt-auto pt-1">
-          <button type="button" className={button} onClick={onConnect}>
-            {words.login.connect}
-          </button>
-        </div>
-      )}
+    <li aria-label={title}>
+      <ItemCard
+        title={title}
+        mark={<ProviderMark provider={hidden ? undefined : (member.provider ?? "manual")} />}
+        href={opens ? href({ page: "context", source: member.name, corpus }) : undefined}
+        onOpen={opens ? onOpen : undefined}
+        status={
+          hidden ? undefined : (
+            <Pill tone={member.status === "failed" ? "bad" : "neutral"}>
+              {words.status[member.status]}
+            </Pill>
+          )
+        }
+        description={
+          hidden && named
+            ? words.hiddenToOwner
+            : login === "connected"
+              ? words.login.connected
+              : login === "unavailable"
+                ? words.login.unavailable
+                : undefined
+        }
+        facts={
+          !hidden && member.holds ? (
+            <Reference
+              kind={holdsKind[member.holds]}
+              label={words.holds[member.holds]}
+              count={member.status === "missing" ? undefined : member.items}
+            />
+          ) : undefined
+        }
+        menu={menu.length > 0 ? menu : undefined}
+        actions={
+          login === "missing" ? (
+            <button type="button" className={button} onClick={onConnect}>
+              {words.login.connect}
+            </button>
+          ) : undefined
+        }
+      />
     </li>
   );
 }
@@ -1211,7 +1134,7 @@ function SearchTab({
           {result.hits.length === 0 ? (
             <p className="text-aui-sm text-aui-muted">{words.search.none}</p>
           ) : (
-            <ol aria-label={words.search.label} className={rows}>
+            <ol aria-label={words.search.label} className={itemGrid}>
               {result.hits.map((hit) => (
                 <SearchHit
                   key={`${hit.member.kind}:${hit.member.name}:${hit.document_id ?? hit.title}:${hit.index ?? 0}`}
@@ -1235,35 +1158,32 @@ function SearchHit({
   providerOf: (ref: CorpusMemberRef) => string | undefined;
 }) {
   const link = safeLink(hit.uri);
+  const provider = providerOf(hit.member) ?? "manual";
   return (
-    <li aria-label={hit.title} className="flex min-w-0 flex-col gap-1.5 py-3">
-      {link ? (
-        <a
-          href={link}
-          target="_blank"
-          rel="noreferrer"
-          className="min-w-0 truncate font-medium text-aui-sm text-aui-fg underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
-        >
-          {hit.title}
-        </a>
-      ) : (
-        <span className="min-w-0 truncate font-medium text-aui-sm text-aui-fg">{hit.title}</span>
-      )}
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-        <Tag icon={<ProviderMark provider={providerOf(hit.member) ?? "manual"} small />}>
-          {hit.member.name}
-        </Tag>
-        {(hit.also ?? []).map((m) => (
-          <Tag
-            key={`${m.kind}:${m.name}`}
-            icon={<ProviderMark provider={providerOf(m) ?? "manual"} small />}
-          >
-            {m.name}
-          </Tag>
-        ))}
-        <span className="text-aui-xs text-aui-muted">{words.holds[hit.holds]}</span>
-      </div>
-      <p className="line-clamp-3 text-aui-sm text-aui-muted">{hit.text}</p>
+    <li aria-label={hit.title}>
+      <ItemCard
+        title={hit.title}
+        mark={<ProviderMark provider={provider} />}
+        // A hit opens where it lives, in a new tab, and only on the web.
+        href={link}
+        onOpen={link ? () => window.open(link, "_blank", "noopener,noreferrer") : undefined}
+        status={hit.stale ? <Pill>{words.graph.staleLabel}</Pill> : undefined}
+        facts={
+          <>
+            <Reference kind={referenceKind(provider)} label={hit.member.name} />
+            {(hit.also ?? []).map((m) => (
+              <Reference
+                key={`${m.kind}:${m.name}`}
+                kind={referenceKind(providerOf(m) ?? "manual")}
+                label={m.name}
+              />
+            ))}
+            <Tag>{words.holds[hit.holds]}</Tag>
+          </>
+        }
+      >
+        <p className="line-clamp-3 text-aui-sm text-aui-muted">{hit.text}</p>
+      </ItemCard>
     </li>
   );
 }
@@ -2056,69 +1976,53 @@ function GraphTab({
       {rowsShown.length === 0 ? (
         <Empty title={gw.empty} />
       ) : (
-        <ul aria-label={words.tabs.graph} className={rows}>
+        <ul aria-label={words.tabs.graph} className={itemGrid}>
           {rowsShown.map((node) => {
             const link = safeLink(node.uri);
-            const choices = ownerChoices(node, viewer, owner);
-            const stale = node.staleness?.stale;
+            const reasons = node.staleness?.stale ? (node.staleness.reasons ?? []) : [];
             return (
-              <li
-                key={node.id}
-                aria-label={node.name}
-                className="flex min-w-0 items-start gap-3 py-3"
-              >
-                <ProviderMark provider={providerOf(node.member) ?? "manual"} small />
-                <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <div className="flex min-w-0 items-center gap-2">
-                    {link ? (
-                      <a
-                        href={link}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="min-w-0 truncate font-medium text-aui-sm text-aui-fg underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
-                      >
-                        {node.name}
-                      </a>
-                    ) : (
-                      <span className="min-w-0 truncate font-medium text-aui-sm text-aui-fg">
-                        {node.name}
-                      </span>
-                    )}
-                    {node.type !== "document" && <Tag>{node.type}</Tag>}
-                  </div>
-                  <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-aui-xs text-aui-muted">
-                    <span>{ownerName(node)}</span>
-                    {node.owner_state && <Pill>{gw.states[node.owner_state]}</Pill>}
-                    {stale && <Pill>{gw.staleLabel}</Pill>}
-                    {stale && (node.staleness?.reasons?.length ?? 0) > 0 && (
-                      <span>
-                        {(node.staleness?.reasons ?? []).map((r) => gw.reasons[r] ?? r).join(", ")}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                {choices.length > 0 && (
-                  <More
-                    label={words.more(node.name)}
-                    items={choices.map((c) =>
-                      c === "confirm"
-                        ? { label: gw.confirm, run: () => void decide(node, { action: "confirm" }) }
-                        : c === "hand_off"
-                          ? {
-                              label: gw.handOff,
-                              run: () => {
-                                setTo("");
-                                setHanding(node);
-                              },
-                            }
-                          : {
-                              label: gw.decline,
-                              destructive: true,
-                              run: () => void decide(node, { action: "decline" }),
+              <li key={node.id} aria-label={node.name}>
+                <ItemCard
+                  title={node.name}
+                  mark={<ProviderMark provider={providerOf(node.member) ?? "manual"} />}
+                  href={link}
+                  onOpen={
+                    link ? () => window.open(link, "_blank", "noopener,noreferrer") : undefined
+                  }
+                  status={node.owner_state ? <Pill>{gw.states[node.owner_state]}</Pill> : undefined}
+                  description={ownerName(node)}
+                  facts={
+                    node.type !== "document" || node.staleness?.stale ? (
+                      <>
+                        {node.type !== "document" && <Reference label={node.type} />}
+                        {node.staleness?.stale && <Pill>{gw.staleLabel}</Pill>}
+                        {reasons.length > 0 && (
+                          <Tag>{reasons.map((r) => gw.reasons[r] ?? r).join(", ")}</Tag>
+                        )}
+                      </>
+                    ) : undefined
+                  }
+                  menu={ownerChoices(node, viewer, owner).map((c) =>
+                    c === "confirm"
+                      ? {
+                          label: gw.confirm,
+                          onSelect: () => void decide(node, { action: "confirm" }),
+                        }
+                      : c === "hand_off"
+                        ? {
+                            label: gw.handOff,
+                            onSelect: () => {
+                              setTo("");
+                              setHanding(node);
                             },
-                    )}
-                  />
-                )}
+                          }
+                        : {
+                            label: gw.decline,
+                            destructive: true,
+                            onSelect: () => void decide(node, { action: "decline" }),
+                          },
+                  )}
+                />
               </li>
             );
           })}

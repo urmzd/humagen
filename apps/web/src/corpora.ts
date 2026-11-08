@@ -33,15 +33,16 @@ export function namedReaders(readers: CorpusReader[], kind: "person" | "project"
   return readers.filter((r) => r.kind === kind && r.name).map((r) => r.name as string);
 }
 
-/** The providers a corpus's members come from, once each, in the order they were added. */
-export function providersOf(corpus: Corpus): string[] {
-  return [
-    ...new Set(
-      corpus.members
-        .filter((m) => m.status !== "hidden" && m.provider)
-        .map((m) => m.provider as string),
-    ),
-  ];
+/**
+ * The providers a corpus's members come from, once each in the order they
+ * were added, with the documents, tables and views each brings.
+ */
+export function providerItems(corpus: Corpus): { provider: string; items: number }[] {
+  const out = new Map<string, number>();
+  for (const m of corpus.members)
+    if (m.status !== "hidden" && m.provider)
+      out.set(m.provider, (out.get(m.provider) ?? 0) + m.items);
+  return [...out].map(([provider, items]) => ({ provider, items }));
 }
 
 /** Documents, tables and views across the members the reader can see. */

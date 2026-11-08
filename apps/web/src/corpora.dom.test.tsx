@@ -88,15 +88,14 @@ const directory = {
   "GET /api/projects": () => ({ projects: [], next: null }),
 };
 
+/** Every card's ⋯ is the shared More menu; a card is found by its list item's name. */
+const more = defaultCopy.more;
 async function openMenu(name: string) {
-  const more = await screen.findByRole("button", { name: words.more(name) });
-  more.focus();
-  fireEvent.keyDown(more, { key: "ArrowDown" });
+  const card = await screen.findByRole("listitem", { name });
+  fireEvent.click(within(card).getByRole("button", { name: more }));
 }
 async function choose(item: string) {
-  const entry = await screen.findByRole("menuitem", { name: item });
-  entry.focus();
-  fireEvent.keyDown(entry, { key: "Enter" });
+  fireEvent.click(await screen.findByRole("menuitem", { name: item }));
 }
 
 test("Knowledge lists corpora as cards by title: providers, items, one pill, Open and an owner's menu", async () => {
@@ -117,22 +116,26 @@ test("Knowledge lists corpora as cards by title: providers, items, one pill, Ope
   });
   render(<KnowledgePage sources={[]} canWrite onOpen={() => {}} />);
   const hr = await screen.findByRole("listitem", { name: "HR policies" });
-  assert.ok(within(hr).getByRole("heading", { name: "HR policies" }));
+  // The title is the card's one link.
+  assert.ok(within(hr).getByRole("link", { name: "HR policies" }));
   assert.ok(within(hr).getByText("Uploads"));
   assert.ok(within(hr).getByText("Google Drive"));
   assert.ok(within(hr).getByText("BigQuery"));
-  assert.ok(within(hr).getByText(words.items(19)));
+  // Each provider is a reference with what it brings.
+  assert.ok(within(hr).getByText("· 12"));
+  assert.ok(within(hr).getByText("· 3"));
+  assert.ok(within(hr).getByText("· 4"));
   assert.ok(within(hr).getByText(words.labels.internal));
   assert.equal(
     within(hr).getByRole("link", { name: "HR policies" }).getAttribute("href"),
     "/knowledge/hr-policies",
   );
-  assert.ok(within(hr).getByRole("button", { name: words.more("HR policies") }));
+  assert.ok(within(hr).getByRole("button", { name: more }));
   // A corpus with no title shows its name.
   const finance = screen.getByRole("listitem", { name: "finance" });
   assert.ok(within(finance).getByText(words.labels.public));
   // Only the owner changes a corpus.
-  assert.equal(within(finance).queryByRole("button", { name: words.more("finance") }), null);
+  assert.equal(within(finance).queryByRole("button", { name: more }), null);
   // With corpora shown, New Corpus is the page's one action.
   assert.equal(screen.getAllByRole("button", { name: words.newCorpus }).length, 1);
 });
@@ -235,16 +238,16 @@ test("a corpus page has Sources, Search and Access tabs, members with what they 
     />,
   );
   const handbook = await screen.findByRole("listitem", { name: "handbook" });
-  assert.ok(within(handbook).getByText("Files | 12 items"));
+  assert.ok(within(handbook).getByText(words.holds.files));
+  assert.ok(within(handbook).getByText("· 12"));
   assert.ok(within(handbook).getByText(words.status.ready));
   assert.equal(
-    within(handbook)
-      .getByRole("link", { name: `${words.open} handbook` })
-      .getAttribute("href"),
+    within(handbook).getByRole("link", { name: "handbook" }).getAttribute("href"),
     "/knowledge/hr-policies/sources/handbook",
   );
   const warehouse = screen.getByRole("listitem", { name: "people-warehouse" });
-  assert.ok(within(warehouse).getByText("Records | 4 items"));
+  assert.ok(within(warehouse).getByText(words.holds.records));
+  assert.ok(within(warehouse).getByText("· 4"));
   assert.ok(within(warehouse).getByText(words.status.failed));
   assert.ok(screen.getByText("What HR has written down"));
   // The header names it by its title.
@@ -426,7 +429,12 @@ test("a reader who does not own a corpus sees it read-only", async () => {
   );
   await screen.findByRole("listitem", { name: "handbook" });
   assert.equal(screen.queryByRole("button", { name: words.addSource }), null);
-  assert.equal(screen.queryByRole("button", { name: words.more("handbook") }), null);
+  assert.equal(
+    within(screen.getByRole("listitem", { name: "handbook" })).queryByRole("button", {
+      name: more,
+    }),
+    null,
+  );
   view.rerender(
     <CorpusPage
       name="hr-policies"
@@ -975,8 +983,11 @@ test("a reader who owns no document and not the corpus sees the graph without ac
   render(page({ tab: "graph", viewer: "carol" }));
   await screen.findByRole("listitem", { name: "Leave policy" });
   assert.equal(screen.queryByRole("button", { name: words.graph.rebuild }), null);
-  assert.equal(screen.queryByRole("button", { name: words.more("HR.PUBLIC.EMPLOYEES") }), null);
-  assert.equal(screen.queryByRole("button", { name: words.more("Leave policy") }), null);
+  for (const name of ["HR.PUBLIC.EMPLOYEES", "Leave policy"])
+    assert.equal(
+      within(screen.getByRole("listitem", { name })).queryByRole("button", { name: more }),
+      null,
+    );
 });
 
 const ontology = {
@@ -1237,7 +1248,7 @@ test("the whole card opens its corpus, with no Open button, and its menu stays a
   net = stubFetch({ "GET /api/corpora": () => ({ corpora: [corpus()] }) });
   render(<KnowledgePage sources={[]} canWrite onOpen={(name) => opened.push(name)} />);
   const card = await screen.findByRole("listitem", { name: "HR policies" });
-  assert.equal(within(card).queryByRole("button", { name: new RegExp(`^${words.open}`) }), null);
+  assert.equal(within(card).queryByRole("button", { name: /^Open/ }), null);
   assert.equal(within(card).getAllByRole("link").length, 1);
   const link = within(card).getByRole("link", { name: "HR policies" });
   link.focus();
@@ -1271,5 +1282,56 @@ test("a corpus made before labels reads as internal, never an empty pill", async
       }) as HTMLSelectElement
     ).value,
     "internal",
+  );
+});
+
+test("corpus cards, source cards and search hits are the console's shared cards and references", async () => {
+  net = stubFetch({
+    "GET /api/corpora": () => ({ corpora: [corpus()] }),
+    "GET /api/corpora/hr-policies": () => corpus(),
+    "GET /api/corpora/hr-policies/search": () => ({
+      hits: [
+        {
+          corpus: "hr-policies",
+          member: { kind: "source", name: "handbook" },
+          holds: "files",
+          title: "Parental leave",
+          text: "Twenty weeks of paid leave.",
+          score: 0.03,
+          also: [{ kind: "source", name: "drive-hr" }],
+        },
+      ],
+      warnings: [],
+    }),
+  });
+  const shared = (item: HTMLElement) => {
+    // One ItemCard: an article whose title link covers it, with references in its facts.
+    const card = item.querySelector("article");
+    assert.ok(card, "an ItemCard");
+    return card as HTMLElement;
+  };
+  const list = render(<KnowledgePage sources={[]} canWrite onOpen={() => {}} />);
+  const corpusCard = shared(await screen.findByRole("listitem", { name: "HR policies" }));
+  assert.deepEqual(
+    [...corpusCard.querySelectorAll("[data-reference]")].map((r) => [
+      r.getAttribute("data-reference"),
+      r.textContent,
+    ]),
+    [
+      ["file", "Uploads· 12"],
+      ["corpus", "Google Drive· 3"],
+      ["corpus", "BigQuery· 4"],
+    ],
+  );
+  list.unmount();
+  const sources = render(page());
+  const member = shared(await screen.findByRole("listitem", { name: "handbook" }));
+  assert.equal(member.querySelector("[data-reference]")?.textContent, "Files· 12");
+  sources.unmount();
+  render(page({ tab: "search", q: "leave" }));
+  const hit = shared(await screen.findByRole("listitem", { name: "Parental leave" }));
+  assert.deepEqual(
+    [...hit.querySelectorAll("[data-reference]")].map((r) => r.textContent),
+    ["handbook", "drive-hr"],
   );
 });
