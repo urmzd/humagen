@@ -22,7 +22,7 @@ import (
 // them, on the offline model.
 func withEntry(t *testing.T, cfg platform.Config) *platform.Platform {
 	t.Helper()
-	cfg.BuiltinProvider, cfg.BuiltinModel = "offline", "offline"
+	cfg.TestBuiltinProvider, cfg.TestBuiltinModel = "offline", "offline"
 	p := startWith(t, cfg)
 	if err := p.EnsureBuiltins(t.Context(), tenant); err != nil {
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func entryCast(entry [][]saigetypes.Delta, others map[string][][]saigetypes.Delt
 
 func stageEntry(t *testing.T, c *cast) *platform.Platform {
 	t.Helper()
-	p := stage(t, c, platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline", Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
+	p := stage(t, c, platform.Config{TestBuiltinProvider: "offline", TestBuiltinModel: "offline", Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
 	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "*"})
 	if err := p.EnsureBuiltins(t.Context(), tenant); err != nil {
 		t.Fatal(err)

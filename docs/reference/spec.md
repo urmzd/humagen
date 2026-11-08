@@ -136,7 +136,8 @@ spec:
     # There is no built-in model or offline stand-in. The platform's own agents
     # (writer, analyst, builder, reviewers) ship with a chain, anthropic then
     # openai then google, and run on the first one a declared or
-    # administrator-enabled provider answers.
+    # administrator-enabled provider answers. execution.builtin is no longer
+    # read: a file that sets it still starts, with a load note.
 
   sandbox:                  # slot: docker | local | unisolated. Where a run's tools execute
     kind: docker            # the default: an instance per run, destroyed when the run ends
@@ -788,8 +789,9 @@ are its definition's, and nothing overrides them per message. saige's format
 has no effort field, so an `.agent.md` file sets it in its metadata,
 `metadata: {humagen_effort: high}`, and the API as the agent's `effort`. It
 is sent only to the chain's first model, and only when that model takes it;
-a run moved to a fallback answers at the model's default. A `choices` block from an older policy
-is not read. `subscriptions` is refused: the platform decides
+a run moved to a fallback answers at the model's default. A `choices` block
+from an older policy or agent spec is not read: a file that has one still
+starts, with a load note. `subscriptions` is refused: the platform decides
 what wakes an agent. saige checks the file at start, then the platform's
 own rules apply as to any spec. The file's `version` is not kept: the store
 numbers each change, and a run pins the version, digest and policy it

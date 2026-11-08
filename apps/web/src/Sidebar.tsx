@@ -47,13 +47,13 @@ import {
   type RowStanding,
   standingOf,
 } from "./conversationList.ts";
-import { dayOf, sourceOf } from "./History.tsx";
+import { sourceOf } from "./History.tsx";
 import { useMarks } from "./marks.ts";
 import { ConversationPeek, PeekCard, usePeek } from "./RowPreview.tsx";
 import { type Standing, useRecents } from "./recents.ts";
 import { href, type Route, type Page as RoutePage } from "./route.ts";
 import { Avatar, workspaceSettingsRoute } from "./Settings.tsx";
-import { type Alert, openAlert, orderAlerts, priorityRank } from "./sessionCenter.ts";
+import { type Alert, holdsAnAlertOnly, openAlert, orderAlerts } from "./sessionCenter.ts";
 import { AgentMark, type Flash, FlashNote, Popover, SkeletonRows, useFlash } from "./ui.tsx";
 import { workspaceHub } from "./workspace-navigation.ts";
 
@@ -285,16 +285,43 @@ function sourceGlyph(origin: string): ReactNode {
   ) : undefined;
 }
 
-/** Conversations under Today, Yesterday, This week and each month, newest first. */
-function byDay(rows: ThreadSummary[], now: Date): { day: string; items: ThreadSummary[] }[] {
-  const out: { day: string; items: ThreadSummary[] }[] = [];
+/** Today, Yesterday or Earlier, by the reader's own calendar day. */
+export function recentDay(iso: string, now: Date): "today" | "yesterday" | "earlier" {
+  const start = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((start(now) - start(new Date(iso))) / 86_400_000);
+  return days <= 0 ? "today" : days === 1 ? "yesterday" : "earlier";
+}
+
+const DAY_ORDER = ["today", "yesterday", "earlier"] as const;
+const dayLabel = {
+  today: defaultCopy.history.today,
+  yesterday: defaultCopy.history.yesterday,
+  earlier: defaultCopy.sidebar.earlier,
+};
+
+/**
+ * Recents as one list: each session once, under Today, Yesterday and
+ * Earlier in the reader's local time, in that order, newest first in each.
+ */
+export function recentGroups(
+  rows: ThreadSummary[],
+  now: Date,
+): { day: (typeof DAY_ORDER)[number]; label: string; items: ThreadSummary[] }[] {
+  const seen = new Set<string>();
+  const buckets = { today: [], yesterday: [], earlier: [] } as Record<
+    (typeof DAY_ORDER)[number],
+    ThreadSummary[]
+  >;
   for (const t of rows) {
-    const day = dayOf(t.updated_at, now);
-    const last = out.at(-1);
-    if (last?.day === day) last.items.push(t);
-    else out.push({ day, items: [t] });
+    if (seen.has(t.id)) continue;
+    seen.add(t.id);
+    buckets[recentDay(t.updated_at, now)].push(t);
   }
-  return out;
+  return DAY_ORDER.filter((d) => buckets[d].length).map((d) => ({
+    day: d,
+    label: dayLabel[d],
+    items: buckets[d].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at)),
+  }));
 }
 
 function TaskRow({
@@ -952,15 +979,21 @@ export function Sidebar({
   for (const alert of orderAlerts(sessionAlerts.filter(openAlert)))
     if (alert.session && !priorityBySession.has(alert.session))
       priorityBySession.set(alert.session, alert.priority ?? "normal");
-  const unpinned = recents
-    .filter((t) => !pinnedSet.has(t.id) && !gone.has(t.id) && !archivedSet.has(t.id))
-    .map(shown)
-    .sort(
-      (a, b) =>
-        (priorityBySession.has(a.id) ? priorityRank(priorityBySession.get(a.id)) : 3) -
-          (priorityBySession.has(b.id) ? priorityRank(priorityBySession.get(b.id)) : 3) ||
-        b.updated_at.localeCompare(a.updated_at),
-    );
+  // Recents is newest first. An alert marks its session's row; it does not move
+  // it, and a session that only holds an alert is in Alerts, not here.
+  const unpinned = [
+    ...new Map(
+      recents
+        .filter(
+          (t) =>
+            !pinnedSet.has(t.id) &&
+            !gone.has(t.id) &&
+            !archivedSet.has(t.id) &&
+            (t.id === selected || !holdsAnAlertOnly(t)),
+        )
+        .map((t) => [t.id, shown(t)] as const),
+    ).values(),
+  ].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
   const currentThread = selected ? known.get(selected) : undefined;
   if (
     currentThread &&
@@ -1017,13 +1050,11 @@ export function Sidebar({
     />
   );
   const viewTitle =
-    view === "recents" && unpinned.length > 0
-      ? (byDay(unpinned, new Date(now))[0]?.day ?? defaultCopy.sidebar.recents)
-      : view === "projects"
-        ? defaultCopy.sidebar.projects
-        : view === "archived"
-          ? defaultCopy.sidebar.archived
-          : defaultCopy.sidebar.recents;
+    view === "projects"
+      ? defaultCopy.sidebar.projects
+      : view === "archived"
+        ? defaultCopy.sidebar.archived
+        : defaultCopy.sidebar.recents;
 
   const clear = () => {
     setStanding("");
@@ -1342,9 +1373,14 @@ export function Sidebar({
                     </li>
                   )}
                   {view === "recents" &&
-                    byDay(unpinned, new Date(now)).map((g, i) => (
-                      <li key={g.day} className={i === 0 ? "" : "pt-3"}>
-                        {i > 0 && <p className="px-2.5 pb-1 text-aui-xs text-aui-muted">{g.day}</p>}
+                    recentGroups(unpinned, new Date(now)).map((g, i) => (
+                      <li
+                        key={g.day}
+                        className={i === 0 ? "" : "pt-3"}
+                        data-testid="recents-group"
+                        data-day={g.day}
+                      >
+                        <p className="px-2.5 pb-1 text-aui-xs text-aui-muted">{g.label}</p>
                         <ul>{g.items.map((t) => row(t, { label: true }))}</ul>
                       </li>
                     ))}

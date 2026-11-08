@@ -9,6 +9,7 @@ import {
   type Alert,
   alertPriority,
   attentionAlerts,
+  holdsAnAlertOnly,
   isRootSession,
   openAlert,
   orderAlerts,
@@ -278,16 +279,15 @@ export function SessionsPage({
       setBusy(false);
     }
   };
+  // Newest first. An alert marks its session's row and does not move it; a
+  // session that only holds an alert is in Alerts, not here.
   const shown = (sessions ?? []).filter(
     (s) =>
+      !holdsAnAlertOnly(s.conversation) &&
       (!route.q || `${s.title} ${s.agent}`.toLowerCase().includes(route.q.toLowerCase())) &&
       (!route.place || placeOfSession(s) === route.place),
   );
-  const urgency = (id: string) => {
-    const a = orderAlerts(alerts.filter((a) => a.session === id && openAlert(a)))[0];
-    return a ? (alertPriority(a) === "urgent" ? 0 : alertPriority(a) === "normal" ? 1 : 2) : 3;
-  };
-  shown.sort((a, b) => urgency(a.id) - urgency(b.id) || b.updated_at.localeCompare(a.updated_at));
+  shown.sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
   return (
     <Page title="Sessions" lede="Your work, with each agent's child sessions kept together.">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
