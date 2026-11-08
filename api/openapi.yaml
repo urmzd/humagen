@@ -36,6 +36,8 @@ servers:
   - url: http://127.0.0.1:8080
     description: A local server started with `make dev`.
 tags:
+  - name: connections
+    description: Personal authorizations and installed service connections.
   - name: sessions
     description: Continuing conversations with one agent and their child sessions.
   - name: health
@@ -5931,32 +5933,64 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
-  /api/knowledge/{name}/credential:
+  "/api/knowledge/{name}/credential":
     put:
       parameters:
-        - {name: name, in: path, required: true, schema: {type: string}}
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
       operationId: connectKnowledgeSource
-      tags: [knowledge]
-      summary: Connect your own source credential reference
+      tags:
+      - knowledge
+      summary: Connect your own source account or credential reference
       x-permission: knowledge:read
       requestBody:
         required: true
         content:
           application/json:
-            schema: {type: object, required: [ref], properties: {ref: {type: string, maxLength: 512}}}
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                ref:
+                  type: string
+                  minLength: 1
+                  maxLength: 512
+                oauth:
+                  type: string
+                  enum:
+                  - drive
+              oneOf:
+              - required:
+                - ref
+              - required:
+                - oauth
       responses:
-        "200":
-          description: The source. Needs attention records a failed refresh without discarding its last good copy.
+        '200':
+          description: The source. Needs attention records a failed refresh without
+            discarding its last good copy.
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/KnowledgeSource"}
-        "400": {$ref: "#/components/responses/BadRequest"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {$ref: "#/components/responses/Forbidden"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "413": {$ref: "#/components/responses/TooLarge"}
-        "429": {$ref: "#/components/responses/TooMany"}
-        "500": {$ref: "#/components/responses/ServerError"}
+              schema:
+                "$ref": "#/components/schemas/KnowledgeSource"
+        '400':
+          "$ref": "#/components/responses/BadRequest"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '413':
+          "$ref": "#/components/responses/TooLarge"
+        '429':
+          "$ref": "#/components/responses/TooMany"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+        '503':
+          "$ref": "#/components/responses/Unavailable"
   /api/knowledge/{name}/sync:
     post:
       parameters:
@@ -8721,6 +8755,224 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/ServerError"
+  "/api/connections/{provider}/check":
+    post:
+      operationId: checkConnection
+      tags:
+      - connections
+      summary: Check currently granted connection access
+      x-permission: runs:write
+      parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: A read-only check result. Healthy false describes refused or
+            expired credentials without exposing secrets.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ConnectionHealth"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '409':
+          "$ref": "#/components/responses/Conflict"
+        '503':
+          "$ref": "#/components/responses/Unavailable"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+  "/api/clients/{id}/check":
+    post:
+      operationId: checkClientConnection
+      tags:
+      - connections
+      summary: Check currently granted connection access
+      x-permission: clients:write
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: A read-only check result. Healthy false describes refused or
+            expired credentials without exposing secrets.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ConnectionHealth"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+  "/api/connections/presets":
+    get:
+      operationId: listConnectionPresets
+      tags:
+      - sessions
+      summary: List connection presets
+      x-permission: runs:read
+      responses:
+        '200':
+          description: Successful session operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/ConnectionPreset"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+  "/api/connections/{provider}/authorize":
+    post:
+      operationId: authorizeConnection
+      tags:
+      - sessions
+      summary: Authorize connection
+      description: GitHub installation requires a person with clients:write in addition
+        to runs:write.
+      x-permission: runs:write
+      parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/ConnectionAuthorizationInput"
+      responses:
+        '200':
+          description: Successful session operation
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ConnectionAuthorization"
+        '400':
+          "$ref": "#/components/responses/BadRequest"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '409':
+          "$ref": "#/components/responses/Conflict"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+        '503':
+          "$ref": "#/components/responses/Unavailable"
+  "/api/connections/{provider}/callback":
+    post:
+      operationId: completeConnection
+      tags:
+      - sessions
+      summary: Complete connection
+      description: GitHub installation requires a person with clients:write in addition
+        to runs:write.
+      x-permission: runs:write
+      parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/ConnectionCallback"
+      responses:
+        '204':
+          description: Successful session operation
+        '400':
+          "$ref": "#/components/responses/BadRequest"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '409':
+          "$ref": "#/components/responses/Conflict"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+        '503':
+          "$ref": "#/components/responses/Unavailable"
+  "/api/connections/{provider}":
+    get:
+      operationId: getConnection
+      tags:
+      - connections
+      summary: Read your connection and its visible configured uses
+      x-permission: runs:read
+      parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Current connection and configured uses visible to the caller.
+            A known disconnected preset remains readable.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ConnectionDetail"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+    delete:
+      operationId: disconnectConnection
+      tags:
+      - sessions
+      summary: Disconnect connection
+      x-permission: runs:write
+      parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Successful session operation
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+        '503':
+          "$ref": "#/components/responses/Unavailable"
 components:
   securitySchemes:
     bearerToken:
@@ -8853,6 +9105,11 @@ components:
       description: How far back to look, as a Go duration up to `720h`, such as `1h` or `24h`. Defaults to `1h`.
       schema: {type: string}
   responses:
+    Unavailable:
+      description: The connection service is not configured or temporarily unavailable.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorBody"}
     ServerError:
       description: An error on the server's side. It is logged and reported without detail.
       content:
@@ -10497,21 +10754,39 @@ components:
             when the run acts for nobody.
           type: string
     ToolCredentials:
-      description: The workspace's tools that act as the caller, how the caller stands with each, and what the workspace lets people give.
+      description: The workspace's tools that act as the caller, how the caller stands
+        with each, and what the workspace lets people give.
       type: object
-      required: [providers, values, references]
+      required:
+      - providers
+      - values
+      - references
+      - allowed_hosts
+      - oauth_available
       properties:
         providers:
           type: array
           maxItems: 64
-          items: {$ref: "#/components/schemas/ToolCredential"}
+          items:
+            "$ref": "#/components/schemas/ToolCredential"
         values:
-          description: Whether this workspace lets people store a credential's value with Humagen. Off, people give only a reference to where it is kept.
+          description: Whether this workspace lets people store a credential's value with
+            Humagen. Off, people give only a reference to where it is kept.
           type: boolean
         references:
-          description: How the references the caller may give start, their own under each start the operator listed, with the caller's subject in place of `{subject}`. A start the caller's subject cannot be written in is left out, and a machine gets none. Empty means no reference can be given.
+          description: How the references the caller may give start, their own under each
+            start the operator listed, with the caller's subject in place of `{subject}`.
+            A start the caller's subject cannot be written in is left out, and a machine
+            gets none. Empty means no reference can be given.
           type: array
-          items: {type: string}
+          items:
+            type: string
+        oauth_available:
+          type: boolean
+        allowed_hosts:
+          type: array
+          items:
+            type: string
     RunSettings:
       description: One level of the run settings. Ceilings bound a run and the strictest level wins; preferences choose within them and the nearest level wins.
       type: object
@@ -16625,3 +16900,174 @@ components:
             const: run.feedback.v1
           data:
             "$ref": "#/components/schemas/FeedbackPayload"
+    ConnectionHealth:
+      type: object
+      additionalProperties: false
+      required:
+      - healthy
+      - checked_at
+      - message
+      properties:
+        healthy:
+          type: boolean
+        checked_at:
+          type: string
+          format: date-time
+        message:
+          type: string
+    ConnectionMapping:
+      type: object
+      additionalProperties: false
+      required:
+      - kind
+      - id
+      - name
+      - agents
+      - projects
+      - tools
+      - places
+      properties:
+        kind:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        agents:
+          type: array
+          items:
+            type: string
+        projects:
+          type: array
+          items:
+            type: string
+        tools:
+          type: array
+          items:
+            type: string
+        health:
+          "$ref": "#/components/schemas/ConnectionHealth"
+        places:
+          type: array
+          items:
+            type: string
+          description: Configured reply channels or repositories visible to the caller.
+    ConnectionDetail:
+      type: object
+      additionalProperties: false
+      required:
+      - connection
+      - mappings
+      - note
+      - truncated
+      properties:
+        connection:
+          "$ref": "#/components/schemas/ConnectionPreset"
+        mappings:
+          type: array
+          maxItems: 200
+          items:
+            "$ref": "#/components/schemas/ConnectionMapping"
+        note:
+          type: string
+        truncated:
+          type: boolean
+    ConnectionPreset:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - name
+      - kind
+      - available
+      - connected
+      - scope
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+        endpoint:
+          type: string
+        available:
+          type: boolean
+        connected:
+          type: boolean
+        reason:
+          type: string
+        scope:
+          type: string
+        granted_scopes:
+          description: Granted scopes reported by the provider. Omitted when it did not
+            report scopes.
+          type: array
+          items:
+            type: string
+        reconnect_required:
+          type: boolean
+          description: A confirmed provider rejection requires renewed consent.
+        health:
+          "$ref": "#/components/schemas/ConnectionHealth"
+    ConnectionRegistration:
+      type: object
+      additionalProperties: false
+      required:
+      - issuer
+      - client_id
+      properties:
+        issuer:
+          type: string
+          format: uri
+        client_id:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        client_secret:
+          type: string
+          maxLength: 8192
+          format: password
+          writeOnly: true
+    ConnectionAuthorizationInput:
+      type: object
+      additionalProperties: false
+      properties:
+        endpoint:
+          type: string
+        scope:
+          type: string
+          enum:
+          - person
+          - workspace
+        registration:
+          "$ref": "#/components/schemas/ConnectionRegistration"
+    ConnectionAuthorization:
+      type: object
+      additionalProperties: false
+      required:
+      - url
+      - expires_at
+      properties:
+        provider:
+          type: string
+        url:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+    ConnectionCallback:
+      type: object
+      additionalProperties: false
+      required:
+      - state
+      - code
+      properties:
+        installation_id:
+          type: string
+          description: Required with GitHub installation callbacks; verified by GitHub
+            before saving.
+        state:
+          type: string
+        code:
+          type: string

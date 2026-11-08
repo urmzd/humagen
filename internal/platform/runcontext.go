@@ -295,6 +295,12 @@ func (p *Platform) SetPersonContext(_ context.Context, who auth.Principal, in pe
 		return personctx.Context{}, err
 	}
 	for _, t := range in.ToolServers {
+		if t.OAuth != "" {
+			endpoint, err := p.oauthResource(who.Tenant, who.Subject, t.OAuth)
+			if err != nil || t.URL != endpoint || t.Credential != "" {
+				return personctx.Context{}, fmt.Errorf("%w: OAuth connection does not match this server", personctx.ErrInvalid)
+			}
+		}
 		if t.Credential != "" && !p.refAllowed(who.Tenant, who.Subject, t.Credential) {
 			return personctx.Context{}, fmt.Errorf("%w: tool server %q: %w", personctx.ErrInvalid, t.Name, errPersonRef)
 		}

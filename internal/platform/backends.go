@@ -26,6 +26,7 @@ import (
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/catalog"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/connectionauth"
 	"github.com/urmzd/humagen/pkg/contextflags"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/drive"
@@ -329,5 +330,14 @@ func (p *Platform) openStores(cfg Config) error {
 	// same way.
 	p.Credentials, err = credentials.Open(perRequest, p.secrets)
 	keep("credentials", err)
+	p.connectionHealth = state.NewTable[connectionObservation](perRequest, "connection_health")
+	if cfg.ConnectionAuth != nil {
+		connectionConfig := *cfg.ConnectionAuth
+		connectionConfig.OnAuthFailure = p.RecordConnectionAuthFailure
+		connectionConfig.OnAuthRecovered = p.ResolveConnectionAuthFailure
+		p.ConnectionAuth, err = connectionauth.New(perRequest, connectionConfig)
+		keep("connection authorization", err)
+	}
+	keep("GitHub installation", p.configureGitHubInstall(perRequest, cfg.GitHubInstall))
 	return errors.Join(errs...)
 }

@@ -34,6 +34,7 @@ import (
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/connectionauth"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/inbox"
@@ -147,6 +148,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/agents/{name}/changes", s.authed(auth.AgentsRead, s.seenAgent(s.agentChanges)))
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
 	s.sessionRoutes(mux)
+	mux.HandleFunc("GET /api/connections/presets", s.authed(auth.RunsRead, s.listConnectionPresets))
+	mux.HandleFunc("GET /api/connections/{provider}", s.authed(auth.RunsRead, s.getConnection))
+	mux.HandleFunc("POST /api/connections/{provider}/check", s.authed(auth.RunsWrite, s.checkConnection))
+	mux.HandleFunc("POST /api/clients/{id}/check", s.authed(auth.ClientsWrite, s.checkClientConnection))
+	mux.HandleFunc("POST /api/connections/{provider}/authorize", s.authed(auth.RunsWrite, s.authorizeConnection))
+	mux.HandleFunc("POST /api/connections/{provider}/callback", s.authed(auth.RunsWrite, s.completeConnection))
+	mux.HandleFunc("DELETE /api/connections/{provider}", s.authed(auth.RunsWrite, s.disconnectConnection))
 	s.agentSetupRoutes(mux)
 	s.outcomeLearningRoutes(mux)
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
@@ -1139,6 +1147,14 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, connectionauth.ErrUnavailable):
+		fail(w, 503, "connection authentication is unavailable")
+	case errors.Is(err, connectionauth.ErrInvalid):
+		fail(w, 400, "invalid connection authentication request")
+	case errors.Is(err, connectionauth.ErrReconnect):
+		fail(w, 409, "reconnect this connection")
+	case errors.Is(err, connectionauth.ErrBusy):
+		fail(w, 409, "connection authentication is already in progress")
 	case errors.Is(err, orchsession.ErrNotFound):
 		notFound(w)
 	case errors.Is(err, orchsession.ErrInvalid):

@@ -34,11 +34,22 @@ func (p *Platform) ClientCapabilities(tenant, id string) (InstallationCapabiliti
 	if err != nil {
 		return InstallationCapabilities{}, err
 	}
-	out := InstallationCapabilities{Version: c.Version, Managed: c.Managed != "", Legacy: c.Capabilities == nil, Events: []InstallationEvent{}, Actions: []InstallationAction{}, DeliverOutcomes: c.AllowsOutcomes()}
+	out := InstallationCapabilities{Version: c.Version, Managed: c.Managed != "" && c.Managed != clients.ManagedInstall, Legacy: c.Capabilities == nil, Events: []InstallationEvent{}, Actions: []InstallationAction{}, DeliverOutcomes: c.AllowsOutcomes()}
 	for _, id := range clients.EventIDs(c.Surface) {
 		out.Events = append(out.Events, InstallationEvent{ID: id, Enabled: c.AllowsEvent(id)})
 	}
-	if st := p.surfaces[string(c.Surface)].seat(tenant, id); st != nil {
+	st := p.surfaces[string(c.Surface)].seat(tenant, id)
+	if st == nil && c.Managed == clients.ManagedInstall {
+		_, secrets, err := p.credentials(tenant, id, c.Credentials, ClientInput{})
+		if err != nil {
+			return out, err
+		}
+		st, err = p.dial(c, secrets)
+		if err != nil {
+			return out, err
+		}
+	}
+	if st != nil {
 		for _, a := range st.peer.Actions() {
 			if len(out.Actions) >= 32 {
 				break
@@ -58,7 +69,7 @@ func (p *Platform) SetClientCapabilities(_ context.Context, who auth.Principal, 
 	if err != nil {
 		return InstallationCapabilities{}, err
 	}
-	if c.Managed != "" {
+	if c.Managed != "" && c.Managed != clients.ManagedInstall {
 		return InstallationCapabilities{}, clients.ErrManaged
 	}
 	if c.Version != version {

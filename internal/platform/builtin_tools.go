@@ -44,7 +44,7 @@ func AnalystTools() []string { return []string{ToolRunsSummary, ToolListAlerts, 
 
 // BuilderTools are the tools for reading and changing agents.
 func BuilderTools() []string {
-	return []string{ToolListAgents, ToolReadAgent, ToolSaveAgent, ToolPauseAgent, ToolRetireAgent, ToolWriteEval, ToolRunEval, ToolReadEvals, ToolPreviewChange, ToolApplyChange, ToolRecordEval, ToolWorkspacePrompt, ToolPreviewWorkspacePrompt, ToolApplyWorkspacePrompt}
+	return []string{ToolListAgents, ToolReadAgent, ToolSaveAgent, ToolPauseAgent, ToolRetireAgent, ToolWriteEval, ToolRunEval, ToolReadEvals, ToolPreviewChange, ToolApplyChange, ToolRecordEval, ToolConnections, ToolConnect, ToolWorkspacePrompt, ToolPreviewWorkspacePrompt, ToolApplyWorkspacePrompt}
 }
 
 // toolAskPerson is the runtime's tool for asking a person something.
@@ -101,6 +101,8 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 		ToolPreviewChange:          p.builderPreviewChangeTool(req),
 		ToolApplyChange:            p.builderApplyChangeTool(req),
 		ToolRecordEval:             p.builderRecordEvalTool(req),
+		ToolConnections:            p.builderConnectionsTool(req, false),
+		ToolConnect:                p.builderConnectionsTool(req, true),
 		ToolWorkspacePrompt:        p.builderWorkspacePromptTool(req),
 		ToolPreviewWorkspacePrompt: p.builderPreviewWorkspacePromptTool(req),
 		ToolApplyWorkspacePrompt:   p.builderApplyWorkspacePromptTool(req),
