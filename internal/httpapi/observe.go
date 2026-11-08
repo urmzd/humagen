@@ -656,7 +656,7 @@ func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Pri
 		if !seer.Suite(suite) {
 			continue
 		}
-		runs, _ := s.P.Evals.Runs(who.Tenant, suite.Name)
+		runs, _ := s.P.EvalRunsView(who, suite.Name)
 		if len(runs) > 20 {
 			runs = runs[:20]
 		}
@@ -665,7 +665,7 @@ func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Pri
 				runs[i].Results = []evals.Result{}
 			}
 		}
-		out = append(out, suiteView{Suite: suite, Runs: orEmpty(runs)})
+		out = append(out, suiteView{Suite: s.P.EvalSuiteView(suite), Runs: orEmpty(runs)})
 	}
 	ok(w, http.StatusOK, map[string]any{"suites": out})
 }
@@ -710,6 +710,11 @@ func (s *Server) putSuite(replace bool) handler {
 			s.problem(w, err)
 			return
 		}
+		suite, err = s.P.MergeEvalSuiteReplay(who, suite, replace)
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
 		suite.CreatedBy, suite.UpdatedAt = who.Subject, time.Now()
 		if err := s.P.Evals.Put(who.Tenant, suite, replace); err != nil {
 			s.problem(w, err)
@@ -719,7 +724,7 @@ func (s *Server) putSuite(replace bool) handler {
 		if replace {
 			status = http.StatusOK
 		}
-		ok(w, status, suite)
+		ok(w, status, s.P.EvalSuiteView(suite))
 	}
 }
 
@@ -749,7 +754,7 @@ func (s *Server) runSuite(w http.ResponseWriter, r *http.Request, who auth.Princ
 }
 
 func (s *Server) suiteRuns(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	runs, err := s.P.Evals.Runs(who.Tenant, r.PathValue("name"))
+	runs, err := s.P.EvalRunsView(who, r.PathValue("name"))
 	if err != nil {
 		s.problem(w, err)
 		return

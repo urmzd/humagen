@@ -714,6 +714,8 @@ and GitHub release from `main`, using the main-only `release` environment.
 | Usage in the Slack app | Not shown, on purpose: the console shows none on a turn either. A Humagen usage summary would let both show it |
 | Uploading binary files (PDF, images) to knowledge or a message | Not built. Files are read as text in the browser |
 | Evals against a knowledge variant | Not built. Evals search the current view |
+| Eval history preserves original replay access after suite edits | Built. Per-run dependencies survive save, restart and interrupted-run cleanup. HTTP and builder history recheck current source and run access; unknown historical provenance fails closed. Covered by `TestHistoryRetainsExecutionAccessAcrossSaveRestartAndInterruption`, `TestEvalHistoryRetainsOriginalAccessAfterCasesRemovedOrReplaced`, `TestEvalHistoryRechecksOriginalRunAndSourceAccess` and `TestEvalHistoryRoutesDoNotDeclassifyRemovedPrivateReplay` |
+| Stable instruction snapshots bound text, layer metadata and encoded bytes | Built. Unicode character limits and the persisted byte bound are checked before pinning and on read. `TestLayerLabelsAndEncodedSnapshotsAreBounded` and `TestBoundedSnapshotsAlwaysRoundtripIncludingEmptyWorkspaceOrigin` cover malformed labels, JSON expansion and accepted roundtrips |
 | Summarizing history | Not built. Long conversations are truncated to the limit, oldest turns first |
 | Resource link rules and project fork snapshots | Durable bounded rule matching and ambiguity fallback in `pkg/sourcelinks`. Recorded fork snapshots restore only immutable Off rules, without credentials or live bindings. Configuration and connector wiring remain under implementation |
 | Conversation-first collections, browser and protocol expansion | Proposed next backend delivery: tenant-scoped Corpus, CorpusRun, stable CorpusFile, immutable FileVersion, RunFile membership and version-bound chunks with derived vector/fact provenance. Verified pull planning separates content, metadata, ACL and deletion changes; bounded resumable attempts stage complete manifests before atomic last-good publication, with independent authorization/cache invalidation. Preserve Source API compatibility and compose Saige SyncSource/retrieval. Browser and A2UI/A2A/AG-UI adapters remain planned; native AgentSpec, `pkg/call` and human-reviewed publication remain authoritative. See [the corpus and workspace design](../rfcs/0003-conversation-first-delivery.md#proposed-corpus-model). |
@@ -843,3 +845,9 @@ transcripts and children, invite people, link evidence, and stop a subtree.
 Reads and streams recheck ancestor visibility. SSE resumes by per-run cursors
 and sends an authoritative reset when the retained cursor window fills.
 Native child calls use the existing governed call path and shared session stores.
+
+Evaluation persistence now retains deterministic online checks, version change
+scorecards, feedback candidates, and exact tool/retrieval replay receipts. Shared
+prompt snapshots enforce content hashes and bounded layers. Public suite reads
+hide retained source bytes and recheck the original run and current source access.
+Builder policy, prompt admission, and scheduled execution follow in later layers.
