@@ -255,7 +255,7 @@ export function StatusLine({
                 <span className="opacity-70">/{session.budget.period.slice(0, 2)}</span>
               </span>
             </span>
-            {b.blocked && <span className="font-medium">· blocked</span>}
+            {b.blocked && <span className="font-medium">| blocked</span>}
           </button>
         </Segment>
       )}

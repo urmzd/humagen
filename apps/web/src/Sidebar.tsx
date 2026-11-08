@@ -5,6 +5,7 @@ import {
   BotIcon,
   CalendarIcon,
   CheckIcon,
+  ChevronRightIcon,
   CodeIcon,
   EllipsisVerticalIcon,
   FolderIcon,
@@ -125,23 +126,49 @@ function Choices<T extends string>({
   options: { value: T; label: string; mark?: ReactNode }[];
   onChange: (next: T) => void;
 }) {
+  // One line per filter, its current value on the right; it opens in place.
+  const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const current = options.find((o) => o.value === value)?.label ?? "";
   return (
-    <fieldset className="flex flex-col pb-1">
-      <legend className="px-2.5 pt-2 pb-1 text-aui-xs text-aui-muted">{title}</legend>
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          aria-pressed={o.value === value}
-          onClick={() => onChange(o.value)}
-          className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-        >
-          {o.mark}
-          <span className="min-w-0 flex-1 truncate">{o.label}</span>
-          {o.value === value && <CheckIcon size={14} />}
-        </button>
-      ))}
-    </fieldset>
+    <div className="flex flex-col">
+      <button
+        ref={trigger}
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+      >
+        <span className="min-w-0 flex-1 truncate">{title}</span>
+        <span className="truncate text-aui-muted">{current}</span>
+        <ChevronRightIcon
+          size={14}
+          aria-hidden
+          className={`shrink-0 text-aui-muted transition-transform ${open ? "rotate-90" : ""}`}
+        />
+      </button>
+      {open && (
+        <div role="group" aria-label={title} className="flex flex-col pb-1 pl-2">
+          {options.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              aria-pressed={o.value === value}
+              onClick={() => {
+                onChange(o.value);
+                setOpen(false);
+                trigger.current?.focus();
+              }}
+              className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+            >
+              {o.mark}
+              <span className="min-w-0 flex-1 truncate">{o.label}</span>
+              {o.value === value && <CheckIcon size={14} />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -203,7 +230,7 @@ function ProjectGroup({
     <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary
         aria-current={!open && holdsCurrent ? "true" : undefined}
-        className="flex min-h-10 cursor-pointer list-none items-center gap-1.5 rounded-aui pr-12 pl-1.5 text-aui-xs font-medium text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current]:bg-aui-subtle aria-[current]:text-aui-fg aria-[current]:shadow-[inset_2px_0_0_var(--aui-accent)] [&::-webkit-details-marker]:hidden"
+        className="flex min-h-10 cursor-pointer list-none items-center gap-1.5 rounded-aui pr-12 pl-1.5 text-aui-xs font-medium text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current]:bg-aui-subtle aria-[current]:text-aui-fg [&::-webkit-details-marker]:hidden"
       >
         <svg
           aria-hidden="true"
@@ -359,7 +386,7 @@ function TaskRow({
           aria-describedby={peek.at ? peekId : undefined}
           data-thread-row={task.id}
           aria-current={current ? "page" : undefined}
-          className={`flex min-h-10 pointer-coarse:min-h-11 w-full items-start gap-2 rounded-aui py-1.5 pr-2 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-subtle aria-[current=page]:font-medium aria-[current=page]:text-aui-fg aria-[current=page]:shadow-[inset_2px_0_0_var(--aui-accent)] ${current || peek.at ? "[@media(pointer:coarse)]:pr-12" : ""} ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:pr-10 [@media(pointer:fine)]:group-hover/task:pr-10" : ""}`}
+          className={`flex min-h-8 pointer-coarse:min-h-11 w-full items-center gap-2 rounded-aui py-1 pr-2 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-subtle aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${current || peek.at ? "[@media(pointer:coarse)]:pr-12" : ""} ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:pr-10 [@media(pointer:fine)]:group-hover/task:pr-10" : ""}`}
         >
           {priority && (
             <span
@@ -367,7 +394,7 @@ function TaskRow({
               aria-label={`${priority} alert`}
               className={`mt-0.5 text-aui-xs ${priority === "urgent" ? "text-aui-bad" : "text-aui-muted"}`}
             >
-              {priority === "urgent" ? "!" : priority === "normal" ? "•" : "·"}
+              {priority === "urgent" ? "!" : priority === "normal" ? "•" : "|"}
             </span>
           )}
           {!priority && dot && (
@@ -387,11 +414,6 @@ function TaskRow({
                 />
               )}
             </span>
-            {projectLabel && (
-              <span className="truncate text-aui-2xs font-normal text-aui-muted">
-                {projectLabel}
-              </span>
-            )}
           </span>
           <span
             data-row-age
@@ -828,15 +850,17 @@ export function Sidebar({
       icon: <PlugIcon />,
       show: can("runs:read") || can("clients:read"),
       active:
-        here("connections", "context") ||
+        here("connections") ||
         (route.page === "library" && ["sources", "catalog"].includes(route.section)),
     },
     {
-      to: { page: "library", section: "skills" } as Route,
-      label: "Library",
+      to: { page: "artifacts" } as Route,
+      label: "Artifacts",
       icon: <LayersIcon />,
-      show: can("projects:read") || can("artifacts:read"),
-      active: hub === "library",
+      show: can("artifacts:read"),
+      active:
+        route.page === "artifacts" ||
+        (route.page === "library" && route.section === "deliverables"),
     },
     {
       to: { page: "settings", section: "profile" } as Route,
@@ -1220,22 +1244,35 @@ export function Sidebar({
                     >
                       {() => (
                         <div className="aui-scroll flex max-h-[60vh] flex-col overflow-y-auto">
+                          <Choices<ListView>
+                            title="View"
+                            value={view}
+                            options={[
+                              { value: "recents", label: defaultCopy.sidebar.recents },
+                              { value: "projects", label: "By project" },
+                              {
+                                value: "archived",
+                                label: `${defaultCopy.sidebar.archived}${marks.archived.length ? ` (${marks.archived.length})` : ""}`,
+                              },
+                            ]}
+                            onChange={setView}
+                          />
                           <Choices
-                            title="Show"
+                            title="Status"
                             value={standing}
                             options={[
-                              { value: "", label: "Every session" },
-                              { value: "running", label: "Running now" },
+                              { value: "", label: "All" },
+                              { value: "running", label: "Running" },
                               { value: "failed", label: "Failed" },
                             ]}
                             onChange={setStanding}
                           />
                           {answering.length > 1 && (
                             <Choices
-                              title="Answered by"
+                              title="Agent"
                               value={agent}
                               options={[
-                                { value: "", label: "Any agent" },
+                                { value: "", label: "Any" },
                                 ...answering.map((a) => ({
                                   value: a,
                                   label: a,
@@ -1245,13 +1282,16 @@ export function Sidebar({
                               onChange={setAgent}
                             />
                           )}
-                          {filters > 0 && (
+                          {(filters > 0 || view !== "recents") && (
                             <button
                               type="button"
-                              onClick={clear}
+                              onClick={() => {
+                                clear();
+                                setView("recents");
+                              }}
                               className="mt-1 rounded-aui border-[var(--humagen-rule)] border-t px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
                             >
-                              Clear filters
+                              Reset to defaults
                             </button>
                           )}
                         </div>
@@ -1259,19 +1299,13 @@ export function Sidebar({
                     </Popover>
                   }
                 >
-                  <select
-                    aria-label="Sidebar session view"
-                    value={view}
-                    onChange={(event) => setView(event.target.value as ListView)}
-                    className="min-w-0 max-w-full rounded-aui bg-transparent py-1 text-aui-xs focus-visible:outline-2 focus-visible:outline-aui-accent"
-                  >
-                    <option value="recents">{defaultCopy.sidebar.recents}</option>
-                    <option value="projects">{defaultCopy.sidebar.projects}</option>
-                    <option value="archived">
-                      {defaultCopy.sidebar.archived}
-                      {marks.archived.length ? ` (${marks.archived.length})` : ""}
-                    </option>
-                  </select>
+                  <span className="py-1 text-aui-xs">
+                    {view === "recents"
+                      ? defaultCopy.sidebar.recents
+                      : view === "projects"
+                        ? defaultCopy.sidebar.projects
+                        : defaultCopy.sidebar.archived}
+                  </span>
                 </Label>
                 {note && (
                   <p
@@ -1462,7 +1496,7 @@ export function Sidebar({
                     <span className="humagen-sidebar-reveal flex min-w-0 flex-1 items-baseline gap-1.5 truncate">
                       <span className="truncate text-aui-sm text-aui-fg">{name}</span>
                       {subtitle && (
-                        <span className="truncate text-aui-xs text-aui-muted">· {subtitle}</span>
+                        <span className="truncate text-aui-xs text-aui-muted">| {subtitle}</span>
                       )}
                     </span>
                   )}

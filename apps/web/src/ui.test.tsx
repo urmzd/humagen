@@ -92,7 +92,7 @@ test("the sidebar exposes seven canonical destinations with distinct icons and c
     "/alerts",
     "/agents",
     "/connections",
-    "/library/skills",
+    "/artifacts",
     "/settings/profile",
   ])
     assert.ok(nav.includes(`href="${route}"`), route);
@@ -918,7 +918,7 @@ test("MailboxView: an alert with recovery keeps diagnostic text behind a closed 
 
 test("MailboxView: severity and failure recovery use spacing rather than decorative dot separators", () => {
   for (const id of ["m-alert", "m-failure"]) {
-    assert.doesNotMatch(mailbox(id), /<span[^>]*aria-hidden[^>]*>·<\/span>/);
+    assert.doesNotMatch(mailbox(id), /<span[^>]*aria-hidden[^>]*>\|<\/span>/);
   }
 });
 
@@ -1014,7 +1014,7 @@ test("MailboxView: an artifact shows the file, opens it in Artifacts, and offers
   const out = mailbox("m-artifact");
   assert.match(out, /data-template="artifact"/);
   assert.match(out, /data-testid="part-artifact"/);
-  assert.match(out, /Document · 97 B · Version 2/);
+  assert.match(out, /Document | 97 B | Version 2/);
   assert.match(out, />Open in Artifacts</);
   assert.match(out, /href="\/api\/artifacts\/art-2\/content" download="launch-checklist.md"/);
   assert.match(out, /This replaces version 1/);

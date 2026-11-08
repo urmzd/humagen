@@ -1,5 +1,6 @@
 import { defaultCopy } from "@humagen/components";
 import { BellIcon, BotIcon, PlugIcon, ShieldIcon, UserIcon } from "@humagen/render-web";
+import { Toaster } from "@humagen/render-web/ui/sonner";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActionPolicies } from "./ActionPolicies.tsx";
 import { AgentBuilderStart } from "./AgentBuilder.tsx";
@@ -166,14 +167,17 @@ export function App({ preloaded = null }: { preloaded?: Branding | null } = {}) 
     );
   }
   return (
-    <Console
-      me={session.me}
-      branding={session.branding}
-      onSignedOut={() => {
-        configureAgentHues(undefined);
-        setSession({ state: "signed-out" });
-      }}
-    />
+    <>
+      <Console
+        me={session.me}
+        branding={session.branding}
+        onSignedOut={() => {
+          configureAgentHues(undefined);
+          setSession({ state: "signed-out" });
+        }}
+      />
+      <Toaster position="bottom-right" />
+    </>
   );
 }
 

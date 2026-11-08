@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type AlertRuleConfig, api, type ProjectView } from "./api.ts";
+import { AgentTag, FilterSelect, ItemCard, PriorityPill, StatusPill, Tag } from "./cards.tsx";
 import { type ProjectRef, readableProject } from "./projects.ts";
 import { href, type Route } from "./route.ts";
 import {
@@ -19,6 +20,7 @@ import {
   Confirm,
   Page,
   Problem,
+  primary,
   SearchField,
   Segmented,
   SkeletonRows,
@@ -30,9 +32,6 @@ const failure = (error: unknown) =>
   error instanceof Error ? error.message : "This could not be loaded. Try again.";
 const priorityLabel = { urgent: "Urgent", normal: "Normal", low: "Low" };
 type SessionState = "working" | "waiting" | "done" | "failed" | "stopped";
-/** A filter that sizes to its value, so filters sit on one line beside the search. */
-const quietSelect =
-  "h-9 w-auto rounded-aui border border-aui-border bg-transparent px-3 text-aui-sm text-aui-fg outline-none focus-visible:outline-2 focus-visible:outline-aui-accent";
 export function useSessionAttention(canRead: boolean, tick: unknown) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const request = useRef(0);
@@ -65,13 +64,7 @@ export function useSessionAttention(canRead: boolean, tick: unknown) {
   return { alerts, problem, refresh, count: attentionAlerts(alerts).length };
 }
 export function AlertMark({ alert }: { alert: Alert }) {
-  const p = alertPriority(alert);
-  return (
-    <span className={`shrink-0 text-aui-xs ${p === "urgent" ? "text-aui-bad" : "text-aui-muted"}`}>
-      <span aria-hidden>{p === "urgent" ? "! " : p === "normal" ? "• " : "· "}</span>
-      {priorityLabel[p]}
-    </span>
-  );
+  return <PriorityPill priority={alertPriority(alert)} />;
 }
 function SessionRow({
   session,
@@ -119,41 +112,33 @@ function SessionRow({
   }, [tick]);
   const attention = orderAlerts(alerts.filter((a) => a.session === session.id && openAlert(a)))[0];
   return (
-    <li className={nested ? "ml-5 border-l border-aui-border pl-3" : "border-b border-aui-border"}>
-      <div className="flex min-h-14 items-center gap-2 py-2">
-        <button
-          type="button"
-          aria-label={`${expanded ? "Collapse" : "Show"} children of ${session.title || session.agent}`}
-          aria-expanded={expanded}
-          onClick={expand}
-          className="size-9 shrink-0 rounded-aui hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-        >
-          {expanded ? "⌄" : "›"}
-        </button>
-        <a
-          href={href({ page: "conversation", id: session.id })}
-          onClick={(e) => {
-            if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
-              e.preventDefault();
-              go({ page: "conversation", id: session.id });
-            }
-          }}
-          className="min-w-0 flex-1 rounded-aui px-1 py-1 focus-visible:outline-2 focus-visible:outline-aui-accent"
-        >
-          <span className="block truncate text-aui-sm font-medium">
-            {session.title || session.agent}
-          </span>
-          <span className="block truncate text-aui-xs text-aui-muted">
-            {session.agent} · {readableProject(session.project, projects, workspaceName)} ·{" "}
-            {sessionSource(session)}
-          </span>
-        </a>
-        {attention && <AlertMark alert={attention} />}
-        <span className="text-aui-xs text-aui-muted">{session.status}</span>
-        <time className="shrink-0 text-aui-xs text-aui-muted" dateTime={session.updated_at}>
-          {ago(session.updated_at)}
-        </time>
-      </div>
+    <li className={nested ? "ml-4 border-aui-border border-l pt-3 pl-4" : ""}>
+      <ItemCard
+        title={session.title || session.agent}
+        href={href({ page: "conversation", id: session.id })}
+        time={<time dateTime={session.updated_at}>{ago(session.updated_at)}</time>}
+        onOpen={() => go({ page: "conversation", id: session.id })}
+        facts={
+          <>
+            <StatusPill status={session.status} />
+            {attention && <AlertMark alert={attention} />}
+            <AgentTag name={session.agent} />
+            <Tag>{readableProject(session.project, projects, workspaceName)}</Tag>
+            <Tag>{sessionSource(session)}</Tag>
+          </>
+        }
+        actions={
+          <button
+            type="button"
+            aria-label={`${expanded ? "Collapse" : "Show"} children of ${session.title || session.agent}`}
+            aria-expanded={expanded}
+            onClick={expand}
+            className={textAction}
+          >
+            {expanded ? "Hide child sessions" : "Child sessions"}
+          </button>
+        }
+      />
       {expanded && (
         <>
           <Problem message={problem ?? null} />
@@ -184,7 +169,7 @@ function SessionRow({
               ))}
             </ul>
           ) : (
-            <p className="pb-3 pl-12 text-aui-xs text-aui-muted">No child sessions.</p>
+            <p className="pt-2 pl-4 text-aui-xs text-aui-muted">No child sessions.</p>
           )}
           {childCursor && (
             <button
@@ -298,26 +283,27 @@ export function SessionsPage({
           onChange={(v) => go({ ...route, status: v === "any" ? undefined : v })}
         />
         {projects.length > 1 && (
-          <select
-            className={quietSelect}
-            aria-label="Session project"
-            value={route.project ?? ""}
-            onChange={(e) => go({ ...route, project: e.target.value || undefined })}
-          >
-            <option value="">All projects</option>
-            {projects.map((p) => (
-              <option key={p.name} value={p.name}>
-                {readableProject(p.name, projects, workspaceName)}
-              </option>
-            ))}
-          </select>
+          <div className="sm:ml-auto">
+            <FilterSelect
+              label="Session project"
+              value={route.project ?? ""}
+              onChange={(v) => go({ ...route, project: v || undefined })}
+              options={[
+                { value: "", label: "All projects" },
+                ...projects.map((p) => ({
+                  value: p.name,
+                  label: readableProject(p.name, projects, workspaceName),
+                })),
+              ]}
+            />
+          </div>
         )}
       </div>
       <Problem message={problem ?? null} />
       {!sessions && !problem ? (
         <SkeletonRows count={4} />
       ) : shown.length ? (
-        <ul>
+        <ul className="flex flex-col gap-3">
           {shown.map((s) => (
             <SessionRow
               key={s.id}
@@ -489,7 +475,7 @@ export function AlertsPage({
                   <span className="min-w-0 flex-1">
                     <span className="block text-aui-sm font-medium">{rule.name}</span>
                     <span className="text-aui-xs text-aui-muted">
-                      {rule.description || rule.kind} · {rule.paused ? "Paused" : "Watching"}
+                      {rule.description || rule.kind} | {rule.paused ? "Paused" : "Watching"}
                     </span>
                   </span>
                   {canWrite && (
@@ -540,31 +526,27 @@ export function AlertsPage({
               onChange={(v) => go({ ...route, priority: v === "any" ? undefined : v })}
             />
             <div className="flex gap-2 sm:ml-auto">
-              <select
-                className={quietSelect}
-                aria-label="Alert audience"
+              <FilterSelect<"mine" | "everyone">
+                label="Alert audience"
                 value={route.mine === false ? "everyone" : "mine"}
-                onChange={(e) =>
-                  go({ ...route, mine: e.target.value === "everyone" ? false : undefined })
-                }
-              >
-                <option value="mine">Mine</option>
-                <option value="everyone">Everyone's</option>
-              </select>
-              <select
-                className={quietSelect}
-                aria-label="Alert source"
+                onChange={(v) => go({ ...route, mine: v === "everyone" ? false : undefined })}
+                options={[
+                  { value: "mine", label: "Mine" },
+                  { value: "everyone", label: "Everyone's" },
+                ]}
+              />
+              <FilterSelect
+                label="Alert source"
                 value={route.source ?? ""}
-                onChange={(e) => go({ ...route, source: e.target.value || undefined })}
-              >
-                <option value="">All sources</option>
-                {[...new Set((rows ?? []).map((a) => a.kind))].map((kind) => (
-                  <option key={kind} value={kind}>
-                    {kind[0]?.toUpperCase()}
-                    {kind.slice(1).replaceAll("_", " ")}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => go({ ...route, source: v || undefined })}
+                options={[
+                  { value: "", label: "All sources" },
+                  ...[...new Set((rows ?? []).map((a) => a.kind))].map((kind) => ({
+                    value: kind,
+                    label: `${kind[0]?.toUpperCase() ?? ""}${kind.slice(1).replaceAll("_", " ")}`,
+                  })),
+                ]}
+              />
             </div>
           </div>
           {canWrite && selected.size > 0 && (
@@ -600,66 +582,75 @@ export function AlertsPage({
           {!rows && !problem ? (
             <SkeletonRows count={4} />
           ) : shown.length ? (
-            <ul>
+            <ul className="flex flex-col gap-3">
               {shown.map((a) => (
-                <li
-                  key={a.id}
-                  className="flex flex-wrap items-center gap-3 border-b border-aui-border py-3"
-                >
-                  {canWrite && (
-                    <label className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center pointer-coarse:size-11">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select ${a.title}`}
-                        checked={selected.has(a.id)}
-                        onChange={(e) =>
-                          setSelected((old) => {
-                            const next = new Set(old);
-                            if (e.target.checked) next.add(a.id);
-                            else next.delete(a.id);
-                            return next;
-                          })
-                        }
-                      />
-                    </label>
-                  )}
-                  <AlertMark alert={a} />
-                  <a
-                    className="min-w-0 flex-1 rounded-aui focus-visible:outline-2 focus-visible:outline-aui-accent"
+                <li key={a.id}>
+                  <ItemCard
+                    title={a.title}
                     href={href({ page: "conversation", id: a.session!, message: a.message })}
-                    onClick={(e) => {
-                      if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
-                        e.preventDefault();
-                        go({ page: "conversation", id: a.session!, message: a.message });
-                      }
-                    }}
-                  >
-                    <span className="block text-aui-sm font-medium">{a.title}</span>
-                    <span className="block text-aui-xs text-aui-muted">
-                      {a.agent || "Session"} · {ago(a.at)}
-                      {a.action ? ` · ${a.action}` : ""}
-                    </span>
-                  </a>
-                  {canWrite && (
-                    <>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        className={textAction}
-                        onClick={() => void change([a], "resolved")}
-                      >
-                        Resolve
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        className={textAction}
-                        onClick={() => void change([a], "snoozed")}
-                      >
-                        Snooze 1h
-                      </button>
-                    </>
-                  )}
+                    time={ago(a.at)}
+                    onOpen={() => go({ page: "conversation", id: a.session!, message: a.message })}
+                    facts={
+                      <>
+                        {canWrite && (
+                          <label className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center pointer-coarse:size-11">
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${a.title}`}
+                              checked={selected.has(a.id)}
+                              onChange={(e) =>
+                                setSelected((old) => {
+                                  const next = new Set(old);
+                                  if (e.target.checked) next.add(a.id);
+                                  else next.delete(a.id);
+                                  return next;
+                                })
+                              }
+                            />
+                          </label>
+                        )}
+                        <AlertMark alert={a} />
+                        {a.agent && <AgentTag name={a.agent} />}
+                        <Tag>
+                          {a.kind[0]?.toUpperCase()}
+                          {a.kind.slice(1).replaceAll("_", " ")}
+                        </Tag>
+                      </>
+                    }
+                    actions={
+                      <>
+                        <button
+                          type="button"
+                          className={primary}
+                          onClick={() =>
+                            go({ page: "conversation", id: a.session!, message: a.message })
+                          }
+                        >
+                          {a.action || "Open"}
+                        </button>
+                        {canWrite && (
+                          <>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              className={textAction}
+                              onClick={() => void change([a], "resolved")}
+                            >
+                              Resolve
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              className={textAction}
+                              onClick={() => void change([a], "snoozed")}
+                            >
+                              Snooze 1h
+                            </button>
+                          </>
+                        )}
+                      </>
+                    }
+                  />
                 </li>
               ))}
             </ul>
@@ -734,7 +725,7 @@ export function HomeSessionGlance({
     }
   };
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 pt-6">
+    <div className="mx-auto w-full max-w-4xl px-4 pt-8">
       <Problem message={problem ?? null} />
       {undo && (
         <p role="status" className="mb-2 text-aui-xs">
@@ -756,63 +747,88 @@ export function HomeSessionGlance({
           </button>
         </p>
       )}
-      {items.length ? (
-        <>
-          <ul>
+      {items.length > 0 && (
+        <section aria-labelledby="home-needs" className="pb-6">
+          <div className="flex items-center justify-between pb-2">
+            <h2 id="home-needs" className="font-medium text-aui-xs text-aui-muted">
+              Needs you
+            </h2>
+            <button className={textAction} type="button" onClick={() => go({ page: "alerts" })}>
+              All alerts
+            </button>
+          </div>
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((a) => (
-              <li key={a.id} className="flex items-center gap-3 py-2">
-                <AlertMark alert={a} />
-                <button
-                  className="min-h-6 min-w-0 flex-1 truncate text-left text-aui-sm hover:underline pointer-coarse:min-h-11"
-                  type="button"
-                  onClick={() => go({ page: "conversation", id: a.session!, message: a.message })}
-                >
-                  {a.title}
-                  <span className="ml-2 text-aui-xs text-aui-muted">{a.agent || "Session"}</span>
-                </button>
-                {canWrite && (
-                  <button
-                    className="size-9 rounded-aui hover:bg-aui-hover"
-                    type="button"
-                    aria-label={`Resolve ${a.title}`}
-                    onClick={() => void resolve(a)}
-                  >
-                    ×
-                  </button>
-                )}
+              <li key={a.id}>
+                <ItemCard
+                  title={a.title}
+                  time={ago(a.at)}
+                  onOpen={() => go({ page: "conversation", id: a.session!, message: a.message })}
+                  facts={
+                    <>
+                      <PriorityPill priority={alertPriority(a)} />
+                      {a.agent && <AgentTag name={a.agent} />}
+                    </>
+                  }
+                  actions={
+                    <>
+                      <button
+                        type="button"
+                        className={primary}
+                        onClick={() =>
+                          go({ page: "conversation", id: a.session!, message: a.message })
+                        }
+                      >
+                        {a.action || "Open"}
+                      </button>
+                      {canWrite && (
+                        <button
+                          type="button"
+                          className={textAction}
+                          aria-label={`Resolve ${a.title}`}
+                          onClick={() => void resolve(a)}
+                        >
+                          Resolve
+                        </button>
+                      )}
+                    </>
+                  }
+                />
               </li>
             ))}
           </ul>
-          <button className={textAction} type="button" onClick={() => go({ page: "alerts" })}>
-            Alert center
-          </button>
-        </>
-      ) : sessions?.length ? (
-        <>
-          <h2 className="pb-1 text-aui-xs font-medium text-aui-muted">Continue</h2>
-          <ul>
+        </section>
+      )}
+      {items.length === 0 && sessions && sessions.length > 0 && (
+        <section aria-labelledby="home-continue">
+          <div className="flex items-center justify-between pb-2">
+            <h2 id="home-continue" className="font-medium text-aui-xs text-aui-muted">
+              Continue
+            </h2>
+            <button className={textAction} type="button" onClick={() => go({ page: "sessions" })}>
+              All sessions
+            </button>
+          </div>
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {sessions.slice(0, 3).map((s) => (
               <li key={s.id}>
-                <button
-                  className="flex min-h-10 w-full items-center gap-2 rounded-aui text-left text-aui-sm hover:bg-aui-hover"
-                  type="button"
-                  onClick={() => go({ page: "conversation", id: s.id })}
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate">{s.title || s.agent}</span>
-                    <span className="block truncate text-aui-xs text-aui-muted">
-                      {readableProject(s.project, projects, workspaceName)} · {s.status}
-                    </span>
-                  </span>
-                  <span className="text-aui-xs text-aui-muted">
-                    {s.agent} · {ago(s.updated_at)}
-                  </span>
-                </button>
+                <ItemCard
+                  title={s.title || s.agent}
+                  time={ago(s.updated_at)}
+                  onOpen={() => go({ page: "conversation", id: s.id })}
+                  facts={
+                    <>
+                      <StatusPill status={s.status} />
+                      <AgentTag name={s.agent} />
+                      <Tag>{readableProject(s.project, projects, workspaceName)}</Tag>
+                    </>
+                  }
+                />
               </li>
             ))}
           </ul>
-        </>
-      ) : null}
+        </section>
+      )}
     </div>
   );
 }

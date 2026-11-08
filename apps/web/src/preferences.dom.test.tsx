@@ -115,9 +115,14 @@ const manage = (title: string) => screen.findByRole("button", { name: `Manage ${
 
 /** Switches the conversation list to its Projects view, from the filter menu. */
 async function projectsView() {
-  fireEvent.change(await screen.findByRole("combobox", { name: "Sidebar session view" }), {
-    target: { value: "projects" },
-  });
+  fireEvent.click(await screen.findByRole("button", { name: "Filter conversations" }));
+  const panel = within(await screen.findByRole("dialog", { name: "Filter conversations" }));
+  const disclosure = panel.getByRole("button", { name: /^View / });
+  fireEvent.click(disclosure);
+  fireEvent.click(
+    within(panel.getByRole("group", { name: "View" })).getByRole("button", { name: "By project" }),
+  );
+  fireEvent.keyDown(disclosure, { key: "Escape" });
 }
 const pinnedRegion = () => screen.queryByRole("region", { name: "Pinned" });
 

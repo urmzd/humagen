@@ -1430,7 +1430,10 @@ export function Popover({
       aria-haspopup="dialog"
       aria-expanded={open}
       aria-controls={open ? id : undefined}
-      onClick={() => { if (!open) onOpen?.(); setOpen(!open); }}
+      onClick={() => {
+        if (!open) onOpen?.();
+        setOpen(!open);
+      }}
       className={className}
     >
       {trigger}

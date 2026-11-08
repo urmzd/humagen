@@ -1,4 +1,3 @@
-import { AgentChangeCards } from "./AgentChangeCard.tsx";
 import {
   AnswerText,
   type Copy,
@@ -42,6 +41,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { AgentChangeCards } from "./AgentChangeCard.tsx";
 import { AgentInitials, AgentOrb, type OrbState, turnOrbState } from "./AgentOrb";
 import { StopBanner } from "./Alerts";
 import { MessageActionRow, messageActionButton } from "./MessageActionRow";
@@ -362,34 +362,36 @@ function MessageActions({
           prompt={copy.feedbackPrompt}
         />
       )}
-      {(turn.usage || actions || regenerate || (turn.outcome && onRedirect)) && <MessageMore>
-      {turn.outcome && onRedirect && (
-        <button
-          type="button"
-          className={actionBtn}
-          aria-label={copy.conversation.redirect}
-          title={copy.conversation.redirect}
-          onClick={onRedirect}
-        >
-          <RedirectIcon size={16} />
-        </button>
+      {(turn.usage || actions || regenerate || (turn.outcome && onRedirect)) && (
+        <MessageMore>
+          {turn.outcome && onRedirect && (
+            <button
+              type="button"
+              className={actionBtn}
+              aria-label={copy.conversation.redirect}
+              title={copy.conversation.redirect}
+              onClick={onRedirect}
+            >
+              <RedirectIcon size={16} />
+            </button>
+          )}
+          {regenerate && (
+            <button
+              type="button"
+              aria-label="Regenerate"
+              title="Regenerate"
+              className={actionBtn}
+              onClick={() =>
+                onAction({ id: ActionId.retry, payload: { turnId: turn.id, target: "regenerate" } })
+              }
+            >
+              <RefreshIcon size={16} />
+            </button>
+          )}
+          {turn.usage && <UsageChip usage={turn.usage} />}
+          {actions}
+        </MessageMore>
       )}
-      {regenerate && (
-        <button
-          type="button"
-          aria-label="Regenerate"
-          title="Regenerate"
-          className={actionBtn}
-          onClick={() =>
-            onAction({ id: ActionId.retry, payload: { turnId: turn.id, target: "regenerate" } })
-          }
-        >
-          <RefreshIcon size={16} />
-        </button>
-      )}
-        {turn.usage && <UsageChip usage={turn.usage} />}
-        {actions}
-      </MessageMore>}
     </MessageActionRow>
   );
 }
@@ -604,7 +606,7 @@ export function AgentMessage({
                   capabilities={{ ...capabilities, followUp }}
                   hideTasks
                 />
-                <AgentChangeCards tasks={turn.tasks}/>
+                <AgentChangeCards tasks={turn.tasks} />
                 {rest.map(block)}
                 {turn.status === "stopped" && turn.stop && (
                   <StopBanner turnId={turn.id} stop={turn.stop} label={copy.stopPhase[turn.stop]} />

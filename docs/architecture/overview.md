@@ -823,7 +823,11 @@ expiry excluded from every context layer, provenance and persisted use counts. A
 count as use. Personal forgetting records an attempt before removing the note and does not retain
 the forgotten text in its audit snapshot. Personal briefing, notification delivery policy, quiet
 hours and privacy choices survive restart; native console notifications now use a bounded durable authenticated delivery worker with immediate, hourly digest, quiet-hour and Off policies. Email is available only when the operator configures delivery and a permitted recipient, and the person opts in. See [native notifications](native-notifications.md) and [email notifications](../guides/email-notifications.md). Audit, Memory and Personal Preferences are mounted under their canonical routes.
-The managed Library and shared web foundation are described in
+The primary navigation is New, Sessions, Alerts, Agents, Connections, Artifacts
+and Settings. Agents groups Skills, Knowledge and Memory at their existing
+addresses; Connections groups Agent tools, Data sources and permitted Workspace
+apps. Published artifacts have their own destination. The managed resources and
+shared web foundation are described in
 [managed-library.md](managed-library.md).
 
 
@@ -838,7 +842,7 @@ Catalog connectors include Snowflake (catalog and live SELECT) and GCS/S3
 (metadata catalog and per-reader collected text copies). Each connector uses
 an explicit credential reference; object catalog crawling never reads content.
 
-Library > Catalog browses and searches connector metadata, expands table
+Catalog at `/library/catalog` browses and searches connector metadata, expands table
 columns, and exposes crawl, publish and withdraw actions to connector owners.
 
 Session alert state now persists priority, resolution, snooze, and Undo in the

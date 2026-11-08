@@ -267,10 +267,14 @@ test("the agent directory filters operational states and offers agent changes th
       }}
     />,
   );
-  await screen.findByText("Not evaluated");
-  fireEvent.change(screen.getByLabelText(defaultCopy.agentOperations.filter), {
-    target: { value: "watching" },
+  // An agent with no evaluations says nothing about health, rather than "Not evaluated" on every row.
+  assert.ok(await screen.findByRole("button", { name: /humagen-writer/ }));
+  assert.equal(screen.queryByText("Not evaluated"), null);
+  fireEvent.keyDown(screen.getByRole("combobox", { name: defaultCopy.agentOperations.filter }), {
+    key: "Enter",
   });
+  const watching = defaultCopy.agentOperations.directoryStates.watching;
+  fireEvent.click(await screen.findByRole("option", { name: watching }));
   assert.ok(await screen.findByRole("button", { name: /humagen-writer/ }));
   assert.equal(screen.queryByRole("button", { name: defaultCopy.agentOperations.pauseAll }), null);
   assert.equal(screen.queryByRole("button", { name: defaultCopy.agentOperations.build }), null);
@@ -317,22 +321,17 @@ test("the roster filters Needs Review without presenting stale skill bindings as
       onNew={() => {}}
     />,
   );
-  await screen.findByRole("option", { name: "Needs review" });
-  await waitFor(() =>
-    assert.match(
-      screen.getByRole("button", { name: /humagen-writer/ }).textContent ?? "",
-      /Needs review/,
-    ),
-  );
-  assert.doesNotMatch(
-    screen.getByRole("button", { name: /ready-agent/ }).textContent ?? "",
-    /Ready/,
-  );
-  fireEvent.change(screen.getByLabelText(defaultCopy.agentOperations.filter), {
-    target: { value: "needs_review" },
+  const rowText = (name: RegExp) =>
+    screen.getByRole("button", { name }).closest("tr")?.textContent ?? "";
+  await waitFor(() => assert.match(rowText(/humagen-writer/), /Needs review/));
+  assert.doesNotMatch(rowText(/ready-agent/), /Ready/);
+  // The state filter is a shadcn Select: open it from the keyboard, then pick.
+  fireEvent.keyDown(screen.getByRole("combobox", { name: defaultCopy.agentOperations.filter }), {
+    key: "Enter",
   });
-  assert.ok(await screen.findByRole("button", { name: /humagen-writer/ }));
-  assert.ok(!screen.queryByRole("button", { name: /ready-agent/ }));
+  fireEvent.click(await screen.findByRole("option", { name: "Needs review" }));
+  await waitFor(() => assert.ok(!screen.queryByRole("button", { name: /ready-agent/ })));
+  assert.ok(screen.getByRole("button", { name: /humagen-writer/ }));
 });
 
 test("agent detail offers Context review for native skill audience review even with current revision", async () => {
@@ -406,4 +405,26 @@ test("directory search and the single builder action preserve opening and creati
   assert.ok(!screen.queryByRole("button", { name: "Build With the Builder" }));
   view.rerender(<Agents {...props} onBuild={undefined} canWrite={false} />);
   assert.equal(screen.queryByRole("button", { name: "New Agent" }), null);
+});
+
+test("a short agent name stays a focusable button and opens only once per activation", async () => {
+  const { Agents } = await import("./Agents.tsx");
+  const opened: string[] = [];
+  render(
+    <Agents
+      agents={[{ ...writer, spec: { ...writer.spec, name: "a" } }]}
+      stats={new Map()}
+      canWrite={false}
+      onOpen={(name) => opened.push(name)}
+      onNew={() => {}}
+    />,
+  );
+  const button = screen.getByRole("button", { name: "a" });
+  button.focus();
+  assert.equal(document.activeElement === button, true);
+  assert.equal(button.tagName, "BUTTON");
+  fireEvent.click(button, { detail: 0 });
+  assert.deepEqual(opened, ["a"], "button activation must not also activate its row");
+  fireEvent.click(button, { detail: 1 });
+  assert.deepEqual(opened, ["a", "a"]);
 });

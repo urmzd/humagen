@@ -133,7 +133,7 @@ test("a project's Agents tab has its own path, the workspace's included", () => 
 test("an unknown page stays visible as not found while legacy tabs fall back safely", () => {
   assert.deepEqual(at("/nowhere"), { page: "not-found", path: "/nowhere" });
   assert.equal(href(at("/nowhere")), "/nowhere");
-  assert.equal(documentTitle(at("/nowhere")), "Page not found · Humagen");
+  assert.equal(documentTitle(at("/nowhere")), "Page not found - Humagen");
   assert.deepEqual(at("/agents/lead/bogus"), { page: "agent", name: "lead", tab: "prompt" });
   assert.deepEqual(at("/settings/bogus"), { page: "settings", section: "profile" });
 });
@@ -144,16 +144,16 @@ test("the read audit has a Settings address", () => {
 });
 
 test("the tab title names the place, then the product, with unread in front", () => {
-  assert.equal(documentTitle({ page: "inbox" }), "Notifications · Humagen");
-  assert.equal(documentTitle({ page: "inbox" }, 3), "(3) Notifications · Humagen");
+  assert.equal(documentTitle({ page: "inbox" }), "Notifications - Humagen");
+  assert.equal(documentTitle({ page: "inbox" }, 3), "(3) Notifications - Humagen");
   assert.equal(
     documentTitle({ page: "agent", name: "analyst", tab: "prompt" }),
-    "analyst · Humagen",
+    "analyst - Humagen",
   );
-  assert.equal(documentTitle({ page: "project", name: "", tab: "inbox" }), "Workspace · Humagen");
+  assert.equal(documentTitle({ page: "project", name: "", tab: "inbox" }), "Workspace - Humagen");
   assert.equal(
     documentTitle({ page: "channel", project: "ops", channel: "launch" }),
-    "#launch · Humagen",
+    "#launch - Humagen",
   );
 });
 
@@ -332,8 +332,8 @@ test("old hubs resolve to the seven-entry information architecture", () => {
   ];
   for (const [url, route] of links) assert.deepEqual(at(url), route, url);
   assert.equal(href({ page: "directory", tab: "people" }), "/settings/people");
-  assert.equal(documentTitle({ page: "sessions" }), "Sessions · Humagen");
-  assert.equal(documentTitle({ page: "alerts" }, 2), "(2) Alerts · Humagen");
+  assert.equal(documentTitle({ page: "sessions" }), "Sessions - Humagen");
+  assert.equal(documentTitle({ page: "alerts" }, 2), "(2) Alerts - Humagen");
 });
 
 test("agent health filters have a bounded canonical address", () => {
@@ -341,4 +341,13 @@ test("agent health filters have a bounded canonical address", () => {
   assert.equal(href(route), "/agents?state=needs-attention");
   assert.deepEqual(at(href(route)), route);
   assert.deepEqual(at(`/agents?state=${"a".repeat(81)}`), { page: "agents" });
+});
+
+test("consolidated hubs preserve addressed handoffs and filtered assignments", () => {
+  const handoff = { page: "agent-network", handoff: "handoff-one" } as const;
+  assert.deepEqual(at(href(handoff)), handoff);
+  const assignments = { page: "assignments", agent: "helper" } as const;
+  assert.deepEqual(at(href(assignments)), assignments);
+  assert.deepEqual(at("/agent-network"), { page: "agents" });
+  assert.deepEqual(at("/assignments"), { page: "sessions" });
 });

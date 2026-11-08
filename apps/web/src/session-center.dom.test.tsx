@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { ItemCard } from "./cards.tsx";
 import { stubFetch } from "./dom.ts";
 import { unreadPrefs } from "./preferences.ts";
 import { AlertsPage, HomeSessionGlance, SessionsPage } from "./SessionCenter.tsx";
@@ -75,6 +76,7 @@ test("Home attention counts only open urgent and normal session alerts and caps 
     ["a", "b", "c", "d"],
   );
   net = stubFetch({ "GET /api/sessions": () => ({ sessions: [session("s_root")], next: "" }) });
+  let sessionsLoaded = false;
   render(
     <HomeSessionGlance
       alerts={alerts}
@@ -82,12 +84,16 @@ test("Home attention counts only open urgent and normal session alerts and caps 
       canWrite={false}
       onChanged={() => {}}
       tick={0}
+      onHasSessions={() => {
+        sessionsLoaded = true;
+      }}
     />,
   );
+  await waitFor(() => assert.equal(sessionsLoaded, true));
   assert.equal(screen.getAllByRole("listitem").length, 3);
   assert.equal(screen.getAllByRole("listitem")[0]?.textContent?.includes("Alert b"), true);
   assert.equal(screen.queryByText("Continue"), null);
-  assert.ok(screen.getByRole("button", { name: "Alert center" }));
+  assert.ok(screen.getByRole("button", { name: "All alerts" }));
 });
 
 test("alert source filters reach the server and do not expose another source", async () => {
@@ -131,10 +137,10 @@ test("session rows retain readable project context and age on narrow surfaces", 
     />,
   );
   const personal = await screen.findByRole("link", { name: /Work s_private/ });
-  assert.match(personal.textContent ?? "", /Personal/);
-  assert.doesNotMatch(personal.textContent ?? "", /personal-7e5222/);
+  assert.match(personal.closest("li")?.textContent ?? "", /Personal/);
+  assert.doesNotMatch(personal.closest("li")?.textContent ?? "", /personal-7e5222/);
   assert.match(
-    screen.getByRole("link", { name: /Work s_launch/ }).textContent ?? "",
+    screen.getByRole("link", { name: /Work s_launch/ }).closest("li")?.textContent ?? "",
     /Spring launch/,
   );
   assert.ok(personal.closest("li")?.querySelector("time[datetime]"));
@@ -212,15 +218,30 @@ test("the main navigation has seven destinations and one alert count", async () 
   const links = within(screen.getByRole("navigation", { name: "Sections" })).getAllByRole("link");
   assert.deepEqual(
     links.map((a) => a.getAttribute("href")),
-    [
-      "/",
-      "/sessions",
-      "/alerts",
-      "/agents",
-      "/connections",
-      "/library/skills",
-      "/settings/profile",
-    ],
+    ["/", "/sessions", "/alerts", "/agents", "/connections", "/artifacts", "/settings/profile"],
   );
   assert.equal(links[2]?.getAttribute("aria-label"), "Alerts, 2 need you");
+});
+
+test("session card links preserve native modified clicks and intercept only ordinary navigation", () => {
+  let opened = 0;
+  render(<ItemCard title="Review session" href="/sessions/s_review" onOpen={() => opened++} />);
+  const link = screen.getByRole("link", { name: "Review session" });
+  assert.equal(link.getAttribute("href"), "/sessions/s_review");
+  for (const modifiers of [
+    { metaKey: true },
+    { ctrlKey: true },
+    { shiftKey: true },
+    { altKey: true },
+    { button: 1 },
+  ]) {
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true, ...modifiers });
+    fireEvent(link, event);
+    assert.equal(event.defaultPrevented, false);
+    assert.equal(opened, 0);
+  }
+  const ordinary = new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 });
+  fireEvent(link, ordinary);
+  assert.equal(ordinary.defaultPrevented, true);
+  assert.equal(opened, 1);
 });

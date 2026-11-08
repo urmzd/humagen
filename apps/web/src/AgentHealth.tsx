@@ -62,8 +62,8 @@ export function AgentHealth({ name }: { name: string }) {
           <p className={health.status === "needs_review" ? "text-aui-warn" : "text-aui-fg"}>
             {healthLabel(health.status)}
             {health.samples > 0
-              ? ` · ${health.passed} of ${health.samples} recent evaluations passed (${Math.round(health.pass_rate)}%)`
-              : " · No evaluated runs yet"}
+              ? ` | ${health.passed} of ${health.samples} recent evaluations passed (${Math.round(health.pass_rate)}%)`
+              : " | No evaluated runs yet"}
           </p>
           {health.results
             .filter((result) => !result.passed)
@@ -71,7 +71,7 @@ export function AgentHealth({ name }: { name: string }) {
             .map((result) => (
               <div key={result.run} className="text-aui-sm">
                 <p className="text-aui-muted">
-                  Revision {result.version} · {ago(result.at)}
+                  Revision {result.version} | {ago(result.at)}
                 </p>
                 <ul className="list-inside list-disc">
                   {result.verdicts
@@ -105,7 +105,7 @@ export function AgentHealth({ name }: { name: string }) {
               {change.error && <p role="alert">{change.error}</p>}
               {change.scores?.map((score) => (
                 <p key={score.suite}>
-                  {score.suite}: {score.before}% → {score.after}% ·{" "}
+                  {score.suite}: {score.before}% → {score.after}% |{" "}
                   {score.passed ? "Passed" : "Regression"}
                 </p>
               ))}

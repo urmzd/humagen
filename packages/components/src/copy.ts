@@ -180,7 +180,7 @@ export const defaultCopy = {
     loading: "Loading reviews…",
     empty: "No pull requests match these filters.",
     counts: (errors: number, warnings: number, infos: number) =>
-      `${errors} ${errors === 1 ? "error" : "errors"} · ${warnings} ${warnings === 1 ? "warning" : "warnings"} · ${infos} ${infos === 1 ? "note" : "notes"}`,
+      `${errors} ${errors === 1 ? "error" : "errors"} | ${warnings} ${warnings === 1 ? "warning" : "warnings"} | ${infos} ${infos === 1 ? "note" : "notes"}`,
     ci: (state: string) => `CI: ${state}`,
   },
   workspaceFiles: {
@@ -2220,16 +2220,16 @@ export const defaultCopy = {
   actsForPersonIn: (calls: string[]) =>
     `${calls.join("; ")}: ${calls.length === 1 ? "uses" : "use"} the credentials of the person this run acts for. Only they may change ${calls.length === 1 ? "its" : "their"} arguments.`,
   expires: (time: string) => `Expires ${time}`,
-  approvedBy: (by: string, time: string) => `Approved by ${by} · ${time}`,
+  approvedBy: (by: string, time: string) => `Approved by ${by} | ${time}`,
   rejected: "Rejected, I won't run it.",
-  rejectedBy: (by: string, time: string) => `Rejected by ${by} · ${time}`,
+  rejectedBy: (by: string, time: string) => `Rejected by ${by} | ${time}`,
   timedOut: "Timed out, I didn't run it.",
   cancelled: "Cancelled, the request was stopped.",
   somethingElse: "Something Else",
-  answeredBy: (by: string, choice: string, time: string) => `${by} chose ${choice} · ${time}`,
+  answeredBy: (by: string, choice: string, time: string) => `${by} chose ${choice} | ${time}`,
   /** A question answered in words, not by picking one of its options. */
-  repliedBy: (by: string, text: string, time: string) => `${by} answered "${text}" · ${time}`,
-  declinedBy: (by: string, time: string) => `Declined by ${by} · ${time}`,
+  repliedBy: (by: string, text: string, time: string) => `${by} answered "${text}" | ${time}`,
+  declinedBy: (by: string, time: string) => `Declined by ${by} | ${time}`,
   approvalNeeded: (summary: string) => `Approval needed: ${summary}`,
   /** A run the platform held at a limit, for a person to grant it more or stop it. */
   /** A structured code review an agent returned (`humagen.github.review.v1`). */
@@ -2280,7 +2280,7 @@ export const defaultCopy = {
     granted: "Granted already",
     grants: "Grants",
     stopped: "Stopped at its limit.",
-    stoppedBy: (by: string, time: string) => `Stopped by ${by} · ${time}`,
+    stoppedBy: (by: string, time: string) => `Stopped by ${by} | ${time}`,
   },
   inputNeeded: (question: string) => `Input needed: ${question}`,
   planWorking: "Working",
@@ -2323,13 +2323,13 @@ export const defaultCopy = {
   tone: { ok: "Done", warn: "Warning", bad: "Error", info: "Note", neutral: "Note" },
   ask: "Ask",
   alwaysAllow: (tool: string) => `Always Allow ${tool}`,
-  askedBy: (by: string, time: string) => `${by} asked · ${time}`,
+  askedBy: (by: string, time: string) => `${by} asked | ${time}`,
   notYours: "Only the person who started this can approve it. You can still ask or stop it.",
   batchTitle: (n: number) => `${n} actions need your approval`,
   approveSelected: "Approve Selected",
   denyAll: "Cancel All",
   unsure: "I'm Not Sure",
-  unsureBy: (by: string, time: string) => `${by} wasn't sure · ${time}`,
+  unsureBy: (by: string, time: string) => `${by} wasn't sure | ${time}`,
   stopPhase: {
     requested: "Stopping. Other viewers may still see it finish.",
     acknowledged: "Stop requested. Waiting for the agent to confirm.",
@@ -2343,7 +2343,7 @@ export const defaultCopy = {
   subagent: (name: string, steps?: number, tokens?: number) =>
     [name, steps ? `${steps} steps` : null, tokens ? `${Math.round(tokens / 1000)}k tokens` : null]
       .filter(Boolean)
-      .join(" · "),
+      .join(" | "),
   cantRetry: "This turn can't be retried. Send a new message instead.",
   /** A turn that acted for a person is theirs to retry, and the reader is not them. */
   retryOnlyTheirs: "Only the person this turn acted for can retry it.",
@@ -2400,7 +2400,7 @@ export const defaultCopy = {
     emptyOpen: "You're all caught up",
     emptyOpenHint: "Nothing is waiting on you. New approvals, alerts and artifacts land here.",
     pick: "Select a notification",
-    shortcuts: "j/k to navigate · e to hide · u to mark unread",
+    shortcuts: "j/k to navigate | e to hide | u to mark unread",
     pickHint: "Decisions come first, then updates.",
     back: "Back",
     needsYou: "Needs you",
@@ -2424,7 +2424,7 @@ export const defaultCopy = {
       time,
     ]
       .filter(Boolean)
-      .join(" · "),
+      .join(" | "),
   /** Said next to the kind tag, so urgency never rests on color. */
   severity: { bad: "Urgent", warn: "Warning" } as Partial<Record<string, string>>,
   show: { label: "Show", open: "Open", resolved: "Resolved", all: "All" },
@@ -3334,7 +3334,7 @@ export const defaultCopy = {
         usage: (used: number, budget: number, unit: string) =>
           budget > 0
             ? `${used.toLocaleString()} / ${budget.toLocaleString()} ${unit}`
-            : `${used.toLocaleString()} ${unit} · no additional cap`,
+            : `${used.toLocaleString()} ${unit} | no additional cap`,
         kinds: {
           instructions: "Instructions",
           agent_instructions: "Agent instructions",

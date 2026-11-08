@@ -242,20 +242,24 @@ test("the directory keeps empty and populated statistics in the same three field
     );
   const empty = directory(new Map());
   const active = directory(new Map([[writer.spec.name, group]]));
+  const cells = (html: string) => {
+    const body = /<tbody>([\s\S]*?)<\/tbody>/.exec(html)?.[1] ?? "";
+    return [...body.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((m) => text(m[1]!).trim());
+  };
   for (const html of [empty, active]) {
-    assert.match(html, /Runs \(24h\)/);
-    assert.equal((html.match(/<span>Runs \(24h\)<\/span>/g) ?? []).length, 1);
-    assert.match(html, /class="sr-only">Runs \(24h\)/);
-    assert.match(html, />Success</);
-    assert.match(html, />Median</);
-    assert.match(html, /Built-in/);
-    assert.match(html, /Revision 2 · offline \/ offline/);
-    assert.match(html, /class="block truncate[^" ]*[^"]*">Writes a document\.<\/span>/);
+    const headings = [...html.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g)].map((m) =>
+      text(m[1]!).trim(),
+    );
+    assert.deepEqual(headings, ["Agent", "Model", "Activity", "Runs (24h)", "Success", "Median"]);
+    assert.equal((html.match(/<th\b[^>]*scope="col"/g) ?? []).length, 6);
+    assert.equal(cells(html).length, headings.length, "every row aligns with the same columns");
+    assert.match(cells(html)[0]!, /humagen-writer Built in Writes a document\./);
+    assert.equal(cells(html)[1], "offline", "the model has its own labeled column");
+    assert.match(html, /<p[^>]*class="truncate[^"]*">Writes a document\.<\/p>/);
     assert.doesNotMatch(html, /title="Writes a document\."/);
     assert.doesNotMatch(html, /Lives in Workspace|Built in, read only|No runs in the last/);
     assert.doesNotMatch(html, /humagen-tape|humagen-stroke/);
   }
-  assert.equal((empty.match(/>–</g) ?? []).length, 3);
-  assert.match(active, /75%/);
-  assert.match(active, /2\.0s/);
+  assert.deepEqual(cells(empty).slice(-3), ["–", "–", "–"]);
+  assert.deepEqual(cells(active).slice(-3), ["4", "75%", "2.0s"]);
 });

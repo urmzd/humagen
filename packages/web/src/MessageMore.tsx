@@ -1,5 +1,5 @@
 import { EllipsisIcon } from "@humagen/render-web";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { messageActionButton } from "./MessageActionRow";
 
@@ -8,10 +8,10 @@ export function MessageMore({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
-  const close = () => {
+  const close = useCallback(() => {
     setOpen(false);
     trigger.current?.focus();
-  };
+  }, []);
   useEffect(() => {
     if (!open || !dialog.current) return;
     const panel = dialog.current;
@@ -39,7 +39,7 @@ export function MessageMore({ children }: { children: ReactNode }) {
       document.removeEventListener("pointerdown", away);
       panel.close();
     };
-  }, [open]);
+  }, [open, close]);
   return (
     <>
       <button

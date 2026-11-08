@@ -41,6 +41,8 @@ export interface Control {
   inline: boolean;
   /** The empty, full-viewport button that dismisses the adjacent navigation drawer. */
   navigationBackdrop?: boolean;
+  /** A fixed navigation drawer constrains the raw hitbox, not its clipped paint. */
+  navigationDrawer?: { bounds: Box; hitbox: Box };
   /** A field a person types into: its text size, which below 16px makes Safari zoom on focus. */
   font?: number;
 }
@@ -122,7 +124,7 @@ export function judge(s: Snapshot, rules: Rules): Problem[] {
         });
     }
     for (const c of s.controls) {
-      if (!c.navigationBackdrop && past(c.box)) {
+      if (!c.navigationBackdrop && !c.navigationDrawer && past(c.box)) {
         problems.push({
           check: "gutter",
           detail: `control "${c.label}" spans ${px(c.box.left)} to ${px(c.box.right)}px`,
@@ -131,6 +133,20 @@ export function judge(s: Snapshot, rules: Rules): Problem[] {
     }
   }
   for (const c of s.controls) {
+    if (c.navigationDrawer) {
+      const { bounds, hitbox } = c.navigationDrawer;
+      if (
+        hitbox.left < bounds.left - SLACK ||
+        hitbox.right > bounds.right + SLACK ||
+        hitbox.top < bounds.top - SLACK ||
+        hitbox.bottom > bounds.bottom + SLACK
+      ) {
+        problems.push({
+          check: "gutter",
+          detail: `control "${c.label}" has a hitbox outside the navigation drawer`,
+        });
+      }
+    }
     if (c.inline) continue;
     const w = c.size.width;
     const h = c.size.height;
@@ -254,18 +270,25 @@ export function collect(): Snapshot {
     // or clipping parents hide of the margin is not there to press.
     const after = getComputedStyle(target, "::after");
     let whole: { width: number; height: number } = drawn;
+    let hitbox: Box = {
+      left: drawn.left,
+      right: drawn.right,
+      top: drawn.top,
+      bottom: drawn.bottom,
+    };
     if (after.content !== "none" && after.position === "absolute") {
       const grow = (v: string) => Math.max(0, -Number.parseFloat(v) || 0);
       const top = grow(after.top);
       const left = grow(after.left);
       const right = grow(after.right);
       const bottom = grow(after.bottom);
-      const pad = cut(target, {
+      hitbox = {
         left: drawn.left - left,
         right: drawn.right + right,
         top: drawn.top - top,
         bottom: drawn.bottom + bottom,
-      });
+      };
+      const pad = cut(target, hitbox);
       if (pad)
         whole = {
           width: Math.max(drawn.width, pad.right - pad.left),
@@ -273,6 +296,29 @@ export function collect(): Snapshot {
         };
     }
     const st = getComputedStyle(el);
+    const navigation = el.closest('aside[aria-label="Navigation"]');
+    const bounds = navigation?.getBoundingClientRect();
+    const navigationDrawer =
+      navigation &&
+      shown(navigation) &&
+      getComputedStyle(navigation).position === "fixed" &&
+      bounds &&
+      bounds.left >= -0.5 &&
+      bounds.right <= width + 0.5 &&
+      bounds.top >= -0.5 &&
+      bounds.bottom <= height + 0.5 &&
+      bounds.width > 1 &&
+      bounds.height > 1
+        ? {
+            bounds: {
+              left: bounds.left,
+              right: bounds.right,
+              top: bounds.top,
+              bottom: bounds.bottom,
+            },
+            hitbox,
+          }
+        : undefined;
     const adjacent = el.nextElementSibling;
     const navigationBackdrop =
       el.matches('button[tabindex="-1"][aria-label="Dismiss navigation"]') &&
@@ -339,6 +385,7 @@ export function collect(): Snapshot {
       size: { width: whole.width, height: whole.height },
       inline,
       ...(navigationBackdrop ? { navigationBackdrop: true } : {}),
+      ...(navigationDrawer ? { navigationDrawer } : {}),
       ...(typed ? { font: Number.parseFloat(st.fontSize) } : {}),
     });
   }

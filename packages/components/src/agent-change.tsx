@@ -53,7 +53,7 @@ export function AgentChangeCards({ tasks }: { tasks: Task[] }) {
             <Fields
               items={connections.map((connection) => ({
                 label: connection.name,
-                value: `${connection.service} · ${connection.scope} · ${connection.status}`,
+                value: `${connection.service} | ${connection.scope} | ${connection.status}`,
               }))}
             />
           ) : (
@@ -69,8 +69,8 @@ export function AgentChangeCards({ tasks }: { tasks: Task[] }) {
           {listens?.length ? (
             <Fields
               items={listens.map((location) => ({
-                label: `${location.connection} · ${location.place}`,
-                value: `${location.project ?? ""}${location.enabled === undefined ? "" : location.enabled ? " · Enabled" : " · Disabled"}`,
+                label: `${location.connection} | ${location.place}`,
+                value: `${location.project ?? ""}${location.enabled === undefined ? "" : location.enabled ? " | Enabled" : " | Disabled"}`,
               }))}
             />
           ) : (

@@ -12,7 +12,12 @@ export async function replayWith(r: {
 }): Promise<string> {
   const { coworking, call } = await import("./api.ts");
   if (r.thread.startsWith("s_")) {
-    const session = await call<{id:string}>("POST", "/api/sessions", {parent:r.thread,text:r.text,agent:/^@([\w.-]+)/.exec(r.text)?.[1],fresh:true});
+    const session = await call<{ id: string }>("POST", "/api/sessions", {
+      parent: r.thread,
+      text: r.text,
+      agent: /^@([\w.-]+)/.exec(r.text)?.[1],
+      fresh: true,
+    });
     return session.id;
   }
   const fork = await coworking.fork(r.thread, { through: r.point });

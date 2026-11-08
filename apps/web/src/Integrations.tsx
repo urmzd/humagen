@@ -28,7 +28,7 @@ import {
   SourceSyncSettings,
   sourceProblem,
 } from "./SourceLifecycle.tsx";
-import { ago, button, Chip, field, Label, Page, Problem, primary } from "./ui.tsx";
+import { ago, button, Chip, Empty, field, Label, Page, Problem, primary } from "./ui.tsx";
 
 export type IntegrationTab = "connect" | "resources" | "links" | "access" | "events" | "actions";
 const words = defaultCopy.sourceOperations;
@@ -179,225 +179,235 @@ export function Integrations({
           ) : null}
         </section>
       )}
-      <div className="grid min-w-0 grid-cols-1 items-start gap-6 @4xl:grid-cols-[15rem_minmax(0,1fr)]">
-        <nav aria-label={words.systems} className="min-w-0">
-          <h2 className="mb-2 text-aui-sm font-semibold">{words.systems}</h2>
-          <ul className="flex min-w-0 flex-col gap-1">
-            {shownClients.map((c) => (
-              <li key={`client:${c.id}`}>
-                <button
-                  type="button"
-                  className="flex min-h-12 w-full min-w-0 flex-col gap-1 rounded-aui px-2 py-3 text-left hover:bg-aui-hover"
-                  aria-pressed={client?.id === c.id}
-                  onClick={() => pick(`client:${c.id}`)}
-                >
-                  <span className="break-words text-aui-sm font-medium">{c.name}</span>
-                  <span className="text-aui-xs text-aui-muted">
-                    {c.surface === "slack"
-                      ? defaultCopy.clientConnect.slack
-                      : defaultCopy.clientConnect.github}
-                    : {c.enabled ? "Enabled, credentials not verified" : words.disabled}
-                  </span>
-                </button>
-              </li>
-            ))}
-            {shownSources.map((s) => (
-              <li key={`source:${s.name}`}>
-                <button
-                  type="button"
-                  className="flex min-h-12 w-full min-w-0 flex-col gap-1 rounded-aui px-2 py-3 text-left hover:bg-aui-hover"
-                  aria-pressed={source?.name === s.name}
-                  onClick={() => pick(`source:${s.name}`)}
-                >
-                  <span className="break-words text-aui-sm font-medium">{s.name}</span>
-                  <span className="text-aui-xs text-aui-muted">
-                    {defaultCopy.sourceLifecycle.providers[
-                      (s.lifecycle?.provider ??
-                        "manual") as keyof typeof defaultCopy.sourceLifecycle.providers
-                    ] ??
-                      s.lifecycle?.provider ??
-                      defaultCopy.sourceLifecycle.providers.manual}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-          {!loading && shownClients.length + shownSources.length === 0 && (
-            <p className="text-aui-sm text-aui-muted">{words.empty}</p>
-          )}
-        </nav>
-        <section className="flex min-w-0 flex-col gap-5">
-          {source || client ? (
-            <>
-              <h2 className="break-words text-aui-lg font-semibold">
-                {source?.name ?? client?.name}
-              </h2>
-              <nav
-                className="flex flex-wrap gap-1 border-b border-aui-border"
-                aria-label={words.integrations}
-              >
-                {tabs.map((name) => (
+      {only && !loading && shownClients.length + shownSources.length === 0 ? (
+        <Empty title={only === "client" ? "No workspace apps installed" : "No data sources yet"}>
+          {only === "client"
+            ? "Install Slack or GitHub above so agents can answer there."
+            : "Connect Google Drive, BigQuery or Snowflake above, and what they hold becomes searchable knowledge."}
+        </Empty>
+      ) : (
+        <div className="grid min-w-0 grid-cols-1 items-start gap-6 @4xl:grid-cols-[15rem_minmax(0,1fr)]">
+          <nav aria-label={words.systems} className="min-w-0">
+            <h2 className="mb-2 text-aui-sm font-semibold">{words.systems}</h2>
+            <ul className="flex min-w-0 flex-col gap-1">
+              {shownClients.map((c) => (
+                <li key={`client:${c.id}`}>
                   <button
                     type="button"
-                    key={name}
-                    aria-current={active === name ? "page" : undefined}
-                    className={`min-h-11 px-3 text-aui-sm ${active === name ? "border-b-2 border-aui-accent font-semibold" : "text-aui-muted"}`}
-                    onClick={() => pick(id, name)}
+                    className="flex min-h-12 w-full min-w-0 flex-col gap-1 rounded-aui px-2 py-3 text-left hover:bg-aui-hover"
+                    aria-pressed={client?.id === c.id}
+                    onClick={() => pick(`client:${c.id}`)}
                   >
-                    {words[name]}
+                    <span className="break-words text-aui-sm font-medium">{c.name}</span>
+                    <span className="text-aui-xs text-aui-muted">
+                      {c.surface === "slack"
+                        ? defaultCopy.clientConnect.slack
+                        : defaultCopy.clientConnect.github}
+                      : {c.enabled ? "Enabled, credentials not verified" : words.disabled}
+                    </span>
                   </button>
-                ))}
-              </nav>
-              {active === "connect" &&
-                (source ? (
-                  <SourceLifecycle
-                    key={`${source.name}:${source.updated_at}`}
-                    source={source}
-                    canWrite={canKnowledgeWrite}
-                    onChanged={load}
-                  />
-                ) : (
-                  client && (
-                    <section className="flex flex-col gap-3">
-                      <Chip>{words.configured}</Chip>
-                      <ConnectionHealth
-                        key={`${client.id}:${client.version}`}
-                        client={client.id}
-                        provider={client.surface}
-                        canCheck={canWrite}
+                </li>
+              ))}
+              {shownSources.map((s) => (
+                <li key={`source:${s.name}`}>
+                  <button
+                    type="button"
+                    className="flex min-h-12 w-full min-w-0 flex-col gap-1 rounded-aui px-2 py-3 text-left hover:bg-aui-hover"
+                    aria-pressed={source?.name === s.name}
+                    onClick={() => pick(`source:${s.name}`)}
+                  >
+                    <span className="break-words text-aui-sm font-medium">{s.name}</span>
+                    <span className="text-aui-xs text-aui-muted">
+                      {defaultCopy.sourceLifecycle.providers[
+                        (s.lifecycle?.provider ??
+                          "manual") as keyof typeof defaultCopy.sourceLifecycle.providers
+                      ] ??
+                        s.lifecycle?.provider ??
+                        defaultCopy.sourceLifecycle.providers.manual}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {!loading && shownClients.length + shownSources.length === 0 && (
+              <p className="text-aui-sm text-aui-muted">{words.empty}</p>
+            )}
+          </nav>
+          <section className="flex min-w-0 flex-col gap-5">
+            {source || client ? (
+              <>
+                <h2 className="break-words text-aui-lg font-semibold">
+                  {source?.name ?? client?.name}
+                </h2>
+                <nav
+                  className="flex flex-wrap gap-1 border-b border-aui-border"
+                  aria-label={words.integrations}
+                >
+                  {tabs.map((name) => (
+                    <button
+                      type="button"
+                      key={name}
+                      aria-current={active === name ? "page" : undefined}
+                      className={`min-h-11 px-3 text-aui-sm ${active === name ? "border-b-2 border-aui-accent font-semibold" : "text-aui-muted"}`}
+                      onClick={() => pick(id, name)}
+                    >
+                      {words[name]}
+                    </button>
+                  ))}
+                </nav>
+                {active === "connect" &&
+                  (source ? (
+                    <SourceLifecycle
+                      key={`${source.name}:${source.updated_at}`}
+                      source={source}
+                      canWrite={canKnowledgeWrite}
+                      onChanged={load}
+                    />
+                  ) : (
+                    client && (
+                      <section className="flex flex-col gap-3">
+                        <Chip>{words.configured}</Chip>
+                        <ConnectionHealth
+                          key={`${client.id}:${client.version}`}
+                          client={client.id}
+                          provider={client.surface}
+                          canCheck={canWrite}
+                        />
+                        <dl className="grid grid-cols-1 gap-2 text-aui-sm">
+                          <dt className="text-aui-muted">{words.routing}</dt>
+                          <dd>
+                            {client.home?.project || words.workspace}
+                            {client.home?.channel ? ` / #${client.home.channel}` : ""}
+                          </dd>
+                          <dt className="text-aui-muted">{words.defaultAgent}</dt>
+                          <dd>
+                            {client.default_agent === AUTO
+                              ? defaultCopy.auto.handle
+                              : client.default_agent || words.noDefault}
+                          </dd>
+                          <dt className="text-aui-muted">{words.allowed}</dt>
+                          <dd className="break-words">
+                            {client.agents?.join(", ") || words.noDefault}
+                          </dd>
+                        </dl>
+                        {canWrite && !client.managed && (
+                          <button
+                            type="button"
+                            className={`${button} self-start`}
+                            onClick={() =>
+                              void mutate(() => api.saveClient(client, !client.enabled))
+                            }
+                          >
+                            {client.enabled ? words.disabled : words.enabled}
+                          </button>
+                        )}
+                        {canWrite && client.managed === "installation" && (
+                          <InstalledClientSetup
+                            key={`${client.id}:${client.version}`}
+                            client={client}
+                            onChanged={load}
+                          />
+                        )}
+                      </section>
+                    )
+                  ))}
+                {active === "resources" &&
+                  (source ? (
+                    <>
+                      <SourceResources
+                        key={`${source.name}:${source.updated_at}`}
+                        source={source}
+                        canWrite={canKnowledgeWrite}
+                        onChanged={load}
                       />
-                      <dl className="grid grid-cols-1 gap-2 text-aui-sm">
-                        <dt className="text-aui-muted">{words.routing}</dt>
-                        <dd>
-                          {client.home?.project || words.workspace}
-                          {client.home?.channel ? ` / #${client.home.channel}` : ""}
-                        </dd>
-                        <dt className="text-aui-muted">{words.defaultAgent}</dt>
-                        <dd>
-                          {client.default_agent === AUTO
-                            ? defaultCopy.auto.handle
-                            : client.default_agent || words.noDefault}
-                        </dd>
-                        <dt className="text-aui-muted">{words.allowed}</dt>
-                        <dd className="break-words">
-                          {client.agents?.join(", ") || words.noDefault}
-                        </dd>
-                      </dl>
-                      {canWrite && !client.managed && (
+                      <SourceAttachments
+                        key={`${source.name}:${source.updated_at}:attachments`}
+                        source={source}
+                        canWrite={canKnowledgeWrite}
+                        onChanged={load}
+                      />
+                    </>
+                  ) : (
+                    client && (
+                      <ClientResources
+                        client={client}
+                        canWrite={canWrite}
+                        onOpenProject={onOpenProject}
+                      />
+                    )
+                  ))}
+                {active === "links" && (
+                  <SourceRules
+                    key={source?.name ?? client?.id ?? ""}
+                    client={client?.id}
+                    source={source?.name}
+                    provider={source?.lifecycle?.provider ?? client?.surface ?? ""}
+                    canWrite={canWrite}
+                    onOpenProject={onOpenProject}
+                  />
+                )}
+                {active === "access" &&
+                  (source ? (
+                    <>
+                      <p className="text-aui-sm text-aui-muted">{words.scopeHint}</p>
+                      <SourceAccessMode
+                        key={`${source.name}:${source.updated_at}:access`}
+                        source={source}
+                        canWrite={canKnowledgeWrite}
+                        onChanged={load}
+                      />
+                      <SourceSyncSettings
+                        key={`${source.name}:${source.updated_at}`}
+                        source={source}
+                        canWrite={canKnowledgeWrite}
+                        onChanged={load}
+                      />
+                      {onOpenSource && (
                         <button
                           type="button"
                           className={`${button} self-start`}
-                          onClick={() => void mutate(() => api.saveClient(client, !client.enabled))}
+                          onClick={() => onOpenSource(source.name)}
                         >
-                          {client.enabled ? words.disabled : words.enabled}
+                          {words.sourceDetail}
                         </button>
                       )}
-                      {canWrite && client.managed === "installation" && (
-                        <InstalledClientSetup
-                          key={`${client.id}:${client.version}`}
-                          client={client}
-                          onChanged={load}
-                        />
-                      )}
-                    </section>
-                  )
-                ))}
-              {active === "resources" &&
-                (source ? (
+                    </>
+                  ) : (
+                    client && (
+                      <ClientResources
+                        client={client}
+                        canWrite={canWrite}
+                        onOpenProject={onOpenProject}
+                      />
+                    )
+                  ))}
+                {active === "events" &&
+                  (client ? (
+                    <>
+                      <ClientCapabilitiesPanel client={client} mode="events" canWrite={canWrite} />
+                      <ClientEvents client={client} />
+                    </>
+                  ) : (
+                    source && <SourceEvents source={source} />
+                  ))}
+                {active === "actions" && (
                   <>
-                    <SourceResources
-                      key={`${source.name}:${source.updated_at}`}
-                      source={source}
-                      canWrite={canKnowledgeWrite}
-                      onChanged={load}
-                    />
-                    <SourceAttachments
-                      key={`${source.name}:${source.updated_at}:attachments`}
-                      source={source}
-                      canWrite={canKnowledgeWrite}
-                      onChanged={load}
-                    />
-                  </>
-                ) : (
-                  client && (
-                    <ClientResources
-                      client={client}
-                      canWrite={canWrite}
-                      onOpenProject={onOpenProject}
-                    />
-                  )
-                ))}
-              {active === "links" && (
-                <SourceRules
-                  key={source?.name ?? client?.id ?? ""}
-                  client={client?.id}
-                  source={source?.name}
-                  provider={source?.lifecycle?.provider ?? client?.surface ?? ""}
-                  canWrite={canWrite}
-                  onOpenProject={onOpenProject}
-                />
-              )}
-              {active === "access" &&
-                (source ? (
-                  <>
-                    <p className="text-aui-sm text-aui-muted">{words.scopeHint}</p>
-                    <SourceAccessMode
-                      key={`${source.name}:${source.updated_at}:access`}
-                      source={source}
-                      canWrite={canKnowledgeWrite}
-                      onChanged={load}
-                    />
-                    <SourceSyncSettings
-                      key={`${source.name}:${source.updated_at}`}
-                      source={source}
-                      canWrite={canKnowledgeWrite}
-                      onChanged={load}
-                    />
-                    {onOpenSource && (
-                      <button
-                        type="button"
-                        className={`${button} self-start`}
-                        onClick={() => onOpenSource(source.name)}
-                      >
-                        {words.sourceDetail}
-                      </button>
+                    {client && (
+                      <ClientCapabilitiesPanel client={client} mode="actions" canWrite={canWrite} />
                     )}
+                    <IntegrationActions />
                   </>
-                ) : (
-                  client && (
-                    <ClientResources
-                      client={client}
-                      canWrite={canWrite}
-                      onOpenProject={onOpenProject}
-                    />
-                  )
-                ))}
-              {active === "events" &&
-                (client ? (
-                  <>
-                    <ClientCapabilitiesPanel client={client} mode="events" canWrite={canWrite} />
-                    <ClientEvents client={client} />
-                  </>
-                ) : (
-                  source && <SourceEvents source={source} />
-                ))}
-              {active === "actions" && (
-                <>
-                  {client && (
-                    <ClientCapabilitiesPanel client={client} mode="actions" canWrite={canWrite} />
-                  )}
-                  <IntegrationActions />
-                </>
-              )}
-            </>
-          ) : (
-            <div className="flex flex-col gap-4">
-              <p className="text-aui-sm text-aui-muted">{words.noSelection}</p>
-              <CatalogBrowser />
-            </div>
-          )}
-        </section>
-      </div>
+                )}
+              </>
+            ) : (
+              <div className="flex flex-col gap-4">
+                <p className="text-aui-sm text-aui-muted">{words.noSelection}</p>
+                <CatalogBrowser />
+              </div>
+            )}
+          </section>
+        </div>
+      )}
     </ConnectionSection>
   );
 }

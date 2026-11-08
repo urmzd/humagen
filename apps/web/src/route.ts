@@ -353,7 +353,7 @@ export function documentTitle(r: Route, unread = 0, product = "Humagen"): string
   if (r.page === "agent" && r.name) place = r.name;
   else if (r.page === "project") place = r.name === "" ? "Workspace" : r.name;
   else if (r.page === "channel") place = `#${r.channel}`;
-  return `${unread > 0 ? `(${unread}) ` : ""}${place} · ${product}`;
+  return `${unread > 0 ? `(${unread}) ` : ""}${place} - ${product}`;
 }
 
 /** The address of a route, path and query. */
@@ -759,12 +759,15 @@ function read(pathname: string, search: string): Route {
             ? oneOf(c, ["connect", "resources", "links", "access", "events", "actions"] as const)
             : undefined,
       };
+    // Generic hubs move to the new navigation; addressed work keeps its action and filters.
     case "assignments":
-      return { page: "assignments", id: a, agent: q.get("agent") || undefined };
+      return a || q.get("agent")
+        ? { page: "assignments", id: a, agent: q.get("agent") || undefined }
+        : { page: "sessions" };
     case "agent-network":
-      return { page: "agent-network", handoff: a === "handoffs" ? b : undefined };
+      return a === "handoffs" && b ? { page: "agent-network", handoff: b } : { page: "agents" };
     case "agent-controls":
-      return { page: "agent-control" };
+      return { page: "agents" };
     case "you":
       return {
         page: "you",

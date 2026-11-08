@@ -246,7 +246,7 @@ function ProjectRow({
             </span>
             <span>{words.details}</span>
             {agents.length > 2 && (
-              <span className="tabular-nums">· {words.moreAgents(agents.length - 2)}</span>
+              <span className="tabular-nums">| {words.moreAgents(agents.length - 2)}</span>
             )}
           </summary>
           <div className="max-w-[70ch] space-y-3 pb-3 pl-[30px] leading-5">
@@ -1669,7 +1669,7 @@ export function ProjectPage({
         p.depth > 1 ? words.within(above(p)) : null,
       ]
         .filter(Boolean)
-        .join(" · ");
+        .join(" | ");
   const ownScope = root
     ? ({ kind: "tenant" } as const)
     : ({ kind: "project", name: p.name } as const);

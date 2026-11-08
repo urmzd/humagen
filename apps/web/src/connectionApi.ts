@@ -1,8 +1,8 @@
 import type {
   ConnectionAuthorization,
   ConnectionAuthorizationInput,
-  ConnectionHealth,
   ConnectionDetail,
+  ConnectionHealth,
   ConnectionPreset,
 } from "../../../packages/client/src/generated/types.ts";
 import { call } from "./api.ts";

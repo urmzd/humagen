@@ -124,7 +124,7 @@ export function toolsLine(
     : undefined;
   const base = { failed, waiting, running: running !== undefined, counts };
   if (waiting) {
-    const pending = tasks.find(task => task.status === "waiting");
+    const pending = tasks.find((task) => task.status === "waiting");
     return { ...base, text: `Awaiting approval: ${pending?.title || "tool call"}` };
   }
   if (running) {

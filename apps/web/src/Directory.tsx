@@ -196,7 +196,7 @@ function People() {
                   {p.name || words.handle(p.handle)}
                 </span>
                 <span className="block truncate text-aui-xs text-aui-muted">
-                  {words.handle(p.handle)} · {words.roles(p.roles)}
+                  {words.handle(p.handle)} | {words.roles(p.roles)}
                   {p.projects && p.projects.length > 0 && (
                     <span className="ml-3">
                       {words.personProjects(
@@ -276,7 +276,7 @@ function Agents({
                 ) : (
                   words.platformAgent
                 )}
-                {!home && ` · ${where}`}
+                {!home && ` | ${where}`}
               </span>
               {a.spec.description && (
                 <span className="block truncate text-aui-xs text-aui-muted">
@@ -344,7 +344,7 @@ function Projects({
                   <span className="block truncate text-aui-xs text-aui-muted">
                     {[kindWord(p.kind, kinds), factsOf(p), words.holds(p.schedules, p.notes)]
                       .filter(Boolean)
-                      .join(" · ")}
+                      .join(" | ")}
                   </span>
                   {here.length > 0 && (
                     <span className="flex flex-wrap items-center gap-1.5 pt-1 text-aui-xs text-aui-muted">

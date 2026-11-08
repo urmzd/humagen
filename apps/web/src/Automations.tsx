@@ -288,7 +288,7 @@ export function Automations({
             <span className="flex-1">
               {s.name}
               <span className="block text-aui-sm text-aui-muted">
-                {s.expression} · {s.agent}
+                {s.expression} | {s.agent}
               </span>
             </span>
             <span>{s.paused ? "Paused" : "Active"}</span>
@@ -310,9 +310,9 @@ export function Automations({
               <div className="min-w-0 flex-1">
                 <strong>{rule.name}</strong>
                 <p className="break-words text-aui-sm text-aui-muted">
-                  {rule.event} in {rule.repository} · {rule.action}
-                  {rule.conclusion ? ` · ${rule.conclusion}` : ""}
-                  {rule.label ? ` · ${rule.label}` : ""}
+                  {rule.event} in {rule.repository} | {rule.action}
+                  {rule.conclusion ? ` | ${rule.conclusion}` : ""}
+                  {rule.label ? ` | ${rule.label}` : ""}
                 </p>
                 <p>{rule.instructions}</p>
               </div>
@@ -338,7 +338,7 @@ export function Automations({
           Object.entries(c.github?.auto_labels ?? {}).flatMap(([repo, labels]) =>
             Object.entries(labels).map(([label, agent]) => (
               <div className={card} key={`${c.id}/${repo}/${label}`}>
-                <AgentMark name={agent} /> {repo} · Label equals {label} · {agent}
+                <AgentMark name={agent} /> {repo} | Label equals {label} | {agent}
               </div>
             )),
           ),

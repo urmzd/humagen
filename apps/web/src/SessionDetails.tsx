@@ -1,7 +1,7 @@
 import { createContext, type ReactNode, useEffect, useState } from "react";
-import { followSession } from "./sessionStream.ts";
 import { call } from "./api.ts";
 import { type ConversationPanel, href } from "./route.ts";
+import { followSession } from "./sessionStream.ts";
 import { AgentMark, Problem, SkeletonRows, Tabs } from "./ui.tsx";
 
 export const DetailsNavigation = createContext<ReactNode>(null);

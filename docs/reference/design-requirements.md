@@ -1824,12 +1824,18 @@ validation. See [the BigQuery guide](../guides/bigquery-connection.md).
 
 ### DES-071: Sessions and a single alert center
 
-The primary navigation is New, Sessions, Alerts, Agents, Connections, Library and
-Settings. Sessions reads `/api/sessions?mine=true&roots=true`, expands children
+The primary navigation is New, Sessions, Alerts, Agents, Connections, Artifacts
+and Settings. Sessions reads `/api/sessions?mine=true&roots=true`, expands children
 under their parent, and keeps state, project and agent filters in the address.
 Canonical details use `/sessions/{id}?panel=files|sources|steps|sessions`; old
 conversation paths retain their selections. Project inbox, history and channel
 addresses migrate to project context or filtered Sessions.
+
+Agents groups the directory, Skills, Knowledge and Memory while retaining their
+existing addresses. Connections groups Agent tools, Data sources and permitted
+Workspace apps. Artifacts opens published work at `/artifacts`. Generic network
+and controls addresses open Agents; addressed handoffs and agent-filtered
+assignments retain their specific decisions and filters.
 
 The alert center reads session alerts, with Mine/Everyone, priority, state and
 source filters, bulk Resolve/Snooze, and Undo for successful changes.
@@ -1921,6 +1927,12 @@ selectable, and Failed has the same meaning in the sidebar and Sessions. A touch
 row reveals its menu when selected or previewed; keyboard focus keeps it usable.
 Appearance owns theme changes; the account menu links there. Normal navigation
 counts use neutral color, while Urgent alerts retain their priority mark.
+
+Session and alert cards retain native destination links, including opening in a
+new tab, with explicit touch targets. Sidebar filter choices return focus to
+their disclosure. Connection details return focus to the provider opener and
+show review or approval errors inside the active sheet. A pending tool review
+stays bound to its provider when the reader changes or closes that sheet.
 
 Search and session rows show project titles or Personal, preserving opaque IDs
 only in addresses. Sessions retains the age at narrow widths; Home Continue adds

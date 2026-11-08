@@ -22,15 +22,14 @@ export function settingsPageLabel(route: Route): string | undefined {
 
 export function workspaceHub(route: Route): WorkspaceHub | null {
   if (settingsPageLabel(route)) return null;
+  // Agents, and what they draw on (skills, knowledge, memory), share one place with tabs.
   if (route.page === "customize")
-    return route.section === "skills" ? "library" : route.section === "agents" ? "agents" : null;
+    return route.section === "skills" || route.section === "agents" ? "agents" : null;
   if (route.page === "notifications" || route.page === "inbox") return "notifications";
   if (route.page === "monitor" && route.tab === "rules") return "notifications";
-  if (
-    (route.page === "library" && !["sources", "catalog"].includes(route.section)) ||
-    route.page === "artifacts"
-  )
-    return "library";
+  if (route.page === "library" && (route.section === "skills" || route.section === "memory"))
+    return "agents";
+  if (route.page === "context") return "agents";
   if (
     ["agents", "agent", "agent-setup", "agent-network", "assignments", "agent-control"].includes(
       route.page,
@@ -97,26 +96,35 @@ export function hubTabs(
               {
                 label: nav.agents,
                 route: { page: "agents" },
-                active: ["agents", "agent", "agent-setup"].includes(route.page),
+                active: [
+                  "agents",
+                  "agent",
+                  "agent-setup",
+                  "agent-network",
+                  "assignments",
+                  "agent-control",
+                ].includes(route.page),
                 visible: can("agents:read"),
               },
               {
-                label: nav.network,
-                route: { page: "agent-network" },
-                active: route.page === "agent-network",
-                visible: can("runs:read"),
+                label: nav.skills,
+                route: { page: "library", section: "skills" },
+                active:
+                  (route.page === "library" && route.section === "skills") ||
+                  (route.page === "customize" && route.section === "skills"),
+                visible: can("projects:read"),
               },
               {
-                label: nav.assignments,
-                route: { page: "assignments" },
-                active: route.page === "assignments",
-                visible: can("runs:read"),
+                label: "Knowledge",
+                route: { page: "context" },
+                active: route.page === "context",
+                visible: can("knowledge:read"),
               },
               {
-                label: nav.controls,
-                route: { page: "agent-control" },
-                active: route.page === "agent-control",
-                visible: can("agents:read"),
+                label: nav.memory,
+                route: { page: "library", section: "memory" },
+                active: route.page === "library" && route.section === "memory",
+                visible: can("runs:read") || can("projects:read") || can("agents:read"),
               },
             ]
           : [

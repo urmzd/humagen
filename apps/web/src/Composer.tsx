@@ -908,6 +908,20 @@ export function Composer({
             No matching people or agents for @{typing.query}
           </p>
         )}
+        {tags && typing?.sigil === "/" && !commands.length && (
+          <p role="status" className="px-3 text-aui-xs text-aui-muted">
+            {tags.options.some((o) => o.kind === "skill") ? (
+              <>No skill matches /{typing.query}.</>
+            ) : (
+              <>
+                No skills yet. Skills become / commands here.{" "}
+                <a href="/library/skills" className="underline hover:text-aui-fg">
+                  Create a skill
+                </a>
+              </>
+            )}
+          </p>
+        )}
         {notice && (
           <p role="status" className="px-3 text-aui-xs text-aui-muted">
             {notice}

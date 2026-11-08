@@ -41,7 +41,7 @@ test("Replay With forks at the selected finished turn and sends it to the chosen
   );
   fireEvent.click(items[0]!);
   assert.equal(net.seen.length, 0, "choosing an agent prepares the replay for review");
-  fireEvent.click(await screen.findByRole("button", {name:"Start replay"}));
+  fireEvent.click(await screen.findByRole("button", { name: "Start replay" }));
   await waitFor(() => assert.deepEqual(opened, ["th-fork"]));
   const posts = net.seen.filter((r) => r.method === "POST").map((r) => [r.path, r.body]);
   assert.deepEqual(posts, [
@@ -56,7 +56,7 @@ test("a refused replay says so and opens nothing", async () => {
   render(menu("r0", (id) => opened.push(id)));
   fireEvent.click(screen.getByRole("button", { name: "Replay With" }));
   fireEvent.click(await screen.findByRole("menuitem", { name: "Replay with @writer" }));
-  fireEvent.click(await screen.findByRole("button", {name:"Start replay"}));
+  fireEvent.click(await screen.findByRole("button", { name: "Start replay" }));
   await screen.findByRole("alert");
   assert.deepEqual(opened, []);
 });
@@ -69,7 +69,7 @@ test("a refused prompt post reports an error without navigating", async () => {
   render(menu("first-run", (id) => opened.push(id)));
   fireEvent.click(screen.getByRole("button", { name: "Replay With" }));
   fireEvent.click(await screen.findByRole("menuitem", { name: "Replay with @writer" }));
-  fireEvent.click(await screen.findByRole("button", {name:"Start replay"}));
+  fireEvent.click(await screen.findByRole("button", { name: "Start replay" }));
   await screen.findByRole("alert");
   assert.deepEqual(opened, []);
   assert.deepEqual(net.seen.find((r) => r.path.endsWith("/fork"))?.body, { through: "first-run" });

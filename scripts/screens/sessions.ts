@@ -45,6 +45,35 @@ async function detailsReady(page: Page): Promise<void> {
   }
 }
 
+async function filesReady(page: Page): Promise<void> {
+  await detailsReady(page);
+  const panel = details(page);
+  const browser = panel.locator('[data-slot="file-browser"]');
+  await browser.waitFor();
+  const picker = browser.getByRole("button", { name: "Files", exact: true });
+  if (await picker.isVisible()) {
+    await picker.click();
+    await page
+      .getByRole("dialog", { name: "Files", exact: true })
+      .getByRole("button", { name: "plan.md", exact: true })
+      .click();
+  } else {
+    await browser.getByRole("button", { name: "plan.md", exact: true }).click();
+  }
+  const editor = panel.getByRole("textbox", { name: "Edit plan.md", exact: true });
+  await editor.waitFor();
+  assert.equal(
+    await editor.inputValue(),
+    "# Launch plan\n\n- Keep November 12\n- Developer owns the briefing\n- Review the draft on Monday\n",
+    "The native work-session file must contain the completed multi-step draft",
+  );
+  await panel.getByRole("button", { name: "Preview", exact: true }).click();
+  await panel.getByRole("heading", { name: "Launch plan", exact: true }).waitFor();
+  const owner = panel.getByText("Developer owns the briefing", { exact: true });
+  await owner.waitFor();
+  await owner.scrollIntoViewIfNeeded();
+}
+
 /** A bounded acceptance set. Every state is captured at each configured width and theme. */
 export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
   const session = `/sessions/${ids.work.id}`;
@@ -69,7 +98,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
           "Alerts",
           "Agents",
           "Connections",
-          "Library",
+          "Artifacts",
           "Settings",
         ])
           await sections.getByRole("link", { name: new RegExp(`^${name}(?:,|$)`) }).waitFor();
@@ -134,15 +163,20 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       name: "connections-knowledge",
       path: "/connections",
       act: async (page) => {
-        await page.getByRole("tab", { name: "Knowledge", exact: true }).click();
+        await page.getByRole("tab", { name: "Data sources", exact: true }).click();
         await page.getByRole("heading", { name: "BigQuery", exact: true }).first().waitFor();
       },
     },
     {
-      name: "library",
-      path: "/library/skills",
+      name: "artifacts",
+      path: "/artifacts",
       act: async (page) => {
-        await page.getByRole("heading", { name: "Skills", exact: true }).waitFor();
+        await page.getByRole("heading", { name: "Deliverables", exact: true }).waitFor();
+        await page.getByRole("searchbox", { name: "Search artifacts", exact: true }).waitFor();
+        await page
+          .getByRole("list", { name: "Artifacts", exact: true })
+          .or(page.getByRole("heading", { name: "No artifacts yet", exact: true }))
+          .waitFor();
       },
     },
     {
@@ -190,7 +224,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
     ...(["files", "sources", "steps", "sessions"] as const).map((panel) => ({
       name: `session-details-${panel}`,
       path: `${session}?panel=${panel}`,
-      act: detailsReady,
+      act: panel === "files" ? filesReady : detailsReady,
     })),
     {
       name: "session-approval",

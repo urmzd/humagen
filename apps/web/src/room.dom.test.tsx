@@ -803,7 +803,11 @@ test("a room offers Retry only to the person whose failed turn it was", async ()
         />,
       );
       await screen.findByText(says);
-      assert.equal(Boolean(screen.queryByRole("button", { name: "Retry" })), me === "ana" && run === failed, `Retry for ${me}`);
+      assert.equal(
+        Boolean(screen.queryByRole("button", { name: "Retry" })),
+        me === "ana" && run === failed,
+        `Retry for ${me}`,
+      );
       assert.ok(!screen.queryByRole("button", { name: "Regenerate" }), `Regenerate for ${me}`);
       assert.ok(!screen.queryByText(/can't be retried/));
       cleanup();
@@ -3150,7 +3154,9 @@ test("recorded outcomes lead with recommendations and Redirect prepares human in
   assert.ok(within(message).getByText("Confirm the owner"));
   fireEvent.click(within(message).getByRole("button", { name: "More actions" }));
   fireEvent.click(screen.getByRole("button", { name: "Redirect" }));
-  const composer = screen.getByLabelText("Message", { selector: "textarea" }) as HTMLTextAreaElement;
+  const composer = screen.getByLabelText("Message", {
+    selector: "textarea",
+  }) as HTMLTextAreaElement;
   assert.ok(composer.value.includes("@helper redirecting [this outcome]"));
   assert.ok(composer.value.endsWith("Please change direction: "));
   assert.equal(net?.seen.filter((call) => call.method === "POST").length, 0);
@@ -3280,7 +3286,11 @@ test("human and completed-agent fork actions share the Copy and Reply footer", a
   fireEvent.click(within(actions).getByRole("button", { name: defaultCopy.forking.fromHere }));
   const agent = screen.getByRole("article", { name: "Answered by helper" });
   fireEvent.click(within(agent).getByRole("button", { name: "More actions" }));
-  fireEvent.click(within(screen.getByRole("dialog", { name: "More actions" })).getByRole("button", { name: defaultCopy.forking.fromHere }));
+  fireEvent.click(
+    within(screen.getByRole("dialog", { name: "More actions" })).getByRole("button", {
+      name: defaultCopy.forking.fromHere,
+    }),
+  );
   assert.deepEqual(points, ["m-1", "r1"]);
 });
 
@@ -3371,8 +3381,13 @@ test("multiple replies by the same agent each retain one accessible Copy and Rep
     assert.equal(within(actions[0]!).getAllByRole("button", { name: "Reply" }).length, 1);
   }
   fireEvent.click(within(agents[1]!).getByRole("button", { name: "Reply" }));
-  await waitFor(() => assert.ok(document.querySelector("[data-reply-quote] a")?.getAttribute("href")?.includes("r2")));
-  assert.equal((document.querySelector('form[aria-label="Message"] textarea') as HTMLTextAreaElement).value, "");
+  await waitFor(() =>
+    assert.ok(document.querySelector("[data-reply-quote] a")?.getAttribute("href")?.includes("r2")),
+  );
+  assert.equal(
+    (document.querySelector('form[aria-label="Message"] textarea') as HTMLTextAreaElement).value,
+    "",
+  );
 });
 
 for (const kind of ["conversation", "channel"] as const) {

@@ -86,7 +86,7 @@ export function Catalog({
               <article key={c.name} className="min-w-0 border-b border-aui-border pb-4">
                 <h2 className="break-words text-sm font-medium">{c.name}</h2>
                 <p className="text-sm text-aui-muted">
-                  {c.system} · {c.entries} {copy.count}
+                  {c.system} | {c.entries} {copy.count}
                 </p>
                 <p className="text-sm text-aui-muted">
                   {c.published ? copy.published : copy.private}
@@ -142,7 +142,7 @@ export function Catalog({
               >
                 <h2 className="break-all font-mono text-sm font-medium">{entry.path}</h2>
                 <p className="mt-1 text-sm text-aui-muted">
-                  {entry.connector} · {entry.kind}
+                  {entry.connector} | {entry.kind}
                 </p>
                 {entry.description && (
                   <p className="mt-2 whitespace-pre-wrap break-words text-sm">

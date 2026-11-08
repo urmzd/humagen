@@ -2,8 +2,8 @@ import { defaultCopy } from "@humagen/components";
 import { type FormEvent, useEffect, useState } from "react";
 
 import { api, type Source, type SourceConfiguration, type SourceDependencies } from "./api.ts";
+import { type ConnectionPreset, connectionApi } from "./connectionApi.ts";
 import { whereReferences } from "./connections.ts";
-import { connectionApi, type ConnectionPreset } from "./connectionApi.ts";
 import { ago, button, Chip, card, field, Label, Problem } from "./ui.tsx";
 
 const words = defaultCopy.sourceLifecycle;
@@ -168,6 +168,7 @@ export function SourceLifecycle({
                   disabled={busy}
                   onClick={() =>
                     void run(async () => {
+                      // biome-ignore lint/correctness/useHookAtTopLevel: connectionApi.useSource performs an HTTP request.
                       await connectionApi.useSource(source.name, "drive");
                       setNotice(
                         "Your Google Drive account is connected to this source. Preview its resources to verify access.",

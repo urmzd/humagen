@@ -116,7 +116,7 @@ export function ConversationPeek({
         {task.title || "Untitled conversation"}
       </span>
       <span className="truncate text-aui-2xs text-aui-muted">
-        {project || words.outsideProject} · {words.updated(updatedWhen(task.updated_at))}
+        {project || words.outsideProject} | {words.updated(updatedWhen(task.updated_at))}
       </span>
       {task.last && (
         <span className="mt-1 flex items-start gap-1.5 text-aui-muted">

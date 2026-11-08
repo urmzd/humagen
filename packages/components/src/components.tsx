@@ -17,8 +17,8 @@ import {
   type Interrupt,
   isRetryable,
   type Notice,
-  readReview,
   readAgentChange,
+  readReview,
   SERVICE_TONE,
   type Segment,
   type SessionState,
@@ -56,10 +56,10 @@ import {
   useSurface,
 } from "@humagen/primitives";
 import type { ReactNode } from "react";
+import { AgentChangeCards } from "./agent-change";
 import { type Copy, defaultCopy } from "./copy";
 import { AnswerText, reviewCountLine } from "./review";
 import { toolsLine } from "./timeline";
-import { AgentChangeCards } from "./agent-change";
 
 interface WithCopy {
   copy?: Copy;
@@ -177,7 +177,9 @@ export function ApprovalCard({
           {approval.editable && !approval.actsForPerson && (
             <Button label={copy.edit} action={{ id: ActionId.edit, payload }} />
           )}
-          {!approval.budget && <Button label={copy.askApproval} action={{ id: ActionId.ask, payload }} />}
+          {!approval.budget && (
+            <Button label={copy.askApproval} action={{ id: ActionId.ask, payload }} />
+          )}
           {approval.rememberable && (
             <Button
               label={copy.alwaysAllow(approval.tool)}
@@ -628,7 +630,7 @@ export function toolsLineText(
     line.waiting ? w.waiting : "",
   ]
     .filter(Boolean)
-    .join(" · ");
+    .join(" | ");
 }
 
 /**
@@ -817,7 +819,9 @@ export function TurnView({
       {turn.attachments?.map((a) => (
         <AttachmentView key={a.id} attachment={a} />
       ))}
-      <Only surface="slack"><AgentChangeCards tasks={turn.tasks} /></Only>
+      <Only surface="slack">
+        <AgentChangeCards tasks={turn.tasks} />
+      </Only>
       {/* Gated tool rows hold their own controls on the web; Slack gets the cards. */}
       {pendingApprovals.length > 1 && owned.size > 0 ? (
         <Only surface="slack">

@@ -180,12 +180,12 @@ export function QueueStrip({ queue }: { queue: QueueControls }) {
               className={`size-1.5 shrink-0 rounded-full ${state.heldReason === "failed" ? "bg-aui-warn" : "bg-aui-muted"}`}
             />
             <span className="truncate font-medium">{reason}</span>
-            <span className="text-aui-muted">· {state.pending.length} queued</span>
+            <span className="text-aui-muted">| {state.pending.length} queued</span>
           </output>
         ) : (
           <span className="tabular-nums">
             {state.pending.length} queued
-            {state.status === "stopping" ? " · stopping current turn" : ""}
+            {state.status === "stopping" ? " | stopping current turn" : ""}
           </span>
         )}
         <span className="ml-auto flex items-center gap-1">

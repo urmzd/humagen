@@ -21,7 +21,7 @@ test("Settings pages have one navigation frame without a legacy Operations tab s
   assert.equal(settingsPageLabel({ page: "operations", section: "context" }), undefined);
 });
 
-test("Library has one hub and preserves selected files in its tabs", () => {
+test("Agents holds skills, knowledge and memory in its tabs, and artifacts have their own page", () => {
   const route: Route = {
     page: "library",
     section: "skills",
@@ -33,16 +33,17 @@ test("Library has one hub and preserves selected files in its tabs", () => {
   };
   const url = new URL(href(route), "http://localhost");
   assert.deepEqual(parse(url.pathname, url.search), route);
-  const tabs = hubTabs("library", route, () => true);
+  assert.equal(workspaceHub(route), "agents");
+  const tabs = hubTabs("agents", route, () => true);
   assert.deepEqual(
     tabs.map((tab) => tab.label),
-    ["Skills", "Memory", "Saved files"],
+    ["Agents", "Skills", "Knowledge", "Memory"],
   );
   assert.deepEqual(
     tabs.filter((tab) => tab.active).map((tab) => tab.label),
     ["Skills"],
   );
-  assert.equal(workspaceHub({ page: "artifacts", artifact: "file-one" }), "library");
+  assert.equal(workspaceHub({ page: "artifacts", artifact: "file-one" }), null);
   const deliverable: Route = { page: "library", section: "deliverables", artifact: "file-one" };
   const link = new URL(href(deliverable), "http://localhost");
   assert.deepEqual(parse(link.pathname, link.search), deliverable);
@@ -59,7 +60,7 @@ test("consolidated tabs retain native permissions and alert rule discovery", () 
     hubTabs("agents", { page: "new" }, (permission) => permission === "runs:read").map(
       (tab) => tab.label,
     ),
-    ["Agent Network", "Assignments"],
+    ["Memory"],
   );
   assert.deepEqual(
     hubTabs(

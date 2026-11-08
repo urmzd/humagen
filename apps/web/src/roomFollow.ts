@@ -1,5 +1,5 @@
-import { followSession } from "./sessionStream.ts";
 import { runStateTypes, subscribe } from "./api.ts";
+import { followSession } from "./sessionStream.ts";
 
 /**
  * Follows one conversation as its room (RFC 0004): a message posted in it, a
@@ -20,10 +20,11 @@ export function followRoom(thread: string, changed: () => void, wait = 150): () 
   try {
     if (thread.startsWith("s_")) {
       close = followSession(thread, { session: soon });
-    } else close = subscribe(
-      { thread, type: runStateTypes },
-      { onThread: soon, onEvent: soon, onPage: soon },
-    );
+    } else
+      close = subscribe(
+        { thread, type: runStateTypes },
+        { onThread: soon, onEvent: soon, onPage: soon },
+      );
   } catch {
     return () => {};
   }

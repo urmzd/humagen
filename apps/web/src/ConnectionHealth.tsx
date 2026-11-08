@@ -39,7 +39,7 @@ export function ConnectionHealth({
     <div className="flex flex-col items-start gap-2">
       <output aria-live="polite" className="text-aui-xs text-aui-muted">
         {result
-          ? `${result.healthy ? "Access verified" : "Access not verified"} · ${new Date(result.checked_at).toLocaleString()}. ${result.message}`
+          ? `${result.healthy ? "Access verified" : "Access not verified"} | ${new Date(result.checked_at).toLocaleString()}. ${result.message}`
           : "Access has not been checked. Saving credentials does not verify them."}
       </output>
       <Problem message={problem} />

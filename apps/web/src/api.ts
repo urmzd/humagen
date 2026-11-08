@@ -1,4 +1,3 @@
-import { sessionPage, sessionPosted } from "./sessionAdapter.ts";
 import { type AnswerRequest, answerPath } from "@humagen/adapter/question";
 import type {
   AgentHome,
@@ -53,6 +52,7 @@ import type {
   VoiceTranscript,
 } from "../../../packages/client/src/generated/types.ts";
 import type { Run, RunEvent } from "./adapter.ts";
+import { sessionPage, sessionPosted } from "./sessionAdapter.ts";
 import { track } from "./transition.ts";
 
 // The project tree's shapes are the generated client's own, from
@@ -671,8 +671,8 @@ export interface ToolCredential {
 
 /** The tools that act as you, and what this workspace lets people give for them. */
 export interface ToolCredentials {
- allowed_hosts?: string[];
- oauth_available?: boolean;
+  allowed_hosts?: string[];
+  oauth_available?: boolean;
   providers: ToolCredential[];
   /** Whether you may store the credential itself with humagen. */
   values: boolean;
@@ -1958,9 +1958,15 @@ export const coworking = {
   },
   /** A thread and one page of its turns, the newest first; `before` reads the page above. */
   thread: (id: string, before?: string, around?: string) => {
-    const query = before ? `?${new URLSearchParams({ before })}` : around && id.startsWith("s_") ? `?${new URLSearchParams({ around })}` : "";
+    const query = before
+      ? `?${new URLSearchParams({ before })}`
+      : around && id.startsWith("s_")
+        ? `?${new URLSearchParams({ around })}`
+        : "";
     return id.startsWith("s_")
-      ? call<AgentSession>("GET", `/api/sessions/${encodeURIComponent(id)}${query}`).then(sessionPage)
+      ? call<AgentSession>("GET", `/api/sessions/${encodeURIComponent(id)}${query}`).then(
+          sessionPage,
+        )
       : call<ThreadPage>("GET", `${threadPath(id)}${query}`);
   },
   /**
@@ -1978,9 +1984,16 @@ export const coworking = {
       agents?: string[];
       mode?: "join" | "all";
     } & MessagePick,
-  ) => t.visibility === "shared"
-    ? call<ThreadPosted>("POST", "/api/threads", t)
-    : call<AgentSession>("POST", "/api/sessions", { text: t.text, project: t.project, agent: t.agents?.[0], model: t.model, effort: t.effort }).then(sessionPosted),
+  ) =>
+    t.visibility === "shared"
+      ? call<ThreadPosted>("POST", "/api/threads", t)
+      : call<AgentSession>("POST", "/api/sessions", {
+          text: t.text,
+          project: t.project,
+          agent: t.agents?.[0],
+          model: t.model,
+          effort: t.effort,
+        }).then(sessionPosted),
   /**
    * Shares a private thread in a project's channel (general unless named)
    * and adds people by handle. The project may change only while the thread
@@ -2017,12 +2030,12 @@ export const coworking = {
       "GET",
       `/api/mentions?${new URLSearchParams({ project: project === "" ? "~" : project, kind, q })}`,
     ).then((r) => r.items ?? []),
-  post: (
-    id: string,
-    m: SessionPostInput,
-  ) => id.startsWith("s_")
-    ? call<AgentSession>("POST", `/api/sessions/${encodeURIComponent(id)}/messages`, m).then(sessionPosted)
-    : call<ThreadPosted>("POST", `${threadPath(id)}/messages`, m),
+  post: (id: string, m: SessionPostInput) =>
+    id.startsWith("s_")
+      ? call<AgentSession>("POST", `/api/sessions/${encodeURIComponent(id)}/messages`, m).then(
+          sessionPosted,
+        )
+      : call<ThreadPosted>("POST", `${threadPath(id)}/messages`, m),
   /** Changes a thread's record: its title, visibility, default, the agents it routes to and how, and while it has no runs, where it lives. */
   update: (
     id: string,

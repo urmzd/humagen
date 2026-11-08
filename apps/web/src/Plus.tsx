@@ -436,7 +436,9 @@ export function PlusMenu({
               )}
               <ChevronRightIcon size={16} className="text-aui-muted" />
             </button>
-            {projectFixed && <p className="px-2.5 pb-2 text-aui-xs text-aui-muted">{projectFixed}</p>}
+            {projectFixed && (
+              <p className="px-2.5 pb-2 text-aui-xs text-aui-muted">{projectFixed}</p>
+            )}
             {onSkill && (
               <button
                 type="button"

@@ -181,7 +181,17 @@ function RunRow({ run, by, onOpen }: { run: Run; by: string; onOpen: () => void 
  * its answer, tool steps and calls to other agents, drawn by the component
  * the conversation uses. A call to another agent opens that agent here.
  */
-function Call({ run, by, onOpen, step }: { run: Run; by: string; onOpen: (id: string) => void; step?: string }) {
+function Call({
+  run,
+  by,
+  onOpen,
+  step,
+}: {
+  run: Run;
+  by: string;
+  onOpen: (id: string) => void;
+  step?: string;
+}) {
   const streamed = useRunTurn(run, true);
   const turn = useMemo(() => streamed ?? turnOf(run), [streamed, run]);
   const { stop } = useRunStop(run, live(run));
@@ -242,12 +252,27 @@ function Call({ run, by, onOpen, step }: { run: Run; by: string; onOpen: (id: st
       </div>
       <AgentTint name={run.agent}>
         <WebSurface onAction={onAction}>
-          {step && <section aria-label="Selected evidence step" className="mb-4 rounded-aui border border-aui-border p-3">
-            <h3 className="mb-2 text-aui-sm font-medium">Evidence step</h3>
-            {turn.tasks.some((task) => task.id === step)
-              ? <TaskList turn={{ ...turn, planTitle: undefined, tasks: turn.tasks.filter((task) => task.id === step) }} />
-              : <p className="text-aui-xs text-aui-muted">This step is unavailable in the retained history.</p>}
-          </section>}
+          {step && (
+            <section
+              aria-label="Selected evidence step"
+              className="mb-4 rounded-aui border border-aui-border p-3"
+            >
+              <h3 className="mb-2 text-aui-sm font-medium">Evidence step</h3>
+              {turn.tasks.some((task) => task.id === step) ? (
+                <TaskList
+                  turn={{
+                    ...turn,
+                    planTitle: undefined,
+                    tasks: turn.tasks.filter((task) => task.id === step),
+                  }}
+                />
+              ) : (
+                <p className="text-aui-xs text-aui-muted">
+                  This step is unavailable in the retained history.
+                </p>
+              )}
+            </section>
+          )}
           <AgentMessage
             turn={turn}
             itemActions={itemActions(run)}
@@ -401,7 +426,12 @@ export function ActivityPanel({
                   {i > 0 && (
                     <hr aria-label={`Call ${i + 1}`} className="border-[var(--humagen-rule)]" />
                   )}
-                  <Call run={c} by={askedBy(c, runs)} onOpen={onSelect} step={c.id === selected ? step : undefined} />
+                  <Call
+                    run={c}
+                    by={askedBy(c, runs)}
+                    onOpen={onSelect}
+                    step={c.id === selected ? step : undefined}
+                  />
                 </div>
               ))}
               {limits && (

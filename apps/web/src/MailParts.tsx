@@ -179,7 +179,7 @@ export function platformParts(onOpen: (source: Source) => void): Record<string, 
               <p className="truncate text-aui-sm font-medium text-aui-fg" title={a.title}>
                 {a.title}
               </p>
-              <p className="truncate text-aui-xs text-aui-muted">{facts.join(" · ")}</p>
+              <p className="truncate text-aui-xs text-aui-muted">{facts.join(" | ")}</p>
             </div>
           </div>
           {a.description && (

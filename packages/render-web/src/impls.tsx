@@ -209,7 +209,7 @@ function ExpiryChip({ iso }: { iso: string }) {
   const now = useNow();
   const left = timeLeft(iso, now);
   const exact = localizeTimes(`{{time:${iso}}}`);
-  if (!left) return <span>Expired · {exact}</span>;
+  if (!left) return <span>Expired | {exact}</span>;
   return (
     <span
       title={`Expires ${exact}`}

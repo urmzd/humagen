@@ -1429,13 +1429,9 @@
 .aui-wave-tick {
   width: var(--aui-wave-w, 8px);
 }
+/* The turn in view: neutral ink, so colour stays for meaning, not position. */
 .aui-wave-now {
-  background: linear-gradient(
-    90deg,
-    var(--aui-brand-red),
-    var(--aui-brand-yellow),
-    var(--aui-brand-green)
-  );
+  background: var(--aui-fg);
 }
 @media (max-width: 47.99rem) {
   .aui-wave-rail {

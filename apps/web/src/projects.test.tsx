@@ -209,7 +209,8 @@ test("the projects page heads Company-wide with the workspace, links every row, 
     `groups in order: ${heads}`,
   );
   assert.ok(
-    out.indexOf('href="/projects/~/context"') < out.indexOf('href="/projects/Company%20news/context"'),
+    out.indexOf('href="/projects/~/context"') <
+      out.indexOf('href="/projects/Company%20news/context"'),
     "the workspace comes first",
   );
   assert.match(out, />Acme</);
@@ -217,7 +218,7 @@ test("the projects page heads Company-wide with the workspace, links every row, 
   for (const label of ["Globex Inc", "in Field engineering"]) assert.ok(out.includes(label));
   assert.match(out, />1 running<\/span>/);
   assert.match(out, />4 conversations<\/span>/);
-  assert.doesNotMatch(out, /1 running ·/);
+  assert.doesNotMatch(out, /1 running \|/);
   assert.doesNotMatch(out, /New Project/);
   assert.match(page({ canCreate: true }), /New Project/);
   assert.match(page({ projects: [], root: null, canCreate: true }), /No projects yet. Make one/);

@@ -309,7 +309,7 @@ export function messageTag(message: InboxMessage, copy: Copy = defaultCopy): str
   const severity = message.severity ? copy.severity[message.severity] : undefined;
   return [message.tag ?? copy.template[messageTemplate(message)], severity]
     .filter(Boolean)
-    .join(" · ");
+    .join(" | ");
 }
 
 /** The envelope line: its tag, who sent it, when, and where it came from. */

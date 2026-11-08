@@ -50,18 +50,57 @@ afterEach(() => {
   net = undefined;
 });
 
-
 // Session requests reuse the same realistic thread/message fixtures. The adapter
 // returns the canonical envelope and tests assert the canonical request below.
 function stubChatFetch(routes: Parameters<typeof stubFetch>[0]) {
   const start = routes["POST /api/threads"];
   if (!start) return stubFetch(routes);
   const { ["POST /api/threads"]: _, ...rest } = routes;
-  return stubFetch({ ...rest, "POST /api/sessions": async (body, query) => {
-    const result = await start(body, query) as { thread: { id:string; project:string }; message: { id:string; text:string; mentions?:unknown[] }; runs?: Run[] };
-    if (result instanceof Response) return result;
-    return { id:result.thread.id,agent:"helper",parent:"console://test",project:result.thread.project,title:result.message.text,status:"done",updated_at:at,thread:result.thread,children:[],links:[],people:[],cursor:"cursor",messages:[{id:result.message.id,session:result.thread.id,author:{kind:"person",name:"Ada"},status:"done",parts:[{type:"text",text:result.message.text}],at,message:{...result.message,mentions:result.message.mentions ?? []}},...(result.runs ?? []).map(run=>({id:run.id,session:result.thread.id,author:{kind:"agent",name:run.agent},status:"done",parts:[],at,run}))] };
-  }});
+  return stubFetch({
+    ...rest,
+    "POST /api/sessions": async (body, query) => {
+      const result = (await start(body, query)) as {
+        thread: { id: string; project: string };
+        message: { id: string; text: string; mentions?: unknown[] };
+        runs?: Run[];
+      };
+      if (result instanceof Response) return result;
+      return {
+        id: result.thread.id,
+        agent: "helper",
+        parent: "console://test",
+        project: result.thread.project,
+        title: result.message.text,
+        status: "done",
+        updated_at: at,
+        thread: result.thread,
+        children: [],
+        links: [],
+        people: [],
+        cursor: "cursor",
+        messages: [
+          {
+            id: result.message.id,
+            session: result.thread.id,
+            author: { kind: "person", name: "Ada" },
+            status: "done",
+            parts: [{ type: "text", text: result.message.text }],
+            at,
+            message: { ...result.message, mentions: result.message.mentions ?? [] },
+          },
+          ...(result.runs ?? []).map((run) => ({
+            id: run.id,
+            session: result.thread.id,
+            author: { kind: "agent", name: run.agent },
+            status: "done",
+            parts: [],
+            at,
+            run,
+          })),
+        ],
+      };
+    },
+  });
 }
 function openChat(view: ProjectAgentsView, props: Partial<Parameters<typeof Chat>[0]> = {}) {
   const opened: string[] = [];
@@ -201,9 +240,9 @@ const chat = defaultCopy.chat;
 const chips = () =>
   (screen.queryByRole("list", { name: chat.selected })?.querySelectorAll("li") ?? []).length === 0
     ? []
-    : [...screen.getByRole("list", { name: chat.selected }).querySelectorAll("li")].map(
-        (li) => li.textContent === "Select project" ? "" : (li.textContent ?? ""),
-      ).filter(Boolean);
+    : [...screen.getByRole("list", { name: chat.selected }).querySelectorAll("li")]
+        .map((li) => (li.textContent === "Select project" ? "" : (li.textContent ?? "")))
+        .filter(Boolean);
 
 test("a link or suggestion @mentions the agent without submitting, and suggestions remain while typing", async () => {
   openChat(workspace("lead"), { startAgent: "helper", startAsk: "Help with the launch." });
@@ -331,7 +370,10 @@ test("+ picks mentions with Enter and the single project picker scopes a session
   fireEvent.click(projectPicker);
   fireEvent.click(await screen.findByRole("button", { name: /^Globex/ }));
   assert.ok(screen.getByRole("button", { name: "Select project: Globex" }));
-  assert.equal(net?.seen.some((request) => request.path.includes("/channels")), false);
+  assert.equal(
+    net?.seen.some((request) => request.path.includes("/channels")),
+    false,
+  );
 
   // Deleting a mention's words takes the agent off: the menu reads the box.
   fireEvent.change(box(), { target: { value: "@lead " } });
@@ -1229,7 +1271,9 @@ test("Escape returns from discovery to its picker trigger before closing the pic
 test("the Personal project control opens a searchable chooser and keeps an unsent draft when switching", async () => {
   openChat(workspace("lead"), { personalProject: "Personal", projects: [globex] as never });
   fireEvent.change(box(), { target: { value: "Preserve this draft" } });
-  fireEvent.click(screen.getByRole("button", { name: `Select project: ${defaultCopy.projects.personalTitle}` }));
+  fireEvent.click(
+    screen.getByRole("button", { name: `Select project: ${defaultCopy.projects.personalTitle}` }),
+  );
   const drawer = await screen.findByRole("dialog", { name: chat.chooseProject });
   assert.ok(within(drawer).getByRole("button", { name: "Personal" }));
   fireEvent.change(within(drawer).getByRole("searchbox", { name: defaultCopy.projects.search }), {

@@ -84,7 +84,7 @@ export function AgentChangeCards({ tasks }: { tasks: Task[] }) {
               <ul className="flex flex-col gap-1">
                 {connections.map((connection) => (
                   <li key={`${connection.scope}:${connection.name}`} className="break-words">
-                    {connection.name} · {connection.service} · {connection.scope} ·{" "}
+                    {connection.name} | {connection.service} | {connection.scope} |{" "}
                     {connection.status}
                   </li>
                 ))}
@@ -104,13 +104,13 @@ export function AgentChangeCards({ tasks }: { tasks: Task[] }) {
                     key={`${location.connection}:${location.place}:${location.project ?? ""}`}
                     className="break-words"
                   >
-                    {location.connection} · {location.place}
-                    {location.project ? ` · ${location.project}` : ""}
+                    {location.connection} | {location.place}
+                    {location.project ? ` | ${location.project}` : ""}
                     {location.enabled === undefined
                       ? ""
                       : location.enabled
-                        ? " · Enabled"
-                        : " · Disabled"}
+                        ? " | Enabled"
+                        : " | Disabled"}
                   </li>
                 ))}
               </ul>

@@ -17,7 +17,7 @@ test("Customize sections have stable addresses", () => {
     assert.deepEqual(parse(href(route)), target);
     assert.equal(
       workspaceHub(route),
-      section === "agents" ? "agents" : section === "skills" ? "library" : null,
+      section === "agents" || section === "skills" ? "agents" : null,
     );
   }
 });

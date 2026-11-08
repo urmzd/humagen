@@ -74,7 +74,12 @@ export function useCompletion(
     setSkills(null);
     coworking
       .available(project)
-      .then((a) => { if (live) { setNames(a.available); setDefaultAgent(a.default_resolved?.agent); } })
+      .then((a) => {
+        if (live) {
+          setNames(a.available);
+          setDefaultAgent(a.default_resolved?.agent);
+        }
+      })
       .catch(() => live && setNames(null));
     coworking
       .skills(project)

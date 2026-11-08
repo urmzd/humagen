@@ -40,7 +40,12 @@ test("a draft guard can cancel navigation without losing the current screen or a
     assert.equal(window.location.pathname + window.location.search, "/sessions/test?panel=files");
     // Drawer switches keep the same mounted conversation, so drafts remain available.
     fireEvent.click(screen.getByRole("button", { name: "Open Deliverables" }));
-    await waitFor(() => assert.equal(window.location.pathname + window.location.search, "/sessions/test?panel=files&legacy_panel=deliverables"));
+    await waitFor(() =>
+      assert.equal(
+        window.location.pathname + window.location.search,
+        "/sessions/test?panel=files&legacy_panel=deliverables",
+      ),
+    );
     assert.equal(
       screen.getByLabelText("Current address").textContent,
       "/sessions/test?panel=files&legacy_panel=deliverables",

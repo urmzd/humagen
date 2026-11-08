@@ -29,7 +29,9 @@ export interface TurnRailEntry {
 /** A rail entry from a turn: weight grows with answer length and work done. */
 export function railEntry(turn: Turn, at?: string): TurnRailEntry {
   const review = readReview(turn.text);
-  const text = (review.kind === "review" ? review.report.summary : turn.text).replace(/\[\[[^\]]+\]\]/g, "").trim();
+  const text = (review.kind === "review" ? review.report.summary : turn.text)
+    .replace(/\[\[[^\]]+\]\]/g, "")
+    .trim();
   return {
     id: turn.id,
     agent: turn.agent.name,
@@ -311,7 +313,7 @@ export function TurnRail({
               <AgentInitials name={shown.agent} size={16} />
             )}
             <span className="font-medium text-aui-fg">{shown.agent}</span>
-            <span>· {statusWord[shown.status]}</span>
+            <span>| {statusWord[shown.status]}</span>
             <span className="ml-auto tabular-nums">
               {shown.at
                 ? new Date(shown.at).toLocaleTimeString(undefined, {

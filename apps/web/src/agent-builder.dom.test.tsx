@@ -115,7 +115,7 @@ test("agent health shows actual failed checks and before-after scores, then refr
   fireEvent.click(screen.getByRole("button", { name: "Refresh health" }));
   await screen.findByText(/1 of 2 recent evaluations passed \(50%\)/);
   assert.ok(screen.getByText("No evidence linked"));
-  assert.ok(screen.getByText("review: 100% → 50% · Regression"));
+  assert.ok(screen.getByText("review: 100% → 50% | Regression"));
 });
 
 test("the Needs review agent filter includes failed runs and eval regressions and preserves the chosen address state", async () => {
@@ -163,8 +163,15 @@ test("the Needs review agent filter includes failed runs and eval regressions an
   await screen.findByRole("button", { name: /failed-agent/ });
   await screen.findByRole("button", { name: /eval-agent/ });
   assert.equal(screen.queryByRole("button", { name: /ready-agent/ }), null);
-  fireEvent.change(screen.getByRole("combobox"), { target: { value: "draft" } });
-  assert.deepEqual(states, ["draft"]);
+  const filter = screen.getByRole("combobox", { name: "Operational state" });
+  filter.focus();
+  fireEvent.keyDown(filter, { key: "ArrowDown" });
+  const draft = await screen.findByRole("option", { name: "Review drafts" });
+  draft.focus();
+  fireEvent.keyDown(draft, { key: "Enter" });
+  await waitFor(() => assert.deepEqual(states, ["draft"]));
+  await waitFor(() => assert.equal(screen.queryByRole("listbox"), null));
+  await waitFor(() => assert.equal(document.activeElement === filter, true));
 });
 
 test("a recorded builder preview renders a prompt diff and eval regression without an unapproved apply action", () => {
@@ -210,8 +217,8 @@ test("a recorded builder preview renders a prompt diff and eval regression witho
   const card = screen.getByRole("region", { name: "Proposed change to writer" });
   assert.ok(within(card).getByText(/An evaluation regressed/));
   assert.ok(within(card).getByText("file_read"));
-  assert.ok(within(card).getByText("Team Slack · slack · workspace · configured"));
-  assert.ok(within(card).getByText("Team Slack · #reviews · Launch · Disabled"));
+  assert.ok(within(card).getByText("Team Slack | slack | workspace | configured"));
+  assert.ok(within(card).getByText("Team Slack | #reviews | Launch | Disabled"));
   assert.equal(within(card).queryByText("Connected"), null);
   assert.ok(
     within(card).getByRole("table", {

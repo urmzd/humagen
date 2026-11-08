@@ -250,13 +250,21 @@ export function tagOptions(
 }
 
 /** Known mentions use the same quiet token treatment as named skills. */
-export function mentionTokens(text: string, options: TagOption[]): {start:number;end:number;name:string}[] {
-  const known = new Set(options.filter(option => option.kind !== "skill" && option.kind !== "kind").map(option => option.token));
-  const out: {start:number;end:number;name:string}[] = [];
+export function mentionTokens(
+  text: string,
+  options: TagOption[],
+): { start: number; end: number; name: string }[] {
+  const known = new Set(
+    options
+      .filter((option) => option.kind !== "skill" && option.kind !== "kind")
+      .map((option) => option.token),
+  );
+  const out: { start: number; end: number; name: string }[] = [];
   for (const match of text.matchAll(/(^|[\s(])@([A-Za-z0-9._:-]+)/g)) {
     const start = (match.index ?? 0) + (match[1]?.length ?? 0);
     const name = match[2] ?? "";
-    if (known.has(name) && (text.slice(0,start).match(/`/g)?.length ?? 0) % 2 === 0) out.push({start,end:start+name.length+1,name});
+    if (known.has(name) && (text.slice(0, start).match(/`/g)?.length ?? 0) % 2 === 0)
+      out.push({ start, end: start + name.length + 1, name });
   }
   return out;
 }

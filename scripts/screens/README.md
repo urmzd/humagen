@@ -11,6 +11,11 @@ actual parked approval and a review v2 answer. A child session, alert and
 scratchpad files are created through the real session APIs. Details assertions
 check modal behavior below 1024 and composer reflow beside the desktop pane.
 
+The canonical artifact state is `artifacts` at `/artifacts`, replacing the old
+`library` Skills capture. The `connections-knowledge` state name remains stable;
+it opens the current Data sources tab and checks the BigQuery heading. Session
+rows must remain native links so modified clicks and opening another tab work.
+
 The session suite builds `fixture-host`, which runs the normal Humagen serve and
 development-auth path with the existing in-memory GitHub API. One client grants
 only `github_read_context` for the fixture repository. The reviewer reads that

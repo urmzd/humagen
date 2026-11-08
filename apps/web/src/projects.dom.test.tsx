@@ -153,14 +153,20 @@ test("a project page shows where it sits, what sits below it, and every limit ab
   assert.deepEqual(opened, ["Field"]);
   // Back goes to the parent, by its title.
   assert.ok(screen.getByRole("button", { name: "‹ Field engineering" }));
-  assert.ok(screen.getByText("Account · Globex Inc · in Field engineering"));
+  assert.ok(screen.getByText("Account | Globex Inc | in Field engineering"));
 
   const below = screen.getByRole("region", { name: "Sub-projects" });
   assert.ok(within(below).getByText("Globex renewals"));
-  assert.equal(within(below).getByRole("link").getAttribute("href"), "/projects/Globex%20renewals/context");
+  assert.equal(
+    within(below).getByRole("link").getAttribute("href"),
+    "/projects/Globex%20renewals/context",
+  );
 
   assert.ok(screen.getByRole("link", { name: "Manage connections" }));
-  assert.equal(net.seen.some((request) => request.path.startsWith("/api/threads")), false);
+  assert.equal(
+    net.seen.some((request) => request.path.startsWith("/api/threads")),
+    false,
+  );
 });
 
 test("a project's meta line names its lead, the agent that answers what tags no agent there, in its color", async () => {
@@ -331,11 +337,14 @@ test("a Limits tab the reader cannot change says who can", async () => {
 
 test("projects expose context, default agents, access and limits without a conversation feed", async () => {
   open(globexDetail);
-  await screen.findByRole("navigation", {name:"Where this project sits"});
+  await screen.findByRole("navigation", { name: "Where this project sits" });
   const tabs = screen.getAllByRole("tab").map((tab) => tab.textContent);
   assert.deepEqual(tabs, ["Context", "Default agents", "Access", "Limits"]);
-  assert.equal(screen.queryByRole("checkbox", {name:"Include sub-projects"}), null);
-  assert.equal(net.seen.some((request) => request.path.startsWith("/api/threads")), false);
+  assert.equal(screen.queryByRole("checkbox", { name: "Include sub-projects" }), null);
+  assert.equal(
+    net.seen.some((request) => request.path.startsWith("/api/threads")),
+    false,
+  );
 });
 
 const workThread = (id: string, active = 0, failed = 0): ThreadSummary => ({
@@ -564,9 +573,9 @@ test("New Project offers company-wide only to those who govern, and puts the pro
 });
 
 test("an old project schedules selection shows its context bundle", async () => {
-  open(globexDetail, {tab:"schedules"});
-  await screen.findByRole("link", {name:"Manage connections"});
-  assert.equal(screen.queryByRole("tab", {name:"Schedules"}), null);
+  open(globexDetail, { tab: "schedules" });
+  await screen.findByRole("link", { name: "Manage connections" });
+  assert.equal(screen.queryByRole("tab", { name: "Schedules" }), null);
   assert.equal(screen.queryByText(/Scheduled ?,/), null);
 });
 

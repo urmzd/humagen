@@ -1,6 +1,6 @@
-import { cacheSessionFeedback } from "./sessionFeedback.ts";
 import type { AgentSession } from "../../../packages/client/src/generated/types.ts";
 import type { ThreadPage, ThreadPosted, ThreadTurn } from "./api.ts";
+import { cacheSessionFeedback } from "./sessionFeedback.ts";
 
 /** Preserve the server's permission metadata while existing controls migrate. */
 export function sessionPage(session: AgentSession): ThreadPage {

@@ -80,7 +80,7 @@ function Component({ c }: { c: HealthComponent }) {
         </span>
         <span className={`text-aui-sm ${tone[c.status].text}`}>
           {copy.status[c.status]}
-          {c.latency_ms > 0 && <span className="text-aui-fg-muted"> · {c.latency_ms} ms</span>}
+          {c.latency_ms > 0 && <span className="text-aui-fg-muted"> | {c.latency_ms} ms</span>}
         </span>
       </div>
       <History c={c} />
