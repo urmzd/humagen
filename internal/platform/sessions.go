@@ -541,7 +541,7 @@ func (p *Platform) ReadSession(ctx context.Context, who auth.Principal, id, sinc
 		if t.Message != nil {
 			// What the entry agent picked follows the message it was for,
 			// with each answer it led to inline.
-			if pm, ok := p.pickMessage(who.Tenant, th, *t.Message); ok {
+			if pm, ok := p.pickMessage(who, th, *t.Message); ok {
 				at := pm.At
 				if at.After(last) {
 					last = at
