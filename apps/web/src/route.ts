@@ -77,7 +77,6 @@ export type SettingsSection =
   | "profile"
   | "appearance"
   | "workspace"
-  | "routing"
   | "providers"
   | "models"
   | "limits"
@@ -90,7 +89,6 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   "profile",
   "appearance",
   "workspace",
-  "routing",
   "providers",
   "models",
   "limits",
@@ -938,6 +936,8 @@ function read(pathname: string, search: string): Route {
       if (a === "usage") return read("/operations/usage", search);
       // Models are chosen per agent now; an old link lands on the agents.
       if (a === "models") return { page: "agents" };
+      // Routing has only its model left, which sits with the model providers.
+      if (a === "routing") return { page: "settings", section: "providers" };
       return {
         page: "settings",
         section: pick(a, SETTINGS_SECTIONS, "profile"),

@@ -143,6 +143,7 @@ test("the read audit has a Settings address", () => {
   assert.deepEqual(at("/settings/read-audit"), { page: "settings", section: "read-audit" });
   assert.equal(href({ page: "settings", section: "providers" }), "/settings/providers");
   assert.deepEqual(at("/settings/providers"), { page: "settings", section: "providers" });
+  assert.deepEqual(at("/settings/routing"), { page: "settings", section: "providers" });
 });
 
 test("the tab title names the place, then the product, with unread in front", () => {

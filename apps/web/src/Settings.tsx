@@ -126,7 +126,6 @@ export function Settings({
   onWorkspace,
   onOpenProjects,
   onOpenWorkspace,
-  onOpenWorkspaceAgents = onOpenWorkspace,
   onNavigate,
 }: {
   me: Me;
@@ -149,11 +148,11 @@ export function Settings({
   onOpenProjects: () => void;
   /** Opens the workspace's own project, where its instructions and notes are. */
   onOpenWorkspace: () => void;
-  /** Opens the workspace's Agents tab, where the Workspace Default is. */
-  onOpenWorkspaceAgents?: () => void;
   onNavigate?: (route: Route) => void;
 }) {
   const setSection = onSection;
+  // Bumped when a provider is enabled or turned off, so the routing picker reads them again.
+  const [providersRead, setProvidersRead] = useState(0);
   const [problem, setProblem] = useState<string | null>(null);
   // What the person typed, or null to show the saved name. A copy taken once
   // would be the empty default on a page opened before the saved name is read.
@@ -245,69 +244,22 @@ export function Settings({
               <header className="pb-2">
                 <h1 className={pageTitle}>Model providers</h1>
                 <p className={pageLede}>
-                  What agents and routing run on. There is no built-in model.
+                  What agents and routing run on. An agent runs once a provider its models name is
+                  enabled.
                 </p>
               </header>
-              <ModelProviderSettings canEdit={me.permissions.includes("clients:write")} />
-            </>
-          )}
-
-          {section === "routing" && (
-            <>
-              <header className="pb-2">
-                <h1 className={pageTitle}>Agent routing</h1>
-                <p className={pageLede}>
-                  A message goes to the agents it tags. One that tags none goes to the default where
-                  it is posted. When that is Everyone decides, each agent available there decides
-                  for itself whether to answer, and each that does answers in the same thread. When
-                  none does, the message waits for a person to answer or tag an agent.
-                </p>
-              </header>
+              <ModelProviderSettings
+                canEdit={me.permissions.includes("clients:write")}
+                onChanged={() => setProvidersRead((n) => n + 1)}
+              />
               {workspace && (
                 <RouterControl
-                  key={JSON.stringify(workspace.router ?? null)}
+                  key={`${providersRead}:${JSON.stringify(workspace.router ?? null)}`}
                   saved={workspace.router ?? {}}
                   canEdit={canAdmin}
                   onSave={(router) => saveWorkspace({ router })}
-                  onProviders={() => setSection("providers")}
                 />
               )}
-              <section className={`${card} flex flex-col gap-3`}>
-                <h2 className="text-aui-sm font-medium text-aui-fg">
-                  {defaultCopy.workspaceDefault}
-                </h2>
-                <p className="text-aui-sm text-aui-muted">
-                  {defaultCopy.workspaceDefault} answers a message that tags no agent, unless a
-                  project sets its own. It lives on the workspace's Agents tab.
-                </p>
-                <a
-                  href={href({ page: "project", name: "", tab: "agents" })}
-                  className={`${button} self-start`}
-                  onClick={follow(onOpenWorkspaceAgents)}
-                >
-                  {defaultCopy.workspaceDefault}
-                </a>
-              </section>
-              <section className={`${card} flex flex-col gap-3`}>
-                <h2 className="text-aui-sm font-medium text-aui-fg">Agent capabilities</h2>
-                <p className="text-aui-xs text-aui-muted">
-                  Each agent reads its description first when deciding whether to take a message.
-                  Edit them in Agents.
-                </p>
-                {agents.length === 0 && (
-                  <p className="text-aui-sm text-aui-muted">No agents configured.</p>
-                )}
-                {agents.map((a) => (
-                  <div key={a.spec.name}>
-                    <p className="text-aui-sm font-medium text-aui-fg">{a.spec.name}</p>
-                    <p className="text-aui-xs text-aui-muted">
-                      {a.spec.tagged_only
-                        ? "Only when tagged."
-                        : a.spec.description || "Decides using its name and instructions."}
-                    </p>
-                  </div>
-                ))}
-              </section>
             </>
           )}
 
@@ -654,13 +606,10 @@ function RouterControl({
   saved,
   canEdit,
   onSave,
-  onProviders,
 }: {
   saved: RouterSettings;
   canEdit: boolean;
   onSave: (next: RouterSettings) => void;
-  /** Opens Model providers, where a provider is set up. */
-  onProviders?: () => void;
 }) {
   const [draft, setDraft] = useState<RouterSettings>(saved);
   const [providers, setProviders] = useState<string[] | null>(null);
@@ -697,18 +646,7 @@ function RouterControl({
         </p>
       </div>
       {none ? (
-        <p className="text-aui-sm text-aui-muted">
-          No model provider is set up.{" "}
-          {onProviders && (
-            <button
-              type="button"
-              className="rounded-aui text-aui-fg underline focus-visible:outline-2 focus-visible:outline-aui-accent"
-              onClick={onProviders}
-            >
-              Set Up a Provider
-            </button>
-          )}
-        </p>
+        <p className="text-aui-sm text-aui-muted">Enable a provider above, then pick one here.</p>
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Label text="Provider">
@@ -853,7 +791,6 @@ export function SettingsNav({
     ? [
         { id: "workspace", label: "Workspace", icon: <ServerIcon size={16} /> },
         { id: "providers", label: "Model providers", icon: <BrainIcon size={16} /> },
-        { id: "routing", label: "Agent routing", icon: <BotIcon size={16} /> },
         { id: "limits", label: "Limits", icon: <GaugeIcon size={16} /> },
         { id: "access", label: "Access", icon: <ShieldIcon size={16} /> },
         ...(canReadAudit

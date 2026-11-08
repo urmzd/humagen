@@ -59,7 +59,14 @@ type Editing = { provider?: ModelProvider; kind: ModelProviderKind; name?: strin
  * environment variable the server gives the workspace, and never shown again. Providers
  * the deployment declares are listed, read only.
  */
-export function ModelProviderSettings({ canEdit }: { canEdit: boolean }) {
+export function ModelProviderSettings({
+  canEdit,
+  onChanged,
+}: {
+  canEdit: boolean;
+  /** A provider was enabled, changed or turned off. */
+  onChanged?: () => void;
+}) {
   const [own, setOwn] = useState<ModelProvider[] | null>(null);
   const [declared, setDeclared] = useState<ModelProviderChoice[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
@@ -104,6 +111,7 @@ export function ModelProviderSettings({ canEdit }: { canEdit: boolean }) {
         setConfirming(null);
         forgetConfiguredProviders();
         load();
+        onChanged?.();
       })
       .catch((e) => {
         setConfirming(null);
@@ -114,6 +122,7 @@ export function ModelProviderSettings({ canEdit }: { canEdit: boolean }) {
     setEditing(null);
     forgetConfiguredProviders();
     load();
+    onChanged?.();
     check(m.name);
   };
 
