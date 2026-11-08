@@ -285,6 +285,9 @@ type Platform struct {
 	Rooms    *rooms.Hub
 	roomGate *rooms.Gate
 	files    filesblob.Store
+	// GoodAsks are the asks each agent answered well, which routing
+	// searches beside its prompt (pkg/goodasks).
+	GoodAsks goodAsksStore
 	// health is the last health report and each component's recent checks.
 	health healthBook
 
