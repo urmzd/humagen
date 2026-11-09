@@ -274,15 +274,25 @@ func TestATurnThatTagsNoAgentGoesToTheWorkspaceDefault(t *testing.T) {
 	}
 }
 
-func TestATurnThatTagsNoAgentWhereNothingAnswersStartsNothing(t *testing.T) {
+// A turn that tags no agent where nothing names one to answer still lands:
+// with no match, on the first agent available, saying so. Only where no agent
+// may answer, such as through a client that routes to none, does it start
+// nothing.
+func TestATurnThatTagsNoAgentWhereNothingAnswersLands(t *testing.T) {
 	p := start(t, call.Limits{})
 	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}})
-	_, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t1", Text: "hello"})
-	if !errors.Is(err, platform.ErrNoDefault) || !strings.Contains(err.Error(), "tag an agent") {
-		t.Fatalf("an untagged turn with no default = %v", err)
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t1", Text: "hello"})
+	if err != nil || r.Agent == "" || !strings.Contains(r.Picked, "first agent available") {
+		t.Fatalf("an untagged turn with no default = %+v, %v", r, err)
 	}
-	if n := len(p.Runs.List(tenant, 10)); n != 0 {
-		t.Fatalf("%d runs started", n)
+	none := slackClient("none", "A0NONE", "T0NONE", "*")
+	none.Agents = []string{}
+	create(t, p, tenant, none)
+	if _, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t2", Text: "hello", Client: "none"}); !errors.Is(err, platform.ErrNoDefault) || !strings.Contains(err.Error(), "tag an agent") {
+		t.Fatalf("an untagged turn through a client that may route to no agent = %v", err)
+	}
+	if n := len(p.Runs.List(tenant, 10)); n != 1 {
+		t.Fatalf("%d runs started, want the one that landed", n)
 	}
 }
 
@@ -327,8 +337,8 @@ func TestOnlyAgentsAllowedWhereAMessageIsPostedAreAskedToJoin(t *testing.T) {
 }
 
 // Several agents can take one message, each in a run of its own; when none
-// does, nothing starts and it waits, and no named default is fallen back on.
-func TestEveryAgentThatJoinsAnswersAndNoTakersStartsNothing(t *testing.T) {
+// does, it lands on the first agent available, saying so: it never waits.
+func TestEveryAgentThatJoinsAnswersAndNoTakersStillLands(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
 	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "*"})
@@ -348,8 +358,8 @@ func TestEveryAgentThatJoinsAnswersAndNoTakersStartsNothing(t *testing.T) {
 	if !got["lead"] || !got["helper"] {
 		t.Fatalf("the runs in the conversation are for %v, want lead and helper", got)
 	}
-	if _, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t2", Text: "zzz", Project: "Renewals"}); !errors.Is(err, platform.ErrNoTakers) {
-		t.Fatalf("a turn no agent fits = %v, want ErrNoTakers", err)
+	if r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t2", Text: "zzz", Project: "Renewals"}); err != nil || !strings.Contains(r.Picked, "first agent available") {
+		t.Fatalf("a turn no agent fits = %+v, %v, want the first agent available", r, err)
 	}
 }
 
@@ -750,13 +760,13 @@ func TestRacingSignInsKeepOnePerson(t *testing.T) {
 func TestAClientsMessageIsOfferedOnlyToWhatTheClientMayRoute(t *testing.T) {
 	p := start(t, call.Limits{})
 	c := clients.Client{Tenant: tenant, ID: "docs", Surface: clients.Slack, Enabled: true, DefaultAgent: "*", Agents: []string{"helper"}}
-	got, err := p.JoinFor(t.Context(), c, "Help and Lead.")
+	got, err := p.LandFor(t.Context(), c, "Help and Lead.")
 	if err != nil || len(got) != 1 || got[0].Agent != "helper" {
-		t.Fatalf("joining for a client that routes to helper only = %+v, %v", got, err)
+		t.Fatalf("landing for a client that routes to helper only = %+v, %v", got, err)
 	}
 	c.Agents = nil
-	if _, err := p.JoinFor(t.Context(), c, "Help."); !errors.Is(err, platform.ErrNoTakers) {
-		t.Fatalf("joining for a client that routes to no agent = %v", err)
+	if _, err := p.LandFor(t.Context(), c, "Help."); !errors.Is(err, platform.ErrNoDefault) {
+		t.Fatalf("landing for a client that routes to no agent = %v", err)
 	}
 }
 
@@ -789,11 +799,8 @@ func TestJoiningThroughAClientAsksOnlyItsAgents(t *testing.T) {
 	}
 	for _, c := range []struct{ id, agent string }{{"t-asked", "*"}, {"t-default", ""}} {
 		r, err := p.Converse(ctx, tenant, platform.Turn{ID: c.id, Agent: c.agent, Text: "tag the next release", Client: "app"})
-		if err == nil && r.Agent != "helper" {
-			t.Fatalf("%s through the client was answered by %s, off its list", c.id, r.Agent)
-		}
-		if err != nil && !errors.Is(err, platform.ErrNoTakers) {
-			t.Fatalf("%s through the client = %v", c.id, err)
+		if err != nil || r.Agent != "helper" {
+			t.Fatalf("%s through the client = %+v, %v; want helper, the only agent on its list", c.id, r, err)
 		}
 	}
 	if _, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-ghost", Agent: "*", Text: "x", Client: "ghost"}); !errors.Is(err, platform.ErrForbidden) {
@@ -872,12 +879,13 @@ func TestAMoveNeverLeavesWhatItsProjectsRunWithoutTheirAgent(t *testing.T) {
 	}
 }
 
-// A client's message no agent takes is not handed to a named default: it
-// waits.
-func TestAClientsMessageNoAgentTakesWaits(t *testing.T) {
+// A client's message no agent takes still lands, on the first agent the
+// client may route to, saying so: it never waits for a person.
+func TestAClientsMessageNoAgentTakesStillLands(t *testing.T) {
 	p := start(t, call.Limits{})
-	c := clients.Client{Tenant: tenant, ID: "docs", Surface: clients.Slack, Enabled: true, DefaultAgent: "lead", Agents: []string{clients.AnyAgent}}
-	if got, err := p.JoinFor(t.Context(), c, "qqqq zzzz"); !errors.Is(err, platform.ErrNoTakers) {
-		t.Fatalf("joining with nothing fitting = %+v, %v; want ErrNoTakers", got, err)
+	c := clients.Client{Tenant: tenant, ID: "docs", Surface: clients.Slack, Enabled: true, DefaultAgent: "*", Agents: []string{clients.AnyAgent}}
+	got, err := p.LandFor(t.Context(), c, "qqqq zzzz")
+	if err != nil || len(got) != 1 || !strings.Contains(got[0].Picked, "first agent available") {
+		t.Fatalf("landing with nothing fitting = %+v, %v", got, err)
 	}
 }
