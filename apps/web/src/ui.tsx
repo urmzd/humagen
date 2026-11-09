@@ -270,7 +270,7 @@ export const pageLede = "max-w-[62ch] pt-1.5 text-aui-sm text-aui-muted";
 export const tabStrip = "humagen-strip aui-scroll relative flex gap-1 overflow-x-auto";
 export const tabRule = "pointer-events-none absolute inset-x-0 bottom-0 border-aui-border border-b";
 export const tabItem =
-  "inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap border-transparent border-b-2 px-3 text-aui-sm text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-selected:border-aui-accent aria-selected:text-aui-fg aria-[current=page]:border-aui-accent aria-[current=page]:text-aui-fg";
+  "inline-flex h-10 pointer-coarse:h-11 shrink-0 items-center gap-1.5 whitespace-nowrap border-transparent border-b-2 px-3 text-aui-sm text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-selected:border-aui-accent aria-selected:text-aui-fg aria-[current=page]:border-aui-accent aria-[current=page]:text-aui-fg";
 /** The page column a hub's tab strip shares with the page under it. */
 export const pageColumn = "mx-auto w-full max-w-[68rem] px-5 md:px-10";
 
