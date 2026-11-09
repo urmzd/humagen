@@ -7,6 +7,7 @@ import (
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 )
 
@@ -38,12 +39,15 @@ func TestASlackThreadHasOneRootSessionFoundByItsPlace(t *testing.T) {
 	if err != nil || started || again.ID != first.ID || len(again.Messages) != len(first.Messages) {
 		t.Fatalf("the same message sent again = %+v, started %v, %v", again.Messages, started, err)
 	}
+	// A message that would start work while the root's agent works is a
+	// follow-up, so the first answer ends before the mention is posted.
+	await(t, p, sessionRun(t, first).ID, runs.Completed)
 	reply, started, err := p.StartSurfaceSession(t.Context(), machine, slackSession("C01RENEW", "1700000000.000100", "1700000000.000300", "<@UAPP> @lead plan it"))
 	if err != nil || started || reply.ID != first.ID {
 		t.Fatalf("a reply in the thread = %v, started %v, id %s", err, started, reply.ID)
 	}
-	if len(reply.Children) != 1 || reply.Children[0].Agent != "lead" {
-		t.Fatalf("a mention in the thread did not start its agent's child: %+v", reply.Children)
+	if len(reply.Children) != 0 || len(reply.Posted.Runs) != 1 || reply.Posted.Runs[0].Agent != "lead" || reply.Posted.Runs[0].Thread != first.ID {
+		t.Fatalf("a mention in the thread: children %+v, runs %+v; want lead answering in the root", reply.Children, reply.Posted.Runs)
 	}
 	other, started, err := p.StartSurfaceSession(t.Context(), machine, slackSession("C01RENEW", "1700000000.000900", "", "<@UAPP> another question"))
 	if err != nil || !started || other.ID == first.ID {
@@ -162,7 +166,7 @@ func TestASurfaceMessageSaysWhatItStartedAndStartsNothingTwice(t *testing.T) {
 		t.Fatalf("posted = %+v", first.Posted)
 	}
 	again, _, err := p.StartSurfaceSession(t.Context(), machine, withAudience(slackSession("C01RENEW", "1700000000.000100", "", "<@UAPP> @lead plan it"), platform.ChannelPublic))
-	if err != nil || !again.Posted.Repeated || len(again.Children) != 1 {
+	if err != nil || !again.Posted.Repeated || len(again.Children) != 0 || len(again.Posted.Runs) != 1 || again.Posted.Runs[0].ID != first.Posted.Runs[0].ID {
 		t.Fatalf("sent again = %+v, children %d, %v", again.Posted, len(again.Children), err)
 	}
 	quiet := slackSession("C01RENEW", "1700000000.000100", "1700000000.000600", "just noting this")

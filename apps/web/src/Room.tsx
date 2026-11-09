@@ -1,12 +1,11 @@
 import { answerOfAction, answers as isAnswer } from "@humagen/adapter/question";
-import { AnswerText, defaultCopy } from "@humagen/components";
+import { defaultCopy } from "@humagen/components";
 import { ActionId, type QueuedMessage, type UiAction } from "@humagen/core";
 import { ForkIcon, WebSurface } from "@humagen/render-web";
 import {
   AgentMessage,
   MessageActionRow,
   messageActionButton,
-  orbStateOf,
   railEntry,
   Thread as ThreadList,
   type TurnRailEntry,
@@ -21,10 +20,8 @@ import {
   api,
   type Channel,
   coworking,
-  type PickCall,
   type ProjectView,
   type Revision,
-  type SessionPick,
   type ThreadAnnouncement,
   type ThreadAnswers,
   type ThreadAsk,
@@ -483,78 +480,6 @@ function AnnouncementView({ a }: { a: ThreadAnnouncement }) {
 }
 
 /**
- * One agent's answer to a message the entry agent handed it, inline in the
- * root under its mark and name, so nobody opens the child session to read
- * it. Until it answers it says only how it stands; its mark moves while it
- * works and is still while it waits on a person.
- */
-function CallAnswer({ call, onOpen }: { call: PickCall; onOpen?: (id: string) => void }) {
-  const name = agentShown(call.agent);
-  const to = href({ page: "conversation", id: call.session });
-  return (
-    <article
-      aria-label={words.answeredBy(name)}
-      aria-busy={call.status === "working" || undefined}
-      className="flex min-w-0 flex-col gap-2"
-    >
-      <header className="flex min-h-7 min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-aui-sm">
-        <AgentMark name={call.agent} size={28} state={orbStateOf(call.status)} />
-        <span className="max-w-full break-words font-semibold text-aui-fg">{name}</span>
-        {call.status !== "done" && (
-          <span className="text-aui-2xs text-aui-muted">{defaultCopy.status[call.status]}</span>
-        )}
-        <a
-          href={to}
-          onClick={(event) => {
-            if (
-              onOpen &&
-              event.button === 0 &&
-              !event.metaKey &&
-              !event.ctrlKey &&
-              !event.shiftKey &&
-              !event.altKey
-            ) {
-              event.preventDefault();
-              onOpen(call.session);
-            }
-          }}
-          className="ml-auto inline-flex min-h-6 items-center rounded-aui text-aui-xs text-aui-muted hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
-        >
-          {words.openSession}
-        </a>
-      </header>
-      {call.text && (
-        <AgentTint name={call.agent}>
-          <AnswerText turnId={call.session} agent={name} text={call.text} followUp={false} />
-        </AgentTint>
-      )}
-    </article>
-  );
-}
-
-/**
- * What a root session's entry agent picked for a message: one quiet line
- * with why, marked with the entry agent under the workspace's name, then
- * each answer it led to, inline.
- */
-function PickView({ pick, onOpen }: { pick: SessionPick; onOpen?: (id: string) => void }) {
-  return (
-    <section aria-label={words.pickedBy(pick.by)} className="flex min-w-0 flex-col gap-4">
-      {pick.reason && (
-        <Checkpoint agent={pick.agent}>
-          <span title={`${pick.by}: ${pick.reason}`}>
-            <span className="font-medium text-aui-fg">{pick.by}</span>: {pick.reason}
-          </span>
-        </Checkpoint>
-      )}
-      {pick.calls.map((call) => (
-        <CallAnswer key={call.session} call={call} onOpen={onOpen} />
-      ))}
-    </section>
-  );
-}
-
-/**
  * Why the reader is not offered Retry on a failed answer in the room. A run
  * answering a message acts for the person who posted it, so only they ask it
  * again, from the failure in their inbox, where it answers the same message
@@ -905,11 +830,6 @@ export function ThreadRoom({
   const asked = new Set(turns.flatMap((t) => (t.message?.answers ? [t.message.answers.run] : [])));
   // A run waiting on a person, such as an expert's answer, is shown still.
   const busy = turns.some((t) => t.run && isWorking(t.run.status));
-  // The messages whose answer says above it why it was picked.
-  const answeredWithPick = new Set(
-    turns.flatMap((t) => (t.run?.picked && t.run.message ? [t.run.message] : [])),
-  );
-
   const onAction = (a: UiAction) => {
     if (a.id === ActionId.openRun)
       return openPanel("activity", { run: a.payload.target, step: a.payload.option });
@@ -1138,7 +1058,7 @@ export function ThreadRoom({
                 </button>
               )}
               {turns.map((t, i) => (
-                <Fragment key={t.announcement?.id ?? t.message?.id ?? t.pick?.id ?? t.run?.id}>
+                <Fragment key={t.announcement?.id ?? t.message?.id ?? t.run?.id}>
                   <SessionAlerts
                     alerts={attention.rows.filter(
                       (a) => !!alertAnchor(a) && alertAnchor(a) === (t.message?.id ?? t.run?.id),
@@ -1150,11 +1070,6 @@ export function ThreadRoom({
                   />
                   {t.announcement ? (
                     <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />
-                  ) : t.pick ? (
-                    // Answering itself, the entry agent says why above its own answer.
-                    t.pick.calls.length > 0 || !answeredWithPick.has(t.pick.message) ? (
-                      <PickView pick={t.pick} onOpen={onOpenThread} />
-                    ) : null
                   ) : t.message ? (
                     <MessageView
                       key={t.message.id}

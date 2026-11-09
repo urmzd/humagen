@@ -2326,7 +2326,6 @@ var copyKeyList = []string{
 	"threads.nobody",
 	"threads.notTheirsInBound",
 	"threads.olderTurns",
-	"threads.openSession",
 	"threads.placementChanged",
 	"threads.placementFailed",
 	"threads.placementLoading",

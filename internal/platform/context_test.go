@@ -90,7 +90,6 @@ func TestContextSaysWhyNothingCanBePulled(t *testing.T) {
 
 func TestAnAgentPullsContextFromWhereItWasAsked(t *testing.T) {
 	c := entryCast([][]saigetypes.Delta{
-		pickJSON(platform.PickAnswerMyself, "I can take this."),
 		agenttest.ToolCallResponse("pull", platform.ToolGetContext, map[string]any{"request": "what were they discussing?"}),
 		say("They were discussing the release date."),
 	}, nil)

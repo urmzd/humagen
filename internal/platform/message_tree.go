@@ -14,9 +14,9 @@ import (
 
 // A message tree reads a session as its first message and what hangs
 // beneath it. Beneath a person's message are the agents' messages that
-// follow it in its session, up to the next person's message (the answers,
-// and the entry agent's pick with each call it made), and the child
-// sessions started for it, each standing as its own first message. A
+// follow it in its session, up to the next person's message (its answer),
+// and the child sessions started for it, each standing as its own first
+// message. A
 // session's first message stands for the session, so beneath it are also
 // the session's later people's messages, each with its own answers. Every
 // node says how many children it has and when anything beneath it last
@@ -41,8 +41,7 @@ type MessageAudience struct {
 	Kind string `json:"kind"`
 }
 
-// MessageNode is one message of a tree: who said it, its content (text,
-// or a pick and its calls), its status (that of the runs beneath it, done
+// MessageNode is one message of a tree: who said it, its content, its status (that of the runs beneath it, done
 // when there are none), how many children it has, when anything beneath it
 // last changed, and its children in time order as deep as the read went.
 // Audience is on the node read, when its root's place reported one.
@@ -273,8 +272,7 @@ func later(a, b time.Time) time.Time {
 }
 
 // treeItem is one message of a session as the reader is shown it, when it
-// last changed, and the runs beneath it: its own, or those its pick's calls
-// led to.
+// last changed, and the run beneath it, when it is an agent's.
 type treeItem struct {
 	msg    SessionMessage
 	latest time.Time
@@ -293,14 +291,13 @@ type treeTurn struct {
 }
 
 // turns lays a session out as turns, each child session the reader may
-// read under the message it was started for: the first a pick called it
-// for, else the last person's message posted before it.
+// read under the message it was started for: the last person's message
+// posted before it.
 func (r *treeReader) turns(th threads.Thread) []*treeTurn {
 	tenant := r.who.Tenant
 	seen := r.seer.Turns(th, r.p.turnsOf(tenant, th))
 	_, seen = r.p.ShowTurns(tenant, r.seer.Thread(th), seen)
 	var out []*treeTurn
-	calledFor := map[string]int{}
 	for _, t := range seen {
 		m, at, ok := sessionMessageOf(th.ID, t)
 		if !ok {
@@ -315,36 +312,16 @@ func (r *treeReader) turns(th threads.Thread) []*treeTurn {
 		} else {
 			out[len(out)-1].after = append(out[len(out)-1].after, it)
 		}
-		if !it.person {
-			continue
-		}
-		pm, called, ok := r.p.pickFor(r.who, th, *t.Message, r.see)
-		if !ok {
-			continue
-		}
-		pick := treeItem{msg: pm, latest: pm.At, runs: called}
-		for _, run := range called {
-			pick.latest = later(pick.latest, run.UpdatedAt)
-		}
-		for _, part := range pm.Parts {
-			if _, done := calledFor[part.Session]; part.Session != "" && !done {
-				calledFor[part.Session] = len(out) - 1
-			}
-		}
-		out[len(out)-1].after = append(out[len(out)-1].after, pick)
 	}
 	kids := r.children(th.ID)
 	if len(out) == 0 {
 		out = []*treeTurn{{head: r.standIn(th)}}
 	}
 	for _, c := range kids {
-		i, ok := calledFor[c.ID]
-		if !ok {
-			i = 0
-			for j, turn := range out {
-				if turn.head.person && !turn.head.msg.At.After(c.CreatedAt) {
-					i = j
-				}
+		i := 0
+		for j, turn := range out {
+			if turn.head.person && !turn.head.msg.At.After(c.CreatedAt) {
+				i = j
 			}
 		}
 		out[i].kids = append(out[i].kids, c)

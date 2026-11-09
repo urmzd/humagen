@@ -3785,12 +3785,8 @@ export const defaultCopy = {
       "This turn acted for nobody, so anyone who may start runs can retry it from the inbox.",
     answer: "Answer",
     answered: "Answered",
-    /** In a root session, what its entry agent (by the workspace's name) picked, as a screen reader names it. */
-    pickedBy: (by: string) => `Picked by ${by}`,
     /** An agent's answer, as a screen reader names it. */
     answeredBy: (agent: string) => `Answered by ${agent}`,
-    /** Opens the child session an answer shown inline in its root came from. */
-    openSession: "Open Session",
     typeahead: "People and agents to tag",
     /** The `/` command menu, as a screen reader names it. */
     commands: "Slash commands",
