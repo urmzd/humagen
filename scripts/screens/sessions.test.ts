@@ -134,7 +134,7 @@ test("artifacts waits for loaded content and Connections waits for its MCPs", as
   await screens.find((screen) => screen.name === "artifacts")?.act?.(page);
   await screens.find((screen) => screen.name === "connections-mcps")?.act?.(page);
   assert.deepEqual(calls, [
-    { action: "wait", selector: "heading:Deliverables" },
+    { action: "wait", selector: "heading:Artifacts" },
     { action: "wait", selector: "searchbox:Search artifacts" },
     { action: "wait", selector: "list:Artifacts|text:No artifacts yet" },
     { action: "wait", selector: "list:MCPs" },

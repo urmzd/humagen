@@ -234,7 +234,7 @@ export function SessionPanel({
             ? words.used.origin
             : words.used[view.key];
   return (
-    <Inspector open={!leaving} title={title} wide onClose={onClose}>
+    <Inspector open={!leaving} title={title} onClose={onClose}>
       <div className="flex flex-col gap-4" data-testid="session-panel" data-view={view.kind}>
         {view.kind !== "summary" && (
           <button

@@ -609,6 +609,52 @@
   animation: aui-rotate 0.8s linear infinite;
 }
 
+/*
+ * The control that returns to the end of a list (LatestButton). While an
+ * answer is being written out of view, three dots rise in a wave where its
+ * arrow was; a dot at its corner marks what arrived unseen.
+ */
+.aui-latest-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.aui-latest-dots > span {
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: aui-latest-wave 1.2s ease-in-out infinite;
+}
+.aui-latest-dots > span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.aui-latest-dots > span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes aui-latest-wave {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+.aui-latest-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--aui-accent);
+  box-shadow: 0 0 0 2px var(--aui-bg);
+}
+
 /* Text shimmer: muted text with one highlight sweep, then a beat of rest. */
 .aui-shimmer {
   --aui-shimmer-spread: 2.5em;
@@ -731,6 +777,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Still under way, said without motion: the three dots, standing still. */
+  .aui-latest-dots > span {
+    animation: none;
+  }
   .aui-spinner,
   .aui-streaming > :last-child::after,
   .aui-verb-in,
