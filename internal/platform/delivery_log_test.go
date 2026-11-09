@@ -32,7 +32,7 @@ func TestEveryGitHubDeliverySaysWhatBecameOfIt(t *testing.T) {
 	ingress := p.IngressHandler()
 	post := func(secret, delivery, comment string) int {
 		body := `{"action":"created","installation":{"id":101},"repository":{"full_name":"acme/repo","name":"repo","owner":{"login":"acme"}},` +
-			`"sender":{"login":"ada","type":"User"},"issue":{"number":7},"comment":{"id":91,"body":"` + comment + `"}}`
+			`"sender":{"login":"ada","type":"User"},"issue":{"number":7},"comment":{"id":91,"body":"` + comment + `","user":{"login":"ada"},"author_association":"COLLABORATOR"}}`
 		mac := hmac.New(sha256.New, []byte(secret))
 		mac.Write([]byte(body))
 		r := httptest.NewRequest(http.MethodPost, "/connectors/github", strings.NewReader(body))
@@ -53,7 +53,7 @@ func TestEveryGitHubDeliverySaysWhatBecameOfIt(t *testing.T) {
 		t.Fatalf("the forged delivery answered %d", code)
 	}
 	pull := `{"action":"opened","number":8,"installation":{"id":101},"repository":{"full_name":"acme/repo","name":"repo","owner":{"login":"acme"}},` +
-		`"sender":{"login":"ada","type":"User"},"pull_request":{"number":8,"state":"open","draft":false,"head":{"sha":"` + strings.Repeat("c", 40) + `"}}}`
+		`"sender":{"login":"ada","type":"User"},"pull_request":{"number":8,"state":"open","draft":false,"user":{"login":"ada"},"author_association":"MEMBER","head":{"sha":"` + strings.Repeat("c", 40) + `"}}}`
 	mac := hmac.New(sha256.New, []byte("secret-gh"))
 	mac.Write([]byte(pull))
 	r := httptest.NewRequest(http.MethodPost, "/connectors/github", strings.NewReader(pull))

@@ -4020,6 +4020,8 @@ leaves draft, or gets a push, by the client's default agent.
 Left out, it is on. Labels start nothing.
  */
   auto_review?: GitHubOptionsAutoReview;
+  /** When set, the only GitHub logins whose mentions, reviews and pull requests the client acts on, among people with write access to the repository (owner, member or collaborator) and people it maps. */
+  askers?: string[];
   checks?: boolean;
   guides?: boolean;
   mutations?: boolean;

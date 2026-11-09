@@ -16247,6 +16247,11 @@ components:
               type: object
               maxProperties: 64
               additionalProperties: {type: boolean}
+        askers:
+          description: When set, the only GitHub logins whose mentions, reviews and pull requests the client acts on, among people with write access to the repository (owner, member or collaborator) and people it maps.
+          type: array
+          maxItems: 500
+          items: {type: string}
         checks:
           type: boolean
         guides:
