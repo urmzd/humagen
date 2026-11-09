@@ -1171,6 +1171,12 @@ export const api = {
   stopRun: (id: string) => call<Run>("POST", `/api/runs/${encodeURIComponent(id)}/stop`),
   /** Answer the question a run is waiting on. Returns the question's inbox message, settled. */
   answer: (r: AnswerRequest) => call<unknown>("POST", answerPath(r), r.body),
+  /** A message alone, without its children: who its root's place was asked in front of. */
+  messageNode: (id: string) =>
+    call<MessageNode>("GET", `/api/messages/${encodeURIComponent(id)}?depth=0`),
+  /** What ran to answer a message (`session`, `session:message` or `session:run`). */
+  messageTrace: (id: string) =>
+    call<MessageTrace>("GET", `/api/messages/${encodeURIComponent(id)}/trace`),
   /** A run's events as they were published, for a run that is no longer streaming. */
   runEvents: (id: string) =>
     call<{ events: RunEvent[]; complete: boolean }>(
@@ -1889,6 +1895,118 @@ export interface ThreadAnnouncement {
   at: string;
 }
 
+/** Something a run cited or a context read drew on. */
+export interface TraceSource {
+  title: string;
+  url?: string;
+}
+
+/** One tool call in a trace. Input and output are left out when withheld. */
+export interface TraceTool {
+  /** `htu_<run>_<seq>`, as the response stream names the call. */
+  id: string;
+  name: string;
+  at: string;
+  /** How long it ran; absent while it runs. */
+  ms?: number;
+  input?: Record<string, unknown>;
+  output?: string;
+  error?: string;
+  withheld: boolean;
+}
+
+/** One get_context call in a trace. */
+export interface TraceContext {
+  id: string;
+  at: string;
+  ms?: number;
+  request: string;
+  /** The place it read, such as slack://team/channel/ts. */
+  reference: string;
+  summary: string;
+  sources: TraceSource[];
+  truncated: boolean;
+  error?: string;
+  withheld: boolean;
+}
+
+/** An action a run waited on a person for. `ask` is one still waiting. */
+export interface TraceApproval {
+  /** The question's own id: what the run's answer route takes. */
+  id: string;
+  /** The id of the call it gates, when it gates one. */
+  tool?: string;
+  action: string;
+  decision: "allow" | "deny" | "ask";
+  by?: string;
+  note?: string;
+  at?: string;
+}
+
+/** A question a run asked a person with ask_person: a choice among options, or a reply in words. */
+export interface TraceQuestion {
+  id: string;
+  /** The call that asked it, `htu_<run>_<n>`: what an answer names. */
+  tool?: string;
+  kind: "choice" | "reply";
+  prompt: string;
+  options: string[];
+  /** asked while it waits; expired when nobody answered in time; closed when its run ended first. */
+  status: "asked" | "answered" | "expired" | "closed";
+  answer?: string;
+  by?: string;
+  at?: string;
+}
+
+/** The entry agent's decision about a message, on the run that made it. */
+export interface TracePick {
+  decision: "answer_myself" | "delegate";
+  agents: string[];
+  reason: string;
+  matched: string[];
+}
+
+/** One run in a trace and what it did, with the runs it called beneath it. */
+export interface TraceNode {
+  run: string;
+  agent: string;
+  status: "accepted" | "running" | "parked" | "completed" | "failed" | "stopped";
+  started_at: string;
+  ended_at?: string;
+  ms: number;
+  /** Micro-USD, what it called included once they ended. */
+  cost?: number;
+  pick?: TracePick;
+  model?: string;
+  answer?: string;
+  error?: string;
+  tools: TraceTool[];
+  context: TraceContext[];
+  sources: TraceSource[];
+  approvals: TraceApproval[];
+  /** Absent from a server older than questions in traces. */
+  questions?: TraceQuestion[];
+  children: TraceNode[];
+}
+
+/** A message as the messages API reads it with depth: the fields the console uses. */
+export interface MessageNode {
+  id: string;
+  session: string;
+  role: "user" | "assistant";
+  /** The audience its root's place reported, when one did. */
+  audience?: { kind: "public" | "private" | "group" | "direct" };
+}
+
+/** What ran to answer a message, as the reader may see it. */
+export interface MessageTrace {
+  message: string;
+  nodes: TraceNode[];
+  /** Runs and child sessions left out because the reader may not read them. */
+  hidden: number;
+  truncated: boolean;
+}
+
 /**
  * The question a parked run waits on, as the reader stands to it: whether
  * they may answer it, and whom it is for otherwise.
@@ -1905,11 +2023,41 @@ export interface ThreadAsk {
   owners_of?: string;
 }
 
+/** An agent a root session's entry agent handed a message to, answering in a child session. */
+export interface PickCall {
+  /** The child session it answers in. */
+  session: string;
+  agent: string;
+  status: "working" | "waiting" | "done" | "failed" | "stopped";
+  /** Its answer, empty until it has one. */
+  text: string;
+}
+
+/**
+ * What a root session's entry agent picked for a person's message: why, and
+ * each agent it handed the message to. Answering itself, it hands it to
+ * nobody, and its own answer says why above it (`run.picked`).
+ */
+export interface SessionPick {
+  id: string;
+  /** The entry agent's own name, which colors its mark. */
+  agent: string;
+  /** The name people see it by: the workspace's. */
+  by: string;
+  reason: string;
+  /** The person's message it was picked for, as the session read it. */
+  message: string;
+  at: string;
+  calls: PickCall[];
+}
+
 export interface ThreadTurn {
-  kind: "message" | "run" | "announcement";
+  kind: "message" | "run" | "announcement" | "pick";
   message?: ThreadMessage;
   run?: Run;
   announcement?: ThreadAnnouncement;
+  /** In a root session, what its entry agent picked for the message before it. */
+  pick?: SessionPick;
   /** On a run parked on a question a person answers. */
   ask?: ThreadAsk;
 }

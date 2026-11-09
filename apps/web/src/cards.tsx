@@ -121,6 +121,7 @@ export function ItemCard({
   facts,
   time,
   menu,
+  menuLabel,
   actions,
   onOpen,
   href,
@@ -137,6 +138,8 @@ export function ItemCard({
   time?: ReactNode;
   /** Its ⋯ menu, the shared More menu. */
   menu?: PageAction[];
+  /** The ⋯ button's name, such as "More for GitHub", so each card's reads apart. */
+  menuLabel?: string;
   actions?: ReactNode;
   onOpen?: () => void;
   href?: string;
@@ -172,7 +175,7 @@ export function ItemCard({
         )}
         {menu && menu.length > 0 && (
           <span className="relative z-10 -my-1.5 -mr-1.5 shrink-0">
-            <MoreMenu items={menu} />
+            <MoreMenu items={menu} label={menuLabel} />
           </span>
         )}
       </header>

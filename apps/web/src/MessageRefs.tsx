@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Run } from "./adapter.ts";
 import { responseChips, summaryOf, useResponse, WorkedButton } from "./ResponseActivity.tsx";
 import { Chips } from "./refChips.tsx";
-import { type RunLoader, runSource } from "./responseSource.ts";
+import { type TraceLoader, traceSource } from "./responseSource.ts";
 import type { Chip, Reference } from "./trace.ts";
 import { AgentMark } from "./ui.tsx";
 
@@ -32,12 +32,12 @@ function useSeen(eager = false) {
 }
 
 /** An ended run's response, folded from its source once it is seen. */
-function useRunResponse(run: Run, seen: boolean, loader?: RunLoader) {
+function useRunResponse(run: Run, seen: boolean, loader?: TraceLoader) {
   const ended = ENDED.has(run.status);
   // A run's response changes only when its status does, so the source is keyed by them.
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed by the run's id and status, not its object.
   const source = useMemo(
-    () => (seen && ended ? runSource(run, loader) : undefined),
+    () => (seen && ended ? traceSource(run, loader) : undefined),
     [seen, ended, run.id, run.status, loader],
   );
   return useResponse(source);
@@ -57,7 +57,7 @@ export function AnswerRefs({
 }: {
   run: Run;
   eager?: boolean;
-  loader?: RunLoader;
+  loader?: TraceLoader;
   /** This answer's activity is open in Details. */
   open?: boolean;
   /** Open or close this response's activity in Details. Without it, no control is offered. */
@@ -98,7 +98,7 @@ function ReferenceRow({
 }: {
   run: Run;
   origin?: Reference;
-  loader?: RunLoader;
+  loader?: TraceLoader;
 }) {
   const { state, ended } = useRunResponse(run, true, loader);
   const agents = ended
@@ -138,7 +138,7 @@ export function SessionReferences({
 }: {
   runs: Run[];
   origin?: Reference;
-  loader?: RunLoader;
+  loader?: TraceLoader;
 }) {
   // Answers people see: each turn's own run, not the runs it called.
   const answers = runs.filter((r) => !r.parent);

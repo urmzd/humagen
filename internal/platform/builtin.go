@@ -187,7 +187,7 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 		Access:       wire.Access{Spawn: []string{BuiltinSecurityReviewer, BuiltinArchitectReviewer, BuiltinQAReviewer}},
 	}, {
 		Name:         BuiltinSecurityReviewer,
-		Description:  "Reviews security risks and concrete exploit scenarios",
+		Description:  "Reviews security: authentication, permissions, passwords and hashing, cryptography, secrets, untrusted input and dependencies, with concrete exploit scenarios",
 		Provider:     chain[0].Provider,
 		Model:        chain[0].Model,
 		Fallbacks:    slices.Clone(chain[1:]),
