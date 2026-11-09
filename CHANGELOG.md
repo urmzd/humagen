@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.101.0 (2026-11-09)
+
+### Features
+
+- **console**: show the entry agent's pick and answers inline (#266) ([c509245](https://github.com/urmzd/humagen/commit/c5092454339065121279ce9478cb3df41bcd71b7))
+- **messages**: get_context, feedback and stop (#283) ([58572f7](https://github.com/urmzd/humagen/commit/58572f7706fd17a2f0c39cb55d26a429ea4d8a2b))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.100.1...v0.101.0)
+
+
 ## 0.100.0 (2026-11-09)
 
 ### Features
