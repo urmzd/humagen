@@ -174,6 +174,7 @@ paths:
         is required and true, the one listing this route answers. Page with
         after, the next of the previous page.
       x-permission: "runs:read"
+      x-readonly: true
       parameters:
         - {"name": "roots", "in": "query", "required": true, "description": "true; the one listing this route answers.", "schema": {"type": "boolean"}}
         - {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}}
@@ -242,6 +243,7 @@ paths:
         as the session's first message, and that message's own id reads the
         same. id is a session id, or a message id (session:message).
       x-permission: "runs:read"
+      x-readonly: true
       parameters:
         - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
         - {"name": "since", "in": "query", "required": false, "schema": {"type": "string"}}
@@ -389,6 +391,7 @@ paths:
         answer only what the place's audience may read. note says why nothing
         could be pulled, when nothing could.
       x-permission: "runs:read"
+      x-readonly: true
       parameters:
         - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
       requestBody:
@@ -465,6 +468,7 @@ paths:
         when a bound cut it. id is a session id, or a message id
         (session:message).
       x-permission: "runs:read"
+      x-readonly: true
       parameters:
         - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
       responses:
@@ -1916,6 +1920,7 @@ paths:
         providers (clients:write) also reads how each of its own is set up,
         with no key.
       x-permission: agents:read
+      x-readonly: true
       responses:
         "200":
           description: At most 100 provider choices, sorted by name.
@@ -1963,6 +1968,7 @@ paths:
         credentials. A name the deployment declares, `policy`, `offline` and
         names starting `ws-` are refused.
       x-permission: clients:write
+      x-idempotent: true
       requestBody:
         required: true
         content:
@@ -1995,6 +2001,8 @@ paths:
       summary: Remove one of the workspace's model providers and its key
       description: Refused (409) while an agent, a model policy or routing runs on it; the refusal names each.
       x-permission: clients:write
+      x-destructive: true
+      x-idempotent: true
       responses:
         "204": {description: Removed}
         "400": {$ref: "#/components/responses/BadRequest"}
@@ -2031,6 +2039,7 @@ paths:
         read: one that lives in a project they may not read is left out, and
         so is every agent it names in another's spec. Not paged.
       x-permission: agents:read
+      x-readonly: true
       responses:
         "200":
           description: The agents.
@@ -2109,6 +2118,7 @@ paths:
         read, or one it already names that they are shown (400); the agents
         they were not shown, and the approvals of calls to them, are kept.
       x-permission: agents:write
+      x-idempotent: true
       parameters:
         - {$ref: "#/components/parameters/AgentName"}
       requestBody:
@@ -2215,6 +2225,7 @@ paths:
       tags: [agents]
       summary: List an agent's revisions, newest first
       x-permission: agents:read
+      x-readonly: true
       parameters:
         - {$ref: "#/components/parameters/AgentName"}
       responses:
@@ -3203,6 +3214,7 @@ paths:
       tags: [runs]
       summary: Get a run
       x-permission: runs:read
+      x-readonly: true
       parameters:
         - name: act_as_client
           in: query
@@ -3596,6 +3608,7 @@ paths:
         Pass it back as `before`. A cursor is opaque and belongs to the server
         that issued it.
       x-permission: runs:read
+      x-readonly: true
       parameters:
         - name: limit
           in: query
@@ -4570,6 +4583,7 @@ paths:
         A title or memory agent that lives in a project the caller may not
         read is left out, as if none were set.
       x-permission: agents:read
+      x-readonly: true
       responses:
         "200":
           description: The settings.
@@ -4592,6 +4606,7 @@ paths:
         one that does not exist. One they are not shown is kept when they
         name none in its place.
       x-permission: agents:write
+      x-idempotent: true
       requestBody:
         required: true
         content:
@@ -4623,6 +4638,7 @@ paths:
         `schedule://<name>`: `GET /api/sessions?parent=schedule://<name>`
         lists them.
       x-permission: schedules:read
+      x-readonly: true
       parameters:
         - name: project
           in: query
@@ -4692,6 +4708,7 @@ paths:
         the platform file declares (`managed: file`) is changed in the file:
         here it answers 409.
       x-permission: schedules:write
+      x-idempotent: true
       parameters:
         - {$ref: "#/components/parameters/ScheduleName"}
       requestBody:
@@ -4718,6 +4735,8 @@ paths:
       summary: Delete a schedule
       description: A schedule the platform file declares is removed from the file, not here (409).
       x-permission: schedules:write
+      x-destructive: true
+      x-idempotent: true
       parameters:
         - {$ref: "#/components/parameters/ScheduleName"}
       responses:
@@ -5793,6 +5812,7 @@ paths:
       tags: [observe]
       summary: Summarize readable runs over a bounded time interval
       x-permission: runs:read
+      x-readonly: true
       parameters:
         - {$ref: "#/components/parameters/Window"}
         - {name: since, in: query, description: "Inclusive RFC3339 bound. Supply with until, instead of window. The interval is at most 30 days.", schema: {type: string, format: date-time}}
@@ -5859,6 +5879,7 @@ paths:
       tags: [alerts]
       summary: List fired alerts
       x-permission: alerts:read
+      x-readonly: true
       parameters:
         - {"name": "state", "in": "query", "required": false, "schema": {"type": "string", "enum": [open, snoozed, resolved]}}
         - {"name": "priority", "in": "query", "required": false, "schema": {"type": "string", "enum": [urgent, normal, low]}}
@@ -5906,6 +5927,7 @@ paths:
       tags: [alerts]
       summary: List alert rules
       x-permission: alerts:read
+      x-readonly: true
       responses:
         "200":
           description: The rules.
@@ -5960,6 +5982,7 @@ paths:
         `updated_by` and `updated_at` are set by the server. Alerts the rule
         already raised stay, and so does its cooldown.
       x-permission: alerts:write
+      x-idempotent: true
       parameters:
         - {name: name, in: path, required: true, description: The rule's name., schema: {type: string}}
       requestBody:
@@ -5984,6 +6007,8 @@ paths:
       tags: [alerts]
       summary: Delete an alert rule
       x-permission: alerts:write
+      x-destructive: true
+      x-idempotent: true
       parameters:
         - {name: name, in: path, required: true, description: The rule's name., schema: {type: string}}
       responses:
@@ -6004,6 +6029,7 @@ paths:
         run only. A suite that tests an agent the caller may not read is left
         out, and every route that names it answers 404.
       x-permission: evals:read
+      x-readonly: true
       responses:
         "200":
           description: The suites.
@@ -6056,6 +6082,7 @@ paths:
         As creating one: a suite that tries an agent homed in a project takes
         a member of that project (403).
       x-permission: evals:write
+      x-idempotent: true
       parameters:
         - {$ref: "#/components/parameters/SuiteName"}
       requestBody:
@@ -6080,6 +6107,8 @@ paths:
       tags: [evals]
       summary: Delete an eval suite
       x-permission: evals:write
+      x-destructive: true
+      x-idempotent: true
       parameters:
         - {$ref: "#/components/parameters/SuiteName"}
       responses:
@@ -6118,6 +6147,7 @@ paths:
       tags: [evals]
       summary: List an eval suite's runs, newest first
       x-permission: evals:read
+      x-readonly: true
       parameters:
         - {$ref: "#/components/parameters/SuiteName"}
       responses:
@@ -9033,6 +9063,7 @@ paths:
       - agents
       summary: Get agent control
       x-permission: agents:read
+      x-readonly: true
       responses:
         '200':
           description: The recorded resource.
@@ -9060,6 +9091,7 @@ paths:
       - agents
       summary: Put agent control
       x-permission: agents:write
+      x-idempotent: true
       responses:
         '200':
           description: The recorded resource.
@@ -9596,6 +9628,7 @@ paths:
       tags: [agents]
       summary: Read controls and visible recent state for named agents
       x-permission: agents:read
+      x-readonly: true
       parameters:
         - name: names
           in: query
@@ -9729,6 +9762,7 @@ paths:
         - agents
       summary: listAgentChanges
       x-permission: agents:read
+      x-readonly: true
       parameters:
         - name: name
           in: path
@@ -9759,6 +9793,7 @@ paths:
         - agents
       summary: getAgentHealth
       x-permission: agents:read
+      x-readonly: true
       parameters:
         - name: name
           in: path
@@ -9849,6 +9884,7 @@ paths:
       - sessions
       summary: List connection presets
       x-permission: runs:read
+      x-readonly: true
       responses:
         '200':
           description: Successful session operation
@@ -9951,6 +9987,7 @@ paths:
       - connections
       summary: Read your connection and its visible configured uses
       x-permission: runs:read
+      x-readonly: true
       parameters:
       - name: provider
         in: path
@@ -9979,6 +10016,8 @@ paths:
       - sessions
       summary: Disconnect connection
       x-permission: runs:write
+      x-destructive: true
+      x-idempotent: true
       parameters:
       - name: provider
         in: path

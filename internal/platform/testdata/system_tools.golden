@@ -1,0 +1,108 @@
+list_agents | mcp | read_context | idempotent,parallel,read-only | none
+list_agent_revisions | mcp | read_context | idempotent,parallel,read-only | none
+create_agent | mcp | other |  | none
+revise_agent | mcp | other | idempotent | none
+reset_agent | mcp | other |  | none
+get_agent_control | mcp | read_context | idempotent,parallel,read-only | none
+put_agent_control | mcp | other | idempotent | none
+get_agent_roster | mcp | read_context | idempotent,parallel,read-only | none
+get_agent_health | mcp | read_context | idempotent,parallel,read-only | none
+list_agent_changes | mcp | read_context | idempotent,parallel,read-only | none
+list_eval_suites | mcp | read_context | idempotent,parallel,read-only | none
+create_eval_suite | mcp | other |  | none
+update_eval_suite | mcp | other | idempotent | none
+delete_eval_suite | mcp | other | destructive,idempotent | none
+run_eval_suite | mcp | other |  | none
+list_eval_runs | mcp | read_context | idempotent,parallel,read-only | none
+list_threads | mcp | read_context | idempotent,parallel,read-only | none
+get_run | mcp | read_context | idempotent,parallel,read-only | none
+get_analytics | mcp | read_context | idempotent,parallel,read-only | none
+send_messages | mcp | other |  | none
+list_messages | mcp | read_context | idempotent,parallel,read-only | none
+send_messages_under | mcp | other |  | none
+get_message | mcp | read_context | idempotent,parallel,read-only | none
+rate_message | mcp | other |  | none
+stop_message | mcp | other |  | none
+get_message_context | mcp | read_context | idempotent,parallel,read-only | none
+trace_message | mcp | read_context | idempotent,parallel,read-only | none
+list_alerts | mcp | read_context | idempotent,parallel,read-only | none
+acknowledge_alert | mcp | other |  | none
+change_alert_state | mcp | other |  | none
+list_alert_rules | mcp | read_context | idempotent,parallel,read-only | none
+create_alert_rule | mcp | other |  | none
+update_alert_rule | mcp | other | idempotent | none
+delete_alert_rule | mcp | other | destructive,idempotent | none
+list_connection_presets | mcp | read_context | idempotent,parallel,read-only | none
+get_connection | mcp | read_context | idempotent,parallel,read-only | none
+check_connection | mcp | other |  | none
+authorize_connection | mcp | other |  | none
+disconnect_connection | mcp | other | destructive,idempotent | none
+list_model_providers | mcp | read_context | idempotent,parallel,read-only | none
+set_model_provider | mcp | other | idempotent | none
+delete_model_provider | mcp | other | destructive,idempotent | none
+check_model_provider | mcp | other |  | none
+list_schedules | mcp | read_context | idempotent,parallel,read-only | none
+create_schedule | mcp | other |  | none
+update_schedule | mcp | other | idempotent | none
+delete_schedule | mcp | other | destructive,idempotent | none
+pause_schedule | mcp | other |  | none
+resume_schedule | mcp | other |  | none
+run_schedule | mcp | other |  | none
+get_settings | mcp | read_context | idempotent,parallel,read-only | none
+update_settings | mcp | other | idempotent | none
+agent | mcp,runs | call_agents | parallel | policy, and per call
+file_read | runs | read_context | idempotent,parallel,read-only | policy
+file_list | runs | read_context | idempotent,parallel,read-only | policy
+file_write | runs | write_files | idempotent | policy
+publish_artifact | runs | publish_artifacts |  | policy
+record_outcome | runs | other |  | policy
+shell | runs | write_files | destructive | policy
+delegate_task | runs | call_agents | parallel | policy
+runs_summary | runs | read_context | idempotent,parallel,read-only | policy
+run/list_alerts (list_alerts) | runs | read_context | idempotent,parallel,read-only | policy
+project_changes | runs | other | idempotent,parallel,read-only | policy
+run/list_agents (list_agents) | runs | read_context | idempotent,parallel,read-only | policy
+read_agent | runs | read_context | idempotent,parallel,read-only | policy
+save_agent | runs | write_files |  | policy
+pause_agent | runs | other |  | always role:admin,role:manager self=true expires=0s
+retire_agent | runs | other |  | always role:admin,role:manager self=true expires=0s
+write_eval_suite | runs | other |  | always role:admin,role:manager self=true expires=0s
+run/run_eval_suite (run_eval_suite) | runs | other |  | policy
+read_agent_evals | runs | other | idempotent,parallel,read-only | policy
+preview_agent_change | runs | other |  | policy
+apply_agent_change | runs | other |  | always role:admin,role:manager self=true expires=0s
+add_recorded_eval_case | runs | other |  | always role:admin,role:manager self=true expires=0s
+list_connections | runs | other | idempotent,parallel,read-only | policy
+connect_connection | runs | other |  | policy
+set_workspace_prompt | runs | other |  | always role:admin self=false expires=0s
+preview_workspace_prompt | runs | other |  | policy
+apply_workspace_prompt | runs | other |  | always role:admin self=false expires=0s
+alert_create | runs | other |  | policy
+alert_resolve | runs | other | idempotent | policy
+memory_search | runs | other | idempotent,parallel,read-only | policy
+source_search | runs | read_context | acts-for-person,idempotent,parallel,read-only | policy
+catalog_search | runs | read_context | idempotent,parallel,read-only | policy
+catalog_query | runs | read_context | acts-for-person,idempotent,parallel,read-only | policy
+corpus_query | runs | read_context | acts-for-person,idempotent,parallel,read-only | policy
+corpus_search | runs | read_context | idempotent,parallel,read-only | policy
+corpus_graph | runs | read_context | idempotent,parallel,read-only | policy
+github_read_context | runs | read_context | idempotent,parallel,read-only | policy
+github_fix_base | runs | read_context | idempotent,parallel,read-only | policy
+github_read_file | runs | read_context | idempotent,parallel,read-only | policy
+github_workflow_status | runs | read_context | idempotent,parallel,read-only | policy
+github_comment | runs | external_messages |  | policy
+github_create_review | runs | external_messages |  | policy
+github_request_review | runs | external_messages |  | policy
+github_add_labels | runs | external_messages |  | policy
+github_apply_changes | runs | external_messages+write_files |  | policy
+github_create_fix_pr | runs | external_messages+write_files(both) |  | policy
+github_run_checks | runs | other |  | policy
+slack_post_message | runs | external_messages |  | policy
+slack_add_reaction | runs | external_messages |  | policy
+session_call | runs | other | upstream | policy
+session_listen | runs | other | upstream | policy
+session_read | runs | other | upstream | policy
+session_status | runs | other | upstream | policy
+session_link | runs | other | upstream | policy
+ask_person | runs | other | upstream | policy
+get_context | mcp,runs | read_context | idempotent,parallel,read-only | policy

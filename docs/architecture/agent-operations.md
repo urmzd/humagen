@@ -27,6 +27,55 @@ Categories are read context, write files, publish artifacts, send external
 messages, call agents and other actions. MCP read groups are read context;
 write groups conservatively apply both other-actions and external-message
 rules. A provider's tool name is not evidence that an action is read-only.
+
+## Tool declarations
+
+Every tool is declared once, in the system tool registry
+(`internal/platform/systemtools.go`): the operations of the API contract, the
+agent call and `get_context`, and every tool an agent's run may be offered
+(`internal/platform/systemtools_run.go`). A declaration states:
+
+| Field | Meaning |
+|-------|---------|
+| `Category` | The action-policy category of a call. A tool states it; it is never read from the tool's name. |
+| `Also`, `BothAllow` | A second category that holds the call too. `github_apply_changes` and `github_create_fix_pr` send something outside and change files; opening a fix pull request runs unasked only when both categories allow it. |
+| `ReadOnly`, `Destructive`, `Idempotent`, `Parallel` | What a call does. An MCP client is told the first three. |
+| `ActsForPerson` | The call runs with the credential of the person the run acts for (`source_search`, `catalog_query`, `corpus_query`). |
+| `Approval` | Who approves a call: the action policy for the category (the default), the tool's own approvers on every call, or nobody for an operation a signed-in person's own client calls. |
+| `Exposure` | Who is offered the tool: MCP clients at `/api/mcp`, agent runs, or both. The zero value offers it to nobody. |
+
+A turn's tools are built from these declarations, and one wrapper holds every
+call to the tool's declared approval and to the policy. The tools that change
+an agent, its evals or the shared instructions carry their own approvers:
+
+| Tool | Approvers | The person asking may approve |
+|------|-----------|-------------------------------|
+| `pause_agent`, `retire_agent`, `write_eval_suite`, `add_recorded_eval_case`, `apply_agent_change` | `role:admin`, `role:manager` | Yes |
+| `set_workspace_prompt`, `apply_workspace_prompt` | `role:admin` | No |
+| `agent` | The called agent's call policy, per call | As that policy says |
+| A person's own connected tool that is not a read | That person, for 24 hours | Yes |
+
+Every other run tool asks only where the policy says Ask: the agent's
+approvers, or the workspace's fallback approvers and the agent's manager, for
+24 hours.
+
+`list_agents`, `list_alerts` and `run_eval_suite` each name two tools with
+different implementations: an operation of the API contract, offered over MCP,
+and a builder or analyst tool, offered to runs. The run tool has a registry
+key of its own (`run/<name>`) and is never listed over MCP, so neither is
+reached through the other.
+
+A tool that is not in the registry cannot declare a category: a tool of an
+extension catalog, or a tool provider's tool where only its name is known.
+Only for those, a name that says it sends a message is held as an external
+message and any other as other. The session tools (`session_call`,
+`session_listen`, `session_read`, `session_status`, `session_link`) and
+`ask_person` are built by the runtime, which resolves them before it asks the
+platform's catalog, so the registry declares them but their calls do not pass
+the wrapper.
+
+## Private context
+
 The catalog preserves rich results and person-scoped credential behavior.
 Before a person-scoped tool executes, the run durably records that private
 context may enter its result. A failed marker write aborts execution. Raw

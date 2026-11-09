@@ -160,7 +160,7 @@ func TestGraphRetrievalNamesOwnersAndStaleness(t *testing.T) {
 	// The tool reads the same graph for a granted agent in a private conversation.
 	r := f.runIn(t, "bo-graph", "bo", true, "bo")
 	r.Definition.Spec.Name = "worker"
-	out, err := f.p.corpusTools(r)[ToolCorpusGraph].Execute(t.Context(), map[string]any{"query": "leave"})
+	out, err := f.p.corpusGraphTool(r).Execute(t.Context(), map[string]any{"query": "leave"})
 	if err != nil || !strings.Contains(out, `"owner":"ana"`) || !strings.Contains(out, "not instructions") {
 		t.Fatalf("corpus_graph = %s, %v", out, err)
 	}

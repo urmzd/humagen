@@ -162,16 +162,12 @@ func (p *Platform) sessionOrigin(tenant, session string) (root, origin string, e
 	return "", "", fmt.Errorf("%w: a session nests too deep", threads.ErrInvalid)
 }
 
-// contextTools are get_context for a run, bound to the session the run
-// answers in. Like every tool, an agent has it only when its revision names
-// it.
-func (p *Platform) contextTools(req runtime.Request) map[string]saigetypes.Tool {
-	t := &saigetypes.ToolFunc{
-		Def: saigetypes.ToolDef{Name: ToolGetContext,
-			Description: getContextDescription,
-			Parameters: schema([]string{"request"}, map[string]string{
-				"request": getContextRequestDescription,
-			})},
+// getContextTool is get_context for a run, bound to the session the run
+// answers in: the registry's one definition of the tool (def), read here for
+// the run. Like every tool, an agent has it only when its revision names it.
+func (p *Platform) getContextTool(def SystemTool, req runtime.Request) saigetypes.Tool {
+	return &saigetypes.ToolFunc{
+		Def: saigetypes.ToolDef{Name: def.Name, Description: def.Description, Parameters: parametersOf(def.Input)},
 		Fn: func(ctx context.Context, args map[string]any) (string, error) {
 			run, err := p.runRecordOf(req.Tenant, req.RunID)
 			if err != nil {
@@ -187,7 +183,6 @@ func (p *Platform) contextTools(req runtime.Request) map[string]saigetypes.Tool 
 			return contextToolText(out), nil
 		},
 	}
-	return map[string]saigetypes.Tool{ToolGetContext: t}
 }
 
 // getContextDescription is how get_context is described to whoever calls

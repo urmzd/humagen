@@ -16,6 +16,13 @@ granting the agent tool, and an approval it required is required of the agent
 tool. A client of the humagen MCP makes no agent call of its own: it posts a
 message (`send_messages`), which starts a run.
 
+The tool has one definition, in the system tool registry
+([agent operations](agent-operations.md#tool-declarations)): its description,
+its arguments, its category (`call_agents`) and who approves a call. A run is
+offered that definition with `agent` narrowed to the agents the caller may
+call. A call is held twice: by the called agent's call policy, which names
+its own approvers, and by the action policy for `call_agents`.
+
 ## Calls made for mentions
 
 A message that mentions several agents is answered by the entry agent, and the

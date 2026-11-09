@@ -357,10 +357,10 @@ func (p *Platform) catalogConnectorsFor(req runtime.Request) ([]string, error) {
 	return out, nil
 }
 
-// catalogTools are catalog_search and catalog_query. Like every tool, an
-// agent has them only when its revision names them.
-func (p *Platform) catalogTools(req runtime.Request) map[string]saigetypes.Tool {
-	search := &saigetypes.ToolFunc{
+// catalogSearchTool is catalog_search for one turn. Like every tool, an
+// agent has it only when its revision names it.
+func (p *Platform) catalogSearchTool(req runtime.Request) saigetypes.Tool {
+	return &saigetypes.ToolFunc{
 		Def: saigetypes.ToolDef{Name: ToolCatalogSearch,
 			Description: "Find tables and other objects in the workspace's connected systems, such as BigQuery, by what they hold. Returns each match's path, description and columns. It lists structure only, never data: query the object through its connector or tool to read it.",
 			Parameters: schema([]string{"query"}, map[string]string{
@@ -392,7 +392,12 @@ func (p *Platform) catalogTools(req runtime.Request) map[string]saigetypes.Tool 
 			return string(b), nil
 		},
 	}
-	query := &saigetypes.ToolFunc{
+}
+
+// catalogQueryTool is catalog_query for one turn. It runs with the
+// credential of the person the run acts for, which the registry declares.
+func (p *Platform) catalogQueryTool(req runtime.Request) saigetypes.Tool {
+	return &saigetypes.ToolFunc{
 		Def: saigetypes.ToolDef{Name: ToolCatalogQuery,
 			Description: "Run one read-only SQL SELECT in place on a connector you own, such as BigQuery, with its credential. Available only in your own private conversation. The query is checked first and refused if it would read more than the connector allows; select only the columns you need and filter early. Find tables with catalog_search.",
 			Parameters: schema([]string{"connector", "sql"}, map[string]string{
@@ -418,11 +423,4 @@ func (p *Platform) catalogTools(req runtime.Request) map[string]saigetypes.Tool 
 			return string(b), nil
 		},
 	}
-	return map[string]saigetypes.Tool{ToolCatalogSearch: search, ToolCatalogQuery: &personTool{Tool: query}}
 }
-
-// personTool is a tool that runs with the credential of the person a run
-// acts for.
-type personTool struct{ saigetypes.Tool }
-
-func (*personTool) ActsForPerson() bool { return true }

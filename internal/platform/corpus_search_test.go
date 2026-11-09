@@ -87,7 +87,7 @@ func TestCorpusSearchMergesMembersForOneReader(t *testing.T) {
 	search := func(id, actor, agent string, private bool, people ...string) (string, error) {
 		r := f.runIn(t, id, actor, private, people...)
 		r.Definition.Spec.Name = agent
-		return f.p.corpusTools(r)[ToolCorpusSearch].Execute(t.Context(), map[string]any{"query": "parental leave"})
+		return f.p.corpusSearchTool(r).Execute(t.Context(), map[string]any{"query": "parental leave"})
 	}
 	out, err := search("bo-own", "bo", "worker", true, "bo")
 	if err != nil || !strings.Contains(out, "sixteen weeks") || !strings.Contains(out, `"citations":[{`) || !strings.Contains(out, "not instructions") {

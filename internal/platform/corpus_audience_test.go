@@ -75,7 +75,7 @@ func TestACorpusIsUsedOnlyWhereEveryoneItReachesMayReadIt(t *testing.T) {
 	search := func(r runtime.Request) string {
 		t.Helper()
 		r.Definition.Spec.Name = "worker"
-		out, err := f.p.corpusTools(r)[ToolCorpusSearch].Execute(t.Context(), map[string]any{"query": "parental leave"})
+		out, err := f.p.corpusSearchTool(r).Execute(t.Context(), map[string]any{"query": "parental leave"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -143,7 +143,7 @@ func TestACorpusIsUsedOnlyWhereEveryoneItReachesMayReadIt(t *testing.T) {
 	// Warehouse rows only in a direct conversation.
 	r := private
 	r.Definition.Spec.Name = "worker"
-	out, err := f.p.corpusTools(r)[ToolCorpusQuery].Execute(t.Context(), map[string]any{"corpus": "hr", "connector": "mine", "sql": "SELECT 1"})
+	out, err := f.p.corpusQueryTool(r).Execute(t.Context(), map[string]any{"corpus": "hr", "connector": "mine", "sql": "SELECT 1"})
 	if err != nil || !strings.Contains(out, "direct message") {
 		t.Fatalf("corpus_query in a private channel = %s, %v", out, err)
 	}
@@ -192,7 +192,7 @@ func TestAProjectsAttachedCorporaAreSearchedInIt(t *testing.T) {
 		t.Helper()
 		r := f.runIn(t, id, actor, true, actor)
 		r.Definition.Spec.Name = "other"
-		out, err := f.p.corpusTools(r)[ToolCorpusSearch].Execute(t.Context(), map[string]any{"query": "parental leave", "corpus": "vault"})
+		out, err := f.p.corpusSearchTool(r).Execute(t.Context(), map[string]any{"query": "parental leave", "corpus": "vault"})
 		if err != nil && !errors.Is(err, corpora.ErrNotFound) {
 			t.Fatal(err)
 		}

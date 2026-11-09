@@ -26,7 +26,7 @@ func TestOperationToolFailsClosedAndKeepsPersonScope(t *testing.T) {
 	}
 	req := runtime.Request{Tenant: "t", Definition: native.Revision{Spec: native.Spec{Name: "a"}}}
 	calls := 0
-	tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "file_write"}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}, operations.WriteFiles)
+	tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "file_write"}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}, SystemTool{Category: operations.WriteFiles})
 	rule := func(level operations.Level) {
 		pol, _ := p.Operations.Policy("t", operations.Scope{Kind: "workspace"})
 		if _, err := p.Operations.SetPolicy("t", operations.Policy{Scope: pol.Scope, Rules: map[operations.Category]operations.Level{operations.WriteFiles: level}}, pol.Version, "manager", time.Now()); err != nil {
@@ -129,7 +129,7 @@ func TestAnApprovedToolRechecksTightenedPolicyAndPause(t *testing.T) {
 	}
 	req := runtime.Request{Tenant: "t", RunID: "run", Definition: native.Revision{Spec: native.Spec{Name: "a"}}, Resume: &native.Parked{Answers: map[string]event.Answer{"approved": {Decision: event.DecisionApprove}}}}
 	calls := 0
-	tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "file_write"}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}, operations.WriteFiles)
+	tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "file_write"}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}, SystemTool{Category: operations.WriteFiles})
 	ctx := saigetypes.WithToolCallInfo(t.Context(), saigetypes.ToolCallInfo{ID: "approved", Name: "file_write"})
 	_, err = p.Operations.SetPolicy("t", operations.Policy{Scope: operations.Scope{Kind: "workspace"}, Rules: map[operations.Category]operations.Level{operations.WriteFiles: operations.Ask}}, 0, "manager", time.Now())
 	if err != nil {
@@ -229,7 +229,7 @@ func TestAddedAskApprovalPreservesExplicitAudienceAndUnderlyingRestrictions(t *t
 	}
 	calls := 0
 	base := &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "action"}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}
-	tool := p.operationTool(req, base, operations.Other)
+	tool := p.operationTool(req, base, SystemTool{Category: operations.Other})
 	approval, needed := tool.(native.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
 	if !needed || !approval.SelfApproval || !slices.Equal(approval.Approvers, []string{"designated-reviewer"}) {
 		t.Fatalf("declared approval audience widened: %+v", approval)
@@ -237,12 +237,12 @@ func TestAddedAskApprovalPreservesExplicitAudienceAndUnderlyingRestrictions(t *t
 	fallbackReq := req
 	fallbackReq.Definition.Spec.Approvers = nil
 	fallbackReq.Definition.Spec.SelfApproval = false
-	fallback := p.operationTool(fallbackReq, base, operations.Other)
+	fallback := p.operationTool(fallbackReq, base, SystemTool{Category: operations.Other})
 	fallbackApproval, fallbackNeeded := fallback.(native.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
 	if !fallbackNeeded || fallbackApproval.SelfApproval || !slices.Contains(fallbackApproval.Approvers, "outside-manager") {
 		t.Fatalf("missing native audience lost the existing fallback: %+v", fallbackApproval)
 	}
-	strict := p.operationTool(req, &operationStrictApprovalProbe{ToolFunc: base}, operations.Other)
+	strict := p.operationTool(req, &operationStrictApprovalProbe{ToolFunc: base}, SystemTool{Category: operations.Other})
 	approval, needed = strict.(native.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
 	if !needed || approval.SelfApproval || !slices.Equal(approval.Approvers, []string{"strict-reviewer"}) {
 		t.Fatalf("underlying tool approval weakened: %+v", approval)

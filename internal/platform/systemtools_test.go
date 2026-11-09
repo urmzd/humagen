@@ -10,6 +10,7 @@ import (
 
 	"github.com/urmzd/humagen/api"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/operations"
 )
 
 // The registry's operations come from the API contract, and an operation the
@@ -81,8 +82,13 @@ func TestASystemToolIsFoundByName(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range all {
-		got, ok := p.SystemTool(want.Name)
-		if !ok || got.Name != want.Name || got.Description != want.Description || got.Permission != want.Permission || got.ReadOnly != want.ReadOnly || got.Call == nil {
+		got, ok := p.SystemTool(want.key())
+		if !ok || got.Name != want.Name || got.Description != want.Description || got.Permission != want.Permission || got.ReadOnly != want.ReadOnly || got.Category != want.Category || got.Exposure != want.Exposure {
+			t.Errorf("SystemTool(%q) = %+v, %v; listed as %+v", want.key(), got, ok, want)
+		}
+		// A tool is something to call: over MCP, built for a run, or built
+		// by the runtime itself.
+		if got.Exposure.MCP() && got.Call == nil || got.Exposure.Runs() && got.Run == nil && !got.Upstream {
 			t.Errorf("SystemTool(%q) = %+v, %v; listed as %+v", want.Name, got, ok, want)
 		}
 	}
@@ -95,7 +101,7 @@ func TestASystemToolIsFoundByName(t *testing.T) {
 	if _, ok := p.SystemTool("echo"); ok {
 		t.Fatal("echo was found before it was registered")
 	}
-	if err := p.RegisterSystemTool(SystemTool{Name: "echo", Input: map[string]any{"type": "object"}, Call: func(context.Context, SystemCall, json.RawMessage) (SystemResult, error) {
+	if err := p.RegisterSystemTool(SystemTool{Name: "echo", Category: operations.Other, Exposure: ExposeMCP, Input: map[string]any{"type": "object"}, Call: func(context.Context, SystemCall, json.RawMessage) (SystemResult, error) {
 		return SystemResult{Text: "echo"}, nil
 	}}); err != nil {
 		t.Fatal(err)

@@ -25,7 +25,7 @@ import (
 // returns what the tool reported on the run's stream.
 func (p *Platform) UseTool(ctx context.Context, req runtime.Request, name string, args map[string]any) (string, []event.Action, error) {
 	var reported []event.Action
-	tools, err := p.fileTools(nil)(req, func(a event.Action) error {
+	tools, err := p.registryTools()(req, func(a event.Action) error {
 		reported = append(reported, a)
 		return nil
 	})
@@ -98,8 +98,7 @@ func (p *Platform) CallTargets(tenant, runID, caller string, spawn []string) []s
 // CallToolApproval asks the call tool a turn would get whether a call needs
 // approval, as the runtime's approval gate does.
 func (p *Platform) CallToolApproval(req runtime.Request, args map[string]any) (native.ApprovalRequest, bool) {
-	t := p.agentTool(req, func(event.Action) error { return nil })
-	return t.(native.Approving).Approval(saigetypes.ToolCallPart{Name: ToolAgent, Arguments: args})
+	return declaredApproval(req, p.toolDeclaration(ToolAgent), saigetypes.ToolCallPart{Name: ToolAgent, Arguments: args})
 }
 
 // LandFor is who answers an untagged message a client raised where nothing

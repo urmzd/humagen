@@ -127,7 +127,9 @@ func (p *Platform) callMentioned(ctx context.Context, req runtime.Request, answe
 			c.err = errors.New(why)
 			continue
 		}
-		ask, held := (&callTool{p: p, tenant: req.Tenant, caller: caller}).Approval(saigetypes.ToolCallPart{ID: c.id, Name: ToolAgent, Arguments: map[string]any{"agent": c.agent, "title": mentionTitle(run.Text), "brief": run.Text}})
+		// The agent tool's own declared approval, as the wrapper every run
+		// tool passes through reads it: the callee's call policy.
+		ask, held := declaredApproval(req, p.toolDeclaration(ToolAgent), saigetypes.ToolCallPart{ID: c.id, Name: ToolAgent, Arguments: map[string]any{"agent": c.agent, "title": mentionTitle(run.Text), "brief": run.Text}})
 		if !held {
 			continue
 		}
