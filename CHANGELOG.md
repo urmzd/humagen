@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.100.1 (2026-11-09)
+
+### Bug Fixes
+
+- **web**: answer an approval in Activity on its run (#298) ([1303ecd](https://github.com/urmzd/humagen/commit/1303ecdd748954f95147d410b4f4a73e71895eb4))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.100.0...v0.100.1)
+
+
 ## 0.100.0 (2026-11-09)
 
 ### Features
