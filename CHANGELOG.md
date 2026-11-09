@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.114.0 (2026-11-09)
+
+### Features
+
+- **console**: Agents › Knowledge lists corpora, each with its own sources (#252) ([67f7d4f](https://github.com/urmzd/humagen/commit/67f7d4f6d74bc041ca90e7fcb851f8125beaffc5))
+- **knowledge**: OneDrive as a knowledge source (#284) ([5ed19b6](https://github.com/urmzd/humagen/commit/5ed19b6514fd24cbfb71b77b00a72006b3ab6f95))
+- **knowledge**: resolve one corpus item by its address (#276) ([44dc29c](https://github.com/urmzd/humagen/commit/44dc29ce2b0b5f61f0e523017559da8e3b88f892))
+- **knowledge**: a session reaches the corpora its project attaches (#271) ([a83f902](https://github.com/urmzd/humagen/commit/a83f902a7dc42b1caa32aec0e38e5bd88795874e))
+- **knowledge**: retrieval evals for corpora (#269) ([283d844](https://github.com/urmzd/humagen/commit/283d844659c5c636fd1e24db9c13dbb70ea2bac0))
+- **knowledge**: corpus labels decide where their content may go (#267) ([7c43c52](https://github.com/urmzd/humagen/commit/7c43c52177a93adbde3ec7a852d6d09b61eb23a1))
+- **knowledge**: maintenance tells owners what their corpora need (#265) ([3e59676](https://github.com/urmzd/humagen/commit/3e59676c8f00e6fb7113e5e1e2f475e9ddbbef05))
+- **knowledge**: a workspace graph built from what corpora hold (#253) ([3353791](https://github.com/urmzd/humagen/commit/3353791b3aaadc65ba9cd52ab37b001ec7cadfdc))
+- **knowledge**: search a corpus across what its members hold (#248) ([332075d](https://github.com/urmzd/humagen/commit/332075d27ab22fee2dca14b126242878415cf1f4))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.113.0...v0.114.0)
+
+
 ## 0.112.0 (2026-11-09)
 
 ### Features
