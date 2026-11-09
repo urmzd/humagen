@@ -30,6 +30,7 @@ const (
 	MaxCorpora     = 200
 	MaxMembers     = 50
 	MaxReaders     = 50
+	MaxAgents      = 50
 	MaxDescription = 500
 	MaxTitle       = 120
 )
@@ -95,18 +96,25 @@ type Corpus struct {
 	Name string `json:"name"`
 	// Title is what people call it, such as "HR policies". Empty shows
 	// the name.
-	Title       string    `json:"title,omitempty"`
-	Description string    `json:"description,omitempty"`
-	Owner       string    `json:"owner"`
-	Readers     []Reader  `json:"readers"`
-	Members     []Member  `json:"members"`
-	Links       Links     `json:"links"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	Title       string   `json:"title,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Owner       string   `json:"owner"`
+	Readers     []Reader `json:"readers"`
+	Members     []Member `json:"members"`
+	// Agents are the agents granted the corpus: they may search it and
+	// query its warehouses, always as the person a run acts for, who must
+	// be a reader too.
+	Agents    []string  `json:"agents"`
+	Links     Links     `json:"links"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 	// Version is the stored record's version. An update or delete that
 	// names it fails with ErrConflict once someone else changed the corpus.
 	Version int64 `json:"version"`
 }
+
+// Grants reports whether the corpus is granted to an agent.
+func (c Corpus) Grants(agent string) bool { return slices.Contains(c.Agents, agent) }
 
 // Holds reports whether the corpus has a member.
 func (c Corpus) Holds(m Member) bool { return slices.Contains(c.Members, m) }
@@ -172,7 +180,19 @@ func normal(c Corpus) (Corpus, error) {
 	if len(readers) > MaxReaders {
 		return c, fmt.Errorf("%w: at most %d readers", ErrInvalid, MaxReaders)
 	}
-	c.Members, c.Readers = members, readers
+	agents := []string{}
+	for _, a := range c.Agents {
+		if a == "" || len(a) > 64 || strings.ContainsFunc(a, unicode.IsSpace) || !utf8.ValidString(a) {
+			return c, fmt.Errorf("%w: an agent is named by its name", ErrInvalid)
+		}
+		if !slices.Contains(agents, a) {
+			agents = append(agents, a)
+		}
+	}
+	if len(agents) > MaxAgents {
+		return c, fmt.Errorf("%w: at most %d agents", ErrInvalid, MaxAgents)
+	}
+	c.Members, c.Readers, c.Agents = members, readers, agents
 	return c, nil
 }
 
@@ -236,6 +256,10 @@ func shown(it state.Item[record]) (Corpus, bool) {
 	c := *it.Value.Corpus
 	c.Readers = slices.Clone(c.Readers)
 	c.Members = slices.Clone(c.Members)
+	c.Agents = slices.Clone(c.Agents)
+	if c.Agents == nil {
+		c.Agents = []string{}
+	}
 	c.Version = it.Version
 	return c, true
 }

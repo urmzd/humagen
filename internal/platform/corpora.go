@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -64,6 +65,8 @@ type CorpusCreate struct {
 	Readers     []corpora.Reader `json:"readers"`
 	Members     []corpora.Member `json:"members"`
 	Links       corpora.Links    `json:"links"`
+	// Agents are the agents granted the corpus.
+	Agents []string `json:"agents"`
 }
 
 // CorpusChange is a partial change to a corpus. A nil field is kept.
@@ -74,6 +77,9 @@ type CorpusChange struct {
 	Readers     *[]corpora.Reader `json:"readers,omitempty"`
 	Members     *[]corpora.Member `json:"members,omitempty"`
 	Links       *corpora.Links    `json:"links,omitempty"`
+	// Agents replaces the agents granted the corpus. Agents the owner can
+	// no longer see are kept.
+	Agents *[]string `json:"agents,omitempty"`
 	// Owner hands the corpus to another person.
 	Owner   *string `json:"owner,omitempty"`
 	Version int64   `json:"version,omitempty"`
@@ -184,6 +190,8 @@ func (p *Platform) memberView(who auth.Principal, m corpora.Member, owner bool) 
 }
 
 func (p *Platform) corpusView(who auth.Principal, c corpora.Corpus) CorpusView {
+	seer := p.Seer(who)
+	c.Agents = slices.DeleteFunc(slices.Clone(c.Agents), func(a string) bool { return !seer.Agent(a) })
 	v := CorpusView{Corpus: c, Members: make([]CorpusMemberView, 0, len(c.Members)), Mine: c.Owner == who.Subject}
 	for _, m := range c.Members {
 		v.Members = append(v.Members, p.memberView(who, m, v.Mine))
@@ -232,6 +240,17 @@ func (p *Platform) ownCorpus(who auth.Principal, name string) (corpora.Corpus, e
 	return c, nil
 }
 
+// grantable checks that every agent named exists and who may see it.
+func (p *Platform) grantable(who auth.Principal, agents []string) error {
+	seer := p.Seer(who)
+	for _, a := range agents {
+		if _, err := p.Catalog().Get(context.Background(), who.Tenant, a, 0); err != nil || !seer.Agent(a) {
+			return fmt.Errorf("%w: no agent named %q", corpora.ErrInvalid, a)
+		}
+	}
+	return nil
+}
+
 // addable checks that who may see every member they add.
 func (p *Platform) addable(who auth.Principal, ms []corpora.Member) error {
 	for _, m := range ms {
@@ -251,7 +270,10 @@ func (p *Platform) CreateCorpus(who auth.Principal, in CorpusCreate) (CorpusView
 	if err := p.addable(who, in.Members); err != nil {
 		return CorpusView{}, err
 	}
-	c, err := p.Corpora.Create(who.Tenant, corpora.Corpus{Name: in.Name, Title: in.Title, Description: in.Description, Owner: who.Subject, Readers: in.Readers, Members: in.Members, Links: in.Links}, p.now())
+	if err := p.grantable(who, in.Agents); err != nil {
+		return CorpusView{}, err
+	}
+	c, err := p.Corpora.Create(who.Tenant, corpora.Corpus{Name: in.Name, Title: in.Title, Description: in.Description, Owner: who.Subject, Readers: in.Readers, Members: in.Members, Agents: in.Agents, Links: in.Links}, p.now())
 	if err != nil {
 		return CorpusView{}, err
 	}
@@ -267,6 +289,11 @@ func (p *Platform) UpdateCorpus(who auth.Principal, name string, ch CorpusChange
 	}
 	if ch.Members != nil {
 		if err := p.addable(who, *ch.Members); err != nil {
+			return CorpusView{}, err
+		}
+	}
+	if ch.Agents != nil {
+		if err := p.grantable(who, *ch.Agents); err != nil {
 			return CorpusView{}, err
 		}
 	}
@@ -299,6 +326,16 @@ func (p *Platform) UpdateCorpus(who auth.Principal, name string, ch CorpusChange
 				}
 			}
 			c.Members = next
+		}
+		if ch.Agents != nil {
+			seer := p.Seer(who)
+			next := slices.Clone(*ch.Agents)
+			for _, a := range c.Agents {
+				if !seer.Agent(a) && !slices.Contains(next, a) {
+					next = append(next, a)
+				}
+			}
+			c.Agents = next
 		}
 		if ch.Owner != nil {
 			c.Owner = *ch.Owner

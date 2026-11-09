@@ -62,7 +62,10 @@ type Agents struct {
 	*DefinitionCatalog
 	src       *agents.Store
 	providers []string
-	now       func() time.Time
+	// accept admits a provider outside providers: one added while the
+	// server runs. Nil admits none.
+	accept func(string) bool
+	now    func() time.Time
 }
 
 var _ AgentStore = (*Agents)(nil)
@@ -76,23 +79,37 @@ func NewAgents(src *agents.Store, providers ...string) *Agents {
 }
 
 // NewMemoryAgents is an agent store held in memory.
-func NewMemoryAgents(providers ...string) *Agents {
+func NewMemoryAgents(providers ...string) *Agents { return NewMemoryAgentsAccepting(nil, providers...) }
+
+// NewMemoryAgentsAccepting is NewMemoryAgents that also admits any provider
+// accept reports, such as one an administrator adds while the server runs.
+func NewMemoryAgentsAccepting(accept func(string) bool, providers ...string) *Agents {
 	if len(providers) == 0 {
 		providers = KnownProviders()
 	}
-	return NewAgents(agents.New(agents.WithChecks(definition.Checks{Providers: providers})), providers...)
+	a := NewAgents(agents.New(agents.WithChecks(definition.Checks{Providers: providers, Accept: accept})), providers...)
+	a.accept = accept
+	return a
 }
 
 // OpenAgents is an agent store kept in st that accepts the named providers.
 func OpenAgents(st state.Store, providers ...string) (*Agents, error) {
+	return OpenAgentsAccepting(st, nil, providers...)
+}
+
+// OpenAgentsAccepting is OpenAgents that also admits any provider accept
+// reports.
+func OpenAgentsAccepting(st state.Store, accept func(string) bool, providers ...string) (*Agents, error) {
 	if len(providers) == 0 {
 		providers = KnownProviders()
 	}
-	src, err := agents.Open(st, agents.WithChecks(definition.Checks{Providers: providers}))
+	src, err := agents.Open(st, agents.WithChecks(definition.Checks{Providers: providers, Accept: accept}))
 	if err != nil {
 		return nil, err
 	}
-	return NewAgents(src, providers...), nil
+	a := NewAgents(src, providers...)
+	a.accept = accept
+	return a, nil
 }
 
 // Source is the definition source the store writes, which a runtime resolves
@@ -104,7 +121,7 @@ func (a *Agents) Knows(provider string) bool { return slices.Contains(a.provider
 
 // Resolver pins definitions from the store, checked against its providers.
 func (a *Agents) Resolver() *definition.Resolver {
-	return definition.NewResolver(a.src, definition.Checks{Providers: a.providers})
+	return definition.NewResolver(a.src, definition.Checks{Providers: a.providers, Accept: a.accept})
 }
 
 // Create implements AgentStore.
@@ -165,7 +182,7 @@ func (a *Agents) Revise(ctx context.Context, tenant string, spec AgentSpec, expe
 // content again, which is no new revision.
 func (a *Agents) write(ctx context.Context, tenant string, spec AgentSpec, held []definition.Record, by string) (Revision, error) {
 	rev := len(held) + 1
-	canonical, err := NewRevisionWith(spec, rev, by, a.now(), a.providers)
+	canonical, err := NewRevisionAccepting(spec, rev, by, a.now(), a.providers, a.accept)
 	if err != nil {
 		return Revision{}, err
 	}
@@ -227,11 +244,20 @@ func RecordOf(spec AgentSpec, rev int) (definition.Record, error) {
 		}
 		return definition.Record{}, fmt.Errorf("%w: %w", ErrInvalidAgent, err)
 	}
+	// What saige's format has no field for goes in its metadata extension,
+	// without rewriting files from before it was used.
+	var metadata []string
 	if spec.Package != nil {
-		// Use saige's metadata extension without rewriting pre-package files.
-		metadata, _ := json.Marshal(spec.Package.Name)
+		name, _ := json.Marshal(spec.Package.Name)
 		version, _ := json.Marshal(spec.Package.Version)
-		rec.Content = strings.Replace(rec.Content, "---\n", "---\nmetadata:\n  humagen_package: "+string(metadata)+"\n  humagen_package_version: "+string(version)+"\n", 1)
+		metadata = append(metadata, "  humagen_package: "+string(name), "  humagen_package_version: "+string(version))
+	}
+	if effort := strings.ToLower(strings.TrimSpace(spec.Effort)); effort != "" {
+		value, _ := json.Marshal(effort)
+		metadata = append(metadata, "  humagen_effort: "+string(value))
+	}
+	if len(metadata) > 0 {
+		rec.Content = strings.Replace(rec.Content, "---\n", "---\nmetadata:\n"+strings.Join(metadata, "\n")+"\n", 1)
 	}
 	return rec, nil
 }

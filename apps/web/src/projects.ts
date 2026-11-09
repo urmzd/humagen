@@ -1,5 +1,5 @@
 /**
- * The project tree as the console lays it out. Pure: the pages draw what these
+ * Projects as the console lays them out. Pure: the pages draw what these
  * return, and the tests check the layout without a browser.
  */
 import { defaultCopy } from "@humagen/components";
@@ -11,11 +11,12 @@ import type {
   ProjectStep,
   ProjectUpdate,
   ProjectView,
+  ProjectVisibility,
 } from "./api.ts";
 
 const words = defaultCopy.projects;
 
-/** The kinds humagen defines, in the order the Projects page groups them. */
+/** The kinds humagen defines, in the order the console lists them. */
 export const KINDS: ProjectKind[] = ["company", "team", "account"];
 
 /** A built-in kind: what every kind behaves as. */
@@ -35,7 +36,7 @@ export function likeOf(kind: ProjectKind, kinds: ProjectKindSpec[] = []): BuiltI
 }
 
 /**
- * Every kind a workspace has, in the order the Projects page groups them:
+ * Every kind a workspace has, in the order the console lists them:
  * humagen's, then the workspace's own by title, then any a project has that the
  * workspace no longer lists, by name.
  */
@@ -52,16 +53,10 @@ export function kindsOf(
   return [...KINDS, ...own, ...left];
 }
 
-/** How far one level of the tree indents. */
+/** How far one level of a list of projects indents. */
 export const INDENT_PX = 16;
-/** On a narrow screen the tree indents at most this many levels, and deeper rows say where they sit. */
-export const NARROW_INDENT = 1;
-/** A viewport narrower than this is a phone, where the tree stops nesting. */
-export const NARROW_BELOW = 640;
 /** Projects go at most this many levels below the workspace. */
 export const MAX_DEPTH = 4;
-
-export const narrowAt = (width: number): boolean => width < NARROW_BELOW;
 
 /** What people see for a project: its title, else its name. The workspace is called by the workspace's name. */
 export function titleOf(
@@ -109,7 +104,7 @@ export const projectOptions = (projects: readonly ProjectRef[]) =>
 export const kindWord = (kind: ProjectKind, kinds: ProjectKindSpec[]): string =>
   words.kind[kind] ?? (kinds.find((k) => k.name === kind)?.title || kind);
 
-/** A kind's group on the Projects page: "Accounts", or the title the workspace gives its own. */
+/** Projects of a kind, as the Projects page's kind filter names them: "Accounts", or the title the workspace gives its own. */
 export const groupWord = (kind: ProjectKind, kinds: ProjectKindSpec[]): string =>
   words.group[kind] ?? (kinds.find((k) => k.name === kind)?.title || kind);
 
@@ -127,57 +122,61 @@ export function matches(p: ProjectView, query: string): boolean {
   );
 }
 
-/** One row of the tree. */
-export interface TreeRow {
-  project: ProjectView;
-  /** Levels to indent, each INDENT_PX wide. */
-  indent: number;
-  /**
-   * The projects above it, top first, when the indent does not show where it
-   * sits: its parent is in another group or left out by a search, or it is
-   * deeper than a narrow screen nests. Empty when the row it sits under is
-   * its parent.
-   */
-  path: string[];
-}
+/** How the Projects page orders its cards: by last activity, the default, by title, or newest first. */
+export type CardSort = "activity" | "name" | "created";
 
-export interface TreeGroup {
-  kind: ProjectKind;
-  title: string;
-  rows: TreeRow[];
-}
+/** When something last happened in a project: its activity, else when its record changed, else when it was made. */
+export const lastActive = (
+  p: Pick<ProjectView, "active_at" | "updated_at" | "created_at">,
+): string => p.active_at || p.updated_at || p.created_at;
+
+/** Whether only a project's members read it: no entry names everyone. */
+export const isPrivate = (p: Pick<ProjectView, "members">): boolean =>
+  !p.members.some((m) => m.who === "*");
 
 /**
- * The Projects page's groups: Company-wide, Teams, Accounts, then the
- * workspace's own kinds by title, each in tree order. A row nests under its
- * parent when the parent is in the same group and shown; otherwise it starts
- * the group's left edge and prints its path. On a narrow screen nothing nests
- * deeper than one level.
+ * How widely a project is read, as its page says it: the server's
+ * `visibility` when it sends one, else read from its entries as the server
+ * does. A Personal project, or one whose one entry is a person, is private;
+ * an entry for everyone makes it the workspace's; anything else is shared.
  */
-export function treeOf(
+export function visibilityOf(
+  p: Pick<ProjectView, "members" | "personal_owner"> & { visibility?: ProjectVisibility },
+): ProjectVisibility {
+  if (p.visibility) return p.visibility;
+  if (p.personal_owner) return "private";
+  if (!isPrivate(p)) return "workspace";
+  const [only, ...rest] = p.members;
+  return only && rest.length === 0 && !only.who.startsWith("role:") ? "private" : "shared";
+}
+
+const newest = (a: string, b: string) => (Date.parse(b) || 0) - (Date.parse(a) || 0);
+const byTitle = (a: ProjectView, b: ProjectView) =>
+  titleOf(a).localeCompare(titleOf(b), undefined, { sensitivity: "base" }) ||
+  a.name.localeCompare(b.name);
+
+/**
+ * The Projects page's cards: every project the reader has but the workspace,
+ * sub-projects included and none nested, narrowed to a kind and a search.
+ * Pinned ones come first, and each part is in the order asked for: last
+ * activity newest first, title A to Z, or creation newest first.
+ */
+export function cardsOf(
   projects: ProjectView[],
-  opts: { narrow: boolean; q?: string; kind?: ProjectKind; kinds?: ProjectKindSpec[] },
-): TreeGroup[] {
-  const shown = projects.filter(
-    (p) => (!opts.kind || p.kind === opts.kind) && matches(p, opts.q ?? ""),
-  );
-  return kindsOf(opts.kinds, projects)
-    .map((kind) => {
-      const level = new Map<string, number>();
-      const rows = shown
-        .filter((p) => p.kind === kind)
-        .map((p): TreeRow => {
-          const parent = level.get(p.parent ?? "");
-          const depth = parent === undefined ? 0 : parent + 1;
-          level.set(p.name, depth);
-          const indent = opts.narrow ? Math.min(depth, NARROW_INDENT) : depth;
-          // The indent says where a row sits only when it nests at its full depth.
-          const placed = depth > 0 && indent === depth;
-          return { project: p, indent, path: placed ? [] : above(p) };
-        });
-      return { kind, title: groupWord(kind, opts.kinds ?? []), rows };
-    })
-    .filter((g) => g.rows.length > 0);
+  opts: { q?: string; kind?: ProjectKind; sort?: CardSort; pinned?: readonly string[] } = {},
+): ProjectView[] {
+  const pins = new Set(opts.pinned ?? []);
+  const order = (a: ProjectView, b: ProjectView) =>
+    opts.sort === "name"
+      ? byTitle(a, b)
+      : (opts.sort === "created"
+          ? newest(a.created_at, b.created_at)
+          : newest(lastActive(a), lastActive(b))) || byTitle(a, b);
+  return projects
+    .filter(
+      (p) => p.name !== "" && (!opts.kind || p.kind === opts.kind) && matches(p, opts.q ?? ""),
+    )
+    .sort((a, b) => Number(pins.has(b.name)) - Number(pins.has(a.name)) || order(a, b));
 }
 
 /** Where a new project would sit: the workspace, or a project. */
@@ -265,4 +264,44 @@ export function updateOf(
     ...(account ? { account } : {}),
     ...(next.instructions?.trim() ? { instructions: next.instructions } : {}),
   };
+}
+
+/** Who sees an agent: everyone in the workspace, one person, or a project's members. */
+export type AgentAccess =
+  | { kind: "workspace" }
+  | { kind: "private"; project: string }
+  | { kind: "members"; project: string; title: string };
+
+/** A home as a project name: "" for the workspace (none or "~"), "personal-x" for "~personal-x". */
+export const homeName = (home?: string): string => (home ?? "").replace(/^~/, "");
+
+/**
+ * Who sees an agent homed in `home`. A home in a Personal project (the
+ * reader's, or one the tree marks as someone's) is private; any other
+ * project's members see it; no home is the workspace.
+ */
+export function accessOf(
+  home: string | undefined,
+  personal: string | undefined,
+  tree: readonly ProjectView[],
+): AgentAccess {
+  const project = homeName(home);
+  if (!project) return { kind: "workspace" };
+  const p = tree.find((x) => x.name === project);
+  if (
+    project === homeName(personal) ||
+    p?.personal_owner ||
+    (!p && /^personal-[a-z0-9-]+$/i.test(project))
+  ) {
+    return { kind: "private", project };
+  }
+  return { kind: "members", project, title: p ? titleOf(p) : project };
+}
+
+/** Who sees an agent, in words: "Workspace", "Private", "Members of Field". */
+export function accessLabel(access: AgentAccess): string {
+  const w = defaultCopy.agentAccess;
+  if (access.kind === "private") return w.private;
+  if (access.kind === "members") return w.membersOf(access.title);
+  return w.workspace;
 }
