@@ -3586,6 +3586,14 @@ export const defaultCopy = {
     back: "Back",
     files: (n: number) => `${n} ${n === 1 ? "file" : "files"}`,
   },
+  /** The control that returns to the end of a thread or of an answer's activity, named by what is there. */
+  latest: {
+    jump: "Jump to latest",
+    /** An answer is still being written out of view. */
+    working: "Jump to latest, answer in progress",
+    /** Something arrived out of view and has not been seen. */
+    unseen: "Jump to latest, new content",
+  },
   /** A message's references and the work under it: its origin, what it read and touched, what it delegated. */
   trace: {
     /** The section in Details that collects every message's references. */

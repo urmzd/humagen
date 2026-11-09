@@ -609,6 +609,31 @@
   animation: aui-rotate 0.8s linear infinite;
 }
 
+/*
+ * The control that returns to the end of a list (LatestButton). While an
+ * answer is being written out of view, a ring turns around its arrow; a dot
+ * marks what arrived unseen.
+ */
+.aui-latest[data-look="working"]::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  border: 2px solid color-mix(in oklab, var(--aui-accent) 22%, transparent);
+  border-top-color: var(--aui-accent);
+  animation: aui-rotate 0.9s linear infinite;
+}
+.aui-latest-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--aui-accent);
+  box-shadow: 0 0 0 2px var(--aui-bg);
+}
+
 /* Text shimmer: muted text with one highlight sweep, then a beat of rest. */
 .aui-shimmer {
   --aui-shimmer-spread: 2.5em;
@@ -731,6 +756,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Still under way, said without motion: a whole ring, standing still. */
+  .aui-latest[data-look="working"]::before {
+    animation: none;
+    border-color: var(--aui-accent);
+  }
   .aui-spinner,
   .aui-streaming > :last-child::after,
   .aui-verb-in,
