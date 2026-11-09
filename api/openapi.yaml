@@ -6336,6 +6336,173 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/corpora/{name}/graph:
+    get:
+      operationId: getCorpusGraph
+      tags: [knowledge]
+      summary: A corpus's slice of the workspace graph
+      description: |
+        Documents, warehouse tables, the systems they sit in and the people
+        who added or own them, as the caller may see them, with who owns each
+        and how stale each document is. Built from source metadata with no
+        model calls, on the leader every 10 minutes and when first read.
+      x-permission: knowledge:read
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 1000, default: 200}}
+      responses:
+        "200":
+          description: The slice and its health.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GraphView"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/corpora/{name}/graph/build:
+    post:
+      operationId: buildCorpusGraph
+      tags: [knowledge]
+      summary: Rebuild a corpus's slice of the graph now
+      description: Only the corpus's owner asks.
+      x-permission: knowledge:write
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+      responses:
+        "200":
+          description: The rebuilt slice.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GraphView"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/graph:
+    get:
+      operationId: getWorkspaceGraph
+      tags: [knowledge]
+      summary: The workspace graph across every corpus you may read
+      description: With `q`, only the nodes whose names hold its words and their neighbors one step away.
+      x-permission: knowledge:read
+      parameters:
+        - {name: q, in: query, schema: {type: string, maxLength: 1000}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 1000, default: 200}}
+      responses:
+        "200":
+          description: The graph and its health.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GraphView"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/graph/nodes/{id}/owner:
+    put:
+      operationId: decideGraphOwner
+      tags: [knowledge]
+      summary: Confirm, decline or hand off who owns a document or system
+      description: |
+        Its current owner decides, suggested or confirmed. An unowned node may be
+        claimed or handed on by the owner of a corpus that holds it. A
+        confirmed owner wins over what the graph infers.
+      x-permission: knowledge:read
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/OwnerAction"}
+      responses:
+        "200":
+          description: The node with its owner now.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GraphNodeView"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/corpora/{name}/ontology/infer:
+    post:
+      operationId: inferCorpusOntology
+      tags: [knowledge]
+      summary: Propose an ontology from the warehouse tables a corpus holds
+      description: |
+        A type per table, its columns as properties, and a relation for each
+        column that names another table's type with _id. No model calls. The
+        proposal is kept as `proposed_ontology` and adds nothing until its owner
+        accepts it. Only the owner asks.
+      x-permission: knowledge:write
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+      responses:
+        "200":
+          description: The corpus with its proposal.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Corpus"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/corpora/{name}/ontology/accept:
+    post:
+      operationId: acceptCorpusOntology
+      tags: [knowledge]
+      summary: Accept proposed types into a corpus's ontology
+      description: Adds the types named in `types`, or all of them, and the relations between accepted types. A type declared already keeps its declaration. The proposal is cleared.
+      x-permission: knowledge:write
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                types: {type: array, maxItems: 100, items: {type: string}}
+      responses:
+        "200":
+          description: The corpus with its ontology.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Corpus"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/corpora/{name}/ontology/discard:
+    post:
+      operationId: discardCorpusOntology
+      tags: [knowledge]
+      summary: Drop a corpus's proposed ontology
+      x-permission: knowledge:write
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+      responses:
+        "200":
+          description: The corpus.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Corpus"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/knowledge:
     get:
       operationId: listKnowledgeSources
@@ -15713,6 +15880,9 @@ components:
           maxItems: 50
           description: The agents granted it that the reader can see. A run of one reads only as the person it acts for, who must be a reader too.
           items: {type: string}
+        ontology: {type: object, additionalProperties: true, description: "A JSON Schema (2020-12) of the types it adds to the graph: $defs, x-relations, x-metadata."}
+        proposed_ontology: {type: object, additionalProperties: true, description: "An inferred ontology waiting for its owner to accept it."}
+        graph_search: {type: boolean, description: "Adds the workspace graph to its search."}
         links:
           type: string
           enum: [isolated, shared]
@@ -15721,6 +15891,71 @@ components:
         updated_at: {type: string, format: date-time}
         version: {type: integer, format: int64, minimum: 1}
         mine: {type: boolean, description: "Set for its owner, who alone changes it."}
+    GraphNode:
+      type: object
+      required: [id, key, type, name]
+      properties:
+        id: {type: string}
+        key: {type: string}
+        type: {type: string, description: "person, team, project, system, topic, document, or a corpus ontology's type."}
+        name: {type: string}
+        uri: {type: string}
+        member: {type: string, description: "The corpus member it was built from, as source/<name> or catalog/<name>."}
+        props: {type: object, additionalProperties: {type: string}}
+        changed_at: {type: string, format: date-time}
+        suggested_owner: {type: string}
+        out_of_date: {type: boolean}
+        corpora: {type: array, items: {type: string}}
+    GraphEdge:
+      type: object
+      required: [from, to, type]
+      properties:
+        from: {type: string}
+        to: {type: string}
+        type: {type: string, description: "authored, edited, owns, about, mentions, supersedes, contradicts, depends_on or part_of."}
+        corpora: {type: array, items: {type: string}}
+    GraphStaleness:
+      type: object
+      required: [score, stale]
+      properties:
+        score: {type: number, minimum: 0, maximum: 1}
+        stale: {type: boolean}
+        reasons: {type: array, items: {type: string, enum: [old, unowned, out_of_date, superseded]}}
+    GraphNodeView:
+      allOf:
+        - {$ref: "#/components/schemas/GraphNode"}
+        - type: object
+          required: [owner_state]
+          properties:
+            owner: {type: string}
+            owner_name: {type: string, description: "What the owner is called, as the console names people; never a subject that holds an address."}
+            owner_state: {type: string, enum: ["", suggested, confirmed, unowned], description: "Empty for people, teams and projects."}
+            staleness: {$ref: "#/components/schemas/GraphStaleness"}
+    GraphHealth:
+      type: object
+      required: [nodes, edges, by_type, unowned, stale]
+      properties:
+        nodes: {type: integer}
+        edges: {type: integer}
+        by_type: {type: object, additionalProperties: {type: integer}}
+        unowned: {type: integer}
+        stale: {type: integer}
+        built_at: {type: string, format: date-time}
+        truncated: {type: boolean}
+    GraphView:
+      type: object
+      required: [nodes, edges, health]
+      properties:
+        nodes: {type: array, items: {$ref: "#/components/schemas/GraphNodeView"}}
+        edges: {type: array, items: {$ref: "#/components/schemas/GraphEdge"}}
+        health: {$ref: "#/components/schemas/GraphHealth"}
+        more: {type: boolean}
+    OwnerAction:
+      type: object
+      required: [action]
+      properties:
+        action: {type: string, enum: [confirm, decline, hand_off]}
+        to: {type: string, description: "Who it is handed to, for hand_off."}
     CorpusHit:
       type: object
       required: [corpus, member, holds, title, text, score]
@@ -15738,9 +15973,11 @@ components:
           type: array
           description: Other members the same passage came through.
           items: {$ref: "#/components/schemas/CorpusMemberRef"}
+        owner: {type: string, description: "Who owns the document, when graph retrieval found it."}
+        stale: {type: boolean}
     CorpusSearchWarning:
       type: object
-      required: [corpus, member, cause]
+      required: [corpus, cause]
       properties:
         corpus: {type: string}
         member: {$ref: "#/components/schemas/CorpusMemberRef"}
@@ -15778,6 +16015,8 @@ components:
           type: array
           maxItems: 50
           items: {type: string}
+        ontology: {type: object, additionalProperties: true}
+        graph_search: {type: boolean, description: "Adds the workspace graph to its search."}
         links: {type: string, enum: [isolated, shared]}
     CorpusChange:
       type: object
@@ -15792,6 +16031,8 @@ components:
           type: array
           maxItems: 50
           items: {$ref: "#/components/schemas/CorpusMemberRef"}
+        ontology: {type: object, additionalProperties: true, description: "Replaces its declared ontology; {} clears it."}
+        graph_search: {type: boolean, description: "Adds the workspace graph to its search."}
         links: {type: string, enum: [isolated, shared]}
         agents:
           type: array

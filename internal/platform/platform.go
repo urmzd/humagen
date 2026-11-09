@@ -350,7 +350,9 @@ type Platform struct {
 	catalog      catalogState
 	// Corpora are named bodies of knowledge, each holding sources and
 	// connectors (docs/architecture/sources.md#corpora).
-	Corpora     *corpora.Store
+	Corpora *corpora.Store
+	// Graph is each workspace's knowledge graph, one slice per corpus.
+	Graph       *GraphStore
 	SourceLinks *sourcelinks.Store
 	Evals       *evals.Store
 	Feedback    *feedback.Store
@@ -1470,6 +1472,7 @@ func (p *Platform) Run(ctx context.Context) error {
 		"email notifications": p.runEmailNotifications,
 		"source refresh":      p.refreshSources,
 		"catalog crawl":       p.crawlCatalog,
+		"knowledge graph":     p.refreshGraphs,
 		"inbox retention": func(ctx context.Context) error {
 			tick := time.NewTicker(retainEvery)
 			defer tick.Stop()

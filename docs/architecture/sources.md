@@ -223,8 +223,72 @@ that person's own private conversation, and keeps citation evidence for every
 source hit before the model reads it. Graph retrieval joins the fan-out once
 the workspace graph is built.
 
-Not built yet: the corpus pages in the console, ontology and graph, the
-maintenance agent, freshness alerts and sensitivity labels.
+### The workspace graph
+
+One knowledge graph per workspace (`pkg/graph`); corpora are slices of it.
+The structural layer is built from what members already say about
+themselves, with no model calls, on the leader every 10 minutes (a slice
+older than 30 minutes or than its corpus's last change is rebuilt) and when
+first read:
+
+| Node | From | Relations |
+| --- | --- | --- |
+| Document | Each indexed document of a source (not a provider's retained copy, whose files need the reader's own access), and each warehouse table or view | `authored` from who added it; `part_of` its warehouse |
+| System | Each warehouse connector | `owns` from its connection's owner |
+| Person | Who added a document or owns a connection | Resolves once across the workspace |
+
+A shared corpus's documents and systems merge with other shared corpora's; an
+isolated corpus keeps its own (people always resolve once). A reader sees a
+node only when they may see the member it came from, and a person only
+through what they may see, so a hidden document never shows who wrote it.
+
+**Owners.** The graph suggests an owner: who added a document, or whose
+connection a table comes through. That person confirms it, declines it or
+hands it to someone else (`PUT /api/graph/nodes/{id}/owner`); a confirmed
+owner wins over the suggestion. An owner who left the workspace owns nothing,
+and the owner of a corpus that holds an unowned node may claim it or hand it
+on.
+
+**Staleness.** Each document scores 0 when new and nears 1 as its age passes
+its half-life (365 days for files, 90 for warehouse tables, from the source's
+own change time). It is stale at 0.75, when a newer document supersedes it,
+or when its source's last sync failed; being unowned is a reason shown beside
+it. Stale documents rank lower and are labelled, never hidden.
+
+**Reading it.** `GET /api/corpora/{name}/graph` (a slice and its health:
+nodes and edges by type, unowned and stale counts, when built),
+`POST /api/corpora/{name}/graph/build` (the owner rebuilds now),
+`GET /api/graph?q=` (every corpus the reader may read, narrowed to what a
+query names and its neighbors), and the `corpus_graph` tool for a granted
+agent in the reader's own private conversation. A corpus with `graph_search`
+adds graph retrieval to its search: documents whose names, owners or systems
+hold the query's words, with their owner and staleness, fresh before stale.
+
+### Ontologies
+
+A corpus's ontology is the types it adds to the workspace graph, written as a
+JSON Schema (2020-12): each entity type is an object schema under `$defs`,
+with its properties and required fields. Three extensions say what plain JSON
+Schema cannot: `x-relations` (a name, the two types it joins and one or many),
+`x-metadata` (passage fields search can filter on), and, on a type,
+`x-matches` (table names or title words of that type) and `x-half-life-days`.
+A corpus extends the core types and never redefines them; an unknown keyword
+is an error, not a silently ignored rule.
+
+| Mode | How |
+| --- | --- |
+| Declared | `PATCH /api/corpora/{name}` with `ontology`; `{}` clears it |
+| Inferred | `POST /api/corpora/{name}/ontology/infer`: from the warehouse tables the corpus holds, with no model calls, a type per table, its columns as properties, and a relation for each column that names another table's type with `_id`. Kept as `proposed_ontology`; it adds nothing until accepted |
+| Hybrid | `POST /api/corpora/{name}/ontology/accept` adds the proposed types (all, or those named) to the declared ones; a declared type keeps its declaration. `.../discard` drops the proposal |
+
+The graph builder types what an ontology names: a table or a document title
+that matches a type gets `entity_type` and that type's half-life, and the
+ontology's relations join the typed tables of one warehouse (an Order table's
+`customer`). Only the owner changes, infers, accepts or discards.
+
+Not built yet: the semantic layer (content extraction against the ontology:
+topics, mentions, contradictions, metadata filters), the maintenance agent,
+freshness alerts and sensitivity labels.
 
 ## Proposed versioned source files
 

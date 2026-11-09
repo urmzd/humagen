@@ -17,6 +17,7 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/catalog"
+	"github.com/urmzd/humagen/pkg/graph"
 	"github.com/urmzd/orchagent/flow/event"
 	"github.com/urmzd/orchagent/flow/toolprovider"
 
@@ -669,6 +670,10 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.client, true
 		case prefix("/api/alerts/"):
 			return h.alert, true
+		case prefix("/api/graph/nodes/"):
+			// The hidden corpus is isolated, so its warehouse's system node
+			// is keyed under it.
+			return graph.ID("corpus:" + h.corpus + "/system:catalog/" + h.connector), h.corpus != ""
 		case prefix("/api/projects/{name}/announcements/"):
 			return h.announcement, true
 		}

@@ -13,6 +13,8 @@
 package corpora
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -33,6 +35,7 @@ const (
 	MaxAgents      = 50
 	MaxDescription = 500
 	MaxTitle       = 120
+	MaxOntology    = 64 << 10
 )
 
 var (
@@ -104,10 +107,18 @@ type Corpus struct {
 	// Agents are the agents granted the corpus: they may search it and
 	// query its warehouses, always as the person a run acts for, who must
 	// be a reader too.
-	Agents    []string  `json:"agents"`
-	Links     Links     `json:"links"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Agents []string `json:"agents"`
+	Links  Links    `json:"links"`
+	// GraphSearch adds the workspace graph to its search: documents by who
+	// owns them, the systems they sit in and how stale they are.
+	GraphSearch bool `json:"graph_search,omitempty"`
+	// Ontology is the types the corpus adds to the workspace graph, a JSON
+	// Schema the platform checks (pkg/graph). Proposed is one inferred for
+	// the owner to accept; it adds nothing until accepted.
+	Ontology  json.RawMessage `json:"ontology,omitempty"`
+	Proposed  json.RawMessage `json:"proposed_ontology,omitempty"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
 	// Version is the stored record's version. An update or delete that
 	// names it fails with ErrConflict once someone else changed the corpus.
 	Version int64 `json:"version"`
@@ -137,6 +148,8 @@ func normal(c Corpus) (Corpus, error) {
 		return c, fmt.Errorf("%w: a description is at most %d bytes", ErrInvalid, MaxDescription)
 	case len(c.Title) > MaxTitle || !utf8.ValidString(c.Title) || strings.ContainsFunc(c.Title, unicode.IsControl):
 		return c, fmt.Errorf("%w: a title is one line of at most %d bytes", ErrInvalid, MaxTitle)
+	case len(c.Ontology) > MaxOntology || len(c.Proposed) > MaxOntology || (len(c.Ontology) > 0 && !json.Valid(c.Ontology)) || (len(c.Proposed) > 0 && !json.Valid(c.Proposed)):
+		return c, fmt.Errorf("%w: an ontology is a JSON object of at most %d bytes", ErrInvalid, MaxOntology)
 	case c.Owner == "" || len(c.Owner) > 200:
 		return c, fmt.Errorf("%w: a corpus needs an owner", ErrInvalid)
 	}
@@ -256,6 +269,7 @@ func shown(it state.Item[record]) (Corpus, bool) {
 	c := *it.Value.Corpus
 	c.Readers = slices.Clone(c.Readers)
 	c.Members = slices.Clone(c.Members)
+	c.Ontology, c.Proposed = bytes.Clone(c.Ontology), bytes.Clone(c.Proposed)
 	c.Agents = slices.Clone(c.Agents)
 	if c.Agents == nil {
 		c.Agents = []string{}

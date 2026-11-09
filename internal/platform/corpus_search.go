@@ -20,6 +20,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/catalog"
 	"github.com/urmzd/humagen/pkg/corpora"
+	"github.com/urmzd/humagen/pkg/graph"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -64,13 +65,18 @@ type CorpusHit struct {
 	Score float64 `json:"score"`
 	// Also are other members the same passage came through.
 	Also []corpora.Member `json:"also,omitempty"`
+	// Owner and Stale are what the workspace graph says of a document,
+	// when graph retrieval found it.
+	Owner string `json:"owner,omitempty"`
+	Stale bool   `json:"stale,omitempty"`
 }
 
 // CorpusSearchWarning is a member left out of an answer, and why.
 type CorpusSearchWarning struct {
-	Corpus string         `json:"corpus"`
-	Member corpora.Member `json:"member"`
-	Cause  string         `json:"cause"`
+	Corpus string `json:"corpus"`
+	// Member is the member left out; none when the graph was.
+	Member *corpora.Member `json:"member,omitempty"`
+	Cause  string          `json:"cause"`
 }
 
 // CorpusSearch is a corpus search's answer.
@@ -96,7 +102,7 @@ func (p *Platform) searchCorpus(ctx context.Context, reader auth.Principal, c co
 	var lists [][]rankedHit
 	warnings := []CorpusSearchWarning{}
 	warn := func(m corpora.Member, cause string) {
-		warnings = append(warnings, CorpusSearchWarning{Corpus: c.Name, Member: m, Cause: cause})
+		warnings = append(warnings, CorpusSearchWarning{Corpus: c.Name, Member: &m, Cause: cause})
 	}
 	var indexed []string
 	scopes := map[string]*knowledge.SourceConfig{}
@@ -173,7 +179,59 @@ func (p *Platform) searchCorpus(ctx context.Context, reader auth.Principal, c co
 			lists = append(lists, list)
 		}
 	}
+	if c.GraphSearch {
+		if hits, err := p.graphHits(reader, c, q, limit); err != nil {
+			warnings = append(warnings, CorpusSearchWarning{Corpus: c.Name, Cause: "graph unavailable"})
+		} else if len(hits) > 0 {
+			lists = append(lists, hits)
+		}
+	}
 	return fuse(lists, limit), warnings
+}
+
+// graphHits is graph retrieval: the documents whose names, or whose owners'
+// and systems' names, hold the query's words, with who owns them and
+// whether they are stale. Stale documents rank after fresh ones.
+func (p *Platform) graphHits(reader auth.Principal, c corpora.Corpus, q string, limit int) ([]rankedHit, error) {
+	g, sls, err := p.readerGraph(reader, []corpora.Corpus{c})
+	if err != nil {
+		return nil, err
+	}
+	keep := matchGraph(g, q)
+	if keep == nil {
+		return nil, nil
+	}
+	view, err := p.graphView(reader.Tenant, g, sls, func(n graph.Node) bool { return n.Type == graph.Document && keep(n) }, limit)
+	if err != nil {
+		return nil, err
+	}
+	slices.SortStableFunc(view.Nodes, func(a, b GraphNodeView) int {
+		return cmp.Compare(boolRank(a.Staleness != nil && a.Staleness.Stale), boolRank(b.Staleness != nil && b.Staleness.Stale))
+	})
+	out := make([]rankedHit, 0, len(view.Nodes))
+	for _, n := range view.Nodes {
+		m, ok := memberOf(n.Member)
+		if !ok {
+			continue
+		}
+		stale := n.Staleness != nil && n.Staleness.Stale
+		summary := "Owner: " + cmp.Or(n.Owner, "none") + "."
+		if n.ChangedAt != nil {
+			summary += " Changed " + n.ChangedAt.Format("2006-01-02") + "."
+		}
+		if stale {
+			summary += " Stale: " + strings.Join(n.Staleness.Reasons, ", ") + "."
+		}
+		out = append(out, rankedHit{CorpusHit: CorpusHit{Corpus: c.Name, Member: m, Holds: cmp.Or(n.Props["holds"], HoldsFiles), Title: n.Name, URI: n.URI, Text: summary, Owner: n.Owner, Stale: stale}})
+	}
+	return out, nil
+}
+
+func boolRank(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 func fromSource(corpus string, m corpora.Member, holds string, hits []knowledge.Hit) []rankedHit {

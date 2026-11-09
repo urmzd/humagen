@@ -3583,6 +3583,12 @@ export interface Corpus {
   members: CorpusMember[];
   /** The agents granted it that the reader can see. A run of one reads only as the person it acts for, who must be a reader too. */
   agents: string[];
+  /** A JSON Schema (2020-12) of the types it adds to the graph: $defs, x-relations, x-metadata. */
+  ontology?: Record<string, unknown>;
+  /** An inferred ontology waiting for its owner to accept it. */
+  proposed_ontology?: Record<string, unknown>;
+  /** Adds the workspace graph to its search. */
+  graph_search?: boolean;
   /** Whether its graph links to other shared corpora. Isolated by default. */
   links: "isolated" | "shared";
   created_at: string;
@@ -3590,6 +3596,61 @@ export interface Corpus {
   version: number;
   /** Set for its owner, who alone changes it. */
   mine: boolean;
+}
+
+export interface GraphNode {
+  id: string;
+  key: string;
+  /** person, team, project, system, topic, document, or a corpus ontology's type. */
+  type: string;
+  name: string;
+  uri?: string;
+  /** The corpus member it was built from, as source/<name> or catalog/<name>. */
+  member?: string;
+  props?: Record<string, string>;
+  changed_at?: string;
+  suggested_owner?: string;
+  out_of_date?: boolean;
+  corpora?: string[];
+}
+
+export interface GraphEdge {
+  from: string;
+  to: string;
+  /** authored, edited, owns, about, mentions, supersedes, contradicts, depends_on or part_of. */
+  type: string;
+  corpora?: string[];
+}
+
+export interface GraphStaleness {
+  score: number;
+  stale: boolean;
+  reasons?: ("old" | "unowned" | "out_of_date" | "superseded")[];
+}
+
+export type GraphNodeView = GraphNode & { owner?: string; owner_name?: string; owner_state: "" | "suggested" | "confirmed" | "unowned"; staleness?: GraphStaleness };
+
+export interface GraphHealth {
+  nodes: number;
+  edges: number;
+  by_type: Record<string, number>;
+  unowned: number;
+  stale: number;
+  built_at?: string;
+  truncated?: boolean;
+}
+
+export interface GraphView {
+  nodes: GraphNodeView[];
+  edges: GraphEdge[];
+  health: GraphHealth;
+  more?: boolean;
+}
+
+export interface OwnerAction {
+  action: "confirm" | "decline" | "hand_off";
+  /** Who it is handed to, for hand_off. */
+  to?: string;
 }
 
 export interface CorpusHit {
@@ -3606,11 +3667,14 @@ export interface CorpusHit {
   score: number;
   /** Other members the same passage came through. */
   also?: CorpusMemberRef[];
+  /** Who owns the document, when graph retrieval found it. */
+  owner?: string;
+  stale?: boolean;
 }
 
 export interface CorpusSearchWarning {
   corpus: string;
-  member: CorpusMemberRef;
+  member?: CorpusMemberRef;
   cause: string;
 }
 
@@ -3628,6 +3692,9 @@ export interface CorpusCreate {
   readers?: CorpusReader[];
   members?: CorpusMemberRef[];
   agents?: string[];
+  ontology?: Record<string, unknown>;
+  /** Adds the workspace graph to its search. */
+  graph_search?: boolean;
   links?: "isolated" | "shared";
 }
 
@@ -3636,6 +3703,10 @@ export interface CorpusChange {
   description?: string;
   readers?: CorpusReader[];
   members?: CorpusMemberRef[];
+  /** Replaces its declared ontology; {} clears it. */
+  ontology?: Record<string, unknown>;
+  /** Adds the workspace graph to its search. */
+  graph_search?: boolean;
   links?: "isolated" | "shared";
   /** Replaces the agents granted it; agents the owner can no longer see are kept. */
   agents?: string[];
@@ -5964,6 +6035,10 @@ export interface ListEvalRunsResponse {
 
 export interface ListCorporaResponse {
   corpora: Corpus[];
+}
+
+export interface AcceptCorpusOntologyBody {
+  types?: string[];
 }
 
 export interface ListKnowledgeSourcesResponse {
