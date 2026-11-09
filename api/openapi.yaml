@@ -17692,11 +17692,11 @@ components:
     TraceNode:
       description: |
         One run and what it did, each as the caller may see it: the tools it
-        called, the context it pulled with get_context, the sources it cited
-        and the approvals it waited on.
+        called, the context it pulled with get_context, the sources it cited,
+        the approvals it waited on and the questions it asked a person.
       type: object
       additionalProperties: false
-      required: [run, agent, status, started_at, ms, tools, context, sources, approvals, children]
+      required: [run, agent, status, started_at, ms, tools, context, sources, approvals, questions, children]
       properties:
         run: {type: string}
         agent: {type: string}
@@ -17726,6 +17726,10 @@ components:
           type: array
           maxItems: 200
           items: {$ref: "#/components/schemas/TraceApproval"}
+        questions:
+          type: array
+          maxItems: 200
+          items: {$ref: "#/components/schemas/TraceQuestion"}
         children:
           type: array
           description: The runs it called, and for a pick the answers it led to, in the order they started.
@@ -17781,6 +17785,24 @@ components:
       properties:
         title: {type: string}
         url: {type: string}
+    TraceQuestion:
+      description: |
+        A question a run asked a person with ask_person, as the caller may see
+        it: a choice among options, or a reply in words. Answer it with
+        answerToolUse and `tool`.
+      type: object
+      additionalProperties: false
+      required: [id, kind, prompt, options, status]
+      properties:
+        id: {type: string, description: "The question's id."}
+        tool: {type: string, description: "The id of the call that asked it, htu_<run>_<n>."}
+        kind: {type: string, enum: [choice, reply]}
+        prompt: {type: string}
+        options: {type: array, items: {type: string}}
+        status: {type: string, enum: [asked, answered, expired, closed], description: "asked while it waits; expired when nobody answered in time and its default stood; closed when its run ended first."}
+        answer: {type: string, description: "The choice or the reply."}
+        by: {type: string, description: "Who answered, by name."}
+        at: {type: string, format: date-time}
     TraceApproval:
       description: An action a run waited on a person for, and how it was decided. ask is one still waiting.
       type: object
