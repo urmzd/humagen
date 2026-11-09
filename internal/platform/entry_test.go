@@ -3,6 +3,8 @@ package platform_test
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/projects"
 	"maps"
 	"slices"
 	"strings"
@@ -570,4 +572,189 @@ func TestStoppingTheRootStopsTheMentionedAgentsItWaitsOn(t *testing.T) {
 	if len(c.requests(platform.BuiltinEntry)) != 0 {
 		t.Fatal("the entry agent's model was called after its run was stopped")
 	}
+}
+
+// A mentioned agent whose call policy holds calls for a person is asked only
+// once a person approves, as the same call made by the model is: the root
+// parks on that approval before anyone is called, and a denial is told to
+// the entry agent instead of an answer.
+func TestAMentionedAgentWhoseCallsAreHeldWaitsForApproval(t *testing.T) {
+	for _, approve := range []bool{true, false} {
+		name := "denied"
+		if approve {
+			name = "approved"
+		}
+		t.Run(name, func(t *testing.T) {
+			c := entryCast([][]saigetypes.Delta{say("## @ops\n\nA migration was missing.\n\n## @analyst\n\nIt cost three dollars.")}, map[string][][]saigetypes.Delta{
+				"ops":     {say("A migration was missing.")},
+				"analyst": {say("It cost three dollars.")},
+			})
+			p := stageEntry(t, c)
+			setPolicy(t, p, "ops", callpolicy.Policy{Callers: callpolicy.Anyone, Approval: callpolicy.Always, Approvers: []string{"role:admin"}, SelfApproval: true})
+			v, err := p.StartSession(t.Context(), admin, platform.SessionInput{Project: "~", Text: "@ops @analyst why did the deploy fail and what did it cost?"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			root := sessionRun(t, v)
+			var run runs.Run
+			within(t, "the root parked or finished", func() bool {
+				run, _ = p.Runs.Get(tenant, root.ID)
+				return run.Status == runs.Parked || run.Status.Terminal()
+			})
+			if run.Status != runs.Parked || run.Question == nil {
+				t.Fatalf("a held mention did not wait for approval: %+v", run)
+			}
+			m := questionFor(t, p, run.ID)
+			q := m.Parts[0].Question
+			if m.Kind != inbox.KindApproval || m.Source.Target != "ops" || !slices.Equal(q.Approvers, []string{"role:admin"}) || !strings.Contains(q.Prompt, "Allow "+platform.BuiltinEntry+" to call ops?") {
+				t.Fatalf("question = %+v, source %+v", q, m.Source)
+			}
+			// Nobody was asked before the approval, the agent that needs none
+			// included, and the model was not called.
+			if tree, _ := p.Runs.Tree(tenant, run.ID); len(tree) != 1 {
+				t.Fatalf("a mentioned agent started before anyone approved: %+v", tree)
+			}
+			if len(c.requests(platform.BuiltinEntry))+len(c.requests("ops"))+len(c.requests("analyst")) != 0 {
+				t.Fatal("a model was called before the approval")
+			}
+			// The approval is at the call, by the platform's id.
+			trace, err := p.MessageTrace(t.Context(), admin, v.ID)
+			if err != nil || len(trace.Nodes) != 1 || len(trace.Nodes[0].Approvals) != 1 || trace.Nodes[0].Approvals[0].Tool != "htu_"+run.ID+"_1" || trace.Nodes[0].Approvals[0].Decision != platform.TraceAsk {
+				t.Fatalf("trace = %+v, %v", trace, err)
+			}
+			if _, err := p.AnswerQuestion(t.Context(), olu, run.ID, run.Question.ID, platform.QuestionAnswer{Action: platform.ActApprove}); err == nil {
+				t.Fatal("an operator approved a call held for admins")
+			}
+			answer := platform.QuestionAnswer{Action: platform.ActDeny, Note: "not this week"}
+			if approve {
+				answer = platform.QuestionAnswer{Action: platform.ActApprove}
+			}
+			if _, err := p.AnswerQuestion(t.Context(), admin, run.ID, run.Question.ID, answer); err != nil {
+				t.Fatal(err)
+			}
+			done := await(t, p, run.ID, runs.Completed)
+			called(t, p, done.ID, "analyst", runs.Completed)
+			sent := c.requests(platform.BuiltinEntry)
+			if len(sent) != 1 {
+				t.Fatalf("the entry agent's model was called %d times", len(sent))
+			}
+			if approve {
+				if child := called(t, p, done.ID, "ops", runs.Completed); child.Answer != "A migration was missing." || child.CallID != "htu_"+done.ID+"_1" {
+					t.Fatalf("ops = %+v", child)
+				}
+				if !strings.Contains(sent[0], "<answer agent=\"ops\">\nA migration was missing.") {
+					t.Fatalf("the entry agent was sent %s", sent[0])
+				}
+				return
+			}
+			if len(c.requests("ops")) != 0 {
+				t.Fatal("a call a person denied ran")
+			}
+			if !strings.Contains(sent[0], `<answer agent="ops" failed="true">`) || !strings.Contains(sent[0], "a person denied the call") {
+				t.Fatalf("the entry agent was sent %s", sent[0])
+			}
+		})
+	}
+}
+
+// An answer is limited to what its place's readers may read. An agent that
+// lives in a project not everyone who reads the conversation's project reads
+// is not asked there, alone or beside others: the poster is told why and
+// where to ask it, it never runs, and what the others said is all that
+// reaches the answer. One that lives where everyone reads is asked.
+func TestAMentionedAgentSomeReadersMayNotReadIsNotAskedThere(t *testing.T) {
+	stageHome := func(t *testing.T, in platform.ProjectInput) (*cast, *platform.Platform, platform.SessionView) {
+		c := entryCast([][]saigetypes.Delta{say("Hello."), say("## @ops\n\nA migration was missing.\n\n## @analyst\n\nIt cost three dollars.")}, map[string][][]saigetypes.Delta{
+			"ops":     {say("A migration was missing."), say("It is fixed.")},
+			"analyst": {say("It cost three dollars.")},
+		})
+		p := stageEntry(t, c)
+		if _, err := p.CreateProject(t.Context(), tenant, projects.Writer{By: "olu"}, in); err != nil {
+			t.Fatal(err)
+		}
+		if err := p.SetAgentHome(t.Context(), tenant, "analyst", in.Name, govern); err != nil {
+			t.Fatal(err)
+		}
+		v, err := p.StartSession(t.Context(), admin, platform.SessionInput{Project: "~", Text: "Hello there"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		await(t, p, sessionRun(t, v).ID, runs.Completed)
+		return c, p, v
+	}
+	t.Run("everyone reads where it lives", func(t *testing.T) {
+		c, p, v := stageHome(t, platform.ProjectInput{Name: "Finance"})
+		if !p.Seer(operator).Agent("analyst") {
+			t.Fatal("the test needs analyst read by everyone")
+		}
+		posted, err := p.PostMessage(t.Context(), admin, v.ID, platform.MessageInput{Text: "@ops @analyst why did the deploy fail and what did it cost?"})
+		if err != nil || len(posted.Runs) != 1 || posted.Runs[0].Agent != platform.BuiltinEntry || len(posted.Refused) != 0 {
+			t.Fatalf("posted: runs %+v, refused %+v, %v", posted.Runs, posted.Refused, err)
+		}
+		root := await(t, p, posted.Runs[0].ID, runs.Completed)
+		called(t, p, root.ID, "analyst", runs.Completed)
+		if sent := c.requests(platform.BuiltinEntry); !strings.Contains(sent[len(sent)-1], "<answer agent=\"analyst\">\nIt cost three dollars.") {
+			t.Fatalf("the entry agent was sent %s", sent[len(sent)-1])
+		}
+	})
+	t.Run("not everyone reads where it lives", func(t *testing.T) {
+		c, p, v := stageHome(t, platform.ProjectInput{Name: "Vault", Kind: projects.Account})
+		if !p.Seer(admin).Agent("analyst") || p.Seer(operator).Agent("analyst") {
+			t.Fatal("the test needs analyst read by the admin and not by the operator")
+		}
+		// Beside another agent: that one answers, as the root, and the poster
+		// is told why analyst was not asked and where it can be.
+		posted, err := p.PostMessage(t.Context(), admin, v.ID, platform.MessageInput{Text: "@ops @analyst why did the deploy fail and what did it cost?"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(posted.Runs) != 1 || posted.Runs[0].Agent != "ops" {
+			t.Fatalf("answered by %+v, want ops alone", posted.Runs)
+		}
+		if len(posted.Refused) != 1 || posted.Refused[0].Name != "analyst" || !strings.Contains(posted.Refused[0].Refused, "not everyone who reads") || !strings.Contains(posted.Refused[0].Refused, "cannot answer here. Ask it in Vault") {
+			t.Fatalf("refused = %+v", posted.Refused)
+		}
+		await(t, p, posted.Runs[0].ID, runs.Completed)
+		// Mentioned alone, it is not asked either, and nobody answers for it.
+		alone, err := p.PostMessage(t.Context(), admin, v.ID, platform.MessageInput{Text: "@analyst what did it cost?"})
+		if err != nil || len(alone.Runs) != 0 || len(alone.Refused) != 1 || alone.Refused[0].Name != "analyst" {
+			t.Fatalf("mentioned alone: runs %+v, refused %+v, %v", alone.Runs, alone.Refused, err)
+		}
+		if len(c.requests("analyst")) != 0 {
+			t.Fatal("an agent not every reader of the conversation may read ran there")
+		}
+		view, err := p.ReadSession(t.Context(), admin, v.ID, "", "", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if raw, _ := json.Marshal(view.Messages); strings.Contains(string(raw), "three dollars") {
+			t.Fatalf("analyst's answer is in the conversation: %s", raw)
+		}
+	})
+	// Asked for by the platform, it is refused the same way when where it
+	// lives stops being read by everyone between the message and the call.
+	t.Run("at the call", func(t *testing.T) {
+		c, p, v := stageHome(t, platform.ProjectInput{Name: "Finance"})
+		p.BeforeMentionCalls(func() {
+			if _, err := p.CreateProject(t.Context(), tenant, projects.Writer{By: "olu"}, platform.ProjectInput{Name: "Vault", Kind: projects.Account}); err != nil {
+				t.Error(err)
+			}
+			if err := p.SetAgentHome(t.Context(), tenant, "analyst", "Vault", govern); err != nil {
+				t.Error(err)
+			}
+		})
+		posted, err := p.PostMessage(t.Context(), admin, v.ID, platform.MessageInput{Text: "@ops @analyst why did the deploy fail and what did it cost?"})
+		if err != nil || len(posted.Runs) != 1 || posted.Runs[0].Agent != platform.BuiltinEntry {
+			t.Fatalf("posted: runs %+v, %v", posted.Runs, err)
+		}
+		root := await(t, p, posted.Runs[0].ID, runs.Completed)
+		called(t, p, root.ID, "ops", runs.Completed)
+		if len(c.requests("analyst")) != 0 {
+			t.Fatal("an agent not every reader of the conversation may read ran there")
+		}
+		sent := c.requests(platform.BuiltinEntry)
+		if last := sent[len(sent)-1]; !strings.Contains(last, `<answer agent="analyst" failed="true">`) || !strings.Contains(last, "cannot answer here. Ask it in Vault") || strings.Contains(last, "three dollars") {
+			t.Fatalf("the entry agent was sent %s", last)
+		}
+	})
 }

@@ -133,7 +133,7 @@ type callExecutor struct {
 	release func(runtime.Request)
 	// mentioned makes the agent calls a run's message asked for by mention
 	// before the turn's first model step (callMentioned). Nil makes none.
-	mentioned func(context.Context, runtime.Request, func(context.Context, event.Body) error) (told string, stopped *turn.Stop, err error)
+	mentioned func(context.Context, runtime.Request, map[string]event.Answer, func(context.Context, event.Body) error) (told string, stopped *turn.Stop, park *native.Parked, err error)
 	// entry reports whether a request is a turn of the platform's entry
 	// agent, which makes every call with the agent tool and is offered no
 	// session tools. Nil reports none.
@@ -231,19 +231,37 @@ func (e callExecutor) Turn(ctx context.Context, def turn.Pinned, in turn.Input, 
 		// The runtime offers its session tools to a turn with a session.
 		req.Session = nil
 	}
-	if e.mentioned != nil && in.Resume == nil && req.Origin != call.Origin {
-		told, stopped, err := e.mentioned(ctx, req, emit)
+	// A turn the mention calls parked, on the approval of one of them, comes
+	// back here with its answers: it has no model state to continue, so the
+	// turn below starts as a first turn does.
+	var held map[string]event.Answer
+	ours := false
+	if req.Resume != nil && isMentionCall(req.Resume.CallID) {
+		held, ours = req.Resume.Answers, true
+	}
+	if e.mentioned != nil && (req.Resume == nil || ours) && req.Origin != call.Origin {
+		told, stopped, park, err := e.mentioned(ctx, req, held, emit)
 		if err != nil {
 			return turn.Result{}, err
 		}
 		if stopped != nil {
 			return turn.Result{Stopped: stopped}, nil
 		}
+		if park != nil {
+			parked, err := native.ParkedTo(*park)
+			if err != nil {
+				return turn.Result{}, err
+			}
+			return turn.Result{Prompt: park.Prompt, Parked: &parked}, nil
+		}
 		if told != "" {
 			req.Text = told + "\n\n" + req.Text
 			in.Trigger = wire.Clone(in.Trigger)
 			wire.SetText(&in.Trigger, req.Text)
 		}
+	}
+	if ours {
+		req.Resume, in.Resume = nil, nil
 	}
 	ctx = runtime.WithRequest(ctx, req)
 	ctx = context.WithValue(ctx, operationRequestKey{}, req)

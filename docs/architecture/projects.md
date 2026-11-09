@@ -985,7 +985,12 @@ it is this agent, on its own model. The runtime's session tools
   they said reaches it as content of the person's turn, and it is told to
   write each result as given under a heading with its agent's name, then a
   short synthesis if one helps. A mentioned agent that cannot be asked is said
-  so in its place. This holds in every session, whoever owns it; where the
+  so in its place, and one whose call policy holds calls for a person is
+  asked only once a person approves: the root parks on that approval first.
+  An answer is limited to what its place's readers may read: an agent that
+  lives where not everyone who reads the conversation's project reads is not
+  asked there, mentioned alone or beside others, and the poster is told why
+  and where it can be asked (the mention's `refused`). This holds in every session, whoever owns it; where the
   entry agent cannot run, each mentioned agent answers for itself. A child
   session opens only when a request asks for one by option (`agent` with
   `fresh` or `label` on `POST /api/sessions/{id}/messages`).

@@ -32,6 +32,15 @@ name, then a short synthesis if one helps. The run's final text is the model's
 own; the platform does not rewrite it. A call that is refused or fails is said
 so in its place, and stopping the root stops the calls it waits on.
 
+Two checks are made before any of those calls. An agent that lives where not
+everyone who reads the conversation's project reads is not called there
+(`Available`, admission's own check): the entry agent is told it cannot answer
+here and where it can be asked. A call the callee's policy holds for a person
+waits for one as the same call made by the model does: the root parks on the
+approval, addressed to the policy's approvers and tied to the call's id, before
+anyone is called. Approved, the call is made; denied or expired, the entry
+agent is told so in its place.
+
 `delegate_task` stays the background call. It answers at once with
 `{"status": "launched", "agent", "run", "note"}`, never with the work's result;
 the run it starts outlives its caller, carries the call's id as `call_id`, and

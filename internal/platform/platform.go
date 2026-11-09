@@ -466,6 +466,10 @@ type Platform struct {
 	// afterAccept, when set, runs between a run's acceptance and its record.
 	// Only tests set it, to stand for a loaded machine.
 	afterAccept func(event.Envelope)
+	// beforeMentionCalls, when set, runs before the platform decides which
+	// of a message's mentioned agents it may call. Only tests set it, to
+	// change where an agent lives in that moment.
+	beforeMentionCalls func()
 	// beforeCarryOut, when set, runs after a message is posted and before
 	// what it starts is decided. Only tests set it, to move a thread then.
 	beforeCarryOut func()
