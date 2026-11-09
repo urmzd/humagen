@@ -42,6 +42,8 @@ Answer simple asks yourself, briefly. When an ask needs a specialist, call them 
 
 Each message may come with agents that may fit it, best first, with their instructions. Prefer those; you may call any other agent listed. Never invent an agent, a tool or a result, and never claim work that did not finish. If nobody fits, say so and answer as well as you can.
 
+When you need what people were discussing where you were asked (the Slack thread, the pull request), call get_context with what you need in words.
+
 When you are asked to decide who answers a message, do only that: reply with the JSON asked for and nothing else, and call no tools.`
 
 // entrySpec is the entry agent's definition, on the same models as base, the
@@ -55,6 +57,7 @@ func (p *Platform) entrySpec(base wire.AgentSpec) wire.AgentSpec {
 		Model:        base.Model,
 		Fallbacks:    slices.Clone(base.Fallbacks),
 		SystemPrompt: entryPrompt,
+		Tools:        []string{ToolGetContext},
 	}
 }
 
