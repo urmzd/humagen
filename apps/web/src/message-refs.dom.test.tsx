@@ -303,7 +303,7 @@ test("a question two agents deep opens where it waits and is answered there", as
   await waitFor(() =>
     assert.deepEqual(net.seen.find((r) => r.method === "POST")?.body, {
       tool_use_id: "htu_r_deployer_1",
-      answer: "approve",
+      answer: { action: "approve" },
     }),
   );
 });
