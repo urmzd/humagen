@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.108.0 (2026-11-09)
+
+### Features
+
+- **web**: Connections cards are the shared item card (#305) ([53d2feb](https://github.com/urmzd/humagen/commit/53d2febfa5467f11830a5a71fcdd0d251eec9dc5))
+- **web**: name the audience a session's place reported in its header (#304) ([152b7f8](https://github.com/urmzd/humagen/commit/152b7f82114491ad893e77fbb005b5850f9543d8))
+- **messages**: a trace lists the questions a run asked a person, with the call that asked (#303) ([b2303ad](https://github.com/urmzd/humagen/commit/b2303ad83322b845fc373283849ee483f78b023b))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.107.0...v0.108.0)
+
+
 ## 0.106.0 (2026-11-09)
 
 ### Features
