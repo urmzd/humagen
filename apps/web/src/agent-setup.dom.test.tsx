@@ -86,10 +86,10 @@ test("setup keeps the personal home selected before project hydration and saves 
   });
   mount();
   const project = screen.getByLabelText(
-    new RegExp(defaultCopy.agentSetup.project),
+    new RegExp(`^${defaultCopy.agentSetup.project}`),
   ) as HTMLSelectElement;
   assert.equal(project.value, me.personal_project);
-  assert.equal(project.selectedOptions[0]?.textContent, defaultCopy.projects.personalTitle);
+  assert.equal(project.selectedOptions[0]?.textContent, defaultCopy.agentAccess.private);
   fireEvent.change(screen.getByLabelText(defaultCopy.agentSetup.template), {
     target: { value: "writer" },
   });

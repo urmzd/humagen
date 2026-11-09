@@ -379,7 +379,8 @@ What a message starts, first rule that applies:
    `routed`): with `join` (the default
    with two or more) each of them decides whether to take the message, as
    [the dynamic router](#the-dynamic-router) asks, and each that does
-   answers, its run's `picked` saying why; with none, it waits for a person;
+   answers, its run's `picked` saying why; with none, the best match among
+   them answers, else the first of them;
    with `all` each of them side by side (at most 3, so `all` over more than 3 is
    refused when it is set, 400); with one, that one. A message that names a
    skill goes to them too, and they are told to use it; tags in a message
@@ -911,9 +912,10 @@ agents.
 An agent's home survives only as who sees the agent, its Access:
 
 - **Workspace**: no home, or the root. Everyone sees it, and it answers
-  anywhere it is allowed. The built-ins `humagen-writer`, `humagen-analyst`,
-  `humagen-builder`, `code-reviewer`, `security-reviewer`,
-  `architect-reviewer`, `qa-reviewer` and `approver` are the workspace's.
+  anywhere it is allowed. The built-ins `humagen` (the entry agent, which also
+  builds agents), `humagen-writer`, `humagen-analyst`, `code-reviewer`,
+  `security-reviewer`, `architect-reviewer`, `qa-reviewer` and `approver` are
+  the workspace's.
 - **Members of a project**: homed in a project. Its readers see it. Homed in
   a project everyone reads, it answers anywhere; homed in one kept to its
   members, it answers only where its readers alone read (that project and
@@ -973,10 +975,16 @@ agent, on its own model.
   a default that names an agent (thread, client, workspace); the entry agent;
   without one (a server that ships no agents of its own), routing by search
   (below), so the message still lands.
-- **It is told who may fit.** Each message it answers comes with the best 3
-  agents search finds (their names, the words that matched and their
-  instructions, loaded only for these) and the names of the others it may call,
-  leaving out agents the poster may not read.
+- **It is told who may fit.** Each message it answers comes with the strong
+  matches among the best 3 agents search finds (their names, the words that
+  matched and their instructions, loaded only for these) and every other
+  agent it may call with what it is for (its description, or its prompt's
+  first sentence), so it can choose by meaning where words did not match. It
+  leaves out agents the poster may not read.
+- **When it cannot pick** (no provider of its chain is enabled, the pick
+  failed, timed out or was not a pick), a strong search match answers, else
+  the workspace's named default, else the entry agent itself. A weak match,
+  one passing word of a prompt, is never handed the message.
 - **It may call every other agent whose definition pins** (`Access.Spawn`,
   kept by the platform). A run pins its whole call tree, so an agent that no
   longer pins is left out rather than stopping the entry agent. The list is
@@ -987,25 +995,52 @@ agent, on its own model.
 - `EntryAgent(tenant)` gives its name and the name people see (the
   workspace's branding, else Humagen), which the GitHub check run uses.
 
+### Root sessions on chat surfaces
+
+A thread on a chat surface, a Slack thread today, has one root session, as a
+console chat does: the place's, keyed by its address
+(`slack://<team>/<channel>/<thread ts>`) and owned by the entry agent (or,
+on a server that ships no agents of its own, by the client's default). The
+chat service (`apps/chat`) posts each person's message to `POST /api/sessions`
+with `surface` and `act_as`; only the client's own machine may, for a person
+of the client. The first message starts the root (201), filed where the
+Slack channel is bound, else in the client's home (private for a direct
+message); every later message in the thread lands in it (200), once however
+often it is sent. A mention starts or continues that agent's child session
+under the root; a message naming nobody is picked for by the entry agent.
+The request may not say where to file the session or who owns it. A Slack
+thread that started as a conversation before root sessions stays one (409).
+
 ### The dynamic router
 
 A message that names no agent, where the default it inherits is `*`
 ("everyone decides"), is routed by search, not by asking every agent
 (`pkg/join`). The agents available there are searched first: BM25 over each
-one's name, system prompt and the asks it answered well (an answer a person
-rated up files its ask under the agent, `pkg/goodasks`; a rating taken back
-or turned down drops it, and a run that read private context is never
-filed). An agent needs no description written for routing. Only the best 3
+one's name (counted three times), what it is for (its description, or its
+prompt's first sentence, counted twice), its system prompt and the asks it
+answered well (an answer a person rated up files its ask under the agent,
+`pkg/goodasks`; a rating taken back or turned down drops it, and a run that
+read private context is never filed). An agent needs no description written
+for routing. Common words and the filler of an instruction ("in one line",
+"briefly", "what should I use instead", "identify yourself") are left out of
+both the message and the agents. A match is strong when a word of the
+message is in the agent's name or what it is for, or two or more words
+match; one passing word of the rest of a prompt is weak. A handle kept from
+before a rename (`warp-writer` and the like) is searched only where its
+current agent is not offered, so the same agent is never listed twice. Only the best 3
 matches are asked one low-effort question, all at once: "should I be
 involved?". Each that says yes joins and answers in the same thread, each
 reply posted and streamed on its own; in Slack, in the same Slack thread. At
 most 64 agents are searched and at most 5 join one message. When search
-finds nobody, nobody is asked. When none says yes on Slack or GitHub,
-nothing starts: the message waits for a person to answer or to tag an agent.
+finds nobody, nobody is asked.
 
-In the console a message always lands or says why. A session started with
-no mention, where the default is `*` or unset, goes to the best match that
-said yes, or with none saying yes to the best match search found; the run
+A message always lands or says why, from every surface: the console, the
+Slack app, a GitHub mention, the API. A message with no mention, where the
+default is `*` or unset, goes to the entry agent, which answers it or calls
+whoever fits; it answers only through a client that may route to it, and
+calls only agents that client may route to. Without an entry agent there,
+it goes to the best match that said yes, or with none saying yes to the
+best match search found; the run
 records why in `warp.picked` ("Joined on its own: ...", or "Picked by
 search: matched deploy, cost."), which the console shows with the answer,
 never before it. When search matches nobody, the workspace's named default
@@ -1034,11 +1069,11 @@ ask refuses the message.
   agent's answer, `{decisions: [{agent, join, reason}]}`, without starting
   anything: the agents search found answer, every other one says search
   passed it over. Agents the caller may not read are left out.
-- `POST /api/runs` with `agent` omitted uses the default chain, and with none
-  answers 409 "tag an agent". `agent: "*"` (or `auto`) asks everyone: the
-  first run that joined is returned and the others start in the same
-  conversation. When none takes it, 409 says it waits for a person to answer
-  or tag an agent.
+- `POST /api/runs` with `agent` omitted uses the default chain; with none
+  set, or `agent: "*"` (or `auto`), the message lands as above: the entry
+  agent's run, or the first run that joined, is returned and the others
+  start in the same conversation. Only a place where no agent may answer
+  is 409 "tag an agent".
 
 ### Clients
 
@@ -1048,8 +1083,8 @@ assistant pane, an unbound channel, a GitHub issue. The order there is the
 thread, then the client, then the client's home channel and its chain. In a
 bound Slack channel the bound Humagen channel's chain decides. The client's
 allow-list (`client.Routes`) still filters the result: a default the client
-may not route to is refused, never swapped. A GitHub label in `auto_labels`
-names an agent, so it is a tag. A client's default may be `*`, and fiber's
+may not route to is refused, never swapped. A GitHub label starts nothing:
+automatic review is the connection's switch. A client's default may be `*`, and fiber's
 in-process connectors may ask for it too; `surface.stamp` then asks the
 agents available where the run is filed that the client may route to, before
 admission, and each that joins gets a tag of its own. The Slack app built on
@@ -1953,10 +1988,9 @@ and its total, What's new and Your projects to the same on both renderers.
   to their messages with the app, and What's new and Your projects are shown
   to read. Ask a Question and Build an Agent open a form whose words are
   posted as the person in their messages with the app, Build an Agent tagging
-  `@humagen-builder` where the client reaches it; Search Context opens the
+  `@humagen` where the client reaches it; Search Context opens the
   console. Someone the client maps to nobody keeps the mailbox.
-- **GitHub.** The same rule: `@agent` in a comment or an `auto_labels` label is
-  a tag; otherwise the client's default; otherwise nothing. As Slack delivers
+- **GitHub.** The same rule: `@agent` in a comment is a tag; otherwise the client's default; otherwise nothing. As Slack delivers
   only what mentions the app, a comment that names no agent asks the client
   only when it mentions the app's own login (`github.login`): `@humagen what
   changed?`. One that mentions neither starts nothing, so a busy repository

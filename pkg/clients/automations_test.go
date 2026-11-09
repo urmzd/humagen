@@ -1,8 +1,10 @@
 package clients
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAutomationsMatchOnlyTheirInstallationConditions(t *testing.T) {
@@ -41,7 +43,7 @@ func TestAutomationsMatchOnlyTheirInstallationConditions(t *testing.T) {
 
 func TestAutomationBoundsAndCopies(t *testing.T) {
 	c := githubOf("gh", "acme")
-	rule := GitHubAutomation{Name: "review", Repository: "acme/app", Event: "issues", Action: "labeled", Label: "review", Agent: "lead", Instructions: "Review the issue."}
+	rule := GitHubAutomation{Name: "review", Repository: "acme/app", Event: "issues", Action: "opened", Agent: "lead", Instructions: "Review the issue."}
 	c.GitHub = &GitHubOptions{Automations: []GitHubAutomation{rule}}
 	if err := c.Validate(); err != nil {
 		t.Fatal(err)
@@ -67,8 +69,37 @@ func TestAutomationBoundsAndCopies(t *testing.T) {
 			}
 		})
 	}
-	if got := c.MatchAutomations("issues", []byte(`{"action":"labeled","repository":{"full_name":"acme/app"},"label":{"name":"other"}}`)); len(got) != 0 {
-		t.Fatal("wrong label")
+	if got := c.MatchAutomations("issues", []byte(`{"action":"closed","repository":{"full_name":"acme/app"}}`)); len(got) != 0 {
+		t.Fatal("wrong action")
+	}
+}
+
+// Labels start nothing. A rule stored with a label reads with a
+// note and fires without regard to the label; saving it drops the note.
+func TestARuleStoredWithALabelIgnoresIt(t *testing.T) {
+	var rule GitHubAutomation
+	if err := json.Unmarshal([]byte(`{"name":"triage","repository":"acme/app","event":"issues","action":"opened","label":"agent:auto","agent":"lead","instructions":"Triage.","paused":false}`), &rule); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(rule.Note, `"agent:auto" is ignored`) {
+		t.Fatalf("no note: %+v", rule)
+	}
+	c := githubOf("gh", "acme")
+	c.GitHub = &GitHubOptions{Automations: []GitHubAutomation{rule}}
+	if got := c.MatchAutomations("issues", []byte(`{"action":"opened","repository":{"full_name":"acme/app"},"sender":{"login":"ada"},"label":{"name":"other"}}`)); len(got) != 1 {
+		t.Fatalf("the label still decides: %v", got)
+	}
+	s := NewMemory()
+	saved, err := s.Create("acme", c, DefaultCaps(), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.GitHub.Automations[0].Note != "" {
+		t.Fatalf("the note was saved: %+v", saved.GitHub.Automations[0])
+	}
+	raw, _ := json.Marshal(saved.GitHub.Automations[0])
+	if strings.Contains(string(raw), "label") {
+		t.Fatalf("the label was saved: %s", raw)
 	}
 }
 
@@ -98,6 +129,33 @@ func TestAnAutomationFindsTheThreadThatTriggeredIt(t *testing.T) {
 		got, ok := AutomationThread(tc.kind, []byte(tc.body))
 		if got != tc.want || ok != tc.ok {
 			t.Fatalf("%s %s = %q %v, want %q %v", tc.kind, tc.body, got, ok, tc.want, tc.ok)
+		}
+	}
+}
+
+// A rule stored to fire on a label change reads paused, with a note, and
+// never fires; a rule cannot be written to fire on one.
+func TestARuleOnALabelChangeNeverFires(t *testing.T) {
+	var rule GitHubAutomation
+	if err := json.Unmarshal([]byte(`{"name":"auto","repository":"acme/app","event":"pull_request","action":"labeled","label":"agent:auto","agent":"lead","instructions":"Review.","paused":false}`), &rule); err != nil {
+		t.Fatal(err)
+	}
+	if !rule.Paused || !strings.Contains(rule.Note, "never fires") {
+		t.Fatalf("a label rule reads live: %+v", rule)
+	}
+	c := githubOf("gh", "acme")
+	c.GitHub = &GitHubOptions{Automations: []GitHubAutomation{rule}}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("a stored label rule cannot be saved: %v", err)
+	}
+	c.GitHub.Automations[0].Paused = false
+	if got := c.MatchAutomations("pull_request", []byte(`{"action":"labeled","repository":{"full_name":"acme/app"},"sender":{"login":"ada"}}`)); len(got) != 0 {
+		t.Fatalf("a label change fired a rule: %v", got)
+	}
+	for _, action := range []string{"labeled", "unlabeled"} {
+		c.GitHub.Automations[0].Action = action
+		if err := c.Validate(); err == nil {
+			t.Fatalf("a rule on %q was accepted", action)
 		}
 	}
 }

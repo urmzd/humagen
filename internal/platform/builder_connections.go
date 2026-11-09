@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/prompts"
 	"github.com/urmzd/orchagent/flow/runtime"
@@ -20,7 +19,7 @@ const (
 )
 
 func (p *Platform) builderPerson(req runtime.Request) (auth.Principal, error) {
-	if legacy.BuiltinAgent(req.Agent()) != BuiltinBuilder {
+	if !p.isHelper(req.Agent()) {
 		return auth.Principal{}, ErrBuilder
 	}
 	_, person := p.operationPlace(req)
