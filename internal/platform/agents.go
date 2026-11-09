@@ -10,6 +10,7 @@ import (
 
 	"github.com/urmzd/orchagent/flow/event"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/clients"
@@ -179,6 +180,12 @@ func (p *Platform) candidates(ctx context.Context, tenant string, tree *projects
 		}
 		for _, r := range revs {
 			if wire.PolicyOf(r.Spec).TaggedOnly || !answers(r.Spec.Name) || (keep != nil && !keep(r.Spec.Name)) {
+				continue
+			}
+			// A handle from before a rename is the same agent under its old
+			// name: where the current one is offered too, only it is. Where
+			// only the old handle is allowed, it still answers.
+			if current := legacy.BuiltinAgent(r.Spec.Name); current != r.Spec.Name && answers(current) && (keep == nil || keep(current)) {
 				continue
 			}
 			out = append(out, join.Candidate{Name: r.Spec.Name, Description: r.Spec.Description, Prompt: r.Spec.SystemPrompt, Asks: asks[r.Spec.Name]})
