@@ -59,9 +59,18 @@ func builderGrantable(name string) bool {
 	return name == personToolsGrant || slices.Contains(grantable(), name)
 }
 
-func builderProtectedAgent(name string) bool {
+// isHelper reports whether agent is the workspace's helper, the entry agent,
+// which builds and changes agents with a person's approval: by its name, or
+// by the name the builder had (internal/legacy).
+func (p *Platform) isHelper(agent string) bool {
+	return legacy.BuiltinAgent(wire.NormalizeName(agent)) == p.cfg.EntryAgent
+}
+
+// helperProtected reports whether the helper may not change name: itself,
+// the analyst, and the approval agent, which decide what others may do.
+func (p *Platform) helperProtected(name string) bool {
 	name = legacy.BuiltinAgent(wire.NormalizeName(name))
-	return name == BuiltinBuilder || name == BuiltinAnalyst
+	return name == p.cfg.EntryAgent || name == BuiltinAnalyst || name == BuiltinApprover
 }
 
 // MaxSummaryHours bounds how far back runs_summary looks.
@@ -154,8 +163,8 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 				"tools":         "Comma-separated tools to grant, from: " + strings.Join(grantable(), ", ") + ". Leave out for none",
 			}),
 			func(ctx context.Context, args map[string]any) (string, error) {
-				if legacy.BuiltinAgent(req.Agent()) != BuiltinBuilder {
-					return "", fmt.Errorf("%w: only %s saves agents", ErrBuilder, BuiltinBuilder)
+				if !p.isHelper(req.Agent()) {
+					return "", fmt.Errorf("%w: only %s saves agents", ErrBuilder, p.cfg.EntryAgent)
 				}
 				rev, created, err := p.saveAgent(ctx, req.Tenant, args)
 				if err != nil {
@@ -378,7 +387,7 @@ func (p *Platform) agentsReport(ctx context.Context, tenant, own string) (string
 // agent's name is held to what the agents route holds it to.
 func (p *Platform) prepareBuilderAgent(ctx context.Context, tenant string, args map[string]any) (wire.AgentSpec, wire.Revision, bool, error) {
 	name := strings.TrimSpace(arg(args, "name"))
-	if builderProtectedAgent(name) {
+	if p.helperProtected(name) {
 		return wire.AgentSpec{}, wire.Revision{}, false, ErrBuilder
 	}
 	if home, homed := p.ProjectTree(tenant).Home(wire.NormalizeName(name)); homed && home != projects.Root {
@@ -455,21 +464,21 @@ func (p *Platform) saveAgent(ctx context.Context, tenant string, args map[string
 		}
 	}
 	if created {
-		rev, err := p.Agents.Create(ctx, tenant, spec, "agent:"+BuiltinBuilder)
+		rev, err := p.Agents.Create(ctx, tenant, spec, "agent:"+p.cfg.EntryAgent)
 		return rev, err == nil, err
 	}
-	rev, err := p.Agents.Revise(ctx, tenant, spec, have.Rev, "agent:"+BuiltinBuilder)
+	rev, err := p.Agents.Revise(ctx, tenant, spec, have.Rev, "agent:"+p.cfg.EntryAgent)
 	return rev, false, err
 }
 
-// builderModels are the models a new agent the builder makes starts on: the
-// builder's own as the workspace has it, else as the platform ships it.
+// builderModels are the models a new agent the helper makes starts on: the
+// helper's own as the workspace has it, else as the platform ships it.
 func (p *Platform) builderModels(ctx context.Context, tenant string) (wire.AgentSpec, bool) {
-	if have, err := p.Catalog().Get(ctx, tenant, BuiltinBuilder, 0); err == nil {
+	if have, err := p.Catalog().Get(ctx, tenant, p.cfg.EntryAgent, 0); err == nil {
 		return have.Spec, true
 	}
 	for _, spec := range p.builtinSpecs() {
-		if spec.Name == BuiltinBuilder {
+		if spec.Name == p.cfg.EntryAgent {
 			return spec, true
 		}
 	}

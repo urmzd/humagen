@@ -1182,8 +1182,9 @@ function screens(ids: Ids, call: Call): Screen[] {
       name: "humagen-builtins",
       path: "/agents",
       act: async (page) => {
-        await page.getByRole("searchbox", { name: "Find an agent" }).fill("humagen-");
-        for (const name of ["humagen-analyst", "humagen-writer", "humagen-builder"])
+        await page.getByRole("searchbox", { name: "Find an agent" }).fill("humagen");
+        // The entry agent, humagen, builds agents: the builder is folded into it.
+        for (const name of ["humagen-analyst", "humagen-writer", "humagen"])
           await page.getByText(name, { exact: true }).first().waitFor();
       },
     },
