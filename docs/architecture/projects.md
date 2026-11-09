@@ -974,10 +974,16 @@ agent, on its own model.
   a default that names an agent (thread, client, workspace); the entry agent;
   without one (a server that ships no agents of its own), routing by search
   (below), so the message still lands.
-- **It is told who may fit.** Each message it answers comes with the best 3
-  agents search finds (their names, the words that matched and their
-  instructions, loaded only for these) and the names of the others it may call,
-  leaving out agents the poster may not read.
+- **It is told who may fit.** Each message it answers comes with the strong
+  matches among the best 3 agents search finds (their names, the words that
+  matched and their instructions, loaded only for these) and every other
+  agent it may call with what it is for (its description, or its prompt's
+  first sentence), so it can choose by meaning where words did not match. It
+  leaves out agents the poster may not read.
+- **When it cannot pick** (no provider of its chain is enabled, the pick
+  failed, timed out or was not a pick), a strong search match answers, else
+  the workspace's named default, else the entry agent itself. A weak match,
+  one passing word of a prompt, is never handed the message.
 - **It may call every other agent whose definition pins** (`Access.Spawn`,
   kept by the platform). A run pins its whole call tree, so an agent that no
   longer pins is left out rather than stopping the entry agent. The list is
@@ -993,10 +999,18 @@ agent, on its own model.
 A message that names no agent, where the default it inherits is `*`
 ("everyone decides"), is routed by search, not by asking every agent
 (`pkg/join`). The agents available there are searched first: BM25 over each
-one's name, system prompt and the asks it answered well (an answer a person
-rated up files its ask under the agent, `pkg/goodasks`; a rating taken back
-or turned down drops it, and a run that read private context is never
-filed). An agent needs no description written for routing. Only the best 3
+one's name (counted three times), what it is for (its description, or its
+prompt's first sentence, counted twice), its system prompt and the asks it
+answered well (an answer a person rated up files its ask under the agent,
+`pkg/goodasks`; a rating taken back or turned down drops it, and a run that
+read private context is never filed). An agent needs no description written
+for routing. Common words and the filler of an instruction ("in one line",
+"briefly", "what should I use instead", "identify yourself") are left out of
+both the message and the agents. A match is strong when a word of the
+message is in the agent's name or what it is for, or two or more words
+match; one passing word of the rest of a prompt is weak. A handle kept from
+before a rename (`warp-writer` and the like) is searched only where its
+current agent is not offered, so the same agent is never listed twice. Only the best 3
 matches are asked one low-effort question, all at once: "should I be
 involved?". Each that says yes joins and answers in the same thread, each
 reply posted and streamed on its own; in Slack, in the same Slack thread. At
