@@ -1446,7 +1446,7 @@ paths:
           content:
             application/json:
               schema: {type: object}
-        "202": {description: A notification, accepted.}
+        "202": {description: "A notification, accepted."}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "415": {description: The request body is not application/json.}
         "500": {$ref: "#/components/responses/ServerError"}
