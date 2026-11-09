@@ -11980,6 +11980,9 @@ components:
         parent: {type: string}
         depth: {type: integer}
         mode: {$ref: "#/components/schemas/CallMode"}
+        call_id:
+          description: "The id of the caller's tool call that started this run (htu_<run>_<n>): the call its activity streams under. Empty on a root."
+          type: string
         lifecycle:
           description: Set on a run another run called. An attached run ends with its caller. A delegated one does not.
           type: string

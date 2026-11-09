@@ -193,7 +193,7 @@ func (e callExecutor) Turn(ctx context.Context, def turn.Pinned, in turn.Input, 
 		}
 	}
 	if len(req.Definition.Spec.Access.Spawn) > 0 {
-		req.Instructions += "\nYou own the answer to your caller. Use call_agent for bounded helper work with explicit input messages and a return format. Incorporate useful results into one answer; do not narrate and repeat each helper's full answer."
+		req.Instructions += "\nYou own the answer to your caller. Use the agent tool for bounded helper work: give the agent a short imperative title and a brief with the context it needs and what done looks like. Incorporate useful results into one answer; do not narrate and repeat each helper's full answer."
 	}
 	in.Instructions = req.Instructions
 	// The run's history budget (compaction_tokens) was resolved onto req;

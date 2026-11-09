@@ -255,6 +255,7 @@ export function eventsOfTrace(
  * not shown a second time.
  */
 const DELEGATION = new Set([
+  "agent",
   "call_agent",
   "session_call",
   "session_listen",

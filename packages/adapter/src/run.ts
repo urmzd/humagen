@@ -202,11 +202,12 @@ const FAILED_RESULT = /^action failed:/i;
 const PUBLISH = "publish_artifact";
 /** The tool an agent hands work to another agent with, without waiting for it. */
 const HAND_ON = "delegate_task";
-const CALL_AGENT = "call_agent";
+/** The tool an agent calls another agent with, and its earlier name. */
+const CALL_AGENTS = new Set(["agent", "call_agent"]);
 /** fiber names the tool that hands work to another agent after that agent. */
 const DELEGATE = /^tag_(.+)$/;
 
-/** The agent a call_agent or delegate_task call names in its arguments. */
+/** The agent an agent, call_agent or delegate_task call names in its arguments. */
 function calledAgent(input?: string): string | undefined {
   try {
     const args = JSON.parse(input ?? "") as { agent?: unknown };
@@ -272,7 +273,7 @@ export function adapter(
     const to =
       delegateOf(name) ??
       run?.agent ??
-      (name === CALL_AGENT || name === HAND_ON ? calledAgent(all.input) : undefined);
+      (CALL_AGENTS.has(name ?? "") || name === HAND_ON ? calledAgent(all.input) : undefined);
     return to
       ? {
           id,
@@ -379,7 +380,7 @@ export function adapter(
           { type: "activity", activity: doing(t.name) },
           { type: "task.upserted", task: task(t.id, t.name, t.arguments === undefined ? {} : { input: JSON.stringify(t.arguments, null, 2).slice(0, 32_000) }) },
         ];
-        if (t.name && (delegateOf(t.name) || t.name === HAND_ON || t.name === CALL_AGENT)) {
+        if (t.name && (delegateOf(t.name) || t.name === HAND_ON || CALL_AGENTS.has(t.name))) {
           const pending = calling.get(t.name) ?? [];
           if (!pending.includes(t.id) && !started.has(t.id)) calling.set(t.name, [...pending, t.id]);
         }
@@ -408,7 +409,7 @@ export function adapter(
         const outcome = p.data as Run["outcome"] | undefined;
         if (p.name === "record_outcome" && outcome) return [{type:"outcome.updated",outcome:{kind:outcome.kind,summary:outcome.summary,decisions:outcome.decisions,nextAction:outcome.next_action}}];
         const called = p.data as { run?: string; agent?: string; lifecycle?: string; tool_call_id?: string } | undefined;
-        if (p.name && called?.run && (delegateOf(p.name) || p.name === HAND_ON || p.name === CALL_AGENT)) {
+        if (p.name && called?.run && (delegateOf(p.name) || p.name === HAND_ON || CALL_AGENTS.has(p.name))) {
           // Which run a call to another agent started. From here the step
           // can be opened as that run.
           const pending = calling.get(p.name) ?? [];

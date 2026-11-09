@@ -1212,6 +1212,8 @@ turned back into it.
   parent?: string;
   depth: number;
   mode?: CallMode;
+  /** The id of the caller's tool call that started this run (htu_<run>_<n>): the call its activity streams under. Empty on a root. */
+  call_id?: string;
   /** Set on a run another run called. An attached run ends with its caller. A delegated one does not. */
   lifecycle?: "attached" | "delegated";
   /** The schedule that raised the run, if one did. */

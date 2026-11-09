@@ -202,19 +202,19 @@ func TestTheCallToolOffersOnlyCalleesThatAdmitTheCaller(t *testing.T) {
 	}
 	found := false
 	for _, tool := range requests[0].Tools {
-		if tool.Name != platform.ToolCallAgent {
+		if tool.Name != platform.ToolAgent {
 			continue
 		}
 		found = true
 		if got := tool.Parameters.Properties["agent"].Enum; !slices.Equal(got, []string{"gated", "helper"}) {
-			t.Fatalf("call_agent offers %v", got)
+			t.Fatalf("the agent tool offers %v", got)
 		}
 		if strings.Contains(tool.Description, "closed") {
-			t.Fatalf("call_agent names a callee that would refuse: %s", tool.Description)
+			t.Fatalf("the agent tool names a callee that would refuse: %s", tool.Description)
 		}
 	}
 	if !found {
-		t.Fatal("lead was not offered call_agent")
+		t.Fatal("lead was not offered the agent tool")
 	}
 }
 

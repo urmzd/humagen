@@ -125,7 +125,7 @@ func (p *Platform) noteApprovedCall(tenant string, q inbox.QuestionPart, ans eve
 		args = ans.Arguments
 	}
 	callee := "tool:" + q.Tool.Name
-	if q.Tool.Name == ToolCallAgent {
+	if q.Tool.Name == ToolCallAgent || q.Tool.Name == ToolAgent {
 		callee = targetOf(args)
 	}
 	if callee == "" {
@@ -273,7 +273,7 @@ func (p *Platform) Reachable(ctx context.Context, tenant, caller string) (out []
 // questionTarget is the agent a question's tool call would call, when the
 // tool calls agents and its arguments name one.
 func questionTarget(q event.Question) string {
-	if q.Tool == nil || (q.Tool.Name != ToolCallAgent && q.Tool.Name != ToolDelegate) {
+	if q.Tool == nil || (q.Tool.Name != ToolCallAgent && q.Tool.Name != ToolAgent && q.Tool.Name != ToolDelegate) {
 		return ""
 	}
 	return targetOf(q.Tool.Arguments)
