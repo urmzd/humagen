@@ -1171,6 +1171,9 @@ export const api = {
   stopRun: (id: string) => call<Run>("POST", `/api/runs/${encodeURIComponent(id)}/stop`),
   /** Answer the question a run is waiting on. Returns the question's inbox message, settled. */
   answer: (r: AnswerRequest) => call<unknown>("POST", answerPath(r), r.body),
+  /** What ran to answer a message (`session`, `session:message` or `session:run`). */
+  messageTrace: (id: string) =>
+    call<MessageTrace>("GET", `/api/messages/${encodeURIComponent(id)}/trace`),
   /** A run's events as they were published, for a run that is no longer streaming. */
   runEvents: (id: string) =>
     call<{ events: RunEvent[]; complete: boolean }>(
@@ -1887,6 +1890,92 @@ export interface ThreadAnnouncement {
   text?: string;
   withdrawn?: boolean;
   at: string;
+}
+
+/** Something a run cited or a context read drew on. */
+export interface TraceSource {
+  title: string;
+  url?: string;
+}
+
+/** One tool call in a trace. Input and output are left out when withheld. */
+export interface TraceTool {
+  /** `htu_<run>_<seq>`, as the response stream names the call. */
+  id: string;
+  name: string;
+  at: string;
+  /** How long it ran; absent while it runs. */
+  ms?: number;
+  input?: Record<string, unknown>;
+  output?: string;
+  error?: string;
+  withheld: boolean;
+}
+
+/** One get_context call in a trace. */
+export interface TraceContext {
+  id: string;
+  at: string;
+  ms?: number;
+  request: string;
+  /** The place it read, such as slack://team/channel/ts. */
+  reference: string;
+  summary: string;
+  sources: TraceSource[];
+  truncated: boolean;
+  error?: string;
+  withheld: boolean;
+}
+
+/** An action a run waited on a person for. `ask` is one still waiting. */
+export interface TraceApproval {
+  /** The question's own id: what the run's answer route takes. */
+  id: string;
+  /** The id of the call it gates, when it gates one. */
+  tool?: string;
+  action: string;
+  decision: "allow" | "deny" | "ask";
+  by?: string;
+  note?: string;
+  at?: string;
+}
+
+/** The entry agent's decision about a message, on the run that made it. */
+export interface TracePick {
+  decision: "answer_myself" | "delegate";
+  agents: string[];
+  reason: string;
+  matched: string[];
+}
+
+/** One run in a trace and what it did, with the runs it called beneath it. */
+export interface TraceNode {
+  run: string;
+  agent: string;
+  status: "accepted" | "running" | "parked" | "completed" | "failed" | "stopped";
+  started_at: string;
+  ended_at?: string;
+  ms: number;
+  /** Micro-USD, what it called included once they ended. */
+  cost?: number;
+  pick?: TracePick;
+  model?: string;
+  answer?: string;
+  error?: string;
+  tools: TraceTool[];
+  context: TraceContext[];
+  sources: TraceSource[];
+  approvals: TraceApproval[];
+  children: TraceNode[];
+}
+
+/** What ran to answer a message, as the reader may see it. */
+export interface MessageTrace {
+  message: string;
+  nodes: TraceNode[];
+  /** Runs and child sessions left out because the reader may not read them. */
+  hidden: number;
+  truncated: boolean;
 }
 
 /**

@@ -4,13 +4,18 @@ import { defaultCopy } from "@humagen/components";
 import { answerOf, foldAll } from "@humagen/core";
 import { responseStreams } from "@humagen/core/fixtures/responses";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { Run, RunEvent } from "./adapter.ts";
-import type { Thread } from "./api.ts";
+import type { Run } from "./adapter.ts";
+import type { MessageTrace, Thread, TraceNode } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { type FocusLoader, MessageFocus } from "./MessageFocus.tsx";
 import { AnswerRefs, SessionReferences } from "./MessageRefs.tsx";
 import { ResponseActivityPanel } from "./ResponseActivity.tsx";
-import { type ResponseSource, type RunLoader, replaySource, runEvents } from "./responseSource.ts";
+import {
+  type ResponseSource,
+  replaySource,
+  type TraceLoader,
+  traceEvents,
+} from "./responseSource.ts";
 import { OriginButton, SessionPlace } from "./SessionPlace.tsx";
 import { placeOf, referenceOf } from "./trace.ts";
 
@@ -49,17 +54,6 @@ const run = (id: string, extra: Partial<Run> = {}): Run => ({
   citations: [{ id: "c1", title: "Deploy runbook", url: "https://docs.example/runbook" }],
   ...extra,
 });
-const ev = (type: string, data: unknown, s: number) =>
-  ({
-    id: `${type}-${s}`,
-    source: "t",
-    type,
-    channel: "c",
-    time: at(s),
-    hops: 0,
-    data,
-  }) as unknown as RunEvent;
-
 const root = run(R1);
 const ops = run(R2, {
   agent: "ops",
@@ -82,57 +76,101 @@ const analyst = run(R3, {
   created_at: at(3),
   updated_at: at(5),
 });
-const events: Record<string, RunEvent[]> = {
-  [R1]: [
-    ev(
-      "run.delta.tool.call.v1",
-      { id: "g", name: "get_context", phase: "requested", arguments: { request: "the thread" } },
-      1,
-    ),
-    ev(
-      "run.delta.tool.done.v1",
-      { id: "g", result: JSON.stringify({ text: "Ana: it failed" }) },
-      1,
-    ),
-    ev(
-      "run.delta.tool.call.v1",
-      { id: "c", name: "call_agent", phase: "requested", arguments: { agent: "ops" } },
-      2,
-    ),
-    ev("run.delta.tool.done.v1", { id: "c", name: "call_agent", result: "done" }, 9),
-    ev("run.usage.v1", { accounting_id: "a", model: "anthropic/claude-sonnet" }, 13),
+const node = (r: Run, extra: Partial<TraceNode> = {}): TraceNode => ({
+  run: r.id,
+  agent: r.agent,
+  status: r.status as TraceNode["status"],
+  started_at: r.created_at,
+  ended_at: r.updated_at,
+  ms: Date.parse(r.updated_at) - Date.parse(r.created_at),
+  answer: r.answer,
+  tools: [],
+  context: [],
+  sources: (r.citations ?? []).map((c) => ({ title: c.title, url: c.url })),
+  approvals: [],
+  children: [],
+  ...extra,
+});
+const htu = (r: string, n: number) => `htu_${r}_${n}`;
+const analystNode = node(analyst);
+const opsNode = node(ops, {
+  tools: [
+    {
+      id: htu(R2, 1),
+      name: "deploy_logs",
+      at: at(4),
+      ms: 2000,
+      input: { job: "nightly" },
+      error: "403",
+      withheld: false,
+    },
+    {
+      id: htu(R2, 2),
+      name: "retry_deploy",
+      at: at(7),
+      ms: 1000,
+      input: {},
+      output: "ok",
+      withheld: false,
+    },
   ],
-  [R2]: [
-    ev(
-      "run.delta.tool.call.v1",
-      { id: "b", name: "deploy_logs", phase: "requested", arguments: { job: "nightly" } },
-      4,
-    ),
-    ev("run.delta.tool.done.v1", { id: "b", error: "403" }, 6),
-    ev(
-      "run.parked.v1",
-      {
-        question: {
-          id: "q",
-          kind: "approval",
-          prompt: "Retry the deploy?",
-          tool: { name: "retry_deploy", call_id: "x" },
-        },
+  approvals: [
+    { id: "q", tool: htu(R2, 2), action: "retry_deploy", decision: "allow", by: "Ana", at: at(8) },
+  ],
+  children: [analystNode],
+});
+const rootNode = node(root, {
+  cost: 12000,
+  model: "anthropic/claude-sonnet",
+  context: [
+    {
+      id: htu(R1, 1),
+      at: at(1),
+      ms: 300,
+      request: "the thread",
+      reference: "slack://T1/C1/1.2",
+      summary: "Ana: it failed",
+      sources: [{ title: "Ana in #deploys", url: "https://acme.slack.com/archives/C1/p12" }],
+      truncated: false,
+      withheld: false,
+    },
+  ],
+  tools: [
+    {
+      id: htu(R1, 2),
+      name: "call_agent",
+      at: at(2),
+      ms: 7000,
+      // As the platform records a delegation: the brief is its first message.
+      input: {
+        agent: "ops",
+        messages: [
+          { role: "user", content: [{ type: "text", text: "Find why the nightly deploy failed" }] },
+        ],
       },
-      7,
-    ),
-    ev("run.delta.tool.call.v1", { id: "x", name: "retry_deploy", phase: "requested" }, 7),
-    ev("run.resumed.v1", { answer: { question_id: "q", decision: "approve", by_name: "Ana" } }, 8),
-    ev("run.delta.tool.done.v1", { id: "x", result: "ok" }, 8),
+      output: "done",
+      withheld: false,
+    },
   ],
-};
-const loader: RunLoader = {
-  tree: async () => [root, ops, analyst],
-  events: async (id) => ({ events: events[id] ?? [] }),
+  children: [opsNode],
+});
+const traceOf = (nodes: TraceNode[], hidden = 0): MessageTrace => ({
+  message: "s_root",
+  nodes,
+  hidden,
+  truncated: false,
+});
+const byRun: Record<string, TraceNode> = { [R1]: rootNode, [R2]: opsNode, [R3]: analystNode };
+const loader: TraceLoader = {
+  trace: async (id) => {
+    assert.match(id, /^s_root:r/, "an answer is read at session:run");
+    const n = byRun[id.split(":")[1] ?? ""];
+    return traceOf(n ? [n] : []);
+  },
 };
 
-test("today's runs read as one response: agent calls nested, tools, approvals, answer, cost and model", () => {
-  const state = foldAll(runEvents(root, [root, ops, analyst], events));
+test("an answer's trace reads as one response: agent calls nested, tools, approvals, answer, cost and model", () => {
+  const state = foldAll(traceEvents(traceOf([rootNode])));
   assert.equal(state.status, "done");
   assert.equal(answerOf(state).text, "The token expired; ops rotated it.");
   const call = state.content.find((b) => b.type === "tool" && b.kind === "agent");
@@ -162,6 +200,25 @@ test("today's runs read as one response: agent calls nested, tools, approvals, a
   );
   assert.equal(state.costUsd, 0.012);
   assert.deepEqual(Object.keys(state.byModel ?? {}), ["anthropic/claude-sonnet"]);
+  // Ids are the platform's: the agent call takes its delegation's.
+  assert.equal(call.id, htu(R1, 2));
+  // A context read is its request and what it drew on.
+  const read = state.content.find((b) => b.type === "tool" && b.kind === "context");
+  assert.ok(read && read.type === "tool");
+  assert.equal(read.input.request, "the thread");
+  assert.deepEqual(read.result?.sources, [
+    { title: "Ana in #deploys", url: "https://acme.slack.com/archives/C1/p12" },
+  ]);
+});
+
+test("what the reader may not see stays private: withheld calls and hidden runs", () => {
+  const withheld = node(root, {
+    tools: [{ id: htu(R1, 1), name: "read_secret", at: at(1), ms: 5, withheld: true }],
+  });
+  const state = foldAll(traceEvents(traceOf([withheld], 2)));
+  const tool = state.tools[htu(R1, 1)];
+  assert.equal(tool?.hidden, true);
+  assert.equal(state.content.filter((b) => b.type === "hidden").length, 2);
 });
 
 test("under an answer: its chips, and Worked … that opens its activity", async () => {
@@ -173,7 +230,8 @@ test("under an answer: its chips, and Worked … that opens its activity", async
   assert.equal(worked.textContent, words.worked("14s", 2, 3));
   assert.deepEqual(
     [...refs.querySelectorAll("[data-chip]")].map((c) => c.textContent),
-    ["Deploy runbook"],
+    // What get_context pulled, then what the answer cites.
+    ["Ana in #deploys", "Deploy runbook"],
   );
   assert.equal(within(refs).queryByText(/\$0\.01/), null, "no cost inline");
   fireEvent.click(worked);
@@ -182,7 +240,7 @@ test("under an answer: its chips, and Worked … that opens its activity", async
 
 test("an answer that used no tool and called no one has no Worked", async () => {
   const alone = run(R1, { calls: 0 });
-  const quiet: RunLoader = { tree: async () => [alone], events: async () => ({ events: [] }) };
+  const quiet: TraceLoader = { trace: async () => traceOf([node(alone)]) };
   render(<AnswerRefs run={alone} eager loader={quiet} onActivity={() => {}} />);
   await screen.findByText("Deploy runbook");
   await new Promise((r) => setTimeout(r, 20));
@@ -251,21 +309,28 @@ test("a question two agents deep opens where it waits and is answered there", as
 });
 
 test("an approval waiting in today's runs is answered on its run, as the thread's card answers it", async () => {
-  const waitingRoot = run(R1, { status: "running", answer: undefined });
-  const parked = { ...ops, status: "parked" } as Run;
-  const waiting = {
-    ...events,
-    [R2]: (events[R2] ?? []).filter(
-      (e) =>
-        e.type !== "run.resumed.v1" &&
-        !(e.type === "run.delta.tool.done.v1" && (e.data as { id?: string }).id === "x"),
+  const waitingOps = {
+    ...opsNode,
+    status: "parked" as const,
+    ended_at: undefined,
+    answer: undefined,
+    tools: opsNode.tools.map((t) =>
+      t.name === "retry_deploy" ? { ...t, ms: undefined, output: undefined } : t,
     ),
+    approvals: [{ id: "q", tool: htu(R2, 2), action: "retry_deploy", decision: "ask" as const }],
+  };
+  const waitingRoot = {
+    ...rootNode,
+    status: "running" as const,
+    ended_at: undefined,
+    answer: undefined,
+    children: [waitingOps],
   };
   const net = stubFetch({ [`POST /api/runs/${R2}/questions/q/answer`]: () => ({}) });
   restore = net.restore;
   render(
     <ResponseActivityPanel
-      source={replaySource("w", runEvents(waitingRoot, [waitingRoot, parked, analyst], waiting))}
+      source={replaySource("w", traceEvents(traceOf([waitingRoot])))}
       onClose={() => {}}
     />,
   );
@@ -273,6 +338,9 @@ test("an approval waiting in today's runs is answered on its run, as the thread'
     (p) => p.getAttribute("data-status") === "awaiting_approval",
   );
   assert.ok(retry, "the retry waits on a person");
+  // Waiting two levels down shows on the agent call above it, so it is never hidden.
+  const opsCall = foldAll(traceEvents(traceOf([waitingRoot]))).tools[htu(R1, 2)];
+  assert.equal(opsCall?.attention?.status, "awaiting_approval");
   fireEvent.click(within(retry).getByRole("button", { name: "Approve" }));
   await waitFor(() => {
     const post = net.seen.find((r) => r.method === "POST");
@@ -392,7 +460,11 @@ test("a nested message opens at its own address under a breadcrumb, with its own
     updated_at: at(0),
     surface: { client: "acme", channel: "C1", ts: "1.2" },
   } as Thread;
-  const focus: FocusLoader = { ...loader, thread: async () => thread };
+  const focus: FocusLoader = {
+    ...loader,
+    tree: async () => [root, ops, analyst],
+    thread: async () => thread,
+  };
   const net = stubFetch({
     "GET /api/clients": () => ({ clients: [], caps: { max: 1, max_per_surface: 1 } }),
   });

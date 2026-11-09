@@ -23,7 +23,7 @@ import { Reference } from "./cards.tsx";
 import { took } from "./format.ts";
 import { ActivityLanes, AgentCallLane, outcomeOf } from "./ResponseActivity.tsx";
 import { OriginMark } from "./refChips.tsx";
-import { eventsOfRun, type RunLoader } from "./responseSource.ts";
+import { eventsOfTrace, type TraceLoader } from "./responseSource.ts";
 import {
   type Output,
   type SavedFile,
@@ -43,7 +43,7 @@ const words = defaultCopy.details;
 export const PANEL_RESPONSES = 20;
 
 /** Every answer of a session, folded from its stream, oldest first. */
-export function useSessionResponses(runs: Run[], loader?: RunLoader) {
+export function useSessionResponses(runs: Run[], loader?: TraceLoader) {
   const answers = runs.filter((r) => !r.parent).slice(-PANEL_RESPONSES);
   const key = answers.map((r) => `${r.id}:${r.status}`).join("|");
   const [states, setStates] = useState<ResponseState[]>();
@@ -52,7 +52,7 @@ export function useSessionResponses(runs: Run[], loader?: RunLoader) {
     let on = true;
     Promise.all(
       answers.map((r) =>
-        eventsOfRun(r, loader)
+        eventsOfTrace(r, loader)
           .then((events) => foldAll(events))
           .catch(() => undefined),
       ),
@@ -413,7 +413,7 @@ export function SessionDetailsPanel({
   leaving?: boolean;
   onClose: () => void;
   onOpenFile?: (artifactId: string) => void;
-  loader?: RunLoader;
+  loader?: TraceLoader;
   files?: (thread: string) => Promise<{ files: SavedFile[]; sandbox?: string }>;
 }) {
   const responses = useSessionResponses(runs, loader);
