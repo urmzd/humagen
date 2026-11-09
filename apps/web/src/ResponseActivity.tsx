@@ -15,7 +15,7 @@ import {
 import { ChevronRightIcon, MaximizeIcon } from "@humagen/render-web";
 import { Inspector } from "@humagen/web";
 import { useEffect, useRef, useState } from "react";
-import { call } from "./api.ts";
+import { api, call } from "./api.ts";
 import { took, usd } from "./format.ts";
 import { Chips, inApp } from "./refChips.tsx";
 import type { ResponseSource } from "./responseSource.ts";
@@ -193,15 +193,27 @@ function Ask({
   const q = tool.question;
   if (!q) return null;
   const choices = q.choices?.length ? q.choices : [words.approve, words.deny];
+  // A question that names its run is answered on that run, as the thread's
+  // own cards answer it; the message's answer route takes the rest.
+  const onRun = q.run && q.id ? { run: q.run, question: q.id } : undefined;
+  const canAnswer = !!onRun || !!messageId;
   const answer = async (choice: string) => {
-    if (!messageId) return;
+    if (!canAnswer) return;
     setBusy(true);
     setFailed(false);
+    const approval = q.kind === "approval";
+    const verdict = choice === choices[0] ? "approve" : "deny";
     try {
-      await call("POST", `/api/messages/${encodeURIComponent(messageId)}/answer`, {
-        tool_use_id: tool.id,
-        answer: q.kind === "approval" ? (choice === choices[0] ? "approve" : "deny") : choice,
-      });
+      if (onRun)
+        await api.answer({
+          ...onRun,
+          body: approval ? { action: verdict } : { action: "choose", choice },
+        });
+      else
+        await call("POST", `/api/messages/${encodeURIComponent(messageId ?? "")}/answer`, {
+          tool_use_id: tool.id,
+          answer: approval ? verdict : choice,
+        });
       onAnswered?.();
     } catch {
       setFailed(true);
@@ -220,7 +232,7 @@ function Ask({
           <button
             key={c}
             type="button"
-            disabled={busy || !messageId}
+            disabled={busy || !canAnswer}
             onClick={() => void answer(c)}
             className={`inline-flex h-8 items-center rounded-aui border px-3 text-aui-xs focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50 ${i === 0 ? "border-transparent bg-aui-fg text-aui-bg" : "border-aui-border text-aui-fg hover:bg-aui-hover"}`}
           >

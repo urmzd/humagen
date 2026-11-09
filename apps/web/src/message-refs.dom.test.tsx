@@ -250,6 +250,37 @@ test("a question two agents deep opens where it waits and is answered there", as
   );
 });
 
+test("an approval waiting in today's runs is answered on its run, as the thread's card answers it", async () => {
+  const waitingRoot = run(R1, { status: "running", answer: undefined });
+  const parked = { ...ops, status: "parked" } as Run;
+  const waiting = {
+    ...events,
+    [R2]: (events[R2] ?? []).filter(
+      (e) =>
+        e.type !== "run.resumed.v1" &&
+        !(e.type === "run.delta.tool.done.v1" && (e.data as { id?: string }).id === "x"),
+    ),
+  };
+  const net = stubFetch({ [`POST /api/runs/${R2}/questions/q/answer`]: () => ({}) });
+  restore = net.restore;
+  render(
+    <ResponseActivityPanel
+      source={replaySource("w", runEvents(waitingRoot, [waitingRoot, parked, analyst], waiting))}
+      onClose={() => {}}
+    />,
+  );
+  const retry = (await screen.findAllByTestId("activity-part")).find(
+    (p) => p.getAttribute("data-status") === "awaiting_approval",
+  );
+  assert.ok(retry, "the retry waits on a person");
+  fireEvent.click(within(retry).getByRole("button", { name: "Approve" }));
+  await waitFor(() => {
+    const post = net.seen.find((r) => r.method === "POST");
+    assert.equal(post?.path, `/api/runs/${R2}/questions/q/answer`);
+    assert.deepEqual(post?.body, { action: "approve" });
+  });
+});
+
 test("a stopped response says how it ended once, in plain words", async () => {
   const { WorkedButton } = await import("./ResponseActivity.tsx");
   const state = foldAll(responseStreams.stopped);
