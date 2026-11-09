@@ -23,7 +23,12 @@ import { Reference } from "./cards.tsx";
 import { took } from "./format.ts";
 import { ActivityLanes, AgentCallLane, outcomeOf } from "./ResponseActivity.tsx";
 import { OriginMark } from "./refChips.tsx";
-import { eventsOfTrace, type TraceLoader } from "./responseSource.ts";
+import {
+  defaultTraceLoader,
+  eventsOfTrace,
+  followTraces,
+  type TraceLoader,
+} from "./responseSource.ts";
 import {
   type Output,
   type SavedFile,
@@ -42,7 +47,7 @@ const words = defaultCopy.details;
 /** The most answers whose activity the panel reads, newest kept. */
 export const PANEL_RESPONSES = 20;
 
-/** Every answer of a session, folded from its stream, oldest first. */
+/** Every answer of a session, folded from its trace, oldest first, kept current while any runs. */
 export function useSessionResponses(runs: Run[], loader?: TraceLoader) {
   const answers = runs.filter((r) => !r.parent).slice(-PANEL_RESPONSES);
   const key = answers.map((r) => `${r.id}:${r.status}`).join("|");
@@ -50,19 +55,31 @@ export function useSessionResponses(runs: Run[], loader?: TraceLoader) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed by each answer's id and status.
   useEffect(() => {
     let on = true;
-    Promise.all(
-      answers.map((r) =>
-        eventsOfTrace(r, loader)
-          .then((events) => foldAll(events))
-          .catch(() => undefined),
-      ),
-    ).then((all) => on && setStates(all.filter((s): s is ResponseState => !!s)));
+    const read = () =>
+      Promise.all(
+        answers.map((r) =>
+          eventsOfTrace(r, loader)
+            .then((events) => foldAll(events))
+            .catch(() => undefined),
+        ),
+      ).then((all) => on && setStates(all.filter((s): s is ResponseState => !!s)));
+    void read();
+    // While an answer runs, its session's work is read again as it happens.
+    const thread = answers.find((r) => r.thread)?.thread;
+    const follow = (loader ?? defaultTraceLoader).follow;
+    const stop =
+      thread && follow && answers.some((r) => !ENDED_RUN.has(r.status))
+        ? followTraces(thread, () => true, read, follow)
+        : () => {};
     return () => {
       on = false;
+      stop();
     };
   }, [key, loader]);
   return states;
 }
+
+const ENDED_RUN = new Set(["completed", "failed", "stopped"]);
 
 type View =
   | { kind: "summary" }

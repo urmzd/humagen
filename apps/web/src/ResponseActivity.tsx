@@ -62,20 +62,29 @@ export function useResponse(source: ResponseSource | undefined) {
       setSaid(pending.current.join(". "));
       pending.current = [];
     };
+    const say = (what: string[]) => {
+      pending.current.push(...what);
+      if (pending.current.length && !timer)
+        timer = setTimeout(flush, Math.max(0, ANNOUNCE_MS - (Date.now() - last.current)));
+    };
     // Only a live stream is announced; a replayed one is read, not spoken.
     const speaks = !!source.live;
     const stop = source.open(
       (e) => {
         const before = snapshot(state.current);
         applyResponse(state.current, e);
-        if (speaks) {
-          pending.current.push(...changes(before as unknown as ResponseState, state.current));
-          if (pending.current.length && !timer)
-            timer = setTimeout(flush, Math.max(0, ANNOUNCE_MS - (Date.now() - last.current)));
-        }
+        if (speaks) say(changes(before as unknown as ResponseState, state.current));
         setVersion((v) => v + 1);
       },
       () => setEnded(true),
+      // The response read again: it replaces what came before, and what changed is said.
+      (events) => {
+        const next = emptyResponse();
+        for (const e of events) applyResponse(next, e);
+        say(changes(state.current, next));
+        state.current = next;
+        setVersion((v) => v + 1);
+      },
     );
     return () => {
       stop();
