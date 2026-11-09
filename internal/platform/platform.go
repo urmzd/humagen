@@ -295,6 +295,9 @@ type Config struct {
 
 // Platform is the assembled system.
 type Platform struct {
+	// systemTools is the registry's own tools and how its API operations
+	// reach the routes (systemtools.go).
+	systemTools systemRegistry
 	// renamedProviders notes, once per workspace and name, a stored model
 	// provider name read as the name it was renamed to (readProvider).
 	renamedProviders sync.Map
@@ -709,6 +712,9 @@ func New(cfg Config) (*Platform, error) {
 	p.asked = p.rt.StopRequested
 	if cfg.Stops != nil {
 		p.stops = stopFunc(cfg.Stops)
+	}
+	if err := p.registerOwnSystemTools(); err != nil {
+		return nil, err
 	}
 	return p, nil
 }
