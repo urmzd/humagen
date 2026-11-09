@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.100.0 (2026-11-09)
+
+### Features
+
+- **api**: one messages API for every surface (#277) ([759c9c7](https://github.com/urmzd/humagen/commit/759c9c7b577eb926754ecbfe06720d4fba0b2684))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.99.2...v0.100.0)
+
+
 ## 0.99.2 (2026-11-09)
 
 ### Bug Fixes
