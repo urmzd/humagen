@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.104.0 (2026-11-09)
+
+### Features
+
+- **messages**: answer what waits at a tool call by its tool_use_id (#300) ([671ed16](https://github.com/urmzd/humagen/commit/671ed16787969415b14dd6d48fd6c3dac5485908))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.103.0...v0.104.0)
+
+
 ## 0.103.0 (2026-11-09)
 
 ### Features
