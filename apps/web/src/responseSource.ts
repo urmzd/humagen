@@ -5,13 +5,13 @@
  * - `liveSource`: `GET /api/messages/{id}/stream?depth=all`, server-sent events,
  *   live while the response runs and replayed after.
  * - `replaySource`: a recorded stream, such as a fixture.
- * - `runSource`: until the message stream ships, today's run, its call tree and
- *   its events, sent as the stream would send them. It reads at most
- *   `RUN_SOURCE_CAP` runs' events; it goes when every response has a stream.
+ * - `traceSource`: an answer's trace (`GET /api/messages/{id}/trace`), sent
+ *   as its stream would send it. A snapshot, read again when the run's
+ *   status changes, until every response has a live stream.
  */
 import type { ResponseEvent } from "@humagen/core";
-import type { Run, RunEvent } from "./adapter.ts";
-import { api } from "./api.ts";
+import type { Run } from "./adapter.ts";
+import { api, type MessageTrace, type TraceApproval, type TraceNode } from "./api.ts";
 
 export type ResponseSource = {
   /** A stable key: the same key is the same stream. */
@@ -63,17 +63,54 @@ export function liveSource(messageId: string): ResponseSource {
   };
 }
 
-/** The most runs whose events `runSource` reads for one response. */
-export const RUN_SOURCE_CAP = 24;
+export type TraceLoader = { trace: (id: string) => Promise<MessageTrace> };
 
-export type RunLoader = {
-  tree: (id: string) => Promise<Run[]>;
-  events: (id: string) => Promise<{ events: RunEvent[] }>;
-};
-
-const runLoader: RunLoader = { tree: api.tree, events: api.runEvents };
+const traceLoader: TraceLoader = { trace: api.messageTrace };
 
 const ENDED = new Set(["completed", "failed", "stopped"]);
+
+/** An answer's address on the messages API: its session and its run. */
+export const messageIdOf = (run: Pick<Run, "id" | "thread">) =>
+  run.thread ? `${run.thread}:${run.id}` : run.id;
+
+/** An answer's trace, as its stream would send it. */
+export function traceSource(run: Run, loader: TraceLoader = traceLoader): ResponseSource {
+  return {
+    key: `trace:${run.id}:${run.status}`,
+    open: (onEvent, onEnd) => {
+      let live = true;
+      eventsOfTrace(run, loader)
+        .then((events) => {
+          if (!live) return;
+          for (const e of events) onEvent(e);
+        })
+        .catch(() => {})
+        .finally(() => live && onEnd());
+      return () => {
+        live = false;
+      };
+    },
+  };
+}
+
+// An ended run's trace does not change, so it is read once per page load.
+const read = new Map<string, Promise<ResponseEvent[]>>();
+
+export function eventsOfTrace(
+  run: Run,
+  loader: TraceLoader = traceLoader,
+): Promise<ResponseEvent[]> {
+  const key = `${run.id}:${run.status}`;
+  const cache = loader === traceLoader && ENDED.has(run.status);
+  const cached = cache ? read.get(key) : undefined;
+  if (cached) return cached;
+  const p = loader.trace(messageIdOf(run)).then(traceEvents);
+  if (cache) {
+    read.set(key, p);
+    p.catch(() => read.delete(key));
+  }
+  return p;
+}
 
 /**
  * The old ways one agent called another. Each became a run of its own, which
@@ -89,67 +126,14 @@ const DELEGATION = new Set([
 ]);
 const isDelegation = (name: string) => DELEGATION.has(name) || name.startsWith("tag_");
 
-/** Today's run and the runs it called, as the response stream sends them. */
-export function runSource(run: Run, loader: RunLoader = runLoader): ResponseSource {
-  return {
-    key: `run:${run.id}:${run.status}`,
-    open: (onEvent, onEnd) => {
-      let live = true;
-      eventsOfRun(run, loader)
-        .then((events) => {
-          if (!live) return;
-          for (const e of events) onEvent(e);
-        })
-        .catch(() => {})
-        .finally(() => live && onEnd());
-      return () => {
-        live = false;
-      };
-    },
-  };
-}
-
-// An ended run's stream does not change, so it is read once per page load.
-const read = new Map<string, Promise<ResponseEvent[]>>();
-
-export function eventsOfRun(run: Run, loader: RunLoader = runLoader): Promise<ResponseEvent[]> {
-  const key = `${run.id}:${run.status}`;
-  const cached = loader === runLoader && ENDED.has(run.status) ? read.get(key) : undefined;
-  if (cached) return cached;
-  const p = (async () => {
-    const all = await loader.tree(run.id).catch(() => [run]);
-    const tree = all.some((r) => r.id === run.id) ? all : [run, ...all];
-    const ids = under(run.id, tree).slice(0, RUN_SOURCE_CAP);
-    const got = await Promise.all(
-      ids.map((id) =>
-        loader
-          .events(id)
-          .then((r) => [id, r.events] as const)
-          .catch(() => [id, [] as RunEvent[]] as const),
-      ),
-    );
-    return runEvents(run, tree, Object.fromEntries(got));
-  })();
-  if (loader === runLoader && ENDED.has(run.status)) read.set(key, p);
-  return p;
-}
-
-/** The run and every run under it, parents first. */
-function under(root: string, runs: Run[]): string[] {
-  const out = [root];
-  for (let i = 0; i < out.length; i++)
-    for (const r of runs) if (r.parent === out[i] && !out.includes(r.id)) out.push(r.id);
-  return out;
-}
-
-const statusOf = (r: Run) =>
-  r.status === "completed"
+const statusOf = (s: TraceNode["status"]) =>
+  s === "completed"
     ? "done"
-    : r.status === "failed"
+    : s === "failed"
       ? "error"
-      : r.status === "stopped"
+      : s === "stopped"
         ? "stopped"
-        : r.status === "parked"
+        : s === "parked"
           ? "awaiting_input"
           : "running";
 
@@ -163,33 +147,58 @@ export function titleOf(text: string): string {
   return line.length > 60 ? `${line.slice(0, 59).trimEnd()}…` : line;
 }
 
+// What a delegation asked, from its arguments: a brief, or its first message's text.
+const BRIEF = ["brief", "task", "message", "text", "prompt", "request", "question"];
+const textOf = (content: unknown): string =>
+  typeof content === "string"
+    ? content
+    : Array.isArray(content)
+      ? content
+          .map((p) => (typeof p?.text === "string" ? p.text : ""))
+          .filter(Boolean)
+          .join("\n")
+      : "";
+const briefOf = (input?: Record<string, unknown>) => {
+  for (const k of BRIEF) if (typeof input?.[k] === "string" && input[k]) return input[k] as string;
+  const messages = Array.isArray(input?.messages) ? input.messages : [];
+  for (const m of messages) {
+    const text = textOf(m?.content);
+    if (text) return text;
+  }
+  return "";
+};
+
 /**
- * A run and the runs under it as stream events: the run's tool calls and the
- * agents it called are tool calls in its scope, in the order they started;
- * each called run's own work is nested under its call; the run's answer is its
- * text, last. Every tool id is `htu_<run>_<n>`, as the platform mints them.
+ * A message's trace as stream events: each run's tool calls, context reads
+ * and the runs it called are calls in its scope, in the order they started;
+ * a called run's own work is nested under its call; a run's answer is its
+ * text, last. Ids are the platform's (`htu_<run>_<seq>`), so a trace and a
+ * live stream name the same call the same way. Runs the reader may not read
+ * are private steps.
  */
-export function runEvents(
-  root: Run,
-  runs: Run[],
-  events: Record<string, readonly RunEvent[]>,
-): ResponseEvent[] {
-  const t0 = Date.parse(root.created_at);
+export function traceEvents(trace: MessageTrace): ResponseEvent[] {
+  const [root, ...rest] = trace.nodes;
+  if (!root) return [];
+  const t0 = Date.parse(root.started_at);
   const ms = (iso?: string) => (iso ? Math.max(0, Date.parse(iso) - t0) : undefined);
   const out: ResponseEvent[] = [
     {
       type: "message_start",
       t_ms: 0,
       message: {
-        id: root.id,
+        id: root.run,
         role: "assistant",
         content: [],
-        humagen: { root_run: root.id, agent: root.agent },
+        humagen: { root_run: root.run, agent: root.agent },
       },
     },
   ];
+  const models: Record<string, object> = {};
 
-  const scope = (run: Run, parent: string | undefined, depth: number) => {
+  const scope = (node: TraceNode, above: string[], extra: TraceNode[] = [], hidden = 0) => {
+    const parent = above[above.length - 1];
+    const depth = above.length;
+    if (node.model) models[node.model] = {};
     const emit = (e: ResponseEvent) =>
       out.push(
         parent
@@ -197,110 +206,110 @@ export function runEvents(
               type: "humagen.nested",
               t_ms: e.t_ms,
               parent_tool_use_id: parent,
-              agent_run_id: run.id,
+              agent_run_id: node.run,
               depth,
               event: e,
             }
           : e,
       );
-    const status = (id: string, s: string, at?: string, extra: Record<string, unknown> = {}) =>
+    const status = (id: string, s: string, at?: string, more: Record<string, unknown> = {}) =>
       out.push({
         type: "humagen.tool_status",
         t_ms: ms(at),
         tool_use_id: id,
-        path: [id],
+        path: [...above, id],
         status: s,
-        ...extra,
+        ...more,
       });
+    const ended = ENDED.has(node.status);
+    const asked = (a: TraceApproval) => ({
+      kind: "approval",
+      prompt: a.action,
+      choices: ["Approve", "Deny"],
+      id: a.id,
+      run: node.run,
+    });
+    // An approval as its call's status: waiting, or how it was decided.
+    const decide = (id: string, a: TraceApproval) => {
+      if (a.decision === "ask")
+        status(id, ended ? "stopped" : "awaiting_approval", a.at, {
+          ...(ended ? {} : { question: asked(a) }),
+        });
+      else
+        status(id, a.decision === "deny" ? "denied" : "running", a.at, {
+          ...(a.by
+            ? { decided_by: a.by, decision: a.decision === "deny" ? "deny" : "approve" }
+            : {}),
+        });
+    };
     let index = 0;
-    let n = 0;
-    if (run.picked)
+    if (node.pick?.reason)
       emit({
         type: "content_block_start",
         index: index++,
-        content_block: { type: "thinking", thinking: run.picked },
+        content_block: { type: "thinking", thinking: node.pick.reason },
       });
+    for (let i = 0; i < hidden; i++)
+      emit({ type: "content_block_start", index: index++, content_block: { type: "redacted" } });
 
-    // What happened in this run, in time order: its tool calls and the runs it called.
+    // Each called run takes the id of the delegation that started it.
+    const delegations = node.tools.filter((t) => isDelegation(t.name));
+    const used = new Set<string>();
+    const callOf = (child: TraceNode) => {
+      const free = delegations.filter((d) => !used.has(d.id));
+      const hit =
+        free.find((d) => d.input?.agent === child.agent) ??
+        free.find((d) => d.at <= child.started_at) ??
+        free[0];
+      if (hit) used.add(hit.id);
+      return hit;
+    };
     type Step =
-      | { at: string; kind: "call"; id: string; name: string; input?: unknown; done?: RunEvent }
-      | { at: string; kind: "agent"; child: Run };
-    const steps: Step[] = [];
-    const calls = new Map<string, Step & { kind: "call" }>();
-    const approvals: { id: string; tool?: string; at: string; prompt: string }[] = [];
-    const answers = new Map<string, { decision?: string; by?: string; at: string }>();
-    for (const e of events[run.id] ?? []) {
-      if (e.type === "run.delta.tool.call.v1") {
-        if (isDelegation(e.data.name)) continue;
-        if (!calls.has(e.data.id)) {
-          const step = {
-            at: e.time,
-            kind: "call" as const,
-            id: e.data.id,
-            name: e.data.name,
-            input: e.data.arguments,
-          };
-          calls.set(e.data.id, step);
-          steps.push(step);
-        }
-      } else if (e.type === "run.delta.tool.done.v1") {
-        if (isDelegation(e.data.name ?? "")) continue;
-        const step = calls.get(e.data.id);
-        if (step) step.done = e;
-        else {
-          const s = {
-            at: e.time,
-            kind: "call" as const,
-            id: e.data.id,
-            name: e.data.name ?? "",
-            done: e as RunEvent,
-          };
-          calls.set(e.data.id, s);
-          steps.push(s);
-        }
-      } else if (e.type === "run.parked.v1" && e.data.question?.kind === "approval") {
-        const q = e.data.question;
-        approvals.push({
-          id: q.id,
-          tool: q.tool?.call_id ?? q.tool?.name,
-          at: q.at ?? e.time,
-          prompt: q.prompt,
-        });
-      } else if (e.type === "run.resumed.v1" && e.data.answer) {
-        const a = e.data.answer;
-        answers.set(a.question_id, {
-          decision: a.decision,
-          by: a.by_name || a.by,
-          at: a.at ?? e.time,
-        });
-      }
-    }
-    for (const child of runs)
-      if (child.parent === run.id) steps.push({ at: child.created_at, kind: "agent", child });
-    steps.sort((a, b) => a.at.localeCompare(b.at));
+      | { at: string; kind: "tool"; tool: TraceNode["tools"][number] }
+      | { at: string; kind: "context"; read: TraceNode["context"][number] }
+      | { at: string; kind: "agent"; child: TraceNode };
+    const steps: Step[] = [
+      ...node.tools
+        .filter((t) => !isDelegation(t.name))
+        .map((tool) => ({ at: tool.at, kind: "tool" as const, tool })),
+      ...node.context.map((read) => ({ at: read.at, kind: "context" as const, read })),
+      ...[...node.children, ...extra].map((child) => ({
+        at: child.started_at,
+        kind: "agent" as const,
+        child,
+      })),
+    ].sort((a, b) => a.at.localeCompare(b.at));
+    const gated = new Set<string>();
+    const approvalOf = (id: string) => {
+      const a = node.approvals.find((x) => x.tool === id);
+      if (a) gated.add(a.id);
+      return a;
+    };
 
     for (const step of steps) {
-      const id = `htu_${run.id}_${++n}`;
       if (step.kind === "agent") {
         const c = step.child;
+        const call = callOf(c);
+        const id = call?.id ?? `htu_${node.run}_${c.run}`;
+        const title = titleOf(briefOf(call?.input));
         emit({
           type: "content_block_start",
-          t_ms: ms(c.created_at),
+          t_ms: ms(c.started_at),
           index: index++,
           content_block: {
             type: "server_tool_use",
             id,
             name: "agent",
             kind: "agent",
-            title: titleOf(c.text),
-            input: { agent: c.agent, title: titleOf(c.text), brief: c.text },
+            ...(title ? { title } : {}),
+            input: { agent: c.agent, ...(title ? { title, brief: briefOf(call?.input) } : {}) },
           },
         });
-        scope(c, id, depth + 1);
-        if (ENDED.has(c.status)) {
+        scope(c, [...above, id]);
+        if (ENDED.has(c.status))
           emit({
             type: "content_block_start",
-            t_ms: ms(c.updated_at),
+            t_ms: ms(c.ended_at),
             index: index++,
             content_block: {
               type: "server_tool_result",
@@ -308,7 +317,7 @@ export function runEvents(
               is_error: c.status !== "completed",
               content: [
                 { type: "text", text: c.answer ?? c.error ?? "" },
-                ...(c.citations ?? []).map((x) => ({
+                ...c.sources.map((x) => ({
                   type: "search_result",
                   source: x.url ?? "",
                   title: x.title,
@@ -317,85 +326,123 @@ export function runEvents(
               ],
             },
           });
-        }
-        status(id, statusOf(c), c.updated_at, {
-          elapsed_ms: Math.max(0, Date.parse(c.updated_at) - Date.parse(c.created_at)),
-          title: titleOf(c.text),
+        status(id, statusOf(c.status), c.ended_at ?? c.started_at, {
+          elapsed_ms: c.ms,
+          ...(title ? { title } : {}),
         });
         continue;
       }
-      const kind = step.name === "get_context" ? "context" : "tool";
+      if (step.kind === "context") {
+        const r = step.read;
+        emit({
+          type: "content_block_start",
+          t_ms: ms(r.at),
+          index: index++,
+          content_block: {
+            type: "server_tool_use",
+            id: r.id,
+            name: "get_context",
+            kind: "context",
+            input: r.withheld ? {} : { request: r.request },
+            ...(r.withheld ? { humagen_redacted: true } : {}),
+          },
+        });
+        const a = approvalOf(r.id);
+        if (a) decide(r.id, a);
+        if (r.ms !== undefined || r.error) {
+          emit({
+            type: "content_block_start",
+            index: index++,
+            content_block: {
+              type: "server_tool_result",
+              tool_use_id: r.id,
+              is_error: !!r.error,
+              content: r.error
+                ? r.error
+                : [
+                    { type: "text", text: r.summary },
+                    ...r.sources.map((x) => ({
+                      type: "search_result",
+                      source: x.url ?? "",
+                      title: x.title,
+                      content: [],
+                    })),
+                  ],
+            },
+          });
+          status(r.id, r.error ? "error" : "done", r.at, { elapsed_ms: r.ms ?? 0 });
+        }
+        continue;
+      }
+      const t = step.tool;
       emit({
         type: "content_block_start",
-        t_ms: ms(step.at),
+        t_ms: ms(t.at),
+        index: index++,
+        content_block: {
+          type: "server_tool_use",
+          id: t.id,
+          name: t.name,
+          kind: "tool",
+          input: t.input ?? {},
+          ...(t.withheld ? { humagen_redacted: true } : {}),
+        },
+      });
+      const a = approvalOf(t.id);
+      if (a) decide(t.id, a);
+      if (t.ms !== undefined || t.error) {
+        emit({
+          type: "content_block_start",
+          index: index++,
+          content_block: {
+            type: "server_tool_result",
+            tool_use_id: t.id,
+            is_error: !!t.error,
+            content: t.error ?? t.output ?? "",
+          },
+        });
+        status(t.id, t.error ? "error" : "done", t.at, { elapsed_ms: t.ms ?? 0 });
+      } else if (ended && !a) status(t.id, "stopped", node.ended_at);
+    }
+    // An approval that gates no call shown is a call of its own.
+    for (const a of node.approvals) {
+      if (gated.has(a.id)) continue;
+      const id = a.tool ?? `htu_${node.run}_q_${a.id}`;
+      emit({
+        type: "content_block_start",
+        t_ms: ms(a.at),
         index: index++,
         content_block: {
           type: "server_tool_use",
           id,
-          name: step.name,
-          kind,
-          input: step.input ?? {},
+          name: a.action,
+          kind: "approval",
+          title: a.action,
+          input: {},
         },
       });
-      const approval = approvals.find((a) => a.tool === step.id || a.tool === step.name);
-      if (approval) {
-        const answered = answers.get(approval.id);
-        status(
-          id,
-          answered ? (answered.decision === "deny" ? "denied" : "running") : "awaiting_approval",
-          answered?.at ?? approval.at,
-          {
-            question: answered
-              ? undefined
-              : {
-                  kind: "approval",
-                  prompt: approval.prompt,
-                  choices: ["Approve", "Deny"],
-                  id: approval.id,
-                  run: run.id,
-                },
-            ...(answered?.by ? { decided_by: answered.by, decision: answered.decision } : {}),
-          },
-        );
-      }
-      const done = step.done?.type === "run.delta.tool.done.v1" ? step.done.data : undefined;
-      if (done) {
-        emit({
-          type: "content_block_start",
-          t_ms: ms(step.done?.time),
-          index: index++,
-          content_block: {
-            type: "server_tool_result",
-            tool_use_id: id,
-            is_error: !!done.error,
-            content: done.error ?? done.result ?? "",
-          },
-        });
-        status(id, done.error ? "error" : "done", step.done?.time, {
-          elapsed_ms: Math.max(0, Date.parse(step.done?.time ?? step.at) - Date.parse(step.at)),
-        });
-      }
+      decide(id, a);
+      if (a.decision === "allow") status(id, "done", a.at);
     }
     // The run's answer is its text, after its work.
-    if (run.answer || (parent === undefined && run.status === "failed" && run.error)) {
+    if (node.answer || (!parent && node.status === "failed" && node.error))
       emit({
         type: "content_block_start",
-        t_ms: ms(run.updated_at),
+        t_ms: ms(node.ended_at),
         index: index++,
         content_block: {
           type: "text",
-          text: run.answer ?? "",
-          citations: (run.citations ?? []).map((c) => ({ title: c.title, url: c.url })),
+          text: node.answer ?? "",
+          citations: node.sources.map((c) => ({ title: c.title, url: c.url })),
         },
       });
-    }
   };
 
-  scope(root, undefined, 0);
+  scope(root, [], rest, trace.hidden);
   if (ENDED.has(root.status)) {
     out.push({
       type: "message_delta",
-      t_ms: ms(root.updated_at),
+      t_ms: ms(root.ended_at),
       delta: {
         stop_reason:
           root.status === "completed"
@@ -405,23 +452,14 @@ export function runEvents(
               : "failed",
       },
     });
-    const cost = root.usage?.total?.cost;
-    const models: Record<string, object> = {};
-    for (const list of Object.values(events))
-      for (const e of list)
-        if (e.type === "run.usage.v1" && e.data.model) models[e.data.model] = {};
     out.push({
       type: "humagen.usage",
       by_model: models,
-      ...(cost && (cost.currency || "USD") === "USD"
-        ? { cost_usd: cost.micros / 1_000_000 }
-        : root.spent
-          ? { cost_usd: root.spent / 1_000_000 }
-          : {}),
+      ...(root.cost ? { cost_usd: root.cost / 1_000_000 } : {}),
     });
     if (root.status === "failed" && root.error)
       out.push({ type: "error", error: { message: root.error } });
-    out.push({ type: "message_stop", t_ms: ms(root.updated_at) });
+    out.push({ type: "message_stop", t_ms: ms(root.ended_at) });
   }
   return out;
 }

@@ -201,18 +201,17 @@ function Ask({
     if (!canAnswer) return;
     setBusy(true);
     setFailed(false);
-    const approval = q.kind === "approval";
-    const verdict = choice === choices[0] ? "approve" : "deny";
+    // Both routes take the same answer.
+    const body =
+      q.kind === "approval"
+        ? { action: choice === choices[0] ? ("approve" as const) : ("deny" as const) }
+        : { action: "choose" as const, choice };
     try {
-      if (onRun)
-        await api.answer({
-          ...onRun,
-          body: approval ? { action: verdict } : { action: "choose", choice },
-        });
+      if (onRun) await api.answer({ ...onRun, body });
       else
         await call("POST", `/api/messages/${encodeURIComponent(messageId ?? "")}/answer`, {
           tool_use_id: tool.id,
-          answer: approval ? verdict : choice,
+          answer: body,
         });
       onAnswered?.();
     } catch {

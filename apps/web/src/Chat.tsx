@@ -38,7 +38,7 @@ import { ThreadRoom, topicsOf } from "./Room.tsx";
 import { RunFeedbackHost } from "./RunFeedback.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
-import { runSource } from "./responseSource.ts";
+import { traceSource } from "./responseSource.ts";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { Scroller } from "./Scroller.tsx";
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
@@ -1249,7 +1249,7 @@ export function Chat({
             const run = turns.find((t) => t.id === shownView.run);
             return run ? (
               <ResponseActivityPanel
-                source={runSource(run)}
+                source={traceSource(run)}
                 leaving={leaving}
                 onClose={() => openPanel()}
               />
