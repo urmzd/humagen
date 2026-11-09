@@ -319,6 +319,8 @@ type Platform struct {
 	picks *state.Table[pickRecord]
 	// audiences is the latest audience of each surface root (surface_sessions.go).
 	audiences *state.Table[SessionAudience]
+	// contexts are get_context's resolvers by place scheme (context.go).
+	contexts contextResolvers
 	// deliveries is where each surface root answers (messages.go).
 	deliveries *state.Table[rootDelivery]
 	// health is the last health report and each component's recent checks.

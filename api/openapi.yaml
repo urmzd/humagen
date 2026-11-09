@@ -266,6 +266,116 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/ServerError"
+  /api/messages/{id}/feedback:
+    post:
+      operationId: "rateMessage"
+      tags:
+        - "messages"
+      summary: "Rate a message"
+      description: "Rates an agent's message (id is session:run): up or down with an optional note, one rating per person per message, saved again in place. Surfaces send reactions and buttons here."
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageFeedbackInput"
+      responses:
+        "200":
+          description: "The rating as kept"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunFeedback"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/messages/{id}/stop:
+    post:
+      operationId: "stopMessage"
+      tags:
+        - "messages"
+      summary: "Stop a message's work"
+      description: "Stops the work beneath a message's session; with children, its child sessions' work too."
+      x-permission: "runs:write"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                children: {type: boolean}
+      responses:
+        "204":
+          description: "Stopping"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/messages/{id}/context:
+    post:
+      operationId: "getMessageContext"
+      tags:
+        - "messages"
+      summary: "Get context"
+      description: |
+        Pulls context from the place the message's session came from (the
+        Slack thread or channel, the GitHub pull request or issue, a page),
+        for what is asked in words. The place is the session's origin, never
+        chosen by the caller. Resolvers read with the server's access and
+        answer only what the place's audience may read. note says why nothing
+        could be pulled, when nothing could.
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [request]
+              properties:
+                request: {type: string, maxLength: 2000}
+      responses:
+        "200":
+          description: "What was pulled"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContextResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
   /api/messages/{id}/stream:
     get:
       operationId: "streamMessage"
@@ -17366,6 +17476,32 @@ components:
         source_alert:
           type: string
           description: The readable session alert that anchors this fix conversation.
+    MessageFeedbackInput:
+      type: object
+      additionalProperties: false
+      required: [rating]
+      properties:
+        rating: {type: string, enum: [up, down]}
+        note: {type: string, maxLength: 4000}
+    ContextResult:
+      description: What get_context pulled, from which place, and what it drew on.
+      type: object
+      additionalProperties: false
+      required: [origin, text, sources]
+      properties:
+        origin: {type: string, description: "The place it was pulled from: the session's origin address."}
+        text: {type: string}
+        sources:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [title]
+            properties:
+              title: {type: string}
+              url: {type: string}
+        truncated: {type: boolean}
+        note: {type: string}
     MessagesInput:
       description: People's messages from one origin. Who said them is the caller.
       type: object

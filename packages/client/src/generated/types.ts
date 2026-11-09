@@ -4710,6 +4710,21 @@ export interface SessionIdentity {
   source_alert?: string;
 }
 
+export interface MessageFeedbackInput {
+  rating: "up" | "down";
+  note?: string;
+}
+
+/** What get_context pulled, from which place, and what it drew on. */
+export interface ContextResult {
+  /** The place it was pulled from: the session's origin address. */
+  origin: string;
+  text: string;
+  sources: ContextResultSourcesItem[];
+  truncated?: boolean;
+  note?: string;
+}
+
 /** People's messages from one origin. Who said them is the caller. */
 export interface MessagesInput {
   messages: InMessage[];
@@ -5460,6 +5475,19 @@ export interface ClientViewCredentials {
 export interface ManifestUsage {
   metered: boolean;
   total: Usage;
+}
+
+export interface ContextResultSourcesItem {
+  title: string;
+  url?: string;
+}
+
+export interface StopMessageBody {
+  children?: boolean;
+}
+
+export interface GetMessageContextBody {
+  request: string;
 }
 
 export interface SaveSessionFeedbackBody {
