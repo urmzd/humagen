@@ -306,6 +306,16 @@ sources, its graph (stale and unowned documents) or its types (proposals). The l
 and facts retired with their source are applied as the graph rebuilds.
 `(*Platform).MaintainKnowledge` runs one pass.
 
+### Corpora a project attaches
+
+A project's context names corpora (`GET` and `PUT /api/projects/{name}/corpora`,
+see [projects.md](projects.md)). A session filed in a project reaches the
+corpora its project chain attaches, nearest first, as if they were granted
+to its agent, by the same rules of label and audience. Attaching makes nobody
+a reader, and a restricted corpus is reached only through its own grant,
+which takes an admin and a purpose. The list is read when a tool runs, so a
+change to a project's context applies to the next call.
+
 ### Retrieval evals
 
 A corpus's search is evaluated beside its agents: an eval suite with

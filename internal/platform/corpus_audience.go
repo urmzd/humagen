@@ -209,8 +209,9 @@ func (p *Platform) shownCorpora(req runtime.Request, a corpusAudience) ([]corpor
 	}
 	var shown []corpora.Corpus
 	held := 0
+	attached := p.attachedCorpora(req)
 	for _, c := range all {
-		if !c.Grants(req.Agent()) {
+		if !reaches(req, attached, c) {
 			continue
 		}
 		switch {
@@ -221,6 +222,28 @@ func (p *Platform) shownCorpora(req runtime.Request, a corpusAudience) ([]corpor
 		}
 	}
 	return shown, held, nil
+}
+
+// attachedCorpora are the corpora a run's project chain attaches, nearest
+// first (projects.Tree.Corpora), read when a tool runs. Attaching a corpus
+// makes nobody its reader: what each person may see is still checked.
+func (p *Platform) attachedCorpora(req runtime.Request) []string {
+	run, err := p.Runs.Get(req.Tenant, req.RunID)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, c := range p.Projects.Tree(req.Tenant).Corpora(p.RunPlace(req.Tenant, run).Project) {
+		out = append(out, c.Name)
+	}
+	return out
+}
+
+// reaches reports whether a run may use a corpus: one granted to its agent,
+// or one its project chain attaches. A restricted corpus is reached only
+// through its grant, which took an admin and a purpose.
+func reaches(req runtime.Request, attached []string, c corpora.Corpus) bool {
+	return c.Grants(req.Agent()) || (c.Label != corpora.Restricted && slices.Contains(attached, c.Name))
 }
 
 // corporaHeldBack is what a tool tells the agent about corpora it could not use
