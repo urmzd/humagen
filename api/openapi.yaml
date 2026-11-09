@@ -15675,7 +15675,8 @@ components:
 
     EvalTarget:
       type: string
-      enum: [agent, knowledge]
+      description: "`corpus` scores a corpus's search as an agent runs it, with the access of whoever starts the run; its cases name the documents (by title) a query should return."
+      enum: [agent, knowledge, corpus]
     EvalCheck:
       description: A deterministic check on an agent's output.
       type: object

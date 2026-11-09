@@ -306,6 +306,17 @@ sources, its graph (stale and unowned documents) or its types (proposals). The l
 and facts retired with their source are applied as the graph rebuilds.
 `(*Platform).MaintainKnowledge` runs one pass.
 
+### Retrieval evals
+
+A corpus's search is evaluated beside its agents: an eval suite with
+`target: corpus` names the corpus, and each case a query and the documents
+(by title) it should return. A run scores the same search agents run (fused,
+deduplicated, graph retrieval when the corpus has it, no live member, so a
+suite never spends anyone's credential) with the access of whoever starts it,
+and reports hit rate, MRR, recall, precision and nDCG at `k`. Suites run on
+demand or on a schedule (`every_seconds`) and alert like any other suite. Only
+someone who may read the corpus makes or runs one.
+
 ### Sensitivity
 
 Every corpus has a label: `public`, `internal` (the default), `confidential`
