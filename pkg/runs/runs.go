@@ -266,6 +266,10 @@ type Run struct {
 	Parent string    `json:"parent,omitempty"`
 	Depth  int       `json:"depth"`
 	Mode   call.Mode `json:"mode,omitempty"`
+	// CallID is the API's id for the caller's tool call that started this
+	// run (htu_<run>_<n>): the call its activity streams under, and the one
+	// questions and stops name. Empty on a root.
+	CallID string `json:"call_id,omitempty"`
 	// Lifecycle is set on a run another run called.
 	Lifecycle Lifecycle `json:"lifecycle,omitempty"`
 	// Schedule names the schedule that raised the run, if one did.
@@ -548,7 +552,7 @@ func (x *Index) Record(runID string, tag event.Envelope, rev int) error {
 			ID:        runID, TagID: tag.ID, Tenant: tag.Tenant, Agent: wire.AgentOf(tag), Rev: rev, Origin: wire.Origin(tag),
 			Text: text, Input: input, Actor: wire.ActorOf(tag), Thread: thread, Prev: prev, Picked: picked, Routed: routed, Project: project, Within: slices.Clone(within), Client: client,
 			Channel: channel, Message: message,
-			Root: root, Parent: parent, Depth: edge.Depth, Mode: edge.Mode, Lifecycle: lifecycleOf(parent, edge.Mode),
+			Root: root, Parent: parent, Depth: edge.Depth, Mode: edge.Mode, CallID: edge.CallID, Lifecycle: lifecycleOf(parent, edge.Mode),
 			Lease: edge.Lease, Schedule: schedule,
 			Status: Accepted, CreatedAt: tag.Time, UpdatedAt: tag.Time,
 			tag: tag, observedBy: x.instance,

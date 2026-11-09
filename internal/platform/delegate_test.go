@@ -150,7 +150,7 @@ func (t *talker) Stream(ctx context.Context, req saigetypes.Request) (<-chan sai
 }
 
 func tagging(agent, text string) []saigetypes.Delta {
-	return agenttest.ToolCallResponse("call-"+agent, platform.ToolCallAgent, map[string]any{"agent": agent, "messages": []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": text}}}}, "response_format": map[string]any{"type": "text"}})
+	return agenttest.ToolCallResponse("call-"+agent, platform.ToolAgent, map[string]any{"agent": agent, "title": "Ask " + agent, "brief": text})
 }
 
 func say(text string) []saigetypes.Delta { return agenttest.TextResponse(text) }

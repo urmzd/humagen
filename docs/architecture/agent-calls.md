@@ -1,12 +1,27 @@
 # Agent calls
 
-A task has one answering agent. That agent can ask helpers for work through
-`call_agent`. Helpers receive a fresh, explicitly constructed conversation and
-return material for the caller to use. The caller owns the user-facing answer.
-A helper's full result stays available in execution history; its step in the
-conversation shows completion rather than repeating the result as a preview.
+A task has one answering agent. That agent brings in other agents with the
+`agent` tool: `{agent, title, brief}`. The title is a few imperative words (at
+most 60 characters) shown on the call's card; the brief is everything the agent
+is told. Each call runs the agent as a child run of the caller that carries the
+call's id (`call_id`, `htu_<run>_<n>`), so its work streams under the call, and
+its answer is the call's result. The caller owns the user-facing answer.
+Parallel agents are parallel calls.
+
+`Access.Spawn` grants the tool: an agent that may call others has it without
+listing it. Stopping the caller stops the child, the child's spend counts
+toward the caller, and a call the callee's policy holds waits for a person. A
+revision that still names `call_agent`, the tool's earlier form, is read as
+granting the agent tool, and an approval it required is required of the agent
+tool. A client of the humagen MCP makes no agent call of its own: it posts a
+message (`send_messages`), which starts a run.
 
 ## Constructing input
+
+A program that holds a run calls helpers with a constructed conversation and a
+return format through `POST /api/runs/{id}/calls`. Helpers receive exactly that
+conversation and return material for the caller to use. A helper's full result
+stays available in execution history.
 
 ```json
 {
@@ -89,7 +104,7 @@ one execution slot available so a chain of helpers cannot occupy every slot
 while waiting. Attached work stops with its caller; delegated work is independent.
 A return format never changes these lifecycle or delivery rules.
 
-`call_agent` offers a run only the agents available where its calls are filed:
+The agent tool offers a run only the agents available where its calls are filed:
 one that lives elsewhere would be refused, and the run's readers may not read
 it. An agent that lives in a project a reader may not read is left out of the
 spawn list and the call policy lists they read. Naming one when they write
@@ -98,7 +113,7 @@ through the calls endpoint is refused as one the spawn allowlist does not
 name, and saving what they read keeps what they were not shown (see
 [security](security.md)).
 
-The low-level API's existing `handoff` mode is not exposed by `call_agent`.
+The low-level API's existing `handoff` mode is not exposed by the agent tool.
 A real handoff needs explicit answer ownership transfer and caller termination;
 selecting a return format does neither.
 

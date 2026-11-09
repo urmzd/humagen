@@ -89,7 +89,7 @@ func (p *Platform) CallApproved(ctx context.Context, tenant, runID string, req c
 	return p.call(withApprovedCall(ctx, req.Agent), tenant, runID, req, false, nil)
 }
 
-// CallTargets is what the call_agent tool offers a caller's run.
+// CallTargets is what the agent tool offers a caller's run.
 func (p *Platform) CallTargets(tenant, runID, caller string, spawn []string) []string {
 	return p.callTargets(tenant, runID, caller, spawn)
 }
@@ -97,8 +97,8 @@ func (p *Platform) CallTargets(tenant, runID, caller string, spawn []string) []s
 // CallToolApproval asks the call tool a turn would get whether a call needs
 // approval, as the runtime's approval gate does.
 func (p *Platform) CallToolApproval(req runtime.Request, args map[string]any) (native.ApprovalRequest, bool) {
-	t := p.callAgentTool(req, func(event.Action) error { return nil })
-	return t.(native.Approving).Approval(saigetypes.ToolCallPart{Name: ToolCallAgent, Arguments: args})
+	t := p.agentTool(req, func(event.Action) error { return nil })
+	return t.(native.Approving).Approval(saigetypes.ToolCallPart{Name: ToolAgent, Arguments: args})
 }
 
 // LandFor is who answers an untagged message a client raised where nothing

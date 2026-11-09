@@ -466,6 +466,11 @@ func (s AgentSpec) ValidateAccepting(providers []string, accept func(string) boo
 		if target, ok := strings.CutPrefix(name, "tag_"); ok && slices.Contains(c.Access.Spawn, target) {
 			granted = true
 		}
+		// The agent tool is Access.Spawn's grant: every agent the spec may
+		// call is called through it.
+		if (name == AgentTool || name == legacyCallTool) && len(c.Access.Spawn) > 0 {
+			granted = true
+		}
 		// A group's members are known only to a deployment, so a tool that
 		// may come from a granted group passes here. Building the agent
 		// checks it against the expanded grant and refuses to run an
@@ -643,3 +648,10 @@ func addressable(name string) error {
 	}
 	return runtime.CheckRun(name, "x")
 }
+
+// AgentTool is the tool an agent calls the agents in its Access.Spawn with.
+// Access.Spawn grants it, so a spec need not list it in Tools.
+const AgentTool = "agent"
+
+// legacyCallTool is the agent tool's name before it was the agent tool.
+const legacyCallTool = "call_agent"

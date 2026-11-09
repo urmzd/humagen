@@ -713,6 +713,7 @@ func New(cfg Config) (*Platform, error) {
 	if cfg.Stops != nil {
 		p.stops = stopFunc(cfg.Stops)
 	}
+	p.SetAgentCaller(p.runAgentCall)
 	if err := p.registerOwnSystemTools(); err != nil {
 		return nil, err
 	}
@@ -753,7 +754,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error
 		// An agent's declared sources ground its turns, searched in the
 		// run's tenant.
 		runtime.WithKnowledge(p.knowledgeFor),
-		runtime.WithCallTool(ToolCallAgent),
+		runtime.WithCallTool(ToolAgent),
 		// Each turn claims the instance its tools execute in.
 		runtime.WithRunInstances(p.runInstances),
 		// A run waiting on an attached run of the same agent holds one of
