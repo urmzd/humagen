@@ -3371,7 +3371,7 @@ export interface Span {
 /** `budget` is raised by a billing policy, never by a rule, and a rule
 cannot be created with it.
  */
-export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "spend" | "budget" | "session" | "mention" | "source" | "approval" | "clarification" | "failure" | "operation" | "alert" | "connection";
+export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "spend" | "budget" | "session" | "mention" | "source" | "approval" | "clarification" | "failure" | "operation" | "alert" | "connection" | "knowledge";
 
 export type AlertSeverity = "warning" | "critical";
 
@@ -3587,6 +3587,8 @@ export interface Corpus {
   ontology?: Record<string, unknown>;
   /** An inferred ontology waiting for its owner to accept it. */
   proposed_ontology?: Record<string, unknown>;
+  /** Marks the last inferred proposal, so one accepted or discarded is not proposed again. */
+  ontology_seen?: string;
   /** Adds the workspace graph to its search. */
   graph_search?: boolean;
   /** Whether its graph links to other shared corpora. Isolated by default. */

@@ -214,6 +214,9 @@ func (p *Platform) refreshGraphs(ctx context.Context) error {
 	defer tick.Stop()
 	for {
 		p.refreshGraphsOnce()
+		if err := p.MaintainKnowledge(ctx); err != nil && ctx.Err() == nil {
+			p.log.Error("knowledge: maintenance did not finish", "err", err)
+		}
 		select {
 		case <-ctx.Done():
 			return nil
