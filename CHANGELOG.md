@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.105.0 (2026-11-09)
+
+### Features
+
+- **web**: read each answer's activity from its trace (#299) ([ded53a3](https://github.com/urmzd/humagen/commit/ded53a37bb96d6857b2c1adca15482e40f3cae5e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.104.0...v0.105.0)
+
+
 ## 0.103.0 (2026-11-09)
 
 ### Features
