@@ -6920,6 +6920,7 @@ paths:
                   type: string
                   enum:
                   - drive
+                  - onedrive
               oneOf:
               - required:
                 - ref
@@ -15851,7 +15852,7 @@ components:
             files are indexed text; references are searched live at the
             source; records are warehouse tables kept as schema only and
             queried live.
-        provider: {type: string, description: "manual, drive, notion, s3, gcs, bigquery, snowflake and so on."}
+        provider: {type: string, description: "manual, drive, onedrive, notion, s3, gcs, bigquery, snowflake and so on."}
         items: {type: integer, minimum: 0, description: "Indexed documents, or the tables and views a warehouse lists."}
         status: {type: string, enum: [ready, syncing, failed, missing, hidden]}
     CorpusReader:
@@ -16089,7 +16090,7 @@ components:
       type: object
       required: [provider, attribute, pattern, project]
       properties:
-        provider: {type: string, enum: [github, slack, drive, notion]}
+        provider: {type: string, enum: [github, slack, drive, onedrive, notion]}
         attribute: {type: string, maxLength: 64}
         pattern: {type: string, minLength: 1, maxLength: 256}
         project: {type: string, minLength: 1, maxLength: 64}

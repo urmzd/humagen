@@ -3560,7 +3560,7 @@ source; records are warehouse tables kept as schema only and
 queried live.
  */
   holds?: "files" | "references" | "records";
-  /** manual, drive, notion, s3, gcs, bigquery, snowflake and so on. */
+  /** manual, drive, onedrive, notion, s3, gcs, bigquery, snowflake and so on. */
   provider?: string;
   /** Indexed documents, or the tables and views a warehouse lists. */
   items: number;
@@ -3760,7 +3760,7 @@ export interface SourceLinkSuggestion {
 }
 
 export interface SourceLinkRuleInput {
-  provider: "github" | "slack" | "drive" | "notion";
+  provider: "github" | "slack" | "drive" | "onedrive" | "notion";
   attribute: string;
   pattern: string;
   project: string;

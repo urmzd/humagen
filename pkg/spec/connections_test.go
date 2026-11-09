@@ -22,4 +22,12 @@ func TestConnectionAuthorizationConfiguration(t *testing.T) {
 	if valid.check() == nil {
 		t.Fatal("client not bound to issuer")
 	}
+	valid.Clients = map[string]ConnectionOAuthClient{"onedrive": {ClientID: "registered", ClientSecret: &Ref{Ref: "env:HUMAGEN_ONEDRIVE_SECRET"}}}
+	if err := valid.check(); err != nil {
+		t.Fatal(err)
+	}
+	valid.Clients["onedrive"] = ConnectionOAuthClient{ClientID: "registered", ClientSecret: &Ref{Ref: "env:HUMAGEN_ONEDRIVE_SECRET"}, Scopes: []string{"Files.ReadWrite.All"}}
+	if valid.check() == nil {
+		t.Fatal("OneDrive scopes widened by configuration")
+	}
 }

@@ -47,6 +47,7 @@ await loadTests([
   "/src/usage-page.dom.test.tsx",
   "/src/operations.dom.test.tsx",
   "/src/source-lifecycle.dom.test.tsx",
+  "/src/onedrive-source.dom.test.tsx",
   "/src/workspace.dom.test.tsx",
   "/src/workspace-files.dom.test.tsx",
   "/src/workspace-hub.dom.test.tsx",

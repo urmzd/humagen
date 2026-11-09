@@ -37,22 +37,24 @@ func FailureCause(err error) Cause {
 	return Unavailable
 }
 
-// HTTPProvider reads Drive folders or Notion pages. Only official API origins are used.
-// Client is injectable for boundary tests; redirects are always rejected.
+// HTTPProvider reads Drive or OneDrive folders, or Notion pages. Only official
+// API origins are used. Client is injectable for boundary tests; redirects are
+// never followed implicitly.
 type HTTPProvider struct {
 	Kind   string
 	Client *http.Client
 }
 
-func (p HTTPProvider) read(ctx context.Context, secret mcptools.Secret, address string, out any) ([]byte, error) {
-	if secret.Empty() {
-		return nil, ProviderError{AuthExpired}
-	}
+// send performs one GET. The bearer credential is attached only when bearer is
+// set, so a preauthenticated download URL never receives it.
+func (p HTTPProvider) send(ctx context.Context, secret mcptools.Secret, address string, bearer bool) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
 	if err != nil {
 		return nil, ProviderError{Unsupported}
 	}
-	req.Header.Set("Authorization", "Bearer "+secret.Reveal())
+	if bearer {
+		req.Header.Set("Authorization", "Bearer "+secret.Reveal())
+	}
 	if p.Kind == "notion" {
 		req.Header.Set("Notion-Version", "2022-06-28")
 	}
@@ -68,38 +70,87 @@ func (p HTTPProvider) read(ctx context.Context, secret mcptools.Secret, address 
 		}
 		return nil, ProviderError{Unavailable}
 	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		cause := Unavailable
-		switch response.StatusCode {
-		case 401, 403, 404:
-			cause = AuthExpired
-			if response.StatusCode == 403 && p.Kind == "drive" {
-				body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
-				var failure struct {
-					Error struct{ Errors []struct{ Reason string } }
-				}
-				if json.Unmarshal(body, &failure) == nil {
-					for _, entry := range failure.Error.Errors {
-						switch entry.Reason {
-						case "rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded", "dailyLimitExceeded":
-							cause = Quota
-						}
-					}
+	return response, nil
+}
+
+// failure maps an unsuccessful status to a bounded cause. Only a short prefix
+// of the body is read, to tell a rate limit from a denial, and it is never returned.
+func (p HTTPProvider) failure(response *http.Response) Cause {
+	switch response.StatusCode {
+	case 401, 403, 404:
+		if response.StatusCode == 403 && p.limited(response) {
+			return Quota
+		}
+		return AuthExpired
+	case 429:
+		return Quota
+	case 509:
+		// OneDrive answers 509 when the bandwidth cap is exceeded.
+		if p.Kind == "onedrive" {
+			return Quota
+		}
+	case 400:
+		return Unsupported
+	}
+	return Unavailable
+}
+
+// limited reports whether a 403 is a rate or quota limit rather than a denial.
+func (p HTTPProvider) limited(response *http.Response) bool {
+	body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+	switch p.Kind {
+	case "drive":
+		var failure struct {
+			Error struct{ Errors []struct{ Reason string } }
+		}
+		if json.Unmarshal(body, &failure) == nil {
+			for _, entry := range failure.Error.Errors {
+				switch entry.Reason {
+				case "rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded", "dailyLimitExceeded":
+					return true
 				}
 			}
-		case 429:
-			cause = Quota
-		case 400:
-			cause = Unsupported
 		}
-		return nil, ProviderError{cause}
+	case "onedrive":
+		var failure struct {
+			Error struct {
+				Code  string `json:"code"`
+				Inner struct {
+					Code string `json:"code"`
+				} `json:"innererror"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(body, &failure) == nil {
+			return failure.Error.Code == "activityLimitReached" || failure.Error.Inner.Code == "throttledRequest"
+		}
 	}
+	return false
+}
+
+func (p HTTPProvider) read(ctx context.Context, secret mcptools.Secret, address string, out any) ([]byte, error) {
+	if secret.Empty() {
+		return nil, ProviderError{AuthExpired}
+	}
+	response, err := p.send(ctx, secret, address, true)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, ProviderError{p.failure(response)}
+	}
+	return decodeBody(response, secret, out)
+}
+
+// decodeBody reads a bounded body, redacts an echoed credential and decodes it into out.
+func decodeBody(response *http.Response, secret mcptools.Secret, out any) ([]byte, error) {
 	b, err := io.ReadAll(io.LimitReader(response.Body, MaxImportBytes+1))
 	if err != nil || len(b) > MaxImportBytes {
 		return nil, ProviderError{Unsupported}
 	}
-	b = []byte(strings.ReplaceAll(string(b), secret.Reveal(), mcptools.Redacted))
+	if !secret.Empty() {
+		b = []byte(strings.ReplaceAll(string(b), secret.Reveal(), mcptools.Redacted))
+	}
 	if out != nil && json.Unmarshal(b, out) != nil {
 		return nil, ProviderError{Unsupported}
 	}
@@ -110,14 +161,14 @@ func (p HTTPProvider) read(ctx context.Context, secret mcptools.Secret, address 
 func (p HTTPProvider) Fetch(ctx context.Context, origin string, secret mcptools.Secret) ([]ImportDocument, error) {
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
-	if !resourceID.MatchString(origin) {
+	if !validResourceID(p.Kind, origin) {
 		return nil, ProviderError{Unsupported}
 	}
 	var docs []ImportDocument
 	var err error
 	switch p.Kind {
-	case "drive":
-		docs, err = p.drive(ctx, origin, secret)
+	case "drive", "onedrive":
+		docs, err = p.folderFiles(ctx, origin, nil, secret)
 	case "notion":
 		docs, err = p.notion(ctx, origin, secret)
 	default:
@@ -136,9 +187,6 @@ func (p HTTPProvider) Fetch(ctx context.Context, origin string, secret mcptools.
 		}
 	}
 	return docs, nil
-}
-func (p HTTPProvider) drive(ctx context.Context, origin string, secret mcptools.Secret) ([]ImportDocument, error) {
-	return p.driveSelected(ctx, origin, nil, secret)
 }
 func (p HTTPProvider) notion(ctx context.Context, origin string, secret mcptools.Secret) ([]ImportDocument, error) {
 	queue := []string{origin}
