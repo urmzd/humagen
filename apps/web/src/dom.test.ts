@@ -35,6 +35,7 @@ await loadTests([
   "/src/voice-notes.dom.test.tsx",
   "/src/automations.dom.test.tsx",
   "/src/catalog.dom.test.tsx",
+  "/src/corpora.dom.test.tsx",
   "/src/email-preferences.dom.test.tsx",
   "/src/activity.dom.test.tsx",
   "/src/patterns.dom.test.tsx",

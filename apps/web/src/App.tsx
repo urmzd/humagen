@@ -38,6 +38,7 @@ import { Catalog } from "./Catalog.tsx";
 import { Chat } from "./Chat.tsx";
 import { Connections, YourConnections } from "./Connections.tsx";
 import { ContextHealth } from "./ContextHealth.tsx";
+import { CorpusPage, KnowledgePage } from "./Corpora.tsx";
 import { CONNECT_PERMISSION } from "./connections.ts";
 import { DirectoryPage } from "./Directory.tsx";
 import { ForkProject } from "./ForkProject.tsx";
@@ -445,6 +446,17 @@ function Console({
         .then(setSources)
         .catch(() => {});
   }, [can]);
+  // An old `/knowledge/{source}` link that names no corpus opens the source it named.
+  const corpusTab = route.page === "corpus" ? route.tab : undefined;
+  const openOldSource = useCallback(
+    (source: string) =>
+      go(
+        // `/knowledge/{source}/search` was the source's own search.
+        { page: "context", source, tab: corpusTab === "search" ? "search" : undefined },
+        { replace: true },
+      ),
+    [go, corpusTab],
+  );
   const loadSuites = useCallback(() => {
     if (can("evals:read"))
       api
@@ -1337,6 +1349,44 @@ function Console({
                         }
                       />
                     )}
+                  {(route.page === "knowledge" || route.page === "corpus") &&
+                    (can("knowledge:read") ? (
+                      route.page === "knowledge" ? (
+                        <KnowledgePage
+                          sources={sources}
+                          canWrite={can("knowledge:write")}
+                          onOpen={(name) => go({ page: "corpus", name, tab: "sources" })}
+                        />
+                      ) : (
+                        <CorpusPage
+                          key={route.name}
+                          name={route.name}
+                          tab={route.tab}
+                          q={route.q}
+                          sources={sources}
+                          agents={agents.map((agent) => agent.spec.name)}
+                          viewer={me.principal.subject}
+                          canWrite={can("knowledge:write")}
+                          onTab={(tab) => go({ page: "corpus", name: route.name, tab })}
+                          onSearch={(q) =>
+                            go(
+                              { page: "corpus", name: route.name, tab: "search", q },
+                              { replace: true },
+                            )
+                          }
+                          onBack={() => go({ page: "knowledge" })}
+                          onOpenSource={(source) =>
+                            go({ page: "context", source, corpus: route.name })
+                          }
+                          onMissing={openOldSource}
+                          onSourcesChanged={loadSources}
+                        />
+                      )
+                    ) : (
+                      <Page title={defaultCopy.corpora.title}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
                   {(route.page === "context" ||
                     (route.page === "library" && route.section === "sources")) && (
                     <Knowledge
@@ -1345,8 +1395,24 @@ function Console({
                       suites={suites}
                       selected={route.page === "context" ? (route.source ?? null) : null}
                       tab={route.page === "context" ? (route.tab ?? "documents") : "documents"}
-                      onSelect={(source, tab) =>
-                        go({ page: "context", source: source ?? undefined, tab })
+                      onSelect={(source, tab) => {
+                        const corpus = route.page === "context" ? route.corpus : undefined;
+                        go(
+                          source
+                            ? { page: "context", source, tab, corpus }
+                            : corpus
+                              ? { page: "corpus", name: corpus, tab: "sources" }
+                              : { page: "knowledge" },
+                        );
+                      }}
+                      back={
+                        route.page === "context" && route.corpus
+                          ? {
+                              label: route.corpus,
+                              onClick: () =>
+                                go({ page: "corpus", name: route.corpus ?? "", tab: "sources" }),
+                            }
+                          : undefined
                       }
                       canWrite={can("knowledge:write")}
                       canEval={can("evals:write")}

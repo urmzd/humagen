@@ -36,6 +36,15 @@ export const AGENT_TABS: AgentTab[] = [
 export type SourceTab = "documents" | "search" | "variants" | "evals";
 export const SOURCE_TABS: SourceTab[] = ["documents", "search", "variants", "evals"];
 
+/**
+ * A corpus's tabs: the sources it holds (the default, at the corpus's own
+ * address), a search to try, with its words as `?q=`, its slice of the
+ * workspace graph, the types its ontology adds, and who may read it. A source
+ * opened from a corpus sits under it, at `/knowledge/{corpus}/sources/{source}`.
+ */
+export type CorpusTab = "sources" | "search" | "graph" | "types" | "access";
+export const CORPUS_TABS: CorpusTab[] = ["sources", "search", "graph", "types", "access"];
+
 /** Monitor: how runs are going (overview), the rules that watch them, and the health of what the deployment runs on. What a rule fires lands in the inbox. */
 export type MonitorTab = "overview" | "rules" | "health";
 export const MONITOR_TABS: MonitorTab[] = ["overview", "rules", "health"];
@@ -276,7 +285,12 @@ export type Route =
   | { page: "monitor"; tab: MonitorTab }
   /** The inbox, at a message, at the message an alert raised, or narrowed to one kind. */
   | { page: "inbox"; message?: string; alert?: string; kind?: string; view?: NotificationView }
-  | { page: "context"; source?: string; tab?: SourceTab }
+  /** Agents › Knowledge: the corpora the reader may read. */
+  | { page: "knowledge" }
+  /** One corpus, at a tab. */
+  | { page: "corpus"; name: string; tab: CorpusTab; q?: string }
+  /** One knowledge source, under the corpus it was opened from when `corpus` is set. */
+  | { page: "context"; source?: string; tab?: SourceTab; corpus?: string }
   | { page: "agents"; state?: string }
   | { page: "agent"; name: string | null; tab: AgentTab }
   | { page: "artifacts"; artifact?: string }
@@ -331,7 +345,9 @@ const PAGE_TITLES: Record<Page, string> = {
   automations: "Schedules",
   monitor: "Monitor",
   inbox: "Notifications",
-  context: "Context",
+  knowledge: "Knowledge",
+  corpus: "Knowledge",
+  context: "Knowledge",
   agents: "Agents",
   agent: "Agent",
   artifacts: "Artifacts",
@@ -372,6 +388,8 @@ export function documentTitle(r: Route, unread = 0, product = "Humagen"): string
   let place = pageTitle(r.page);
   if (r.page === "agent" && r.name) place = r.name;
   else if (r.page === "project") place = r.name === "" ? "Workspace" : r.name;
+  else if (r.page === "corpus") place = r.name;
+  else if (r.page === "context" && r.source) place = r.source;
   else if (r.page === "channel") place = `#${r.channel}`;
   return `${unread > 0 ? `(${unread}) ` : ""}${place} - ${product}`;
 }
@@ -542,11 +560,22 @@ export function href(r: Route): string {
     case "notifications":
     case "inbox":
       return href({ page: "alerts", alert: r.alert });
-    case "context":
-      if (!r.source) return "/connections";
-      return !r.tab || r.tab === "documents"
-        ? `/connections/sources/${enc(r.source)}`
-        : `/connections/sources/${enc(r.source)}/${r.tab}`;
+    case "knowledge":
+      return "/knowledge";
+    case "corpus":
+      if (r.tab === "search")
+        return `/knowledge/${enc(r.name)}/search${r.q ? `?q=${enc(r.q)}` : ""}`;
+      return r.tab === "sources"
+        ? `/knowledge/${enc(r.name)}`
+        : `/knowledge/${enc(r.name)}/${r.tab}`;
+    case "context": {
+      if (!r.source) return r.corpus ? `/knowledge/${enc(r.corpus)}` : "/knowledge";
+      const tab = !r.tab || r.tab === "documents" ? "" : `/${r.tab}`;
+      // A source opened from a corpus sits under it; one opened elsewhere keeps its own address.
+      return r.corpus
+        ? `/knowledge/${enc(r.corpus)}/sources/${enc(r.source)}${tab}`
+        : `/connections/sources/${enc(r.source)}${tab}`;
+    }
     case "agents":
       return r.state ? `/agents?state=${enc(r.state)}` : "/agents";
     case "agent": {
@@ -604,7 +633,7 @@ function legacy(q: URLSearchParams): Route | null {
       return { page: v };
     case "knowledge":
     case "context":
-      return { page: "context" };
+      return { page: "knowledge" };
     case "storage":
       return { page: "artifacts" };
     case "evals":
@@ -926,12 +955,33 @@ function read(pathname: string, search: string): Route {
       };
     case "inbox":
       return { page: "alerts", alert: q.get("alert") ?? undefined };
-    // Knowledge is called Context. Old links open the same place.
+    // Knowledge lists corpora, and a corpus is `/knowledge/{corpus}`. Knowledge
+    // was called Context: `/context/{source}` and the old
+    // `/knowledge/{source}/{tab}` still open the source.
     case "context":
-    case "knowledge":
       return a
         ? { page: "context", source: a, tab: pick(b, SOURCE_TABS, "documents") }
-        : { page: "context" };
+        : { page: "knowledge" };
+    case "knowledge": {
+      if (!a) return { page: "knowledge" };
+      if (b === "sources" && c)
+        return {
+          page: "context",
+          corpus: a,
+          source: c,
+          tab: pick(parts[4], SOURCE_TABS, "documents"),
+        };
+      // A corpus's own tabs come first: an old `/knowledge/{source}/search`
+      // opens a corpus, which opens the source when no corpus has that name.
+      const tab = oneOf(b, CORPUS_TABS);
+      if (!tab && oneOf(b, SOURCE_TABS)) return { page: "context", source: a, tab: b as SourceTab };
+      return {
+        page: "corpus",
+        name: a,
+        tab: tab ?? "sources",
+        q: tab === "search" ? queryText(q, "q", 1000) : undefined,
+      };
+    }
     case "agents":
       if (b === "setup") return { page: "agent-setup", name: a === "new" ? undefined : a };
       if (b === "control") return { page: "agent-control", agent: a };
@@ -1005,6 +1055,8 @@ export function screenOf(r: Route): string {
       return `conversation:${r.id}`;
     case "project":
       return `project:${r.name}`;
+    case "corpus":
+      return `corpus:${r.name}`;
     case "channel":
       return `channel:${r.project}/${r.channel}`;
     case "agent":
