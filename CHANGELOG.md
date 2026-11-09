@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.111.1 (2026-11-09)
+
+### Bug Fixes
+
+- **web**: console streams, Recents, times, tabs and loading (#314) ([c0d16fc](https://github.com/urmzd/humagen/commit/c0d16fc132853f64bb52bded7289411052a0e906))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.111.0...v0.111.1)
+
+
 ## 0.111.0 (2026-11-09)
 
 ### Features

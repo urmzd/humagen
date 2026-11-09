@@ -387,11 +387,15 @@ function MessageView({
         <p className="humagen-glass max-w-[85%] whitespace-pre-wrap break-words rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg sm:max-w-[70%]">
           <Mentioned text={m.text} />
         </p>
-        <p className="flex flex-wrap items-baseline justify-end gap-x-2 text-aui-2xs text-aui-muted">
-          {notes}
-          <MessageTime at={m.at} />
-        </p>
-        <div className="flex justify-end">{row}</div>
+        {/* Its actions show on hover and keep their place when hidden. They share the
+            time's line, so a hidden row leaves no empty band under the message. */}
+        <div className="flex max-w-full flex-wrap items-center justify-end gap-x-2">
+          {row}
+          <p className="flex flex-wrap items-baseline justify-end gap-x-2 text-aui-2xs text-aui-muted">
+            {notes}
+            <MessageTime at={m.at} />
+          </p>
+        </div>
         {refs && <div className="flex justify-end">{refs}</div>}
       </article>
     );

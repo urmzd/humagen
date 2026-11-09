@@ -1,7 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import { useEffect, useState } from "react";
 import { ApiError, call } from "./api.ts";
-import { Reference } from "./cards.tsx";
+import { itemGrid, Reference } from "./cards.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { href, type Route } from "./route.ts";
 import { SessionRow } from "./SessionCenter.tsx";
@@ -109,9 +109,9 @@ export function ItemPage({
               {words.sessions}
             </h2>
             {item.sessions.length ? (
-              <ul className="flex flex-col gap-3">
+              <ul className={itemGrid}>
                 {item.sessions.map((s) => (
-                  <SessionRow key={s.id} session={s} go={go} alerts={alerts} tick={tick} />
+                  <SessionRow key={s.id} session={s} go={go} alerts={alerts} />
                 ))}
               </ul>
             ) : (
