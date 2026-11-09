@@ -912,9 +912,10 @@ agents.
 An agent's home survives only as who sees the agent, its Access:
 
 - **Workspace**: no home, or the root. Everyone sees it, and it answers
-  anywhere it is allowed. The built-ins `humagen-writer`, `humagen-analyst`,
-  `humagen-builder`, `code-reviewer`, `security-reviewer`,
-  `architect-reviewer`, `qa-reviewer` and `approver` are the workspace's.
+  anywhere it is allowed. The built-ins `humagen` (the entry agent, which also
+  builds agents), `humagen-writer`, `humagen-analyst`, `code-reviewer`,
+  `security-reviewer`, `architect-reviewer`, `qa-reviewer` and `approver` are
+  the workspace's.
 - **Members of a project**: homed in a project. Its readers see it. Homed in
   a project everyone reads, it answers anywhere; homed in one kept to its
   members, it answers only where its readers alone read (that project and
@@ -1987,7 +1988,7 @@ and its total, What's new and Your projects to the same on both renderers.
   to their messages with the app, and What's new and Your projects are shown
   to read. Ask a Question and Build an Agent open a form whose words are
   posted as the person in their messages with the app, Build an Agent tagging
-  `@humagen-builder` where the client reaches it; Search Context opens the
+  `@humagen` where the client reaches it; Search Context opens the
   console. Someone the client maps to nobody keeps the mailbox.
 - **GitHub.** The same rule: `@agent` in a comment is a tag; otherwise the client's default; otherwise nothing. As Slack delivers
   only what mentions the app, a comment that names no agent asks the client

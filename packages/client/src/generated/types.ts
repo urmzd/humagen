@@ -4065,6 +4065,8 @@ leaves draft, or gets a push, by the client's default agent.
 Left out, it is on. Labels start nothing.
  */
   auto_review?: GitHubOptionsAutoReview;
+  /** When set, the only GitHub logins whose mentions, reviews and pull requests the client acts on, among people with write access to the repository (owner, member or collaborator) and people it maps. */
+  askers?: string[];
   checks?: boolean;
   guides?: boolean;
   mutations?: boolean;
@@ -4755,6 +4757,21 @@ export interface SessionIdentity {
   source_alert?: string;
 }
 
+export interface MessageFeedbackInput {
+  rating: "up" | "down";
+  note?: string;
+}
+
+/** What get_context pulled, from which place, and what it drew on. */
+export interface ContextResult {
+  /** The place it was pulled from: the session's origin address. */
+  origin: string;
+  text: string;
+  sources: ContextResultSourcesItem[];
+  truncated?: boolean;
+  note?: string;
+}
+
 /** People's messages from one origin. Who said them is the caller. */
 export interface MessagesInput {
   messages: InMessage[];
@@ -4827,6 +4844,199 @@ export interface MessageCreated {
   /** This request started the root. */
   created: boolean;
   posted: SessionPosted;
+}
+
+/** Who a root's place was asked in front of, by kind alone. Who was there is never shown. */
+export interface MessageAudience {
+  kind: "public" | "private" | "group" | "direct";
+}
+
+/** One message of a tree. A session stands as its first message: beneath
+it are the agents' messages that follow it up to the next person's
+message (answers, and the entry agent's pick with its calls), the
+child sessions started for it, and the session's later people's
+messages. Beneath a later person's message are the agents' messages
+that follow it and the child sessions started for it. A child session
+is a node whose id is the session's. A child session the caller may
+not read is left out and not counted.
+ */
+export interface MessageNode {
+  /** A session's id for a session's node, else session:message. */
+  id: string;
+  /** The session the message is in. */
+  session: string;
+  role: "user" | "assistant";
+  author: SessionAuthor;
+  /** That of the runs beneath the message; done when there are none. */
+  status: "working" | "waiting" | "done" | "failed" | "stopped";
+  /** Text, or the entry agent's pick and a call part for each child session it handed the message to. */
+  content: SessionPart[];
+  at: string;
+  /** How many children the message has, shown or not. */
+  children_count: number;
+  /** When anything beneath the message last changed. */
+  latest_at: string;
+  audience?: MessageAudience;
+  /** The latest 200 children at most, in time order, while depth lasts; empty beyond it. */
+  children: MessageNode[];
+}
+
+/** What ran to answer a message. */
+export interface MessageTrace {
+  /** The id asked for. */
+  message: string;
+  /** The runs that answered the message, in the order they started, each with what it called beneath it. */
+  nodes: TraceNode[];
+  /** How many runs and child sessions were left out because the caller may not read them. */
+  hidden: number;
+  /** A bound cut the trace: at most 500 nodes, and 200 tools, context reads, sources and approvals per node. */
+  truncated: boolean;
+}
+
+/** One run and what it did, each as the caller may see it: the tools it
+called, the context it pulled with get_context, the sources it cited,
+the approvals it waited on and the questions it asked a person.
+ */
+export interface TraceNode {
+  run: string;
+  agent: string;
+  status: "accepted" | "running" | "parked" | "completed" | "failed" | "stopped";
+  started_at: string;
+  /** When the run ended; absent while it works. */
+  ended_at?: string;
+  /** How long it ran, or has run so far. */
+  ms: number;
+  /** What it spent in micro-USD, what it called included once they ended. Absent when nothing was metered. */
+  cost?: number;
+  pick?: TracePick;
+  /** The model its latest call used, when that was recorded. */
+  model?: string;
+  /** What it answered. A pick's answer is its pick. */
+  answer?: string;
+  /** Why it failed, when it did. */
+  error?: string;
+  tools: TraceTool[];
+  context: TraceContext[];
+  /** The run's citations as the caller is shown them. */
+  sources: TraceSource[];
+  approvals: TraceApproval[];
+  questions: TraceQuestion[];
+  /** The runs it called, and for a pick the answers it led to, in the order they started. */
+  children: TraceNode[];
+}
+
+/** The entry agent's decision about a message, on the run that made it. */
+export interface TracePick {
+  decision: "answer_myself" | "delegate";
+  /** The agents it handed the message to that the caller may read. */
+  agents: string[];
+  reason: string;
+  /** The words of the message that matched. */
+  matched: string[];
+}
+
+/** One tool call. Input and output are left out when withheld. */
+export interface TraceTool {
+  /** htu_<run>_<seq>: the run's seq-th call, as the response stream names it. Provider call ids are never shown. */
+  id: string;
+  name: string;
+  /** When it was asked. */
+  at: string;
+  /** How long it ran; absent while it runs. */
+  ms?: number;
+  /** The arguments it ran with. */
+  input?: Record<string, unknown>;
+  /** What it returned, cut at 4000 bytes and ending in an ellipsis when cut. */
+  output?: string;
+  error?: string;
+  /** The caller may not see its input or output. */
+  withheld: boolean;
+}
+
+/** One get_context call. Request, reference, summary and sources are empty when withheld. */
+export interface TraceContext {
+  /** htu_<run>_<seq>, counted with the run's tool calls. */
+  id: string;
+  /** When it was asked. */
+  at: string;
+  /** How long it took; absent while it runs. */
+  ms?: number;
+  /** What the agent asked for, in words. */
+  request: string;
+  /** The place it read, such as slack://team/channel/ts: the message's own, bound by the platform. */
+  reference: string;
+  /** The start of what came back, or why nothing could be. */
+  summary: string;
+  sources: TraceSource[];
+  /** What came back was cut. */
+  truncated: boolean;
+  error?: string;
+  withheld: boolean;
+}
+
+/** Something a run cited or a context read drew on. */
+export interface TraceSource {
+  title: string;
+  url?: string;
+}
+
+/** A question a run asked a person with ask_person, as the caller may see
+it: a choice among options, or a reply in words. Answer it with
+answerToolUse and `tool`.
+ */
+export interface TraceQuestion {
+  /** The question's id. */
+  id: string;
+  /** The id of the call that asked it, htu_<run>_<n>. */
+  tool?: string;
+  kind: "choice" | "reply";
+  prompt: string;
+  options: string[];
+  /** asked while it waits; expired when nobody answered in time and its default stood; closed when its run ended first. */
+  status: "asked" | "answered" | "expired" | "closed";
+  /** The choice or the reply. */
+  answer?: string;
+  /** Who answered, by name. */
+  by?: string;
+  at?: string;
+}
+
+/** An action a run waited on a person for, and how it was decided. ask is one still waiting. */
+export interface TraceApproval {
+  /** The question's id. */
+  id: string;
+  /** The id of the tool call it gates (a TraceTool's or a TraceContext's), when it gates one. */
+  tool?: string;
+  /** The tool it would call, or what it asked. */
+  action: string;
+  decision: "allow" | "deny" | "ask";
+  /** Who decided, by name. */
+  by?: string;
+  note?: string;
+  at?: string;
+}
+
+/** One root session, as its first message. */
+export interface RootMessage {
+  id: string;
+  title: string;
+  status: "working" | "waiting" | "done" | "failed" | "stopped";
+  /** The agent that owns the root. */
+  agent: string;
+  author: SessionAuthor;
+  /** The root's place: its address, such as slack://team/channel/ts or github://owner/repo/pull/N. */
+  parent: string;
+  project: string;
+  latest_at: string;
+  children_count: number;
+  audience?: MessageAudience;
+}
+
+/** A page of roots, newest first. */
+export interface RootMessagePage {
+  messages: RootMessage[];
+  /** The after of the next page; empty on the last. */
+  next: string;
 }
 
 export interface SessionInput {
@@ -5334,6 +5544,24 @@ export interface ClientViewCredentials {
 export interface ManifestUsage {
   metered: boolean;
   total: Usage;
+}
+
+export interface ContextResultSourcesItem {
+  title: string;
+  url?: string;
+}
+
+export interface StopMessageBody {
+  children?: boolean;
+}
+
+export interface AnswerToolUseBody {
+  tool_use_id: string;
+  answer: QuestionAnswer;
+}
+
+export interface GetMessageContextBody {
+  request: string;
 }
 
 export interface SaveSessionFeedbackBody {

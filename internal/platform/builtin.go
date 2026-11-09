@@ -53,10 +53,12 @@ When asked what changed in a project, call project_changes for the days the ques
 
 Use only what the tools return. When they hold no data for the question, say so instead of guessing.`
 
-// BuiltinBuilder writes and revises agents, each change after a person approves it.
+// BuiltinBuilder is the name the builder had. It is the entry agent now
+// (BuiltinEntry), which builds and changes agents with a person's approval;
+// the old name reads as it (internal/legacy).
 const BuiltinBuilder = "humagen-builder"
 
-const builderPrompt = `You help people create and improve agents for this workspace.
+const helperPrompt = `When someone wants an agent created or improved:
 
 1. Ask what the agent is for, who will use it, and what it must never do, unless the request already says. Keep it to one or two short questions.
 2. Look at what exists with list_agents, and read_agent before changing one, so you build on it instead of starting over.
@@ -66,7 +68,7 @@ const builderPrompt = `You help people create and improve agents for this worksp
 6. Use pause_agent to pause or resume work and retire_agent to retire an agent, after a person approves. Add real-session cases with add_recorded_eval_case. Set every_seconds on a suite to run it on a schedule.
 7. Use list_connections and connect_connection to help the person connect services. The person opens and approves the secure connection link. When they ask an agent to use their connected tools, explicitly include person_tools in the preview's tool list and explain that grant before approval. Connecting an account alone never grants it to an agent; tools must also be reviewed for that person's connection. Use preview_workspace_prompt for shared instructions, show its sampled scores, and apply_workspace_prompt only after a different administrator approves. A measured regression needs an explicit override reason; incomplete or stale evaluations cannot be overridden.
 
-You cannot change the privileged builder or analyst, pause or retire a built-in agent, give an agent calls to other agents, or grant tools beyond those save_agent names. Other package agents can be customized through the same reviewed change flow.`
+You cannot change yourself, the analyst or the approval agent, pause or retire a built-in agent, give an agent calls to other agents, or grant tools beyond those save_agent names. Other package agents can be customized through the same reviewed change flow.`
 
 // BuiltinCodeReviewer leads code reviews and combines specialist findings.
 const BuiltinCodeReviewer = "code-reviewer"
@@ -125,7 +127,7 @@ func reviewTools() []string {
 
 // Builtins lists the names of the agents the platform provides.
 func Builtins() []string {
-	return []string{BuiltinWriter, BuiltinAnalyst, BuiltinBuilder, BuiltinCodeReviewer, BuiltinSecurityReviewer, BuiltinArchitectReviewer, BuiltinQAReviewer, BuiltinApprover}
+	return []string{BuiltinWriter, BuiltinAnalyst, BuiltinCodeReviewer, BuiltinSecurityReviewer, BuiltinArchitectReviewer, BuiltinQAReviewer, BuiltinApprover}
 }
 
 // IsBuiltin reports whether a name belongs to the platform.
@@ -173,20 +175,6 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 		Effort:       "medium",
 		SystemPrompt: analystPrompt,
 		Tools:        append(AnalystTools(), FileTools()...),
-	}, {
-		Name:         BuiltinBuilder,
-		Description:  "Creates and improves agents with you. You approve every change",
-		Provider:     chain[0].Provider,
-		Model:        chain[0].Model,
-		Fallbacks:    slices.Clone(chain[1:]),
-		Effort:       "medium",
-		SystemPrompt: builderPrompt,
-		Tools:        BuilderTools(),
-		// Changing an agent is a manager's or an admin's call, and the
-		// person who asked may make it when they hold one of those roles.
-		Approvals:    []string{ToolSaveAgent},
-		Approvers:    []string{"role:admin", "role:manager"},
-		SelfApproval: true,
 	}, {
 		Name:         BuiltinCodeReviewer,
 		Description:  "Reviews code and combines specialist findings into one verdict",
@@ -240,7 +228,7 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 		name       string
 		start, end int
 	}{
-		{"humagen/core", 0, 3}, {"humagen/review", 3, 7}, {"humagen/system", 7, 8},
+		{"humagen/core", 0, 2}, {"humagen/review", 2, 6}, {"humagen/system", 6, 7},
 	} {
 		raw, _ := json.Marshal(specs[group.start:group.end])
 		version := fmt.Sprintf("sha256:%x", sha256.Sum256(raw))

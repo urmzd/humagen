@@ -6,20 +6,21 @@ import type { Run } from "./adapter.ts";
 import { api, coworking, type Thread } from "./api.ts";
 import { ActivityLanes, responseChips, summaryOf, useResponse } from "./ResponseActivity.tsx";
 import { Chips } from "./refChips.tsx";
-import { type RunLoader, runSource } from "./responseSource.ts";
+import { type TraceLoader, traceSource } from "./responseSource.ts";
 import { href, type Route } from "./route.ts";
 import { OriginButton, usePlace } from "./SessionPlace.tsx";
 import { AgentMark, Page, Problem, SkeletonRows } from "./ui.tsx";
 
 const words = defaultCopy.trace;
 
-/** What the focused page reads: the run, the runs of its call tree, its own subtree, and its session's record. */
-export type FocusLoader = RunLoader & {
+/** What the focused page reads: the runs of its call tree, for the breadcrumb, its trace, and its session's record. */
+export type FocusLoader = TraceLoader & {
+  tree: (id: string) => Promise<Run[]>;
   thread: (id: string) => Promise<Thread | undefined>;
 };
 
 const live: FocusLoader = {
-  events: api.runEvents,
+  trace: api.messageTrace,
   tree: api.tree,
   thread: (id) =>
     coworking
@@ -87,7 +88,7 @@ export function MessageFocus({
   const place = usePlace(thread);
   // The focused message's own response: what it did, folded as any response is.
   const source = useMemo(
-    () => (self ? runSource(self, loader === live ? undefined : loader) : undefined),
+    () => (self ? traceSource(self, loader === live ? undefined : loader) : undefined),
     [self, loader],
   );
   const { state, ended } = useResponse(source);

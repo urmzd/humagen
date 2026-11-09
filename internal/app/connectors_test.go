@@ -184,7 +184,7 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 		t.Fatalf("slack webhook = %d %s", w.Code, w.Body)
 	}
 
-	githubBody := `{"action":"created","repository":{"name":"repo","owner":{"login":"acme"}},"sender":{"login":"human","type":"User"},"issue":{"number":7},"comment":{"id":91,"body":"@helper explain"}}`
+	githubBody := `{"action":"created","repository":{"name":"repo","owner":{"login":"acme"}},"sender":{"login":"human","type":"User"},"issue":{"number":7},"comment":{"id":91,"body":"@helper explain","user":{"login":"human"},"author_association":"MEMBER"}}`
 	mac = hmac.New(sha256.New, []byte(vars[EnvGitHubSecret]))
 	mac.Write([]byte(githubBody))
 	r = httptest.NewRequest(http.MethodPost, "/connectors/github", strings.NewReader(githubBody))

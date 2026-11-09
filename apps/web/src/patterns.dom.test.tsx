@@ -99,3 +99,28 @@ test("a provider reference leads with that provider's logo, and a neutral mark w
   assert.match(screen.getByText("Acme CRM").parentElement?.textContent ?? "", /^AAcme CRM/);
   assert.ok(screen.getByText("Unknown source").parentElement?.querySelector("svg"));
 });
+
+test("a card's ⋯ can name what it is for, and a row can be shown but not pressable", async () => {
+  const chosen: string[] = [];
+  render(
+    <ItemCard
+      title="GitHub"
+      menuLabel="More for GitHub"
+      menu={[
+        { label: "Settings", onSelect: () => chosen.push("settings") },
+        {
+          label: "Remove",
+          destructive: true,
+          disabled: true,
+          onSelect: () => chosen.push("remove"),
+        },
+      ]}
+    />,
+  );
+  const more = screen.getByRole("button", { name: "More for GitHub" });
+  fireEvent.click(more);
+  const remove = await screen.findByRole("menuitem", { name: "Remove" });
+  assert.equal((remove as HTMLButtonElement).disabled, true);
+  fireEvent.click(remove);
+  assert.deepEqual(chosen, []);
+});

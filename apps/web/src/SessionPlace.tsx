@@ -3,11 +3,11 @@ import { type MouseEvent, useEffect, useState } from "react";
 import { api } from "./api.ts";
 import { inApp, OriginMark } from "./MessageRefs.tsx";
 import { href } from "./route.ts";
-import { type Place, placeOf, type Reference } from "./trace.ts";
+import { type AudienceKind, type Place, placeOf, type Reference } from "./trace.ts";
 
 const words = defaultCopy.trace;
 
-type ThreadPlace = Parameters<typeof placeOf>[0];
+type ThreadPlace = Parameters<typeof placeOf>[0] & { id?: string };
 
 /**
  * The Slack team a client answers in, so a thread opens in Slack's web
@@ -29,10 +29,31 @@ function teamOf(client: string): Promise<string> {
   return p;
 }
 
-/** A session's place and audience, worked out from its thread and, for Slack, its client's team. */
+/**
+ * The audience a session's place reported, from the messages API. Read once
+ * per session per page: it is fixed when the session starts.
+ */
+const audiences = new Map<string, Promise<AudienceKind | undefined>>();
+function audienceOf(session: string): Promise<AudienceKind | undefined> {
+  let p = audiences.get(session);
+  if (!p) {
+    p = api
+      .messageNode(session)
+      .then((n) => n.audience?.kind)
+      .catch(() => undefined);
+    audiences.set(session, p);
+  }
+  return p;
+}
+
+/**
+ * A session's place and audience: worked out from its thread and, for Slack,
+ * its client's team, with the audience the place reported when it did.
+ */
 export function usePlace(thread: ThreadPlace | undefined): Place | undefined {
   const client = thread?.surface?.client ?? "";
   const [team, setTeam] = useState("");
+  const [reported, setReported] = useState<AudienceKind>();
   useEffect(() => {
     if (!client) return;
     let live = true;
@@ -41,7 +62,19 @@ export function usePlace(thread: ThreadPlace | undefined): Place | undefined {
       live = false;
     };
   }, [client]);
-  return thread ? withScheduleLink(placeOf(thread, team)) : undefined;
+  // Only a place outside the console reports an audience.
+  const elsewhere = !!thread && placeOf(thread).kind !== "console";
+  const session = elsewhere ? (thread?.id ?? "") : "";
+  useEffect(() => {
+    setReported(undefined);
+    if (!session) return;
+    let live = true;
+    audienceOf(session).then((a) => live && setReported(a));
+    return () => {
+      live = false;
+    };
+  }, [session]);
+  return thread ? withScheduleLink(placeOf(thread, team, reported)) : undefined;
 }
 
 /** A schedule opens on its own page here; Slack and GitHub open where they live. */

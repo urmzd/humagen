@@ -255,7 +255,7 @@ func TestASignedCommentToTheAppIsAnsweredByTheClientsDefault(t *testing.T) {
 	post := func(delivery, text string) {
 		t.Helper()
 		body := `{"action":"created","repository":{"name":"handbook","owner":{"login":"acme"}},` +
-			`"sender":{"login":"octocat","type":"User"},"issue":{"number":7},"comment":{"id":91,"body":"` + text + `"}}`
+			`"sender":{"login":"octocat","type":"User"},"issue":{"number":7},"comment":{"id":91,"body":"` + text + `","user":{"login":"octocat"},"author_association":"COLLABORATOR"}}`
 		mac := hmac.New(sha256.New, []byte("secret-gh"))
 		mac.Write([]byte(body))
 		r := httptest.NewRequest(http.MethodPost, "/connectors/github", strings.NewReader(body))

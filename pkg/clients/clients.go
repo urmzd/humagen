@@ -304,6 +304,10 @@ type GitHubOptions struct {
 	ActionRepositories []string           `json:"action_repositories,omitempty"`
 	Automations        []GitHubAutomation `json:"automations,omitempty"`
 	People             map[string]string  `json:"people,omitempty"`
+	// Askers, when set, are the only GitHub logins whose mentions, reviews
+	// and pull requests the client acts on, among those it would otherwise:
+	// people with write access to the repository and people it maps.
+	Askers []string `json:"askers,omitempty"`
 	// AutoReview reviews a pull request when it opens ready for review, leaves
 	// draft, or gets a push. Left out, it is on. Labels start
 	// nothing.
@@ -653,6 +657,14 @@ func (c Client) validateGitHub() error {
 			return bad("GitHub people map exact logins to bounded workspace subjects")
 		}
 	}
+	if len(g.Askers) > maxPeople {
+		return bad("a client names at most %d askers", maxPeople)
+	}
+	for _, login := range g.Askers {
+		if !githubLogin.MatchString(login) {
+			return bad("%q is not a GitHub login", login)
+		}
+	}
 	if g.Login != "" && !githubLogin.MatchString(g.Login) {
 		return bad("%q is not a GitHub login", g.Login)
 	}
@@ -712,6 +724,7 @@ func (c Client) clone() Client {
 			}
 		}
 		g.ReadRepositories = slices.Clone(g.ReadRepositories)
+		g.Askers = slices.Clone(g.Askers)
 		g.ActionRepositories = slices.Clone(g.ActionRepositories)
 		if g.AutoReview != nil {
 			a := *g.AutoReview

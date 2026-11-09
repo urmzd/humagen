@@ -608,6 +608,9 @@ func (p *Platform) fileTools(base runtime.Catalog) runtime.Catalog {
 		for name, t := range p.catalogTools(req) {
 			tools[name] = t
 		}
+		for name, t := range p.contextTools(req) {
+			tools[name] = t
+		}
 		for name, t := range p.corpusTools(req) {
 			tools[name] = t
 		}

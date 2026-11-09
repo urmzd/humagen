@@ -21,6 +21,7 @@ import type {
   AlertRule,
   AmendAgentSetupBody,
   AnnouncementInput,
+  AnswerToolUseBody,
   Approved,
   ArchiveThreadBody,
   Artifact,
@@ -51,6 +52,7 @@ import type {
   ConnectionDetail,
   ConnectionHealth,
   ConnectionPreset,
+  ContextResult,
   ConversationMemory,
   ConversationSandboxes,
   Corpus,
@@ -75,6 +77,7 @@ import type {
   GetAgentRosterResponse,
   GetInboxMessageResponse,
   GetLibrarySkillResponse,
+  GetMessageContextBody,
   GetProjectAgentHuesResponse,
   GetProjectInboxResponse,
   GetRunTraceResponse,
@@ -153,6 +156,9 @@ import type {
   MemoryFiles,
   MemoryRestoreInput,
   MessageCreated,
+  MessageFeedbackInput,
+  MessageNode,
+  MessageTrace,
   MessagesInput,
   ModelProvider,
   Note,
@@ -204,6 +210,7 @@ import type {
   ReviewedPullsResponse,
   ReviseAgentBody,
   Revision,
+  RootMessagePage,
   Run,
   RunFeedback,
   RunList,
@@ -234,6 +241,7 @@ import type {
   SourceLinkRule,
   SourceLinkRuleInput,
   SourceLinkSuggestion,
+  StopMessageBody,
   StopSessionBody,
   StorageUsage,
   StreamEventsStreamEvent,
@@ -588,6 +596,39 @@ export class ApiClient {
     return response.data;
   }
 
+  /** The root sessions the caller may read, each as its first message: its
+place (parent), who started it, the agent that owns it, its status
+(that of the runs beneath it), how many children it has and when
+anything beneath it last changed. Newest first by latest_at. roots
+is required and true, the one listing this route answers. Page with
+after, the next of the previous page.
+ */
+  async listMessages(roots: boolean, limit?: number, after?: string, options?: RequestOptions): Promise<RootMessagePage> {
+    let path = "/api/messages";
+    const _q = new URLSearchParams();
+    if (roots !== undefined && roots !== null) _q.set("roots", String(roots));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (after !== undefined && after !== null) _q.set("after", String(after));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<RootMessagePage>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listMessagesRaw(roots: boolean, limit?: number, after?: string, options?: RequestOptions): Promise<ApiResponse<RootMessagePage>> {
+    let path = "/api/messages";
+    const _q = new URLSearchParams();
+    if (roots !== undefined && roots !== null) _q.set("roots", String(roots));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (after !== undefined && after !== null) _q.set("after", String(after));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<RootMessagePage>("GET", path, {
+      ...options,
+    });
+  }
+
   /** People's messages from one origin, under the root session of the
 origin's place: found by its address, or started on its first message
 and owned by the entry agent, so work asked for in a place is picked
@@ -616,8 +657,15 @@ messages. 201 when the root was started, 200 otherwise.
     });
   }
 
-  /** The session a message is in, with its messages, the entry agent's picks and each delegated answer, its children and links. id is a session id, or a message id (session:message). */
-  async getMessage(id: string, since?: string, before?: string, around?: string, summary?: boolean, options?: RequestOptions): Promise<AgentSession> {
+  /** Without depth, the session a message is in, with its messages, the
+entry agent's picks and each delegated answer, its children and
+links (AgentSession). With depth, the message as a tree
+(MessageNode): the message and its children in time order, each with
+children_count and latest_at, depth levels deep. A session id reads
+as the session's first message, and that message's own id reads the
+same. id is a session id, or a message id (session:message).
+ */
+  async getMessage(id: string, since?: string, before?: string, around?: string, summary?: boolean, depth?: number, options?: RequestOptions): Promise<AgentSession | MessageNode> {
     let path = "/api/messages/{id}";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     const _q = new URLSearchParams();
@@ -625,14 +673,15 @@ messages. 201 when the root was started, 200 otherwise.
     if (before !== undefined && before !== null) _q.set("before", String(before));
     if (around !== undefined && around !== null) _q.set("around", String(around));
     if (summary !== undefined && summary !== null) _q.set("summary", String(summary));
+    if (depth !== undefined && depth !== null) _q.set("depth", String(depth));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
-    return this.request<AgentSession>("GET", path, {
+    return this.request<AgentSession | MessageNode>("GET", path, {
       ...options,
     });
   }
 
-  async getMessageRaw(id: string, since?: string, before?: string, around?: string, summary?: boolean, options?: RequestOptions): Promise<ApiResponse<AgentSession>> {
+  async getMessageRaw(id: string, since?: string, before?: string, around?: string, summary?: boolean, depth?: number, options?: RequestOptions): Promise<ApiResponse<AgentSession | MessageNode>> {
     let path = "/api/messages/{id}";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     const _q = new URLSearchParams();
@@ -640,9 +689,10 @@ messages. 201 when the root was started, 200 otherwise.
     if (before !== undefined && before !== null) _q.set("before", String(before));
     if (around !== undefined && around !== null) _q.set("around", String(around));
     if (summary !== undefined && summary !== null) _q.set("summary", String(summary));
+    if (depth !== undefined && depth !== null) _q.set("depth", String(depth));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
-    return this.rawRequest<AgentSession>("GET", path, {
+    return this.rawRequest<AgentSession | MessageNode>("GET", path, {
       ...options,
     });
   }
@@ -668,6 +718,104 @@ messages. 201 when the root was started, 200 otherwise.
     });
   }
 
+  /** Rates an agent's message (id is session:run): up or down with an optional note, one rating per person per message, saved again in place. Surfaces send reactions and buttons here. */
+  async rateMessage(id: string, body: MessageFeedbackInput, options?: RequestOptions): Promise<RunFeedback> {
+    let path = "/api/messages/{id}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<RunFeedback>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async rateMessageRaw(id: string, body: MessageFeedbackInput, options?: RequestOptions): Promise<ApiResponse<RunFeedback>> {
+    let path = "/api/messages/{id}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<RunFeedback>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Stops the work beneath a message's session; with children, its child sessions' work too. */
+  async stopMessage(id: string, body: StopMessageBody, options?: RequestOptions): Promise<void> {
+    let path = "/api/messages/{id}/stop";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    await this.request<void>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async stopMessageRaw(id: string, body: StopMessageBody, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/messages/{id}/stop";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<void>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Answers the approval of a tool call, or the question a tool call
+asked, anywhere in the message's conversation, named by the call's
+`tool_use_id` (`htu_<run>_<n>`, as the message's trace and stream
+name it). It is the same as answering the question on its run
+(`answerQuestion`): who may answer, edited `arguments`, `act_as` and
+the first recorded answer standing all hold. A call outside the
+conversation, one the caller may not read, or one nothing waited on
+is 404.
+ */
+  async answerToolUse(id: string, body: AnswerToolUseBody, options?: RequestOptions): Promise<InboxMessage> {
+    let path = "/api/messages/{id}/answer";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<InboxMessage>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async answerToolUseRaw(id: string, body: AnswerToolUseBody, options?: RequestOptions): Promise<ApiResponse<InboxMessage>> {
+    let path = "/api/messages/{id}/answer";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<InboxMessage>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Pulls context from the place the message's session came from (the
+Slack thread or channel, the GitHub pull request or issue, a page),
+for what is asked in words. The place is the session's origin, never
+chosen by the caller. Resolvers read with the server's access and
+answer only what the place's audience may read. note says why nothing
+could be pulled, when nothing could.
+ */
+  async getMessageContext(id: string, body: GetMessageContextBody, options?: RequestOptions): Promise<ContextResult> {
+    let path = "/api/messages/{id}/context";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ContextResult>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async getMessageContextRaw(id: string, body: GetMessageContextBody, options?: RequestOptions): Promise<ApiResponse<ContextResult>> {
+    let path = "/api/messages/{id}/context";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ContextResult>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** What happens beneath a message: its session's snapshots and run events, as GET /api/sessions/{id}/stream. Resume with Last-Event-ID. */
   async *streamMessage(id: string, lastEventId?: string, options?: SSEOptions): AsyncGenerator<SSEEvent<string>> {
     let path = "/api/messages/{id}/stream";
@@ -681,6 +829,33 @@ messages. 201 when the root was started, 200 otherwise.
       method: "GET",
       headers: { ...this.headers, ..._hdr, ...options?.headers },
     }, options, this.requestInterceptor, this.fetchFn);
+  }
+
+  /** What ran to answer a message, one node per run (TraceNode). For a
+session id or a person's message id: the runs that answered that
+message, the entry agent's pick (pick set) with the answers it led to
+beneath it, its own and those of the child sessions it handed the
+message to. For an agent's message (session:run): that run. Beneath
+each run are the runs it called. A run or child session the caller
+may not read is left out with everything beneath it, and counted in
+hidden. At most 500 nodes, and 200 tools per node; truncated says
+when a bound cut it. id is a session id, or a message id
+(session:message).
+ */
+  async traceMessage(id: string, options?: RequestOptions): Promise<MessageTrace> {
+    let path = "/api/messages/{id}/trace";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<MessageTrace>("GET", path, {
+      ...options,
+    });
+  }
+
+  async traceMessageRaw(id: string, options?: RequestOptions): Promise<ApiResponse<MessageTrace>> {
+    let path = "/api/messages/{id}/trace";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<MessageTrace>("GET", path, {
+      ...options,
+    });
   }
 
   /** Emits session snapshots and run events. Resume with Last-Event-ID.

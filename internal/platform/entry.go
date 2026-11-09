@@ -42,19 +42,32 @@ Answer simple asks yourself, briefly. When an ask needs a specialist, call them 
 
 Each message may come with agents that may fit it, best first, with their instructions. Prefer those; you may call any other agent listed. Never invent an agent, a tool or a result, and never claim work that did not finish. If nobody fits, say so and answer as well as you can.
 
+When you need what people were discussing where you were asked (the Slack thread, the pull request), call get_context with what you need in words.
+
 When you are asked to decide who answers a message, do only that: reply with the JSON asked for and nothing else, and call no tools.`
 
 // entrySpec is the entry agent's definition, on the same models as base, the
 // first of the platform's other agents. Its spawn list is filled per
 // workspace (entrySpawn), so it starts empty here.
+//
+// It is also the workspace's helper: it builds and changes agents, sets up
+// connections and explains how the workspace is doing, with the tools the
+// builder had and the analyst's reads. Saving an agent waits for a manager or
+// an admin, and the person who asked may approve it when they hold one of
+// those roles.
 func (p *Platform) entrySpec(base wire.AgentSpec) wire.AgentSpec {
 	return wire.AgentSpec{
 		Name:         p.cfg.EntryAgent,
-		Description:  "Answers for the workspace and calls the right specialists",
+		Description:  "Answers for the workspace, calls the right specialists, and builds and changes agents with you",
 		Provider:     base.Provider,
 		Model:        base.Model,
 		Fallbacks:    slices.Clone(base.Fallbacks),
-		SystemPrompt: entryPrompt,
+		Effort:       "medium",
+		SystemPrompt: entryPrompt + "\n\n" + helperPrompt + "\n\nTo explain how agents are doing or why something failed, read runs_summary and list_alerts first.",
+		Tools:        append(append(BuilderTools(), AnalystTools()...), ToolGetContext),
+		Approvals:    []string{ToolSaveAgent},
+		Approvers:    []string{"role:admin", "role:manager"},
+		SelfApproval: true,
 	}
 }
 
@@ -576,17 +589,24 @@ func (p *Platform) keepPick(tenant, root, message string, rec pickRecord) {
 // child session the reader may not read is left out, answer and all. It is
 // false for a message nothing was picked for.
 func (p *Platform) pickMessage(who auth.Principal, root threads.Thread, m threads.Message) (SessionMessage, bool) {
+	out, _, ok := p.pickFor(who, root, m, func(session string) bool { return p.SeesSession(who, session) })
+	return out, ok
+}
+
+// pickFor is pickMessage with only the calls into sessions sees passes, and
+// the runs those calls led to.
+func (p *Platform) pickFor(who auth.Principal, root threads.Thread, m threads.Message, sees func(session string) bool) (SessionMessage, []runs.Run, bool) {
 	tenant := who.Tenant
 	it, err := p.picks.Lookup(tenant, pickKey(root.ID, m.ID))
 	if err != nil {
-		return SessionMessage{}, false
+		return SessionMessage{}, nil, false
 	}
 	rec := it.Value
 	display := p.wording(tenant).Name
 	out := SessionMessage{ID: "pick-" + m.ID, Session: root.ID, Author: SessionAuthor{Kind: "agent", Name: p.cfg.EntryAgent, Display: display}, Status: "done", At: rec.At, Parts: []SessionPart{{Type: "pick", Text: pickLine(rec.Pick)}}}
 	var status []runs.Run
 	for _, c := range rec.Children {
-		if !p.SeesSession(who, c.Session) {
+		if !sees(c.Session) {
 			continue
 		}
 		part := SessionPart{Type: "call", Session: c.Session, Agent: c.Agent, Status: "working"}
@@ -599,5 +619,5 @@ func (p *Platform) pickMessage(who auth.Principal, root threads.Thread, m thread
 	if len(status) > 0 {
 		out.Status = sessionStatus(status)
 	}
-	return out, true
+	return out, status, true
 }

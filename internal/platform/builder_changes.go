@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/prompts"
@@ -25,7 +24,7 @@ const (
 
 func (p *Platform) builderPreviewChangeTool(req runtime.Request) types.Tool {
 	return &types.ToolFunc{Def: types.ToolDef{Name: ToolPreviewChange, Description: "Prepare a change card before approval: show prompt changes, tools and deterministic eval scores without saving the agent. Apply its returned id only after the person approves.", Parameters: schema([]string{"name", "system_prompt"}, map[string]string{"name": "Agent name", "description": "Description", "system_prompt": "Proposed complete instructions", "tools": "Complete comma-separated tools. Include person_tools only when the person requests use of their separately authorized and reviewed connections; omitted means no personal tools."})}, Fn: func(ctx context.Context, args map[string]any) (string, error) {
-		if legacy.BuiltinAgent(req.Agent()) != BuiltinBuilder {
+		if !p.isHelper(req.Agent()) {
 			return "", ErrBuilder
 		}
 		candidate, before, _, err := p.prepareBuilderAgent(ctx, req.Tenant, args)
@@ -88,7 +87,7 @@ func (p *Platform) builderApplyChangeTool(req runtime.Request) types.Tool {
 		return fmt.Sprintf("%s %s? %s. Reason: %s", action, c.Agent, strings.Join(scores, "; "), arg(call.Arguments, "override_reason"))
 	}
 	return &changeApproval{ToolFunc: &types.ToolFunc{Def: types.ToolDef{Name: ToolApplyChange, Description: "Apply a previously evaluated change card after approval. A regression requires an explicit override_reason. Incomplete evaluations cannot be overridden.", Parameters: schema([]string{"name", "change"}, map[string]string{"name": "Agent name", "change": "Change card id", "override_reason": "Why a person accepts this measured regression; required only for failed scores"})}, Fn: func(ctx context.Context, args map[string]any) (string, error) {
-		if legacy.BuiltinAgent(req.Agent()) != BuiltinBuilder {
+		if !p.isHelper(req.Agent()) {
 			return "", ErrBuilder
 		}
 		name := arg(args, "name")
@@ -145,7 +144,7 @@ func (p *Platform) builderApplyChangeTool(req runtime.Request) types.Tool {
 		}
 		// Keep the override on the reviewed scorecard before publishing anything.
 		if !c.Passed {
-			c.OverrideBy = "approved:agent:" + BuiltinBuilder
+			c.OverrideBy = "approved:agent:" + p.cfg.EntryAgent
 			c.OverrideReason = reason
 			if _, err = p.Evals.SaveChange(req.Tenant, c); err != nil {
 				return "", err
@@ -153,9 +152,9 @@ func (p *Platform) builderApplyChangeTool(req runtime.Request) types.Tool {
 		}
 		var rev wire.Revision
 		if c.BeforeHash == "" {
-			rev, err = p.Agents.Create(ctx, req.Tenant, candidate, "agent:"+BuiltinBuilder)
+			rev, err = p.Agents.Create(ctx, req.Tenant, candidate, "agent:"+p.cfg.EntryAgent)
 		} else {
-			rev, err = p.Agents.Revise(ctx, req.Tenant, candidate, current.Rev, "agent:"+BuiltinBuilder)
+			rev, err = p.Agents.Revise(ctx, req.Tenant, candidate, current.Rev, "agent:"+p.cfg.EntryAgent)
 		}
 		if err != nil {
 			return "", err
