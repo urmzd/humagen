@@ -16,8 +16,12 @@ import { flushSync } from "react-dom";
 /** How long a screen may wait on its reads before it shows anyway, with its skeleton. */
 export const HOLD_MS = 320;
 
-/** How long the console's first screen may wait on its reads, hidden, before it shows. */
-export const FIRST_HOLD_MS = 900;
+/**
+ * How long the console's first screen may wait on its reads, hidden, before
+ * it shows with its skeletons. Short, as a change of screen is: a slow read
+ * otherwise leaves the page blank for long enough to look broken.
+ */
+export const FIRST_HOLD_MS = 400;
 
 let inflight = 0;
 const listeners = new Set<() => void>();
