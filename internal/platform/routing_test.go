@@ -306,9 +306,10 @@ func TestAGovernorWhoTakesNoPartDoesNotMoveAPrivateConversation(t *testing.T) {
 	}
 }
 
-// When no selected agent takes a message, nothing starts, and it says it
-// waits; no agent is fallen back on.
-func TestAMessageNoSelectedAgentTakesWaits(t *testing.T) {
+// When no selected agent takes a message, it still lands, on one of them,
+// saying why: it never waits for a person, and no agent outside the
+// selection answers.
+func TestAMessageNoSelectedAgentTakesLandsOnOne(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
 	workIn(t, p, "Initech", operator)
@@ -316,7 +317,7 @@ func TestAMessageNoSelectedAgentTakesWaits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Runs) != 0 || !strings.Contains(got.Reason, "waits for a person") {
+	if len(got.Runs) != 1 || !slices.Contains([]string{"helper", "lead"}, got.Runs[0].Agent) || got.Runs[0].Picked == "" || got.Reason != "" {
 		t.Fatalf("a message no selected agent took = %+v (%s)", got.Runs, got.Reason)
 	}
 }

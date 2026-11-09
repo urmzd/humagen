@@ -1749,10 +1749,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	c.call(initech, "POST", "/api/projects", "/api/projects", `{"name":"One too many","kind":"company"}`, http.StatusTooManyRequests)
 	// A conversation in the workspace that names no agent, where nothing
-	// answers untagged messages, starts nothing.
+	// answers untagged messages, lands on the entry agent.
 	initechRoot := c.call(initech, "GET", agentsAt, "/api/projects/~/agents", "", http.StatusOK)
 	c.call(initech, "PUT", agentsAt, "/api/projects/~/agents", fmt.Sprintf(`{"version":%v,"enable":["*"]}`, initechRoot.field("version")), http.StatusOK)
-	c.call(initech, "POST", "/api/runs", "/api/runs", `{"text":"hi"}`, http.StatusConflict)
+	if landed := c.call(initech, "POST", "/api/runs", "/api/runs", `{"text":"hi"}`, http.StatusAccepted); landed.str("agent") != platform.BuiltinEntry {
+		t.Fatalf("an untagged message landed on %q, want the entry agent", landed.str("agent"))
+	}
 	c.call(initech, "GET", "/api/join", "/api/join?q=anything", "", http.StatusOK)
 
 	// Schedules.

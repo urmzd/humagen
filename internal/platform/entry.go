@@ -190,12 +190,22 @@ func (p *Platform) withEntrySpawn(ctx context.Context, tenant string, want wire.
 
 // entryMayCall holds the entry agent to the place it answers in: its spawn
 // list spans the workspace, and an agent not available in the run's project
-// is refused there as it would be to a person.
-func (p *Platform) entryMayCall(tenant string, parent wire.Revision, project, agent string) error {
-	if !p.isEntry(parent) || p.Projects.Tree(tenant).IsAvailable(projects.NameOf(project), agent) {
+// is refused there as it would be to a person. A run answering a message a
+// client sent (Slack, GitHub) calls only the agents that client may route
+// to, as the client could not have asked any other.
+func (p *Platform) entryMayCall(tenant string, parent wire.Revision, run runs.Run, agent string) error {
+	if !p.isEntry(parent) {
 		return nil
 	}
-	return fmt.Errorf("%w: @%s is not available where this conversation is", ErrForbidden, agent)
+	if !p.Projects.Tree(tenant).IsAvailable(projects.NameOf(run.Project), agent) {
+		return fmt.Errorf("%w: @%s is not available where this conversation is", ErrForbidden, agent)
+	}
+	if run.Client != "" {
+		if c, err := p.Clients.Get(tenant, run.Client); err != nil || !c.Routes(agent) {
+			return fmt.Errorf("%w: the app this conversation came through may not reach @%s", ErrForbidden, agent)
+		}
+	}
+	return nil
 }
 
 // Bounds on what the entry agent is told about a message's agents.

@@ -2755,8 +2755,9 @@ paths:
       description: |
         Each agent available in the project that takes untagged messages
         (its spec is not `tagged_only`) is asked, all at once, whether it
-        should be involved. Each that says yes would answer, side by side;
-        when none does, the message waits for a person. Nothing is started.
+        should be involved. Each that says yes would answer, side by side.
+        When none does, a message still lands, on the entry agent or the
+        best match (see createRun). Nothing is started.
         Agents the caller may not read are left out.
       x-permission: agents:read
       parameters:
@@ -2820,15 +2821,18 @@ paths:
 
         The body takes no metadata: an unknown field answers 400.
 
-        Nothing routes on its own. With `agent` left out, the default the
-        conversation's place inherits answers, the first set of: the
-        thread's (`updateThread`), the acting client's when `act_as` names
-        one, the channel's (a new conversation is in `general` of its
-        project), then the project's, each ancestor's nearest first, and the
-        workspace's. With none set it is 409, "tag an agent". `*` asks every
-        agent available there whether to take it, and each that does answers
-        (for a person a client acts for, only agents that client may route
-        to); with none, 409. `auto`, as written before, reads as `*`. An agent not available in the
+        With `agent` left out, the default the conversation's place
+        inherits answers, the first set of: the thread's (`updateThread`),
+        the acting client's when `act_as` names one, the channel's (a new
+        conversation is in `general` of its project), then the project's,
+        each ancestor's nearest first, and the workspace's. With none set,
+        or `*`, the message lands: the entry agent answers it, and calls
+        whoever fits. Without one there, each agent that takes it answers,
+        else the best match, the workspace's named default, then the first
+        agent available, its `picked` saying why. For a person a client acts
+        for, only agents that client may route to answer. Only a place where
+        no agent may answer is 409, "tag an agent". `auto`, as written
+        before, reads as `*`. An agent not available in the
         conversation's project, or a default that has stopped being
         available there, is 403. So is a conversation in a project where the
         caller, or the person `act_as` names, is only a viewer: starting work
