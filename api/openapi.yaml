@@ -159,6 +159,38 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/ServerError"
+    get:
+      operationId: "listMessages"
+      tags:
+        - "messages"
+      summary: "List root messages"
+      description: |
+        The root sessions the caller may read, each as its first message: its
+        place (parent), who started it, the agent that owns it, its status
+        (that of the runs beneath it), how many children it has and when
+        anything beneath it last changed. Newest first by latest_at. roots
+        is required and true, the one listing this route answers. Page with
+        after, the next of the previous page.
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "roots", "in": "query", "required": true, "description": "true; the one listing this route answers.", "schema": {"type": "boolean"}}
+        - {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}}
+        - {"name": "after", "in": "query", "required": false, "schema": {"type": "string"}}
+      responses:
+        "200":
+          description: "A page of roots"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RootMessagePage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
   /api/messages/{id}:
     post:
       operationId: "sendMessagesUnder"
@@ -199,7 +231,14 @@ paths:
       tags:
         - "messages"
       summary: "Get message"
-      description: "The session a message is in, with its messages, the entry agent's picks and each delegated answer, its children and links. id is a session id, or a message id (session:message)."
+      description: |
+        Without depth, the session a message is in, with its messages, the
+        entry agent's picks and each delegated answer, its children and
+        links (AgentSession). With depth, the message as a tree
+        (MessageNode): the message and its children in time order, each with
+        children_count and latest_at, depth levels deep. A session id reads
+        as the session's first message, and that message's own id reads the
+        same. id is a session id, or a message id (session:message).
       x-permission: "runs:read"
       parameters:
         - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
@@ -207,13 +246,16 @@ paths:
         - {"name": "before", "in": "query", "required": false, "schema": {"type": "string"}}
         - {"name": "around", "in": "query", "required": false, "schema": {"type": "string"}}
         - {"name": "summary", "in": "query", "required": false, "schema": {"type": "boolean"}}
+        - {"name": "depth", "in": "query", "required": false, "description": "Read the message as a tree this many levels deep; empty is 1. Not with since, before, around or summary.", "schema": {"type": "integer", "minimum": 0, "maximum": 5}}
       responses:
         "200":
-          description: "The message's session"
+          description: "The message's session, or with depth the message as a tree"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentSession"
+                oneOf:
+                  - $ref: "#/components/schemas/AgentSession"
+                  - $ref: "#/components/schemas/MessageNode"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -17515,6 +17557,76 @@ components:
         content: {$ref: "#/components/schemas/MessageContent"}
         created: {type: boolean, description: This request started the root.}
         posted: {$ref: "#/components/schemas/SessionPosted"}
+    MessageAudience:
+      description: Who a root's place was asked in front of, by kind alone. Who was there is never shown.
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [public, private, group, direct]}
+    MessageNode:
+      description: |
+        One message of a tree. A session stands as its first message: beneath
+        it are the agents' messages that follow it up to the next person's
+        message (answers, and the entry agent's pick with its calls), the
+        child sessions started for it, and the session's later people's
+        messages. Beneath a later person's message are the agents' messages
+        that follow it and the child sessions started for it. A child session
+        is a node whose id is the session's. A child session the caller may
+        not read is left out and not counted.
+      type: object
+      additionalProperties: false
+      required: [id, session, role, author, status, content, at, children_count, latest_at, children]
+      properties:
+        id: {type: string, description: "A session's id for a session's node, else session:message."}
+        session: {type: string, description: The session the message is in.}
+        role: {type: string, enum: [user, assistant]}
+        author: {$ref: "#/components/schemas/SessionAuthor"}
+        status:
+          type: string
+          description: That of the runs beneath the message; done when there are none.
+          enum: [working, waiting, done, failed, stopped]
+        content:
+          type: array
+          description: Text, or the entry agent's pick and a call part for each child session it handed the message to.
+          items: {$ref: "#/components/schemas/SessionPart"}
+        at: {type: string, format: date-time}
+        children_count: {type: integer, minimum: 0, description: "How many children the message has, shown or not."}
+        latest_at: {type: string, format: date-time, description: When anything beneath the message last changed.}
+        audience:
+          $ref: "#/components/schemas/MessageAudience"
+          description: On the node read, the audience its root's place reported, when one did.
+        children:
+          type: array
+          description: The latest 200 children at most, in time order, while depth lasts; empty beyond it.
+          items: {$ref: "#/components/schemas/MessageNode"}
+    RootMessage:
+      description: One root session, as its first message.
+      type: object
+      additionalProperties: false
+      required: [id, title, status, agent, author, parent, project, latest_at, children_count]
+      properties:
+        id: {type: string}
+        title: {type: string}
+        status: {type: string, enum: [working, waiting, done, failed, stopped]}
+        agent: {type: string, description: The agent that owns the root.}
+        author: {$ref: "#/components/schemas/SessionAuthor"}
+        parent: {type: string, description: "The root's place: its address, such as slack://team/channel/ts or github://owner/repo/pull/N."}
+        project: {type: string}
+        latest_at: {type: string, format: date-time}
+        children_count: {type: integer, minimum: 0}
+        audience: {$ref: "#/components/schemas/MessageAudience"}
+    RootMessagePage:
+      description: A page of roots, newest first.
+      type: object
+      additionalProperties: false
+      required: [messages, next]
+      properties:
+        messages:
+          type: array
+          maxItems: 200
+          items: {$ref: "#/components/schemas/RootMessage"}
+        next: {type: string, description: "The after of the next page; empty on the last."}
     SessionInput:
       type: object
       additionalProperties: false

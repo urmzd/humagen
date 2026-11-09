@@ -4799,6 +4799,64 @@ export interface MessageCreated {
   posted: SessionPosted;
 }
 
+/** Who a root's place was asked in front of, by kind alone. Who was there is never shown. */
+export interface MessageAudience {
+  kind: "public" | "private" | "group" | "direct";
+}
+
+/** One message of a tree. A session stands as its first message: beneath
+it are the agents' messages that follow it up to the next person's
+message (answers, and the entry agent's pick with its calls), the
+child sessions started for it, and the session's later people's
+messages. Beneath a later person's message are the agents' messages
+that follow it and the child sessions started for it. A child session
+is a node whose id is the session's. A child session the caller may
+not read is left out and not counted.
+ */
+export interface MessageNode {
+  /** A session's id for a session's node, else session:message. */
+  id: string;
+  /** The session the message is in. */
+  session: string;
+  role: "user" | "assistant";
+  author: SessionAuthor;
+  /** That of the runs beneath the message; done when there are none. */
+  status: "working" | "waiting" | "done" | "failed" | "stopped";
+  /** Text, or the entry agent's pick and a call part for each child session it handed the message to. */
+  content: SessionPart[];
+  at: string;
+  /** How many children the message has, shown or not. */
+  children_count: number;
+  /** When anything beneath the message last changed. */
+  latest_at: string;
+  audience?: MessageAudience;
+  /** The latest 200 children at most, in time order, while depth lasts; empty beyond it. */
+  children: MessageNode[];
+}
+
+/** One root session, as its first message. */
+export interface RootMessage {
+  id: string;
+  title: string;
+  status: "working" | "waiting" | "done" | "failed" | "stopped";
+  /** The agent that owns the root. */
+  agent: string;
+  author: SessionAuthor;
+  /** The root's place: its address, such as slack://team/channel/ts or github://owner/repo/pull/N. */
+  parent: string;
+  project: string;
+  latest_at: string;
+  children_count: number;
+  audience?: MessageAudience;
+}
+
+/** A page of roots, newest first. */
+export interface RootMessagePage {
+  messages: RootMessage[];
+  /** The after of the next page; empty on the last. */
+  next: string;
+}
+
 export interface SessionInput {
   text: string;
   agent?: string;

@@ -32,6 +32,31 @@ func exerciseMessagesContract(t *testing.T, c *contract, token, other string) {
 	c.call(token, "POST", "/api/messages/{id}/feedback", "/api/messages/"+child+":"+runID+"/feedback", `{"rating":"meh"}`, http.StatusBadRequest)
 	c.call(token, "POST", "/api/messages/{id}/stop", "/api/messages/"+id+"/stop", `{"children":true}`, http.StatusNoContent)
 	c.call(token, "GET", "/api/messages/{id}", "/api/messages/"+id+"?since=broken", "", http.StatusBadRequest)
+	root := first.str("root")
+	tree := c.call(token, "GET", "/api/messages/{id}", "/api/messages/"+root+"?depth=2", "", http.StatusOK)
+	if tree.str("id") != root || tree.str("role") != "user" || tree.field("children") == nil {
+		t.Fatalf("the root as a tree = %s", tree.raw)
+	}
+	c.call(token, "GET", "/api/messages/{id}", "/api/messages/"+id+"?depth=", "", http.StatusOK)
+	c.call(token, "GET", "/api/messages/{id}", "/api/messages/"+root+"?depth=9", "", http.StatusBadRequest)
+	c.call(token, "GET", "/api/messages/{id}", "/api/messages/"+root+"?depth=1&summary=true", "", http.StatusBadRequest)
+	c.call(token, "GET", "/api/messages/{id}", "/api/messages/"+root+":m-999?depth=1", "", http.StatusNotFound)
+	roots := c.call(token, "GET", "/api/messages", "/api/messages?roots=true&limit=1", "", http.StatusOK)
+	if list := sliceOf(roots.field("messages")); len(list) != 1 || roots.str("next") == "" {
+		t.Fatalf("a page of one root = %s", roots.raw)
+	}
+	more := c.call(token, "GET", "/api/messages", "/api/messages?roots=true&after="+roots.str("next"), "", http.StatusOK)
+	for _, m := range sliceOf(more.field("messages")) {
+		if obj(m)["id"] == roots.str("next") {
+			t.Fatalf("the next page repeats the root before it: %s", more.raw)
+		}
+	}
+	c.call(token, "GET", "/api/messages", "/api/messages", "", http.StatusBadRequest)
+	c.call(token, "GET", "/api/messages", "/api/messages?roots=true&limit=0", "", http.StatusBadRequest)
+	c.call(token, "GET", "/api/messages", "/api/messages?roots=true&after=s_missing", "", http.StatusBadRequest)
+	if mine := c.call(other, "GET", "/api/messages", "/api/messages?roots=true", "", http.StatusOK); strings.Contains(string(mine.raw), root) {
+		t.Fatalf("someone outside the root lists it: %s", mine.raw)
+	}
 	if res, _ := f.do(t, nil, "GET", "/api/messages/"+id+"/stream", token, "", "Last-Event-ID", "broken"); res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("a bad stream cursor = %d", res.StatusCode)
 	}
