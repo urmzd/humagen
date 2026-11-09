@@ -238,7 +238,7 @@ export function SessionPanel({
             {responses.flatMap((r) =>
               allTools(r)
                 .filter((t) => t.kind === "agent" && (t.agent ?? t.name) === view.name)
-                .map((t) => <AgentCallLane key={t.id} tool={t} messageId={messageId} />),
+                .map((t) => <AgentCallLane key={t.id} tool={t} messageId={messageId ?? r.id} />),
             )}
           </div>
         ) : view.kind === "used" ? (

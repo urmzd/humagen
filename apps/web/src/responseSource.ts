@@ -186,7 +186,8 @@ export function traceEvents(trace: MessageTrace): ResponseEvent[] {
       type: "message_start",
       t_ms: 0,
       message: {
-        id: root.run,
+        // The message's own id, which its questions are answered on.
+        id: trace.message || root.run,
         role: "assistant",
         content: [],
         humagen: { root_run: root.run, agent: root.agent },
@@ -222,18 +223,15 @@ export function traceEvents(trace: MessageTrace): ResponseEvent[] {
         ...more,
       });
     const ended = ENDED.has(node.status);
-    const asked = (a: TraceApproval) => ({
-      kind: "approval",
-      prompt: a.action,
-      choices: ["Approve", "Deny"],
-      id: a.id,
-      run: node.run,
-    });
+    // A waiting approval is answered by the call it gates; one that gates
+    // no call shows that it waits, and is answered where it was asked.
+    const asked = (a: TraceApproval) =>
+      a.tool ? { kind: "approval", prompt: a.action, choices: ["Approve", "Deny"] } : undefined;
     // An approval as its call's status: waiting, or how it was decided.
     const decide = (id: string, a: TraceApproval) => {
       if (a.decision === "ask")
         status(id, ended ? "stopped" : "awaiting_approval", a.at, {
-          ...(ended ? {} : { question: asked(a) }),
+          ...(ended || !asked(a) ? {} : { question: asked(a) }),
         });
       else
         status(id, a.decision === "deny" ? "denied" : "running", a.at, {
@@ -330,6 +328,13 @@ export function traceEvents(trace: MessageTrace): ResponseEvent[] {
           elapsed_ms: c.ms,
           ...(title ? { title } : {}),
         });
+        // A delegation that waited on a person: how it was decided, on its call.
+        const a = approvalOf(id);
+        if (a?.by)
+          status(id, statusOf(c.status), a.at, {
+            decided_by: a.by,
+            decision: a.decision === "deny" ? "deny" : "approve",
+          });
         continue;
       }
       if (step.kind === "context") {
