@@ -62,7 +62,9 @@ export function builtinAgent(name: string): string {
   const aliases: Record<string, string> = {
     "warp-writer": "humagen-writer",
     "warp-analyst": "humagen-analyst",
-    "warp-builder": "humagen-builder",
+    // The builder became the entry agent, humagen, which builds and changes agents.
+    "warp-builder": "humagen",
+    "humagen-builder": "humagen",
   };
   return aliases[name] ?? name;
 }

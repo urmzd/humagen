@@ -1,26 +1,26 @@
 import { defaultCopy } from "@humagen/components";
+import { answerOf } from "@humagen/core";
 import { InfoIcon } from "@humagen/render-web";
-import { type MouseEvent, useEffect, useState } from "react";
+import { type MouseEvent, useEffect, useMemo, useState } from "react";
 import type { Run } from "./adapter.ts";
 import { api, coworking, type Thread } from "./api.ts";
-import { took, usd } from "./format.ts";
-import { ActivityList, Chips, loadTrace, type TraceLoader } from "./MessageRefs.tsx";
+import { ActivityLanes, responseChips, summaryOf, useResponse } from "./ResponseActivity.tsx";
+import { Chips } from "./refChips.tsx";
+import { type TraceLoader, traceSource } from "./responseSource.ts";
 import { href, type Route } from "./route.ts";
 import { OriginButton, usePlace } from "./SessionPlace.tsx";
-import { chipsOf, type TraceNode } from "./trace.ts";
 import { AgentMark, Page, Problem, SkeletonRows } from "./ui.tsx";
 
 const words = defaultCopy.trace;
 
-/** What the focused page reads: the run, the runs of its call tree, its own subtree, and its session's record. */
+/** What the focused page reads: the runs of its call tree, for the breadcrumb, its trace, and its session's record. */
 export type FocusLoader = TraceLoader & {
   tree: (id: string) => Promise<Run[]>;
   thread: (id: string) => Promise<Thread | undefined>;
 };
 
 const live: FocusLoader = {
-  trace: api.trace,
-  events: api.runEvents,
+  trace: api.messageTrace,
   tree: api.tree,
   thread: (id) =>
     coworking
@@ -61,14 +61,13 @@ export function MessageFocus({
   go: (route: Route) => void;
   loader?: FocusLoader;
 }) {
-  const [node, setNode] = useState<TraceNode>();
   const [path, setPath] = useState<Run[]>([]);
   const [self, setSelf] = useState<Run>();
   const [thread, setThread] = useState<Thread>();
   const [problem, setProblem] = useState<string>();
   useEffect(() => {
     let on = true;
-    setNode(undefined);
+    setSelf(undefined);
     setProblem(undefined);
     loader
       .tree(id)
@@ -78,10 +77,8 @@ export function MessageFocus({
         if (!on) return;
         setSelf(run);
         setPath(ancestors(runs, id));
-        const [n, t] = await Promise.all([loadTrace(run, loader), loader.thread(run.thread)]);
-        if (!on) return;
-        setNode(n);
-        setThread(t);
+        const t = await loader.thread(run.thread);
+        if (on) setThread(t);
       })
       .catch((e) => on && setProblem(e instanceof Error ? e.message : words.notFound));
     return () => {
@@ -89,21 +86,20 @@ export function MessageFocus({
     };
   }, [id, loader]);
   const place = usePlace(thread);
+  // The focused message's own response: what it did, folded as any response is.
+  const source = useMemo(
+    () => (self ? traceSource(self, loader === live ? undefined : loader) : undefined),
+    [self, loader],
+  );
+  const { state, ended } = useResponse(source);
+  const node = ended ? state : undefined;
   const open = (e: MouseEvent<HTMLAnchorElement>, to: Route) => {
     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
     go(to);
   };
-  const meta = node
-    ? [
-        node.status === "completed" ? "" : node.status,
-        node.ended_at ? took(node.ms) : "",
-        node.cost ? usd(node.cost) : "",
-        node.model ?? "",
-      ]
-        .filter(Boolean)
-        .join(" · ")
-    : "";
+  const meta = node ? summaryOf(node) : "";
+  const answer = node ? answerOf(node) : undefined;
   // The root's title can be a whole first message; the breadcrumb keeps its start.
   const rootLabel = (() => {
     const t = thread?.title || words.root;
@@ -178,21 +174,21 @@ export function MessageFocus({
               <AgentMark name={self.agent} size={24} />
               {self.agent}
             </p>
-            {node.pick && <p className="text-aui-2xs text-aui-muted">{words.picked(node.pick)}</p>}
-            {node.answer ? (
+            {answer?.text ? (
               <p className="whitespace-pre-wrap break-words text-aui-fg text-aui-sm">
-                {node.answer}
+                {answer.text}
               </p>
             ) : (
               node.error && <p className="text-aui-bad text-aui-sm">{node.error}</p>
             )}
-            <Chips chips={chipsOf(node)} />
-            {node.children.length > 0 && (
+            <Chips chips={responseChips(node)} />
+            {node.content.some((b) => b.type === "tool") && (
               <section aria-labelledby="focus-activity" className="mt-4 flex flex-col gap-3">
                 <h2 id="focus-activity" className="font-medium text-aui-fg text-aui-sm">
                   {words.activity}
                 </h2>
-                <ActivityList node={node} skipRoot />
+                <p className="text-aui-muted text-aui-xs">{meta}</p>
+                <ActivityLanes state={node} />
               </section>
             )}
           </article>

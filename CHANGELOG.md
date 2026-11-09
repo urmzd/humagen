@@ -1,5 +1,92 @@
 # Changelog
 
+## 0.106.0 (2026-11-09)
+
+### Features
+
+- **web**: answer in Activity by the call that waits, on the message (#301) ([4bc3e43](https://github.com/urmzd/humagen/commit/4bc3e43562c614f88bed2a75649fd916d6109881))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.105.0...v0.106.0)
+
+
+## 0.103.0 (2026-11-09)
+
+### Features
+
+- **messages**: trace what ran to answer a message (#297) ([58645d6](https://github.com/urmzd/humagen/commit/58645d65e05e2eb184b8083019ad560ccf7d0604))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.102.0...v0.103.0)
+
+
+## 0.102.0 (2026-11-09)
+
+### Features
+
+- **messages**: read a message as a tree, list roots (#285) ([6f7a179](https://github.com/urmzd/humagen/commit/6f7a179347434a5b206a891af82d0f255a63ad00))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.101.0...v0.102.0)
+
+
+## 0.100.0 (2026-11-09)
+
+### Features
+
+- **api**: one messages API for every surface (#277) ([759c9c7](https://github.com/urmzd/humagen/commit/759c9c7b577eb926754ecbfe06720d4fba0b2684))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.99.2...v0.100.0)
+
+
+## 0.99.2 (2026-11-09)
+
+### Bug Fixes
+
+- **join**: route on what agents are for, not on instruction filler (#296) ([c1a8ded](https://github.com/urmzd/humagen/commit/c1a8ded5f04c4b1dd726cfc575f013ad9af35520))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.99.1...v0.99.2)
+
+
+## 0.99.0 (2026-11-08)
+
+### Features
+
+- **github**: review pull requests automatically; labels start nothing (#259) ([cdc0dd3](https://github.com/urmzd/humagen/commit/cdc0dd3331aaa86fd6503be1eb6a5765dec27179))
+- **console**: one Details panel: progress, agents, outputs, environment and what a session used (#293) ([26a466c](https://github.com/urmzd/humagen/commit/26a466c7154a66a3815231156c6913bcf7e3ee94))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.98.0...v0.99.0)
+
+
+## 0.97.1 (2026-11-08)
+
+### Bug Fixes
+
+- **sidebar**: Recents is one list by local day; Recents and Sessions list newest first (#291) ([03f5c1f](https://github.com/urmzd/humagen/commit/03f5c1f36d19453bab80cf3014dffae636588a12))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.97.0...v0.97.1)
+
+
+## 0.97.0 (2026-11-08)
+
+### Features
+
+- **console**: an item page and Sessions filters by place and item (#282) ([2a7d801](https://github.com/urmzd/humagen/commit/2a7d8014905ae644d1acddfac4dcba2a6a93d342))
+- **console**: every message has one address, its references and its delegated work (#281) ([a7a57f3](https://github.com/urmzd/humagen/commit/a7a57f3188bfcd872c6796c3994ceabbe12c6cc7))
+- **console**: one card, one reference chip and one menu for every page (#279) ([240ae87](https://github.com/urmzd/humagen/commit/240ae8737864d3ae461c372248d7a8833937c244))
+- **approvals**: the approval agent is a built-in that decides calls in Run (#255) ([5742393](https://github.com/urmzd/humagen/commit/574239398af3d6aa471e72426dedfdd1dba1227e))
+- **models**: admin model providers; no built-in or offline model (#254) ([ef75213](https://github.com/urmzd/humagen/commit/ef752139865715cf90bd6014d34740fc14ab3959))
+- **knowledge**: query a corpus's warehouses live with the reader's own login (#247) ([e71dc08](https://github.com/urmzd/humagen/commit/e71dc08634532ae3da4c5e2e1364737c62433bbc))
+- **followups**: queue, replace or stop work when a message arrives mid-run (#256) ([a3b0710](https://github.com/urmzd/humagen/commit/a3b07101a2f4f9995c8c833abb64f0af3a0eb89b))
+
+### Bug Fixes
+
+- **spec**: retired fields load with a note instead of stopping a start (#292) ([bc242a4](https://github.com/urmzd/humagen/commit/bc242a4ffb06537296e1d2eb9cde0ced23d77c7d))
+
+### Misc
+
+- **platform**: entry agent tests use the test builtin model fields (#290) ([51cb54f](https://github.com/urmzd/humagen/commit/51cb54fd2b157faeeb944c8572f8fb02ba550437))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.96.0...v0.97.0)
+
+
 ## 0.95.0 (2026-11-08)
 
 ### Breaking

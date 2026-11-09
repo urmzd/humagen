@@ -23,6 +23,13 @@ export const sessionCenter = {
     call<Alert>("PATCH", `/api/alerts/${encodeURIComponent(id)}`, body),
 };
 export const isRootSession = (s: AgentSessionSummary) => !s.parent.startsWith("s_");
+/**
+ * A session nobody asked anything in: one opened to hold a system alert,
+ * such as an agent's health. It is reached from Alerts, not listed with
+ * people's sessions.
+ */
+export const holdsAnAlertOnly = (t: Pick<ThreadSummary, "messages" | "turns">) =>
+  t.messages === 0 && t.turns === 0;
 export const alertPriority = (a: Alert): "urgent" | "normal" | "low" => a.priority ?? "normal";
 export const openAlert = (a: Alert) => a.state === "open" || (!a.state && !a.acked_at);
 export const attentionAlerts = (alerts: Alert[]) =>

@@ -1,6 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type AlertRuleConfig, api, type ProjectView } from "./api.ts";
+import { agentShown } from "./branding.ts";
 import { AgentTag, FilterSelect, ItemCard, PriorityPill, StatusPill, Tag } from "./cards.tsx";
 import { type ProjectRef, readableProject } from "./projects.ts";
 import { href, type Route, SESSION_PLACES, type SessionPlaceFilter } from "./route.ts";
@@ -12,6 +13,7 @@ import {
   alertPage,
   alertPriority,
   attentionAlerts,
+  holdsAnAlertOnly,
   isRootSession,
   openAlert,
   orderAlerts,
@@ -141,7 +143,7 @@ export function SessionRow({
   return (
     <li className={nested ? "ml-4 border-aui-border border-l pt-3 pl-4" : ""}>
       <ItemCard
-        title={session.title || session.agent}
+        title={session.title || agentShown(session.agent)}
         href={href({ page: "conversation", id: session.id })}
         time={<time dateTime={session.updated_at}>{ago(session.updated_at)}</time>}
         onOpen={() => go({ page: "conversation", id: session.id })}
@@ -157,7 +159,7 @@ export function SessionRow({
         actions={
           <button
             type="button"
-            aria-label={`${expanded ? "Collapse" : "Show"} children of ${session.title || session.agent}`}
+            aria-label={`${expanded ? "Collapse" : "Show"} children of ${session.title || agentShown(session.agent)}`}
             aria-expanded={expanded}
             onClick={expand}
             className={textAction}
@@ -281,16 +283,15 @@ export function SessionsPage({
       setBusy(false);
     }
   };
+  // Newest first. An alert marks its session's row and does not move it; a
+  // session that only holds an alert is in Alerts, not here.
   const shown = (sessions ?? []).filter(
     (s) =>
+      !holdsAnAlertOnly(s.conversation) &&
       (!route.q || `${s.title} ${s.agent}`.toLowerCase().includes(route.q.toLowerCase())) &&
       (!route.place || placeOfSession(s) === route.place),
   );
-  const urgency = (id: string) => {
-    const a = orderAlerts(alerts.filter((a) => a.session === id && openAlert(a)))[0];
-    return a ? (alertPriority(a) === "urgent" ? 0 : alertPriority(a) === "normal" ? 1 : 2) : 3;
-  };
-  shown.sort((a, b) => urgency(a.id) - urgency(b.id) || b.updated_at.localeCompare(a.updated_at));
+  shown.sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
   return (
     <Page title="Sessions" lede="Your work, with each agent's child sessions kept together.">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
@@ -895,7 +896,7 @@ export function HomeSessionGlance({
             {sessions.slice(0, 3).map((s) => (
               <li key={s.id}>
                 <ItemCard
-                  title={s.title || s.agent}
+                  title={s.title || agentShown(s.agent)}
                   time={ago(s.updated_at)}
                   onOpen={() => go({ page: "conversation", id: s.id })}
                   facts={

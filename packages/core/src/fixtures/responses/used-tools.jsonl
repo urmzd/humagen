@@ -1,0 +1,26 @@
+{"type":"message_start","t_ms":0,"message":{"id":"msg_tools","role":"assistant","content":[],"humagen":{"request_id":"m_5","root_run":"r_tools","agent":"lead","ref":"github://urmzd/humagen/pull/243","trace_url":"/messages/msg_tools"}}}
+{"type":"content_block_start","t_ms":500,"index":0,"content_block":{"type":"server_tool_use","id":"htu_r_tools_0","name":"github_create_pull_request","kind":"tool","input":{"title":"Fix the deploy token"}}}
+{"type":"content_block_start","t_ms":900,"index":1,"content_block":{"type":"server_tool_result","tool_use_id":"htu_r_tools_0","content":"Opened https://github.com/urmzd/humagen/pull/300"}}
+{"type":"humagen.tool_status","t_ms":901,"tool_use_id":"htu_r_tools_0","path":["htu_r_tools_0"],"status":"done","elapsed_ms":400}
+{"type":"content_block_start","t_ms":1400,"index":2,"content_block":{"type":"server_tool_use","id":"htu_r_tools_1","name":"mcp__gmail__send_email","kind":"tool","input":{"to":"ana@example.com"}}}
+{"type":"content_block_start","t_ms":1800,"index":3,"content_block":{"type":"server_tool_result","tool_use_id":"htu_r_tools_1","content":"sent"}}
+{"type":"humagen.tool_status","t_ms":1801,"tool_use_id":"htu_r_tools_1","path":["htu_r_tools_1"],"status":"done","elapsed_ms":400}
+{"type":"content_block_start","t_ms":2300,"index":4,"content_block":{"type":"server_tool_use","id":"htu_r_tools_2","name":"corpus_search","kind":"tool","input":{"corpus":"runbooks","query":"token"}}}
+{"type":"content_block_start","t_ms":2700,"index":5,"content_block":{"type":"server_tool_result","tool_use_id":"htu_r_tools_2","content":"2 hits"}}
+{"type":"humagen.tool_status","t_ms":2701,"tool_use_id":"htu_r_tools_2","path":["htu_r_tools_2"],"status":"done","elapsed_ms":400}
+{"type":"content_block_start","t_ms":3200,"index":6,"content_block":{"type":"server_tool_use","id":"htu_r_tools_3","name":"web_fetch","kind":"tool","input":{"url":"https://docs.example/tokens"}}}
+{"type":"content_block_start","t_ms":3600,"index":7,"content_block":{"type":"server_tool_result","tool_use_id":"htu_r_tools_3","content":"page"}}
+{"type":"humagen.tool_status","t_ms":3601,"tool_use_id":"htu_r_tools_3","path":["htu_r_tools_3"],"status":"done","elapsed_ms":400}
+{"type":"content_block_start","t_ms":4100,"index":8,"content_block":{"type":"server_tool_use","id":"htu_r_tools_4","name":"memory_read","kind":"tool","input":{"name":"deploy-notes"}}}
+{"type":"content_block_start","t_ms":4500,"index":9,"content_block":{"type":"server_tool_result","tool_use_id":"htu_r_tools_4","content":"notes"}}
+{"type":"humagen.tool_status","t_ms":4501,"tool_use_id":"htu_r_tools_4","path":["htu_r_tools_4"],"status":"done","elapsed_ms":400}
+{"type":"content_block_start","t_ms":5000,"index":10,"content_block":{"type":"server_tool_use","id":"htu_r_tools_5","name":"remember","kind":"tool","input":{"name":"token-rotation"}}}
+{"type":"content_block_start","t_ms":5400,"index":11,"content_block":{"type":"server_tool_result","tool_use_id":"htu_r_tools_5","content":"saved"}}
+{"type":"humagen.tool_status","t_ms":5401,"tool_use_id":"htu_r_tools_5","path":["htu_r_tools_5"],"status":"done","elapsed_ms":400}
+{"type":"content_block_start","t_ms":5900,"index":12,"content_block":{"type":"server_tool_use","id":"htu_r_tools_6","name":"sandbox_exec","kind":"tool","input":{"image":"node-20","cmd":"npm test"}}}
+{"type":"content_block_start","t_ms":6300,"index":13,"content_block":{"type":"server_tool_result","tool_use_id":"htu_r_tools_6","content":"ok"}}
+{"type":"humagen.tool_status","t_ms":6301,"tool_use_id":"htu_r_tools_6","path":["htu_r_tools_6"],"status":"done","elapsed_ms":400}
+{"type":"content_block_start","t_ms":8800,"index":14,"content_block":{"type":"text","text":"Rotated the token and opened a PR."}}
+{"type":"message_delta","t_ms":9000,"delta":{"stop_reason":"end_turn"}}
+{"type":"humagen.usage","by_model":{"anthropic/claude-sonnet-5-5":{}},"cost_usd":0.021}
+{"type":"message_stop","t_ms":9000}

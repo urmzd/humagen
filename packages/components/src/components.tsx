@@ -16,6 +16,7 @@ import {
   type InboxItem,
   type Interrupt,
   isRetryable,
+  type Judgement,
   type Notice,
   readAgentChange,
   readReview,
@@ -102,6 +103,36 @@ function withReason(line: string, reason?: string) {
 }
 
 /**
+ * Words a model wrote, made inert for the Text primitive: a link's markup and a
+ * time token are broken with a zero-width space, so they show as typed and
+ * nothing in them becomes a link. Each renderer already escapes what would
+ * ping on its surface.
+ */
+export function untrusted(text: string): string {
+  return text.replaceAll("](", "]\u200B(").replaceAll("{{", "{\u200B{");
+}
+
+/**
+ * The approval agent's view of a call: what it decided and why, then each
+ * field the workspace's schema adds as a label and its value, then what it
+ * rests on. Muted lines, so the call itself stays the point of the card.
+ */
+function JudgementView({ judgement: j, copy }: { judgement: Judgement; copy: Copy }) {
+  const words = copy.judgement;
+  const fields = (j.fields ?? []).map((f) => `**${untrusted(f.label)}:** ${untrusted(f.value)}`);
+  const references = j.references ?? [];
+  return (
+    <>
+      <Context
+        items={[withReason(`**${words.by}:** ${words.decision[j.decision]}`, untrusted(j.reason))]}
+      />
+      {fields.length > 0 && <Context items={fields} />}
+      {references.length > 0 && <Context items={[words.basedOn(references.map(untrusted))]} />}
+    </>
+  );
+}
+
+/**
  * Approval gate. Point first, a preview of exactly what will happen, specific
  * verbs, one emphasized button, and a record in place of the controls once decided.
  */
@@ -125,6 +156,12 @@ export function ApprovalCard({
   const denyLabel = approval.budget ? copy.budgetHold.stop : copy.declineAction;
   const payload = { turnId, target: approval.id };
   const allowed = viewer === undefined || canDecide(approval, viewer);
+  const { judgement } = approval;
+  const judged = judgement ? <JudgementView judgement={judgement} copy={copy} /> : null;
+  // When the approval agent decided, the record's note repeats its reason, which the
+  // judgement already shows: the record keeps only who and when.
+  const noted = (reason?: string) =>
+    reason && judgement?.reason && reason.endsWith(judgement.reason) ? undefined : reason;
 
   if (decision.kind === "asked") {
     // Asking halts the call; the agent answers, then the gate is raised again.
@@ -132,6 +169,7 @@ export function ApprovalCard({
       <>
         <Text text={`**${approval.summary}**`} />
         {fields.length > 0 && <Fields items={fields} />}
+        {judged}
         <Context
           items={[`${copy.askedBy(decision.by, timeToken(decision.at))}: "${decision.question}"`]}
         />
@@ -144,6 +182,7 @@ export function ApprovalCard({
       <>
         <Text text={`**${approval.summary}**`} />
         {fields.length > 0 && <Fields items={fields} />}
+        {judged}
         <Actions blockId={`approval:${approval.id}:r${approval.revision ?? 0}`}>
           <Button label={copy.askApproval} action={{ id: ActionId.ask, payload }} />
         </Actions>
@@ -163,6 +202,7 @@ export function ApprovalCard({
         <Summary text={copy.approvalNeeded(approval.summary)} />
         <Text text={`**${approval.summary}**`} />
         {fields.length > 0 && <Fields items={fields} />}
+        {judged}
         <Actions blockId={`approval:${approval.id}:r${approval.revision ?? 0}`}>
           <Button
             label={approveLabel}
@@ -202,9 +242,13 @@ export function ApprovalCard({
       <>
         <Text text={`**${approval.summary}**`} />
         {fields.length > 0 && <Fields items={fields} />}
+        {judged}
         <Context
           items={[
-            withReason(copy.approvedBy(decision.by, timeToken(decision.at)), decision.reason),
+            withReason(
+              copy.approvedBy(decision.by, timeToken(decision.at)),
+              noted(decision.reason),
+            ),
           ]}
         />
       </>
@@ -222,6 +266,7 @@ export function ApprovalCard({
   return (
     <>
       <Text text={`~~${approval.summary}~~ ${outcome}`} />
+      {judged}
       {decision.kind === "denied" && (
         <Context
           items={[
@@ -230,7 +275,7 @@ export function ApprovalCard({
                 decision.by,
                 timeToken(decision.at),
               ),
-              decision.reason,
+              noted(decision.reason),
             ),
           ]}
         />

@@ -10,7 +10,7 @@ import { follow } from "@humagen/adapter";
 import { defaultCopy } from "@humagen/components";
 import { App } from "./app.tsx";
 import { CHANNEL, FakeSlack, mention, settle, stopPressed, TEAM, USER } from "./harness.ts";
-import { type Humagen, HumagenError, httpHumagen, staticToken } from "./humagen.ts";
+import { type Humagen, httpHumagen, staticToken } from "./humagen.ts";
 import { runId, threadKey } from "./keys.ts";
 
 /**
@@ -204,14 +204,9 @@ test("the stand-in client against the real routes", { skip: !enabled }, async ()
   assert.deepEqual(turns?.map((t) => t.id).sort(), [run.id, next.id].sort());
 
   // * asks every agent whether to take it. The router is off by default, so
-  // none does, and the message waits for a person.
-  await assert.rejects(
-    c.createRun({ agent: "*", text: "do one task well" }, `${key}-everyone`),
-    (e: unknown) =>
-      e instanceof HumagenError &&
-      e.status === 409 &&
-      /waits for a person to answer or tag an agent/.test(e.message),
-  );
+  // none does; the message still lands on one, and never waits for a person.
+  const landed = await c.createRun({ agent: "*", text: "do one task well" }, `${key}-everyone`);
+  assert.ok(landed.agent, "a message no agent takes still lands on one");
 
   assert.equal(await c.getRun("api-dev-no-such-run"), null);
   assert.equal(await c.getThread("api-dev-no-such-run"), null);

@@ -184,9 +184,11 @@ func (p *Platform) GetConnection(ctx context.Context, who auth.Principal, name s
 						repos = append(repos, rule.Repository)
 					}
 				}
-				for repo := range c.GitHub.AutoLabels {
-					if !slices.Contains(repos, repo) {
-						repos = append(repos, repo)
+				if a := c.GitHub.AutoReview; a != nil {
+					for repo, on := range a.Repositories {
+						if on && !slices.Contains(repos, repo) {
+							repos = append(repos, repo)
+						}
 					}
 				}
 				slices.Sort(repos)

@@ -607,7 +607,8 @@ export interface Client {
   };
   github?: {
     automations?: GitHubAutomation[];
-    auto_labels?: Record<string, Record<string, string>>;
+    /** Automatic review of pull requests: on unless switched off, per repository too. */
+    auto_review?: { enabled?: boolean; repositories?: Record<string, boolean> };
     checks?: boolean;
     guides?: boolean;
     mutations?: boolean;
@@ -826,6 +827,37 @@ export interface Suite {
 
 export interface SuiteView extends Suite {
   runs: EvalRun[];
+}
+
+/**
+ * How widely a project is read: by one person, by named people or roles, or
+ * by everyone in the workspace. The server sends it on a project as
+ * `visibility`; until the client is regenerated it is declared here.
+ */
+export type ProjectVisibility = "private" | "shared" | "workspace";
+
+/**
+ * One corpus a project attaches, as `GET /api/projects/{name}/corpora` reads
+ * it: its title when it has one, and how many of its sources the reader sees.
+ * Declared here until the client is regenerated.
+ */
+export interface ProjectCorpus {
+  name: string;
+  title?: string;
+  sources: number;
+}
+
+/** The corpora a project attaches, at the project's version, and what a session filed there searches. */
+export interface ProjectCorpora {
+  version: number;
+  corpora: ProjectCorpus[];
+  given: { name: string; from: string }[];
+}
+
+/** A corpus as `GET /api/corpora` lists it, by what a project page needs of it. */
+export interface CorpusBrief {
+  name: string;
+  title?: string;
 }
 
 /** A project in a path: `~` is the workspace, which is the project named "". */
@@ -1062,10 +1094,6 @@ export const api = {
     call<AccessDecision>("GET", `/api/access/explain?${new URLSearchParams({ permission })}`),
   agents: () => call<{ agents: Revision[] }>("GET", "/api/agents").then((r) => r.agents),
   /** Every agent, and the names of those the platform provides, which cannot be edited. */
-  /**
-   * Every agent, the platform's own by name, where each that lives in a
-   * project lives, and which projects enable each ("~" is the workspace).
-   */
   agentHues: (names: string[], path = "/api/agent-hues") =>
     call<{ hues: Record<string, number> }>(
       "GET",
@@ -1091,6 +1119,10 @@ export const api = {
     call<void>("DELETE", `/api/model-providers/${encodeURIComponent(name)}`),
   checkModelProvider: (name: string) =>
     call<ModelProviderCheck>("POST", `/api/model-providers/${encodeURIComponent(name)}/check`),
+  /**
+   * Every agent, the platform's own by name, and the project each is homed in,
+   * which says who sees it. `enabled_in` is always empty now.
+   */
   agentList: () =>
     call<{
       agents: Revision[];
@@ -1099,7 +1131,7 @@ export const api = {
       enabled_in?: Record<string, string[]>;
       hues?: Record<string, number>;
     }>("GET", "/api/agents"),
-  /** Make an agent live in a project, "" for none: available there and below, and nowhere else. */
+  /** Says who sees an agent: a project's members, Private in a Personal project, or "~" for the workspace. */
   setAgentHome: (agent: string, project: string) =>
     call<AgentHome>("PUT", `/api/agents/${encodeURIComponent(agent)}/home`, { project }),
   createAgent: (spec: AgentSpec) => call<Revision>("POST", "/api/agents", spec),
@@ -1171,6 +1203,12 @@ export const api = {
   stopRun: (id: string) => call<Run>("POST", `/api/runs/${encodeURIComponent(id)}/stop`),
   /** Answer the question a run is waiting on. Returns the question's inbox message, settled. */
   answer: (r: AnswerRequest) => call<unknown>("POST", answerPath(r), r.body),
+  /** A message alone, without its children: who its root's place was asked in front of. */
+  messageNode: (id: string) =>
+    call<MessageNode>("GET", `/api/messages/${encodeURIComponent(id)}?depth=0`),
+  /** What ran to answer a message (`session`, `session:message` or `session:run`). */
+  messageTrace: (id: string) =>
+    call<MessageTrace>("GET", `/api/messages/${encodeURIComponent(id)}/trace`),
   /** A run's events as they were published, for a run that is no longer streaming. */
   runEvents: (id: string) =>
     call<{ events: RunEvent[]; complete: boolean }>(
@@ -1349,6 +1387,35 @@ export const api = {
       "DELETE",
       `/api/projects/${projectPath(name)}/announcements/${encodeURIComponent(id)}`,
     ),
+  /** The corpora a project attaches, its context. "" is the workspace. */
+  projectCorpora: (name: string) =>
+    call<ProjectCorpora>("GET", `/api/projects/${projectPath(name)}/corpora`),
+  /** Replaces the corpora a project attaches, as a whole, from the version read. */
+  setProjectCorpora: (name: string, version: number, corpora: string[]) =>
+    call<ProjectCorpora>("PUT", `/api/projects/${projectPath(name)}/corpora`, {
+      version,
+      corpora,
+    }),
+  /** Every corpus the reader may read. */
+  corpora: () => call<{ corpora: CorpusBrief[] }>("GET", "/api/corpora").then((r) => r.corpora),
+  /**
+   * The schedules filed in one project, "" for the workspace. A server that
+   * does not filter by project lists every schedule, so the list is narrowed
+   * here as well.
+   */
+  projectSchedules: (project: string) =>
+    call<{ schedules: ScheduleView[] }>(
+      "GET",
+      `/api/schedules?${new URLSearchParams({ project: project === "" ? "~" : project })}`,
+    ).then((r) =>
+      r.schedules.filter((s) => (s.project === "~" ? "" : (s.project ?? "")) === project),
+    ),
+  /** Starts a session filed in a project, "" for the workspace, from its first message. */
+  startSession: (input: { text: string; project: string }) =>
+    call<AgentSession>("POST", "/api/sessions", {
+      text: input.text,
+      project: input.project === "" ? "~" : input.project,
+    }),
   projectMemory: (project: string) =>
     call<{ notes: Note[] }>("GET", `/api/projects/${projectPath(project)}/memory`).then(
       (r) => r.notes,
@@ -1774,8 +1841,21 @@ export interface QueuedApproval {
       steered_for?: string;
       /** What that person is called. Shown in place of `steered_for`, the subject. */
       steered_for_name?: string;
+      /** What the approval agent said about the call, whatever it decided. */
+      judgement?: Judgement;
     };
   }[];
+}
+
+/** The approval agent's view of one approval. Mirrors InboxJudgement in api/openapi.yaml. */
+export interface Judgement {
+  decision: "allow" | "ask" | "deny";
+  reason: string;
+  references?: string[];
+  /** What the workspace's own schema adds, such as a risk level, in the order the agent gave them. */
+  fields?: { name: string; label: string; value: string }[];
+  /** The approval agent's run that decided. */
+  run?: string;
 }
 
 const agentPath = (name: string) => `/api/agents/${encodeURIComponent(name)}`;
@@ -1878,6 +1958,8 @@ export interface ThreadMessage {
   followup?: ThreadFollowup;
   via: string;
   surface_id?: string;
+  /** Files posted with it, by name where the poster gave one. */
+  attachments?: { name?: string; alt?: string; media_type: string }[];
   at: string;
 }
 
@@ -1898,6 +1980,118 @@ export interface ThreadAnnouncement {
   at: string;
 }
 
+/** Something a run cited or a context read drew on. */
+export interface TraceSource {
+  title: string;
+  url?: string;
+}
+
+/** One tool call in a trace. Input and output are left out when withheld. */
+export interface TraceTool {
+  /** `htu_<run>_<seq>`, as the response stream names the call. */
+  id: string;
+  name: string;
+  at: string;
+  /** How long it ran; absent while it runs. */
+  ms?: number;
+  input?: Record<string, unknown>;
+  output?: string;
+  error?: string;
+  withheld: boolean;
+}
+
+/** One get_context call in a trace. */
+export interface TraceContext {
+  id: string;
+  at: string;
+  ms?: number;
+  request: string;
+  /** The place it read, such as slack://team/channel/ts. */
+  reference: string;
+  summary: string;
+  sources: TraceSource[];
+  truncated: boolean;
+  error?: string;
+  withheld: boolean;
+}
+
+/** An action a run waited on a person for. `ask` is one still waiting. */
+export interface TraceApproval {
+  /** The question's own id: what the run's answer route takes. */
+  id: string;
+  /** The id of the call it gates, when it gates one. */
+  tool?: string;
+  action: string;
+  decision: "allow" | "deny" | "ask";
+  by?: string;
+  note?: string;
+  at?: string;
+}
+
+/** A question a run asked a person with ask_person: a choice among options, or a reply in words. */
+export interface TraceQuestion {
+  id: string;
+  /** The call that asked it, `htu_<run>_<n>`: what an answer names. */
+  tool?: string;
+  kind: "choice" | "reply";
+  prompt: string;
+  options: string[];
+  /** asked while it waits; expired when nobody answered in time; closed when its run ended first. */
+  status: "asked" | "answered" | "expired" | "closed";
+  answer?: string;
+  by?: string;
+  at?: string;
+}
+
+/** The entry agent's decision about a message, on the run that made it. */
+export interface TracePick {
+  decision: "answer_myself" | "delegate";
+  agents: string[];
+  reason: string;
+  matched: string[];
+}
+
+/** One run in a trace and what it did, with the runs it called beneath it. */
+export interface TraceNode {
+  run: string;
+  agent: string;
+  status: "accepted" | "running" | "parked" | "completed" | "failed" | "stopped";
+  started_at: string;
+  ended_at?: string;
+  ms: number;
+  /** Micro-USD, what it called included once they ended. */
+  cost?: number;
+  pick?: TracePick;
+  model?: string;
+  answer?: string;
+  error?: string;
+  tools: TraceTool[];
+  context: TraceContext[];
+  sources: TraceSource[];
+  approvals: TraceApproval[];
+  /** Absent from a server older than questions in traces. */
+  questions?: TraceQuestion[];
+  children: TraceNode[];
+}
+
+/** A message as the messages API reads it with depth: the fields the console uses. */
+export interface MessageNode {
+  id: string;
+  session: string;
+  role: "user" | "assistant";
+  /** The audience its root's place reported, when one did. */
+  audience?: { kind: "public" | "private" | "group" | "direct" };
+}
+
+/** What ran to answer a message, as the reader may see it. */
+export interface MessageTrace {
+  message: string;
+  nodes: TraceNode[];
+  /** Runs and child sessions left out because the reader may not read them. */
+  hidden: number;
+  truncated: boolean;
+}
+
 /**
  * The question a parked run waits on, as the reader stands to it: whether
  * they may answer it, and whom it is for otherwise.
@@ -1914,11 +2108,41 @@ export interface ThreadAsk {
   owners_of?: string;
 }
 
+/** An agent a root session's entry agent handed a message to, answering in a child session. */
+export interface PickCall {
+  /** The child session it answers in. */
+  session: string;
+  agent: string;
+  status: "working" | "waiting" | "done" | "failed" | "stopped";
+  /** Its answer, empty until it has one. */
+  text: string;
+}
+
+/**
+ * What a root session's entry agent picked for a person's message: why, and
+ * each agent it handed the message to. Answering itself, it hands it to
+ * nobody, and its own answer says why above it (`run.picked`).
+ */
+export interface SessionPick {
+  id: string;
+  /** The entry agent's own name, which colors its mark. */
+  agent: string;
+  /** The name people see it by: the workspace's. */
+  by: string;
+  reason: string;
+  /** The person's message it was picked for, as the session read it. */
+  message: string;
+  at: string;
+  calls: PickCall[];
+}
+
 export interface ThreadTurn {
-  kind: "message" | "run" | "announcement";
+  kind: "message" | "run" | "announcement" | "pick";
   message?: ThreadMessage;
   run?: Run;
   announcement?: ThreadAnnouncement;
+  /** In a root session, what its entry agent picked for the message before it. */
+  pick?: SessionPick;
   /** On a run parked on a question a person answers. */
   ask?: ThreadAsk;
 }
@@ -2044,7 +2268,7 @@ export const coworking = {
     call<{ channels: Channel[] }>("GET", `${projectAt(project)}/channels`).then((r) => r.channels),
   createChannel: (
     project: string,
-    c: { name: string; title?: string; purpose?: string; default?: string },
+    c: { name: string; title?: string; purpose?: string; default?: string; slack?: SlackBinding },
   ) => call<Channel>("POST", `${projectAt(project)}/channels`, c),
   updateChannel: (
     project: string,
