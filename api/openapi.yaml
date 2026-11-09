@@ -12949,7 +12949,7 @@ components:
           required: [id, text]
           properties:
             id: {type: string}
-            text: {type: string, description: The text as read, Slack markup reduced.}
+            text: {type: string, description: "The text as read, Slack markup reduced."}
         runs:
           description: The runs it started, in the root or in the child of the agent it named.
           type: array
