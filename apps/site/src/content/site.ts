@@ -285,8 +285,6 @@ spec:
       vertex: {project: YOUR_PROJECT, location: us-central1}
   sandbox:
     kind: unisolated           # no Docker socket in the container
-  execution:
-    builtin: {provider: gemini, model: gemini-3-flash-preview}
 ---
 api_version: humagen/v1
 kind: Platform

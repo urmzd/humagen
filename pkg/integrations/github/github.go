@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -47,7 +46,6 @@ type Config struct {
 	Interval       time.Duration
 	Clock          func() time.Time
 	MaxBody        int64
-	AutoLabels     map[string]map[string]string
 	Guides         bool
 	Mutations      bool
 	MutationSecret []byte
@@ -72,23 +70,6 @@ type Connector struct {
 func New(cfg Config) (*Connector, error) {
 	c := &Connector{cfg: cfg}
 	c.cfg.MutationSecret = append([]byte(nil), cfg.MutationSecret...)
-	c.cfg.AutoLabels = map[string]map[string]string{}
-	for repo, labels := range cfg.AutoLabels {
-		if len(strings.Split(repo, "/")) != 2 {
-			return nil, fmt.Errorf("github: invalid auto-label repository")
-		}
-		key := strings.ToLower(repo)
-		if _, ok := c.cfg.AutoLabels[key]; ok {
-			return nil, fmt.Errorf("github: duplicate repository")
-		}
-		c.cfg.AutoLabels[key] = map[string]string{}
-		for label, agent := range labels {
-			if strings.TrimSpace(label) == "" || !mention.Valid(agent) {
-				return nil, fmt.Errorf("github: invalid auto label or agent")
-			}
-			c.cfg.AutoLabels[key][label] = agent
-		}
-	}
 	if cfg.Guides || cfg.Mutations {
 		if _, ok := cfg.API.(transport.ContextAPI); !ok {
 			return nil, fmt.Errorf("github: policy needs ContextAPI")
@@ -113,16 +94,6 @@ func New(cfg Config) (*Connector, error) {
 	base.FixPullContext = cfg.FixPullContext
 	base.Feedback, base.ContinueThread, base.StatusReactions, base.ActionRepositories = cfg.Feedback, cfg.ContinueThread, cfg.StatusReactions, cfg.ActionRepositories
 	base.ObserveDelivery = cfg.ObserveDelivery
-	base.Automation = func(h transport.Hook) (string, bool) {
-		_, text, ok := c.automatic(h)
-		return text, ok
-	}
-	base.AutomationFor = func(h transport.Hook) []string {
-		if agent, _, ok := c.automatic(h); ok {
-			return []string{agent}
-		}
-		return nil
-	}
 	base.Prepare = c.prepare
 	base.Render = func(v transport.View) string {
 		if cfg.ReviewText != nil && v.Terminal() {
@@ -180,16 +151,6 @@ func New(cfg Config) (*Connector, error) {
 	if err != nil {
 		return nil, err
 	}
-	validator, err := transport.New(transport.Config{API: cfg.API})
-	if err != nil {
-		return nil, err
-	}
-	for repo := range c.cfg.AutoLabels {
-		parts := strings.Split(repo, "/")
-		if _, err := validator.Reference(refAddress(Ref{Owner: parts[0], Repo: parts[1], Number: 1}, "pull")); err != nil {
-			return nil, err
-		}
-	}
 	return c, nil
 }
 
@@ -243,36 +204,6 @@ func sourceOf(tag event.Envelope) (address.Address, error) { return address.Pars
 // binds the run's tools to its source and answers on its channel.
 func setSource(tag *event.Envelope, a address.Address) {
 	tag.Source, tag.Channel = a.String(), a.String()
-}
-
-func (c *Connector) automatic(h transport.Hook) (string, string, bool) {
-	labels := c.cfg.AutoLabels[strings.ToLower(h.Repository.Owner.Login+"/"+h.Repository.Name)]
-	title, body, sha := "", "", ""
-	var names []string
-	if h.PullRequest != nil {
-		title, body, sha = h.PullRequest.Title, h.PullRequest.Body, h.PullRequest.Head.SHA
-		for _, l := range h.PullRequest.Labels {
-			names = append(names, l.Name)
-		}
-	} else if h.Issue != nil {
-		title, body = h.Issue.Title, h.Issue.Body
-	}
-	if h.Action == "labeled" && h.Label != nil {
-		names = []string{h.Label.Name}
-	} else if h.Action != "synchronize" {
-		return "", "", false
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		if agent, ok := labels[name]; ok {
-			text := strings.TrimSpace(title + "\n\n" + body)
-			if h.Action == "synchronize" {
-				text = "Review commit " + sha + ".\n\n" + text
-			}
-			return agent, text, true
-		}
-	}
-	return "", "", false
 }
 
 func conclusion(v transport.View) string {

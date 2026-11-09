@@ -8,7 +8,7 @@ import (
 
 func TestAgentPackageUpgradeCustomizeReset(t *testing.T) {
 	ctx := t.Context()
-	p, err := New(Config{Workspace: t.TempDir(), BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p, err := New(Config{Workspace: t.TempDir(), TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	if err != nil {
 		t.Fatal(err)
 	}

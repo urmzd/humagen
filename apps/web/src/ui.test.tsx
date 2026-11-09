@@ -151,7 +151,7 @@ test("project pins work without recent conversations and omit unreadable project
     onPinProject: async () => {},
   });
   assert.match(out, /aria-label="Pinned"/);
-  assert.match(out, /href="\/projects\/Launch\/context"/);
+  assert.match(out, /href="\/projects\/Launch"/);
   assert.match(out, /aria-label="Unpin project Spring launch"/);
   assert.doesNotMatch(out, /href="\/projects\/hidden"/);
   assert.doesNotMatch(

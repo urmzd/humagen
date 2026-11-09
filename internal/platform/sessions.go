@@ -32,8 +32,6 @@ type SessionInput struct {
 	Label       string `json:"label,omitempty"`
 	Fresh       bool   `json:"fresh,omitempty"`
 	Project     string `json:"project,omitempty"`
-	Model       string `json:"model,omitempty"`
-	Effort      string `json:"effort,omitempty"`
 	SourceAlert string `json:"source_alert,omitempty"`
 	// Surface and ActAs are a chat surface's thread and the person a
 	// message from it is posted for: only that client's machine sends them,
@@ -277,7 +275,7 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 	if existing.Session == nil || existing.Session.SourceAlert != in.SourceAlert {
 		return SessionView{}, fmt.Errorf("%w: this session belongs to another source alert", threads.ErrInvalid)
 	}
-	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: in.Text, Model: in.Model, Effort: in.Effort}); err != nil {
+	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: in.Text}); err != nil {
 		return SessionView{}, err
 	}
 	return p.ReadSession(ctx, who, rec.ID, "", "", false)
@@ -345,7 +343,7 @@ func (p *Platform) PostSession(ctx context.Context, who auth.Principal, id strin
 			if _, err := p.PostMessage(ctx, who, id, posted); err != nil {
 				return SessionView{}, err
 			}
-			if _, err := p.StartSession(ctx, who, SessionInput{Text: in.Text, Agent: target, Parent: id, Model: in.Model, Effort: in.Effort, Fresh: option.Fresh, Label: option.Label}); err != nil {
+			if _, err := p.StartSession(ctx, who, SessionInput{Text: in.Text, Agent: target, Parent: id, Fresh: option.Fresh, Label: option.Label}); err != nil {
 				return SessionView{}, err
 			}
 			return p.ReadSession(ctx, who, id, "", "", false)

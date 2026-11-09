@@ -19,12 +19,12 @@ type EventKind = { id: Event; label: string; actions: string[] };
 const pullRequest: EventKind = {
   id: "pull_request",
   label: "Pull request",
-  actions: ["opened", "ready_for_review", "synchronize", "labeled", "closed"],
+  actions: ["opened", "ready_for_review", "synchronize", "closed"],
 };
 
 const events: EventKind[] = [
   pullRequest,
-  { id: "issues", label: "Issue", actions: ["opened", "labeled", "reopened", "closed"] },
+  { id: "issues", label: "Issue", actions: ["opened", "reopened", "closed"] },
   { id: "check_run", label: "Check run", actions: ["completed"] },
   { id: "push", label: "Push", actions: [] },
 ];
@@ -34,7 +34,6 @@ export function ruleWords(r: GitHubAutomation): string {
   const what = events.find((e) => e.id === r.event)?.label ?? r.event;
   return [
     r.event === "push" ? what : `${what} ${r.action.replaceAll("_", " ")}`,
-    r.label && `labeled ${r.label}`,
     r.conclusion && `ending ${r.conclusion}`,
   ]
     .filter(Boolean)
@@ -114,6 +113,7 @@ export function GitHubRules({
                 <p className="truncate text-aui-xs text-aui-muted">
                   {r.repository} → @{r.agent}
                 </p>
+                {r.note && <p className="text-aui-xs text-aui-muted">{r.note}</p>}
               </div>
               {r.paused && <Pill>Paused</Pill>}
               {canWrite && (
@@ -206,7 +206,6 @@ function RuleForm({
       name: rule.name.trim(),
       repository: rule.repository.trim(),
       action: rule.event === "push" ? "" : rule.action.trim(),
-      label: rule.label?.trim() || undefined,
       conclusion: rule.event === "check_run" ? rule.conclusion?.trim() || undefined : undefined,
       instructions: rule.instructions.trim(),
     };
@@ -284,17 +283,6 @@ function RuleForm({
                 </option>
               ))}
             </select>
-          </Label>
-        )}
-        {(rule.event === "pull_request" || rule.event === "issues") && (
-          <Label text="Label" hint="Optional.">
-            <input
-              className={field}
-              value={rule.label ?? ""}
-              maxLength={128}
-              onChange={(e) => set({ label: e.target.value })}
-              autoComplete="off"
-            />
           </Label>
         )}
         {rule.event === "check_run" && (
