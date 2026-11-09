@@ -4,8 +4,16 @@ import type { AgentEvaluationHealth } from "../../../packages/client/src/generat
 import { BuilderButton } from "./AgentBuilder.tsx";
 import { healthLabel } from "./AgentHealth.tsx";
 import type { Run } from "./adapter.ts";
-import { type AgentControl, api, call, type Group, type Revision } from "./api.ts";
+import {
+  type AgentControl,
+  api,
+  call,
+  type Group,
+  type ProjectView,
+  type Revision,
+} from "./api.ts";
 import { Pill, Tag } from "./cards.tsx";
+import { accessLabel, accessOf } from "./projects.ts";
 import { href } from "./route.ts";
 import { AgentMark, Empty, Page, Problem, primary, SearchField, took } from "./ui.tsx";
 
@@ -21,6 +29,8 @@ export function Agents({
   runs = [],
   workspaceDefault = "",
   homes = {},
+  tree = [],
+  personalProject,
   canWrite,
   onOpen,
   onNew,
@@ -39,8 +49,12 @@ export function Agents({
   runs?: Run[];
   /** Who answers a message that tags no agent in the workspace itself. */
   workspaceDefault?: string;
-  /** Where each agent that lives in a project lives. */
+  /** The project each agent is homed in, which says who sees it. */
   homes?: Record<string, string>;
+  /** The project tree, for the title of the project whose members see an agent. */
+  tree?: ProjectView[];
+  /** The signed-in person's Personal project: an agent homed there is private to them. */
+  personalProject?: string;
   canWrite: boolean;
   onOpen: (name: string) => void;
   onNew: () => void;
@@ -179,6 +193,7 @@ export function Agents({
                 ).length;
                 const waiting = own.filter((r) => r.status === "parked").length;
                 const control = operational ? roster[name] : undefined;
+                const access = accessOf(homes[name], personalProject, tree);
                 const description =
                   a.spec.description || a.spec.system_prompt || words.noDescription;
                 const figures =
@@ -220,9 +235,7 @@ export function Agents({
                                 <Tag>{words.workspaceDefault}</Tag>
                               </span>
                             )}
-                            {homes[name] && homes[name] !== "~" && (
-                              <Tag>{defaultCopy.agentPlace.livesIn(homes[name])}</Tag>
-                            )}
+                            {access.kind !== "workspace" && <Tag>{accessLabel(access)}</Tag>}
                           </div>
                           <p className="truncate text-aui-xs text-aui-muted">{description}</p>
                         </div>

@@ -619,7 +619,11 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"SessionPart": {typ: platform.SessionPart{}}, "SessionFeedback": {typ: platform.SessionFeedback{}},
 		"SessionMessage": {typ: platform.SessionMessage{}}, "SessionLink": {typ: orchsession.Link{}},
 		"AgentSession": {typ: platform.SessionView{}},
-		"Principal":    {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: wire.AgentSpec{}}, "AgentSource": {typ: wire.Source{}},
+		"MessageNode":  {typ: platform.MessageNode{}}, "MessageAudience": {typ: platform.MessageAudience{}},
+		"RootMessage": {typ: platform.RootMessage{}}, "RootMessagePage": {typ: platform.RootMessagePage{}},
+		"MessageTrace": {typ: platform.MessageTrace{}}, "TraceNode": {typ: platform.TraceNode{}}, "TracePick": {typ: platform.TracePick{}},
+		"TraceTool": {typ: platform.TraceTool{}}, "TraceContext": {typ: platform.TraceContext{}}, "TraceSource": {typ: platform.TraceSource{}}, "TraceApproval": {typ: platform.TraceApproval{}},
+		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: wire.AgentSpec{}}, "AgentSource": {typ: wire.Source{}},
 		"PackageBase": {typ: wire.PackageBase{}}, "AgentPackage": {typ: wire.AgentPackage{}}, "AgentAccess": {typ: wire.Access{}}, "Revision": {typ: revisionView{}}, "JoinDecision": {typ: join.Decision{}},
 		"Note": {typ: noteView{}}, "DriveTree": {typ: drive.Tree{}}, "DriveEntry": {typ: drive.Entry{}}, "DriveChange": {typ: drive.Change{}}, "DriveProposal": {typ: drive.Proposal{}}, "DriveVersion": {typ: drive.Version{}}, "DriveHit": {typ: drive.Hit{}}, "MemoryFiles": {typ: memoryTree{}}, "MemoryFile": {typ: memoryFile{}}, "MemoryRestoreInput": {typ: memoryRestore{}, written: true}, "MemoryDecisionInput": {typ: memoryDecision{}, written: true}, "LibraryScope": {typ: library.Scope{}}, "MemoryFolder": {typ: platform.MemoryFolder{}}, "LibrarySkillFile": {typ: library.File{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: event.Actor{}}, "Run": {typ: runs.Run{}},
 
@@ -1750,10 +1754,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	c.call(initech, "POST", "/api/projects", "/api/projects", `{"name":"One too many","kind":"company"}`, http.StatusTooManyRequests)
 	// A conversation in the workspace that names no agent, where nothing
-	// answers untagged messages, starts nothing.
+	// answers untagged messages, lands on the entry agent.
 	initechRoot := c.call(initech, "GET", agentsAt, "/api/projects/~/agents", "", http.StatusOK)
 	c.call(initech, "PUT", agentsAt, "/api/projects/~/agents", fmt.Sprintf(`{"version":%v,"enable":["*"]}`, initechRoot.field("version")), http.StatusOK)
-	c.call(initech, "POST", "/api/runs", "/api/runs", `{"text":"hi"}`, http.StatusConflict)
+	if landed := c.call(initech, "POST", "/api/runs", "/api/runs", `{"text":"hi"}`, http.StatusAccepted); landed.str("agent") != platform.BuiltinEntry {
+		t.Fatalf("an untagged message landed on %q, want the entry agent", landed.str("agent"))
+	}
 	c.call(initech, "GET", "/api/join", "/api/join?q=anything", "", http.StatusOK)
 
 	// Schedules.
@@ -2573,6 +2579,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	freshPersonalNote := c.call(auditAdmin, "POST", "/api/me/memory", "/api/me/memory", `{"text":"Personal correction source"}`, http.StatusCreated)
 	real := map[string]map[string]string{
 		"/api/sessions/{id}":                         {"id": sessionContract["id"]},
+		"/api/messages/{id}":                         {"id": sessionContract["id"]},
+		"/api/messages/{id}/trace":                   {"id": sessionContract["id"]},
+		"/api/messages/{id}/answer":                  {"id": sessionContract["id"]},
+		"/api/messages/{id}/feedback":                {"id": sessionContract["id"]},
+		"/api/messages/{id}/stop":                    {"id": sessionContract["id"]},
+		"/api/messages/{id}/context":                 {"id": sessionContract["id"]},
 		"/api/sessions/{id}/messages":                {"id": sessionContract["id"]},
 		"/api/sessions/{id}/stream":                  {"id": sessionContract["id"]},
 		"/api/sessions/{id}/stop":                    {"id": sessionContract["id"]},
@@ -2703,7 +2715,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}
 		if refusesUnknownFields(op) {
 			caller := acme
-			if strings.HasPrefix(op.path, "/api/sessions/") || op.path == "/api/alerts/{id}" {
+			if strings.HasPrefix(op.path, "/api/sessions/") || strings.HasPrefix(op.path, "/api/messages/") || op.path == "/api/alerts/{id}" {
 				caller = sessionContract["token"]
 			}
 			if strings.HasPrefix(op.path, "/api/me/memory") || strings.HasPrefix(op.path, "/api/agent-setups/") || strings.HasSuffix(op.path, "/skill-draft") || strings.HasSuffix(op.path, "/decision-memory") {
@@ -2804,6 +2816,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 var unexercised = map[string]string{
 	"PUT /api/agents/{name}/home 409":                    "a home is refused only while the agent's default skills would not fit it; the guard is in platform.homeUsers",
 	"POST /api/sessions 409":                             "governed admission to a deleted project uses the same path tested by POST /api/runs deleted-project response",
+	"POST /api/sessions 200":                             "a chat surface's reply landing in its existing root, covered by TestAChatServiceFindsOrStartsASlackThreadsRootSession",
+	"POST /api/messages/{id} 409":                        "a full or moved conversation, the same PostMessage path POST /api/sessions/{id}/messages takes",
+	"POST /api/messages/{id}/feedback 409":               "rating an unfinished run, the same putFeedback path the legacy feedback route exercises",
+	"POST /api/messages 409":                             "a place nobody answers (no entry agent, no client default, no mention), covered by TestAPlaceNobodyAnswersIsRefusedSayingWhy",
 	"POST /api/sessions/{id}/messages 409":               "deleted-project admission uses the same PostMessage path tested by thread/run responses",
 	"POST /api/sessions/{id}/people 409":                 "concurrent participant changes fail thread version CAS covered by participant race tests",
 	"POST /api/sessions/{id}/alerts 409":                 "random alert identity collision fails CreateSession CAS; callers cannot supply the ID",

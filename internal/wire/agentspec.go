@@ -5,6 +5,8 @@
 package wire
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -13,6 +15,10 @@ import (
 	"time"
 
 	"github.com/urmzd/orchagent/flow/runtime"
+	saigetypes "github.com/urmzd/saige/agent/types"
+	saigeeval "github.com/urmzd/saige/eval"
+
+	"github.com/urmzd/humagen/pkg/approve"
 )
 
 // ErrInvalidAgent reports a definition that will not be accepted. Callers match with
@@ -169,7 +175,25 @@ type AgentSpec struct {
 	// untagged message never asks this one, so it runs only when a person,
 	// a default or another agent names it. Off by default.
 	TaggedOnly bool `json:"tagged_only,omitempty"`
+	// Output, when set, is the shape of the agent's answer: the runtime asks
+	// the model for structured output under its schema, and a model that
+	// cannot give it fails the run rather than answering in free text. The
+	// answer, checked against the schema, is kept on the run as structured
+	// data. Nil is an answer in free text, as every revision written before
+	// it existed answers.
+	Output *Output `json:"output,omitempty"`
 }
+
+// Output is what an agent's answer must be.
+type Output struct {
+	// Schema is a JSON Schema for an object. It is kept in a canonical form
+	// (Normalize), so the same schema written another way is the same
+	// definition.
+	Schema json.RawMessage `json:"schema"`
+}
+
+// MaxOutputSchema bounds an output schema, in bytes.
+const MaxOutputSchema = 16 << 10
 
 // ModelRef names one model behind one provider: a fallback for the agent's
 // primary model. The two fields mean exactly what AgentSpec.Provider and
@@ -296,6 +320,9 @@ func (s AgentSpec) Clone() AgentSpec {
 	s.Answerers = slices.Clone(s.Answerers)
 	s.Access.Spawn = slices.Clone(s.Access.Spawn)
 	s.Access.WorkspaceAreas = slices.Clone(s.Access.WorkspaceAreas)
+	if s.Output != nil {
+		s.Output = &Output{Schema: slices.Clone(s.Output.Schema)}
+	}
 	if s.Sources != nil {
 		sources := make([]Source, len(s.Sources))
 		for i, src := range s.Sources {
@@ -346,6 +373,7 @@ func (s AgentSpec) Normalize() AgentSpec {
 			Spawn:          normalizeSet(s.Access.Spawn, true),
 			WorkspaceAreas: normalizeSet(s.Access.WorkspaceAreas, false),
 		},
+		Output: normalizeOutput(s.Output),
 	}
 	if len(s.Sources) > 0 {
 		sources := make([]Source, 0, len(s.Sources))
@@ -500,7 +528,69 @@ func (s AgentSpec) ValidateAccepting(providers []string, accept func(string) boo
 		}
 		seen[src.Name] = struct{}{}
 	}
+	return validOutput(c)
+}
+
+// ValidateOutput checks the definition's output schema alone, as Validate
+// does: a file can be checked for it before the deployment it runs on is
+// known.
+func (s AgentSpec) ValidateOutput() error { return validOutput(s.Normalize()) }
+
+// validOutput checks an output schema: a JSON Schema for an object, within
+// its bound, in the form the runtime hands a model. The approval agent's
+// answer is read as a decision, so its schema also holds the core every
+// decision has (approve.CheckSchema).
+func validOutput(c AgentSpec) error {
+	if c.Output == nil {
+		return nil
+	}
+	schema := c.Output.Schema
+	switch {
+	case len(schema) == 0:
+		return fmt.Errorf("%w: agent %q declares an output with no schema", ErrInvalidAgent, c.Name)
+	case len(schema) > MaxOutputSchema:
+		return fmt.Errorf("%w: agent %q has an output schema of %d bytes, the limit is %d", ErrInvalidAgent, c.Name, len(schema), MaxOutputSchema)
+	}
+	if _, err := saigeeval.CompileJSONSchema(schema); err != nil {
+		return fmt.Errorf("%w: agent %q output schema: %v", ErrInvalidAgent, c.Name, err)
+	}
+	var top struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(schema, &top) != nil || top.Type != "object" {
+		return fmt.Errorf(`%w: agent %q output schema must describe an object ("type": "object")`, ErrInvalidAgent, c.Name)
+	}
+	// What a model is asked for is the runtime's form of the schema, so a
+	// schema that does not fit it is refused here, not at the first run.
+	var asked saigetypes.ParameterSchema
+	if err := json.Unmarshal(schema, &asked); err != nil {
+		return fmt.Errorf("%w: agent %q output schema cannot be asked of a model: %v", ErrInvalidAgent, c.Name, err)
+	}
+	if c.Name == approve.Agent {
+		if err := approve.CheckSchema(schema); err != nil {
+			return fmt.Errorf("%w: agent %q output schema: %w", ErrInvalidAgent, c.Name, err)
+		}
+	}
 	return nil
+}
+
+// normalizeOutput is an output with its schema in canonical form: read and
+// written again, so key order and spacing are not an edit. A schema that is
+// not JSON is kept as it was, for Validate to refuse.
+func normalizeOutput(o *Output) *Output {
+	if o == nil {
+		return nil
+	}
+	schema := bytes.TrimSpace(o.Schema)
+	dec := json.NewDecoder(bytes.NewReader(schema))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err == nil && !dec.More() {
+		if b, err := json.Marshal(v); err == nil {
+			schema = b
+		}
+	}
+	return &Output{Schema: slices.Clone(schema)}
 }
 
 // MaxEffortLen bounds a reasoning effort's name.

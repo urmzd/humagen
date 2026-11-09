@@ -1,8 +1,8 @@
 import { defaultCopy } from "@humagen/components";
 import {
   ArtifactOpenContext,
-  InfoIcon,
   LayersIcon,
+  ListChecksIcon,
   ShareIcon,
   UsersIcon,
 } from "@humagen/render-web";
@@ -90,6 +90,7 @@ export function ConversationPage({
   private: personal,
   location,
   origin,
+  progress,
   onProject,
   projectRef,
   onPanel,
@@ -109,6 +110,8 @@ export function ConversationPage({
   location?: ReactNode;
   /** A link back to where the session started, first among the header's icons. */
   origin?: ReactNode;
+  /** Calls running or waiting on a person, shown on the Details icon; highlighted while working. */
+  progress?: { open: number; working: boolean };
   onProject?: () => void;
   projectRef?: RefObject<HTMLButtonElement | null>;
   panel?: ConversationPanel;
@@ -137,15 +140,19 @@ export function ConversationPage({
             <button
               type="button"
               data-session-details
-              className={headerIcon}
-              aria-label="Details"
-              title="Details"
+              data-working={progress?.working ? "" : undefined}
+              className={`${headerIcon} gap-0.5 ${progress?.working ? "text-aui-accent" : ""}`}
+              aria-label={defaultCopy.details.open(progress?.open ?? 0)}
+              title={defaultCopy.details.open(progress?.open ?? 0)}
               aria-expanded={!!activePanel && activePanel !== "people"}
               onClick={() =>
-                activePanel && activePanel !== "people" ? onClosePanel?.() : onPanel("workspace")
+                activePanel && activePanel !== "people" ? onClosePanel?.() : onPanel("details")
               }
             >
-              <InfoIcon size={18} />
+              <ListChecksIcon size={18} />
+              {!!progress?.open && (
+                <span className="text-aui-xs tabular-nums">{progress.open}</span>
+              )}
             </button>
             {/* One control for who is in it: Share where it can be shared, else People & Access. Both open the same panel. */}
             {personal && onProject ? (
@@ -215,7 +222,7 @@ function Sources({ project }: { project: string }) {
           <LayersIcon size={24} className="text-aui-muted" />
           <p className="text-aui-sm text-aui-muted">{words.sourcesEmpty}</p>
           <a
-            href={href({ page: "project", name: project, tab: "context" })}
+            href={href({ page: "project", name: project })}
             className="inline-flex min-h-9 items-center rounded-aui text-aui-xs font-medium text-aui-fg underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-aui-accent"
           >
             {words.artifactOpenContext}

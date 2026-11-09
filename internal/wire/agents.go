@@ -256,6 +256,10 @@ func RecordOf(spec AgentSpec, rev int) (definition.Record, error) {
 		value, _ := json.Marshal(effort)
 		metadata = append(metadata, "  humagen_effort: "+string(value))
 	}
+	if spec.Output != nil {
+		schema, _ := json.Marshal(string(normalizeOutput(spec.Output).Schema))
+		metadata = append(metadata, "  humagen_output_schema: "+string(schema))
+	}
 	if len(metadata) > 0 {
 		rec.Content = strings.Replace(rec.Content, "---\n", "---\nmetadata:\n"+strings.Join(metadata, "\n")+"\n", 1)
 	}

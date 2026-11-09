@@ -114,7 +114,7 @@ export function SessionAlerts({
     <>
       {alerts.map((alert) => {
         const anchor = alertAnchor(alert);
-        const agent = alert.kind === "eval_below" ? "humagen-builder" : alert.agent;
+        const agent = alert.kind === "eval_below" ? "humagen" : alert.agent;
         const action =
           (
             {

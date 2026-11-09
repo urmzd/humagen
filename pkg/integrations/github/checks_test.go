@@ -95,25 +95,14 @@ func TestCheckRecoveryUsesExternalIDAndNeverPatchesTheHead(t *testing.T) {
 	}
 }
 
-func TestLabeledPRCommitsTriggerPinnedReviews(t *testing.T) {
-	for _, tc := range []struct {
-		name, action, sender string
-		labels               []string
-		draft, want          bool
-	}{
-		{"new commit", "synchronize", "User", []string{"auto"}, false, true},
-		{"bot fix commit", "synchronize", "Bot", []string{"auto"}, false, true},
-		{"inactive", "synchronize", "User", nil, false, false},
-		{"draft", "synchronize", "User", []string{"auto"}, true, false},
-		{"bot mention loop", "opened", "Bot", []string{"auto"}, false, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			c, tags := start(t, github.Config{AutoLabels: map[string]map[string]string{"acme/repo": {"auto": "reviewer"}}})
-			labels := []map[string]string{}
-			for _, l := range tc.labels {
-				labels = append(labels, map[string]string{"name": l})
-			}
-			raw, _ := json.Marshal(map[string]any{"action": tc.action, "repository": map[string]any{"name": "repo", "owner": map[string]string{"login": "acme"}}, "sender": map[string]string{"type": tc.sender}, "pull_request": map[string]any{"number": 42, "title": "Change", "state": "open", "draft": tc.draft, "labels": labels, "head": map[string]string{"sha": commitSHA}}})
+// Labels start nothing, and neither does a push or a pull request opening
+// without a mention: automatic review is the platform's, from the GitHub
+// connection's switch, not the connector's.
+func TestLabelsAndPushesStartNothingAtTheConnector(t *testing.T) {
+	for _, action := range []string{"labeled", "synchronize", "opened", "ready_for_review"} {
+		t.Run(action, func(t *testing.T) {
+			c, tags := start(t, github.Config{Owners: []string{"acme"}})
+			raw, _ := json.Marshal(map[string]any{"action": action, "repository": map[string]any{"name": "repo", "owner": map[string]string{"login": "acme"}}, "sender": map[string]string{"type": "User"}, "label": map[string]string{"name": "agent:auto"}, "pull_request": map[string]any{"number": 42, "title": "Change", "body": "No mention", "state": "open", "labels": []map[string]string{{"name": "agent:auto"}}, "head": map[string]string{"sha": commitSHA}}})
 			w := httptest.NewRecorder()
 			c.ServeHTTP(w, deliver(t, "pull_request", "delivery", string(raw)))
 			if w.Code != 200 {
@@ -121,13 +110,8 @@ func TestLabeledPRCommitsTriggerPinnedReviews(t *testing.T) {
 			}
 			select {
 			case tag := <-tags:
-				if !tc.want || wire.SurfaceAddress(tag).Params["head_sha"] != commitSHA || wire.Meta(tag)["github_head_sha"] != commitSHA || !strings.Contains(wire.TextOf(tag), commitSHA) {
-					t.Fatalf("tag %+v", tag)
-				}
+				t.Fatalf("%s started a run: %+v", action, tag)
 			default:
-				if tc.want {
-					t.Fatal("missing review")
-				}
 			}
 		})
 	}
@@ -180,27 +164,5 @@ func TestIssuesDoNotCreateCommitChecks(t *testing.T) {
 	}
 	if len(fake.Checks()) != 0 || len(fake.Comments()) != 1 {
 		t.Fatal("incorrect issue delivery")
-	}
-}
-
-func TestAutomaticCommitReviewIdentityIgnoresDeliveryRetries(t *testing.T) {
-	c, tags := start(t, github.Config{AutoLabels: map[string]map[string]string{"acme/repo": {"auto": "reviewer"}}})
-	raw := fmt.Sprintf(`{"action":"synchronize","repository":{"name":"repo","owner":{"login":"acme"}},"sender":{"type":"User"},"pull_request":{"number":42,"labels":[{"name":"auto"}],"head":{"sha":%q}}}`, commitSHA)
-	ids := []string{}
-	for _, delivery := range []string{"first", "second"} {
-		w := httptest.NewRecorder()
-		c.ServeHTTP(w, deliver(t, "pull_request", delivery, raw))
-		if w.Code != 200 {
-			t.Fatalf("status %d", w.Code)
-		}
-		select {
-		case tag := <-tags:
-			ids = append(ids, tag.ID)
-		default:
-			t.Fatal("missing tag")
-		}
-	}
-	if ids[0] != ids[1] {
-		t.Fatalf("one commit has two run identities: %v", ids)
 	}
 }

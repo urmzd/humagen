@@ -695,6 +695,20 @@ anyone in the workspace approve, except the person who asked.
   answerers?: string[];
   /** The agent runs only when a message names it. It is never asked whether to take an untagged message. Off by default. */
   tagged_only?: boolean;
+  output?: AgentOutput;
+}
+
+/** The shape of the agent's answer. The model is asked for structured
+output under `schema`, and a model that cannot give it fails the run
+rather than answering in free text. The answer, checked against the
+schema, is kept on the run as `output`. The approval agent's schema
+must hold `decision` (a required string whose enum is drawn from
+allow, ask and deny) and `reason` (a required string); anything
+else in it is shown with the approval.
+ */
+export interface AgentOutput {
+  /** A JSON Schema for an object, at most 16 KiB. */
+  schema: Record<string, unknown>;
 }
 
 /** A class of model error that moves a call on to the next model. `any` cannot be combined with another. */
@@ -1255,6 +1269,12 @@ partial answer, what the agent had said when it stopped, which may
 be empty. It is never the whole answer when `status` is `stopped`.
  */
   answer?: string;
+  /** The answer as structured data, for an agent whose spec declares
+an `output` schema: the answer, checked against that schema.
+Absent for a free-text answer and for one that did not hold to
+the schema.
+ */
+  output?: Record<string, unknown>;
   outcome?: RunOutcome;
   sandbox?: RunSandboxRecord;
   memory?: RunMemoryUse[];
@@ -1993,6 +2013,36 @@ export interface SurfaceRef {
   message?: string;
   /** The app's own bot user id, whose mention is not a tag. */
   app_user?: string;
+  audience?: SurfaceAudience;
+  /** Slack's short-lived token for acting for the person in this turn. Accepted and never kept or passed on. */
+  action_token?: string;
+}
+
+/** Who is in the Slack conversation a message was asked in. A root
+session's audience follows it: a public channel's is shared where it
+is filed; a private channel's or a group direct message's is private
+to the members the client maps to people, kept to the members of the
+latest message; a direct message's is private to its person. Absent,
+a D channel is a direct message and anything else is private to the
+person asking: a channel id never says the channel is public.
+ */
+export interface SurfaceAudience {
+  type: "public_channel" | "private_channel" | "mpim" | "im";
+  /** The conversation's members by Slack user id, for a private channel or a group direct message. */
+  members?: string[];
+}
+
+/** What one message posted to a chat surface's root session did. */
+export interface SessionPosted {
+  message: SessionPostedMessage;
+  /** The runs it started, in the root or in the child of the agent it named. */
+  runs: Run[];
+  notified: string[];
+  refused: ThreadMention[];
+  rule: string;
+  reason?: string;
+  /** The message was already posted; nothing started again. */
+  repeated?: boolean;
 }
 
 /** The thread on a client's surface this thread is. It never changes. */
@@ -3009,6 +3059,30 @@ answering checks again.
   steered_for?: string;
   /** What the person in `steered_for` is called, their name, else their handle, never a subject that holds an address. Set with `steered_for`. */
   steered_for_name?: string;
+  judgement?: InboxJudgement;
+}
+
+/** What the approval agent said about an approval, once it was asked,
+whether it allowed the call, denied it or left it for a person.
+ */
+export interface InboxJudgement {
+  decision: "allow" | "ask" | "deny";
+  reason: string;
+  /** What the decision rests on. */
+  references?: string[];
+  /** What the workspace's own schema for the answer adds, such as a risk level, in the order the agent gave them. */
+  fields?: InboxJudgementField[];
+  /** The approval agent's run that decided. */
+  run?: string;
+}
+
+/** One field a workspace's schema adds to a judgement. */
+export interface InboxJudgementField {
+  /** The field's name in the schema. */
+  name: string;
+  /** How a person reads the name, such as `Expires in` for `expires_in`. */
+  label: string;
+  value: string;
 }
 
 /** A post an agent wrote for a project, waiting for one of its owners. */
@@ -3120,11 +3194,12 @@ export interface InboxChange {
   message: string;
   at: string;
   by?: string;
-  what: "raised" | "read" | "unread" | "resolved" | "dismissed" | "snoozed" | "withdrawn" | "delivered" | "unhidden" | "reminded" | "hidden" | "deleted" | "restored";
+  what: "raised" | "read" | "unread" | "resolved" | "dismissed" | "snoozed" | "withdrawn" | "delivered" | "unhidden" | "reminded" | "hidden" | "deleted" | "restored" | "judged";
   part?: string;
   action?: string;
   note?: string;
   until?: string;
+  judgement?: InboxJudgement;
 }
 
 /** What a person decided about a part. */
@@ -3999,12 +4074,14 @@ export interface GitHubAutomation {
   name: string;
   repository: string;
   event: "check_run" | "issues" | "pull_request" | "push";
+  /** Never `labeled` or `unlabeled`: labels start nothing. A rule stored on one reads paused, with a note. */
   action: string;
   conclusion?: string;
-  label?: string;
   agent: string;
   instructions: string;
   paused: boolean;
+  /** Read-only. What of a rule stored earlier is ignored now, such as a label (labels start nothing). Dropped when the rule is saved. */
+  note?: string;
 }
 
 export interface GitHubOptions {
@@ -4012,7 +4089,13 @@ export interface GitHubOptions {
   automations?: GitHubAutomation[];
   /** Exact verified non-bot GitHub logins mapped explicitly by this installation to workspace subjects. No inferred identity or cross-installation fallback. */
   people?: Record<string, string>;
-  auto_labels?: Record<string, Record<string, string>>;
+  /** Reviews a pull request when it opens or reopens ready for review,
+leaves draft, or gets a push, by the client's default agent.
+Left out, it is on. Labels start nothing.
+ */
+  auto_review?: GitHubOptionsAutoReview;
+  /** When set, the only GitHub logins whose mentions, reviews and pull requests the client acts on, among people with write access to the repository (owner, member or collaborator) and people it maps. */
+  askers?: string[];
   checks?: boolean;
   guides?: boolean;
   mutations?: boolean;
@@ -4065,7 +4148,7 @@ export interface ClientView {
   default_agent?: string;
   /** The agents it may route to besides its default, leaving out every
 agent that lives in a project the caller may not read, as `bots`
-and `github.auto_labels` do. The machine that hosts the client's
+and `github.automations` do. The machine that hosts the client's
 surface, its `slack.machine`, is shown every agent it names.
  */
   agents?: string[];
@@ -4703,6 +4786,288 @@ export interface SessionIdentity {
   source_alert?: string;
 }
 
+export interface MessageFeedbackInput {
+  rating: "up" | "down";
+  note?: string;
+}
+
+/** What get_context pulled, from which place, and what it drew on. */
+export interface ContextResult {
+  /** The place it was pulled from: the session's origin address. */
+  origin: string;
+  text: string;
+  sources: ContextResultSourcesItem[];
+  truncated?: boolean;
+  note?: string;
+}
+
+/** People's messages from one origin. Who said them is the caller. */
+export interface MessagesInput {
+  messages: InMessage[];
+  ref?: ExternalRef;
+  /** Accepted; follow GET /api/messages/{id}/stream for what happens beneath. */
+  stream?: boolean;
+}
+
+/** One person's message. role is user; the platform writes the agents' messages. */
+export interface InMessage {
+  role: "user";
+  content: MessageContent;
+  ref?: ExternalRef;
+}
+
+/** A string, or content blocks. */
+export type MessageContent = string | ContentBlock[];
+
+/** One block of a message: text; a mention of an agent or a person a
+surface already resolved, which picks who answers as an @mention in
+the text does; or a link to another place. image, document, audio and
+answer blocks are refused for now.
+ */
+export interface ContentBlock {
+  type: "text" | "mention" | "link" | "image" | "document" | "audio" | "answer";
+  text?: string;
+  agent?: string;
+  person?: string;
+  ref?: ExternalRef;
+}
+
+/** Where a message came from, its origin: a union on type. slack (team,
+channel, ts, thread_ts for a reply, audience), github (repo as
+owner/name, kind pull, issue or comment, number, comment_id; a
+comment on a pull request sends kind pull), schedule (name,
+occurrence), url (url) or web (the console). A place has one root
+session, keyed slack://team/channel/thread_ts,
+github://owner/repo/pull/N or issues/N, schedule://name/occurrence or
+the normalized URL. client is the Humagen client the origin is
+reached through: it files the root where the client's channel is
+bound and maps a Slack conversation's members to people.
+ */
+export interface ExternalRef {
+  type: "slack" | "github" | "schedule" | "url" | "web";
+  client?: string;
+  team?: string;
+  channel?: string;
+  /** Who wrote the message on the surface (a Slack user id, a GitHub login). Set by surfaces built into the server; the API ignores it, since the token says who speaks. */
+  user?: string;
+  ts?: string;
+  thread_ts?: string;
+  audience?: SurfaceAudience;
+  repo?: string;
+  kind?: "pull" | "issue" | "comment";
+  number?: number;
+  comment_id?: number;
+  name?: string;
+  occurrence?: string;
+  url?: string;
+}
+
+/** The message a request created, the root it is under, and what it did. */
+export interface MessageCreated {
+  /** The message's id, session:message. */
+  id: string;
+  /** The root session's id. */
+  root: string;
+  role: "user";
+  content: MessageContent;
+  /** This request started the root. */
+  created: boolean;
+  posted: SessionPosted;
+}
+
+/** Who a root's place was asked in front of, by kind alone. Who was there is never shown. */
+export interface MessageAudience {
+  kind: "public" | "private" | "group" | "direct";
+}
+
+/** One message of a tree. A session stands as its first message: beneath
+it are the agents' messages that follow it up to the next person's
+message (answers, and the entry agent's pick with its calls), the
+child sessions started for it, and the session's later people's
+messages. Beneath a later person's message are the agents' messages
+that follow it and the child sessions started for it. A child session
+is a node whose id is the session's. A child session the caller may
+not read is left out and not counted.
+ */
+export interface MessageNode {
+  /** A session's id for a session's node, else session:message. */
+  id: string;
+  /** The session the message is in. */
+  session: string;
+  role: "user" | "assistant";
+  author: SessionAuthor;
+  /** That of the runs beneath the message; done when there are none. */
+  status: "working" | "waiting" | "done" | "failed" | "stopped";
+  /** Text, or the entry agent's pick and a call part for each child session it handed the message to. */
+  content: SessionPart[];
+  at: string;
+  /** How many children the message has, shown or not. */
+  children_count: number;
+  /** When anything beneath the message last changed. */
+  latest_at: string;
+  audience?: MessageAudience;
+  /** The latest 200 children at most, in time order, while depth lasts; empty beyond it. */
+  children: MessageNode[];
+}
+
+/** What ran to answer a message. */
+export interface MessageTrace {
+  /** The id asked for. */
+  message: string;
+  /** The runs that answered the message, in the order they started, each with what it called beneath it. */
+  nodes: TraceNode[];
+  /** How many runs and child sessions were left out because the caller may not read them. */
+  hidden: number;
+  /** A bound cut the trace: at most 500 nodes, and 200 tools, context reads, sources and approvals per node. */
+  truncated: boolean;
+}
+
+/** One run and what it did, each as the caller may see it: the tools it
+called, the context it pulled with get_context, the sources it cited,
+the approvals it waited on and the questions it asked a person.
+ */
+export interface TraceNode {
+  run: string;
+  agent: string;
+  status: "accepted" | "running" | "parked" | "completed" | "failed" | "stopped";
+  started_at: string;
+  /** When the run ended; absent while it works. */
+  ended_at?: string;
+  /** How long it ran, or has run so far. */
+  ms: number;
+  /** What it spent in micro-USD, what it called included once they ended. Absent when nothing was metered. */
+  cost?: number;
+  pick?: TracePick;
+  /** The model its latest call used, when that was recorded. */
+  model?: string;
+  /** What it answered. A pick's answer is its pick. */
+  answer?: string;
+  /** Why it failed, when it did. */
+  error?: string;
+  tools: TraceTool[];
+  context: TraceContext[];
+  /** The run's citations as the caller is shown them. */
+  sources: TraceSource[];
+  approvals: TraceApproval[];
+  questions: TraceQuestion[];
+  /** The runs it called, and for a pick the answers it led to, in the order they started. */
+  children: TraceNode[];
+}
+
+/** The entry agent's decision about a message, on the run that made it. */
+export interface TracePick {
+  decision: "answer_myself" | "delegate";
+  /** The agents it handed the message to that the caller may read. */
+  agents: string[];
+  reason: string;
+  /** The words of the message that matched. */
+  matched: string[];
+}
+
+/** One tool call. Input and output are left out when withheld. */
+export interface TraceTool {
+  /** htu_<run>_<seq>: the run's seq-th call, as the response stream names it. Provider call ids are never shown. */
+  id: string;
+  name: string;
+  /** When it was asked. */
+  at: string;
+  /** How long it ran; absent while it runs. */
+  ms?: number;
+  /** The arguments it ran with. */
+  input?: Record<string, unknown>;
+  /** What it returned, cut at 4000 bytes and ending in an ellipsis when cut. */
+  output?: string;
+  error?: string;
+  /** The caller may not see its input or output. */
+  withheld: boolean;
+}
+
+/** One get_context call. Request, reference, summary and sources are empty when withheld. */
+export interface TraceContext {
+  /** htu_<run>_<seq>, counted with the run's tool calls. */
+  id: string;
+  /** When it was asked. */
+  at: string;
+  /** How long it took; absent while it runs. */
+  ms?: number;
+  /** What the agent asked for, in words. */
+  request: string;
+  /** The place it read, such as slack://team/channel/ts: the message's own, bound by the platform. */
+  reference: string;
+  /** The start of what came back, or why nothing could be. */
+  summary: string;
+  sources: TraceSource[];
+  /** What came back was cut. */
+  truncated: boolean;
+  error?: string;
+  withheld: boolean;
+}
+
+/** Something a run cited or a context read drew on. */
+export interface TraceSource {
+  title: string;
+  url?: string;
+}
+
+/** A question a run asked a person with ask_person, as the caller may see
+it: a choice among options, or a reply in words. Answer it with
+answerToolUse and `tool`.
+ */
+export interface TraceQuestion {
+  /** The question's id. */
+  id: string;
+  /** The id of the call that asked it, htu_<run>_<n>. */
+  tool?: string;
+  kind: "choice" | "reply";
+  prompt: string;
+  options: string[];
+  /** asked while it waits; expired when nobody answered in time and its default stood; closed when its run ended first. */
+  status: "asked" | "answered" | "expired" | "closed";
+  /** The choice or the reply. */
+  answer?: string;
+  /** Who answered, by name. */
+  by?: string;
+  at?: string;
+}
+
+/** An action a run waited on a person for, and how it was decided. ask is one still waiting. */
+export interface TraceApproval {
+  /** The question's id. */
+  id: string;
+  /** The id of the tool call it gates (a TraceTool's or a TraceContext's), when it gates one. */
+  tool?: string;
+  /** The tool it would call, or what it asked. */
+  action: string;
+  decision: "allow" | "deny" | "ask";
+  /** Who decided, by name. */
+  by?: string;
+  note?: string;
+  at?: string;
+}
+
+/** One root session, as its first message. */
+export interface RootMessage {
+  id: string;
+  title: string;
+  status: "working" | "waiting" | "done" | "failed" | "stopped";
+  /** The agent that owns the root. */
+  agent: string;
+  author: SessionAuthor;
+  /** The root's place: its address, such as slack://team/channel/ts or github://owner/repo/pull/N. */
+  parent: string;
+  project: string;
+  latest_at: string;
+  children_count: number;
+  audience?: MessageAudience;
+}
+
+/** A page of roots, newest first. */
+export interface RootMessagePage {
+  messages: RootMessage[];
+  /** The after of the next page; empty on the last. */
+  next: string;
+}
+
 export interface SessionInput {
   text: string;
   agent?: string;
@@ -4712,6 +5077,12 @@ export interface SessionInput {
   project?: string;
   /** The readable session alert that anchors this fix conversation. */
   source_alert?: string;
+  surface?: SurfaceRef;
+  act_as?: ActAs;
+  /** The kind of chat surface: slack, the default and only one taken today. */
+  surface_kind?: string;
+  /** With surface: post the message without starting anything. */
+  post_only?: boolean;
 }
 
 /** A session message with optional routing to a mentioned agent. */
@@ -4787,6 +5158,7 @@ export interface SessionLink {
 }
 
 export interface AgentSession {
+  posted?: SessionPosted;
   /** More changed messages remain after cursor; continue with since until false. */
   more?: boolean;
   usage?: RunUsage;
@@ -5143,6 +5515,11 @@ export interface ThreadForkContextItem {
   at: string;
 }
 
+export interface SessionPostedMessage {
+  id: string;
+  text: string;
+}
+
 export interface ProjectFork {
   operation: string;
   source?: string;
@@ -5178,6 +5555,11 @@ export interface UsageEntryGrant {
   tokens?: number;
 }
 
+export interface GitHubOptionsAutoReview {
+  enabled?: boolean;
+  repositories?: Record<string, boolean>;
+}
+
 export interface ClientInputCredentials {
   token?: SecretInput;
   signing_secret?: SecretInput;
@@ -5191,6 +5573,24 @@ export interface ClientViewCredentials {
 export interface ManifestUsage {
   metered: boolean;
   total: Usage;
+}
+
+export interface ContextResultSourcesItem {
+  title: string;
+  url?: string;
+}
+
+export interface StopMessageBody {
+  children?: boolean;
+}
+
+export interface AnswerToolUseBody {
+  tool_use_id: string;
+  answer: QuestionAnswer;
+}
+
+export interface GetMessageContextBody {
+  request: string;
 }
 
 export interface SaveSessionFeedbackBody {

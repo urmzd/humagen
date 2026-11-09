@@ -244,6 +244,7 @@ func (w *write) commit(st state.Store) error {
 // Create implements Store.
 func (m *Memory) Create(tenant string, c Client, caps Caps, at time.Time) (Client, error) {
 	c = c.clone()
+	c.dropNotes()
 	c.Tenant = tenant
 	c.DefaultAgent = legacy.Default(c.DefaultAgent)
 	if tenant == "" {
@@ -337,6 +338,7 @@ func revise(have []Client, old Client, c Client, at time.Time) (Client, error) {
 // Update implements Store.
 func (m *Memory) Update(tenant string, c Client, at time.Time) (Client, error) {
 	c = c.clone()
+	c.dropNotes()
 	c.Tenant = tenant
 	c.DefaultAgent = legacy.Default(c.DefaultAgent)
 	if err := c.Validate(); err != nil {

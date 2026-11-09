@@ -6,7 +6,8 @@ import type {
 import { call } from "./api.ts";
 import { Page, Problem, primary } from "./ui.tsx";
 
-export const BUILDER_AGENT = "humagen-builder";
+/** The helper that builds agents with you: the entry agent, which took over from the builder. */
+export const BUILDER_AGENT = "humagen";
 
 /** An agent's named builder session stays available for later changes and evals. */
 export async function builderSession(name?: string): Promise<string> {
