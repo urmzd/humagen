@@ -564,7 +564,6 @@ export function Connections({
   for (const preset of presets) {
     const off = !preset.available;
     const live = preset.connected && !preset.reconnect_required;
-    const details = { label: "Details", run: () => open(preset.id) };
     const enable = canWrite && off ? { label: "Enable", run: () => open(preset.id) } : undefined;
     if (preset.kind === "client_oauth" || preset.kind === "github_install") {
       const installed =
@@ -585,7 +584,6 @@ export function Connections({
                 run: () => connect(preset, "workspace"),
               }),
         menu: [
-          details,
           ...(installed && canWrite && preset.connected
             ? [
                 {
@@ -635,7 +633,6 @@ export function Connections({
                       run: () => connect(preset, "person"),
                     })),
         menu: [
-          details,
           ...(preset.connected && canConnect
             ? [{ label: "Disconnect", run: () => disconnect(preset), destructive: true }]
             : []),
@@ -667,7 +664,6 @@ export function Connections({
             ? { label: "Enable", run: () => open(id) }
             : undefined,
       menu: [
-        { label: "Details", run: () => open(id) },
         ...(c.connected && canConnect
           ? [
               {
@@ -699,7 +695,6 @@ export function Connections({
         ? { label: "Review Tools", disabled: busy, run: () => startReview(id, server) }
         : undefined,
       menu: [
-        { label: "Details", run: () => open(id) },
         ...(canConnect
           ? [{ label: "Remove", destructive: true, run: () => removeServer(server.name) }]
           : []),
@@ -789,6 +784,8 @@ export function Connections({
                         disabled: busy && m.destructive,
                       }))}
                       menuLabel={`More for ${it.name}`}
+                      // The whole card opens its details, so the menu holds only what else it can do.
+                      onOpen={() => open(it.id)}
                       actions={
                         it.action && (
                           <button
