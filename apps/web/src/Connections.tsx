@@ -1,12 +1,4 @@
 import { defaultCopy } from "@humagen/components";
-import { EllipsisIcon } from "@humagen/render-web";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@humagen/render-web/ui/dropdown-menu";
 import {
   Sheet,
   SheetContent,
@@ -15,15 +7,7 @@ import {
   SheetTitle,
 } from "@humagen/render-web/ui/sheet";
 import { toast } from "@humagen/render-web/ui/sonner";
-import {
-  type FormEvent,
-  Fragment,
-  type MouseEvent,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type FormEvent, type MouseEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
   api,
@@ -38,7 +22,7 @@ import { ConnectionDetail } from "./ConnectionDetail.tsx";
 import { ConnectionHealth } from "./ConnectionHealth.tsx";
 import { ConnectionLogo } from "./ConnectionLogo.tsx";
 import { ConnectionSection } from "./ConnectionSection.tsx";
-import { Pill, type Tone } from "./cards.tsx";
+import { ItemCard, Pill, type Tone } from "./cards.tsx";
 import { type ConnectionPreset, connectionApi } from "./connectionApi.ts";
 import {
   CONNECT_PERMISSION,
@@ -402,20 +386,19 @@ export function Connections({
   const [review, setReview] = useState<{ id: string; server: PersonToolServer } | null>(null);
   const selectedRef = useRef(selected);
   const reviewRequest = useRef(0);
-  const openers = useRef(new Map<string, HTMLButtonElement>());
   const sheetOpener = useRef<HTMLElement | null>(null);
   const selectConnection = useCallback((id?: string) => {
     if (selectedRef.current === id) return;
     if (id) {
-      // Focus goes back to what opened the sheet: the card's button, or its menu
-      // button when a menu item did (the item is gone once the menu closes).
+      // Focus goes back to what opened the sheet: the card's button, or its ⋯
+      // button when a menu item did (the menu hands focus back to it first).
       const active = document.activeElement;
       sheetOpener.current =
         active instanceof HTMLElement &&
         active !== document.body &&
         !active.closest('[role="menu"]')
           ? active
-          : (openers.current.get(id) ?? null);
+          : null;
     }
     selectedRef.current = id;
     reviewRequest.current++;
@@ -581,7 +564,6 @@ export function Connections({
   for (const preset of presets) {
     const off = !preset.available;
     const live = preset.connected && !preset.reconnect_required;
-    const details = { label: "Details", run: () => open(preset.id) };
     const enable = canWrite && off ? { label: "Enable", run: () => open(preset.id) } : undefined;
     if (preset.kind === "client_oauth" || preset.kind === "github_install") {
       const installed =
@@ -602,7 +584,6 @@ export function Connections({
                 run: () => connect(preset, "workspace"),
               }),
         menu: [
-          details,
           ...(installed && canWrite && preset.connected
             ? [
                 {
@@ -652,7 +633,6 @@ export function Connections({
                       run: () => connect(preset, "person"),
                     })),
         menu: [
-          details,
           ...(preset.connected && canConnect
             ? [{ label: "Disconnect", run: () => disconnect(preset), destructive: true }]
             : []),
@@ -684,7 +664,6 @@ export function Connections({
             ? { label: "Enable", run: () => open(id) }
             : undefined,
       menu: [
-        { label: "Details", run: () => open(id) },
         ...(c.connected && canConnect
           ? [
               {
@@ -716,7 +695,6 @@ export function Connections({
         ? { label: "Review Tools", disabled: busy, run: () => startReview(id, server) }
         : undefined,
       menu: [
-        { label: "Details", run: () => open(id) },
         ...(canConnect
           ? [{ label: "Remove", destructive: true, run: () => removeServer(server.name) }]
           : []),
@@ -793,64 +771,34 @@ export function Connections({
                 className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))] gap-3"
               >
                 {shown.map((it) => (
-                  <li
-                    key={it.id}
-                    aria-label={it.name}
-                    className={`${card} flex h-full min-w-0 flex-col gap-2`}
-                  >
-                    <div className="flex min-w-0 items-center gap-2">
-                      <ConnectionLogo id={it.logo} name={it.name} />
-                      <h3 className="min-w-0 flex-1 truncate font-medium">{it.name}</h3>
-                      {it.pill && <Pill tone={it.pill.tone}>{it.pill.text}</Pill>}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          ref={(node) => {
-                            if (node) openers.current.set(it.id, node);
-                            else openers.current.delete(it.id);
-                          }}
-                          aria-label={`More for ${it.name}`}
-                          className="-mr-1 inline-flex size-8 shrink-0 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:size-11"
-                        >
-                          <EllipsisIcon size={16} />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent
-                          align="end"
-                          onCloseAutoFocus={(event) => {
-                            if (selectedRef.current === it.id) event.preventDefault();
-                          }}
-                        >
-                          {it.menu.map((m, i) => (
-                            <Fragment key={m.label}>
-                              {m.destructive && i > 0 && <DropdownMenuSeparator />}
-                              <DropdownMenuItem
-                                variant={m.destructive ? "destructive" : undefined}
-                                disabled={busy && m.destructive}
-                                onSelect={m.run}
-                              >
-                                {m.label}
-                              </DropdownMenuItem>
-                            </Fragment>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                    {it.note && (
-                      <p className="truncate text-aui-xs text-aui-muted" title={it.note}>
-                        {it.note}
-                      </p>
-                    )}
-                    {it.action && (
-                      <div className="mt-auto pt-1">
-                        <button
-                          type="button"
-                          className={button}
-                          disabled={it.action.disabled}
-                          onClick={it.action.run}
-                        >
-                          {it.action.label}
-                        </button>
-                      </div>
-                    )}
+                  <li key={it.id} aria-label={it.name} className="min-w-0">
+                    <ItemCard
+                      mark={<ConnectionLogo id={it.logo} name={it.name} />}
+                      title={it.name}
+                      status={it.pill && <Pill tone={it.pill.tone}>{it.pill.text}</Pill>}
+                      description={it.note}
+                      menu={it.menu.map((m) => ({
+                        label: m.label,
+                        onSelect: m.run,
+                        destructive: m.destructive,
+                        disabled: busy && m.destructive,
+                      }))}
+                      menuLabel={`More for ${it.name}`}
+                      // The whole card opens its details, so the menu holds only what else it can do.
+                      onOpen={() => open(it.id)}
+                      actions={
+                        it.action && (
+                          <button
+                            type="button"
+                            className={button}
+                            disabled={it.action.disabled}
+                            onClick={it.action.run}
+                          >
+                            {it.action.label}
+                          </button>
+                        )
+                      }
+                    />
                   </li>
                 ))}
               </ul>

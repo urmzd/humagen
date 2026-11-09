@@ -57,7 +57,7 @@ func validateV2(r ReviewReport) error {
 
 // NativeReview prepares a real pull request review, preserving invalid anchors
 // in the body. The transport checks every anchor against the actual diff.
-// Agents never approve (RFC 0009): an approve verdict is posted as a comment,
+// Agents never approve: an approve verdict is posted as a comment,
 // and a person approves and merges.
 func NativeReview(report ReviewReport, files []transport.ContextFile) (transport.Review, error) {
 	r, err := nativeReview(report)

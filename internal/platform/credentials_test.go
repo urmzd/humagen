@@ -1000,8 +1000,8 @@ func TestARetryActsOnlyForThePersonTheTurnActedFor(t *testing.T) {
 // A message that tagged no agent was answered by the default where it was
 // posted, and acted for the person who sent it. Its retry asks the agent that
 // answered it again, for the same person, whatever the default is now: once
-// the workspace has no default, an untagged message starts nothing, and the
-// retry still runs, as Ana, with her own credential.
+// the workspace's default names another agent, the retry still runs the one
+// that answered, as Ana, with her own credential.
 func TestARetryOfAnUntaggedTurnAsksTheAgentThatAnsweredForTheSamePerson(t *testing.T) {
 	w := newWorld(t, platform.Config{Backoff: func(int) time.Duration { return time.Millisecond }})
 	ctx := t.Context()
@@ -1012,10 +1012,7 @@ func TestARetryOfAnUntaggedTurnAsksTheAgentThatAnsweredForTheSamePerson(t *testi
 	if failed.Agent != "worker" || failed.Actor.User != "ana" {
 		t.Fatalf("the untagged turn was answered by %q for %+v", failed.Agent, failed.Actor)
 	}
-	setAgents(t, w.p, "~", platform.AgentsInput{Enable: []string{"*"}})
-	if _, err := w.p.Converse(ctx, tenant, platform.Turn{ID: "api-ana-untagged-now", Text: "Any open bugs?", Actor: platform.ActorOf(ana)}); !errors.Is(err, platform.ErrNoDefault) {
-		t.Fatalf("an untagged turn with no default = %v", err)
-	}
+	setAgents(t, w.p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "helper"})
 	done, err := w.p.InboxResolve(ctx, ana, msg.ID, msg.Parts[0].ID, platform.Resolution{Action: platform.ActRetry})
 	if err != nil {
 		t.Fatalf("ana retrying her untagged turn: %v", err)

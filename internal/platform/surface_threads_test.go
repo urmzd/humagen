@@ -30,7 +30,12 @@ import (
 // subject, which is all that is known of a person a surface posts for.
 func slackRoom(t *testing.T, mutate func(*platform.ClientInput)) (*platform.Platform, auth.Principal) {
 	t.Helper()
-	p := start(t, call.Limits{})
+	return slackRoomOn(t, start(t, call.Limits{}), mutate)
+}
+
+// slackRoomOn is slackRoom on a platform the test started.
+func slackRoomOn(t *testing.T, p *platform.Platform, mutate func(*platform.ClientInput)) (*platform.Platform, auth.Principal) {
+	t.Helper()
 	field(t, p)
 	seePeople(t, p, auth.Principal{Subject: "ana"}, auth.Principal{Subject: "vic"})
 	in := slackClient("app", "A0APP", "T0TEAM", "helper")

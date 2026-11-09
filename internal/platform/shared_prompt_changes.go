@@ -68,7 +68,7 @@ func (p *Platform) prepareSharedPromptChange(ctx context.Context, tenant string,
 	}
 	slices.SortFunc(suites, func(a, b evals.Suite) int { return strings.Compare(a.Name, b.Name) })
 	candidate := sharedPromptCandidate{Config: config, Agents: []sharedPromptAgent{}}
-	card := evals.Change{Agent: BuiltinBuilder, Kind: "workspace_prompt", BeforeHash: promptConfigHash(stored.Prompts), AfterHash: promptConfigHash(config), Scores: []evals.ChangeScore{}, Evaluated: true, Passed: true, At: p.now()}
+	card := evals.Change{Agent: p.cfg.EntryAgent, Kind: "workspace_prompt", BeforeHash: promptConfigHash(stored.Prompts), AfterHash: promptConfigHash(config), Scores: []evals.ChangeScore{}, Evaluated: true, Passed: true, At: p.now()}
 	for _, suite := range suites {
 		if suite.Target != evals.Agent {
 			continue
@@ -165,7 +165,7 @@ func (p *Platform) checkSharedPromptPins(ctx context.Context, tenant string, car
 // applySharedPromptChange is reachable from the independently approved native
 // tool only. Ordinary settings updates still reject every measured regression.
 func (p *Platform) applySharedPromptChange(ctx context.Context, tenant, id, reason string) error {
-	card, err := p.Evals.Change(tenant, BuiltinBuilder, id)
+	card, err := p.Evals.Change(tenant, p.cfg.EntryAgent, id)
 	if err != nil {
 		return err
 	}
@@ -187,7 +187,7 @@ func (p *Platform) applySharedPromptChange(ctx context.Context, tenant, id, reas
 		return err
 	}
 	if !card.Passed {
-		card.OverrideBy = "approved:agent:" + BuiltinBuilder
+		card.OverrideBy = "approved:agent:" + p.cfg.EntryAgent
 		card.OverrideReason = reason
 		if _, err = p.Evals.SaveChange(tenant, card); err != nil {
 			return err
@@ -251,7 +251,7 @@ func (t *sharedPromptApproval) Approval(call types.ToolCallPart) (native.Approva
 }
 func (p *Platform) builderApplyWorkspacePromptTool(req runtime.Request) types.Tool {
 	prompt := func(call types.ToolCallPart) string {
-		card, err := p.Evals.Change(req.Tenant, BuiltinBuilder, arg(call.Arguments, "change"))
+		card, err := p.Evals.Change(req.Tenant, p.cfg.EntryAgent, arg(call.Arguments, "change"))
 		if err != nil {
 			return "Approve the reviewed shared instruction change?"
 		}

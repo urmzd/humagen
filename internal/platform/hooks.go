@@ -88,6 +88,11 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 			}
 			return nil
 		}},
+		{"output", func() error {
+			var err error
+			run, err = p.keepOutput(run)
+			return err
+		}},
 		{"operation", func() error { return p.Operations.Settle(run.Tenant, run.ID, run.Status == runs.Completed, p.now()) }},
 		{"usage", func() error { return p.settleUsage(ctx, run) }},
 		{"alerts", func() error { return p.raise(run) }},

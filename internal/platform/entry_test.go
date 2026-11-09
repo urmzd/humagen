@@ -22,7 +22,7 @@ import (
 // them, on the offline model.
 func withEntry(t *testing.T, cfg platform.Config) *platform.Platform {
 	t.Helper()
-	cfg.BuiltinProvider, cfg.BuiltinModel = "offline", "offline"
+	cfg.TestBuiltinProvider, cfg.TestBuiltinModel = "offline", "offline"
 	p := startWith(t, cfg)
 	if err := p.EnsureBuiltins(t.Context(), tenant); err != nil {
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func entryCast(entry [][]saigetypes.Delta, others map[string][][]saigetypes.Delt
 
 func stageEntry(t *testing.T, c *cast) *platform.Platform {
 	t.Helper()
-	p := stage(t, c, platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline", Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
+	p := stage(t, c, platform.Config{TestBuiltinProvider: "offline", TestBuiltinModel: "offline", Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
 	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "*"})
 	if err := p.EnsureBuiltins(t.Context(), tenant); err != nil {
 		t.Fatal(err)
@@ -255,6 +255,44 @@ func TestAPickThatIsNotAPickFallsBackToTheBestSearchMatch(t *testing.T) {
 	m := pickOf(t, p, v.ID)
 	if len(m.Parts) != 2 || m.Parts[1].Agent != "ops" || !strings.HasPrefix(m.Parts[0].Text, "Picked by search: matched") {
 		t.Fatalf("fallback pick = %+v", m.Parts)
+	}
+}
+
+// When the pick cannot be made, a question about hashing passwords goes to
+// the security reviewer, found by what it is for, never to another agent on
+// the filler of the question.
+func TestAPickThatFailsHandsAPasswordQuestionToTheSecurityReviewer(t *testing.T) {
+	c := entryCast([][]saigetypes.Delta{say("Security should take it.")}, map[string][][]saigetypes.Delta{platform.BuiltinSecurityReviewer: {say("No: use argon2id or bcrypt.")}})
+	p := stageEntry(t, c)
+	v, err := p.StartSession(t.Context(), admin, platform.SessionInput{Project: "~", Text: "In one line: is MD5 acceptable for hashing passwords, and what should I use instead?"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := pickOf(t, p, v.ID)
+	if len(m.Parts) != 2 || m.Parts[1].Agent != platform.BuiltinSecurityReviewer || !strings.HasPrefix(m.Parts[0].Text, "Picked by search: matched") || strings.Contains(m.Parts[0].Text, "instead") {
+		t.Fatalf("fallback pick = %+v", m.Parts)
+	}
+	// The pick it could not make was told what every other agent is for.
+	if sent := c.requests(platform.BuiltinEntry); len(sent) == 0 || !strings.Contains(sent[0], "@"+platform.BuiltinWriter+": Writes documents") {
+		t.Fatalf("the pick was not told what the other agents are for: %v", sent)
+	}
+}
+
+// When the pick cannot be made and search finds only a passing word, the
+// entry agent answers itself: a weak match is never handed the message.
+func TestAPickThatFailsOnAWeakMatchIsAnsweredByTheEntryAgent(t *testing.T) {
+	c := entryCast([][]saigetypes.Delta{say("Not sure."), say("It is in the root of the repository.")}, nil)
+	p := stageEntry(t, c)
+	v, err := p.StartSession(t.Context(), admin, platform.SessionInput{Project: "~", Text: "Where does the repository keep its readme?"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := pickOf(t, p, v.ID)
+	if len(m.Parts) != 1 {
+		t.Fatalf("a weak match was handed the message: %+v", m.Parts)
+	}
+	if answer := await(t, p, sessionRun(t, v).ID, runs.Completed); answer.Agent != platform.BuiltinEntry {
+		t.Fatalf("answered by %q, want the entry agent", answer.Agent)
 	}
 }
 

@@ -4,6 +4,7 @@ import { ActionId, type QueuedMessage, type Turn } from "@humagen/core";
 import { Rating } from "@humagen/render-web";
 import { useQueue } from "@humagen/web";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ProjectView } from "./api.ts";
 import { Composer, type ComposerSeed } from "./Composer.tsx";
 import { stubFetch } from "./dom.ts";
 import { RunFeedbackHost } from "./RunFeedback.tsx";
@@ -294,6 +295,58 @@ test("session UX header rename preserves routing and deletion waits for explicit
   assert.match(dialog.textContent ?? "", /Nothing is deleted until an administrator approves/);
   fireEvent.click(within(dialog).getByRole("button", { name: "Request deletion" }));
   await waitFor(() => assert.deepEqual(writes[1], { delete_now: true }));
+});
+
+test("session UX header moves a session to another project from its menu, not the composer", async () => {
+  const { SessionActions } = await import("./SessionActions.tsx");
+  const current = {
+    id: "s_move",
+    title: "Pricing",
+    version: 2,
+    visibility: "private" as const,
+    project: "personal-ada",
+    channel: "general",
+    agents: [],
+    participants: [],
+    created_by: "ada",
+    created_at: "",
+    updated_at: "",
+  };
+  const moves: unknown[] = [];
+  let movedTo = "";
+  net = stubFetch({
+    "GET /api/marks": () => ({ archived: [], read: {}, tips: [] }),
+    "GET /api/threads/s_move": () => ({ thread: current, turns: [], next: null }),
+    "PUT /api/threads/s_move": (body) => {
+      moves.push(body);
+      return { ...current, project: (body as { project: string }).project };
+    },
+  });
+  const launch = {
+    name: "Launch",
+    kind: "team",
+    title: "Launch",
+    path: [{ name: "Launch", kind: "team" }],
+  } as unknown as ProjectView;
+  render(
+    <SessionActions
+      thread={current}
+      canManage
+      projects={[launch]}
+      personalProject="personal-ada"
+      onChanged={() => {}}
+      onUpdated={(thread) => {
+        movedTo = thread.project;
+      }}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Session actions" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Move to Project…" }));
+  const dialog = await screen.findByRole("dialog", { name: "Move to project" });
+  fireEvent.click(await within(dialog).findByRole("button", { name: /^Launch/ }));
+  await waitFor(() => assert.equal(movedTo, "Launch"));
+  assert.equal(moves.length, 1);
+  assert.equal((moves[0] as { project: string }).project, "Launch");
 });
 
 test("session UX header archive updates sidebar marks and Undo restores only my archive", async () => {
@@ -592,4 +645,27 @@ test("session UX synthetic sessions show alerts before any message and load an o
     cleanup();
     restoreEvents();
   }
+});
+
+test("an empty composer says its own words, never the default agent's token, and a mention names who it asks", () => {
+  function Box() {
+    const queue = useQueue({ onStart: () => {}, onInterrupt() {} });
+    return (
+      <Composer
+        queue={queue}
+        placeholder="Reply"
+        tags={{
+          label: "Agents",
+          defaultAgent: "*",
+          options: [{ kind: "agent", token: "lead", label: "Lead" }],
+        }}
+      />
+    );
+  }
+  render(<Box />);
+  const box = screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement;
+  assert.equal(box.getAttribute("placeholder"), "Reply");
+  fireEvent.change(box, { target: { value: "@lead " } });
+  assert.equal(box.getAttribute("placeholder"), "Message @lead");
+  cleanup();
 });
