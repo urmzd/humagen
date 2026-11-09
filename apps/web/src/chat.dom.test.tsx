@@ -905,12 +905,7 @@ test("+ closes the menu it opened, though focus moves to it from the menu first"
 });
 
 test("all starter suggestions stay in one centered row that scrolls past its width, hiding none", async () => {
-  const builtin = [
-    ...agents,
-    agent("humagen-analyst"),
-    agent("humagen"),
-    agent("humagen-writer"),
-  ];
+  const builtin = [...agents, agent("humagen-analyst"), agent("humagen"), agent("humagen-writer")];
   openChat(workspace("lead"), { agents: builtin });
   const list = await screen.findByRole("list", { name: chat.suggestions });
   assert.ok(list.className.split(/\s+/).includes("overflow-x-auto"));
