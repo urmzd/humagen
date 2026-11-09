@@ -985,7 +985,7 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) || sees != nil && !sees(req.Agent) {
 		return runs.Run{}, fmt.Errorf("%w: refused by the caller: %q may not call %q, which its spec's spawn allowlist does not name", ErrForbidden, parent.Agent, req.Agent)
 	}
-	if err := p.entryMayCall(tenant, rev, parent.Project, req.Agent); err != nil {
+	if err := p.entryMayCall(tenant, rev, parent, req.Agent); err != nil {
 		return runs.Run{}, err
 	}
 	if err := p.checkOperationCall(ctx, parent, req); err != nil {

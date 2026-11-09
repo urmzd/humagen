@@ -429,14 +429,15 @@ func NoProjectCalled(name string) error {
 // The turn names it, or names Open, or names none and the default
 // the conversation's place inherits answers: the thread's, the client's, the
 // channel's, then the project chain's, as for a message posted in the thread
-// (a new conversation is in general of its project). With no default set it
-// is ErrNoDefault, and nothing starts. The agent that answers is sent the
-// branch so far, so a different agent picking up mid-conversation knows what
-// was said, and when the branch follows a message people posted, the room up
-// to it, each turn with who asked or said it, fenced off from the words it
-// answers, which follow with who asks them (threads.Ask); ahead of it is
-// what the conversation's project chain, its channel and the agent itself
-// bring (see contextIn).
+// (a new conversation is in general of its project). With no default set, or
+// an open one, it lands on the entry agent (land); only a place where no
+// agent may answer is ErrNoDefault, and nothing starts. The agent that
+// answers is sent the branch so far, so a different agent picking up
+// mid-conversation knows what was said, and when the branch follows a
+// message people posted, the room up to it, each turn with who asked or said
+// it, fenced off from the words it answers, which follow with who asks them
+// (threads.Ask); ahead of it is what the conversation's project chain, its
+// channel and the agent itself bring (see contextIn).
 func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Run, error) {
 	// Refused before anything is posted, so a refused turn leaves no
 	// message without a run behind it.
@@ -536,9 +537,14 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		}
 		run, err := p.Runs.Get(tenant, runtime.RunID(tenant, id))
 		if err != nil {
+			// The entry agent is told who may fit, as in a console root.
+			text := body
+			if hints := p.entryHintsFor(ctx, tenant, th.Project, a.Agent, t.Text, routes); hints != "" {
+				text = hints + "\n\n" + body
+			}
 			run, err = p.Invoke(ctx, wire.NewEvent(wire.Raise{
 				ID: id, Tenant: tenant, Agent: a.Agent, Origin: runs.OriginAPI, Actor: t.Actor, Context: m,
-				Text: p.turnContext(tenant, th.Project, th.Channel, a.Agent, t.Actor.User, body, m),
+				Text: p.turnContext(tenant, th.Project, th.Channel, a.Agent, t.Actor.User, text, m),
 			}))
 		}
 		if err != nil {
