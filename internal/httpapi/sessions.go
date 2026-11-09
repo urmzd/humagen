@@ -44,6 +44,19 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, who auth.P
 	if !decode(w, r, &in) {
 		return
 	}
+	if in.Surface != nil {
+		v, started, err := s.P.StartSurfaceSession(r.Context(), who, in)
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
+		status := http.StatusOK
+		if started {
+			status = http.StatusCreated
+		}
+		ok(w, status, v)
+		return
+	}
 	v, err := s.P.StartSession(r.Context(), who, in)
 	if err != nil {
 		s.problem(w, err)

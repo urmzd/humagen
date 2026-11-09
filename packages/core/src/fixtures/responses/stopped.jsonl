@@ -1,0 +1,12 @@
+{"type":"message_start","t_ms":0,"message":{"id":"msg_stopped","role":"assistant","content":[],"humagen":{"request_id":"m_4","root_run":"r_lead","agent":"lead","ref":"console://p1","trace_url":"/messages/msg_stopped"}}}
+{"type":"content_block_start","t_ms":30,"index":0,"content_block":{"type":"server_tool_use","id":"htu_r_lead_1","name":"agent","kind":"agent","title":"Summarize the quarter","input":{"agent":"analyst","title":"Summarize the quarter","brief":"Summarize Q3 revenue."}}}
+{"type":"content_block_stop","index":0}
+{"type":"humagen.tool_status","t_ms":31,"tool_use_id":"htu_r_lead_1","path":["htu_r_lead_1"],"status":"running","elapsed_ms":0}
+{"type":"humagen.nested","t_ms":500,"parent_tool_use_id":"htu_r_lead_1","agent_run_id":"r_analyst","depth":1,"event":{"type":"content_block_start","index":0,"content_block":{"type":"server_tool_use","id":"htu_r_analyst_1","name":"warehouse_query","kind":"tool","title":"Query revenue","input":{"sql":"select sum(amount) from revenue where quarter = 'Q3'"}}}}
+{"type":"humagen.tool_status","t_ms":3000,"tool_use_id":"htu_r_lead_1","path":["htu_r_lead_1","htu_r_analyst_1"],"status":"stopped","elapsed_ms":2500}
+{"type":"humagen.nested","t_ms":3001,"parent_tool_use_id":"htu_r_lead_1","agent_run_id":"r_analyst","depth":1,"event":{"type":"content_block_start","index":1,"content_block":{"type":"server_tool_result","tool_use_id":"htu_r_analyst_1","is_error":true,"content":"stopped"}}}
+{"type":"humagen.tool_status","t_ms":3002,"tool_use_id":"htu_r_lead_1","path":["htu_r_lead_1"],"status":"stopped","elapsed_ms":2971}
+{"type":"content_block_start","t_ms":3003,"index":1,"content_block":{"type":"server_tool_result","tool_use_id":"htu_r_lead_1","is_error":true,"content":"stopped"}}
+{"type":"content_block_stop","index":1}
+{"type":"message_delta","t_ms":3010,"delta":{"stop_reason":"stopped"},"usage":{"input_tokens":200,"output_tokens":10}}
+{"type":"message_stop","t_ms":3011}

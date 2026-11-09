@@ -170,7 +170,8 @@ cannot remove or replace its original conversation boundary.
 
 ## Builder and health console integration
 
-The console creates a canonical `humagen-builder` session for New Agent.
+The console creates a canonical session with `humagen`, the entry agent, for
+New Agent. It took over from `humagen-builder`, which still reads as it.
 Management sessions use a per-agent label and reopen an existing personal
 session before posting any new intent. Agent setup aliases remain explicit
 builder entry points. The directory's operational filter is addressable and
