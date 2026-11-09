@@ -1396,8 +1396,6 @@ export const api = {
       version,
       corpora,
     }),
-  /** Every corpus the reader may read. */
-  corpora: () => call<{ corpora: CorpusBrief[] }>("GET", "/api/corpora").then((r) => r.corpora),
   /**
    * The schedules filed in one project, "" for the workspace. A server that
    * does not filter by project lists every schedule, so the list is narrowed
