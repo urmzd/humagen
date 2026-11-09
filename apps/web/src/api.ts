@@ -97,6 +97,8 @@ export type {
   ThreadFollowup,
 } from "../../../packages/client/src/generated/types.ts";
 
+import { openStream } from "./stream.ts";
+
 /** What the caller may do on a project: their permission and their role together. */
 export type ProjectAction = ProjectView["actions"][number];
 
@@ -1657,7 +1659,10 @@ export const runStateTypes = [
  * Subscribe to the tenant's run events, narrowed to one run and to some type
  * prefixes when given. `onOpen` fires on every (re)connect, and the stream
  * then replays what the bus still holds, so a caller that folds events into
- * state resets that state in `onOpen`.
+ * state resets that state in `onOpen`. The stream is closed while its tab is
+ * hidden and reconnects, with `onOpen`, when the tab is shown; while the
+ * browser has no connection to spare, `onOpen` is called now and then
+ * instead (stream.ts).
  */
 export function subscribe(
   /** `thread` follows one conversation as its room, and takes `type` alone. */
@@ -1679,29 +1684,34 @@ export function subscribe(
   if (filter.run) query.set("run", filter.run);
   if (filter.thread) query.set("thread", filter.thread);
   const qs = query.toString();
-  const source = new EventSource(`/api/events${qs ? `?${qs}` : ""}`);
-  source.onopen = () => {
-    handlers.onOpen?.();
-    handlers.onState?.(true);
-  };
-  source.onerror = () => handlers.onState?.(false);
-  source.onmessage = (m) => {
-    try {
-      handlers.onEvent(JSON.parse(m.data as string) as RunEvent);
-    } catch {
-      // A frame that is not an event is ignored rather than fatal.
-    }
-  };
-  source.addEventListener("inbox", () => handlers.onInbox?.());
-  source.addEventListener("thread", () => handlers.onThread?.());
-  source.addEventListener("page", (m) => {
-    try {
-      handlers.onPage?.(JSON.parse((m as MessageEvent).data as string) as RoomPage);
-    } catch {
-      // A page that does not read is ignored, as a frame is.
-    }
-  });
-  return () => source.close();
+  return openStream(
+    `/api/events${qs ? `?${qs}` : ""}`,
+    (source) => {
+      source.onopen = () => {
+        handlers.onOpen?.();
+        handlers.onState?.(true);
+      };
+      source.onerror = () => handlers.onState?.(false);
+      source.onmessage = (m) => {
+        try {
+          handlers.onEvent(JSON.parse(m.data as string) as RunEvent);
+        } catch {
+          // A frame that is not an event is ignored rather than fatal.
+        }
+      };
+      source.addEventListener("inbox", () => handlers.onInbox?.());
+      source.addEventListener("thread", () => handlers.onThread?.());
+      source.addEventListener("page", (m) => {
+        try {
+          handlers.onPage?.(JSON.parse((m as MessageEvent).data as string) as RoomPage);
+        } catch {
+          // A page that does not read is ignored, as a frame is.
+        }
+      });
+      // With no connection to spare, the caller reads again as it would on a reconnect.
+    },
+    { poll: () => handlers.onOpen?.() },
+  );
 }
 
 // ---------------------------------------------------------------------------
