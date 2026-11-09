@@ -150,17 +150,17 @@ func (p *Platform) sessionAgent(ctx context.Context, who auth.Principal, project
 		explicit = d.Agent
 	}
 	if explicit == "" || explicit == Open {
-		// Nobody named and no agent set to answer: the entry agent owns the
-		// session and calls whoever fits. Without one, routing picks, so a
-		// message in the console always reaches someone.
-		if entry := p.entryFor(ctx, who.Tenant, project, p.Seer(who).Agent); entry != "" {
-			explicit = entry
-		} else {
-			var err error
-			if explicit, picked, err = p.routeSession(ctx, who, project, text); err != nil {
-				return "", "", err
-			}
+		// Nobody named and no agent set to answer: the message lands (land),
+		// on the entry agent, which owns the session and calls whoever fits,
+		// so a message in the console always reaches someone.
+		landed, err := p.land(ctx, who.Tenant, project, text, p.Seer(who).Agent)
+		if errors.Is(err, ErrNoDefault) {
+			return "", "", fmt.Errorf("%w: no agent is available here to answer; mention one with @", threads.ErrInvalid)
 		}
+		if err != nil {
+			return "", "", err
+		}
+		explicit, picked = landed[0].Agent, landed[0].Picked
 	}
 	if err := p.checkDefault(ctx, who.Tenant, project, explicit, p.Seer(who).Agent); err != nil {
 		return "", "", err

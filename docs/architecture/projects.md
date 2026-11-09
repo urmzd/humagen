@@ -379,7 +379,8 @@ What a message starts, first rule that applies:
    `routed`): with `join` (the default
    with two or more) each of them decides whether to take the message, as
    [the dynamic router](#the-dynamic-router) asks, and each that does
-   answers, its run's `picked` saying why; with none, it waits for a person;
+   answers, its run's `picked` saying why; with none, the best match among
+   them answers, else the first of them;
    with `all` each of them side by side (at most 3, so `all` over more than 3 is
    refused when it is set, 400); with one, that one. A message that names a
    skill goes to them too, and they are told to use it; tags in a message
@@ -1000,12 +1001,15 @@ matches are asked one low-effort question, all at once: "should I be
 involved?". Each that says yes joins and answers in the same thread, each
 reply posted and streamed on its own; in Slack, in the same Slack thread. At
 most 64 agents are searched and at most 5 join one message. When search
-finds nobody, nobody is asked. When none says yes on Slack or GitHub,
-nothing starts: the message waits for a person to answer or to tag an agent.
+finds nobody, nobody is asked.
 
-In the console a message always lands or says why. A session started with
-no mention, where the default is `*` or unset, goes to the best match that
-said yes, or with none saying yes to the best match search found; the run
+A message always lands or says why, from every surface: the console, the
+Slack app, a GitHub mention, the API. A message with no mention, where the
+default is `*` or unset, goes to the entry agent, which answers it or calls
+whoever fits; it answers only through a client that may route to it, and
+calls only agents that client may route to. Without an entry agent there,
+it goes to the best match that said yes, or with none saying yes to the
+best match search found; the run
 records why in `warp.picked` ("Joined on its own: ...", or "Picked by
 search: matched deploy, cost."), which the console shows with the answer,
 never before it. When search matches nobody, the workspace's named default
@@ -1034,11 +1038,11 @@ ask refuses the message.
   agent's answer, `{decisions: [{agent, join, reason}]}`, without starting
   anything: the agents search found answer, every other one says search
   passed it over. Agents the caller may not read are left out.
-- `POST /api/runs` with `agent` omitted uses the default chain, and with none
-  answers 409 "tag an agent". `agent: "*"` (or `auto`) asks everyone: the
-  first run that joined is returned and the others start in the same
-  conversation. When none takes it, 409 says it waits for a person to answer
-  or tag an agent.
+- `POST /api/runs` with `agent` omitted uses the default chain; with none
+  set, or `agent: "*"` (or `auto`), the message lands as above: the entry
+  agent's run, or the first run that joined, is returned and the others
+  start in the same conversation. Only a place where no agent may answer
+  is 409 "tag an agent".
 
 ### Clients
 
