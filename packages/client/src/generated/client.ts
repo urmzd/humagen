@@ -1651,6 +1651,35 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
     });
   }
 
+  /** The Model Context Protocol, over streamable HTTP, stateless, answering
+in JSON: a JSON-RPC 2.0 request in, its response out. Its tools are the
+workspace's management: each is one operation of this API (agents,
+evals, sessions and runs, messages, alerts, connections, model
+providers, schedules, settings), named after its operationId in
+snake case and described by it. A call is that operation, made as the
+caller through its own route, so it needs that route's permission and
+is validated, audited and logged as the route is. `tools/list` offers
+only the tools the caller may use. Point an MCP client at this
+address with the caller's bearer token.
+ */
+  async callMcp(body: unknown, options?: RequestOptions): Promise<unknown> {
+    const path = "/api/mcp";
+    return this.request<unknown>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async callMcpRaw(body: unknown, options?: RequestOptions): Promise<ApiResponse<unknown>> {
+    const path = "/api/mcp";
+    return this.rawRequest<unknown>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** Decides one permission for the caller and says why: the rule that decided, the role it reached them through, and the grant that gave that role when the sign-in kept it. It is only ever about the caller; there is no way to name another person. */
   async explainAccess(permission: string, options?: RequestOptions): Promise<AccessDecision> {
     let path = "/api/access/explain";
