@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.99.1 (2026-11-09)
+
+### Bug Fixes
+
+- **platform**: untagged surface messages land on the entry agent (#295) ([377a71b](https://github.com/urmzd/humagen/commit/377a71b075c385a4eb93527441df349293c2f1a7))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.99.0...v0.99.1)
+
+
 ## 0.99.0 (2026-11-08)
 
 ### Features
