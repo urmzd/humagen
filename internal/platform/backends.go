@@ -243,6 +243,8 @@ func (p *Platform) openStores(cfg Config) error {
 	p.picks = pickStore(perRequest)
 	p.audiences = audienceStore(perRequest)
 	p.deliveries = deliveryStore(perRequest)
+	// A conversation that came from a corpus item pulls that item.
+	p.RegisterContextResolver("corpus", p.corpusContext)
 	p.Prefs, err = prefs.Open(perRequest)
 	keep("prefs", err)
 	p.Marks, err = marks.Open(perRequest)

@@ -260,7 +260,7 @@ func corporaHeldBack(n int) string {
 // restricted corpus is audited with the agent, the conversation, the
 // audience and the corpus's purpose, so people can see who read what.
 func (p *Platform) readCorpora(ctx context.Context, req runtime.Request, a corpusAudience, read []corpora.Corpus) error {
-	if a.direct() {
+	if a.direct() && req.RunID != "" {
 		if err := p.MarkPrivateContext(req.Tenant, req.RunID); err != nil {
 			return err
 		}

@@ -112,6 +112,23 @@ func TestAnAgentPullsContextFromWhereItWasAsked(t *testing.T) {
 	}
 }
 
+// A conversation that came from a corpus item has a resolver from the start:
+// it answers by the corpus rule, never that corpus places cannot be pulled.
+func TestContextHasACorpusResolver(t *testing.T) {
+	p, ana := slackWorkspace(t)
+	th, err := p.Threads.Create(tenant, threads.Thread{ID: "th-00000000000c0de5", Project: "Initech", Channel: "general", CreatedBy: "ana", Visibility: threads.Private,
+		Participants: []threads.Participant{{Kind: threads.Person, Name: "ana", Owner: true}},
+		Agents:       []string{"field"}, Default: "field",
+		Session: &threads.SessionIdentity{Agent: "field", Parent: "corpus:hr/handbook/missing"}}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := p.GetContext(t.Context(), ana, th.ID, "what does it say?")
+	if err != nil || res.Origin != "corpus:hr/handbook/missing" || res.Text != "" || !strings.Contains(res.Note, "no corpus item") {
+		t.Fatalf("a corpus conversation's context = %+v, %v", res, err)
+	}
+}
+
 // The registry's get_context pulls, as its caller, from the place the message
 // it answers came from, for the run that calls; a caller answering no
 // message, or one who cannot read it, is told so.
