@@ -180,9 +180,20 @@ func TestAnUntaggedGitHubCommentFallsToTheWorkspaceDefault(t *testing.T) {
 	}
 }
 
-// With no default anywhere, an untagged comment starts nothing and nothing
-// is posted. A default the client may not route to is refused, never swapped
-// for one it may.
+// With no default anywhere, an untagged comment to the app still lands, on
+// an agent the client may route to, saying why: it never waits for a person.
+func TestAnUntaggedGitHubCommentWithNoDefaultLands(t *testing.T) {
+	p, r, _ := githubRoom(t, platform.Backends{}, func(in *platform.ClientInput) { in.DefaultAgent = "" })
+	tag := fromGitHub("gh-landed", platform.Untagged, "what changed?")
+	r.raise(t, tag)
+	run := await(t, p, runtime.RunID(tenant, tag.ID+"-ops"), runs.Completed)
+	if run.Agent != "ops" || run.Project != "Launch" {
+		t.Fatalf("the untagged comment landed on %s, filed at %q", run.Agent, run.Project)
+	}
+}
+
+// A default the client may not route to is refused, never swapped for one it
+// may: the untagged comment starts nothing and nothing is posted.
 func TestAnUntaggedGitHubCommentNobodyMayAnswerStartsNothing(t *testing.T) {
 	for name, c := range map[string]struct {
 		mutate func(*platform.ClientInput)
@@ -192,10 +203,6 @@ func TestAnUntaggedGitHubCommentNobodyMayAnswerStartsNothing(t *testing.T) {
 		// agent one the client may route to, which answers only when named.
 		why, agent string
 	}{
-		"no default anywhere": {
-			mutate: func(in *platform.ClientInput) { in.DefaultAgent = "" },
-			why:    "no default answers an untagged message", agent: "ops",
-		},
 		"a default the client may not route to": {
 			mutate: func(in *platform.ClientInput) {
 				in.DefaultAgent, in.Agents = "", []string{"docs"}

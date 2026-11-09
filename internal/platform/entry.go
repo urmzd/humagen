@@ -42,6 +42,8 @@ Answer simple asks yourself, briefly. When an ask needs a specialist, call them 
 
 Each message may come with agents that may fit it, best first, with their instructions. Prefer those; you may call any other agent listed. Never invent an agent, a tool or a result, and never claim work that did not finish. If nobody fits, say so and answer as well as you can.
 
+When you need what people were discussing where you were asked (the Slack thread, the pull request), call get_context with what you need in words.
+
 When you are asked to decide who answers a message, do only that: reply with the JSON asked for and nothing else, and call no tools.`
 
 // entrySpec is the entry agent's definition, on the same models as base, the
@@ -55,6 +57,7 @@ func (p *Platform) entrySpec(base wire.AgentSpec) wire.AgentSpec {
 		Model:        base.Model,
 		Fallbacks:    slices.Clone(base.Fallbacks),
 		SystemPrompt: entryPrompt,
+		Tools:        []string{ToolGetContext},
 	}
 }
 
@@ -187,12 +190,22 @@ func (p *Platform) withEntrySpawn(ctx context.Context, tenant string, want wire.
 
 // entryMayCall holds the entry agent to the place it answers in: its spawn
 // list spans the workspace, and an agent not available in the run's project
-// is refused there as it would be to a person.
-func (p *Platform) entryMayCall(tenant string, parent wire.Revision, project, agent string) error {
-	if !p.isEntry(parent) || p.Projects.Tree(tenant).IsAvailable(projects.NameOf(project), agent) {
+// is refused there as it would be to a person. A run answering a message a
+// client sent (Slack, GitHub) calls only the agents that client may route
+// to, as the client could not have asked any other.
+func (p *Platform) entryMayCall(tenant string, parent wire.Revision, run runs.Run, agent string) error {
+	if !p.isEntry(parent) {
 		return nil
 	}
-	return fmt.Errorf("%w: @%s is not available where this conversation is", ErrForbidden, agent)
+	if !p.Projects.Tree(tenant).IsAvailable(projects.NameOf(run.Project), agent) {
+		return fmt.Errorf("%w: @%s is not available where this conversation is", ErrForbidden, agent)
+	}
+	if run.Client != "" {
+		if c, err := p.Clients.Get(tenant, run.Client); err != nil || !c.Routes(agent) {
+			return fmt.Errorf("%w: the app this conversation came through may not reach @%s", ErrForbidden, agent)
+		}
+	}
+	return nil
 }
 
 // Bounds on what the entry agent is told about a message's agents.
@@ -202,6 +215,8 @@ const (
 	maxHintPrompt = 1500
 	// maxHintNames bounds how many other agents are named to it.
 	maxHintNames = 60
+	// maxHintDescription bounds what it is told each other agent is for.
+	maxHintDescription = 200
 )
 
 // entryHints is what the entry agent is told about who may fit a message:
@@ -305,7 +320,7 @@ func (p *Platform) answerAsEntry(ctx context.Context, tenant string, th threads.
 	pick, err := p.pick(ctx, tenant, th, m, actor, tagID, found, cs)
 	if err != nil {
 		p.log.Info("platform: the entry agent could not pick; falling back", "thread", th.ID, "error", err)
-		pick, rec.Fallback = p.fallbackPick(tree, th.Project, found, cs, sees), true
+		pick, rec.Fallback = p.fallbackPick(tree, th.Project, found, sees), true
 	}
 	rec.Pick = pick
 	if pick.Decision != PickDelegate {
@@ -349,19 +364,19 @@ func pickLine(pick Pick) string {
 }
 
 // fallbackPick is who answers when the entry agent cannot pick: the best
-// search match, the workspace's named default, the first agent available, or
-// with none of them the entry agent itself.
-func (p *Platform) fallbackPick(tree *projects.Tree, project string, found []join.Match, cs []join.Candidate, sees func(string) bool) Pick {
+// search match when it is strong, else the workspace's named default, else
+// the entry agent itself, which may still call whoever fits. A weak match
+// (one passing word of a prompt) or merely the first agent available is
+// never handed a message the entry agent could take.
+func (p *Platform) fallbackPick(tree *projects.Tree, project string, found []join.Match, sees func(string) bool) Pick {
 	switch {
-	case len(found) > 0:
+	case len(found) > 0 && found[0].Strong:
 		return Pick{Decision: PickDelegate, Agents: []string{found[0].Name}, Reason: "Picked by search: matched " + strings.Join(found[0].Terms, ", ") + "."}
 	case func() bool {
 		d := tree.Root().Agents.Default
 		return d != "" && d != Open && d != p.cfg.EntryAgent && (sees == nil || sees(d)) && tree.IsAvailable(projects.NameOf(project), d)
 	}():
 		return Pick{Decision: PickDelegate, Agents: []string{tree.Root().Agents.Default}, Reason: "No agent matched it, so the workspace default answered."}
-	case len(cs) > 0:
-		return Pick{Decision: PickDelegate, Agents: []string{cs[0].Name}, Reason: "No agent matched it, so the first agent available here answered."}
 	}
 	return Pick{Decision: PickAnswerMyself}
 }
@@ -453,27 +468,34 @@ func (p *Platform) awaitPick(ctx context.Context, tenant, runID string) (runs.Ru
 // hintsFrom is the agents block a pick and an answer are given: the matches
 // with their instructions, then the other agents by name.
 func (p *Platform) hintsFrom(found []join.Match, cs []join.Candidate) string {
+	strong := slices.DeleteFunc(slices.Clone(found), func(m join.Match) bool { return !m.Strong })
 	var b strings.Builder
 	b.WriteString("<agents>\n")
-	if len(found) > 0 {
+	if len(strong) > 0 {
 		b.WriteString("Agents that may fit this message, best first:\n")
-		for _, m := range found {
+		for _, m := range strong {
 			fmt.Fprintf(&b, "\n@%s (matched %s)\n<instructions>\n%s\n</instructions>\n", m.Name, strings.Join(m.Terms, ", "), clipText(m.Prompt, maxHintPrompt))
 		}
 	} else {
-		b.WriteString("No agent's instructions match this message.\n")
+		b.WriteString("No agent's name or purpose matches this message's words; choose by what each agent is for.\n")
 	}
+	// Every other agent with what it is for, so a pick can choose by
+	// meaning where words did not match.
 	var others []string
 	for _, c := range cs {
-		if !slices.ContainsFunc(found, func(m join.Match) bool { return m.Name == c.Name }) {
-			others = append(others, "@"+c.Name)
+		if !slices.ContainsFunc(strong, func(m join.Match) bool { return m.Name == c.Name }) {
+			line := "@" + c.Name
+			if d := join.Describe(c); d != "" {
+				line += ": " + clipText(d, maxHintDescription)
+			}
+			others = append(others, line)
 		}
 	}
 	if len(others) > maxHintNames {
 		others = append(others[:maxHintNames], fmt.Sprintf("and %d more", len(others)-maxHintNames))
 	}
 	if len(others) > 0 {
-		fmt.Fprintf(&b, "\nOther agents you may call: %s\n", strings.Join(others, ", "))
+		fmt.Fprintf(&b, "\nOther agents you may call:\n%s\n", strings.Join(others, "\n"))
 	}
 	b.WriteString("</agents>")
 	return b.String()
@@ -557,17 +579,24 @@ func (p *Platform) keepPick(tenant, root, message string, rec pickRecord) {
 // child session the reader may not read is left out, answer and all. It is
 // false for a message nothing was picked for.
 func (p *Platform) pickMessage(who auth.Principal, root threads.Thread, m threads.Message) (SessionMessage, bool) {
+	out, _, ok := p.pickFor(who, root, m, func(session string) bool { return p.SeesSession(who, session) })
+	return out, ok
+}
+
+// pickFor is pickMessage with only the calls into sessions sees passes, and
+// the runs those calls led to.
+func (p *Platform) pickFor(who auth.Principal, root threads.Thread, m threads.Message, sees func(session string) bool) (SessionMessage, []runs.Run, bool) {
 	tenant := who.Tenant
 	it, err := p.picks.Lookup(tenant, pickKey(root.ID, m.ID))
 	if err != nil {
-		return SessionMessage{}, false
+		return SessionMessage{}, nil, false
 	}
 	rec := it.Value
 	display := p.wording(tenant).Name
 	out := SessionMessage{ID: "pick-" + m.ID, Session: root.ID, Author: SessionAuthor{Kind: "agent", Name: p.cfg.EntryAgent, Display: display}, Status: "done", At: rec.At, Parts: []SessionPart{{Type: "pick", Text: pickLine(rec.Pick)}}}
 	var status []runs.Run
 	for _, c := range rec.Children {
-		if !p.SeesSession(who, c.Session) {
+		if !sees(c.Session) {
 			continue
 		}
 		part := SessionPart{Type: "call", Session: c.Session, Agent: c.Agent, Status: "working"}
@@ -580,5 +609,5 @@ func (p *Platform) pickMessage(who auth.Principal, root threads.Thread, m thread
 	if len(status) > 0 {
 		out.Status = sessionStatus(status)
 	}
-	return out, true
+	return out, status, true
 }

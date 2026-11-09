@@ -198,12 +198,11 @@ func (s *surface) pump(ctx context.Context, st *seat, publish connector.Publish)
 // in the client's home, written over whatever the connector said.
 //
 // A message that named no agent is untagged, and the place it is filed in
-// decides who answers it (untaggedFor). That default may be open: then every
-// agent available where the run is filed that the client may route to is
-// asked whether it takes the message, and each that does gets an event of its
-// own, so they answer in the same thread side by side, each posted and
-// streamed on its own. With none that takes it, or no default anywhere,
-// nothing goes further and the message waits for a person.
+// decides who answers it (untaggedFor). With no default there, or an open
+// one, it lands (land): on the entry agent, which answers or calls whoever
+// fits, and without one on the agents that take it, each with an event of
+// its own, so they answer in the same thread side by side, else on the best
+// match. It never waits for a person because no agent took it.
 //
 // The run acts for the person the client's team maps the surface's user to,
 // so it is held to what that person may do where it is filed (mayRaise),
@@ -260,22 +259,23 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag event.Envelope) []eve
 		}
 	}
 	if agent == "" {
-		if agent = s.p.untaggedFor(c, project, channel, from.SlackChannel); agent == "" {
-			s.p.log.Warn("platform: no default answers an untagged message where a client's run is filed", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "channel", channel, "event", tag.ID)
-			return nil
-		}
+		agent = s.p.untaggedFor(c, project, channel, from.SlackChannel)
 	}
 	type answer struct{ agent, id, picked string }
 	who := []answer{{agent: agent, id: tag.ID}}
-	if agent == Open {
-		joined, err := s.p.joinFor(ctx, c, s.p.clientPlace(c, project, channel, from.SlackChannel), wire.TextOf(tag))
+	if agent == "" || agent == Open {
+		landed, err := s.p.landFor(ctx, c, s.p.clientPlace(c, project, channel, from.SlackChannel), wire.TextOf(tag))
 		if err != nil {
-			s.p.log.Info("platform: no agent took a client's message", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "event", tag.ID, "why", err.Error())
+			s.p.log.Warn("platform: no agent may answer a client's message where its run is filed", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "channel", channel, "event", tag.ID, "why", err.Error())
 			return nil
 		}
 		who = who[:0]
-		for _, d := range joined {
-			who = append(who, answer{agent: d.Agent, id: joinedTagID(tag.ID, d.Agent), picked: joinedReason(d)})
+		for _, d := range landed {
+			id := tag.ID
+			if d.Picked != "" {
+				id = joinedTagID(tag.ID, d.Agent)
+			}
+			who = append(who, answer{agent: d.Agent, id: id, picked: d.Picked})
 		}
 	}
 	var out []event.Envelope
