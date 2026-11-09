@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.113.0 (2026-11-09)
+
+### Features
+
+- **agents**: one answer per message; the entry agent and mentions on the agent tool (#315) ([70696d3](https://github.com/urmzd/humagen/commit/70696d3f78756ad84049ba3eca358dd42f61deca))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.112.0...v0.113.0)
+
+
 ## 0.112.0 (2026-11-09)
 
 ### Features
