@@ -1367,6 +1367,7 @@ function Console({
                       canWrite={can("agents:write")}
                       onOpen={(name) => openAgent(name)}
                       onNew={() => openAgent(null)}
+                      onStoreChanged={loadAgents}
                       onBuilderSession={canAsk(BUILTIN_BUILDER) ? openThread : undefined}
                       onBuild={
                         canAsk(BUILTIN_BUILDER)

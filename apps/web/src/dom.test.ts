@@ -30,6 +30,7 @@ await loadTests([
   "/src/conversation-overview.dom.test.tsx",
   "/src/github-tab.dom.test.tsx",
   "/src/model-providers.dom.test.tsx",
+  "/src/agent-store.dom.test.tsx",
   "/src/agent-effort.dom.test.tsx",
   "/src/history.dom.test.tsx",
   "/src/voice-notes.dom.test.tsx",

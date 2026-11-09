@@ -47,6 +47,9 @@ import type {
   SessionPostInput,
   SkillUsage,
   SourceDependencies,
+  StoreInstall,
+  StorePackage,
+  StoreRemoval,
   ThreadFollowup,
   ThreadShare,
   VoiceSettings,
@@ -94,6 +97,8 @@ export type {
   ProjectUpdate,
   ProjectView,
   SourceDependencies,
+  StoreAgent,
+  StorePackage,
   ThreadFollowup,
 } from "../../../packages/client/src/generated/types.ts";
 
@@ -1099,6 +1104,18 @@ export const api = {
       enabled_in?: Record<string, string[]>;
       hues?: Record<string, number>;
     }>("GET", "/api/agents"),
+  /** The agent store's packages, and what the workspace has of each. */
+  storePackages: () =>
+    call<{ packages: StorePackage[] }>("GET", "/api/store/packages").then((r) => r.packages),
+  /** Adds a package's missing agents. Installing an installed package adds nothing. */
+  installStorePackage: (name: string) =>
+    call<StoreInstall>("POST", `/api/store/packages/${encodeURIComponent(name)}/install`),
+  /** Retires a package's agents; `force` retires those changed in the workspace too. */
+  removeStorePackage: (name: string, force = false) =>
+    call<StoreRemoval>(
+      "DELETE",
+      `/api/store/packages/${encodeURIComponent(name)}${force ? "?force=true" : ""}`,
+    ),
   /** Says who sees an agent: a project's members, Private in a Personal project, or "~" for the workspace. */
   setAgentHome: (agent: string, project: string) =>
     call<AgentHome>("PUT", `/api/agents/${encodeURIComponent(agent)}/home`, { project }),

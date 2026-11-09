@@ -915,6 +915,17 @@ test("all starter suggestions stay in one centered row that scrolls past its wid
   );
 });
 
+// A workspace that has not installed Core or Review from the store is
+// offered no way into their agents: only the entry agent's starter shows.
+test("starters for store agents the workspace has not installed are not offered", async () => {
+  openChat(workspace("lead"), { agents: [...agents, agent("humagen")] });
+  const list = await screen.findByRole("list", { name: chat.suggestions });
+  const offered = within(list)
+    .getAllByRole("button")
+    .map((b) => b.textContent);
+  assert.deepEqual(offered, ["Build an agent"]);
+});
+
 test("a suggestion @mentions its agent, and the + menu mentions as many agents as are picked", async () => {
   const builtin = [
     agent("a1"),

@@ -1463,10 +1463,13 @@ spec:
 
 /**
  * The agents every screen expects, on the local model fixture: the example lead and
- * helper, and the lead answering the workspace's untagged messages. The platform's own
- * agents exist already, on the chain they ship with, which anthropic answers here.
+ * helper, and the lead answering the workspace's untagged messages. The entry and
+ * approval agents exist already; the store's Core and Review packages are installed, so
+ * the writer, the analyst and the reviewers are there, on the chain they ship with,
+ * which anthropic answers here.
  */
 async function seedModels(call: Call): Promise<void> {
+  for (const name of ["core", "review"]) await call("POST", `/api/store/packages/${name}/install`);
   const fixture = { provider: "screens-native", model: "screens-native" };
   for (const a of [
     {

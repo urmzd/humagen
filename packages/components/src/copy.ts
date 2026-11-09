@@ -158,7 +158,7 @@ export const defaultCopy = {
     thisWeek: "This week",
     untitled: "Untitled conversation",
     empty: "Nothing matches these filters.",
-    emptyHint: "Start a conversation, or ask @code-reviewer to review a pull request.",
+    emptyHint: "Start a conversation, or add agents from the Store on the Agents page.",
     loading: "Loading…",
     more: "Show More",
   },
@@ -528,6 +528,28 @@ export const defaultCopy = {
       paused: "Paused",
       failed: "Needs Attention",
     },
+  },
+  agentStore: {
+    title: "Store",
+    installed: "Installed",
+    install: "Install",
+    restore: "Restore Missing",
+    installing: "Installing…",
+    remove: "Remove",
+    removing: "Removing…",
+    loading: "Reading the store",
+    failed: "The store could not be read. Reload to try again.",
+    empty: "This server ships no agents of its own, so the store is empty.",
+    version: (version: string) => `Version ${version.replace(/^sha256:/, "").slice(0, 7)}`,
+    missing: (names: string[]) => `Missing: ${names.join(", ")}. Install again to restore.`,
+    taken: (names: string[]) =>
+      `${names.join(", ")} ${names.length === 1 ? "is the name of one of your agents" : "are names of your agents"}. Rename ${names.length === 1 ? "it" : "them"} to install.`,
+    customized: (names: string[]) =>
+      `${names.join(", ")} ${names.length === 1 ? "has" : "have"} changes made in this workspace.`,
+    removeQuestion: (title: string, customized: string[]) =>
+      `Remove ${title}? Its agents are retired; their history stays.${customized.length ? ` Changes to ${customized.join(", ")} stay in ${customized.length === 1 ? "its" : "their"} history too.` : ""}`,
+    installedNote: (names: string[]) => `Added ${names.join(", ")}.`,
+    removedNote: (names: string[]) => `Retired ${names.join(", ")}. Their history stays.`,
   },
   agentSetup: {
     title: "New Agent",
