@@ -282,6 +282,11 @@ func TestAReplyFromAnywhereUnderASlackRootAnswersInTheThread(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The first answer ends before the reply, which would otherwise wait
+	// behind it as a follow-up.
+	for _, r := range first.Posted.Runs {
+		await(t, p, r.ID, runs.Completed)
+	}
 	reply, err := p.SendMessagesUnder(t.Context(), ana, first.Root, sayIn("@ops and what did it cost?", nil))
 	if err != nil {
 		t.Fatal(err)
