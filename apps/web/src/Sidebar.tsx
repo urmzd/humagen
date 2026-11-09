@@ -443,7 +443,8 @@ function TaskRow({
           </span>
           <span
             data-row-age
-            className={`mt-0.5 shrink-0 text-aui-2xs font-normal text-aui-muted tabular-nums ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:invisible [@media(pointer:fine)]:group-hover/task:invisible" : ""}`}
+            // One line: where it came from, then its age, so every row is the same height.
+            className={`mt-0.5 inline-flex shrink-0 items-center gap-1 text-aui-2xs font-normal text-aui-muted tabular-nums ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:invisible [@media(pointer:fine)]:group-hover/task:invisible" : ""}`}
           >
             {standing === "unread" ? (
               <span aria-hidden data-standing="unread" className="humagen-row-dot mt-1 block" />
@@ -893,7 +894,7 @@ export function Sidebar({
     },
     {
       to: { page: "artifacts" } as Route,
-      label: "Artifacts",
+      label: nav.artifacts,
       icon: <LayersIcon />,
       show: can("artifacts:read"),
       active:

@@ -1050,6 +1050,7 @@ var copyKeyList = []string{
 	"navigation.agents",
 	"navigation.alertRules",
 	"navigation.appearance",
+	"navigation.artifacts",
 	"navigation.assignments",
 	"navigation.audit",
 	"navigation.connections",

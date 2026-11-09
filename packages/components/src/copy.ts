@@ -812,6 +812,8 @@ export const defaultCopy = {
     you: "You",
     sources: "Sources",
     deliverables: "Deliverables",
+    /** The sidebar's destination for files agents made, and that page's title. */
+    artifacts: "Artifacts",
     skills: "Skills",
     memory: "Memory",
     needsYou: "Needs You",
