@@ -71,7 +71,7 @@ require (
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
-	github.com/urmzd/orchagent v0.5.1-0.20261109031044-671731e733f9
+	github.com/urmzd/orchagent v0.6.0
 	go.yaml.in/yaml/v3 v3.0.6
 	go.yaml.in/yaml/v4 v4.0.0-rc.2
 	golang.org/x/term v0.47.0
