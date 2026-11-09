@@ -76,3 +76,31 @@ func TestACorpusItemResolvesForARunOrAPerson(t *testing.T) {
 		t.Fatalf("for a missing run = %v", err)
 	}
 }
+
+// get_context's corpus resolver answers a run by its audience and a person
+// by their own access, and says so when the item may not be read.
+func TestGetContextPullsACorpusItem(t *testing.T) {
+	f := graphFixture(t)
+	f.p.SourceEvidence = knowledge.NewEvidenceStore()
+	docs, _ := f.p.Knowledge.Documents("tenant", "handbook")
+	address := "corpus:hr/handbook/" + docs[0].ID
+	r := f.runIn(t, "bo-run", "bo", true, "bo")
+	for name, req := range map[string]ContextRequest{
+		"a run":    {Tenant: "tenant", Subject: "bo", Origin: address, Run: r.RunID},
+		"a person": {Tenant: "tenant", Subject: "bo", Origin: address},
+	} {
+		got, err := f.p.corpusContext(t.Context(), req)
+		if err != nil || !strings.Contains(got.Text, "sixteen weeks") || len(got.Sources) != 1 || got.Sources[0].Title != "Leave policy" || got.Sources[0].URL != "https://wiki.example.com/leave" {
+			t.Fatalf("for %s = %+v, %v", name, got, err)
+		}
+	}
+	for name, req := range map[string]ContextRequest{
+		"a non-reader":        {Tenant: "tenant", Subject: "eve", Origin: address},
+		"a malformed address": {Tenant: "tenant", Subject: "bo", Origin: "corpus:hr"},
+	} {
+		got, err := f.p.corpusContext(t.Context(), req)
+		if err != nil || got.Text != "" || len(got.Sources) != 0 || !strings.Contains(got.Note, "no corpus item") {
+			t.Fatalf("for %s = %+v, %v", name, got, err)
+		}
+	}
+}

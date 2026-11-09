@@ -28,8 +28,8 @@ import (
 // CorpusAddressScheme is how a corpus item address starts.
 const CorpusAddressScheme = "corpus:"
 
-// maxContextText bounds what one resolved item hands an agent.
-const maxContextText = 4000
+// maxCorpusItemText bounds what one resolved item hands an agent.
+const maxCorpusItemText = 4000
 
 // CorpusItem is one resolved corpus item.
 type CorpusItem struct {
@@ -91,6 +91,30 @@ func (p *Platform) ResolveCorpusItemForPerson(ctx context.Context, tenant, subje
 		return CorpusItem{}, fmt.Errorf("%w: a corpus is read for a person", corpora.ErrInvalid)
 	}
 	return p.resolveCorpusItem(ctx, runtime.Request{Tenant: tenant}, p.directAudience(tenant, subject), func(corpora.Corpus) bool { return true }, address)
+}
+
+// corpusContext is get_context's resolver for a conversation that came from
+// a corpus item: the place is the item's address. Inside a turn the run's
+// audience and its agent's corpora decide; a person asking for themselves is
+// answered by their own access. What may not be read is said in a note,
+// never shown.
+func (p *Platform) corpusContext(ctx context.Context, req ContextRequest) (ContextResult, error) {
+	var item CorpusItem
+	var err error
+	if req.Run != "" {
+		item, err = p.ResolveCorpusItemForRun(ctx, req.Tenant, req.Run, req.Origin)
+	} else {
+		item, err = p.ResolveCorpusItemForPerson(ctx, req.Tenant, req.Subject, req.Origin)
+	}
+	switch {
+	case errors.Is(err, corpora.ErrNotFound), errors.Is(err, corpora.ErrInvalid):
+		return ContextResult{Note: "There is no corpus item here that this conversation may read."}, nil
+	case err != nil:
+		return ContextResult{}, err
+	case item.HeldBack != "":
+		return ContextResult{Note: item.HeldBack}, nil
+	}
+	return ContextResult{Text: item.Text, Sources: []ContextSource{{Title: item.Title, URL: item.Link}}}, nil
 }
 
 func (p *Platform) resolveCorpusItem(ctx context.Context, req runtime.Request, a corpusAudience, reached func(corpora.Corpus) bool, address string) (CorpusItem, error) {
@@ -189,7 +213,7 @@ func (p *Platform) resolveDocument(req runtime.Request, a corpusAudience, source
 		return err
 	}
 	item.Kind, item.Title = "document", doc.Title
-	item.Text = clip(strings.Join(texts, "\n\n"), maxContextText)
+	item.Text = clip(strings.Join(texts, "\n\n"), maxCorpusItemText)
 	item.Link = doc.URI
 	if item.Link == "" {
 		item.Link = "/knowledge/" + item.Corpus + "/sources/" + source
@@ -213,7 +237,7 @@ func (p *Platform) resolveTable(tenant, connector, path string, item *CorpusItem
 			continue
 		}
 		item.Kind, item.Title = "table", e.Path
-		item.Text = clip(catalog.Text(e), maxContextText)
+		item.Text = clip(catalog.Text(e), maxCorpusItemText)
 		item.Link = "/knowledge/" + item.Corpus + "/sources/" + connector
 		return nil
 	}
