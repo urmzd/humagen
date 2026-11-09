@@ -213,8 +213,18 @@ func (p *Platform) rollUp(ctx context.Context, childID string) {
 	}
 }
 
+// delegated is what delegate_task answers: the work was launched, never its
+// result.
+type delegated struct {
+	Status string `json:"status"`
+	Agent  string `json:"agent"`
+	Run    string `json:"run"`
+	Note   string `json:"note"`
+}
+
 // delegateTool is the tool an agent hands work to another agent with, without
-// waiting for it.
+// waiting for it. It is the background agent call: it answers at once that
+// the work was launched, and the run it starts outlives the caller.
 func (p *Platform) delegateTool(req runtime.Request, action func(event.Action) error) saigetypes.Tool {
 	return &saigetypes.ToolFunc{
 		Def: saigetypes.ToolDef{
@@ -232,14 +242,23 @@ func (p *Platform) delegateTool(req runtime.Request, action func(event.Action) e
 				return "", fmt.Errorf("%w: a turn with no run of its own cannot hand work on", call.ErrInvalid)
 			}
 			target, text := arg(args, "agent"), arg(args, "text")
+			// The run it starts carries the call's id, so its answer, which
+			// comes after this turn has moved on, says which call it is for.
+			callID := ""
+			if info, ok := saigetypes.ToolCallInfoFromContext(ctx); ok && info.ID != "" {
+				if id, err := p.toolUseIDFor(ctx, req.Tenant, req.RunID, info.ID); err == nil {
+					callID = id
+				}
+			}
 			child, err := p.call(ctx, req.Tenant, req.RunID, call.Request{
-				Key: callKey("delegate", target, text), Agent: target, Text: text, Mode: call.Delegate,
+				Key: callKey("delegate", target, text), Agent: target, Text: text, Mode: call.Delegate, CallID: callID,
 			}, true, nil)
 			if err != nil {
 				return "", err
 			}
 			tell(ctx, action, ToolDelegate, child, text)
-			return fmt.Sprintf("%s has started on it as run %s and is working independently. Its answer will arrive in the inbox.", target, child.ID), nil
+			out, err := json.Marshal(delegated{Status: "launched", Agent: target, Run: child.ID, Note: "It works independently and its answer arrives later, in the inbox, not back to you."})
+			return string(out), err
 		},
 	}
 }

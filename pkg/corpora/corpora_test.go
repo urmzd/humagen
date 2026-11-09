@@ -180,3 +180,24 @@ func TestTwoProcessesAgreeOnCorpora(t *testing.T) {
 		}
 	})
 }
+
+// A corpus kept before labels existed reads as internal.
+func TestACorpusWithNoLabelReadsAsInternal(t *testing.T) {
+	st := state.NewMemory()
+	s, err := Open(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Create("acme", Corpus{Name: "old", Owner: "o"}, at); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.kept.Update("acme", key("old"), func(r record, _ bool) (record, error) {
+		r.Corpus.Label = ""
+		return r, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Get("acme", "old"); err != nil || got.Label != Internal {
+		t.Fatalf("an unlabelled corpus reads %q, %v", got.Label, err)
+	}
+}

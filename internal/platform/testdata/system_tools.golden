@@ -84,6 +84,8 @@ source_search | runs | read_context | acts-for-person,idempotent,parallel,read-o
 catalog_search | runs | read_context | idempotent,parallel,read-only | policy
 catalog_query | runs | read_context | acts-for-person,idempotent,parallel,read-only | policy
 corpus_query | runs | read_context | acts-for-person,idempotent,parallel,read-only | policy
+corpus_search | runs | read_context | idempotent,parallel,read-only | policy
+corpus_graph | runs | read_context | idempotent,parallel,read-only | policy
 github_read_context | runs | read_context | idempotent,parallel,read-only | policy
 github_fix_base | runs | read_context | idempotent,parallel,read-only | policy
 github_read_file | runs | read_context | idempotent,parallel,read-only | policy

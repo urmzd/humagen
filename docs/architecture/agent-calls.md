@@ -23,6 +23,36 @@ offered that definition with `agent` narrowed to the agents the caller may
 call. A call is held twice: by the called agent's call policy, which names
 its own approvers, and by the action policy for `call_agents`.
 
+## Calls made for mentions
+
+A message that mentions several agents is answered by the entry agent, and the
+platform makes those agent calls itself before that run's first model step
+(`internal/platform/mention_calls.go`). Each is an `agent` call of the run like
+any other: a child run through the same call path, checked by the same spawn
+allowlist and call policy, keyed by its `htu_<run>_<n>` id and carrying it as
+`call_id`, with what it spent counted toward the root. The run records each as
+a call to the `agent` tool and its result, so activity shows them where the
+entry agent's own calls show. The model is never shown a tool call it did not
+make: what each agent said reaches it as content of the person's turn, with the
+answer it is to write, each result as given under a heading with its agent's
+name, then a short synthesis if one helps. The run's final text is the model's
+own; the platform does not rewrite it. A call that is refused or fails is said
+so in its place, and stopping the root stops the calls it waits on.
+
+Two checks are made before any of those calls. An agent that lives where not
+everyone who reads the conversation's project reads is not called there
+(`Available`, admission's own check): the entry agent is told it cannot answer
+here and where it can be asked. A call the callee's policy holds for a person
+waits for one as the same call made by the model does: the root parks on the
+approval, addressed to the policy's approvers and tied to the call's id, before
+anyone is called. Approved, the call is made; denied or expired, the entry
+agent is told so in its place.
+
+`delegate_task` stays the background call. It answers at once with
+`{"status": "launched", "agent", "run", "note"}`, never with the work's result;
+the run it starts outlives its caller, carries the call's id as `call_id`, and
+its answer goes to the inbox.
+
 ## Constructing input
 
 A program that holds a run calls helpers with a constructed conversation and a

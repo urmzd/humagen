@@ -1,6 +1,6 @@
 # Sources
 
-Library holds manual documents and managed Google Drive or Notion sources.
+Library holds manual documents and managed Google Drive, OneDrive or Notion sources.
 New Source shows supported providers and formats before configuration. Source
 creation saves its selected project and refresh cadence atomically. Select a
 provider and mode, enter the folder or page ID, and choose its project.
@@ -134,6 +134,42 @@ how new passages are retrieved.
 No successful external action is simulated, and no new external write action
 is offered.
 
+## OneDrive
+
+A OneDrive source reads one folder through Microsoft Graph v1.0 with each
+person's own Microsoft account, as a Drive source uses their own Google
+account. Connect OneDrive in Connections, then choose Use my OneDrive account
+on the source; the binding covers its provider, origin and project, and is
+never borrowed by another person.
+
+| Part | OneDrive |
+| --- | --- |
+| Sign-in | Microsoft identity platform `common` endpoints, authorization code with PKCE. Work, school and personal accounts |
+| Scopes | Delegated `Files.Read`, `offline_access` for a refresh token, and `User.Read`. None needs administrator consent |
+| Origin | A folder's item ID, or `root` for the top of the drive. Personal account item IDs contain `!` |
+| Inventory | `GET /me/drive/items/{id}/children` or `/me/drive/root/children`, following `@odata.nextLink` only within `graph.microsoft.com`. A folder with more than 200 children fails |
+| Content | `GET /me/drive/items/{id}/content`. Its redirect to a preauthenticated URL is followed only to an HTTPS `1drv.com`, `sharepoint.com` or `microsoftpersonalcontent.com` host, without the bearer token |
+| Formats | UTF-8 `.txt`, `.md`, `.markdown`, `.csv`, `.json`, `.html` and `.htm`. Office files, folders, OneNote packages, items shared from another drive and files over 8 MiB are listed as unsupported |
+| Failures | 401, 403 and 404 are auth expired; 429, 509 and a 403 `activityLimitReached` are quota; 400 is unsupported; anything else is unavailable |
+
+`Files.Read` rather than `Files.Read.All`: a source reads a folder in the
+person's own drive and never follows an item shared from another drive, so the
+broader scope would grant access it does not use. Graph converts Word, Excel
+and PowerPoint files to PDF, never to text, so they stay unsupported.
+
+To enable it, register an application in Microsoft Entra for accounts in any
+organizational directory and personal Microsoft accounts, add the console's
+callback as a Web redirect URI, and set `connections.clients.onedrive` with a
+`client_id` and a `client_secret` reference. Issuer, endpoints and scopes are
+fixed. Graph references:
+[list children](https://learn.microsoft.com/en-us/graph/api/driveitem-list-children),
+[download](https://learn.microsoft.com/en-us/graph/api/driveitem-get-content),
+[format conversion](https://learn.microsoft.com/en-us/graph/api/driveitem-get-content-format),
+[permissions](https://learn.microsoft.com/en-us/graph/permissions-reference)
+and [errors](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/concepts/errors).
+Transport fixtures cover these requests; no live Microsoft account has been
+validated.
+
 The source catalog labels Slack, Snowflake and BigQuery as requiring a
 connector. It does not implement those providers. Live MCP queries and permitted
 scheduled ingestion have separate authority and retention requirements. The
@@ -199,8 +235,188 @@ private conversation, for a corpus granted to the run's agent that the reader
 may read, on a warehouse the corpus holds and the reader may see. The result
 carries the corpus, the connector, the SQL and when it ran; no row is stored.
 
-Not built yet: per-corpus search, the corpus pages in the console, ontology
-and graph, the maintenance agent, freshness alerts and sensitivity labels.
+### Search
+
+A corpus search fans one query out to every member the reader may see, by
+what each holds, and merges the answers:
+
+| Member | Searched by |
+| --- | --- |
+| Files | Lexical (BM25) and, with an embedder, vectors, fused, over the indexed passages (`pkg/knowledge`), one ranked list per source |
+| References | The source's own search, live, with the reader's access; only when the answer reaches the reader alone |
+| Records | The catalog: tables and views by their names, descriptions and columns, never rows |
+
+The lists merge by reciprocal rank (k = 60), so no one scoring scale
+decides. The same passage reached through two members (equal words,
+ignoring case, spacing and punctuation) is one hit whose `also` names the
+others. A member that fails or times out (20 s for a live search) is named in
+`warnings` and left out; it never fails the search.
+
+`GET /api/corpora/{name}/search?q=` runs it for the caller (the Try a search
+box). The `corpus_search` tool runs it for a run's agent over every corpus
+granted to it that the person the run acts for may read, at most 8, only in
+that person's own private conversation, and keeps citation evidence for every
+source hit before the model reads it. Graph retrieval joins the fan-out once
+the workspace graph is built.
+
+### The workspace graph
+
+One knowledge graph per workspace (`pkg/graph`); corpora are slices of it.
+The structural layer is built from what members already say about
+themselves, with no model calls, on the leader every 10 minutes (a slice
+older than 30 minutes or than its corpus's last change is rebuilt) and when
+first read:
+
+| Node | From | Relations |
+| --- | --- | --- |
+| Document | Each indexed document of a source (not a provider's retained copy, whose files need the reader's own access), and each warehouse table or view | `authored` from who added it; `part_of` its warehouse |
+| System | Each warehouse connector | `owns` from its connection's owner |
+| Person | Who added a document or owns a connection | Resolves once across the workspace |
+
+A shared corpus's documents and systems merge with other shared corpora's; an
+isolated corpus keeps its own (people always resolve once). A reader sees a
+node only when they may see the member it came from, and a person only
+through what they may see, so a hidden document never shows who wrote it.
+
+**Owners.** The graph suggests an owner: who added a document, or whose
+connection a table comes through. That person confirms it, declines it or
+hands it to someone else (`PUT /api/graph/nodes/{id}/owner`); a confirmed
+owner wins over the suggestion. An owner who left the workspace owns nothing,
+and the owner of a corpus that holds an unowned node may claim it or hand it
+on.
+
+**Staleness.** Each document scores 0 when new and nears 1 as its age passes
+its half-life (365 days for files, 90 for warehouse tables, from the source's
+own change time). It is stale at 0.75, when a newer document supersedes it,
+or when its source's last sync failed; being unowned is a reason shown beside
+it. Stale documents rank lower and are labelled, never hidden.
+
+**Reading it.** `GET /api/corpora/{name}/graph` (a slice and its health:
+nodes and edges by type, unowned and stale counts, when built),
+`POST /api/corpora/{name}/graph/build` (the owner rebuilds now),
+`GET /api/graph?q=` (every corpus the reader may read, narrowed to what a
+query names and its neighbors), and the `corpus_graph` tool for a granted
+agent in the reader's own private conversation. A corpus with `graph_search`
+adds graph retrieval to its search: documents whose names, owners or systems
+hold the query's words, with their owner and staleness, fresh before stale.
+
+### Ontologies
+
+A corpus's ontology is the types it adds to the workspace graph, written as a
+JSON Schema (2020-12): each entity type is an object schema under `$defs`,
+with its properties and required fields. Three extensions say what plain JSON
+Schema cannot: `x-relations` (a name, the two types it joins and one or many),
+`x-metadata` (passage fields search can filter on), and, on a type,
+`x-matches` (table names or title words of that type) and `x-half-life-days`.
+A corpus extends the core types and never redefines them; an unknown keyword
+is an error, not a silently ignored rule.
+
+| Mode | How |
+| --- | --- |
+| Declared | `PATCH /api/corpora/{name}` with `ontology`; `{}` clears it |
+| Inferred | `POST /api/corpora/{name}/ontology/infer`: from the warehouse tables the corpus holds, with no model calls, a type per table, its columns as properties, and a relation for each column that names another table's type with `_id`. Kept as `proposed_ontology`; it adds nothing until accepted |
+| Hybrid | `POST /api/corpora/{name}/ontology/accept` adds the proposed types (all, or those named) to the declared ones; a declared type keeps its declaration. `.../discard` drops the proposal |
+
+The graph builder types what an ontology names: a table or a document title
+that matches a type gets `entity_type` and that type's half-life, and the
+ontology's relations join the typed tables of one warehouse (an Order table's
+`customer`). Only the owner changes, infers, accepts or discards.
+
+### Maintenance
+
+After each graph refresh (every 10 minutes, on the leader) a maintenance pass
+looks at every corpus, with no model calls, and tells the person who can act:
+
+| Finds | Alert to | Resolved when |
+| --- | --- | --- |
+| A member whose sync failed or went stale, or a warehouse not crawled in twice its cadence | The corpus's owner | It syncs again |
+| Stale documents | Each document's owner, naming theirs | They are updated, replaced or handed on |
+| Documents nobody owns (declined, or their owner left) | The corpus's owner | Someone claims them or they are handed on |
+| Warehouse tables that would add types the ontology lacks | The corpus's owner, with the types kept as `proposed_ontology` | The proposal is accepted or discarded; one is never proposed twice |
+
+Alerts are kind `knowledge`, at most one open per cause, in the person's own
+session with the builder; before a workspace has a model there is no built-in
+to hold that session, and the alert stays in the person's alert center. Each
+names up to 10 items and opens where its decision is made: the corpus's
+sources, its graph (stale and unowned documents) or its types (proposals). The low-risk changes need no proposal: staleness marks
+and facts retired with their source are applied as the graph rebuilds.
+`(*Platform).MaintainKnowledge` runs one pass.
+
+### Corpora a project attaches
+
+A project's context names corpora (`GET` and `PUT /api/projects/{name}/corpora`,
+see [projects.md](projects.md)). A session filed in a project reaches the
+corpora its project chain attaches, nearest first, as if they were granted
+to its agent, by the same rules of label and audience. Attaching makes nobody
+a reader, and a restricted corpus is reached only through its own grant,
+which takes an admin and a purpose. The list is read when a tool runs, so a
+change to a project's context applies to the next call.
+
+### Pulling one item
+
+A corpus item address names one thing a corpus holds, as `corpus_search` and
+`corpus_graph` hand it out, so an agent can pull it in on demand:
+
+| Address | Resolves to |
+| --- | --- |
+| `corpus:<corpus>/<source>/<document id>` | The document's text, its passages in order, clipped to 4000 characters, and its link |
+| `corpus:<corpus>/<connector>/<table path>` | The table's description and columns, never rows |
+| `corpus:<corpus>/node/<node id>` | What a graph node stands for |
+
+`(*Platform).ResolveCorpusItem` resolves one by the same rule as every corpus
+tool, at the moment it is asked, and adds who owns the item and whether it is
+stale. An item this conversation may not be shown comes back with
+`held_back` and no content; a provider's retained copy is read live with
+`corpus_search` instead. Citation evidence is kept for a document's text, as
+search keeps it.
+
+### Retrieval evals
+
+A corpus's search is evaluated beside its agents: an eval suite with
+`target: corpus` names the corpus, and each case a query and the documents
+(by title) it should return. A run scores the same search agents run (fused,
+deduplicated, graph retrieval when the corpus has it, no live member, so a
+suite never spends anyone's credential) with the access of whoever starts it,
+and reports hit rate, MRR, recall, precision and nDCG at `k`. Suites run on
+demand or on a schedule (`every_seconds`) and alert like any other suite. Only
+someone who may read the corpus makes or runs one.
+
+### Sensitivity
+
+Every corpus has a label: `public`, `internal` (the default), `confidential`
+or `restricted` (pay, health, performance, investigations, personal records).
+
+An answer stays where it was asked, so a corpus tool uses only what everyone
+that place reaches may read, checked each time the tool runs (people join
+channels):
+
+| Where the question is | Audience | A corpus is used when |
+| --- | --- | --- |
+| The person's own private conversation in the console, or their DM with the app | The person | They may read it, at any label; live references and their own warehouse logins too |
+| A shared conversation in the console, or a Slack private channel or group DM | Its current members | Every member reads it, at any label, and only members every one of them may see; a Slack member the workspace cannot map to a person fails it |
+| A Slack public channel, or a Slack thread whose audience is not known | The workspace | The workspace reads it and it is public or internal |
+| A GitHub thread | Possibly beyond the workspace | The workspace reads it and it is public |
+
+- What a tool holds back, it says (`held_back`), so the agent tells the person
+  the data can't be used here and suggests a direct message, or a private
+  channel whose members may all read it.
+- A Slack conversation's audience is what the Slack app last reported with a
+  message (`ReportedAudience`: kind, members as people, unmapped members),
+  read through the session API (`Platform.audienceSource`).
+- A direct answer marks its run private, so nothing it read goes into shared
+  agent memory or out to another place.
+- Every read of a confidential or restricted corpus is audited (`corpus.read`,
+  with the agent, the conversation, the audience and the corpus's purpose).
+- Granting a restricted corpus to an agent, or restricting one that agents
+  are granted, takes a workspace admin (`clients:write`) and a stated
+  `purpose`.
+- Warehouse rows (`corpus_query`) are answered only in a direct conversation.
+
+Not built yet: labels read from the sources themselves (Drive labels,
+Snowflake and BigQuery policy tags) and per document, self access to records
+about oneself, personal corpora, and the semantic layer (content extraction
+against the ontology: topics, mentions, contradictions, metadata filters,
+duplicate entities).
 
 ## Proposed versioned source files
 
@@ -286,7 +502,10 @@ For Notion, use the corresponding `HUMAGEN_SMOKE_NOTION_CREDENTIAL_REF`,
 `HUMAGEN_SMOKE_NOTION_ORIGIN`, `HUMAGEN_SMOKE_NOTION_RESOURCE`, and
 `HUMAGEN_SMOKE_NOTION_MARKER` variables and set
 `HUMAGEN_SOURCE_LIVE_TEST=notion`. Set it to `both` only when all eight
-variables are configured. Missing or invalid configuration fails an enabled
+variables are configured. For OneDrive, use a delegated Graph access token with
+`Files.Read`, a folder item ID (or `root`) as `ORIGIN` and a text file's item
+ID as `RESOURCE` in the `HUMAGEN_SMOKE_ONEDRIVE_` variables, and set
+`HUMAGEN_SOURCE_LIVE_TEST=onedrive`; `both` does not include it. Missing or invalid configuration fails an enabled
 run rather than silently skipping it. Do not paste credentials or private IDs
 into issue reports.
 

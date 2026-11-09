@@ -211,6 +211,51 @@ test("an answer's trace reads as one response: agent calls nested, tools, approv
   ]);
 });
 
+test("agents a message mentions read as the entry agent's agent calls, with why as activity", () => {
+  // The platform asked each mentioned agent before the entry agent's first
+  // model step: two calls to the agent tool on the root, a run beneath each.
+  const asked = (n: number, agent: string, output: string) => ({
+    id: htu(R1, n),
+    name: "agent",
+    at: at(1),
+    ms: 4000,
+    input: { agent, title: "Review the deploy", brief: "Ana mentioned you in the message below." },
+    output,
+    withheld: false,
+  });
+  const security = node(
+    run("r-security", { agent: "security", parent: R1, depth: 1, answer: "No secrets leaked." }),
+  );
+  const perf = node(run("r-perf", { agent: "perf", parent: R1, depth: 1, answer: "p95 is flat." }));
+  const mentioned = node(root, {
+    answer: "## @security\n\nNo secrets leaked.\n\n## @perf\n\np95 is flat.\n\nBoth are clear.",
+    pick: {
+      decision: "delegate",
+      agents: ["security", "perf"],
+      reason: "@security, @perf were mentioned, so each was asked first.",
+      matched: [],
+    },
+    tools: [asked(1, "security", "No secrets leaked."), asked(2, "perf", "p95 is flat.")],
+    children: [security, perf],
+  });
+  const state = foldAll(traceEvents(traceOf([mentioned])));
+  const calls = state.content.flatMap((b) => (b.type === "tool" && b.kind === "agent" ? [b] : []));
+  assert.deepEqual(
+    calls.map((c) => [c.id, c.agent, c.title, c.status, c.result?.text]),
+    [
+      [htu(R1, 1), "security", "Review the deploy", "done", "No secrets leaked."],
+      [htu(R1, 2), "perf", "Review the deploy", "done", "p95 is flat."],
+    ],
+  );
+  // Why they were asked is activity, ahead of the calls.
+  const why = state.content.find((b) => b.type === "thinking");
+  assert.ok(why && why.type === "thinking");
+  assert.match(why.text, /were mentioned/);
+  // One answer: each result under its heading, then what the entry agent adds.
+  assert.match(answerOf(state).text, /^## @security\n\nNo secrets leaked\./);
+  assert.match(answerOf(state).text, /Both are clear\.$/);
+});
+
 test("what the reader may not see stays private: withheld calls and hidden runs", () => {
   const withheld = node(root, {
     tools: [{ id: htu(R1, 1), name: "read_secret", at: at(1), ms: 5, withheld: true }],

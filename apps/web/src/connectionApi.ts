@@ -23,6 +23,6 @@ export const connectionApi = {
   check: (provider: string) => call<ConnectionHealth>("POST", `${path(provider)}/check`),
   checkClient: (id: string) =>
     call<ConnectionHealth>("POST", `/api/clients/${encodeURIComponent(id)}/check`),
-  useSource: (name: string, oauth: "drive") =>
+  useSource: (name: string, oauth: "drive" | "onedrive") =>
     call("PUT", `/api/knowledge/${encodeURIComponent(name)}/credential`, { oauth }),
 };

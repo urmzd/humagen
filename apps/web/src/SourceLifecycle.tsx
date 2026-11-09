@@ -47,19 +47,25 @@ export function SourceLifecycle({
   const [reference, setReference] = useState("");
   const [references, setReferences] = useState<string[] | null>(null);
   const [account, setAccount] = useState<ConnectionPreset | null>(null);
+  // Drive and OneDrive sources read with the person's own connected account.
+  const accountProvider =
+    lifecycle?.provider === "drive" || lifecycle?.provider === "onedrive"
+      ? lifecycle.provider
+      : null;
+  const accountName = accountProvider ? words.providers[accountProvider] : "";
   useEffect(() => {
     let active = true;
-    if (lifecycle?.provider === "drive")
+    if (accountProvider)
       connectionApi
         .presets()
         .then((rows) => {
-          if (active) setAccount(rows.find((p) => p.id === "drive") ?? null);
+          if (active) setAccount(rows.find((p) => p.id === accountProvider) ?? null);
         })
         .catch(() => {});
     return () => {
       active = false;
     };
-  }, [lifecycle?.provider]);
+  }, [accountProvider]);
   useEffect(() => {
     let active = true;
     api
@@ -155,10 +161,10 @@ export function SourceLifecycle({
       {busy && <output className="text-aui-sm">{words.working}</output>}
       {lifecycle && lifecycle.provider !== "manual" && (
         <>
-          {lifecycle.provider === "drive" && (
+          {accountProvider && (
             <div className="flex flex-col items-start gap-2">
               <p className="text-aui-sm text-aui-muted">
-                Use your Google Drive account for this source, its selected folder and project.
+                Use your {accountName} account for this source, its selected folder and project.
                 Other people's accounts are never used for you.
               </p>
               {account?.connected ? (
@@ -169,25 +175,25 @@ export function SourceLifecycle({
                   onClick={() =>
                     void run(async () => {
                       // biome-ignore lint/correctness/useHookAtTopLevel: connectionApi.useSource performs an HTTP request.
-                      await connectionApi.useSource(source.name, "drive");
+                      await connectionApi.useSource(source.name, accountProvider);
                       setNotice(
-                        "Your Google Drive account is connected to this source. Preview its resources to verify access.",
+                        `Your ${accountName} account is connected to this source. Preview its resources to verify access.`,
                       );
                     })
                   }
                 >
-                  Use my Google Drive account
+                  Use my {accountName} account
                 </button>
               ) : (
-                <a className="underline" href="/connections?provider=drive">
-                  Connect Google Drive
+                <a className="underline" href={`/connections?provider=${accountProvider}`}>
+                  Connect {accountName}
                 </a>
               )}
               {account?.reason && <p className="text-aui-xs text-aui-muted">{account.reason}</p>}
             </div>
           )}
           {references?.length === 0 ? (
-            lifecycle.provider !== "drive" && (
+            !accountProvider && (
               <p className="text-aui-sm text-aui-muted">
                 This workspace does not allow source credential references yet.{" "}
                 <a className="underline" href="/connections">

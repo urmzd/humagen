@@ -147,7 +147,10 @@ func TestNativeSessionChildReleasesSingleWorkerAndUsesGovernedCall(t *testing.T)
 	}
 }
 
-func TestSessionMentionContinuesChildInsteadOfChangingOwner(t *testing.T) {
+// A mention in a session is answered there, by the agent it names, and the
+// session stays its owner's. Only a request that asks for a child by option
+// opens one.
+func TestSessionMentionAnswersInTheSessionAndAChildIsOpenedOnlyByOption(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
 	ctx := t.Context()
@@ -155,19 +158,30 @@ func TestSessionMentionContinuesChildInsteadOfChangingOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A message that would start work while the session's agent works is a
+	// follow-up, so the first answer ends before the mention is posted.
+	await(t, p, sessionRun(t, root).ID, runs.Completed)
 	view, err := p.PostSession(ctx, admin, root.ID, platform.MessageInput{Text: "@helper inspect this"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if view.ID != root.ID || view.Agent != "lead" || len(view.Children) != 1 || view.Children[0].Agent != "helper" {
-		t.Fatalf("child mention: %+v", view)
+	last := view.Messages[len(view.Messages)-1]
+	if view.ID != root.ID || view.Agent != "lead" || len(view.Children) != 0 || last.Run == nil || last.Run.Agent != "helper" || last.Run.Thread != root.ID {
+		t.Fatalf("a mention: owner %q, children %+v, last message %+v", view.Agent, view.Children, last)
 	}
-	view, err = p.PostSession(ctx, admin, root.ID, platform.MessageInput{Text: "@helper continue"})
+	view, err = p.PostSession(ctx, admin, root.ID, platform.MessageInput{Text: "@helper continue"}, platform.SessionMessageOptions{Agent: "helper"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Children) != 1 || view.Children[0].Agent != "helper" {
+		t.Fatalf("a child asked for by option: %+v", view.Children)
+	}
+	view, err = p.PostSession(ctx, admin, root.ID, platform.MessageInput{Text: "@helper continue again"}, platform.SessionMessageOptions{Agent: "helper"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(view.Children) != 1 {
-		t.Fatalf("mention forked instead of continuing: %+v", view.Children)
+		t.Fatalf("the option forked instead of continuing: %+v", view.Children)
 	}
 	view, err = p.PostSession(ctx, admin, root.ID, platform.MessageInput{Text: "@helper inspect independently"}, platform.SessionMessageOptions{Agent: "helper", Fresh: true})
 	if err != nil {
@@ -179,5 +193,4 @@ func TestSessionMentionContinuesChildInsteadOfChangingOwner(t *testing.T) {
 	if _, err = p.PostSession(ctx, admin, root.ID, platform.MessageInput{Text: "No mention here"}, platform.SessionMessageOptions{Agent: "helper", Fresh: true}); err == nil {
 		t.Fatal("unmentioned child accepted")
 	}
-
 }

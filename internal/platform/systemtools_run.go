@@ -152,6 +152,8 @@ func (p *Platform) registerRunTools() error {
 		reads(SystemTool{Name: ToolCatalogSearch, Category: read, Run: of(p.catalogSearchTool)}),
 		reads(SystemTool{Name: ToolCatalogQuery, Category: read, ActsForPerson: true, Run: of(p.catalogQueryTool)}),
 		reads(SystemTool{Name: ToolCorpusQuery, Category: read, ActsForPerson: true, Run: of(p.corpusQueryTool)}),
+		reads(SystemTool{Name: ToolCorpusSearch, Category: read, Run: of(p.corpusSearchTool)}),
+		reads(SystemTool{Name: ToolCorpusGraph, Category: read, Run: of(p.corpusGraphTool)}),
 	}
 	// The actions of the clients the turn answers through: the connector
 	// defines each, and the turn has it when its client allows it.

@@ -24,6 +24,7 @@ var namedCategories = map[string]operations.Category{
 	"add_recorded_eval_case": operations.Other, "agent": operations.CallAgents, "alert_create": operations.Other, "alert_resolve": operations.Other,
 	"apply_agent_change": operations.Other, "apply_workspace_prompt": operations.Other, "ask_person": operations.Other, "call_agent": operations.CallAgents,
 	"catalog_query": operations.ReadContext, "catalog_search": operations.ReadContext, "connect_connection": operations.Other, "corpus_query": operations.ReadContext,
+	"corpus_graph": operations.ReadContext, "corpus_search": operations.ReadContext,
 	"delegate_task": operations.CallAgents, "file_list": operations.ReadContext, "file_read": operations.ReadContext, "file_write": operations.WriteFiles,
 	"get_context": operations.ReadContext, "github_add_labels": operations.ExternalMessages, "github_apply_changes": operations.ExternalMessages,
 	"github_comment": operations.ExternalMessages, "github_create_fix_pr": operations.ExternalMessages, "github_create_review": operations.ExternalMessages,
@@ -203,8 +204,8 @@ func TestATurnsToolsAreBuiltFromTheRegistry(t *testing.T) {
 		}
 		built++
 	}
-	if built != 35 {
-		t.Errorf("built %d tools, want 35", built)
+	if built != 37 {
+		t.Errorf("built %d tools, want 37", built)
 	}
 	for _, name := range []string{"no_such_tool", "list_schedules", "session_call"} {
 		if _, err := tools.Lookup(name); !errors.Is(err, native.ErrNoSuchTool) {

@@ -536,8 +536,8 @@ func (p *Platform) originAudience(who auth.Principal, c *clients.Client, origin 
 }
 
 // sendUnder posts messages under the root th: each but the last as said,
-// starting nothing; the last to the agents it mentions, each answering in
-// its child session, else to the root, where the entry agent picks.
+// starting nothing; the last is what is asked, and gets one answer there
+// (surfacePost).
 func (p *Platform) sendUnder(ctx context.Context, who auth.Principal, th threads.Thread, origin ExternalRef, msgs []Message) (MessageView, error) {
 	var out MessageView
 	for i, m := range msgs {

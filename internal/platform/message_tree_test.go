@@ -2,42 +2,17 @@ package platform_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 	saigetypes "github.com/urmzd/saige/agent/types"
 )
-
-// treeAnswered waits until every child session beneath root's first message
-// shows an answer that is done, as reader reads it, and returns the tree two
-// levels deep.
-func treeAnswered(t *testing.T, p *platform.Platform, reader auth.Principal, root string, sessions int) platform.MessageNode {
-	t.Helper()
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		n, err := p.ReadMessage(t.Context(), reader, root, 2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		done := 0
-		for _, c := range n.Children {
-			if c.Session != root && len(c.Children) == 1 && c.Children[0].Status == "done" {
-				done++
-			}
-		}
-		if done == sessions && n.Status == "done" {
-			return n
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("the answers beneath %s never finished: %+v", root, n)
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-}
 
 // latestOf is the latest latest_at of nodes.
 func latestOf(nodes []platform.MessageNode) time.Time {
@@ -50,93 +25,84 @@ func latestOf(nodes []platform.MessageNode) time.Time {
 	return at
 }
 
-// A root whose person's message the entry agent hands to two agents reads
-// as that message, with the pick and the two child sessions beneath it, in
-// time order; one level further down are the children's answers. Counts
-// and latest changes add up at every level.
-func TestAMessageTreeShowsWhoAnsweredBeneathTheMessage(t *testing.T) {
-	c := entryCast([][]saigetypes.Delta{
-		pickJSON(platform.PickDelegate, "Deploys are ops's and spend is analyst's.", "ops", "analyst"),
-	}, map[string][][]saigetypes.Delta{"ops": {say("A migration was missing.")}, "analyst": {say("It cost three dollars.")}})
+// A root reads as its first message with what answered it beneath: one
+// answer, the entry agent's, whatever it called. A later person's message
+// hangs beneath the first with its own answer, and a child session asked for
+// by option stands beneath the message it was started for. Counts and latest
+// changes add up at every level.
+func TestAMessageTreeShowsTheOneAnswerBeneathTheMessage(t *testing.T) {
+	c := entryCast([][]saigetypes.Delta{say("## @ops\n\nA migration was missing.\n\n## @analyst\n\nIt cost three dollars.\n\nBoth point at the migration."), say("You are welcome.")}, map[string][][]saigetypes.Delta{
+		"ops":     {say("A migration was missing."), say("The rollback is clean.")},
+		"analyst": {say("It cost three dollars.")},
+	})
 	p := stageEntry(t, c)
-	ask := "Why did the deploy fail and what did it cost?"
+	ask := "@ops @analyst why did the deploy fail and what did it cost?"
 	v, err := p.StartSession(t.Context(), admin, platform.SessionInput{Project: "~", Text: ask})
 	if err != nil {
 		t.Fatal(err)
 	}
-	deep := treeAnswered(t, p, admin, v.ID, 2)
+	await(t, p, sessionRun(t, v).ID, runs.Completed)
 
 	n, err := p.ReadMessage(t.Context(), admin, v.ID, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n.ID != v.ID || n.Session != v.ID || n.Role != "user" || n.Author.Kind != "person" || len(n.Content) != 1 || n.Content[0].Text != ask {
+	if n.ID != v.ID || n.Session != v.ID || n.Role != "user" || n.Author.Kind != "person" || len(n.Content) != 1 || n.Content[0].Text != ask || n.Status != "done" {
 		t.Fatalf("the root reads as %+v", n)
 	}
-	if n.ChildrenCount != 3 || len(n.Children) != 3 {
-		t.Fatalf("the root has %d children (%d shown), want the pick and two sessions: %+v", n.ChildrenCount, len(n.Children), n.Children)
+	if n.ChildrenCount != 1 || len(n.Children) != 1 {
+		t.Fatalf("the root has %d children (%d shown), want its one answer: %+v", n.ChildrenCount, len(n.Children), n.Children)
 	}
-	answers := map[string]string{}
-	var pick platform.MessageNode
-	for i, child := range n.Children {
-		if i > 0 && child.At.Before(n.Children[i-1].At) {
-			t.Errorf("children are not in time order: %v before %v", n.Children[i-1].At, child.At)
-		}
-		if child.Session == v.ID {
-			pick = child
-			continue
-		}
-		if child.ID != child.Session || child.Role != "user" || child.ChildrenCount != 1 || len(child.Children) != 0 {
-			t.Errorf("a child session at depth 1 = %+v, want its own node with one answer counted and none shown", child)
-		}
-	}
-	if pick.ID != v.ID+":pick-m-1" || pick.Role != "assistant" || pick.Author.Display == "" || pick.ChildrenCount != 0 || len(pick.Content) != 3 || pick.Content[0].Type != "pick" {
-		t.Fatalf("the pick = %+v", pick)
+	answer := n.Children[0]
+	if answer.Role != "assistant" || answer.Author.Name != platform.BuiltinEntry || answer.Session != v.ID || answer.ChildrenCount != 0 || len(answer.Content) != 1 || answer.Content[0].Type != "text" || !strings.Contains(answer.Content[0].Text, "## @ops") || !strings.HasSuffix(answer.Content[0].Text, "Both point at the migration.") {
+		t.Fatalf("the answer = %+v", answer)
 	}
 	if !n.LatestAt.Equal(latestOf(n.Children)) || n.LatestAt.Before(n.At) {
 		t.Errorf("the root's latest change is %v, its children's %v", n.LatestAt, latestOf(n.Children))
 	}
-
-	if deep.ChildrenCount != 3 || len(deep.Children) != 3 {
-		t.Fatalf("two levels deep the root has %d children", deep.ChildrenCount)
-	}
-	for _, child := range deep.Children {
-		if child.Session == v.ID {
-			continue
-		}
-		answer := child.Children[0]
-		if answer.Role != "assistant" || answer.Author.Kind != "agent" || answer.Session != child.ID || answer.ChildrenCount != 0 {
-			t.Errorf("the answer in %s = %+v", child.ID, answer)
-		}
-		if !child.LatestAt.Equal(answer.LatestAt) {
-			t.Errorf("child %s changed last at %v, its answer at %v", child.ID, child.LatestAt, answer.LatestAt)
-		}
-		answers[answer.Author.Name] = answer.Content[0].Text
-	}
-	if answers["ops"] != "A migration was missing." || answers["analyst"] != "It cost three dollars." {
-		t.Fatalf("the answers two levels deep = %v", answers)
-	}
-
-	// The first message read by its own id is the session's node; the pick
+	// The first message read by its own id is the session's node; the answer
 	// read by its id has nothing beneath it.
-	if same, err := p.ReadMessage(t.Context(), admin, v.ID+":m-1", 1); err != nil || same.ID != v.ID || same.ChildrenCount != 3 {
+	if same, err := p.ReadMessage(t.Context(), admin, v.ID+":m-1", 1); err != nil || same.ID != v.ID || same.ChildrenCount != 1 {
 		t.Fatalf("the first message by its id = %+v, %v", same, err)
 	}
-	if leaf, err := p.ReadMessage(t.Context(), admin, pick.ID, 3); err != nil || leaf.ID != pick.ID || leaf.ChildrenCount != 0 {
-		t.Fatalf("the pick by its id = %+v, %v", leaf, err)
+	if leaf, err := p.ReadMessage(t.Context(), admin, answer.ID, 3); err != nil || leaf.ID != answer.ID || leaf.ChildrenCount != 0 {
+		t.Fatalf("the answer by its id = %+v, %v", leaf, err)
 	}
 
-	// A later person's message hangs beneath the first, with its own.
-	if _, err := p.PostSession(t.Context(), admin, v.ID, platform.MessageInput{Text: "Thanks, both.", PostOnly: true}); err != nil {
+	// A later person's message hangs beneath the first, with its own answer.
+	if _, err := p.PostSession(t.Context(), admin, v.ID, platform.MessageInput{Text: "Thanks, both."}); err != nil {
 		t.Fatal(err)
 	}
-	n, err = p.ReadMessage(t.Context(), admin, v.ID, 1)
+	answers(t, p, v.ID, 2)
+	n, err = p.ReadMessage(t.Context(), admin, v.ID, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	last := n.Children[len(n.Children)-1]
-	if n.ChildrenCount != 4 || last.ID != v.ID+":m-2" || last.Role != "user" || last.ChildrenCount != 0 || !n.LatestAt.Equal(latestOf(n.Children)) {
+	if n.ChildrenCount != 2 || last.ID != v.ID+":m-2" || last.Role != "user" || last.ChildrenCount != 1 || len(last.Children) != 1 || last.Children[0].Author.Name != platform.BuiltinEntry || !n.LatestAt.Equal(latestOf(n.Children)) {
 		t.Fatalf("after a second message the root = %d children, last %+v", n.ChildrenCount, last)
+	}
+
+	// A child session asked for by option stands beneath the message it was
+	// started for, as its own first message, with its answer one level down.
+	if _, err := p.PostSession(t.Context(), admin, v.ID, platform.MessageInput{Text: "@ops check the rollback"}, platform.SessionMessageOptions{Agent: "ops", Fresh: true}); err != nil {
+		t.Fatal(err)
+	}
+	var third platform.MessageNode
+	within(t, "the child session's answer", func() bool {
+		n, err = p.ReadMessage(t.Context(), admin, v.ID, 3)
+		if err != nil || len(n.Children) != 3 {
+			return false
+		}
+		third = n.Children[2]
+		return len(third.Children) == 1 && len(third.Children[0].Children) == 1 && third.Children[0].Children[0].Status == "done"
+	})
+	child := third.Children[0]
+	if third.ID != v.ID+":m-3" || third.ChildrenCount != 1 || child.ID != child.Session || child.Session == v.ID || child.Role != "user" || child.ChildrenCount != 1 {
+		t.Fatalf("the child session beneath its message = %+v", third)
+	}
+	if said := child.Children[0]; said.Role != "assistant" || said.Author.Name != "ops" || said.Session != child.ID || said.Content[0].Text != "The rollback is clean." || !child.LatestAt.Equal(said.LatestAt) {
+		t.Fatalf("the child's answer = %+v", said)
 	}
 
 	for name, id := range map[string]string{"an unknown message": v.ID + ":m-99", "an unknown session": "s_missing"} {
@@ -150,20 +116,42 @@ func TestAMessageTreeShowsWhoAnsweredBeneathTheMessage(t *testing.T) {
 }
 
 // A child session its reader may not read is left out of the tree and not
-// counted, and its call is left out of the pick: the reader learns of the
-// sessions they may read alone.
+// counted: the reader learns of the sessions they may read alone.
 func TestAMessageTreeWithholdsAChildSessionItsReaderMayNotRead(t *testing.T) {
-	c := entryCast([][]saigetypes.Delta{
-		pickJSON(platform.PickDelegate, "Deploys are ops's and spend is analyst's.", "ops", "analyst"),
-	}, map[string][][]saigetypes.Delta{"ops": {say("A migration was missing.")}, "analyst": {say("It cost three dollars.")}})
+	c := entryCast([][]saigetypes.Delta{say("Hello.")}, map[string][][]saigetypes.Delta{"ops": {say("A migration was missing.")}, "analyst": {say("It cost three dollars.")}})
 	p := stageEntry(t, c)
 	ana := operator
 	seePeople(t, p, ana)
-	v, err := p.StartSession(t.Context(), ana, platform.SessionInput{Project: "~", Text: "Why did the deploy fail and what did it cost?"})
+	v, err := p.StartSession(t.Context(), ana, platform.SessionInput{Project: "~", Text: "Hello there"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	treeAnswered(t, p, ana, v.ID, 2)
+	await(t, p, sessionRun(t, v).ID, runs.Completed)
+	for _, agent := range []string{"ops", "analyst"} {
+		if _, err := p.PostSession(t.Context(), ana, v.ID, platform.MessageInput{Text: "@" + agent + " look into the deploy"}, platform.SessionMessageOptions{Agent: agent, Fresh: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The root's answer, then two messages, each with its child session.
+	count := func(reader auth.Principal) (int, platform.MessageNode) {
+		n, err := p.ReadMessage(t.Context(), reader, v.ID, 3)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sessions := 0
+		for _, child := range n.Children {
+			for _, grand := range child.Children {
+				if grand.Session != v.ID {
+					sessions++
+				}
+			}
+		}
+		return sessions, n
+	}
+	within(t, "both child sessions", func() bool {
+		sessions, n := count(ana)
+		return sessions == 2 && n.Status == "done"
+	})
 	if _, err := p.CreateProject(t.Context(), tenant, projects.Writer{By: "olu"}, platform.ProjectInput{Name: "Vault", Kind: projects.Account}); err != nil {
 		t.Fatal(err)
 	}
@@ -173,31 +161,24 @@ func TestAMessageTreeWithholdsAChildSessionItsReaderMayNotRead(t *testing.T) {
 	if p.Seer(ana).Agent("analyst") {
 		t.Fatal("the test needs a reader who may not read analyst")
 	}
-	n, err := p.ReadMessage(t.Context(), ana, v.ID, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n.ChildrenCount != 2 || len(n.Children) != 2 {
-		t.Fatalf("the reader is shown %d children (%d counted), want the pick and ops's session: %+v", len(n.Children), n.ChildrenCount, n.Children)
+	sessions, n := count(ana)
+	if sessions != 1 {
+		t.Fatalf("the reader is shown %d child sessions, want ops's alone: %+v", sessions, n.Children)
 	}
 	for _, child := range n.Children {
-		for _, part := range child.Content {
-			if part.Agent == "analyst" {
-				t.Errorf("the reader is shown analyst's work: %+v", child)
-			}
+		if child.ID == v.ID+":m-3" && child.ChildrenCount != 0 {
+			t.Errorf("analyst's session is counted beneath its message: %+v", child)
 		}
 		for _, grand := range child.Children {
-			if grand.Author.Name == "analyst" {
-				t.Errorf("the reader is shown analyst's answer: %+v", grand)
+			for _, great := range grand.Children {
+				if great.Author.Name == "analyst" {
+					t.Errorf("the reader is shown analyst's answer: %+v", great)
+				}
 			}
 		}
 	}
-	roots, err := p.ListRootMessages(t.Context(), ana, 50, "")
-	if err != nil || len(roots.Messages) != 1 || roots.Messages[0].ChildrenCount != 2 {
-		t.Fatalf("the reader's roots = %+v, %v", roots, err)
-	}
-	if full, err := p.ReadMessage(t.Context(), admin, v.ID, 1); err != nil || full.ChildrenCount != 3 {
-		t.Fatalf("an admin reads %+v, %v", full, err)
+	if full, _ := count(admin); full != 2 {
+		t.Fatalf("an admin reads %d child sessions, want both", full)
 	}
 }
 

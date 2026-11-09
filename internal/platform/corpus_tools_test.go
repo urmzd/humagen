@@ -100,8 +100,9 @@ func TestCorpusQueryRunsOnTheReadersOwnLogin(t *testing.T) {
 		"a shared conversation":                 {"shared", "worker", "ledger"},
 		"the owner, with no login of their own": {"owner", "worker", "ledger"},
 	} {
-		if _, err := query(c.req, c.agent, c.connector); err == nil {
-			t.Errorf("%s queried the warehouse", name)
+		// Refused, or answered with what was held back: never rows.
+		if out, err := query(c.req, c.agent, c.connector); err == nil && !strings.Contains(out, "held_back") {
+			t.Errorf("%s queried the warehouse: %s", name, out)
 		}
 	}
 	if _, err := query("owner", "worker", "ledger"); !errors.Is(err, errNoLogin) {

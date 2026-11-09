@@ -3,6 +3,7 @@ package platform
 import (
 	"context"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/urmzd/humagen/internal/wire"
@@ -157,3 +158,10 @@ func (p *Platform) BeforeCarryOut(fn func()) { p.beforeCarryOut = fn }
 // BeforeQuestionKept runs fn after a question's message is found missing
 // and built, and before it is kept, as a slow raise would.
 func (p *Platform) BeforeQuestionKept(fn func()) { p.beforeQuestionKept = fn }
+
+// BeforeMentionCalls runs fn once, before the platform next decides which of
+// a message's mentioned agents it may call.
+func (p *Platform) BeforeMentionCalls(fn func()) {
+	var once sync.Once
+	p.beforeMentionCalls = func() { once.Do(fn) }
+}

@@ -6,15 +6,13 @@ import type { ThreadPage, ThreadTurn } from "./api.ts";
  */
 export const MAX_PAGES = 50;
 
-/** What a turn is, whichever read it came in: a message's id, a run's, an announcement's or a pick's. */
+/** What a turn is, whichever read it came in: a message's id, a run's or an announcement's. */
 const keyOf = (t: ThreadTurn) =>
   t.message
     ? `m:${t.message.id}`
     : t.announcement
       ? `a:${t.announcement.id}`
-      : t.pick
-        ? `p:${t.pick.id}`
-        : `r:${t.run?.id ?? ""}`;
+      : `r:${t.run?.id ?? ""}`;
 
 /**
  * Turns read at different times, as one list, oldest first. A turn is only

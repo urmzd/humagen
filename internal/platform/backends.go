@@ -231,6 +231,8 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("catalog", err)
 	p.Corpora, err = corpora.Open(perRequest)
 	keep("corpora", err)
+	p.Graph, err = openGraph(perRequest)
+	keep("knowledge graph", err)
 	p.SourceEvidence, err = knowledge.OpenEvidenceStore(perRequest)
 	keep("source citation evidence", err)
 	p.Evals, err = evals.Open(perRequest)
@@ -241,6 +243,8 @@ func (p *Platform) openStores(cfg Config) error {
 	p.picks = pickStore(perRequest)
 	p.audiences = audienceStore(perRequest)
 	p.deliveries = deliveryStore(perRequest)
+	// A conversation that came from a corpus item pulls that item.
+	p.RegisterContextResolver("corpus", p.corpusContext)
 	p.Prefs, err = prefs.Open(perRequest)
 	keep("prefs", err)
 	p.Marks, err = marks.Open(perRequest)
