@@ -328,8 +328,13 @@ type Run struct {
 	// Answer is the final text of a completed run. On a stopped run it is the
 	// partial answer: what the agent had said when it stopped, which people
 	// may already have read. It is never the whole answer, and Status says so.
-	Answer  string   `json:"answer,omitempty"`
-	Outcome *Outcome `json:"outcome,omitempty"`
+	Answer string `json:"answer,omitempty"`
+	// Output is the answer as structured data, for an agent whose spec
+	// declares an output schema: the answer, checked against that schema.
+	// It is absent for a free-text answer, and for one that did not hold
+	// to the schema.
+	Output  json.RawMessage `json:"output,omitempty"`
+	Outcome *Outcome        `json:"outcome,omitempty"`
 	// Sandbox is what the run left in its conversation's files.
 	Sandbox *Sandbox `json:"sandbox,omitempty"`
 	// Memory is the memory trees the run's instance was given and what it
@@ -753,6 +758,23 @@ func (x *Index) SetUsageChecked(tenant, runID string, u *event.RunUsage, micros 
 		}
 		r.tally, r.closed = nil, true
 		r.Spent += micros
+		return nil
+	})
+}
+
+// SetOutput keeps a run's answer as structured data (Run.Output), once its
+// answer has been checked against its agent's output schema.
+func (x *Index) SetOutput(tenant, runID string, output json.RawMessage) error {
+	return x.do(tenant, func(t *txn) error {
+		r, err := t.run(runID)
+		if err != nil {
+			return err
+		}
+		if r == nil {
+			return ErrNotFound
+		}
+		t.touch(r)
+		r.Output = slices.Clone(output)
 		return nil
 	})
 }

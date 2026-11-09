@@ -147,7 +147,7 @@ func TestTheApprovalAgentAllowsACallInASessionSetToRun(t *testing.T) {
 
 // A denial stops the call, and the agent is told why.
 func TestTheApprovalAgentDeniesWithAReasonTheAgentReads(t *testing.T) {
-	p, _, first := judged(t, selfApproving, `{"decision": "deny", "reason": "Nobody asked for helper."}`)
+	p, _, first := judged(t, selfApproving, `{"decision": "deny", "reason": "Nobody asked for helper.", "references": ["admin: Check it"]}`)
 	if _, err := p.SetApprovalMode(admin, first.Thread, threads.ApprovalAuto); err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestTheApprovalAgentDeniesWithAReasonTheAgentReads(t *testing.T) {
 // session asked; each hand-off is audited with why.
 func TestWhatTheApprovalAgentDoesNotDecideWaitsForAPerson(t *testing.T) {
 	for name, answers := range map[string][]string{
-		"ask":               {`{"decision": "ask", "reason": "It reaches another team."}`},
+		"ask":               {`{"decision": "ask", "reason": "It reaches another team.", "references": []}`},
 		"unreadable":        {""},
 		"no approval agent": nil,
 	} {
@@ -197,7 +197,7 @@ func TestRunLeavesWhatTheAgentAlwaysAsksAbout(t *testing.T) {
 	p, c, first := judged(t, func(s *wire.AgentSpec) {
 		s.SelfApproval = true
 		s.Approvals = []string{platform.ToolCallAgent}
-	}, `{"decision": "allow", "reason": "Fine."}`)
+	}, `{"decision": "allow", "reason": "Fine.", "references": []}`)
 	if _, err := p.SetApprovalMode(admin, first.Thread, threads.ApprovalAuto); err != nil {
 		t.Fatal(err)
 	}

@@ -838,6 +838,14 @@ func (p Platform) check(kinds Kinds) error {
 		if a.Spec != nil && slices.Contains(ReservedNames, wire.NormalizeName(a.Spec.Name)) {
 			return fmt.Errorf("%s: agents[%d].spec.name: @%s is reserved: it is never an agent's name", where, i, wire.NormalizeName(a.Spec.Name))
 		}
+		// The rest of a spec is checked at start, against the deployment's
+		// providers; its output schema stands on its own, so it is checked
+		// here too, the approval agent's core with it.
+		if a.Spec != nil {
+			if err := a.Spec.ValidateOutput(); err != nil {
+				return fmt.Errorf("%s: agents[%d].spec.output: %w", where, i, err)
+			}
+		}
 	}
 	if s := sp.Surfaces.Slack; s != nil && s.Enabled {
 		if s.Team == "" || !s.BotToken.Set() || !s.AppToken.Set() {

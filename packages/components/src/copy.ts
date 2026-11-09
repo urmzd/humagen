@@ -2235,6 +2235,12 @@ export const defaultCopy = {
   repliedBy: (by: string, text: string, time: string) => `${by} answered "${text}" | ${time}`,
   declinedBy: (by: string, time: string) => `Declined by ${by} | ${time}`,
   approvalNeeded: (summary: string) => `Approval needed: ${summary}`,
+  /** The approval agent's view of a call, on its approval card. */
+  judgement: {
+    by: "Approval agent",
+    decision: { allow: "Allowed", deny: "Denied", ask: "Asked a person" },
+    basedOn: (references: string[]) => `Based on: ${references.join("; ")}`,
+  },
   /** A run the platform held at a limit, for a person to grant it more or stop it. */
   /** A structured code review an agent returned (`humagen.github.review.v1`). */
   reviewReport: {
