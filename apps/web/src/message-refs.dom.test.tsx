@@ -1,18 +1,22 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
+import { allTools, answerOf, foldAll } from "@humagen/core";
+import { responseStreams } from "@humagen/core/fixtures/responses";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { Run, RunEvent } from "./adapter.ts";
-import type { Thread } from "./api.ts";
+import type { Run } from "./adapter.ts";
+import type { MessageTrace, Thread, TraceNode, TraceQuestion } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { type FocusLoader, MessageFocus } from "./MessageFocus.tsx";
+import { AnswerRefs, SessionReferences } from "./MessageRefs.tsx";
+import { ResponseActivityPanel } from "./ResponseActivity.tsx";
 import {
-  AnswerRefs,
-  ResponseActivity,
-  SessionReferences,
+  type ResponseSource,
+  replaySource,
   type TraceLoader,
-} from "./MessageRefs.tsx";
-import { OriginButton, SessionPlace } from "./SessionPlace.tsx";
+  traceEvents,
+} from "./responseSource.ts";
+import { OriginButton, SessionPlace, usePlace } from "./SessionPlace.tsx";
 import { placeOf, referenceOf } from "./trace.ts";
 
 const words = defaultCopy.trace;
@@ -32,7 +36,7 @@ const run = (id: string, extra: Partial<Run> = {}): Run => ({
   id,
   tag_id: id,
   tenant: "acme",
-  agent: "humagen",
+  agent: "lead",
   rev: 1,
   origin: "slack",
   text: "why did the deploy fail",
@@ -44,30 +48,21 @@ const run = (id: string, extra: Partial<Run> = {}): Run => ({
   spent: 12000,
   calls: 1,
   status: "completed",
+  answer: "The token expired; ops rotated it.",
   created_at: at(0),
   updated_at: at(14),
   citations: [{ id: "c1", title: "Deploy runbook", url: "https://docs.example/runbook" }],
   ...extra,
 });
-const ev = (type: string, data: unknown, s: number) =>
-  ({
-    id: `${type}-${s}`,
-    source: "t",
-    type,
-    channel: "c",
-    time: at(s),
-    hops: 0,
-    data,
-  }) as unknown as RunEvent;
-
-const root = run(R1, { picked: "It asks about a deploy" });
+const root = run(R1);
 const ops = run(R2, {
   agent: "ops",
   parent: R1,
   depth: 1,
   spent: 0,
   citations: [],
-  answer: "Migration 0042 timed out.",
+  text: "Find why the nightly deploy failed",
+  answer: "The deploy token expired.",
   created_at: at(2),
   updated_at: at(9),
 });
@@ -76,116 +71,457 @@ const analyst = run(R3, {
   parent: R2,
   depth: 2,
   citations: [],
-  answer: "It took 41s.",
+  text: "How long did it run?",
+  answer: "41s.",
   created_at: at(3),
+  updated_at: at(5),
 });
-const events: Record<string, RunEvent[]> = {
-  [R1]: [
-    ev(
-      "run.delta.tool.call.v1",
-      { id: "g", name: "get_context", phase: "requested", arguments: { request: "the thread" } },
-      1,
-    ),
-    ev(
-      "run.delta.tool.done.v1",
-      {
-        id: "g",
-        result: JSON.stringify({
-          text: "Ana: it failed",
-          sources: [{ title: "#eng thread", url: "https://app.slack.com/x" }],
-        }),
-      },
-      2,
-    ),
-    ev("run.delta.tool.call.v1", { id: "s", name: "search", phase: "requested" }, 3),
-    ev("run.delta.tool.done.v1", { id: "s", result: "ok" }, 4),
-    ev("run.usage.v1", { accounting_id: "a", model: "anthropic/claude-sonnet" }, 5),
+const node = (r: Run, extra: Partial<TraceNode> = {}): TraceNode => ({
+  run: r.id,
+  agent: r.agent,
+  status: r.status as TraceNode["status"],
+  started_at: r.created_at,
+  ended_at: r.updated_at,
+  ms: Date.parse(r.updated_at) - Date.parse(r.created_at),
+  answer: r.answer,
+  tools: [],
+  context: [],
+  sources: (r.citations ?? []).map((c) => ({ title: c.title, url: c.url })),
+  approvals: [],
+  children: [],
+  ...extra,
+});
+const htu = (r: string, n: number) => `htu_${r}_${n}`;
+const analystNode = node(analyst);
+const opsNode = node(ops, {
+  tools: [
+    {
+      id: htu(R2, 1),
+      name: "deploy_logs",
+      at: at(4),
+      ms: 2000,
+      input: { job: "nightly" },
+      error: "403",
+      withheld: false,
+    },
+    {
+      id: htu(R2, 2),
+      name: "retry_deploy",
+      at: at(7),
+      ms: 1000,
+      input: {},
+      output: "ok",
+      withheld: false,
+    },
   ],
-  [R2]: [
-    ev("run.delta.tool.call.v1", { id: "b", name: "deploy_logs", phase: "requested" }, 6),
-    ev("run.delta.tool.done.v1", { id: "b", error: "403" }, 7),
-    ev(
-      "run.parked.v1",
-      {
-        question: {
-          id: "q",
-          kind: "approval",
-          prompt: "p",
-          tool: { name: "retry_deploy", call_id: "x" },
-        },
-      },
-      8,
-    ),
-    ev("run.resumed.v1", { answer: { question_id: "q", decision: "approve", by_name: "Ana" } }, 9),
+  approvals: [
+    { id: "q", tool: htu(R2, 2), action: "retry_deploy", decision: "allow", by: "Ana", at: at(8) },
   ],
-};
+  children: [analystNode],
+});
+const rootNode = node(root, {
+  cost: 12000,
+  model: "anthropic/claude-sonnet",
+  context: [
+    {
+      id: htu(R1, 1),
+      at: at(1),
+      ms: 300,
+      request: "the thread",
+      reference: "slack://T1/C1/1.2",
+      summary: "Ana: it failed",
+      sources: [{ title: "Ana in #deploys", url: "https://acme.slack.com/archives/C1/p12" }],
+      truncated: false,
+      withheld: false,
+    },
+  ],
+  tools: [
+    {
+      id: htu(R1, 2),
+      name: "call_agent",
+      at: at(2),
+      ms: 7000,
+      // As the platform records a delegation: the brief is its first message.
+      input: {
+        agent: "ops",
+        messages: [
+          { role: "user", content: [{ type: "text", text: "Find why the nightly deploy failed" }] },
+        ],
+      },
+      output: "done",
+      withheld: false,
+    },
+  ],
+  children: [opsNode],
+});
+const traceOf = (nodes: TraceNode[], hidden = 0): MessageTrace => ({
+  message: "s_root",
+  nodes,
+  hidden,
+  truncated: false,
+});
+const byRun: Record<string, TraceNode> = { [R1]: rootNode, [R2]: opsNode, [R3]: analystNode };
 const loader: TraceLoader = {
-  trace: async () => ({ runs: [root, ops, analyst], spans: [] }),
-  events: async (id) => ({ events: events[id] ?? [] }),
+  trace: async (id) => {
+    assert.match(id, /^s_root:r/, "an answer is read at session:run");
+    const n = byRun[id.split(":")[1] ?? ""];
+    return traceOf(n ? [n] : []);
+  },
 };
 
-test("under an answer: quiet chips, and one View activity when more than one agent worked on it", async () => {
+test("an answer's trace reads as one response: agent calls nested, tools, approvals, answer, cost and model", () => {
+  const state = foldAll(traceEvents(traceOf([rootNode])));
+  assert.equal(state.status, "done");
+  assert.equal(answerOf(state).text, "The token expired; ops rotated it.");
+  const call = state.content.find((b) => b.type === "tool" && b.kind === "agent");
+  assert.ok(call && call.type === "tool");
+  assert.equal(call.agent, "ops");
+  assert.equal(call.title, "Find why the nightly deploy failed");
+  assert.equal(call.status, "done");
+  assert.equal(call.result?.text, "The deploy token expired.");
+  const opsTools = call.content.flatMap((b) =>
+    b.type === "tool" ? [[b.name, b.status, b.decidedBy]] : [],
+  );
+  // In the order they started: analyst was called before the logs were read.
+  assert.deepEqual(opsTools, [
+    ["agent", "done", undefined],
+    ["deploy_logs", "error", undefined],
+    ["retry_deploy", "done", "Ana"],
+  ]);
+  assert.equal(
+    state.tools[Object.keys(state.tools).find((k) => state.tools[k]?.agent === "analyst") ?? ""]
+      ?.depth,
+    2,
+  );
+  // The old delegation tool is the agent call itself, not a second row.
+  assert.equal(
+    Object.values(state.tools).some((t) => t.name === "call_agent"),
+    false,
+  );
+  assert.equal(state.costUsd, 0.012);
+  assert.deepEqual(Object.keys(state.byModel ?? {}), ["anthropic/claude-sonnet"]);
+  // Ids are the platform's: the agent call takes its delegation's.
+  assert.equal(call.id, htu(R1, 2));
+  // A context read is its request and what it drew on.
+  const read = state.content.find((b) => b.type === "tool" && b.kind === "context");
+  assert.ok(read && read.type === "tool");
+  assert.equal(read.input.request, "the thread");
+  assert.deepEqual(read.result?.sources, [
+    { title: "Ana in #deploys", url: "https://acme.slack.com/archives/C1/p12" },
+  ]);
+});
+
+test("what the reader may not see stays private: withheld calls and hidden runs", () => {
+  const withheld = node(root, {
+    tools: [{ id: htu(R1, 1), name: "read_secret", at: at(1), ms: 5, withheld: true }],
+  });
+  const state = foldAll(traceEvents(traceOf([withheld], 2)));
+  const tool = state.tools[htu(R1, 1)];
+  assert.equal(tool?.hidden, true);
+  assert.equal(state.content.filter((b) => b.type === "hidden").length, 2);
+});
+
+test("under an answer: its chips, and Worked … that opens its activity", async () => {
   const opened: string[] = [];
   render(<AnswerRefs run={root} eager loader={loader} onActivity={(id) => opened.push(id)} />);
   const refs = await screen.findByTestId("answer-refs");
-  await within(refs).findByText("#eng thread");
-  const chips = [...refs.querySelectorAll("[data-chip]")].map((c) => [
-    c.getAttribute("data-chip"),
-    c.textContent,
-  ]);
-  // A tool that worked is not a chip; it lives in the activity.
-  assert.deepEqual(chips, [
-    ["context", "#eng thread"],
-    ["source", "Deploy runbook"],
-  ]);
-  assert.equal(within(refs).queryByText(/took|\$0\.01|14s/), null, "no time or cost inline");
-  // Nothing nested in the message column: no rows, no chevrons, one control.
-  assert.equal(within(refs).queryByText("Migration 0042 timed out."), null);
-  assert.equal(refs.querySelectorAll("[aria-expanded]").length, 0);
-  const view = within(refs).getByTestId("view-activity");
-  assert.match(view.textContent ?? "", new RegExp(`${words.viewActivity}.*${words.agents(3)}`));
-  fireEvent.click(view);
+  const worked = await within(refs).findByTestId("worked");
+  assert.equal(worked.getAttribute("aria-expanded"), "false");
+  assert.equal(worked.textContent, words.worked("14s", 2, 3));
+  assert.deepEqual(
+    [...refs.querySelectorAll("[data-chip]")].map((c) => c.textContent),
+    // What get_context pulled, then what the answer cites.
+    ["Ana in #deploys", "Deploy runbook"],
+  );
+  assert.equal(within(refs).queryByText(/\$0\.01/), null, "no cost inline");
+  fireEvent.click(worked);
   assert.deepEqual(opened, [R1]);
 });
 
-test("a single-agent answer has its chips and no View activity", async () => {
+test("an answer that used no tool and called no one has no Worked", async () => {
   const alone = run(R1, { calls: 0 });
-  const one: TraceLoader = {
-    trace: async () => ({ runs: [alone], spans: [] }),
-    events: loader.events,
-  };
-  render(<AnswerRefs run={alone} eager loader={one} onActivity={() => {}} />);
-  const refs = await screen.findByTestId("answer-refs");
-  await within(refs).findByText("#eng thread");
-  assert.equal(within(refs).queryByTestId("view-activity"), null);
+  const quiet: TraceLoader = { trace: async () => traceOf([node(alone)]) };
+  render(<AnswerRefs run={alone} eager loader={quiet} onActivity={() => {}} />);
+  await screen.findByText("Deploy runbook");
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(screen.queryByTestId("worked"), null);
 });
 
-test("a response's activity is every run behind it, flat and in time order, with references, time and cost", async () => {
-  render(<ResponseActivity run={root} onClose={() => {}} loader={loader} />);
-  const list = await screen.findByTestId("activity-list");
-  assert.match(screen.getByTestId("activity-pick").textContent ?? "", /It asks about a deploy/);
-  const rows = within(list).getAllByTestId("activity-row");
+test("two agents in parallel are two lanes; the root's own answer stays beside the panel", async () => {
+  render(
+    <ResponseActivityPanel
+      source={replaySource("p", responseStreams.parallelAgents)}
+      onClose={() => {}}
+    />,
+  );
+  const lanes = await screen.findAllByTestId("activity-lane");
   assert.deepEqual(
-    rows.map((r) => r.getAttribute("data-run")),
-    [R1, R2, R3],
-    "parent, child and grandchild, flattened by start time",
+    lanes.map((l) => l.getAttribute("data-agent")),
+    ["humagen", "security-reviewer", "perf-reviewer"],
   );
-  const [first, second, third] = rows;
-  assert.match(first?.textContent ?? "", /14s · \$0\.01 · anthropic\/claude-sonnet/);
-  assert.ok(within(second!).getByText("Migration 0042 timed out."));
-  // What a person should see sits with its run: the approval and who decided, the tool that failed.
-  assert.ok(within(second!).getByText(`${words.decided.allow} retry_deploy ${words.by("Ana")}`));
-  assert.ok(within(second!).getByText(words.failedTool("deploy_logs")));
-  assert.ok(within(third!).getByText("It took 41s."));
+  // The panel is titled Activity; how it worked stays under the message, so the panel says cost and models only.
+  assert.equal(screen.getByTestId("activity-summary").textContent, "$0.02 · claude-sonnet-5-5");
+  assert.equal(screen.queryByText(/^## security-reviewer/), null, "the answer is not repeated");
+  // Parts that went well are closed; nothing waits or failed here.
+  for (const part of screen.getAllByTestId("activity-part"))
+    assert.equal(part.querySelector("details")?.open, false);
+});
+
+test("a question two agents deep opens where it waits and is answered there", async () => {
+  const net = stubFetch({ "POST /api/messages/msg_nested/answer": () => ({}) });
+  restore = net.restore;
+  render(
+    <ResponseActivityPanel
+      source={replaySource("n", responseStreams.nestedApproval)}
+      messageId="msg_nested"
+      onClose={() => {}}
+    />,
+  );
+  const deploy = (await screen.findAllByTestId("activity-part")).find(
+    (p) => p.getAttribute("data-tool") === "htu_r_deployer_1",
+  );
+  assert.ok(deploy);
+  assert.equal(deploy.querySelector("details")?.open, true, "awaiting opens by default");
+  const failed = screen
+    .getAllByTestId("activity-part")
+    .find((p) => p.getAttribute("data-status") === "error");
+  assert.equal(failed?.querySelector("details")?.open, true, "a failure opens by default");
+  // Its error shows; its input stays closed until the reader opens it.
+  assert.match(failed?.textContent ?? "", /403: the deploy token expired/);
+  const input = [...(failed?.querySelectorAll("details details") ?? [])][0] as HTMLDetailsElement;
+  assert.equal(input?.open, false);
+  // A lane whose work waits on a person says so in its header, once, without the narration line.
+  const deployer = screen
+    .getAllByTestId("activity-lane")
+    .find((l) => l.getAttribute("data-agent") === "deployer");
+  assert.match(deployer?.querySelector("p")?.textContent ?? "", /Waiting for approval/);
   assert.equal(
-    within(second!)
-      .getByRole("link", { name: words.focus("ops") })
-      .getAttribute("href"),
-    `/messages/${R2}`,
+    !!within(deployer as HTMLElement).queryByText("Waiting for approval to rotate the token"),
+    false,
+  );
+  fireEvent.click(within(deploy).getByRole("button", { name: "Approve" }));
+  await waitFor(() =>
+    assert.deepEqual(net.seen.find((r) => r.method === "POST")?.body, {
+      tool_use_id: "htu_r_deployer_1",
+      answer: { action: "approve" },
+    }),
   );
 });
 
-test("Details collects each message's references, with its time, cost and model, origin first", async () => {
+test("an approval waiting two levels down is answered by its call, on the message", async () => {
+  const waitingOps = {
+    ...opsNode,
+    status: "parked" as const,
+    ended_at: undefined,
+    answer: undefined,
+    tools: opsNode.tools.map((t) =>
+      t.name === "retry_deploy" ? { ...t, ms: undefined, output: undefined } : t,
+    ),
+    approvals: [{ id: "q", tool: htu(R2, 2), action: "retry_deploy", decision: "ask" as const }],
+  };
+  const waitingRoot = {
+    ...rootNode,
+    status: "running" as const,
+    ended_at: undefined,
+    answer: undefined,
+    children: [waitingOps],
+  };
+  const net = stubFetch({ "POST /api/messages/s_root/answer": () => ({}) });
+  restore = net.restore;
+  render(
+    <ResponseActivityPanel
+      source={replaySource("w", traceEvents(traceOf([waitingRoot])))}
+      onClose={() => {}}
+    />,
+  );
+  const retry = (await screen.findAllByTestId("activity-part")).find(
+    (p) => p.getAttribute("data-status") === "awaiting_approval",
+  );
+  assert.ok(retry, "the retry waits on a person");
+  // Waiting two levels down shows on the agent call above it, so it is never hidden.
+  const opsCall = foldAll(traceEvents(traceOf([waitingRoot]))).tools[htu(R1, 2)];
+  assert.equal(opsCall?.attention?.status, "awaiting_approval");
+  fireEvent.click(within(retry).getByRole("button", { name: "Approve" }));
+  await waitFor(() => {
+    const post = net.seen.find((r) => r.method === "POST");
+    assert.equal(post?.path, "/api/messages/s_root/answer");
+    assert.deepEqual(post?.body, { tool_use_id: htu(R2, 2), answer: { action: "approve" } });
+  });
+});
+
+// A run waiting on a person's answer to ask_person, at its third call.
+const asking = (question: Partial<TraceQuestion>) =>
+  traceOf([
+    node(root, {
+      status: "parked",
+      ended_at: undefined,
+      answer: undefined,
+      tools: [
+        {
+          id: htu(R1, 3),
+          name: "ask_person",
+          at: at(3),
+          input: { question: "?" },
+          withheld: false,
+        },
+      ],
+      questions: [
+        {
+          id: "q9",
+          tool: htu(R1, 3),
+          kind: "choice",
+          prompt: "Which region?",
+          options: ["us-east", "eu-west"],
+          status: "asked",
+          ...question,
+        },
+      ],
+    }),
+  ]);
+
+test("a question asked with ask_person is answered in Activity by picking an option", async () => {
+  const net = stubFetch({ "POST /api/messages/s_root/answer": () => ({}) });
+  restore = net.restore;
+  render(
+    <ResponseActivityPanel
+      source={replaySource("c", traceEvents(asking({})))}
+      onClose={() => {}}
+    />,
+  );
+  const part = (await screen.findAllByTestId("activity-part")).find(
+    (p) => p.getAttribute("data-tool") === htu(R1, 3),
+  );
+  assert.equal(part?.getAttribute("data-status"), "awaiting_input");
+  const ask = within(part as HTMLElement).getByRole("group", { name: "Which region?" });
+  fireEvent.click(within(ask).getByRole("button", { name: "eu-west" }));
+  await waitFor(() =>
+    assert.deepEqual(net.seen.find((r) => r.method === "POST")?.body, {
+      tool_use_id: htu(R1, 3),
+      answer: { action: "choose", choice: "eu-west" },
+    }),
+  );
+  assert.ok(await within(ask).findByText(words.answerSent));
+  assert.equal(within(ask).queryByRole("button", { name: "eu-west" }), null, "answered once");
+});
+
+test("a question that takes words is answered with a reply", async () => {
+  const net = stubFetch({ "POST /api/messages/s_root/answer": () => ({}) });
+  restore = net.restore;
+  render(
+    <ResponseActivityPanel
+      source={replaySource(
+        "r",
+        traceEvents(asking({ kind: "reply", options: [], prompt: "Why?" })),
+      )}
+      onClose={() => {}}
+    />,
+  );
+  const ask = await screen.findByRole("group", { name: "Why?" });
+  const send = within(ask).getByRole("button", { name: words.send }) as HTMLButtonElement;
+  assert.equal(send.disabled, true, "nothing to send yet");
+  fireEvent.change(within(ask).getByLabelText(words.yourReply), {
+    target: { value: "  The token expired.  " },
+  });
+  fireEvent.click(send);
+  await waitFor(() =>
+    assert.deepEqual(net.seen.find((r) => r.method === "POST")?.body, {
+      tool_use_id: htu(R1, 3),
+      answer: { action: "reply", text: "The token expired." },
+    }),
+  );
+});
+
+test("an answered question shows who answered on its call, with nothing to press", () => {
+  const answered = asking({ status: "answered", answer: "eu-west", by: "Ana" });
+  const n = answered.nodes[0] as TraceNode;
+  n.tools = n.tools.map((t) => ({ ...t, ms: 4000, output: "eu-west" }));
+  const state = foldAll(traceEvents(answered));
+  const tool = state.tools[htu(R1, 3)];
+  assert.equal(tool?.status, "done");
+  assert.equal(tool?.decidedBy, "Ana");
+  assert.equal(tool?.question, undefined);
+});
+
+test("an approval that gates no call shows that it waits, without buttons it could not send", () => {
+  const waiting = node(root, {
+    status: "parked",
+    ended_at: undefined,
+    answer: undefined,
+    approvals: [{ id: "q2", action: "Spend over the limit?", decision: "ask" }],
+  });
+  render(
+    <ResponseActivityPanel
+      source={replaySource("g", traceEvents(traceOf([waiting])))}
+      onClose={() => {}}
+    />,
+  );
+  const part = screen
+    .getAllByTestId("activity-part")
+    .find((p) => p.getAttribute("data-status") === "awaiting_approval");
+  assert.ok(part);
+  assert.equal(within(part).queryByRole("button", { name: "Approve" }), null);
+});
+
+test("a delegation someone approved keeps who decided on its agent call, once", () => {
+  const approved = node(root, {
+    tools: rootNode.tools,
+    approvals: [{ id: "q3", tool: htu(R1, 2), action: "call_agent", decision: "allow", by: "Ana" }],
+    children: [opsNode],
+  });
+  const state = foldAll(traceEvents(traceOf([approved])));
+  const calls = allTools(state).filter((t) => t.id === htu(R1, 2));
+  assert.equal(calls.length, 1, "no second row under the same id");
+  assert.equal(calls[0]?.kind, "agent");
+  assert.equal(calls[0]?.decidedBy, "Ana");
+});
+
+test("a stopped response says how it ended once, in plain words", async () => {
+  const { WorkedButton } = await import("./ResponseActivity.tsx");
+  const state = foldAll(responseStreams.stopped);
+  render(<WorkedButton state={state} open={false} onToggle={() => {}} />);
+  assert.equal(screen.getByTestId("worked").textContent, words.stoppedAfter("3.0s", 1, 1));
+  cleanup();
+  render(
+    <ResponseActivityPanel
+      source={replaySource("s", responseStreams.stopped)}
+      onClose={() => {}}
+    />,
+  );
+  await screen.findAllByTestId("activity-lane");
+  assert.equal(!!screen.queryByText("stopped"), false, "no raw stop reason");
+});
+
+test("a live stream says when a call starts waiting, politely, and a replay says nothing", async () => {
+  let push: ((e: (typeof responseStreams.nestedApproval)[number]) => void) | undefined;
+  const live: ResponseSource = {
+    key: "live",
+    live: true,
+    open: (onEvent) => {
+      push = onEvent;
+      return () => {};
+    },
+  };
+  render(<ResponseActivityPanel source={live} onClose={() => {}} />);
+  const politely = () =>
+    screen.getByTestId("response-activity").querySelector('[aria-live="polite"]') as HTMLElement;
+  const region = politely();
+  assert.equal(region.getAttribute("aria-live"), "polite");
+  for (const e of responseStreams.nestedApproval) push?.(e);
+  await waitFor(() =>
+    assert.match(region.textContent ?? "", /Rotate the deploy token is waiting for you/),
+  );
+  cleanup();
+  render(
+    <ResponseActivityPanel
+      source={replaySource("r", responseStreams.stopped)}
+      onClose={() => {}}
+    />,
+  );
+  await screen.findAllByTestId("activity-lane");
+  assert.equal(politely().textContent, "");
+});
+
+test("Details collects each answer's references, with how it worked, its cost and model, origin first", async () => {
   render(
     <SessionReferences
       runs={[root, ops]}
@@ -195,15 +531,14 @@ test("Details collects each message's references, with its time, cost and model,
   );
   const rows = await screen.findAllByTestId("reference-row");
   assert.equal(rows.length, 1, "only answers people see, not the runs they called");
-  await waitFor(() => assert.match(rows[0]?.textContent ?? "", /anthropic\/claude-sonnet/));
-  assert.match(rows[0]?.textContent ?? "", /14s · \$0\.01 · anthropic\/claude-sonnet/);
-  assert.match(rows[0]?.textContent ?? "", new RegExp(words.delegatedTo("ops")));
+  await waitFor(() => assert.match(rows[0]?.textContent ?? "", /claude-sonnet/));
+  assert.match(
+    rows[0]?.textContent ?? "",
+    /Worked 14s · 2 agents · 3 tools · \$0\.01 · claude-sonnet/,
+  );
+  assert.match(rows[0]?.textContent ?? "", new RegExp(words.delegatedTo("ops, analyst")));
   const first = rows[0]?.querySelector("[data-chip]");
   assert.equal(first?.getAttribute("data-chip"), "origin");
-  assert.equal(
-    first?.querySelector("a")?.getAttribute("href"),
-    "https://app.slack.com/client/T1/C1/thread/C1-1.2",
-  );
 });
 
 test("the header points back to where the session started, and says nothing for the web", () => {
@@ -237,7 +572,34 @@ test("the header points back to where the session started, and says nothing for 
   assert.equal(screen.queryByTestId("session-place"), null);
 });
 
-test("a nested message opens at its own address under a breadcrumb back to the root", async () => {
+test("the header names the audience the place reported: which kind of Slack channel", async () => {
+  const net = stubFetch({
+    "GET /api/clients": () => ({ clients: [], caps: { max: 1, max_per_surface: 1 } }),
+    "GET /api/messages/s_private": () => ({
+      id: "s_private",
+      session: "s_private",
+      role: "user",
+      audience: { kind: "private" },
+    }),
+  });
+  restore = net.restore;
+  const thread = {
+    id: "s_private",
+    surface: { client: "acme", channel: "C9", ts: "3.4" },
+    visibility: "private" as const,
+  };
+  function Header() {
+    const place = usePlace(thread);
+    return place ? <SessionPlace place={place} sender="Ana" /> : null;
+  }
+  render(<Header />);
+  await waitFor(() =>
+    assert.match(screen.getByTestId("session-place").textContent ?? "", /Private channel/),
+  );
+  assert.ok(net.seen.some((r) => r.path === "/api/messages/s_private?depth=0"));
+});
+
+test("a nested message opens at its own address under a breadcrumb, with its own activity", async () => {
   const thread = {
     id: "s_root",
     title: "Nightly deploy",
@@ -262,7 +624,7 @@ test("a nested message opens at its own address under a breadcrumb back to the r
   restore = net.restore;
   const went: unknown[] = [];
   render(<MessageFocus id={R2} go={(r) => went.push(r)} loader={focus} />);
-  assert.ok(await screen.findByText("Migration 0042 timed out."));
+  assert.ok(await screen.findByText("The deploy token expired."));
   const crumbs = screen.getByRole("navigation", { name: words.breadcrumb });
   assert.deepEqual(
     within(crumbs)
@@ -270,16 +632,14 @@ test("a nested message opens at its own address under a breadcrumb back to the r
       .map((a) => [a.textContent, a.getAttribute("href")]),
     [
       ["Nightly deploy", "/messages/s_root"],
-      ["humagen", `/messages/${R1}`],
+      ["lead", `/messages/${R1}`],
     ],
   );
   fireEvent.click(within(crumbs).getByRole("link", { name: "Nightly deploy" }));
   assert.deepEqual(went, [{ page: "conversation", id: "s_root" }]);
-  // Its own activity, flat: the grandchild under it, opening at its own address.
-  const rows = within(screen.getByTestId("activity-list")).getAllByTestId("activity-row");
   assert.deepEqual(
-    rows.map((r) => r.getAttribute("data-run")),
-    [R3],
+    screen.getAllByTestId("activity-lane").map((l) => l.getAttribute("data-agent")),
+    ["ops", "analyst"],
   );
   await waitFor(() => assert.ok(screen.getByRole("link", { name: words.place.openIn("Slack") })));
 });

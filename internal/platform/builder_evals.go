@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/evals"
@@ -34,10 +33,10 @@ func (t *approvedBuilderTool) Approval(types.ToolCallPart) (native.ApprovalReque
 }
 
 func (p *Platform) builderTarget(ctx context.Context, req runtime.Request, name string) (wire.Revision, error) {
-	if legacy.BuiltinAgent(req.Agent()) != BuiltinBuilder {
+	if !p.isHelper(req.Agent()) {
 		return wire.Revision{}, fmt.Errorf("%w: only the builder changes agents", ErrBuilder)
 	}
-	if builderProtectedAgent(name) {
+	if p.helperProtected(name) {
 		return wire.Revision{}, fmt.Errorf("%w: privileged platform agents cannot be changed by the builder", ErrBuilder)
 	}
 	if home, ok := p.ProjectTree(req.Tenant).Home(name); ok && home != projects.Root {
@@ -75,7 +74,7 @@ func (p *Platform) builderLifecycleTool(req runtime.Request, retire bool) types.
 			return "", fmt.Errorf("%w: paused is true or false", ErrBuilder)
 		}
 		control.Paused = paused != "false"
-		if _, err = p.Operations.SetControl(req.Tenant, name, control, control.Version, "agent:"+BuiltinBuilder, p.now()); err != nil {
+		if _, err = p.Operations.SetControl(req.Tenant, name, control, control.Version, "agent:"+p.cfg.EntryAgent, p.now()); err != nil {
 			return "", err
 		}
 		if control.Paused {
@@ -128,7 +127,7 @@ func (p *Platform) builderWriteEvalTool(req runtime.Request) types.Tool {
 		if suite.CreatedBy == "" {
 			// Legacy plain suites can still be authored without a person. They
 			// cannot supply authority for later unattended recorded replay.
-			suite.CreatedBy = "agent:" + BuiltinBuilder
+			suite.CreatedBy = "agent:" + p.cfg.EntryAgent
 		}
 		suite.UpdatedAt = p.now()
 		if err := p.Evals.Put(req.Tenant, suite, replace); err != nil {
@@ -150,7 +149,7 @@ func (p *Platform) builderRunEvalTool(req runtime.Request) types.Tool {
 		if err := p.builderReplaySuiteAllowed(req, suite); err != nil {
 			return "", err
 		}
-		by := "agent:" + BuiltinBuilder
+		by := "agent:" + p.cfg.EntryAgent
 		if who, err := p.builderPerson(req); err == nil {
 			by = who.Subject
 		}

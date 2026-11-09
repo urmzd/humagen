@@ -155,7 +155,7 @@ test("the conversation offers one Details action and its project around one page
   );
   assert.equal(screen.getAllByRole("heading", { level: 1 }).length, 1);
   fireEvent.click(screen.getByRole("button", { name: "Details" }));
-  assert.deepEqual(chosen, ["workspace"]);
+  assert.deepEqual(chosen, ["details"]); // Details opens the session's Details panel.
   assert.equal(screen.queryByRole("button", { name: words.settings }), null);
   assert.ok(screen.getByText("Spring Launch"));
 });

@@ -161,7 +161,7 @@ test("Home starts a question or an agent as the person, and searches in the cons
   const w = mapping();
   w.humagen.agentList = [
     ...w.humagen.agentList,
-    { name: "humagen-builder", description: "Builds agents." },
+    { name: "humagen", description: "Builds agents." },
   ];
   await w.app.handle(homeOpened(USER));
   await settle();
@@ -209,13 +209,13 @@ test("Home starts a question or an agent as the person, and searches in the cons
     }),
   );
   await answered(w);
-  assert.equal(w.humagen.posts.at(-1)?.text, "@humagen-builder one that triages support tickets");
+  assert.equal(w.humagen.posts.at(-1)?.text, "@humagen one that triages support tickets");
   assert.deepEqual(w.humagen.posts.at(-1)?.act_as, { client: "app", user: USER });
 });
 
 test("Build an Agent is offered only where this app may reach the builder", async () => {
   const w = mapping();
-  w.humagen.agentList = [...w.humagen.agentList, { name: "humagen-builder" }];
+  w.humagen.agentList = [...w.humagen.agentList, { name: "humagen" }];
   w.humagen.clients.set("app", {
     ...(w.humagen.clients.get("app") as NonNullable<ReturnType<typeof w.humagen.clients.get>>),
     agents: ["lead"],

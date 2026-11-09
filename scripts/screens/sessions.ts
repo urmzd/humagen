@@ -19,7 +19,8 @@ const details = (page: Page) => page.getByRole("dialog", { name: "Details", exac
 
 async function readySession(page: Page): Promise<void> {
   await composer(page).waitFor();
-  await page.getByRole("button", { name: "Details", exact: true }).waitFor();
+  // The Details button says how many calls are running ("Details, 1 working").
+  await page.getByRole("button", { name: /^Details(, \d+ working)?$/ }).waitFor();
 }
 
 async function detailsReady(page: Page): Promise<void> {
@@ -119,9 +120,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: "/",
       act: async (page) => {
         await composer(page).fill("Keep this unsent draft while choosing context.");
-        await page
-          .getByRole("button", { name: "Add files, agents or a project", exact: true })
-          .click();
+        await page.getByRole("button", { name: defaultCopy.chat.plus, exact: true }).click();
         await page.getByRole("dialog", { name: "Add to this conversation", exact: true }).waitFor();
         assert.equal(
           await composer(page).inputValue(),

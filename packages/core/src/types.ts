@@ -146,7 +146,22 @@ export interface Approval {
    * is ready to show.
    */
   budget?: BudgetGrant;
+  /**
+   * What the approval agent said about the call, in a session set to Run:
+   * set whether it allowed the call, denied it or left it for a person.
+   */
+  judgement?: Judgement;
   decision: Decision;
+}
+
+/** The approval agent's view of one call. Its words are a model's: show them inert. */
+export interface Judgement {
+  decision: "allow" | "ask" | "deny";
+  reason: string;
+  /** What the decision rests on. */
+  references?: string[];
+  /** What the workspace's own schema adds, such as a risk level, in the order the agent gave them. Ready to show. */
+  fields?: Field[];
 }
 
 /** The limit a held run reached, and what approving grants it. */
