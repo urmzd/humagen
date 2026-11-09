@@ -16,7 +16,7 @@ import {
   type TraceLoader,
   traceEvents,
 } from "./responseSource.ts";
-import { OriginButton, SessionPlace } from "./SessionPlace.tsx";
+import { OriginButton, SessionPlace, usePlace } from "./SessionPlace.tsx";
 import { placeOf, referenceOf } from "./trace.ts";
 
 const words = defaultCopy.trace;
@@ -477,6 +477,33 @@ test("the header points back to where the session started, and says nothing for 
   );
   assert.equal(screen.queryByTestId("origin-button"), null);
   assert.equal(screen.queryByTestId("session-place"), null);
+});
+
+test("the header names the audience the place reported: which kind of Slack channel", async () => {
+  const net = stubFetch({
+    "GET /api/clients": () => ({ clients: [], caps: { max: 1, max_per_surface: 1 } }),
+    "GET /api/messages/s_private": () => ({
+      id: "s_private",
+      session: "s_private",
+      role: "user",
+      audience: { kind: "private" },
+    }),
+  });
+  restore = net.restore;
+  const thread = {
+    id: "s_private",
+    surface: { client: "acme", channel: "C9", ts: "3.4" },
+    visibility: "private" as const,
+  };
+  function Header() {
+    const place = usePlace(thread);
+    return place ? <SessionPlace place={place} sender="Ana" /> : null;
+  }
+  render(<Header />);
+  await waitFor(() =>
+    assert.match(screen.getByTestId("session-place").textContent ?? "", /Private channel/),
+  );
+  assert.ok(net.seen.some((r) => r.path === "/api/messages/s_private?depth=0"));
 });
 
 test("a nested message opens at its own address under a breadcrumb, with its own activity", async () => {
