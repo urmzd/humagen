@@ -352,11 +352,14 @@ type Platform struct {
 	// connectors (docs/architecture/sources.md#corpora).
 	Corpora *corpora.Store
 	// Graph is each workspace's knowledge graph, one slice per corpus.
-	Graph       *GraphStore
-	SourceLinks *sourcelinks.Store
-	Evals       *evals.Store
-	Feedback    *feedback.Store
-	Prefs       *prefs.Store
+	Graph *GraphStore
+	// audienceSource is who a surfaced session reaches, as its surface
+	// last reported; the session API sets it. Nil reads as unknown.
+	audienceSource func(tenant, session string) (ReportedAudience, bool)
+	SourceLinks    *sourcelinks.Store
+	Evals          *evals.Store
+	Feedback       *feedback.Store
+	Prefs          *prefs.Store
 	// Marks is what each person marked on the conversations they read:
 	// archived for them, when last read, and the tips they dismissed.
 	Marks *marks.Store

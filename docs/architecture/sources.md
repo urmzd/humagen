@@ -306,9 +306,42 @@ sources, its graph (stale and unowned documents) or its types (proposals). The l
 and facts retired with their source are applied as the graph rebuilds.
 `(*Platform).MaintainKnowledge` runs one pass.
 
-Not built yet: the semantic layer (content extraction against the ontology:
-topics, mentions, contradictions, metadata filters, duplicate entities), and
-sensitivity labels.
+### Sensitivity
+
+Every corpus has a label: `public`, `internal` (the default), `confidential`
+or `restricted` (pay, health, performance, investigations, personal records).
+
+An answer stays where it was asked, so a corpus tool uses only what everyone
+that place reaches may read, checked each time the tool runs (people join
+channels):
+
+| Where the question is | Audience | A corpus is used when |
+| --- | --- | --- |
+| The person's own private conversation in the console, or their DM with the app | The person | They may read it, at any label; live references and their own warehouse logins too |
+| A shared conversation in the console, or a Slack private channel or group DM | Its current members | Every member reads it, at any label, and only members every one of them may see; a Slack member the workspace cannot map to a person fails it |
+| A Slack public channel, or a Slack thread whose audience is not known | The workspace | The workspace reads it and it is public or internal |
+| A GitHub thread | Possibly beyond the workspace | The workspace reads it and it is public |
+
+- What a tool holds back, it says (`held_back`), so the agent tells the person
+  the data can't be used here and suggests a direct message, or a private
+  channel whose members may all read it.
+- A Slack conversation's audience is what the Slack app last reported with a
+  message (`ReportedAudience`: kind, members as people, unmapped members),
+  read through the session API (`Platform.audienceSource`).
+- A direct answer marks its run private, so nothing it read goes into shared
+  agent memory or out to another place.
+- Every read of a confidential or restricted corpus is audited (`corpus.read`,
+  with the agent, the conversation, the audience and the corpus's purpose).
+- Granting a restricted corpus to an agent, or restricting one that agents
+  are granted, takes a workspace admin (`clients:write`) and a stated
+  `purpose`.
+- Warehouse rows (`corpus_query`) are answered only in a direct conversation.
+
+Not built yet: labels read from the sources themselves (Drive labels,
+Snowflake and BigQuery policy tags) and per document, self access to records
+about oneself, personal corpora, and the semantic layer (content extraction
+against the ontology: topics, mentions, contradictions, metadata filters,
+duplicate entities).
 
 ## Proposed versioned source files
 

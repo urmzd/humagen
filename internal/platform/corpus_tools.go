@@ -29,17 +29,21 @@ const ToolCorpusQuery = "corpus_query"
 func (p *Platform) corpusTools(req runtime.Request) map[string]saigetypes.Tool {
 	query := &saigetypes.ToolFunc{
 		Def: saigetypes.ToolDef{Name: ToolCorpusQuery,
-			Description: "Run one read-only SQL SELECT on a warehouse a corpus holds, such as Snowflake or BigQuery, with your own login to it, so the warehouse decides what you may read. Available only in your own private conversation, in a corpus granted to this agent that you may read. Rows are never stored. Find tables with catalog_search; select only the columns you need and filter early.",
+			Description: "Run one read-only SQL SELECT on a warehouse a corpus holds, such as Snowflake or BigQuery, with your own login to it, so the warehouse decides what you may read. Available only in a direct conversation (your own private one, or your DM with the app), in a corpus granted to this agent that you may read. Rows are never stored. Find tables with catalog_search; select only the columns you need and filter early.",
 			Parameters: schema([]string{"corpus", "connector", "sql"}, map[string]string{
 				"corpus":    "The corpus's name",
 				"connector": "The warehouse's connector name, as the corpus or catalog_search lists it",
 				"sql":       "One SELECT statement in the warehouse's own dialect",
 			})},
 		Fn: func(ctx context.Context, args map[string]any) (string, error) {
-			_, person, err := p.ownPrivateConversation(req)
+			a, err := p.corpusAudienceOf(req)
 			if err != nil {
 				return "", err
 			}
+			if !a.direct() {
+				return corporaHeldBackAnswer("Warehouse rows are read with your own login, so they are answered only in a direct conversation. Say so, and suggest asking in a direct message."), nil
+			}
+			person := a.person
 			name, connector, sql := strings.TrimSpace(arg(args, "corpus")), strings.TrimSpace(arg(args, "connector")), arg(args, "sql")
 			reader := p.invitationReader(req.Tenant, person)
 			c, err := p.Corpora.Get(req.Tenant, name)
@@ -65,28 +69,27 @@ func (p *Platform) corpusTools(req runtime.Request) map[string]saigetypes.Tool {
 			return string(b), nil
 		},
 	}
-	return map[string]saigetypes.Tool{ToolCorpusQuery: &personTool{Tool: query}, ToolCorpusSearch: &personTool{Tool: p.corpusSearchTool(req)}, ToolCorpusGraph: &personTool{Tool: p.corpusGraphTool(req)}}
+	return map[string]saigetypes.Tool{ToolCorpusQuery: &personTool{Tool: query}, ToolCorpusSearch: p.corpusSearchTool(req), ToolCorpusGraph: p.corpusGraphTool(req)}
 }
 
 func (p *Platform) corpusGraphTool(req runtime.Request) saigetypes.Tool {
 	return &saigetypes.ToolFunc{
 		Def: saigetypes.ToolDef{Name: ToolCorpusGraph,
-			Description: "Look up the workspace graph of the corpora granted to this agent, with your own access: documents, warehouse tables, the systems they sit in, who owns each and how stale it is, and the people and things one step away. Use it for questions such as who owns a policy or what sits in a warehouse. Available only in your own private conversation.",
+			Description: "Look up the workspace graph of the corpora granted to this agent, with your own access: documents, warehouse tables, the systems they sit in, who owns each and how stale it is, and the people and things one step away. Use it for questions such as who owns a policy or what sits in a warehouse. It uses only what everyone the answer reaches may read, as corpus_search does.",
 			Parameters: schema([]string{"query"}, map[string]string{
 				"query":  "Names to look for: a person, a document, a table or a system, at most 1000 characters",
 				"corpus": "One corpus's name; leave it out to look across every corpus granted to this agent",
 			})},
-		Fn: func(_ context.Context, args map[string]any) (string, error) {
+		Fn: func(ctx context.Context, args map[string]any) (string, error) {
 			q := strings.TrimSpace(arg(args, "query"))
 			if q == "" || len(q) > maxCorpusQuery {
 				return "", fmt.Errorf("%w: a query is 1 to %d bytes", corpora.ErrInvalid, maxCorpusQuery)
 			}
-			_, person, err := p.ownPrivateConversation(req)
+			a, err := p.corpusAudienceOf(req)
 			if err != nil {
 				return "", err
 			}
-			reader := p.invitationReader(req.Tenant, person)
-			granted, err := p.grantedCorpora(req, reader)
+			granted, held, err := p.shownCorpora(req, a)
 			if err != nil {
 				return "", err
 			}
@@ -94,10 +97,20 @@ func (p *Platform) corpusGraphTool(req runtime.Request) saigetypes.Tool {
 				granted = slices.DeleteFunc(granted, func(c corpora.Corpus) bool { return c.Name != name })
 			}
 			if len(granted) == 0 {
+				if note := corporaHeldBack(held); note != "" {
+					return corporaHeldBackAnswer(note), nil
+				}
 				return "", fmt.Errorf("%w: no corpus granted to this agent that you may read", corpora.ErrNotFound)
 			}
-			g, sls, err := p.readerGraph(reader, granted)
+			g, sls, err := p.readerGraph(a.readers[0], granted)
 			if err != nil {
+				return "", err
+			}
+			g = g.Keep(func(n graph.Node) bool {
+				m, ok := memberOf(n.Member)
+				return n.Member == "" || ok && p.memberShown(a, m)
+			})
+			if err := p.readCorpora(ctx, req, a, granted); err != nil {
 				return "", err
 			}
 			view, err := p.graphView(req.Tenant, g, sls, matchGraph(g, q), 40)
