@@ -48,6 +48,27 @@ func exerciseMessagesContract(t *testing.T, c *contract, token, other string) {
 	c.call(token, "GET", "/api/messages/{id}/trace", "/api/messages/"+id+"/trace", "", http.StatusOK)
 	c.call(token, "GET", "/api/messages/{id}/trace", "/api/messages/"+root+":m-999/trace", "", http.StatusNotFound)
 	c.call(other, "GET", "/api/messages/{id}/trace", "/api/messages/"+root+"/trace", "", http.StatusNotFound)
+	// A question an agent asks in the conversation, answered by the call
+	// that asked it.
+	c.call(token, "POST", "/api/agents", "/api/agents", `{"name":"asker","model":"x","provider":"anthropic","system_prompt":"Ask.","tools":["ask_person"]}`, http.StatusCreated)
+	asked := c.call(token, "POST", "/api/messages/{id}", "/api/messages/"+root, `{"messages":[{"role":"user","content":"@asker pick a colour"}]}`, http.StatusOK)
+	askRun, _ := obj(sliceOf(obj(asked.field("posted"))["runs"])[0])["id"].(string)
+	var question string
+	for deadline := time.Now().Add(10 * time.Second); question == "" && time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		now := c.call(token, "GET", "/api/runs/{id}", "/api/runs/"+askRun, "", http.StatusOK)
+		question, _ = obj(now.field("question"))["id"].(string)
+	}
+	if question == "" {
+		t.Fatal("the asking run never parked on its question")
+	}
+	answer, at, use := "/api/messages/{id}/answer", "/api/messages/"+root+"/answer", "htu_"+askRun+"_1"
+	c.call(token, "POST", answer, at, `{"tool_use_id":"`+use+`"}`, http.StatusBadRequest)
+	c.call(token, "POST", answer, at, `{"tool_use_id":"`+use+`","answer":{"action":"choose","choice":"red","act_as":{"client":"nope","user":"U0X"}}}`, http.StatusForbidden)
+	c.call(token, "POST", answer, at, `{"tool_use_id":"htu_`+askRun+`_9","answer":{"action":"choose","choice":"red"}}`, http.StatusNotFound)
+	c.call(other, "POST", answer, at, `{"tool_use_id":"`+use+`","answer":{"action":"choose","choice":"red"}}`, http.StatusNotFound)
+	if settled := c.call(token, "POST", answer, at, `{"tool_use_id":"`+use+`","answer":{"action":"choose","choice":"red"}}`, http.StatusOK); obj(obj(sliceOf(settled.field("parts"))[0])["outcome"])["action"] != "choose" {
+		t.Fatalf("the answered question = %s", settled.raw)
+	}
 	roots := c.call(token, "GET", "/api/messages", "/api/messages?roots=true&limit=1", "", http.StatusOK)
 	if list := sliceOf(roots.field("messages")); len(list) != 1 || roots.str("next") == "" {
 		t.Fatalf("a page of one root = %s", roots.raw)

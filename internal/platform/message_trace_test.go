@@ -23,6 +23,19 @@ import (
 // upstream, so it says so) and writes a plan, a write ada approves. It returns the root and ops's run, ended.
 func tracedDeploy(t *testing.T) (*platform.Platform, platform.SessionView, runs.Run) {
 	t.Helper()
+	p, v, parked := parkedDeploy(t)
+	if _, err := p.AnswerQuestion(t.Context(), admin, parked.ID, parked.Question.ID, platform.QuestionAnswer{Action: platform.ActApprove, Note: "ship it"}); err != nil {
+		t.Fatal(err)
+	}
+	done := await(t, p, parked.ID, runs.Completed)
+	pickOf(t, p, v.ID)
+	return p, v, done
+}
+
+// parkedDeploy is tracedDeploy up to ops waiting on ada to approve its write:
+// the root, and ops's run, parked.
+func parkedDeploy(t *testing.T) (*platform.Platform, platform.SessionView, runs.Run) {
+	t.Helper()
 	c := entryCast([][]saigetypes.Delta{
 		pickJSON(platform.PickDelegate, "Deploys are ops's.", "ops"),
 	}, map[string][][]saigetypes.Delta{"ops": {
@@ -54,12 +67,7 @@ func tracedDeploy(t *testing.T) (*platform.Platform, platform.SessionView, runs.
 		return ok && r.Status == runs.Parked && r.Question != nil
 	})
 	questionFor(t, p, parked.ID)
-	if _, err := p.AnswerQuestion(t.Context(), admin, parked.ID, parked.Question.ID, platform.QuestionAnswer{Action: platform.ActApprove, Note: "ship it"}); err != nil {
-		t.Fatal(err)
-	}
-	done := await(t, p, parked.ID, runs.Completed)
-	pickOf(t, p, v.ID)
-	return p, v, done
+	return p, v, parked
 }
 
 func TestAMessagesTraceShowsThePickAndWhatTheChildDid(t *testing.T) {

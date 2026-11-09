@@ -22,3 +22,24 @@ func TestAContextReadIsReadFromWhatGetContextAnswered(t *testing.T) {
 		t.Fatalf("a withheld read showed %+v", held)
 	}
 }
+
+func TestAToolUseIDReadsBackIntoItsRunAndNumber(t *testing.T) {
+	for id, want := range map[string]struct {
+		run string
+		n   int
+		ok  bool
+	}{
+		toolUseID("r0123abc", 7): {"r0123abc", 7, true},
+		"htu_r_entry_2":          {"r_entry", 2, true},
+		"htu_r1_0":               {"", 0, false},
+		"htu_r1_01":              {"", 0, false},
+		"htu__3":                 {"", 0, false},
+		"toolu_01ABC":            {"", 0, false},
+		"htu_r1":                 {"", 0, false},
+	} {
+		run, n, ok := parseToolUseID(id)
+		if run != want.run || n != want.n || ok != want.ok {
+			t.Fatalf("parseToolUseID(%q) = %q, %d, %v; want %+v", id, run, n, ok, want)
+		}
+	}
+}

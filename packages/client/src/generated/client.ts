@@ -21,6 +21,7 @@ import type {
   AlertRule,
   AmendAgentSetupBody,
   AnnouncementInput,
+  AnswerToolUseBody,
   Approved,
   ArchiveThreadBody,
   Artifact,
@@ -753,6 +754,35 @@ same. id is a session id, or a message id (session:message).
     let path = "/api/messages/{id}/stop";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<void>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Answers the approval of a tool call, or the question a tool call
+asked, anywhere in the message's conversation, named by the call's
+`tool_use_id` (`htu_<run>_<n>`, as the message's trace and stream
+name it). It is the same as answering the question on its run
+(`answerQuestion`): who may answer, edited `arguments`, `act_as` and
+the first recorded answer standing all hold. A call outside the
+conversation, one the caller may not read, or one nothing waited on
+is 404.
+ */
+  async answerToolUse(id: string, body: AnswerToolUseBody, options?: RequestOptions): Promise<InboxMessage> {
+    let path = "/api/messages/{id}/answer";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<InboxMessage>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async answerToolUseRaw(id: string, body: AnswerToolUseBody, options?: RequestOptions): Promise<ApiResponse<InboxMessage>> {
+    let path = "/api/messages/{id}/answer";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<InboxMessage>("POST", path, {
       body,
       contentType: "application/json",
       ...options,
