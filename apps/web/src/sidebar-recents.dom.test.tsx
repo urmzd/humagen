@@ -156,6 +156,57 @@ test("Recents is one list: Today, Yesterday, Earlier, newest first, each session
   );
 });
 
+test("an agent's session under a listed one is shown as that row, not as a second with its title", async () => {
+  const asked = session("s_asked", "Is MD5 fine for passwords?", yesterday, { agents: [] });
+  // The agent that answered works in a session of its own, under the one the person started.
+  const answering = session("s_answering", "Is MD5 fine for passwords?", newest);
+  net = stubFetch({
+    "GET /api/marks": () => ({ archived: [], read: {}, tips: [] }),
+    "PUT /api/marks/read/s_answering": () => undefined,
+    "GET /api/sessions": () => ({
+      sessions: [
+        {
+          id: asked.id,
+          parent: "console://ada",
+          agent: "humagen",
+          project: "",
+          title: asked.title,
+          status: "done",
+          updated_at: asked.updated_at,
+          conversation: asked,
+        },
+      ],
+      next: "",
+    }),
+    "GET /api/sessions/s_answering": () => ({ id: "s_answering", parent: "s_asked" }),
+    "GET /api/sessions/s_asked": () => ({ id: "s_asked", parent: "console://ada" }),
+  });
+  render(
+    <Sidebar
+      open
+      sessionMode
+      onToggle={() => {}}
+      route={{ page: "conversation", id: "s_answering" }}
+      go={() => {}}
+      me={me}
+      prefs={prefs}
+      can={(p) => me.permissions.includes(p)}
+      threads={[answering, asked]}
+      projects={[]}
+      pinned={[]}
+      onPin={async () => {}}
+      inboxCount={0}
+      live
+      onSignOut={() => {}}
+      sessionAlerts={[]}
+    />,
+  );
+  const list = within(await screen.findByRole("list", { name: defaultCopy.sidebar.recents }));
+  const row = await list.findByRole("button", { current: "page" });
+  assert.match(row.textContent ?? "", /Is MD5 fine for passwords\?/);
+  assert.equal(list.getAllByText("Is MD5 fine for passwords?").length, 1, "listed once");
+});
+
 test("Sessions lists newest first; an alert marks its row without moving it; alert-only sessions are left out", async () => {
   const { SessionsPage } = await import("./SessionCenter.tsx");
   const rows = [
