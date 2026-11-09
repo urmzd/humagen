@@ -4874,6 +4874,7 @@ export interface TracePick {
 
 /** One tool call. Input and output are left out when withheld. */
 export interface TraceTool {
+  /** htu_<run>_<seq>: the run's seq-th call, as the response stream names it. Provider call ids are never shown. */
   id: string;
   name: string;
   /** When it was asked. */
@@ -4891,7 +4892,12 @@ export interface TraceTool {
 
 /** One get_context call. Request, reference, summary and sources are empty when withheld. */
 export interface TraceContext {
+  /** htu_<run>_<seq>, counted with the run's tool calls. */
   id: string;
+  /** When it was asked. */
+  at: string;
+  /** How long it took; absent while it runs. */
+  ms?: number;
   /** What the agent asked for, in words. */
   request: string;
   /** The place it read, such as slack://team/channel/ts: the message's own, bound by the platform. */
@@ -4915,6 +4921,8 @@ export interface TraceSource {
 export interface TraceApproval {
   /** The question's id. */
   id: string;
+  /** The id of the tool call it gates (a TraceTool's or a TraceContext's), when it gates one. */
+  tool?: string;
   /** The tool it would call, or what it asked. */
   action: string;
   decision: "allow" | "deny" | "ask";

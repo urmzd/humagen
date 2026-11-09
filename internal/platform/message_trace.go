@@ -3,6 +3,7 @@ package platform
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -96,9 +97,10 @@ type TracePick struct {
 	Matched  []string `json:"matched"`
 }
 
-// TraceTool is one tool call: when it was asked, how long it ran, and what
-// it was given and gave back. Withheld says the reader may not see the
-// input or the output, and both are left out.
+// TraceTool is one tool call: its id (htu_<run>_<seq>, as the response
+// stream names it), when it was asked, how long it ran, and what it was
+// given and gave back. Withheld says the reader may not see the input or
+// the output, and both are left out.
 type TraceTool struct {
 	ID       string          `json:"id"`
 	Name     string          `json:"name"`
@@ -110,11 +112,14 @@ type TraceTool struct {
 	Withheld bool            `json:"withheld"`
 }
 
-// TraceContext is one get_context call: what the agent asked for, the place
-// it read (bound by the platform to the message's own), the start of what
-// came back, what that drew on, and whether it was cut.
+// TraceContext is one get_context call: its id and when it was asked (as a
+// tool call's), how long it took, what the agent asked for, the place it
+// read (bound by the platform to the message's own), the start of what came
+// back, what that drew on, and whether it was cut.
 type TraceContext struct {
 	ID        string        `json:"id"`
+	At        time.Time     `json:"at"`
+	Ms        *int64        `json:"ms,omitempty"`
 	Request   string        `json:"request"`
 	Reference string        `json:"reference"`
 	Summary   string        `json:"summary"`
@@ -132,8 +137,11 @@ type TraceSource struct {
 
 // TraceApproval is an action a run waited on a person for, and how it was
 // decided: allowed, denied, or still asked. By is who decided, by name.
+// Tool is the id of the tool call it gates (a TraceTool's or a
+// TraceContext's id), when it gates one; ID is the question's own.
 type TraceApproval struct {
 	ID       string    `json:"id"`
+	Tool     string    `json:"tool,omitempty"`
 	Action   string    `json:"action"`
 	Decision string    `json:"decision"`
 	By       string    `json:"by,omitempty"`
@@ -370,6 +378,7 @@ func (t *tracer) node(r runs.Run, pick *TracePick) TraceNode {
 // traceCall is one tool call as a run's events tell it.
 type traceCall struct {
 	id, name    string
+	seq         int
 	at          time.Time
 	done        bool
 	doneAt      time.Time
@@ -420,7 +429,7 @@ func (t *tracer) activity(n *TraceNode, r runs.Run) {
 	call := func(id, name string, at time.Time) *traceCall {
 		c, ok := calls[id]
 		if !ok {
-			c = &traceCall{id: id, name: name, at: at}
+			c = &traceCall{id: id, name: name, seq: len(order) + 1, at: at}
 			calls[id] = c
 			order = append(order, c)
 		}
@@ -430,6 +439,7 @@ func (t *tracer) activity(n *TraceNode, r runs.Run) {
 		return c
 	}
 	approvals := map[string]*TraceApproval{}
+	gates := map[*TraceApproval]string{}
 	var asked []*TraceApproval
 	for _, e := range held {
 		if !t.p.CitationEventVisible(t.who, e) {
@@ -478,6 +488,9 @@ func (t *tracer) activity(n *TraceNode, r runs.Run) {
 			if d.Question.Tool != nil && d.Question.Tool.Name != "" {
 				a.Action = d.Question.Tool.Name
 			}
+			if d.Question.Tool != nil && d.Question.Tool.CallID != "" {
+				gates[a] = d.Question.Tool.CallID
+			}
 			if a.At.IsZero() {
 				a.At = e.Time
 			}
@@ -507,21 +520,16 @@ func (t *tracer) activity(n *TraceNode, r runs.Run) {
 				t.truncated = true
 				continue
 			}
-			n.Context = append(n.Context, t.contextRead(c))
+			read := t.contextRead(c)
+			read.ID, read.At, read.Ms = toolUseID(r.ID, c.seq), c.at.UTC(), callMs(c, spans[spanKey{c.name, c.at.UnixNano()}])
+			n.Context = append(n.Context, read)
 			continue
 		}
 		if len(n.Tools) == maxTraceTools {
 			t.truncated = true
 			continue
 		}
-		tool := TraceTool{ID: c.id, Name: c.name, At: c.at.UTC(), Error: c.err, Withheld: c.withheld}
-		if s, ok := spans[spanKey{c.name, c.at.UnixNano()}]; ok && !s.End.IsZero() {
-			ms := max(s.End.Sub(s.Start).Milliseconds(), 0)
-			tool.Ms = &ms
-		} else if c.done {
-			ms := max(c.doneAt.Sub(c.at).Milliseconds(), 0)
-			tool.Ms = &ms
-		}
+		tool := TraceTool{ID: toolUseID(r.ID, c.seq), Name: c.name, At: c.at.UTC(), Ms: callMs(c, spans[spanKey{c.name, c.at.UnixNano()}]), Error: c.err, Withheld: c.withheld}
 		if c.name == ToolSourceSearch && !c.withheld && !t.p.sourceOutputShown(t.who, r.ID, c.output) {
 			// What a source search found is shown as its citations are.
 			tool.Withheld = true
@@ -547,8 +555,32 @@ func (t *tracer) activity(n *TraceNode, r runs.Run) {
 		if !a.At.IsZero() {
 			a.At = a.At.UTC()
 		}
+		if c, ok := calls[gates[a]]; ok {
+			a.Tool = toolUseID(r.ID, c.seq)
+		}
 		n.Approvals = append(n.Approvals, *a)
 	}
+}
+
+// toolUseID is the id the API gives a run's seq-th tool call (1-based, in
+// the order the run asked for them, get_context and agent calls included):
+// htu_<run>_<seq>. Provider call ids never leave the platform. A response's
+// stream gives the same call the same id, so a trace and a live stream line
+// up without remapping.
+func toolUseID(run string, seq int) string { return fmt.Sprintf("htu_%s_%d", run, seq) }
+
+// callMs is how long a call ran: its tool span when one was recorded, else
+// from its start to its result, or nil while it runs.
+func callMs(c *traceCall, s journal.Span) *int64 {
+	switch {
+	case !s.Start.IsZero() && !s.End.IsZero():
+		ms := max(s.End.Sub(s.Start).Milliseconds(), 0)
+		return &ms
+	case c.done:
+		ms := max(c.doneAt.Sub(c.at).Milliseconds(), 0)
+		return &ms
+	}
+	return nil
 }
 
 // contextResult is what get_context answers.

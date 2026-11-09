@@ -131,6 +131,17 @@ func TestAMessagesTraceShowsThePickAndWhatTheChildDid(t *testing.T) {
 	if ok.Action != platform.ToolFileWrite || ok.Decision != platform.TraceAllow || ok.By != "Ada" || ok.Note != "ship it" || ok.At.IsZero() {
 		t.Fatalf("the approval = %+v", ok)
 	}
+	// Calls carry the ids the response stream gives them, in the order the
+	// run asked: context reads count too. The approval names the call it
+	// gated, and a context read has a time to sit among the calls.
+	ids := []string{write.ID, read.ID}
+	slices.Sort(ids)
+	if !slices.Equal(ids, []string{"htu_" + ops.ID + "_1", "htu_" + ops.ID + "_2"}) {
+		t.Fatalf("call ids = %v", ids)
+	}
+	if ok.Tool != write.ID || read.At.IsZero() || read.Ms == nil {
+		t.Fatalf("the approval gates %q (the write is %q); the read is at %v for %v", ok.Tool, write.ID, read.At, read.Ms)
+	}
 
 	// The person's message reads the same; the child's own message reads
 	// its run alone.
