@@ -103,9 +103,9 @@ const words = defaultCopy.latest;
 /**
  * The control that returns to the end of a list, over its bottom edge. It
  * is drawn only while the end is off view. While an answer is being written
- * a ring turns around the arrow (it stands still for a reader who asked for
- * less motion); after, the arrow is plain, with a dot if something arrived
- * unseen. Its name says which. It never takes focus by appearing; used from
+ * it shows three dots moving in a wave in place of the arrow (they stand
+ * still for a reader who asked for less motion); after, it is the arrow
+ * again, with a dot at its corner if something arrived unseen. Its name says which. It never takes focus by appearing; used from
  * the keyboard, it hands focus to the list it scrolled.
  */
 export function LatestButton({
@@ -139,7 +139,15 @@ export function LatestButton({
         }}
         className="aui-pop-in aui-latest absolute bottom-3 left-1/2 z-10 inline-flex size-8 -translate-x-1/2 items-center justify-center rounded-full border border-aui-border bg-aui-bg text-aui-fg shadow-md transition-colors hover:bg-aui-surface focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-aui-accent"
       >
-        <ArrowDownIcon size={14} />
+        {look === "working" ? (
+          <span aria-hidden="true" className="aui-latest-dots">
+            <span />
+            <span />
+            <span />
+          </span>
+        ) : (
+          <ArrowDownIcon size={14} />
+        )}
         {look === "unseen" && <span aria-hidden="true" className="aui-latest-dot" />}
       </button>
     </>
