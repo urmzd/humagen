@@ -875,72 +875,87 @@ key it is, left out of the directory, and subjects are never searched.
 | `pkg/prefs` | `Muted []string` (at most 100 project names) | 4 |
 | `pkg/clients` | `Home{Project, Channel}` (default root, `general`) | 8 |
 
+## A project's context
+
+A project is governance plus context for sessions. Besides its instructions,
+its context is the corpora it attaches (`Project.Context.Corpora`, at most
+20): every session filed there and below searches them, the project's own
+first and each ancestor's after, each once, at most 40 (`Tree.Corpora`). A
+corpus is the Knowledge store's; a project only names it. Attaching one needs
+ownership of the project and that the owner may read the corpus, and makes
+no one its reader: a session searches it only as each of its readers may. A
+corpus a reader may not read, or one deleted since, is left out of what they
+are shown and kept when they save, so saving never drops what they were not
+shown (`GET`, `PUT /api/projects/{name}/corpora`).
+
 ## Agents in projects
 
-### Platform agents and project agents
+### Agents are independent of projects
 
-- **A Company agent** has an explicit root home. It is available in
-  a project when the project or an ancestor enables it. Every existing agent,
-  and the built-ins `humagen-writer`, `humagen-analyst`, `humagen-builder`,
-  `code-reviewer`, `security-reviewer`, `architect-reviewer` and `qa-reviewer`,
-  has a Company home.
-- **A project agent** lives in one project (its home): it is available there
-  and in every descendant, and nowhere else. `*` never reaches it, and it is
-  not available at the root, so a conversation in Company cannot reach it.
-
-Both relations are kept on Humagen's records (the project's `Agents`, and an
-agent-to-home index in `pkg/projects`). fiber's `AgentSpec` is unchanged.
+No agent lives in a project. Any agent answers in any project, limited by
+policy, not by a home:
 
 ```
-offered(P)   = ∪ over Q in Chain(P) of (Q.Enable ∪ Homes(Q))
-               "*" in Q.Enable = every agent whose home is Company
 allowed(P)   = ∩ over Q in Chain(P) with Q.Allow set, of Q.Allow   (none set: no narrowing)
-available(P) = offered(P) ∩ allowed(P)
+available(P) = allowed(P)
 ```
 
-A zero `Agents{}` adds nothing: availability below comes from an ancestor's
-explicit `enable`. `*` is written, never implied. The migration writes
-`enable: ["*"]` on the root, which is today's behavior: every agent answers
-everywhere. A project that narrows sets `allow`; a child cannot widen it.
+A project's `allow` list is its agent policy, and a child cannot widen it.
+A project's `enable` list and its own `default`, and a channel's `default`,
+were how a project chose its agents. They are kept as stored and are not
+read: an untagged message falls to the thread's default, then the client's,
+then the workspace default (`workspace.agents.default`, the root's
+`Agents.Default`). The Projects page has no Agents tab and no project shows
+agents.
+
+An agent's home survives only as who sees the agent, its Access:
+
+- **Workspace**: no home, or the root. Everyone sees it, and it answers
+  anywhere it is allowed. The built-ins `humagen-writer`, `humagen-analyst`,
+  `humagen-builder`, `code-reviewer`, `security-reviewer`,
+  `architect-reviewer`, `qa-reviewer` and `approver` are the workspace's.
+- **Members of a project**: homed in a project. Its readers see it. Homed in
+  a project everyone reads, it answers anywhere; homed in one kept to its
+  members, it answers only where its readers alone read (that project and
+  its subtree as open as it), so nothing it says reaches someone who may not
+  see it.
+- **Private**: homed in a Personal project, the same rule with one reader.
+
+A stored home that names no project, or cannot be read, never refuses the
+workspace: it fails closed, and nobody but `projects:govern` sees the agent.
+Editing a homed agent still needs ownership of its home. Agent access as its
+own member list, migrated once from the homes, is the likely next step.
 
 ### Enforcement: one check, at admission
 
 In `Platform.Invoke`, after `placeOf` and under `p.admission`, a run filed in a
-project (the root included) must use an agent in `available(project)`. If it
-does not, it is refused with `ErrNotAvailable` (403):
-`"globex-helper is not available in Initech"`. This covers every origin,
-because every run passes through admission:
-
-- API turns and thread messages;
-- cron and run-now (a schedule whose agent stops being available keeps firing,
-  is refused, and raises the existing failure message);
-- called runs: `placeOf` gives them their root's project, so a call made in
-  Globex reaches only agents available in Globex. Spawn lists, call policies,
-  limits and leases still decide every call first; this only narrows;
-- Slack and GitHub tags, once the platform files them (phase 8);
-- evals: a case is filed where its agent lives, its home for a project agent
-  and the root for a platform agent, so the home's limits count it and the
-  runs it calls are checked there, as for any run of that agent.
+project (the root included) must use an agent that answers there
+(`Platform.answersIn`: allowed, and seen by everyone who reads the project).
+If it does not, it is refused with `ErrNotAvailable` (403): `"globex-helper is
+not allowed in Initech"`, or that it is private. A refusal never says where
+the agent's home is. This covers every origin, because every run passes
+through admission: API turns and thread messages; cron and run-now (a
+schedule whose agent stops being allowed keeps firing, is refused, and raises
+the existing failure message); called runs, filed where their root is; Slack
+and GitHub tags; and evals. The call tool offers, and the router asks, only
+the agents that answer where the run is filed.
 
 Housekeeping (`OriginSystem`) is exempt, as it is from admission. It is read
-where the turn it serves is, so a title or memory agent that lives in a
-project is asked only about the turns there and below, whose readers all read
-it. The conversation of its own a housekeeping run makes is filed at the
-workspace, and is counted there only for a reader who may read the turn it
-serves. A reader's counts are decided as of one moment, so a conversation
-opened while they are read, a housekeeping run's or a private thread's, is
-counted from the next read. Earlier checks use the same function and give the same answer sooner:
-writing a schedule, a default or a tag, and `GET /api/join`. An agent the
-writer may not read is not one they are told about: naming it answers as
-naming an agent that does not exist, at every one of them.
+where the turn it serves is. A reader's counts are decided as of one moment,
+so a conversation opened while they are read, a housekeeping run's or a
+private thread's, is counted from the next read. Earlier checks use the same
+function and give the same answer sooner: writing a schedule, a default or a
+tag, and `GET /api/join`. An agent the writer may not read is not one they
+are told about: naming it answers as naming an agent that does not exist, at
+every one of them.
 
 ### Homes
 
-`PUT /api/agents/{name}/home {project}` needs `agents:write` and ownership of
-the new home and of the old one. It answers 409, listing them, when a
-schedule, alert rule, default or call-policy list outside the new home's
-subtree still names the agent. Editing a homed agent also needs ownership of
-its home. The spec says the same on Humagen's wrapper:
+`PUT /api/agents/{name}/home {project}` sets who sees an agent. It needs
+`agents:write` and ownership of the new home and of the old one, and answers
+409 only while the agent's default skills would not fit the new home.
+Schedules, alert rules, clients and defaults that use the agent hold no
+change back. The spec says the same on Humagen's wrapper:
 `agents: [{project: Globex, spec: {...}}]`.
 
 ### The entry agent
@@ -1022,13 +1037,10 @@ ask refuses the message.
 - **An agent opts out** with `tagged_only: true` in its spec (fiber's
   `AgentSpec`): it runs only when a message names it, and is never asked
   about one that does not. Off by default.
-- **The workspace chooses the model that asks**, in its settings
-  (`PUT /api/settings`, and the console's Settings): `router: {enabled,
-  provider, model}`. It is off by default, and while it is off no agent
-  takes a message on its own. The provider is one of the model providers the
-  deployment declares (the spec's `models`), and its key is a credential
-  reference (an environment variable, `op://`, the keychain), never kept in
-  the settings. A program built on Humagen can supply its own asker through
+- **No workspace setting chooses the model that asks**: routing moves to
+  the entry agent, a built-in that picks on its own model chain. Until it
+  lands, no agent takes a message on its own unless a program built on
+  Humagen supplies its own asker through
   `platform.Config.Router`; `join.Words` is a deterministic one, with no
   model, that tests use.
 - An asker that fails, or an answer it cannot read, counts as no.
@@ -1052,8 +1064,8 @@ assistant pane, an unbound channel, a GitHub issue. The order there is the
 thread, then the client, then the client's home channel and its chain. In a
 bound Slack channel the bound Humagen channel's chain decides. The client's
 allow-list (`client.Routes`) still filters the result: a default the client
-may not route to is refused, never swapped. A GitHub label in `auto_labels`
-names an agent, so it is a tag. A client's default may be `*`, and fiber's
+may not route to is refused, never swapped. A GitHub label starts nothing:
+automatic review is the connection's switch. A client's default may be `*`, and fiber's
 in-process connectors may ask for it too; `surface.stamp` then asks the
 agents available where the run is filed that the client may route to, before
 admission, and each that joins gets a tag of its own. The Slack app built on
@@ -1959,8 +1971,7 @@ and its total, What's new and Your projects to the same on both renderers.
   posted as the person in their messages with the app, Build an Agent tagging
   `@humagen-builder` where the client reaches it; Search Context opens the
   console. Someone the client maps to nobody keeps the mailbox.
-- **GitHub.** The same rule: `@agent` in a comment or an `auto_labels` label is
-  a tag; otherwise the client's default; otherwise nothing. As Slack delivers
+- **GitHub.** The same rule: `@agent` in a comment is a tag; otherwise the client's default; otherwise nothing. As Slack delivers
   only what mentions the app, a comment that names no agent asks the client
   only when it mentions the app's own login (`github.login`): `@humagen what
   changed?`. One that mentions neither starts nothing, so a busy repository

@@ -12,7 +12,7 @@ import (
 // next one lands in it (200), a follow-up goes under a message, and a
 // message reads and streams as its session.
 func TestMessagesFindOrStartThePlacesRoot(t *testing.T) {
-	f := newFixtureGranting(t, platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline"}, `grant operator to subject "ana"`)
+	f := newFixtureGranting(t, platform.Config{TestBuiltinProvider: "offline", TestBuiltinModel: "offline"}, `grant operator to subject "ana"`)
 	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
 	admin := f.machine(t, "acme", everything...)
 	ana := f.person(t, "acme", "ana", "Ana", "humagen-operators")

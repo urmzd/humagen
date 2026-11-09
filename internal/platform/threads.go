@@ -71,10 +71,6 @@ type ThreadInput struct {
 	Mode     string   `json:"mode,omitempty"`
 	Text     string   `json:"text"`
 	PostOnly bool     `json:"post_only,omitempty"`
-	// Model and Effort are what the runs the message starts use in place of
-	// their agents' own, where an agent offers them (message_choice.go).
-	Model  string `json:"model,omitempty"`
-	Effort string `json:"effort,omitempty"`
 	// ActAs is the person a surface's credential posts for.
 	ActAs *ActAs `json:"act_as,omitempty"`
 	// Surface is where on a client's surface the message was posted, sent
@@ -95,10 +91,6 @@ type MessageInput struct {
 	// latest.
 	After    string `json:"after,omitempty"`
 	PostOnly bool   `json:"post_only,omitempty"`
-	// Model and Effort are what the runs the message starts use in place of
-	// their agents' own, where an agent offers them (message_choice.go).
-	Model  string `json:"model,omitempty"`
-	Effort string `json:"effort,omitempty"`
 	// Answers records the message as a question's answer, which resumes the
 	// run parked on it.
 	Answers *threads.AnswerRef `json:"answers,omitempty"`
@@ -475,18 +467,17 @@ func (p *Platform) checkTags(tenant string, tree *projects.Tree, project string,
 }
 
 // placeOfThread is where a message in a thread is posted, for deciding who
-// answers it: the thread's project, with the thread's and its channel's
-// defaults nearer than the project's.
+// answers it: the thread's project, with the thread's default nearer than
+// the workspace's.
 func (p *Platform) placeOfThread(tenant string, th threads.Thread) Place {
 	return p.placeIn(tenant, th, "")
 }
 
 // placeIn is placeOfThread for a message a client sends, with the client's
-// default between the thread's and the channel's.
+// default after the thread's.
 func (p *Platform) placeIn(tenant string, th threads.Thread, clientDefault string) Place {
-	ch, _ := p.Projects.Channel(tenant, th.Project, cmp.Or(th.Channel, projects.General))
 	at := Place{Project: th.Project}
-	for _, d := range threads.Nearer(th, cmp.Or(clientDefault, p.clientDefault(tenant, th)), ch) {
+	for _, d := range threads.Nearer(th, cmp.Or(clientDefault, p.clientDefault(tenant, th))) {
 		at.Nearer = append(at.Nearer, Nearer{Agent: d.Agent, From: d.From})
 	}
 	return at
@@ -742,10 +733,6 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if err := threads.CheckText(in.Text); err != nil {
 		return Posted{}, err
 	}
-	choice, err := checkMessageChoice(in.Model, in.Effort)
-	if err != nil {
-		return Posted{}, err
-	}
 	if in.Visibility == "" && on == nil && in.ActAs == nil {
 		// A conversation a person starts as themselves, as in the console,
 		// starts private, its starter's alone, until they share it
@@ -811,7 +798,7 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if err != nil {
 		return Posted{}, err
 	}
-	out, err := p.carryOut(withMessageChoice(ctx, choice), person, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, false, keeps, seer.Agent)
+	out, err := p.carryOut(ctx, person, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, false, keeps, seer.Agent)
 	out.Refused = append(out.Refused, unmapped...)
 	return out, err
 }
@@ -838,10 +825,6 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	}
 	// Refused before its tags are looked up.
 	if err := threads.CheckText(in.Text); err != nil {
-		return Posted{}, err
-	}
-	choice, err := checkMessageChoice(in.Model, in.Effort)
-	if err != nil {
 		return Posted{}, err
 	}
 	by, name, via, slack, err := p.author(who, in.ActAs)
@@ -915,6 +898,14 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		a := *in.Answers
 		msg.Answers = &a
 	}
+	// A message that would start agent work, or says stop first, while
+	// agents work in the thread is a follow-up: queued, replacing that work
+	// or stopping it.
+	if !in.PostOnly && in.Answers == nil && !in.reply && (forcesStop(msg.Text) || p.startsWork(who.Tenant, th, msg.Mentions, clientOf(in.ActAs), sees)) {
+		if msg.Followup, err = p.followupOf(ctx, person, th, msg.Text); err != nil {
+			return Posted{}, err
+		}
+	}
 	if th, err = p.recordOf(who.Tenant, id, p.claimant(person, th.Project)); err != nil {
 		return Posted{}, err
 	}
@@ -926,12 +917,21 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		return Posted{}, err
 	}
 	if !fresh {
+		if m.Followup != nil {
+			return p.followThrough(ctx, person, tree, th, m, true)
+		}
 		again := p.posted(who.Tenant, th, m)
 		again.Repeated = true
 		return again, nil
 	}
+	if m.Followup != nil {
+		p.repliedTo(who.Tenant, th.ID, m)
+		out, err := p.followThrough(ctx, person, tree, th, m, false)
+		out.Refused = append(out.Refused, unmapped...)
+		return out, err
+	}
 	p.repliedTo(who.Tenant, th.ID, m)
-	out, err := p.carryOut(withMessageChoice(ctx, choice), person, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, in.Answers != nil || in.reply, keeps, sees)
+	out, err := p.carryOut(ctx, person, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, in.Answers != nil || in.reply, keeps, sees)
 	out.Refused = append(out.Refused, unmapped...)
 	return out, err
 }
@@ -1253,7 +1253,6 @@ func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.T
 	}
 	skills := p.skillsOfMessage(tenant, th, m, via, actor.User)
 	pinSkills(meta, skills)
-	pinMessageChoice(ctx, meta)
 	type answer struct{ agent, tag, picked string }
 	var who []answer
 	if agent == Open {

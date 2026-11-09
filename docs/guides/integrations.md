@@ -117,14 +117,15 @@ forwarder, not a GitHub-style asynchronous relay.
 ```sh
 export HUMAGEN_GITHUB_OWNERS='your-account'
 export HUMAGEN_GITHUB_BOTS='your-app[bot]=github-agent'
-export HUMAGEN_GITHUB_AUTO_LABELS='{"your-account/sandbox":{"agent:auto":"github-agent"}}'
+export HUMAGEN_GITHUB_DEFAULT_AGENT=github-agent
 export HUMAGEN_GITHUB_CHECKS=true
 export HUMAGEN_GITHUB_GUIDES=true
 ```
 
-Applying the configured label starts a review. Subsequent commits update its
-guide and start separate reviews. Mention the app for questions. For writes,
-map the app to `github-fixer`, update the label mapping accordingly, and enable
+A pull request that opens ready for review, leaves draft or gets a push is
+reviewed by the default agent, once per commit; labels start nothing (see
+[Automatic review](../reference/github.md#automatic-review)). Mention the app
+for questions. For writes, map the app to `github-fixer` and enable
 `HUMAGEN_GITHUB_MUTATIONS=true`. Only explicit `/fix` or `/check <run-id>`
 requests from repository writers receive a run-bound grant. See [GitHub](../reference/github.md).
 

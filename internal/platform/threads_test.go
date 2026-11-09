@@ -134,16 +134,17 @@ func TestATaggedAgentAnswersSeeingTheRoomUpToTheMessage(t *testing.T) {
 }
 
 // An untagged turn through the API is answered as a message posted in its
-// thread would be: by the thread's default, then the channel's, ahead of the
-// project chain's, and a new conversation is in general of its project. A
-// follow-up inside a room is sent the room up to it, and is part of the room
-// the next message's agents are sent.
+// thread would be: by the thread's default, then the workspace's, and a
+// channel's default is not read. A new conversation is in general of its
+// project. A follow-up inside a room is sent the room up to it, and is part
+// of the room the next message's agents are sent.
 func TestAnUntaggedAPITurnIsAnsweredByTheDefaultItsThreadInherits(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
 	workIn(t, p, "Globex", operator)
 	ctx := t.Context()
 	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "lead"})
+	// General's default is stored, but no longer read.
 	if _, err := p.UpdateChannel(ctx, tenant, "Globex", projects.General, ada, platform.ChannelUpdate{Default: "helper"}); err != nil {
 		t.Fatal(err)
 	}
@@ -156,14 +157,14 @@ func TestAnUntaggedAPITurnIsAnsweredByTheDefaultItsThreadInherits(t *testing.T) 
 		return await(t, p, r.ID, runs.Completed)
 	}
 	first := turn(platform.Turn{ID: "t-new", Text: "hello", Project: "Globex"})
-	if first.Agent != "helper" {
-		t.Fatalf("a new conversation in Globex went to %s, not general's default", first.Agent)
+	if first.Agent != "lead" {
+		t.Fatalf("a new conversation in Globex went to %s, not the workspace default", first.Agent)
 	}
-	if next := turn(platform.Turn{ID: "t-next", Text: "and?", After: first.ID}); next.Agent != "helper" {
-		t.Fatalf("an untagged follow-up went to %s, not general's default", next.Agent)
+	if next := turn(platform.Turn{ID: "t-next", Text: "and?", After: first.ID}); next.Agent != "lead" {
+		t.Fatalf("an untagged follow-up went to %s, not the workspace default", next.Agent)
 	}
 
-	if _, err := p.CreateChannel(ctx, tenant, "Globex", ada, platform.ChannelInput{Name: "renewals", Default: "lead"}); err != nil {
+	if _, err := p.CreateChannel(ctx, tenant, "Globex", ada, platform.ChannelInput{Name: "renewals"}); err != nil {
 		t.Fatal(err)
 	}
 	room := startThread(t, p, operator, platform.ThreadInput{Project: "Globex", Channel: "renewals", Text: "FIRST-QUESTION @helper"})
@@ -316,8 +317,8 @@ func TestTaggingOnlyPeopleNotifiesThemAndStartsNoRun(t *testing.T) {
 
 // In the console an untagged message starts nothing, whatever default the
 // thread inherits, and a tagged one runs the agents it tags. The default
-// the thread inherits, the thread's, then its channel's, then its project's
-// chain, is still what the console reads, and what answers on a surface
+// the thread inherits, the thread's, then the workspace's, is still what
+// the console reads, and what answers on a surface
 // (TestOnASurfaceTheDefaultAnswersAndFailsClosed). Posted only, nothing
 // answers. A tag of an agent that cannot answer is refused, never handed to
 // the default.
@@ -325,7 +326,8 @@ func TestTheConsoleRunsOnlyWhatAMessageTags(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
 	workIn(t, p, "Globex", operator)
-	if _, err := p.CreateChannel(t.Context(), tenant, "Globex", ada, platform.ChannelInput{Name: "renewals", Purpose: "Renewal work", Default: "helper"}); err != nil {
+	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "helper"})
+	if _, err := p.CreateChannel(t.Context(), tenant, "Globex", ada, platform.ChannelInput{Name: "renewals", Purpose: "Renewal work"}); err != nil {
 		t.Fatal(err)
 	}
 	got := startThread(t, p, operator, platform.ThreadInput{Project: "Globex", Channel: "renewals", Text: "when does it renew?"})
@@ -345,7 +347,7 @@ func TestTheConsoleRunsOnlyWhatAMessageTags(t *testing.T) {
 	if text := wire.TextOf(asked.Runs[0].Tag()); !strings.Contains(text, "This conversation is in #renewals. Its purpose: Renewal work") {
 		t.Fatalf("the channel's purpose was not sent:\n%s", text)
 	}
-	if d, _, err := p.DefaultFor(tenant, got.Thread.ID, "", ""); err != nil || d != (threads.Default{Agent: "helper", From: threads.FromChannel}) {
+	if d, _, err := p.DefaultFor(tenant, got.Thread.ID, "", ""); err != nil || d != (threads.Default{Agent: "helper", From: "project:~"}) {
 		t.Fatalf("the default is %+v, %v", d, err)
 	}
 	quiet := post(t, p, operator, got.Thread.ID, platform.MessageInput{Text: "noting this", PostOnly: true})
@@ -357,7 +359,7 @@ func TestTheConsoleRunsOnlyWhatAMessageTags(t *testing.T) {
 	// A tag of an agent that cannot answer is refused, and never handed to
 	// the default instead.
 	tagged := post(t, p, operator, got.Thread.ID, platform.MessageInput{Text: "@helper please"})
-	if tagged.Rule != threads.RuleTagged || len(tagged.Runs) != 0 || len(tagged.Refused) != 1 || !strings.Contains(tagged.Refused[0].Refused, "helper is not available in Globex") {
+	if tagged.Rule != threads.RuleTagged || len(tagged.Runs) != 0 || len(tagged.Refused) != 1 || !strings.Contains(tagged.Refused[0].Refused, "helper is not allowed in Globex") {
 		t.Fatalf("a refused tag started %+v", tagged)
 	}
 	// A default written where it cannot answer is refused.

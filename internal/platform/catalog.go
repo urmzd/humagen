@@ -56,6 +56,9 @@ type CatalogConnector struct {
 	Refresh time.Duration
 	Crawler catalog.Crawler
 	Querier catalog.Querier
+	// Reader runs a query with the reader's own login, for corpora; nil
+	// when the kind cannot.
+	Reader catalog.ReaderQuerier
 }
 
 // catalogState is the declared connectors and how their crawls went.
@@ -204,6 +207,9 @@ type CatalogConnectorView struct {
 	Mine bool `json:"mine"`
 	// LastError is the last crawl's failure, shown to the owner only.
 	LastError string `json:"last_error,omitempty"`
+	// Login is whether the reader has their own login to it, for a
+	// warehouse queried as each reader: connected, missing or unavailable.
+	Login string `json:"login,omitempty"`
 }
 
 // CatalogPage is what GET /api/catalog answers.
@@ -251,6 +257,9 @@ func (p *Platform) CatalogAs(who auth.Principal, q string, limit int) (CatalogPa
 			if d.Querier != nil {
 				view.Capabilities = append(view.Capabilities, catalog.CapabilityLive)
 			}
+		}
+		if d, ok := p.declaredConnector(who.Tenant, c.Name); ok && d.Reader != nil {
+			view.Login = p.loginState(who.Tenant, who.Subject, c)
 		}
 		if view.Mine {
 			p.catalog.mu.Lock()
