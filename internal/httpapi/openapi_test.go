@@ -2500,7 +2500,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 
 	for _, op := range c.spec.ops {
 		// One that names an object is asked below, of an object made here.
-		if !refusesUnknownFields(op) || len(pathParams(op.path)) > 0 {
+		// The MCP's body is a JSON-RPC envelope, asked below.
+		if !refusesUnknownFields(op) || len(pathParams(op.path)) > 0 || op.path == "/api/mcp" {
 			continue
 		}
 		caller := acme
@@ -2512,6 +2513,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}
 		c.call(caller, op.method, op.path, op.path, `{"unknown_field":1}`, http.StatusBadRequest)
 	}
+
+	// The humagen MCP: a JSON-RPC request in, its response out (a protocol
+	// error is a JSON-RPC error in a 200), and what is not JSON-RPC over JSON
+	// refused before it.
+	mcpList := `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`
+	c.call(acme, "POST", "/api/mcp", "/api/mcp", mcpList, http.StatusOK, "Content-Type", "application/json", "Accept", "application/json, text/event-stream")
+	c.call(acme, "POST", "/api/mcp", "/api/mcp", mcpList, http.StatusUnsupportedMediaType, "Content-Type", "text/plain", "Accept", "application/json, text/event-stream")
+	c.call("", "POST", "/api/mcp", "/api/mcp", mcpList, http.StatusUnauthorized, "Content-Type", "application/json")
+	c.call(acme, "POST", "/api/mcp", "/api/mcp", `{"jsonrpc":"2.0","method":"notifications/initialized"}`, http.StatusAccepted, "Content-Type", "application/json", "Accept", "application/json, text/event-stream")
 
 	// The rest, one by one.
 	c.call(acme, "DELETE", "/api/policies", "/api/policies?kind=nonsense", "", http.StatusNotFound)
