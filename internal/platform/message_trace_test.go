@@ -62,7 +62,7 @@ func tracedDeploy(t *testing.T) (*platform.Platform, platform.SessionView, runs.
 		brief(s)
 		s.Approvals, s.Approvers = []string{platform.ToolFileWrite}, []string{admin.Subject}
 	}
-	cfg := platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline", Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}}
+	cfg := platform.Config{TestBuiltinProvider: "offline", TestBuiltinModel: "offline", Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}}
 	cfg.Ext.Catalogs = []runtime.Catalog{contextTools}
 	p := stage(t, c, cfg)
 	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "*"})
