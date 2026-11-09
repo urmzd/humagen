@@ -123,17 +123,8 @@ func TestTheSystemToolGetContextPullsForTheMessageAnswered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tools, err := p.SystemTools()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var get platform.SystemTool
-	for _, tl := range tools {
-		if tl.Name == platform.ToolGetContext {
-			get = tl
-		}
-	}
-	if get.Call == nil {
+	get, ok := p.SystemTool(platform.ToolGetContext)
+	if !ok {
 		t.Fatal("get_context is not in the registry")
 	}
 	res, err := get.Call(t.Context(), platform.SystemCall{Who: ana, Message: out.ID, Run: "run-9"}, []byte(`{"request":" the release date "}`))

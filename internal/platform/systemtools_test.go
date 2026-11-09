@@ -40,16 +40,9 @@ func TestTheContractToolsComeFromTheContract(t *testing.T) {
 func TestTheAgentCallHandsOnWhatItIsGiven(t *testing.T) {
 	p, _ := configured(t, Config{})
 	ctx := context.Background()
-	tools, err := p.SystemTools()
-	if err != nil {
-		t.Fatal(err)
-	}
-	byName := map[string]SystemTool{}
-	for _, tl := range tools {
-		byName[tl.Name] = tl
-	}
-	agent, get := byName[ToolAgent], byName[ToolGetContext]
-	if agent.Call == nil || get.Call == nil || agent.Permission != auth.RunsWrite || get.Permission != auth.RunsRead || !get.ReadOnly {
+	agent, ok := p.SystemTool(ToolAgent)
+	get, okGet := p.SystemTool(ToolGetContext)
+	if !ok || !okGet || agent.Call == nil || get.Call == nil || agent.Permission != auth.RunsWrite || get.Permission != auth.RunsRead || !get.ReadOnly {
 		t.Fatalf("agent = %+v, get_context = %+v", agent, get)
 	}
 	call := SystemCall{Who: admin("acme"), Message: "msg-1", Run: "run-1", ToolUseID: "htu_run-1_3"}
@@ -75,6 +68,39 @@ func TestTheAgentCallHandsOnWhatItIsGiven(t *testing.T) {
 	res, err := agent.Call(ctx, call, json.RawMessage(`{"agent":" security ","title":"Review the auth change","brief":"Check the token handling."}`))
 	if err != nil || res.Text != "No issues." || got.Agent != "security" || got.Brief != "Check the token handling." || gotCall.ToolUseID != "htu_run-1_3" {
 		t.Fatalf("agent call = %+v, %v; handed %+v as %+v", res, err, got, gotCall)
+	}
+}
+
+// SystemTool finds one tool of the registry by name, a contract operation or
+// one of the platform's own, with the definition SystemTools lists.
+func TestASystemToolIsFoundByName(t *testing.T) {
+	p, _ := configured(t, Config{})
+	all, err := p.SystemTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range all {
+		got, ok := p.SystemTool(want.Name)
+		if !ok || got.Name != want.Name || got.Description != want.Description || got.Permission != want.Permission || got.ReadOnly != want.ReadOnly || got.Call == nil {
+			t.Errorf("SystemTool(%q) = %+v, %v; listed as %+v", want.Name, got, ok, want)
+		}
+	}
+	if list, ok := p.SystemTool("list_agents"); !ok || list.Permission != auth.AgentsRead || !list.ReadOnly {
+		t.Errorf("list_agents = %+v, %v", list, ok)
+	}
+	if _, ok := p.SystemTool("no_such_tool"); ok {
+		t.Error("a tool the registry lacks was found")
+	}
+	if _, ok := p.SystemTool("echo"); ok {
+		t.Fatal("echo was found before it was registered")
+	}
+	if err := p.RegisterSystemTool(SystemTool{Name: "echo", Input: map[string]any{"type": "object"}, Call: func(context.Context, SystemCall, json.RawMessage) (SystemResult, error) {
+		return SystemResult{Text: "echo"}, nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if echo, ok := p.SystemTool("echo"); !ok || echo.Call == nil {
+		t.Fatalf("a registered tool was not found: %+v, %v", echo, ok)
 	}
 }
 

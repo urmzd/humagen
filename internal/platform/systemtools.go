@@ -126,13 +126,40 @@ func (p *Platform) SystemTools() ([]SystemTool, error) {
 	p.systemTools.mu.Unlock()
 	out := make([]SystemTool, 0, len(ops)+len(own))
 	for _, op := range ops {
-		t := op.def
-		t.Call = func(ctx context.Context, c SystemCall, args json.RawMessage) (SystemResult, error) {
-			return p.callOperation(ctx, op, c.Who, args)
-		}
-		out = append(out, t)
+		out = append(out, p.contractSystemTool(op))
 	}
 	return append(out, own...), nil
+}
+
+// SystemTool is the registry's one tool named name, a contract operation or
+// one of the platform's own: what a run's tool set reads a tool's definition
+// from, and calls it through.
+func (p *Platform) SystemTool(name string) (SystemTool, bool) {
+	if ops, err := contractTools(); err == nil {
+		for _, op := range ops {
+			if op.def.Name == name {
+				return p.contractSystemTool(op), true
+			}
+		}
+	}
+	p.systemTools.mu.Lock()
+	defer p.systemTools.mu.Unlock()
+	for _, t := range p.systemTools.own {
+		if t.Name == name {
+			return t, true
+		}
+	}
+	return SystemTool{}, false
+}
+
+// contractSystemTool is op as a tool of the registry: its definition, called
+// through its own route.
+func (p *Platform) contractSystemTool(op contractTool) SystemTool {
+	t := op.def
+	t.Call = func(ctx context.Context, c SystemCall, args json.RawMessage) (SystemResult, error) {
+		return p.callOperation(ctx, op, c.Who, args)
+	}
+	return t
 }
 
 // SystemOperations are the API operations the registry offers, by
