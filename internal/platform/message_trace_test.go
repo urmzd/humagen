@@ -1,16 +1,12 @@
 package platform_test
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/turn/native"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
@@ -22,31 +18,9 @@ import (
 	"github.com/urmzd/humagen/pkg/threads"
 )
 
-// releaseThread is the place get_context reads in these tests.
-const releaseThread = "slack://T01ABCDEF/C01/1700000000.000100"
-
-// contextTools answer get_context as the platform's tool does: what was
-// pulled from the place, what it drew on, and the place it read.
-func contextTools(runtime.Request, func(event.Action) error) (native.Tools, error) {
-	return native.ToolsFunc(func(name string) (saigetypes.Tool, error) {
-		if name != "get_context" {
-			return nil, native.ErrNoSuchTool
-		}
-		return &saigetypes.ToolFunc{
-			Def: saigetypes.ToolDef{Name: name, Description: "Pull context from where the message came from.", Parameters: saigetypes.ParameterSchema{
-				Type: "object", Required: []string{"request"}, Properties: map[string]saigetypes.PropertyDef{"request": {Type: "string"}},
-			}},
-			Fn: func(context.Context, map[string]any) (string, error) {
-				b, err := json.Marshal(map[string]any{"origin": releaseThread, "text": "They agreed to ship on Friday.", "sources": []map[string]string{{"title": "Release thread", "url": "https://slack.example/release"}}, "truncated": false, "note": ""})
-				return string(b), err
-			},
-		}, nil
-	}), nil
-}
-
 // tracedDeploy is a root whose entry agent hands a deploy to ops, which
-// reads the release thread with get_context and writes a plan, a write ada
-// approves. It returns the root and ops's run, ended.
+// asks get_context about the release (the console root has no place
+// upstream, so it says so) and writes a plan, a write ada approves. It returns the root and ops's run, ended.
 func tracedDeploy(t *testing.T) (*platform.Platform, platform.SessionView, runs.Run) {
 	t.Helper()
 	c := entryCast([][]saigetypes.Delta{
@@ -63,7 +37,6 @@ func tracedDeploy(t *testing.T) (*platform.Platform, platform.SessionView, runs.
 		s.Approvals, s.Approvers = []string{platform.ToolFileWrite}, []string{admin.Subject}
 	}
 	cfg := platform.Config{TestBuiltinProvider: "offline", TestBuiltinModel: "offline", Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}}
-	cfg.Ext.Catalogs = []runtime.Catalog{contextTools}
 	p := stage(t, c, cfg)
 	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "*"})
 	if err := p.EnsureBuiltins(t.Context(), tenant); err != nil {
@@ -120,8 +93,7 @@ func TestAMessagesTraceShowsThePickAndWhatTheChildDid(t *testing.T) {
 		t.Fatalf("the child's context reads = %+v", child.Context)
 	}
 	read := child.Context[0]
-	want := []platform.TraceSource{{Title: "Release thread", URL: "https://slack.example/release"}}
-	if read.Request != "what they said about the release" || read.Reference != releaseThread || read.Summary != "They agreed to ship on Friday." || !slices.Equal(read.Sources, want) || read.Withheld {
+	if read.Request != "what they said about the release" || !strings.HasPrefix(read.Reference, "console://") || !strings.Contains(read.Summary, "did not come from another place") || len(read.Sources) != 0 || read.Withheld {
 		t.Fatalf("the context read = %+v", read)
 	}
 	if len(child.Approvals) != 1 {
@@ -181,7 +153,7 @@ func TestAMessagesTraceLeavesOutAChildItsReaderMayNotRead(t *testing.T) {
 		t.Fatalf("with ops out of reach, the trace = %+v", tr)
 	}
 	raw, _ := json.Marshal(tr)
-	if strings.Contains(string(raw), ops.ID) || strings.Contains(string(raw), "plan.md") || strings.Contains(string(raw), releaseThread) {
+	if strings.Contains(string(raw), ops.ID) || strings.Contains(string(raw), "plan.md") || strings.Contains(string(raw), "what they said about the release") {
 		t.Fatalf("the trace shows what ops did: %s", raw)
 	}
 	if _, err := p.MessageTrace(t.Context(), operator, ops.Thread+":"+ops.ID); !errors.Is(err, threads.ErrNotFound) {
