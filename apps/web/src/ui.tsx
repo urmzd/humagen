@@ -3,6 +3,7 @@ import {
   BanIcon,
   CheckIcon,
   ChevronDownIcon,
+  EllipsisIcon,
   EllipsisVerticalIcon,
   SearchIcon,
   ShieldIcon,
@@ -1168,6 +1169,8 @@ export function Confirm({
 /** One of a page's own actions, for `PageActions`. */
 export interface PageAction {
   label: string;
+  /** A leading icon in a menu row. */
+  icon?: ReactNode;
   onSelect: () => void;
   /** Archive, Delete: last in the menu, after a rule. What it does is the same in the menu as on a button. */
   destructive?: boolean;
@@ -1213,6 +1216,20 @@ export function PageActions({
 /** The More control: a square icon button with three vertical dots, after a page's other actions. */
 const moreControl =
   "inline-flex size-9 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg";
+
+/**
+ * One row of a menu: plain and left-aligned, with an optional leading icon, a
+ * hover background and no border. A destructive row is in the danger colour,
+ * last, after a `MenuSeparator`.
+ */
+export function menuRow(danger = false): string {
+  return `flex min-h-9 pointer-coarse:min-h-11 w-full items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm outline-none hover:bg-aui-hover focus-visible:bg-aui-hover disabled:pointer-events-none disabled:opacity-50 ${danger ? "text-aui-bad" : "text-aui-fg"}`;
+}
+
+/** The rule before a menu's destructive rows. */
+export function MenuSeparator() {
+  return <hr className="my-1 border-0 border-[var(--humagen-rule)] border-t" />;
+}
 
 /**
  * The More menu: a three-dot control that opens a list of actions. Arrow keys,
@@ -1267,8 +1284,9 @@ export function MoreMenu({
         close();
         item.onSelect();
       }}
-      className={`flex min-h-9 pointer-coarse:min-h-11 w-full items-center rounded-aui px-2.5 text-left text-aui-sm outline-none hover:bg-aui-hover focus-visible:bg-aui-hover ${item.destructive ? "text-aui-bad" : "text-aui-fg"}`}
+      className={menuRow(item.destructive)}
     >
+      {item.icon}
       {item.label}
     </button>
   );
@@ -1294,7 +1312,7 @@ export function MoreMenu({
           }
         }}
       >
-        <EllipsisVerticalIcon size={18} />
+        <EllipsisIcon size={18} />
       </button>
       {open && (
         <div
@@ -1327,9 +1345,7 @@ export function MoreMenu({
           className="humagen-glass-pop absolute top-full right-0 z-40 mt-2 flex w-56 max-w-[calc(100vw-2rem)] flex-col rounded-aui-lg p-1.5"
         >
           {everyday.map(entry)}
-          {everyday.length > 0 && destructive.length > 0 && (
-            <div role="separator" className="my-1 border-[var(--humagen-rule)] border-t" />
-          )}
+          {everyday.length > 0 && destructive.length > 0 && <MenuSeparator />}
           {destructive.map(entry)}
         </div>
       )}

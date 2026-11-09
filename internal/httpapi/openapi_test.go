@@ -627,7 +627,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
 		"WorkspaceFile": {typ: platform.WorkspaceFile{}}, "WorkspaceFileContent": {typ: platform.WorkspaceFileContent{}}, "WorkspaceFileList": {typ: platform.WorkspaceFileList{}}, "WorkspaceFileWrite": {typ: platform.WorkspaceFileWrite{}, written: true}, "WorkspaceFilePublish": {typ: platform.WorkspaceFilePublish{}, written: true},
 		"Thread": {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},
-		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}}, "ThreadAnnouncement": {typ: threads.Announcement{}}, "ThreadAsk": {typ: platform.Ask{}},
+		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadFollowup": {typ: threads.Followup{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}}, "ThreadAnnouncement": {typ: threads.Announcement{}}, "ThreadAsk": {typ: platform.Ask{}},
 		"ThreadAnswers": {typ: answers{}}, "ThreadPosted": {typ: platform.Posted{}}, "ThreadNotice": {typ: threads.Notice{}}, "RoomPage": {typ: rooms.Page{}},
 		"ThreadInput": {typ: platform.ThreadInput{}, written: true}, "ThreadMessageInput": {typ: platform.MessageInput{}, written: true},
 		"ThreadUpdate": {typ: platform.ThreadUpdate{}, written: true}, "ThreadParticipantsUpdate": {typ: platform.ParticipantsUpdate{}, written: true},
@@ -655,7 +655,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 			Text     string `json:"text"`
 			Severity string `json:"severity,omitempty"`
 		}{}, written: true},
-		"Settings": {typ: platform.Settings{}}, "RouterSettings": {typ: platform.RouterSettings{}}, "Preferences": {typ: prefs.Preferences{}},
+		"Settings": {typ: platform.Settings{}}, "Preferences": {typ: prefs.Preferences{}},
 		"ConnectionHealth": {typ: platform.ConnectionHealth{}}, "ConnectionPreset": {typ: platform.ConnectionPreset{}}, "ConnectionAuthorization": {typ: connectionauth.Authorization{}},
 		"ConnectionAuthorizationInput": {typ: platform.ConnectionAuthorizationInput{}, written: true},
 		"ConnectionRegistration":       {typ: connectionauth.Registration{}, written: true},
@@ -682,6 +682,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"EvalRun": {typ: evals.Run{}}, "EvalSuiteView": {typ: suiteView{}, written: true},
 		"BigQuerySetupInput": {typ: platform.BigQuerySetupInput{}, written: true}, "BigQuerySetupCredential": {typ: platform.BigQuerySetupCredential{}, written: true},
 		"BigQuerySetupView": {typ: platform.BigQuerySetupView{}}, "BigQueryADCScope": {typ: platform.BigQueryADCScope{}},
+		"SnowflakeSetupInput": {typ: platform.SnowflakeSetupInput{}, written: true}, "CatalogLoginInput": {typ: platform.CatalogLoginInput{}, written: true},
 		"CatalogColumn": {typ: catalog.Column{}}, "CatalogStats": {typ: catalog.Stats{}}, "CatalogEntry": {typ: catalog.Entry{}}, "CatalogMark": {typ: catalog.Mark{}},
 		"CatalogConnector": {typ: catalog.Connector{}}, "CatalogConnectorView": {typ: platform.CatalogConnectorView{}}, "CatalogPage": {typ: platform.CatalogPage{}},
 		"KnowledgeVariant": {typ: knowledge.Variant{}}, "KnowledgeSource": {typ: knowledge.Source{}},
@@ -1014,7 +1015,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}
 		return time.Now()
 	}
-	f := newFixtureWith(t, platform.Config{Now: now, BuiltinProvider: "offline", BuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
+	f := newFixtureWith(t, platform.Config{Now: now, TestBuiltinProvider: "offline", TestBuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
 		native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
 		}),
@@ -1230,6 +1231,21 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/me/credentials", "/api/me/credentials", "", http.StatusOK)
 	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNoContent)
 	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNotFound)
+
+	// A Snowflake warehouse holds no credential: each person keeps their own
+	// login to it, and a value never comes back out.
+	const login = "/api/catalog/connectors/{name}/login"
+	c.call(ana, "POST", "/api/catalog/connectors/snowflake", "/api/catalog/connectors/snowflake", `{"name":"finance","account":"acme-test","database":"ANALYTICS","warehouse":"READ_WH"}`, http.StatusCreated)
+	c.call(ana, "POST", "/api/catalog/connectors/snowflake", "/api/catalog/connectors/snowflake", `{"name":"finance","account":"acme-test","database":"ANALYTICS","warehouse":"READ_WH"}`, http.StatusConflict)
+	c.call(ana, "POST", "/api/catalog/connectors/snowflake", "/api/catalog/connectors/snowflake", `{"name":"bad","account":"acme-test","database":"ANALYTICS; DROP","warehouse":"READ_WH"}`, http.StatusBadRequest)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{"ref":"op://People/ana/snowflake"}`, http.StatusNoContent)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{"value":"pat-ana-contract"}`, http.StatusNoContent)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{"ref":"op://People/ben/snowflake"}`, http.StatusBadRequest)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{}`, http.StatusBadRequest)
+	if catalogView := c.call(ana, "GET", "/api/catalog", "/api/catalog", "", http.StatusOK); strings.Contains(string(catalogView.raw), "pat-ana-contract") || !strings.Contains(string(catalogView.raw), `"login":"connected"`) {
+		t.Errorf("the catalog after ana's login = %s", catalogView.raw)
+	}
+	c.call(ana, "DELETE", login, "/api/catalog/connectors/finance/login", "", http.StatusNoContent)
 
 	// A person's own context: theirs to read and narrow, a reference under
 	// their own start, the version they read.
@@ -1586,8 +1602,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	agentsAt := "/api/projects/{name}/agents"
 	fieldAgents := c.call(acme, "GET", agentsAt, "/api/projects/Field/agents", "", http.StatusOK)
 	v, _ := strconv.Atoi(fmt.Sprint(fieldAgents.field("version")))
+	// A project's own default is kept as written and not read: the
+	// workspace's decides.
 	set := c.call(acme, "PUT", agentsAt, "/api/projects/Field/agents", fmt.Sprintf(`{"version":%d,"enable":["helper"],"default":"helper"}`, v), http.StatusOK)
-	if d := obj(set.field("default_resolved")); d["agent"] != "helper" || d["from"] != "project:Field" {
+	if d := obj(set.field("default_resolved")); d["agent"] != "*" || d["from"] != "project:~" {
 		t.Errorf("Field's default = %s", set.raw)
 	}
 	c.call(acme, "PUT", agentsAt, "/api/projects/Field/agents", fmt.Sprintf(`{"version":%d,"enable":[]}`, v), http.StatusConflict)
@@ -1600,9 +1618,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	if lives := c.call(acme, "PUT", home, "/api/agents/fieldbot/home", `{"project":"Field"}`, http.StatusOK); lives.str("home") != "Field" {
 		t.Errorf("fieldbot's home = %s", lives.raw)
 	}
-	if inUse := c.call(acme, "PUT", home, "/api/agents/helper/home", `{"project":"Launch"}`, http.StatusConflict); !strings.Contains(inUse.str("error"), "the default of Field") {
-		t.Errorf("homing an agent Field defaults to = %s", inUse.raw)
-	}
+	// What uses an agent holds no change of its home back.
+	c.call(acme, "PUT", home, "/api/agents/helper/home", `{"project":"Launch"}`, http.StatusOK)
+	c.call(acme, "PUT", home, "/api/agents/helper/home", `{"project":"~"}`, http.StatusOK)
 	c.call(acme, "PUT", home, "/api/agents/humagen-writer/home", `{"project":"Field"}`, http.StatusBadRequest)
 	c.call(acme, "PUT", home, "/api/agents/ghost/home", `{"project":"Field"}`, http.StatusNotFound)
 
@@ -1731,10 +1749,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	c.call(initech, "POST", "/api/projects", "/api/projects", `{"name":"One too many","kind":"company"}`, http.StatusTooManyRequests)
 	// A conversation in the workspace that names no agent, where nothing
-	// answers untagged messages, starts nothing.
+	// answers untagged messages, lands on the entry agent.
 	initechRoot := c.call(initech, "GET", agentsAt, "/api/projects/~/agents", "", http.StatusOK)
 	c.call(initech, "PUT", agentsAt, "/api/projects/~/agents", fmt.Sprintf(`{"version":%v,"enable":["*"]}`, initechRoot.field("version")), http.StatusOK)
-	c.call(initech, "POST", "/api/runs", "/api/runs", `{"text":"hi"}`, http.StatusConflict)
+	if landed := c.call(initech, "POST", "/api/runs", "/api/runs", `{"text":"hi"}`, http.StatusAccepted); landed.str("agent") != platform.BuiltinEntry {
+		t.Fatalf("an untagged message landed on %q, want the entry agent", landed.str("agent"))
+	}
 	c.call(initech, "GET", "/api/join", "/api/join?q=anything", "", http.StatusOK)
 
 	// Schedules.
@@ -2030,6 +2050,22 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d,"knowledge":[]}`, knownAt), http.StatusConflict)
 	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d,"knowledge":["ghost"]}`, knownAt+1), http.StatusBadRequest)
 	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d}`, knownAt+1), http.StatusBadRequest)
+	// A project's context is the corpora it attaches; a session filed there
+	// searches them.
+	cor := "/api/projects/{name}/corpora"
+	got = c.call(acme, "GET", cor, "/api/projects/Field/corpora", "", http.StatusOK)
+	corporaAt := version(got)
+	got = c.call(acme, "PUT", cor, "/api/projects/Field/corpora", fmt.Sprintf(`{"version":%d,"corpora":["policies"]}`, corporaAt), http.StatusOK)
+	if g := sliceOf(got.field("given")); len(g) != 1 || obj(g[0])["name"] != "policies" || obj(g[0])["from"] != "Field" {
+		t.Errorf("Field's corpora are %s", got.raw)
+	}
+	c.call(acme, "PUT", cor, "/api/projects/Field/corpora", fmt.Sprintf(`{"version":%d,"corpora":[]}`, corporaAt), http.StatusConflict)
+	c.call(acme, "PUT", cor, "/api/projects/Field/corpora", fmt.Sprintf(`{"version":%d,"corpora":["ghost"]}`, corporaAt+1), http.StatusBadRequest)
+	c.call(acme, "PUT", cor, "/api/projects/Field/corpora", fmt.Sprintf(`{"version":%d}`, corporaAt+1), http.StatusBadRequest)
+	c.call(acme, "GET", cor, "/api/projects/Ghost/corpora", "", http.StatusNotFound)
+	if pv := c.call(acme, "GET", "/api/projects/{name}", "/api/projects/Field", "", http.StatusOK); !strings.Contains(string(pv.raw), `"context":{"corpora":["policies"]}`) {
+		t.Errorf("Field's view does not carry its context: %s", pv.raw)
+	}
 	// The skills a project declares are what a message posted there and
 	// below can name; GET /api/skills lists them without instructions, and
 	// GET /api/mentions lists the mention kinds and completes one.
@@ -2604,7 +2640,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/me/credentials/{provider}":      {"provider": "issues"},
 		"/api/inbox/{id}/deliveries/{client}": {"id": mid, "client": "app"},
 		"/api/projects/{name}/channels":       {"name": "Field"}, "/api/projects/{name}/channels/{channel}": {"name": "Field", "channel": "renewals"},
-		"/api/projects/{name}/experts": {"name": "Field"}, "/api/projects/{name}/knowledge": {"name": "Field"}, "/api/projects/{name}/skills": {"name": "Field"}, "/api/threads/{id}": {"id": tid},
+		"/api/projects/{name}/experts": {"name": "Field"}, "/api/projects/{name}/knowledge": {"name": "Field"}, "/api/projects/{name}/corpora": {"name": "Field"}, "/api/projects/{name}/skills": {"name": "Field"}, "/api/threads/{id}": {"id": tid},
 		"/api/threads/{id}/messages": {"id": tid}, "/api/threads/{id}/participants": {"id": tid},
 		"/api/threads/{id}/share":       {"id": tid},
 		"/api/threads/{id}/publication": {"id": draftID},
@@ -2630,10 +2666,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/runs/{id}/calls":                       `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
 		"/api/runs/{id}/questions/{question}/answer": `{"action":"choose","choice":"red"}`,
 		"/api/alert-rules/{name}":                    `{"kind":"run_failed","severity":"critical"}`,
+		"/api/model-providers/{name}":                `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`,
 		"/api/schedules/{name}":                      `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
 		"/api/me/credentials/{provider}":             `{"ref":"op://People/svc/issues"}`,
 		"/api/projects/{name}/channels":              `{"name":"x"}`, "/api/projects/{name}/channels/{channel}": `{"version":1}`,
-		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/projects/{name}/knowledge": `{"version":1,"knowledge":[]}`, "/api/projects/{name}/skills": `{"version":1,"skills":[]}`, "/api/threads/{id}": `{"version":1}`,
+		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/projects/{name}/knowledge": `{"version":1,"knowledge":[]}`, "/api/projects/{name}/corpora": `{"version":1,"corpora":[]}`, "/api/projects/{name}/skills": `{"version":1,"skills":[]}`, "/api/threads/{id}": `{"version":1}`,
 		"/api/threads/{id}/messages": `{"text":"x"}`, "/api/threads/{id}/participants": `{"version":1}`,
 		"/api/threads/{id}/fork": `{"through":"m-1"}`, "/api/threads/{id}/bring-back": `{"run":"r00000000000000000000000000000000"}`,
 		"/api/threads/{id}/share": `{}`, "/api/threads/{id}/marks": `{"read":true}`, "/api/threads/{id}/approval": `{"mode":"ask"}`,
@@ -2641,6 +2678,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}/limits": `{"period":"day","max_runs":1}`, "/api/projects/{name}/announcements": `{"subject":"Hi","text":"Hi."}`,
 		"/api/memory/files/proposals/{id}": `{"scope":"project","decision":"discard"}`,
 		"/api/corpora/{name}":              `{}`, "/api/corpora/{name}/members": `{"kind":"source","name":"handbook"}`,
+		"/api/catalog/connectors/{name}/login": `{"ref":"op://People/svc-globex/x"}`,
 	}
 	for _, op := range c.spec.ops {
 		params := pathParams(op.path)
@@ -2676,6 +2714,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 
 	c.call(acme, "DELETE", "/api/artifacts/{id}", artifactPath, "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/artifacts/{id}", artifactPath, "", http.StatusNotFound)
+	// A workspace's own model provider: set up, checked, in use, removed.
+	c.call(acme, "PUT", "/api/model-providers/{name}", "/api/model-providers/house", `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`, http.StatusOK)
+	c.call(acme, "POST", "/api/model-providers/{name}/check", "/api/model-providers/house/check", "", http.StatusOK)
+	c.call(acme, "POST", "/api/model-providers/{name}/check", "/api/model-providers/nowhere/check", "", http.StatusBadRequest)
+	c.call(acme, "POST", "/api/agents", "/api/agents", `{"name":"house-agent","provider":"house","model":"llama3.2","system_prompt":"Answer."}`, http.StatusCreated)
+	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/house", "", http.StatusConflict)
+	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/nowhere", "", http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/model-providers/{name}", "/api/model-providers/spare", `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`, http.StatusOK)
+	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/spare", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/clients/{id}", "/api/clients/support", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/clients/{id}", "/api/clients/support", "", http.StatusNotFound)
 	c.call(acme, "DELETE", "/api/evals/{name}", "/api/evals/smoke", "", http.StatusNoContent)
@@ -2754,6 +2801,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
+	"PUT /api/agents/{name}/home 409":                    "a home is refused only while the agent's default skills would not fit it; the guard is in platform.homeUsers",
 	"POST /api/sessions 409":                             "governed admission to a deleted project uses the same path tested by POST /api/runs deleted-project response",
 	"POST /api/sessions/{id}/messages 409":               "deleted-project admission uses the same PostMessage path tested by thread/run responses",
 	"POST /api/sessions/{id}/people 409":                 "concurrent participant changes fail thread version CAS covered by participant race tests",

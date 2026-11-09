@@ -44,6 +44,13 @@ const field: ProjectView = {
   row_agents: [],
   mine: false,
 };
+const personal: ProjectView = {
+  ...field,
+  name: "personal-ada",
+  title: "Personal",
+  personal_owner: "ada",
+  path: [{ name: "personal-ada", kind: "team" }],
+};
 const older: Revision = {
   ...writer,
   rev: 1,
@@ -73,6 +80,7 @@ function open(
   onHomed: () => void = () => {},
   revision = writer,
   canWrite = true,
+  home?: string,
 ) {
   net = stubFetch({
     "PUT /api/agents/humagen-writer": (body) => ({
@@ -80,9 +88,9 @@ function open(
       rev: revision.rev + 1,
       spec: (body as { spec: Revision["spec"] }).spec,
     }),
-    "PUT /api/agents/humagen-writer/home": () => ({
+    "PUT /api/agents/humagen-writer/home": (body) => ({
       agent: "humagen-writer",
-      home: "Field",
+      home: (body as { project: string }).project,
       enabled_in: [],
     }),
     "GET /api/agents/humagen-writer/history": () => ({ revisions: [writer, older] }),
@@ -100,9 +108,9 @@ function open(
       rules={[]}
       alerts={[]}
       stats={undefined}
-      tree={[field]}
-      place={{ enabled_in: ["~"] }}
-      workspaceName="Acme"
+      tree={[field, personal]}
+      home={home}
+      personalProject="personal-ada"
       canWrite={canWrite}
       builtin={builtin}
       canEval={false}
@@ -120,7 +128,7 @@ function open(
 const tab = (name: string) =>
   fireEvent.click(screen.getByRole("tab", { name: new RegExp(`^${name}`) }));
 
-test("a built-in agent: the spec cannot be changed or saved, nor moved into a project; its memory can", async () => {
+test("a built-in agent: the spec cannot be changed or saved, nor its access; its memory can", async () => {
   open(true);
   assert.ok(screen.getByTestId("agent-locked"));
   assert.ok(!screen.queryByRole("button", { name: /Save as Revision/ }));
@@ -136,12 +144,12 @@ test("a built-in agent: the spec cannot be changed or saved, nor moved into a pr
     ).disabled,
     true,
   );
-  const lives = screen.getByRole("button", { name: /^Lives in:/ }) as HTMLButtonElement;
-  assert.ok(lives.disabled, "the platform's own agents live nowhere");
+  const access = screen.getByRole("button", { name: "Access: Workspace" }) as HTMLButtonElement;
+  assert.ok(access.disabled, "the platform's own agents are the workspace's");
 
   tab("Model");
   const model = screen.getByRole("button", {
-    name: "Model, primary: Offline",
+    name: "Model, primary: offline",
   }) as HTMLButtonElement;
   assert.ok(model.disabled);
 
@@ -222,25 +230,58 @@ test("the same agent, not built in: editing makes a save, and an older revision 
 
   tab("Model");
   assert.ok(
-    !(screen.getByRole("button", { name: "Model, primary: Offline" }) as HTMLButtonElement)
+    !(screen.getByRole("button", { name: "Model, primary: offline" }) as HTMLButtonElement)
       .disabled,
   );
   tab("Revisions");
   assert.ok(await screen.findByRole("button", { name: "Restore as Revision 3" }));
 });
 
-test("an agent of the workspace's own comes to live in a project from its Access tab", async () => {
+test("Access shows Workspace, Private or Members of its project, from the agent's home", () => {
+  for (const [home, shown] of [
+    [undefined, "Access: Workspace"],
+    ["~", "Access: Workspace"],
+    ["personal-ada", "Access: Private"],
+    ["Field", "Access: Members of Field"],
+  ] as const) {
+    open(false, () => {}, writer, true, home);
+    tab("Access");
+    assert.ok(screen.getByRole("button", { name: shown }), `home ${home}`);
+    cleanup();
+    net?.restore();
+  }
+});
+
+test("choosing Private sends the Personal project, Workspace sends ~, and no move warns of losing the agent", async () => {
   let homed = 0;
-  open(false, () => homed++);
+  open(false, () => homed++, writer, true, "Field");
   tab("Access");
-  fireEvent.click(screen.getByRole("button", { name: /^Lives in:/ }));
-  fireEvent.click(await screen.findByRole("option", { name: /Field/ }));
-  await waitFor(() =>
-    assert.ok(
-      net!.seen.some((r) => r.method === "PUT" && r.path === "/api/agents/humagen-writer/home"),
-    ),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Access: Members of Field" }));
+  const offered = (await screen.findAllByRole("option")).map((o) => o.textContent ?? "");
+  assert.equal(offered.length, 3);
+  assert.match(offered[0]!, /^Private/);
+  assert.match(offered[1]!, /^Workspace/);
+  assert.match(offered[2]!, /^Members of Field/);
+  assert.equal(screen.queryByText(/will lose|places? will|Available in/), null);
+  fireEvent.click(screen.getByRole("option", { name: /^Private/ }));
+  const homes = () =>
+    net!.seen
+      .filter((r) => r.method === "PUT" && r.path === "/api/agents/humagen-writer/home")
+      .map((r) => r.body);
+  await waitFor(() => assert.deepEqual(homes(), [{ project: "personal-ada" }]));
   await waitFor(() => assert.equal(homed, 1));
+  // The pick shows until the agent list is read again.
+  fireEvent.click(screen.getByRole("button", { name: "Access: Private" }));
+  fireEvent.click(await screen.findByRole("option", { name: /^Workspace/ }));
+  await waitFor(() => assert.deepEqual(homes(), [{ project: "personal-ada" }, { project: "~" }]));
+  await waitFor(() => assert.equal(homed, 2));
+});
+
+test("a reader sees who sees the agent and cannot change it", () => {
+  open(false, () => {}, writer, false, "personal-ada");
+  tab("Access");
+  const access = screen.getByRole("button", { name: "Access: Private" }) as HTMLButtonElement;
+  assert.ok(access.disabled);
 });
 
 test("the agent directory shows no agent state and offers agent changes through the builder", async () => {

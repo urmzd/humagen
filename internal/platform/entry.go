@@ -187,12 +187,22 @@ func (p *Platform) withEntrySpawn(ctx context.Context, tenant string, want wire.
 
 // entryMayCall holds the entry agent to the place it answers in: its spawn
 // list spans the workspace, and an agent not available in the run's project
-// is refused there as it would be to a person.
-func (p *Platform) entryMayCall(tenant string, parent wire.Revision, project, agent string) error {
-	if !p.isEntry(parent) || p.Projects.Tree(tenant).IsAvailable(projects.NameOf(project), agent) {
+// is refused there as it would be to a person. A run answering a message a
+// client sent (Slack, GitHub) calls only the agents that client may route
+// to, as the client could not have asked any other.
+func (p *Platform) entryMayCall(tenant string, parent wire.Revision, run runs.Run, agent string) error {
+	if !p.isEntry(parent) {
 		return nil
 	}
-	return fmt.Errorf("%w: @%s is not available where this conversation is", ErrForbidden, agent)
+	if !p.Projects.Tree(tenant).IsAvailable(projects.NameOf(run.Project), agent) {
+		return fmt.Errorf("%w: @%s is not available where this conversation is", ErrForbidden, agent)
+	}
+	if run.Client != "" {
+		if c, err := p.Clients.Get(tenant, run.Client); err != nil || !c.Routes(agent) {
+			return fmt.Errorf("%w: the app this conversation came through may not reach @%s", ErrForbidden, agent)
+		}
+	}
+	return nil
 }
 
 // Bounds on what the entry agent is told about a message's agents.
@@ -202,6 +212,8 @@ const (
 	maxHintPrompt = 1500
 	// maxHintNames bounds how many other agents are named to it.
 	maxHintNames = 60
+	// maxHintDescription bounds what it is told each other agent is for.
+	maxHintDescription = 200
 )
 
 // entryHints is what the entry agent is told about who may fit a message:
@@ -305,7 +317,7 @@ func (p *Platform) answerAsEntry(ctx context.Context, tenant string, th threads.
 	pick, err := p.pick(ctx, tenant, th, m, actor, tagID, found, cs)
 	if err != nil {
 		p.log.Info("platform: the entry agent could not pick; falling back", "thread", th.ID, "error", err)
-		pick, rec.Fallback = p.fallbackPick(tree, th.Project, found, cs, sees), true
+		pick, rec.Fallback = p.fallbackPick(tree, th.Project, found, sees), true
 	}
 	rec.Pick = pick
 	if pick.Decision != PickDelegate {
@@ -349,19 +361,19 @@ func pickLine(pick Pick) string {
 }
 
 // fallbackPick is who answers when the entry agent cannot pick: the best
-// search match, the workspace's named default, the first agent available, or
-// with none of them the entry agent itself.
-func (p *Platform) fallbackPick(tree *projects.Tree, project string, found []join.Match, cs []join.Candidate, sees func(string) bool) Pick {
+// search match when it is strong, else the workspace's named default, else
+// the entry agent itself, which may still call whoever fits. A weak match
+// (one passing word of a prompt) or merely the first agent available is
+// never handed a message the entry agent could take.
+func (p *Platform) fallbackPick(tree *projects.Tree, project string, found []join.Match, sees func(string) bool) Pick {
 	switch {
-	case len(found) > 0:
+	case len(found) > 0 && found[0].Strong:
 		return Pick{Decision: PickDelegate, Agents: []string{found[0].Name}, Reason: "Picked by search: matched " + strings.Join(found[0].Terms, ", ") + "."}
 	case func() bool {
 		d := tree.Root().Agents.Default
 		return d != "" && d != Open && d != p.cfg.EntryAgent && (sees == nil || sees(d)) && tree.IsAvailable(projects.NameOf(project), d)
 	}():
 		return Pick{Decision: PickDelegate, Agents: []string{tree.Root().Agents.Default}, Reason: "No agent matched it, so the workspace default answered."}
-	case len(cs) > 0:
-		return Pick{Decision: PickDelegate, Agents: []string{cs[0].Name}, Reason: "No agent matched it, so the first agent available here answered."}
 	}
 	return Pick{Decision: PickAnswerMyself}
 }
@@ -453,27 +465,34 @@ func (p *Platform) awaitPick(ctx context.Context, tenant, runID string) (runs.Ru
 // hintsFrom is the agents block a pick and an answer are given: the matches
 // with their instructions, then the other agents by name.
 func (p *Platform) hintsFrom(found []join.Match, cs []join.Candidate) string {
+	strong := slices.DeleteFunc(slices.Clone(found), func(m join.Match) bool { return !m.Strong })
 	var b strings.Builder
 	b.WriteString("<agents>\n")
-	if len(found) > 0 {
+	if len(strong) > 0 {
 		b.WriteString("Agents that may fit this message, best first:\n")
-		for _, m := range found {
+		for _, m := range strong {
 			fmt.Fprintf(&b, "\n@%s (matched %s)\n<instructions>\n%s\n</instructions>\n", m.Name, strings.Join(m.Terms, ", "), clipText(m.Prompt, maxHintPrompt))
 		}
 	} else {
-		b.WriteString("No agent's instructions match this message.\n")
+		b.WriteString("No agent's name or purpose matches this message's words; choose by what each agent is for.\n")
 	}
+	// Every other agent with what it is for, so a pick can choose by
+	// meaning where words did not match.
 	var others []string
 	for _, c := range cs {
-		if !slices.ContainsFunc(found, func(m join.Match) bool { return m.Name == c.Name }) {
-			others = append(others, "@"+c.Name)
+		if !slices.ContainsFunc(strong, func(m join.Match) bool { return m.Name == c.Name }) {
+			line := "@" + c.Name
+			if d := join.Describe(c); d != "" {
+				line += ": " + clipText(d, maxHintDescription)
+			}
+			others = append(others, line)
 		}
 	}
 	if len(others) > maxHintNames {
 		others = append(others[:maxHintNames], fmt.Sprintf("and %d more", len(others)-maxHintNames))
 	}
 	if len(others) > 0 {
-		fmt.Fprintf(&b, "\nOther agents you may call: %s\n", strings.Join(others, ", "))
+		fmt.Fprintf(&b, "\nOther agents you may call:\n%s\n", strings.Join(others, "\n"))
 	}
 	b.WriteString("</agents>")
 	return b.String()

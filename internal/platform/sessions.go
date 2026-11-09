@@ -32,8 +32,6 @@ type SessionInput struct {
 	Label       string `json:"label,omitempty"`
 	Fresh       bool   `json:"fresh,omitempty"`
 	Project     string `json:"project,omitempty"`
-	Model       string `json:"model,omitempty"`
-	Effort      string `json:"effort,omitempty"`
 	SourceAlert string `json:"source_alert,omitempty"`
 }
 
@@ -152,17 +150,17 @@ func (p *Platform) sessionAgent(ctx context.Context, who auth.Principal, project
 		explicit = d.Agent
 	}
 	if explicit == "" || explicit == Open {
-		// Nobody named and no agent set to answer: the entry agent owns the
-		// session and calls whoever fits. Without one, routing picks, so a
-		// message in the console always reaches someone.
-		if entry := p.entryFor(ctx, who.Tenant, project, p.Seer(who).Agent); entry != "" {
-			explicit = entry
-		} else {
-			var err error
-			if explicit, picked, err = p.routeSession(ctx, who, project, text); err != nil {
-				return "", "", err
-			}
+		// Nobody named and no agent set to answer: the message lands (land),
+		// on the entry agent, which owns the session and calls whoever fits,
+		// so a message in the console always reaches someone.
+		landed, err := p.land(ctx, who.Tenant, project, text, p.Seer(who).Agent)
+		if errors.Is(err, ErrNoDefault) {
+			return "", "", fmt.Errorf("%w: no agent is available here to answer; mention one with @", threads.ErrInvalid)
 		}
+		if err != nil {
+			return "", "", err
+		}
+		explicit, picked = landed[0].Agent, landed[0].Picked
 	}
 	if err := p.checkDefault(ctx, who.Tenant, project, explicit, p.Seer(who).Agent); err != nil {
 		return "", "", err
@@ -262,7 +260,7 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 	if existing.Session == nil || existing.Session.SourceAlert != in.SourceAlert {
 		return SessionView{}, fmt.Errorf("%w: this session belongs to another source alert", threads.ErrInvalid)
 	}
-	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: in.Text, Model: in.Model, Effort: in.Effort}); err != nil {
+	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: in.Text}); err != nil {
 		return SessionView{}, err
 	}
 	return p.ReadSession(ctx, who, rec.ID, "", "", false)
@@ -318,7 +316,7 @@ func (p *Platform) PostSession(ctx context.Context, who auth.Principal, id strin
 			if _, err := p.PostMessage(ctx, who, id, posted); err != nil {
 				return SessionView{}, err
 			}
-			if _, err := p.StartSession(ctx, who, SessionInput{Text: in.Text, Agent: target, Parent: id, Model: in.Model, Effort: in.Effort, Fresh: option.Fresh, Label: option.Label}); err != nil {
+			if _, err := p.StartSession(ctx, who, SessionInput{Text: in.Text, Agent: target, Parent: id, Fresh: option.Fresh, Label: option.Label}); err != nil {
 				return SessionView{}, err
 			}
 			return p.ReadSession(ctx, who, id, "", "", false)

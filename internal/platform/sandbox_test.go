@@ -374,7 +374,7 @@ func TestBuiltinWriter(t *testing.T) {
 		t.Fatal("a built-in agent exists with no model to run on")
 	}
 
-	p, err := platform.New(platform.Config{Workspace: t.TempDir(), BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p, err := platform.New(platform.Config{Workspace: t.TempDir(), TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	if err != nil {
 		t.Fatal(err)
 	}

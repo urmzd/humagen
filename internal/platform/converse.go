@@ -79,9 +79,10 @@ type Settings struct {
 	// call moves from one to the next. An agent runs on one by naming the
 	// provider "policy" and the policy's name as its model.
 	ModelPolicies []ModelPolicy `json:"model_policies"`
-	// Router is whether, and on which model, each agent is asked about a
-	// message that names none: "should I be involved?".
-	Router RouterSettings `json:"router"`
+	// ModelProviders are the model providers the workspace's
+	// administrators set up. Only SetModelProvider and DeleteModelProvider
+	// change them; a settings write keeps them as they are.
+	ModelProviders []ModelProvider `json:"model_providers"`
 	// SetupAt and SetupBy record the first time an admin saved the
 	// workspace's settings. The server sets them once. A value sent by a
 	// client is ignored.
@@ -98,6 +99,9 @@ func (s Settings) withDefaults() Settings {
 	}
 	if s.ModelPolicies == nil {
 		s.ModelPolicies = []ModelPolicy{}
+	}
+	if s.ModelProviders == nil {
+		s.ModelProviders = []ModelProvider{}
 	}
 	return s
 }
@@ -259,7 +263,11 @@ func (p *Platform) Settings(tenant string) Settings {
 	if err != nil {
 		p.log.Error("platform: settings could not be read", "tenant", tenant, "error", err)
 	}
-	return v.withDefaults()
+	s := v.withDefaults()
+	// A policy stored with a provider name since renamed reads as the new one.
+	names := p.providersIn(s)
+	s.ModelPolicies = p.readPolicies(tenant, s.ModelPolicies, func(n string) bool { return slices.Contains(names, n) })
+	return s
 }
 
 // SetSettings replaces a tenant's settings.
@@ -311,10 +319,7 @@ func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings
 	case next.HistoryLimit < MinHistory || next.HistoryLimit > MaxHistory:
 		return fmt.Errorf("%w: the history limit is from %d to %d characters", ErrSettings, MinHistory, MaxHistory)
 	}
-	if err := checkModelPolicies(next.ModelPolicies, p.cfg.Ext.ProviderNames()...); err != nil {
-		return err
-	}
-	if err := p.checkRouter(&next.Router); err != nil {
+	if err := checkPoliciesAgainst(next.ModelPolicies, p.modelNames(tenant), stored.ModelPolicies); err != nil {
 		return err
 	}
 	// A policy an agent still runs on cannot be removed, or that agent would
@@ -332,6 +337,7 @@ func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings
 			return wire.ErrConflict
 		}
 		next.SetupAt, next.SetupBy = v.SetupAt, v.SetupBy
+		next.ModelProviders = v.ModelProviders
 		v.Settings = next
 		return nil
 	})
@@ -423,14 +429,15 @@ func NoProjectCalled(name string) error {
 // The turn names it, or names Open, or names none and the default
 // the conversation's place inherits answers: the thread's, the client's, the
 // channel's, then the project chain's, as for a message posted in the thread
-// (a new conversation is in general of its project). With no default set it
-// is ErrNoDefault, and nothing starts. The agent that answers is sent the
-// branch so far, so a different agent picking up mid-conversation knows what
-// was said, and when the branch follows a message people posted, the room up
-// to it, each turn with who asked or said it, fenced off from the words it
-// answers, which follow with who asks them (threads.Ask); ahead of it is
-// what the conversation's project chain, its channel and the agent itself
-// bring (see contextIn).
+// (a new conversation is in general of its project). With no default set, or
+// an open one, it lands on the entry agent (land); only a place where no
+// agent may answer is ErrNoDefault, and nothing starts. The agent that
+// answers is sent the branch so far, so a different agent picking up
+// mid-conversation knows what was said, and when the branch follows a
+// message people posted, the room up to it, each turn with who asked or said
+// it, fenced off from the words it answers, which follow with who asks them
+// (threads.Ask); ahead of it is what the conversation's project chain, its
+// channel and the agent itself bring (see contextIn).
 func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Run, error) {
 	// Refused before anything is posted, so a refused turn leaves no
 	// message without a run behind it.
@@ -530,9 +537,14 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		}
 		run, err := p.Runs.Get(tenant, runtime.RunID(tenant, id))
 		if err != nil {
+			// The entry agent is told who may fit, as in a console root.
+			text := body
+			if hints := p.entryHintsFor(ctx, tenant, th.Project, a.Agent, t.Text, routes); hints != "" {
+				text = hints + "\n\n" + body
+			}
 			run, err = p.Invoke(ctx, wire.NewEvent(wire.Raise{
 				ID: id, Tenant: tenant, Agent: a.Agent, Origin: runs.OriginAPI, Actor: t.Actor, Context: m,
-				Text: p.turnContext(tenant, th.Project, th.Channel, a.Agent, t.Actor.User, body, m),
+				Text: p.turnContext(tenant, th.Project, th.Channel, a.Agent, t.Actor.User, text, m),
 			}))
 		}
 		if err != nil {
