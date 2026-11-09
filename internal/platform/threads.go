@@ -1308,6 +1308,12 @@ func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.T
 			if surface.slackChannel != "" {
 				mt[wire.MetaSlackChannel] = surface.slackChannel
 			}
+		} else if via != "" {
+			// A client's credential posted it for a person: the run is that
+			// client's, so its budget counts it and its calls are held to
+			// the agents the client may reach.
+			mt = maps.Clone(mt)
+			mt[runs.MetaClient] = via
 		}
 		run, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{
 			ID: a.tag, Tenant: tenant, Agent: a.agent, Origin: runs.OriginAPI, Channel: surface.channel,

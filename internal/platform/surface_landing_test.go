@@ -19,11 +19,11 @@ func TestAnUntaggedSurfaceMessageLandsOnTheEntryAgent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(posted.Runs) != 1 || posted.Runs[0].Agent != platform.BuiltinEntry || strings.Contains(posted.Reason, "waits") {
+			if len(posted.Runs) != 1 || posted.Runs[0].Agent != platform.BuiltinEntry || posted.Runs[0].Client != "app" || strings.Contains(posted.Reason, "waits") {
 				t.Fatalf("a DM to the app started %+v (%s), want the entry agent", posted.Runs, posted.Reason)
 			}
 			r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-dm", Text: "how do refunds work?", Actor: platform.PersonActor("ana"), Client: "app"})
-			if err != nil || r.Agent != platform.BuiltinEntry || r.Picked != "" {
+			if err != nil || r.Agent != platform.BuiltinEntry || r.Picked != "" || r.Client != "app" {
 				t.Fatalf("a turn for a person the app maps = %+v, %v; want the entry agent", r, err)
 			}
 		})
