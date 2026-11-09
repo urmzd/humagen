@@ -30,7 +30,12 @@ import (
 // subject, which is all that is known of a person a surface posts for.
 func slackRoom(t *testing.T, mutate func(*platform.ClientInput)) (*platform.Platform, auth.Principal) {
 	t.Helper()
-	p := start(t, call.Limits{})
+	return slackRoomOn(t, start(t, call.Limits{}), mutate)
+}
+
+// slackRoomOn is slackRoom on a platform the test started.
+func slackRoomOn(t *testing.T, p *platform.Platform, mutate func(*platform.ClientInput)) (*platform.Platform, auth.Principal) {
+	t.Helper()
 	field(t, p)
 	seePeople(t, p, auth.Principal{Subject: "ana"}, auth.Principal{Subject: "vic"})
 	in := slackClient("app", "A0APP", "T0TEAM", "helper")
@@ -195,6 +200,8 @@ func TestAClientsListHoldsWhereverItPostsForAPerson(t *testing.T) {
 	if got := agents(posted); !slices.Equal(got, []string{"helper"}) || len(posted.Refused) != 1 || posted.Refused[0].Name != "lead" {
 		t.Fatalf("a message the client posted for ana in a console thread started %v, refusing %+v", got, posted.Refused)
 	}
+	// Once that answer is in, so ana's own message is no follow-up to it.
+	await(t, p, posted.Runs[0].ID, runs.Completed)
 	herself := auth.Principal{Subject: "ana", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
 	own, err := p.PostMessage(t.Context(), herself, room.Thread.ID, platform.MessageInput{Text: "@lead look"})
 	if err != nil {

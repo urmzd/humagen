@@ -36,7 +36,7 @@ func TestNativeSlackUseRejectsOnlyConfirmedCurrentConsent(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = p.Close() })
-			if _, err = p.Agents.Create(t.Context(), "tenant", wire.AgentSpec{Name: BuiltinBuilder, Model: "offline", Provider: "offline", SystemPrompt: "Reconnect"}, "test"); err != nil {
+			if _, err = p.Agents.Create(t.Context(), "tenant", wire.AgentSpec{Name: BuiltinEntry, Model: "offline", Provider: "offline", SystemPrompt: "Reconnect"}, "test"); err != nil {
 				t.Fatal(err)
 			}
 			owner := auth.Principal{Tenant: "tenant", Subject: "alice", Kind: auth.User, Scopes: []auth.Permission{auth.ClientsWrite}}

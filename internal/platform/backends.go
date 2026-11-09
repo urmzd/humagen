@@ -143,7 +143,7 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 		return Backends{}, nil, err
 	}
 	names := append(providers(), providerNames...)
-	defs, err := wire.OpenAgents(shared, names...)
+	defs, err := wire.OpenAgentsAccepting(shared, acceptProviderName, names...)
 	if err != nil {
 		return Backends{}, nil, err
 	}
@@ -238,6 +238,9 @@ func (p *Platform) openStores(cfg Config) error {
 	p.Feedback, err = feedback.Open(perRequest)
 	keep("feedback", err)
 	p.GoodAsks = openGoodAsks(perRequest)
+	p.picks = pickStore(perRequest)
+	p.audiences = audienceStore(perRequest)
+	p.deliveries = deliveryStore(perRequest)
 	p.Prefs, err = prefs.Open(perRequest)
 	keep("prefs", err)
 	p.Marks, err = marks.Open(perRequest)
@@ -335,6 +338,13 @@ func (p *Platform) openStores(cfg Config) error {
 	p.Credentials, err = credentials.Open(perRequest, p.secrets)
 	keep("credentials", err)
 	p.connectionHealth = state.NewTable[connectionObservation](perRequest, "connection_health")
+	// A nil table counts nothing, so automatic review would never pause:
+	// without a store, the count is kept in memory.
+	reviews := perRequest
+	if reviews == nil {
+		reviews = state.NewMemory()
+	}
+	p.pullReviews = state.NewTable[PullReview](reviews, "pull_reviews")
 	if cfg.ConnectionAuth != nil {
 		connectionConfig := *cfg.ConnectionAuth
 		connectionConfig.OnAuthFailure = p.RecordConnectionAuthFailure

@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/turn/native"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/clients"
@@ -32,11 +32,11 @@ var (
 	// the chain leaves it out.
 	ErrNotAvailable = errors.New("platform: not available")
 	// ErrNoDefault reports a message that tags no agent, in a place where
-	// nothing answers untagged messages.
+	// no agent may answer it.
 	ErrNoDefault = errors.New("platform: tag an agent")
-	// ErrNoTakers reports a message no agent took: every agent available
-	// where it was posted was asked and stayed out. It waits for a person
-	// to answer it or tag an agent.
+	// ErrNoTakers reports a message no agent took. A message that names no
+	// agent now always lands on one (land), so the platform no longer
+	// returns it.
 	ErrNoTakers = errors.New("platform: no agent took it")
 )
 
@@ -182,6 +182,12 @@ func (p *Platform) candidates(ctx context.Context, tenant string, tree *projects
 			if wire.PolicyOf(r.Spec).TaggedOnly || !answers(r.Spec.Name) || (keep != nil && !keep(r.Spec.Name)) {
 				continue
 			}
+			// A handle from before a rename is the same agent under its old
+			// name: where the current one is offered too, only it is. Where
+			// only the old handle is allowed, it still answers.
+			if current := legacy.BuiltinAgent(r.Spec.Name); current != r.Spec.Name && answers(current) && (keep == nil || keep(current)) {
+				continue
+			}
 			out = append(out, join.Candidate{Name: r.Spec.Name, Description: r.Spec.Description, Prompt: r.Spec.SystemPrompt, Asks: asks[r.Spec.Name]})
 			if len(out) == join.MaxCandidates {
 				return out, nil
@@ -194,52 +200,15 @@ func (p *Platform) candidates(ctx context.Context, tenant string, tree *projects
 	}
 }
 
-// RouterSettings is whether a workspace's agents are asked about messages
-// that name none, and the model that asks. The model is one of the
-// providers the deployment declares, whose key is a reference read when it
-// is used (an environment variable, a secrets manager), never a value kept
-// here. Off, which is the default, no agent takes a message on its own.
-type RouterSettings struct {
-	Enabled  bool   `json:"enabled"`
-	Provider string `json:"provider,omitempty"`
-	Model    string `json:"model,omitempty"`
-}
-
-// checkRouter holds router settings to the providers this deployment has.
-func (p *Platform) checkRouter(r *RouterSettings) error {
-	r.Provider, r.Model = strings.TrimSpace(r.Provider), strings.TrimSpace(r.Model)
-	if !r.Enabled {
-		return nil
-	}
-	switch {
-	case p.cfg.Ext.Providers[r.Provider] == nil:
-		return fmt.Errorf("%w: the router's provider %q is not one this deployment declares", ErrSettings, r.Provider)
-	case r.Model == "" || len(r.Model) > 200:
-		return fmt.Errorf("%w: name the router's model at %s", ErrSettings, r.Provider)
-	}
-	return nil
-}
-
 // asker is what asks a workspace's agents whether to join: a program's own
-// (Config.Router), else the model the workspace's settings name, built for
-// this message so a changed key or model applies at once. It is nil when the
-// router is off or its model cannot be built, and then no agent takes a
-// message on its own.
+// (Config.Router), else nobody, so no agent takes a message on its own.
+// Routing moves to the entry agent, which picks on its own chain; until then
+// only a program, or a test, routes.
 func (p *Platform) asker(tenant string) join.Asker {
 	if p.cfg.Router != nil {
 		return p.cfg.Router(tenant)
 	}
-	r := p.Settings(tenant).Router
-	fn := p.cfg.Ext.Providers[r.Provider]
-	if !r.Enabled || fn == nil {
-		return nil
-	}
-	prov, err := fn(native.Spec{Name: "join", Provider: r.Provider, Model: r.Model})
-	if err != nil {
-		p.log.Warn("platform: the router's model could not be built", "tenant", tenant, "provider", r.Provider, "error", err)
-		return nil
-	}
-	return join.Model{Provider: prov}
+	return nil
 }
 
 // Route is what would happen to a message posted in a project ("" or "~"
@@ -259,21 +228,43 @@ func (p *Platform) Route(ctx context.Context, tenant, project, message string) (
 	return routePreview(ctx, p.asker(tenant), cs, message), nil
 }
 
-// join searches the candidates in a project for the message, asks the best
-// few at once, and returns those that take it, best match first. With none
-// it is ErrNoTakers.
-func (p *Platform) join(ctx context.Context, tenant string, tree *projects.Tree, project, message string, keep func(string) bool) ([]join.Decision, error) {
-	_, joined, err := p.search(ctx, tenant, tree, project, message, keep)
+// land is who answers a message that names no agent where nothing names one
+// to answer it (no default, or an open one): the entry agent, which answers
+// it or calls whoever fits, as it does for a console root. Without an entry
+// agent there that keep allows, the agents that take it answer; with none
+// taking it, the best match search found; with no match, the workspace's
+// named default, then the first agent available. A message never waits for
+// a person because no agent took it. keep is who may answer: the agents the
+// client the message came through may route to, that its poster may read.
+// Only a place with no agent keep allows is refused, as ErrNoDefault.
+func (p *Platform) land(ctx context.Context, tenant, project, message string, keep func(string) bool) ([]Answerer, error) {
+	project = projects.NameOf(project)
+	if entry := p.entryFor(ctx, tenant, project, keep); entry != "" {
+		return []Answerer{{Agent: entry}}, nil
+	}
+	tree := p.Projects.Tree(tenant)
+	cs, err := p.candidates(ctx, tenant, tree, project, keep)
 	if err != nil {
 		return nil, err
 	}
-	if len(joined) == 0 {
-		return nil, fmt.Errorf("%w: it waits for a person to answer or tag an agent", ErrNoTakers)
+	if found := join.Search(cs, message, join.Shortlist); len(found) > 0 {
+		joined := join.Joined(join.Route(ctx, p.asker(tenant), join.Candidates(found), message))
+		if len(joined) == 0 {
+			return []Answerer{{Agent: found[0].Name, Picked: "Picked by search: matched " + strings.Join(found[0].Terms, ", ") + "."}}, nil
+		}
+		out := make([]Answerer, 0, min(len(joined), maxJoined))
+		for _, d := range joined[:min(len(joined), maxJoined)] {
+			out = append(out, Answerer{Agent: d.Agent, Picked: joinedReason(d)})
+		}
+		return out, nil
 	}
-	if len(joined) > maxJoined {
-		joined = joined[:maxJoined]
+	if d := tree.Root().Agents.Default; d != "" && d != Open && (keep == nil || keep(d)) && tree.IsAvailable(project, d) {
+		return []Answerer{{Agent: d, Picked: "No agent matched it, so the workspace default answered."}}, nil
 	}
-	return joined, nil
+	if len(cs) > 0 {
+		return []Answerer{{Agent: cs[0].Name, Picked: "No agent matched it, so the first agent available here answered."}}, nil
+	}
+	return nil, fmt.Errorf("%w: no agent may answer it in %s", ErrNoDefault, p.whereOf(tenant, tree, project))
 }
 
 // maxJoined bounds how many agents take one message.
@@ -345,32 +336,27 @@ func (p *Platform) DefaultAt(tenant string, at Place) Nearer {
 // agent the message tags, Open, or "" for none.
 //
 // A tagged agent answers alone. With none tagged, the default the place
-// inherits answers, and with none set it is ErrNoDefault. A default of
-// open, and Open asked, ask every agent available in the place whether it
-// takes the message, all at once, and each that does answers
-// (ErrNoTakers when none does). A named default that has stopped being
-// available is not passed over for the next one along: it is
+// inherits answers. With none set, a default of open, and Open asked, the
+// message lands (land): the entry agent answers it, and without one the
+// agents that take it, else the best match. A named default that has
+// stopped being available is not passed over for the next one along: it is
 // ErrNotAvailable, saying why. Whether a tagged agent is available is
 // admission's to say. routes, when set, is the client's list a surface
-// sends the message through: only agents on it are asked.
+// sends the message through: only agents on it answer.
 func (p *Platform) resolveAgents(ctx context.Context, tenant string, at Place, asked, text string, routes func(string) bool) ([]Answerer, error) {
 	tree := p.Projects.Tree(tenant)
 	out := Answerer{Agent: asked}
 	if asked == "" {
 		d := p.DefaultAt(tenant, at)
-		if d.Agent == "" {
-			return nil, fmt.Errorf("%w: nobody answers untagged messages in %s; tag an agent", ErrNoDefault, p.whereOf(tenant, tree, at.Project))
-		}
 		out.Agent, out.From = d.Agent, d.From
 	}
-	if out.Agent == Open {
-		joined, err := p.join(ctx, tenant, tree, at.Project, text, routes)
+	if out.Agent == "" || out.Agent == Open {
+		answer, err := p.land(ctx, tenant, at.Project, text, routes)
 		if err != nil {
 			return nil, err
 		}
-		answer := make([]Answerer, len(joined))
-		for i, d := range joined {
-			answer[i] = Answerer{Agent: d.Agent, Picked: joinedReason(d), From: out.From}
+		for i := range answer {
+			answer[i].From = out.From
 		}
 		return answer, nil
 	}
@@ -380,11 +366,11 @@ func (p *Platform) resolveAgents(ctx context.Context, tenant string, at Place, a
 	return []Answerer{out}, nil
 }
 
-// joinFor asks, for a message a client raised, the agents available where
-// the client files its run (its bound channel, or its home) that the client
-// may route to, and returns those that take it.
-func (p *Platform) joinFor(ctx context.Context, c clients.Client, at Place, text string) ([]join.Decision, error) {
-	return p.join(ctx, c.Tenant, p.Projects.Tree(c.Tenant), at.Project, text, c.Routes)
+// landFor is land for a message a client raised, where the client files its
+// run (its bound channel, or its home): only agents the client may route to
+// answer.
+func (p *Platform) landFor(ctx context.Context, c clients.Client, at Place, text string) ([]Answerer, error) {
+	return p.land(ctx, c.Tenant, at.Project, text, c.Routes)
 }
 
 // migrateBaseline replaces each workspace's baseline with its root's default,

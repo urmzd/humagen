@@ -277,12 +277,11 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 	set("concurrency", strconv.Itoa(sp.Execution.Concurrency))
 	set("max-depth", strconv.Itoa(sp.Execution.MaxDepth))
 	set("max-fan-out", strconv.Itoa(sp.Execution.MaxFanOut))
+	set("entry-agent", sp.Branding.EntryAgent)
 	set("room-coalesce-above", strconv.Itoa(sp.Rooms.CoalesceAbove))
 	set("room-tail-interval", sp.Rooms.TailInterval)
 	set("room-max-runs-per-minute", strconv.Itoa(sp.Rooms.MaxRunsPerMinute))
 	set("room-max-runs-per-person", strconv.Itoa(sp.Rooms.MaxRunsPerPerson))
-	set("builtin-provider", sp.Execution.Builtin.Provider)
-	set("builtin-model", sp.Execution.Builtin.Model)
 	if len(sp.SecretEnv) > 0 {
 		var parts []string
 		for _, t := range slices.Sorted(maps.Keys(sp.SecretEnv)) {
@@ -453,8 +452,20 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 					if fromFile, err = wire.SpecOfAgentFile(string(raw), policy); err != nil {
 						return fmt.Errorf("platform %q: agents[%d] %s: %w", tenant, i, a.File, err)
 					}
-				} else if err := decodeStrict(raw, &fromFile); err != nil {
-					return fmt.Errorf("platform %q: agents[%d] %s: %w", tenant, i, a.File, err)
+				} else {
+					// A field the spec no longer reads is dropped, with a note.
+					kept, notes, err := wire.DropRetiredAgentFields(raw)
+					if err != nil {
+						return fmt.Errorf("platform %q: agents[%d] %s: %w", tenant, i, a.File, err)
+					}
+					for _, n := range notes {
+						if log != nil {
+							log.Warn("an agent file holds a field that is no longer read", "platform", tenant, "file", a.File, "note", n)
+						}
+					}
+					if err := decodeStrict(kept, &fromFile); err != nil {
+						return fmt.Errorf("platform %q: agents[%d] %s: %w", tenant, i, a.File, err)
+					}
 				}
 				s = &fromFile
 			}

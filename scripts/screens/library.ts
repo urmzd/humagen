@@ -382,11 +382,7 @@ export function libraryScreens(call: Call): Screen[] {
         const me = await call<{ personal_project: string }>("GET", "/api/me");
         assert.equal(new URL(page.url()).searchParams.get("project"), me.personal_project);
         assert.equal(new URL(page.url()).searchParams.has("channel"), false);
-        // Over Home's chat bar on a wide screen the person's own project reads as No project (DES-057).
-        const personal = (page.viewportSize()?.width ?? 0) >= 768 ? "No project" : "Personal";
-        await page
-          .getByRole("button", { name: `Select project: ${personal}`, exact: true })
-          .waitFor();
+        await page.locator("textarea").first().waitFor();
         const draft = await page.locator("textarea").first().inputValue();
         assert.ok(draft.includes("Help me review the confirmed memory"));
       },
@@ -646,8 +642,8 @@ export function libraryScreens(call: Call): Screen[] {
           await call("POST", "/api/agents", {
             name,
             description: "A helper for the developer's internal work",
-            provider: "offline",
-            model: "offline",
+            provider: "screens-native",
+            model: "screens-native",
             system_prompt: "Summarize internal project updates concisely.",
           });
         const home = me.personal_project.replace(/^~/, "");
@@ -655,13 +651,10 @@ export function libraryScreens(call: Call): Screen[] {
           await call("PUT", `/api/agents/${name}/home`, { project: home });
         await page.reload();
         await page.getByRole("heading", { name, exact: true }).waitFor();
-        await page.locator("summary").filter({ hasText: "Add to a Project" }).first().click();
-        await page
-          .getByLabel("Destination Project", { exact: true })
-          .first()
-          .selectOption("Launch");
-        await page.getByRole("button", { name: "Review Audience", exact: true }).click();
-        await page.getByRole("button", { name: "Move Agent to Project", exact: true }).waitFor();
+        await page.locator("summary").filter({ hasText: "Change Access" }).first().click();
+        await page.getByLabel("Access", { exact: true }).first().selectOption("Launch");
+        await page.getByRole("button", { name: "Review Access", exact: true }).click();
+        await page.getByRole("button", { name: "Confirm Access", exact: true }).waitFor();
       },
     },
     ...[false, true].map(

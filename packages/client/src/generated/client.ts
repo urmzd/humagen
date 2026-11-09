@@ -21,6 +21,7 @@ import type {
   AlertRule,
   AmendAgentSetupBody,
   AnnouncementInput,
+  AnswerToolUseBody,
   Approved,
   ArchiveThreadBody,
   Artifact,
@@ -35,6 +36,7 @@ import type {
   CallPolicy,
   CallPolicyInput,
   CatalogConnector,
+  CatalogLoginInput,
   CatalogPage,
   ChangeAlertStateBody,
   ChannelInput,
@@ -50,6 +52,7 @@ import type {
   ConnectionDetail,
   ConnectionHealth,
   ConnectionPreset,
+  ContextResult,
   ConversationMemory,
   ConversationSandboxes,
   Corpus,
@@ -74,6 +77,7 @@ import type {
   GetAgentRosterResponse,
   GetInboxMessageResponse,
   GetLibrarySkillResponse,
+  GetMessageContextBody,
   GetProjectAgentHuesResponse,
   GetProjectInboxResponse,
   GetRunTraceResponse,
@@ -83,6 +87,7 @@ import type {
   HandoffContract,
   HandoffUpdate,
   Health,
+  HealthComponent,
   InboxCounts,
   InboxDeliveryInput,
   InboxMessage,
@@ -150,6 +155,12 @@ import type {
   MemoryFile,
   MemoryFiles,
   MemoryRestoreInput,
+  MessageCreated,
+  MessageFeedbackInput,
+  MessageNode,
+  MessageTrace,
+  MessagesInput,
+  ModelProvider,
   Note,
   NoteInput,
   NoteList,
@@ -199,6 +210,7 @@ import type {
   ReviewedPullsResponse,
   ReviseAgentBody,
   Revision,
+  RootMessagePage,
   Run,
   RunFeedback,
   RunList,
@@ -218,15 +230,18 @@ import type {
   SetApprovalModeBody,
   SetKnowledgeDocumentExcludedBody,
   SetKnowledgeSyncSettingsBody,
+  SetModelProviderBody,
   Settings,
   SkillUsage,
   SnoozeInboxMessageBody,
+  SnowflakeSetupInput,
   SourceDependencies,
   SourceExcerpt,
   SourceLinkResource,
   SourceLinkRule,
   SourceLinkRuleInput,
   SourceLinkSuggestion,
+  StopMessageBody,
   StopSessionBody,
   StorageUsage,
   StreamEventsStreamEvent,
@@ -579,6 +594,268 @@ export class ApiClient {
       );
     }
     return response.data;
+  }
+
+  /** The root sessions the caller may read, each as its first message: its
+place (parent), who started it, the agent that owns it, its status
+(that of the runs beneath it), how many children it has and when
+anything beneath it last changed. Newest first by latest_at. roots
+is required and true, the one listing this route answers. Page with
+after, the next of the previous page.
+ */
+  async listMessages(roots: boolean, limit?: number, after?: string, options?: RequestOptions): Promise<RootMessagePage> {
+    let path = "/api/messages";
+    const _q = new URLSearchParams();
+    if (roots !== undefined && roots !== null) _q.set("roots", String(roots));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (after !== undefined && after !== null) _q.set("after", String(after));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<RootMessagePage>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listMessagesRaw(roots: boolean, limit?: number, after?: string, options?: RequestOptions): Promise<ApiResponse<RootMessagePage>> {
+    let path = "/api/messages";
+    const _q = new URLSearchParams();
+    if (roots !== undefined && roots !== null) _q.set("roots", String(roots));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (after !== undefined && after !== null) _q.set("after", String(after));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<RootMessagePage>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** People's messages from one origin, under the root session of the
+origin's place: found by its address, or started on its first message
+and owned by the entry agent, so work asked for in a place is picked
+up there later. With no ref (or type web) the message starts a new
+console conversation. Agents a message mentions answer in their own
+child sessions under the root; with no mention the entry agent
+picks. Earlier messages in a batch are posted as said and start
+nothing. Callers send role user; the platform writes the agents'
+messages. 201 when the root was started, 200 otherwise.
+ */
+  async sendMessages(body: MessagesInput, options?: RequestOptions): Promise<MessageCreated> {
+    const path = "/api/messages";
+    return this.request<MessageCreated>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async sendMessagesRaw(body: MessagesInput, options?: RequestOptions): Promise<ApiResponse<MessageCreated>> {
+    const path = "/api/messages";
+    return this.rawRequest<MessageCreated>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Without depth, the session a message is in, with its messages, the
+entry agent's picks and each delegated answer, its children and
+links (AgentSession). With depth, the message as a tree
+(MessageNode): the message and its children in time order, each with
+children_count and latest_at, depth levels deep. A session id reads
+as the session's first message, and that message's own id reads the
+same. id is a session id, or a message id (session:message).
+ */
+  async getMessage(id: string, since?: string, before?: string, around?: string, summary?: boolean, depth?: number, options?: RequestOptions): Promise<AgentSession | MessageNode> {
+    let path = "/api/messages/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (since !== undefined && since !== null) _q.set("since", String(since));
+    if (before !== undefined && before !== null) _q.set("before", String(before));
+    if (around !== undefined && around !== null) _q.set("around", String(around));
+    if (summary !== undefined && summary !== null) _q.set("summary", String(summary));
+    if (depth !== undefined && depth !== null) _q.set("depth", String(depth));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<AgentSession | MessageNode>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getMessageRaw(id: string, since?: string, before?: string, around?: string, summary?: boolean, depth?: number, options?: RequestOptions): Promise<ApiResponse<AgentSession | MessageNode>> {
+    let path = "/api/messages/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (since !== undefined && since !== null) _q.set("since", String(since));
+    if (before !== undefined && before !== null) _q.set("before", String(before));
+    if (around !== undefined && around !== null) _q.set("around", String(around));
+    if (summary !== undefined && summary !== null) _q.set("summary", String(summary));
+    if (depth !== undefined && depth !== null) _q.set("depth", String(depth));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<AgentSession | MessageNode>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** People's messages beneath a message or its session, as a follow-up in that conversation. id is a session id, or a message id (session:message). */
+  async sendMessagesUnder(id: string, body: MessagesInput, options?: RequestOptions): Promise<MessageCreated> {
+    let path = "/api/messages/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<MessageCreated>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async sendMessagesUnderRaw(id: string, body: MessagesInput, options?: RequestOptions): Promise<ApiResponse<MessageCreated>> {
+    let path = "/api/messages/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<MessageCreated>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Rates an agent's message (id is session:run): up or down with an optional note, one rating per person per message, saved again in place. Surfaces send reactions and buttons here. */
+  async rateMessage(id: string, body: MessageFeedbackInput, options?: RequestOptions): Promise<RunFeedback> {
+    let path = "/api/messages/{id}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<RunFeedback>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async rateMessageRaw(id: string, body: MessageFeedbackInput, options?: RequestOptions): Promise<ApiResponse<RunFeedback>> {
+    let path = "/api/messages/{id}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<RunFeedback>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Stops the work beneath a message's session; with children, its child sessions' work too. */
+  async stopMessage(id: string, body: StopMessageBody, options?: RequestOptions): Promise<void> {
+    let path = "/api/messages/{id}/stop";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    await this.request<void>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async stopMessageRaw(id: string, body: StopMessageBody, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/messages/{id}/stop";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<void>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Answers the approval of a tool call, or the question a tool call
+asked, anywhere in the message's conversation, named by the call's
+`tool_use_id` (`htu_<run>_<n>`, as the message's trace and stream
+name it). It is the same as answering the question on its run
+(`answerQuestion`): who may answer, edited `arguments`, `act_as` and
+the first recorded answer standing all hold. A call outside the
+conversation, one the caller may not read, or one nothing waited on
+is 404.
+ */
+  async answerToolUse(id: string, body: AnswerToolUseBody, options?: RequestOptions): Promise<InboxMessage> {
+    let path = "/api/messages/{id}/answer";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<InboxMessage>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async answerToolUseRaw(id: string, body: AnswerToolUseBody, options?: RequestOptions): Promise<ApiResponse<InboxMessage>> {
+    let path = "/api/messages/{id}/answer";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<InboxMessage>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Pulls context from the place the message's session came from (the
+Slack thread or channel, the GitHub pull request or issue, a page),
+for what is asked in words. The place is the session's origin, never
+chosen by the caller. Resolvers read with the server's access and
+answer only what the place's audience may read. note says why nothing
+could be pulled, when nothing could.
+ */
+  async getMessageContext(id: string, body: GetMessageContextBody, options?: RequestOptions): Promise<ContextResult> {
+    let path = "/api/messages/{id}/context";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ContextResult>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async getMessageContextRaw(id: string, body: GetMessageContextBody, options?: RequestOptions): Promise<ApiResponse<ContextResult>> {
+    let path = "/api/messages/{id}/context";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ContextResult>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** What happens beneath a message: its session's snapshots and run events, as GET /api/sessions/{id}/stream. Resume with Last-Event-ID. */
+  async *streamMessage(id: string, lastEventId?: string, options?: SSEOptions): AsyncGenerator<SSEEvent<string>> {
+    let path = "/api/messages/{id}/stream";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    let url = `${this.baseUrl}${path}`;
+    const _hdr: Record<string, string> = {};
+    for (const [k, v] of Object.entries({ "Last-Event-ID": lastEventId })) {
+      if (v !== undefined && v !== null) _hdr[k] = String(v);
+    }
+    yield* streamSse<string>(url, {
+      method: "GET",
+      headers: { ...this.headers, ..._hdr, ...options?.headers },
+    }, options, this.requestInterceptor, this.fetchFn);
+  }
+
+  /** What ran to answer a message, one node per run (TraceNode). For a
+session id or a person's message id: the runs that answered that
+message, the entry agent's pick (pick set) with the answers it led to
+beneath it, its own and those of the child sessions it handed the
+message to. For an agent's message (session:run): that run. Beneath
+each run are the runs it called. A run or child session the caller
+may not read is left out with everything beneath it, and counted in
+hidden. At most 500 nodes, and 200 tools per node; truncated says
+when a bound cut it. id is a session id, or a message id
+(session:message).
+ */
+  async traceMessage(id: string, options?: RequestOptions): Promise<MessageTrace> {
+    let path = "/api/messages/{id}/trace";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<MessageTrace>("GET", path, {
+      ...options,
+    });
+  }
+
+  async traceMessageRaw(id: string, options?: RequestOptions): Promise<ApiResponse<MessageTrace>> {
+    let path = "/api/messages/{id}/trace";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<MessageTrace>("GET", path, {
+      ...options,
+    });
   }
 
   /** Emits session snapshots and run events. Resume with Last-Event-ID.
@@ -1707,7 +1984,14 @@ model provider set up, a `provider:none` component is down.
     });
   }
 
-  /** Names are runtime configuration metadata, never keys or credential references. Declared does not mean a live call has been verified; a dry run checks the actual adapter and credential. */
+  /** The providers an agent, a model policy or routing may name in the
+caller's workspace: those the deployment declares and those the
+workspace's administrators set up. There is no built-in model and no
+stand-in. Names are configuration, never keys. Declared does not mean a
+live call has been verified. A caller who may manage the workspace's
+providers (clients:write) also reads how each of its own is set up,
+with no key.
+ */
   async listModelProviders(options?: RequestOptions): Promise<ListModelProvidersResponse> {
     const path = "/api/model-providers";
     return this.request<ListModelProvidersResponse>("GET", path, {
@@ -1718,6 +2002,67 @@ model provider set up, a `provider:none` component is down.
   async listModelProvidersRaw(options?: RequestOptions): Promise<ApiResponse<ListModelProvidersResponse>> {
     const path = "/api/model-providers";
     return this.rawRequest<ListModelProvidersResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** A key is given as a value, kept in the secret store and never
+returned, or as `key_ref`, an `env:NAME` the server's configuration
+gives this workspace. With neither, a replaced provider keeps its key.
+A google provider may instead run on Vertex AI with the server's own
+credentials. A name the deployment declares, `policy`, `offline` and
+names starting `ws-` are refused.
+ */
+  async setModelProvider(name: string, body: SetModelProviderBody, options?: RequestOptions): Promise<ModelProvider> {
+    let path = "/api/model-providers/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ModelProvider>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setModelProviderRaw(name: string, body: SetModelProviderBody, options?: RequestOptions): Promise<ApiResponse<ModelProvider>> {
+    let path = "/api/model-providers/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ModelProvider>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Refused (409) while an agent, a model policy or routing runs on it; the refusal names each. */
+  async deleteModelProvider(name: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/model-providers/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteModelProviderRaw(name: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/model-providers/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Lists the provider's models, spending no tokens. Vertex AI has no check. */
+  async checkModelProvider(name: string, options?: RequestOptions): Promise<HealthComponent> {
+    let path = "/api/model-providers/{name}/check";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<HealthComponent>("POST", path, {
+      ...options,
+    });
+  }
+
+  async checkModelProviderRaw(name: string, options?: RequestOptions): Promise<ApiResponse<HealthComponent>> {
+    let path = "/api/model-providers/{name}/check";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<HealthComponent>("POST", path, {
       ...options,
     });
   }
@@ -2407,6 +2752,71 @@ path. Seeing an entry never grants reading the object.
     });
   }
 
+  /** It holds no credential. Its owner's own login crawls the schema (tables,
+views, columns and comments, never rows); every query runs with the
+reader's own login, so Snowflake's grants, row access and masking apply.
+Each person gives their login with PUT /api/catalog/connectors/{name}/login.
+ */
+  async createSnowflakeConnector(body: SnowflakeSetupInput, options?: RequestOptions): Promise<CatalogConnector> {
+    const path = "/api/catalog/connectors/snowflake";
+    return this.request<CatalogConnector>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async createSnowflakeConnectorRaw(body: SnowflakeSetupInput, options?: RequestOptions): Promise<ApiResponse<CatalogConnector>> {
+    const path = "/api/catalog/connectors/snowflake";
+    return this.rawRequest<CatalogConnector>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Your login is yours alone: only queries you ask for use it. Give a
+reference under a start the workspace lists, or the token itself where
+the workspace lets people keep values. Warehouses signed in with OAuth,
+such as BigQuery, use your connection instead and refuse this (400).
+ */
+  async putCatalogLogin(name: string, body: CatalogLoginInput, options?: RequestOptions): Promise<void> {
+    let path = "/api/catalog/connectors/{name}/login";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    await this.request<void>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async putCatalogLoginRaw(name: string, body: CatalogLoginInput, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/catalog/connectors/{name}/login";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<void>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Forget your own login to a warehouse */
+  async deleteCatalogLogin(name: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/catalog/connectors/{name}/login";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteCatalogLoginRaw(name: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/catalog/connectors/{name}/login";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
   /** Lists the connected system again and replaces the connector's entries whole. Only its owner asks. A crawl that fails keeps the entries before it. */
   async crawlConnector(name: string, options?: RequestOptions): Promise<CatalogConnector> {
     let path = "/api/catalog/connectors/{name}/crawl";
@@ -2426,8 +2836,9 @@ path. Seeing an entry never grants reading the object.
 
   /** Each agent available in the project that takes untagged messages
 (its spec is not `tagged_only`) is asked, all at once, whether it
-should be involved. Each that says yes would answer, side by side;
-when none does, the message waits for a person. Nothing is started.
+should be involved. Each that says yes would answer, side by side.
+When none does, a message still lands, on the entry agent or the
+best match (see createRun). Nothing is started.
 Agents the caller may not read are left out.
  */
   async previewJoin(q: string, project?: string, options?: RequestOptions): Promise<PreviewJoinResponse> {
@@ -2486,15 +2897,18 @@ which projects above it the run would count toward.
 
 The body takes no metadata: an unknown field answers 400.
 
-Nothing routes on its own. With `agent` left out, the default the
-conversation's place inherits answers, the first set of: the
-thread's (`updateThread`), the acting client's when `act_as` names
-one, the channel's (a new conversation is in `general` of its
-project), then the project's, each ancestor's nearest first, and the
-workspace's. With none set it is 409, "tag an agent". `*` asks every
-agent available there whether to take it, and each that does answers
-(for a person a client acts for, only agents that client may route
-to); with none, 409. `auto`, as written before, reads as `*`. An agent not available in the
+With `agent` left out, the default the conversation's place
+inherits answers, the first set of: the thread's (`updateThread`),
+the acting client's when `act_as` names one, the channel's (a new
+conversation is in `general` of its project), then the project's,
+each ancestor's nearest first, and the workspace's. With none set,
+or `*`, the message lands: the entry agent answers it, and calls
+whoever fits. Without one there, each agent that takes it answers,
+else the best match, the workspace's named default, then the first
+agent available, its `picked` saying why. For a person a client acts
+for, only agents that client may route to answer. Only a place where
+no agent may answer is 409, "tag an agent". `auto`, as written
+before, reads as `*`. An agent not available in the
 conversation's project, or a default that has stopped being
 available there, is 403. So is a conversation in a project where the
 caller, or the person `act_as` names, is only a viewer: starting work
@@ -7138,7 +7552,7 @@ read, or a limit on either, is left out.
 
   /** A workspace at its cap of clients answers 429 with a plain error
 body. Every agent the client names, as its default, in its list, for
-a bot or for an auto-label, is an agent that exists and that the
+a bot or in an event rule, is an agent that exists and that the
 caller may read; any other is 400, in the same words whether it does
 not exist or lives in a project the caller may not read.
  */
@@ -7202,7 +7616,7 @@ may not read, which they are not shown: naming none keeps it, and
 naming one they may read replaces it. The agents it names that the
 caller is not shown are kept the same way: its default unless they
 name another, its list unless they write `*`, its bots and its
-auto-labels unless they map the same bot or label, and an agent it
+event rules unless they map the same bot or write the same rule, and an agent it
 routed to stays one it routes to. Every other agent named is one that
 exists and that the caller may read, or one the record already holds
 (400 otherwise, as on create). A client the server's configuration

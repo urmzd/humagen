@@ -67,6 +67,7 @@ type hidden struct {
 	sourceRule                                                    string
 	sourceSuggestion                                              string
 	project, agent, schedule, rule, source, eval, client, variant string
+	modelProvider                                                 string
 	run, thread, message, artifact, agentNote, projectNote, doc   string
 	workspaceFile, workspaceRevision                              string
 	scratchpad                                                    string
@@ -152,7 +153,10 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		setup:   seedHiddenSetup(t, f),
 		inside:  inside,
 		project: "Canary" + marker, agent: "canary-" + marker, schedule: "canary-" + marker, rule: "canary-" + marker,
-		source: "canary-" + marker, eval: "canary-" + marker, client: "canary-" + marker, variant: "lean-" + marker,
+		// A provider is the whole workspace's, as a client is: its name is no
+		// secret from the workspace's own people, so it carries no marker.
+		modelProvider: "hidden-models",
+		source:        "canary-" + marker, eval: "canary-" + marker, client: "canary-" + marker, variant: "lean-" + marker,
 		provider: canaryProvider,
 	}
 	must := func(method, path, body string, want int) map[string]any {
@@ -167,6 +171,7 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 
 	must("POST", "/api/agents", `{"name":"`+h.agent+`","model":"offline","provider":"offline","system_prompt":"Prompt `+marker+`."}`, http.StatusCreated)
 	must("POST", "/api/projects", `{"name":"`+h.project+`","description":"Project `+marker+`."}`, http.StatusCreated)
+	must("PUT", "/api/model-providers/"+h.modelProvider, `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`, http.StatusOK)
 	// The agent lives in the project, and the project is members only: its
 	// creator, who holds projects:govern, is its one member.
 	must("PUT", "/api/agents/"+h.agent+"/home", `{"project":"`+h.project+`"}`, http.StatusOK)
@@ -562,7 +567,7 @@ func (h hidden) holds(body string) bool {
 // which a member of the workspace may see.
 func (h hidden) unplaced(path, param string) bool {
 	if h.private {
-		if strings.HasPrefix(path, "/api/sessions/") {
+		if strings.HasPrefix(path, "/api/sessions/") || strings.HasPrefix(path, "/api/messages/") {
 			return false
 		}
 		if param == "part" || param == "question" {
@@ -583,7 +588,7 @@ func (h hidden) unplaced(path, param string) bool {
 	case param == "variant", param == "client", param == "handle", param == "provider":
 		// A tool provider is the workspace's: everyone in it may connect to it.
 		return true
-	case strings.HasPrefix(path, "/api/knowledge/"), strings.HasPrefix(path, "/api/clients/"):
+	case strings.HasPrefix(path, "/api/knowledge/"), strings.HasPrefix(path, "/api/clients/"), strings.HasPrefix(path, "/api/model-providers/"):
 		return true
 	case strings.HasPrefix(path, "/api/branding/"):
 		// Branding is the workspace's: everyone in it reads its fonts.
@@ -612,6 +617,8 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.corpus, true
 		case prefix("/api/alert-rules/"):
 			return h.rule, true
+		case prefix("/api/model-providers/"):
+			return h.modelProvider, h.modelProvider != ""
 		case prefix("/api/knowledge/"):
 			return h.source, true
 		case prefix("/api/evals/"):
@@ -626,7 +633,7 @@ func (h hidden) value(path, param string) (string, bool) {
 		}
 	case "id":
 		switch {
-		case prefix("/api/sessions/"):
+		case prefix("/api/sessions/"), prefix("/api/messages/"):
 			return h.session, h.session != ""
 		case prefix("/api/library/skills/"):
 			return h.librarySkill, true
@@ -822,7 +829,7 @@ func sweepGets(t *testing.T, f *fixture, owner, outsider string, inside bool) {
 func sweepGetsOf(t *testing.T, f *fixture, outsider string, h hidden) {
 	t.Helper()
 	s := loadSpec(t)
-	defaults := map[string]string{"run": "missing", "channel": "C01PUBLIC", "project": "~", "permission": "runs:read", "q": "hello", "agent": h.agent, "names": "missing", "scope": "project", "file": "notes/missing.md", "path": h.workspaceFile, "revision": h.workspaceRevision, "repo": "acme/missing", "number": "1"}
+	defaults := map[string]string{"run": "missing", "channel": "C01PUBLIC", "project": "~", "permission": "runs:read", "q": "hello", "agent": h.agent, "names": "missing", "scope": "project", "file": "notes/missing.md", "path": h.workspaceFile, "revision": h.workspaceRevision, "repo": "acme/missing", "number": "1", "roots": "true"}
 
 	var keys []string
 	for key := range s.ops {

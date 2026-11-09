@@ -40,10 +40,18 @@ const (
 	EnvGitHubApp              = "HUMAGEN_GITHUB_APP"
 	EnvGitHubInstallation     = "HUMAGEN_GITHUB_INSTALLATION"
 	EnvGitHubBots             = "HUMAGEN_GITHUB_BOTS"
-	EnvGitHubAutoLabels       = "HUMAGEN_GITHUB_AUTO_LABELS"
 	EnvGitHubChecks           = "HUMAGEN_GITHUB_CHECKS"
-	EnvGitHubGuides           = "HUMAGEN_GITHUB_GUIDES"
-	EnvGitHubMutations        = "HUMAGEN_GITHUB_MUTATIONS"
+	// EnvGitHubAskers, when set, are the only GitHub logins whose mentions,
+	// reviews and pull requests the client acts on, among people with write
+	// access to the repository and people it maps.
+	EnvGitHubAskers = "HUMAGEN_GITHUB_ASKERS"
+	// EnvGitHubAutoReview switches automatic review of pull requests off
+	// (false) or on; unset, it is on. EnvGitHubAutoReviewRepositories turns
+	// it on or off for single repositories, as owner/repo=on|off pairs.
+	EnvGitHubAutoReview             = "HUMAGEN_GITHUB_AUTO_REVIEW"
+	EnvGitHubAutoReviewRepositories = "HUMAGEN_GITHUB_AUTO_REVIEW_REPOSITORIES"
+	EnvGitHubGuides                 = "HUMAGEN_GITHUB_GUIDES"
+	EnvGitHubMutations              = "HUMAGEN_GITHUB_MUTATIONS"
 	// EnvGitHubLogin is the app's own login. A comment that mentions it and
 	// names no agent is answered by the client's default (EnvGitHubDefault),
 	// else by the default chain of the client's home.
@@ -177,6 +185,41 @@ func boolEnv(env func(string) string, name string) (bool, error) {
 	return v, nil
 }
 
+// autoReviewEnv reads automatic review's switch and its per-repository
+// overrides. Neither set leaves it on, as a client with no setting is.
+func autoReviewEnv(env func(string) string) (*clients.AutoReview, error) {
+	raw, repos := env(EnvGitHubAutoReview), env(EnvGitHubAutoReviewRepositories)
+	if raw == "" && repos == "" {
+		return nil, nil
+	}
+	a := &clients.AutoReview{}
+	if raw != "" {
+		on, err := strconv.ParseBool(raw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid $%s: %v", EnvGitHubAutoReview, err)
+		}
+		a.Enabled = &on
+	}
+	for _, entry := range list(repos) {
+		repo, value, ok := strings.Cut(entry, "=")
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "on", "true":
+		case "off", "false":
+		default:
+			ok = false
+		}
+		if !ok {
+			return nil, fmt.Errorf("invalid $%s: %q is not owner/repo=on or owner/repo=off", EnvGitHubAutoReviewRepositories, entry)
+		}
+		if a.Repositories == nil {
+			a.Repositories = map[string]bool{}
+		}
+		v := strings.ToLower(strings.TrimSpace(value))
+		a.Repositories[strings.TrimSpace(repo)] = v == "on" || v == "true"
+	}
+	return a, nil
+}
+
 func slackClient(env func(string) string) (*platform.ClientInput, error) {
 	token, secret := env(EnvSlackToken), env(EnvSlackSecret)
 	if token == "" && secret == "" {
@@ -210,6 +253,10 @@ func slackClient(env func(string) string) (*platform.ClientInput, error) {
 	}, nil
 }
 
+// retiredGitHubAutoLabels mapped labels to agents until labels stopped
+// starting runs.
+const retiredGitHubAutoLabels = "HUMAGEN_GITHUB_AUTO_LABELS"
+
 func githubClient(env func(string) string) (*platform.ClientInput, error) {
 	token, secret := env(EnvGitHubToken), env(EnvGitHubSecret)
 	if token == "" && secret == "" {
@@ -221,7 +268,7 @@ func githubClient(env func(string) string) (*platform.ClientInput, error) {
 	if len(list(env(EnvGitHubOwners))) == 0 {
 		return nil, fmt.Errorf("GitHub installation needs $%s", EnvGitHubOwners)
 	}
-	opts := &clients.GitHubOptions{ReadRepositories: list(env(EnvGitHubReadRepositories)), Login: env(EnvGitHubLogin)}
+	opts := &clients.GitHubOptions{ReadRepositories: list(env(EnvGitHubReadRepositories)), Login: env(EnvGitHubLogin), Askers: list(env(EnvGitHubAskers))}
 	var err error
 	if opts.Mutations, err = boolEnv(env, EnvGitHubMutations); err != nil {
 		return nil, err
@@ -232,10 +279,13 @@ func githubClient(env func(string) string) (*platform.ClientInput, error) {
 	if opts.Checks, err = boolEnv(env, EnvGitHubChecks); err != nil {
 		return nil, err
 	}
-	if raw := env(EnvGitHubAutoLabels); raw != "" {
-		if err := json.Unmarshal([]byte(raw), &opts.AutoLabels); err != nil {
-			return nil, fmt.Errorf("invalid $%s: %v", EnvGitHubAutoLabels, err)
-		}
+	if opts.AutoReview, err = autoReviewEnv(env); err != nil {
+		return nil, err
+	}
+	// Labels start nothing. A deployment that still sets the
+	// variable expects reviews it will not get, so it is told at start.
+	if env(retiredGitHubAutoLabels) != "" {
+		return nil, fmt.Errorf("$%s is no longer read: labels start nothing, and automatic review is the GitHub connection's auto_review switch, on by default; remove it", retiredGitHubAutoLabels)
 	}
 	return &platform.ClientInput{
 		Client: clients.Client{

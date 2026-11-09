@@ -68,6 +68,10 @@ type cast struct {
 	cut map[string]chan struct{}
 	// sent is every request each agent's model was sent, flattened to text.
 	sent map[string][]string
+	// schemas is every response schema each agent's model was asked for.
+	schemas map[string][]*saigetypes.ParameterSchema
+	// freeText are agents whose model gives no structured output.
+	freeText map[string]bool
 }
 
 // talk is a model that answers its first scripted turns, then starts saying
@@ -107,8 +111,19 @@ type recorded struct {
 func (r *recorded) Stream(ctx context.Context, req saigetypes.Request) (<-chan saigetypes.Delta, error) {
 	r.c.mu.Lock()
 	r.c.sent[r.agent] = append(r.c.sent[r.agent], fmt.Sprintf("%+v", req.Messages))
+	if req.Schema != nil {
+		r.c.schemas[r.agent] = append(r.c.schemas[r.agent], req.Schema)
+	}
 	r.c.mu.Unlock()
 	return r.Provider.Stream(ctx, req)
+}
+
+// SupportsSchema is structured output, which every scripted model gives
+// unless its agent is one of the cast's freeText.
+func (r *recorded) SupportsSchema() bool {
+	r.c.mu.Lock()
+	defer r.c.mu.Unlock()
+	return !r.c.freeText[r.agent]
 }
 
 // talker is a talk's model for one run.
@@ -163,6 +178,7 @@ func stage(t *testing.T, c *cast, cfg platform.Config) *platform.Platform {
 		c.once[name] = &sync.Once{}
 	}
 	c.instances, c.cut, c.sent = map[string]int{}, map[string]chan struct{}{}, map[string][]string{}
+	c.schemas = map[string][]*saigetypes.ParameterSchema{}
 	c.scripts = map[string]*agenttest.ScriptedProvider{}
 	cutOnce := map[string]*sync.Once{}
 	for name := range c.talks {
@@ -503,7 +519,7 @@ func TestTheWriterPublishesAFile(t *testing.T) {
 			"lead":                 {tagging(platform.BuiltinWriter, "Write the launch plan"), say("The plan is published.")},
 		},
 		spawn: map[string][]string{"lead": {platform.BuiltinWriter}},
-	}, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}, BuiltinProvider: "offline", BuiltinModel: "offline"})
+	}, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}, TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	ctx := t.Context()
 	if err := p.EnsureBuiltins(ctx, tenant); err != nil {
 		t.Fatal(err)

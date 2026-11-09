@@ -23,7 +23,7 @@ import (
 // The agents a record names, as a reader is shown them.
 //
 // Besides the agents routes, these records name agents: a client (its
-// default, its list, its bots and its auto-labels), a project's lists of
+// default, its list, its bots and its event rules), a project's lists of
 // agents, the workspace's settings (its title and memory agents), an agent's
 // spec (the agents it may call, and the approvals of those calls), an
 // agent's call policy (the callers it admits and trusts), and a thread (its
@@ -56,7 +56,7 @@ func (s *Seer) shownNames(names []string) []string {
 }
 
 // agentsNamed is every agent a client names: its default, its list without
-// "*", its bots and its auto-labels, in that order, the maps by key.
+// "*", its bots and its event rules, in that order, the maps by key.
 func agentsNamed(c clients.Client) []string {
 	var out []string
 	if c.DefaultAgent != "" {
@@ -74,19 +74,13 @@ func agentsNamed(c clients.Client) []string {
 		for _, rule := range c.GitHub.Automations {
 			out = append(out, rule.Agent)
 		}
-		for _, repo := range slices.Sorted(maps.Keys(c.GitHub.AutoLabels)) {
-			labels := c.GitHub.AutoLabels[repo]
-			for _, label := range slices.Sorted(maps.Keys(labels)) {
-				out = append(out, labels[label])
-			}
-		}
 	}
 	return out
 }
 
 // Client is a client as the reader is shown it: its home left out when it is
 // in a project they may not read, and every agent it names that they may not
-// read left out of its default, its list, its bots and its auto-labels. The
+// read left out of its default, its list, its bots and its automations. The
 // machine that hosts the client's surface is shown every agent it names, as
 // it routes by them, just as it reads every thread on that surface.
 func (s *Seer) Client(c clients.Client) clients.Client {
@@ -107,15 +101,6 @@ func (s *Seer) Client(c clients.Client) clients.Client {
 		for _, rule := range c.GitHub.Automations {
 			if s.Agent(rule.Agent) {
 				g.Automations = append(g.Automations, rule)
-			}
-		}
-		g.AutoLabels = nil
-		for repo, labels := range c.GitHub.AutoLabels {
-			if shown := s.shownMap(labels); len(shown) > 0 {
-				if g.AutoLabels == nil {
-					g.AutoLabels = map[string]map[string]string{}
-				}
-				g.AutoLabels[repo] = shown
 			}
 		}
 		c.GitHub = &g
@@ -152,7 +137,7 @@ func noAgent(kind error, name string) error {
 // clients.ErrInvalid, as no agent, whether it lives in a project who may not
 // read or does not exist. What old names that who is not shown is kept: its
 // default, unless who names another, the agents of its list, unless who
-// writes "*", which reaches them too, and its bots and auto-labels, unless
+// writes "*", which reaches them too, and its bots and event rules, unless
 // who maps the same bot or label, and for a repository the client still
 // serves. An agent who is not shown that the client routed to stays one it
 // routes to, so a bot or a label kept for it still stands.
@@ -221,28 +206,6 @@ func (p *Platform) ClientWrittenBy(ctx context.Context, who auth.Principal, old 
 				}
 				if !slices.ContainsFunc(c.GitHub.Automations, func(a clients.GitHubAutomation) bool { return a.Name == rule.Name }) {
 					c.GitHub.Automations = append(c.GitHub.Automations, rule)
-				}
-			}
-		}
-		for repo, labels := range old.GitHub.AutoLabels {
-			if owner, _, _ := strings.Cut(repo, "/"); !c.Serves(owner) {
-				continue
-			}
-			for label, a := range labels {
-				if shown(a) {
-					continue
-				}
-				if c.GitHub == nil {
-					c.GitHub = &clients.GitHubOptions{}
-				}
-				if c.GitHub.AutoLabels == nil {
-					c.GitHub.AutoLabels = map[string]map[string]string{}
-				}
-				if c.GitHub.AutoLabels[repo] == nil {
-					c.GitHub.AutoLabels[repo] = map[string]string{}
-				}
-				if _, mapped := c.GitHub.AutoLabels[repo][label]; !mapped {
-					c.GitHub.AutoLabels[repo][label] = a
 				}
 			}
 		}
@@ -473,6 +436,9 @@ func (s *Seer) Revisions(revs []wire.Revision) []wire.Revision {
 // wrote none, unless the spec written names approvers or self_approval of
 // its own. The spec as kept is validated again.
 func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *wire.Revision, spec wire.AgentSpec) (wire.AgentSpec, error) {
+	// A chain read back with a provider name since renamed is written with
+	// the new one.
+	spec = p.readChain(who.Tenant, spec)
 	// An editor can retain unread references already present, but cannot probe
 	// or newly grant a source they cannot read.
 	sources := slices.Clone(spec.Sources)
@@ -516,7 +482,7 @@ func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *w
 		}
 		shown[a] = true
 	}
-	if err := spec.Normalize().ValidateWith(p.agentProviders()); err != nil {
+	if err := spec.Normalize().ValidateWith(p.agentProviders(who.Tenant)); err != nil {
 		return wire.AgentSpec{}, err
 	}
 	if len(hidden) == 0 {
@@ -542,16 +508,40 @@ func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *w
 		spec.Approvers, spec.SelfApproval = slices.Clone(old.Spec.Approvers), old.Spec.SelfApproval
 	}
 	// The spec as written held on its own; the spec as kept must too.
-	if err := spec.Normalize().ValidateWith(p.agentProviders()); err != nil {
+	if err := spec.Normalize().ValidateWith(p.agentProviders(who.Tenant)); err != nil {
 		return wire.AgentSpec{}, err
 	}
 	return spec, nil
 }
 
-// agentProviders are the providers an agent's spec may name here, as the
-// registry holds it to them.
-func (p *Platform) agentProviders() []string {
-	return append(providers(), p.cfg.Ext.ProviderNames()...)
+// agentProviders are the providers an agent's spec may name in tenant's
+// workspace: those the deployment declares, the workspace's own, a model
+// policy, and the kinds an administrator may enable (anthropic, google,
+// openai), which an agent may name before one is: it runs once one is
+// (resolveModel). Fiber's offline counts only when the platform is not held
+// to configured models (Config.ConfiguredModelsOnly).
+func (p *Platform) agentProviders(tenant string) []string {
+	return p.providersIn(p.Settings(tenant))
+}
+
+// providersIn is agentProviders for a workspace whose settings are s, so
+// reading the settings themselves can ask it.
+func (p *Platform) providersIn(s Settings) []string {
+	out := append([]string{PolicyProvider}, p.cfg.Ext.ProviderNames()...)
+	out = append(out, ModelProviderKinds()...)
+	if !p.cfg.ConfiguredModelsOnly {
+		out = append(out, wire.KnownProviders()...)
+	}
+	for _, m := range s.ModelProviders {
+		out = append(out, m.Name)
+	}
+	return out
+}
+
+// modelNames are the providers a model policy or routing may name in
+// tenant's workspace: agentProviders without the policy provider.
+func (p *Platform) modelNames(tenant string) []string {
+	return slices.DeleteFunc(p.agentProviders(tenant), func(n string) bool { return n == PolicyProvider })
 }
 
 // CallPolicy is an agent's call policy as the reader is shown it: every agent

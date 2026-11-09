@@ -160,3 +160,20 @@ func TestAnAgentMdFileLandsWithItsPolicy(t *testing.T) {
 		t.Fatal("an .agent.md file saige cannot read was accepted")
 	}
 }
+
+// An agent file written when an agent offered per-message choices still
+// loads: the field is no longer read and is dropped.
+func TestAnAgentFileWithRetiredFieldsStillLoads(t *testing.T) {
+	p := newProjectsPlatform(t)
+	path := filepath.Join(t.TempDir(), "picker.json")
+	if err := os.WriteFile(path, []byte(`{"name":"picker","provider":"offline","model":"offline","system_prompt":"X.","choices":{"models":["offline/other"]}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	doc := spec.Config{Platforms: []spec.Platform{{Metadata: spec.Metadata{Name: "acme"}, Spec: spec.PlatformSpec{Agents: []spec.Agent{{File: path}}}}}}
+	if err := applyPlatforms(t.Context(), p, doc, nil); err != nil {
+		t.Fatalf("an agent file with choices = %v", err)
+	}
+	if _, err := p.Agents.Get(t.Context(), "acme", "picker", 0); err != nil {
+		t.Fatalf("the agent = %v", err)
+	}
+}

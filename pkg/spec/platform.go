@@ -548,6 +548,39 @@ type Agent struct {
 	// available there and below, and nowhere else. Left out, it is a
 	// platform agent, available wherever it is enabled.
 	Project string `json:"project,omitempty"`
+	// retired are notes for the fields its spec held that are no longer
+	// read (wire.DropRetiredAgentFields).
+	retired []string
+}
+
+// UnmarshalJSON reads an agent entry as strictly as the rest of the file,
+// except that its spec loads without the fields it no longer reads, each
+// noted.
+func (a *Agent) UnmarshalJSON(b []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(b, &fields); err != nil {
+		return err
+	}
+	var notes []string
+	if spec, ok := fields["spec"]; ok {
+		kept, dropped, err := wire.DropRetiredAgentFields(spec)
+		if err != nil {
+			return err
+		}
+		fields["spec"], notes = kept, dropped
+	}
+	raw, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	type plain Agent
+	var out plain
+	if err := strictJSON(raw, &out); err != nil {
+		return err
+	}
+	*a = Agent(out)
+	a.retired = notes
+	return nil
 }
 
 // Surfaces are where the workspace answers besides the console.
@@ -804,6 +837,14 @@ func (p Platform) check(kinds Kinds) error {
 		}
 		if a.Spec != nil && slices.Contains(ReservedNames, wire.NormalizeName(a.Spec.Name)) {
 			return fmt.Errorf("%s: agents[%d].spec.name: @%s is reserved: it is never an agent's name", where, i, wire.NormalizeName(a.Spec.Name))
+		}
+		// The rest of a spec is checked at start, against the deployment's
+		// providers; its output schema stands on its own, so it is checked
+		// here too, the approval agent's core with it.
+		if a.Spec != nil {
+			if err := a.Spec.ValidateOutput(); err != nil {
+				return fmt.Errorf("%s: agents[%d].spec.output: %w", where, i, err)
+			}
 		}
 	}
 	if s := sp.Surfaces.Slack; s != nil && s.Enabled {

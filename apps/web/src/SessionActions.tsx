@@ -1,9 +1,10 @@
 import { EllipsisIcon } from "@humagen/render-web";
 import { Modal } from "@humagen/web";
 import { useRef, useState } from "react";
-import { coworking, type Thread } from "./api.ts";
+import { coworking, type ProjectView, type Thread } from "./api.ts";
 import { publishMarks } from "./marks.ts";
-import { button, field, Popover, Problem, primary } from "./ui.tsx";
+import { ProjectChoices } from "./ProjectPicker.tsx";
+import { button, field, MenuSeparator, menuRow, Popover, Problem, primary } from "./ui.tsx";
 
 /** The header uses the same ownership and governed deletion as the session list. */
 export function SessionActions({
@@ -12,14 +13,19 @@ export function SessionActions({
   onChanged,
   onUpdated,
   onShare,
+  projects,
+  personalProject,
 }: {
   thread: Thread;
   canManage: boolean;
   onChanged: () => void;
   onUpdated: (thread: Thread) => void;
   onShare?: () => void;
+  /** The projects the reader may file in. Given, the menu offers Move to Project. */
+  projects?: ProjectView[] | null;
+  personalProject?: string;
 }) {
-  const [mode, setMode] = useState<"rename" | "delete">();
+  const [mode, setMode] = useState<"rename" | "delete" | "move">();
   const [title, setTitle] = useState(thread.title ?? "");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string>();
@@ -70,12 +76,12 @@ export function SessionActions({
         }}
       >
         {(close) => (
-          <div role="menu" aria-label="Session actions" className="flex flex-col">
+          <div role="menu" aria-label="Session actions" className="flex min-w-40 flex-col">
             {onShare && (
               <button
                 type="button"
                 role="menuitem"
-                className={button}
+                className={menuRow()}
                 onClick={() => {
                   close();
                   onShare();
@@ -88,7 +94,7 @@ export function SessionActions({
               <button
                 type="button"
                 role="menuitem"
-                className={button}
+                className={menuRow()}
                 disabled={busy || deleted}
                 onClick={() => {
                   close();
@@ -99,10 +105,24 @@ export function SessionActions({
                 Rename
               </button>
             )}
+            {canManage && projects !== undefined && (
+              <button
+                type="button"
+                role="menuitem"
+                className={menuRow()}
+                disabled={busy || deleted}
+                onClick={() => {
+                  close();
+                  setMode("move");
+                }}
+              >
+                Move to Project…
+              </button>
+            )}
             <button
               type="button"
               role="menuitem"
-              className={button}
+              className={menuRow()}
               disabled={busy || deleted}
               onClick={() => {
                 close();
@@ -111,11 +131,12 @@ export function SessionActions({
             >
               {archived ? "Unarchive" : "Archive"}
             </button>
+            {canManage && <MenuSeparator />}
             {canManage && (
               <button
                 type="button"
                 role="menuitem"
-                className={`${button} text-aui-bad`}
+                className={menuRow(true)}
                 disabled={busy || deleted}
                 onClick={() => {
                   close();
@@ -147,7 +168,32 @@ export function SessionActions({
           {deleted && <span>Deletion requested. An administrator must approve removal.</span>}
         </div>
       )}
-      {mode && (
+      {mode === "move" && (
+        <Modal
+          title="Move to project"
+          onClose={() => {
+            if (!busy) setMode(undefined);
+          }}
+        >
+          <div className="flex flex-col gap-3 p-5">
+            <h3 className="text-aui-lg font-medium">Move to project</h3>
+            <ProjectChoices
+              projects={projects ?? null}
+              value={thread.project}
+              personalProject={personalProject}
+              canCreate={false}
+              onCreated={() => undefined}
+              close={() => setMode(undefined)}
+              onChange={(next) => {
+                if (next === thread.project) return;
+                void act(async () => onUpdated(await coworking.move(thread.id, next)));
+              }}
+            />
+            <Problem message={problem ?? null} />
+          </div>
+        </Modal>
+      )}
+      {mode && mode !== "move" && (
         <Modal
           title={mode === "rename" ? "Rename session" : "Delete session"}
           onClose={() => {

@@ -27,7 +27,7 @@ func as(run runs.Run, agent string) runtime.Request {
 // revision when nothing changed, and the builder's saves wait for a manager.
 func TestBuiltinAnalystAndBuilder(t *testing.T) {
 	ctx := context.Background()
-	p, err := platform.New(platform.Config{Workspace: t.TempDir(), BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p, err := platform.New(platform.Config{Workspace: t.TempDir(), TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestBuiltinAnalystAndBuilder(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, name := range []string{platform.BuiltinWriter, platform.BuiltinAnalyst, platform.BuiltinBuilder} {
+	for _, name := range []string{platform.BuiltinWriter, platform.BuiltinAnalyst, platform.BuiltinEntry} {
 		rev, err := p.Agents.Get(ctx, tenant, name, 0)
 		if err != nil || rev.Rev != 1 {
 			t.Fatalf("%s = rev %d, %v", name, rev.Rev, err)
@@ -48,9 +48,16 @@ func TestBuiltinAnalystAndBuilder(t *testing.T) {
 			t.Fatalf("the analyst lacks %s", tool)
 		}
 	}
-	builder, _ := p.Agents.Get(ctx, tenant, platform.BuiltinBuilder, 0)
-	if !slices.Equal(builder.Spec.Approvals, []string{platform.ToolSaveAgent}) || !slices.Contains(builder.Spec.Approvers, "role:manager") {
-		t.Fatalf("the builder saves without approval: %+v", builder.Spec)
+	// The entry agent builds and changes agents, with the builder's tools and
+	// the analyst's reads, and saving one waits for a manager or an admin.
+	helper, _ := p.Agents.Get(ctx, tenant, platform.BuiltinEntry, 0)
+	if !slices.Equal(helper.Spec.Approvals, []string{platform.ToolSaveAgent}) || !slices.Contains(helper.Spec.Approvers, "role:manager") {
+		t.Fatalf("the helper saves without approval: %+v", helper.Spec)
+	}
+	for _, tool := range append(platform.BuilderTools(), platform.AnalystTools()...) {
+		if !slices.Contains(helper.Spec.Tools, tool) {
+			t.Fatalf("the helper lacks %s", tool)
+		}
 	}
 }
 
@@ -91,7 +98,7 @@ func TestRunsSummaryTool(t *testing.T) {
 }
 
 func TestSaveAgentTool(t *testing.T) {
-	p := startWith(t, platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p := startWith(t, platform.Config{TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	ctx := t.Context()
 	if err := p.EnsureBuiltins(ctx, tenant); err != nil {
 		t.Fatal(err)
@@ -109,7 +116,7 @@ func TestSaveAgentTool(t *testing.T) {
 		t.Fatalf("create = %q, %v", out, err)
 	}
 	rev, err := p.Agents.Get(ctx, tenant, "notes", 0)
-	if err != nil || rev.CreatedBy != "agent:"+platform.BuiltinBuilder || rev.Spec.Provider != "offline" ||
+	if err != nil || rev.CreatedBy != "agent:"+platform.BuiltinEntry || rev.Spec.Provider != "offline" ||
 		!slices.Equal(rev.Spec.Tools, []string{platform.ToolFileWrite, platform.ToolPublish}) {
 		t.Fatalf("created = %+v by %q, %v", rev.Spec, rev.CreatedBy, err)
 	}
@@ -164,7 +171,7 @@ func TestSaveAgentTool(t *testing.T) {
 // anywhere, as its save is approved by a manager who need not own the home.
 // A new agent's name is held to what the agents route holds it to.
 func TestTheBuilderNeverReadsOrRevisesAnAgentOutsideItsReach(t *testing.T) {
-	p := startWith(t, platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p := startWith(t, platform.Config{TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	ctx := t.Context()
 	if err := p.EnsureBuiltins(ctx, tenant); err != nil {
 		t.Fatal(err)

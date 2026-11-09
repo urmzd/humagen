@@ -619,7 +619,11 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"SessionPart": {typ: platform.SessionPart{}}, "SessionFeedback": {typ: platform.SessionFeedback{}},
 		"SessionMessage": {typ: platform.SessionMessage{}}, "SessionLink": {typ: orchsession.Link{}},
 		"AgentSession": {typ: platform.SessionView{}},
-		"Principal":    {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: wire.AgentSpec{}}, "AgentSource": {typ: wire.Source{}},
+		"MessageNode":  {typ: platform.MessageNode{}}, "MessageAudience": {typ: platform.MessageAudience{}},
+		"RootMessage": {typ: platform.RootMessage{}}, "RootMessagePage": {typ: platform.RootMessagePage{}},
+		"MessageTrace": {typ: platform.MessageTrace{}}, "TraceNode": {typ: platform.TraceNode{}}, "TracePick": {typ: platform.TracePick{}},
+		"TraceTool": {typ: platform.TraceTool{}}, "TraceContext": {typ: platform.TraceContext{}}, "TraceSource": {typ: platform.TraceSource{}}, "TraceApproval": {typ: platform.TraceApproval{}},
+		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: wire.AgentSpec{}}, "AgentSource": {typ: wire.Source{}},
 		"PackageBase": {typ: wire.PackageBase{}}, "AgentPackage": {typ: wire.AgentPackage{}}, "AgentAccess": {typ: wire.Access{}}, "Revision": {typ: revisionView{}}, "JoinDecision": {typ: join.Decision{}},
 		"Note": {typ: noteView{}}, "DriveTree": {typ: drive.Tree{}}, "DriveEntry": {typ: drive.Entry{}}, "DriveChange": {typ: drive.Change{}}, "DriveProposal": {typ: drive.Proposal{}}, "DriveVersion": {typ: drive.Version{}}, "DriveHit": {typ: drive.Hit{}}, "MemoryFiles": {typ: memoryTree{}}, "MemoryFile": {typ: memoryFile{}}, "MemoryRestoreInput": {typ: memoryRestore{}, written: true}, "MemoryDecisionInput": {typ: memoryDecision{}, written: true}, "LibraryScope": {typ: library.Scope{}}, "MemoryFolder": {typ: platform.MemoryFolder{}}, "LibrarySkillFile": {typ: library.File{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: event.Actor{}}, "Run": {typ: runs.Run{}},
 
@@ -627,7 +631,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
 		"WorkspaceFile": {typ: platform.WorkspaceFile{}}, "WorkspaceFileContent": {typ: platform.WorkspaceFileContent{}}, "WorkspaceFileList": {typ: platform.WorkspaceFileList{}}, "WorkspaceFileWrite": {typ: platform.WorkspaceFileWrite{}, written: true}, "WorkspaceFilePublish": {typ: platform.WorkspaceFilePublish{}, written: true},
 		"Thread": {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},
-		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}}, "ThreadAnnouncement": {typ: threads.Announcement{}}, "ThreadAsk": {typ: platform.Ask{}},
+		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadFollowup": {typ: threads.Followup{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}}, "ThreadAnnouncement": {typ: threads.Announcement{}}, "ThreadAsk": {typ: platform.Ask{}},
 		"ThreadAnswers": {typ: answers{}}, "ThreadPosted": {typ: platform.Posted{}}, "ThreadNotice": {typ: threads.Notice{}}, "RoomPage": {typ: rooms.Page{}},
 		"ThreadInput": {typ: platform.ThreadInput{}, written: true}, "ThreadMessageInput": {typ: platform.MessageInput{}, written: true},
 		"ThreadUpdate": {typ: platform.ThreadUpdate{}, written: true}, "ThreadParticipantsUpdate": {typ: platform.ParticipantsUpdate{}, written: true},
@@ -655,7 +659,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 			Text     string `json:"text"`
 			Severity string `json:"severity,omitempty"`
 		}{}, written: true},
-		"Settings": {typ: platform.Settings{}}, "RouterSettings": {typ: platform.RouterSettings{}}, "Preferences": {typ: prefs.Preferences{}},
+		"Settings": {typ: platform.Settings{}}, "Preferences": {typ: prefs.Preferences{}},
 		"ConnectionHealth": {typ: platform.ConnectionHealth{}}, "ConnectionPreset": {typ: platform.ConnectionPreset{}}, "ConnectionAuthorization": {typ: connectionauth.Authorization{}},
 		"ConnectionAuthorizationInput": {typ: platform.ConnectionAuthorizationInput{}, written: true},
 		"ConnectionRegistration":       {typ: connectionauth.Registration{}, written: true},
@@ -682,6 +686,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"EvalRun": {typ: evals.Run{}}, "EvalSuiteView": {typ: suiteView{}, written: true},
 		"BigQuerySetupInput": {typ: platform.BigQuerySetupInput{}, written: true}, "BigQuerySetupCredential": {typ: platform.BigQuerySetupCredential{}, written: true},
 		"BigQuerySetupView": {typ: platform.BigQuerySetupView{}}, "BigQueryADCScope": {typ: platform.BigQueryADCScope{}},
+		"SnowflakeSetupInput": {typ: platform.SnowflakeSetupInput{}, written: true}, "CatalogLoginInput": {typ: platform.CatalogLoginInput{}, written: true},
 		"CatalogColumn": {typ: catalog.Column{}}, "CatalogStats": {typ: catalog.Stats{}}, "CatalogEntry": {typ: catalog.Entry{}}, "CatalogMark": {typ: catalog.Mark{}},
 		"CatalogConnector": {typ: catalog.Connector{}}, "CatalogConnectorView": {typ: platform.CatalogConnectorView{}}, "CatalogPage": {typ: platform.CatalogPage{}},
 		"KnowledgeVariant": {typ: knowledge.Variant{}}, "KnowledgeSource": {typ: knowledge.Source{}},
@@ -1014,7 +1019,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}
 		return time.Now()
 	}
-	f := newFixtureWith(t, platform.Config{Now: now, BuiltinProvider: "offline", BuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
+	f := newFixtureWith(t, platform.Config{Now: now, TestBuiltinProvider: "offline", TestBuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
 		native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
 		}),
@@ -1230,6 +1235,21 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/me/credentials", "/api/me/credentials", "", http.StatusOK)
 	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNoContent)
 	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNotFound)
+
+	// A Snowflake warehouse holds no credential: each person keeps their own
+	// login to it, and a value never comes back out.
+	const login = "/api/catalog/connectors/{name}/login"
+	c.call(ana, "POST", "/api/catalog/connectors/snowflake", "/api/catalog/connectors/snowflake", `{"name":"finance","account":"acme-test","database":"ANALYTICS","warehouse":"READ_WH"}`, http.StatusCreated)
+	c.call(ana, "POST", "/api/catalog/connectors/snowflake", "/api/catalog/connectors/snowflake", `{"name":"finance","account":"acme-test","database":"ANALYTICS","warehouse":"READ_WH"}`, http.StatusConflict)
+	c.call(ana, "POST", "/api/catalog/connectors/snowflake", "/api/catalog/connectors/snowflake", `{"name":"bad","account":"acme-test","database":"ANALYTICS; DROP","warehouse":"READ_WH"}`, http.StatusBadRequest)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{"ref":"op://People/ana/snowflake"}`, http.StatusNoContent)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{"value":"pat-ana-contract"}`, http.StatusNoContent)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{"ref":"op://People/ben/snowflake"}`, http.StatusBadRequest)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{}`, http.StatusBadRequest)
+	if catalogView := c.call(ana, "GET", "/api/catalog", "/api/catalog", "", http.StatusOK); strings.Contains(string(catalogView.raw), "pat-ana-contract") || !strings.Contains(string(catalogView.raw), `"login":"connected"`) {
+		t.Errorf("the catalog after ana's login = %s", catalogView.raw)
+	}
+	c.call(ana, "DELETE", login, "/api/catalog/connectors/finance/login", "", http.StatusNoContent)
 
 	// A person's own context: theirs to read and narrow, a reference under
 	// their own start, the version they read.
@@ -1733,10 +1753,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	c.call(initech, "POST", "/api/projects", "/api/projects", `{"name":"One too many","kind":"company"}`, http.StatusTooManyRequests)
 	// A conversation in the workspace that names no agent, where nothing
-	// answers untagged messages, starts nothing.
+	// answers untagged messages, lands on the entry agent.
 	initechRoot := c.call(initech, "GET", agentsAt, "/api/projects/~/agents", "", http.StatusOK)
 	c.call(initech, "PUT", agentsAt, "/api/projects/~/agents", fmt.Sprintf(`{"version":%v,"enable":["*"]}`, initechRoot.field("version")), http.StatusOK)
-	c.call(initech, "POST", "/api/runs", "/api/runs", `{"text":"hi"}`, http.StatusConflict)
+	if landed := c.call(initech, "POST", "/api/runs", "/api/runs", `{"text":"hi"}`, http.StatusAccepted); landed.str("agent") != platform.BuiltinEntry {
+		t.Fatalf("an untagged message landed on %q, want the entry agent", landed.str("agent"))
+	}
 	c.call(initech, "GET", "/api/join", "/api/join?q=anything", "", http.StatusOK)
 
 	// Schedules.
@@ -2558,6 +2580,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	freshPersonalNote := c.call(auditAdmin, "POST", "/api/me/memory", "/api/me/memory", `{"text":"Personal correction source"}`, http.StatusCreated)
 	real := map[string]map[string]string{
 		"/api/sessions/{id}":                         {"id": sessionContract["id"]},
+		"/api/messages/{id}":                         {"id": sessionContract["id"]},
+		"/api/messages/{id}/trace":                   {"id": sessionContract["id"]},
+		"/api/messages/{id}/answer":                  {"id": sessionContract["id"]},
+		"/api/messages/{id}/feedback":                {"id": sessionContract["id"]},
+		"/api/messages/{id}/stop":                    {"id": sessionContract["id"]},
+		"/api/messages/{id}/context":                 {"id": sessionContract["id"]},
 		"/api/sessions/{id}/messages":                {"id": sessionContract["id"]},
 		"/api/sessions/{id}/stream":                  {"id": sessionContract["id"]},
 		"/api/sessions/{id}/stop":                    {"id": sessionContract["id"]},
@@ -2652,6 +2680,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/runs/{id}/calls":                       `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
 		"/api/runs/{id}/questions/{question}/answer": `{"action":"choose","choice":"red"}`,
 		"/api/alert-rules/{name}":                    `{"kind":"run_failed","severity":"critical"}`,
+		"/api/model-providers/{name}":                `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`,
 		"/api/schedules/{name}":                      `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
 		"/api/me/credentials/{provider}":             `{"ref":"op://People/svc/issues"}`,
 		"/api/projects/{name}/channels":              `{"name":"x"}`, "/api/projects/{name}/channels/{channel}": `{"version":1}`,
@@ -2663,6 +2692,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}/limits": `{"period":"day","max_runs":1}`, "/api/projects/{name}/announcements": `{"subject":"Hi","text":"Hi."}`,
 		"/api/memory/files/proposals/{id}": `{"scope":"project","decision":"discard"}`,
 		"/api/corpora/{name}":              `{}`, "/api/corpora/{name}/members": `{"kind":"source","name":"handbook"}`,
+		"/api/catalog/connectors/{name}/login": `{"ref":"op://People/svc-globex/x"}`,
 	}
 	for _, op := range c.spec.ops {
 		params := pathParams(op.path)
@@ -2686,7 +2716,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}
 		if refusesUnknownFields(op) {
 			caller := acme
-			if strings.HasPrefix(op.path, "/api/sessions/") || op.path == "/api/alerts/{id}" {
+			if strings.HasPrefix(op.path, "/api/sessions/") || strings.HasPrefix(op.path, "/api/messages/") || op.path == "/api/alerts/{id}" {
 				caller = sessionContract["token"]
 			}
 			if strings.HasPrefix(op.path, "/api/me/memory") || strings.HasPrefix(op.path, "/api/agent-setups/") || strings.HasSuffix(op.path, "/skill-draft") || strings.HasSuffix(op.path, "/decision-memory") {
@@ -2698,6 +2728,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 
 	c.call(acme, "DELETE", "/api/artifacts/{id}", artifactPath, "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/artifacts/{id}", artifactPath, "", http.StatusNotFound)
+	// A workspace's own model provider: set up, checked, in use, removed.
+	c.call(acme, "PUT", "/api/model-providers/{name}", "/api/model-providers/house", `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`, http.StatusOK)
+	c.call(acme, "POST", "/api/model-providers/{name}/check", "/api/model-providers/house/check", "", http.StatusOK)
+	c.call(acme, "POST", "/api/model-providers/{name}/check", "/api/model-providers/nowhere/check", "", http.StatusBadRequest)
+	c.call(acme, "POST", "/api/agents", "/api/agents", `{"name":"house-agent","provider":"house","model":"llama3.2","system_prompt":"Answer."}`, http.StatusCreated)
+	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/house", "", http.StatusConflict)
+	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/nowhere", "", http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/model-providers/{name}", "/api/model-providers/spare", `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`, http.StatusOK)
+	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/spare", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/clients/{id}", "/api/clients/support", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/clients/{id}", "/api/clients/support", "", http.StatusNotFound)
 	c.call(acme, "DELETE", "/api/evals/{name}", "/api/evals/smoke", "", http.StatusNoContent)
@@ -2778,6 +2817,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 var unexercised = map[string]string{
 	"PUT /api/agents/{name}/home 409":                    "a home is refused only while the agent's default skills would not fit it; the guard is in platform.homeUsers",
 	"POST /api/sessions 409":                             "governed admission to a deleted project uses the same path tested by POST /api/runs deleted-project response",
+	"POST /api/sessions 200":                             "a chat surface's reply landing in its existing root, covered by TestAChatServiceFindsOrStartsASlackThreadsRootSession",
+	"POST /api/messages/{id} 409":                        "a full or moved conversation, the same PostMessage path POST /api/sessions/{id}/messages takes",
+	"POST /api/messages/{id}/feedback 409":               "rating an unfinished run, the same putFeedback path the legacy feedback route exercises",
+	"POST /api/messages 409":                             "a place nobody answers (no entry agent, no client default, no mention), covered by TestAPlaceNobodyAnswersIsRefusedSayingWhy",
 	"POST /api/sessions/{id}/messages 409":               "deleted-project admission uses the same PostMessage path tested by thread/run responses",
 	"POST /api/sessions/{id}/people 409":                 "concurrent participant changes fail thread version CAS covered by participant race tests",
 	"POST /api/sessions/{id}/alerts 409":                 "random alert identity collision fails CreateSession CAS; callers cannot supply the ID",

@@ -608,6 +608,12 @@ func (p *Platform) fileTools(base runtime.Catalog) runtime.Catalog {
 		for name, t := range p.catalogTools(req) {
 			tools[name] = t
 		}
+		for name, t := range p.contextTools(req) {
+			tools[name] = t
+		}
+		for name, t := range p.corpusTools(req) {
+			tools[name] = t
+		}
 		return native.ToolsFunc(func(name string) (saigetypes.Tool, error) {
 			if t, ok := tools[name]; ok {
 				return t, nil

@@ -471,6 +471,19 @@ test("an address naming a key MCP opens its sheet, and follows the route", async
   );
 });
 
+test("a connection's card opens its sheet; its menu holds only what else it can do", async () => {
+  net = stubFetch(canonicalConnectionRoutes(configuredCredentials()));
+  render(<Connections canConnect />);
+  const card = await screen.findByRole("listitem", { name: "issues" });
+  const more = within(card).getByRole("button", { name: "More for issues" });
+  fireEvent.keyDown(more, { key: "ArrowDown" });
+  const rows = (await screen.findAllByRole("menuitem")).map((r) => r.textContent);
+  assert.equal(rows.includes("Details"), false, "the card itself is Details");
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  fireEvent.click(within(card).getByRole("button", { name: "issues" }));
+  assert.ok(within(await sheet("issues")).getByLabelText(/^Reference/));
+});
+
 test("a refused key keeps what was typed, with the reason in its sheet", async () => {
   net = stubFetch({
     ...canonicalConnectionRoutes(configuredCredentials()),

@@ -133,7 +133,11 @@ spec:
     concurrency: 4          # a run that calls another agent waits in one place while it runs in another
     max_depth: 4            # 1 to 7: a deeper call would pass the bus's hop limit of 8
     max_fan_out: 16
-    builtin: {provider: "", model: ""}       # the platform's own agents
+    # There is no built-in model or offline stand-in. The platform's own agents
+    # (writer, analyst, builder, reviewers) ship with a chain, anthropic then
+    # openai then google, and run on the first one a declared or
+    # administrator-enabled provider answers. execution.builtin is no longer
+    # read: a file that sets it still starts, with a load note.
 
   sandbox:                  # slot: docker | local | unisolated. Where a run's tools execute
     kind: docker            # the default: an instance per run, destroyed when the run ends
@@ -171,6 +175,7 @@ spec:
 
   branding:                 # the console's look and name; see Branding below
     name: Acme              # the product's name. Left out: metadata.display_name
+    entry_agent: humagen    # the default: the agent people talk to the deployment through, owning each root session that names nobody. System document only
     logo: {path: ./brand/logo.svg, dark: ./brand/logo-dark.svg, alt: Acme}
     icons: ./brand/icons    # favicon.svg, icon-192.png and the rest, by the console's own names
     manifest: {short_name: Acme, theme_color: "#1a1a2e", background_color: "#fafafa"}
@@ -377,7 +382,7 @@ Entries are searched like knowledge, with `knowledge.embedder` when one is set.
 | `s3` | `bucket` (required), `prefix`, `region` (`us-east-1`) | `credential`, a required reference to JSON with `access_key_id`, `secret_access_key`, and optional `session_token` |
 | `bigquery` | `project` (required), `datasets`, `location`, `max_bytes_billed` (1 GiB), `max_rows` (200, at most 10000), `timeout` (60s, at most 10m) | `credential`, a reference to a service account key in JSON; left out, Application Default Credentials: the VM's service account on GCE |
 
-Two tools use the catalog, granted to an agent by name like any tool:
+Three tools use the catalog, granted to an agent by name like any tool:
 
 - `catalog_search` finds entries: a published connector's when everyone the
   answer reaches reads its project, and the owner's own only in the owner's
@@ -387,6 +392,13 @@ Two tools use the catalog, granted to an agent by name like any tool:
   first and refuses it before it runs when it is not a single `SELECT`, reads a
   dataset outside `datasets`, or would read more than `max_bytes_billed`. The
   query that runs carries the same cap as BigQuery's maximum bytes billed.
+- `corpus_query` runs one SQL `SELECT` on a Snowflake or BigQuery connector a
+  corpus holds, with the login of the person the run acts for, never the
+  connector's credential, so the warehouse's own grants, row access and masking
+  apply. It runs only in that person's own private conversation, for a reader
+  of the corpus, and only for an agent the corpus is granted to
+  ([sources.md](../architecture/sources.md#corpora)). Snowflake leaves the
+  connector's role out, so each reader's default role applies.
 
 The credential needs `roles/bigquery.metadataViewer` (or `dataViewer`) on the
 datasets to crawl them, `roles/bigquery.dataViewer` to read them, and
@@ -592,8 +604,9 @@ spec:
   agents:
     - spec:
         name: lead
-        provider: policy
-        model: default
+        provider: anthropic     # a model, never a nickname: the chain is the agent's own
+        model: claude-sonnet-5-5
+        fallbacks: [{provider: openai, model: gpt-5.1}]
         system_prompt: You coordinate work.
         access: {spawn: [helper]}
     - spec: {name: helper, provider: local, model: YOUR_LOCAL_MODEL, system_prompt: Do one task well.}
@@ -656,6 +669,7 @@ the workspace signs in.
 | `manifest` | The installable app's `name`, `short_name`, `description`, `theme_color` and `background_color` | System |
 | `palette` | `accent`, `surface` (the page), `plane` (the sidebar and panels), `text` and `rule` (lines), each `{light, dark}` or one color for both themes | both |
 | `fonts` | CSS font-family lists for `ui`, `heading` and `mono` text, and `files`: up to 12 `{family, path, weight, style}` faces (`.woff2`, `.woff`, `.ttf` or `.otf`, at most 2 MiB each) the server serves for those lists to name. A face named without a file must be installed on the device. A workspace's files replace the deployment's | both |
+| `entry_agent` | The agent people talk to the deployment through, `humagen` when left out: lowercase kebab case. It owns each root session that names nobody, answers simple asks and calls specialists as child sessions (docs/architecture/projects.md#the-entry-agent). The GitHub check run is named for it by `name` | System |
 | `welcome` | `{title, text}` of the announcement a workspace's people find first in its inbox. Left out, Humagen's, with the product's name in place of Humagen. It is posted once, so a change reaches only a workspace not yet welcomed | both |
 | `starters` | Up to 6 `{agent, label, text}` suggestions on an empty conversation, each shown only where its agent can answer. `[]` shows none | both |
 | `copy` | The console's own text by key, such as `navigation.agents: Assistants`. `humagen config copy-keys` lists the keys; an unknown one is an error. A workspace's keys are merged over the deployment's | both |
@@ -767,20 +781,35 @@ Review the change and list what is risky.
 `policy` goes beside an `.agent.md` file, and only there. It holds what
 saige's format does not: `approvers`, `self_approval`, `answerers`,
 `tagged_only`, `workspace_areas`, `mcp_write` (the MCP servers whose write
-tools it may call), `knowledge`, `fallback_on` and `choices`. Left out, it grants
+tools it may call), `knowledge` and `fallback_on`. Left out, it grants
 nothing beyond the file.
 
-The console edits an agent's `choices` on its Model tab and saves them as a new
-revision. Empty lists remove the choices.
+People pick agents, not models: an agent's model chain and reasoning effort
+are its definition's, and nothing overrides them per message. saige's format
+has no effort field, so an `.agent.md` file sets it in its metadata,
+`metadata: {humagen_effort: high}`, and the API as the agent's `effort`. It
+is sent only to the chain's first model, and only when that model takes it;
+a run moved to a fallback answers at the model's default.
 
-`choices` (in a spec or a policy) is what a person may pick for one message
-in place of the agent's model and reasoning effort: `models`, each
-`provider/model`, and `efforts`, such as `low` and `high`. Left out, nothing
-is offered and every message runs on the agent's own model at its default
-effort. A pick the agent does not offer is passed over, the run's model
-ceilings still apply, and an effort the model does not take fails the run
-before any model call. For example
-`choices: {models: [anthropic/YOUR_LARGER_MODEL], efforts: [low, high]}`. `subscriptions` is refused: the platform decides
+An agent's answer can have a shape: `output: {schema: <JSON Schema>}`, for an
+object. Its model is asked for structured output under the schema, and a model
+that cannot give it fails the run instead of answering in free text. The
+answer, checked against the whole schema, is kept on the run as `output`. An
+`.agent.md` file sets it in metadata, `humagen_output_schema`, as the schema in
+a JSON string.
+
+The approval agent ships with a schema of `decision` (allow, ask or deny),
+`reason` and `references`. A workspace may give it its own, which must keep
+`decision`, a required string whose enum is drawn from allow, ask and deny, and
+`reason`, a required string. Any other field, such as `risk`, `conditions` or
+`notify`, is recorded with each judgement in the audit as `field.<name>` and
+shown on the approval card. `humagen config check` refuses a schema without
+that core. An answer that is missing or does not hold to the schema leaves the
+call for a person.
+
+A `choices` block
+from an older policy or agent spec is not read: a file that has one still
+starts, with a load note. `subscriptions` is refused: the platform decides
 what wakes an agent. saige checks the file at start, then the platform's
 own rules apply as to any spec. The file's `version` is not kept: the store
 numbers each change, and a run pins the version, digest and policy it
