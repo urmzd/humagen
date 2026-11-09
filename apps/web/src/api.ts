@@ -1171,6 +1171,9 @@ export const api = {
   stopRun: (id: string) => call<Run>("POST", `/api/runs/${encodeURIComponent(id)}/stop`),
   /** Answer the question a run is waiting on. Returns the question's inbox message, settled. */
   answer: (r: AnswerRequest) => call<unknown>("POST", answerPath(r), r.body),
+  /** A message alone, without its children: who its root's place was asked in front of. */
+  messageNode: (id: string) =>
+    call<MessageNode>("GET", `/api/messages/${encodeURIComponent(id)}?depth=0`),
   /** What ran to answer a message (`session`, `session:message` or `session:run`). */
   messageTrace: (id: string) =>
     call<MessageTrace>("GET", `/api/messages/${encodeURIComponent(id)}/trace`),
@@ -1967,6 +1970,15 @@ export interface TraceNode {
   sources: TraceSource[];
   approvals: TraceApproval[];
   children: TraceNode[];
+}
+
+/** A message as the messages API reads it with depth: the fields the console uses. */
+export interface MessageNode {
+  id: string;
+  session: string;
+  role: "user" | "assistant";
+  /** The audience its root's place reported, when one did. */
+  audience?: { kind: "public" | "private" | "group" | "direct" };
 }
 
 /** What ran to answer a message, as the reader may see it. */

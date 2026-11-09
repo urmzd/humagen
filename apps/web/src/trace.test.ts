@@ -60,3 +60,24 @@ test("a session's place: Slack by its surface, PRs by the root's parent, else th
     audience: "private",
   });
 });
+
+test("the audience a place reported names it exactly: which kind of Slack channel, or who a PR is for", () => {
+  const slack = {
+    surface: { client: "acme", channel: "C1", ts: "1.2" },
+    visibility: "shared" as const,
+  };
+  assert.deepEqual(
+    (["public", "private", "group", "direct"] as const).map(
+      (kind) => placeOf(slack, "T1", kind).audience,
+    ),
+    ["publicChannel", "privateChannel", "group", "dm"],
+  );
+  const pr = {
+    session: { parent: "github://urmzd/humagen/pull/5" },
+    visibility: "shared" as const,
+  };
+  assert.equal(placeOf(pr, "", "public").audience, "shared");
+  assert.equal(placeOf(pr, "", "direct").audience, "private");
+  // The console reports none, and a reported one does not change it.
+  assert.equal(placeOf({ visibility: "private" }, "", "public").audience, "private");
+});
