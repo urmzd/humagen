@@ -85,7 +85,7 @@ const BuiltinQAReviewer = "qa-reviewer"
 // BuiltinApprover is the approval agent: in a session set to Run it decides
 // each tool call the policy asks about (approval_agent.go). It takes no
 // messages of its own and has no tools.
-const BuiltinApprover = "approver"
+const BuiltinApprover = approve.Agent
 
 const codeReviewerPrompt = `You lead code reviews in this conversation.
 
@@ -221,6 +221,7 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 		Effort:       "medium",
 		SystemPrompt: approve.Instructions,
 		TaggedOnly:   true,
+		Output:       &wire.Output{Schema: approve.DefaultSchema},
 	}}
 	// Hash each complete package before adding provenance.
 	for _, group := range []struct {

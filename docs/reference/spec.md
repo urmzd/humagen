@@ -789,7 +789,25 @@ are its definition's, and nothing overrides them per message. saige's format
 has no effort field, so an `.agent.md` file sets it in its metadata,
 `metadata: {humagen_effort: high}`, and the API as the agent's `effort`. It
 is sent only to the chain's first model, and only when that model takes it;
-a run moved to a fallback answers at the model's default. A `choices` block
+a run moved to a fallback answers at the model's default.
+
+An agent's answer can have a shape: `output: {schema: <JSON Schema>}`, for an
+object. Its model is asked for structured output under the schema, and a model
+that cannot give it fails the run instead of answering in free text. The
+answer, checked against the whole schema, is kept on the run as `output`. An
+`.agent.md` file sets it in metadata, `humagen_output_schema`, as the schema in
+a JSON string.
+
+The approval agent ships with a schema of `decision` (allow, ask or deny),
+`reason` and `references`. A workspace may give it its own, which must keep
+`decision`, a required string whose enum is drawn from allow, ask and deny, and
+`reason`, a required string. Any other field, such as `risk`, `conditions` or
+`notify`, is recorded with each judgement in the audit as `field.<name>` and
+shown on the approval card. `humagen config check` refuses a schema without
+that core. An answer that is missing or does not hold to the schema leaves the
+call for a person.
+
+A `choices` block
 from an older policy or agent spec is not read: a file that has one still
 starts, with a load note. `subscriptions` is refused: the platform decides
 what wakes an agent. saige checks the file at start, then the platform's

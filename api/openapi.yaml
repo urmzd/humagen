@@ -11227,6 +11227,23 @@ components:
         tagged_only:
           description: The agent runs only when a message names it. It is never asked whether to take an untagged message. Off by default.
           type: boolean
+        output: {$ref: "#/components/schemas/AgentOutput"}
+    AgentOutput:
+      description: |
+        The shape of the agent's answer. The model is asked for structured
+        output under `schema`, and a model that cannot give it fails the run
+        rather than answering in free text. The answer, checked against the
+        schema, is kept on the run as `output`. The approval agent's schema
+        must hold `decision` (a required string whose enum is drawn from
+        allow, ask and deny) and `reason` (a required string); anything
+        else in it is shown with the approval.
+      type: object
+      required: [schema]
+      properties:
+        schema:
+          description: A JSON Schema for an object, at most 16 KiB.
+          type: object
+          additionalProperties: true
     FallbackCondition:
       description: A class of model error that moves a call on to the next model. `any` cannot be combined with another.
       type: string
@@ -12015,6 +12032,14 @@ components:
             partial answer, what the agent had said when it stopped, which may
             be empty. It is never the whole answer when `status` is `stopped`.
           type: string
+        output:
+          description: |
+            The answer as structured data, for an agent whose spec declares
+            an `output` schema: the answer, checked against that schema.
+            Absent for a free-text answer and for one that did not hold to
+            the schema.
+          type: object
+          additionalProperties: true
         outcome: {$ref: "#/components/schemas/RunOutcome"}
         sandbox: {$ref: "#/components/schemas/RunSandboxRecord"}
         memory: {type: array, maxItems: 16, items: {$ref: "#/components/schemas/RunMemoryUse"}}
@@ -14862,6 +14887,41 @@ components:
         steered_for_name:
           description: What the person in `steered_for` is called, their name, else their handle, never a subject that holds an address. Set with `steered_for`.
           type: string
+        judgement: {$ref: "#/components/schemas/InboxJudgement"}
+    InboxJudgement:
+      description: |
+        What the approval agent said about an approval, once it was asked,
+        whether it allowed the call, denied it or left it for a person.
+      type: object
+      required: [decision, reason]
+      properties:
+        decision:
+          type: string
+          enum: [allow, ask, deny]
+        reason: {type: string}
+        references:
+          description: What the decision rests on.
+          type: array
+          items: {type: string}
+        fields:
+          description: What the workspace's own schema for the answer adds, such as a risk level, in the order the agent gave them.
+          type: array
+          items: {$ref: "#/components/schemas/InboxJudgementField"}
+        run:
+          description: The approval agent's run that decided.
+          type: string
+    InboxJudgementField:
+      description: One field a workspace's schema adds to a judgement.
+      type: object
+      required: [name, label, value]
+      properties:
+        name:
+          description: The field's name in the schema.
+          type: string
+        label:
+          description: How a person reads the name, such as `Expires in` for `expires_in`.
+          type: string
+        value: {type: string}
     InboxDraftPart:
       description: A post an agent wrote for a project, waiting for one of its owners.
       type: object
@@ -15016,11 +15076,12 @@ components:
         by: {type: string}
         what:
           type: string
-          enum: [raised, read, unread, resolved, dismissed, snoozed, withdrawn, delivered, unhidden, reminded, hidden, deleted, restored]
+          enum: [raised, read, unread, resolved, dismissed, snoozed, withdrawn, delivered, unhidden, reminded, hidden, deleted, restored, judged]
         part: {type: string}
         action: {type: string}
         note: {type: string}
         until: {type: string, format: date-time}
+        judgement: {$ref: "#/components/schemas/InboxJudgement"}
     Resolution:
       description: What a person decided about a part.
       type: object

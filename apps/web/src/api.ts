@@ -1769,8 +1769,21 @@ export interface QueuedApproval {
       steered_for?: string;
       /** What that person is called. Shown in place of `steered_for`, the subject. */
       steered_for_name?: string;
+      /** What the approval agent said about the call, whatever it decided. */
+      judgement?: Judgement;
     };
   }[];
+}
+
+/** The approval agent's view of one approval. Mirrors InboxJudgement in api/openapi.yaml. */
+export interface Judgement {
+  decision: "allow" | "ask" | "deny";
+  reason: string;
+  references?: string[];
+  /** What the workspace's own schema adds, such as a risk level, in the order the agent gave them. */
+  fields?: { name: string; label: string; value: string }[];
+  /** The approval agent's run that decided. */
+  run?: string;
 }
 
 const agentPath = (name: string) => `/api/agents/${encodeURIComponent(name)}`;

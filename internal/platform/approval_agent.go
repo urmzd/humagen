@@ -3,6 +3,7 @@ package platform
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -31,7 +32,16 @@ import (
 // by the approval agent: <reason>" or "Denied by the approval agent:
 // <reason>", which a denied agent reads. A run that fails (none of its
 // chain's providers is enabled, say), an answer that cannot be read, and
-// "ask" leave the question for a person. Every decision is audited.
+// "ask" leave the question for a person. Every decision is audited, and
+// kept on the question's card (judge) with the fields a workspace's schema
+// adds.
+//
+// The approval agent answers with structured output: its spec's output
+// schema (approve.DefaultSchema as it ships; a workspace may add fields of
+// its own, keeping decision and reason) is what its model is asked for, and
+// fileApproval reads the run's Output, the answer checked against that
+// schema. An answer that is missing or does not hold to it leaves the
+// question for a person.
 
 const (
 	hookApproval = "approval"
@@ -140,10 +150,13 @@ func (p *Platform) fileApproval(ctx context.Context, decided runs.Run) error {
 		}
 		d = approve.Decision{Verdict: approve.Ask, Reason: "The approval agent could not decide (" + why + "), so a person will."}
 	default:
-		if d, err = approve.Parse(decided.Answer); err != nil {
+		// The answer is read only as structured data: what the run kept
+		// once its answer held to the approval agent's output schema.
+		if d, err = approve.Parse(decided.Output); err != nil {
 			d = approve.Decision{Verdict: approve.Ask, Reason: "The approval agent's answer could not be read, so a person will."}
 		}
 	}
+	p.judge(decided.Tenant, m, question, decided.ID, d)
 	var answer QuestionAnswer
 	switch d.Verdict {
 	case approve.Allow:
@@ -165,8 +178,28 @@ func (p *Platform) fileApproval(ctx context.Context, decided runs.Run) error {
 	return nil
 }
 
+// judge keeps the approval agent's judgement on the question's card in m,
+// with the fields the workspace's schema adds, before the question is
+// answered, so the card shows it beside the outcome or, when a person
+// decides, beside the call.
+func (p *Platform) judge(tenant string, m inbox.Message, question, decidedBy string, d approve.Decision) {
+	i := slices.IndexFunc(m.Parts, func(x inbox.Part) bool { return x.Question != nil && x.Question.ID == question })
+	if i < 0 {
+		return
+	}
+	j := inbox.Judgement{Decision: string(d.Verdict), Reason: d.Reason, References: d.References, Run: decidedBy}
+	for _, f := range d.Fields {
+		j.Fields = append(j.Fields, inbox.JudgementField{Name: f.Name, Label: f.Label, Value: f.Value})
+	}
+	if _, _, err := p.Inbox.Judge(tenant, m.ID, m.Parts[i].ID, j, p.now()); err != nil {
+		p.log.Warn("platform: the approval agent's judgement could not be kept on its card", "tenant", tenant, "message", m.ID, "question", question, "error", err)
+	}
+}
+
 // auditJudgement records what the approval agent decided about a question
 // run asked, for the person who chose Run. decidedBy is the approval run.
+// The fields a workspace's schema adds are recorded with it, each under
+// "field." and its name.
 func (p *Platform) auditJudgement(by auth.Principal, run runs.Run, question, tool, decidedBy string, d approve.Decision) {
 	after := map[string]string{"tool": tool, "question": question, "mode": threads.ApprovalAuto, "verdict": string(d.Verdict), "reason": d.Reason, "agent": BuiltinApprover}
 	if decidedBy != "" {
@@ -174,6 +207,9 @@ func (p *Platform) auditJudgement(by auth.Principal, run runs.Run, question, too
 	}
 	if len(d.References) > 0 {
 		after["references"] = strings.Join(d.References, "; ")
+	}
+	for _, f := range d.Fields {
+		after["field."+f.Name] = f.Value
 	}
 	if err := p.RecordAudit(by, audit.Change{
 		Action: "approval.judged", Resource: "run", ID: run.ID, Project: run.Project, Thread: run.Thread, Agent: run.Agent,
