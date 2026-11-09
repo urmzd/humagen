@@ -156,7 +156,7 @@ test("a root shows why its entry agent picked, then each delegated answer inline
   const links = within(pick).getAllByRole("link", { name: words.openSession });
   assert.deepEqual(
     links.map((a) => a.getAttribute("href")),
-    ["/sessions/s_billing", "/sessions/s_contracts"],
+    ["/messages/s_billing", "/messages/s_contracts"],
   );
   links[1]?.click();
   assert.deepEqual(opened, ["s_contracts"]);
