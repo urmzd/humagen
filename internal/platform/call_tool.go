@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/urmzd/orchagent/flow/turn/native"
 	saigetypes "github.com/urmzd/saige/agent/types"
 )
 
@@ -23,43 +22,37 @@ func agentProperty(targets []string) saigetypes.PropertyDef {
 	return saigetypes.PropertyDef{Type: "string", Enum: targets}
 }
 
-// callTool is the agent tool. It is an native.Approving tool: a call the
-// callee's policy holds for a person parks the run on an approval question
-// addressed to the policy's approvers.
-type callTool struct {
-	*saigetypes.ToolFunc
-	p      *Platform
-	tenant string
-	caller string
-}
-
 // maxExcerpt bounds how much of a call's request its approval prompt quotes.
 const maxExcerpt = 200
 
-// Approval is native.Approving. It reads only the call's arguments and the
-// callee's stored policy, so it answers the same for the same arguments.
-func (t *callTool) Approval(c saigetypes.ToolCallPart) (native.ApprovalRequest, bool) {
-	callee, _ := c.Arguments["agent"].(string)
+// agentCallApproval is the approval the agent tool declares for each call
+// (ToolApproval.PerCall): a call the callee's policy holds for a person parks
+// the run on an approval question addressed to the policy's approvers. It
+// reads only the call's arguments and the callee's stored policy, so it
+// answers the same for the same arguments.
+func (p *Platform) agentCallApproval(q ApprovalCall) (ToolApproval, bool) {
+	tenant, caller := q.Request.Tenant, q.Request.Definition.Spec.Name
+	callee, _ := q.Call.Arguments["agent"].(string)
 	if callee == "" {
-		return native.ApprovalRequest{}, false
+		return ToolApproval{}, false
 	}
-	pol, _, err := t.p.CallPolicies.Get(t.tenant, callee)
-	if err != nil || !pol.Admits(t.caller) {
+	pol, _, err := p.CallPolicies.Get(tenant, callee)
+	if err != nil || !pol.Admits(caller) {
 		// Refused when it runs, with the callee's reason, or with why its
 		// policy could not be read. Nobody is asked about a call that
 		// cannot happen.
-		return native.ApprovalRequest{}, false
+		return ToolApproval{}, false
 	}
-	needed, approvers, self, expires := t.p.callApproval(t.tenant, t.caller, callee)
+	needed, approvers, self, expires := p.callApproval(tenant, caller, callee)
 	if !needed {
-		return native.ApprovalRequest{}, false
+		return ToolApproval{}, false
 	}
-	prompt := fmt.Sprintf("Allow %s to call %s?", t.caller, callee)
-	if excerpt := requestExcerpt(c.Arguments); excerpt != "" {
+	prompt := fmt.Sprintf("Allow %s to call %s?", caller, callee)
+	if excerpt := requestExcerpt(q.Call.Arguments); excerpt != "" {
 		prompt += " It asks: " + excerpt
 	}
 	// The callee's policy says how long a held call waits before it is denied.
-	return native.ApprovalRequest{Prompt: prompt, Approvers: approvers, SelfApproval: self, ExpiresIn: expires}, true
+	return ToolApproval{Mode: ApprovalAlways, Approvers: approvers, SelfApproval: self, Expires: expires, Prompt: func(ApprovalCall) string { return prompt }}, true
 }
 
 // requestExcerpt is the last text the call sends (an agent call's title and
@@ -90,5 +83,3 @@ func requestExcerpt(args map[string]any) string {
 	}
 	return text
 }
-
-var _ native.Approving = (*callTool)(nil)

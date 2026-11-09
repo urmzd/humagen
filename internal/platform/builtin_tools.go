@@ -79,12 +79,15 @@ const MaxSummaryHours = 30 * 24
 // ErrBuilder reports a change the builder may not make.
 var ErrBuilder = errors.New("platform: builder")
 
-func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool {
+// builtinTool is one of the analyst's and the builder's own tools for one
+// turn: runs_summary, list_alerts, list_agents, read_agent or save_agent.
+func (p *Platform) builtinTool(name string, req runtime.Request) saigetypes.Tool {
 	tool := func(name, desc string, params saigetypes.ParameterSchema, fn func(ctx context.Context, args map[string]any) (string, error)) saigetypes.Tool {
 		return &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: name, Description: desc, Parameters: params}, Fn: fn}
 	}
-	return map[string]saigetypes.Tool{
-		ToolRunsSummary: tool(ToolRunsSummary,
+	switch name {
+	case ToolRunsSummary:
+		return tool(ToolRunsSummary,
 			"Summarize the workspace's runs over the last hours: how many ran, completed, failed and were stopped, durations (p50 and p95), tokens and spend, by agent and by origin, and the slowest runs. Use it before answering any question about how agents are doing.",
 			schema(nil, map[string]string{
 				"hours":   fmt.Sprintf("How many hours back to look, 1 to %d. Defaults to 24", MaxSummaryHours),
@@ -105,37 +108,23 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 					return "", err
 				}
 				return p.runsSummary(req.Tenant, time.Duration(hours)*time.Hour, strings.TrimSpace(arg(args, "agent")), scope)
-			}),
-		ToolProjectChanges:         p.projectChangesTool(req),
-		ToolPreviewChange:          p.builderPreviewChangeTool(req),
-		ToolApplyChange:            p.builderApplyChangeTool(req),
-		ToolRecordEval:             p.builderRecordEvalTool(req),
-		ToolConnections:            p.builderConnectionsTool(req, false),
-		ToolConnect:                p.builderConnectionsTool(req, true),
-		ToolWorkspacePrompt:        p.builderWorkspacePromptTool(req),
-		ToolPreviewWorkspacePrompt: p.builderPreviewWorkspacePromptTool(req),
-		ToolApplyWorkspacePrompt:   p.builderApplyWorkspacePromptTool(req),
-		ToolAlertCreate:            p.sessionAlertCreateTool(req),
-		ToolAlertResolve:           p.sessionAlertResolveTool(req),
-		ToolPauseAgent:             p.builderLifecycleTool(req, false),
-		ToolRetireAgent:            p.builderLifecycleTool(req, true),
-		ToolWriteEval:              p.builderWriteEvalTool(req),
-		ToolRunEval:                p.builderRunEvalTool(req),
-		ToolReadEvals:              p.builderReadEvalsTool(req),
-		ToolMemorySearch:           p.memorySearchTool(req),
-		ToolListAlerts: tool(ToolListAlerts,
+			})
+	case ToolListAlerts:
+		return tool(ToolListAlerts,
 			"List the alert rules the workspace has, what each watches for, and the alerts that are still open.",
 			schema(nil, nil),
 			func(context.Context, map[string]any) (string, error) {
 				return p.alertsReport(req.Tenant, p.ownProject(req.Tenant, req.RunID))
-			}),
-		ToolListAgents: tool(ToolListAgents,
+			})
+	case ToolListAgents:
+		return tool(ToolListAgents,
 			"List the workspace's agents: name, description, model, tools and revision.",
 			schema(nil, nil),
 			func(ctx context.Context, _ map[string]any) (string, error) {
 				return p.agentsReport(ctx, req.Tenant, p.ownProject(req.Tenant, req.RunID))
-			}),
-		ToolReadAgent: tool(ToolReadAgent,
+			})
+	case ToolReadAgent:
+		return tool(ToolReadAgent,
 			"Read one agent's latest revision in full, system prompt included.",
 			schema([]string{"name"}, map[string]string{"name": "The agent's name"}),
 			func(ctx context.Context, args map[string]any) (string, error) {
@@ -153,8 +142,9 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 				rev = revisionShown(rev, open)
 				b, _ := json.MarshalIndent(map[string]any{"rev": rev.Rev, "spec": rev.Spec}, "", "  ")
 				return string(b), nil
-			}),
-		ToolSaveAgent: tool(ToolSaveAgent,
+			})
+	case ToolSaveAgent:
+		return tool(ToolSaveAgent,
 			"Create an agent, or revise one, after a person approves. Give the whole system prompt and the whole list of tools each time. Only "+strings.Join(grantable(), ", ")+" may be granted.",
 			schema([]string{"name", "description", "system_prompt"}, map[string]string{
 				"name":          "Lowercase letters, digits and dashes, such as release-notes",
@@ -175,8 +165,9 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 					verb = "Created"
 				}
 				return fmt.Sprintf("%s %s, now at revision %d.", verb, rev.Spec.Name, rev.Rev), nil
-			}),
+			})
 	}
+	return nil
 }
 
 // runsSummary is runs_summary's answer: compact JSON a model can read and

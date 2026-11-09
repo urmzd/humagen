@@ -16,8 +16,9 @@ import (
 )
 
 // The agent tool, as a run calls it: one tool call brings in another agent
-// for part of the work. The registry declares it (systemtools_agent.go);
-// here a run's tool set offers it, held to the agents the caller may call,
+// for part of the work. The registry declares it (systemtools_agent.go): its
+// description, its arguments and who approves a call. Here a run's tool set
+// offers that one definition, held to the agents the caller may call,
 // and runAgentCall runs each call as a child run of the caller that carries
 // the call's id (runs.Run.CallID), so the child's activity nests under the
 // call and its answer is the call's result. Stopping the caller stops the
@@ -27,25 +28,18 @@ import (
 // agentTool is the agent tool for one run.
 func (p *Platform) agentTool(parent runtime.Request, report func(event.Action) error) saigetypes.Tool {
 	targets := p.callTargets(parent.Tenant, parent.RunID, parent.Definition.Spec.Name, parent.Definition.Spec.Access.Spawn)
-	description := "Bring in another agent for part of the work."
-	if def, ok := p.SystemTool(ToolAgent); ok {
-		description = def.Description
-	}
+	def, _ := p.SystemTool(ToolAgent)
+	description := def.Description
 	if len(targets) == 0 {
 		description += " No agent accepts calls from you right now, so any call will be refused."
 	} else {
 		description += " Agents you may call: " + strings.Join(targets, ", ") + "."
 	}
 	caller := parent.Definition.Spec.Name
-	return &callTool{p: p, tenant: parent.Tenant, caller: caller, ToolFunc: &saigetypes.ToolFunc{
-		Def: saigetypes.ToolDef{Name: ToolAgent, Description: description, Parameters: saigetypes.ParameterSchema{
-			Type: "object", Required: []string{"agent", "title", "brief"},
-			Properties: map[string]saigetypes.PropertyDef{
-				"agent": agentProperty(targets),
-				"title": {Type: "string", Description: fmt.Sprintf("A few imperative words naming the work, shown on its card, at most %d characters", MaxAgentCallTitle)},
-				"brief": {Type: "string", Description: "The context the agent needs and what done looks like. Nothing else of your conversation reaches it."},
-			},
-		}},
+	parameters := parametersOf(def.Input)
+	parameters.Properties["agent"] = agentProperty(targets)
+	return &saigetypes.ToolFunc{
+		Def: saigetypes.ToolDef{Name: ToolAgent, Description: description, Parameters: parameters},
 		Fn: func(ctx context.Context, args map[string]any) (string, error) {
 			raw, err := json.Marshal(args)
 			if err != nil {
@@ -69,7 +63,7 @@ func (p *Platform) agentTool(parent runtime.Request, report func(event.Action) e
 			}
 			if callee, _ := args["agent"].(string); callee != "" {
 				// A call the callee's policy holds runs only when a person
-				// approved this very tool call (callTool.Approval).
+				// approved this very tool call (agentCallApproval).
 				if needed, _, _, _ := p.callApproval(parent.Tenant, caller, callee); needed && p.approvedCallTo(parent.Tenant, parent.RunID, info.ID, callee) {
 					ctx = withApprovedCall(ctx, callee)
 				}
@@ -88,7 +82,7 @@ func (p *Platform) agentTool(parent runtime.Request, report func(event.Action) e
 			}
 			return out.Text, nil
 		},
-	}}
+	}
 }
 
 type agentCallReportKey struct{}

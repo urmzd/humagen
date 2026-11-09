@@ -113,7 +113,7 @@ func (p *Platform) autoApprove(ctx context.Context, run runs.Run, q event.Questi
 	forced := wire.Meta(run.Tag())[operations.MetaForceAsk] == "true"
 	level := operations.Never
 	if q.Tool != nil {
-		level = p.ActionDecision(run.Tenant, run.Project, run.Agent, runs.AskedBy(run), categoryOf(q.Tool.Name))
+		level = p.ActionDecision(run.Tenant, run.Project, run.Agent, runs.AskedBy(run), p.categoryOf(q.Tool.Name))
 	}
 	if ok, why := autoApprovable(q, alwaysAsk, forced, level); !ok {
 		p.log.Info("platform: an approval was left for a person", "tenant", run.Tenant, "run", run.ID, "question", q.ID, "why", why)

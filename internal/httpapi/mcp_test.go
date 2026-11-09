@@ -12,6 +12,7 @@ import (
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/operations"
 )
 
 // bearer signs every request it sends with a token.
@@ -81,8 +82,20 @@ func TestTheMCPOffersOnlyWhatTheCallerMayDo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(all) != len(registry) || !slices.Contains(all, platform.ToolAgent) || !slices.Contains(all, platform.ToolGetContext) {
-		t.Errorf("an admin is offered %d tools of the registry's %d: %v", len(all), len(registry), all)
+	// An admin is offered every tool the registry offers over MCP, and none
+	// of the tools only an agent's run is offered.
+	offered := 0
+	for _, tl := range registry {
+		if tl.Exposure.MCP() {
+			offered++
+		} else if !slices.Contains(all, tl.Name) {
+			continue
+		} else if at, ok := f.p.SystemTool(tl.Name); !ok || !at.Exposure.MCP() {
+			t.Errorf("an admin is offered %s, which only runs are offered", tl.Name)
+		}
+	}
+	if len(all) != offered || !slices.Contains(all, platform.ToolAgent) || !slices.Contains(all, platform.ToolGetContext) {
+		t.Errorf("an admin is offered %d tools of the %d the registry offers over MCP: %v", len(all), offered, all)
 	}
 	read := toolNames(t, f.mcpSession(t, viewer))
 	if !slices.Contains(read, "list_agents") || !slices.Contains(read, "list_alerts") || !slices.Contains(read, "get_message") {
@@ -156,7 +169,7 @@ func TestEveryContractToolIsItsRouteWithItsPermission(t *testing.T) {
 	}
 	nobody := auth.Principal{Subject: "nobody", Tenant: "acme", Kind: auth.User}
 	for _, tl := range tools {
-		if tl.Name == platform.ToolAgent || tl.Name == platform.ToolGetContext {
+		if tl.Name == platform.ToolAgent || tl.Name == platform.ToolGetContext || !tl.Exposure.MCP() {
 			continue
 		}
 		if tl.Permission == "" {
@@ -193,6 +206,8 @@ func TestARegisteredSystemToolIsOfferedAndCalledAsTheCaller(t *testing.T) {
 		Name: "echo_caller", Title: "Echo the caller", Description: "Says who called.",
 		Input:      map[string]any{"type": "object", "properties": map[string]any{}},
 		Permission: auth.AgentsWrite,
+		Category:   operations.Other,
+		Exposure:   platform.ExposeMCP,
 		Call: func(_ context.Context, c platform.SystemCall, _ json.RawMessage) (platform.SystemResult, error) {
 			called = c
 			return platform.SystemResult{Text: "called by " + c.Who.Subject}, nil
@@ -201,7 +216,7 @@ func TestARegisteredSystemToolIsOfferedAndCalledAsTheCaller(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := f.p.RegisterSystemTool(platform.SystemTool{Name: "list_agents", Input: map[string]any{"type": "object"}, Call: func(context.Context, platform.SystemCall, json.RawMessage) (platform.SystemResult, error) {
+	if err := f.p.RegisterSystemTool(platform.SystemTool{Name: "list_agents", Category: operations.ReadContext, Exposure: platform.ExposeMCP, Input: map[string]any{"type": "object"}, Call: func(context.Context, platform.SystemCall, json.RawMessage) (platform.SystemResult, error) {
 		return platform.SystemResult{}, nil
 	}}); err == nil {
 		t.Fatal("a name the contract has was registered again")
@@ -213,5 +228,73 @@ func TestARegisteredSystemToolIsOfferedAndCalledAsTheCaller(t *testing.T) {
 	}
 	if slices.Contains(toolNames(t, f.mcpSession(t, f.person(t, "acme", "vic", "Vic", "humagen-viewers"))), "echo_caller") {
 		t.Fatal("a viewer is offered a tool that needs agents:write")
+	}
+}
+
+// mcpTools is every tool /api/mcp lists for an administrator, by name. The
+// registry also holds the tools only an agent's run is offered, and none of
+// them is listed here: what an MCP client is offered changes only when this
+// list does.
+var mcpTools = []string{
+	"acknowledge_alert", "agent", "authorize_connection", "change_alert_state", "check_connection",
+	"check_model_provider", "create_agent", "create_alert_rule", "create_eval_suite", "create_schedule",
+	"delete_alert_rule", "delete_eval_suite", "delete_model_provider", "delete_schedule", "disconnect_connection",
+	"get_agent_control", "get_agent_health", "get_agent_roster", "get_analytics", "get_connection",
+	"get_context", "get_message", "get_message_context", "get_run", "get_settings",
+	"list_agent_changes", "list_agent_revisions", "list_agents", "list_alert_rules", "list_alerts",
+	"list_connection_presets", "list_eval_runs", "list_eval_suites", "list_messages", "list_model_providers",
+	"list_schedules", "list_threads", "pause_schedule", "put_agent_control", "rate_message",
+	"reset_agent", "resume_schedule", "revise_agent", "run_eval_suite", "run_schedule",
+	"send_messages", "send_messages_under", "set_model_provider", "stop_message", "trace_message",
+	"update_alert_rule", "update_eval_suite", "update_schedule", "update_settings",
+}
+
+// The MCP lists exactly the tools the registry offers over MCP: the API
+// operations, the agent call and get_context. A tool only a run is offered
+// is never listed, and where a run tool shares an operation's name the
+// operation is what is listed and called.
+func TestTheMCPListsExactlyItsTools(t *testing.T) {
+	f := newFixture(t)
+	admin := f.mcpSession(t, f.person(t, "acme", "ada", "Ada", "humagen-admins"))
+	got := toolNames(t, admin)
+	want := slices.Clone(mcpTools)
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		for _, name := range got {
+			if !slices.Contains(want, name) {
+				t.Errorf("the MCP lists %s, which is not pinned", name)
+			}
+		}
+		for _, name := range want {
+			if !slices.Contains(got, name) {
+				t.Errorf("the MCP no longer lists %s", name)
+			}
+		}
+	}
+	for _, name := range []string{platform.ToolFileRead, platform.ToolFileWrite, platform.ToolShell, platform.ToolDelegate, platform.ToolSaveAgent, platform.ToolMemorySearch, platform.ToolSourceSearch, "github_comment", "slack_post_message", "session_call"} {
+		if slices.Contains(got, name) {
+			t.Errorf("the MCP lists %s, which only a run is offered", name)
+		}
+	}
+	// list_agents is the API operation here, not the builder's run tool of
+	// the same name: it answers with the API's JSON, as the caller.
+	res, err := admin.CallTool(t.Context(), &mcp.CallToolParams{Name: "list_agents", Arguments: map[string]any{}})
+	if err != nil || res.IsError || !strings.HasPrefix(strings.TrimSpace(textOf(res)), "{") {
+		t.Fatalf("list_agents over MCP = %s, %v", textOf(res), err)
+	}
+	// What a client is told a call does comes from the contract's own
+	// markers: get_message_context is a POST, and a read.
+	listed, err := admin.ListTools(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tl := range listed.Tools {
+		if tl.Name == "get_message_context" && (tl.Annotations == nil || !tl.Annotations.ReadOnlyHint || !tl.Annotations.IdempotentHint) {
+			t.Errorf("get_message_context is not listed as a read: %+v", tl.Annotations)
+		}
+		if tl.Name == "send_messages" && tl.Annotations.ReadOnlyHint {
+			t.Error("send_messages is listed as a read")
+		}
 	}
 }

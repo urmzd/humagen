@@ -13,9 +13,10 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 )
 
-// The humagen MCP: the platform's system tools (platform.SystemTools) over
-// MCP, at POST /api/mcp, for any MCP client a person signs in with. A caller
-// is offered only the tools its permissions allow. Most tools are operations
+// The humagen MCP: the platform's system tools (platform.SystemTools) that
+// declare themselves offered over MCP (Exposure), at POST /api/mcp, for any
+// MCP client a person signs in with. A caller is offered only the tools its
+// permissions allow. Most tools are operations
 // of the API contract, which reach their own routes in-process as the caller
 // through dispatch, so a call is authorized, validated, audited and logged
 // exactly as the same call to the API.
@@ -61,6 +62,10 @@ func (s *Server) mcpEndpoint(w http.ResponseWriter, r *http.Request, who auth.Pr
 	}
 	srv := mcp.NewServer(&mcp.Implementation{Name: "humagen", Title: "Humagen", Version: "1"}, &mcp.ServerOptions{Instructions: mcpInstructions})
 	for _, t := range tools {
+		// The registry also holds the tools only an agent's run is offered.
+		if !t.Exposure.MCP() {
+			continue
+		}
 		if t.Permission != "" && !who.Can(t.Permission) {
 			continue
 		}

@@ -18,10 +18,12 @@ import (
 // with the reader's own login.
 const ToolCorpusQuery = "corpus_query"
 
-// corpusTools are the tools corpora give a run. Like every tool, an agent
-// has one only when its revision names it; a corpus decides what it reaches.
-func (p *Platform) corpusTools(req runtime.Request) map[string]saigetypes.Tool {
-	query := &saigetypes.ToolFunc{
+// corpusQueryTool is corpus_query for one turn. Like every tool, an agent
+// has it only when its revision names it; a corpus decides what it reaches.
+// It runs with the login of the person the run acts for, which the registry
+// declares.
+func (p *Platform) corpusQueryTool(req runtime.Request) saigetypes.Tool {
+	return &saigetypes.ToolFunc{
 		Def: saigetypes.ToolDef{Name: ToolCorpusQuery,
 			Description: "Run one read-only SQL SELECT on a warehouse a corpus holds, such as Snowflake or BigQuery, with your own login to it, so the warehouse decides what you may read. Available only in your own private conversation, in a corpus granted to this agent that you may read. Rows are never stored. Find tables with catalog_search; select only the columns you need and filter early.",
 			Parameters: schema([]string{"corpus", "connector", "sql"}, map[string]string{
@@ -59,5 +61,4 @@ func (p *Platform) corpusTools(req runtime.Request) map[string]saigetypes.Tool {
 			return string(b), nil
 		},
 	}
-	return map[string]saigetypes.Tool{ToolCorpusQuery: &personTool{Tool: query}}
 }

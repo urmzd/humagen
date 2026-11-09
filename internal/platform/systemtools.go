@@ -14,39 +14,158 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/orchagent/flow/turn/native"
+	saigetypes "github.com/urmzd/saige/agent/types"
+
 	"github.com/urmzd/humagen/api"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/operations"
 )
 
-// System tools are the platform's own tools: what an administrator, or an
-// agent acting for one, runs the workspace with. They live in one registry
-// (SystemTools), offered alike to any MCP client through the humagen MCP and
-// to the platform's agents, and every call is made as someone, with their
-// permissions.
+// System tools are the platform's tools: what an administrator runs the
+// workspace with, and what an agent's run is offered. They live in one
+// registry (SystemTools). Each tool declares itself once: its name, what it
+// does (Category, ReadOnly, Destructive, Idempotent, Parallel), whether it
+// acts with a person's own account, who approves a call (Approval), and who
+// it is offered to (Exposure): MCP clients through the humagen MCP, agent
+// runs, or both. Every call is made as someone, with their permissions.
 //
 // Most are operations of the API contract (api/openapi.yaml), named, described
 // and checked by it, and served by their own routes in-process as the caller
 // (APIDispatch), so a call is authorized, validated and audited exactly as the
 // same call to the API. Others are the platform's own (RegisterSystemTool):
 // a tool bound to the message an agent answers, or one that calls another
-// agent and reports what it does as it does it (SystemCall.Progress).
+// agent and reports what it does as it does it (SystemCall.Progress), and the
+// tools a run is offered (systemtools_run.go), each built for the turn that
+// uses it (Run).
 
 // SystemTool is one tool of the registry.
 type SystemTool struct {
+	// Name is what a caller knows the tool by. Key is its place in the
+	// registry, the name unless Key says otherwise: two tools share a name
+	// only when they are offered to different callers (Exposure) and each
+	// has a key of its own.
 	Name        string
+	Key         string
 	Title       string
 	Description string
-	// Input is the JSON Schema of the tool's arguments: an object.
+	// Input is the JSON Schema of the tool's arguments: an object. A tool
+	// offered only to runs may leave it out: its constructor (Run) holds
+	// its one definition.
 	Input map[string]any
 	// Permission is what a caller needs to be offered the tool, "" for any
 	// signed-in caller. Calling it is checked again by what it calls.
 	Permission auth.Permission
+	// Category is the kind of action a call is, which the action policy
+	// (workspace, project, agent, personal) decides by. Every tool states
+	// one; nothing is read from its name.
+	Category operations.Category
+	// Also is a second category whose policy holds a call as well: a tool
+	// that sends something outside and changes files. With BothAllow a call
+	// runs unasked only when both categories allow it.
+	Also      operations.Category
+	BothAllow bool
 	// ReadOnly, Destructive and Idempotent describe what a call does, for a
-	// client deciding whether to ask its person first.
-	ReadOnly, Destructive, Idempotent bool
-	// Call runs the tool. A refusal the caller should read comes back as a
-	// SystemResult with IsError, not as an error.
+	// client deciding whether to ask its person first. Parallel reports
+	// that calls may run side by side.
+	ReadOnly, Destructive, Idempotent, Parallel bool
+	// ActsForPerson reports that a call runs with the credential of the
+	// person the run acts for.
+	ActsForPerson bool
+	// Approval is who approves a call before it runs.
+	Approval ToolApproval
+	// Exposure is who the tool is offered to. The zero value offers it to
+	// nobody.
+	Exposure Exposure
+	// Upstream marks a tool the runtime builds itself: the registry
+	// declares it and does not construct it.
+	Upstream bool
+	// Call runs the tool for a caller of the system tools. A refusal the
+	// caller should read comes back as a SystemResult with IsError, not as
+	// an error.
 	Call func(ctx context.Context, c SystemCall, args json.RawMessage) (SystemResult, error)
+	// Run builds the tool for one turn of a run: what a tool offered to
+	// runs is, bound to the run's request.
+	Run func(t *ToolTurn) (saigetypes.Tool, error)
+}
+
+// key is the tool's place in the registry.
+func (t SystemTool) key() string {
+	if t.Key != "" {
+		return t.Key
+	}
+	return t.Name
+}
+
+// Exposure is who a tool is offered to.
+type Exposure uint8
+
+const (
+	// ExposeMCP lists the tool at /api/mcp, for a signed-in MCP client.
+	ExposeMCP Exposure = 1 << iota
+	// ExposeRuns offers the tool to an agent's run, when the agent's
+	// revision names it.
+	ExposeRuns
+)
+
+// MCP reports whether the tool is listed at /api/mcp.
+func (e Exposure) MCP() bool { return e&ExposeMCP != 0 }
+
+// Runs reports whether an agent's run may be offered the tool.
+func (e Exposure) Runs() bool { return e&ExposeRuns != 0 }
+
+// ApprovalMode is how a tool's calls are approved.
+type ApprovalMode string
+
+const (
+	// ApprovalByPolicy leaves it to the action policy for the tool's
+	// category: allow, ask or never. It is the zero value, so a tool that
+	// declares nothing is held by policy.
+	ApprovalByPolicy ApprovalMode = ""
+	// ApprovalAlways asks the tool's own approvers about every call,
+	// whatever the policy allows.
+	ApprovalAlways ApprovalMode = "always"
+	// ApprovalNone asks nobody: the tool is called by a signed-in person's
+	// own client, which decides what to confirm. A tool offered to runs
+	// cannot declare it.
+	ApprovalNone ApprovalMode = "none"
+)
+
+// ToolApproval is a tool's one declaration of who approves a call. The one
+// wrapper every run tool passes through (operationTool) reads it, with the
+// action policy.
+type ToolApproval struct {
+	Mode ApprovalMode
+	// Approvers, SelfApproval and Expires are who is asked, whether the
+	// person the run acts for may answer, and how long the question waits
+	// (zero is the runtime's default), for ApprovalAlways.
+	Approvers    []string
+	SelfApproval bool
+	Expires      time.Duration
+	// Prompt words the question; nil asks "Approve <the tool's name>?".
+	Prompt func(ApprovalCall) string
+	// PerCall, when set, decides for each call whether the tool's own
+	// approvers are asked, and who they are: the agent tool, held by the
+	// called agent's call policy.
+	PerCall func(ApprovalCall) (ToolApproval, bool)
+}
+
+// ApprovalCall is the call an approval is asked about.
+type ApprovalCall struct {
+	Request runtime.Request
+	Tool    string
+	Call    saigetypes.ToolCallPart
+}
+
+// ToolTurn is one turn of a run, as the constructor of a run tool sees it.
+type ToolTurn struct {
+	Request runtime.Request
+	// Action reports what a tool did on the run's stream.
+	Action func(event.Action) error
+	// connectors are the actions of the clients the turn answers through.
+	connectors native.Tools
 }
 
 // SystemCall is who calls a system tool, and from where.
@@ -85,10 +204,24 @@ func (p *Platform) SetAPIDispatch(d APIDispatch) {
 }
 
 // RegisterSystemTool adds one of the platform's own tools to the registry.
-// A name the registry already has is refused.
+// A tool declares who it is offered to and its category. A key the registry
+// already has is refused, and so is a name already offered to the same
+// callers: two tools share a name only across exposures, under keys of
+// their own.
 func (p *Platform) RegisterSystemTool(t SystemTool) error {
-	if t.Name == "" || t.Call == nil || t.Input == nil {
-		return fmt.Errorf("platform: a system tool needs a name, an input schema and a call")
+	switch {
+	case t.Name == "":
+		return fmt.Errorf("platform: a system tool needs a name")
+	case t.Exposure == 0:
+		return fmt.Errorf("platform: the system tool %q says who it is offered to (Exposure)", t.Name)
+	case t.Category == "":
+		return fmt.Errorf("platform: the system tool %q states its category", t.Name)
+	case t.Exposure.MCP() && (t.Call == nil || t.Input == nil):
+		return fmt.Errorf("platform: the system tool %q is offered over MCP, so it needs an input schema and a call", t.Name)
+	case t.Exposure.Runs() && t.Run == nil && !t.Upstream:
+		return fmt.Errorf("platform: the system tool %q is offered to runs, so it needs a constructor (Run)", t.Name)
+	case t.Exposure.Runs() && t.Approval.Mode == ApprovalNone:
+		return fmt.Errorf("platform: the system tool %q is offered to runs, so the action policy holds it", t.Name)
 	}
 	ops, err := contractTools()
 	if err != nil {
@@ -96,10 +229,12 @@ func (p *Platform) RegisterSystemTool(t SystemTool) error {
 	}
 	p.systemTools.mu.Lock()
 	defer p.systemTools.mu.Unlock()
-	taken := slices.ContainsFunc(ops, func(o contractTool) bool { return o.def.Name == t.Name }) ||
-		slices.ContainsFunc(p.systemTools.own, func(o SystemTool) bool { return o.Name == t.Name })
+	clash := func(o SystemTool) bool {
+		return o.key() == t.key() || o.Name == t.Name && o.Exposure&t.Exposure != 0
+	}
+	taken := slices.ContainsFunc(ops, func(o contractTool) bool { return clash(o.def) }) || slices.ContainsFunc(p.systemTools.own, clash)
 	if taken {
-		return fmt.Errorf("platform: the system tool %q is registered twice", t.Name)
+		return fmt.Errorf("platform: the system tool %q is registered twice", t.key())
 	}
 	p.systemTools.own = append(p.systemTools.own, t)
 	return nil
@@ -115,7 +250,8 @@ type systemRegistry struct {
 }
 
 // SystemTools is the registry: the contract's operations, then the
-// platform's own tools, in the order they were registered.
+// platform's own tools, in the order they were registered. It holds the
+// tools of every exposure; a caller offers the ones meant for it.
 func (p *Platform) SystemTools() ([]SystemTool, error) {
 	ops, err := contractTools()
 	if err != nil {
@@ -131,13 +267,14 @@ func (p *Platform) SystemTools() ([]SystemTool, error) {
 	return append(out, own...), nil
 }
 
-// SystemTool is the registry's one tool named name, a contract operation or
+// SystemTool is the registry's one tool under key, a contract operation or
 // one of the platform's own: what a run's tool set reads a tool's definition
-// from, and calls it through.
-func (p *Platform) SystemTool(name string) (SystemTool, bool) {
+// from, and calls it through. A tool's key is its name, unless it shares the
+// name with a tool of another exposure.
+func (p *Platform) SystemTool(key string) (SystemTool, bool) {
 	if ops, err := contractTools(); err == nil {
 		for _, op := range ops {
-			if op.def.Name == name {
+			if op.def.key() == key {
 				return p.contractSystemTool(op), true
 			}
 		}
@@ -145,7 +282,20 @@ func (p *Platform) SystemTool(name string) (SystemTool, bool) {
 	p.systemTools.mu.Lock()
 	defer p.systemTools.mu.Unlock()
 	for _, t := range p.systemTools.own {
-		if t.Name == name {
+		if t.key() == key {
+			return t, true
+		}
+	}
+	return SystemTool{}, false
+}
+
+// runTool is the registry's tool a run knows as name: the one of that name
+// offered to runs.
+func (p *Platform) runTool(name string) (SystemTool, bool) {
+	p.systemTools.mu.Lock()
+	defer p.systemTools.mu.Unlock()
+	for _, t := range p.systemTools.own {
+		if t.Name == name && t.Exposure.Runs() {
 			return t, true
 		}
 	}
@@ -376,9 +526,21 @@ func contractToolOf(id, method, path string, op, components map[string]any) cont
 	t.def.Title = summary
 	t.def.Description = description
 	t.def.Input = input
-	t.def.ReadOnly = method == http.MethodGet
-	t.def.Destructive = method == http.MethodDelete
-	t.def.Idempotent = t.def.ReadOnly || method == http.MethodPut || method == http.MethodDelete
+	// What a call does is what the contract says of the operation
+	// (x-readonly, x-destructive, x-idempotent), never its HTTP verb: a
+	// read that takes a body is a POST.
+	t.def.ReadOnly, _ = op["x-readonly"].(bool)
+	t.def.Destructive, _ = op["x-destructive"].(bool)
+	idempotent, _ := op["x-idempotent"].(bool)
+	t.def.Idempotent = t.def.ReadOnly || idempotent
+	t.def.Parallel = t.def.ReadOnly
+	t.def.Category = operations.Other
+	if t.def.ReadOnly {
+		t.def.Category = operations.ReadContext
+	}
+	// An operation is called by a signed-in person's own client, as them.
+	t.def.Approval = ToolApproval{Mode: ApprovalNone}
+	t.def.Exposure = ExposeMCP
 	return t
 }
 

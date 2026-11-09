@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/orchagent/flow/turn/native"
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/catalog"
@@ -85,7 +86,7 @@ func TestCorpusQueryRunsOnTheReadersOwnLogin(t *testing.T) {
 	query := func(req, agent, connector string) (string, error) {
 		r := reqs[req]
 		r.Definition.Spec.Name = agent
-		return f.p.corpusTools(r)[ToolCorpusQuery].Execute(t.Context(), map[string]any{"corpus": "finance", "connector": connector, "sql": "SELECT 1"})
+		return f.p.corpusQueryTool(r).Execute(t.Context(), map[string]any{"corpus": "finance", "connector": connector, "sql": "SELECT 1"})
 	}
 
 	out, err := query("bo", "worker", "ledger")
@@ -109,7 +110,7 @@ func TestCorpusQueryRunsOnTheReadersOwnLogin(t *testing.T) {
 	if len(w.tokens) != 1 || w.tokens[0] != "pat-bo" {
 		t.Fatalf("queries ran on tokens %v, want only bo's", w.tokens)
 	}
-	if _, ok := f.p.corpusTools(reqs["bo"])[ToolCorpusQuery].(interface{ ActsForPerson() bool }); !ok {
+	if held := f.p.operationTool(reqs["bo"], f.p.corpusQueryTool(reqs["bo"]), f.p.toolDeclaration(ToolCorpusQuery)).(native.PersonScoped); !held.ActsForPerson() {
 		t.Fatal("corpus_query does not say it acts for a person")
 	}
 }

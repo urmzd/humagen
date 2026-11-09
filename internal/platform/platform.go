@@ -747,7 +747,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error
 		return callExecutor{inner: inner, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding}, nil
 	}
 	exec, err := runtime.NewSandbox(plane, tools, p.Agents.Resolver(),
-		runtime.WithCatalog(p.operationsCatalog(p.cfg.Ext.catalog(p.fileTools(p.connectorTools)), groups)),
+		runtime.WithCatalog(p.operationsCatalog(p.cfg.Ext.catalog(p.registryTools()), groups)),
 
 		runtime.WithDelegator(p.attach),
 		runtime.WithSessionRuntime(func() *runtime.Runtime { return p.rt }),
