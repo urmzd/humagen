@@ -379,7 +379,6 @@ export function ConversationInfo({
     <Inspector
       open={panel === "overview" || panel === "context" || panel === "people"}
       title={panel === "people" ? "People" : "Details"}
-      wide
       lead={panel === "people" ? undefined : navigation}
       onClose={onClose}
     >

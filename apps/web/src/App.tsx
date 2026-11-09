@@ -331,7 +331,9 @@ function Console({
   // sends every field, so nothing is saved over values not read yet.
   const { prefs, prefsRead, setPrefs, pin, pinProject } = usePreferences();
   const [day, setDay] = useState<Summary | null>(null);
-  const [live, setLive] = useState(false);
+  // Whether the workspace's stream is connected. It starts true: a stream that
+  // has not opened yet has lost nothing, so nothing is said until one fails.
+  const [live, setLive] = useState(true);
   // Bumped whenever a run starts or ends, so pages that aggregate refetch.
   const [tick, setTick] = useState(0);
   // The first screen is drawn hidden until its reads land (or FIRST_HOLD_MS

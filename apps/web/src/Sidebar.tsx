@@ -47,10 +47,11 @@ import {
   type RowStanding,
   standingOf,
 } from "./conversationList.ts";
+import { daysAgo } from "./format.ts";
 import { sourceOf } from "./History.tsx";
 import { useMarks } from "./marks.ts";
 import { ConversationPeek, PeekCard, usePeek } from "./RowPreview.tsx";
-import { type Standing, useRecents } from "./recents.ts";
+import { type Standing, useRecents, useRecentsRow } from "./recents.ts";
 import { href, type Route, type Page as RoutePage } from "./route.ts";
 import { Avatar, workspaceSettingsRoute } from "./Settings.tsx";
 import { type Alert, holdsAnAlertOnly, openAlert, orderAlerts } from "./sessionCenter.ts";
@@ -287,8 +288,7 @@ function sourceGlyph(origin: string): ReactNode {
 
 /** Today, Yesterday or Earlier, by the reader's own calendar day. */
 export function recentDay(iso: string, now: Date): "today" | "yesterday" | "earlier" {
-  const start = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const days = Math.round((start(now) - start(new Date(iso))) / 86_400_000);
+  const days = daysAgo(iso, now.getTime());
   return days <= 0 ? "today" : days === 1 ? "yesterday" : "earlier";
 }
 
@@ -443,7 +443,8 @@ function TaskRow({
           </span>
           <span
             data-row-age
-            className={`mt-0.5 shrink-0 text-aui-2xs font-normal text-aui-muted tabular-nums ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:invisible [@media(pointer:fine)]:group-hover/task:invisible" : ""}`}
+            // One line: where it came from, then its age, so every row is the same height.
+            className={`mt-0.5 inline-flex shrink-0 items-center gap-1 text-aui-2xs font-normal text-aui-muted tabular-nums ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:invisible [@media(pointer:fine)]:group-hover/task:invisible" : ""}`}
           >
             {standing === "unread" ? (
               <span aria-hidden data-standing="unread" className="humagen-row-dot mt-1 block" />
@@ -751,6 +752,11 @@ export function Sidebar({
     more,
   } = useRecents(agent, standing, threads, sessionMode);
   const filters = (agent ? 1 : 0) + (standing ? 1 : 0);
+  // The row the open session is shown as: its own, or its root's when it is an agent's session under one.
+  const openRow = useRecentsRow(
+    route.page === "conversation" ? route.id : null,
+    route.page === "conversation" && recents.some((t) => t.id === route.id),
+  );
   // A pin that did not take is said beside the conversation it was for, in whichever
   // list the conversation is in by then.
   const { flash, say, clear: unsay } = useFlash();
@@ -888,7 +894,7 @@ export function Sidebar({
     },
     {
       to: { page: "artifacts" } as Route,
-      label: "Artifacts",
+      label: nav.artifacts,
       icon: <LayersIcon />,
       show: can("artifacts:read"),
       active:
@@ -916,7 +922,7 @@ export function Sidebar({
   const toggleArchive = (t: ThreadSummary, on: boolean) => {
     unsay();
     setNote({ id: t.id, archived: on });
-    if (on && selected === t.id) go({ page: "new" });
+    if (on && (selected === t.id || openRow === t.id)) go({ page: "new" });
     setArchivedMark(t.id, on).catch(() => {
       setNote(null);
       setFlashed(t.id);
@@ -933,7 +939,7 @@ export function Sidebar({
     unsay();
     setGone((g) => new Set(g).add(t.id));
     if (pinned.includes(t.id)) onPin(t.id, false).catch(() => {});
-    if (selected === t.id) go({ page: "new" });
+    if (selected === t.id || openRow === t.id) go({ page: "new" });
     coworking.archive(t.id, true).catch(() => {
       setGone((g) => {
         const n = new Set(g);
@@ -989,12 +995,12 @@ export function Sidebar({
             !pinnedSet.has(t.id) &&
             !gone.has(t.id) &&
             !archivedSet.has(t.id) &&
-            (t.id === selected || !holdsAnAlertOnly(t)),
+            (t.id === openRow || !holdsAnAlertOnly(t)),
         )
         .map((t) => [t.id, shown(t)] as const),
     ).values(),
   ].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
-  const currentThread = selected ? known.get(selected) : undefined;
+  const currentThread = openRow ? known.get(openRow) : undefined;
   if (
     currentThread &&
     !pinnedSet.has(currentThread.id) &&
@@ -1004,13 +1010,13 @@ export function Sidebar({
     unpinned.push(currentThread);
   }
   // Opening a conversation reads it, and so does staying in it while it moves.
-  const selectedUpdated = currentThread?.updated_at;
+  const selectedUpdated = (selected ? known.get(selected) : undefined)?.updated_at;
   // biome-ignore lint/correctness/useExhaustiveDependencies: a newer update is the reason to mark it read again
   useEffect(() => {
     if (selected && can("runs:read")) markRead(selected);
   }, [selected, selectedUpdated, markRead, can]);
   const noConversations = recents.length === 0 && unpinned.length === 0;
-  const isCurrent = (t: ThreadSummary) => t.id === selected;
+  const isCurrent = (t: ThreadSummary) => t.id === openRow;
   const canPin = can("runs:read");
   const pinnedProjects = new Set(prefs?.pinned_projects ?? []);
   const readableProjectPins = [...pinnedProjects].filter(

@@ -76,7 +76,8 @@ export function StatusPill({ status }: { status: string }) {
 
 export function PriorityPill({ priority }: { priority: "urgent" | "normal" | "low" }) {
   return (
-    <Pill tone={priority === "urgent" ? "bad" : priority === "normal" ? "warn" : "neutral"}>
+    // Only Urgent is colored: a warning color on the ordinary priority made every alert look like trouble.
+    <Pill tone={priority === "urgent" ? "bad" : "neutral"}>
       {priority === "urgent" ? "Urgent" : priority === "normal" ? "Normal" : "Low"}
     </Pill>
   );
