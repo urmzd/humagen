@@ -1993,6 +1993,36 @@ export interface SurfaceRef {
   message?: string;
   /** The app's own bot user id, whose mention is not a tag. */
   app_user?: string;
+  audience?: SurfaceAudience;
+  /** Slack's short-lived token for acting for the person in this turn. Accepted and never kept or passed on. */
+  action_token?: string;
+}
+
+/** Who is in the Slack conversation a message was asked in. A root
+session's audience follows it: a public channel's is shared where it
+is filed; a private channel's or a group direct message's is private
+to the members the client maps to people, kept to the members of the
+latest message; a direct message's is private to its person. Absent,
+a D channel is a direct message and anything else is private to the
+person asking: a channel id never says the channel is public.
+ */
+export interface SurfaceAudience {
+  type: "public_channel" | "private_channel" | "mpim" | "im";
+  /** The conversation's members by Slack user id, for a private channel or a group direct message. */
+  members?: string[];
+}
+
+/** What one message posted to a chat surface's root session did. */
+export interface SessionPosted {
+  message: SessionPostedMessage;
+  /** The runs it started, in the root or in the child of the agent it named. */
+  runs: Run[];
+  notified: string[];
+  refused: ThreadMention[];
+  rule: string;
+  reason?: string;
+  /** The message was already posted; nothing started again. */
+  repeated?: boolean;
 }
 
 /** The thread on a client's surface this thread is. It never changes. */
@@ -4680,6 +4710,80 @@ export interface SessionIdentity {
   source_alert?: string;
 }
 
+/** People's messages from one origin. Who said them is the caller. */
+export interface MessagesInput {
+  messages: InMessage[];
+  ref?: ExternalRef;
+  /** Accepted; follow GET /api/messages/{id}/stream for what happens beneath. */
+  stream?: boolean;
+}
+
+/** One person's message. role is user; the platform writes the agents' messages. */
+export interface InMessage {
+  role: "user";
+  content: MessageContent;
+  ref?: ExternalRef;
+}
+
+/** A string, or content blocks. */
+export type MessageContent = string | ContentBlock[];
+
+/** One block of a message: text; a mention of an agent or a person a
+surface already resolved, which picks who answers as an @mention in
+the text does; or a link to another place. image, document, audio and
+answer blocks are refused for now.
+ */
+export interface ContentBlock {
+  type: "text" | "mention" | "link" | "image" | "document" | "audio" | "answer";
+  text?: string;
+  agent?: string;
+  person?: string;
+  ref?: ExternalRef;
+}
+
+/** Where a message came from, its origin: a union on type. slack (team,
+channel, ts, thread_ts for a reply, audience), github (repo as
+owner/name, kind pull, issue or comment, number, comment_id; a
+comment on a pull request sends kind pull), schedule (name,
+occurrence), url (url) or web (the console). A place has one root
+session, keyed slack://team/channel/thread_ts,
+github://owner/repo/pull/N or issues/N, schedule://name/occurrence or
+the normalized URL. client is the Humagen client the origin is
+reached through: it files the root where the client's channel is
+bound and maps a Slack conversation's members to people.
+ */
+export interface ExternalRef {
+  type: "slack" | "github" | "schedule" | "url" | "web";
+  client?: string;
+  team?: string;
+  channel?: string;
+  /** Who wrote the message on the surface (a Slack user id, a GitHub login). Set by surfaces built into the server; the API ignores it, since the token says who speaks. */
+  user?: string;
+  ts?: string;
+  thread_ts?: string;
+  audience?: SurfaceAudience;
+  repo?: string;
+  kind?: "pull" | "issue" | "comment";
+  number?: number;
+  comment_id?: number;
+  name?: string;
+  occurrence?: string;
+  url?: string;
+}
+
+/** The message a request created, the root it is under, and what it did. */
+export interface MessageCreated {
+  /** The message's id, session:message. */
+  id: string;
+  /** The root session's id. */
+  root: string;
+  role: "user";
+  content: MessageContent;
+  /** This request started the root. */
+  created: boolean;
+  posted: SessionPosted;
+}
+
 export interface SessionInput {
   text: string;
   agent?: string;
@@ -4689,6 +4793,12 @@ export interface SessionInput {
   project?: string;
   /** The readable session alert that anchors this fix conversation. */
   source_alert?: string;
+  surface?: SurfaceRef;
+  act_as?: ActAs;
+  /** The kind of chat surface: slack, the default and only one taken today. */
+  surface_kind?: string;
+  /** With surface: post the message without starting anything. */
+  post_only?: boolean;
 }
 
 /** A session message with optional routing to a mentioned agent. */
@@ -4764,6 +4874,7 @@ export interface SessionLink {
 }
 
 export interface AgentSession {
+  posted?: SessionPosted;
   /** More changed messages remain after cursor; continue with since until false. */
   more?: boolean;
   usage?: RunUsage;
@@ -5118,6 +5229,11 @@ export interface ThreadForkContextItem {
   name?: string;
   text: string;
   at: string;
+}
+
+export interface SessionPostedMessage {
+  id: string;
+  text: string;
 }
 
 export interface ProjectFork {

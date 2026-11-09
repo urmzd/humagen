@@ -994,6 +994,22 @@ agent, on its own model.
 - `EntryAgent(tenant)` gives its name and the name people see (the
   workspace's branding, else Humagen), which the GitHub check run uses.
 
+### Root sessions on chat surfaces
+
+A thread on a chat surface, a Slack thread today, has one root session, as a
+console chat does: the place's, keyed by its address
+(`slack://<team>/<channel>/<thread ts>`) and owned by the entry agent (or,
+on a server that ships no agents of its own, by the client's default). The
+chat service (`apps/chat`) posts each person's message to `POST /api/sessions`
+with `surface` and `act_as`; only the client's own machine may, for a person
+of the client. The first message starts the root (201), filed where the
+Slack channel is bound, else in the client's home (private for a direct
+message); every later message in the thread lands in it (200), once however
+often it is sent. A mention starts or continues that agent's child session
+under the root; a message naming nobody is picked for by the entry agent.
+The request may not say where to file the session or who owns it. A Slack
+thread that started as a conversation before root sessions stays one (409).
+
 ### The dynamic router
 
 A message that names no agent, where the default it inherits is `*`

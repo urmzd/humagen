@@ -567,7 +567,7 @@ func (h hidden) holds(body string) bool {
 // which a member of the workspace may see.
 func (h hidden) unplaced(path, param string) bool {
 	if h.private {
-		if strings.HasPrefix(path, "/api/sessions/") {
+		if strings.HasPrefix(path, "/api/sessions/") || strings.HasPrefix(path, "/api/messages/") {
 			return false
 		}
 		if param == "part" || param == "question" {
@@ -633,7 +633,7 @@ func (h hidden) value(path, param string) (string, bool) {
 		}
 	case "id":
 		switch {
-		case prefix("/api/sessions/"):
+		case prefix("/api/sessions/"), prefix("/api/messages/"):
 			return h.session, h.session != ""
 		case prefix("/api/library/skills/"):
 			return h.librarySkill, true

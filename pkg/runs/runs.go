@@ -172,7 +172,9 @@ func AskedBy(r Run) string {
 
 // ClientOf returns the external client that raised a tag, or "".
 func ClientOf(tag event.Envelope) string {
-	if wire.Origin(tag) == "slack" || wire.Origin(tag) == "github" {
+	// The connectors write it, and the platform writes it on a run it raises
+	// for a surface's verified message. A caller of the API never can.
+	if o := wire.Origin(tag); o == "slack" || o == "github" || o == OriginAPI {
 		return wire.Meta(tag)[MetaClient]
 	}
 	return ""

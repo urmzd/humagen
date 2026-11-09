@@ -489,6 +489,9 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 			return runs.Run{}, fmt.Errorf("%w: this credential does not answer for people of that client", ErrForbidden)
 		}
 		routes, clientDefault = c.Routes, c.DefaultAgent
+		// The run is the client's, so its budget counts it and its calls are
+		// held to the agents the client may reach.
+		meta[runs.MetaClient] = c.ID
 	}
 	asked := legacy.Default(strings.TrimSpace(t.Agent))
 	if t.Sees != nil && asked != "" && asked != Open {

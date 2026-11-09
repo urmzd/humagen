@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.99.2 (2026-11-09)
+
+### Bug Fixes
+
+- **join**: route on what agents are for, not on instruction filler (#296) ([c1a8ded](https://github.com/urmzd/humagen/commit/c1a8ded5f04c4b1dd726cfc575f013ad9af35520))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.99.1...v0.99.2)
+
+
 ## 0.99.0 (2026-11-08)
 
 ### Features
