@@ -107,7 +107,7 @@ func (p *Platform) GetConnection(ctx context.Context, who auth.Principal, name s
 			out.Mappings = append(out.Mappings, m)
 		}
 	}
-	if name == "drive" && who.Can(auth.KnowledgeRead) && p.Knowledge != nil {
+	if oauthSource(name) && who.Can(auth.KnowledgeRead) && p.Knowledge != nil {
 		sources, err := p.SourcesAs(who)
 		if err != nil {
 			return out, err

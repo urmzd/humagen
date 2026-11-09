@@ -232,6 +232,14 @@ test("a helper result is kept for inspection without repeating the parent answer
 });
 
 
+test("an agent call is shown as the agent it called, as call_agent was", () => {
+  const to = adapter();
+  to(ev("run.delta.tool.call.v1", { id: "call-1", name: "agent", input: '{"agent":"researcher","title":"Look into it","brief":"Find the cause."}' }));
+  to(ev("run.action.taken.v1", { name: "agent", data: { run: "helper-run", agent: "researcher", tool_call_id: "call-1", lifecycle: "attached" } }));
+  const done = to(ev("run.delta.tool.done.v1", { id: "call-1", result: "The cause is a stale cache." })).find((e) => e.type === "task.upserted");
+  assert.equal(done?.type === "task.upserted" && done.task.subagent?.runId, "helper-run");
+});
+
 test("parallel helpers correlate by call ID even when they start out of order", () => {
   const to = adapter();
   for (const id of ["call-a", "call-b"]) {

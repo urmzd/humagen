@@ -46,6 +46,7 @@ func TestTheAgentCallHandsOnWhatItIsGiven(t *testing.T) {
 		t.Fatalf("agent = %+v, get_context = %+v", agent, get)
 	}
 	call := SystemCall{Who: admin("acme"), Message: "msg-1", Run: "run-1", ToolUseID: "htu_run-1_3"}
+	p.SetAgentCaller(nil)
 	if res, _ := agent.Call(ctx, call, json.RawMessage(`{"agent":"security","title":"Review the auth change","brief":"Check it."}`)); !res.IsError || !strings.Contains(res.Text, "not available") {
 		t.Fatalf("with nothing behind it = %+v", res)
 	}

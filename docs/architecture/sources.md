@@ -1,6 +1,6 @@
 # Sources
 
-Library holds manual documents and managed Google Drive or Notion sources.
+Library holds manual documents and managed Google Drive, OneDrive or Notion sources.
 New Source shows supported providers and formats before configuration. Source
 creation saves its selected project and refresh cadence atomically. Select a
 provider and mode, enter the folder or page ID, and choose its project.
@@ -133,6 +133,42 @@ how new passages are retrieved.
 
 No successful external action is simulated, and no new external write action
 is offered.
+
+## OneDrive
+
+A OneDrive source reads one folder through Microsoft Graph v1.0 with each
+person's own Microsoft account, as a Drive source uses their own Google
+account. Connect OneDrive in Connections, then choose Use my OneDrive account
+on the source; the binding covers its provider, origin and project, and is
+never borrowed by another person.
+
+| Part | OneDrive |
+| --- | --- |
+| Sign-in | Microsoft identity platform `common` endpoints, authorization code with PKCE. Work, school and personal accounts |
+| Scopes | Delegated `Files.Read`, `offline_access` for a refresh token, and `User.Read`. None needs administrator consent |
+| Origin | A folder's item ID, or `root` for the top of the drive. Personal account item IDs contain `!` |
+| Inventory | `GET /me/drive/items/{id}/children` or `/me/drive/root/children`, following `@odata.nextLink` only within `graph.microsoft.com`. A folder with more than 200 children fails |
+| Content | `GET /me/drive/items/{id}/content`. Its redirect to a preauthenticated URL is followed only to an HTTPS `1drv.com`, `sharepoint.com` or `microsoftpersonalcontent.com` host, without the bearer token |
+| Formats | UTF-8 `.txt`, `.md`, `.markdown`, `.csv`, `.json`, `.html` and `.htm`. Office files, folders, OneNote packages, items shared from another drive and files over 8 MiB are listed as unsupported |
+| Failures | 401, 403 and 404 are auth expired; 429, 509 and a 403 `activityLimitReached` are quota; 400 is unsupported; anything else is unavailable |
+
+`Files.Read` rather than `Files.Read.All`: a source reads a folder in the
+person's own drive and never follows an item shared from another drive, so the
+broader scope would grant access it does not use. Graph converts Word, Excel
+and PowerPoint files to PDF, never to text, so they stay unsupported.
+
+To enable it, register an application in Microsoft Entra for accounts in any
+organizational directory and personal Microsoft accounts, add the console's
+callback as a Web redirect URI, and set `connections.clients.onedrive` with a
+`client_id` and a `client_secret` reference. Issuer, endpoints and scopes are
+fixed. Graph references:
+[list children](https://learn.microsoft.com/en-us/graph/api/driveitem-list-children),
+[download](https://learn.microsoft.com/en-us/graph/api/driveitem-get-content),
+[format conversion](https://learn.microsoft.com/en-us/graph/api/driveitem-get-content-format),
+[permissions](https://learn.microsoft.com/en-us/graph/permissions-reference)
+and [errors](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/concepts/errors).
+Transport fixtures cover these requests; no live Microsoft account has been
+validated.
 
 The source catalog labels Slack, Snowflake and BigQuery as requiring a
 connector. It does not implement those providers. Live MCP queries and permitted
@@ -329,6 +365,34 @@ sources, its graph (stale and unowned documents) or its types (proposals). The l
 and facts retired with their source are applied as the graph rebuilds.
 `(*Platform).MaintainKnowledge` runs one pass.
 
+### Corpora a project attaches
+
+A project's context names corpora (`GET` and `PUT /api/projects/{name}/corpora`,
+see [projects.md](projects.md)). A session filed in a project reaches the
+corpora its project chain attaches, nearest first, as if they were granted
+to its agent, by the same rules of label and audience. Attaching makes nobody
+a reader, and a restricted corpus is reached only through its own grant,
+which takes an admin and a purpose. The list is read when a tool runs, so a
+change to a project's context applies to the next call.
+
+### Pulling one item
+
+A corpus item address names one thing a corpus holds, as `corpus_search` and
+`corpus_graph` hand it out, so an agent can pull it in on demand:
+
+| Address | Resolves to |
+| --- | --- |
+| `corpus:<corpus>/<source>/<document id>` | The document's text, its passages in order, clipped to 4000 characters, and its link |
+| `corpus:<corpus>/<connector>/<table path>` | The table's description and columns, never rows |
+| `corpus:<corpus>/node/<node id>` | What a graph node stands for |
+
+`(*Platform).ResolveCorpusItem` resolves one by the same rule as every corpus
+tool, at the moment it is asked, and adds who owns the item and whether it is
+stale. An item this conversation may not be shown comes back with
+`held_back` and no content; a provider's retained copy is read live with
+`corpus_search` instead. Citation evidence is kept for a document's text, as
+search keeps it.
+
 ### Retrieval evals
 
 A corpus's search is evaluated beside its agents: an eval suite with
@@ -461,7 +525,10 @@ For Notion, use the corresponding `HUMAGEN_SMOKE_NOTION_CREDENTIAL_REF`,
 `HUMAGEN_SMOKE_NOTION_ORIGIN`, `HUMAGEN_SMOKE_NOTION_RESOURCE`, and
 `HUMAGEN_SMOKE_NOTION_MARKER` variables and set
 `HUMAGEN_SOURCE_LIVE_TEST=notion`. Set it to `both` only when all eight
-variables are configured. Missing or invalid configuration fails an enabled
+variables are configured. For OneDrive, use a delegated Graph access token with
+`Files.Read`, a folder item ID (or `root`) as `ORIGIN` and a text file's item
+ID as `RESOURCE` in the `HUMAGEN_SMOKE_ONEDRIVE_` variables, and set
+`HUMAGEN_SOURCE_LIVE_TEST=onedrive`; `both` does not include it. Missing or invalid configuration fails an enabled
 run rather than silently skipping it. Do not paste credentials or private IDs
 into issue reports.
 

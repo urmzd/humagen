@@ -17,6 +17,7 @@ import (
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 )
@@ -178,5 +179,50 @@ func TestGrantingARestrictedCorpusTakesAnAdminAndAPurpose(t *testing.T) {
 	words := "Leave and pay"
 	if _, err := f.p.UpdateCorpus(owner, "hr", CorpusChange{Description: &words}); err != nil {
 		t.Fatalf("an unrelated change to a restricted corpus = %v", err)
+	}
+}
+
+// A session in a project reaches the corpora its project chain attaches, as
+// if granted to its agent; attaching makes nobody a reader, and a
+// restricted corpus is reached only through its admin-made grant.
+func TestAProjectsAttachedCorporaAreSearchedInIt(t *testing.T) {
+	f := graphFixture(t)
+	f.p.SourceEvidence = knowledge.NewEvidenceStore()
+	search := func(id, actor string) string {
+		t.Helper()
+		r := f.runIn(t, id, actor, true, actor)
+		r.Definition.Spec.Name = "other"
+		out, err := f.p.corpusTools(r)[ToolCorpusSearch].Execute(t.Context(), map[string]any{"query": "parental leave", "corpus": "vault"})
+		if err != nil && !errors.Is(err, corpora.ErrNotFound) {
+			t.Fatal(err)
+		}
+		return out
+	}
+	if out := search("before", "owner"); strings.Contains(out, "sixteen weeks") {
+		t.Fatalf("a corpus neither granted nor attached = %s", out)
+	}
+	data, err := f.p.Projects.Get("tenant", "Data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.p.Projects.SetCorpora("tenant", "Data", data.Version, []string{"vault"}, projects.Writer{By: "owner", Govern: true}, f.p.now()); err != nil {
+		t.Fatal(err)
+	}
+	if out := search("after", "owner"); !strings.Contains(out, "sixteen weeks") {
+		t.Fatalf("an attached corpus = %s", out)
+	}
+	// bo is in Data but not a reader of vault: attaching does not make him one.
+	if out := search("bo", "bo"); strings.Contains(out, "sixteen weeks") {
+		t.Fatalf("a non-reader in the project searched an attached corpus: %s", out)
+	}
+	// Restricted: attachment alone is not a grant.
+	if _, err := f.p.Corpora.Update("tenant", "vault", 0, f.p.now(), func(c *corpora.Corpus) error {
+		c.Label = corpora.Restricted
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if out := search("restricted", "owner"); strings.Contains(out, "sixteen weeks") {
+		t.Fatalf("a restricted corpus reached by attachment = %s", out)
 	}
 }

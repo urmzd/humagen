@@ -586,6 +586,50 @@ func (s *Store) Documents(tenant, name string) ([]Document, error) {
 func (s *Store) DocumentsForScope(tenant, name string, expected *SourceConfig) ([]Document, error) {
 	return s.documents(tenant, name, expected, true)
 }
+
+// DocumentTextForScope reads one document and its passages, in order, from
+// a source whose configuration is still expected. A provider's retained
+// copy is not read here: its text needs the reader's own access
+// (ErrUpstreamRead), and an excluded document reads as missing.
+func (s *Store) DocumentTextForScope(tenant, name, id string, expected *SourceConfig) (Document, []string, error) {
+	for range state.MaxTries {
+		meta, _, err := s.meta(tenant, name)
+		if err != nil {
+			return Document{}, nil, err
+		}
+		if !sameConfiguration(meta, expected) {
+			return Document{}, nil, ErrNotFound
+		}
+		if meta.RequiresUpstreamRead() {
+			return Document{}, nil, ErrUpstreamRead
+		}
+		src, _, err := s.load(tenant, name)
+		if errors.Is(err, state.ErrConflict) {
+			continue
+		}
+		if err != nil {
+			return Document{}, nil, err
+		}
+		for _, d := range src.docs {
+			if d.ID != id {
+				continue
+			}
+			if d.Excluded {
+				return Document{}, nil, ErrNotFound
+			}
+			var texts []string
+			for _, p := range src.passages {
+				if p.doc.ID == id {
+					texts = append(texts, p.text)
+				}
+			}
+			return *d, texts, nil
+		}
+		return Document{}, nil, ErrNotFound
+	}
+	return Document{}, nil, state.ErrBusy
+}
+
 func (s *Store) documents(tenant, name string, expected *SourceConfig, guard bool) ([]Document, error) {
 	for range state.MaxTries {
 		src, at, err := s.meta(tenant, name)

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.112.0 (2026-11-09)
+
+### Features
+
+- **agents**: one agent tool makes every agent call (#313) ([6bf4d65](https://github.com/urmzd/humagen/commit/6bf4d655a09e7f4332cc89f35fb164efa0e565b6))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.111.1...v0.112.0)
+
+
 ## 0.111.1 (2026-11-09)
 
 ### Bug Fixes

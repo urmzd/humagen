@@ -122,9 +122,11 @@ paths:
         origin's place: found by its address, or started on its first message
         and owned by the entry agent, so work asked for in a place is picked
         up there later. With no ref (or type web) the message starts a new
-        console conversation. Agents a message mentions answer in their own
-        child sessions under the root; with no mention the entry agent
-        picks. Earlier messages in a batch are posted as said and start
+        console conversation. A message gets one answer, in the root: the
+        one agent it mentions answers it; several mentioned are each asked
+        first and the entry agent answers with what they said; with no
+        mention the entry agent answers, calling whoever fits. Earlier
+        messages in a batch are posted as said and start
         nothing. Callers send role user; the platform writes the agents'
         messages. 201 when the root was started, 200 otherwise.
       x-permission: "runs:write"
@@ -452,11 +454,12 @@ paths:
       summary: "Trace message"
       description: |
         What ran to answer a message, one node per run (TraceNode). For a
-        session id or a person's message id: the runs that answered that
-        message, the entry agent's pick (pick set) with the answers it led to
-        beneath it, its own and those of the child sessions it handed the
-        message to. For an agent's message (session:run): that run. Beneath
-        each run are the runs it called. A run or child session the caller
+        session id or a person's message id: the run that answered that
+        message, its root. A root the platform chose says why (pick): the
+        agents the message mentioned, or the search match that answered
+        because the entry agent could not run. For an agent's message
+        (session:run): that run. Beneath each run are the runs it called,
+        the calls made for mentioned agents among them. A run or child session the caller
         may not read is left out with everything beneath it, and counted in
         hidden. At most 500 nodes, and 200 tools per node; truncated says
         when a bound cut it. id is a session id, or a message id
@@ -6917,6 +6920,7 @@ paths:
                   type: string
                   enum:
                   - drive
+                  - onedrive
               oneOf:
               - required:
                 - ref
@@ -12175,6 +12179,9 @@ components:
         parent: {type: string}
         depth: {type: integer}
         mode: {$ref: "#/components/schemas/CallMode"}
+        call_id:
+          description: "The id of the caller's tool call that started this run (htu_<run>_<n>): the call its activity streams under. Empty on a root."
+          type: string
         lifecycle:
           description: Set on a run another run called. An attached run ends with its caller. A delegated one does not.
           type: string
@@ -15845,7 +15852,7 @@ components:
             files are indexed text; references are searched live at the
             source; records are warehouse tables kept as schema only and
             queried live.
-        provider: {type: string, description: "manual, drive, notion, s3, gcs, bigquery, snowflake and so on."}
+        provider: {type: string, description: "manual, drive, onedrive, notion, s3, gcs, bigquery, snowflake and so on."}
         items: {type: integer, minimum: 0, description: "Indexed documents, or the tables and views a warehouse lists."}
         status: {type: string, enum: [ready, syncing, failed, missing, hidden]}
     CorpusReader:
@@ -16083,7 +16090,7 @@ components:
       type: object
       required: [provider, attribute, pattern, project]
       properties:
-        provider: {type: string, enum: [github, slack, drive, notion]}
+        provider: {type: string, enum: [github, slack, drive, onedrive, notion]}
         attribute: {type: string, maxLength: 64}
         pattern: {type: string, minLength: 1, maxLength: 256}
         project: {type: string, minLength: 1, maxLength: 64}
@@ -18060,7 +18067,7 @@ components:
       description: |
         One message of a tree. A session stands as its first message: beneath
         it are the agents' messages that follow it up to the next person's
-        message (answers, and the entry agent's pick with its calls), the
+        message (its answer), the
         child sessions started for it, and the session's later people's
         messages. Beneath a later person's message are the agents' messages
         that follow it and the child sessions started for it. A child session
@@ -18080,7 +18087,7 @@ components:
           enum: [working, waiting, done, failed, stopped]
         content:
           type: array
-          description: Text, or the entry agent's pick and a call part for each child session it handed the message to.
+          description: The message's text.
           items: {$ref: "#/components/schemas/SessionPart"}
         at: {type: string, format: date-time}
         children_count: {type: integer, minimum: 0, description: "How many children the message has, shown or not."}
@@ -18124,7 +18131,7 @@ components:
         cost: {type: integer, format: int64, minimum: 0, description: "What it spent in micro-USD, what it called included once they ended. Absent when nothing was metered."}
         pick: {$ref: "#/components/schemas/TracePick"}
         model: {type: string, description: "The model its latest call used, when that was recorded."}
-        answer: {type: string, description: "What it answered. A pick's answer is its pick."}
+        answer: {type: string, description: "What it answered."}
         error: {type: string, description: "Why it failed, when it did."}
         tools:
           type: array
@@ -18149,17 +18156,17 @@ components:
           items: {$ref: "#/components/schemas/TraceQuestion"}
         children:
           type: array
-          description: The runs it called, and for a pick the answers it led to, in the order they started.
+          description: The runs it called, in the order they started.
           items: {$ref: "#/components/schemas/TraceNode"}
     TracePick:
-      description: The entry agent's decision about a message, on the run that made it.
+      description: Why a message's answer came from where it did, on the root run the platform chose. It is activity, never a line of the conversation.
       type: object
       additionalProperties: false
       required: [decision, agents, reason, matched]
       properties:
         decision: {type: string, enum: [answer_myself, delegate]}
-        agents: {type: array, maxItems: 3, description: "The agents it handed the message to that the caller may read.", items: {type: string}}
-        reason: {type: string}
+        agents: {type: array, maxItems: 3, description: "The agents the message mentioned, or the one that answers in the entry agent's place, that the caller may read.", items: {type: string}}
+        reason: {type: string, description: "Why, in words. Empty when it would name an agent the caller may not read."}
         matched: {type: array, description: "The words of the message that matched.", items: {type: string}}
     TraceTool:
       description: One tool call. Input and output are left out when withheld.
@@ -18370,7 +18377,7 @@ components:
       properties:
         type:
           type: "string"
-          description: "text, call (a child session, with its answer as text once it has one) or pick (why the entry agent chose who answers, as text)."
+          description: "text."
         text:
           type: "string"
         session:

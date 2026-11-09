@@ -141,7 +141,7 @@ func TestTheApprovalAgentAllowsACallInASessionSetToRun(t *testing.T) {
 		return len(got) == 1
 	})
 	a := got[0].After
-	if got[0].Actor != admin.Subject || a["verdict"] != "allow" || a["tool"] != platform.ToolCallAgent || !strings.Contains(a["references"], "call_agent to helper") {
+	if got[0].Actor != admin.Subject || a["verdict"] != "allow" || a["tool"] != platform.ToolAgent || !strings.Contains(a["references"], "call_agent to helper") {
 		t.Fatalf("audit = %+v", got[0])
 	}
 	// The decision is a run of the approval agent, which read the call.
@@ -149,7 +149,7 @@ func TestTheApprovalAgentAllowsACallInASessionSetToRun(t *testing.T) {
 	if err != nil || decided.Agent != platform.BuiltinApprover || decided.Status != runs.Completed || decided.Origin != runs.OriginSystem {
 		t.Fatalf("approval run = %+v, %v", decided, err)
 	}
-	if asked := c.requests(platform.BuiltinApprover); len(asked) != 1 || !strings.Contains(asked[0], "tool: "+platform.ToolCallAgent) || !strings.Contains(asked[0], "need approval before they run") {
+	if asked := c.requests(platform.BuiltinApprover); len(asked) != 1 || !strings.Contains(asked[0], "tool: "+platform.ToolAgent) || !strings.Contains(asked[0], "need approval before they run") {
 		t.Fatalf("the approval agent was sent %q", asked)
 	}
 	if _, err := p.SetApprovalMode(olu, first.Thread, "sometimes"); err == nil {

@@ -99,7 +99,7 @@ func check(rule Rule) error {
 	if rule.CopiedFrom != "" && rule.Mode != Off {
 		return ErrInvalid
 	}
-	attributes := map[string][]string{"github": {"repository", "topic", "label", "path", "contributor"}, "slack": {"channel", "channel_prefix"}, "drive": {"folder"}, "notion": {"parent"}}
+	attributes := map[string][]string{"github": {"repository", "topic", "label", "path", "contributor"}, "slack": {"channel", "channel_prefix"}, "drive": {"folder"}, "onedrive": {"folder"}, "notion": {"parent"}}
 	if !slices.Contains(attributes[rule.Provider], rule.Attribute) {
 		return ErrInvalid
 	}

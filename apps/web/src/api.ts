@@ -2051,7 +2051,7 @@ export interface TraceQuestion {
   at?: string;
 }
 
-/** The entry agent's decision about a message, on the run that made it. */
+/** Why a message's answer came from where it did, on the root run the platform chose: the agents it mentioned, or a search match. */
 export interface TracePick {
   decision: "answer_myself" | "delegate";
   agents: string[];
@@ -2116,41 +2116,11 @@ export interface ThreadAsk {
   owners_of?: string;
 }
 
-/** An agent a root session's entry agent handed a message to, answering in a child session. */
-export interface PickCall {
-  /** The child session it answers in. */
-  session: string;
-  agent: string;
-  status: "working" | "waiting" | "done" | "failed" | "stopped";
-  /** Its answer, empty until it has one. */
-  text: string;
-}
-
-/**
- * What a root session's entry agent picked for a person's message: why, and
- * each agent it handed the message to. Answering itself, it hands it to
- * nobody, and its own answer says why above it (`run.picked`).
- */
-export interface SessionPick {
-  id: string;
-  /** The entry agent's own name, which colors its mark. */
-  agent: string;
-  /** The name people see it by: the workspace's. */
-  by: string;
-  reason: string;
-  /** The person's message it was picked for, as the session read it. */
-  message: string;
-  at: string;
-  calls: PickCall[];
-}
-
 export interface ThreadTurn {
-  kind: "message" | "run" | "announcement" | "pick";
+  kind: "message" | "run" | "announcement";
   message?: ThreadMessage;
   run?: Run;
   announcement?: ThreadAnnouncement;
-  /** In a root session, what its entry agent picked for the message before it. */
-  pick?: SessionPick;
   /** On a run parked on a question a person answers. */
   ask?: ThreadAsk;
 }

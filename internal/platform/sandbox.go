@@ -694,9 +694,9 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 				}
 				return "Recorded the authored outcome. This granted no approval and executed no external action.", nil
 			}),
-		ToolShell:     p.shellTool(req, action),
-		ToolDelegate:  p.delegateTool(req, action),
-		ToolCallAgent: p.callAgentTool(req, action),
+		ToolShell:    p.shellTool(req, action),
+		ToolDelegate: p.delegateTool(req, action),
+		ToolAgent:    p.agentTool(req, action),
 		ToolFileWrite: tool(ToolFileWrite,
 			"Write a file in this conversation's working directory, replacing it if it exists. For editable Office output use format=native with a .docx, .pptx, .xlsx or .pdf path and JSON content: {title?, paragraphs?:string[], slides?:[{title,body:string[],notes?,sources?:string[]}], rows?:string[][], sources?:string[]}. DOCX supports title, paragraphs, rows and sources; PPTX supports title, slides and sources; XLSX supports rows only; PDF supports title and sources with either paragraphs/rows or slides. Unsupported meaningful fields are rejected. Wait for a successful file_write before dependent file_read or publish calls; do not batch dependent calls in parallel. Max 100 slides, 1000 rows, 100 columns, 500 paragraphs, 32000 bytes per text, 1 MB JSON. PDF uses Windows-1252 text and refuses unsupported characters instead of dropping them. Other formats use plain text. Publish with publish_artifact to give it to the person.",
 			schema([]string{"path", "content"}, map[string]string{"path": "Relative path, such as report.md or data/q3.csv", "content": "The whole file content; for format=native, the complete revision JSON", "format": "native for editable DOCX, PPTX, XLSX or PDF; omit for text"}),

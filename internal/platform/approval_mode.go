@@ -109,7 +109,7 @@ func (p *Platform) autoApprove(ctx context.Context, run runs.Run, q event.Questi
 		// What the agent always asks about cannot be read: ask.
 		return
 	}
-	alwaysAsk := rev.Spec.Approvals
+	alwaysAsk := agentApprovals(rev.Spec.Approvals)
 	forced := wire.Meta(run.Tag())[operations.MetaForceAsk] == "true"
 	level := operations.Never
 	if q.Tool != nil {

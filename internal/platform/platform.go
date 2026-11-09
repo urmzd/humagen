@@ -471,6 +471,10 @@ type Platform struct {
 	// afterAccept, when set, runs between a run's acceptance and its record.
 	// Only tests set it, to stand for a loaded machine.
 	afterAccept func(event.Envelope)
+	// beforeMentionCalls, when set, runs before the platform decides which
+	// of a message's mentioned agents it may call. Only tests set it, to
+	// change where an agent lives in that moment.
+	beforeMentionCalls func()
 	// beforeCarryOut, when set, runs after a message is posted and before
 	// what it starts is decided. Only tests set it, to move a thread then.
 	beforeCarryOut func()
@@ -718,6 +722,7 @@ func New(cfg Config) (*Platform, error) {
 	if cfg.Stops != nil {
 		p.stops = stopFunc(cfg.Stops)
 	}
+	p.SetAgentCaller(p.runAgentCall)
 	if err := p.registerOwnSystemTools(); err != nil {
 		return nil, err
 	}
@@ -748,7 +753,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error
 	if p.cfg.Runtime != nil {
 		inner := sandbox.Sandboxed(p.cfg.Runtime, sandbox.Plane{Control: plane, Tools: tools},
 			sandbox.WithReplicas(p.slots()), sandbox.WithLogger(p.log))
-		return callExecutor{inner: inner, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding}, nil
+		return callExecutor{inner: inner, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding, mentioned: p.callMentioned, entry: p.entryTurn}, nil
 	}
 	exec, err := runtime.NewSandbox(plane, tools, p.Agents.Resolver(),
 		runtime.WithCatalog(p.operationsCatalog(p.cfg.Ext.catalog(p.fileTools(p.connectorTools)), groups)),
@@ -758,7 +763,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error
 		// An agent's declared sources ground its turns, searched in the
 		// run's tenant.
 		runtime.WithKnowledge(p.knowledgeFor),
-		runtime.WithCallTool(ToolCallAgent),
+		runtime.WithCallTool(ToolAgent),
 		// Each turn claims the instance its tools execute in.
 		runtime.WithRunInstances(p.runInstances),
 		// A run waiting on an attached run of the same agent holds one of
@@ -770,7 +775,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error
 	if err != nil {
 		return nil, fmt.Errorf("platform: sandbox: %w", err)
 	}
-	return callExecutor{inner: exec, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding}, nil
+	return callExecutor{inner: exec, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding, mentioned: p.callMentioned, entry: p.entryTurn}, nil
 }
 
 // Invoke accepts an event for the one agent it names and starts its run. The
@@ -867,6 +872,11 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 		rec, lookupErr := p.Sessions.Get(ctx, tag.Tenant, th.ID)
 		if lookupErr != nil {
 			err = lookupErr
+		} else if rec.Key.Agent != strings.ToLower(strings.TrimSpace(agent)) {
+			// Another agent answering in the session's conversation (the one a
+			// message mentions, or the entry agent for several): the session's
+			// transcript stays its owner's, and this run keeps one of its own.
+			acc, err = p.rt.AcceptOwn(ctx, tag, agent)
 		} else {
 			meta := wire.Meta(tag)
 			meta[wire.MetaSession] = rec.ID

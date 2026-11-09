@@ -638,9 +638,11 @@ after, the next of the previous page.
 origin's place: found by its address, or started on its first message
 and owned by the entry agent, so work asked for in a place is picked
 up there later. With no ref (or type web) the message starts a new
-console conversation. Agents a message mentions answer in their own
-child sessions under the root; with no mention the entry agent
-picks. Earlier messages in a batch are posted as said and start
+console conversation. A message gets one answer, in the root: the
+one agent it mentions answers it; several mentioned are each asked
+first and the entry agent answers with what they said; with no
+mention the entry agent answers, calling whoever fits. Earlier
+messages in a batch are posted as said and start
 nothing. Callers send role user; the platform writes the agents'
 messages. 201 when the root was started, 200 otherwise.
  */
@@ -837,11 +839,12 @@ could be pulled, when nothing could.
   }
 
   /** What ran to answer a message, one node per run (TraceNode). For a
-session id or a person's message id: the runs that answered that
-message, the entry agent's pick (pick set) with the answers it led to
-beneath it, its own and those of the child sessions it handed the
-message to. For an agent's message (session:run): that run. Beneath
-each run are the runs it called. A run or child session the caller
+session id or a person's message id: the run that answered that
+message, its root. A root the platform chose says why (pick): the
+agents the message mentioned, or the search match that answered
+because the entry agent could not run. For an agent's message
+(session:run): that run. Beneath each run are the runs it called,
+the calls made for mentioned agents among them. A run or child session the caller
 may not read is left out with everything beneath it, and counted in
 hidden. At most 500 nodes, and 200 tools per node; truncated says
 when a bound cut it. id is a session id, or a message id

@@ -8,10 +8,10 @@
 | [Projects](architecture/projects.md) | Architecture | Design of record for nested projects, policies, agents, inboxes and shared threads |
 | [Company, personal work and finding help](architecture/company-workspace.md) | Architecture | The Company root project, personal projects, publishing work and Find Help |
 | [Conversation workspace](architecture/conversation-workspace.md) | Architecture | The conversation page, activity and deliverables in the console |
-| [Agent calls](architecture/agent-calls.md) | Architecture | How an answering agent calls helpers with `call_agent` |
+| [Agent calls](architecture/agent-calls.md) | Architecture | How an answering agent calls other agents with the `agent` tool |
 | [Agent operations](architecture/agent-operations.md) | Architecture | Agent controls, action policies, assignments and handoff contracts |
 | [Security](architecture/security.md) | Architecture | Callers, roles, rules the code holds, credentials, inbox and break-glass reads |
-| [Sources](architecture/sources.md) | Architecture | Library sources from Google Drive and Notion, credentials and access |
+| [Sources](architecture/sources.md) | Architecture | Library sources from Google Drive, OneDrive and Notion, credentials and access |
 | [Library and personal settings](architecture/library-personal.md) | Architecture | Skills, Memory, Audit, Profile, Notifications, Privacy and Personal Agents |
 | [Managed Library and web foundation](architecture/managed-library.md) | Architecture | The console's shadcn foundation, theme, fonts and Library folder browsers |
 | [Native console notifications](architecture/native-notifications.md) | Architecture | The Notifications page, badge and delivery preferences |

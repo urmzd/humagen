@@ -115,6 +115,8 @@ func connectionAlertName(provider string) (string, bool) {
 		return "Slack", true
 	case "drive":
 		return "Google Drive", true
+	case "onedrive":
+		return "OneDrive", true
 	case "notion":
 		return "Notion", true
 	case "linear":

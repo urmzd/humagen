@@ -25,7 +25,7 @@ func connectionAuthorization(ctx context.Context, system spec.System, keys credr
 		return nil, errors.New("connection encryption key must be 32 random bytes encoded as base64")
 	}
 	config := &connectionauth.Config{Key: key, RedirectURL: settings.RedirectURL, Providers: platform.DefaultConnectionProviders()}
-	for _, name := range []string{"drive", "slack", "bigquery"} {
+	for _, name := range []string{"drive", "onedrive", "slack", "bigquery"} {
 		if _, ok := settings.Clients[name]; ok {
 			config.Providers = append(config.Providers, platform.NativeConnectionProvider(name))
 		}

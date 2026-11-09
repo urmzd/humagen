@@ -1212,6 +1212,8 @@ turned back into it.
   parent?: string;
   depth: number;
   mode?: CallMode;
+  /** The id of the caller's tool call that started this run (htu_<run>_<n>): the call its activity streams under. Empty on a root. */
+  call_id?: string;
   /** Set on a run another run called. An attached run ends with its caller. A delegated one does not. */
   lifecycle?: "attached" | "delegated";
   /** The schedule that raised the run, if one did. */
@@ -3558,7 +3560,7 @@ source; records are warehouse tables kept as schema only and
 queried live.
  */
   holds?: "files" | "references" | "records";
-  /** manual, drive, notion, s3, gcs, bigquery, snowflake and so on. */
+  /** manual, drive, onedrive, notion, s3, gcs, bigquery, snowflake and so on. */
   provider?: string;
   /** Indexed documents, or the tables and views a warehouse lists. */
   items: number;
@@ -3758,7 +3760,7 @@ export interface SourceLinkSuggestion {
 }
 
 export interface SourceLinkRuleInput {
-  provider: "github" | "slack" | "drive" | "notion";
+  provider: "github" | "slack" | "drive" | "onedrive" | "notion";
   attribute: string;
   pattern: string;
   project: string;
@@ -4967,7 +4969,7 @@ export interface MessageAudience {
 
 /** One message of a tree. A session stands as its first message: beneath
 it are the agents' messages that follow it up to the next person's
-message (answers, and the entry agent's pick with its calls), the
+message (its answer), the
 child sessions started for it, and the session's later people's
 messages. Beneath a later person's message are the agents' messages
 that follow it and the child sessions started for it. A child session
@@ -4983,7 +4985,7 @@ export interface MessageNode {
   author: SessionAuthor;
   /** That of the runs beneath the message; done when there are none. */
   status: "working" | "waiting" | "done" | "failed" | "stopped";
-  /** Text, or the entry agent's pick and a call part for each child session it handed the message to. */
+  /** The message's text. */
   content: SessionPart[];
   at: string;
   /** How many children the message has, shown or not. */
@@ -5025,7 +5027,7 @@ export interface TraceNode {
   pick?: TracePick;
   /** The model its latest call used, when that was recorded. */
   model?: string;
-  /** What it answered. A pick's answer is its pick. */
+  /** What it answered. */
   answer?: string;
   /** Why it failed, when it did. */
   error?: string;
@@ -5035,15 +5037,16 @@ export interface TraceNode {
   sources: TraceSource[];
   approvals: TraceApproval[];
   questions: TraceQuestion[];
-  /** The runs it called, and for a pick the answers it led to, in the order they started. */
+  /** The runs it called, in the order they started. */
   children: TraceNode[];
 }
 
-/** The entry agent's decision about a message, on the run that made it. */
+/** Why a message's answer came from where it did, on the root run the platform chose. It is activity, never a line of the conversation. */
 export interface TracePick {
   decision: "answer_myself" | "delegate";
-  /** The agents it handed the message to that the caller may read. */
+  /** The agents the message mentioned, or the one that answers in the entry agent's place, that the caller may read. */
   agents: string[];
+  /** Why, in words. Empty when it would name an agent the caller may not read. */
   reason: string;
   /** The words of the message that matched. */
   matched: string[];
@@ -5207,7 +5210,7 @@ export interface SessionAuthor {
 }
 
 export interface SessionPart {
-  /** text, call (a child session, with its answer as text once it has one) or pick (why the entry agent chose who answers, as text). */
+  /** text. */
   type: string;
   text?: string;
   session?: string;

@@ -122,6 +122,7 @@ func (p *Platform) resolveOperations(req runtime.Request) (runtime.Request, erro
 	if err := p.operationAdmissionRequest(req); err != nil {
 		return req, err
 	}
+	req = withoutCallAgent(req)
 	allowed, restricted, err := p.operationTools(req)
 	if err != nil {
 		return req, err
@@ -129,7 +130,7 @@ func (p *Platform) resolveOperations(req runtime.Request) (runtime.Request, erro
 	if restricted {
 		req.Definition.Spec.Tools = slices.DeleteFunc(slices.Clone(req.Definition.Spec.Tools), func(name string) bool { return !native.IsToolGroup(name) && !slices.Contains(allowed, name) })
 		req.Definition.Spec.Access.Spawn = slices.DeleteFunc(slices.Clone(req.Definition.Spec.Access.Spawn), func(agent string) bool {
-			return !slices.Contains(allowed, ToolCallAgent) && !slices.Contains(allowed, ToolDelegate) && !slices.Contains(allowed, tagTool+agent)
+			return !slices.Contains(allowed, ToolCallAgent) && !slices.Contains(allowed, ToolAgent) && !slices.Contains(allowed, ToolDelegate) && !slices.Contains(allowed, tagTool+agent)
 		})
 	}
 	if p.operationDecision(req, operations.CallAgents) == operations.Ask {
@@ -154,7 +155,7 @@ func (p *Platform) resolveOperations(req runtime.Request) (runtime.Request, erro
 }
 func categoryOf(name string) operations.Category {
 	switch name {
-	case ToolCallAgent, ToolDelegate:
+	case ToolCallAgent, ToolAgent, ToolDelegate:
 		return operations.CallAgents
 	case "github_read_context", "github_fix_base", "github_read_file", "github_workflow_status", ToolFileRead, ToolFileList, ToolRunsSummary, ToolListAlerts, ToolListAgents, ToolReadAgent, "source_search", ToolCatalogSearch, ToolCatalogQuery, ToolCorpusQuery, ToolCorpusSearch, ToolCorpusGraph, ToolGetContext:
 		return operations.ReadContext
@@ -761,4 +762,35 @@ func (p *Platform) operationForced(req runtime.Request) bool {
 		return v.(admitted).operationMeta[operations.MetaForceAsk] == "true"
 	}
 	return false
+}
+
+// withoutCallAgent reads a revision that still names call_agent as the agent
+// tool, which Access.Spawn grants: call_agent leaves its tools, and an
+// approval it required is required of the agent tool.
+func withoutCallAgent(req runtime.Request) runtime.Request {
+	spec := &req.Definition.Spec
+	if !slices.Contains(spec.Tools, ToolCallAgent) && !slices.Contains(spec.Approvals, ToolCallAgent) {
+		return req
+	}
+	spec.Tools = slices.DeleteFunc(slices.Clone(spec.Tools), func(name string) bool { return name == ToolCallAgent })
+	spec.Approvals = agentApprovals(spec.Approvals)
+	return req
+}
+
+// agentApprovals are a revision's approvals with call_agent read as the
+// agent tool, each once.
+func agentApprovals(approvals []string) []string {
+	if !slices.Contains(approvals, ToolCallAgent) {
+		return approvals
+	}
+	out := make([]string, 0, len(approvals))
+	for _, name := range approvals {
+		if name == ToolCallAgent {
+			name = ToolAgent
+		}
+		if !slices.Contains(out, name) {
+			out = append(out, name)
+		}
+	}
+	return out
 }

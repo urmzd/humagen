@@ -90,7 +90,6 @@ func TestContextSaysWhyNothingCanBePulled(t *testing.T) {
 
 func TestAnAgentPullsContextFromWhereItWasAsked(t *testing.T) {
 	c := entryCast([][]saigetypes.Delta{
-		pickJSON(platform.PickAnswerMyself, "I can take this."),
 		agenttest.ToolCallResponse("pull", platform.ToolGetContext, map[string]any{"request": "what were they discussing?"}),
 		say("They were discussing the release date."),
 	}, nil)
@@ -110,6 +109,23 @@ func TestAnAgentPullsContextFromWhereItWasAsked(t *testing.T) {
 	}
 	if a := got(); len(a) != 1 || a[0].Origin != "slack://T0TEAM/C01ANY/1700000000.000100" || a[0].Request != "what were they discussing?" || a[0].Run == "" {
 		t.Fatalf("the agent's get_context reached the resolver as %+v", a)
+	}
+}
+
+// A conversation that came from a corpus item has a resolver from the start:
+// it answers by the corpus rule, never that corpus places cannot be pulled.
+func TestContextHasACorpusResolver(t *testing.T) {
+	p, ana := slackWorkspace(t)
+	th, err := p.Threads.Create(tenant, threads.Thread{ID: "th-00000000000c0de5", Project: "Initech", Channel: "general", CreatedBy: "ana", Visibility: threads.Private,
+		Participants: []threads.Participant{{Kind: threads.Person, Name: "ana", Owner: true}},
+		Agents:       []string{"field"}, Default: "field",
+		Session: &threads.SessionIdentity{Agent: "field", Parent: "corpus:hr/handbook/missing"}}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := p.GetContext(t.Context(), ana, th.ID, "what does it say?")
+	if err != nil || res.Origin != "corpus:hr/handbook/missing" || res.Text != "" || !strings.Contains(res.Note, "no corpus item") {
+		t.Fatalf("a corpus conversation's context = %+v, %v", res, err)
 	}
 }
 
