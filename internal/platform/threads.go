@@ -83,6 +83,9 @@ type ThreadInput struct {
 // MessageInput posts a message into a thread.
 type MessageInput struct {
 	Text string `json:"text"`
+	// messageKey is the message's identity at its origin, which makes it
+	// post once (SendMessages). It is never read from a request.
+	messageKey string
 	// After is the turn it follows: a message of the thread, a run answering
 	// one, or a run of a conversation from before threads. "" follows the
 	// latest.
@@ -863,6 +866,11 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		text, unmapped = p.surfaceText(who.Tenant, on.client, on.ref, in.Text)
 		surfaceID, slack = on.ref.message(), nil
 	}
+	if surfaceID == "" {
+		// A message from an origin with its own identity (a Slack ts, a
+		// GitHub comment) posts once, however often it is sent.
+		surfaceID = in.messageKey
+	}
 	sees := p.Seer(person).Agent
 	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: sees, tree: tree, project: th.Project, person: humanSubject(person), console: on == nil})
 	if err != nil {
@@ -1221,6 +1229,18 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 // answerDirect is answerMessage once who answers is settled: agent itself,
 // or for Open each agent that joins.
 func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, routed string, actor event.Actor, tagID string, keeps bool, sees func(string) bool) ([]runs.Run, error) {
+	surface, surfaced := deliveryOf(ctx)
+	if !surfaced && th.Session != nil {
+		surface, surfaced = p.keptDelivery(tenant, th)
+	}
+	if surfaced {
+		// A surface's message answers where it was asked, through its client,
+		// which holds the run to the agents it routes to.
+		via = cmp.Or(via, surface.client)
+		if surface.user != "" {
+			actor.ID = surface.user
+		}
+	}
 	meta := map[string]string{
 		runs.MetaAsk: m.Text, runs.MetaThread: th.ID, runs.MetaPrev: m.ID, runs.MetaMessage: m.ID,
 		runs.MetaChannel: th.Channel, runs.MetaProject: th.Project,
@@ -1282,8 +1302,21 @@ func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.T
 			mt = maps.Clone(meta)
 			mt[runs.MetaPicked] = a.picked
 		}
+		if surfaced {
+			mt = maps.Clone(mt)
+			mt[runs.MetaClient] = surface.client
+			if surface.slackChannel != "" {
+				mt[wire.MetaSlackChannel] = surface.slackChannel
+			}
+		} else if via != "" {
+			// A client's credential posted it for a person: the run is that
+			// client's, so its budget counts it and its calls are held to
+			// the agents the client may reach.
+			mt = maps.Clone(mt)
+			mt[runs.MetaClient] = via
+		}
 		run, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{
-			ID: a.tag, Tenant: tenant, Agent: a.agent, Origin: runs.OriginAPI,
+			ID: a.tag, Tenant: tenant, Agent: a.agent, Origin: runs.OriginAPI, Channel: surface.channel,
 			Attachments: m.Attachments, Actor: actor, Context: mt,
 			Text: p.turnContext(tenant, th.Project, th.Channel, a.agent, actor.User, text, mt),
 		}))

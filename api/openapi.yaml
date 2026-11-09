@@ -40,6 +40,8 @@ tags:
     description: Personal authorizations and installed service connections.
   - name: sessions
     description: Continuing conversations with one agent and their child sessions.
+  - name: messages
+    description: One way in for every surface; people's messages from an origin, under the root session of its place.
   - name: health
     description: Liveness.
   - name: auth
@@ -109,6 +111,147 @@ security:
   - bearerToken: []
   - sessionCookie: []
 paths:
+  /api/messages:
+    post:
+      operationId: "sendMessages"
+      tags:
+        - "messages"
+      summary: "Send messages"
+      description: |
+        People's messages from one origin, under the root session of the
+        origin's place: found by its address, or started on its first message
+        and owned by the entry agent, so work asked for in a place is picked
+        up there later. With no ref (or type web) the message starts a new
+        console conversation. Agents a message mentions answer in their own
+        child sessions under the root; with no mention the entry agent
+        picks. Earlier messages in a batch are posted as said and start
+        nothing. Callers send role user; the platform writes the agents'
+        messages. 201 when the root was started, 200 otherwise.
+      x-permission: "runs:write"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessagesInput"
+      responses:
+        "200":
+          description: "Posted under the place's existing root"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageCreated"
+        "201":
+          description: "Posted, starting the place's root"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageCreated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/messages/{id}:
+    post:
+      operationId: "sendMessagesUnder"
+      tags:
+        - "messages"
+      summary: "Send messages under a message"
+      description: "People's messages beneath a message or its session, as a follow-up in that conversation. id is a session id, or a message id (session:message)."
+      x-permission: "runs:write"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessagesInput"
+      responses:
+        "200":
+          description: "Posted"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageCreated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    get:
+      operationId: "getMessage"
+      tags:
+        - "messages"
+      summary: "Get message"
+      description: "The session a message is in, with its messages, the entry agent's picks and each delegated answer, its children and links. id is a session id, or a message id (session:message)."
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "since", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "before", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "around", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "summary", "in": "query", "required": false, "schema": {"type": "boolean"}}
+      responses:
+        "200":
+          description: "The message's session"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSession"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/messages/{id}/stream:
+    get:
+      operationId: "streamMessage"
+      tags:
+        - "messages"
+      summary: "Stream message"
+      description: "What happens beneath a message: its session's snapshots and run events, as GET /api/sessions/{id}/stream. Resume with Last-Event-ID."
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "Last-Event-ID", "in": "header", "required": false, "schema": {"type": "string"}}
+      responses:
+        "200":
+          description: "Session snapshots and run events; reconnect using the last event ID."
+          content:
+            text/event-stream:
+              schema:
+                type: "string"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
   /api/sessions/{id}/stream:
     get:
       operationId: "streamSession"
@@ -467,6 +610,12 @@ paths:
             schema:
               $ref: "#/components/schemas/SessionInput"
       responses:
+        "200":
+          description: "A chat surface's message landed in its thread's root session, which already existed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSession"
         "201":
           description: "Successful session operation"
           content:
@@ -12764,6 +12913,52 @@ components:
           description: The app's own bot user id, whose mention is not a tag.
           type: string
           maxLength: 32
+        audience: {$ref: "#/components/schemas/SurfaceAudience"}
+        action_token:
+          description: Slack's short-lived token for acting for the person in this turn. Accepted and never kept or passed on.
+          type: string
+          maxLength: 512
+    SurfaceAudience:
+      description: |
+        Who is in the Slack conversation a message was asked in. A root
+        session's audience follows it: a public channel's is shared where it
+        is filed; a private channel's or a group direct message's is private
+        to the members the client maps to people, kept to the members of the
+        latest message; a direct message's is private to its person. Absent,
+        a D channel is a direct message and anything else is private to the
+        person asking: a channel id never says the channel is public.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type: {type: string, enum: [public_channel, private_channel, mpim, im]}
+        members:
+          description: The conversation's members by Slack user id, for a private channel or a group direct message.
+          type: array
+          maxItems: 500
+          items: {type: string, maxLength: 32}
+    SessionPosted:
+      description: What one message posted to a chat surface's root session did.
+      type: object
+      additionalProperties: false
+      required: [message, runs, notified, refused, rule]
+      properties:
+        message:
+          type: object
+          additionalProperties: false
+          required: [id, text]
+          properties:
+            id: {type: string}
+            text: {type: string, description: "The text as read, Slack markup reduced."}
+        runs:
+          description: The runs it started, in the root or in the child of the agent it named.
+          type: array
+          items: {$ref: "#/components/schemas/Run"}
+        notified: {type: array, items: {type: string}}
+        refused: {type: array, items: {$ref: "#/components/schemas/ThreadMention"}}
+        rule: {type: string}
+        reason: {type: string}
+        repeated: {type: boolean, description: The message was already posted; nothing started again.}
     ThreadSurface:
       description: The thread on a client's surface this thread is. It never changes.
       type: object
@@ -17094,6 +17289,96 @@ components:
         source_alert:
           type: string
           description: The readable session alert that anchors this fix conversation.
+    MessagesInput:
+      description: People's messages from one origin. Who said them is the caller.
+      type: object
+      additionalProperties: false
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: {$ref: "#/components/schemas/InMessage"}
+        ref: {$ref: "#/components/schemas/ExternalRef"}
+        stream:
+          type: boolean
+          description: Accepted; follow GET /api/messages/{id}/stream for what happens beneath.
+    InMessage:
+      description: One person's message. role is user; the platform writes the agents' messages.
+      type: object
+      additionalProperties: false
+      required: [role, content]
+      properties:
+        role: {type: string, enum: [user]}
+        content: {$ref: "#/components/schemas/MessageContent"}
+        ref:
+          $ref: "#/components/schemas/ExternalRef"
+          description: This message's own origin when it differs from the batch's (a Slack reply's ts); it also makes the message post once.
+    MessageContent:
+      description: A string, or content blocks.
+      oneOf:
+        - {type: string}
+        - type: array
+          items: {$ref: "#/components/schemas/ContentBlock"}
+    ContentBlock:
+      description: |
+        One block of a message: text; a mention of an agent or a person a
+        surface already resolved, which picks who answers as an @mention in
+        the text does; or a link to another place. image, document, audio and
+        answer blocks are refused for now.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type: {type: string, enum: [text, mention, link, image, document, audio, answer]}
+        text: {type: string}
+        agent: {type: string}
+        person: {type: string}
+        ref: {$ref: "#/components/schemas/ExternalRef"}
+    ExternalRef:
+      description: |
+        Where a message came from, its origin: a union on type. slack (team,
+        channel, ts, thread_ts for a reply, audience), github (repo as
+        owner/name, kind pull, issue or comment, number, comment_id; a
+        comment on a pull request sends kind pull), schedule (name,
+        occurrence), url (url) or web (the console). A place has one root
+        session, keyed slack://team/channel/thread_ts,
+        github://owner/repo/pull/N or issues/N, schedule://name/occurrence or
+        the normalized URL. client is the Humagen client the origin is
+        reached through: it files the root where the client's channel is
+        bound and maps a Slack conversation's members to people.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type: {type: string, enum: [slack, github, schedule, url, web]}
+        client: {type: string}
+        team: {type: string}
+        channel: {type: string}
+        user: {type: string, description: "Who wrote the message on the surface (a Slack user id, a GitHub login). Set by surfaces built into the server; the API ignores it, since the token says who speaks."}
+        ts: {type: string}
+        thread_ts: {type: string}
+        audience: {$ref: "#/components/schemas/SurfaceAudience"}
+        repo: {type: string}
+        kind: {type: string, enum: [pull, issue, comment]}
+        number: {type: integer, minimum: 1}
+        comment_id: {type: integer, format: int64}
+        name: {type: string}
+        occurrence: {type: string}
+        url: {type: string, maxLength: 2048}
+    MessageCreated:
+      description: The message a request created, the root it is under, and what it did.
+      type: object
+      additionalProperties: false
+      required: [id, root, role, content, created, posted]
+      properties:
+        id: {type: string, description: "The message's id, session:message."}
+        root: {type: string, description: The root session's id.}
+        role: {type: string, enum: [user]}
+        content: {$ref: "#/components/schemas/MessageContent"}
+        created: {type: boolean, description: This request started the root.}
+        posted: {$ref: "#/components/schemas/SessionPosted"}
     SessionInput:
       type: object
       additionalProperties: false
@@ -17115,6 +17400,17 @@ components:
         source_alert:
           type: string
           description: The readable session alert that anchors this fix conversation.
+        surface:
+          $ref: "#/components/schemas/SurfaceRef"
+          description: "A chat surface's thread. Only that client's machine sends it, with act_as; the thread's root session (keyed by slack://<team>/<channel>/<ts>, owned by the entry agent) is found or started, filed where the Slack channel is bound. project, parent, agent, label, fresh and source_alert are refused with it."
+        act_as:
+          $ref: "#/components/schemas/ActAs"
+        surface_kind:
+          type: string
+          description: "The kind of chat surface: slack, the default and only one taken today."
+        post_only:
+          type: boolean
+          description: "With surface: post the message without starting anything."
     SessionPostInput:
       description: A session message with optional routing to a mentioned agent.
       type: object
@@ -17293,6 +17589,9 @@ components:
         - "cursor"
         - "thread"
       properties:
+        posted:
+          $ref: "#/components/schemas/SessionPosted"
+          description: Only on POST /api/sessions with a surface.
         more:
           type: boolean
           description: More changed messages remain after cursor; continue with since until false.
