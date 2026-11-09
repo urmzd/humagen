@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.111.0 (2026-11-09)
+
+### Features
+
+- **mcp**: a first-party MCP over one registry of system tools (#312) ([1533557](https://github.com/urmzd/humagen/commit/1533557cfd91311fd150eb246b03c3e1399f269f))
+- **agents**: output schemas; the approval agent answers in one (#308) ([cceb148](https://github.com/urmzd/humagen/commit/cceb1489f4999b79e0c2a3fd04541d817507da5f))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.110.0...v0.111.0)
+
+
 ## 0.106.0 (2026-11-09)
 
 ### Features
