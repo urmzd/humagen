@@ -1,11 +1,12 @@
 import { answerOfAction, answers as isAnswer } from "@humagen/adapter/question";
-import { defaultCopy } from "@humagen/components";
+import { AnswerText, defaultCopy } from "@humagen/components";
 import { ActionId, type QueuedMessage, type UiAction } from "@humagen/core";
 import { ForkIcon, WebSurface } from "@humagen/render-web";
 import {
   AgentMessage,
   MessageActionRow,
   messageActionButton,
+  orbStateOf,
   railEntry,
   Thread as ThreadList,
   type TurnRailEntry,
@@ -13,15 +14,17 @@ import {
 } from "@humagen/web";
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
-import { ApprovalModePicker } from "./ApprovalModePicker.tsx";
+import { ApprovalToggle } from "./ApprovalToggle.tsx";
 import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
 import {
   ApiError,
   api,
   type Channel,
   coworking,
+  type PickCall,
   type ProjectView,
   type Revision,
+  type SessionPick,
   type ThreadAnnouncement,
   type ThreadAnswers,
   type ThreadAsk,
@@ -34,6 +37,7 @@ import {
 } from "./api.ts";
 import { askedOf, copyFor, type Refusal, stillAsks } from "./asks.ts";
 import { answersLine } from "./availability.ts";
+import { agentShown } from "./branding.ts";
 import { Composer, type ComposerSeed } from "./Composer.tsx";
 import { type ConversationForkActions, ConversationForkPanels } from "./ConversationForkPanels.tsx";
 import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
@@ -44,21 +48,23 @@ import { ForkContext } from "./ForkConversation.tsx";
 import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { OLD_SYSTEM_SENDER } from "./legacy.ts";
-import { AnswerRefs, OriginRef, ResponseActivity } from "./MessageRefs.tsx";
+import { AnswerRefs, OriginRef } from "./MessageRefs.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { PersonMark } from "./PersonMark.tsx";
-import { mentionPicks, PlusMenu, SelectionChips } from "./Plus.tsx";
-import { ProjectPicker } from "./ProjectPicker.tsx";
+import { mentionPicks, PlusMenu } from "./Plus.tsx";
 import { openPane } from "./pane.ts";
+import { ResponseActivityPanel } from "./ResponseActivity.tsx";
 import { RunFeedbackHost } from "./RunFeedback.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
+import { traceSource } from "./responseSource.ts";
 import { followRoom } from "./roomFollow.ts";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { SessionActions } from "./SessionActions.tsx";
 import { alertAnchor, SessionAlerts, useSessionAlerts } from "./SessionAlerts.tsx";
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
+import { SessionDetailsPanel, sessionFiles, sessionProgress } from "./SessionPanel.tsx";
 import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./SessionPlace.tsx";
 import { ShareDialog } from "./Share.tsx";
 import { useThreadSelection } from "./selection.ts";
@@ -473,6 +479,78 @@ function AnnouncementView({ a }: { a: ThreadAnnouncement }) {
 }
 
 /**
+ * One agent's answer to a message the entry agent handed it, inline in the
+ * root under its mark and name, so nobody opens the child session to read
+ * it. Until it answers it says only how it stands; its mark moves while it
+ * works and is still while it waits on a person.
+ */
+function CallAnswer({ call, onOpen }: { call: PickCall; onOpen?: (id: string) => void }) {
+  const name = agentShown(call.agent);
+  const to = href({ page: "conversation", id: call.session });
+  return (
+    <article
+      aria-label={words.answeredBy(name)}
+      aria-busy={call.status === "working" || undefined}
+      className="flex min-w-0 flex-col gap-2"
+    >
+      <header className="flex min-h-7 min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-aui-sm">
+        <AgentMark name={call.agent} size={28} state={orbStateOf(call.status)} />
+        <span className="max-w-full break-words font-semibold text-aui-fg">{name}</span>
+        {call.status !== "done" && (
+          <span className="text-aui-2xs text-aui-muted">{defaultCopy.status[call.status]}</span>
+        )}
+        <a
+          href={to}
+          onClick={(event) => {
+            if (
+              onOpen &&
+              event.button === 0 &&
+              !event.metaKey &&
+              !event.ctrlKey &&
+              !event.shiftKey &&
+              !event.altKey
+            ) {
+              event.preventDefault();
+              onOpen(call.session);
+            }
+          }}
+          className="ml-auto inline-flex min-h-6 items-center rounded-aui text-aui-xs text-aui-muted hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
+        >
+          {words.openSession}
+        </a>
+      </header>
+      {call.text && (
+        <AgentTint name={call.agent}>
+          <AnswerText turnId={call.session} agent={name} text={call.text} followUp={false} />
+        </AgentTint>
+      )}
+    </article>
+  );
+}
+
+/**
+ * What a root session's entry agent picked for a message: one quiet line
+ * with why, marked with the entry agent under the workspace's name, then
+ * each answer it led to, inline.
+ */
+function PickView({ pick, onOpen }: { pick: SessionPick; onOpen?: (id: string) => void }) {
+  return (
+    <section aria-label={words.pickedBy(pick.by)} className="flex min-w-0 flex-col gap-4">
+      {pick.reason && (
+        <Checkpoint agent={pick.agent}>
+          <span title={`${pick.by}: ${pick.reason}`}>
+            <span className="font-medium text-aui-fg">{pick.by}</span>: {pick.reason}
+          </span>
+        </Checkpoint>
+      )}
+      {pick.calls.map((call) => (
+        <CallAnswer key={call.session} call={call} onOpen={onOpen} />
+      ))}
+    </section>
+  );
+}
+
+/**
  * Why the reader is not offered Retry on a failed answer in the room. A run
  * answering a message acts for the person who posted it, so only they ask it
  * again, from the failure in their inbox, where it answers the same message
@@ -504,6 +582,7 @@ function AnswerView({
   onReply,
   onRedirect,
   onActivity,
+  activityOpen,
   actions,
   canStop = false,
   focused = false,
@@ -511,8 +590,10 @@ function AnswerView({
   run: Run;
   canStop?: boolean;
   focused?: boolean;
-  /** Open this answer's activity in Details, when more than one agent worked on it. */
+  /** Open or close this answer's activity in Details. */
   onActivity?: (run: string) => void;
+  /** This answer's activity is open in Details. */
+  activityOpen?: boolean;
   me: string;
   live: boolean;
   ask?: ThreadAsk;
@@ -526,12 +607,15 @@ function AnswerView({
 }) {
   const { run, stop } = useRunStop(originalRun, canStop);
   const turn = useRunTurn(run);
+  const name = agentShown(run.agent);
   const drawn = useMemo(() => {
-    const base = turn ?? turnOf(run);
+    const read = turn ?? turnOf(run);
+    // The entry agent answers under the workspace's name.
+    const base = read.agent.name === name ? read : { ...read, agent: { ...read.agent, name } };
     return run.citations !== undefined
       ? { ...base, citations: run.citations.map(citationOf) }
       : base;
-  }, [turn, run]);
+  }, [turn, run, name]);
   const shown = useMemo(() => {
     const asked = askedOf(drawn, ask);
     return asked.failure
@@ -543,7 +627,7 @@ function AnswerView({
       id={`turn-${run.id}`}
       data-turn-id={run.id}
       className={`flex flex-col gap-2 ${focused ? "rounded-aui outline-2 outline-offset-4 outline-aui-accent" : ""}`}
-      aria-label={`Answered by ${run.agent}`}
+      aria-label={words.answeredBy(name)}
     >
       {/* A run from before threads carries what was asked; one that answers a message does not repeat it. */}
       {!run.message && (
@@ -574,7 +658,7 @@ function AnswerView({
           )}
         </RunFeedbackHost>
       </AgentTint>
-      <AnswerRefs run={run} onActivity={onActivity} />
+      <AnswerRefs run={run} open={activityOpen} onActivity={onActivity} />
       {refused && stillAsks(shown, refused.question) && (
         <div className="pl-11">
           <Problem message={refused.why} />
@@ -791,9 +875,10 @@ export function ThreadRoom({
     const alone = run.message
       ? turns.filter((t) => t.run?.message === run.message && t.run?.routed).length <= 1
       : false;
-    if (run.routed === "all") return alone ? c.routed(run.agent) : c.routedAll(run.agent);
+    const name = agentShown(run.agent);
+    if (run.routed === "all") return alone ? c.routed(name) : c.routedAll(name);
     // Among the selected agents, one that joined says where it went; `picked` says why it joined.
-    if (run.routed === "join" || run.routed === "best_fit") return c.routed(run.agent);
+    if (run.routed === "join" || run.routed === "best_fit") return c.routed(name);
     return undefined;
   };
   const shareButton = useRef<HTMLButtonElement>(null);
@@ -816,6 +901,10 @@ export function ThreadRoom({
   const asked = new Set(turns.flatMap((t) => (t.message?.answers ? [t.message.answers.run] : [])));
   // A run waiting on a person, such as an expert's answer, is shown still.
   const busy = turns.some((t) => t.run && isWorking(t.run.status));
+  // The messages whose answer says above it why it was picked.
+  const answeredWithPick = new Set(
+    turns.flatMap((t) => (t.run?.picked && t.run.message ? [t.run.message] : [])),
+  );
 
   const onAction = (a: UiAction) => {
     if (a.id === ActionId.openRun)
@@ -893,6 +982,8 @@ export function ThreadRoom({
               onChanged={onChanged}
               onUpdated={(next) => setPage((p) => ({ ...p, thread: next }))}
               onShare={shareable ? () => onSharing?.(!sharing) : undefined}
+              projects={projects}
+              personalProject={personalProject}
             />
           }
           title={title}
@@ -901,6 +992,7 @@ export function ThreadRoom({
           agents={answering}
           people={th.participants.filter((p) => p.kind === "person").map((p) => p.name)}
           origin={<OriginButton place={place} />}
+          progress={sessionProgress(turns.flatMap((t) => (t.run ? [t.run] : [])))}
           location={
             <>
               {th.visibility !== "private" && !id.startsWith("s_") && (
@@ -1042,7 +1134,7 @@ export function ThreadRoom({
                 </button>
               )}
               {turns.map((t, i) => (
-                <Fragment key={t.announcement?.id ?? t.message?.id ?? t.run?.id}>
+                <Fragment key={t.announcement?.id ?? t.message?.id ?? t.pick?.id ?? t.run?.id}>
                   <SessionAlerts
                     alerts={attention.rows.filter(
                       (a) => !!alertAnchor(a) && alertAnchor(a) === (t.message?.id ?? t.run?.id),
@@ -1054,6 +1146,11 @@ export function ThreadRoom({
                   />
                   {t.announcement ? (
                     <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />
+                  ) : t.pick ? (
+                    // Answering itself, the entry agent says why above its own answer.
+                    t.pick.calls.length > 0 || !answeredWithPick.has(t.pick.message) ? (
+                      <PickView pick={t.pick} onOpen={onOpenThread} />
+                    ) : null
                   ) : t.message ? (
                     <MessageView
                       key={t.message.id}
@@ -1122,7 +1219,12 @@ export function ThreadRoom({
                         ) : undefined
                       }
                       routed={routedOf(t.run)}
-                      onActivity={(run) => openPanel("response", { run })}
+                      activityOpen={shownView.panel === "response" && shownView.run === t.run.id}
+                      onActivity={(run) =>
+                        shownView.panel === "response" && shownView.run === run
+                          ? openPanel()
+                          : openPanel("response", { run })
+                      }
                       onAsk={
                         posts
                           ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" })
@@ -1133,7 +1235,7 @@ export function ThreadRoom({
                           ? () =>
                               setSeed({
                                 quote: {
-                                  label: `${t.run?.agent}'s answer`,
+                                  label: `${agentShown(t.run?.agent ?? "")}'s answer`,
                                   agent: t.run?.agent,
                                   url: href({
                                     page: "conversation",
@@ -1186,11 +1288,9 @@ export function ThreadRoom({
                   turn.run && actedFor(turn.run) === me ? [turn.run] : [],
                 )}
                 thread={id}
-                trailing={<ApprovalModePicker thread={th} me={handle || me} />}
+                trailing={<ApprovalToggle thread={th} me={handle || me} />}
                 seed={seed}
-                placeholder={
-                  th.visibility === "private" ? words.message : words.channel(th.channel)
-                }
+                placeholder={words.message}
                 tags={tags}
                 onDraft={setDraft}
                 plus={{
@@ -1208,42 +1308,6 @@ export function ThreadRoom({
                       onChange={select}
                       onAttach={attach}
                       onClose={close}
-                      projects={projects.filter((p) => postsIn(projects, p.name))}
-                      personalProject={personalProject}
-                      kinds={root?.kinds}
-                      projectFixed={fixedWhy}
-                    />
-                  ),
-                  chips: (
-                    <SelectionChips
-                      personalProject={personalProject}
-                      selection={selection}
-                      projects={projects}
-                      workspace={workspaceName}
-                      onChange={select}
-                      projectFixed
-                      // The prompt bar is where a conversation's project is chosen and changed.
-                      projectControl={
-                        <ProjectPicker
-                          locked={fixedWhy}
-                          projects={projects}
-                          kinds={root?.kinds}
-                          value={th.project}
-                          personalProject={personalProject}
-                          channel={th.channel}
-                          onCreated={() => onChanged()}
-                          onChange={(next) => {
-                            if (next === th.project) return;
-                            coworking.move(th.id, next).then(
-                              (t) => {
-                                setPage((p) => ({ ...p, thread: t }));
-                                onChanged();
-                              },
-                              (e) => setProblem(e instanceof Error ? e.message : String(e)),
-                            );
-                          }}
-                        />
-                      }
                     />
                   ),
                 }}
@@ -1346,11 +1410,33 @@ export function ThreadRoom({
             />
           )}
         </Presence>
+        <Presence when={shownView.panel === "details"} ms={220}>
+          {(leaving) => (
+            <SessionDetailsPanel
+              runs={turns.flatMap((t) => (t.run ? [t.run] : []))}
+              thread={th.id}
+              uploads={turns.flatMap((t) =>
+                (t.message?.attachments ?? []).map((a) => a.name || a.alt || a.media_type),
+              )}
+              origin={referenceOfPlace(place)}
+              files={sessionFiles}
+              leaving={leaving}
+              onClose={() => openPanel()}
+              onOpenFile={(id) =>
+                openPanel("workspace", openPane(shownView, { kind: "artifact", ref: id }))
+              }
+            />
+          )}
+        </Presence>
         <Presence when={shownView.panel === "response" && !!shownView.run} ms={220}>
           {(leaving) => {
             const run = turns.find((t) => t.run?.id === shownView.run)?.run;
             return run ? (
-              <ResponseActivity run={run} leaving={leaving} onClose={() => openPanel()} />
+              <ResponseActivityPanel
+                source={traceSource(run)}
+                leaving={leaving}
+                onClose={() => openPanel()}
+              />
             ) : null;
           }}
         </Presence>

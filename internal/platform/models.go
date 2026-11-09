@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/orchagent/flow/turn"
 	"github.com/urmzd/orchagent/flow/turn/native"
 	"github.com/urmzd/saige/agent/provider/catalog"
 	saigetypes "github.com/urmzd/saige/agent/types"
@@ -307,14 +308,19 @@ func (p *Platform) takesEffort(tenant, provider, model, effort string) bool {
 	return ok && caps.Supports(saigetypes.CapReasoningEffort) && slices.Contains(caps.ReasoningEfforts, effort)
 }
 
-// withEffort puts the pinned revision's reasoning effort on the request's
-// copy of its spec: saige's definitions carry none, so the platform keeps it
-// with the revision (wire.AgentSpec.Effort) and resolveModel decides whether
-// it is sent. A revision that cannot be read runs at the model's default.
+// withEffort puts what the platform keeps with the pinned revision, since
+// saige's definitions carry neither, on the request's copy of its spec: its
+// reasoning effort (wire.AgentSpec.Effort), which resolveModel decides
+// whether to send, and the schema its answer is asked for under
+// (outputSchema). A revision that cannot be read runs at the model's
+// default effort, and with no schema.
 func (p *Platform) withEffort(req runtime.Request) runtime.Request {
 	rev, err := p.Catalog().Get(context.Background(), req.Tenant, req.Definition.Name, wire.RevOf(req.Definition.Version))
 	if err == nil {
 		req.Definition.Spec.Effort = rev.Spec.Effort
+		if schema := outputSchema(rev); schema != nil {
+			req.Definition.Spec.Output = &turn.Output{Schema: schema}
+		}
 	}
 	return req
 }

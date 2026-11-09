@@ -219,6 +219,10 @@ func TestAReplyToAWithdrawnAnnouncementOrADraftStartsNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// An untagged reply lands on an agent; it ends before the next reply.
+	for _, r := range started.Runs {
+		await(t, p, r.ID, runs.Completed)
+	}
 	late := postedToSlack(t, p, machine, inbox.From{Kind: "person", Name: "ada"}, platform.Announcement{Subject: "Secret plans", Text: "Not for Slack."}, "1700000000.000900")
 	for _, m := range []inbox.Message{early, late} {
 		if err := p.WithdrawAnnouncement(auth.Principal{Subject: "ada", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}, "Field", m.ID); err != nil {

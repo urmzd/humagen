@@ -167,6 +167,22 @@ export const HourglassIcon = icon(
 );
 export const PauseIcon = icon(<path d="M9 5v14M15 5v14" />, "PauseIcon");
 export const PlayIcon = icon(<path d="M7 4.5v15l12-7.5z" />, "PlayIcon");
+export const FastForwardIcon = icon(
+  <>
+    <path d="M3 6v12l9-6z" />
+    <path d="M12 6v12l9-6z" />
+  </>,
+  "FastForwardIcon",
+);
+export const HandIcon = icon(
+  <>
+    <path d="M18 11V6a2 2 0 0 0-4 0" />
+    <path d="M14 10V4a2 2 0 0 0-4 0v2" />
+    <path d="M10 10.5V6a2 2 0 0 0-4 0v8" />
+    <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+  </>,
+  "HandIcon",
+);
 export const BanIcon = icon(
   <>
     <circle cx="12" cy="12" r="9" />

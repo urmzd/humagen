@@ -29,7 +29,7 @@ const maxAgentList = 64
 // BuiltinAgents are the platform's own agents, which a file may name without
 // declaring and which live in no project. A test holds them to the
 // platform's.
-var BuiltinAgents = []string{"humagen-writer", "humagen-analyst", "humagen-builder", "code-reviewer", "security-reviewer", "architect-reviewer", "qa-reviewer", "approver"}
+var BuiltinAgents = []string{"humagen-writer", "humagen-analyst", "code-reviewer", "security-reviewer", "architect-reviewer", "qa-reviewer", "approver"}
 
 // level is one place an agent list is set: the workspace or a project.
 type level struct {
@@ -222,6 +222,11 @@ func (sp *PlatformSpec) unreadAgentFields() []string {
 			if c.Default != "" {
 				notes = append(notes, fmt.Sprintf("workspace.projects[%d].channels[%d].default %s", i, j, why))
 			}
+		}
+	}
+	for i, a := range sp.Agents {
+		for _, n := range a.retired {
+			notes = append(notes, fmt.Sprintf("agents[%d].spec.%s", i, n))
 		}
 	}
 	return notes

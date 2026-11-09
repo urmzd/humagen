@@ -11,6 +11,7 @@ import type {
   ProjectStep,
   ProjectUpdate,
   ProjectView,
+  ProjectVisibility,
 } from "./api.ts";
 
 const words = defaultCopy.projects;
@@ -133,6 +134,22 @@ export const lastActive = (
 export const isPrivate = (p: Pick<ProjectView, "members">): boolean =>
   !p.members.some((m) => m.who === "*");
 
+/**
+ * How widely a project is read, as its page says it: the server's
+ * `visibility` when it sends one, else read from its entries as the server
+ * does. A Personal project, or one whose one entry is a person, is private;
+ * an entry for everyone makes it the workspace's; anything else is shared.
+ */
+export function visibilityOf(
+  p: Pick<ProjectView, "members" | "personal_owner"> & { visibility?: ProjectVisibility },
+): ProjectVisibility {
+  if (p.visibility) return p.visibility;
+  if (p.personal_owner) return "private";
+  if (!isPrivate(p)) return "workspace";
+  const [only, ...rest] = p.members;
+  return only && rest.length === 0 && !only.who.startsWith("role:") ? "private" : "shared";
+}
+
 const newest = (a: string, b: string) => (Date.parse(b) || 0) - (Date.parse(a) || 0);
 const byTitle = (a: ProjectView, b: ProjectView) =>
   titleOf(a).localeCompare(titleOf(b), undefined, { sensitivity: "base" }) ||
@@ -247,4 +264,44 @@ export function updateOf(
     ...(account ? { account } : {}),
     ...(next.instructions?.trim() ? { instructions: next.instructions } : {}),
   };
+}
+
+/** Who sees an agent: everyone in the workspace, one person, or a project's members. */
+export type AgentAccess =
+  | { kind: "workspace" }
+  | { kind: "private"; project: string }
+  | { kind: "members"; project: string; title: string };
+
+/** A home as a project name: "" for the workspace (none or "~"), "personal-x" for "~personal-x". */
+export const homeName = (home?: string): string => (home ?? "").replace(/^~/, "");
+
+/**
+ * Who sees an agent homed in `home`. A home in a Personal project (the
+ * reader's, or one the tree marks as someone's) is private; any other
+ * project's members see it; no home is the workspace.
+ */
+export function accessOf(
+  home: string | undefined,
+  personal: string | undefined,
+  tree: readonly ProjectView[],
+): AgentAccess {
+  const project = homeName(home);
+  if (!project) return { kind: "workspace" };
+  const p = tree.find((x) => x.name === project);
+  if (
+    project === homeName(personal) ||
+    p?.personal_owner ||
+    (!p && /^personal-[a-z0-9-]+$/i.test(project))
+  ) {
+    return { kind: "private", project };
+  }
+  return { kind: "members", project, title: p ? titleOf(p) : project };
+}
+
+/** Who sees an agent, in words: "Workspace", "Private", "Members of Field". */
+export function accessLabel(access: AgentAccess): string {
+  const w = defaultCopy.agentAccess;
+  if (access.kind === "private") return w.private;
+  if (access.kind === "members") return w.membersOf(access.title);
+  return w.workspace;
 }
