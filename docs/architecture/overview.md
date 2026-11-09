@@ -782,12 +782,34 @@ and GitHub release from `main`, using the main-only `release` environment.
 
 ### Platform agent packages
 
-The platform injects two versioned packages: `humagen/core` contains the writer,
-analyst and builder; `humagen/review` contains the four reviewers. A package's
-version is a SHA-256 hash of its specifications, including prompts and configured
-models. Only a latest revision written by `platform` receives automatic upgrades.
+The platform ships its agents as versioned packages. `humagen/entry` (the entry
+agent, `humagen`) and `humagen/system` (the approval agent, `approver`) are in
+every workspace. The rest wait in the agent store, and a workspace installs
+them: `humagen/core` (Core: the writer and the analyst) and `humagen/review`
+(Review: `code-reviewer` and its three specialists). A package's version is a
+SHA-256 hash of its specifications, including prompts and configured models.
+Only a latest revision written by `platform` receives automatic upgrades.
 Workspace edits retain the package version they were based on and are never
-overwritten by `EnsureBuiltins`.
+overwritten by `EnsureBuiltins`, which adds the entry and approval agents and
+only keeps the store's installed agents current: it never adds or restores one.
+
+Whether a package is installed is read from the workspace's agents, never
+stored: it is installed while any of its agents is there, not retired.
+`GET /api/store/packages` (`agents:read`) lists each package with its version,
+its agents, `installed` and the `missing` agents.
+`POST /api/store/packages/{name}/install` (`agents:write`) adds the missing
+agents as platform revisions at the current version, with their old handles; a
+retired name is revived, so its versions continue and pinned revisions stay
+valid, and installing again restores an agent someone retired. It is refused
+with 409, before anything is added, while one of the workspace's own agents
+holds a package name. `DELETE /api/store/packages/{name}` (`agents:write`)
+retires the package's agents and their old handles; history and pinned
+revisions stay readable. An agent changed in the workspace is retired only with
+`force=true`, and without it the removal is refused with 409 naming it. Both
+are audited (`agent.package.install`, `agent.package.remove`). A run of a store
+agent that is not installed is refused saying which package to install, and a
+schedule's refusal raises an alert; automatic pull request review skips with a
+log line naming the Review package. The console lists the store under Agents.
 
 Revision and directory JSON expose `package: {name, version, latest}`,
 `customized` and `update_available`. Package provenance is stored in saige
@@ -810,8 +832,10 @@ Evidence: `TestAgentPackageUpgradeCustomizeReset`,
 
 ### Built-in agent handles after the rename
 
-The directory offers `humagen-writer`, `humagen-analyst`, `humagen-builder`,
-`code-reviewer`, `security-reviewer`, `architect-reviewer` and `qa-reviewer`.
+Every workspace's directory offers `humagen` (which took over from
+`humagen-builder`) and `approver`; installing Core adds `humagen-writer` and
+`humagen-analyst`, and installing Review adds `code-reviewer`,
+`security-reviewer`, `architect-reviewer` and `qa-reviewer`.
 Compatibility definitions keep old registry keys and pinned revisions usable;
 existing schedules, client defaults and allow-lists continue addressing those
 keys without new grants. `TestBuiltinCompatibilitySurvivesRestart` covers the

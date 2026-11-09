@@ -94,7 +94,11 @@ the guide names the agent that answers; the next one that names an agent does.
 A pull request is reviewed automatically when it opens or reopens ready for
 review, leaves draft, or gets a push. The client's default agent
 reviews it, on the pull request; a client with no default agent reviews
-nothing. It is on unless switched off, and labels start nothing:
+nothing. A default agent from the agent store that the workspace has not
+installed, such as `code-reviewer` before the Review package is installed,
+reviews nothing either: the delivery is taken, and the server logs
+`automatic review skipped` saying to install the Review package from the
+Store. It is on unless switched off, and labels start nothing:
 
 ```json
 {"github":{"auto_review":{"enabled":true,"repositories":{"acme/handbook":false}}}}

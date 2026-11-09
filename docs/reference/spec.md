@@ -1105,7 +1105,10 @@ project's instructions and notes:
 | `deliver` | the run | `project` posts each answer in the project as an announcement from the agent, its first line the subject, or as a draft for the project's owners under `agent_posts: review`. An answer of NONE posts nothing. A file has nobody to send an answer to, so `inbox` is refused |
 
 A recap is such a schedule: `humagen-analyst`, a Monday morning, "What changed in
-Field this week?", `deliver: project`. Its `project_changes` tool reads only
+Field this week?", `deliver: project`. A file may name the store's agents
+without declaring them; a schedule of one the workspace has not installed is
+refused when it fires, with an alert saying which package to install (Core for
+`humagen-analyst`). Its `project_changes` tool reads only
 the project and the projects below it.
 
 ### Release notes

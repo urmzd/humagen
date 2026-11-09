@@ -55,7 +55,7 @@ client. If the principal lookup fails, the hint uses `<tenant>` as a placeholder
 | `--server URL` | API base URL; defaults to `$HUMAGEN_URL`, then `http://localhost:8080` |
 | `--token REF` | API bearer token reference; defaults to `env:HUMAGEN_TOKEN`. An unset default sends no token for dev mode. `--token ''` explicitly disables authentication. An explicit non-empty reference must resolve locally. |
 | `--name NAME` | Client name; defaults to `github` or `slack` |
-| `--agent NAME` | GitHub defaults to `code-reviewer`; Slack leaves the default agent empty for the workspace default |
+| `--agent NAME` | GitHub defaults to `code-reviewer`, from the Review package in the agent store; Slack leaves the default agent empty for the workspace default |
 | `--force` | Update an existing client with the same name and surface through `PUT /api/clients/{id}` |
 | `--json` | Print the API's create or update response as JSON, without human output |
 
@@ -81,6 +81,11 @@ values under the API contract. Use the console or API to manage additional clien
 options. HTTP errors are returned with their status and server response.
 
 After creating a GitHub client, mention `@code-reviewer` on a pull request.
+`code-reviewer` comes with the Review package: when the workspace has not
+installed it, the command says so first (`Next: install the Review package
+from the Store, then mention @code-reviewer on a pull request`). Install it
+under Agents, Store in the console, or with
+`POST /api/store/packages/review/install`.
 For Slack, configure Slack's Events API endpoint and mention the app in Slack.
 See the [GitHub](github.md), [Slack](slack.md) and [client](clients.md) references
 for app setup, webhook verification and routing.
