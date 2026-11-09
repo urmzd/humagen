@@ -109,3 +109,66 @@ func TestStopWordsNeverMatchEvenWithASuffix(t *testing.T) {
 		t.Fatalf("stop words matched: %v", got[0].Terms)
 	}
 }
+
+// reviewers are the platform's review agents as search reads them: names,
+// descriptions and prompts that share the framing of an instruction.
+var reviewers = []Candidate{
+	{Name: "code-reviewer", Description: "Reviews code and combines specialist findings into one verdict", Prompt: "You lead code reviews in this conversation. Read the diff. Use call_agent instead of guessing. Return one JSON object, not prose, in one line where you can. Use only what the tools return."},
+	{Name: "security-reviewer", Description: "Reviews security: authentication, permissions, passwords and hashing, cryptography, secrets, untrusted input and dependencies, with concrete exploit scenarios", Prompt: "You review security risks without changing code. Check auth, secrets and cryptography. Identify yourself as security-reviewer. Use only what the tools return."},
+	{Name: "writer", Description: "Writes documents, reports and tables", Prompt: "You write documents. Use plain words instead of jargon."},
+}
+
+const md5 = "In one line: is MD5 acceptable for hashing passwords, and what should I use instead?"
+
+// How long or how plainly to answer, and the framing around a question, are
+// in every prompt and many messages: they never match.
+func TestInstructionFillerNeverMatches(t *testing.T) {
+	for _, m := range Search(reviewers, md5, Shortlist) {
+		for _, term := range m.Terms {
+			if slices.Contains([]string{"one", "line", "use", "instead", "what", "should"}, term) {
+				t.Fatalf("%s matched on filler %q (terms %v)", m.Name, term, m.Terms)
+			}
+		}
+	}
+	if got := Search(reviewers, "In one line, briefly: what should I use instead?", Shortlist); len(got) != 0 {
+		t.Fatalf("a message of filler alone found %v (%v)", names(got), got[0].Terms)
+	}
+}
+
+// A question about hashing passwords goes to the security reviewer, found by
+// what it is for, and never to the code reviewer on shared framing.
+func TestAPasswordHashingQuestionFindsTheSecurityReviewer(t *testing.T) {
+	ms := Search(reviewers, md5, Shortlist)
+	if len(ms) == 0 || ms[0].Name != "security-reviewer" || !ms[0].Strong {
+		t.Fatalf("Search(%q) = %+v, want security-reviewer first and strong", md5, ms)
+	}
+	if slices.Contains(names(ms), "code-reviewer") {
+		t.Fatalf("the code reviewer matched a security question: %v", names(ms))
+	}
+}
+
+// A match is strong on a word of an agent's name or purpose, or on two
+// words; one passing word of the rest of a prompt is weak.
+func TestOnePassingWordOfAPromptIsAWeakMatch(t *testing.T) {
+	cs := []Candidate{{Name: "ops", Description: "Runs deployments", Prompt: "You run deployments. Read logs and roll back."}}
+	for msg, want := range map[string]bool{
+		"where are the logs?":           false,
+		"read the logs":                 true,
+		"how do deployments work here?": true,
+		"ops, are you there?":           true,
+	} {
+		ms := Search(cs, msg, Shortlist)
+		if len(ms) != 1 || ms[0].Strong != want {
+			t.Fatalf("Search(%q) = %+v, want one match with strong %v", msg, ms, want)
+		}
+	}
+}
+
+func TestADescriptionIsTakenFromAPromptWithoutOne(t *testing.T) {
+	if got := Describe(Candidate{Prompt: "You run deployments. Read logs."}); got != "You run deployments." {
+		t.Fatalf("Describe = %q", got)
+	}
+	if got := Describe(Candidate{Description: "Runs deploys", Prompt: "You run deployments."}); got != "Runs deploys" {
+		t.Fatalf("Describe = %q", got)
+	}
+}
