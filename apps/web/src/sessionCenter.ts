@@ -29,6 +29,18 @@ export const isRootSession = (s: AgentSessionSummary) => !s.parent.startsWith("s
 export const holdsAnAlertOnly = (t: Pick<ThreadSummary, "messages" | "turns">) =>
   t.messages === 0 && t.turns === 0;
 export const alertPriority = (a: Alert): "urgent" | "normal" | "low" => a.priority ?? "normal";
+/**
+ * The name of an alert's main button. The action is a word the alert's rule
+ * or agent chose ("review", "reconnect"); a button is Title Case like every
+ * other, and "Open" when the alert names none.
+ */
+export const alertAction = (a: Pick<Alert, "action">) =>
+  (a.action ?? "")
+    .trim()
+    .split(/[\s_]+/)
+    .filter(Boolean)
+    .map((word) => `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`)
+    .join(" ") || "Open";
 export const openAlert = (a: Alert) => a.state === "open" || (!a.state && !a.acked_at);
 export const attentionAlerts = (alerts: Alert[]) =>
   alerts.filter((a) => !!a.session && openAlert(a) && alertPriority(a) !== "low");

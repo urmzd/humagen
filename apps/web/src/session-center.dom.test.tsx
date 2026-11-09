@@ -173,21 +173,18 @@ test("Alerts resolves selected records and Undo reopens only successful changes"
   assert.equal(changed.length, 2);
   assert.ok(net.seen.some((r) => r.path.includes("state=open") && r.path.includes("mine=true")));
 });
-test("Sessions fetches mine roots and expands children beneath their parent", async () => {
+test("Sessions fetches mine roots, one card each, with nothing listed beneath a session", async () => {
   net = stubFetch({
-    "GET /api/sessions": (_body, q) => ({
-      sessions: q.get("parent") ? [session("s_child", "s_root")] : [session("s_root")],
-      next: "",
-    }),
+    "GET /api/sessions": () => ({ sessions: [session("s_root")], next: "" }),
   });
   render(<SessionsPage route={{ page: "sessions" }} go={() => {}} tick={0} />);
-  assert.ok(await screen.findByRole("link", { name: /Work s_root/ }));
-  assert.equal(screen.queryByRole("link", { name: /Work s_child/ }), null);
-  fireEvent.click(screen.getByRole("button", { name: "Show children of Work s_root" }));
-  const child = await screen.findByRole("link", { name: /Work s_child/ });
-  assert.equal(child.getAttribute("href"), "/messages/s_child");
-  assert.ok(child.closest("ul")?.closest("li")?.textContent?.includes("Work s_root"));
+  const card = await screen.findByRole("link", { name: /Work s_root/ });
+  assert.equal(card.getAttribute("href"), "/messages/s_root");
+  // What an agent did is inside the session, under its response: no second level here.
+  assert.equal(screen.queryByRole("button", { name: /child/i }), null);
+  assert.equal(screen.queryByText(/child sessions/i), null);
   assert.ok(net.seen.some((r) => r.path.includes("roots=true") && r.path.includes("mine=true")));
+  assert.ok(!net.seen.some((r) => r.path.includes("parent=")));
 });
 test("the main navigation has seven destinations, Projects and Scheduled among them, and one alert count", async () => {
   net = stubFetch({
