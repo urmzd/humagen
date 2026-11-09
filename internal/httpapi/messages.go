@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -22,6 +23,7 @@ func (s *Server) messageRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/messages/{id}/trace", s.authed(auth.RunsRead, s.seenMessage(s.messageTrace)))
 	mux.HandleFunc("POST /api/messages/{id}/feedback", s.authed(auth.RunsRead, s.seenMessage(s.messageFeedback)))
 	mux.HandleFunc("POST /api/messages/{id}/stop", s.authed(auth.RunsWrite, s.seenMessage(s.stopMessage)))
+	mux.HandleFunc("POST /api/messages/{id}/answer", s.authed(auth.RunsWrite, s.seenMessage(s.answerToolUse)))
 	mux.HandleFunc("POST /api/messages/{id}/context", s.authed(auth.RunsRead, s.seenMessage(s.messageContext)))
 }
 
@@ -188,4 +190,34 @@ func (s *Server) messageContext(w http.ResponseWriter, r *http.Request, who auth
 		return
 	}
 	ok(w, http.StatusOK, out)
+}
+
+// answerToolUse answers what waits on a person at one tool call of the
+// conversation, named by its tool_use_id: approving or denying the call, or
+// answering the question it asked. It is the same as answering the question
+// on its run, and returns the question's message.
+func (s *Server) answerToolUse(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body struct {
+		ToolUseID string `json:"tool_use_id"`
+		Answer    *struct {
+			Action string `json:"action"`
+			Note   string `json:"note"`
+			answerBody
+		} `json:"answer"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if strings.TrimSpace(body.ToolUseID) == "" || body.Answer == nil {
+		fail(w, http.StatusBadRequest, "an answer names the tool call it answers (tool_use_id) and says what (answer)")
+		return
+	}
+	if !body.Answer.valid(w, body.Answer.Note) {
+		return
+	}
+	a := body.Answer
+	m, err := s.P.AnswerToolUse(r.Context(), who, r.PathValue("id"), body.ToolUseID, platform.QuestionAnswer{
+		Action: a.Action, Arguments: a.Arguments, Choice: a.Choice, Text: a.Text, Note: a.Note, ActAs: a.ActAs,
+	})
+	s.inboxAnswer(w, m, err)
 }

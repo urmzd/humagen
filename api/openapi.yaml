@@ -333,6 +333,46 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/ServerError"
+  /api/messages/{id}/answer:
+    post:
+      operationId: answerToolUse
+      tags: [messages]
+      summary: Answer what waits on a person at a tool call
+      description: |
+        Answers the approval of a tool call, or the question a tool call
+        asked, anywhere in the message's conversation, named by the call's
+        `tool_use_id` (`htu_<run>_<n>`, as the message's trace and stream
+        name it). It is the same as answering the question on its run
+        (`answerQuestion`): who may answer, edited `arguments`, `act_as` and
+        the first recorded answer standing all hold. A call outside the
+        conversation, one the caller may not read, or one nothing waited on
+        is 404.
+      x-permission: runs:write
+      parameters:
+        - {name: id, in: path, required: true, description: "A message id (session:message) or a session id.", schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [tool_use_id, answer]
+              properties:
+                tool_use_id: {type: string, description: "The tool call's id, htu_<run>_<n>."}
+                answer: {$ref: "#/components/schemas/QuestionAnswer"}
+      responses:
+        "200":
+          description: The question's message, settled with the answer that was recorded.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/InboxMessage"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/messages/{id}/context:
     post:
       operationId: "getMessageContext"

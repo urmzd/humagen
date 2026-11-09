@@ -3,7 +3,6 @@ package platform
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -424,12 +423,15 @@ func (t *tracer) activity(n *TraceNode, r runs.Run) {
 			}
 		}
 	}
+	// A call's number counts every call the run asked for, whoever reads,
+	// so its id is the same for every reader.
+	seqs := callSeqs(held)
 	calls := map[string]*traceCall{}
 	var order []*traceCall
 	call := func(id, name string, at time.Time) *traceCall {
 		c, ok := calls[id]
 		if !ok {
-			c = &traceCall{id: id, name: name, seq: len(order) + 1, at: at}
+			c = &traceCall{id: id, name: name, seq: seqs[id], at: at}
 			calls[id] = c
 			order = append(order, c)
 		}
@@ -561,13 +563,6 @@ func (t *tracer) activity(n *TraceNode, r runs.Run) {
 		n.Approvals = append(n.Approvals, *a)
 	}
 }
-
-// toolUseID is the id the API gives a run's seq-th tool call (1-based, in
-// the order the run asked for them, get_context and agent calls included):
-// htu_<run>_<seq>. Provider call ids never leave the platform. A response's
-// stream gives the same call the same id, so a trace and a live stream line
-// up without remapping.
-func toolUseID(run string, seq int) string { return fmt.Sprintf("htu_%s_%d", run, seq) }
 
 // callMs is how long a call ran: its tool span when one was recorded, else
 // from its start to its result, or nil while it runs.
