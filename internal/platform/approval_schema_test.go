@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/urmzd/saige/agent/agenttest"
+	saigetypes "github.com/urmzd/saige/agent/types"
+
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/approve"
@@ -144,5 +147,77 @@ func TestAnApprovalModelWithoutStructuredOutputIsRefused(t *testing.T) {
 	}
 	if r, _ := p.Runs.Get(tenant, second.ID); r.Status != runs.Parked {
 		t.Fatalf("the call went through: %s", r.Status)
+	}
+}
+
+// readsTheSession is the approval agent reading the session with a tool
+// before it answers, as a model may.
+func readsTheSession() []saigetypes.Delta {
+	return agenttest.ToolCallResponse("call-read", "session_read", map[string]any{})
+}
+
+// An answer after a tool call is the draft followed by the structured
+// reply, whose object decides.
+func TestTheApprovalAgentDecidesAfterCallingATool(t *testing.T) {
+	p, c, first := judgedBy(t, selfApproving, [][]saigetypes.Delta{
+		readsTheSession(),
+		say("The session asked for this."),
+		say(`{"decision": "allow", "reason": "Asked for in the session.", "references": ["admin: Check it"]}`),
+	})
+	if _, err := p.SetApprovalMode(admin, first.Thread, threads.ApprovalAuto); err != nil {
+		t.Fatal(err)
+	}
+	second := next(t, p, first)
+	await(t, p, second.ID, runs.Completed)
+	if o := answeredFor(t, p, second.ID); o.Action != platform.ActApprove || o.Note != "Allowed by the approval agent: Asked for in the session." {
+		t.Fatalf("outcome = %+v", o)
+	}
+	j := judgementOn(t, p, second.ID)
+	decided, err := p.Runs.Get(tenant, j.Run)
+	if err != nil || !strings.Contains(decided.Answer, "The session asked for this.") || !strings.Contains(string(decided.Output), `"decision":"allow"`) {
+		t.Fatalf("the approval run answered %q and kept %s, %v", decided.Answer, decided.Output, err)
+	}
+	c.mu.Lock()
+	asked := len(c.schemas[platform.BuiltinApprover])
+	c.mu.Unlock()
+	if asked == 0 {
+		t.Fatal("the structured reply was not asked for under the schema")
+	}
+	// The tool ran, and the model was told what it returned.
+	if sent := c.requests(platform.BuiltinApprover); len(sent) < 3 || !strings.Contains(sent[1], "call-read") {
+		t.Fatalf("the approval agent's model was sent %d requests: %q", len(sent), sent)
+	}
+}
+
+// After a tool call, an answer with no object, or one whose object does
+// not hold to the schema, leaves the call for a person.
+func TestAnUnreadableAnswerAfterAToolCallWaitsForAPerson(t *testing.T) {
+	for name, reply := range map[string]string{
+		"no object":        "I cannot tell from the session.",
+		"another decision": `{"decision": "maybe", "reason": "Unsure.", "references": []}`,
+		"no reason":        `{"decision": "allow", "references": []}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			p, _, first := judgedBy(t, selfApproving, [][]saigetypes.Delta{
+				readsTheSession(),
+				say("Let me think."),
+				say(reply),
+			})
+			if _, err := p.SetApprovalMode(admin, first.Thread, threads.ApprovalAuto); err != nil {
+				t.Fatal(err)
+			}
+			second := await(t, p, next(t, p, first).ID, runs.Parked)
+			j := judgementOn(t, p, second.ID)
+			if j.Decision != "ask" {
+				t.Fatalf("judgement = %+v", j)
+			}
+			within(t, "the hand-off was audited", func() bool {
+				got := judgements(t, p)
+				return len(got) == 1 && got[0].After["verdict"] == "ask"
+			})
+			if r, _ := p.Runs.Get(tenant, second.ID); r.Status != runs.Parked {
+				t.Fatalf("the call went through: %s", r.Status)
+			}
+		})
 	}
 }
