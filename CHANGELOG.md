@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.107.0 (2026-11-09)
+
+### Features
+
+- **web**: keep a running answer's activity current (#302) ([502587d](https://github.com/urmzd/humagen/commit/502587d62b3e448f138bdef6787384060386f5c3))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.106.0...v0.107.0)
+
+
 ## 0.106.0 (2026-11-09)
 
 ### Features
