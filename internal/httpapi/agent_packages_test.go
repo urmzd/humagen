@@ -15,6 +15,7 @@ func TestPackageAgentsCanBeCustomizedAndReset(t *testing.T) {
 	if err := f.p.EnsureBuiltins(t.Context(), "acme"); err != nil {
 		t.Fatal(err)
 	}
+	want(t, f, admin, "POST", "/api/store/packages/core/install", "", http.StatusOK)
 	original, err := f.p.Agents.Get(t.Context(), "acme", platform.BuiltinWriter, 0)
 	if err != nil {
 		t.Fatal(err)

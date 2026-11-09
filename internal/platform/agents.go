@@ -128,6 +128,16 @@ func (p *Platform) admitAgent(tag event.Envelope, project string) error {
 	if wire.Origin(tag) == runs.OriginSystem {
 		return nil
 	}
+	// One of the store's agents the workspace has not installed is refused
+	// saying which package to install, wherever the run came from.
+	if why := p.NotInstalled(context.Background(), tag.Tenant, tag.Agent); why != "" {
+		err := fmt.Errorf("%w: %s", ErrNotAvailable, why)
+		p.log.Warn("platform: run refused: agent not installed", "tenant", tag.Tenant, "agent", tag.Agent, "project", project, "origin", wire.Origin(tag), "why", why)
+		if schedule := wire.SurfaceOf(tag).CronSchedule; schedule != "" && wire.Origin(tag) == "cron" {
+			p.unavailableAlert(tag.Tenant, schedule, tag.Agent, project, err)
+		}
+		return err
+	}
 	tree := p.Projects.Tree(tag.Tenant)
 	at := project
 	if p.answersIn(tag.Tenant, tree, at, tag.Agent) {

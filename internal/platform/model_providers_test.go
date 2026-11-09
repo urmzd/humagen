@@ -253,6 +253,7 @@ func TestBuiltinsShipWithAChainAndRunOnWhatIsEnabled(t *testing.T) {
 	if err := p.EnsureBuiltins(ctx, "acme"); err != nil {
 		t.Fatal(err)
 	}
+	installForTest(t, p, "acme", "humagen/core")
 	writer, err := p.Catalog().Get(ctx, "acme", BuiltinWriter, 0)
 	if err != nil || writer.Spec.Provider != KindAnthropic || len(writer.Spec.Fallbacks) != 2 || writer.CreatedBy != "platform" {
 		t.Fatalf("writer = %+v, %v", writer.Spec, err)

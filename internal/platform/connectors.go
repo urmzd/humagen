@@ -656,7 +656,16 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 						return
 					}
 				}
-				if req, ok := current.MatchAutoReview(kind, body); ok {
+				// A reviewer from the store that the workspace has not
+				// installed reviews nothing; the delivery is still taken.
+				req, ok := current.MatchAutoReview(kind, body)
+				if ok {
+					if why := s.p.NotInstalled(r.Context(), current.Tenant, current.DefaultAgent); why != "" {
+						s.p.log.Info("platform: automatic review skipped", "tenant", current.Tenant, "client", current.ID, "repository", req.Repository, "pull", req.Number, "why", why)
+						ok = false
+					}
+				}
+				if ok {
 					from, review, paused, err := s.p.planAutoReview(current, req)
 					if err != nil {
 						http.Error(w, "automatic review could not be planned", http.StatusServiceUnavailable)

@@ -317,6 +317,11 @@ type Platform struct {
 	// each of its picks came to (entry.go).
 	entry entrySpawns
 	picks *state.Table[pickRecord]
+	// storeMu holds one store install or removal at a time, and storeNames
+	// is each store agent's package, worked out once (agent_store.go).
+	storeMu    sync.Mutex
+	storeOnce  sync.Once
+	storeNames map[string]storeListing
 	// audiences is the latest audience of each surface root (surface_sessions.go).
 	audiences *state.Table[SessionAudience]
 	// contexts are get_context's resolvers by place scheme (context.go).

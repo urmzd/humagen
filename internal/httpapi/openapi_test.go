@@ -624,6 +624,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"MessageTrace": {typ: platform.MessageTrace{}}, "TraceNode": {typ: platform.TraceNode{}}, "TracePick": {typ: platform.TracePick{}},
 		"TraceTool": {typ: platform.TraceTool{}}, "TraceContext": {typ: platform.TraceContext{}}, "TraceSource": {typ: platform.TraceSource{}}, "TraceApproval": {typ: platform.TraceApproval{}},
 		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: wire.AgentSpec{}}, "AgentSource": {typ: wire.Source{}},
+		"StorePackage": {typ: platform.StorePackage{}}, "StoreAgent": {typ: platform.StoreAgent{}}, "StoreInstall": {typ: platform.StoreInstall{}}, "StoreRemoval": {typ: platform.StoreRemoval{}},
 		"PackageBase": {typ: wire.PackageBase{}}, "AgentPackage": {typ: wire.AgentPackage{}}, "AgentAccess": {typ: wire.Access{}}, "Revision": {typ: revisionView{}}, "JoinDecision": {typ: join.Decision{}},
 		"Note": {typ: noteView{}}, "DriveTree": {typ: drive.Tree{}}, "DriveEntry": {typ: drive.Entry{}}, "DriveChange": {typ: drive.Change{}}, "DriveProposal": {typ: drive.Proposal{}}, "DriveVersion": {typ: drive.Version{}}, "DriveHit": {typ: drive.Hit{}}, "MemoryFiles": {typ: memoryTree{}}, "MemoryFile": {typ: memoryFile{}}, "MemoryRestoreInput": {typ: memoryRestore{}, written: true}, "MemoryDecisionInput": {typ: memoryDecision{}, written: true}, "LibraryScope": {typ: library.Scope{}}, "MemoryFolder": {typ: platform.MemoryFolder{}}, "LibrarySkillFile": {typ: library.File{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: event.Actor{}}, "Run": {typ: runs.Run{}},
 
@@ -1289,6 +1290,33 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	if err := f.p.EnsureBuiltins(t.Context(), "acme"); err != nil {
 		t.Fatal(err)
 	}
+	// The agent store: Core and Review, installed, removed and refused.
+	install, remove := "/api/store/packages/{name}/install", "/api/store/packages/{name}"
+	if store := c.call(acme, "GET", "/api/store/packages", "/api/store/packages", "", http.StatusOK); !strings.Contains(string(store.raw), `"missing":["humagen-writer","humagen-analyst"]`) {
+		t.Errorf("a new workspace's store = %s", store.raw)
+	}
+	if added := c.call(acme, "POST", install, "/api/store/packages/humagen%2Fcore/install", "", http.StatusOK); !strings.Contains(string(added.raw), `"added":["humagen-writer","humagen-analyst"]`) {
+		t.Errorf("install core = %s", added.raw)
+	}
+	c.call(acme, "POST", install, "/api/store/packages/review/install", "", http.StatusOK)
+	c.call(acme, "POST", install, "/api/store/packages/system/install", "", http.StatusNotFound)
+	if reviewer, err := f.p.Agents.Get(t.Context(), "acme", platform.BuiltinQAReviewer, 0); err != nil {
+		t.Fatal(err)
+	} else {
+		mine := reviewer.Spec.Clone()
+		mine.SystemPrompt = "Our test checklist."
+		if _, err := f.p.Agents.Revise(t.Context(), "acme", mine, reviewer.Rev, "ana"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.call(acme, "DELETE", remove, "/api/store/packages/review", "", http.StatusConflict)
+	c.call(acme, "DELETE", remove, "/api/store/packages/review?force=maybe", "", http.StatusBadRequest)
+	c.call(acme, "DELETE", remove, "/api/store/packages/nope", "", http.StatusNotFound)
+	if removed := c.call(acme, "DELETE", remove, "/api/store/packages/review?force=true", "", http.StatusOK); !strings.Contains(string(removed.raw), `"customized":["qa-reviewer"]`) {
+		t.Errorf("forced removal = %s", removed.raw)
+	}
+	c.call(globex, "POST", "/api/agents", "/api/agents", `{"name":"code-reviewer","provider":"offline","model":"offline","system_prompt":"Ours."}`, http.StatusCreated)
+	c.call(globex, "POST", install, "/api/store/packages/review/install", "", http.StatusConflict)
 	c.call(acme, "POST", "/api/agents/{name}/reset", "/api/agents/humagen-writer/reset", `{"expected_rev":0}`, http.StatusOK)
 	c.call(acme, "POST", "/api/agents/{name}/reset", "/api/agents/humagen-writer/reset", `{"expected_rev":999}`, http.StatusConflict)
 	c.call(acme, "POST", "/api/agents/{name}/reset", "/api/agents/humagen-writer/reset", `{"expected_rev":"bad"}`, http.StatusBadRequest)

@@ -63,6 +63,9 @@ func TestCompanyRowsOfferOnlyCurrentBuiltinNames(t *testing.T) {
 	f := newFixtureWith(t, platform.Config{TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	token := f.machine(t, "acme", everything...)
 	want(t, f, token, "GET", "/api/agents", "", http.StatusOK)
+	// A workspace with every package from the store.
+	want(t, f, token, "POST", "/api/store/packages/core/install", "", http.StatusOK)
+	want(t, f, token, "POST", "/api/store/packages/review/install", "", http.StatusOK)
 	row := want(t, f, token, "GET", "/api/projects/~", "", http.StatusOK)["project"].(map[string]any)
 	for _, item := range row["row_agents"].([]any) {
 		if strings.HasPrefix(item.(string), "warp-") {

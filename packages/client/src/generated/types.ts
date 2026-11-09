@@ -653,6 +653,51 @@ export interface AgentPackage {
   latest: string;
 }
 
+/** One of the agent store's packages, as the workspace has it. */
+export interface StorePackage {
+  /** The package's name, the one its agents record in `package.name`. */
+  name: string;
+  title: string;
+  description: string;
+  /** The package's current version. */
+  version: string;
+  /** True while any of its agents is in the workspace, not retired. */
+  installed: boolean;
+  agents: StoreAgent[];
+  /** The agents installing would add. A name one of the workspace's own agents holds is taken, never missing. */
+  missing: string[];
+}
+
+/** One agent of a store package, as the workspace has it. */
+export interface StoreAgent {
+  name: string;
+  description: string;
+  /** The workspace has it, from this package. */
+  installed: boolean;
+  /** Someone in the workspace changed it since the platform last wrote it. */
+  customized: boolean;
+  /** It is customized and based on an older version than the package's current one. */
+  update_available: boolean;
+  /** One of the workspace's own agents, not based on this package, holds the name. Installing is refused until it is renamed. */
+  taken: boolean;
+}
+
+/** What installing a package added. */
+export interface StoreInstall {
+  package: StorePackage;
+  /** The agents created or restored. Empty when the package was installed already. */
+  added: string[];
+}
+
+/** What removing a package retired. */
+export interface StoreRemoval {
+  package: StorePackage;
+  /** The agents retired. Their history and pinned revisions stay readable. */
+  retired: string[];
+  /** Those of them with changes made in the workspace, retired because the removal was forced. */
+  customized: string[];
+}
+
 /** An agent's definition. */
 export interface AgentSpec {
   package?: PackageBase;
@@ -5706,6 +5751,10 @@ export interface ReviseAgentBody {
 
 export interface ResetAgentBody {
   expected_rev: number;
+}
+
+export interface ListStorePackagesResponse {
+  packages: StorePackage[];
 }
 
 export interface SetAgentHomeBody {

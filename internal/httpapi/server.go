@@ -173,6 +173,7 @@ func (s *Server) Handler() http.Handler {
 	s.outcomeLearningRoutes(mux)
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
 	mux.HandleFunc("POST /api/agents/{name}/reset", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.resetAgent))))
+	s.storeRoutes(mux)
 	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.reviseAgent))))
 	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentHome))))
 	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.agentHistory))))
@@ -1292,6 +1293,8 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, "The change did not pass its evaluation checks. Review its scores before trying again.")
 	case errors.Is(err, evals.ErrBusy):
 		fail(w, http.StatusConflict, "that suite is already running")
+	case errors.Is(err, platform.ErrStoreConflict):
+		fail(w, http.StatusConflict, detail(err, platform.ErrStoreConflict))
 	case errors.Is(err, wire.ErrConflict):
 		fail(w, http.StatusConflict, "the agent was revised by someone else, reload and try again")
 	case errors.Is(err, platform.ErrForbidden), errors.Is(err, auth.ErrForbidden), errors.Is(err, call.ErrDepth), errors.Is(err, call.ErrFanOut), errors.Is(err, call.ErrBudget),

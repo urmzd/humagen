@@ -140,6 +140,7 @@ import type {
   ListSessionsResponse,
   ListSkillsResponse,
   ListSourceLinkSuggestionsResponse,
+  ListStorePackagesResponse,
   ListThreadsResponse,
   ListUsageNoticesResponse,
   Manifest,
@@ -244,6 +245,8 @@ import type {
   StopMessageBody,
   StopSessionBody,
   StorageUsage,
+  StoreInstall,
+  StoreRemoval,
   StreamEventsStreamEvent,
   Summary,
   TestLibrarySkillBody,
@@ -2151,6 +2154,91 @@ they were not shown, and the approvals of calls to them, are kept.
     return this.rawRequest<Revision>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The store holds the platform's optional agents as packages, each a
+versioned base definition: Core (the writer and the analyst) and
+Review (the code reviewer and its security, architecture and test
+specialists). The entry agent and the approval agent are in every
+workspace and are not in the store.
+
+Whether a package is installed is read from the workspace's agents:
+it is installed while any of its agents is there, not retired.
+`missing` names the agents installing would add. A server that
+ships no agents of its own lists no packages.
+ */
+  async listStorePackages(options?: RequestOptions): Promise<ListStorePackagesResponse> {
+    const path = "/api/store/packages";
+    return this.request<ListStorePackagesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listStorePackagesRaw(options?: RequestOptions): Promise<ApiResponse<ListStorePackagesResponse>> {
+    const path = "/api/store/packages";
+    return this.rawRequest<ListStorePackagesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Adds the package's missing agents, each a platform revision at the
+package's current version. A retired name is revived: its versions
+continue, and every pinned revision stays as it was. Installing an
+installed package adds nothing, so a package with an agent retired
+is restored by installing it again.
+
+Refused with 409, before anything is added, while one of the
+workspace's own agents (not based on the package) holds one of its
+names; the message names it.
+ */
+  async installStorePackage(name: string, options?: RequestOptions): Promise<StoreInstall> {
+    let path = "/api/store/packages/{name}/install";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<StoreInstall>("POST", path, {
+      ...options,
+    });
+  }
+
+  async installStorePackageRaw(name: string, options?: RequestOptions): Promise<ApiResponse<StoreInstall>> {
+    let path = "/api/store/packages/{name}/install";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<StoreInstall>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** Retires the package's agents, the way any agent is retired: its
+history, pinned revisions and the runs they answered stay readable,
+and installing the package again brings it back. A name one of the
+workspace's own agents holds is never retired.
+
+An agent someone in the workspace changed is retired only with
+`force=true`. Without it the removal is refused with 409, naming
+those agents, and nothing is retired. Removing a package that is not
+installed retires nothing.
+ */
+  async removeStorePackage(name: string, force?: boolean, options?: RequestOptions): Promise<StoreRemoval> {
+    let path = "/api/store/packages/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (force !== undefined && force !== null) _q.set("force", String(force));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<StoreRemoval>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async removeStorePackageRaw(name: string, force?: boolean, options?: RequestOptions): Promise<ApiResponse<StoreRemoval>> {
+    let path = "/api/store/packages/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (force !== undefined && force !== null) _q.set("force", String(force));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<StoreRemoval>("DELETE", path, {
       ...options,
     });
   }

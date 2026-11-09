@@ -16,6 +16,7 @@ func TestAgentPackageUpgradeCustomizeReset(t *testing.T) {
 	if err := p.EnsureBuiltins(ctx, "acme"); err != nil {
 		t.Fatal(err)
 	}
+	installForTest(t, p, "acme", "humagen/core")
 	original, err := p.Agents.Get(ctx, "acme", BuiltinWriter, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -78,5 +79,15 @@ func TestAgentPackageUpgradeCustomizeReset(t *testing.T) {
 	pinned, err := p.Agents.Get(ctx, "acme", BuiltinWriter, original.Rev)
 	if err != nil || pinned.Hash != original.Hash {
 		t.Fatalf("pinned revision changed: %+v %v", pinned, err)
+	}
+}
+
+// installForTest adds store packages to a workspace, as a test's setup.
+func installForTest(t *testing.T, p *Platform, tenant string, packages ...string) {
+	t.Helper()
+	for _, name := range packages {
+		if _, err := p.InstallPackage(t.Context(), admin(tenant), name); err != nil {
+			t.Fatalf("install %s: %v", name, err)
+		}
 	}
 }
