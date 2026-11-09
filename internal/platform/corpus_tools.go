@@ -59,5 +59,5 @@ func (p *Platform) corpusTools(req runtime.Request) map[string]saigetypes.Tool {
 			return string(b), nil
 		},
 	}
-	return map[string]saigetypes.Tool{ToolCorpusQuery: &personTool{Tool: query}}
+	return map[string]saigetypes.Tool{ToolCorpusQuery: &personTool{Tool: query}, ToolCorpusSearch: &personTool{Tool: p.corpusSearchTool(req)}}
 }

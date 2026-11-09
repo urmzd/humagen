@@ -6308,6 +6308,34 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/corpora/{name}/search:
+    get:
+      operationId: searchCorpus
+      tags: [knowledge]
+      summary: Search a corpus with your own access
+      description: |
+        The search an agent's corpus_search runs, for the caller: indexed
+        files by words and meaning, references live at their source with the
+        caller's own access, and warehouse tables by what they hold (never
+        rows). Lists merge by reciprocal rank; the same passage through two
+        members is one hit naming both. A member that fails or times out is
+        named in `warnings` and left out.
+      x-permission: knowledge:read
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+        - {name: q, in: query, required: true, schema: {type: string, minLength: 1, maxLength: 1000}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 20, default: 8}}
+      responses:
+        "200":
+          description: The hits, best first.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CorpusSearch"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/knowledge:
     get:
       operationId: listKnowledgeSources
@@ -15693,6 +15721,44 @@ components:
         updated_at: {type: string, format: date-time}
         version: {type: integer, format: int64, minimum: 1}
         mine: {type: boolean, description: "Set for its owner, who alone changes it."}
+    CorpusHit:
+      type: object
+      required: [corpus, member, holds, title, text, score]
+      properties:
+        corpus: {type: string}
+        member: {$ref: "#/components/schemas/CorpusMemberRef"}
+        holds: {type: string, enum: [files, references, records]}
+        document_id: {type: string}
+        title: {type: string, description: "A document's title, or a warehouse table's path."}
+        uri: {type: string}
+        index: {type: integer}
+        text: {type: string}
+        score: {type: number, description: "The fused rank score, comparable within one answer."}
+        also:
+          type: array
+          description: Other members the same passage came through.
+          items: {$ref: "#/components/schemas/CorpusMemberRef"}
+    CorpusSearchWarning:
+      type: object
+      required: [corpus, member, cause]
+      properties:
+        corpus: {type: string}
+        member: {$ref: "#/components/schemas/CorpusMemberRef"}
+        cause: {type: string}
+    CorpusSearch:
+      type: object
+      required: [hits, warnings]
+      properties:
+        hits:
+          type: array
+          items: {$ref: "#/components/schemas/CorpusHit"}
+        warnings:
+          type: array
+          items: {$ref: "#/components/schemas/CorpusSearchWarning"}
+        citations:
+          type: array
+          description: Kept for a search an agent ran; absent here.
+          items: {$ref: "#/components/schemas/RunCitation"}
     CorpusCreate:
       type: object
       required: [name]
