@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.102.0 (2026-11-09)
+
+### Features
+
+- **messages**: read a message as a tree, list roots (#285) ([6f7a179](https://github.com/urmzd/humagen/commit/6f7a179347434a5b206a891af82d0f255a63ad00))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.101.0...v0.102.0)
+
+
 ## 0.100.0 (2026-11-09)
 
 ### Features
