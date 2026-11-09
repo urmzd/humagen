@@ -60,8 +60,8 @@ func TestASlackDirectMessageIsAlwaysAnsweredInItsPlacesRoot(t *testing.T) {
 	if root.Agent != platform.BuiltinEntry || root.Parent != "slack://T0TEAM/D0ANA/1700000000.000100" || root.Thread.Visibility != threads.Private {
 		t.Fatalf("root = %s, %s, %s", root.Agent, root.Parent, root.Thread.Visibility)
 	}
-	if len(out.Posted.Runs) == 0 && pickOf(t, p, out.Root).Parts == nil {
-		t.Fatal("nothing answered the direct message")
+	if len(out.Posted.Runs) != 1 || out.Posted.Runs[0].Thread != out.Root {
+		t.Fatalf("the direct message was answered by %+v, want one run in its root", out.Posted.Runs)
 	}
 	if strings.Contains(out.Posted.Reason, "No agent took it") {
 		t.Fatalf("a person was told %q", out.Posted.Reason)
@@ -84,7 +84,7 @@ func TestAReplyInTheSameThreadPicksTheRootUpAndPostsOnce(t *testing.T) {
 	}
 }
 
-func TestAMentionedAgentAnswersInItsChildAndThePickSaysWhy(t *testing.T) {
+func TestAMentionedAgentAnswersInThePlacesRootAndActivitySaysWhy(t *testing.T) {
 	p, ana := slackWorkspace(t)
 	out, err := p.SendMessages(t.Context(), ana, platform.MessagesInput{Ref: slackRef("C01ANY", "1700000000.000100", ""), Messages: []platform.Message{{Role: "user", Content: platform.Content{
 		{Type: "mention", Agent: "analyst"},
@@ -93,12 +93,24 @@ func TestAMentionedAgentAnswersInItsChildAndThePickSaysWhy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Posted.Runs) != 1 || out.Posted.Runs[0].Agent != "analyst" {
+	if len(out.Posted.Runs) != 1 || out.Posted.Runs[0].Agent != "analyst" || out.Posted.Runs[0].Thread != out.Root || out.Posted.Runs[0].Picked != "" {
 		t.Fatalf("runs = %+v", out.Posted.Runs)
 	}
-	m := pickOf(t, p, out.Root)
-	if m.Parts[0].Text != "@analyst was mentioned." || len(m.Parts) != 2 || m.Parts[1].Agent != "analyst" {
-		t.Fatalf("pick = %+v", m.Parts)
+	root, err := p.ReadSession(t.Context(), ana, out.Root, "", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if root.Agent != platform.BuiltinEntry || len(root.Children) != 0 {
+		t.Fatalf("the root belongs to %q with children %+v, want the entry agent's and none", root.Agent, root.Children)
+	}
+	for _, m := range root.Messages {
+		if m.Run == nil && m.Message == nil {
+			t.Fatalf("the root shows a message that is neither a person's nor an answer: %+v", m)
+		}
+	}
+	trace, err := p.MessageTrace(t.Context(), ana, out.ID)
+	if err != nil || len(trace.Nodes) != 1 || trace.Nodes[0].Agent != "analyst" || trace.Nodes[0].Pick == nil || trace.Nodes[0].Pick.Reason != "@analyst was mentioned." {
+		t.Fatalf("trace = %+v, %v", trace, err)
 	}
 }
 

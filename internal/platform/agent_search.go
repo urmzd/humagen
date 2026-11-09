@@ -116,3 +116,16 @@ func pickedOf(ctx context.Context) string {
 	s, _ := ctx.Value(pickedKey{}).(string)
 	return s
 }
+
+type mentionedKey struct{}
+
+// withMentioned carries the agents a message mentions to the entry agent's
+// run that answers it, which the platform has ask each of them first.
+func withMentioned(ctx context.Context, agents []string) context.Context {
+	return context.WithValue(ctx, mentionedKey{}, agents)
+}
+
+func mentionedOf(ctx context.Context) []string {
+	agents, _ := ctx.Value(mentionedKey{}).([]string)
+	return agents
+}

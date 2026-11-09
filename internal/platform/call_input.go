@@ -131,6 +131,13 @@ type callExecutor struct {
 	// (resolveRevision). Nil leaves the definition as it is.
 	resolve func(runtime.Request) (runtime.Request, error)
 	release func(runtime.Request)
+	// mentioned makes the agent calls a run's message asked for by mention
+	// before the turn's first model step (callMentioned). Nil makes none.
+	mentioned func(context.Context, runtime.Request, func(context.Context, event.Body) error) (told string, stopped *turn.Stop, err error)
+	// entry reports whether a request is a turn of the platform's entry
+	// agent, which makes every call with the agent tool and is offered no
+	// session tools. Nil reports none.
+	entry func(context.Context, runtime.Request) bool
 }
 
 var _ turn.Runtime = callExecutor{}
@@ -218,6 +225,24 @@ func (e callExecutor) Turn(ctx context.Context, def turn.Pinned, in turn.Input, 
 				return emit(ctx, b)
 			}
 			return nil
+		}
+	}
+	if e.entry != nil && e.entry(ctx, req) {
+		// The runtime offers its session tools to a turn with a session.
+		req.Session = nil
+	}
+	if e.mentioned != nil && in.Resume == nil && req.Origin != call.Origin {
+		told, stopped, err := e.mentioned(ctx, req, emit)
+		if err != nil {
+			return turn.Result{}, err
+		}
+		if stopped != nil {
+			return turn.Result{Stopped: stopped}, nil
+		}
+		if told != "" {
+			req.Text = told + "\n\n" + req.Text
+			in.Trigger = wire.Clone(in.Trigger)
+			wire.SetText(&in.Trigger, req.Text)
 		}
 	}
 	ctx = runtime.WithRequest(ctx, req)

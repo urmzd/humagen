@@ -145,8 +145,17 @@ func (p *Platform) sessionAgent(ctx context.Context, who auth.Principal, project
 		if m.Refused != "" {
 			return "", "", fmt.Errorf("%w: No agent or person named @%s", threads.ErrInvalid, m.Name)
 		}
-		if explicit == "" && m.Kind == threads.Agent {
-			explicit = m.Name
+	}
+	if explicit == "" {
+		// The one agent a message mentions answers it. Several are each
+		// asked for the entry agent, which answers with what they said
+		// (carryOut); without it, the first mentioned answers.
+		if agents := mentionedAgents(mentions, ""); len(agents) == 1 {
+			explicit = agents[0]
+		} else if len(agents) > 1 {
+			if explicit = p.entryFor(ctx, who.Tenant, project, p.Seer(who).Agent); explicit == "" {
+				explicit = agents[0]
+			}
 		}
 	}
 	picked := ""
@@ -310,9 +319,11 @@ func (p *Platform) PostSession(ctx context.Context, who auth.Principal, id strin
 	if _, _, err = p.sessionAgent(ctx, reader, th.Project, th.Session.Agent, text); err != nil {
 		return SessionView{}, err
 	}
-	// A different named agent gets its continuing child session. The parent
-	// keeps the person's request and a visible child reference, never a second owner.
-	if !in.PostOnly && in.Answers == nil {
+	// A message that mentions another agent is answered in this session, by
+	// that agent or, for several, by the entry agent with what each said
+	// (carryOut). Only a request that asks for a child session by option
+	// (an agent with fresh or a label) opens one, for the agent it names.
+	if !in.PostOnly && in.Answers == nil && (option.Fresh || option.Label != "" || (option.Agent != "" && option.Agent != th.Session.Agent)) {
 		mentions, parseErr := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, sees: p.Seer(reader).Agent, tree: p.Projects.Tree(who.Tenant), project: th.Project, person: reader.Subject, console: true})
 		if parseErr != nil {
 			return SessionView{}, parseErr
@@ -322,32 +333,27 @@ func (p *Platform) PostSession(ctx context.Context, who auth.Principal, id strin
 			if mention.Kind != threads.Agent || (option.Agent != "" && mention.Name != option.Agent) {
 				continue
 			}
-			if mention.Name == th.Session.Agent && !option.Fresh && option.Label == "" {
-				continue
-			}
 			target = mention.Name
 			break
 		}
-		if target == "" && (option.Fresh || option.Label != "" || (option.Agent != "" && option.Agent != th.Session.Agent)) {
+		if target == "" {
 			return SessionView{}, fmt.Errorf("%w: child routing must name an @agent in the message", threads.ErrInvalid)
 		}
-		if target != "" && (in.Surface != nil || in.ActAs != nil) {
+		if in.Surface != nil || in.ActAs != nil {
 			if _, err := p.postSurfaceChild(ctx, who, th, in, text, target, option); err != nil {
 				return SessionView{}, err
 			}
 			return p.ReadSession(ctx, who, id, "", "", false)
 		}
-		if target != "" {
-			posted := in
-			posted.PostOnly = true
-			if _, err := p.PostMessage(ctx, who, id, posted); err != nil {
-				return SessionView{}, err
-			}
-			if _, err := p.StartSession(ctx, who, SessionInput{Text: in.Text, Agent: target, Parent: id, Fresh: option.Fresh, Label: option.Label}); err != nil {
-				return SessionView{}, err
-			}
-			return p.ReadSession(ctx, who, id, "", "", false)
+		posted := in
+		posted.PostOnly = true
+		if _, err := p.PostMessage(ctx, who, id, posted); err != nil {
+			return SessionView{}, err
 		}
+		if _, err := p.StartSession(ctx, who, SessionInput{Text: in.Text, Agent: target, Parent: id, Fresh: option.Fresh, Label: option.Label}); err != nil {
+			return SessionView{}, err
+		}
+		return p.ReadSession(ctx, who, id, "", "", false)
 	}
 	if _, err = p.PostMessage(ctx, who, id, in); err != nil {
 		return SessionView{}, err
@@ -555,21 +561,6 @@ func (p *Platform) ReadSession(ctx context.Context, who auth.Principal, id, sinc
 			view.Messages = append(view.Messages, m)
 		} else if m.ID != "" && (updated.After(after.At) || (updated.Equal(after.At) && (after.ID == "" || m.ID > after.ID))) {
 			changes = append(changes, changedMessage{message: m, at: updated})
-		}
-		if t.Message != nil {
-			// What the entry agent picked follows the message it was for,
-			// with each answer it led to inline.
-			if pm, ok := p.pickMessage(who, th, *t.Message); ok {
-				at := pm.At
-				if at.After(last) {
-					last = at
-				}
-				if since == "" {
-					view.Messages = append(view.Messages, pm)
-				} else if at.After(after.At) {
-					changes = append(changes, changedMessage{message: pm, at: at})
-				}
-			}
 		}
 	}
 	view.Cursor = sessionCursor(last)

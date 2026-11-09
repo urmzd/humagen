@@ -23,8 +23,8 @@ import (
 // posts each person's message with the surface it came from and the person
 // it acts for; the platform finds the place's root or starts it, files it
 // where the Slack channel is bound (filedAt), and answers as it answers in
-// the console: a mention starts or continues that agent's child session, a
-// message naming nobody is picked for by the entry agent.
+// the console: the one agent a message mentions answers it there, and a
+// message naming nobody is the entry agent's.
 
 // ErrSurfaceThreadBeforeSessions reports a surface thread that started as a
 // conversation before root sessions, which stays one.
@@ -120,8 +120,8 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 	return out, started, err
 }
 
-// SessionPosted is what one posted message did: the message, the runs it
-// started (in the root or the named agent's child), the people it told, the
+// SessionPosted is what one posted message did: the message, the run it
+// started, the people it told, the
 // mentions it refused, and why it started what it did or nothing. Repeated
 // is a message already posted, which starts nothing again.
 type SessionPosted struct {
@@ -151,9 +151,9 @@ func nonNil[T any](s []T) []T {
 	return s
 }
 
-// surfacePost posts a message to its root session th: to the child session
-// of each agent it mentions (at most maxDelegates), recorded as what was
-// picked and why, else to the root, where its owner answers.
+// surfacePost posts a message to its root session th, where it gets one
+// answer: its owner's, the one other agent's it mentions, or for several
+// mentions the entry agent's, with what each of them said (carryOut).
 func (p *Platform) surfacePost(ctx context.Context, who auth.Principal, th threads.Thread, in MessageInput) (SessionView, error) {
 	text, reader, err := p.sessionReading(who, in)
 	if err != nil {
@@ -162,23 +162,7 @@ func (p *Platform) surfacePost(ctx context.Context, who auth.Principal, th threa
 	if _, _, err = p.sessionAgent(ctx, reader, th.Project, th.Session.Agent, text); err != nil {
 		return SessionView{}, err
 	}
-	var targets []string
-	if !in.PostOnly {
-		mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, sees: p.Seer(reader).Agent, tree: p.Projects.Tree(who.Tenant), project: th.Project, person: reader.Subject, console: true})
-		if err != nil {
-			return SessionView{}, err
-		}
-		targets = mentionedAgents(mentions, th.Session.Agent)
-		if len(targets) > maxDelegates {
-			targets = targets[:maxDelegates]
-		}
-	}
-	var posted Posted
-	if len(targets) > 0 {
-		posted, err = p.postToMentioned(ctx, who, th, in, text, targets)
-	} else {
-		posted, err = p.PostMessage(ctx, who, th.ID, in)
-	}
+	posted, err := p.PostMessage(ctx, who, th.ID, in)
 	if err != nil {
 		return SessionView{}, err
 	}
@@ -188,43 +172,23 @@ func (p *Platform) surfacePost(ctx context.Context, who auth.Principal, th threa
 	return view, err
 }
 
-// postToMentioned posts a message that mentions agents: into the root,
-// starting nothing there, then into each agent's child session, where it
-// answers, and records that they were picked because they were mentioned.
-func (p *Platform) postToMentioned(ctx context.Context, who auth.Principal, root threads.Thread, in MessageInput, text string, agents []string) (Posted, error) {
+// postSurfaceChild posts a message a surface asked a child session for by
+// option: into the root, starting nothing there, then into the named agent's
+// child session, where it answers.
+func (p *Platform) postSurfaceChild(ctx context.Context, who auth.Principal, root threads.Thread, in MessageInput, text, agent string, option SessionMessageOptions) (Posted, error) {
 	only := in
 	only.PostOnly = true
 	inRoot, err := p.PostMessage(ctx, who, root.ID, only)
 	if err != nil || inRoot.Repeated {
 		return inRoot, err
 	}
-	rec := pickRecord{Pick: Pick{Decision: PickDelegate, Agents: agents, Reason: "@" + strings.Join(agents, ", @") + " was mentioned."}}
-	var runsOut []runs.Run
-	for _, agent := range agents {
-		posted, child, err := p.postSurfaceChildOf(ctx, who, root, in, text, agent, SessionMessageOptions{})
-		if err != nil {
-			return Posted{}, err
-		}
-		c := pickedChild{Agent: agent, Session: child}
-		if len(posted.Runs) > 0 {
-			c.Run = posted.Runs[0].ID
-		}
-		rec.Children = append(rec.Children, c)
-		runsOut = append(runsOut, posted.Runs...)
-		inRoot.Notified = append(inRoot.Notified, posted.Notified...)
-		inRoot.Rule, inRoot.Reason = posted.Rule, posted.Reason
+	posted, _, err := p.postSurfaceChildOf(ctx, who, root, in, text, agent, option)
+	if err != nil {
+		return Posted{}, err
 	}
-	if p.entryRoot(ctx, who.Tenant, root, root.Session.Agent) {
-		p.keepPick(who.Tenant, root.ID, inRoot.Message.ID, rec)
-	}
-	inRoot.Runs = runsOut
+	inRoot.Notified = append(inRoot.Notified, posted.Notified...)
+	inRoot.Rule, inRoot.Reason, inRoot.Runs = posted.Rule, posted.Reason, posted.Runs
 	return inRoot, nil
-}
-
-// postSurfaceChild posts a message that names another agent: into the root,
-// starting nothing there, then into that agent's child session.
-func (p *Platform) postSurfaceChild(ctx context.Context, who auth.Principal, root threads.Thread, in MessageInput, text, agent string, option SessionMessageOptions) (Posted, error) {
-	return p.postToMentioned(ctx, who, root, in, text, []string{agent})
 }
 
 // postSurfaceChildOf posts text into agent's child session under root
