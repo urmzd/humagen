@@ -6,20 +6,30 @@
  *   live while the response runs and replayed after.
  * - `replaySource`: a recorded stream, such as a fixture.
  * - `traceSource`: an answer's trace (`GET /api/messages/{id}/trace`), sent
- *   as its stream would send it. A snapshot, read again when the run's
- *   status changes, until every response has a live stream.
+ *   as its stream would send it. While the answer runs, it is read again when
+ *   its session reports work by its runs, at most every `TRACE_REFRESH_MS`,
+ *   until every response has a live stream.
  */
 import type { ResponseEvent } from "@humagen/core";
 import type { Run } from "./adapter.ts";
-import { api, type MessageTrace, type TraceApproval, type TraceNode } from "./api.ts";
+import { api, type MessageTrace, subscribe, type TraceApproval, type TraceNode } from "./api.ts";
+import { followSession } from "./sessionStream.ts";
 
 export type ResponseSource = {
   /** A stable key: the same key is the same stream. */
   key: string;
   /** Events arrive as they happen, so changes are worth announcing. */
   live?: boolean;
-  /** Start sending events; the returned function stops. `onEnd` follows the last event. */
-  open: (onEvent: (event: ResponseEvent) => void, onEnd: () => void) => () => void;
+  /**
+   * Start sending events; the returned function stops. `onEnd` follows the
+   * first full response. A source that reads its response again sends the
+   * whole of it to `onSnapshot`, which replaces what came before.
+   */
+  open: (
+    onEvent: (event: ResponseEvent) => void,
+    onEnd: () => void,
+    onSnapshot?: (events: ResponseEvent[]) => void,
+  ) => () => void;
 };
 
 /** A recorded stream, sent at once. */
@@ -63,9 +73,30 @@ export function liveSource(messageId: string): ResponseSource {
   };
 }
 
-export type TraceLoader = { trace: (id: string) => Promise<MessageTrace> };
+/** Follows a session's run events: each event's run and type. Returns a way to stop. */
+export type Follow = (thread: string, onRun: (run: string, type: string) => void) => () => void;
 
-const traceLoader: TraceLoader = { trace: api.messageTrace };
+const followThread: Follow = (thread, onRun) => {
+  try {
+    return thread.startsWith("s_")
+      ? followSession(thread, { run: (e) => onRun(e.run ?? "", e.type) })
+      : subscribe({ thread }, { onEvent: (e) => onRun(e.run ?? "", e.type) });
+  } catch {
+    return () => {};
+  }
+};
+
+export type TraceLoader = {
+  trace: (id: string) => Promise<MessageTrace>;
+  /** How a running answer hears of new work. Without it, a trace is read once. */
+  follow?: Follow;
+};
+
+const traceLoader: TraceLoader = { trace: api.messageTrace, follow: followThread };
+export { traceLoader as defaultTraceLoader };
+
+/** How often, at most, a running answer's trace is read again. */
+export const TRACE_REFRESH_MS = 2000;
 
 const ENDED = new Set(["completed", "failed", "stopped"]);
 
@@ -73,21 +104,120 @@ const ENDED = new Set(["completed", "failed", "stopped"]);
 export const messageIdOf = (run: Pick<Run, "id" | "thread">) =>
   run.thread ? `${run.thread}:${run.id}` : run.id;
 
-/** An answer's trace, as its stream would send it. */
-export function traceSource(run: Run, loader: TraceLoader = traceLoader): ResponseSource {
+/** Every run in a trace. */
+export function runsOf(trace: MessageTrace): Set<string> {
+  const out = new Set<string>();
+  const walk = (nodes: TraceNode[]) => {
+    for (const n of nodes) {
+      out.add(n.run);
+      walk(n.children);
+    }
+  };
+  walk(trace.nodes);
+  return out;
+}
+
+// A run starting may be one the answer just called, which its next trace shows.
+const STARTS = new Set(["run.accepted.v1", "run.started.v1"]);
+
+/**
+ * While answers run in `thread`, calls `changed` when the session reports
+ * work by a run `mine` names, or a run starting, at most every `wait`
+ * milliseconds and never while the last call is still reading. Returns a
+ * way to stop.
+ */
+export function followTraces(
+  thread: string,
+  mine: (run: string) => boolean,
+  changed: () => Promise<unknown>,
+  follow: Follow,
+  wait = TRACE_REFRESH_MS,
+): () => void {
+  let last = Date.now();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let reading = false;
+  let again = false;
+  let on = true;
+  const read = () => {
+    timer = undefined;
+    if (!on) return;
+    if (reading) {
+      again = true;
+      return;
+    }
+    reading = true;
+    last = Date.now();
+    changed()
+      .catch(() => {})
+      .finally(() => {
+        reading = false;
+        if (again && on) {
+          again = false;
+          soon();
+        }
+      });
+  };
+  const soon = () => {
+    if (timer || !on) return;
+    timer = setTimeout(read, Math.max(0, wait - (Date.now() - last)));
+  };
+  const stop = follow(thread, (run, type) => {
+    if (mine(run) || STARTS.has(type)) soon();
+  });
+  return () => {
+    on = false;
+    clearTimeout(timer);
+    stop();
+  };
+}
+
+/** An answer's trace, as its stream would send it, kept current while it runs. */
+export function traceSource(
+  run: Run,
+  loader: TraceLoader = traceLoader,
+  wait = TRACE_REFRESH_MS,
+): ResponseSource {
   return {
     key: `trace:${run.id}:${run.status}`,
-    open: (onEvent, onEnd) => {
+    open: (onEvent, onEnd, onSnapshot) => {
       let live = true;
-      eventsOfTrace(run, loader)
-        .then((events) => {
+      let stop = () => {};
+      if (ENDED.has(run.status) || !loader.follow || !onSnapshot || !run.thread) {
+        eventsOfTrace(run, loader)
+          .then((events) => {
+            if (!live) return;
+            for (const e of events) onEvent(e);
+          })
+          .catch(() => {})
+          .finally(() => live && onEnd());
+        return () => {
+          live = false;
+        };
+      }
+      const follow = loader.follow;
+      const id = messageIdOf(run);
+      let runs = new Set([run.id]);
+      const ended = (t: MessageTrace) => ENDED.has(t.nodes[0]?.status ?? "");
+      const again = () =>
+        loader.trace(id).then((t) => {
           if (!live) return;
-          for (const e of events) onEvent(e);
+          runs = runsOf(t);
+          onSnapshot(traceEvents(t));
+          if (ended(t)) stop();
+        });
+      loader
+        .trace(id)
+        .then((t) => {
+          if (!live) return;
+          runs = runsOf(t);
+          for (const e of traceEvents(t)) onEvent(e);
+          onEnd();
+          if (!ended(t)) stop = followTraces(run.thread, (r) => runs.has(r), again, follow, wait);
         })
-        .catch(() => {})
-        .finally(() => live && onEnd());
+        .catch(() => live && onEnd());
       return () => {
         live = false;
+        stop();
       };
     },
   };
