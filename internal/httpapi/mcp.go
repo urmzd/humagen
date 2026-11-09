@@ -21,7 +21,7 @@ import (
 // exactly as the same call to the API.
 
 // mcpInstructions is what an MCP client is told about the server.
-const mcpInstructions = "Humagen's own tools for running this workspace: its agents, their evals, sessions and runs, alerts, connections, model providers, schedules and settings. Each tool is made as you, with your permissions: you are offered only what you may do. Read before you change: a revise takes the revision it edits from (expected_rev)."
+const mcpInstructions = "Humagen's own tools for running this workspace: its agents, their evals, sessions and runs, messages, alerts, connections, model providers, schedules and settings. Each tool is made as you, with your permissions: you are offered only what you may do. Read before you change: a revise takes the revision it edits from (expected_rev)."
 
 // dispatchedKey carries the caller of a call the MCP dispatches to a route.
 // Only dispatch puts it in a request's context, and nothing outside the

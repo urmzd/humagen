@@ -173,6 +173,8 @@ var SystemOperations = []string{
 	"listEvalSuites", "createEvalSuite", "updateEvalSuite", "deleteEvalSuite", "runEvalSuite", "listEvalRuns",
 	// Sessions and runs.
 	"listThreads", "getRun", "getAnalytics",
+	// Messages.
+	"sendMessages", "listMessages", "sendMessagesUnder", "getMessage", "rateMessage", "stopMessage", "getMessageContext", "traceMessage",
 	// Alerts.
 	"listAlerts", "acknowledgeAlert", "changeAlertState",
 	"listAlertRules", "createAlertRule", "updateAlertRule", "deleteAlertRule",
@@ -336,9 +338,11 @@ func contractToolOf(id, method, path string, op, components map[string]any) cont
 		props[name] = schema
 		if in == "path" {
 			t.params = append(t.params, name)
-			required = append(required, name)
 		} else {
 			t.query = append(t.query, name)
+		}
+		if req, _ := p["required"].(bool); req || in == "path" {
+			required = append(required, name)
 		}
 	}
 	if rb, ok := resolveRef(op["requestBody"], components).(map[string]any); ok {

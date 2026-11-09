@@ -99,7 +99,7 @@ A workspace answers through one or more [clients](docs/reference/clients.md): a 
 
 ### Manage the workspace from an MCP client
 
-`POST /api/mcp` is the humagen MCP. Each management operation of the API is a tool: agents, evals, sessions and runs, alerts, connections, model providers, schedules and settings. A call is made as you, through the same route, so you are offered only what your permissions allow. Add it to an MCP client with your workspace's address and a bearer token, for example in Claude Code:
+`POST /api/mcp` is the humagen MCP. Each management operation of the API is a tool: agents, evals, sessions and runs, messages, alerts, connections, model providers, schedules and settings. A call is made as you, through the same route, so you are offered only what your permissions allow. Add it to an MCP client with your workspace's address and a bearer token, for example in Claude Code:
 
 ```sh
 claude mcp add --transport http humagen https://YOUR_HOST/api/mcp --header "Authorization: Bearer $HUMAGEN_TOKEN"

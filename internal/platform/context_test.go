@@ -140,7 +140,7 @@ func TestTheSystemToolGetContextPullsForTheMessageAnswered(t *testing.T) {
 		args string
 		want string
 	}{
-		"no message":        {platform.SystemCall{Who: ana}, `{"request":"anything"}`, "message context"},
+		"no message":        {platform.SystemCall{Who: ana}, `{"request":"anything"}`, "get_message_context"},
 		"no request":        {platform.SystemCall{Who: ana, Message: out.ID}, `{"request":" "}`, "say in words"},
 		"an unseen message": {platform.SystemCall{Who: vic, Message: out.ID}, `{"request":"anything"}`, "not one you can read"},
 	} {

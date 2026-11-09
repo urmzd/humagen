@@ -1619,13 +1619,13 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
   /** The Model Context Protocol, over streamable HTTP, stateless, answering
 in JSON: a JSON-RPC 2.0 request in, its response out. Its tools are the
 workspace's management: each is one operation of this API (agents,
-evals, sessions and runs, alerts, connections, model providers,
-schedules, settings), named after its operationId in snake case and
-described by it. A call is that operation, made as the caller through
-its own route, so it needs that route's permission and is validated,
-audited and logged as the route is. `tools/list` offers only the tools
-the caller may use. Point an MCP client at this address with the
-caller's bearer token.
+evals, sessions and runs, messages, alerts, connections, model
+providers, schedules, settings), named after its operationId in
+snake case and described by it. A call is that operation, made as the
+caller through its own route, so it needs that route's permission and
+is validated, audited and logged as the route is. `tools/list` offers
+only the tools the caller may use. Point an MCP client at this
+address with the caller's bearer token.
  */
   async callMcp(body: unknown, options?: RequestOptions): Promise<unknown> {
     const path = "/api/mcp";

@@ -104,6 +104,35 @@ func TestASystemToolIsFoundByName(t *testing.T) {
 	}
 }
 
+// The messages API is in the registry, each operation needing the permission
+// the contract gives it, and a query parameter the contract requires is a
+// required argument.
+func TestTheMessagesOperationsAreSystemTools(t *testing.T) {
+	p, _ := configured(t, Config{})
+	for name, perm := range map[string]auth.Permission{
+		"send_messages":       auth.RunsWrite,
+		"list_messages":       auth.RunsRead,
+		"send_messages_under": auth.RunsWrite,
+		"get_message":         auth.RunsRead,
+		"rate_message":        auth.RunsRead,
+		"stop_message":        auth.RunsWrite,
+		"get_message_context": auth.RunsRead,
+		"trace_message":       auth.RunsRead,
+	} {
+		if tl, ok := p.SystemTool(name); !ok || tl.Permission != perm {
+			t.Errorf("%s = %+v, %v; want it with %s", name, tl, ok, perm)
+		}
+	}
+	list, _ := p.SystemTool("list_messages")
+	if required, _ := list.Input["required"].([]string); !slices.Contains(required, "roots") {
+		t.Errorf("list_messages requires %v, not roots", list.Input["required"])
+	}
+	under, _ := p.SystemTool("send_messages_under")
+	if required, _ := under.Input["required"].([]string); !slices.Equal(required, []string{"id", "body"}) {
+		t.Errorf("send_messages_under requires %v", under.Input["required"])
+	}
+}
+
 // What a call does maps onto the response stream's own events, and a step
 // that could not be one is refused.
 func TestProgressBecomesTheResponseStreamsEvents(t *testing.T) {

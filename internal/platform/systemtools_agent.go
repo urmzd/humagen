@@ -126,7 +126,7 @@ func (p *Platform) systemAgentCall(ctx context.Context, c SystemCall, raw json.R
 // systemGetContext pulls context, as the caller, from the place the message
 // they answer came from: the platform binds the place, never the caller. A
 // caller with no message bound, such as an MCP client, names the message
-// through the API's message context instead.
+// with get_message_context instead.
 func (p *Platform) systemGetContext(ctx context.Context, c SystemCall, raw json.RawMessage) (SystemResult, error) {
 	var in struct {
 		Request string `json:"request"`
@@ -135,7 +135,7 @@ func (p *Platform) systemGetContext(ctx context.Context, c SystemCall, raw json.
 		return SystemResult{IsError: true, Text: "say in words what you need"}, nil
 	}
 	if c.Message == "" {
-		return SystemResult{IsError: true, Text: "get_context reads the message being answered, and this call answers none; name the message with the API's message context instead"}, nil
+		return SystemResult{IsError: true, Text: "get_context reads the message being answered, and this call answers none; name the message with get_message_context instead"}, nil
 	}
 	session, _ := SplitMessageID(c.Message)
 	if !p.SeesSession(c.Who, session) {

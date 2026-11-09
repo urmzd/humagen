@@ -72,7 +72,7 @@ func TestTheMCPOffersOnlyWhatTheCallerMayDo(t *testing.T) {
 	viewer := f.person(t, "acme", "vic", "Vic", "humagen-viewers")
 
 	all := toolNames(t, f.mcpSession(t, admin))
-	for _, want := range []string{"list_agents", "revise_agent", "update_settings", "set_model_provider", "run_eval_suite", "create_schedule"} {
+	for _, want := range []string{"list_agents", "revise_agent", "update_settings", "set_model_provider", "run_eval_suite", "create_schedule", "send_messages", "get_message_context"} {
 		if !slices.Contains(all, want) {
 			t.Errorf("an admin is not offered %s: %v", want, all)
 		}
@@ -85,10 +85,10 @@ func TestTheMCPOffersOnlyWhatTheCallerMayDo(t *testing.T) {
 		t.Errorf("an admin is offered %d tools of the registry's %d: %v", len(all), len(registry), all)
 	}
 	read := toolNames(t, f.mcpSession(t, viewer))
-	if !slices.Contains(read, "list_agents") || !slices.Contains(read, "list_alerts") {
+	if !slices.Contains(read, "list_agents") || !slices.Contains(read, "list_alerts") || !slices.Contains(read, "get_message") {
 		t.Errorf("a viewer cannot read: %v", read)
 	}
-	for _, write := range []string{"revise_agent", "update_settings", "set_model_provider", "create_alert_rule"} {
+	for _, write := range []string{"revise_agent", "update_settings", "set_model_provider", "create_alert_rule", "send_messages", "stop_message"} {
 		if slices.Contains(read, write) {
 			t.Errorf("a viewer is offered %s", write)
 		}
