@@ -12,7 +12,14 @@
  */
 import type { ResponseEvent } from "@humagen/core";
 import type { Run } from "./adapter.ts";
-import { api, type MessageTrace, subscribe, type TraceApproval, type TraceNode } from "./api.ts";
+import {
+  api,
+  type MessageTrace,
+  subscribe,
+  type TraceApproval,
+  type TraceNode,
+  type TraceQuestion,
+} from "./api.ts";
 import { followSession } from "./sessionStream.ts";
 
 export type ResponseSource = {
@@ -413,6 +420,24 @@ export function traceEvents(trace: MessageTrace): ResponseEvent[] {
       if (a) gated.add(a.id);
       return a;
     };
+    // A question the run asked a person with ask_person, on the call that asked it.
+    const questions = node.questions ?? [];
+    const askedAt = new Set<string>();
+    const questionOf = (id: string) => {
+      const q = questions.find((x) => x.tool === id);
+      if (q) askedAt.add(q.id);
+      return q;
+    };
+    // Waiting while it is asked, answered by the call that asked it; once
+    // answered, who answered shows on the call.
+    const ask = (id: string, q: TraceQuestion) => {
+      if (q.status === "asked" && !ended)
+        status(id, "awaiting_input", q.at, {
+          ...(q.tool ? { question: { kind: q.kind, prompt: q.prompt, choices: q.options } } : {}),
+        });
+      else if (q.status === "answered" && q.by)
+        status(id, "running", q.at, { decided_by: q.by, decision: q.answer ?? "" });
+    };
 
     for (const step of steps) {
       if (step.kind === "agent") {
@@ -525,6 +550,8 @@ export function traceEvents(trace: MessageTrace): ResponseEvent[] {
       });
       const a = approvalOf(t.id);
       if (a) decide(t.id, a);
+      const q = questionOf(t.id);
+      if (q) ask(t.id, q);
       if (t.ms !== undefined || t.error) {
         emit({
           type: "content_block_start",
@@ -538,6 +565,27 @@ export function traceEvents(trace: MessageTrace): ResponseEvent[] {
         });
         status(t.id, t.error ? "error" : "done", t.at, { elapsed_ms: t.ms ?? 0 });
       } else if (ended && !a) status(t.id, "stopped", node.ended_at);
+    }
+    // A question whose call is not shown is a call of its own.
+    for (const q of questions) {
+      if (askedAt.has(q.id)) continue;
+      const id = q.tool ?? `htu_${node.run}_q_${q.id}`;
+      emit({
+        type: "content_block_start",
+        t_ms: ms(q.at),
+        index: index++,
+        content_block: {
+          type: "server_tool_use",
+          id,
+          name: "ask_person",
+          kind: "tool",
+          title: q.prompt,
+          input: {},
+        },
+      });
+      ask(id, q);
+      if (q.status !== "asked") status(id, q.status === "answered" ? "done" : "stopped", q.at);
+      else if (ended) status(id, "stopped", node.ended_at);
     }
     // An approval that gates no call shown is a call of its own.
     for (const a of node.approvals) {

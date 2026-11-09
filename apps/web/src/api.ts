@@ -1943,6 +1943,21 @@ export interface TraceApproval {
   at?: string;
 }
 
+/** A question a run asked a person with ask_person: a choice among options, or a reply in words. */
+export interface TraceQuestion {
+  id: string;
+  /** The call that asked it, `htu_<run>_<n>`: what an answer names. */
+  tool?: string;
+  kind: "choice" | "reply";
+  prompt: string;
+  options: string[];
+  /** asked while it waits; expired when nobody answered in time; closed when its run ended first. */
+  status: "asked" | "answered" | "expired" | "closed";
+  answer?: string;
+  by?: string;
+  at?: string;
+}
+
 /** The entry agent's decision about a message, on the run that made it. */
 export interface TracePick {
   decision: "answer_myself" | "delegate";
@@ -1969,6 +1984,8 @@ export interface TraceNode {
   context: TraceContext[];
   sources: TraceSource[];
   approvals: TraceApproval[];
+  /** Absent from a server older than questions in traces. */
+  questions?: TraceQuestion[];
   children: TraceNode[];
 }
 
