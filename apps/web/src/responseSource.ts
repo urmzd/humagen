@@ -347,7 +347,13 @@ export function runEvents(
           {
             question: answered
               ? undefined
-              : { kind: "approval", prompt: approval.prompt, choices: ["Approve", "Deny"] },
+              : {
+                  kind: "approval",
+                  prompt: approval.prompt,
+                  choices: ["Approve", "Deny"],
+                  id: approval.id,
+                  run: run.id,
+                },
             ...(answered?.by ? { decided_by: answered.by, decision: answered.decision } : {}),
           },
         );

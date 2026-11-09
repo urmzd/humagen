@@ -2575,6 +2575,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	real := map[string]map[string]string{
 		"/api/sessions/{id}":                         {"id": sessionContract["id"]},
 		"/api/messages/{id}":                         {"id": sessionContract["id"]},
+		"/api/messages/{id}/feedback":                {"id": sessionContract["id"]},
+		"/api/messages/{id}/stop":                    {"id": sessionContract["id"]},
+		"/api/messages/{id}/context":                 {"id": sessionContract["id"]},
 		"/api/sessions/{id}/messages":                {"id": sessionContract["id"]},
 		"/api/sessions/{id}/stream":                  {"id": sessionContract["id"]},
 		"/api/sessions/{id}/stop":                    {"id": sessionContract["id"]},
@@ -2808,6 +2811,7 @@ var unexercised = map[string]string{
 	"POST /api/sessions 409":                             "governed admission to a deleted project uses the same path tested by POST /api/runs deleted-project response",
 	"POST /api/sessions 200":                             "a chat surface's reply landing in its existing root, covered by TestAChatServiceFindsOrStartsASlackThreadsRootSession",
 	"POST /api/messages/{id} 409":                        "a full or moved conversation, the same PostMessage path POST /api/sessions/{id}/messages takes",
+	"POST /api/messages/{id}/feedback 409":               "rating an unfinished run, the same putFeedback path the legacy feedback route exercises",
 	"POST /api/messages 409":                             "a place nobody answers (no entry agent, no client default, no mention), covered by TestAPlaceNobodyAnswersIsRefusedSayingWhy",
 	"POST /api/sessions/{id}/messages 409":               "deleted-project admission uses the same PostMessage path tested by thread/run responses",
 	"POST /api/sessions/{id}/people 409":                 "concurrent participant changes fail thread version CAS covered by participant race tests",
