@@ -5,7 +5,7 @@ import { allTools, answerOf, foldAll } from "@humagen/core";
 import { responseStreams } from "@humagen/core/fixtures/responses";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Run } from "./adapter.ts";
-import type { MessageTrace, Thread, TraceNode } from "./api.ts";
+import type { MessageTrace, Thread, TraceNode, TraceQuestion } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { type FocusLoader, MessageFocus } from "./MessageFocus.tsx";
 import { AnswerRefs, SessionReferences } from "./MessageRefs.tsx";
@@ -347,6 +347,99 @@ test("an approval waiting two levels down is answered by its call, on the messag
     assert.equal(post?.path, "/api/messages/s_root/answer");
     assert.deepEqual(post?.body, { tool_use_id: htu(R2, 2), answer: { action: "approve" } });
   });
+});
+
+// A run waiting on a person's answer to ask_person, at its third call.
+const asking = (question: Partial<TraceQuestion>) =>
+  traceOf([
+    node(root, {
+      status: "parked",
+      ended_at: undefined,
+      answer: undefined,
+      tools: [
+        {
+          id: htu(R1, 3),
+          name: "ask_person",
+          at: at(3),
+          input: { question: "?" },
+          withheld: false,
+        },
+      ],
+      questions: [
+        {
+          id: "q9",
+          tool: htu(R1, 3),
+          kind: "choice",
+          prompt: "Which region?",
+          options: ["us-east", "eu-west"],
+          status: "asked",
+          ...question,
+        },
+      ],
+    }),
+  ]);
+
+test("a question asked with ask_person is answered in Activity by picking an option", async () => {
+  const net = stubFetch({ "POST /api/messages/s_root/answer": () => ({}) });
+  restore = net.restore;
+  render(
+    <ResponseActivityPanel
+      source={replaySource("c", traceEvents(asking({})))}
+      onClose={() => {}}
+    />,
+  );
+  const part = (await screen.findAllByTestId("activity-part")).find(
+    (p) => p.getAttribute("data-tool") === htu(R1, 3),
+  );
+  assert.equal(part?.getAttribute("data-status"), "awaiting_input");
+  const ask = within(part as HTMLElement).getByRole("group", { name: "Which region?" });
+  fireEvent.click(within(ask).getByRole("button", { name: "eu-west" }));
+  await waitFor(() =>
+    assert.deepEqual(net.seen.find((r) => r.method === "POST")?.body, {
+      tool_use_id: htu(R1, 3),
+      answer: { action: "choose", choice: "eu-west" },
+    }),
+  );
+  assert.ok(await within(ask).findByText(words.answerSent));
+  assert.equal(within(ask).queryByRole("button", { name: "eu-west" }), null, "answered once");
+});
+
+test("a question that takes words is answered with a reply", async () => {
+  const net = stubFetch({ "POST /api/messages/s_root/answer": () => ({}) });
+  restore = net.restore;
+  render(
+    <ResponseActivityPanel
+      source={replaySource(
+        "r",
+        traceEvents(asking({ kind: "reply", options: [], prompt: "Why?" })),
+      )}
+      onClose={() => {}}
+    />,
+  );
+  const ask = await screen.findByRole("group", { name: "Why?" });
+  const send = within(ask).getByRole("button", { name: words.send }) as HTMLButtonElement;
+  assert.equal(send.disabled, true, "nothing to send yet");
+  fireEvent.change(within(ask).getByLabelText(words.yourReply), {
+    target: { value: "  The token expired.  " },
+  });
+  fireEvent.click(send);
+  await waitFor(() =>
+    assert.deepEqual(net.seen.find((r) => r.method === "POST")?.body, {
+      tool_use_id: htu(R1, 3),
+      answer: { action: "reply", text: "The token expired." },
+    }),
+  );
+});
+
+test("an answered question shows who answered on its call, with nothing to press", () => {
+  const answered = asking({ status: "answered", answer: "eu-west", by: "Ana" });
+  const n = answered.nodes[0] as TraceNode;
+  n.tools = n.tools.map((t) => ({ ...t, ms: 4000, output: "eu-west" }));
+  const state = foldAll(traceEvents(answered));
+  const tool = state.tools[htu(R1, 3)];
+  assert.equal(tool?.status, "done");
+  assert.equal(tool?.decidedBy, "Ana");
+  assert.equal(tool?.question, undefined);
 });
 
 test("an approval that gates no call shows that it waits, without buttons it could not send", () => {

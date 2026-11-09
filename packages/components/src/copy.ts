@@ -3618,6 +3618,9 @@ export const defaultCopy = {
     approve: "Approve",
     deny: "Deny",
     answerFailed: "That answer was not taken. Try again.",
+    answerSent: "Answer sent",
+    yourReply: "Your reply",
+    send: "Send",
     status: {
       queued: "Queued",
       running: "Working",
