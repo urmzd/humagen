@@ -1059,6 +1059,11 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 	// they tag: no default answers them. A client's surface keeps its
 	// defaults, where mentioning the app is what asks.
 	tagsOnly := via == ""
+	if !tagsOnly && def.Agent == "" {
+		// Nothing names an agent to answer here: the message lands as under
+		// an open default (land), so it never waits for a person.
+		def.Agent = Open
+	}
 	if th.Session != nil {
 		// Session ownership is immutable. Mentions are context, never a second
 		// answering agent in this transcript. Calls to another agent open children.
@@ -1116,9 +1121,7 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 	case d.Rule == threads.RuleRouted:
 		var refused []string
 		for _, agent := range d.Agents {
-			if _, err := start(agent); errors.Is(err, ErrNoTakers) {
-				out.Reason = "No selected agent took it, so it waits for a person to answer or tag an agent."
-			} else if err != nil {
+			if _, err := start(agent); err != nil {
 				refused = append(refused, refusalOf(err))
 			}
 		}
@@ -1130,10 +1133,7 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 		}
 	case d.Default && len(d.Agents) == 1 && d.Agents[0] == Open:
 		if _, err := start(Open); err != nil {
-			out.Reason = "No agent took it, so it waits for a person to answer or tag an agent."
-			if !errors.Is(err, ErrNoTakers) {
-				out.Reason = fmt.Sprintf("The agents here could not be asked: %s.", refusalOf(err))
-			}
+			out.Reason = fmt.Sprintf("No agent could answer: %s.", refusalOf(err))
 		}
 	case d.Default && len(d.Agents) == 1:
 		if _, err := start(d.Agents[0]); err != nil {
@@ -1236,18 +1236,23 @@ func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.T
 	type answer struct{ agent, tag, picked string }
 	var who []answer
 	if agent == Open {
-		// Only agents the clients it reaches the thread through may route
-		// to are asked, and those the poster may read; each that joins is
-		// held to them, not Open.
+		// The message lands (land): only agents the clients it reaches the
+		// thread through may route to answer, that the poster may read, and
+		// among the thread's selected agents when it names any. Each is held
+		// to them, not Open.
 		keep := func(a string) bool {
 			return (len(among) == 0 || slices.Contains(among, a)) && (sees == nil || sees(a)) && p.mayRoute(tenant, th, via, a) == nil
 		}
-		joined, err := p.join(ctx, tenant, p.Projects.Tree(tenant), th.Project, pickText(m.Text, skills), keep)
+		landed, err := p.land(ctx, tenant, th.Project, pickText(m.Text, skills), keep)
 		if err != nil {
 			return nil, err
 		}
-		for _, d := range joined {
-			who = append(who, answer{agent: d.Agent, tag: joinedTagID(tagID, d.Agent), picked: joinedReason(d)})
+		for _, d := range landed {
+			tag := tagID
+			if d.Picked != "" {
+				tag = joinedTagID(tagID, d.Agent)
+			}
+			who = append(who, answer{agent: d.Agent, tag: tag, picked: d.Picked})
 		}
 	} else {
 		if err := p.mayRoute(tenant, th, via, agent); err != nil {
