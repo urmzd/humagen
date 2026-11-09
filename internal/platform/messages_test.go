@@ -253,3 +253,49 @@ func TestASurfaceRunsApprovalIsAddressedOnlyToItsApprovers(t *testing.T) {
 		t.Fatalf("the approval is shown to ada %v (want false) and olu %v (want true)", sees(p, adaOp, m.ID), sees(p, olu, m.ID))
 	}
 }
+
+func TestAGitHubMessagesRunsAnswerOnItsPullRequest(t *testing.T) {
+	p, ana := slackWorkspace(t)
+	create(t, p, tenant, platform.ClientInput{
+		Client: clients.Client{ID: "gh", Name: "gh", Surface: clients.GitHub, Enabled: true, Identity: clients.Identity{Owners: []string{"acme"}}, DefaultAgent: "ops"},
+		Token:  clients.SecretInput{Value: "token-gh"}, SigningSecret: clients.SecretInput{Value: "secret-gh"},
+	})
+	ref := &platform.ExternalRef{Type: platform.RefGitHub, Client: "gh", Repo: "acme/web", Kind: "pull", Number: 7, User: "ana-gh"}
+	out, err := p.SendSurfaceMessages(t.Context(), ana, sayIn("@ops why did the checks fail?", ref))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Posted.Runs) != 1 {
+		t.Fatalf("runs = %+v", out.Posted.Runs)
+	}
+	tag := out.Posted.Runs[0].Tag()
+	if tag.Channel != "github://acme/web/pull/7" || wire.ActorOf(tag).ID != "ana-gh" || out.Posted.Runs[0].Client != "gh" {
+		t.Fatalf("run channel %q, actor %+v, client %q", tag.Channel, wire.ActorOf(tag), out.Posted.Runs[0].Client)
+	}
+}
+
+func TestAReplyFromAnywhereUnderASlackRootAnswersInTheThread(t *testing.T) {
+	p, ana := slackWorkspace(t)
+	ref := slackRef("C01ANY", "1700000000.000100", "")
+	ref.User = "U0ANA"
+	first, err := p.SendSurfaceMessages(t.Context(), ana, sayIn("@ops why did the deploy fail?", ref))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The first answer ends before the reply, which would otherwise wait
+	// behind it as a follow-up.
+	for _, r := range first.Posted.Runs {
+		await(t, p, r.ID, runs.Completed)
+	}
+	reply, err := p.SendMessagesUnder(t.Context(), ana, first.Root, sayIn("@ops and what did it cost?", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reply.Posted.Runs) != 1 {
+		t.Fatalf("runs = %+v", reply.Posted.Runs)
+	}
+	tag := reply.Posted.Runs[0].Tag()
+	if !strings.HasPrefix(tag.Channel, "slack://T0TEAM/C01ANY") || reply.Posted.Runs[0].Client != "app" || wire.ActorOf(tag).User != "ana" {
+		t.Fatalf("a console reply answers on %q through %q as %+v", tag.Channel, reply.Posted.Runs[0].Client, wire.ActorOf(tag))
+	}
+}

@@ -465,11 +465,14 @@ type S3 struct {
 
 // Execution bounds what runs.
 type Execution struct {
-	Workspace   string       `json:"workspace,omitempty"`
-	Concurrency int          `json:"concurrency,omitempty"`
-	MaxDepth    int          `json:"max_depth,omitempty"`
-	MaxFanOut   int          `json:"max_fan_out,omitempty"`
-	Builtin     BuiltinModel `json:"builtin,omitzero"`
+	Workspace   string `json:"workspace,omitempty"`
+	Concurrency int    `json:"concurrency,omitempty"`
+	MaxDepth    int    `json:"max_depth,omitempty"`
+	MaxFanOut   int    `json:"max_fan_out,omitempty"`
+	// RetiredBuiltin is what execution.builtin held: the model the
+	// platform's agents once ran on. It is no longer read. A config that
+	// still has it loads with a note (Parse), and it is never written.
+	RetiredBuiltin json.RawMessage `json:"builtin,omitempty"`
 }
 
 // Rooms is how a conversation with many readers is read, and how fast runs
@@ -505,12 +508,6 @@ func (r Rooms) Config() (rooms.Config, error) {
 		return c, err
 	}
 	return c.Defaults(), nil
-}
-
-// BuiltinModel is the model the platform's own agents run on.
-type BuiltinModel struct {
-	Provider string `json:"provider,omitempty"`
-	Model    string `json:"model,omitempty"`
 }
 
 var (

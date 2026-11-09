@@ -1,19 +1,22 @@
+import { defaultCopy } from "@humagen/components";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type AlertRuleConfig, api, type ProjectView } from "./api.ts";
 import { AgentTag, FilterSelect, ItemCard, PriorityPill, StatusPill, Tag } from "./cards.tsx";
 import { type ProjectRef, readableProject } from "./projects.ts";
-import { href, type Route } from "./route.ts";
+import { href, type Route, SESSION_PLACES, type SessionPlaceFilter } from "./route.ts";
 import {
   type AgentSessionSummary,
   type Alert,
   alertPriority,
   attentionAlerts,
+  holdsAnAlertOnly,
   isRootSession,
   openAlert,
   orderAlerts,
   sessionCenter,
   sessionSource,
 } from "./sessionCenter.ts";
+import { referenceOf } from "./trace.ts";
 import {
   ago,
   button,
@@ -27,6 +30,28 @@ import {
   Tabs,
   textAction,
 } from "./ui.tsx";
+
+const places = defaultCopy.places;
+
+/** Where a root session started, as the place filter names it. */
+export function placeOfSession(s: AgentSessionSummary): SessionPlaceFilter | undefined {
+  const where = sessionSource(s);
+  return where === "Slack"
+    ? "slack"
+    : where === "GitHub"
+      ? "github"
+      : where === "Scheduled"
+        ? "schedule"
+        : where === "Console"
+          ? "console"
+          : s.parent.startsWith("slack://")
+            ? "slack"
+            : s.parent.startsWith("github://")
+              ? "github"
+              : s.parent.startsWith("schedule://")
+                ? "schedule"
+                : undefined;
+}
 
 const failure = (error: unknown) =>
   error instanceof Error ? error.message : "This could not be loaded. Try again.";
@@ -66,7 +91,7 @@ export function useSessionAttention(canRead: boolean, tick: unknown) {
 export function AlertMark({ alert }: { alert: Alert }) {
   return <PriorityPill priority={alertPriority(alert)} />;
 }
-function SessionRow({
+export function SessionRow({
   session,
   go,
   nested = false,
@@ -211,6 +236,8 @@ export function SessionsPage({
     ...(route.status ? { status: route.status } : {}),
     ...(route.project ? { project: route.project } : {}),
     ...(route.agent ? { agent: route.agent } : {}),
+    // An item's sessions are the ones rooted at its address.
+    ...(route.item ? { parent: route.item } : {}),
   };
   const key = JSON.stringify(filters);
   const loadedKey = useRef("");
@@ -252,14 +279,15 @@ export function SessionsPage({
       setBusy(false);
     }
   };
+  // Newest first. An alert marks its session's row and does not move it; a
+  // session that only holds an alert is in Alerts, not here.
   const shown = (sessions ?? []).filter(
-    (s) => !route.q || `${s.title} ${s.agent}`.toLowerCase().includes(route.q.toLowerCase()),
+    (s) =>
+      !holdsAnAlertOnly(s.conversation) &&
+      (!route.q || `${s.title} ${s.agent}`.toLowerCase().includes(route.q.toLowerCase())) &&
+      (!route.place || placeOfSession(s) === route.place),
   );
-  const urgency = (id: string) => {
-    const a = orderAlerts(alerts.filter((a) => a.session === id && openAlert(a)))[0];
-    return a ? (alertPriority(a) === "urgent" ? 0 : alertPriority(a) === "normal" ? 1 : 2) : 3;
-  };
-  shown.sort((a, b) => urgency(a.id) - urgency(b.id) || b.updated_at.localeCompare(a.updated_at));
+  shown.sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
   return (
     <Page title="Sessions" lede="Your work, with each agent's child sessions kept together.">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
@@ -282,6 +310,43 @@ export function SessionsPage({
           ]}
           onChange={(v) => go({ ...route, status: v === "any" ? undefined : v })}
         />
+        <FilterSelect
+          label={places.label}
+          value={route.place ?? ""}
+          onChange={(v) =>
+            go({
+              ...route,
+              place: (SESSION_PLACES as readonly string[]).includes(v)
+                ? (v as SessionPlaceFilter)
+                : undefined,
+            })
+          }
+          options={[
+            { value: "", label: places.any },
+            ...SESSION_PLACES.map((p) => ({ value: p, label: places[p] })),
+          ]}
+        />
+        {route.item && (
+          <span className="inline-flex items-center gap-2 text-aui-sm">
+            <a
+              href={href({ page: "item", address: route.item })}
+              onClick={(event) => {
+                event.preventDefault();
+                if (route.item) go({ page: "item", address: route.item });
+              }}
+              className="rounded-aui underline decoration-aui-border underline-offset-2 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+            >
+              {places.item(referenceOf(route.item).label)}
+            </a>
+            <button
+              type="button"
+              className={textAction}
+              onClick={() => go({ ...route, item: undefined })}
+            >
+              {places.clearItem}
+            </button>
+          </span>
+        )}
         {projects.length > 1 && (
           <div className="sm:ml-auto">
             <FilterSelect

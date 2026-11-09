@@ -4,14 +4,17 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 func TestTheEntryAgentIsToldWhoMayFitAndIsHeldToItsPlace(t *testing.T) {
 	ctx := t.Context()
-	p, err := New(Config{Workspace: t.TempDir(), BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p, err := New(Config{Workspace: t.TempDir(), TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +48,7 @@ func TestTheEntryAgentIsToldWhoMayFitAndIsHeldToItsPlace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := p.entryMayCall("acme", entry, "", "ops"); err != nil {
+	if err := p.entryMayCall("acme", entry, runs.Run{}, "ops"); err != nil {
 		t.Fatalf("an agent available at the root was refused: %v", err)
 	}
 	w := projects.Writer{By: "ada", Govern: true}
@@ -59,14 +62,28 @@ func TestTheEntryAgentIsToldWhoMayFitAndIsHeldToItsPlace(t *testing.T) {
 	if _, err := p.SetProjectAgents(ctx, "acme", "Field", w, AgentsInput{Version: cur.Version, Enable: []string{}, Allow: []string{"analyst"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.entryMayCall("acme", entry, "Field", "ops"); !errors.Is(err, ErrForbidden) {
+	if err := p.entryMayCall("acme", entry, runs.Run{Project: "Field"}, "ops"); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("an agent not available in Field = %v, want ErrForbidden", err)
 	}
-	if err := p.entryMayCall("acme", entry, "Field", "analyst"); err != nil {
+	if err := p.entryMayCall("acme", entry, runs.Run{Project: "Field"}, "analyst"); err != nil {
 		t.Fatalf("an agent available in Field was refused: %v", err)
 	}
+	// A run answering a message a client sent calls only the agents that
+	// client may route to.
+	if _, err := p.Clients.Create("acme", clients.Client{ID: "desk", Name: "Desk", Surface: clients.Slack, Identity: clients.Identity{AppID: "A01", Team: "T01"}, Enabled: true, Agents: []string{"analyst"}}, clients.DefaultCaps(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.entryMayCall("acme", entry, runs.Run{Client: "desk"}, "ops"); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("an agent the client may not route to = %v, want ErrForbidden", err)
+	}
+	if err := p.entryMayCall("acme", entry, runs.Run{Client: "desk"}, "analyst"); err != nil {
+		t.Fatalf("an agent the client routes to was refused: %v", err)
+	}
+	if err := p.entryMayCall("acme", entry, runs.Run{Client: "gone"}, "analyst"); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("a call for a client that is not there = %v, want ErrForbidden", err)
+	}
 	ops, _ := p.Catalog().Get(ctx, "acme", "ops", 0)
-	if err := p.entryMayCall("acme", ops, "Field", "helper"); err != nil {
+	if err := p.entryMayCall("acme", ops, runs.Run{Project: "Field"}, "helper"); err != nil {
 		t.Fatalf("another caller was held to the entry agent's rule: %v", err)
 	}
 }

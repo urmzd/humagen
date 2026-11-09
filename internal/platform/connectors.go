@@ -193,12 +193,11 @@ func (s *surface) pump(ctx context.Context, st *seat, publish connector.Publish)
 // in the client's home, written over whatever the connector said.
 //
 // A message that named no agent is untagged, and the place it is filed in
-// decides who answers it (untaggedFor). That default may be open: then every
-// agent available where the run is filed that the client may route to is
-// asked whether it takes the message, and each that does gets an event of its
-// own, so they answer in the same thread side by side, each posted and
-// streamed on its own. With none that takes it, or no default anywhere,
-// nothing goes further and the message waits for a person.
+// decides who answers it (untaggedFor). With no default there, or an open
+// one, it lands (land): on the entry agent, which answers or calls whoever
+// fits, and without one on the agents that take it, each with an event of
+// its own, so they answer in the same thread side by side, else on the best
+// match. It never waits for a person because no agent took it.
 //
 // The run acts for the person the client's team maps the surface's user to,
 // so it is held to what that person may do where it is filed (mayRaise),
@@ -255,22 +254,23 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag event.Envelope) []eve
 		}
 	}
 	if agent == "" {
-		if agent = s.p.untaggedFor(c, project, channel, from.SlackChannel); agent == "" {
-			s.p.log.Warn("platform: no default answers an untagged message where a client's run is filed", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "channel", channel, "event", tag.ID)
-			return nil
-		}
+		agent = s.p.untaggedFor(c, project, channel, from.SlackChannel)
 	}
 	type answer struct{ agent, id, picked string }
 	who := []answer{{agent: agent, id: tag.ID}}
-	if agent == Open {
-		joined, err := s.p.joinFor(ctx, c, s.p.clientPlace(c, project, channel, from.SlackChannel), wire.TextOf(tag))
+	if agent == "" || agent == Open {
+		landed, err := s.p.landFor(ctx, c, s.p.clientPlace(c, project, channel, from.SlackChannel), wire.TextOf(tag))
 		if err != nil {
-			s.p.log.Info("platform: no agent took a client's message", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "event", tag.ID, "why", err.Error())
+			s.p.log.Warn("platform: no agent may answer a client's message where its run is filed", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "channel", channel, "event", tag.ID, "why", err.Error())
 			return nil
 		}
 		who = who[:0]
-		for _, d := range joined {
-			who = append(who, answer{agent: d.Agent, id: joinedTagID(tag.ID, d.Agent), picked: joinedReason(d)})
+		for _, d := range landed {
+			id := tag.ID
+			if d.Picked != "" {
+				id = joinedTagID(tag.ID, d.Agent)
+			}
+			who = append(who, answer{agent: d.Agent, id: id, picked: d.Picked})
 		}
 	}
 	var out []event.Envelope
@@ -563,6 +563,33 @@ func automationChannel(rule clients.GitHubAutomation, kind string, body []byte) 
 	return ""
 }
 
+// autoReviewTag asks the connection's default agent to review a pull request
+// at one commit: the commits after from, or the whole pull request when from
+// is empty. Its id names the commit, so the pull request opening and a
+// redelivery of it start one review, and each push starts its own. The text
+// holds only identifiers: the reviewer reads the pull request with its tools.
+func autoReviewTag(c clients.Client, kind string, req clients.AutoReviewRequest, from string) event.Envelope {
+	owner, repo, _ := strings.Cut(req.Repository, "/")
+	number := strconv.Itoa(req.Number)
+	channel := address.Address{Connector: "github", Workspace: owner, Path: []string{repo, "pull", number}}.WithParam("head_sha", req.SHA)
+	return wire.NewEvent(wire.Raise{
+		ID:     "autoreview/" + url.PathEscape(c.ID) + "/" + url.PathEscape(strings.ToLower(req.Repository)) + "/" + number + "/" + req.SHA,
+		Tenant: c.Tenant, Origin: "github", Agent: c.DefaultAgent,
+		Channel: channel.String(),
+		Text:    autoReviewText(req, from),
+		At:      time.Now().UTC(),
+		Context: map[string]string{wire.MetaGitHubEvent: kind, wire.MetaGitHubOwner: owner, wire.MetaGitHubRepo: repo},
+	})
+}
+
+func autoReviewText(req clients.AutoReviewRequest, from string) string {
+	number := strconv.Itoa(req.Number)
+	if from == "" {
+		return "Review pull request #" + number + " in " + req.Repository + " at commit " + req.SHA + "."
+	}
+	return "Review the commits pushed to pull request #" + number + " in " + req.Repository + " after " + from + ", up to " + req.SHA + ". Earlier commits were reviewed already."
+}
+
 // hand passes a request to one client's connector, which verifies it again
 // with the same secret before it parses anything.
 func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []byte) {
@@ -593,6 +620,30 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 						if _, err := s.p.Invoke(r.Context(), raised); err != nil {
 							http.Error(w, "automation admission failed", http.StatusServiceUnavailable)
 							return
+						}
+					}
+				}
+				if repo, number, ok := current.MentionOnPullRequest(kind, body); ok {
+					if err := s.p.resumeAutoReview(current, repo, number); err != nil {
+						http.Error(w, "automatic review could not resume", http.StatusServiceUnavailable)
+						return
+					}
+				}
+				if req, ok := current.MatchAutoReview(kind, body); ok {
+					from, review, paused, err := s.p.planAutoReview(current, req)
+					if err != nil {
+						http.Error(w, "automatic review could not be planned", http.StatusServiceUnavailable)
+						return
+					}
+					if paused {
+						s.p.log.Info("automatic review paused", "client", current.ID, "repository", req.Repository, "pull", req.Number, "pushes", AutoReviewPushes)
+					}
+					if review {
+						for _, raised := range s.stamp(r.Context(), st, autoReviewTag(current, kind, req, from)) {
+							if _, err := s.p.Invoke(r.Context(), raised); err != nil {
+								http.Error(w, "automatic review admission failed", http.StatusServiceUnavailable)
+								return
+							}
 						}
 					}
 				}

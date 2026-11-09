@@ -217,8 +217,9 @@ type Project struct {
 	// Announce is the lowest role that may post an announcement here. ""
 	// reads as owner.
 	Announce Role `json:"announce,omitempty"`
-	// Agents is what the project turns on: which agents are available here
-	// and below, and which answers a message that tags none.
+	// Agents is the project's agent policy: its allow list, and on the root
+	// the workspace default. Any agent answers in any project the allow
+	// lists permit.
 	Agents Agents `json:"agents"`
 	// Knowledge is the knowledge sources every run filed here and below is
 	// grounded in, besides its agent's own (Tree.Knowledge).
@@ -226,6 +227,9 @@ type Project struct {
 	// Skills are named instructions a message posted here and below can
 	// tell an agent to use (Tree.Skills).
 	Skills []Skill `json:"skills,omitempty"`
+	// Context is what every session filed here and below is given besides
+	// its instructions: the corpora it searches (Tree.Corpora).
+	Context Context `json:"context,omitzero"`
 
 	Template   string `json:"template,omitempty"`
 	Initiative bool   `json:"initiative,omitempty"`
@@ -263,6 +267,7 @@ func (p Project) clone() Project {
 	p.Agents = p.Agents.clone()
 	p.Knowledge = slices.Clone(p.Knowledge)
 	p.Skills = slices.Clone(p.Skills)
+	p.Context = p.Context.clone()
 	return p
 }
 
@@ -340,7 +345,7 @@ func builtIn(k Kind) bool { return k == Company || k == Team || k == Account }
 
 // retiredField names fields projects no longer have. A stored project may still
 // list one as the file's; reading it drops the name. approve_reviews went when
-// agents stopped approving pull requests (RFC 0009).
+// agents stopped approving pull requests.
 var retiredField = map[string]bool{"approve_reviews": true}
 
 var validField = map[string]bool{
@@ -419,6 +424,9 @@ func (p Project) validate() error {
 		return err
 	}
 	if err := validSkills(p.Skills); err != nil {
+		return err
+	}
+	if err := validContext(p.Context); err != nil {
 		return err
 	}
 	return p.Agents.validate()
