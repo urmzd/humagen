@@ -27,6 +27,20 @@ import (
 // else on lead's spec.
 func judged(t *testing.T, shape func(*wire.AgentSpec), answers ...string) (*platform.Platform, *cast, runs.Run) {
 	t.Helper()
+	var script [][]saigetypes.Delta
+	if answers != nil {
+		script = [][]saigetypes.Delta{}
+		for _, a := range answers {
+			script = append(script, say(a))
+		}
+	}
+	return judgedBy(t, shape, script)
+}
+
+// judgedBy is judged with the approval agent's model scripted turn by turn,
+// tool calls included.
+func judgedBy(t *testing.T, shape func(*wire.AgentSpec), script [][]saigetypes.Delta) (*platform.Platform, *cast, runs.Run) {
+	t.Helper()
 	c := &cast{continues: true,
 		says: map[string][][]saigetypes.Delta{
 			"lead":   {say("Hello."), tagging("helper", "Check it."), say("Done.")},
@@ -37,10 +51,8 @@ func judged(t *testing.T, shape func(*wire.AgentSpec), answers ...string) (*plat
 		shape: map[string]func(*wire.AgentSpec){"lead": shape},
 	}
 	cfg := platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}, OfflineHooks: true}
-	if answers != nil {
-		for _, a := range answers {
-			c.says[platform.BuiltinApprover] = append(c.says[platform.BuiltinApprover], say(a))
-		}
+	if script != nil {
+		c.says[platform.BuiltinApprover] = script
 		cfg.TestBuiltinProvider, cfg.TestBuiltinModel = "offline", "offline"
 	}
 	p := stage(t, c, cfg)
@@ -147,7 +159,7 @@ func TestTheApprovalAgentAllowsACallInASessionSetToRun(t *testing.T) {
 
 // A denial stops the call, and the agent is told why.
 func TestTheApprovalAgentDeniesWithAReasonTheAgentReads(t *testing.T) {
-	p, _, first := judged(t, selfApproving, `{"decision": "deny", "reason": "Nobody asked for helper."}`)
+	p, _, first := judged(t, selfApproving, `{"decision": "deny", "reason": "Nobody asked for helper.", "references": ["admin: Check it"]}`)
 	if _, err := p.SetApprovalMode(admin, first.Thread, threads.ApprovalAuto); err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +179,7 @@ func TestTheApprovalAgentDeniesWithAReasonTheAgentReads(t *testing.T) {
 // session asked; each hand-off is audited with why.
 func TestWhatTheApprovalAgentDoesNotDecideWaitsForAPerson(t *testing.T) {
 	for name, answers := range map[string][]string{
-		"ask":               {`{"decision": "ask", "reason": "It reaches another team."}`},
+		"ask":               {`{"decision": "ask", "reason": "It reaches another team.", "references": []}`},
 		"unreadable":        {""},
 		"no approval agent": nil,
 	} {
@@ -197,7 +209,7 @@ func TestRunLeavesWhatTheAgentAlwaysAsksAbout(t *testing.T) {
 	p, c, first := judged(t, func(s *wire.AgentSpec) {
 		s.SelfApproval = true
 		s.Approvals = []string{platform.ToolCallAgent}
-	}, `{"decision": "allow", "reason": "Fine."}`)
+	}, `{"decision": "allow", "reason": "Fine.", "references": []}`)
 	if _, err := p.SetApprovalMode(admin, first.Thread, threads.ApprovalAuto); err != nil {
 		t.Fatal(err)
 	}

@@ -25,6 +25,7 @@ create the default client, `default-github`:
 | `HUMAGEN_GITHUB_READ_REPOSITORIES` | `github.read_repositories` |
 | `HUMAGEN_GITHUB_LOGIN` | `github.login` |
 | `HUMAGEN_GITHUB_DEFAULT_AGENT` | `default_agent` |
+| `HUMAGEN_GITHUB_ASKERS` | `github.askers`: the only logins whose mentions, reviews and pull requests are acted on, comma separated. Optional |
 | `HUMAGEN_GITHUB_AUTO_REVIEW` | `github.auto_review.enabled`: `false` switches automatic review off. Unset, it is on |
 | `HUMAGEN_GITHUB_AUTO_REVIEW_REPOSITORIES` | `github.auto_review.repositories`, as `owner/repo=on` or `owner/repo=off` pairs, comma separated |
 
@@ -34,6 +35,25 @@ refuses to start while it is set. Use [Automatic review](#automatic-review).
 The default client may route to any agent. One created through the API routes
 to its default agent and its `agents` list, and an event rule or a bot that
 names any other agent is refused when the client is saved.
+
+## Who may ask
+
+On a public repository anyone can comment, so the client acts only on people
+who may ask: those GitHub says can write to the repository (its owner, a
+member of its organization or a collaborator, read from the payload's
+`author_association`) and people the client maps (`github.people`). A
+comment, a review or a pull request from anyone else starts nothing, its
+event rules included, and the log says why. An issue from them still meets
+the client's event rules, which are written to read issues, but asks no
+agent. A review request counts as its requester's, since only people with
+write access may request one.
+
+`github.askers` (`HUMAGEN_GITHUB_ASKERS`, comma separated) narrows this to
+the logins it lists:
+
+```sh
+export HUMAGEN_GITHUB_ASKERS=octocat,hubot
+```
 
 ## Who a comment asks
 

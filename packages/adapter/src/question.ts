@@ -4,6 +4,7 @@ import {
   type BudgetGrant,
   type Clarification,
   type Interrupt,
+  type Judgement,
   type UiAction,
 } from "@humagen/core";
 
@@ -40,6 +41,33 @@ export interface WireQuestion {
   hold?: { id: string; topic?: string; data?: unknown };
   /** A `budget` inbox part's limit, as the platform keeps it on the part. */
   budget?: WireBudget;
+  /** What the approval agent said about an approval, as an inbox part keeps it. */
+  judgement?: WireJudgement;
+}
+
+/** The approval agent's judgement as the platform sends it (`InboxJudgement`). */
+export interface WireJudgement {
+  decision: string;
+  reason: string;
+  references?: string[];
+  fields?: { name: string; label: string; value: string }[];
+  run?: string;
+}
+
+/** A judgement ready to show, or nothing when it is not one of the three decisions. */
+export function judgementOf(j: WireJudgement): Judgement | undefined {
+  const decision = j.decision;
+  if (decision !== "allow" && decision !== "ask" && decision !== "deny") return undefined;
+  const references = (j.references ?? []).filter(Boolean);
+  const fields = (j.fields ?? [])
+    .filter((f) => f.value)
+    .map((f) => ({ label: f.label || f.name, value: f.value }));
+  return {
+    decision,
+    reason: j.reason,
+    ...(references.length > 0 ? { references } : {}),
+    ...(fields.length > 0 ? { fields } : {}),
+  };
 }
 
 /** A run held at a limit: the scope and limit, where it stood, and the grant. Money is in micro-USD. */
@@ -215,6 +243,7 @@ export function interruptOf(q: WireQuestion, settled?: Settled): Interrupt | nul
   switch (q.kind) {
     case "approval": {
       const args = argsOf(q);
+      const judgement = q.judgement ? judgementOf(q.judgement) : undefined;
       return {
         type: "approval",
         id: q.id,
@@ -224,6 +253,8 @@ export function interruptOf(q: WireQuestion, settled?: Settled): Interrupt | nul
         ...(q.expires_at ? { expiresAt: q.expires_at } : {}),
         // Every surface says a call that acts as the person does, and none offers an edit of it.
         ...(q.tool?.acts_for_person === true ? { actsForPerson: true } : {}),
+        // The approval agent's view, in a session set to Run, whatever it decided.
+        ...(judgement ? { judgement } : {}),
         // humagen: an editor for a tool's arguments from its schema, on web and in a Slack modal,
         // before `editable` can be offered. The API takes edited arguments already. Even then,
         // a call that acts as the person (`actsForPerson`) is never editable: only that

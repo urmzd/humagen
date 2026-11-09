@@ -88,15 +88,31 @@ export type Place = {
   url?: string;
   /** The origin as a reference, such as `slack://T/C/ts`: what `get_context` reads by default. */
   origin?: string;
-  audience: "dm" | "channel" | "private" | "shared";
+  audience: "dm" | "channel" | "publicChannel" | "privateChannel" | "group" | "private" | "shared";
 };
+
+/** Who a root's place was asked in front of, as the platform reports it (`MessageAudience`). */
+export type AudienceKind = "public" | "private" | "group" | "direct";
+
+/** The words for an audience the platform reported, at a place of `kind`. */
+export function audienceAt(kind: Place["kind"], audience: AudienceKind): Place["audience"] {
+  if (kind === "slack")
+    return audience === "public"
+      ? "publicChannel"
+      : audience === "private"
+        ? "privateChannel"
+        : audience === "group"
+          ? "group"
+          : "dm";
+  return audience === "public" ? "shared" : "private";
+}
 
 /**
  * A session's place, from its thread: a Slack thread by its surface (the
  * team, when known, opens it in Slack's web client), a PR, issue or schedule
- * by the root session's parent, or else the console. Slack audience is a DM
- * for a D-prefixed channel and a channel otherwise, until the platform says
- * which kind of channel it is.
+ * by the root session's parent, or else the console. Its audience is the one
+ * the platform reported for the place (`reported`), when it did; otherwise a
+ * Slack audience is a DM for a D-prefixed channel and a channel otherwise.
  */
 export function placeOf(
   thread: {
@@ -105,7 +121,15 @@ export function placeOf(
     visibility: "shared" | "private";
   },
   team = "",
+  reported?: AudienceKind,
 ): Place {
+  const place = guessPlace(thread, team);
+  return reported && place.kind !== "console"
+    ? { ...place, audience: audienceAt(place.kind, reported) }
+    : place;
+}
+
+function guessPlace(thread: Parameters<typeof placeOf>[0], team: string): Place {
   const s = thread.surface;
   if (s) {
     const dm = s.channel.startsWith("D");

@@ -14,8 +14,8 @@ import {
 } from "@humagen/core";
 import { ChevronRightIcon, MaximizeIcon } from "@humagen/render-web";
 import { Inspector } from "@humagen/web";
-import { useEffect, useRef, useState } from "react";
-import { api, call } from "./api.ts";
+import { type FormEvent, useEffect, useRef, useState } from "react";
+import { call } from "./api.ts";
 import { took, usd } from "./format.ts";
 import { Chips, inApp } from "./refChips.tsx";
 import type { ResponseSource } from "./responseSource.ts";
@@ -62,20 +62,29 @@ export function useResponse(source: ResponseSource | undefined) {
       setSaid(pending.current.join(". "));
       pending.current = [];
     };
+    const say = (what: string[]) => {
+      pending.current.push(...what);
+      if (pending.current.length && !timer)
+        timer = setTimeout(flush, Math.max(0, ANNOUNCE_MS - (Date.now() - last.current)));
+    };
     // Only a live stream is announced; a replayed one is read, not spoken.
     const speaks = !!source.live;
     const stop = source.open(
       (e) => {
         const before = snapshot(state.current);
         applyResponse(state.current, e);
-        if (speaks) {
-          pending.current.push(...changes(before as unknown as ResponseState, state.current));
-          if (pending.current.length && !timer)
-            timer = setTimeout(flush, Math.max(0, ANNOUNCE_MS - (Date.now() - last.current)));
-        }
+        if (speaks) say(changes(before as unknown as ResponseState, state.current));
         setVersion((v) => v + 1);
       },
       () => setEnded(true),
+      // The response read again: it replaces what came before, and what changed is said.
+      (events) => {
+        const next = emptyResponse();
+        for (const e of events) applyResponse(next, e);
+        say(changes(state.current, next));
+        state.current = next;
+        setVersion((v) => v + 1);
+      },
     );
     return () => {
       stop();
@@ -178,7 +187,11 @@ function Json({ value }: { value: unknown }) {
   );
 }
 
-/** A question waiting on a person, answered here. */
+/**
+ * A question waiting on a person, answered here: an approval by Approve or
+ * Deny, a choice by its options, a reply in words. Answered by the call it
+ * waits at, anywhere in the message's conversation.
+ */
 function Ask({
   tool,
   messageId,
@@ -190,30 +203,32 @@ function Ask({
 }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [text, setText] = useState("");
   const q = tool.question;
   if (!q) return null;
-  const choices = q.choices?.length ? q.choices : [words.approve, words.deny];
-  // A question that names its run is answered on that run, as the thread's
-  // own cards answer it; the message's answer route takes the rest.
-  const onRun = q.run && q.id ? { run: q.run, question: q.id } : undefined;
-  const canAnswer = !!onRun || !!messageId;
-  const answer = async (choice: string) => {
-    if (!canAnswer) return;
+  const approval = q.kind === "approval";
+  const options = approval
+    ? q.choices?.length
+      ? q.choices
+      : [words.approve, words.deny]
+    : (q.choices ?? []);
+  // A question with no options to pick from takes words.
+  const replies = !approval && options.length === 0;
+  type Body =
+    | { action: "approve" | "deny" }
+    | { action: "choose"; choice: string }
+    | { action: "reply"; text: string };
+  const send = async (body: Body) => {
+    if (!messageId) return;
     setBusy(true);
     setFailed(false);
-    const approval = q.kind === "approval";
-    const verdict = choice === choices[0] ? "approve" : "deny";
     try {
-      if (onRun)
-        await api.answer({
-          ...onRun,
-          body: approval ? { action: verdict } : { action: "choose", choice },
-        });
-      else
-        await call("POST", `/api/messages/${encodeURIComponent(messageId ?? "")}/answer`, {
-          tool_use_id: tool.id,
-          answer: approval ? verdict : choice,
-        });
+      await call("POST", `/api/messages/${encodeURIComponent(messageId)}/answer`, {
+        tool_use_id: tool.id,
+        answer: body,
+      });
+      setSent(true);
       onAnswered?.();
     } catch {
       setFailed(true);
@@ -221,25 +236,63 @@ function Ask({
       setBusy(false);
     }
   };
+  const pick = (option: string) =>
+    void send(
+      approval
+        ? { action: option === options[0] ? "approve" : "deny" }
+        : { action: "choose", choice: option },
+    );
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (text.trim()) void send({ action: "reply", text: text.trim() });
+  };
+  const control =
+    "inline-flex h-8 items-center rounded-aui border px-3 text-aui-xs focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50 pointer-coarse:h-11";
+  const first = "border-transparent bg-aui-fg text-aui-bg";
+  const rest = "border-aui-border text-aui-fg hover:bg-aui-hover";
   return (
     <fieldset
       aria-label={q.prompt}
       className="m-0 flex min-w-0 flex-col gap-2 rounded-aui border border-aui-border p-3"
     >
       <p className="text-aui-fg text-aui-sm">{q.prompt}</p>
-      <div className="flex flex-wrap gap-2">
-        {choices.map((c, i) => (
+      {sent ? (
+        <p className="text-aui-muted text-aui-xs" role="status">
+          {words.answerSent}
+        </p>
+      ) : replies ? (
+        <form onSubmit={submit} className="flex min-w-0 flex-col gap-2">
+          <textarea
+            aria-label={words.yourReply}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={2}
+            disabled={busy || !messageId}
+            className="min-h-16 w-full min-w-0 resize-y rounded-aui border border-aui-border bg-transparent p-2 text-aui-fg text-aui-sm focus-visible:outline-2 focus-visible:outline-aui-accent"
+          />
           <button
-            key={c}
-            type="button"
-            disabled={busy || !canAnswer}
-            onClick={() => void answer(c)}
-            className={`inline-flex h-8 items-center rounded-aui border px-3 text-aui-xs focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50 ${i === 0 ? "border-transparent bg-aui-fg text-aui-bg" : "border-aui-border text-aui-fg hover:bg-aui-hover"}`}
+            type="submit"
+            disabled={busy || !messageId || !text.trim()}
+            className={`${control} ${first} self-start`}
           >
-            {c}
+            {words.send}
           </button>
-        ))}
-      </div>
+        </form>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {options.map((o, i) => (
+            <button
+              key={o}
+              type="button"
+              disabled={busy || !messageId}
+              onClick={() => pick(o)}
+              className={`${control} ${approval && i === 0 ? first : rest}`}
+            >
+              {o}
+            </button>
+          ))}
+        </div>
+      )}
       {failed && <p className="text-aui-bad text-aui-xs">{words.answerFailed}</p>}
     </fieldset>
   );
@@ -493,7 +546,7 @@ export function ActivityLanes({
         agent={state.agent ?? ""}
         blocks={state.content}
         root
-        messageId={messageId}
+        messageId={messageId ?? state.id}
         onAnswered={onAnswered}
       />
     </div>

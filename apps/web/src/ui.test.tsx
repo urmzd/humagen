@@ -609,6 +609,68 @@ test("an approval of a call that acts as the person says only they may change it
   assert.match(other, />Edit</, "an approval that does not act as the person is drawn as it was");
 });
 
+test("an approval the approval agent judged shows its decision, reason and the workspace's own fields", () => {
+  const [raw] = wireMail().filter((m) => m.id === "m-approval");
+  assert.ok(raw);
+  const withQuestion = (change: (q: Record<string, unknown>) => Record<string, unknown>) =>
+    fromServer({
+      ...raw,
+      parts: (raw.parts as Record<string, unknown>[]).map((p) =>
+        p.type === "approval"
+          ? { ...p, question: change(p.question as Record<string, unknown>) }
+          : p,
+      ),
+    });
+
+  // Left for a person: the agent's view sits above the buttons, which stay.
+  const asked = mailbox("m-approval");
+  assert.match(asked, /<strong>Approval agent:<\/strong> Asked a person: &quot;A tag starts/);
+  for (const [label, value] of [
+    ["Risk", "high"],
+    ["Conditions", "only on main"],
+    ["Expires in", "3600"],
+  ] as const)
+    assert.match(asked, new RegExp(`<strong>${label}:</strong> ${value}`), label);
+  assert.match(asked, /Based on: Policy: releases need a person; git_push_tag pushes v2\.4\.1/);
+  assert.ok(asked.indexOf("Approval agent:") < asked.indexOf(">Approve<"), "read before deciding");
+
+  // Allowed by the agent: the record says who and when, and the reason is said once.
+  const reason = "The person asked for the 2.4.1 release.";
+  const allowed = withQuestion(({ judgement, ...q }) => ({
+    ...q,
+    judgement: { ...(judgement as object), decision: "allow", reason },
+  }));
+  const settled = {
+    ...allowed,
+    parts: allowed.parts.map((p) =>
+      p.type === "approval"
+        ? {
+            ...p,
+            approval: {
+              ...p.approval,
+              decision: {
+                kind: "approved" as const,
+                by: "Ada",
+                at: "2026-11-08T10:00:00Z",
+                reason: `Allowed by the approval agent: ${reason}`,
+              },
+            },
+          }
+        : p,
+    ),
+  };
+  const done = mailbox(settled.id, [settled]);
+  assert.match(done, /Allowed: &quot;The person asked for the 2\.4\.1 release\.&quot;/);
+  assert.equal(done.split("The person asked for the 2.4.1 release.").length - 1, 1);
+  assert.match(done, /<strong>Risk:<\/strong> high/);
+
+  // Without a judgement the card is as it was.
+  const bare = withQuestion(({ judgement: _, ...q }) => q);
+  const plain = mailbox(bare.id, [bare]);
+  assert.match(plain, />Approve</);
+  assert.doesNotMatch(plain, /Approval agent|Asked a person|Risk|Expires in|Based on/);
+});
+
 test("the run's own approval of a call that acts as the person says so too, from its events and from its record", () => {
   const question = (acts: boolean) => ({
     id: "q1",
@@ -2070,7 +2132,7 @@ test("what floats above the page is opaque, so nothing under a menu shows throug
 });
 
 test("agents shown together are told apart by color: humagen's own and the seeded agents each take a hue of their own", () => {
-  const builtin = ["humagen-analyst", "humagen-builder", "humagen-writer"];
+  const builtin = ["humagen-analyst", "humagen", "humagen-writer"];
   const seeded = ["helper", "lead", "intake", "triage"];
   const hues = [...builtin, ...seeded].map(hueOf);
   assert.equal(new Set(hues).size, hues.length, JSON.stringify(hues));

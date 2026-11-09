@@ -58,7 +58,7 @@ import { ResponseActivityPanel } from "./ResponseActivity.tsx";
 import { RunFeedbackHost } from "./RunFeedback.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
-import { runSource } from "./responseSource.ts";
+import { traceSource } from "./responseSource.ts";
 import { followRoom } from "./roomFollow.ts";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { SessionActions } from "./SessionActions.tsx";
@@ -1433,7 +1433,7 @@ export function ThreadRoom({
             const run = turns.find((t) => t.run?.id === shownView.run)?.run;
             return run ? (
               <ResponseActivityPanel
-                source={runSource(run)}
+                source={traceSource(run)}
                 leaving={leaving}
                 onClose={() => openPanel()}
               />

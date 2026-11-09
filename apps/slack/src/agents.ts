@@ -38,10 +38,11 @@ export const AUTO = "*";
 
 /**
  * The platform's agent that builds and changes agents with a person, each
- * change after someone approves it. Home offers Build an Agent only where
+ * change after someone approves it: the entry agent, humagen, which took over
+ * from the builder. Home offers Build an Agent only where
  * this app may reach it.
  */
-export const BUILDER = "humagen-builder";
+export const BUILDER = "humagen";
 
 /**
  * Whether this surface may route to an agent. Without a client, any agent in

@@ -695,6 +695,20 @@ anyone in the workspace approve, except the person who asked.
   answerers?: string[];
   /** The agent runs only when a message names it. It is never asked whether to take an untagged message. Off by default. */
   tagged_only?: boolean;
+  output?: AgentOutput;
+}
+
+/** The shape of the agent's answer. The model is asked for structured
+output under `schema`, and a model that cannot give it fails the run
+rather than answering in free text. The answer, checked against the
+schema, is kept on the run as `output`. The approval agent's schema
+must hold `decision` (a required string whose enum is drawn from
+allow, ask and deny) and `reason` (a required string); anything
+else in it is shown with the approval.
+ */
+export interface AgentOutput {
+  /** A JSON Schema for an object, at most 16 KiB. */
+  schema: Record<string, unknown>;
 }
 
 /** A class of model error that moves a call on to the next model. `any` cannot be combined with another. */
@@ -1257,6 +1271,12 @@ partial answer, what the agent had said when it stopped, which may
 be empty. It is never the whole answer when `status` is `stopped`.
  */
   answer?: string;
+  /** The answer as structured data, for an agent whose spec declares
+an `output` schema: the answer, checked against that schema.
+Absent for a free-text answer and for one that did not hold to
+the schema.
+ */
+  output?: Record<string, unknown>;
   outcome?: RunOutcome;
   sandbox?: RunSandboxRecord;
   memory?: RunMemoryUse[];
@@ -3041,6 +3061,30 @@ answering checks again.
   steered_for?: string;
   /** What the person in `steered_for` is called, their name, else their handle, never a subject that holds an address. Set with `steered_for`. */
   steered_for_name?: string;
+  judgement?: InboxJudgement;
+}
+
+/** What the approval agent said about an approval, once it was asked,
+whether it allowed the call, denied it or left it for a person.
+ */
+export interface InboxJudgement {
+  decision: "allow" | "ask" | "deny";
+  reason: string;
+  /** What the decision rests on. */
+  references?: string[];
+  /** What the workspace's own schema for the answer adds, such as a risk level, in the order the agent gave them. */
+  fields?: InboxJudgementField[];
+  /** The approval agent's run that decided. */
+  run?: string;
+}
+
+/** One field a workspace's schema adds to a judgement. */
+export interface InboxJudgementField {
+  /** The field's name in the schema. */
+  name: string;
+  /** How a person reads the name, such as `Expires in` for `expires_in`. */
+  label: string;
+  value: string;
 }
 
 /** A post an agent wrote for a project, waiting for one of its owners. */
@@ -3152,11 +3196,12 @@ export interface InboxChange {
   message: string;
   at: string;
   by?: string;
-  what: "raised" | "read" | "unread" | "resolved" | "dismissed" | "snoozed" | "withdrawn" | "delivered" | "unhidden" | "reminded" | "hidden" | "deleted" | "restored";
+  what: "raised" | "read" | "unread" | "resolved" | "dismissed" | "snoozed" | "withdrawn" | "delivered" | "unhidden" | "reminded" | "hidden" | "deleted" | "restored" | "judged";
   part?: string;
   action?: string;
   note?: string;
   until?: string;
+  judgement?: InboxJudgement;
 }
 
 /** What a person decided about a part. */
@@ -4022,6 +4067,8 @@ leaves draft, or gets a push, by the client's default agent.
 Left out, it is on. Labels start nothing.
  */
   auto_review?: GitHubOptionsAutoReview;
+  /** When set, the only GitHub logins whose mentions, reviews and pull requests the client acts on, among people with write access to the repository (owner, member or collaborator) and people it maps. */
+  askers?: string[];
   checks?: boolean;
   guides?: boolean;
   mutations?: boolean;
@@ -4849,8 +4896,8 @@ export interface MessageTrace {
 }
 
 /** One run and what it did, each as the caller may see it: the tools it
-called, the context it pulled with get_context, the sources it cited
-and the approvals it waited on.
+called, the context it pulled with get_context, the sources it cited,
+the approvals it waited on and the questions it asked a person.
  */
 export interface TraceNode {
   run: string;
@@ -4875,6 +4922,7 @@ export interface TraceNode {
   /** The run's citations as the caller is shown them. */
   sources: TraceSource[];
   approvals: TraceApproval[];
+  questions: TraceQuestion[];
   /** The runs it called, and for a pick the answers it led to, in the order they started. */
   children: TraceNode[];
 }
@@ -4932,6 +4980,27 @@ export interface TraceContext {
 export interface TraceSource {
   title: string;
   url?: string;
+}
+
+/** A question a run asked a person with ask_person, as the caller may see
+it: a choice among options, or a reply in words. Answer it with
+answerToolUse and `tool`.
+ */
+export interface TraceQuestion {
+  /** The question's id. */
+  id: string;
+  /** The id of the call that asked it, htu_<run>_<n>. */
+  tool?: string;
+  kind: "choice" | "reply";
+  prompt: string;
+  options: string[];
+  /** asked while it waits; expired when nobody answered in time and its default stood; closed when its run ended first. */
+  status: "asked" | "answered" | "expired" | "closed";
+  /** The choice or the reply. */
+  answer?: string;
+  /** Who answered, by name. */
+  by?: string;
+  at?: string;
 }
 
 /** An action a run waited on a person for, and how it was decided. ask is one still waiting. */

@@ -210,7 +210,8 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 /** The platform's own agents the console offers ways into. */
 export const BUILTIN_ANALYST = "humagen-analyst";
-export const BUILTIN_BUILDER = "humagen-builder";
+/** The helper that builds agents with you: the entry agent, which took over from the builder. */
+export const BUILTIN_BUILDER = "humagen";
 
 function greeting(name: string): string {
   const h = new Date().getHours();

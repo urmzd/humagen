@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.106.0 (2026-11-09)
+
+### Features
+
+- **web**: answer in Activity by the call that waits, on the message (#301) ([4bc3e43](https://github.com/urmzd/humagen/commit/4bc3e43562c614f88bed2a75649fd916d6109881))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.105.0...v0.106.0)
+
+
+## 0.103.0 (2026-11-09)
+
+### Features
+
+- **messages**: trace what ran to answer a message (#297) ([58645d6](https://github.com/urmzd/humagen/commit/58645d65e05e2eb184b8083019ad560ccf7d0604))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.102.0...v0.103.0)
+
+
 ## 0.102.0 (2026-11-09)
 
 ### Features

@@ -38,7 +38,7 @@ import { ThreadRoom, topicsOf } from "./Room.tsx";
 import { RunFeedbackHost } from "./RunFeedback.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
-import { runSource } from "./responseSource.ts";
+import { traceSource } from "./responseSource.ts";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { Scroller } from "./Scroller.tsx";
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
@@ -286,7 +286,7 @@ export const STARTERS: Starter[] = [
     label: "How are my agents doing?",
     text: "How did my agents do today?",
   },
-  { agent: "humagen-builder", label: "Build an agent", text: "Help me build an agent that " },
+  { agent: "humagen", label: "Build an agent", text: "Help me build an agent that " },
   { agent: "humagen-writer", label: "Write a report", text: "Write a one-page report on " },
   { agent: "code-reviewer", label: "Review a pull request", text: "Review the pull request " },
 ];
@@ -1249,7 +1249,7 @@ export function Chat({
             const run = turns.find((t) => t.id === shownView.run);
             return run ? (
               <ResponseActivityPanel
-                source={runSource(run)}
+                source={traceSource(run)}
                 leaving={leaving}
                 onClose={() => openPanel()}
               />

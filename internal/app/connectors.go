@@ -41,6 +41,10 @@ const (
 	EnvGitHubInstallation     = "HUMAGEN_GITHUB_INSTALLATION"
 	EnvGitHubBots             = "HUMAGEN_GITHUB_BOTS"
 	EnvGitHubChecks           = "HUMAGEN_GITHUB_CHECKS"
+	// EnvGitHubAskers, when set, are the only GitHub logins whose mentions,
+	// reviews and pull requests the client acts on, among people with write
+	// access to the repository and people it maps.
+	EnvGitHubAskers = "HUMAGEN_GITHUB_ASKERS"
 	// EnvGitHubAutoReview switches automatic review of pull requests off
 	// (false) or on; unset, it is on. EnvGitHubAutoReviewRepositories turns
 	// it on or off for single repositories, as owner/repo=on|off pairs.
@@ -264,7 +268,7 @@ func githubClient(env func(string) string) (*platform.ClientInput, error) {
 	if len(list(env(EnvGitHubOwners))) == 0 {
 		return nil, fmt.Errorf("GitHub installation needs $%s", EnvGitHubOwners)
 	}
-	opts := &clients.GitHubOptions{ReadRepositories: list(env(EnvGitHubReadRepositories)), Login: env(EnvGitHubLogin)}
+	opts := &clients.GitHubOptions{ReadRepositories: list(env(EnvGitHubReadRepositories)), Login: env(EnvGitHubLogin), Askers: list(env(EnvGitHubAskers))}
 	var err error
 	if opts.Mutations, err = boolEnv(env, EnvGitHubMutations); err != nil {
 		return nil, err
