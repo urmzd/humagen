@@ -37,7 +37,7 @@ import {
   type ProjectView,
   type ThreadSummary,
 } from "./api.ts";
-import { type Branding, servedBranding } from "./branding.ts";
+import { agentShown, type Branding, servedBranding } from "./branding.ts";
 import {
   age,
   GROUP_ROWS,
@@ -1284,7 +1284,7 @@ export function Sidebar({
                                 { value: "", label: "Any" },
                                 ...answering.map((a) => ({
                                   value: a,
-                                  label: a,
+                                  label: agentShown(a),
                                   mark: <AgentMark name={a} size={12} />,
                                 })),
                               ]}

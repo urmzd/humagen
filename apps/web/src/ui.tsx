@@ -13,6 +13,7 @@ import {
 import { AgentInitials, AgentOrb, type OrbState, usePresence } from "@humagen/web";
 import { createPortal } from "react-dom";
 import { agentHue, requestAgentHue, subscribeHues } from "./agentHues.ts";
+import { agentShown } from "./branding.ts";
 import { builtinAgentKey } from "./legacy.ts";
 
 export { Presence, usePresence } from "@humagen/web";
@@ -690,7 +691,8 @@ export function AgentTint({
  * tells an agent from a person. The same mark sits beside its answers, where
  * the glow breathes and the orb moves while the agent works, so the mark in a
  * list and the presence in a conversation are one thing. Below 16px there is
- * no room for letters, and the mark is the orb alone.
+ * no room for letters, and the mark is the orb alone. The entry agent's
+ * letters are the workspace's name's, in its own color.
  */
 export function AgentMark({
   name,
@@ -713,7 +715,7 @@ export function AgentMark({
       style={{ "--aui-accent-h": hueOf(name) } as CSSProperties}
     >
       {size >= 16 ? (
-        <AgentInitials name={name} state={state} size={size} />
+        <AgentInitials name={agentShown(name)} state={state} size={size} />
       ) : (
         <AgentOrb state={state} size={size} label="" />
       )}

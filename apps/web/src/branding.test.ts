@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { accentAttribute, applyCopy, brandCopy, servedBranding } from "./branding.ts";
+import {
+  accentAttribute,
+  agentShown,
+  applyCopy,
+  brandCopy,
+  servedBranding,
+  setEntryAgent,
+} from "./branding.ts";
 import { documentTitle } from "./route.ts";
 
 test("the workspace accent, and no choice yet, draw with the branded accent", () => {
@@ -68,4 +75,15 @@ test("a tab title follows the workspace's words for the page", async () => {
   } finally {
     defaultCopy.navigation.agents = was;
   }
+});
+
+test("the entry agent is shown by the workspace's name, every other agent by its own", () => {
+  setEntryAgent("", "");
+  assert.equal(agentShown("humagen"), "humagen");
+  brandCopy({}, { ...servedBranding("Acme"), entry_agent: "humagen" });
+  assert.equal(agentShown("humagen"), "Acme");
+  assert.equal(agentShown("billing"), "billing");
+  brandCopy({}, { ...servedBranding("Acme"), entry_agent: "front-desk" });
+  assert.equal(agentShown("front-desk"), "Acme");
+  assert.equal(agentShown("humagen"), "humagen");
 });
