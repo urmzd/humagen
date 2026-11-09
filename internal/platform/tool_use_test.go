@@ -4,7 +4,11 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/urmzd/saige/agent/agenttest"
+	saigetypes "github.com/urmzd/saige/agent/types"
+
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 )
@@ -51,5 +55,48 @@ func TestAnApprovalIsAnsweredByItsToolUseID(t *testing.T) {
 	}
 	if again, err := p.AnswerToolUse(ctx, admin, v.ID, write, platform.QuestionAnswer{Action: platform.ActDeny}); err != nil || again.Parts[0].Outcome == nil || again.Parts[0].Outcome.Action != platform.ActApprove {
 		t.Fatalf("answering again = %+v, %v; want the recorded approval", again, err)
+	}
+}
+
+// A question an agent asks a person shows in its message's trace while it
+// waits, with the call that asked it, and is answered by that call's id; the
+// trace then shows the answer and who gave it.
+func TestAWaitingQuestionShowsInTheTraceAndIsAnsweredByItsCall(t *testing.T) {
+	c := &cast{continues: true, says: map[string][][]saigetypes.Delta{
+		"lead": {agenttest.ToolCallResponse("ask-1", "ask_person", map[string]any{"question": "Ship today?", "options": []any{"yes", "no"}}), say("Shipping today.")},
+	}, tools: map[string][]string{"lead": {"ask_person"}}}
+	p := stage(t, c, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
+	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}})
+	seePeople(t, p, admin)
+	ctx := t.Context()
+	v, err := p.StartSession(ctx, admin, platform.SessionInput{Project: "~", Text: "@lead ship the release"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lead runs.Run
+	within(t, "lead asked its question", func() bool {
+		r, ok := runOf(p, tenant, "lead")
+		lead = r
+		return ok && r.Status == runs.Parked && r.Question != nil
+	})
+	questionFor(t, p, lead.ID)
+	asked := func() platform.TraceQuestion {
+		t.Helper()
+		tr, err := p.MessageTrace(ctx, admin, v.ID)
+		if err != nil || len(tr.Nodes) != 1 || len(tr.Nodes[0].Questions) != 1 {
+			t.Fatalf("trace = %+v, %v", tr, err)
+		}
+		return tr.Nodes[0].Questions[0]
+	}
+	q := asked()
+	if q.Tool != "htu_"+lead.ID+"_1" || q.Kind != "choice" || q.Prompt != "Ship today?" || len(q.Options) != 2 || q.Status != platform.TraceAsked || q.Answer != "" {
+		t.Fatalf("the waiting question = %+v", q)
+	}
+	if _, err := p.AnswerToolUse(ctx, admin, v.ID, q.Tool, platform.QuestionAnswer{Action: platform.ActChoose, Choice: "yes"}); err != nil {
+		t.Fatal(err)
+	}
+	await(t, p, lead.ID, runs.Completed)
+	if q := asked(); q.Status != platform.TraceAnswered || q.Answer != "yes" || q.By == "" {
+		t.Fatalf("the answered question = %+v", q)
 	}
 }

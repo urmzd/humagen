@@ -83,6 +83,7 @@ type TraceNode struct {
 	Context   []TraceContext  `json:"context"`
 	Sources   []TraceSource   `json:"sources"`
 	Approvals []TraceApproval `json:"approvals"`
+	Questions []TraceQuestion `json:"questions"`
 	Children  []TraceNode     `json:"children"`
 }
 
@@ -133,6 +134,32 @@ type TraceSource struct {
 	Title string `json:"title"`
 	URL   string `json:"url,omitempty"`
 }
+
+// TraceQuestion is a question a run asked a person with ask_person: a choice
+// among options, or a reply in words, as the reader may see it. Tool is the
+// id of the call that asked it, which POST /api/messages/{id}/answer takes.
+// Status is asked while it waits, then answered, expired (nobody answered in
+// time, so its default stood) or closed (its run ended first). Answer is the
+// choice or the reply, and By who gave it, by name.
+type TraceQuestion struct {
+	ID      string    `json:"id"`
+	Tool    string    `json:"tool,omitempty"`
+	Kind    string    `json:"kind"`
+	Prompt  string    `json:"prompt"`
+	Options []string  `json:"options"`
+	Status  string    `json:"status"`
+	Answer  string    `json:"answer,omitempty"`
+	By      string    `json:"by,omitempty"`
+	At      time.Time `json:"at,omitzero"`
+}
+
+// How a question stands, as a trace shows it.
+const (
+	TraceAsked    = "asked"
+	TraceAnswered = "answered"
+	TraceExpired  = "expired"
+	TraceClosed   = "closed"
+)
 
 // TraceApproval is an action a run waited on a person for, and how it was
 // decided: allowed, denied, or still asked. By is who decided, by name.
@@ -343,7 +370,7 @@ func (t *tracer) pick(pk Pick) TracePick {
 func (t *tracer) node(r runs.Run, pick *TracePick) TraceNode {
 	shown := t.p.ShownRunAs(t.who, r)
 	n := TraceNode{Run: r.ID, Agent: r.Agent, Status: string(r.Status), StartedAt: r.CreatedAt.UTC(), Pick: pick, Cost: r.Spent,
-		Tools: []TraceTool{}, Context: []TraceContext{}, Sources: []TraceSource{}, Approvals: []TraceApproval{}, Children: []TraceNode{}}
+		Tools: []TraceTool{}, Context: []TraceContext{}, Sources: []TraceSource{}, Approvals: []TraceApproval{}, Questions: []TraceQuestion{}, Children: []TraceNode{}}
 	end := t.now
 	if r.Status.Terminal() {
 		n.EndedAt, end = r.UpdatedAt.UTC(), r.UpdatedAt
@@ -443,6 +470,16 @@ func (t *tracer) activity(n *TraceNode, r runs.Run) {
 	approvals := map[string]*TraceApproval{}
 	gates := map[*TraceApproval]string{}
 	var asked []*TraceApproval
+	// A question ask_person asked is at the latest ask_person call before
+	// it (questionsAt), whoever reads.
+	askedAt := map[string]string{}
+	for call, ids := range questionsAt(held) {
+		for _, id := range ids {
+			askedAt[id] = call
+		}
+	}
+	questions := map[string]*TraceQuestion{}
+	var posed []*TraceQuestion
 	for _, e := range held {
 		if !t.p.CitationEventVisible(t.who, e) {
 			continue
@@ -480,7 +517,27 @@ func (t *tracer) activity(n *TraceNode, r runs.Run) {
 			}
 		case event.TypeParked:
 			var d lifecycleData
-			if !shown || json.Unmarshal(v.Data, &d) != nil || d.Question == nil || d.Question.Kind != event.QuestionApproval || d.Question.ID == "" {
+			if !shown || json.Unmarshal(v.Data, &d) != nil || d.Question == nil || d.Question.ID == "" {
+				continue
+			}
+			if k := d.Question.Kind; k == event.QuestionChoice || k == event.QuestionReply {
+				if _, ok := questions[d.Question.ID]; !ok {
+					q := &TraceQuestion{ID: d.Question.ID, Kind: k, Prompt: d.Question.Prompt, Options: slices.Clone(d.Question.Options), Status: TraceAsked, At: d.Question.At}
+					if q.Options == nil {
+						q.Options = []string{}
+					}
+					if q.At.IsZero() {
+						q.At = e.Time
+					}
+					if call, ok := askedAt[q.ID]; ok {
+						q.Tool = toolUseID(r.ID, seqs[call])
+					}
+					questions[q.ID] = q
+					posed = append(posed, q)
+				}
+				continue
+			}
+			if d.Question.Kind != event.QuestionApproval {
 				continue
 			}
 			if _, ok := approvals[d.Question.ID]; ok {
@@ -505,6 +562,9 @@ func (t *tracer) activity(n *TraceNode, r runs.Run) {
 			}
 			if a := approvals[d.Answer.QuestionID]; a != nil && a.Decision == TraceAsk {
 				t.decided(a, outcomeOf(*d.Answer, e.Time), d.Answer.Decision)
+			}
+			if q := questions[d.Answer.QuestionID]; q != nil && q.Status == TraceAsked {
+				t.answered(q, outcomeOf(*d.Answer, e.Time), cmpOr(d.Answer.Choice, d.Answer.Text))
 			}
 		case event.TypeUsageCall:
 			if b, ok := e.Data.(event.UsageCall); ok && b.Model != "" {
@@ -545,6 +605,19 @@ func (t *tracer) activity(n *TraceNode, r runs.Run) {
 			}
 		}
 		n.Tools = append(n.Tools, tool)
+	}
+	for _, q := range posed {
+		if q.Status == TraceAsked && r.Status.Terminal() {
+			t.closed(q, r.ID)
+		}
+		if len(n.Questions) == maxTraceTools {
+			t.truncated = true
+			break
+		}
+		if !q.At.IsZero() {
+			q.At = q.At.UTC()
+		}
+		n.Questions = append(n.Questions, *q)
 	}
 	for _, a := range asked {
 		if a.Decision == TraceAsk && r.Status.Terminal() {
@@ -640,6 +713,41 @@ func (t *tracer) decided(a *TraceApproval, o inbox.Outcome, decision string) {
 	a.Note, a.At = o.Note, o.At
 	if o.By != "" && o.By != "system" {
 		a.By = t.names.name(o.By)
+	}
+}
+
+// answered records how a question was answered: the choice or the reply,
+// who gave it, or that nobody did in time and its default stood.
+func (t *tracer) answered(q *TraceQuestion, o inbox.Outcome, answer string) {
+	q.Status, q.Answer, q.At = TraceAnswered, answer, o.At
+	switch o.Action {
+	case OutcomeExpired:
+		q.Status = TraceExpired
+	case OutcomeStopped:
+		q.Status, q.Answer = TraceClosed, ""
+		return
+	}
+	if q.Answer == "" && (o.Action == ActChoose || o.Action == ActReply) {
+		q.Answer = o.Note
+	}
+	if o.By != "" && o.By != "system" {
+		q.By = t.names.name(o.By)
+	}
+}
+
+// closed records how a question its run ended without an answer to was
+// settled: answered in its message, or closed when the run ended.
+func (t *tracer) closed(q *TraceQuestion, run string) {
+	q.Status = TraceClosed
+	m, ok := t.p.Inbox.ByKey(t.who.Tenant, questionKey(run, q.ID))
+	if !ok {
+		return
+	}
+	for _, part := range m.Parts {
+		if part.Question != nil && part.Outcome != nil {
+			t.answered(q, *part.Outcome, "")
+			return
+		}
 	}
 }
 
