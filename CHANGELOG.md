@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.106.0 (2026-11-09)
+
+### Features
+
+- **web**: answer in Activity by the call that waits, on the message (#301) ([4bc3e43](https://github.com/urmzd/humagen/commit/4bc3e43562c614f88bed2a75649fd916d6109881))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.105.0...v0.106.0)
+
+
 ## 0.103.0 (2026-11-09)
 
 ### Features
