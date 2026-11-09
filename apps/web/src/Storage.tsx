@@ -422,8 +422,8 @@ export function Storage({
 
   return (
     <Page
-      title={defaultCopy.conversation.deliverables}
-      lede="Documents, presentations and data from your projects, with their versions and the conversations that produced them."
+      // Named as the sidebar names it, with no line under it, as every list page is.
+      title={defaultCopy.navigation.artifacts}
     >
       {store.use && <StorageUsed use={store.use} />}
       {over && <Problem message={OVER_LIMIT} />}
