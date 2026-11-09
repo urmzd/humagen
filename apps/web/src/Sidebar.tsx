@@ -47,6 +47,7 @@ import {
   type RowStanding,
   standingOf,
 } from "./conversationList.ts";
+import { daysAgo } from "./format.ts";
 import { sourceOf } from "./History.tsx";
 import { useMarks } from "./marks.ts";
 import { ConversationPeek, PeekCard, usePeek } from "./RowPreview.tsx";
@@ -287,8 +288,7 @@ function sourceGlyph(origin: string): ReactNode {
 
 /** Today, Yesterday or Earlier, by the reader's own calendar day. */
 export function recentDay(iso: string, now: Date): "today" | "yesterday" | "earlier" {
-  const start = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const days = Math.round((start(now) - start(new Date(iso))) / 86_400_000);
+  const days = daysAgo(iso, now.getTime());
   return days <= 0 ? "today" : days === 1 ? "yesterday" : "earlier";
 }
 

@@ -36,7 +36,7 @@ import {
 } from "react";
 import type { Run } from "./adapter.ts";
 import { skillRefs } from "./commands.ts";
-import { dollars, elapsed, took } from "./format.ts";
+import { ago, dollars, elapsed, took } from "./format.ts";
 import { moreOf, nudgeInto, revealAt } from "./layout.ts";
 import { href } from "./route.ts";
 
@@ -123,23 +123,8 @@ export function Chip({ children }: { children: ReactNode }) {
   );
 }
 
-const units: [Intl.RelativeTimeFormatUnit, number][] = [
-  ["day", 86_400],
-  ["hour", 3_600],
-  ["minute", 60],
-];
-const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-
-export function ago(iso: string): string {
-  const seconds = Math.round((Date.parse(iso) - Date.now()) / 1000);
-  for (const [unit, size] of units) {
-    if (Math.abs(seconds) >= size) return relative.format(Math.round(seconds / size), unit);
-  }
-  return "just now";
-}
-
 // Formatting with no React in it lives in format.ts, so plain modules and their tests can use it too.
-export { cause, elapsed, isEnded, took, usd } from "./format.ts";
+export { ago, cause, elapsed, isEnded, took, usd } from "./format.ts";
 
 /**
  * Every page sits in the same left-aligned column, so the title and the first
