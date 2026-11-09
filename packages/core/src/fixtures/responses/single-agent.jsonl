@@ -1,0 +1,21 @@
+{"type":"message_start","t_ms":0,"message":{"id":"msg_single","role":"assistant","content":[],"humagen":{"request_id":"m_1","root_run":"r_sec","agent":"security-reviewer","ref":"slack://T1/C1/1700000000.000100","trace_url":"/messages/msg_single"}}}
+{"type":"content_block_start","t_ms":40,"index":0,"content_block":{"type":"server_tool_use","id":"htu_r_sec_1","name":"get_context","kind":"context","title":"Read the thread","input":{}}}
+{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"request\":\"what did people say"}}
+{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":" about session tokens\"}"}}
+{"type":"content_block_stop","t_ms":60,"index":0}
+{"type":"humagen.tool_status","t_ms":61,"tool_use_id":"htu_r_sec_1","path":["htu_r_sec_1"],"status":"running","elapsed_ms":0}
+{"type":"content_block_start","t_ms":900,"index":1,"content_block":{"type":"server_tool_result","tool_use_id":"htu_r_sec_1","is_error":false,"content":[{"type":"text","text":"Ana: we keep session tokens in localStorage.\nBo: is that OK?"},{"type":"search_result","source":"https://app.slack.com/client/T1/C1/thread/C1-1700000000.000100","title":"#eng thread","content":[]}]}}
+{"type":"content_block_stop","index":1}
+{"type":"humagen.tool_status","t_ms":901,"tool_use_id":"htu_r_sec_1","path":["htu_r_sec_1"],"status":"done","elapsed_ms":840}
+{"type":"content_block_start","t_ms":950,"index":2,"content_block":{"type":"server_tool_use","id":"htu_r_sec_2","name":"code_search","kind":"tool","title":"Search for localStorage","input":{"query":"localStorage.setItem"}}}
+{"type":"content_block_stop","index":2}
+{"type":"content_block_start","t_ms":1700,"index":3,"content_block":{"type":"server_tool_result","tool_use_id":"htu_r_sec_2","is_error":false,"content":[{"type":"text","text":"web/src/auth.ts:12 localStorage.setItem(\"token\", t)"}]}}
+{"type":"content_block_stop","index":3}
+{"type":"humagen.tool_status","t_ms":1701,"tool_use_id":"htu_r_sec_2","path":["htu_r_sec_2"],"status":"done","elapsed_ms":750}
+{"type":"content_block_start","t_ms":1750,"index":4,"content_block":{"type":"text","text":""}}
+{"type":"content_block_delta","index":4,"delta":{"type":"text_delta","text":"Not safe: any XSS can read localStorage. "}}
+{"type":"content_block_delta","index":4,"delta":{"type":"text_delta","text":"Move the token to an HttpOnly, Secure, SameSite cookie (web/src/auth.ts:12)."}}
+{"type":"content_block_stop","t_ms":4200,"index":4}
+{"type":"message_delta","t_ms":4210,"delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":1200,"output_tokens":80}}
+{"type":"humagen.usage","by_model":{"anthropic/claude-sonnet-5-5":{"input_tokens":1200,"output_tokens":80}},"cost_usd":0.0048}
+{"type":"message_stop","t_ms":4215}

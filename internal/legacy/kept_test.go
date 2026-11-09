@@ -47,9 +47,18 @@ func TestStoredNamesAreKept(t *testing.T) {
 	if got := legacy.WorkspaceDir("/cache"); got != filepath.Join("/cache", "warp", "workspace") {
 		t.Errorf("WorkspaceDir = %q", got)
 	}
-	// The first three are stored names; agents added later come after them.
-	if len(spec.BuiltinAgents) < 3 || !slices.Equal(spec.BuiltinAgents[:3], []string{"humagen-writer", "humagen-analyst", "humagen-builder"}) {
+	// The first two are stored names; agents added later come after them.
+	if len(spec.BuiltinAgents) < 2 || !slices.Equal(spec.BuiltinAgents[:2], []string{"humagen-writer", "humagen-analyst"}) {
 		t.Errorf("spec.BuiltinAgents = %q", spec.BuiltinAgents)
+	}
+	// The builder's stored names read as the entry agent, which took over its work.
+	for _, old := range []string{"humagen-builder", "warp-builder"} {
+		if got := legacy.BuiltinAgent(old); got != "humagen" {
+			t.Errorf("%s reads as %q", old, got)
+		}
+	}
+	if got := legacy.BuiltinAgentKey("humagen"); got != "warp-builder" {
+		t.Errorf("the entry agent's color key = %q, want the builder's oldest", got)
 	}
 }
 

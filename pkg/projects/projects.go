@@ -345,7 +345,7 @@ func builtIn(k Kind) bool { return k == Company || k == Team || k == Account }
 
 // retiredField names fields projects no longer have. A stored project may still
 // list one as the file's; reading it drops the name. approve_reviews went when
-// agents stopped approving pull requests (RFC 0009).
+// agents stopped approving pull requests.
 var retiredField = map[string]bool{"approve_reviews": true}
 
 var validField = map[string]bool{
