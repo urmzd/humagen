@@ -19,6 +19,7 @@ func (s *Server) messageRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/messages/{id}", s.authed(auth.RunsWrite, s.seenMessage(s.sendMessagesUnder)))
 	mux.HandleFunc("GET /api/messages/{id}", s.authed(auth.RunsRead, s.seenMessage(s.getMessage)))
 	mux.HandleFunc("GET /api/messages/{id}/stream", s.authed(auth.RunsRead, s.seenMessage(s.messageEvents)))
+	mux.HandleFunc("GET /api/messages/{id}/trace", s.authed(auth.RunsRead, s.seenMessage(s.messageTrace)))
 	mux.HandleFunc("POST /api/messages/{id}/feedback", s.authed(auth.RunsRead, s.seenMessage(s.messageFeedback)))
 	mux.HandleFunc("POST /api/messages/{id}/stop", s.authed(auth.RunsWrite, s.seenMessage(s.stopMessage)))
 	mux.HandleFunc("POST /api/messages/{id}/context", s.authed(auth.RunsRead, s.seenMessage(s.messageContext)))
@@ -126,6 +127,16 @@ func (s *Server) messageEvents(w http.ResponseWriter, r *http.Request, who auth.
 	session, _ := platform.SplitMessageID(r.PathValue("id"))
 	r.SetPathValue("id", session)
 	s.sessionEvents(w, r, who)
+}
+
+// messageTrace is what ran to answer a message, one node per run.
+func (s *Server) messageTrace(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	out, err := s.P.MessageTrace(r.Context(), who, r.PathValue("id"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, out)
 }
 
 // messageFeedback rates an agent's message (id is session:run): one rating

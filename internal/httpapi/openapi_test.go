@@ -621,6 +621,8 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"AgentSession": {typ: platform.SessionView{}},
 		"MessageNode":  {typ: platform.MessageNode{}}, "MessageAudience": {typ: platform.MessageAudience{}},
 		"RootMessage": {typ: platform.RootMessage{}}, "RootMessagePage": {typ: platform.RootMessagePage{}},
+		"MessageTrace": {typ: platform.MessageTrace{}}, "TraceNode": {typ: platform.TraceNode{}}, "TracePick": {typ: platform.TracePick{}},
+		"TraceTool": {typ: platform.TraceTool{}}, "TraceContext": {typ: platform.TraceContext{}}, "TraceSource": {typ: platform.TraceSource{}}, "TraceApproval": {typ: platform.TraceApproval{}},
 		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: wire.AgentSpec{}}, "AgentSource": {typ: wire.Source{}},
 		"PackageBase": {typ: wire.PackageBase{}}, "AgentPackage": {typ: wire.AgentPackage{}}, "AgentAccess": {typ: wire.Access{}}, "Revision": {typ: revisionView{}}, "JoinDecision": {typ: join.Decision{}},
 		"Note": {typ: noteView{}}, "DriveTree": {typ: drive.Tree{}}, "DriveEntry": {typ: drive.Entry{}}, "DriveChange": {typ: drive.Change{}}, "DriveProposal": {typ: drive.Proposal{}}, "DriveVersion": {typ: drive.Version{}}, "DriveHit": {typ: drive.Hit{}}, "MemoryFiles": {typ: memoryTree{}}, "MemoryFile": {typ: memoryFile{}}, "MemoryRestoreInput": {typ: memoryRestore{}, written: true}, "MemoryDecisionInput": {typ: memoryDecision{}, written: true}, "LibraryScope": {typ: library.Scope{}}, "MemoryFolder": {typ: platform.MemoryFolder{}}, "LibrarySkillFile": {typ: library.File{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: event.Actor{}}, "Run": {typ: runs.Run{}},
@@ -2575,6 +2577,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	real := map[string]map[string]string{
 		"/api/sessions/{id}":                         {"id": sessionContract["id"]},
 		"/api/messages/{id}":                         {"id": sessionContract["id"]},
+		"/api/messages/{id}/trace":                   {"id": sessionContract["id"]},
 		"/api/messages/{id}/feedback":                {"id": sessionContract["id"]},
 		"/api/messages/{id}/stop":                    {"id": sessionContract["id"]},
 		"/api/messages/{id}/context":                 {"id": sessionContract["id"]},

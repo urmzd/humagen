@@ -4834,6 +4834,119 @@ export interface MessageNode {
   children: MessageNode[];
 }
 
+/** What ran to answer a message. */
+export interface MessageTrace {
+  /** The id asked for. */
+  message: string;
+  /** The runs that answered the message, in the order they started, each with what it called beneath it. */
+  nodes: TraceNode[];
+  /** How many runs and child sessions were left out because the caller may not read them. */
+  hidden: number;
+  /** A bound cut the trace: at most 500 nodes, and 200 tools, context reads, sources and approvals per node. */
+  truncated: boolean;
+}
+
+/** One run and what it did, each as the caller may see it: the tools it
+called, the context it pulled with get_context, the sources it cited
+and the approvals it waited on.
+ */
+export interface TraceNode {
+  run: string;
+  agent: string;
+  status: "accepted" | "running" | "parked" | "completed" | "failed" | "stopped";
+  started_at: string;
+  /** When the run ended; absent while it works. */
+  ended_at?: string;
+  /** How long it ran, or has run so far. */
+  ms: number;
+  /** What it spent in micro-USD, what it called included once they ended. Absent when nothing was metered. */
+  cost?: number;
+  pick?: TracePick;
+  /** The model its latest call used, when that was recorded. */
+  model?: string;
+  /** What it answered. A pick's answer is its pick. */
+  answer?: string;
+  /** Why it failed, when it did. */
+  error?: string;
+  tools: TraceTool[];
+  context: TraceContext[];
+  /** The run's citations as the caller is shown them. */
+  sources: TraceSource[];
+  approvals: TraceApproval[];
+  /** The runs it called, and for a pick the answers it led to, in the order they started. */
+  children: TraceNode[];
+}
+
+/** The entry agent's decision about a message, on the run that made it. */
+export interface TracePick {
+  decision: "answer_myself" | "delegate";
+  /** The agents it handed the message to that the caller may read. */
+  agents: string[];
+  reason: string;
+  /** The words of the message that matched. */
+  matched: string[];
+}
+
+/** One tool call. Input and output are left out when withheld. */
+export interface TraceTool {
+  /** htu_<run>_<seq>: the run's seq-th call, as the response stream names it. Provider call ids are never shown. */
+  id: string;
+  name: string;
+  /** When it was asked. */
+  at: string;
+  /** How long it ran; absent while it runs. */
+  ms?: number;
+  /** The arguments it ran with. */
+  input?: Record<string, unknown>;
+  /** What it returned, cut at 4000 bytes and ending in an ellipsis when cut. */
+  output?: string;
+  error?: string;
+  /** The caller may not see its input or output. */
+  withheld: boolean;
+}
+
+/** One get_context call. Request, reference, summary and sources are empty when withheld. */
+export interface TraceContext {
+  /** htu_<run>_<seq>, counted with the run's tool calls. */
+  id: string;
+  /** When it was asked. */
+  at: string;
+  /** How long it took; absent while it runs. */
+  ms?: number;
+  /** What the agent asked for, in words. */
+  request: string;
+  /** The place it read, such as slack://team/channel/ts: the message's own, bound by the platform. */
+  reference: string;
+  /** The start of what came back, or why nothing could be. */
+  summary: string;
+  sources: TraceSource[];
+  /** What came back was cut. */
+  truncated: boolean;
+  error?: string;
+  withheld: boolean;
+}
+
+/** Something a run cited or a context read drew on. */
+export interface TraceSource {
+  title: string;
+  url?: string;
+}
+
+/** An action a run waited on a person for, and how it was decided. ask is one still waiting. */
+export interface TraceApproval {
+  /** The question's id. */
+  id: string;
+  /** The id of the tool call it gates (a TraceTool's or a TraceContext's), when it gates one. */
+  tool?: string;
+  /** The tool it would call, or what it asked. */
+  action: string;
+  decision: "allow" | "deny" | "ask";
+  /** Who decided, by name. */
+  by?: string;
+  note?: string;
+  at?: string;
+}
+
 /** One root session, as its first message. */
 export interface RootMessage {
   id: string;
