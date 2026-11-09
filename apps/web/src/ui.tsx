@@ -1174,6 +1174,8 @@ export interface PageAction {
   onSelect: () => void;
   /** Archive, Delete: last in the menu, after a rule. What it does is the same in the menu as on a button. */
   destructive?: boolean;
+  /** Shown but not pressable, such as while the page is busy. */
+  disabled?: boolean;
 }
 
 /**
@@ -1280,6 +1282,7 @@ export function MoreMenu({
       type="button"
       role="menuitem"
       tabIndex={-1}
+      disabled={item.disabled}
       onClick={() => {
         close();
         item.onSelect();
