@@ -4847,8 +4847,8 @@ export interface MessageTrace {
 }
 
 /** One run and what it did, each as the caller may see it: the tools it
-called, the context it pulled with get_context, the sources it cited
-and the approvals it waited on.
+called, the context it pulled with get_context, the sources it cited,
+the approvals it waited on and the questions it asked a person.
  */
 export interface TraceNode {
   run: string;
@@ -4873,6 +4873,7 @@ export interface TraceNode {
   /** The run's citations as the caller is shown them. */
   sources: TraceSource[];
   approvals: TraceApproval[];
+  questions: TraceQuestion[];
   /** The runs it called, and for a pick the answers it led to, in the order they started. */
   children: TraceNode[];
 }
@@ -4930,6 +4931,27 @@ export interface TraceContext {
 export interface TraceSource {
   title: string;
   url?: string;
+}
+
+/** A question a run asked a person with ask_person, as the caller may see
+it: a choice among options, or a reply in words. Answer it with
+answerToolUse and `tool`.
+ */
+export interface TraceQuestion {
+  /** The question's id. */
+  id: string;
+  /** The id of the call that asked it, htu_<run>_<n>. */
+  tool?: string;
+  kind: "choice" | "reply";
+  prompt: string;
+  options: string[];
+  /** asked while it waits; expired when nobody answered in time and its default stood; closed when its run ended first. */
+  status: "asked" | "answered" | "expired" | "closed";
+  /** The choice or the reply. */
+  answer?: string;
+  /** Who answered, by name. */
+  by?: string;
+  at?: string;
 }
 
 /** An action a run waited on a person for, and how it was decided. ask is one still waiting. */
