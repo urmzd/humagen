@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.109.0 (2026-11-09)
+
+### Features
+
+- **web**: answer an agent's question to a person in Activity (#306) ([a8ee6f0](https://github.com/urmzd/humagen/commit/a8ee6f0f7b5932fba635c7adacfffada154d7a37))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.108.0...v0.109.0)
+
+
 ## 0.106.0 (2026-11-09)
 
 ### Features
