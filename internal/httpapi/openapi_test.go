@@ -2578,6 +2578,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/sessions/{id}":                         {"id": sessionContract["id"]},
 		"/api/messages/{id}":                         {"id": sessionContract["id"]},
 		"/api/messages/{id}/trace":                   {"id": sessionContract["id"]},
+		"/api/messages/{id}/answer":                  {"id": sessionContract["id"]},
 		"/api/messages/{id}/feedback":                {"id": sessionContract["id"]},
 		"/api/messages/{id}/stop":                    {"id": sessionContract["id"]},
 		"/api/messages/{id}/context":                 {"id": sessionContract["id"]},

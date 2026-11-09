@@ -5486,6 +5486,11 @@ export interface StopMessageBody {
   children?: boolean;
 }
 
+export interface AnswerToolUseBody {
+  tool_use_id: string;
+  answer: QuestionAnswer;
+}
+
 export interface GetMessageContextBody {
   request: string;
 }
