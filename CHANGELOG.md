@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.110.0 (2026-11-09)
+
+### Features
+
+- **agents**: the builder folds into the entry agent, humagen (#307) ([fd256f3](https://github.com/urmzd/humagen/commit/fd256f39d1e4eb2f7dd5e216f5875d4d9d39e5de))
+
+### Bug Fixes
+
+- **github**: act only on people who may write to the repository (#310) ([6e0eae0](https://github.com/urmzd/humagen/commit/6e0eae06be50d2e7b4432c0c36f6f6a5310c6dad))
+- **connectors**: every webhook delivery says what became of it (#309) ([f31d1ab](https://github.com/urmzd/humagen/commit/f31d1ab3d704eb79de7cd6c465d7a9ea1ba63a7b))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.109.0...v0.110.0)
+
+
 ## 0.106.0 (2026-11-09)
 
 ### Features
