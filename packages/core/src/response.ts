@@ -30,9 +30,6 @@ export interface ResponseQuestion {
   prompt: string;
   choices?: string[];
   who?: string[] | string;
-  /** The question's own id, and the run it parks: where a person's answer goes today. */
-  id?: string;
-  run?: string;
 }
 
 export interface ResponseToolResult {

@@ -15,7 +15,7 @@ import {
 import { ChevronRightIcon, MaximizeIcon } from "@humagen/render-web";
 import { Inspector } from "@humagen/web";
 import { useEffect, useRef, useState } from "react";
-import { api, call } from "./api.ts";
+import { call } from "./api.ts";
 import { took, usd } from "./format.ts";
 import { Chips, inApp } from "./refChips.tsx";
 import type { ResponseSource } from "./responseSource.ts";
@@ -193,26 +193,20 @@ function Ask({
   const q = tool.question;
   if (!q) return null;
   const choices = q.choices?.length ? q.choices : [words.approve, words.deny];
-  // A question that names its run is answered on that run, as the thread's
-  // own cards answer it; the message's answer route takes the rest.
-  const onRun = q.run && q.id ? { run: q.run, question: q.id } : undefined;
-  const canAnswer = !!onRun || !!messageId;
   const answer = async (choice: string) => {
-    if (!canAnswer) return;
+    if (!messageId) return;
     setBusy(true);
     setFailed(false);
-    // Both routes take the same answer.
     const body =
       q.kind === "approval"
         ? { action: choice === choices[0] ? ("approve" as const) : ("deny" as const) }
         : { action: "choose" as const, choice };
     try {
-      if (onRun) await api.answer({ ...onRun, body });
-      else
-        await call("POST", `/api/messages/${encodeURIComponent(messageId ?? "")}/answer`, {
-          tool_use_id: tool.id,
-          answer: body,
-        });
+      // Answered by the call it waits at, anywhere in the message's conversation.
+      await call("POST", `/api/messages/${encodeURIComponent(messageId)}/answer`, {
+        tool_use_id: tool.id,
+        answer: body,
+      });
       onAnswered?.();
     } catch {
       setFailed(true);
@@ -231,7 +225,7 @@ function Ask({
           <button
             key={c}
             type="button"
-            disabled={busy || !canAnswer}
+            disabled={busy || !messageId}
             onClick={() => void answer(c)}
             className={`inline-flex h-8 items-center rounded-aui border px-3 text-aui-xs focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50 ${i === 0 ? "border-transparent bg-aui-fg text-aui-bg" : "border-aui-border text-aui-fg hover:bg-aui-hover"}`}
           >
@@ -492,7 +486,7 @@ export function ActivityLanes({
         agent={state.agent ?? ""}
         blocks={state.content}
         root
-        messageId={messageId}
+        messageId={messageId ?? state.id}
         onAnswered={onAnswered}
       />
     </div>

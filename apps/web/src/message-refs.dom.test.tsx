@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
-import { answerOf, foldAll } from "@humagen/core";
+import { allTools, answerOf, foldAll } from "@humagen/core";
 import { responseStreams } from "@humagen/core/fixtures/responses";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Run } from "./adapter.ts";
@@ -308,7 +308,7 @@ test("a question two agents deep opens where it waits and is answered there", as
   );
 });
 
-test("an approval waiting in today's runs is answered on its run, as the thread's card answers it", async () => {
+test("an approval waiting two levels down is answered by its call, on the message", async () => {
   const waitingOps = {
     ...opsNode,
     status: "parked" as const,
@@ -326,7 +326,7 @@ test("an approval waiting in today's runs is answered on its run, as the thread'
     answer: undefined,
     children: [waitingOps],
   };
-  const net = stubFetch({ [`POST /api/runs/${R2}/questions/q/answer`]: () => ({}) });
+  const net = stubFetch({ "POST /api/messages/s_root/answer": () => ({}) });
   restore = net.restore;
   render(
     <ResponseActivityPanel
@@ -344,9 +344,42 @@ test("an approval waiting in today's runs is answered on its run, as the thread'
   fireEvent.click(within(retry).getByRole("button", { name: "Approve" }));
   await waitFor(() => {
     const post = net.seen.find((r) => r.method === "POST");
-    assert.equal(post?.path, `/api/runs/${R2}/questions/q/answer`);
-    assert.deepEqual(post?.body, { action: "approve" });
+    assert.equal(post?.path, "/api/messages/s_root/answer");
+    assert.deepEqual(post?.body, { tool_use_id: htu(R2, 2), answer: { action: "approve" } });
   });
+});
+
+test("an approval that gates no call shows that it waits, without buttons it could not send", () => {
+  const waiting = node(root, {
+    status: "parked",
+    ended_at: undefined,
+    answer: undefined,
+    approvals: [{ id: "q2", action: "Spend over the limit?", decision: "ask" }],
+  });
+  render(
+    <ResponseActivityPanel
+      source={replaySource("g", traceEvents(traceOf([waiting])))}
+      onClose={() => {}}
+    />,
+  );
+  const part = screen
+    .getAllByTestId("activity-part")
+    .find((p) => p.getAttribute("data-status") === "awaiting_approval");
+  assert.ok(part);
+  assert.equal(within(part).queryByRole("button", { name: "Approve" }), null);
+});
+
+test("a delegation someone approved keeps who decided on its agent call, once", () => {
+  const approved = node(root, {
+    tools: rootNode.tools,
+    approvals: [{ id: "q3", tool: htu(R1, 2), action: "call_agent", decision: "allow", by: "Ana" }],
+    children: [opsNode],
+  });
+  const state = foldAll(traceEvents(traceOf([approved])));
+  const calls = allTools(state).filter((t) => t.id === htu(R1, 2));
+  assert.equal(calls.length, 1, "no second row under the same id");
+  assert.equal(calls[0]?.kind, "agent");
+  assert.equal(calls[0]?.decidedBy, "Ana");
 });
 
 test("a stopped response says how it ended once, in plain words", async () => {
