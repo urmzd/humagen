@@ -12,7 +12,9 @@ import (
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/evals"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // installer is someone who may install and remove the store's packages.
@@ -429,5 +431,48 @@ func TestAStoreAgentNotInstalledIsRefusedSayingWhatToInstall(t *testing.T) {
 	install(t, p, tenant, "humagen/core")
 	if why := p.NotInstalled(t.Context(), tenant, platform.BuiltinWriter); why != "" {
 		t.Fatalf("an installed writer = %q", why)
+	}
+}
+
+// A message that mentions one of the store's agents the workspace has not
+// installed says which package to install, where a name nobody goes by
+// otherwise names no one. The agent tool says the same of a call to one, and
+// both work once the package is installed.
+func TestAMentionOrACallOfAnUninstalledStoreAgentSaysWhatToInstall(t *testing.T) {
+	p := shipping(t, platform.Config{})
+	const hint = "@humagen-writer is not installed: install the Core package from the Store"
+	first := startThread(t, p, operator, platform.ThreadInput{Text: "@humagen-writer draft the launch plan, with @nobody-here"})
+	var told, noOne bool
+	for _, mn := range first.Refused {
+		told = told || mn.Name == platform.BuiltinWriter && strings.Contains(mn.Refused, hint)
+		noOne = noOne || mn.Name == "nobody-here" && mn.Refused == threads.NoOne("nobody-here").Refused
+	}
+	if !told || !noOne {
+		t.Fatalf("the mentions came to %+v", first.Refused)
+	}
+	for _, r := range first.Runs {
+		if r.Agent == platform.BuiltinWriter {
+			t.Fatalf("an uninstalled writer answered: %+v", r)
+		}
+	}
+
+	asked, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-entry", Agent: platform.BuiltinEntry, Text: "Plan the launch"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.Call(t.Context(), tenant, asked.ID, call.Request{Key: "writer", Agent: platform.BuiltinWriter, Text: "Draft the plan", Mode: call.Subagent})
+	if !errors.Is(err, platform.ErrNotAvailable) || !strings.Contains(err.Error(), hint) {
+		t.Fatalf("a call to an uninstalled writer = %v", err)
+	}
+
+	install(t, p, tenant, "humagen/core")
+	again := startThread(t, p, operator, platform.ThreadInput{Text: "@humagen-writer draft the launch plan"})
+	for _, mn := range again.Refused {
+		if mn.Name == platform.BuiltinWriter {
+			t.Fatalf("an installed writer was refused: %+v", mn)
+		}
+	}
+	if _, err := p.Call(t.Context(), tenant, asked.ID, call.Request{Key: "writer", Agent: platform.BuiltinWriter, Text: "Draft the plan", Mode: call.Subagent}); err != nil && strings.Contains(err.Error(), "not installed") {
+		t.Fatalf("a call to an installed writer = %v", err)
 	}
 }

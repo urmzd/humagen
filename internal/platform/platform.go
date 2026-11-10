@@ -1014,6 +1014,11 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	if err != nil {
 		return runs.Run{}, fmt.Errorf("platform: caller's spec: %w", err)
 	}
+	// One of the store's agents the workspace has not installed is refused
+	// saying which package to install.
+	if why := p.NotInstalled(ctx, tenant, req.Agent); why != "" {
+		return runs.Run{}, fmt.Errorf("%w: %s", ErrNotAvailable, why)
+	}
 	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) || sees != nil && !sees(req.Agent) {
 		return runs.Run{}, fmt.Errorf("%w: refused by the caller: %q may not call %q, which its spec's spawn allowlist does not name", ErrForbidden, parent.Agent, req.Agent)
 	}

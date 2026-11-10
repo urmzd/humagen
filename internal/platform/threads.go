@@ -447,12 +447,19 @@ func (p *Platform) tagRefusal(tenant, project, agent string) string {
 
 // checkTags refuses the tags that cannot be carried out where a message is
 // posted: an agent not available in the thread's project, and experts of a
-// topic nobody on the chain answers for.
+// topic nobody on the chain answers for. A name nobody goes by that is one
+// of the store's agents the workspace has not installed says which package
+// to install.
 func (p *Platform) checkTags(tenant string, tree *projects.Tree, project string, ms []threads.Mention) []threads.Mention {
 	out := slices.Clone(ms)
 	for i := range out {
 		m := &out[i]
 		if m.Refused != "" {
+			if m.Kind == threads.Person && m.Refused == threads.NoOne(m.Name).Refused {
+				if why := p.NotInstalled(context.Background(), tenant, m.Name); why != "" {
+					m.Refused = why
+				}
+			}
 			continue
 		}
 		switch m.Kind {
