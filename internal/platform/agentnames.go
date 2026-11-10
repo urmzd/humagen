@@ -363,9 +363,10 @@ func (p *Platform) SetSettingsBy(ctx context.Context, who auth.Principal, next S
 	return p.setSettings(ctx, who.Tenant, next, seer.Agent)
 }
 
-// tagTool is how the tool that calls an agent a spec may call is named, as
-// an approval names it: "tag_<agent>" (runtime.DelegateToolName).
-const tagTool = "tag_"
+// tagTool is how an approval names the calls to one agent a spec may call:
+// "tag_<agent>". No tool has that name any more; the agent tool holds the
+// calls to that agent (heldCallee).
+const tagTool = legacy.TagToolPrefix
 
 // Revision is an agent's revision as the reader is shown it: every agent they
 // may not read left out of the agents it may call (access.spawn), and the

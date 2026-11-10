@@ -260,3 +260,46 @@ func TestAddedAskApprovalPreservesExplicitAudienceAndUnderlyingRestrictions(t *t
 		t.Fatalf("self approval bypassed workspace pause: %v, %d", err, calls)
 	}
 }
+
+// A skill's tool restriction written before the agent tool had its name
+// still allows it: an earlier name allows every call, and the name of one
+// agent's tool allows the tool, with the call held to that agent. A
+// restriction that names no way to call an agent refuses it.
+func TestAToolRestrictionNamesTheAgentToolByItsEarlierNames(t *testing.T) {
+	p, err := New(Config{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for restriction, want := range map[string]bool{
+		`["agent"]`: true, `["call_agent"]`: true, `["delegate_task"]`: true, `["tag_helper"]`: true,
+		`["file_read"]`: false, `[]`: false,
+	} {
+		req := runtime.Request{Tenant: "t", Definition: native.Revision{Spec: native.Spec{Name: "a"}}, Meta: map[string]string{operations.MetaTools: restriction}}
+		calls := 0
+		tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: ToolAgent}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}, p.toolDeclaration(ToolAgent))
+		_, err := tool.Execute(t.Context(), map[string]any{"agent": "helper"})
+		if allowed := err == nil && calls == 1; allowed != want {
+			t.Errorf("restricted to %s, the agent tool ran: %v (%v), want %v", restriction, allowed, err, want)
+		}
+	}
+}
+
+// A request's spec is read as it is held now before the runtime sees it: no
+// earlier way to call an agent is left in its tools for the runtime to
+// resolve, and an approval it cannot attach to a tool is not left either.
+func TestARequestsSpecNamesNoEarlierWayToCallAnAgent(t *testing.T) {
+	req := runtime.Request{Definition: native.Revision{Spec: native.Spec{
+		Name:      "lead",
+		Tools:     []string{"file_read", "delegate_task", "call_agent", "tag_helper", "tag_issue"},
+		Approvals: []string{"delegate_task", "tag_helper", "file_read"},
+		Access:    native.Access{Spawn: []string{"helper"}},
+	}}}
+	got := withAgentTool(req).Definition.Spec
+	if !slices.Equal(got.Tools, []string{"file_read", "tag_issue"}) || !slices.Equal(got.Approvals, []string{ToolAgent, "file_read"}) {
+		t.Fatalf("tools %v, approvals %v", got.Tools, got.Approvals)
+	}
+	// The pinned spec itself is not changed.
+	if len(req.Definition.Spec.Tools) != 5 || len(req.Definition.Spec.Approvals) != 3 {
+		t.Fatalf("the request's own spec was rewritten: %+v", req.Definition.Spec)
+	}
+}

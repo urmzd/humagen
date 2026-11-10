@@ -68,11 +68,13 @@ reached through the other.
 A tool that is not in the registry cannot declare a category: a tool of an
 extension catalog, or a tool provider's tool where only its name is known.
 Only for those, a name that says it sends a message is held as an external
-message and any other as other. The session tools (`session_call`,
-`session_listen`, `session_read`, `session_status`, `session_link`) and
+message and any other as other. `session_read`, `session_link` and
 `ask_person` are built by the runtime, which resolves them before it asks the
 platform's catalog, so the registry declares them but their calls do not pass
-the wrapper.
+the wrapper. The runtime's other session verbs (`session_call`,
+`session_listen`, `session_status`) and its per-agent `tag_<agent>` tools call
+an agent or wait on one, and are not offered: the `agent` tool is the one way
+a run calls an agent ([agent calls](agent-calls.md)).
 
 ## Private context
 

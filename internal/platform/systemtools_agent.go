@@ -44,6 +44,20 @@ type AgentCall struct {
 	// Brief is what the agent is told: the context it needs and what done
 	// looks like.
 	Brief string `json:"brief"`
+	// Background starts the agent and does not wait: the call answers at
+	// once that the work was launched, and the agent's answer arrives
+	// later, as a response of its own and in the inbox.
+	Background bool `json:"background,omitempty"`
+}
+
+// AgentLaunched is what a background agent call answers: the work was
+// started, never its result.
+type AgentLaunched struct {
+	// Status is "launched".
+	Status string `json:"status"`
+	Agent  string `json:"agent"`
+	// Run is the run that was started.
+	Run string `json:"run"`
 }
 
 // AgentCaller runs an agent call as c: the child run, its nested activity
@@ -65,15 +79,17 @@ func (p *Platform) registerOwnSystemTools() error {
 		Name:  ToolAgent,
 		Title: "Call an agent",
 		Description: "Bring in another agent for part of the work. Give it a title, a few imperative words that name the work (at most 60 characters, such as \"Review the auth change\"), and a brief: the context it needs and what done looks like. " +
-			"Its work streams under this call and its answer is the result. Call several at once to run them in parallel.",
+			"Its work streams under this call and its answer is the result. Call several at once to run them in parallel. " +
+			"Set background to true to hand the work over and carry on without waiting: the call answers at once with {\"status\": \"launched\"} and the agent's answer arrives later as a response of its own, not back to you.",
 		Input: map[string]any{
 			"type":                 "object",
 			"additionalProperties": false,
 			"required":             []string{"agent", "title", "brief"},
 			"properties": map[string]any{
-				"agent": map[string]any{"type": "string", "description": "The agent's name."},
-				"title": map[string]any{"type": "string", "maxLength": MaxAgentCallTitle, "description": fmt.Sprintf("A few imperative words naming the work, shown on its card, at most %d characters", MaxAgentCallTitle)},
-				"brief": map[string]any{"type": "string", "maxLength": MaxAgentCallBrief, "description": "The context the agent needs and what done looks like. Nothing else of your conversation reaches it."},
+				"agent":      map[string]any{"type": "string", "description": "The agent's name."},
+				"title":      map[string]any{"type": "string", "maxLength": MaxAgentCallTitle, "description": fmt.Sprintf("A few imperative words naming the work, shown on its card, at most %d characters", MaxAgentCallTitle)},
+				"brief":      map[string]any{"type": "string", "maxLength": MaxAgentCallBrief, "description": "The context the agent needs and what done looks like. Nothing else of your conversation reaches it."},
+				"background": map[string]any{"type": "boolean", "default": false, "description": "True to start the agent and not wait for it. Its answer arrives later, not as this call's result. Leave it out to wait for the answer."},
 			},
 		},
 		Permission: auth.RunsWrite,
@@ -154,7 +170,7 @@ func parametersOf(input map[string]any) saigetypes.ParameterSchema {
 func (p *Platform) systemAgentCall(ctx context.Context, c SystemCall, raw json.RawMessage) (SystemResult, error) {
 	var a AgentCall
 	if err := json.Unmarshal(raw, &a); err != nil {
-		return SystemResult{IsError: true, Text: "the arguments are agent, title and brief"}, nil
+		return SystemResult{IsError: true, Text: "the arguments are agent, title, brief and, to not wait, background"}, nil
 	}
 	a.Agent, a.Title, a.Brief = strings.TrimSpace(a.Agent), strings.TrimSpace(a.Title), strings.TrimSpace(a.Brief)
 	switch {

@@ -49,7 +49,7 @@ type mentionedCall struct {
 	id    string // the call's id on the run's events
 	args  json.RawMessage
 	// approved is set when a person approved this call, which its callee's
-	// policy held.
+	// policy or the action policy held.
 	approved bool
 	child    runs.Run
 	answer   string
@@ -85,7 +85,8 @@ func mentionedIn(meta map[string]string) []string {
 // place and never fails the run. stopped is set when the run was asked to
 // stop while it waited: the calls still running are stopped with it.
 //
-// A call the callee's policy holds for a person waits for one, as the same
+// A call that waits for a person, because the callee's policy holds it or
+// the action policy asks about calling agents, waits for one, as the same
 // call made by the model would: park is then the run's turn parked on that
 // approval, before any call is made, and answers are the approvals already
 // given, by call id, when the turn continues from one. An agent that not
@@ -121,15 +122,18 @@ func (p *Platform) callMentioned(ctx context.Context, req runtime.Request, answe
 		p.beforeMentionCalls()
 	}
 	tree := p.Projects.Tree(req.Tenant)
+	// What holds a call is asked of the one wrapper every run tool passes
+	// through, as for a call the model makes: the agent tool's own declared
+	// approval (the callee's call policy, the caller's spec), then the
+	// action policy for calling agents.
+	gate, _ := p.operationTool(req, p.agentTool(req, func(event.Action) error { return nil }), p.toolDeclaration(ToolAgent)).(native.Approving)
 	for i := range calls {
 		c := &calls[i]
 		if why := p.mentionRefusal(req.Tenant, tree, run.Project, c.agent); why != "" {
 			c.err = errors.New(why)
 			continue
 		}
-		// The agent tool's own declared approval, as the wrapper every run
-		// tool passes through reads it: the callee's call policy.
-		ask, held := declaredApproval(req, p.toolDeclaration(ToolAgent), saigetypes.ToolCallPart{ID: c.id, Name: ToolAgent, Arguments: map[string]any{"agent": c.agent, "title": mentionTitle(run.Text), "brief": run.Text}})
+		ask, held := gate.Approval(saigetypes.ToolCallPart{ID: c.id, Name: ToolAgent, Arguments: map[string]any{"agent": c.agent, "title": mentionTitle(run.Text), "brief": run.Text}})
 		if !held {
 			continue
 		}

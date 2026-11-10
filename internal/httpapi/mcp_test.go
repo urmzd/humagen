@@ -10,6 +10,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/operations"
@@ -272,7 +273,7 @@ func TestTheMCPListsExactlyItsTools(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{platform.ToolFileRead, platform.ToolFileWrite, platform.ToolShell, platform.ToolDelegate, platform.ToolSaveAgent, platform.ToolMemorySearch, platform.ToolSourceSearch, "github_comment", "slack_post_message", "session_call"} {
+	for _, name := range []string{platform.ToolFileRead, platform.ToolFileWrite, platform.ToolShell, legacy.DelegateTool, platform.ToolSaveAgent, platform.ToolMemorySearch, platform.ToolSourceSearch, "github_comment", "slack_post_message", "session_call", "session_read"} {
 		if slices.Contains(got, name) {
 			t.Errorf("the MCP lists %s, which only a run is offered", name)
 		}

@@ -7,11 +7,6 @@ import (
 	saigetypes "github.com/urmzd/saige/agent/types"
 )
 
-// ToolCallAgent is the tool agents called other agents with before the agent
-// tool (ToolAgent) took its place. A revision that still names it is read as
-// granting the agent tool (resolveOperations).
-const ToolCallAgent = "call_agent"
-
 // agentProperty is the call tool's agent argument: one of targets. With no
 // targets there is no enum, since an empty one is not a schema every model
 // accepts, and the call path refuses whatever is named.
@@ -27,9 +22,11 @@ const maxExcerpt = 200
 
 // agentCallApproval is the approval the agent tool declares for each call
 // (ToolApproval.PerCall): a call the callee's policy holds for a person parks
-// the run on an approval question addressed to the policy's approvers. It
-// reads only the call's arguments and the callee's stored policy, so it
-// answers the same for the same arguments.
+// the run on an approval question addressed to the policy's approvers, and
+// so does a call to an agent the caller's own spec holds calls to (an
+// approval of "tag_<agent>"), addressed to the spec's approvers. It reads
+// only the call's arguments, the callee's stored policy and the caller's
+// pinned spec, so it answers the same for the same arguments.
 func (p *Platform) agentCallApproval(q ApprovalCall) (ToolApproval, bool) {
 	tenant, caller := q.Request.Tenant, q.Request.Definition.Spec.Name
 	callee, _ := q.Call.Arguments["agent"].(string)
@@ -43,13 +40,18 @@ func (p *Platform) agentCallApproval(q ApprovalCall) (ToolApproval, bool) {
 		// cannot happen.
 		return ToolApproval{}, false
 	}
-	needed, approvers, self, expires := p.callApproval(tenant, caller, callee)
-	if !needed {
-		return ToolApproval{}, false
-	}
 	prompt := fmt.Sprintf("Allow %s to call %s?", caller, callee)
 	if excerpt := requestExcerpt(q.Call.Arguments); excerpt != "" {
 		prompt += " It asks: " + excerpt
+	}
+	needed, approvers, self, expires := p.callApproval(tenant, caller, callee)
+	if !needed {
+		// The caller's own spec may hold its calls to this one agent. The
+		// callee's policy comes first: its approvers are the callee's say.
+		if !p.heldCallee(q.Request, callee) {
+			return ToolApproval{}, false
+		}
+		return ToolApproval{Mode: ApprovalAlways, Approvers: p.agentApprovers(q.Request), SelfApproval: q.Request.Definition.Spec.SelfApproval, Expires: policyApprovalWait, Prompt: func(ApprovalCall) string { return prompt }}, true
 	}
 	// The callee's policy says how long a held call waits before it is denied.
 	return ToolApproval{Mode: ApprovalAlways, Approvers: approvers, SelfApproval: self, Expires: expires, Prompt: func(ApprovalCall) string { return prompt }}, true

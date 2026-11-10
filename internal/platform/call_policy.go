@@ -10,6 +10,7 @@ import (
 
 	"github.com/urmzd/orchagent/flow/event"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/inbox"
@@ -21,8 +22,8 @@ import (
 // its spawn allowlist, and the callee's call policy admits the caller. Either
 // can refuse, and the refusal says which. The callee's policy also says which
 // admitted calls wait for a person, and who that person may be: callApproval
-// is that decision. The call_agent tool is an native.Approving tool, so the
-// runtime asks callApproval's approvers before the call runs, and parks the
+// is that decision. The agent tool declares that approval for each call, so
+// the runtime asks callApproval's approvers before the call runs, and parks the
 // run while they decide. A call that needs approval goes through only when a
 // person approved that very tool call (approvals); anything else is refused,
 // so a policy asking for a person is never skipped.
@@ -113,7 +114,7 @@ type approvals struct {
 type approvalKey struct{ tenant, run, call string }
 
 // noteApprovedCall notes that a person is approving a call to an agent, and
-// reports whether it did. Only questions about call_agent are noted. The
+// reports whether it did. A question about the agent tool notes its callee. The
 // callee is read from the arguments approved: edited ones when the person
 // edited them.
 func (p *Platform) noteApprovedCall(tenant string, q inbox.QuestionPart, ans event.Answer) bool {
@@ -124,8 +125,11 @@ func (p *Platform) noteApprovedCall(tenant string, q inbox.QuestionPart, ans eve
 	if len(ans.Arguments) > 0 {
 		args = ans.Arguments
 	}
-	callee := "tool:" + q.Tool.Name
-	if q.Tool.Name == ToolCallAgent || q.Tool.Name == ToolAgent {
+	// A question asked before the agent tool had its name is about the
+	// agent tool.
+	tool := legacy.ToolName(q.Tool.Name)
+	callee := "tool:" + tool
+	if tool == ToolAgent {
 		callee = targetOf(args)
 	}
 	if callee == "" {
@@ -142,7 +146,7 @@ func (p *Platform) noteApprovedCall(tenant string, q inbox.QuestionPart, ans eve
 		return false
 	}
 	a.byID[approvalKey{tenant, q.Run, q.Tool.CallID}] = callee
-	a.byID[approvalKey{tenant, q.Run, q.Tool.CallID + ":action"}] = "tool:" + q.Tool.Name
+	a.byID[approvalKey{tenant, q.Run, q.Tool.CallID + ":action"}] = "tool:" + tool
 	return true
 }
 
@@ -273,7 +277,7 @@ func (p *Platform) Reachable(ctx context.Context, tenant, caller string) (out []
 // questionTarget is the agent a question's tool call would call, when the
 // tool calls agents and its arguments name one.
 func questionTarget(q event.Question) string {
-	if q.Tool == nil || (q.Tool.Name != ToolCallAgent && q.Tool.Name != ToolAgent && q.Tool.Name != ToolDelegate) {
+	if q.Tool == nil || legacy.ToolName(q.Tool.Name) != ToolAgent {
 		return ""
 	}
 	return targetOf(q.Tool.Arguments)

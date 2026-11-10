@@ -31,10 +31,11 @@ import (
 // Attached: the caller asked and is waiting for the answer. The run lives
 // inside its caller's lifetime. The caller is not done until it is, and if
 // the caller fails or is stopped, it is stopped too, and so is everything
-// attached to it in turn. An agent attaches another by tagging it.
+// attached to it in turn. An agent attaches another by calling it with the
+// agent tool.
 //
-// Delegated: the caller handed work over and carried on. The run's lifetime is
-// its own. It finishes whatever becomes of its caller, and its answer goes to
+// Delegated: the caller handed work over and carried on, by calling with the
+// agent tool's background set. The run's lifetime is its own. It finishes whatever becomes of its caller, and its answer goes to
 // the inbox, because the caller may be gone by then. What it attaches dies
 // with it, not with whoever delegated to it.
 //
@@ -46,11 +47,6 @@ import (
 // finished before the request reached it ends as it would have, and is never
 // reported stopped. Everything attached to a stopped run is asked to stop with
 // it, through the runtime, all the way down.
-
-// ToolDelegate is the tool an agent starts another agent with and does not
-// wait. An agent has it only if its spec names it, and may only name agents
-// in its spawn allowlist.
-const ToolDelegate = "delegate_task"
 
 // defaultConcurrency is how many runs execute at once when none is set. It is
 // more than one because a run waiting on an attached run holds a place while
@@ -210,56 +206,6 @@ func (p *Platform) rollUp(ctx context.Context, childID string) {
 	}
 	if err := runtime.ReportChildUsage(ctx, childID); err != nil {
 		p.log.Warn("platform: an attached run's usage could not be rolled up into its caller", "run", childID, "error", err)
-	}
-}
-
-// delegated is what delegate_task answers: the work was launched, never its
-// result.
-type delegated struct {
-	Status string `json:"status"`
-	Agent  string `json:"agent"`
-	Run    string `json:"run"`
-	Note   string `json:"note"`
-}
-
-// delegateTool is the tool an agent hands work to another agent with, without
-// waiting for it. It is the background agent call: it answers at once that
-// the work was launched, and the run it starts outlives the caller.
-func (p *Platform) delegateTool(req runtime.Request, action func(event.Action) error) saigetypes.Tool {
-	return &saigetypes.ToolFunc{
-		Def: saigetypes.ToolDef{
-			Name: ToolDelegate,
-			Description: "Hand a piece of work to another agent and carry on without waiting. " +
-				"It works independently and finishes even if you do not. Its answer goes to the inbox, not back to you. " +
-				"To ask an agent something and wait for the answer, tag it instead.",
-			Parameters: schema([]string{"agent", "text"}, map[string]string{
-				"agent": "The agent to hand the work to",
-				"text":  "What it should do, with everything it needs to know: it sees none of this conversation",
-			}),
-		},
-		Fn: func(ctx context.Context, args map[string]any) (string, error) {
-			if req.RunID == "" {
-				return "", fmt.Errorf("%w: a turn with no run of its own cannot hand work on", call.ErrInvalid)
-			}
-			target, text := arg(args, "agent"), arg(args, "text")
-			// The run it starts carries the call's id, so its answer, which
-			// comes after this turn has moved on, says which call it is for.
-			callID := ""
-			if info, ok := saigetypes.ToolCallInfoFromContext(ctx); ok && info.ID != "" {
-				if id, err := p.toolUseIDFor(ctx, req.Tenant, req.RunID, info.ID); err == nil {
-					callID = id
-				}
-			}
-			child, err := p.call(ctx, req.Tenant, req.RunID, call.Request{
-				Key: callKey("delegate", target, text), Agent: target, Text: text, Mode: call.Delegate, CallID: callID,
-			}, true, nil)
-			if err != nil {
-				return "", err
-			}
-			tell(ctx, action, ToolDelegate, child, text)
-			out, err := json.Marshal(delegated{Status: "launched", Agent: target, Run: child.ID, Note: "It works independently and its answer arrives later, in the inbox, not back to you."})
-			return string(out), err
-		},
 	}
 }
 

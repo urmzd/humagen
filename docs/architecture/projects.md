@@ -971,8 +971,8 @@ response's root: it answers simple asks itself and brings specialists in with
 the `agent` tool, each call a run nested under the call that made it, then
 answers once, naming who did what. No run picks who answers first, and an
 answer opens no child session. Routing has no page and no switch of its own:
-it is this agent, on its own model. The runtime's session tools
-(`session_call`, `session_listen` and the rest) are not offered to it.
+it is this agent, on its own model. The runtime's session tools are not
+offered to it.
 
 - **A message gets one answer.** With no other agent mentioned, the session's
   agent answers. Exactly one other agent mentioned answers the message itself,
