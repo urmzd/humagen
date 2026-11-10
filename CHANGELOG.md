@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.115.0 (2026-11-10)
+
+### Features
+
+- **agents**: optional agents install from an agent store (#311) ([b49fa92](https://github.com/urmzd/humagen/commit/b49fa92e7152ce1581a936a536b9846ce492b0d5))
+
+### Misc
+
+- **slack**: mention-first app manifest, generated from code and maintained with the Slack CLI (#278) ([23c02f5](https://github.com/urmzd/humagen/commit/23c02f5d0941fb26b68292da2dd6ecae6225bc46))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.114.3...v0.115.0)
+
+
 ## 0.114.3 (2026-11-10)
 
 [Full Changelog](https://github.com/urmzd/humagen/compare/v0.114.2...v0.114.3)
