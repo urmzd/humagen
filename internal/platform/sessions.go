@@ -42,6 +42,9 @@ type SessionInput struct {
 	// PostOnly posts a surface's message without starting anything, as a
 	// channel the app follows quietly, or catching a thread up, does.
 	PostOnly bool `json:"post_only,omitempty"`
+	// spoken marks the first message as said in voice mode, for a
+	// conversation the messages API starts (sendToNewConsoleRoot).
+	spoken bool
 }
 
 // SessionMessageOptions choose a mentioned agent's continuing or fresh child.
@@ -286,7 +289,7 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 	if existing.Session == nil || existing.Session.SourceAlert != in.SourceAlert {
 		return SessionView{}, fmt.Errorf("%w: this session belongs to another source alert", threads.ErrInvalid)
 	}
-	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: in.Text}); err != nil {
+	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: in.Text, Spoken: in.spoken}); err != nil {
 		return SessionView{}, err
 	}
 	return p.ReadSession(ctx, who, rec.ID, "", "", false)

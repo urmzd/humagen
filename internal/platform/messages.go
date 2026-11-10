@@ -248,6 +248,10 @@ type Message struct {
 	Role    string       `json:"role"`
 	Content Content      `json:"content"`
 	Ref     *ExternalRef `json:"ref,omitempty"`
+	// Spoken says the person said it in voice mode and the words were
+	// transcribed. It only marks the message, which is answered as a typed
+	// one is.
+	Spoken bool `json:"spoken,omitempty"`
 }
 
 // MessagesInput is a batch of people's messages from one origin. The last
@@ -404,7 +408,7 @@ func (p *Platform) sendToNewConsoleRoot(ctx context.Context, who auth.Principal,
 	if err != nil {
 		return MessageView{}, err
 	}
-	v, err := p.StartSession(ctx, who, SessionInput{Text: text})
+	v, err := p.StartSession(ctx, who, SessionInput{Text: text, spoken: in.Messages[0].Spoken})
 	if err != nil {
 		return MessageView{}, err
 	}
@@ -549,7 +553,7 @@ func (p *Platform) sendUnder(ctx context.Context, who auth.Principal, th threads
 		if m.Ref != nil {
 			ref = *m.Ref
 		}
-		in := MessageInput{Text: text, PostOnly: i < len(msgs)-1, messageKey: ref.key()}
+		in := MessageInput{Text: text, PostOnly: i < len(msgs)-1, messageKey: ref.key(), Spoken: m.Spoken}
 		v, err := p.surfacePost(ctx, who, th, in)
 		if err != nil {
 			return MessageView{}, err

@@ -5003,6 +5003,8 @@ export interface InMessage {
   role: "user";
   content: MessageContent;
   ref?: ExternalRef;
+  /** The person said it in voice mode and the words were transcribed. It only marks the message, which is answered as a typed one is. */
+  spoken?: boolean;
 }
 
 /** A string, or content blocks. */

@@ -18356,6 +18356,9 @@ components:
         ref:
           $ref: "#/components/schemas/ExternalRef"
           description: This message's own origin when it differs from the batch's (a Slack reply's ts); it also makes the message post once.
+        spoken:
+          description: The person said it in voice mode and the words were transcribed. It only marks the message, which is answered as a typed one is.
+          type: boolean
     MessageContent:
       description: A string, or content blocks.
       oneOf:
