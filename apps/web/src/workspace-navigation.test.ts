@@ -96,3 +96,17 @@ test("Notifications is one page with one title: no tab strip above it", () => {
     );
   }
 });
+
+test("the Knowledge tab opens the corpora and stays current on a corpus and its sources", () => {
+  for (const route of [
+    { page: "knowledge" },
+    { page: "corpus", name: "hr-policies", tab: "access" },
+    { page: "context", corpus: "hr-policies", source: "handbook" },
+    { page: "context", source: "handbook" },
+  ] as Route[]) {
+    assert.equal(workspaceHub(route), "agents");
+    const knowledge = hubTabs("agents", route, () => true).find((t) => t.label === "Knowledge");
+    assert.equal(knowledge?.active, true);
+    assert.equal(href(knowledge!.route), "/knowledge");
+  }
+});

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -114,6 +115,9 @@ func OpenAgentsAccepting(st state.Store, accept func(string) bool, providers ...
 // Source is the definition source the store writes, which a runtime resolves
 // pins from.
 func (a *Agents) Source() *agents.Store { return a.src }
+
+// Knows reports whether a definition naming provider pins here.
+func (a *Agents) Knows(provider string) bool { return slices.Contains(a.providers, provider) }
 
 // Resolver pins definitions from the store, checked against its providers.
 func (a *Agents) Resolver() *definition.Resolver {
@@ -251,6 +255,10 @@ func RecordOf(spec AgentSpec, rev int) (definition.Record, error) {
 	if effort := strings.ToLower(strings.TrimSpace(spec.Effort)); effort != "" {
 		value, _ := json.Marshal(effort)
 		metadata = append(metadata, "  humagen_effort: "+string(value))
+	}
+	if spec.Output != nil {
+		schema, _ := json.Marshal(string(normalizeOutput(spec.Output).Schema))
+		metadata = append(metadata, "  humagen_output_schema: "+string(schema))
 	}
 	if len(metadata) > 0 {
 		rec.Content = strings.Replace(rec.Content, "---\n", "---\nmetadata:\n"+strings.Join(metadata, "\n")+"\n", 1)

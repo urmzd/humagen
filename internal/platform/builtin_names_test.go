@@ -11,7 +11,7 @@ import (
 )
 
 func TestBuiltinNamesAndReviewGrants(t *testing.T) {
-	want := []string{"humagen-writer", "humagen-analyst", "humagen-builder", "code-reviewer", "security-reviewer", "architect-reviewer", "qa-reviewer", "approver"}
+	want := []string{"humagen-writer", "humagen-analyst", "code-reviewer", "security-reviewer", "architect-reviewer", "qa-reviewer", "approver"}
 	if !slices.Equal(platform.Builtins(), want) {
 		t.Fatalf("builtins = %v, want %v", platform.Builtins(), want)
 	}
@@ -27,6 +27,8 @@ func TestBuiltinNamesAndReviewGrants(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The entry agent is held to its own rules in entry_test.go.
+	revs = slices.DeleteFunc(revs, func(r wire.Revision) bool { return r.Spec.Name == platform.BuiltinEntry })
 	if len(revs) != len(want) {
 		t.Fatalf("directory contains %d agents, want %d", len(revs), len(want))
 	}
@@ -55,7 +57,7 @@ func TestBuiltinNamesAndReviewGrants(t *testing.T) {
 		if r.Spec.Name == platform.BuiltinApprover && (len(r.Spec.Tools) != 0 || !r.Spec.TaggedOnly || r.Spec.Package == nil || r.Spec.Package.Name != "humagen/system") {
 			t.Fatalf("approver = %+v", r.Spec)
 		}
-		if slices.Contains(want[3:7], r.Spec.Name) {
+		if slices.Contains(want[2:6], r.Spec.Name) {
 			tools := []string{platform.ToolFileRead, platform.ToolFileList, "github_read_context", "github_read_file"}
 			slices.Sort(tools)
 			got := slices.Clone(r.Spec.Tools)
@@ -165,7 +167,7 @@ func TestBuiltinCompatibilitySurvivesRestart(t *testing.T) {
 			t.Fatalf("pinned revision after restart: %+v, %v", pinned, err)
 		}
 		rows, _, err := p.AgentDirectory(ctx, "acme", wire.Page{Size: 100})
-		if err != nil || len(rows) != len(platform.Builtins()) {
+		if err != nil || len(rows) != len(platform.Builtins())+1 { // and the entry agent
 			t.Fatalf("directory after restart = %v, %v", rows, err)
 		}
 	})

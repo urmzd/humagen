@@ -59,9 +59,18 @@ func builderGrantable(name string) bool {
 	return name == personToolsGrant || slices.Contains(grantable(), name)
 }
 
-func builderProtectedAgent(name string) bool {
+// isHelper reports whether agent is the workspace's helper, the entry agent,
+// which builds and changes agents with a person's approval: by its name, or
+// by the name the builder had (internal/legacy).
+func (p *Platform) isHelper(agent string) bool {
+	return legacy.BuiltinAgent(wire.NormalizeName(agent)) == p.cfg.EntryAgent
+}
+
+// helperProtected reports whether the helper may not change name: itself,
+// the analyst, and the approval agent, which decide what others may do.
+func (p *Platform) helperProtected(name string) bool {
 	name = legacy.BuiltinAgent(wire.NormalizeName(name))
-	return name == BuiltinBuilder || name == BuiltinAnalyst
+	return name == p.cfg.EntryAgent || name == BuiltinAnalyst || name == BuiltinApprover
 }
 
 // MaxSummaryHours bounds how far back runs_summary looks.
@@ -70,12 +79,15 @@ const MaxSummaryHours = 30 * 24
 // ErrBuilder reports a change the builder may not make.
 var ErrBuilder = errors.New("platform: builder")
 
-func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool {
+// builtinTool is one of the analyst's and the builder's own tools for one
+// turn: runs_summary, list_alerts, list_agents, read_agent or save_agent.
+func (p *Platform) builtinTool(name string, req runtime.Request) saigetypes.Tool {
 	tool := func(name, desc string, params saigetypes.ParameterSchema, fn func(ctx context.Context, args map[string]any) (string, error)) saigetypes.Tool {
 		return &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: name, Description: desc, Parameters: params}, Fn: fn}
 	}
-	return map[string]saigetypes.Tool{
-		ToolRunsSummary: tool(ToolRunsSummary,
+	switch name {
+	case ToolRunsSummary:
+		return tool(ToolRunsSummary,
 			"Summarize the workspace's runs over the last hours: how many ran, completed, failed and were stopped, durations (p50 and p95), tokens and spend, by agent and by origin, and the slowest runs. Use it before answering any question about how agents are doing.",
 			schema(nil, map[string]string{
 				"hours":   fmt.Sprintf("How many hours back to look, 1 to %d. Defaults to 24", MaxSummaryHours),
@@ -96,37 +108,23 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 					return "", err
 				}
 				return p.runsSummary(req.Tenant, time.Duration(hours)*time.Hour, strings.TrimSpace(arg(args, "agent")), scope)
-			}),
-		ToolProjectChanges:         p.projectChangesTool(req),
-		ToolPreviewChange:          p.builderPreviewChangeTool(req),
-		ToolApplyChange:            p.builderApplyChangeTool(req),
-		ToolRecordEval:             p.builderRecordEvalTool(req),
-		ToolConnections:            p.builderConnectionsTool(req, false),
-		ToolConnect:                p.builderConnectionsTool(req, true),
-		ToolWorkspacePrompt:        p.builderWorkspacePromptTool(req),
-		ToolPreviewWorkspacePrompt: p.builderPreviewWorkspacePromptTool(req),
-		ToolApplyWorkspacePrompt:   p.builderApplyWorkspacePromptTool(req),
-		ToolAlertCreate:            p.sessionAlertCreateTool(req),
-		ToolAlertResolve:           p.sessionAlertResolveTool(req),
-		ToolPauseAgent:             p.builderLifecycleTool(req, false),
-		ToolRetireAgent:            p.builderLifecycleTool(req, true),
-		ToolWriteEval:              p.builderWriteEvalTool(req),
-		ToolRunEval:                p.builderRunEvalTool(req),
-		ToolReadEvals:              p.builderReadEvalsTool(req),
-		ToolMemorySearch:           p.memorySearchTool(req),
-		ToolListAlerts: tool(ToolListAlerts,
+			})
+	case ToolListAlerts:
+		return tool(ToolListAlerts,
 			"List the alert rules the workspace has, what each watches for, and the alerts that are still open.",
 			schema(nil, nil),
 			func(context.Context, map[string]any) (string, error) {
 				return p.alertsReport(req.Tenant, p.ownProject(req.Tenant, req.RunID))
-			}),
-		ToolListAgents: tool(ToolListAgents,
+			})
+	case ToolListAgents:
+		return tool(ToolListAgents,
 			"List the workspace's agents: name, description, model, tools and revision.",
 			schema(nil, nil),
 			func(ctx context.Context, _ map[string]any) (string, error) {
 				return p.agentsReport(ctx, req.Tenant, p.ownProject(req.Tenant, req.RunID))
-			}),
-		ToolReadAgent: tool(ToolReadAgent,
+			})
+	case ToolReadAgent:
+		return tool(ToolReadAgent,
 			"Read one agent's latest revision in full, system prompt included.",
 			schema([]string{"name"}, map[string]string{"name": "The agent's name"}),
 			func(ctx context.Context, args map[string]any) (string, error) {
@@ -144,8 +142,9 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 				rev = revisionShown(rev, open)
 				b, _ := json.MarshalIndent(map[string]any{"rev": rev.Rev, "spec": rev.Spec}, "", "  ")
 				return string(b), nil
-			}),
-		ToolSaveAgent: tool(ToolSaveAgent,
+			})
+	case ToolSaveAgent:
+		return tool(ToolSaveAgent,
 			"Create an agent, or revise one, after a person approves. Give the whole system prompt and the whole list of tools each time. Only "+strings.Join(grantable(), ", ")+" may be granted.",
 			schema([]string{"name", "description", "system_prompt"}, map[string]string{
 				"name":          "Lowercase letters, digits and dashes, such as release-notes",
@@ -154,8 +153,8 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 				"tools":         "Comma-separated tools to grant, from: " + strings.Join(grantable(), ", ") + ". Leave out for none",
 			}),
 			func(ctx context.Context, args map[string]any) (string, error) {
-				if legacy.BuiltinAgent(req.Agent()) != BuiltinBuilder {
-					return "", fmt.Errorf("%w: only %s saves agents", ErrBuilder, BuiltinBuilder)
+				if !p.isHelper(req.Agent()) {
+					return "", fmt.Errorf("%w: only %s saves agents", ErrBuilder, p.cfg.EntryAgent)
 				}
 				rev, created, err := p.saveAgent(ctx, req.Tenant, args)
 				if err != nil {
@@ -166,8 +165,9 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 					verb = "Created"
 				}
 				return fmt.Sprintf("%s %s, now at revision %d.", verb, rev.Spec.Name, rev.Rev), nil
-			}),
+			})
 	}
+	return nil
 }
 
 // runsSummary is runs_summary's answer: compact JSON a model can read and
@@ -378,7 +378,7 @@ func (p *Platform) agentsReport(ctx context.Context, tenant, own string) (string
 // agent's name is held to what the agents route holds it to.
 func (p *Platform) prepareBuilderAgent(ctx context.Context, tenant string, args map[string]any) (wire.AgentSpec, wire.Revision, bool, error) {
 	name := strings.TrimSpace(arg(args, "name"))
-	if builderProtectedAgent(name) {
+	if p.helperProtected(name) {
 		return wire.AgentSpec{}, wire.Revision{}, false, ErrBuilder
 	}
 	if home, homed := p.ProjectTree(tenant).Home(wire.NormalizeName(name)); homed && home != projects.Root {
@@ -455,21 +455,21 @@ func (p *Platform) saveAgent(ctx context.Context, tenant string, args map[string
 		}
 	}
 	if created {
-		rev, err := p.Agents.Create(ctx, tenant, spec, "agent:"+BuiltinBuilder)
+		rev, err := p.Agents.Create(ctx, tenant, spec, "agent:"+p.cfg.EntryAgent)
 		return rev, err == nil, err
 	}
-	rev, err := p.Agents.Revise(ctx, tenant, spec, have.Rev, "agent:"+BuiltinBuilder)
+	rev, err := p.Agents.Revise(ctx, tenant, spec, have.Rev, "agent:"+p.cfg.EntryAgent)
 	return rev, false, err
 }
 
-// builderModels are the models a new agent the builder makes starts on: the
-// builder's own as the workspace has it, else as the platform ships it.
+// builderModels are the models a new agent the helper makes starts on: the
+// helper's own as the workspace has it, else as the platform ships it.
 func (p *Platform) builderModels(ctx context.Context, tenant string) (wire.AgentSpec, bool) {
-	if have, err := p.Catalog().Get(ctx, tenant, BuiltinBuilder, 0); err == nil {
+	if have, err := p.Catalog().Get(ctx, tenant, p.cfg.EntryAgent, 0); err == nil {
 		return have.Spec, true
 	}
 	for _, spec := range p.builtinSpecs() {
-		if spec.Name == BuiltinBuilder {
+		if spec.Name == p.cfg.EntryAgent {
 			return spec, true
 		}
 	}

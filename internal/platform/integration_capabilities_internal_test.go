@@ -137,13 +137,13 @@ func TestNativeGitHubAndSlackEffectsRespectExternalMessagesPolicy(t *testing.T) 
 		tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: name}, Fn: func(context.Context, map[string]any) (string, error) {
 			t.Fatal("forbidden native effect executed")
 			return "", nil
-		}}, categoryOf(name))
+		}}, p.toolDeclaration(name))
 		if _, err := tool.Execute(t.Context(), nil); !errors.Is(err, operations.ErrDenied) {
 			t.Fatal(name, err)
 		}
 	}
 	policy(operations.Allow, operations.Ask)
-	tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "github_apply_changes"}}, categoryOf("github_apply_changes"))
+	tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "github_apply_changes"}}, p.toolDeclaration("github_apply_changes"))
 	if _, needed := tool.(native.Approving).Approval(saigetypes.ToolCallPart{Name: "github_apply_changes"}); !needed {
 		t.Fatal("file-write Ask did not use native approval")
 	}
@@ -156,12 +156,16 @@ func TestNativeGitHubAndSlackEffectsRespectExternalMessagesPolicy(t *testing.T) 
 // A review agent reads CI status as context: a workspace that asks before
 // "other" actions must not stall a GitHub review on its status reads.
 func TestGitHubReadActionsAreReadContext(t *testing.T) {
+	p, err := New(Config{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, name := range []string{"github_read_context", "github_read_file", "github_workflow_status"} {
-		if got := categoryOf(name); got != operations.ReadContext {
+		if got := p.categoryOf(name); got != operations.ReadContext {
 			t.Fatal(name, got)
 		}
 	}
-	if got := categoryOf("github_run_checks"); got == operations.ReadContext {
+	if got := p.categoryOf("github_run_checks"); got == operations.ReadContext {
 		t.Fatal("rerun classified as a read")
 	}
 }

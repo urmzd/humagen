@@ -23,7 +23,7 @@ import (
 // The agents a record names, as a reader is shown them.
 //
 // Besides the agents routes, these records name agents: a client (its
-// default, its list, its bots and its auto-labels), a project's lists of
+// default, its list, its bots and its event rules), a project's lists of
 // agents, the workspace's settings (its title and memory agents), an agent's
 // spec (the agents it may call, and the approvals of those calls), an
 // agent's call policy (the callers it admits and trusts), and a thread (its
@@ -56,7 +56,7 @@ func (s *Seer) shownNames(names []string) []string {
 }
 
 // agentsNamed is every agent a client names: its default, its list without
-// "*", its bots and its auto-labels, in that order, the maps by key.
+// "*", its bots and its event rules, in that order, the maps by key.
 func agentsNamed(c clients.Client) []string {
 	var out []string
 	if c.DefaultAgent != "" {
@@ -74,19 +74,13 @@ func agentsNamed(c clients.Client) []string {
 		for _, rule := range c.GitHub.Automations {
 			out = append(out, rule.Agent)
 		}
-		for _, repo := range slices.Sorted(maps.Keys(c.GitHub.AutoLabels)) {
-			labels := c.GitHub.AutoLabels[repo]
-			for _, label := range slices.Sorted(maps.Keys(labels)) {
-				out = append(out, labels[label])
-			}
-		}
 	}
 	return out
 }
 
 // Client is a client as the reader is shown it: its home left out when it is
 // in a project they may not read, and every agent it names that they may not
-// read left out of its default, its list, its bots and its auto-labels. The
+// read left out of its default, its list, its bots and its automations. The
 // machine that hosts the client's surface is shown every agent it names, as
 // it routes by them, just as it reads every thread on that surface.
 func (s *Seer) Client(c clients.Client) clients.Client {
@@ -107,15 +101,6 @@ func (s *Seer) Client(c clients.Client) clients.Client {
 		for _, rule := range c.GitHub.Automations {
 			if s.Agent(rule.Agent) {
 				g.Automations = append(g.Automations, rule)
-			}
-		}
-		g.AutoLabels = nil
-		for repo, labels := range c.GitHub.AutoLabels {
-			if shown := s.shownMap(labels); len(shown) > 0 {
-				if g.AutoLabels == nil {
-					g.AutoLabels = map[string]map[string]string{}
-				}
-				g.AutoLabels[repo] = shown
 			}
 		}
 		c.GitHub = &g
@@ -152,7 +137,7 @@ func noAgent(kind error, name string) error {
 // clients.ErrInvalid, as no agent, whether it lives in a project who may not
 // read or does not exist. What old names that who is not shown is kept: its
 // default, unless who names another, the agents of its list, unless who
-// writes "*", which reaches them too, and its bots and auto-labels, unless
+// writes "*", which reaches them too, and its bots and event rules, unless
 // who maps the same bot or label, and for a repository the client still
 // serves. An agent who is not shown that the client routed to stays one it
 // routes to, so a bot or a label kept for it still stands.
@@ -224,28 +209,6 @@ func (p *Platform) ClientWrittenBy(ctx context.Context, who auth.Principal, old 
 				}
 			}
 		}
-		for repo, labels := range old.GitHub.AutoLabels {
-			if owner, _, _ := strings.Cut(repo, "/"); !c.Serves(owner) {
-				continue
-			}
-			for label, a := range labels {
-				if shown(a) {
-					continue
-				}
-				if c.GitHub == nil {
-					c.GitHub = &clients.GitHubOptions{}
-				}
-				if c.GitHub.AutoLabels == nil {
-					c.GitHub.AutoLabels = map[string]map[string]string{}
-				}
-				if c.GitHub.AutoLabels[repo] == nil {
-					c.GitHub.AutoLabels[repo] = map[string]string{}
-				}
-				if _, mapped := c.GitHub.AutoLabels[repo][label]; !mapped {
-					c.GitHub.AutoLabels[repo][label] = a
-				}
-			}
-		}
 	}
 	for _, a := range hidden {
 		if !c.Routes(a) {
@@ -271,15 +234,23 @@ func (s *Seer) ProjectAgents(a projects.Agents) projects.Agents {
 }
 
 // AgentsView is a project's agents as the reader is shown them: its lists
-// as ProjectAgents leaves them, and no resolved default naming an agent they
-// may not read. What is available in a project the reader may read is
-// always an agent they may read, since a project agent is available only in
-// its home and below, which they may read too.
+// as ProjectAgents leaves them, what is available there and the agents homed
+// there without any agent they may not read, and no resolved default naming
+// one. What is available comes from the allow lists, which may name an agent
+// homed where the reader does not read.
 func (s *Seer) AgentsView(v ProjectAgents) ProjectAgents {
 	shown := s.ProjectAgents(projects.Agents{Enable: v.Enable, Allow: v.Allow, Default: v.Default})
 	v.Enable, v.Allow, v.Default = shown.Enable, shown.Allow, shown.Default
 	if v.Enable == nil {
 		v.Enable = []string{}
+	}
+	v.Available.Names = s.shownNames(v.Available.Names)
+	if v.Available.Names == nil {
+		v.Available.Names = []string{}
+	}
+	v.Homes = s.shownNames(v.Homes)
+	if v.Homes == nil {
+		v.Homes = []string{}
 	}
 	if d := v.DefaultResolved; d != nil && d.Agent != Open && !s.Agent(d.Agent) {
 		v.DefaultResolved = nil
@@ -392,9 +363,10 @@ func (p *Platform) SetSettingsBy(ctx context.Context, who auth.Principal, next S
 	return p.setSettings(ctx, who.Tenant, next, seer.Agent)
 }
 
-// tagTool is how the tool that calls an agent a spec may call is named, as
-// an approval names it: "tag_<agent>" (runtime.DelegateToolName).
-const tagTool = "tag_"
+// tagTool is how an approval names the calls to one agent a spec may call:
+// "tag_<agent>". No tool has that name any more; the agent tool holds the
+// calls to that agent (heldCallee).
+const tagTool = legacy.TagToolPrefix
 
 // Revision is an agent's revision as the reader is shown it: every agent they
 // may not read left out of the agents it may call (access.spawn), and the

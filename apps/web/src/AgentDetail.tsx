@@ -4,7 +4,6 @@ import { BuilderButton } from "./AgentBuilder.tsx";
 import { AgentDefaultSkills } from "./AgentDefaultSkills.tsx";
 import { AgentHealth } from "./AgentHealth.tsx";
 import {
-  type AgentPlace,
   type AgentSpec,
   type Alert,
   type AlertRule,
@@ -20,12 +19,11 @@ import {
   type Source,
   type SuiteView,
 } from "./api.ts";
-import { losing, nameOfAddress } from "./availability.ts";
 import { Evals } from "./Evals.tsx";
 import { ApprovalQueue, CallPolicyEditor, useReach } from "./Governance.tsx";
 import { chainProblem, chainWords, defaultModel, ModelChain, POLICY } from "./ModelChain.tsx";
 import { ASK_PERSON, approvable, withApproval, withAsking, withNames } from "./people.ts";
-import { titleOf } from "./projects.ts";
+import { accessLabel, accessOf, homeName } from "./projects.ts";
 import type { AgentTab } from "./route.ts";
 import {
   AgentMark,
@@ -36,6 +34,7 @@ import {
   field,
   Label,
   Menu,
+  type Option,
   Page,
   PickMany,
   Problem,
@@ -49,7 +48,7 @@ import {
 
 export type Tab = AgentTab;
 
-/** Approvals on calls to other agents. Calls go through one host tool, so these name a tool the agent never holds, and the agent cannot start. */
+/** Approvals on calls to single agents: each holds the agent tool's calls to the agent it names. */
 const callApprovals = (spec: AgentSpec) =>
   (spec.approvals ?? []).filter((t) => t.startsWith("tag_"));
 
@@ -323,8 +322,8 @@ export function AgentDetail({
   stats,
   workspaceDefault = "",
   tree = [],
-  place,
-  workspaceName = "",
+  home,
+  personalProject,
   canWrite,
   canGovern = false,
   builtin = false,
@@ -341,7 +340,6 @@ export function AgentDetail({
   onOpenAlerts,
   onOpenTask,
   onHomed,
-  onOpenProject,
   policies = [],
   onManagePolicies,
   seed,
@@ -362,13 +360,14 @@ export function AgentDetail({
   stats: Group | undefined;
   /** Who answers a message that tags no agent in the workspace itself. */
   workspaceDefault?: string;
-  /** The project tree, for where the agent may live and the titles of where it is enabled. */
+  /** The project tree, for the title of the project whose members see the agent. */
   tree?: ProjectView[];
-  /** Where it lives and which projects enable it, for a saved agent. */
-  place?: AgentPlace;
-  workspaceName?: string;
+  /** The project a saved agent is homed in, which says who sees it. None, or "~", is the workspace. */
+  home?: string;
+  /** The signed-in person's Personal project: an agent homed there is private to them. */
+  personalProject?: string;
   canWrite: boolean;
-  /** Holds projects:govern, which homing into or out of a company project needs. */
+  /** Holds projects:govern, which homing out of a company project needs. */
   canGovern?: boolean;
   /** Provided by the platform. It can be read and run, and its memory kept, but its spec is not saved here. */
   builtin?: boolean;
@@ -388,9 +387,8 @@ export function AgentDetail({
   onOpenAlerts?: () => void;
   /** Open a task, from an approval waiting in it. */
   onOpenTask?: (thread: string) => void;
-  /** Where the agent lives changed. */
+  /** Who sees the agent changed. */
   onHomed?: () => void;
-  onOpenProject?: (name: string) => void;
   /** The workspace's model policies an agent can follow. */
   policies?: ModelPolicy[];
   onManagePolicies?: () => void;
@@ -492,7 +490,7 @@ export function AgentDetail({
       live = false;
     };
   }, [name]);
-  const broken = callApprovals(spec);
+  const heldCalls = callApprovals(spec);
 
   const save = async () => {
     setSaving(true);
@@ -625,15 +623,15 @@ export function AgentDetail({
         </p>
       )}
 
-      {broken.length > 0 && (
+      {heldCalls.length > 0 && (
         <div
-          role="alert"
-          className={`${card} flex flex-wrap items-center justify-between gap-3 border-aui-bad/40`}
+          data-testid="agent-held-calls"
+          className={`${card} flex flex-wrap items-center justify-between gap-3`}
         >
           <p className="min-w-0 flex-1 text-aui-sm text-aui-fg">
-            This agent asks for approval before calling {broken.map((t) => t.slice(4)).join(", ")}.
-            Agents call each other through one shared tool, so that setting names a tool it never
-            holds, and the agent cannot start.
+            This agent asks for approval before calling{" "}
+            {heldCalls.map((t) => t.slice(4)).join(", ")}. Each of those calls waits until a person
+            approves it.
           </p>
           {editable && (
             <button
@@ -738,20 +736,19 @@ export function AgentDetail({
         <div className="flex flex-col gap-8">
           <p className="text-aui-xs text-aui-muted">
             Agent calls and approval settings below are saved with{" "}
-            {revision ? `Save as Revision ${revision.rev + 1}` : "Create Agent"}. Where it answers
-            and Who may call it have their own save controls and take effect immediately.
+            {revision ? `Save as Revision ${revision.rev + 1}` : "Create Agent"}. Who sees it and
+            Who may call it have their own save controls and take effect immediately.
           </p>
-          {revision && place && (
-            <WhereItAnswers
+          {revision && (
+            <WhoSeesIt
               name={name}
-              place={place}
+              home={home}
+              personalProject={personalProject}
               tree={tree}
-              workspaceName={workspaceName}
-              // The platform's own agents live nowhere.
-              canMove={canWrite && !builtin}
+              builtin={builtin}
+              canChange={canWrite && !builtin}
               canGovern={canGovern}
-              onMoved={() => onHomed?.()}
-              onOpenProject={onOpenProject}
+              onChanged={() => onHomed?.()}
             />
           )}
           <Section
@@ -899,7 +896,7 @@ export function AgentDetail({
       {tab === "context" && revision && (
         <AgentDefaultSkills
           agent={revision.spec.name}
-          home={place?.home ?? ""}
+          home={home ?? ""}
           agentRevision={revision.rev}
           canWrite={canWrite}
         />
@@ -1282,95 +1279,82 @@ export function AgentDetail({
   );
 }
 
-const placeWords = defaultCopy.agentPlace;
+const accessWords = defaultCopy.agentAccess;
 
 /**
- * Where an agent answers: the project it lives in, if any, and the projects
- * that enable it. A platform agent answers wherever a project enables it; an
- * agent that lives in a project answers there and below, and nowhere else.
+ * Who sees an agent: Private (homed in the person's Personal project), the
+ * workspace, or the members of the project it is homed in. Where it answers is
+ * the allow lists' business, so a change here strands nothing.
  */
-function WhereItAnswers({
+function WhoSeesIt({
   name,
-  place,
+  home,
+  personalProject,
   tree,
-  workspaceName,
-  canMove,
+  builtin,
+  canChange,
   canGovern,
-  onMoved,
-  onOpenProject,
+  onChanged,
 }: {
   name: string;
-  place: AgentPlace;
+  home?: string;
+  personalProject?: string;
   tree: ProjectView[];
-  workspaceName: string;
-  canMove: boolean;
+  builtin: boolean;
+  canChange: boolean;
   canGovern: boolean;
-  onMoved: () => void;
-  onOpenProject?: (name: string) => void;
+  onChanged: () => void;
 }) {
   const [problem, setProblem] = useState<string | null>(null);
-  const title = (n: string) => {
-    if (n === "") return workspaceName || defaultCopy.projects.workspace;
-    const p = tree.find((x) => x.name === n);
-    return p ? titleOf(p) : n;
-  };
-  const enabled = place.enabled_in.map(nameOfAddress);
-  const home = place.home ? nameOfAddress(place.home) : "";
-  const everywhere = !home && enabled.includes("");
-  const move = (to: string) => {
+  // A pick shows at once, until the agent list says where the agent is now.
+  const [pending, setPending] = useState<{ from: string; to: string } | null>(null);
+  // The platform's own agents are the workspace's.
+  const access = accessOf(builtin ? undefined : home, personalProject, tree);
+  const current = access.kind === "workspace" ? "" : access.project;
+  const mine = homeName(personalProject);
+  const options: Option[] = [];
+  if (mine && !builtin) {
+    options.push({ value: mine, label: accessWords.private, hint: accessWords.privateHint });
+  }
+  options.push({ value: "~", label: accessWords.workspace, hint: accessWords.workspaceHint });
+  // Another project's members, or someone else's Personal project, is kept as it is.
+  if (access.kind !== "workspace" && access.project !== mine) {
+    options.push({
+      value: access.project,
+      label: accessLabel(access),
+      hint:
+        access.kind === "members" ? accessWords.membersHint(access.title) : accessWords.privateHint,
+    });
+  }
+  const value = pending?.from === current ? pending.to : current || "~";
+  const change = (to: string) => {
+    if (to === value) return;
     setProblem(null);
+    setPending({ from: current, to });
     api
       .setAgentHome(name, to)
-      .then(onMoved)
-      .catch((e) => setProblem(e instanceof ApiError ? e.message : placeWords.failed));
+      .then(onChanged)
+      .catch((e) => {
+        setPending(null);
+        setProblem(e instanceof ApiError ? e.message : accessWords.failed);
+      });
   };
   return (
-    <Section title={placeWords.title} hint={placeWords.hint}>
+    <Section title={accessWords.title}>
       <Problem message={problem} />
-      <Label text={placeWords.home}>
-        <Menu
-          label={placeWords.home}
-          value={home}
-          disabled={!canMove}
-          options={[
-            { value: "", label: placeWords.noHome },
-            ...tree
-              .filter((p) => canGovern || p.kind !== "company")
-              .map((p) => {
-                const n = losing(p.name, place.enabled_in, tree);
-                return {
-                  value: p.name,
-                  label: titleOf(p),
-                  hint: n > 0 && p.name !== home ? placeWords.loses(n) : undefined,
-                };
-              }),
-          ]}
-          onChange={move}
-        />
-      </Label>
-      <div className="flex flex-col gap-1">
-        <p className="text-aui-xs font-medium text-aui-muted">{placeWords.availableIn}</p>
-        {home ? (
-          <p className="text-aui-sm text-aui-fg">{placeWords.homeAndBelow(title(home))}</p>
-        ) : everywhere ? (
-          <p className="text-aui-sm text-aui-fg">{placeWords.everywhere}</p>
-        ) : enabled.length === 0 ? (
-          <p className="text-aui-sm text-aui-muted">{placeWords.nowhere}</p>
-        ) : (
-          <ul className="flex flex-wrap gap-x-3 gap-y-1">
-            {enabled.map((e) => (
-              <li key={e}>
-                <button
-                  type="button"
-                  className={`${textLink} text-aui-sm`}
-                  onClick={() => onOpenProject?.(e)}
-                >
-                  {title(e)}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+      <div className="max-w-sm">
+        <Label text={accessWords.label}>
+          <Menu
+            label={accessWords.label}
+            value={value}
+            // Taking an agent out of a company project needs projects:govern.
+            disabled={
+              !canChange || (!canGovern && tree.find((p) => p.name === current)?.kind === "company")
+            }
+            options={options}
+            onChange={change}
+          />
+        </Label>
       </div>
     </Section>
   );

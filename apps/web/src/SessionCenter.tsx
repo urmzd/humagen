@@ -1,23 +1,39 @@
+import { defaultCopy } from "@humagen/components";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type AlertRuleConfig, api, type ProjectView } from "./api.ts";
-import { AgentTag, FilterSelect, ItemCard, PriorityPill, StatusPill, Tag } from "./cards.tsx";
+import { agentShown } from "./branding.ts";
+import {
+  AgentTag,
+  FilterSelect,
+  ItemCard,
+  itemGrid,
+  PriorityPill,
+  StatusPill,
+  Tag,
+} from "./cards.tsx";
 import { type ProjectRef, readableProject } from "./projects.ts";
-import { href, type Route } from "./route.ts";
+import { href, type Route, SESSION_PLACES, type SessionPlaceFilter } from "./route.ts";
 import {
   type AgentSessionSummary,
   type Alert,
+  alertActionLabel,
+  alertDestination,
+  alertPage,
   alertPriority,
   attentionAlerts,
+  holdsAnAlertOnly,
   isRootSession,
   openAlert,
   orderAlerts,
   sessionCenter,
   sessionSource,
 } from "./sessionCenter.ts";
+import { referenceOf } from "./trace.ts";
 import {
   ago,
   button,
   Confirm,
+  LoadMore,
   Page,
   Problem,
   primary,
@@ -27,6 +43,28 @@ import {
   Tabs,
   textAction,
 } from "./ui.tsx";
+
+const places = defaultCopy.places;
+
+/** Where a root session started, as the place filter names it. */
+export function placeOfSession(s: AgentSessionSummary): SessionPlaceFilter | undefined {
+  const where = sessionSource(s);
+  return where === "Slack"
+    ? "slack"
+    : where === "GitHub"
+      ? "github"
+      : where === "Scheduled"
+        ? "schedule"
+        : where === "Console"
+          ? "console"
+          : s.parent.startsWith("slack://")
+            ? "slack"
+            : s.parent.startsWith("github://")
+              ? "github"
+              : s.parent.startsWith("schedule://")
+                ? "schedule"
+                : undefined;
+}
 
 const failure = (error: unknown) =>
   error instanceof Error ? error.message : "This could not be loaded. Try again.";
@@ -66,12 +104,14 @@ export function useSessionAttention(canRead: boolean, tick: unknown) {
 export function AlertMark({ alert }: { alert: Alert }) {
   return <PriorityPill priority={alertPriority(alert)} />;
 }
-function SessionRow({
+/**
+ * One session a person started, as a card. What its agents did is inside it,
+ * under each response, so the card opens it and lists nothing beneath.
+ */
+export function SessionRow({
   session,
   go,
-  nested = false,
   alerts = [],
-  tick,
   projects = [],
   workspaceName,
 }: {
@@ -79,42 +119,13 @@ function SessionRow({
   workspaceName?: string;
   session: AgentSessionSummary;
   go: (route: Route) => void;
-  nested?: boolean;
   alerts?: Alert[];
-  tick?: unknown;
 }) {
-  const [children, setChildren] = useState<AgentSessionSummary[]>();
-  const [expanded, setExpanded] = useState(false);
-  const [childCursor, setChildCursor] = useState("");
-  const [loadingChildren, setLoadingChildren] = useState(false);
-  const [problem, setProblem] = useState<string>();
-  const loadChildren = async (after?: string) => {
-    setLoadingChildren(true);
-    setProblem(undefined);
-    try {
-      const r = await sessionCenter.sessions({ parent: session.id, ...(after ? { after } : {}) });
-      setChildren((old) => (after ? [...(old ?? []), ...r.sessions] : r.sessions));
-      setChildCursor(r.next);
-    } catch (e) {
-      setProblem(failure(e));
-    } finally {
-      setLoadingChildren(false);
-    }
-  };
-  const expand = () => {
-    setExpanded((v) => !v);
-    if (!children) void loadChildren();
-  };
-  // A session event refreshes expanded children without collapsing the tree.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the event invalidation signal.
-  useEffect(() => {
-    if (expanded) void loadChildren();
-  }, [tick]);
   const attention = orderAlerts(alerts.filter((a) => a.session === session.id && openAlert(a)))[0];
   return (
-    <li className={nested ? "ml-4 border-aui-border border-l pt-3 pl-4" : ""}>
+    <li className="min-w-0">
       <ItemCard
-        title={session.title || session.agent}
+        title={session.title || agentShown(session.agent)}
         href={href({ page: "conversation", id: session.id })}
         time={<time dateTime={session.updated_at}>{ago(session.updated_at)}</time>}
         onOpen={() => go({ page: "conversation", id: session.id })}
@@ -127,62 +138,7 @@ function SessionRow({
             <Tag>{sessionSource(session)}</Tag>
           </>
         }
-        actions={
-          <button
-            type="button"
-            aria-label={`${expanded ? "Collapse" : "Show"} children of ${session.title || session.agent}`}
-            aria-expanded={expanded}
-            onClick={expand}
-            className={textAction}
-          >
-            {expanded ? "Hide child sessions" : "Child sessions"}
-          </button>
-        }
       />
-      {expanded && (
-        <>
-          <Problem message={problem ?? null} />
-          {problem && (
-            <button
-              type="button"
-              className={textAction}
-              onClick={() => void loadChildren(childCursor || undefined)}
-            >
-              Try again
-            </button>
-          )}
-          {!children && !problem ? (
-            <SkeletonRows count={1} />
-          ) : children?.length ? (
-            <ul>
-              {children.map((child) => (
-                <SessionRow
-                  key={child.id}
-                  session={child}
-                  projects={projects}
-                  workspaceName={workspaceName}
-                  go={go}
-                  nested
-                  alerts={alerts}
-                  tick={tick}
-                />
-              ))}
-            </ul>
-          ) : (
-            <p className="pt-2 pl-4 text-aui-xs text-aui-muted">No child sessions.</p>
-          )}
-          {childCursor && (
-            <button
-              type="button"
-              className={textAction}
-              disabled={loadingChildren}
-              onClick={() => void loadChildren(childCursor)}
-            >
-              {loadingChildren ? "Loading…" : "More child sessions"}
-            </button>
-          )}
-        </>
-      )}
     </li>
   );
 }
@@ -211,6 +167,8 @@ export function SessionsPage({
     ...(route.status ? { status: route.status } : {}),
     ...(route.project ? { project: route.project } : {}),
     ...(route.agent ? { agent: route.agent } : {}),
+    // An item's sessions are the ones rooted at its address.
+    ...(route.item ? { parent: route.item } : {}),
   };
   const key = JSON.stringify(filters);
   const loadedKey = useRef("");
@@ -252,16 +210,17 @@ export function SessionsPage({
       setBusy(false);
     }
   };
+  // Newest first. An alert marks its session's row and does not move it; a
+  // session that only holds an alert is in Alerts, not here.
   const shown = (sessions ?? []).filter(
-    (s) => !route.q || `${s.title} ${s.agent}`.toLowerCase().includes(route.q.toLowerCase()),
+    (s) =>
+      !holdsAnAlertOnly(s.conversation) &&
+      (!route.q || `${s.title} ${s.agent}`.toLowerCase().includes(route.q.toLowerCase())) &&
+      (!route.place || placeOfSession(s) === route.place),
   );
-  const urgency = (id: string) => {
-    const a = orderAlerts(alerts.filter((a) => a.session === id && openAlert(a)))[0];
-    return a ? (alertPriority(a) === "urgent" ? 0 : alertPriority(a) === "normal" ? 1 : 2) : 3;
-  };
-  shown.sort((a, b) => urgency(a.id) - urgency(b.id) || b.updated_at.localeCompare(a.updated_at));
+  shown.sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
   return (
-    <Page title="Sessions" lede="Your work, with each agent's child sessions kept together.">
+    <Page title="Sessions">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <SearchField
           label="Search sessions"
@@ -282,6 +241,43 @@ export function SessionsPage({
           ]}
           onChange={(v) => go({ ...route, status: v === "any" ? undefined : v })}
         />
+        <FilterSelect
+          label={places.label}
+          value={route.place ?? ""}
+          onChange={(v) =>
+            go({
+              ...route,
+              place: (SESSION_PLACES as readonly string[]).includes(v)
+                ? (v as SessionPlaceFilter)
+                : undefined,
+            })
+          }
+          options={[
+            { value: "", label: places.any },
+            ...SESSION_PLACES.map((p) => ({ value: p, label: places[p] })),
+          ]}
+        />
+        {route.item && (
+          <span className="inline-flex items-center gap-2 text-aui-sm">
+            <a
+              href={href({ page: "item", address: route.item })}
+              onClick={(event) => {
+                event.preventDefault();
+                if (route.item) go({ page: "item", address: route.item });
+              }}
+              className="rounded-aui underline decoration-aui-border underline-offset-2 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+            >
+              {places.item(referenceOf(route.item).label)}
+            </a>
+            <button
+              type="button"
+              className={textAction}
+              onClick={() => go({ ...route, item: undefined })}
+            >
+              {places.clearItem}
+            </button>
+          </span>
+        )}
         {projects.length > 1 && (
           <div className="sm:ml-auto">
             <FilterSelect
@@ -303,14 +299,13 @@ export function SessionsPage({
       {!sessions && !problem ? (
         <SkeletonRows count={4} />
       ) : shown.length ? (
-        <ul className="flex flex-col gap-3">
+        <ul className={itemGrid}>
           {shown.map((s) => (
             <SessionRow
               key={s.id}
               session={s}
               go={go}
               alerts={alerts}
-              tick={tick}
               projects={projects}
               workspaceName={workspaceName}
             />
@@ -319,11 +314,7 @@ export function SessionsPage({
       ) : (
         <p className="text-aui-sm text-aui-muted">No sessions match these filters.</p>
       )}
-      {next && (
-        <button type="button" className={button} disabled={busy} onClick={() => void more()}>
-          {busy ? "Loading…" : "Load more"}
-        </button>
-      )}
+      {next && <LoadMore busy={busy} onMore={() => void more()} />}
     </Page>
   );
 }
@@ -368,7 +359,10 @@ export function AlertsPage({
     else
       sessionCenter.alerts(JSON.parse(key)).then(
         (r) => {
-          if (generation === request.current) setRows(orderAlerts(r.filter((a) => !!a.session)));
+          // An alert with no session (knowledge maintenance before a workspace has a
+          // model) stays here when its action names the page it is about.
+          if (generation === request.current)
+            setRows(orderAlerts(r.filter((a) => !!a.session || !!alertPage(a))));
         },
         (e) => {
           if (generation === request.current) setProblem(failure(e));
@@ -587,9 +581,13 @@ export function AlertsPage({
                 <li key={a.id}>
                   <ItemCard
                     title={a.title}
-                    href={href({ page: "conversation", id: a.session!, message: a.message })}
+                    // An alert with no session (maintenance before a workspace has a model) opens its page.
+                    href={alertDestination(a) && href(alertDestination(a)!)}
                     time={ago(a.at)}
-                    onOpen={() => go({ page: "conversation", id: a.session!, message: a.message })}
+                    onOpen={() => {
+                      const to = alertDestination(a);
+                      if (to) go(to);
+                    }}
                     facts={
                       <>
                         {canWrite && (
@@ -622,11 +620,12 @@ export function AlertsPage({
                         <button
                           type="button"
                           className={primary}
-                          onClick={() =>
-                            go({ page: "conversation", id: a.session!, message: a.message })
-                          }
+                          onClick={() => {
+                            const to = alertPage(a) ?? alertDestination(a);
+                            if (to) go(to);
+                          }}
                         >
-                          {a.action || "Open"}
+                          {alertActionLabel(a)}
                         </button>
                         {canWrite && (
                           <>
@@ -776,10 +775,16 @@ export function HomeSessionGlance({
                         type="button"
                         className={primary}
                         onClick={() =>
-                          go({ page: "conversation", id: a.session!, message: a.message })
+                          go(
+                            alertPage(a) ?? {
+                              page: "conversation",
+                              id: a.session!,
+                              message: a.message,
+                            },
+                          )
                         }
                       >
-                        {a.action || "Open"}
+                        {alertActionLabel(a)}
                       </button>
                       {canWrite && (
                         <button
@@ -813,7 +818,7 @@ export function HomeSessionGlance({
             {sessions.slice(0, 3).map((s) => (
               <li key={s.id}>
                 <ItemCard
-                  title={s.title || s.agent}
+                  title={s.title || agentShown(s.agent)}
                   time={ago(s.updated_at)}
                   onOpen={() => go({ page: "conversation", id: s.id })}
                   facts={

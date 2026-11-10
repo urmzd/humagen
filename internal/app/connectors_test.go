@@ -62,7 +62,9 @@ func TestAMalformedEnvironmentIsAnError(t *testing.T) {
 		"slack commands not json":       {EnvSlackToken: "t", EnvSlackSecret: "s", EnvSlackTeam: "T01", EnvSlackCommands: "create-pr"},
 		"a github secret with no token": {EnvGitHubSecret: "s"},
 		"github with no owners":         {EnvGitHubToken: "t", EnvGitHubSecret: "s"},
-		"github labels not json":        {EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "acme", EnvGitHubAutoLabels: "{"},
+		"auto review not a boolean":     {EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "acme", EnvGitHubAutoReview: "sometimes"},
+		"auto review repo not on/off":   {EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "acme", EnvGitHubAutoReviewRepositories: "acme/site=maybe"},
+		"github labels, now retired":    {EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "acme", retiredGitHubAutoLabels: `{"acme/site":{"auto":"helper"}}`},
 	} {
 		if _, err := defaultClients(envOf(vars)); err == nil {
 			t.Errorf("%s was accepted", name)
@@ -81,7 +83,7 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 		EnvSlackCommands: `[{"name":"create-pr","description":"Open a pull request","argument_hint":"[title]"}]`,
 		EnvGitHubToken:   "ghs-legacy", EnvGitHubSecret: "legacy-github-secret-of-16-bytes", EnvGitHubOwners: "acme, acme-labs",
 		EnvGitHubBots: "helper[bot]=helper", EnvGitHubChecks: "false", EnvGitHubReadRepositories: "acme/handbook",
-		EnvGitHubAutoLabels: `{"acme/handbook":{"agent:auto":"helper"}}`, EnvGitHubLogin: "humagen[bot]", EnvGitHubDefault: "helper",
+		EnvGitHubLogin: "humagen[bot]", EnvGitHubDefault: "helper",
 	}
 	defaults, err := defaultClients(envOf(vars))
 	if err != nil {
@@ -147,7 +149,7 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 		t.Fatalf("slack client = %+v", sl)
 	}
 	gh, _ := p.Clients.Get("trial", defaultGitHubClient)
-	if len(gh.Identity.Owners) != 2 || gh.GitHub.AutoLabels["acme/handbook"]["agent:auto"] != "helper" || gh.GitHub.ReadRepositories[0] != "acme/handbook" ||
+	if len(gh.Identity.Owners) != 2 || gh.GitHub.AutoReview != nil || gh.GitHub.ReadRepositories[0] != "acme/handbook" ||
 		gh.GitHub.Login != "humagen[bot]" || gh.DefaultAgent != "helper" {
 		t.Fatalf("github client = %+v", gh)
 	}
@@ -182,7 +184,7 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 		t.Fatalf("slack webhook = %d %s", w.Code, w.Body)
 	}
 
-	githubBody := `{"action":"created","repository":{"name":"repo","owner":{"login":"acme"}},"sender":{"login":"human","type":"User"},"issue":{"number":7},"comment":{"id":91,"body":"@helper explain"}}`
+	githubBody := `{"action":"created","repository":{"name":"repo","owner":{"login":"acme"}},"sender":{"login":"human","type":"User"},"issue":{"number":7},"comment":{"id":91,"body":"@helper explain","user":{"login":"human"},"author_association":"MEMBER"}}`
 	mac = hmac.New(sha256.New, []byte(vars[EnvGitHubSecret]))
 	mac.Write([]byte(githubBody))
 	r = httptest.NewRequest(http.MethodPost, "/connectors/github", strings.NewReader(githubBody))
@@ -458,5 +460,34 @@ func TestEnabledFalseTurnsTheFilesGitHubClientOff(t *testing.T) {
 	}
 	if kept := apply(console, off); !kept.Enabled || kept.Managed != "" || kept.Version != 1 {
 		t.Fatalf("the file turned off the console's client: %+v", kept)
+	}
+}
+
+// Automatic review is on unless the environment switches it off, and single
+// repositories can be turned back on or off, so a deployment configured by
+// its environment controls it without the API.
+func TestTheEnvironmentSwitchesAutomaticReview(t *testing.T) {
+	base := map[string]string{EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "acme"}
+	read := func(extra map[string]string) *clients.AutoReview {
+		t.Helper()
+		vars := map[string]string{}
+		for k, v := range base {
+			vars[k] = v
+		}
+		for k, v := range extra {
+			vars[k] = v
+		}
+		defaults, err := defaultClients(envOf(vars))
+		if err != nil || len(defaults) != 1 {
+			t.Fatalf("defaults = %v, %v", defaults, err)
+		}
+		return defaults[0].GitHub.AutoReview
+	}
+	if a := read(nil); a != nil || !a.Reviews("acme/site") {
+		t.Fatalf("unset: %+v", a)
+	}
+	a := read(map[string]string{EnvGitHubAutoReview: "false", EnvGitHubAutoReviewRepositories: "acme/test=on, acme/site=off"})
+	if a.Reviews("acme/site") || a.Reviews("acme/other") || !a.Reviews("acme/test") {
+		t.Fatalf("switched off with acme/test on: %+v", a)
 	}
 }

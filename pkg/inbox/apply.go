@@ -122,6 +122,14 @@ func (x *tx) apply(c Change) (*Message, bool, error) {
 				return nil, false, err
 			}
 		}
+	case DidJudge:
+		i := slices.IndexFunc(m.Parts, func(p Part) bool { return p.ID == c.Part })
+		if i < 0 || m.Parts[i].Question == nil || c.Judgement == nil {
+			return m, false, nil
+		}
+		q := *m.Parts[i].Question
+		q.Judgement = c.Judgement.clone()
+		m.Parts[i].Question = &q
 	case DidDismiss, DidWithdraw:
 		if settled(m) {
 			return m, false, nil

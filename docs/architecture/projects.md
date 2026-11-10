@@ -39,7 +39,7 @@ Decisions:
    answers, or all of them. On Slack and GitHub, where
    mentioning the app is what asks, an untagged message goes to the default
    the thread inherits, if one is set, else it starts no run. A default of
-   `*` asks every agent available there whether to join (see
+   `*` searches the agents available there and asks the best few whether to join (see
    [The dynamic router](#the-dynamic-router)). The workspace
    baseline setting is replaced by the root's default.
 5. **Context is layered and explicit**: the project chain's instructions and
@@ -379,7 +379,8 @@ What a message starts, first rule that applies:
    `routed`): with `join` (the default
    with two or more) each of them decides whether to take the message, as
    [the dynamic router](#the-dynamic-router) asks, and each that does
-   answers, its run's `picked` saying why; with none, it waits for a person;
+   answers, its run's `picked` saying why; with none, the best match among
+   them answers, else the first of them;
    with `all` each of them side by side (at most 3, so `all` over more than 3 is
    refused when it is set, 400); with one, that one. A message that names a
    skill goes to them too, and they are told to use it; tags in a message
@@ -875,84 +876,208 @@ key it is, left out of the directory, and subjects are never searched.
 | `pkg/prefs` | `Muted []string` (at most 100 project names) | 4 |
 | `pkg/clients` | `Home{Project, Channel}` (default root, `general`) | 8 |
 
+## A project's context
+
+A project is governance plus context for sessions. Besides its instructions,
+its context is the corpora it attaches (`Project.Context.Corpora`, at most
+20): every session filed there and below searches them, the project's own
+first and each ancestor's after, each once, at most 40 (`Tree.Corpora`). A
+corpus is the Knowledge store's; a project only names it. Attaching one needs
+ownership of the project and that the owner may read the corpus, and makes
+no one its reader: a session searches it only as each of its readers may. A
+corpus a reader may not read, or one deleted since, is left out of what they
+are shown and kept when they save, so saving never drops what they were not
+shown (`GET`, `PUT /api/projects/{name}/corpora`).
+
 ## Agents in projects
 
-### Platform agents and project agents
+### Agents are independent of projects
 
-- **A Company agent** has an explicit root home. It is available in
-  a project when the project or an ancestor enables it. Every existing agent,
-  and the built-ins `humagen-writer`, `humagen-analyst`, `humagen-builder`,
-  `code-reviewer`, `security-reviewer`, `architect-reviewer` and `qa-reviewer`,
-  has a Company home.
-- **A project agent** lives in one project (its home): it is available there
-  and in every descendant, and nowhere else. `*` never reaches it, and it is
-  not available at the root, so a conversation in Company cannot reach it.
-
-Both relations are kept on Humagen's records (the project's `Agents`, and an
-agent-to-home index in `pkg/projects`). fiber's `AgentSpec` is unchanged.
+No agent lives in a project. Any agent answers in any project, limited by
+policy, not by a home:
 
 ```
-offered(P)   = ∪ over Q in Chain(P) of (Q.Enable ∪ Homes(Q))
-               "*" in Q.Enable = every agent whose home is Company
 allowed(P)   = ∩ over Q in Chain(P) with Q.Allow set, of Q.Allow   (none set: no narrowing)
-available(P) = offered(P) ∩ allowed(P)
+available(P) = allowed(P)
 ```
 
-A zero `Agents{}` adds nothing: availability below comes from an ancestor's
-explicit `enable`. `*` is written, never implied. The migration writes
-`enable: ["*"]` on the root, which is today's behavior: every agent answers
-everywhere. A project that narrows sets `allow`; a child cannot widen it.
+A project's `allow` list is its agent policy, and a child cannot widen it.
+A project's `enable` list and its own `default`, and a channel's `default`,
+were how a project chose its agents. They are kept as stored and are not
+read: an untagged message falls to the thread's default, then the client's,
+then the workspace default (`workspace.agents.default`, the root's
+`Agents.Default`). The Projects page has no Agents tab and no project shows
+agents.
+
+An agent's home survives only as who sees the agent, its Access:
+
+- **Workspace**: no home, or the root. Everyone sees it, and it answers
+  anywhere it is allowed. The built-ins `humagen` (the entry agent, which also
+  builds agents), `humagen-writer`, `humagen-analyst`, `code-reviewer`,
+  `security-reviewer`, `architect-reviewer`, `qa-reviewer` and `approver` are
+  the workspace's.
+- **Members of a project**: homed in a project. Its readers see it. Homed in
+  a project everyone reads, it answers anywhere; homed in one kept to its
+  members, it answers only where its readers alone read (that project and
+  its subtree as open as it), so nothing it says reaches someone who may not
+  see it.
+- **Private**: homed in a Personal project, the same rule with one reader.
+
+A stored home that names no project, or cannot be read, never refuses the
+workspace: it fails closed, and nobody but `projects:govern` sees the agent.
+Editing a homed agent still needs ownership of its home. Agent access as its
+own member list, migrated once from the homes, is the likely next step.
 
 ### Enforcement: one check, at admission
 
 In `Platform.Invoke`, after `placeOf` and under `p.admission`, a run filed in a
-project (the root included) must use an agent in `available(project)`. If it
-does not, it is refused with `ErrNotAvailable` (403):
-`"globex-helper is not available in Initech"`. This covers every origin,
-because every run passes through admission:
-
-- API turns and thread messages;
-- cron and run-now (a schedule whose agent stops being available keeps firing,
-  is refused, and raises the existing failure message);
-- called runs: `placeOf` gives them their root's project, so a call made in
-  Globex reaches only agents available in Globex. Spawn lists, call policies,
-  limits and leases still decide every call first; this only narrows;
-- Slack and GitHub tags, once the platform files them (phase 8);
-- evals: a case is filed where its agent lives, its home for a project agent
-  and the root for a platform agent, so the home's limits count it and the
-  runs it calls are checked there, as for any run of that agent.
+project (the root included) must use an agent that answers there
+(`Platform.answersIn`: allowed, and seen by everyone who reads the project).
+If it does not, it is refused with `ErrNotAvailable` (403): `"globex-helper is
+not allowed in Initech"`, or that it is private. A refusal never says where
+the agent's home is. This covers every origin, because every run passes
+through admission: API turns and thread messages; cron and run-now (a
+schedule whose agent stops being allowed keeps firing, is refused, and raises
+the existing failure message); called runs, filed where their root is; Slack
+and GitHub tags; and evals. The call tool offers, and the router asks, only
+the agents that answer where the run is filed.
 
 Housekeeping (`OriginSystem`) is exempt, as it is from admission. It is read
-where the turn it serves is, so a title or memory agent that lives in a
-project is asked only about the turns there and below, whose readers all read
-it. The conversation of its own a housekeeping run makes is filed at the
-workspace, and is counted there only for a reader who may read the turn it
-serves. A reader's counts are decided as of one moment, so a conversation
-opened while they are read, a housekeeping run's or a private thread's, is
-counted from the next read. Earlier checks use the same function and give the same answer sooner:
-writing a schedule, a default or a tag, and `GET /api/join`. An agent the
-writer may not read is not one they are told about: naming it answers as
-naming an agent that does not exist, at every one of them.
+where the turn it serves is. A reader's counts are decided as of one moment,
+so a conversation opened while they are read, a housekeeping run's or a
+private thread's, is counted from the next read. Earlier checks use the same
+function and give the same answer sooner: writing a schedule, a default or a
+tag, and `GET /api/join`. An agent the writer may not read is not one they
+are told about: naming it answers as naming an agent that does not exist, at
+every one of them.
 
 ### Homes
 
-`PUT /api/agents/{name}/home {project}` needs `agents:write` and ownership of
-the new home and of the old one. It answers 409, listing them, when a
-schedule, alert rule, default or call-policy list outside the new home's
-subtree still names the agent. Editing a homed agent also needs ownership of
-its home. The spec says the same on Humagen's wrapper:
+`PUT /api/agents/{name}/home {project}` sets who sees an agent. It needs
+`agents:write` and ownership of the new home and of the old one, and answers
+409 only while the agent's default skills would not fit the new home.
+Schedules, alert rules, clients and defaults that use the agent hold no
+change back. The spec says the same on Humagen's wrapper:
 `agents: [{project: Globex, spec: {...}}]`.
+
+### The entry agent
+
+Every workspace has one entry agent, `humagen` unless the spec names another
+(`branding.entry_agent`), shipped with the platform's own agents on the same
+models (package `humagen/entry`). It is the agent people talk to the workspace
+through: a console session started with no mention, where no named default
+answers, belongs to it. It answers each message there in one run, the
+response's root: it answers simple asks itself and brings specialists in with
+the `agent` tool, each call a run nested under the call that made it, then
+answers once, naming who did what. No run picks who answers first, and an
+answer opens no child session. Routing has no page and no switch of its own:
+it is this agent, on its own model. The runtime's session tools are not
+offered to it.
+
+- **A message gets one answer.** With no other agent mentioned, the session's
+  agent answers. Exactly one other agent mentioned answers the message itself,
+  in the session: it is the root, the entry agent does not run, and, having no
+  transcript of its own there, it is sent the conversation so far. Several
+  agents mentioned (at most 3) are each asked by the platform before the entry
+  agent's first model step, as `agent` calls of its run
+  (`internal/platform/mention_calls.go`): activity shows them where its own
+  calls show, and the model is never shown a tool call it did not make. What
+  they said reaches it as content of the person's turn, and it is told to
+  write each result as given under a heading with its agent's name, then a
+  short synthesis if one helps. A mentioned agent that cannot be asked is said
+  so in its place, and one whose call policy holds calls for a person is
+  asked only once a person approves: the root parks on that approval first.
+  An answer is limited to what its place's readers may read: an agent that
+  lives where not everyone who reads the conversation's project reads is not
+  asked there, mentioned alone or beside others, and the poster is told why
+  and where it can be asked (the mention's `refused`). This holds in every session, whoever owns it; where the
+  entry agent cannot run, each mentioned agent answers for itself. A child
+  session opens only when a request asks for one by option (`agent` with
+  `fresh` or `label` on `POST /api/sessions/{id}/messages`).
+- **Why an answer came from where it did is activity.** A root the platform
+  chose (a mentioned agent, or a search match standing in for the entry agent)
+  says why on its node of the message's trace (`pick`), never as a line of the
+  conversation.
+
+- **Who answers a console session**, in order: an agent the message mentions;
+  a default that names an agent (thread, client, workspace); the entry agent;
+  without one (a server that ships no agents of its own), routing by search
+  (below), so the message still lands.
+- **It is told who may fit.** Each message it answers comes with the strong
+  matches among the best 3 agents search finds (their names, the words that
+  matched and their instructions, loaded only for these) and every other
+  agent it may call with what it is for (its description, or its prompt's
+  first sentence), so it can choose by meaning where words did not match. It
+  leaves out agents the poster may not read.
+- **When it cannot run** (its models name no provider the workspace has
+  enabled or a model policy it no longer has, asked before a run is started,
+  or it is refused where the message is), a strong search match answers as
+  the root in its place, else the workspace's named default. A weak match,
+  one passing word of a prompt, is never handed the message: it is refused
+  with why the entry agent cannot run. A run that starts and then fails is a
+  failed answer, not handed on.
+- **It may call every other agent whose definition pins** (`Access.Spawn`,
+  kept by the platform). A run pins its whole call tree, so an agent that no
+  longer pins is left out rather than stopping the entry agent. The list is
+  worked out again only when an agent is added, revised or retired, and the
+  entry agent is revised only when it changes. Each call is still held to the
+  place: an agent not available in the session's project is refused there, as
+  are call policy, budget and depth.
+- `EntryAgent(tenant)` gives its name and the name people see (the
+  workspace's branding, else Humagen), which the GitHub check run uses.
+
+### Root sessions on chat surfaces
+
+A thread on a chat surface, a Slack thread today, has one root session, as a
+console chat does: the place's, keyed by its address
+(`slack://<team>/<channel>/<thread ts>`) and owned by the entry agent (or,
+on a server that ships no agents of its own, by the client's default). The
+chat service (`apps/chat`) posts each person's message to `POST /api/sessions`
+with `surface` and `act_as`; only the client's own machine may, for a person
+of the client. The first message starts the root (201), filed where the
+Slack channel is bound, else in the client's home (private for a direct
+message); every later message in the thread lands in it (200), once however
+often it is sent. The one agent a message mentions answers it in the root; a
+message naming nobody is the entry agent's.
+The request may not say where to file the session or who owns it. A Slack
+thread that started as a conversation before root sessions stays one (409).
 
 ### The dynamic router
 
 A message that names no agent, where the default it inherits is `*`
-("everyone decides"), asks every agent available there one low-effort
-question, all at once: "should I be involved?" (`pkg/join`). Each that says
-yes joins and answers in the same thread, each reply posted and streamed on
-its own; in Slack, in the same Slack thread. At most 64 agents are asked and
-at most 5 join one message. When none says yes, nothing starts: the message
-waits for a person to answer or to tag an agent. There is no fallback to a
-named default.
+("everyone decides"), is routed by search, not by asking every agent
+(`pkg/join`). The agents available there are searched first: BM25 over each
+one's name (counted three times), what it is for (its description, or its
+prompt's first sentence, counted twice), its system prompt and the asks it
+answered well (an answer a person rated up files its ask under the agent,
+`pkg/goodasks`; a rating taken back or turned down drops it, and a run that
+read private context is never filed). An agent needs no description written
+for routing. Common words and the filler of an instruction ("in one line",
+"briefly", "what should I use instead", "identify yourself") are left out of
+both the message and the agents. A match is strong when a word of the
+message is in the agent's name or what it is for, or two or more words
+match; one passing word of the rest of a prompt is weak. A handle kept from
+before a rename (`warp-writer` and the like) is searched only where its
+current agent is not offered, so the same agent is never listed twice. Only the best 3
+matches are asked one low-effort question, all at once: "should I be
+involved?". Each that says yes joins and answers in the same thread, each
+reply posted and streamed on its own; in Slack, in the same Slack thread. At
+most 64 agents are searched and at most 5 join one message. When search
+finds nobody, nobody is asked.
+
+A message always lands or says why, from every surface: the console, the
+Slack app, a GitHub mention, the API. A message with no mention, where the
+default is `*` or unset, goes to the entry agent, which answers it or calls
+whoever fits; it answers only through a client that may route to it, and
+calls only agents that client may route to. Without an entry agent there,
+it goes to the best match that said yes, or with none saying yes to the
+best match search found; the run
+records why in `warp.picked` ("Joined on its own: ...", or "Picked by
+search: matched deploy, cost."), which the console shows with the answer,
+never before it. When search matches nobody, the workspace's named default
+answers ("No agent matched it, so the workspace default answered."), else
+the first agent available there. Only a place with no agent the poster may
+ask refuses the message.
 
 - `*` is a default, never an agent's name. A default that names an agent
   still answers alone, and an unset default still inherits. A default stored
@@ -973,12 +1098,13 @@ named default.
   <reason>".
 - `GET /api/join?q=<message>&project=<name>` (`agents:read`) previews each
   agent's answer, `{decisions: [{agent, join, reason}]}`, without starting
-  anything. Agents the caller may not read are left out.
-- `POST /api/runs` with `agent` omitted uses the default chain, and with none
-  answers 409 "tag an agent". `agent: "*"` (or `auto`) asks everyone: the
-  first run that joined is returned and the others start in the same
-  conversation. When none takes it, 409 says it waits for a person to answer
-  or tag an agent.
+  anything: the agents search found answer, every other one says search
+  passed it over. Agents the caller may not read are left out.
+- `POST /api/runs` with `agent` omitted uses the default chain; with none
+  set, or `agent: "*"` (or `auto`), the message lands as above: the entry
+  agent's run, or the first run that joined, is returned and the others
+  start in the same conversation. Only a place where no agent may answer
+  is 409 "tag an agent".
 
 ### Clients
 
@@ -988,8 +1114,8 @@ assistant pane, an unbound channel, a GitHub issue. The order there is the
 thread, then the client, then the client's home channel and its chain. In a
 bound Slack channel the bound Humagen channel's chain decides. The client's
 allow-list (`client.Routes`) still filters the result: a default the client
-may not route to is refused, never swapped. A GitHub label in `auto_labels`
-names an agent, so it is a tag. A client's default may be `*`, and fiber's
+may not route to is refused, never swapped. A GitHub label starts nothing:
+automatic review is the connection's switch. A client's default may be `*`, and fiber's
 in-process connectors may ask for it too; `surface.stamp` then asks the
 agents available where the run is filed that the client may route to, before
 admission, and each that joins gets a tag of its own. The Slack app built on
@@ -1893,10 +2019,9 @@ and its total, What's new and Your projects to the same on both renderers.
   to their messages with the app, and What's new and Your projects are shown
   to read. Ask a Question and Build an Agent open a form whose words are
   posted as the person in their messages with the app, Build an Agent tagging
-  `@humagen-builder` where the client reaches it; Search Context opens the
+  `@humagen` where the client reaches it; Search Context opens the
   console. Someone the client maps to nobody keeps the mailbox.
-- **GitHub.** The same rule: `@agent` in a comment or an `auto_labels` label is
-  a tag; otherwise the client's default; otherwise nothing. As Slack delivers
+- **GitHub.** The same rule: `@agent` in a comment is a tag; otherwise the client's default; otherwise nothing. As Slack delivers
   only what mentions the app, a comment that names no agent asks the client
   only when it mentions the app's own login (`github.login`): `@humagen what
   changed?`. One that mentions neither starts nothing, so a busy repository

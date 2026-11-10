@@ -85,7 +85,7 @@ test("Files opens the actual native multi-step draft through either responsive p
   const file = JSON.parse(write?.function.arguments ?? "{}");
   assert.equal(file.path, "plan.md");
   const scenario = sessionScreens(ids).find((screen) => screen.name === "session-details-files");
-  assert.equal(scenario?.path, "/sessions/s_work?panel=files");
+  assert.equal(scenario?.path, "/messages/s_work?panel=files");
   assert.ok(scenario?.act);
   for (const pickerVisible of [true, false]) {
     const { page, calls } = recorder({ pickerVisible, fileContent: file.content });
@@ -134,7 +134,7 @@ test("artifacts waits for loaded content and Connections waits for its MCPs", as
   await screens.find((screen) => screen.name === "artifacts")?.act?.(page);
   await screens.find((screen) => screen.name === "connections-mcps")?.act?.(page);
   assert.deepEqual(calls, [
-    { action: "wait", selector: "heading:Deliverables" },
+    { action: "wait", selector: "heading:Artifacts" },
     { action: "wait", selector: "searchbox:Search artifacts" },
     { action: "wait", selector: "list:Artifacts|text:No artifacts yet" },
     { action: "wait", selector: "list:MCPs" },
@@ -148,7 +148,7 @@ test("session-list readiness requires a native link to the seeded session", asyn
     ?.act?.(page);
   assert.ok(
     calls.some(
-      (call) => call.action === "wait" && call.selector === 'main a[href="/sessions/s_work"]',
+      (call) => call.action === "wait" && call.selector === 'main a[href="/messages/s_work"]',
     ),
   );
 });

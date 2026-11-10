@@ -37,7 +37,7 @@ import {
   type ProjectView,
   type ThreadSummary,
 } from "./api.ts";
-import { type Branding, servedBranding } from "./branding.ts";
+import { agentShown, type Branding, servedBranding } from "./branding.ts";
 import {
   age,
   GROUP_ROWS,
@@ -47,13 +47,14 @@ import {
   type RowStanding,
   standingOf,
 } from "./conversationList.ts";
-import { dayOf, sourceOf } from "./History.tsx";
+import { daysAgo } from "./format.ts";
+import { sourceOf } from "./History.tsx";
 import { useMarks } from "./marks.ts";
 import { ConversationPeek, PeekCard, usePeek } from "./RowPreview.tsx";
-import { type Standing, useRecents } from "./recents.ts";
+import { type Standing, useRecents, useRecentsRow } from "./recents.ts";
 import { href, type Route, type Page as RoutePage } from "./route.ts";
 import { Avatar, workspaceSettingsRoute } from "./Settings.tsx";
-import { type Alert, openAlert, orderAlerts, priorityRank } from "./sessionCenter.ts";
+import { type Alert, holdsAnAlertOnly, openAlert, orderAlerts } from "./sessionCenter.ts";
 import { AgentMark, type Flash, FlashNote, Popover, SkeletonRows, useFlash } from "./ui.tsx";
 import { workspaceHub } from "./workspace-navigation.ts";
 
@@ -285,16 +286,42 @@ function sourceGlyph(origin: string): ReactNode {
   ) : undefined;
 }
 
-/** Conversations under Today, Yesterday, This week and each month, newest first. */
-function byDay(rows: ThreadSummary[], now: Date): { day: string; items: ThreadSummary[] }[] {
-  const out: { day: string; items: ThreadSummary[] }[] = [];
+/** Today, Yesterday or Earlier, by the reader's own calendar day. */
+export function recentDay(iso: string, now: Date): "today" | "yesterday" | "earlier" {
+  const days = daysAgo(iso, now.getTime());
+  return days <= 0 ? "today" : days === 1 ? "yesterday" : "earlier";
+}
+
+const DAY_ORDER = ["today", "yesterday", "earlier"] as const;
+const dayLabel = {
+  today: defaultCopy.history.today,
+  yesterday: defaultCopy.history.yesterday,
+  earlier: defaultCopy.sidebar.earlier,
+};
+
+/**
+ * Recents as one list: each session once, under Today, Yesterday and
+ * Earlier in the reader's local time, in that order, newest first in each.
+ */
+export function recentGroups(
+  rows: ThreadSummary[],
+  now: Date,
+): { day: (typeof DAY_ORDER)[number]; label: string; items: ThreadSummary[] }[] {
+  const seen = new Set<string>();
+  const buckets = { today: [], yesterday: [], earlier: [] } as Record<
+    (typeof DAY_ORDER)[number],
+    ThreadSummary[]
+  >;
   for (const t of rows) {
-    const day = dayOf(t.updated_at, now);
-    const last = out.at(-1);
-    if (last?.day === day) last.items.push(t);
-    else out.push({ day, items: [t] });
+    if (seen.has(t.id)) continue;
+    seen.add(t.id);
+    buckets[recentDay(t.updated_at, now)].push(t);
   }
-  return out;
+  return DAY_ORDER.filter((d) => buckets[d].length).map((d) => ({
+    day: d,
+    label: dayLabel[d],
+    items: buckets[d].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at)),
+  }));
 }
 
 function TaskRow({
@@ -416,7 +443,8 @@ function TaskRow({
           </span>
           <span
             data-row-age
-            className={`mt-0.5 shrink-0 text-aui-2xs font-normal text-aui-muted tabular-nums ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:invisible [@media(pointer:fine)]:group-hover/task:invisible" : ""}`}
+            // One line: where it came from, then its age, so every row is the same height.
+            className={`mt-0.5 inline-flex shrink-0 items-center gap-1 text-aui-2xs font-normal text-aui-muted tabular-nums ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:invisible [@media(pointer:fine)]:group-hover/task:invisible" : ""}`}
           >
             {standing === "unread" ? (
               <span aria-hidden data-standing="unread" className="humagen-row-dot mt-1 block" />
@@ -724,6 +752,11 @@ export function Sidebar({
     more,
   } = useRecents(agent, standing, threads, sessionMode);
   const filters = (agent ? 1 : 0) + (standing ? 1 : 0);
+  // The row the open session is shown as: its own, or its root's when it is an agent's session under one.
+  const openRow = useRecentsRow(
+    route.page === "conversation" ? route.id : null,
+    route.page === "conversation" && recents.some((t) => t.id === route.id),
+  );
   // A pin that did not take is said beside the conversation it was for, in whichever
   // list the conversation is in by then.
   const { flash, say, clear: unsay } = useFlash();
@@ -861,7 +894,7 @@ export function Sidebar({
     },
     {
       to: { page: "artifacts" } as Route,
-      label: "Artifacts",
+      label: nav.artifacts,
       icon: <LayersIcon />,
       show: can("artifacts:read"),
       active:
@@ -889,7 +922,7 @@ export function Sidebar({
   const toggleArchive = (t: ThreadSummary, on: boolean) => {
     unsay();
     setNote({ id: t.id, archived: on });
-    if (on && selected === t.id) go({ page: "new" });
+    if (on && (selected === t.id || openRow === t.id)) go({ page: "new" });
     setArchivedMark(t.id, on).catch(() => {
       setNote(null);
       setFlashed(t.id);
@@ -906,7 +939,7 @@ export function Sidebar({
     unsay();
     setGone((g) => new Set(g).add(t.id));
     if (pinned.includes(t.id)) onPin(t.id, false).catch(() => {});
-    if (selected === t.id) go({ page: "new" });
+    if (selected === t.id || openRow === t.id) go({ page: "new" });
     coworking.archive(t.id, true).catch(() => {
       setGone((g) => {
         const n = new Set(g);
@@ -952,16 +985,22 @@ export function Sidebar({
   for (const alert of orderAlerts(sessionAlerts.filter(openAlert)))
     if (alert.session && !priorityBySession.has(alert.session))
       priorityBySession.set(alert.session, alert.priority ?? "normal");
-  const unpinned = recents
-    .filter((t) => !pinnedSet.has(t.id) && !gone.has(t.id) && !archivedSet.has(t.id))
-    .map(shown)
-    .sort(
-      (a, b) =>
-        (priorityBySession.has(a.id) ? priorityRank(priorityBySession.get(a.id)) : 3) -
-          (priorityBySession.has(b.id) ? priorityRank(priorityBySession.get(b.id)) : 3) ||
-        b.updated_at.localeCompare(a.updated_at),
-    );
-  const currentThread = selected ? known.get(selected) : undefined;
+  // Recents is newest first. An alert marks its session's row; it does not move
+  // it, and a session that only holds an alert is in Alerts, not here.
+  const unpinned = [
+    ...new Map(
+      recents
+        .filter(
+          (t) =>
+            !pinnedSet.has(t.id) &&
+            !gone.has(t.id) &&
+            !archivedSet.has(t.id) &&
+            (t.id === openRow || !holdsAnAlertOnly(t)),
+        )
+        .map((t) => [t.id, shown(t)] as const),
+    ).values(),
+  ].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
+  const currentThread = openRow ? known.get(openRow) : undefined;
   if (
     currentThread &&
     !pinnedSet.has(currentThread.id) &&
@@ -971,13 +1010,13 @@ export function Sidebar({
     unpinned.push(currentThread);
   }
   // Opening a conversation reads it, and so does staying in it while it moves.
-  const selectedUpdated = currentThread?.updated_at;
+  const selectedUpdated = (selected ? known.get(selected) : undefined)?.updated_at;
   // biome-ignore lint/correctness/useExhaustiveDependencies: a newer update is the reason to mark it read again
   useEffect(() => {
     if (selected && can("runs:read")) markRead(selected);
   }, [selected, selectedUpdated, markRead, can]);
   const noConversations = recents.length === 0 && unpinned.length === 0;
-  const isCurrent = (t: ThreadSummary) => t.id === selected;
+  const isCurrent = (t: ThreadSummary) => t.id === openRow;
   const canPin = can("runs:read");
   const pinnedProjects = new Set(prefs?.pinned_projects ?? []);
   const readableProjectPins = [...pinnedProjects].filter(
@@ -1017,13 +1056,11 @@ export function Sidebar({
     />
   );
   const viewTitle =
-    view === "recents" && unpinned.length > 0
-      ? (byDay(unpinned, new Date(now))[0]?.day ?? defaultCopy.sidebar.recents)
-      : view === "projects"
-        ? defaultCopy.sidebar.projects
-        : view === "archived"
-          ? defaultCopy.sidebar.archived
-          : defaultCopy.sidebar.recents;
+    view === "projects"
+      ? defaultCopy.sidebar.projects
+      : view === "archived"
+        ? defaultCopy.sidebar.archived
+        : defaultCopy.sidebar.recents;
 
   const clear = () => {
     setStanding("");
@@ -1163,22 +1200,14 @@ export function Sidebar({
                         <Item
                           icon={<ProjectIcon />}
                           label={projectTitle(project)}
-                          href={href({
-                            page: "project",
-                            name: project === "~" ? "" : project,
-                            tab: "inbox",
-                          })}
+                          href={href({ page: "project", name: project === "~" ? "" : project })}
                           active={
                             route.page === "project" &&
                             route.name === (project === "~" ? "" : project)
                           }
                           open
                           onClick={() =>
-                            go({
-                              page: "project",
-                              name: project === "~" ? "" : project,
-                              tab: "inbox",
-                            })
+                            go({ page: "project", name: project === "~" ? "" : project })
                           }
                         />
                       </div>
@@ -1261,7 +1290,7 @@ export function Sidebar({
                                 { value: "", label: "Any" },
                                 ...answering.map((a) => ({
                                   value: a,
-                                  label: a,
+                                  label: agentShown(a),
                                   mark: <AgentMark name={a} size={12} />,
                                 })),
                               ]}
@@ -1350,9 +1379,14 @@ export function Sidebar({
                     </li>
                   )}
                   {view === "recents" &&
-                    byDay(unpinned, new Date(now)).map((g, i) => (
-                      <li key={g.day} className={i === 0 ? "" : "pt-3"}>
-                        {i > 0 && <p className="px-2.5 pb-1 text-aui-xs text-aui-muted">{g.day}</p>}
+                    recentGroups(unpinned, new Date(now)).map((g, i) => (
+                      <li
+                        key={g.day}
+                        className={i === 0 ? "" : "pt-3"}
+                        data-testid="recents-group"
+                        data-day={g.day}
+                      >
+                        <p className="px-2.5 pb-1 text-aui-xs text-aui-muted">{g.label}</p>
                         <ul>{g.items.map((t) => row(t, { label: true }))}</ul>
                       </li>
                     ))}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -27,8 +28,10 @@ type client struct {
 // time, so a rotated key is used on the next call.
 func dial(ctx context.Context, cfg Config) (api, error) {
 	var opts []option.ClientOption
+	var oauth *http.Client
 	if cfg.TokenSource != nil {
-		opts = append(opts, option.WithHTTPClient(&http.Client{Transport: &tokenTransport{source: cfg.TokenSource, base: http.DefaultTransport}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}))
+		oauth = &http.Client{Transport: &tokenTransport{source: cfg.TokenSource, base: http.DefaultTransport}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		opts = append(opts, option.WithHTTPClient(oauth))
 	} else if cfg.Credential != "" {
 		key, err := credref.Default.Resolve(ctx, cfg.Credential)
 		if err != nil {
@@ -42,6 +45,9 @@ func dial(ctx context.Context, cfg Config) (api, error) {
 	}
 	if cfg.Location != "" {
 		c.Location = cfg.Location
+	}
+	if oauth != nil {
+		return &rest{api: &client{c: c, cfg: cfg}, http: oauth, base: restBase + url.PathEscape(cfg.Project), location: cfg.Location}, nil
 	}
 	return &client{c: c, cfg: cfg}, nil
 }
@@ -171,7 +177,7 @@ func (k *client) DryRun(ctx context.Context, sql string) (plan, error) {
 	return p, nil
 }
 
-func (k *client) Run(ctx context.Context, sql string, maxBytes int64, maxRows int) (answer, error) {
+func (k *client) Run(ctx context.Context, sql string, maxBytes int64, maxRows int, admit func([]string) error) (answer, error) {
 	q := k.query(sql)
 	q.MaxBytesBilled = maxBytes
 	if dl, ok := ctx.Deadline(); ok {
@@ -189,15 +195,22 @@ func (k *client) Run(ctx context.Context, sql string, maxBytes int64, maxRows in
 	if err := st.Err(); err != nil {
 		return answer{}, err
 	}
-	it, err := job.Read(ctx)
-	if err != nil {
-		return answer{}, err
-	}
 	var a answer
+	var tables []string
 	if st.Statistics != nil {
 		if d, ok := st.Statistics.Details.(*bq.QueryStatistics); ok {
 			a.Billed = d.TotalBytesBilled
+			for _, t := range d.ReferencedTables {
+				tables = append(tables, t.ProjectID+"."+t.DatasetID+"."+t.TableID)
+			}
 		}
+	}
+	if err := admit(tables); err != nil {
+		return answer{}, err
+	}
+	it, err := job.Read(ctx)
+	if err != nil {
+		return answer{}, err
 	}
 	a.Rows = [][]any{}
 	for {

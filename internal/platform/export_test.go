@@ -3,6 +3,7 @@ package platform
 import (
 	"context"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/urmzd/humagen/internal/wire"
@@ -16,7 +17,6 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/clients"
-	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 )
@@ -25,7 +25,7 @@ import (
 // returns what the tool reported on the run's stream.
 func (p *Platform) UseTool(ctx context.Context, req runtime.Request, name string, args map[string]any) (string, []event.Action, error) {
 	var reported []event.Action
-	tools, err := p.fileTools(nil)(req, func(a event.Action) error {
+	tools, err := p.registryTools()(req, func(a event.Action) error {
 		reported = append(reported, a)
 		return nil
 	})
@@ -90,7 +90,7 @@ func (p *Platform) CallApproved(ctx context.Context, tenant, runID string, req c
 	return p.call(withApprovedCall(ctx, req.Agent), tenant, runID, req, false, nil)
 }
 
-// CallTargets is what the call_agent tool offers a caller's run.
+// CallTargets is what the agent tool offers a caller's run.
 func (p *Platform) CallTargets(tenant, runID, caller string, spawn []string) []string {
 	return p.callTargets(tenant, runID, caller, spawn)
 }
@@ -98,15 +98,14 @@ func (p *Platform) CallTargets(tenant, runID, caller string, spawn []string) []s
 // CallToolApproval asks the call tool a turn would get whether a call needs
 // approval, as the runtime's approval gate does.
 func (p *Platform) CallToolApproval(req runtime.Request, args map[string]any) (native.ApprovalRequest, bool) {
-	t := p.callAgentTool(req, func(event.Action) error { return nil })
-	return t.(native.Approving).Approval(saigetypes.ToolCallPart{Name: ToolCallAgent, Arguments: args})
+	return declaredApproval(req, p.toolDeclaration(ToolAgent), saigetypes.ToolCallPart{Name: ToolAgent, Arguments: args})
 }
 
-// JoinFor is who takes a message a client raised, as stamp asks, in the
-// client's home.
-func (p *Platform) JoinFor(ctx context.Context, c clients.Client, text string) ([]join.Decision, error) {
+// LandFor is who answers an untagged message a client raised where nothing
+// names an agent to, as stamp asks, in the client's home.
+func (p *Platform) LandFor(ctx context.Context, c clients.Client, text string) ([]Answerer, error) {
 	project, channel, _ := p.filedFor(c.Tenant, c, "")
-	return p.joinFor(ctx, c, p.clientPlace(c, project, channel, ""), text)
+	return p.landFor(ctx, c, p.clientPlace(c, project, channel, ""), text)
 }
 
 // DelayRecord holds every run between being accepted and being recorded, as
@@ -159,3 +158,10 @@ func (p *Platform) BeforeCarryOut(fn func()) { p.beforeCarryOut = fn }
 // BeforeQuestionKept runs fn after a question's message is found missing
 // and built, and before it is kept, as a slow raise would.
 func (p *Platform) BeforeQuestionKept(fn func()) { p.beforeQuestionKept = fn }
+
+// BeforeMentionCalls runs fn once, before the platform next decides which of
+// a message's mentioned agents it may call.
+func (p *Platform) BeforeMentionCalls(fn func()) {
+	var once sync.Once
+	p.beforeMentionCalls = func() { once.Do(fn) }
+}

@@ -328,7 +328,7 @@ test("project and conversation pins persist independently through unpinning and 
   const pinned = within(await screen.findByRole("region", { name: "Pinned" }));
   assert.equal(
     pinned.getByRole("link", { name: "Launch" }).getAttribute("href"),
-    "/projects/Launch/context",
+    "/projects/Launch",
   );
   fireEvent.click(pinned.getByRole("button", { name: "Unpin project Launch" }));
   await waitFor(() => assert.deepEqual(stored.pinned_projects, []));

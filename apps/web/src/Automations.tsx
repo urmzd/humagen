@@ -2,7 +2,7 @@ import { defaultCopy } from "@humagen/components";
 import { CalendarIcon, GitHubIcon, SlackIcon } from "@humagen/render-web";
 import { useState } from "react";
 import type { Revision, ScheduleView } from "./api.ts";
-import { AgentTag, ItemCard, Pill, Tag } from "./cards.tsx";
+import { AgentTag, ItemCard, itemGrid, Pill, Tag } from "./cards.tsx";
 import { inWords } from "./cron.ts";
 import type { ProjectRef } from "./projects.ts";
 import { ScheduleForm } from "./Schedules.tsx";
@@ -36,7 +36,6 @@ export function Automations({
   return (
     <Page
       title={words.title}
-      lede={words.lede}
       actions={
         !making &&
         canSchedule && (
@@ -60,10 +59,7 @@ export function Automations({
       {schedules.length === 0 && !making ? (
         <Empty title={words.empty} />
       ) : (
-        <ul
-          className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] gap-3"
-          aria-label={words.title}
-        >
+        <ul className={itemGrid} aria-label={words.title}>
           {schedules.map((s) => (
             <li key={s.name} className="min-w-0">
               <ItemCard
