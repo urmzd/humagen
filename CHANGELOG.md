@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.116.0 (2026-11-10)
+
+### Features
+
+- **voice**: Slack voice clips are heard, and answered with a spoken clip (#273) ([0bf1dd8](https://github.com/urmzd/humagen/commit/0bf1dd838d75199f7ab293ec14ebac7747e93251))
+- **voice**: voice mode's API, hearing a session and speaking a run's answer (#260) ([84da74c](https://github.com/urmzd/humagen/commit/84da74c485bb79da4fa156c9b0b3b3350d870c21))
+- **voice**: a workspace voice provider, Groq or OpenAI, set up by an admin (#249) ([8cd2fb0](https://github.com/urmzd/humagen/commit/8cd2fb05e92ed3e9b79ead3c5b35db1d7c146faa))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.115.0...v0.116.0)
+
+
 ## 0.115.0 (2026-11-10)
 
 ### Features
