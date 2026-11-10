@@ -2698,6 +2698,18 @@ export interface VoiceUsage {
   unpriced_calls?: number;
 }
 
+/** A finished run's answer as one clip. */
+export interface SpokenAnswer {
+  /** The clip, base64. */
+  audio: Blob;
+  media_type: string;
+  /** What the clip says. */
+  text: string;
+  /** The answer is said in full, not cut at 1,200 characters. */
+  whole: boolean;
+  cost_micros: number;
+}
+
 export interface SpokenCorrection {
   text: string;
 }

@@ -241,3 +241,28 @@ func TestASpokenMessageIsCorrectedByItsAuthor(t *testing.T) {
 		t.Fatalf("an empty correction = %d", res)
 	}
 }
+
+// A finished run's answer is one clip, for a surface that replies with a
+// file; a provider that fails says so.
+func TestAFinishedAnswerIsOneClip(t *testing.T) {
+	voice := &swappableVoice{fake: &speech.Fake{Text: "hi"}}
+	f := newFixtureWith(t, platform.Config{VoiceBuild: voice.build})
+	tok := f.person(t, "acme", "00u-ada", "Ada", "humagen-admins")
+	id, run := voiceSession(t, f, tok)
+	got := want(t, f, tok, "POST", "/api/runs/"+run+"/speech", "", http.StatusOK)
+	if got["text"] == "" || got["audio"] == "" || got["media_type"] != "audio/wav" || got["whole"] != true {
+		t.Fatalf("clip = %v", got)
+	}
+	session := want(t, f, tok, "GET", "/api/sessions/"+id, "", http.StatusOK)
+	if v, _ := session["voice"].(map[string]any); v == nil || v["spoken_chars"] == float64(0) {
+		t.Fatalf("the clip is not counted on the session: %v", session["voice"])
+	}
+	voice.set(&speech.Fake{Err: speech.ErrUnavailable})
+	if res, _ := rawCall(t, f, tok, "POST", "/api/runs/"+run+"/speech", ""); res != http.StatusServiceUnavailable {
+		t.Fatalf("provider down = %d", res)
+	}
+	other := f.person(t, "globex", "00u-gus", "Gus", "humagen-admins")
+	if res, _ := rawCall(t, f, other, "POST", "/api/runs/"+run+"/speech", ""); res != http.StatusNotFound {
+		t.Fatalf("another workspace's run = %d", res)
+	}
+}

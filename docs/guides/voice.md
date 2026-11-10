@@ -61,6 +61,34 @@ heard, characters spoken, cost). When a spend limit over any of them is
 reached, the calls answer 402 and nothing is sent to the provider. Both take
 `speech:write` and a session the caller can see.
 
+## Spoken answers in Slack
+
+A voice clip sent to the app (a direct message, or a thread the app takes
+part in) arrives on its run as an audio attachment with no words. When the
+run's turn starts, the clip is heard with the workspace's voice provider and
+its words go into what the agent reads, marked `[Voice note, english]`, as a
+voice note posted through the API is. The words are kept with the run, so a
+retried or resumed turn neither hears nor pays for the clip again, and the run
+is remembered as answering a spoken message.
+
+When that run completes, the answer is written in the thread as usual, and a
+completion step then speaks it and uploads it as an audio clip in the same
+thread ("Spoken answer"). It runs once a run, after the run has ended; when
+it cannot speak (no voice provider, a spend limit, no words, Slack refusing
+the upload) it logs why and leaves the written answer. The Slack app needs the
+`files:write` scope (in `humagen slack manifest` and the Slack connection's
+OAuth scopes); an installation from before it was added reinstalls to grant it.
+
+`POST /api/runs/{id}/speech` makes the same clip for any caller: the answer
+of a run that has ended, as plain words, at most 1,200 characters, a longer
+answer cut at a sentence and ending "The rest is in the thread." It speaks
+only the run's own words, takes `speech:write` on a run the caller can see,
+and is counted like voice mode's calls. It answers 409 while the run works.
+
+Slack huddles are out of reach: Slack's public API has no supported way for
+an app to join a huddle or to hear or speak its audio (it offers huddle
+status events, and the Calls API for linking a call hosted elsewhere).
+
 ## A deployment speech kind
 
 Groq transcribes with Whisper. Set `GROQ_API_KEY` in the server's
@@ -98,7 +126,7 @@ spec:
 
 | From | How | What the agent reads |
 |------|-----|----------------------|
-| Slack | Record an audio clip in a thread the app answers, or attach an audio file | The message's text, then `[Voice note, english] what you said` |
+| Slack | Record an audio clip in a thread the app answers, or attach an audio file | The message's text, then `[Voice note, english] what you said`. With a workspace voice provider the agent reads the clip's words, and the answer comes back as text and as an audio clip in the thread |
 | The console | Press the microphone in the message box, speak, press it again | The words come back into the box, marked the same way, for you to read, change and send |
 | WhatsApp, iMessage, SMS | Not yet: the messaging connectors in `urmzd/orchagent` will carry a voice note as an audio attachment and call the same hook | The same |
 

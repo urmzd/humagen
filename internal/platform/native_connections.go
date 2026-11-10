@@ -19,7 +19,7 @@ func NativeConnectionProvider(name string) connectionauth.Provider {
 	case "bigquery":
 		return connectionauth.Provider{Name: name, Resource: "https://bigquery.googleapis.com/bigquery/v2/", Issuer: "https://accounts.google.com", AuthorizationURL: "https://accounts.google.com/o/oauth2/v2/auth", TokenURL: "https://oauth2.googleapis.com/token", Offline: true, Scopes: []string{"https://www.googleapis.com/auth/bigquery.readonly"}}
 	case "slack":
-		return connectionauth.Provider{Name: name, Resource: "https://slack.com/api/", Issuer: "https://slack.com", AuthorizationURL: "https://slack.com/oauth/v2/authorize", TokenURL: "https://slack.com/api/oauth.v2.access", Scopes: []string{"app_mentions:read", "chat:write", "channels:history", "groups:history", "im:history", "mpim:history", "files:read", "reactions:write"}}
+		return connectionauth.Provider{Name: name, Resource: "https://slack.com/api/", Issuer: "https://slack.com", AuthorizationURL: "https://slack.com/oauth/v2/authorize", TokenURL: "https://slack.com/api/oauth.v2.access", Scopes: []string{"app_mentions:read", "chat:write", "channels:history", "groups:history", "im:history", "mpim:history", "files:read", "files:write", "reactions:write"}}
 	}
 	return connectionauth.Provider{}
 }

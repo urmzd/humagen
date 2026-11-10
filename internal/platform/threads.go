@@ -802,8 +802,9 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 			return Posted{}, err
 		}
 	}
-	text = p.TranscribeVoiceNotes(ctx, who.Tenant, text, first.Attachments)
+	text, spoken := p.transcribeVoiceNotes(ctx, who.Tenant, text, first.Attachments)
 	first.Text, first.Mentions = text, p.checkTags(who.Tenant, tree, project, mentions)
+	first.Spoken = first.Spoken || spoken
 	th, m, err := p.Threads.Start(who.Tenant, rec, first, p.now())
 	if err != nil {
 		return Posted{}, err
@@ -900,7 +901,9 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 			return Posted{}, err
 		}
 	}
-	msg.Text = p.TranscribeVoiceNotes(ctx, who.Tenant, msg.Text, msg.Attachments)
+	var spoken bool
+	msg.Text, spoken = p.transcribeVoiceNotes(ctx, who.Tenant, msg.Text, msg.Attachments)
+	msg.Spoken = msg.Spoken || spoken
 	if in.Answers != nil {
 		if err := p.answerFromThread(ctx, who, in.ActAs, th, *in.Answers, in.Text); err != nil {
 			return Posted{}, err

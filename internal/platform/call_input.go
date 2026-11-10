@@ -131,6 +131,10 @@ type callExecutor struct {
 	// (resolveRevision). Nil leaves the definition as it is.
 	resolve func(runtime.Request) (runtime.Request, error)
 	release func(runtime.Request)
+	// hear puts the words of a voice note that arrived with the turn's
+	// event, from a surface that posts it as a run (a Slack clip), in its
+	// text (voice_turn.go). Nil hears nothing.
+	hear hearFunc
 	// mentioned makes the agent calls a run's message asked for by mention
 	// before the turn's first model step (callMentioned). Nil makes none.
 	mentioned func(context.Context, runtime.Request, map[string]event.Answer, func(context.Context, event.Body) error) (told string, stopped *turn.Stop, park *native.Parked, err error)
@@ -165,6 +169,13 @@ func (e callExecutor) Turn(ctx context.Context, def turn.Pinned, in turn.Input, 
 	if e.bind != nil {
 		done := e.bind(ctx, req)
 		defer done()
+	}
+	if e.hear != nil && req.Origin != call.Origin {
+		if text, heard := e.hear(ctx, req.Tenant, req.RunID, req.Text, wire.AttachmentsOf(in.Trigger)); heard {
+			req.Text = text
+			in.Trigger = wire.Clone(in.Trigger)
+			wire.SetText(&in.Trigger, text)
+		}
 	}
 	var format call.ResponseFormat
 	if req.Origin == call.Origin {

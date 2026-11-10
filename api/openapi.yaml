@@ -3519,6 +3519,45 @@ paths:
         "429": {$ref: "#/components/responses/Refused"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/runs/{id}/speech:
+    post:
+      operationId: speakAnswer
+      tags: [voice]
+      summary: A finished run's answer as one audio clip
+      description: |
+        Speaks the answer of a run that has ended with the workspace's voice
+        provider, as one clip: plain words, at most 1,200 characters, a longer
+        answer cut at a sentence and ending "The rest is in the thread."
+        (`whole` false). For a surface that replies with a file: a Slack
+        thread answers a voice clip with one. The text is the run's own; a
+        client cannot name it. Each part spoken is counted in the usage
+        ledger and on the run's session. 409 while the run works or with no
+        voice provider, 402 at a spend limit, 422 for an answer with no words.
+      x-permission: speech:write
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      responses:
+        "200":
+          description: The answer, spoken.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SpokenAnswer"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "402": {$ref: "#/components/responses/Refused"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422":
+          description: The answer has no words to say.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
+        "500": {$ref: "#/components/responses/ServerError"}
+        "503":
+          description: The voice provider failed or did not answer in time.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
   /api/runs/{id}/stop:
     post:
       operationId: stopRun
@@ -14966,6 +15005,16 @@ components:
         micros: {type: integer, format: int64, description: "What it cost, in micro-USD."}
         calls: {type: integer}
         unpriced_calls: {type: integer}
+    SpokenAnswer:
+      description: A finished run's answer as one clip.
+      type: object
+      required: [audio, media_type, text, whole, cost_micros]
+      properties:
+        audio: {type: string, format: byte, description: "The clip, base64."}
+        media_type: {type: string}
+        text: {type: string, description: What the clip says.}
+        whole: {type: boolean, description: "The answer is said in full, not cut at 1,200 characters."}
+        cost_micros: {type: integer, format: int64}
     SpokenCorrection:
       type: object
       additionalProperties: false

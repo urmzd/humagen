@@ -33,6 +33,7 @@ func exerciseSessionVoiceContract(t *testing.T, c *contract) {
 
 	// Off until the workspace has a voice provider.
 	c.call(token, "POST", hear, path+"/transcriptions", webmVoice, 409, octets...)
+	c.call(token, "POST", "/api/runs/{id}/speech", "/api/runs/"+runID+"/speech", "", 409)
 	c.call(token, "POST", speak, path+"/speech", body, 409)
 	c.call(token, "PUT", "/api/voice/provider", "/api/voice/provider", `{"kind":"groq","key":"gsk_contract"}`, 200)
 
@@ -45,8 +46,13 @@ func exerciseSessionVoiceContract(t *testing.T, c *contract) {
 	}
 	c.call(token, "POST", speak, path+"/speech", `{"run":"r_missing","from":0}`, 404)
 	c.call(token, "POST", speak, path+"/speech", `{"from":0}`, 400)
+	// The same answer as one clip, for a surface that replies with a file.
+	answer := c.call(token, "POST", "/api/runs/{id}/speech", "/api/runs/"+runID+"/speech", "", 200)
+	if answer.str("text") == "" || answer.str("audio") == "" {
+		t.Fatalf("the answer as a clip: %v", answer)
+	}
 	session := c.call(token, "GET", "/api/sessions/{id}", "/api/sessions/"+id, "", 200)
-	if v := obj(session.field("voice")); v == nil || fmt.Sprint(v["calls"]) != "2" {
+	if v := obj(session.field("voice")); v == nil || fmt.Sprint(v["calls"]) != "3" {
 		t.Fatalf("session voice usage = %v", session.field("voice"))
 	}
 	// A spoken message is put right by its author; a typed one is not.
