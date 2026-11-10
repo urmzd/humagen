@@ -24,6 +24,101 @@ func (s *Server) voiceRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/voice/provider", s.authed(auth.ClientsWrite, s.putVoiceProvider))
 	mux.HandleFunc("DELETE /api/voice/provider", s.authed(auth.ClientsWrite, s.deleteVoiceProvider))
 	mux.HandleFunc("POST /api/voice/provider/check", s.authed(auth.ClientsWrite, s.checkVoiceProvider))
+	// Voice mode in a session: what the person said, and the agent's answer
+	// spoken a few sentences at a time.
+	mux.HandleFunc("POST /api/sessions/{id}/voice/transcriptions", s.authed(auth.SpeechWrite, s.seenSession(s.hearInSession)))
+	mux.HandleFunc("POST /api/sessions/{id}/voice/speech", s.authed(auth.SpeechWrite, s.seenSession(s.speakInSession)))
+	// A spoken message's words, put right by its author.
+	mux.HandleFunc("PATCH /api/sessions/{id}/messages/{mid}", s.authed(auth.RunsWrite, s.seenSession(s.correctSpoken)))
+}
+
+// correction is a spoken message's words, put right.
+type correction struct {
+	Text string `json:"text"`
+}
+
+func (s *Server) correctSpoken(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var in correction
+	if !decode(w, r, &in) {
+		return
+	}
+	got, err := s.P.CorrectSpoken(r.Context(), who, r.PathValue("id"), r.PathValue("mid"), in.Text)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, got)
+}
+
+func (s *Server) hearInSession(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	audio, err := io.ReadAll(r.Body)
+	var tooBig *http.MaxBytesError
+	switch {
+	case errors.As(err, &tooBig):
+		fail(w, http.StatusRequestEntityTooLarge, "the recording is too long")
+		return
+	case err != nil:
+		fail(w, http.StatusBadRequest, "the recording could not be read")
+		return
+	}
+	got, err := s.P.HearInSession(r.Context(), who, r.PathValue("id"), audio)
+	switch {
+	case errors.Is(err, platform.ErrNotAudio):
+		fail(w, http.StatusBadRequest, "the recording is not audio")
+	case errors.Is(err, speech.ErrTooLarge):
+		fail(w, http.StatusRequestEntityTooLarge, "the recording is too long")
+	case errors.Is(err, speech.ErrUnsupported):
+		fail(w, http.StatusBadRequest, "the recording is in a format the voice provider does not take")
+	case errors.Is(err, speech.ErrEmpty):
+		fail(w, http.StatusUnprocessableEntity, "no words were heard")
+	default:
+		if s.voiceRefused(w, who, err) {
+			return
+		}
+		ok(w, http.StatusOK, got)
+	}
+}
+
+// speakInput asks for the next part of a run's answer, from an offset the
+// last answer gave (0 to start).
+type speakInput struct {
+	Run  string `json:"run"`
+	From int    `json:"from"`
+}
+
+func (s *Server) speakInSession(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var in speakInput
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.Run == "" || in.From < 0 {
+		fail(w, http.StatusBadRequest, "name the run, and an offset of 0 or more")
+		return
+	}
+	got, err := s.P.SpeakInSession(r.Context(), who, r.PathValue("id"), in.Run, in.From)
+	if s.voiceRefused(w, who, err) {
+		return
+	}
+	ok(w, http.StatusOK, got)
+}
+
+// voiceRefused answers a voice mode call that failed, and says whether it
+// did.
+func (s *Server) voiceRefused(w http.ResponseWriter, who auth.Principal, err error) bool {
+	switch {
+	case err == nil:
+		return false
+	case errors.Is(err, platform.ErrVoiceOff):
+		fail(w, http.StatusConflict, "voice mode is off: no voice provider is set up")
+	case errors.Is(err, platform.ErrVoiceSpend):
+		fail(w, http.StatusPaymentRequired, detail(err, platform.ErrVoiceSpend))
+	case errors.Is(err, speech.ErrUnavailable), errors.Is(err, platform.ErrVoiceProvider):
+		s.Log.Warn("httpapi: voice mode", "tenant", who.Tenant, "error", err)
+		fail(w, http.StatusServiceUnavailable, "the voice provider did not answer: "+speechReason(err))
+	default:
+		s.problem(w, err)
+	}
+	return true
 }
 
 // voiceProviderView is the workspace's voice provider, if it has one, and

@@ -8786,6 +8786,128 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/ErrorBody"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/sessions/{id}/messages/{mid}:
+    patch:
+      operationId: correctSpokenMessage
+      tags: [voice]
+      summary: Put right the words of a spoken message
+      description: |
+        Replaces the text of a message its author said in voice mode
+        (`spoken`), so a word the transcription heard wrong is right for
+        every later turn. Only the author may, only a spoken message can be
+        corrected (400 for any other), its tags stay as posted, and the runs
+        it already started are not changed. The message gets `edited_at`.
+      x-permission: runs:write
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "mid", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SpokenCorrection"}
+      responses:
+        "200":
+          description: The session, with the message corrected.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSession"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/sessions/{id}/voice/transcriptions:
+    post:
+      operationId: hearInSession
+      tags: [voice]
+      summary: Hear what a person said in voice mode
+      description: |
+        The body is the recording's own bytes, at most `max_bytes` from
+        `GET /api/voice`. It is heard by the workspace's voice provider and
+        not kept; the words come back to be sent as a message with `spoken`
+        set, or read as an answer to an approval. What it costs is counted in
+        the usage ledger and on the session's `voice` usage. 409 when the
+        workspace has no voice provider, 402 when a spend limit over the
+        session is reached (nothing is sent to the provider), 422 when no
+        words were heard.
+      x-permission: speech:write
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      responses:
+        "200":
+          description: What was said.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VoiceTranscript"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "402": {$ref: "#/components/responses/Refused"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413":
+          description: The recording is over `max_bytes`.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
+        "422":
+          description: No words were heard.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
+        "500": {$ref: "#/components/responses/ServerError"}
+        "503":
+          description: The voice provider failed or did not answer in time.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
+  /api/sessions/{id}/voice/speech:
+    post:
+      operationId: speakInSession
+      tags: [voice]
+      summary: Speak the next part of a run's answer
+      description: |
+        Speaks the next few sentences of the answer of `run`, a run of this
+        session, from `from` (0, then each answer's `next`), as plain words:
+        no Markdown, links by their text, a code block as "The code is in the
+        session." The text is read on the server; a client cannot name it.
+        While the answer is still being written and has no whole sentence
+        after `from`, the answer is `pending` and nothing is spent; once it
+        has ended and been said in full, `done`. What it costs is counted. 404
+        for a run that is not this session's, 409 when the workspace has no
+        voice provider, 402 when a spend limit is reached.
+      x-permission: speech:write
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/VoiceSpeechInput"}
+      responses:
+        "200":
+          description: The words, spoken, or pending, or done.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VoiceSpeech"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "402": {$ref: "#/components/responses/Refused"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+        "503":
+          description: The voice provider failed or did not answer in time.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
   /api/voice/provider:
     get:
       operationId: getVoiceProvider
@@ -13183,6 +13305,13 @@ components:
           description: "`console`, or the id of the client it came through."
           type: string
         surface_id: {type: string}
+        spoken:
+          description: Said in voice mode and transcribed.
+          type: boolean
+        edited_at:
+          description: When its author last corrected a spoken message's words.
+          type: string
+          format: date-time
         at: {type: string, format: date-time}
     ThreadAnnouncement:
       description: |
@@ -13405,6 +13534,9 @@ components:
         answers: {$ref: "#/components/schemas/ThreadAnswerRef"}
         act_as: {$ref: "#/components/schemas/ActAs"}
         surface: {$ref: "#/components/schemas/SurfaceRef"}
+        spoken:
+          description: The person said it in voice mode and the words were transcribed. It only marks the message.
+          type: boolean
     ThreadMode:
       description: |
         How a thread's selected agents answer an untagged message a person
@@ -14824,6 +14956,41 @@ components:
         kinds:
           type: array
           items: {$ref: "#/components/schemas/VoiceKind"}
+    VoiceUsage:
+      description: What voice mode has used in a session, counted also in the workspace's usage.
+      type: object
+      required: [heard_ms, spoken_chars, micros, calls]
+      properties:
+        heard_ms: {type: integer, format: int64, description: "How long the person spoke, as the provider measured it."}
+        spoken_chars: {type: integer, format: int64}
+        micros: {type: integer, format: int64, description: "What it cost, in micro-USD."}
+        calls: {type: integer}
+        unpriced_calls: {type: integer}
+    SpokenCorrection:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text: {type: string, minLength: 1, maxLength: 8000}
+    VoiceSpeechInput:
+      type: object
+      additionalProperties: false
+      required: [run]
+      properties:
+        run: {type: string, description: A run of this session whose answer is spoken.}
+        from: {type: integer, minimum: 0, description: "The offset to speak from: 0, then each answer's `next`."}
+    VoiceSpeech:
+      description: The next part of a run's answer, spoken.
+      type: object
+      required: [text, next, cost_micros]
+      properties:
+        audio: {type: string, format: byte, description: "The sound, base64. Left out while pending."}
+        media_type: {type: string}
+        text: {type: string, description: "What was said, for captions."}
+        next: {type: integer, description: The offset to ask from next.}
+        pending: {type: boolean, description: The answer is still being written and has no whole sentence after the offset yet; ask again when more arrives.}
+        done: {type: boolean, description: The answer has ended and has been said in full.}
+        cost_micros: {type: integer, format: int64}
     VoiceCheck:
       description: The sample a check spoke, and what was heard back from it.
       type: object
@@ -18366,6 +18533,9 @@ components:
         ref:
           $ref: "#/components/schemas/ExternalRef"
           description: This message's own origin when it differs from the batch's (a Slack reply's ts); it also makes the message post once.
+        spoken:
+          description: The person said it in voice mode and the words were transcribed. It only marks the message, which is answered as a typed one is.
+          type: boolean
     MessageContent:
       description: A string, or content blocks.
       oneOf:
@@ -18687,6 +18857,9 @@ components:
         answers: {$ref: "#/components/schemas/ThreadAnswerRef"}
         act_as: {$ref: "#/components/schemas/ActAs"}
         surface: {$ref: "#/components/schemas/SurfaceRef"}
+        spoken:
+          description: The person said it in voice mode and the words were transcribed. It only marks the message.
+          type: boolean
         agent: {type: string, description: "The @agent in text whose child receives this request."}
         fresh: {type: boolean, description: "Start an independent child instead of continuing its existing session."}
         label: {type: string}
@@ -18858,6 +19031,7 @@ components:
           type: boolean
           description: More changed messages remain after cursor; continue with since until false.
         usage: {$ref: "#/components/schemas/RunUsage"}
+        voice: {$ref: "#/components/schemas/VoiceUsage"}
         conversation: {$ref: "#/components/schemas/ThreadSummary"}
         thread: {$ref: "#/components/schemas/Thread"}
         id:
