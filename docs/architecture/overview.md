@@ -808,8 +808,12 @@ holds a package name. `DELETE /api/store/packages/{name}` (`agents:write`)
 retires the package's agents and their old handles; history and pinned
 revisions stay readable. An agent changed in the workspace is retired only with
 `force=true`, and without it the removal is refused with 409 naming it. Both
-are audited (`agent.package.install`, `agent.package.remove`). A run of a store
-agent that is not installed is refused saying which package to install, and a
+are audited (`agent.package.install`, `agent.package.remove`). The three
+operations are system tools too (`list_store_packages`,
+`install_store_package`, `remove_store_package`), offered over MCP and
+declared in the tool registry. A run of a store
+agent that is not installed is refused saying which package to install, and so
+are a mention of one in a message and a call to one with the `agent` tool; a
 schedule's refusal raises an alert; automatic pull request review skips with a
 log line naming the Review package. The console lists the store under Agents.
 
