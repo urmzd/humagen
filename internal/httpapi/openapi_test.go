@@ -647,6 +647,8 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ProjectKnowledge": {typ: platform.ProjectKnowledge{}}, "ProjectKnowledgeSource": {typ: projects.KnowledgeSource{}}, "ProjectKnowledgeInput": {typ: platform.KnowledgeInput{}, written: true},
 		"ProjectSkill": {typ: platform.SkillDetail{}}, "ProjectSkillRef": {typ: projects.SkillRef{}}, "ProjectSkills": {typ: platform.ProjectSkills{}}, "ProjectSkillsInput": {typ: platform.SkillsInput{}, written: true},
 		"MentionKind": {typ: platform.MentionKind{}}, "MentionItem": {typ: platform.MentionItem{}},
+		"VoiceSettings": {typ: platform.VoiceSettings{}}, "VoiceProvider": {typ: platform.VoiceProvider{}}, "VoiceKind": {typ: platform.VoiceKind{}},
+		"VoiceProviderInput": {typ: platform.VoiceProviderInput{}, written: true}, "VoicePrice": {typ: speech.Price{}}, "VoiceCheck": {typ: platform.VoiceCheck{}},
 		"ProjectInput": {typ: platform.ProjectInput{}, written: true}, "ProjectUpdate": {typ: platform.ProjectUpdate{}, written: true},
 		"ProjectAgents": {typ: projects.Agents{}}, "AgentAvailability": {typ: projects.Availability{}}, "AgentOffer": {typ: platform.Offer{}},
 		"DefaultResolved": {typ: platform.Nearer{}}, "ProjectAgentsView": {typ: platform.ProjectAgents{}},
@@ -1052,6 +1054,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		},
 		GitHubAPI: func(string) github.API { return sourceFake },
 		Speech:    contractSpeech{},
+		VoiceBuild: func(kind string, _ speech.Config) (platform.Voice, error) {
+			if kind == speech.KindOpenAI {
+				return &speech.Fake{Err: speech.ErrUnavailable}, nil
+			}
+			return &speech.Fake{Text: "Voice is set up.", Language: "english", Duration: 3 * time.Second}, nil
+		},
 	})
 	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
 	exerciseEvaluationPolicyContract(t, c)
@@ -1164,6 +1172,19 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", transcribe, transcribe, "not audio", http.StatusBadRequest, octets...)
 	c.call(acme, "POST", transcribe, transcribe, webmVoice+"silence", http.StatusUnprocessableEntity, octets...)
 	c.call(acme, "POST", transcribe, transcribe, webmVoice+"offline", http.StatusServiceUnavailable, octets...)
+
+	// The workspace's voice provider: none, set up, checked, broken, off.
+	const provider = "/api/voice/provider"
+	c.call(auditAdmin, "GET", provider, provider, "", http.StatusOK)
+	c.call(auditAdmin, "POST", provider+"/check", provider+"/check", "", http.StatusNotFound)
+	c.call(auditAdmin, "PUT", provider, provider, `{"kind":"elevenlabs","key":"k"}`, http.StatusBadRequest)
+	c.call(auditAdmin, "PUT", provider, provider, `{"kind":"groq","key":"gsk_contract"}`, http.StatusOK)
+	c.call(auditAdmin, "GET", provider, provider, "", http.StatusOK)
+	c.call(auditAdmin, "POST", provider+"/check", provider+"/check", "", http.StatusOK)
+	c.call(acme, "GET", "/api/voice", "/api/voice", "", http.StatusOK)
+	c.call(auditAdmin, "PUT", provider, provider, `{"kind":"openai","key":"sk_contract"}`, http.StatusOK)
+	c.call(auditAdmin, "POST", provider+"/check", provider+"/check", "", http.StatusBadGateway)
+	c.call(auditAdmin, "DELETE", provider, provider, "", http.StatusNoContent)
 
 	c.call(auditAdmin, "GET", "/api/audit", "/api/audit?limit=501", "", http.StatusBadRequest)
 	c.call(auditAdmin, "GET", "/api/read-audit", "/api/read-audit?limit=501", "", http.StatusBadRequest)

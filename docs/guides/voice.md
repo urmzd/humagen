@@ -2,9 +2,37 @@
 
 Talk to Humagen from wherever you are. A voice note is transcribed before the
 run it starts, so an agent reads what you said, and the recording stays with
-the message. It is off until the System spec names a speech kind.
+the message. It is off until a workspace admin sets up a voice provider, or
+the System spec names a speech kind.
 
-## Turn it on
+## A workspace voice provider
+
+An admin (anyone who may manage the workspace's clients, `clients:write`)
+sets one up in **Workspace settings › Voice**:
+
+1. Choose **Groq** or **OpenAI**.
+2. Paste the provider's API key, or give an `env:HUMAGEN_*` reference this
+   server grants the workspace (`-secret-refs`). The key is never shown again.
+3. Optionally pick the voice, the models and the prices.
+4. Press **Try Voice**: the provider speaks a sample and hears it back.
+
+With a provider set up, the console's microphone and voice notes from every
+channel are heard by it, and voice mode is on. **Turn Off** forgets the
+provider and its key.
+
+What each call costs is counted in the workspace's usage, toward its spend
+limits, from the provider's published price unless the admin set another:
+
+| Kind | Hears | Speaks | Defaults |
+|------|-------|--------|----------|
+| `groq` | $0.04 an hour of audio, at least 10 seconds a request | $22 a million characters | `whisper-large-v3-turbo`, `canopylabs/orpheus-v1-english`, voice `autumn` |
+| `openai` | $0.006 a minute of audio | $15 a million characters | `whisper-1`, `tts-1`, voice `alloy` |
+
+A transcription whose length the provider did not say is counted as an
+unpriced call, never as free. The API: `GET`, `PUT` and `DELETE
+/api/voice/provider`, and `POST /api/voice/provider/check`.
+
+## A deployment speech kind
 
 Groq transcribes with Whisper. Set `GROQ_API_KEY` in the server's
 environment and add a speech slot to the System document:
@@ -48,17 +76,18 @@ spec:
 A message has at most four voice notes transcribed. A note that is too long,
 has no words in it, or reaches a provider that fails or does not answer in
 time is said to be so in the message (`[Voice note: clip.m4a could not be
-transcribed]`), and the message still posts. Without a speech kind a voice
-note is still attached, and the console's microphone falls back to the
-browser's own dictation where the browser has it.
+transcribed]`), and the message still posts. Without a voice provider or a
+speech kind a voice note is still attached, and the console's microphone
+falls back to the browser's own dictation where the browser has it.
 
 ## Who can use it
 
 Recording a voice note in the console takes `speech:write`, which operators,
 managers and admins hold; `GET /api/voice` says whether it is on. A voice
 note posted from Slack is transcribed under the poster's own right to post.
-The console's recording is sent to Groq and not kept by Humagen; a voice note
-from a channel is kept as the attachment it arrived as, like any other file.
+The console's recording is sent to the workspace's voice provider (or the
+deployment's speech kind) and not kept by Humagen; a voice note from a
+channel is kept as the attachment it arrived as, like any other file.
 
 ## For a connector
 

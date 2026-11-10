@@ -1,5 +1,6 @@
 // Package speech turns a person's voice into text, and text into speech,
-// behind interfaces a deployment fills from the System spec's speech slot.
+// behind interfaces a deployment fills from the System spec's speech slot
+// and a workspace from its voice provider.
 //
 // A voice note reaches the platform as an audio attachment, whatever the
 // channel: a Slack audio clip, a recording from the console, and later a
@@ -15,6 +16,7 @@ import (
 	"mime"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Errors. Callers match with errors.Is.
@@ -35,6 +37,77 @@ type Transcriber interface {
 	// type is mime, and returns what was said and, when the provider
 	// reports it, the language it was said in.
 	Transcribe(ctx context.Context, audio io.Reader, mime string) (text, language string, err error)
+}
+
+// Heard is what was said in some audio.
+type Heard struct {
+	Text string
+	// Language is the language it was said in, when the provider says.
+	Language string
+	// Duration is how long the audio was, when the provider says, which is
+	// what transcription is billed by.
+	Duration time.Duration
+}
+
+// MaxHeard bounds a duration a provider reports, so a wrong answer cannot
+// price a recording at more than an hour.
+const MaxHeard = time.Hour
+
+// Hearer is a Transcriber that also says how long the audio was.
+type Hearer interface {
+	Transcriber
+	Hear(ctx context.Context, audio io.Reader, mime string) (Heard, error)
+}
+
+// Hear is what t heard, with the duration when t is a Hearer.
+func Hear(ctx context.Context, t Transcriber, audio io.Reader, mime string) (Heard, error) {
+	if h, ok := t.(Hearer); ok {
+		return h.Hear(ctx, audio, mime)
+	}
+	text, lang, err := t.Transcribe(ctx, audio, mime)
+	return Heard{Text: text, Language: lang}, err
+}
+
+// Price is what a provider charges, in micro-USD. Zero is unpriced.
+type Price struct {
+	// HearPerHour is an hour of audio transcribed.
+	HearPerHour int64 `json:"hear_per_hour"`
+	// MinSeconds is the least one transcription is billed for.
+	MinSeconds int64 `json:"min_seconds"`
+	// SpeakPerMillion is a million characters spoken.
+	SpeakPerMillion int64 `json:"speak_per_million_chars"`
+}
+
+// MaxPrice bounds each of a Price's rates: $1,000 an hour, or a million
+// characters.
+const MaxPrice int64 = 1_000_000_000
+
+// Valid says whether every rate is between zero and MaxPrice and the
+// minimum is at most an hour.
+func (p Price) Valid() bool {
+	in := func(v, max int64) bool { return v >= 0 && v <= max }
+	return in(p.HearPerHour, MaxPrice) && in(p.SpeakPerMillion, MaxPrice) && in(p.MinSeconds, int64(MaxHeard/time.Second))
+}
+
+// Hearing is what transcribing d of audio costs, rounded up to a whole
+// micro-USD, with the minimum applied. A duration of zero (the provider did
+// not say) costs the minimum.
+func (p Price) Hearing(d time.Duration) int64 {
+	ms := min(max(d.Milliseconds(), p.MinSeconds*1000), MaxHeard.Milliseconds())
+	return ceilDiv(ms*p.HearPerHour, time.Hour.Milliseconds())
+}
+
+// Speaking is what speaking chars characters costs, rounded up to a whole
+// micro-USD.
+func (p Price) Speaking(chars int) int64 {
+	return ceilDiv(int64(min(max(chars, 0), MaxSpeechText))*p.SpeakPerMillion, 1_000_000)
+}
+
+func ceilDiv(a, b int64) int64 {
+	if a <= 0 {
+		return 0
+	}
+	return (a + b - 1) / b
 }
 
 // Synthesizer turns text into audio. A kind that has no text-to-speech
@@ -72,6 +145,8 @@ func BaseType(mediaType string) string {
 type Fake struct {
 	Text     string
 	Language string
+	// Duration is what Hear says the audio lasted.
+	Duration time.Duration
 	// Err, when set, is returned instead.
 	Err error
 	// Max caps what is read, as a real kind's size cap does. Zero is no cap.
@@ -84,21 +159,27 @@ type Fake struct {
 
 // Transcribe answers the fake's text for any audio.
 func (f *Fake) Transcribe(ctx context.Context, audio io.Reader, mimeType string) (string, string, error) {
+	h, err := f.Hear(ctx, audio, mimeType)
+	return h.Text, h.Language, err
+}
+
+// Hear answers the fake's text, and Duration, for any audio.
+func (f *Fake) Hear(ctx context.Context, audio io.Reader, mimeType string) (Heard, error) {
 	if !IsAudio(mimeType) {
-		return "", "", ErrUnsupported
+		return Heard{}, ErrUnsupported
 	}
 	b, err := ReadCapped(audio, f.Max)
 	if err != nil {
-		return "", "", err
+		return Heard{}, err
 	}
 	f.mu.Lock()
 	f.heard = append(f.heard, b)
 	f.mimes = append(f.mimes, mimeType)
 	f.mu.Unlock()
 	if f.Err != nil {
-		return "", "", f.Err
+		return Heard{}, f.Err
 	}
-	return f.Text, f.Language, nil
+	return Heard{Text: f.Text, Language: f.Language, Duration: f.Duration}, nil
 }
 
 // Synthesize answers the text's own bytes as audio/wav.

@@ -8723,11 +8723,14 @@ paths:
     get:
       operationId: getVoice
       tags: [voice]
-      summary: Whether voice notes are transcribed here
+      summary: What voice this workspace has
       description: |
-        `transcribe` is false when the System spec has no speech kind; the
-        console then offers no recording. `max_bytes` is the largest
-        recording `POST /api/voice/transcriptions` takes.
+        `transcribe` is whether a recording is turned into words: by the
+        workspace's voice provider, else the System spec's speech kind.
+        Without either the console's microphone uses the browser's own
+        dictation. `speak` is whether voice mode is on, which takes a
+        workspace voice provider; `provider` is its kind. `max_bytes` is the
+        largest recording `POST /api/voice/transcriptions` takes.
       x-permission: speech:write
       responses:
         "200":
@@ -8746,7 +8749,9 @@ paths:
         The body is the recording's own bytes, at most `max_bytes` from
         `GET /api/voice` (10 MiB). What it is is decided from the bytes, not
         the Content-Type. The words come back for the person to read and
-        send; the recording is not kept. 404 when voice notes are off, 422
+        send; the recording is not kept. It is transcribed by the workspace's
+        voice provider, whose cost is counted, else the System spec's speech
+        kind. 404 when neither is set up, 422
         when no words were heard, 503 when the speech provider failed or did
         not answer in time.
       x-permission: speech:write
@@ -8781,6 +8786,92 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/ErrorBody"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/voice/provider:
+    get:
+      operationId: getVoiceProvider
+      tags: [voice]
+      summary: The workspace's voice provider and the kinds it can be
+      description: |
+        `provider` is left out until an admin sets one up; voice mode is off
+        until then. Its key is never returned: `key_stored` says a value is
+        kept, `key_ref` names the reference it is read from. `kinds` are the
+        kinds a provider can be, with their default models, voices and
+        published prices in micro-USD.
+      x-permission: clients:write
+      responses:
+        "200":
+          description: The voice provider, if any, and the kinds.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VoiceProviderView"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    put:
+      operationId: setVoiceProvider
+      tags: [voice]
+      summary: Set up the workspace's voice provider, or replace it
+      description: |
+        An empty model or voice is the kind's default, and no `price` the
+        kind's published one (or the one it had, when the kind is
+        unchanged). Give `key`, kept in the server's secret store, or
+        `key_ref`, an `env:HUMAGEN_*` reference this server grants the
+        workspace; with neither, a provider of the same kind keeps its key.
+        Everyone in the workspace who may record (`speech:write`) spends it,
+        and what each call costs is counted in the usage ledger.
+      x-permission: clients:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/VoiceProviderInput"}
+      responses:
+        "200":
+          description: The voice provider as set up.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VoiceProvider"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: deleteVoiceProvider
+      tags: [voice]
+      summary: Turn the workspace's voice off
+      description: Forgets the provider and any key kept for it. Voice mode stops; the microphone falls back to the deployment's speech kind or the browser's dictation.
+      x-permission: clients:write
+      responses:
+        "204":
+          description: Voice is off.
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/voice/provider/check:
+    post:
+      operationId: checkVoiceProvider
+      tags: [voice]
+      summary: Hear the voice and check both ways work
+      description: |
+        Speaks a fixed sample with the provider and transcribes it back, so
+        an admin hears the voice and sees it heard. What it costs is
+        counted. 404 with no provider, 502 when the provider refused or did
+        not answer, with its own reason.
+      x-permission: clients:write
+      responses:
+        "200":
+          description: The sample spoken, and what was heard back.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VoiceCheck"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+        "502":
+          description: The voice provider refused or did not answer.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
   /api/people/{handle}/photo:
     get:
       operationId: getPersonPhoto
@@ -14669,12 +14760,79 @@ components:
             agent: {type: string}
         - {$ref: "#/components/schemas/AgentPlace"}
     VoiceSettings:
-      description: Whether voice notes are transcribed, and the largest recording taken.
+      description: What voice a workspace has, and the largest recording taken.
       type: object
-      required: [transcribe, max_bytes]
+      required: [transcribe, speak, max_bytes]
       properties:
         transcribe: {type: boolean}
+        speak: {type: boolean}
+        provider: {type: string, enum: [groq, openai]}
         max_bytes: {type: integer, format: int64}
+    VoicePrice:
+      description: What a voice provider charges, in micro-USD. Zero is unpriced.
+      type: object
+      additionalProperties: false
+      required: [hear_per_hour, min_seconds, speak_per_million_chars]
+      properties:
+        hear_per_hour: {type: integer, format: int64, minimum: 0, maximum: 1000000000}
+        min_seconds: {type: integer, format: int64, minimum: 0, maximum: 3600}
+        speak_per_million_chars: {type: integer, format: int64, minimum: 0, maximum: 1000000000}
+    VoiceProvider:
+      description: A workspace's voice provider. Its key is never shown.
+      type: object
+      required: [kind, model, speech_model, voice, price, key_stored, set_by, set_at]
+      properties:
+        kind: {type: string, enum: [groq, openai]}
+        model: {type: string, description: Transcribes.}
+        speech_model: {type: string, description: Speaks.}
+        voice: {type: string}
+        price: {$ref: "#/components/schemas/VoicePrice"}
+        key_ref: {type: string}
+        key_stored: {type: boolean}
+        set_by: {type: string}
+        set_at: {type: string, format: date-time}
+    VoiceProviderInput:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [groq, openai]}
+        model: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._/-]{0,79}$"}
+        speech_model: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._/-]{0,79}$"}
+        voice: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._/-]{0,79}$"}
+        price: {$ref: "#/components/schemas/VoicePrice"}
+        key_ref: {type: string, maxLength: 256}
+        key: {type: string, maxLength: 4096, writeOnly: true}
+    VoiceKind:
+      description: A kind a voice provider can be, with its defaults and the voices it is known to offer.
+      type: object
+      required: [kind, model, speech_model, voice, voices, price]
+      properties:
+        kind: {type: string, enum: [groq, openai]}
+        model: {type: string}
+        speech_model: {type: string}
+        voice: {type: string}
+        voices:
+          type: array
+          items: {type: string}
+        price: {$ref: "#/components/schemas/VoicePrice"}
+    VoiceProviderView:
+      type: object
+      required: [kinds]
+      properties:
+        provider: {$ref: "#/components/schemas/VoiceProvider"}
+        kinds:
+          type: array
+          items: {$ref: "#/components/schemas/VoiceKind"}
+    VoiceCheck:
+      description: The sample a check spoke, and what was heard back from it.
+      type: object
+      required: [audio, media_type, heard, cost_micros]
+      properties:
+        audio: {type: string, format: byte, description: "The spoken sample, base64."}
+        media_type: {type: string}
+        heard: {type: string}
+        cost_micros: {type: integer, format: int64}
     VoiceTranscript:
       description: What a recording said, and the language it was said in when the speech kind reports one.
       type: object
