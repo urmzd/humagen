@@ -597,6 +597,7 @@ func TestTheWriterPublishesAFile(t *testing.T) {
 	if err := p.EnsureBuiltins(ctx, tenant); err != nil {
 		t.Fatal(err)
 	}
+	install(t, p, tenant, "humagen/core")
 
 	alone, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-1", Agent: platform.BuiltinWriter, Text: "Write the launch plan"})
 	if err != nil {

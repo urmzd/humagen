@@ -80,14 +80,15 @@ func TestSessionAlertResolutionRequiresRecordedAnswer(t *testing.T) {
 }
 
 func TestSessionAlertFallbackRequiresAnAvailableAgent(t *testing.T) {
-	for _, configured := range []bool{false, true} {
-		name := "without_model"
-		if configured {
-			name = "with_model"
-		}
-		t.Run(name, func(t *testing.T) {
+	// The analyst is the fallback, and only once a workspace installs Core
+	// from the store; until then the attention stays in the inbox alone.
+	for _, c := range []struct {
+		name                  string
+		configured, installed bool
+	}{{"without_model", false, false}, {"with_model_without_core", true, false}, {"with_model", true, true}} {
+		t.Run(c.name, func(t *testing.T) {
 			cfg := Config{Workspace: t.TempDir()}
-			if configured {
+			if c.configured {
 				cfg.TestBuiltinProvider, cfg.TestBuiltinModel = "offline", "offline"
 			}
 			p, err := New(cfg)
@@ -95,6 +96,9 @@ func TestSessionAlertFallbackRequiresAnAvailableAgent(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = p.Close() })
+			if c.installed {
+				installForTest(t, p, "acme", "humagen/core")
+			}
 			at := time.Now().UTC()
 			m, _, err := p.Inbox.RaiseOnce("acme", "budget", inbox.Message{Kind: inbox.KindBudget, To: "ada", Subject: "Budget review"}, at)
 			if err != nil {
@@ -110,10 +114,10 @@ func TestSessionAlertFallbackRequiresAnAvailableAgent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !configured && len(rows) != 0 {
-				t.Fatal("unconfigured fallback fabricated a session alert")
+			if !c.installed && len(rows) != 0 {
+				t.Fatal("a fallback with no analyst fabricated a session alert")
 			}
-			if configured && (len(rows) != 1 || rows[0].Session == "" || len(rows[0].Who) != 1 || rows[0].Who[0] != "ada") {
+			if c.installed && (len(rows) != 1 || rows[0].Session == "" || len(rows[0].Who) != 1 || rows[0].Who[0] != "ada") {
 				t.Fatalf("configured fallback lost its private anchor: %+v", rows)
 			}
 			m.Source.Agent = "missing-explicit-agent"

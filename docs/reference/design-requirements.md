@@ -367,9 +367,12 @@ DES-004 have been implemented or live-validated.
 ### Built-in handles and Slack conversation navigation
 
 New agent choices and starter actions use `humagen-analyst`, `humagen-writer`
-and `humagen`, the entry agent, which builds agents. The directory also provides `code-reviewer`,
-`security-reviewer`, `architect-reviewer` and `qa-reviewer` for reviews in an
-ordinary conversation. Compatibility registry definitions preserve saved
+and `humagen`, the entry agent, which builds agents. `code-reviewer`,
+`security-reviewer`, `architect-reviewer` and `qa-reviewer` review in an
+ordinary conversation. Every workspace has `humagen` and `approver`; the
+writer and the analyst come with the Core package and the reviewers with the
+Review package, which a workspace installs from the Store on the Agents page.
+A starter is offered only for an agent the workspace has. Compatibility registry definitions preserve saved
 revisions, old schedules and existing grants. The `humagen-builtins` screen
 checks all three names at phone and desktop widths.
 

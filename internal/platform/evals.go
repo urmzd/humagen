@@ -44,6 +44,10 @@ func (p *Platform) StartEval(ctx context.Context, tenant, name, by string) (eval
 		// even if the agent is revised while the cases are in flight.
 		r, err := p.Catalog().Get(ctx, tenant, suite.Subject, 0)
 		if err != nil {
+			// One of the store's agents says which package to install.
+			if why := p.NotInstalled(ctx, tenant, suite.Subject); why != "" {
+				return evals.Run{}, fmt.Errorf("the suite's agent: %w (%s)", err, why)
+			}
 			return evals.Run{}, fmt.Errorf("the suite's agent: %w", err)
 		}
 		rev = r.Rev

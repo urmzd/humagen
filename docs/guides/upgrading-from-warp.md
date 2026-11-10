@@ -322,7 +322,10 @@ These are the defaults this release takes. Each can change in a later release.
 - **Built-in agent handles** are `humagen-writer` and `humagen-analyst`, plus
   `code-reviewer`, `security-reviewer`, `architect-reviewer` and `qa-reviewer`
   for code reviews in ordinary chat. The builder is now the entry agent,
-  `humagen`; `humagen-builder` and `warp-builder` read as it.
+  `humagen`; `humagen-builder` and `warp-builder` read as it. A workspace that
+  already has them keeps them; a new workspace starts with `humagen` and
+  `approver` and installs the rest (the Core and Review packages) from the
+  agent store.
   The directory lists these handles. Compatibility
   definitions remain under `warp-writer`, `warp-analyst` and `warp-builder`,
   protected from edits like the new ones and updated to the configured provider

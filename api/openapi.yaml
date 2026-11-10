@@ -2174,6 +2174,107 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/store/packages:
+    get:
+      operationId: listStorePackages
+      tags: [agents]
+      summary: List the agent store's packages and what this workspace has of each
+      description: |
+        The store holds the platform's optional agents as packages, each a
+        versioned base definition: Core (the writer and the analyst) and
+        Review (the code reviewer and its security, architecture and test
+        specialists). The entry agent and the approval agent are in every
+        workspace and are not in the store.
+
+        Whether a package is installed is read from the workspace's agents:
+        it is installed while any of its agents is there, not retired.
+        `missing` names the agents installing would add. A server that
+        ships no agents of its own lists no packages.
+      x-permission: agents:read
+      x-readonly: true
+      responses:
+        "200":
+          description: The store's packages.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [packages]
+                properties:
+                  packages:
+                    type: array
+                    items: {$ref: "#/components/schemas/StorePackage"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/store/packages/{name}/install:
+    post:
+      operationId: installStorePackage
+      tags: [agents]
+      summary: Install a package from the agent store
+      description: |
+        Adds the package's missing agents, each a platform revision at the
+        package's current version. A retired name is revived: its versions
+        continue, and every pinned revision stays as it was. Installing an
+        installed package adds nothing, so a package with an agent retired
+        is restored by installing it again.
+
+        Refused with 409, before anything is added, while one of the
+        workspace's own agents (not based on the package) holds one of its
+        names; the message names it.
+      x-permission: agents:write
+      x-idempotent: true
+      parameters:
+        - {$ref: "#/components/parameters/StorePackageName"}
+      responses:
+        "200":
+          description: What installing added, and the package as the workspace has it now.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/StoreInstall"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/store/packages/{name}:
+    delete:
+      operationId: removeStorePackage
+      tags: [agents]
+      summary: Remove a package from this workspace
+      description: |
+        Retires the package's agents, the way any agent is retired: its
+        history, pinned revisions and the runs they answered stay readable,
+        and installing the package again brings it back. A name one of the
+        workspace's own agents holds is never retired.
+
+        An agent someone in the workspace changed is retired only with
+        `force=true`. Without it the removal is refused with 409, naming
+        those agents, and nothing is retired. Removing a package that is not
+        installed retires nothing.
+      x-permission: agents:write
+      x-destructive: true
+      x-idempotent: true
+      parameters:
+        - {$ref: "#/components/parameters/StorePackageName"}
+        - name: force
+          in: query
+          required: false
+          description: Retire agents with changes made in the workspace too. Their changes stay in their history.
+          schema: {type: boolean, default: false}
+      responses:
+        "200":
+          description: What removing retired, and the package as the workspace has it now.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/StoreRemoval"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/agents/{name}/home:
     put:
       operationId: setAgentHome
@@ -10174,6 +10275,12 @@ components:
       required: true
       description: The agent's name.
       schema: {type: string}
+    StorePackageName:
+      name: name
+      in: path
+      required: true
+      description: The package's name (`humagen/core`, path-escaped), or its last part (`core`).
+      schema: {type: string}
     RunID:
       name: id
       in: path
@@ -11434,6 +11541,76 @@ components:
         name: {type: string}
         version: {type: string}
         latest: {type: string}
+    StorePackage:
+      description: One of the agent store's packages, as the workspace has it.
+      type: object
+      additionalProperties: false
+      required: [name, title, description, version, installed, agents, missing]
+      properties:
+        name:
+          description: The package's name, the one its agents record in `package.name`.
+          type: string
+        title: {type: string}
+        description: {type: string}
+        version:
+          description: The package's current version.
+          type: string
+        installed:
+          description: True while any of its agents is in the workspace, not retired.
+          type: boolean
+        agents:
+          type: array
+          items: {$ref: "#/components/schemas/StoreAgent"}
+        missing:
+          description: The agents installing would add. A name one of the workspace's own agents holds is taken, never missing.
+          type: array
+          items: {type: string}
+    StoreAgent:
+      description: One agent of a store package, as the workspace has it.
+      type: object
+      additionalProperties: false
+      required: [name, description, installed, customized, update_available, taken]
+      properties:
+        name: {type: string}
+        description: {type: string}
+        installed:
+          description: The workspace has it, from this package.
+          type: boolean
+        customized:
+          description: Someone in the workspace changed it since the platform last wrote it.
+          type: boolean
+        update_available:
+          description: It is customized and based on an older version than the package's current one.
+          type: boolean
+        taken:
+          description: One of the workspace's own agents, not based on this package, holds the name. Installing is refused until it is renamed.
+          type: boolean
+    StoreInstall:
+      description: What installing a package added.
+      type: object
+      additionalProperties: false
+      required: [package, added]
+      properties:
+        package: {$ref: "#/components/schemas/StorePackage"}
+        added:
+          description: The agents created or restored. Empty when the package was installed already.
+          type: array
+          items: {type: string}
+    StoreRemoval:
+      description: What removing a package retired.
+      type: object
+      additionalProperties: false
+      required: [package, retired, customized]
+      properties:
+        package: {$ref: "#/components/schemas/StorePackage"}
+        retired:
+          description: The agents retired. Their history and pinned revisions stay readable.
+          type: array
+          items: {type: string}
+        customized:
+          description: Those of them with changes made in the workspace, retired because the removal was forced.
+          type: array
+          items: {type: string}
     AgentSpec:
       description: An agent's definition.
       type: object

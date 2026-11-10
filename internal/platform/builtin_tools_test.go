@@ -31,6 +31,7 @@ func TestBuiltinAnalystAndBuilder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	install(t, p, tenant, "humagen/core")
 	for range 2 {
 		if err := p.EnsureBuiltins(ctx, tenant); err != nil {
 			t.Fatal(err)
@@ -103,6 +104,7 @@ func TestSaveAgentTool(t *testing.T) {
 	if err := p.EnsureBuiltins(ctx, tenant); err != nil {
 		t.Fatal(err)
 	}
+	install(t, p, tenant, "humagen/core")
 	run, _ := turn(t, p, "api-1", "")
 	req := as(run, platform.BuiltinBuilder)
 	save := func(r runtime.Request, args map[string]any) (string, error) {

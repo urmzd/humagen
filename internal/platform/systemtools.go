@@ -319,6 +319,8 @@ var SystemOperations = []string{
 	// Agents.
 	"listAgents", "listAgentRevisions", "createAgent", "reviseAgent", "resetAgent",
 	"getAgentControl", "putAgentControl", "getAgentRoster", "getAgentHealth", "listAgentChanges",
+	// The agent store.
+	"listStorePackages", "installStorePackage", "removeStorePackage",
 	// Evals.
 	"listEvalSuites", "createEvalSuite", "updateEvalSuite", "deleteEvalSuite", "runEvalSuite", "listEvalRuns",
 	// Sessions and runs.

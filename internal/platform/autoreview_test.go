@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -148,5 +149,54 @@ func TestAutomaticReviewPausesAfterFivePushesUntilSomeoneAsks(t *testing.T) {
 	push("synchronize", 8)
 	if text, ok := reviewed(8); !ok || !strings.Contains(text, "after "+sha(5)+", up to "+sha(8)) {
 		t.Fatalf("the push after resuming: reviewed=%v %q", ok, text)
+	}
+}
+
+// A connection whose default agent is the store's code reviewer reviews
+// nothing until the workspace installs the Review package: the delivery is
+// still taken, nothing runs, and the log says what to install. Once it is
+// installed, the next pull request is reviewed.
+func TestAutomaticReviewWaitsForTheReviewPackage(t *testing.T) {
+	f := &fakes{}
+	said := &logs{}
+	cfg := f.config()
+	cfg.Log = slog.New(slog.NewTextHandler(said, nil))
+	cfg.TestBuiltinProvider, cfg.TestBuiltinModel = "offline", "offline"
+	p := stage(t, &cast{says: map[string][][]saigetypes.Delta{platform.BuiltinCodeReviewer: {say("Reviewed.")}}}, cfg)
+	if err := p.EnsureBuiltins(t.Context(), tenant); err != nil {
+		t.Fatal(err)
+	}
+	create(t, p, tenant, platform.ClientInput{
+		Client: clients.Client{ID: "gh", Name: "GitHub", Surface: clients.GitHub, Enabled: true, Identity: clients.Identity{Owners: []string{"acme"}, Installation: "101"}, DefaultAgent: platform.BuiltinCodeReviewer, GitHub: &clients.GitHubOptions{}},
+		Token:  clients.SecretInput{Value: "token-gh"}, SigningSecret: clients.SecretInput{Value: "secret-gh"},
+	})
+	post := func(sha, delivery string) {
+		t.Helper()
+		body := fmt.Sprintf(`{"action":"opened","number":7,"installation":{"id":101},"repository":{"full_name":"acme/repo","name":"repo","owner":{"login":"acme"}},"sender":{"login":"human","type":"User"},"pull_request":{"number":7,"state":"open","draft":false,"title":"Fix","user":{"login":"human"},"author_association":"MEMBER","head":{"sha":%q}}}`, sha)
+		mac := hmac.New(sha256.New, []byte("secret-gh"))
+		mac.Write([]byte(body))
+		r := httptest.NewRequest(http.MethodPost, "/connectors/github", strings.NewReader(body))
+		r.Header.Set("X-Hub-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+		r.Header.Set("X-GitHub-Event", "pull_request")
+		r.Header.Set("X-GitHub-Delivery", delivery)
+		w := httptest.NewRecorder()
+		p.IngressHandler().ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("delivery %s = %d", delivery, w.Code)
+		}
+	}
+	id := func(sha string) string { return runtime.RunID(tenant, "autoreview/gh/acme%2Frepo/7/"+sha) }
+	first, second := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	post(first, "d1")
+	if _, err := p.Runs.Get(tenant, id(first)); err == nil {
+		t.Fatal("a pull request was reviewed with no reviewer installed")
+	}
+	if log := said.String(); !strings.Contains(log, "automatic review skipped") || !strings.Contains(log, "install the Review package from the Store to get pull request reviews") {
+		t.Fatalf("the skip was not logged with what to install:\n%s", log)
+	}
+	install(t, p, tenant, "humagen/review")
+	post(second, "d2")
+	if run, err := p.Runs.Get(tenant, id(second)); err != nil || run.Agent != platform.BuiltinCodeReviewer {
+		t.Fatalf("with Review installed: %+v, %v", run, err)
 	}
 }

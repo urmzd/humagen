@@ -378,6 +378,7 @@ func TestBuiltinWriter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	install(t, p, tenant, "humagen/core")
 	for range 2 {
 		if err := p.EnsureBuiltins(ctx, tenant); err != nil {
 			t.Fatal(err)

@@ -320,6 +320,11 @@ type Platform struct {
 	// each of its picks came to (entry.go).
 	entry entrySpawns
 	picks *state.Table[pickRecord]
+	// storeMu holds one store install or removal at a time, and storeNames
+	// is each store agent's package, worked out once (agent_store.go).
+	storeMu    sync.Mutex
+	storeOnce  sync.Once
+	storeNames map[string]storeListing
 	// audiences is the latest audience of each surface root (surface_sessions.go).
 	audiences *state.Table[SessionAudience]
 	// contexts are get_context's resolvers by place scheme (context.go).
@@ -1008,6 +1013,11 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	rev, err := p.Catalog().Get(ctx, tenant, parent.Agent, parent.Rev)
 	if err != nil {
 		return runs.Run{}, fmt.Errorf("platform: caller's spec: %w", err)
+	}
+	// One of the store's agents the workspace has not installed is refused
+	// saying which package to install.
+	if why := p.NotInstalled(ctx, tenant, req.Agent); why != "" {
+		return runs.Run{}, fmt.Errorf("%w: %s", ErrNotAvailable, why)
 	}
 	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) || sees != nil && !sees(req.Agent) {
 		return runs.Run{}, fmt.Errorf("%w: refused by the caller: %q may not call %q, which its spec's spawn allowlist does not name", ErrForbidden, parent.Agent, req.Agent)

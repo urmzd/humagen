@@ -2,6 +2,7 @@ package platform_test
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
 
@@ -23,6 +24,7 @@ func TestBuiltinNamesAndReviewGrants(t *testing.T) {
 	if err := p.EnsureBuiltins(context.Background(), "acme"); err != nil {
 		t.Fatal(err)
 	}
+	install(t, p, "acme", "humagen/core", "humagen/review")
 	revs, _, err := p.AgentDirectory(context.Background(), "acme", wire.Page{Size: 100})
 	if err != nil {
 		t.Fatal(err)
@@ -86,6 +88,7 @@ func TestBuiltinReviewGrantsFollowThePlatform(t *testing.T) {
 	if err := p.EnsureBuiltins(ctx, "acme"); err != nil {
 		t.Fatal(err)
 	}
+	install(t, p, "acme", "humagen/core", "humagen/review")
 	for _, name := range platform.Builtins()[3:] {
 		r, err := p.Agents.Get(ctx, "acme", name, 0)
 		if err != nil {
@@ -141,6 +144,8 @@ func TestBuiltinCompatibilitySurvivesRestart(t *testing.T) {
 		if err := p.EnsureBuiltins(ctx, "acme"); err != nil {
 			t.Fatal(err)
 		}
+		// A workspace from before the store has every package.
+		install(t, p, "acme", "humagen/core", "humagen/review")
 		pinned, err := p.Agents.Get(ctx, "acme", "warp-analyst", original.Rev)
 		if err != nil || pinned.Hash != original.Hash || pinned.Spec.SystemPrompt != original.Spec.SystemPrompt {
 			t.Fatalf("saved revision changed: %+v, %v", pinned, err)
@@ -185,12 +190,28 @@ func TestBuiltinRenameNeverOverwritesACustomAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = p.Close() })
-	if err := p.EnsureBuiltins(ctx, "acme"); err == nil {
-		t.Fatal("custom agent overwritten")
+	// A store agent's name is the workspace's until it installs the
+	// package, which is refused while one of its own agents holds it.
+	if err := p.EnsureBuiltins(ctx, "acme"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.InstallPackage(ctx, installer, "humagen/core"); !errors.Is(err, platform.ErrStoreConflict) {
+		t.Fatalf("install over a custom agent = %v", err)
 	}
 	got, err := store.Get(ctx, "acme", old.Spec.Name, 0)
 	if err != nil || got.Hash != old.Hash || got.Rev != old.Rev {
 		t.Fatalf("custom agent changed: %+v, %v", got, err)
+	}
+	// An agent every workspace has is never written over either.
+	mine, err := store.Create(ctx, "globex", wire.AgentSpec{Name: platform.BuiltinApprover, Provider: "offline", Model: "offline", SystemPrompt: "Mine"}, "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.EnsureBuiltins(ctx, "globex"); err == nil {
+		t.Fatal("custom approver overwritten")
+	}
+	if got, err := store.Get(ctx, "globex", mine.Spec.Name, 0); err != nil || got.Hash != mine.Hash {
+		t.Fatalf("custom approver changed: %+v, %v", got, err)
 	}
 }
 
@@ -201,6 +222,7 @@ func TestBuiltinCompatibilityKeepsAnOldProjectRoutingGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = p.Close() })
+	install(t, p, "acme", "humagen/core")
 	_, err = p.SetProjectAgents(ctx, "acme", "~", projects.Writer{By: "ada", Govern: true}, platform.AgentsInput{Enable: []string{"warp-analyst"}, Allow: []string{"warp-analyst"}})
 	if err != nil {
 		t.Fatal(err)

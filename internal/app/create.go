@@ -23,7 +23,7 @@ import (
 const createUsage = `usage: humagen create KIND [flags]
 
 Kinds:
-  github  Connect a GitHub App installation (default agent: code-reviewer)
+  github  Connect a GitHub App installation (default agent: code-reviewer, from the Review package)
   slack   Connect a Slack Events API app (default agent: workspace default)
 
 Common flags: --server URL, --token REF, --name NAME, --agent NAME, --force, --json
@@ -341,6 +341,44 @@ func createCmd(args []string, out io.Writer) error {
 	if c.kind == "github" {
 		next = "mention " + answer + " on a pull request"
 	}
+	if title := storePackageFor(request, created.DefaultAgent); title != "" {
+		next = "install the " + title + " package from the Store, then " + next
+	}
 	_, err = fmt.Fprintf(out, "%s %s client %s (id %s), answered by %s\nNext: %s\n", verb, c.kind, created.Name, created.ID, answer, next)
 	return err
+}
+
+// storePackageFor is the title of the store package that holds agent when
+// the workspace has not installed it, such as Review for code-reviewer, the
+// GitHub default. It is "" for any other agent, and when the server cannot
+// say: one with no store answers as it always did.
+func storePackageFor(request func(method, path string, body any) (json.RawMessage, error), agent string) string {
+	if agent == "" {
+		return ""
+	}
+	raw, err := request(http.MethodGet, "/api/store/packages", nil)
+	if err != nil {
+		return ""
+	}
+	var store struct {
+		Packages []struct {
+			Title  string `json:"title"`
+			Agents []struct {
+				Name      string `json:"name"`
+				Installed bool   `json:"installed"`
+				Taken     bool   `json:"taken"`
+			} `json:"agents"`
+		} `json:"packages"`
+	}
+	if json.Unmarshal(raw, &store) != nil {
+		return ""
+	}
+	for _, pkg := range store.Packages {
+		for _, a := range pkg.Agents {
+			if a.Name == agent && !a.Installed && !a.Taken {
+				return pkg.Title
+			}
+		}
+	}
+	return ""
 }

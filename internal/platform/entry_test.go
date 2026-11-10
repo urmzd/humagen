@@ -30,6 +30,9 @@ func withEntry(t *testing.T, cfg platform.Config) *platform.Platform {
 	if err := p.EnsureBuiltins(t.Context(), tenant); err != nil {
 		t.Fatal(err)
 	}
+	// A workspace with every package from the store, as every workspace
+	// had before there was one.
+	install(t, p, tenant, "humagen/core", "humagen/review")
 	return p
 }
 
@@ -147,6 +150,7 @@ func stageEntry(t *testing.T, c *cast) *platform.Platform {
 	if err := p.EnsureBuiltins(t.Context(), tenant); err != nil {
 		t.Fatal(err)
 	}
+	install(t, p, tenant, "humagen/core", "humagen/review")
 	return p
 }
 

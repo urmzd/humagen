@@ -60,7 +60,7 @@ pnpm --filter @humagen/console build
 go run ./cmd/humagen start
 ```
 
-Open <http://127.0.0.1:8080>. `humagen start` runs everything in one process: loopback sign-in, in-memory stores, an example project, and the console. Agents need a model: enable a provider in Settings, under Model providers (an Anthropic, OpenAI or Google key, Vertex AI, or an OpenAI-compatible server such as Ollama). The built-in agents run as soon as one their models name is enabled.
+Open <http://127.0.0.1:8080>. `humagen start` runs everything in one process: loopback sign-in, in-memory stores, an example project, and the console. Agents need a model: enable a provider in Settings, under Model providers (an Anthropic, OpenAI or Google key, Vertex AI, or an OpenAI-compatible server such as Ollama). A new workspace has the entry agent, `humagen`, and the approval agent; the writer, the analyst and the code reviewers are packages to install from the Store on the Agents page. The built-in agents run as soon as one their models name is enabled.
 
 On a terminal, the first start asks a few questions (name, model providers, MCP tools, sign-in, Slack) and writes `humagen.yaml` to your config directory.
 

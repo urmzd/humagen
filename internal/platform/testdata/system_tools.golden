@@ -8,6 +8,9 @@ put_agent_control | mcp | other | idempotent | none
 get_agent_roster | mcp | read_context | idempotent,parallel,read-only | none
 get_agent_health | mcp | read_context | idempotent,parallel,read-only | none
 list_agent_changes | mcp | read_context | idempotent,parallel,read-only | none
+list_store_packages | mcp | read_context | idempotent,parallel,read-only | none
+install_store_package | mcp | other | idempotent | none
+remove_store_package | mcp | other | destructive,idempotent | none
 list_eval_suites | mcp | read_context | idempotent,parallel,read-only | none
 create_eval_suite | mcp | other |  | none
 update_eval_suite | mcp | other | idempotent | none

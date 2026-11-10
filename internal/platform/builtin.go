@@ -239,8 +239,12 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 	return append(specs, p.entryBuiltin(specs[0]))
 }
 
-// EnsureBuiltins makes sure a tenant has the platform's agents, at the
-// definition this server was started with. It is safe to call on every
+// EnsureBuiltins makes sure a tenant has the agents every workspace has, the
+// entry agent and the approval agent, at the definition this server was
+// started with. The store's agents (agent_store.go) are only kept current:
+// one the workspace installed, last written by the platform, moves to the
+// package's current version; one missing or retired stays so, and one
+// someone changed stays as they left it. It is safe to call on every
 // request: when nothing has changed it only reads.
 func (p *Platform) EnsureBuiltins(ctx context.Context, tenant string) error {
 	specs := p.builtinSpecs()
@@ -255,6 +259,18 @@ func (p *Platform) EnsureBuiltins(ctx context.Context, tenant string) error {
 			}
 		}
 	}
+	// The store's agents are the workspace's to add and retire.
+	var system []wire.AgentSpec
+	for _, want := range specs {
+		if !optional(want) {
+			system = append(system, want)
+			continue
+		}
+		if err := p.keepInstalled(ctx, tenant, want); err != nil {
+			return err
+		}
+	}
+	specs = system
 	for _, want := range specs {
 		have, err := p.Catalog().Get(ctx, tenant, want.Name, 0)
 		if err == nil {
@@ -291,6 +307,30 @@ func (p *Platform) EnsureBuiltins(ctx context.Context, tenant string) error {
 		}
 	}
 	return p.EnsureAgentHomes(ctx, tenant)
+}
+
+// keepInstalled moves one of the store's agents to its package's current
+// version when the workspace has it and the platform wrote its latest
+// revision. It adds nothing: a missing or retired agent stays so, and one
+// whose latest revision a person wrote, or that one of the workspace's own
+// agents holds the name of, is left as it is.
+func (p *Platform) keepInstalled(ctx context.Context, tenant string, want wire.AgentSpec) error {
+	have, err := p.Catalog().Get(ctx, tenant, want.Name, 0)
+	switch {
+	case errors.Is(err, wire.ErrNotFound):
+		return nil
+	case err != nil:
+		return err
+	case have.CreatedBy != "platform":
+		return nil
+	case have.Spec.SameContent(want) && have.Spec.Package != nil && *have.Spec.Package == *want.Package:
+		return nil
+	}
+	// Retired or revised meanwhile: the store or a person got there first.
+	if _, err := p.Agents.Revise(ctx, tenant, want, have.Rev, "platform"); err != nil && !errors.Is(err, wire.ErrConflict) && !errors.Is(err, wire.ErrNotFound) {
+		return fmt.Errorf("platform: built-in %s: %w", want.Name, err)
+	}
+	return nil
 }
 
 // EnsureAgentHomes upgrades absent legacy homes without changing enable rules.

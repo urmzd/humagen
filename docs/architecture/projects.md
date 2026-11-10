@@ -912,10 +912,11 @@ agents.
 An agent's home survives only as who sees the agent, its Access:
 
 - **Workspace**: no home, or the root. Everyone sees it, and it answers
-  anywhere it is allowed. The built-ins `humagen` (the entry agent, which also
-  builds agents), `humagen-writer`, `humagen-analyst`, `code-reviewer`,
-  `security-reviewer`, `architect-reviewer`, `qa-reviewer` and `approver` are
-  the workspace's.
+  anywhere it is allowed. The built-ins are the workspace's: `humagen` (the
+  entry agent, which also builds agents) and `approver` in every workspace,
+  and, once a workspace installs them from the agent store, `humagen-writer`
+  and `humagen-analyst` (Core) and `code-reviewer`, `security-reviewer`,
+  `architect-reviewer` and `qa-reviewer` (Review).
 - **Members of a project**: homed in a project. Its readers see it. Homed in
   a project everyone reads, it answers anywhere; homed in one kept to its
   members, it answers only where its readers alone read (that project and
@@ -1260,8 +1261,8 @@ the reader cannot see never reaches their stream.
 ### A recap is a scheduled agent
 
 Nothing recap-specific is stored. "Add Weekly Recap" on a project creates a
-schedule: a jittered Monday morning, `humagen-analyst` (or any agent available
-there), the text "What changed in {title} since the last recap?",
+schedule: a jittered Monday morning, `humagen-analyst` (installed with the
+Core package from the agent store, or any agent available there), the text "What changed in {title} since the last recap?",
 `deliver: project`. It is a `cron` run: admitted, counted under every limit on
 the chain, never housekeeping. Its grounding:
 
