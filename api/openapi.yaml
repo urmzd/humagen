@@ -2191,6 +2191,7 @@ paths:
         `missing` names the agents installing would add. A server that
         ships no agents of its own lists no packages.
       x-permission: agents:read
+      x-readonly: true
       responses:
         "200":
           description: The store's packages.
@@ -2223,6 +2224,7 @@ paths:
         workspace's own agents (not based on the package) holds one of its
         names; the message names it.
       x-permission: agents:write
+      x-idempotent: true
       parameters:
         - {$ref: "#/components/parameters/StorePackageName"}
       responses:
@@ -2252,6 +2254,8 @@ paths:
         those agents, and nothing is retired. Removing a package that is not
         installed retires nothing.
       x-permission: agents:write
+      x-destructive: true
+      x-idempotent: true
       parameters:
         - {$ref: "#/components/parameters/StorePackageName"}
         - name: force

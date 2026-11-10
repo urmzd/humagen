@@ -248,6 +248,8 @@ var mcpTools = []string{
 	"reset_agent", "resume_schedule", "revise_agent", "run_eval_suite", "run_schedule",
 	"send_messages", "send_messages_under", "set_model_provider", "stop_message", "trace_message",
 	"update_alert_rule", "update_eval_suite", "update_schedule", "update_settings",
+	// The agent store.
+	"install_store_package", "list_store_packages", "remove_store_package",
 }
 
 // The MCP lists exactly the tools the registry offers over MCP: the API
