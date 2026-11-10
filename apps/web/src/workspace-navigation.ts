@@ -11,6 +11,7 @@ export interface HubTab {
 /** Workspace pages use Settings navigation instead of a second hub tab strip. */
 export function settingsPageLabel(route: Route): string | undefined {
   if (route.page === "directory" && route.tab === "people") return "People";
+  if (route.page === "connections") return "Connections";
   if (route.page === "usage") return "Usage";
   if (route.page === "monitor" && route.tab === "health") return "Health";
   if (route.page === "action-policy") return "Policies";
@@ -28,7 +29,8 @@ export function workspaceHub(route: Route): WorkspaceHub | null {
   if (route.page === "monitor" && route.tab === "rules") return "notifications";
   if (route.page === "library" && (route.section === "skills" || route.section === "memory"))
     return "agents";
-  if (route.page === "context") return "agents";
+  if (route.page === "knowledge" || route.page === "corpus" || route.page === "context")
+    return "agents";
   if (
     ["agents", "agent", "agent-setup", "agent-network", "assignments", "agent-control"].includes(
       route.page,
@@ -53,7 +55,7 @@ export function hubTabs(
         ["agents", nav.agents, can("agents:read")],
         ["skills", nav.skills, can("projects:read")],
         ["connections", nav.connections, can("runs:read")],
-        ["tools", "Tool Servers", can("runs:read")],
+        ["tools", "MCPs", can("runs:read")],
       ] as const
     )
       .filter(([, , visible]) => visible)
@@ -115,8 +117,9 @@ export function hubTabs(
               },
               {
                 label: "Knowledge",
-                route: { page: "context" },
-                active: route.page === "context",
+                route: { page: "knowledge" },
+                active:
+                  route.page === "knowledge" || route.page === "corpus" || route.page === "context",
                 visible: can("knowledge:read"),
               },
             ]

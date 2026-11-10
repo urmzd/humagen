@@ -12,7 +12,6 @@ import (
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/prompts"
 	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/turn/native"
 	types "github.com/urmzd/saige/agent/types"
 )
 
@@ -68,7 +67,7 @@ func (p *Platform) prepareSharedPromptChange(ctx context.Context, tenant string,
 	}
 	slices.SortFunc(suites, func(a, b evals.Suite) int { return strings.Compare(a.Name, b.Name) })
 	candidate := sharedPromptCandidate{Config: config, Agents: []sharedPromptAgent{}}
-	card := evals.Change{Agent: BuiltinBuilder, Kind: "workspace_prompt", BeforeHash: promptConfigHash(stored.Prompts), AfterHash: promptConfigHash(config), Scores: []evals.ChangeScore{}, Evaluated: true, Passed: true, At: p.now()}
+	card := evals.Change{Agent: p.cfg.EntryAgent, Kind: "workspace_prompt", BeforeHash: promptConfigHash(stored.Prompts), AfterHash: promptConfigHash(config), Scores: []evals.ChangeScore{}, Evaluated: true, Passed: true, At: p.now()}
 	for _, suite := range suites {
 		if suite.Target != evals.Agent {
 			continue
@@ -165,7 +164,7 @@ func (p *Platform) checkSharedPromptPins(ctx context.Context, tenant string, car
 // applySharedPromptChange is reachable from the independently approved native
 // tool only. Ordinary settings updates still reject every measured regression.
 func (p *Platform) applySharedPromptChange(ctx context.Context, tenant, id, reason string) error {
-	card, err := p.Evals.Change(tenant, BuiltinBuilder, id)
+	card, err := p.Evals.Change(tenant, p.cfg.EntryAgent, id)
 	if err != nil {
 		return err
 	}
@@ -187,7 +186,7 @@ func (p *Platform) applySharedPromptChange(ctx context.Context, tenant, id, reas
 		return err
 	}
 	if !card.Passed {
-		card.OverrideBy = "approved:agent:" + BuiltinBuilder
+		card.OverrideBy = "approved:agent:" + p.cfg.EntryAgent
 		card.OverrideReason = reason
 		if _, err = p.Evals.SaveChange(tenant, card); err != nil {
 			return err
@@ -241,27 +240,21 @@ func (p *Platform) builderPreviewWorkspacePromptTool(req runtime.Request) types.
 	}}
 }
 
-type sharedPromptApproval struct {
-	*types.ToolFunc
-	prompt func(types.ToolCallPart) string
-}
-
-func (t *sharedPromptApproval) Approval(call types.ToolCallPart) (native.ApprovalRequest, bool) {
-	return native.ApprovalRequest{Prompt: t.prompt(call), Approvers: []string{"role:admin"}, SelfApproval: false}, true
+// applyWorkspacePromptPrompt words the approval of an apply_workspace_prompt
+// call: the change card and the reason given for overriding a regression.
+func (p *Platform) applyWorkspacePromptPrompt(q ApprovalCall) string {
+	card, err := p.Evals.Change(q.Request.Tenant, p.cfg.EntryAgent, arg(q.Call.Arguments, "change"))
+	if err != nil {
+		return "Approve the reviewed shared instruction change?"
+	}
+	action := "Apply"
+	if !card.Passed {
+		action = "Override the measured regression and apply"
+	}
+	return fmt.Sprintf("%s shared instructions? Change %s. Reason: %s", action, card.ID, arg(q.Call.Arguments, "override_reason"))
 }
 func (p *Platform) builderApplyWorkspacePromptTool(req runtime.Request) types.Tool {
-	prompt := func(call types.ToolCallPart) string {
-		card, err := p.Evals.Change(req.Tenant, BuiltinBuilder, arg(call.Arguments, "change"))
-		if err != nil {
-			return "Approve the reviewed shared instruction change?"
-		}
-		action := "Apply"
-		if !card.Passed {
-			action = "Override the measured regression and apply"
-		}
-		return fmt.Sprintf("%s shared instructions? Change %s. Reason: %s", action, card.ID, arg(call.Arguments, "override_reason"))
-	}
-	return &sharedPromptApproval{ToolFunc: &types.ToolFunc{Def: types.ToolDef{Name: ToolApplyWorkspacePrompt, Description: "Apply an evaluated shared-instruction change after a different administrator approves. Regressions require override_reason; incomplete or stale cards are refused.", Parameters: schema([]string{"change"}, map[string]string{"change": "Reviewed change card id", "override_reason": "Explicit reason for accepting a measured regression"})}, Fn: func(ctx context.Context, args map[string]any) (string, error) {
+	return &types.ToolFunc{Def: types.ToolDef{Name: ToolApplyWorkspacePrompt, Description: "Apply an evaluated shared-instruction change after a different administrator approves. Regressions require override_reason; incomplete or stale cards are refused.", Parameters: schema([]string{"change"}, map[string]string{"change": "Reviewed change card id", "override_reason": "Explicit reason for accepting a measured regression"})}, Fn: func(ctx context.Context, args map[string]any) (string, error) {
 		who, err := p.builderPerson(req)
 		if err != nil {
 			return "", err
@@ -273,7 +266,7 @@ func (p *Platform) builderApplyWorkspacePromptTool(req runtime.Request) types.To
 			return "", err
 		}
 		return "Shared instructions saved; accepted runs retain their pinned versions.", nil
-	}}, prompt: prompt}
+	}}
 }
 
 func (p *Platform) sharedPromptCardView(tenant string, card evals.Change, shown func(string) bool) evals.Change {

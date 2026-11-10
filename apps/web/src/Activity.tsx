@@ -359,7 +359,6 @@ export function ActivityPanel({
     <Inspector
       open={!leaving}
       title={navigation ? "Details" : defaultCopy.conversation.activity}
-      wide
       lead={navigation}
       onClose={onClose}
       onEscape={() => (selected ? onSelect(null) : onClose())}

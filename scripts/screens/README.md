@@ -12,8 +12,8 @@ scratchpad files are created through the real session APIs. Details assertions
 check modal behavior below 1024 and composer reflow beside the desktop pane.
 
 The canonical artifact state is `artifacts` at `/artifacts`, replacing the old
-`library` Skills capture. The `connections-knowledge` state name remains stable;
-it opens the current Data sources tab and checks the BigQuery heading. Session
+`library` Skills capture. Connections is Apps and MCPs with no tabs, so
+`connections-mcps` replaces `connections-knowledge` (data sources moved into a corpus). Session
 rows must remain native links so modified clicks and opening another tab work.
 
 The session suite builds `fixture-host`, which runs the normal Humagen serve and

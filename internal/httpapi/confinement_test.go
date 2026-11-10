@@ -17,6 +17,7 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/catalog"
+	"github.com/urmzd/humagen/pkg/graph"
 	"github.com/urmzd/orchagent/flow/event"
 	"github.com/urmzd/orchagent/flow/toolprovider"
 
@@ -67,6 +68,7 @@ type hidden struct {
 	sourceRule                                                    string
 	sourceSuggestion                                              string
 	project, agent, schedule, rule, source, eval, client, variant string
+	modelProvider                                                 string
 	run, thread, message, artifact, agentNote, projectNote, doc   string
 	workspaceFile, workspaceRevision                              string
 	scratchpad                                                    string
@@ -74,7 +76,10 @@ type hidden struct {
 	personalNote                                                  string
 	// connector is a catalog connector of the hidden project, owned by the
 	// workspace's machine and published to that project.
-	connector                                      string
+	connector string
+	// corpus is a corpus of the workspace's machine read only by the hidden
+	// project, holding the hidden connector.
+	corpus                                         string
 	handle, alert, channel, announcement, provider string
 	// open is, in a sweep inside the workspace, a Slack client the outsider
 	// may read, with the hidden channel bound to it: its bindings must not
@@ -149,7 +154,10 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		setup:   seedHiddenSetup(t, f),
 		inside:  inside,
 		project: "Canary" + marker, agent: "canary-" + marker, schedule: "canary-" + marker, rule: "canary-" + marker,
-		source: "canary-" + marker, eval: "canary-" + marker, client: "canary-" + marker, variant: "lean-" + marker,
+		// A provider is the whole workspace's, as a client is: its name is no
+		// secret from the workspace's own people, so it carries no marker.
+		modelProvider: "hidden-models",
+		source:        "canary-" + marker, eval: "canary-" + marker, client: "canary-" + marker, variant: "lean-" + marker,
 		provider: canaryProvider,
 	}
 	must := func(method, path, body string, want int) map[string]any {
@@ -164,6 +172,7 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 
 	must("POST", "/api/agents", `{"name":"`+h.agent+`","model":"offline","provider":"offline","system_prompt":"Prompt `+marker+`."}`, http.StatusCreated)
 	must("POST", "/api/projects", `{"name":"`+h.project+`","description":"Project `+marker+`."}`, http.StatusCreated)
+	must("PUT", "/api/model-providers/"+h.modelProvider, `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`, http.StatusOK)
 	// The agent lives in the project, and the project is members only: its
 	// creator, who holds projects:govern, is its one member.
 	must("PUT", "/api/agents/"+h.agent+"/home", `{"project":"`+h.project+`"}`, http.StatusOK)
@@ -198,6 +207,8 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	if _, err := f.p.CatalogStore.Publish("acme", h.connector, "svc-acme", time.Now()); err != nil {
 		t.Fatal(err)
 	}
+	h.corpus = "canary-" + marker
+	must("POST", "/api/corpora", `{"name":"`+h.corpus+`","readers":[{"kind":"project","name":"`+h.project+`"}],"members":[{"kind":"catalog","name":"`+h.connector+`"}]}`, http.StatusCreated)
 
 	must("PUT", "/api/agents/"+h.agent+"/call-policy", `{"callers":"anyone","approval":"never"}`, http.StatusOK)
 
@@ -557,7 +568,7 @@ func (h hidden) holds(body string) bool {
 // which a member of the workspace may see.
 func (h hidden) unplaced(path, param string) bool {
 	if h.private {
-		if strings.HasPrefix(path, "/api/sessions/") {
+		if strings.HasPrefix(path, "/api/sessions/") || strings.HasPrefix(path, "/api/messages/") {
 			return false
 		}
 		if param == "part" || param == "question" {
@@ -578,7 +589,7 @@ func (h hidden) unplaced(path, param string) bool {
 	case param == "variant", param == "client", param == "handle", param == "provider":
 		// A tool provider is the workspace's: everyone in it may connect to it.
 		return true
-	case strings.HasPrefix(path, "/api/knowledge/"), strings.HasPrefix(path, "/api/clients/"):
+	case strings.HasPrefix(path, "/api/knowledge/"), strings.HasPrefix(path, "/api/clients/"), strings.HasPrefix(path, "/api/model-providers/"):
 		return true
 	case strings.HasPrefix(path, "/api/branding/"):
 		// Branding is the workspace's: everyone in it reads its fonts.
@@ -603,8 +614,12 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.schedule, true
 		case prefix("/api/catalog/connectors/"):
 			return h.connector, true
+		case prefix("/api/corpora/"):
+			return h.corpus, true
 		case prefix("/api/alert-rules/"):
 			return h.rule, true
+		case prefix("/api/model-providers/"):
+			return h.modelProvider, h.modelProvider != ""
 		case prefix("/api/knowledge/"):
 			return h.source, true
 		case prefix("/api/evals/"):
@@ -619,7 +634,7 @@ func (h hidden) value(path, param string) (string, bool) {
 		}
 	case "id":
 		switch {
-		case prefix("/api/sessions/"):
+		case prefix("/api/sessions/"), prefix("/api/messages/"):
 			return h.session, h.session != ""
 		case prefix("/api/library/skills/"):
 			return h.librarySkill, true
@@ -655,8 +670,20 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.client, true
 		case prefix("/api/alerts/"):
 			return h.alert, true
+		case prefix("/api/graph/nodes/"):
+			// The hidden corpus is isolated, so its warehouse's system node
+			// is keyed under it.
+			return graph.ID("corpus:" + h.corpus + "/system:catalog/" + h.connector), h.corpus != ""
 		case prefix("/api/projects/{name}/announcements/"):
 			return h.announcement, true
+		}
+	case "kind":
+		if prefix("/api/corpora/") {
+			return "catalog", true
+		}
+	case "member":
+		if prefix("/api/corpora/") {
+			return h.connector, true
 		}
 	case "channel":
 		return h.channel, true
@@ -807,7 +834,7 @@ func sweepGets(t *testing.T, f *fixture, owner, outsider string, inside bool) {
 func sweepGetsOf(t *testing.T, f *fixture, outsider string, h hidden) {
 	t.Helper()
 	s := loadSpec(t)
-	defaults := map[string]string{"run": "missing", "channel": "C01PUBLIC", "project": "~", "permission": "runs:read", "q": "hello", "agent": h.agent, "names": "missing", "scope": "project", "file": "notes/missing.md", "path": h.workspaceFile, "revision": h.workspaceRevision, "repo": "acme/missing", "number": "1"}
+	defaults := map[string]string{"run": "missing", "channel": "C01PUBLIC", "project": "~", "permission": "runs:read", "q": "hello", "agent": h.agent, "names": "missing", "scope": "project", "file": "notes/missing.md", "path": h.workspaceFile, "revision": h.workspaceRevision, "repo": "acme/missing", "number": "1", "roots": "true"}
 
 	var keys []string
 	for key := range s.ops {

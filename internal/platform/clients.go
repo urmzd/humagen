@@ -519,7 +519,7 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		// A comment that mentions the app and names no agent is raised
 		// naming none, and stamp decides who answers it where it is filed.
 		if g := c.GitHub; g != nil {
-			cfg.AutoLabels, cfg.Checks, cfg.Guides, cfg.Mutations, cfg.ReadRepositories = g.AutoLabels, g.Checks, g.Guides, g.Mutations, g.ReadRepositories
+			cfg.Checks, cfg.Guides, cfg.Mutations, cfg.ReadRepositories = g.Checks, g.Guides, g.Mutations, g.ReadRepositories
 			cfg.Login = g.Login
 			cfg.ActionRepositories = g.ActionRepositories
 			cfg.FixPullRequests = g.FixPullRequests
@@ -530,7 +530,6 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		cfg.ContinueThread = func(a address.Address) bool { return p.continueSurface(c, a) }
 		_, cfg.StatusReactions = api.(ghtransport.ReactionAPI)
 		cfg.StatusReactions = cfg.StatusReactions && cfg.Login != ""
-		cfg.ReviewApproval = func(v ghtransport.View) bool { return p.reviewApproval(c, v) }
 		cfg.ReviewText = func(v ghtransport.View) (string, error) { return p.reviewView(c, v) }
 		peer, err := github.New(cfg)
 		if err != nil {

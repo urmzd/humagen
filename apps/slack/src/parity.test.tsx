@@ -558,6 +558,75 @@ for (const kind of ["approval", "choice", "reply"] as const) {
   });
 }
 
+test("an approval the approval agent judged shows its view in Slack, the workspace's own fields as label and value", () => {
+  const judged = (judgement?: Record<string, unknown>) => {
+    const raw = questionMail(RUN, "approval");
+    const parts = (raw.parts as Record<string, unknown>[]).map((p) => ({
+      ...p,
+      question: { ...(p.question as object), ...(judgement ? { judgement } : {}) },
+    }));
+    return fromServer({ ...raw, parts });
+  };
+  const contextTexts = (el: ReactElement) =>
+    (renderToSlack(el).pages.flat() as { type: string; elements?: { text?: string }[] }[])
+      .filter((b) => b.type === "context")
+      .flatMap((b) => b.elements ?? [])
+      .map((e) => e.text ?? "");
+
+  const asked = (
+    <MessageView
+      message={forSlack(
+        judged({
+          decision: "ask",
+          reason: "Nobody asked to deploy <!here> today.",
+          references: ["Policy: deploys need a person"],
+          fields: [
+            { name: "risk", label: "Risk", value: "high" },
+            { name: "conditions", label: "Conditions", value: "only on main" },
+            { name: "expires_in", label: "Expires in", value: "3600" },
+          ],
+          run: "api-approver-1",
+        }),
+      )}
+    />
+  );
+  const said = contextTexts(asked);
+  // The agent's words ping nobody: Slack's own markup in them is escaped.
+  assert.ok(
+    said.includes(
+      '*Approval agent:* Asked a person: "Nobody asked to deploy &lt;!here&gt; today."',
+    ),
+    said.join("\n"),
+  );
+  for (const pair of ["*Risk:* high", "*Conditions:* only on main", "*Expires in:* 3600"])
+    assert.ok(said.includes(pair), `Slack does not say ${pair}`);
+  assert.ok(said.includes("Based on: Policy: deploys need a person"));
+  bothSay(asked, "Approval agent", "Asked a person", "Risk", "only on main", "Expires in");
+  // The person still decides.
+  assert.ok(slackAction(asked, ActionId.approve));
+
+  // Twelve fields, the most the platform keeps, fit Slack's ten per context block.
+  const many = contextTexts(
+    <MessageView
+      message={forSlack(
+        judged({
+          decision: "allow",
+          reason: "Asked for.",
+          fields: Array.from({ length: 12 }, (_, i) => ({
+            name: `f${i}`,
+            label: `F${i}`,
+            value: `${i}`,
+          })),
+        }),
+      )}
+    />,
+  );
+  for (let i = 0; i < 12; i++) assert.ok(many.includes(`*F${i}:* ${i}`), `F${i}`);
+
+  const bare = <MessageView message={forSlack(judged())} />;
+  assert.doesNotMatch(slack(bare), /Approval agent|Asked a person|Risk|Based on/);
+});
+
 test("an agent's draft reads the same on both, with Publish and Discard for its owner and its words inert", () => {
   const wire = {
     id: "m-12",

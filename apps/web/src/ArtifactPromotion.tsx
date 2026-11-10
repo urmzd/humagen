@@ -124,10 +124,7 @@ export function ArtifactPromotion({
           ) : sources ? (
             <p className="text-aui-xs text-aui-muted">
               {words.artifactNoSource}{" "}
-              <a
-                className="underline"
-                href={href({ page: "project", name: access.project, tab: "context" })}
-              >
+              <a className="underline" href={href({ page: "project", name: access.project })}>
                 {words.artifactOpenContext}
               </a>
             </p>

@@ -20,13 +20,14 @@ import (
 func TestProviderLiveSmoke(t *testing.T) {
 	enabled := os.Getenv("HUMAGEN_SOURCE_LIVE_TEST")
 	if enabled == "" {
-		t.Fatal("set HUMAGEN_SOURCE_LIVE_TEST to drive, notion, or both")
+		t.Fatal("set HUMAGEN_SOURCE_LIVE_TEST to drive, notion, onedrive, or both")
 	}
-	if enabled != "drive" && enabled != "notion" && enabled != "both" {
-		t.Fatal("HUMAGEN_SOURCE_LIVE_TEST must be drive, notion, or both")
+	if enabled != "drive" && enabled != "notion" && enabled != "onedrive" && enabled != "both" {
+		t.Fatal("HUMAGEN_SOURCE_LIVE_TEST must be drive, notion, onedrive, or both")
 	}
-	for _, kind := range []string{"drive", "notion"} {
-		if enabled != "both" && enabled != kind {
+	for _, kind := range []string{"drive", "notion", "onedrive"} {
+		// both means Drive and Notion; OneDrive runs only when named.
+		if enabled != kind && (enabled != "both" || kind == "onedrive") {
 			continue
 		}
 		t.Run(kind, func(t *testing.T) {

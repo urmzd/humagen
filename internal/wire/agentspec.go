@@ -5,6 +5,8 @@
 package wire
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -12,8 +14,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/orchagent/flow/definition"
 	"github.com/urmzd/orchagent/flow/runtime"
+	saigetypes "github.com/urmzd/saige/agent/types"
+	saigeeval "github.com/urmzd/saige/eval"
+
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/pkg/approve"
 )
 
 // ErrInvalidAgent reports a definition that will not be accepted. Callers match with
@@ -139,10 +145,17 @@ type AgentSpec struct {
 	// FallbackOnAny. It is a set, sorted by Normalize, and naming it without
 	// any Fallbacks is invalid: there is nothing to fall back to.
 	FallbackOn []string `json:"fallback_on,omitempty"`
+	// Effort is the reasoning effort the agent's own primary model is asked
+	// for, such as low, medium or high. Empty leaves the model's default. It
+	// reaches the primary only, and only when that model takes it: a run
+	// moved to a fallback, or on a model that takes no such effort, runs at
+	// the model's default.
+	Effort string `json:"effort,omitempty"`
 	// Approvals names the tools whose every call waits for a person to
 	// approve it. Each must be a tool the agent is granted: one in Tools, one
-	// in a tool group Tools grants (see MCPGroupPrefix), or the delegation
-	// tool "tag_<agent>" of an agent in Access.Spawn. A run
+	// in a tool group Tools grants (see MCPGroupPrefix), the agent tool when
+	// Access.Spawn names an agent, or "tag_<agent>" for the calls to one
+	// agent in Access.Spawn. A run
 	// parks on the call and resumes with the person's decision; see the
 	// runtime's "Parking a run on a person".
 	Approvals []string `json:"approvals,omitempty"`
@@ -164,36 +177,25 @@ type AgentSpec struct {
 	// untagged message never asks this one, so it runs only when a person,
 	// a default or another agent names it. Off by default.
 	TaggedOnly bool `json:"tagged_only,omitempty"`
-	// Choices are what a person may pick for one message in place of the
-	// agent's model and reasoning effort. Nil, the default, offers nothing:
-	// every message runs on the agent's own model at its default effort.
-	Choices *Choices `json:"choices,omitempty"`
+	// Output, when set, is the shape of the agent's answer: the runtime asks
+	// the model for structured output under its schema, and a model that
+	// cannot give it fails the run rather than answering in free text. The
+	// answer, checked against the schema, is kept on the run as structured
+	// data. Nil is an answer in free text, as every revision written before
+	// it existed answers.
+	Output *Output `json:"output,omitempty"`
 }
 
-// Choices is what a person may pick, for one message, in place of an agent's
-// model and reasoning effort. It mirrors orchagent's definition.Choices,
-// where it is stored with the agent's policy.
-type Choices struct {
-	// Models are the models offered, each "provider/model". The agent's own
-	// model needs no listing: choosing nothing runs it.
-	Models []string `json:"models,omitempty"`
-	// Efforts are the reasoning efforts offered, such as "low" and "high".
-	// Whether a model takes one is checked when a turn builds it.
-	Efforts []string `json:"efforts,omitempty"`
+// Output is what an agent's answer must be.
+type Output struct {
+	// Schema is a JSON Schema for an object. It is kept in a canonical form
+	// (Normalize), so the same schema written another way is the same
+	// definition.
+	Schema json.RawMessage `json:"schema"`
 }
 
-// normalize sorts both lists, lower-cases efforts, and collapses choices
-// that offer nothing to nil.
-func (c *Choices) normalize() *Choices {
-	if c == nil {
-		return nil
-	}
-	out := &Choices{Models: normalizeSet(c.Models, false), Efforts: normalizeSet(c.Efforts, true)}
-	if out.Models == nil && out.Efforts == nil {
-		return nil
-	}
-	return out
-}
+// MaxOutputSchema bounds an output schema, in bytes.
+const MaxOutputSchema = 16 << 10
 
 // ModelRef names one model behind one provider: a fallback for the agent's
 // primary model. The two fields mean exactly what AgentSpec.Provider and
@@ -250,11 +252,17 @@ func NewRevision(spec AgentSpec, rev int, by string, at time.Time) (Revision, er
 // NewRevisionWith is NewRevision for a deployment whose provider table is not
 // the built-in one.
 func NewRevisionWith(spec AgentSpec, rev int, by string, at time.Time, providers []string) (Revision, error) {
+	return NewRevisionAccepting(spec, rev, by, at, providers, nil)
+}
+
+// NewRevisionAccepting is NewRevisionWith that also admits any provider
+// accept reports, such as one an administrator added while the server runs.
+func NewRevisionAccepting(spec AgentSpec, rev int, by string, at time.Time, providers []string, accept func(string) bool) (Revision, error) {
 	if rev < FirstRev {
 		return Revision{}, fmt.Errorf("%w: revision number %d is below %d; revisions count from %d", ErrInvalidAgent, rev, FirstRev, FirstRev)
 	}
 	canonical := spec.Normalize()
-	if err := canonical.ValidateWith(providers); err != nil {
+	if err := canonical.ValidateAccepting(providers, accept); err != nil {
 		return Revision{}, err
 	}
 	return Revision{
@@ -314,8 +322,8 @@ func (s AgentSpec) Clone() AgentSpec {
 	s.Answerers = slices.Clone(s.Answerers)
 	s.Access.Spawn = slices.Clone(s.Access.Spawn)
 	s.Access.WorkspaceAreas = slices.Clone(s.Access.WorkspaceAreas)
-	if s.Choices != nil {
-		s.Choices = &Choices{Models: slices.Clone(s.Choices.Models), Efforts: slices.Clone(s.Choices.Efforts)}
+	if s.Output != nil {
+		s.Output = &Output{Schema: slices.Clone(s.Output.Schema)}
 	}
 	if s.Sources != nil {
 		sources := make([]Source, len(s.Sources))
@@ -357,16 +365,17 @@ func (s AgentSpec) Normalize() AgentSpec {
 		Tools:        normalizeSet(s.Tools, false),
 		Fallbacks:    normalizeFallbacks(s.Fallbacks),
 		FallbackOn:   normalizeSet(s.FallbackOn, true),
+		Effort:       strings.ToLower(strings.TrimSpace(s.Effort)),
 		Approvals:    normalizeSet(s.Approvals, false),
 		Approvers:    normalizeSet(s.Approvers, false),
 		SelfApproval: s.SelfApproval,
 		Answerers:    normalizeSet(s.Answerers, false),
 		TaggedOnly:   s.TaggedOnly,
-		Choices:      s.Choices.normalize(),
 		Access: Access{
 			Spawn:          normalizeSet(s.Access.Spawn, true),
 			WorkspaceAreas: normalizeSet(s.Access.WorkspaceAreas, false),
 		},
+		Output: normalizeOutput(s.Output),
 	}
 	if len(s.Sources) > 0 {
 		sources := make([]Source, 0, len(s.Sources))
@@ -404,7 +413,15 @@ func (s AgentSpec) Validate() error { return s.ValidateWith(KnownProviders()) }
 // not resolve tools or sources: whether a tool is loaded is a property of a
 // process, not of a definition, and a control plane that rejected a spec
 // because one node had not been restarted yet would be enforcing an accident.
-func (s AgentSpec) ValidateWith(providers []string) error {
+func (s AgentSpec) ValidateWith(providers []string) error { return s.ValidateAccepting(providers, nil) }
+
+// ValidateAccepting is ValidateWith that also admits any provider accept
+// reports. Nil accept admits only providers.
+func (s AgentSpec) ValidateAccepting(providers []string, accept func(string) bool) error {
+	has := func(name string) bool {
+		return slices.ContainsFunc(providers, func(p string) bool { return strings.EqualFold(p, name) }) ||
+			(accept != nil && accept(name))
+	}
 	c := s.Normalize()
 	switch {
 	case c.Name == "":
@@ -417,6 +434,8 @@ func (s AgentSpec) ValidateWith(providers []string) error {
 		return fmt.Errorf("%w: agent %q names no provider", ErrInvalidAgent, c.Name)
 	case c.SystemPrompt == "":
 		return fmt.Errorf("%w: agent %q has an empty system prompt; an agent with no instructions is a definition of nothing", ErrInvalidAgent, c.Name)
+	case c.Effort != "" && !validEffort(c.Effort):
+		return fmt.Errorf("%w: agent %q asks for reasoning effort %q; an effort is one word, such as low, medium or high", ErrInvalidAgent, c.Name, c.Effort)
 	}
 	// The charset is pkg/topic's to decide, not this package's. An agent
 	// name becomes a topic segment the moment the agent emits anything, so a
@@ -431,13 +450,10 @@ func (s AgentSpec) ValidateWith(providers []string) error {
 	if c.Name == runtime.ReservedName {
 		return fmt.Errorf("%w: agent name %q is reserved for control topics", ErrInvalidAgent, c.Name)
 	}
-	if !slices.ContainsFunc(providers, func(p string) bool { return strings.EqualFold(p, c.Provider) }) {
+	if !has(c.Provider) {
 		return fmt.Errorf("%w: agent %q names provider %q; this deployment knows %s", ErrInvalidAgent, c.Name, c.Provider, list(providers))
 	}
-	if err := validFallbacks(c, providers); err != nil {
-		return err
-	}
-	if err := validChoices(c, providers); err != nil {
+	if err := validFallbacks(c, providers, has); err != nil {
 		return err
 	}
 	if err := uniqueNonEmpty("tool", c.Name, c.Tools); err != nil {
@@ -477,7 +493,13 @@ func (s AgentSpec) ValidateWith(providers []string) error {
 		// and a definition that reads as guarded and is not is worse than one
 		// that is refused.
 		granted := slices.Contains(c.Tools, name)
-		if target, ok := strings.CutPrefix(name, "tag_"); ok && slices.Contains(c.Access.Spawn, target) {
+		// An approval of "tag_<agent>" holds the calls to that one agent.
+		if target, ok := legacy.TagTarget(name); ok && slices.Contains(c.Access.Spawn, target) {
+			granted = true
+		}
+		// The agent tool is Access.Spawn's grant: every agent the spec may
+		// call is called through it, whichever name the approval has for it.
+		if legacy.ToolName(name) == AgentTool && len(c.Access.Spawn) > 0 {
 			granted = true
 		}
 		// A group's members are known only to a deployment, so a tool that
@@ -514,26 +536,79 @@ func (s AgentSpec) ValidateWith(providers []string) error {
 		}
 		seen[src.Name] = struct{}{}
 	}
-	return nil
+	return validOutput(c)
 }
 
-// validChoices holds the models and efforts a person may pick to the rules
-// orchagent stores them under, and each model to a provider this deployment
-// knows. c is canonical.
-func validChoices(c AgentSpec, providers []string) error {
-	if c.Choices == nil {
+// ValidateOutput checks the definition's output schema alone, as Validate
+// does: a file can be checked for it before the deployment it runs on is
+// known.
+func (s AgentSpec) ValidateOutput() error { return validOutput(s.Normalize()) }
+
+// validOutput checks an output schema: a JSON Schema for an object, within
+// its bound, in the form the runtime hands a model. The approval agent's
+// answer is read as a decision, so its schema also holds the core every
+// decision has (approve.CheckSchema).
+func validOutput(c AgentSpec) error {
+	if c.Output == nil {
 		return nil
 	}
-	if err := (definition.Policy{Choices: &definition.Choices{Models: c.Choices.Models, Efforts: c.Choices.Efforts}}).Validate(); err != nil {
-		return fmt.Errorf("%w: agent %q: %w", ErrInvalidAgent, c.Name, err)
+	schema := c.Output.Schema
+	switch {
+	case len(schema) == 0:
+		return fmt.Errorf("%w: agent %q declares an output with no schema", ErrInvalidAgent, c.Name)
+	case len(schema) > MaxOutputSchema:
+		return fmt.Errorf("%w: agent %q has an output schema of %d bytes, the limit is %d", ErrInvalidAgent, c.Name, len(schema), MaxOutputSchema)
 	}
-	for _, m := range c.Choices.Models {
-		provider, _, _ := strings.Cut(m, "/")
-		if !slices.ContainsFunc(providers, func(p string) bool { return strings.EqualFold(p, provider) }) {
-			return fmt.Errorf("%w: agent %q offers model %q; this deployment knows %s", ErrInvalidAgent, c.Name, m, list(providers))
+	if _, err := saigeeval.CompileJSONSchema(schema); err != nil {
+		return fmt.Errorf("%w: agent %q output schema: %v", ErrInvalidAgent, c.Name, err)
+	}
+	var top struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(schema, &top) != nil || top.Type != "object" {
+		return fmt.Errorf(`%w: agent %q output schema must describe an object ("type": "object")`, ErrInvalidAgent, c.Name)
+	}
+	// What a model is asked for is the runtime's form of the schema, so a
+	// schema that does not fit it is refused here, not at the first run.
+	var asked saigetypes.ParameterSchema
+	if err := json.Unmarshal(schema, &asked); err != nil {
+		return fmt.Errorf("%w: agent %q output schema cannot be asked of a model: %v", ErrInvalidAgent, c.Name, err)
+	}
+	if c.Name == approve.Agent {
+		if err := approve.CheckSchema(schema); err != nil {
+			return fmt.Errorf("%w: agent %q output schema: %w", ErrInvalidAgent, c.Name, err)
 		}
 	}
 	return nil
+}
+
+// normalizeOutput is an output with its schema in canonical form: read and
+// written again, so key order and spacing are not an edit. A schema that is
+// not JSON is kept as it was, for Validate to refuse.
+func normalizeOutput(o *Output) *Output {
+	if o == nil {
+		return nil
+	}
+	schema := bytes.TrimSpace(o.Schema)
+	dec := json.NewDecoder(bytes.NewReader(schema))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err == nil && !dec.More() {
+		if b, err := json.Marshal(v); err == nil {
+			schema = b
+		}
+	}
+	return &Output{Schema: slices.Clone(schema)}
+}
+
+// MaxEffortLen bounds a reasoning effort's name.
+const MaxEffortLen = 16
+
+// validEffort is the shape of a reasoning effort: one lowercase word. Which
+// efforts a model takes is its own; a run sends one only to a model that
+// takes it.
+func validEffort(e string) bool {
+	return len(e) <= MaxEffortLen && strings.TrimFunc(e, func(r rune) bool { return r >= 'a' && r <= 'z' }) == ""
 }
 
 // validFallbacks holds every fallback to the rules the primary model is held
@@ -541,7 +616,7 @@ func validChoices(c AgentSpec, providers []string) error {
 // refuses a repeat: a fallback identical to the primary or to an earlier
 // fallback would only send the same failing request again, which is the retry
 // decorator's job, not the policy's. c is canonical.
-func validFallbacks(c AgentSpec, providers []string) error {
+func validFallbacks(c AgentSpec, providers []string, has func(string) bool) error {
 	if len(c.Fallbacks) > MaxFallbacks {
 		return fmt.Errorf("%w: agent %q names %d fallback models, the limit is %d", ErrInvalidAgent, c.Name, len(c.Fallbacks), MaxFallbacks)
 	}
@@ -569,7 +644,7 @@ func validFallbacks(c AgentSpec, providers []string) error {
 		case fb.Model == "":
 			return fmt.Errorf("%w: agent %q fallback %d (provider %q) names no model", ErrInvalidAgent, c.Name, n, fb.Provider)
 		}
-		if !slices.ContainsFunc(providers, func(p string) bool { return strings.EqualFold(p, fb.Provider) }) {
+		if !has(fb.Provider) {
 			return fmt.Errorf("%w: agent %q fallback %d names provider %q; this deployment knows %s", ErrInvalidAgent, c.Name, n, fb.Provider, list(providers))
 		}
 		if prev, dup := seen[fb]; dup {
@@ -666,3 +741,7 @@ func addressable(name string) error {
 	}
 	return runtime.CheckRun(name, "x")
 }
+
+// AgentTool is the tool an agent calls the agents in its Access.Spawn with.
+// Access.Spawn grants it, so a spec need not list it in Tools.
+const AgentTool = legacy.AgentTool

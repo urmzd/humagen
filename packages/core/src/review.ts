@@ -32,6 +32,8 @@ export interface ReviewFinding {
   evidence: ReviewEvidence[];
   /** What the reader can ask the agent next about this finding. */
   prompt: string;
+  /** The agent whose session found it: `security-reviewer` or `security-reviewer#a`. */
+  found_by?: string;
 }
 
 export interface ReviewLink {
@@ -147,6 +149,7 @@ function asReport(value: unknown): ReviewReport | null {
       suggestion: f.suggestion,
       evidence,
       prompt: f.prompt,
+      ...(filled(f.found_by) && FOUND_BY.test(f.found_by) ? { found_by: f.found_by } : {}),
     });
   }
   const comments = Array.isArray(r.comments) ? r.comments.filter(filled) : [];
@@ -343,9 +346,14 @@ export interface ReviewMarkdownWords {
   evidence: string;
   related: string;
   noFindings: string;
+  /** "Found by security-reviewer", under a finding's title. */
+  foundBy: (agent: string) => string;
 }
 
 const ICON: Record<ReviewSeverity, string> = { error: "🔴", warning: "🟡", info: "🔵" };
+
+/** An agent name with an optional session label, as the server accepts in `found_by`. */
+const FOUND_BY = /^[a-z0-9][a-z0-9._-]{0,63}(#[A-Za-z0-9._-]{1,32})?$/;
 
 /** Model text kept inside its table cell or list item: one line, no stray pipes. */
 const cell = (s: string) => s.split(/\s+/).filter(Boolean).join(" ").replace(/\|/g, "\\|");
@@ -385,7 +393,7 @@ export function reviewMarkdown(report: ReviewReport, w: ReviewMarkdownWords): st
         })
         .join("<br><br>");
       lines.push(
-        `| ${ICON[f.severity]} ${w.group[f.severity]} | ${cell(f.title)} | ${cell(f.suggestion)} | ${evidence} | ${cell(f.prompt)} |`,
+        `| ${ICON[f.severity]} ${w.group[f.severity]} | ${cell(f.title)}${f.found_by ? `<br>${cell(w.foundBy(f.found_by))}` : ""} | ${cell(f.suggestion)} | ${evidence} | ${cell(f.prompt)} |`,
       );
     }
   } else {

@@ -56,11 +56,11 @@ func (c *ConnectionAuthorization) check() error {
 		return fmt.Errorf("connections: redirect_url must be HTTPS or loopback HTTP")
 	}
 	for name, client := range c.Clients {
-		if name != "notion" && name != "linear" && name != "granola" && name != "drive" && name != "slack" && name != "bigquery" {
+		if name != "notion" && name != "linear" && name != "granola" && name != "drive" && name != "onedrive" && name != "slack" && name != "bigquery" {
 			return fmt.Errorf("connections: unknown OAuth client %q", name)
 		}
 		issuer, err := url.Parse(client.Issuer)
-		if name == "drive" || name == "slack" || name == "bigquery" {
+		if name == "drive" || name == "onedrive" || name == "slack" || name == "bigquery" {
 			if name == "slack" && !client.SigningSecret.Set() {
 				return fmt.Errorf("connections: slack needs signing_secret")
 			}
