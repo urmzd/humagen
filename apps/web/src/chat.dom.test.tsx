@@ -5,10 +5,12 @@ import { reviewStreamingTurn, reviewTurn } from "@humagen/core/fixtures";
 import { SourceContext, WebSurface } from "@humagen/render-web";
 import { AgentMessage } from "@humagen/web";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { forgetApprover } from "./ApprovalToggle.tsx";
 import type { Run } from "./adapter.ts";
 import { api, type ProjectAgentsView, type Revision, type ThreadPage } from "./api.ts";
 import { Chat } from "./Chat.tsx";
 import { stubEventSource, stubFetch } from "./dom.ts";
+import { forgetConfiguredProviders } from "./ModelChain.tsx";
 import { globex } from "./projects.fixtures.ts";
 
 const at = "2026-10-01T09:00:00Z";
@@ -102,9 +104,14 @@ function stubChatFetch(routes: Parameters<typeof stubFetch>[0]) {
     },
   });
 }
-function openChat(view: ProjectAgentsView, props: Partial<Parameters<typeof Chat>[0]> = {}) {
+function openChat(
+  view: ProjectAgentsView,
+  props: Partial<Parameters<typeof Chat>[0]> = {},
+  routes: Parameters<typeof stubFetch>[0] = {},
+) {
   const opened: string[] = [];
   net = stubChatFetch({
+    ...routes,
     "GET /api/projects/~/agents": () => view,
     ...(props.personalProject
       ? { [`GET /api/projects/${encodeURIComponent(props.personalProject)}/agents`]: () => view }
@@ -235,6 +242,44 @@ test("Home's chat bar starts a private conversation in the picked project and op
   assert.ok(!net?.seen.some((s) => s.path.startsWith("/api/runs")), "no run is asked for");
 });
 
+test("Home's composer shows no project control, and Run chosen there is applied once the session starts", async () => {
+  forgetApprover();
+  forgetConfiguredProviders();
+  const { opened } = openChat(
+    workspace("lead"),
+    { personalProject: "Personal" },
+    {
+      "GET /api/agents": () => ({
+        agents: [{ spec: { name: "approver", provider: "anthropic", model: "m" }, version: 1 }],
+      }),
+      "GET /api/model-providers": () => ({
+        providers: [{ name: "anthropic", kind: "anthropic", declared: true }],
+      }),
+      "PUT /api/threads/th-00000000000000ab/approval": (body) => ({
+        id: "th-00000000000000ab",
+        approval: { mode: (body as { mode: string }).mode, by: "ada", at },
+      }),
+    },
+  );
+  const bar = screen.getByRole("form", { name: "Message" });
+  assert.deepEqual(within(bar).queryAllByRole("button", { name: /project/i }), []);
+  fireEvent.click(within(bar).getByRole("button", { name: "Approvals: Ask Me" }));
+  assert.ok(within(bar).getByRole("button", { name: "Approvals: Run" }));
+  assert.ok(!net?.seen.some((s) => s.method === "PUT"), "nothing is saved before the session");
+  fireEvent.change(box(), { target: { value: "Plan the launch" } });
+  fireEvent.keyDown(box(), { key: "Enter" });
+  await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ab"]));
+  await waitFor(() =>
+    assert.deepEqual(
+      net?.seen.filter((s) => s.method !== "GET").map((s) => [`${s.method} ${s.path}`, s.body]),
+      [
+        ["POST /api/sessions", { project: "Personal", text: "Plan the launch" }],
+        ["PUT /api/threads/th-00000000000000ab/approval", { mode: "auto" }],
+      ],
+    ),
+  );
+});
+
 const chat = defaultCopy.chat;
 /** What the bar's row under the box shows, in order: where the conversation is filed, never an agent. */
 const chips = () =>
@@ -270,62 +315,11 @@ test("a link or suggestion @mentions the agent without submitting, and suggestio
   assert.ok(screen.getByRole("list", { name: chat.suggestions }));
 });
 
-test("+ picks mentions with Enter and the single project picker scopes a session", async () => {
-  openChat(workspace("lead"), {
-    projects: [{ ...globex, access: { role: "owner", from: "", via: "*" } }] as never,
-  });
-  net?.restore();
-  const opened: string[] = [];
-  net = stubChatFetch({
-    "GET /api/projects/~/agents": () => workspace("lead"),
-    "GET /api/projects/Globex/agents": () => ({
-      ...workspace(),
-      available: { all: true, names: [] },
-    }),
-    "GET /api/projects/Globex/channels": () => ({
-      channels: ["general", "deals"].map((name) => ({
-        project: "Globex",
-        name,
-        version: 1,
-        created_at: at,
-        updated_at: at,
-        answers: { agent: "", from: "" },
-      })),
-    }),
-    "POST /api/threads": (body) => {
-      opened.push("started");
-      return {
-        thread: {
-          id: "th-00000000000000ac",
-          project: "Globex",
-          channel: "deals",
-          visibility: "private",
-          participants: [],
-          version: 1,
-          created_by: "ada",
-          created_at: at,
-          updated_at: at,
-        },
-        message: {
-          id: "m-1",
-          thread: "th-00000000000000ac",
-          by: "ada",
-          name: "Ada",
-          text: (body as { text: string }).text,
-          mentions: [],
-          via: "console",
-          at,
-        },
-        runs: [],
-        notified: [],
-        refused: [],
-        rule: "default",
-      };
-    },
-  });
+test("+ picks mentions with Enter, and a session from Home is filed in the Personal project", async () => {
+  const { opened } = openChat(workspace("lead"), { personalProject: "Personal" });
   // The shortcut opens it from the box.
   fireEvent.keyDown(box(), { key: "/", ctrlKey: true });
-  let menu = await screen.findByRole("dialog", { name: chat.menu });
+  const menu = await screen.findByRole("dialog", { name: chat.menu });
   assert.ok(within(menu).getByRole("button", { name: chat.attach }));
   fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
   const lead = await within(menu).findByRole("checkbox", { name: /^lead/ });
@@ -365,16 +359,6 @@ test("+ picks mentions with Enter and the single project picker scopes a session
   assert.deepEqual(chips(), [], "agents never show where the project is");
   assert.equal(screen.queryByRole("group", { name: /routed/i }), null, "no routing toggle");
 
-  // The project is chosen once, from the persistent composer control.
-  const projectPicker = screen.getByRole("button", { name: /^Select project/ });
-  fireEvent.click(projectPicker);
-  fireEvent.click(await screen.findByRole("button", { name: /^Globex/ }));
-  assert.ok(screen.getByRole("button", { name: "Select project: Globex" }));
-  assert.equal(
-    net?.seen.some((request) => request.path.includes("/channels")),
-    false,
-  );
-
   // Deleting a mention's words takes the agent off: the menu reads the box.
   fireEvent.change(box(), { target: { value: "@lead " } });
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
@@ -391,9 +375,9 @@ test("+ picks mentions with Enter and the single project picker scopes a session
 
   fireEvent.change(box(), { target: { value: `${box().value}Plan the renewal` } });
   fireEvent.keyDown(box(), { key: "Enter" });
-  await waitFor(() => assert.deepEqual(opened, ["started"]));
+  await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ab"]));
   assert.deepEqual(net?.seen.find((s) => s.method === "POST")?.body, {
-    project: "Globex",
+    project: "Personal",
     text: "@helper @lead Plan the renewal",
   });
 });
@@ -611,7 +595,6 @@ test("Regenerate is offered only on an answered turn that acted for the reader",
     close();
   }
   open(answered({ id: "ben", display: "Ben", user: "ben" }), "ben");
-  fireEvent.click(await screen.findByRole("button", { name: "More actions" }));
   fireEvent.click(await screen.findByRole("button", { name: "Regenerate" }));
   await waitFor(() =>
     assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")),
@@ -628,7 +611,6 @@ test("a reader's own turn from before humagen said whom a run acts for may be as
   );
   close();
   open(answered(before, "api-3-ben-k1"), "ben");
-  fireEvent.click(await screen.findByRole("button", { name: "More actions" }));
   fireEvent.click(await screen.findByRole("button", { name: "Regenerate" }));
   await waitFor(() =>
     assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")),
@@ -881,12 +863,11 @@ test("completion and the + menu open toward the side of the chat bar with room, 
   }
 });
 
-test("a link's agent that lives in a project opens that project; a mention of one that can't answer where it goes is said in words", async () => {
-  // globex-helper lives in Globex: its link opens Globex, and mentions it.
+test("a link's agent is mentioned where the session starts, never in its home; a mention of one that can't answer there is said in words", async () => {
+  // globex-helper is homed in Globex: its link mentions it, and the session stays where it starts.
   openChat(workspace("lead"), { startAgent: "globex-helper" });
-  await waitFor(() => assert.ok(net?.seen.some((s) => s.path === "/api/projects/Globex/agents")));
-  await waitFor(() => assert.deepEqual(chips(), ["Globex"]));
-  assert.equal(box().value, "@globex-helper ");
+  await waitFor(() => assert.equal(box().value, "@globex-helper "));
+  assert.ok(!net?.seen.some((s) => s.path === "/api/projects/Globex/agents"));
   openChatClose();
   // Here only lead may answer, so the page says helper can't; the words stay the person's.
   openChat(
@@ -924,12 +905,7 @@ test("+ closes the menu it opened, though focus moves to it from the menu first"
 });
 
 test("all starter suggestions stay in one centered row that scrolls past its width, hiding none", async () => {
-  const builtin = [
-    ...agents,
-    agent("humagen-analyst"),
-    agent("humagen-builder"),
-    agent("humagen-writer"),
-  ];
+  const builtin = [...agents, agent("humagen-analyst"), agent("humagen"), agent("humagen-writer")];
   openChat(workspace("lead"), { agents: builtin });
   const list = await screen.findByRole("list", { name: chat.suggestions });
   assert.ok(list.className.split(/\s+/).includes("overflow-x-auto"));
@@ -1016,7 +992,7 @@ test("Home's first message says what it did in the conversation it opens", async
   await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ad"]));
 });
 
-test("a conversation of runs has the + menu: its agents are saved on its thread so a follow-up goes to them, and its project is fixed, saying why", async () => {
+test("a conversation of runs has the + menu: its agents are saved on its thread so a follow-up goes to them, and it picks no project", async () => {
   restoreEvents ??= stubEventSource();
   const ana = { id: "ana", display: "Ana", user: "ana" };
   const turn = { ...answered(ana), agent: "helper" };
@@ -1069,7 +1045,7 @@ test("a conversation of runs has the + menu: its agents are saved on its thread 
   await screen.findByPlaceholderText(defaultCopy.threads.message);
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
   const menu = await screen.findByRole("dialog", { name: chat.menu });
-  assert.ok(within(menu).getByText(defaultCopy.threads.shareProjectFixed));
+  assert.equal(within(menu).queryByRole("button", { name: /project/i }), null);
   assert.equal(
     within(menu).queryByRole("button", { name: defaultCopy.home.findHelp.title }),
     null,
@@ -1083,11 +1059,6 @@ test("a conversation of runs has the + menu: its agents are saved on its thread 
   fireEvent.keyDown(menu, { key: "Escape" });
   fireEvent.keyDown(menu, { key: "Escape" });
   assert.ok(!chips().includes("helper"), JSON.stringify(chips()));
-  // Its project shows as a chip that can't be removed.
-  assert.equal(
-    screen.queryByRole("button", { name: /^Remove (Acme|Workspace|Projectless)/ }),
-    null,
-  );
 });
 
 test("a late personal-home address never becomes visible while project titles load", async () => {
@@ -1123,21 +1094,34 @@ test("a late personal-home address never becomes visible while project titles lo
   };
   const mounted = render(<Chat {...props} />);
   mounted.rerender(<Chat {...props} personalProject={personal} projects={null} />);
-  // On a wide screen the pick is over the chat bar, the person's own project
-  // reading as No project (DES-057).
-  const picker = `Select project: ${defaultCopy.projects.personalTitle}`;
-  await screen.findByRole("button", { name: picker });
+  await waitFor(() =>
+    assert.ok(
+      net?.seen.some((s) => s.path === `/api/projects/${encodeURIComponent(personal)}/agents`),
+    ),
+  );
   assert.ok(!document.body.textContent?.includes(personal));
   assert.ok(!screen.queryByRole("button", { name: new RegExp(personal) }));
-  assert.ok(screen.getByRole("list", { name: defaultCopy.chat.selected }));
   mounted.rerender(<Chat {...props} personalProject={personal} projects={[]} />);
-  assert.ok(screen.getByRole("button", { name: picker }));
+  assert.ok(!document.body.textContent?.includes(personal));
+  // The late address is still where the session is filed.
+  fireEvent.change(box(), { target: { value: "Keep this internal" } });
+  fireEvent.keyDown(box(), { key: "Enter" });
+  await waitFor(() =>
+    assert.deepEqual(
+      net?.seen.find((s) => s.method === "POST" && s.path === "/api/sessions")?.body,
+      {
+        project: personal,
+        text: "Keep this internal",
+      },
+    ),
+  );
 });
 
 test("the composer opens discovery in its picker and preserves the draft and attachments when choosing a match", async () => {
   const c = defaultCopy.home.findHelp;
   const queries: string[] = [];
   const { opened } = openChat(workspace("lead"), {
+    personalProject: "Personal",
     projects: [{ ...globex, access: { role: "owner", from: "", via: "*" } }] as never,
     findHelp: async (query) => {
       queries.push(query);
@@ -1186,16 +1170,9 @@ test("the composer opens discovery in its picker and preserves the draft and att
     "search never sends the conversation",
   );
   fireEvent.click(within(menu).getByRole("button", { name: c.choose }));
-  await waitFor(() => {
-    assert.ok(net?.seen.some((request) => request.path === "/api/projects/Globex/agents"));
-    assert.ok(
-      chips().some((chip) => chip.includes("Globex")),
-      JSON.stringify(chips()),
-    );
-  });
-  assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
   // The match is mentioned where the cursor was, after the words kept.
-  assert.equal(box().value, "Keep my detailed request. @globex-helper ");
+  await waitFor(() => assert.equal(box().value, "Keep my detailed request. @globex-helper "));
+  assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
   assert.ok(within(screen.getByRole("list", { name: "Attached files" })).getByText("evidence.txt"));
   assert.equal(document.activeElement, box());
   assert.ok(
@@ -1208,7 +1185,7 @@ test("the composer opens discovery in its picker and preserves the draft and att
   const started = net?.seen.find(
     (request) => request.method === "POST" && request.path === "/api/sessions",
   )?.body as { project: string; channel: string; agents?: string[]; text: string };
-  assert.equal(started.project, "Globex");
+  assert.equal(started.project, "Personal", "the match's project does not move the session");
   assert.equal(started.channel, undefined, "sessions have no channel");
   assert.equal(started.agents, undefined, "the mention routes it, as any tag does");
   assert.equal(
@@ -1268,31 +1245,23 @@ test("Escape returns from discovery to its picker trigger before closing the pic
   assert.equal(document.activeElement, box());
 });
 
-test("the Personal project control opens a searchable chooser and keeps an unsent draft when switching", async () => {
-  openChat(workspace("lead"), { personalProject: "Personal", projects: [globex] as never });
-  fireEvent.change(box(), { target: { value: "Preserve this draft" } });
-  fireEvent.click(
-    screen.getByRole("button", { name: `Select project: ${defaultCopy.projects.personalTitle}` }),
-  );
-  const drawer = await screen.findByRole("dialog", { name: chat.chooseProject });
-  assert.ok(within(drawer).getByRole("button", { name: "Personal" }));
-  fireEvent.change(within(drawer).getByRole("searchbox", { name: defaultCopy.projects.search }), {
-    target: { value: "Globex" },
-  });
-  fireEvent.click(within(drawer).getByRole("button", { name: /^Globex/ }));
-  await waitFor(() => assert.ok(screen.getByRole("button", { name: "Select project: Globex" })));
-  assert.equal(box().value, "Preserve this draft");
-  assert.ok(!net?.seen.some((request) => request.method === "POST"));
-});
-
-test("a starter suggestion keeps the selected project and waits for explicit submission", async () => {
+test("a starter suggestion keeps the project the session starts in and waits for explicit submission", async () => {
   const builtin = [...agents, agent("humagen-writer")];
-  openChat(workspace("lead"), { startIn: "Globex", projects: [globex] as never, agents: builtin });
+  const { opened } = openChat(workspace("lead"), {
+    startIn: "Globex",
+    projects: [globex] as never,
+    agents: builtin,
+  });
   const list = await screen.findByRole("list", { name: chat.suggestions });
   fireEvent.click(within(list).getByRole("button", { name: /Write a report/ }));
   await waitFor(() => assert.equal(box().value, "@humagen-writer Write a one-page report on "));
-  assert.ok(screen.getByRole("button", { name: "Select project: Globex" }));
   assert.ok(!net?.seen.some((request) => request.method === "POST"));
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ab"]));
+  assert.deepEqual(net?.seen.find((request) => request.method === "POST")?.body, {
+    project: "Globex",
+    text: "@humagen-writer Write a one-page report on",
+  });
 });
 
 test("choosing a project skill keeps the draft and attached file and waits for explicit Send", async () => {
@@ -1521,4 +1490,19 @@ test("the console reads cited lines from the source route", async () => {
     net.seen[0]?.path,
     `/api/github/source?repo=o%2Fr&sha=${"x".repeat(40)}&file=pkg%2Fa.go&start=2&end=2&context=3`,
   );
+});
+
+test("composer only, as a project's page draws it: no greeting, its own words, and what it starts is filed in the project", async () => {
+  const { opened } = openChat(workspace("lead"), {
+    startIn: "Globex",
+    composerOnly: true,
+    placeholder: "New session in Globex",
+  });
+  assert.ok(!screen.queryByRole("heading", { level: 1 }), "no greeting");
+  assert.equal(box().getAttribute("placeholder"), "New session in Globex");
+  fireEvent.change(box(), { target: { value: "Draft the renewal note" } });
+  fireEvent.keyDown(box(), { key: "Enter" });
+  await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ab"]));
+  const started = net?.seen.find((s) => s.method === "POST");
+  assert.deepEqual(started?.body, { project: "Globex", text: "Draft the renewal note" });
 });

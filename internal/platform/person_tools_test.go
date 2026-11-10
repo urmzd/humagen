@@ -10,10 +10,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/personctx"
 	"github.com/urmzd/humagen/pkg/runctx"
+	"github.com/urmzd/orchagent/flow/runtime"
 	"github.com/urmzd/orchagent/flow/toolprovider"
 	"github.com/urmzd/orchagent/flow/turn/native/saigetypes"
 )
@@ -75,13 +77,13 @@ func TestPersonalToolListChangeAndWriteApproval(t *testing.T) {
 	read.Class = toolprovider.ClassRead
 	write := read
 	write.Class = toolprovider.ClassWrite
-	tool := &personalTool{Tool: &fixturePersonTool{capability: saigetypes.ToolCapabilityWrite}, person: "ana"}
-	approval, needed := tool.Approval(saigetypes.ToolCallPart{})
-	if !needed || len(approval.Approvers) != 1 || approval.Approvers[0] != "ana" || !approval.SelfApproval {
+	tool := &personServerTool{Tool: &fixturePersonTool{capability: saigetypes.ToolCapabilityWrite}, person: "ana"}
+	approval, needed := declaredApproval(runtime.Request{}, tool.declaration(), saigetypes.ToolCallPart{})
+	if !needed || len(approval.Approvers) != 1 || approval.Approvers[0] != "ana" || !approval.SelfApproval || approval.ExpiresIn != 24*time.Hour || !tool.declaration().ActsForPerson {
 		t.Fatalf("write approval: %+v %v", approval, needed)
 	}
 	tool.Tool = &fixturePersonTool{capability: saigetypes.ToolCapabilityRead}
-	if _, needed := tool.Approval(saigetypes.ToolCallPart{}); needed {
+	if _, needed := declaredApproval(runtime.Request{}, tool.declaration(), saigetypes.ToolCallPart{}); needed || !tool.declaration().ActsForPerson {
 		t.Fatal("read hint requested write approval")
 	}
 	if samePersonTools([]toolprovider.Tool{read}, []toolprovider.Tool{write}) {

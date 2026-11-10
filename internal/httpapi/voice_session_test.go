@@ -89,6 +89,26 @@ func TestVoiceModeHearsAndSpeaksInASession(t *testing.T) {
 		t.Fatalf("the posted message is not marked spoken: %v", posted["messages"])
 	}
 
+	// The messages API takes the same mark: a spoken message enters as a
+	// typed one does, under the session or as a new conversation.
+	for _, at := range []string{"/api/messages/" + id, "/api/messages"} {
+		status := http.StatusOK
+		if at == "/api/messages" {
+			status = http.StatusCreated
+		}
+		sent := want(t, f, tok, "POST", at, `{"messages":[{"role":"user","content":"And after that?","spoken":true}]}`, status)
+		read := want(t, f, tok, "GET", "/api/sessions/"+sent["root"].(string), "", http.StatusOK)
+		marked := false
+		for _, m := range read["messages"].([]any) {
+			if msg, ok := m.(map[string]any)["message"].(map[string]any); ok && msg["text"] == "And after that?" {
+				marked = msg["spoken"] == true
+			}
+		}
+		if !marked {
+			t.Fatalf("a message sent to %s with spoken is not marked spoken: %v", at, read["messages"])
+		}
+	}
+
 	// The answer is spoken from 0 until done, each part a different offset.
 	from, said := 0, []string{}
 	for range 20 {

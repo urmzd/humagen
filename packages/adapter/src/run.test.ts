@@ -203,15 +203,18 @@ test("a call to another agent learns which run it started", () => {
 });
 
 test("work handed on without waiting is drawn as the agent it went to", () => {
-  const to = adapter();
-  const first = to(ev("run.delta.tool.call.v1", { id: "t1", name: "delegate_task" })).find((e) => e.type === "task.upserted");
-  assert.equal(first?.type === "task.upserted" && first.task.subagent, undefined);
-  const [named] = to(ev("run.action.taken.v1", { name: "delegate_task", data: { run: "run-4", agent: "worker", lifecycle: "delegated" } }));
-  if (named?.type === "task.upserted") {
-    assert.equal(named.task.title, "worker");
-    assert.deepEqual(named.task.subagent, { name: "worker", runId: "run-4", summary: "Background work. Open Activity.", hue: undefined });
-  } else {
-    assert.fail("no task for the run that was started");
+  // A background agent call, and delegate_task on a run recorded before it.
+  for (const name of ["agent", "delegate_task"]) {
+    const to = adapter();
+    const first = to(ev("run.delta.tool.call.v1", { id: "t1", name })).find((e) => e.type === "task.upserted");
+    assert.equal(first?.type === "task.upserted" && first.task.subagent, undefined);
+    const [named] = to(ev("run.action.taken.v1", { name, data: { run: "run-4", agent: "worker", tool_call_id: "t1", lifecycle: "delegated" } }));
+    if (named?.type === "task.upserted") {
+      assert.equal(named.task.title, "worker");
+      assert.deepEqual(named.task.subagent, { name: "worker", runId: "run-4", summary: "Background work. Open Activity.", hue: undefined });
+    } else {
+      assert.fail("no task for the run that was started");
+    }
   }
 });
 
@@ -231,6 +234,14 @@ test("a helper result is kept for inspection without repeating the parent answer
   }
 });
 
+
+test("an agent call is shown as the agent it called, as call_agent was", () => {
+  const to = adapter();
+  to(ev("run.delta.tool.call.v1", { id: "call-1", name: "agent", input: '{"agent":"researcher","title":"Look into it","brief":"Find the cause."}' }));
+  to(ev("run.action.taken.v1", { name: "agent", data: { run: "helper-run", agent: "researcher", tool_call_id: "call-1", lifecycle: "attached" } }));
+  const done = to(ev("run.delta.tool.done.v1", { id: "call-1", result: "The cause is a stale cache." })).find((e) => e.type === "task.upserted");
+  assert.equal(done?.type === "task.upserted" && done.task.subagent?.runId, "helper-run");
+});
 
 test("parallel helpers correlate by call ID even when they start out of order", () => {
   const to = adapter();

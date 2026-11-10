@@ -21,7 +21,24 @@ export function servedBranding(name = servedName()): Branding {
     style: null,
     starters: null,
     copy: {},
+    entry_agent: "humagen",
   };
+}
+
+/** The entry agent's own name, and the name people see it by, once branding is applied. */
+let entry = { agent: "", name: "" };
+
+/** Remember the workspace's entry agent and the name it is shown by. Empty forgets it. */
+export function setEntryAgent(agent: string, name: string): void {
+  entry = { agent, name };
+}
+
+/**
+ * The name people see for an agent: the workspace's name for its entry
+ * agent, which nobody sees by its own, and every other agent's own name.
+ */
+export function agentShown(name: string): string {
+  return entry.agent !== "" && name === entry.agent && entry.name ? entry.name : name;
 }
 
 /**
@@ -58,11 +75,12 @@ export function accentAttribute(accent?: string): string {
 }
 
 /**
- * Brand the console's text: the product's own sender is called by the
- * product's name, then the workspace's text by key goes over the console's
- * own, so a copy key for the sender still wins.
+ * Brand the console's text: the product's own sender and the entry agent
+ * are called by the product's name, then the workspace's text by key goes
+ * over the console's own, so a copy key for the sender still wins.
  */
 export function brandCopy(target: { product?: unknown }, branding: Branding): void {
   if (typeof target.product === "string") target.product = branding.name;
+  setEntryAgent(branding.entry_agent || "", branding.name);
   applyCopy(target, branding.copy ?? {});
 }

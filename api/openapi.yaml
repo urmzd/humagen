@@ -40,6 +40,8 @@ tags:
     description: Personal authorizations and installed service connections.
   - name: sessions
     description: Continuing conversations with one agent and their child sessions.
+  - name: messages
+    description: One way in for every surface; people's messages from an origin, under the root session of its place.
   - name: health
     description: Liveness.
   - name: auth
@@ -109,6 +111,381 @@ security:
   - bearerToken: []
   - sessionCookie: []
 paths:
+  /api/messages:
+    post:
+      operationId: "sendMessages"
+      tags:
+        - "messages"
+      summary: "Send messages"
+      description: |
+        People's messages from one origin, under the root session of the
+        origin's place: found by its address, or started on its first message
+        and owned by the entry agent, so work asked for in a place is picked
+        up there later. With no ref (or type web) the message starts a new
+        console conversation. A message gets one answer, in the root: the
+        one agent it mentions answers it; several mentioned are each asked
+        first and the entry agent answers with what they said; with no
+        mention the entry agent answers, calling whoever fits. Earlier
+        messages in a batch are posted as said and start
+        nothing. Callers send role user; the platform writes the agents'
+        messages. 201 when the root was started, 200 otherwise.
+      x-permission: "runs:write"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessagesInput"
+      responses:
+        "200":
+          description: "Posted under the place's existing root"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageCreated"
+        "201":
+          description: "Posted, starting the place's root"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageCreated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    get:
+      operationId: "listMessages"
+      tags:
+        - "messages"
+      summary: "List root messages"
+      description: |
+        The root sessions the caller may read, each as its first message: its
+        place (parent), who started it, the agent that owns it, its status
+        (that of the runs beneath it), how many children it has and when
+        anything beneath it last changed. Newest first by latest_at. roots
+        is required and true, the one listing this route answers. Page with
+        after, the next of the previous page.
+      x-permission: "runs:read"
+      x-readonly: true
+      parameters:
+        - {"name": "roots", "in": "query", "required": true, "description": "true; the one listing this route answers.", "schema": {"type": "boolean"}}
+        - {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}}
+        - {"name": "after", "in": "query", "required": false, "schema": {"type": "string"}}
+      responses:
+        "200":
+          description: "A page of roots"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RootMessagePage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/messages/{id}:
+    post:
+      operationId: "sendMessagesUnder"
+      tags:
+        - "messages"
+      summary: "Send messages under a message"
+      description: "People's messages beneath a message or its session, as a follow-up in that conversation. id is a session id, or a message id (session:message)."
+      x-permission: "runs:write"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessagesInput"
+      responses:
+        "200":
+          description: "Posted"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageCreated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    get:
+      operationId: "getMessage"
+      tags:
+        - "messages"
+      summary: "Get message"
+      description: |
+        Without depth, the session a message is in, with its messages, the
+        entry agent's picks and each delegated answer, its children and
+        links (AgentSession). With depth, the message as a tree
+        (MessageNode): the message and its children in time order, each with
+        children_count and latest_at, depth levels deep. A session id reads
+        as the session's first message, and that message's own id reads the
+        same. id is a session id, or a message id (session:message).
+      x-permission: "runs:read"
+      x-readonly: true
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "since", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "before", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "around", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "summary", "in": "query", "required": false, "schema": {"type": "boolean"}}
+        - {"name": "depth", "in": "query", "required": false, "description": "Read the message as a tree this many levels deep; empty is 1. Not with since, before, around or summary.", "schema": {"type": "integer", "minimum": 0, "maximum": 5}}
+      responses:
+        "200":
+          description: "The message's session, or with depth the message as a tree"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/AgentSession"
+                  - $ref: "#/components/schemas/MessageNode"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/messages/{id}/feedback:
+    post:
+      operationId: "rateMessage"
+      tags:
+        - "messages"
+      summary: "Rate a message"
+      description: "Rates an agent's message (id is session:run): up or down with an optional note, one rating per person per message, saved again in place. Surfaces send reactions and buttons here."
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageFeedbackInput"
+      responses:
+        "200":
+          description: "The rating as kept"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunFeedback"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/messages/{id}/stop:
+    post:
+      operationId: "stopMessage"
+      tags:
+        - "messages"
+      summary: "Stop a message's work"
+      description: "Stops the work beneath a message's session; with children, its child sessions' work too."
+      x-permission: "runs:write"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                children: {type: boolean}
+      responses:
+        "204":
+          description: "Stopping"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/messages/{id}/answer:
+    post:
+      operationId: answerToolUse
+      tags: [messages]
+      summary: Answer what waits on a person at a tool call
+      description: |
+        Answers the approval of a tool call, or the question a tool call
+        asked, anywhere in the message's conversation, named by the call's
+        `tool_use_id` (`htu_<run>_<n>`, as the message's trace and stream
+        name it). It is the same as answering the question on its run
+        (`answerQuestion`): who may answer, edited `arguments`, `act_as` and
+        the first recorded answer standing all hold. A call outside the
+        conversation, one the caller may not read, or one nothing waited on
+        is 404.
+      x-permission: runs:write
+      parameters:
+        - {name: id, in: path, required: true, description: "A message id (session:message) or a session id.", schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [tool_use_id, answer]
+              properties:
+                tool_use_id: {type: string, description: "The tool call's id, htu_<run>_<n>."}
+                answer: {$ref: "#/components/schemas/QuestionAnswer"}
+      responses:
+        "200":
+          description: The question's message, settled with the answer that was recorded.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/InboxMessage"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/messages/{id}/context:
+    post:
+      operationId: "getMessageContext"
+      tags:
+        - "messages"
+      summary: "Get context"
+      description: |
+        Pulls context from the place the message's session came from (the
+        Slack thread or channel, the GitHub pull request or issue, a page),
+        for what is asked in words. The place is the session's origin, never
+        chosen by the caller. Resolvers read with the server's access and
+        answer only what the place's audience may read. note says why nothing
+        could be pulled, when nothing could.
+      x-permission: "runs:read"
+      x-readonly: true
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [request]
+              properties:
+                request: {type: string, maxLength: 2000}
+      responses:
+        "200":
+          description: "What was pulled"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContextResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/messages/{id}/stream:
+    get:
+      operationId: "streamMessage"
+      tags:
+        - "messages"
+      summary: "Stream message"
+      description: "What happens beneath a message: its session's snapshots and run events, as GET /api/sessions/{id}/stream. Resume with Last-Event-ID."
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "Last-Event-ID", "in": "header", "required": false, "schema": {"type": "string"}}
+      responses:
+        "200":
+          description: "Session snapshots and run events; reconnect using the last event ID."
+          content:
+            text/event-stream:
+              schema:
+                type: "string"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/messages/{id}/trace:
+    get:
+      operationId: "traceMessage"
+      tags:
+        - "messages"
+      summary: "Trace message"
+      description: |
+        What ran to answer a message, one node per run (TraceNode). For a
+        session id or a person's message id: the run that answered that
+        message, its root. A root the platform chose says why (pick): the
+        agents the message mentioned, or the search match that answered
+        because the entry agent could not run. For an agent's message
+        (session:run): that run. Beneath each run are the runs it called,
+        the calls made for mentioned agents among them. A run or child session the caller
+        may not read is left out with everything beneath it, and counted in
+        hidden. At most 500 nodes, and 200 tools per node; truncated says
+        when a bound cut it. id is a session id, or a message id
+        (session:message).
+      x-permission: "runs:read"
+      x-readonly: true
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      responses:
+        "200":
+          description: "The message's trace"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageTrace"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
   /api/sessions/{id}/stream:
     get:
       operationId: "streamSession"
@@ -422,8 +799,8 @@ paths:
         - {name: mine, in: query, required: false, schema: {type: boolean}}
         - {"name": "status", "in": "query", "required": false, "schema": {"type": "string"}}
         - {"name": "agent", "in": "query", "required": false, "schema": {"type": "string"}}
-        - {"name": "project", "in": "query", "required": false, "schema": {"type": "string"}}
-        - {"name": "parent", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "project", "in": "query", "required": false, "description": "A project's name, or `~` for the workspace itself.", "schema": {"type": "string"}}
+        - {"name": "parent", "in": "query", "required": false, "description": "A session's id, or `schedule://<name>` for a schedule's runs.", "schema": {"type": "string"}}
         - {"name": "after", "in": "query", "required": false, "schema": {"type": "string"}}
         - {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200}}
       responses:
@@ -467,6 +844,12 @@ paths:
             schema:
               $ref: "#/components/schemas/SessionInput"
       responses:
+        "200":
+          description: "A chat surface's message landed in its thread's root session, which already existed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSession"
         "201":
           description: "Successful session operation"
           content:
@@ -1080,6 +1463,41 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/mcp:
+    post:
+      operationId: callMCP
+      tags: [session]
+      summary: The humagen MCP
+      description: |
+        The Model Context Protocol, over streamable HTTP, stateless, answering
+        in JSON: a JSON-RPC 2.0 request in, its response out. Its tools are the
+        workspace's management: each is one operation of this API (agents,
+        evals, sessions and runs, messages, alerts, connections, model
+        providers, schedules, settings), named after its operationId in
+        snake case and described by it. A call is that operation, made as the
+        caller through its own route, so it needs that route's permission and
+        is validated, audited and logged as the route is. `tools/list` offers
+        only the tools the caller may use. Point an MCP client at this
+        address with the caller's bearer token.
+      x-permission: authenticated
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              description: A JSON-RPC 2.0 request or notification.
+              type: object
+      responses:
+        "200":
+          description: The JSON-RPC 2.0 response.
+          content:
+            application/json:
+              schema: {type: object}
+        "202": {description: "A notification, accepted."}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "415": {description: The request body is not application/json.}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/access/explain:
     get:
       operationId: explainAccess
@@ -1492,17 +1910,25 @@ paths:
     get:
       operationId: listModelProviders
       tags: [agents]
-      summary: List bounded supported and declared model provider names
-      description: Names are runtime configuration metadata, never keys or credential references. Declared does not mean a live call has been verified; a dry run checks the actual adapter and credential.
+      summary: List the model providers agents may run on
+      description: |
+        The providers an agent, a model policy or routing may name in the
+        caller's workspace: those the deployment declares and those the
+        workspace's administrators set up. There is no built-in model and no
+        stand-in. Names are configuration, never keys. Declared does not mean a
+        live call has been verified. A caller who may manage the workspace's
+        providers (clients:write) also reads how each of its own is set up,
+        with no key.
       x-permission: agents:read
+      x-readonly: true
       responses:
         "200":
-          description: At most 100 supported provider choices, sorted by name.
+          description: At most 100 provider choices, sorted by name.
           content:
             application/json:
               schema:
                 type: object
-                required: [providers]
+                required: [providers, kinds]
                 properties:
                   providers:
                     type: array
@@ -1513,6 +1939,93 @@ paths:
                       properties:
                         name: {type: string}
                         declared: {type: boolean}
+                        kind: {type: string, enum: [anthropic, google, openai]}
+                        source: {type: string, enum: [deployment, workspace]}
+                  kinds:
+                    description: The kinds an administrator may set up.
+                    type: array
+                    items: {type: string, enum: [anthropic, google, openai]}
+                  workspace:
+                    description: The workspace's own providers, for a caller with clients:write.
+                    type: array
+                    maxItems: 16
+                    items: {$ref: "#/components/schemas/ModelProvider"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/model-providers/{name}:
+    put:
+      operationId: setModelProvider
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}}
+      tags: [agents]
+      summary: Set up, or replace, one of the workspace's model providers
+      description: |
+        A key is given as a value, kept in the secret store and never
+        returned, or as `key_ref`, an `env:NAME` the server's configuration
+        gives this workspace. With neither, a replaced provider keeps its key.
+        A google provider may instead run on Vertex AI with the server's own
+        credentials. A name the deployment declares, `policy`, `offline` and
+        names starting `ws-` are refused.
+      x-permission: clients:write
+      x-idempotent: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              properties:
+                kind: {type: string, enum: [anthropic, google, openai]}
+                base_url: {type: string, format: uri}
+                vertex: {$ref: "#/components/schemas/ModelProviderVertex"}
+                key_ref: {type: string}
+                key: {type: string, maxLength: 4096, writeOnly: true}
+      responses:
+        "200":
+          description: The provider as set up, with no key.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ModelProvider"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: deleteModelProvider
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}}
+      tags: [agents]
+      summary: Remove one of the workspace's model providers and its key
+      description: Refused (409) while an agent, a model policy or routing runs on it; the refusal names each.
+      x-permission: clients:write
+      x-destructive: true
+      x-idempotent: true
+      responses:
+        "204": {description: Removed}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/model-providers/{name}/check:
+    post:
+      operationId: checkModelProvider
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}}
+      tags: [agents]
+      summary: Ask one of the workspace's providers, with its key, whether it answers
+      description: Lists the provider's models, spending no tokens. Vertex AI has no check.
+      x-permission: clients:write
+      responses:
+        "200":
+          description: The provider's state, as a health component.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/HealthComponent"}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/ServerError"}
@@ -1526,6 +2039,7 @@ paths:
         read: one that lives in a project they may not read is left out, and
         so is every agent it names in another's spec. Not paged.
       x-permission: agents:read
+      x-readonly: true
       responses:
         "200":
           description: The agents.
@@ -1548,16 +2062,16 @@ paths:
                     additionalProperties: {type: number, minimum: 0, exclusiveMaximum: 360}
                   homes:
                     description: |
-                      Where each agent that lives in a project lives, by agent.
-                      Such an agent is available there and below, and nowhere
-                      else. An agent not listed is a platform agent.
+                      Each homed agent's home, by agent: the project whose
+                      readers see it. An agent not listed is seen by the
+                      whole workspace. A home does not limit where an agent
+                      answers.
                     type: object
                     additionalProperties: {type: string}
                   enabled_in:
                     description: |
-                      Which projects enable each agent, by agent: those whose
-                      enable list names it, or holds `*` for a platform agent.
-                      `~` is the workspace.
+                      Always empty for each agent: projects no longer enable
+                      agents. Kept until the console stops reading it.
                     type: object
                     additionalProperties:
                       type: array
@@ -1604,6 +2118,7 @@ paths:
         read, or one it already names that they are shown (400); the agents
         they were not shown, and the approvals of calls to them, are kept.
       x-permission: agents:write
+      x-idempotent: true
       parameters:
         - {$ref: "#/components/parameters/AgentName"}
       requestBody:
@@ -1663,20 +2178,20 @@ paths:
     put:
       operationId: setAgentHome
       tags: [agents]
-      summary: Make an agent live in a project
+      summary: Set who sees an agent
       description: |
-        An agent that lives in a project is available there and in every
-        project below it, and nowhere else: `*` never reaches it, and it is
-        not available in the workspace itself. An empty `project`, or `~`,
-        makes it a platform agent again, available wherever it is enabled.
+        An agent's home says only who sees it: a Personal project keeps it
+        to that person, another project to that project's readers, and an
+        empty `project`, or `~`, to the whole workspace. It decides nothing
+        about where the agent answers: any agent answers in any project its
+        allow lists permit, and a private one only where its readers alone
+        read.
 
-        Refused with 409, naming them, while something outside the new home
-        would lose the agent: a project's default, enable or allow list, a
-        channel's default (an archived channel's aside), a schedule filed
-        elsewhere, an alert rule watching it elsewhere, or a client that
-        routes to it. Homing an agent into or out of a company
-        project needs `projects:govern`. The platform's own agents live
-        nowhere (400).
+        Refused with 409 only while the agent's default skills would not
+        fit the new home; schedules, alert rules, clients and defaults that
+        use the agent hold no change back. Homing an agent into or out of a
+        company project needs `projects:govern`. The platform's own agents
+        are the workspace's (400).
       x-permission: agents:write
       parameters:
         - {$ref: "#/components/parameters/AgentName"}
@@ -1688,12 +2203,12 @@ paths:
               type: object
               properties:
                 project:
-                  description: The project it lives in. Empty or `~` for none.
+                  description: The project whose readers see it. Empty or `~` for the whole workspace.
                   type: string
                   maxLength: 63
       responses:
         "200":
-          description: Where the agent now lives, and which projects enable it.
+          description: Who now sees the agent.
           content:
             application/json:
               schema: {$ref: "#/components/schemas/AgentHome"}
@@ -1710,6 +2225,7 @@ paths:
       tags: [agents]
       summary: List an agent's revisions, newest first
       x-permission: agents:read
+      x-readonly: true
       parameters:
         - {$ref: "#/components/parameters/AgentName"}
       responses:
@@ -2302,6 +2818,75 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/catalog/connectors/snowflake:
+    post:
+      operationId: createSnowflakeConnector
+      tags: [knowledge]
+      summary: Save a Snowflake warehouse connector owned by the caller
+      description: |
+        It holds no credential. Its owner's own login crawls the schema (tables,
+        views, columns and comments, never rows); every query runs with the
+        reader's own login, so Snowflake's grants, row access and masking apply.
+        Each person gives their login with PUT /api/catalog/connectors/{name}/login.
+      x-permission: knowledge:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SnowflakeSetupInput"}
+      responses:
+        "201":
+          description: The saved connector, not yet crawled.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CatalogConnector"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/catalog/connectors/{name}/login:
+    put:
+      operationId: putCatalogLogin
+      tags: [knowledge]
+      summary: Keep your own login to a warehouse
+      description: |
+        Your login is yours alone: only queries you ask for use it. Give a
+        reference under a start the workspace lists, or the token itself where
+        the workspace lets people keep values. Warehouses signed in with OAuth,
+        such as BigQuery, use your connection instead and refuse this (400).
+      x-permission: knowledge:read
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CatalogLoginInput"}
+      responses:
+        "204":
+          description: Kept.
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: deleteCatalogLogin
+      tags: [knowledge]
+      summary: Forget your own login to a warehouse
+      x-permission: knowledge:read
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      responses:
+        "204":
+          description: Forgotten, or there was none.
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/catalog/connectors/{name}/crawl:
     post:
       operationId: crawlConnector
@@ -2336,8 +2921,9 @@ paths:
       description: |
         Each agent available in the project that takes untagged messages
         (its spec is not `tagged_only`) is asked, all at once, whether it
-        should be involved. Each that says yes would answer, side by side;
-        when none does, the message waits for a person. Nothing is started.
+        should be involved. Each that says yes would answer, side by side.
+        When none does, a message still lands, on the entry agent or the
+        best match (see createRun). Nothing is started.
         Agents the caller may not read are left out.
       x-permission: agents:read
       parameters:
@@ -2401,15 +2987,18 @@ paths:
 
         The body takes no metadata: an unknown field answers 400.
 
-        Nothing routes on its own. With `agent` left out, the default the
-        conversation's place inherits answers, the first set of: the
-        thread's (`updateThread`), the acting client's when `act_as` names
-        one, the channel's (a new conversation is in `general` of its
-        project), then the project's, each ancestor's nearest first, and the
-        workspace's. With none set it is 409, "tag an agent". `*` asks every
-        agent available there whether to take it, and each that does answers
-        (for a person a client acts for, only agents that client may route
-        to); with none, 409. `auto`, as written before, reads as `*`. An agent not available in the
+        With `agent` left out, the default the conversation's place
+        inherits answers, the first set of: the thread's (`updateThread`),
+        the acting client's when `act_as` names one, the channel's (a new
+        conversation is in `general` of its project), then the project's,
+        each ancestor's nearest first, and the workspace's. With none set,
+        or `*`, the message lands: the entry agent answers it, and calls
+        whoever fits. Without one there, each agent that takes it answers,
+        else the best match, the workspace's named default, then the first
+        agent available, its `picked` saying why. For a person a client acts
+        for, only agents that client may route to answer. Only a place where
+        no agent may answer is 409, "tag an agent". `auto`, as written
+        before, reads as `*`. An agent not available in the
         conversation's project, or a default that has stopped being
         available there, is 403. So is a conversation in a project where the
         caller, or the person `act_as` names, is only a viewer: starting work
@@ -2625,6 +3214,7 @@ paths:
       tags: [runs]
       summary: Get a run
       x-permission: runs:read
+      x-readonly: true
       parameters:
         - name: act_as_client
           in: query
@@ -3057,6 +3647,7 @@ paths:
         Pass it back as `before`. A cursor is opaque and belongs to the server
         that issued it.
       x-permission: runs:read
+      x-readonly: true
       parameters:
         - name: limit
           in: query
@@ -4031,6 +4622,7 @@ paths:
         A title or memory agent that lives in a project the caller may not
         read is left out, as if none were set.
       x-permission: agents:read
+      x-readonly: true
       responses:
         "200":
           description: The settings.
@@ -4053,6 +4645,7 @@ paths:
         one that does not exist. One they are not shown is kept when they
         name none in its place.
       x-permission: agents:write
+      x-idempotent: true
       requestBody:
         required: true
         content:
@@ -4077,7 +4670,20 @@ paths:
       operationId: listSchedules
       tags: [schedules]
       summary: List schedules
+      description: |
+        Every schedule filed where the caller may read, or with `project`
+        those filed in one project (`~` is the workspace itself). Each run
+        of a schedule is a session in its project, under
+        `schedule://<name>`: `GET /api/sessions?parent=schedule://<name>`
+        lists them.
       x-permission: schedules:read
+      x-readonly: true
+      parameters:
+        - name: project
+          in: query
+          required: false
+          description: A project's name, or `~` for the workspace. One the caller may not read is 404.
+          schema: {type: string, minLength: 1, maxLength: 63}
       responses:
         "200":
           description: Every schedule, with its next fires and recent runs.
@@ -4090,8 +4696,10 @@ paths:
                   schedules:
                     type: array
                     items: {$ref: "#/components/schemas/ScheduleView"}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
     post:
       operationId: createSchedule
@@ -4139,6 +4747,7 @@ paths:
         the platform file declares (`managed: file`) is changed in the file:
         here it answers 409.
       x-permission: schedules:write
+      x-idempotent: true
       parameters:
         - {$ref: "#/components/parameters/ScheduleName"}
       requestBody:
@@ -4165,6 +4774,8 @@ paths:
       summary: Delete a schedule
       description: A schedule the platform file declares is removed from the file, not here (409).
       x-permission: schedules:write
+      x-destructive: true
+      x-idempotent: true
       parameters:
         - {$ref: "#/components/parameters/ScheduleName"}
       responses:
@@ -5240,6 +5851,7 @@ paths:
       tags: [observe]
       summary: Summarize readable runs over a bounded time interval
       x-permission: runs:read
+      x-readonly: true
       parameters:
         - {$ref: "#/components/parameters/Window"}
         - {name: since, in: query, description: "Inclusive RFC3339 bound. Supply with until, instead of window. The interval is at most 30 days.", schema: {type: string, format: date-time}}
@@ -5306,6 +5918,7 @@ paths:
       tags: [alerts]
       summary: List fired alerts
       x-permission: alerts:read
+      x-readonly: true
       parameters:
         - {"name": "state", "in": "query", "required": false, "schema": {"type": "string", "enum": [open, snoozed, resolved]}}
         - {"name": "priority", "in": "query", "required": false, "schema": {"type": "string", "enum": [urgent, normal, low]}}
@@ -5353,6 +5966,7 @@ paths:
       tags: [alerts]
       summary: List alert rules
       x-permission: alerts:read
+      x-readonly: true
       responses:
         "200":
           description: The rules.
@@ -5407,6 +6021,7 @@ paths:
         `updated_by` and `updated_at` are set by the server. Alerts the rule
         already raised stay, and so does its cooldown.
       x-permission: alerts:write
+      x-idempotent: true
       parameters:
         - {name: name, in: path, required: true, description: The rule's name., schema: {type: string}}
       requestBody:
@@ -5431,6 +6046,8 @@ paths:
       tags: [alerts]
       summary: Delete an alert rule
       x-permission: alerts:write
+      x-destructive: true
+      x-idempotent: true
       parameters:
         - {name: name, in: path, required: true, description: The rule's name., schema: {type: string}}
       responses:
@@ -5451,6 +6068,7 @@ paths:
         run only. A suite that tests an agent the caller may not read is left
         out, and every route that names it answers 404.
       x-permission: evals:read
+      x-readonly: true
       responses:
         "200":
           description: The suites.
@@ -5503,6 +6121,7 @@ paths:
         As creating one: a suite that tries an agent homed in a project takes
         a member of that project (403).
       x-permission: evals:write
+      x-idempotent: true
       parameters:
         - {$ref: "#/components/parameters/SuiteName"}
       requestBody:
@@ -5527,6 +6146,8 @@ paths:
       tags: [evals]
       summary: Delete an eval suite
       x-permission: evals:write
+      x-destructive: true
+      x-idempotent: true
       parameters:
         - {$ref: "#/components/parameters/SuiteName"}
       responses:
@@ -5565,6 +6186,7 @@ paths:
       tags: [evals]
       summary: List an eval suite's runs, newest first
       x-permission: evals:read
+      x-readonly: true
       parameters:
         - {$ref: "#/components/parameters/SuiteName"}
       responses:
@@ -5584,6 +6206,372 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/corpora:
+    get:
+      operationId: listCorpora
+      tags: [knowledge]
+      summary: List the corpora the caller may read
+      description: |
+        A corpus is a named body of knowledge that holds sources and catalog
+        connectors. The caller sees the corpora they own and the
+        ones whose readers name them, a project they see, or the workspace.
+      x-permission: knowledge:read
+      responses:
+        "200":
+          description: The corpora, by name.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [corpora]
+                properties:
+                  corpora:
+                    type: array
+                    items: {$ref: "#/components/schemas/Corpus"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    post:
+      operationId: createCorpus
+      tags: [knowledge]
+      summary: Create a corpus owned by the caller
+      description: |
+        Every member must be a knowledge source or catalog connector the
+        caller can see. Holding a source never widens who may read it.
+      x-permission: knowledge:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CorpusCreate"}
+      responses:
+        "201":
+          description: The corpus.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Corpus"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/corpora/{name}:
+    get:
+      operationId: getCorpus
+      tags: [knowledge]
+      summary: Read a corpus
+      x-permission: knowledge:read
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+      responses:
+        "200":
+          description: The corpus.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Corpus"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    patch:
+      operationId: updateCorpus
+      tags: [knowledge]
+      summary: Change a corpus
+      description: |
+        Only the owner changes a corpus. Fields left out are kept. A new
+        members list keeps the members the owner can no longer see. With
+        `version`, the change is refused (409) once someone else changed it.
+      x-permission: knowledge:write
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CorpusChange"}
+      responses:
+        "200":
+          description: The corpus.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Corpus"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: deleteCorpus
+      tags: [knowledge]
+      summary: Delete a corpus; its sources stay
+      x-permission: knowledge:write
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+        - name: version
+          in: query
+          description: The corpus's current version; refused (409) once it moved.
+          schema: {type: integer, format: int64, minimum: 1}
+      responses:
+        "204":
+          description: Deleted.
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/corpora/{name}/members:
+    post:
+      operationId: addCorpusMember
+      tags: [knowledge]
+      summary: Add a source or catalog connector to a corpus
+      description: Adding a member the corpus holds changes nothing.
+      x-permission: knowledge:write
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CorpusMemberRef"}
+      responses:
+        "200":
+          description: The corpus.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Corpus"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/corpora/{name}/members/{kind}/{member}:
+    delete:
+      operationId: removeCorpusMember
+      tags: [knowledge]
+      summary: Remove a member from a corpus; the source itself stays
+      x-permission: knowledge:write
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+        - name: kind
+          in: path
+          required: true
+          schema: {type: string, enum: [source, catalog]}
+        - name: member
+          in: path
+          required: true
+          description: The source's or connector's name.
+          schema: {type: string}
+      responses:
+        "200":
+          description: The corpus.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Corpus"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/corpora/{name}/search:
+    get:
+      operationId: searchCorpus
+      tags: [knowledge]
+      summary: Search a corpus with your own access
+      description: |
+        The search an agent's corpus_search runs, for the caller: indexed
+        files by words and meaning, references live at their source with the
+        caller's own access, and warehouse tables by what they hold (never
+        rows). Lists merge by reciprocal rank; the same passage through two
+        members is one hit naming both. A member that fails or times out is
+        named in `warnings` and left out.
+      x-permission: knowledge:read
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+        - {name: q, in: query, required: true, schema: {type: string, minLength: 1, maxLength: 1000}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 20, default: 8}}
+      responses:
+        "200":
+          description: The hits, best first.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CorpusSearch"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/corpora/{name}/graph:
+    get:
+      operationId: getCorpusGraph
+      tags: [knowledge]
+      summary: A corpus's slice of the workspace graph
+      description: |
+        Documents, warehouse tables, the systems they sit in and the people
+        who added or own them, as the caller may see them, with who owns each
+        and how stale each document is. Built from source metadata with no
+        model calls, on the leader every 10 minutes and when first read.
+      x-permission: knowledge:read
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 1000, default: 200}}
+      responses:
+        "200":
+          description: The slice and its health.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GraphView"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/corpora/{name}/graph/build:
+    post:
+      operationId: buildCorpusGraph
+      tags: [knowledge]
+      summary: Rebuild a corpus's slice of the graph now
+      description: Only the corpus's owner asks.
+      x-permission: knowledge:write
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+      responses:
+        "200":
+          description: The rebuilt slice.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GraphView"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/graph:
+    get:
+      operationId: getWorkspaceGraph
+      tags: [knowledge]
+      summary: The workspace graph across every corpus you may read
+      description: With `q`, only the nodes whose names hold its words and their neighbors one step away.
+      x-permission: knowledge:read
+      parameters:
+        - {name: q, in: query, schema: {type: string, maxLength: 1000}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 1000, default: 200}}
+      responses:
+        "200":
+          description: The graph and its health.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GraphView"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/graph/nodes/{id}/owner:
+    put:
+      operationId: decideGraphOwner
+      tags: [knowledge]
+      summary: Confirm, decline or hand off who owns a document or system
+      description: |
+        Its current owner decides, suggested or confirmed. An unowned node may be
+        claimed or handed on by the owner of a corpus that holds it. A
+        confirmed owner wins over what the graph infers.
+      x-permission: knowledge:read
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/OwnerAction"}
+      responses:
+        "200":
+          description: The node with its owner now.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GraphNodeView"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/corpora/{name}/ontology/infer:
+    post:
+      operationId: inferCorpusOntology
+      tags: [knowledge]
+      summary: Propose an ontology from the warehouse tables a corpus holds
+      description: |
+        A type per table, its columns as properties, and a relation for each
+        column that names another table's type with _id. No model calls. The
+        proposal is kept as `proposed_ontology` and adds nothing until its owner
+        accepts it. Only the owner asks.
+      x-permission: knowledge:write
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+      responses:
+        "200":
+          description: The corpus with its proposal.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Corpus"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/corpora/{name}/ontology/accept:
+    post:
+      operationId: acceptCorpusOntology
+      tags: [knowledge]
+      summary: Accept proposed types into a corpus's ontology
+      description: Adds the types named in `types`, or all of them, and the relations between accepted types. A type declared already keeps its declaration. The proposal is cleared.
+      x-permission: knowledge:write
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                types: {type: array, maxItems: 100, items: {type: string}}
+      responses:
+        "200":
+          description: The corpus with its ontology.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Corpus"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/corpora/{name}/ontology/discard:
+    post:
+      operationId: discardCorpusOntology
+      tags: [knowledge]
+      summary: Drop a corpus's proposed ontology
+      x-permission: knowledge:write
+      parameters:
+        - {$ref: "#/components/parameters/CorpusName"}
+      responses:
+        "200":
+          description: The corpus.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Corpus"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/knowledge:
     get:
       operationId: listKnowledgeSources
@@ -6001,6 +6989,7 @@ paths:
                   type: string
                   enum:
                   - drive
+                  - onedrive
               oneOf:
               - required:
                 - ref
@@ -6670,10 +7659,16 @@ paths:
     get:
       operationId: getProjectAgents
       tags: [projects]
-      summary: Read which agents a project turns on, which are available there, and who answers untagged messages
+      summary: Read a project's agent policy, which agents are available there, and who answers untagged messages
+      deprecated: true
       description: |
-        Every agent that lives in a project the caller may not read is left
-        out of `enable`, `allow` and `default`, as if it were not there.
+        Projects no longer choose agents: any agent answers in any project
+        its allow lists permit, and the workspace default answers untagged
+        messages. `offers` is always empty, and `enable` and a project's own
+        `default` are returned as stored but not read. Kept until the
+        console stops reading it. Every agent homed in a project the caller
+        may not read is left out of `enable`, `allow`, `default`,
+        `available` and `homes`, as if it were not there.
       x-permission: projects:read
       parameters:
         - {$ref: "#/components/parameters/ProjectName"}
@@ -6690,15 +7685,16 @@ paths:
     put:
       operationId: setProjectAgents
       tags: [projects]
-      summary: Replace which agents a project turns on, narrows to, and answers untagged messages with
+      summary: Replace a project's agent policy
+      deprecated: true
       description: |
-        The body replaces the three as a whole. `enable` adds platform agents
-        here and below (`*` alone is every one); `allow`, when set, is the
+        The body replaces the three as a whole. `allow`, when set, is the
         only agents that may run here and below, and a child can only narrow
-        it; `default` answers a message that tags no agent, here and below,
-        and is an agent or `*`. Every name is an agent in the workspace
-        that the caller may read, a named default is available where it is
-        set, and an agent that lives in a project is not enabled (400). An
+        it. On the workspace (`~`), `default` answers a message that tags no
+        agent anywhere, and is an agent or `*`. `enable`, and a project's
+        own `default`, are kept as written and not read. Every name is an
+        agent in the workspace that the caller may read, and the workspace
+        default is allowed at the workspace (400). An
         agent that lives in a project the caller may not read is refused in
         the words for one that does not exist. The names in `allow` the
         caller is not shown are kept; an `enable` entry or a `default`
@@ -7099,6 +8095,65 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/projects/{name}/corpora:
+    get:
+      operationId: getProjectCorpora
+      tags: [projects]
+      summary: Read the corpora a project attaches, its context, and what a session filed in it searches
+      description: |
+        A session filed in a project searches the corpora its project
+        attaches, then each project's above it, nearest first: `given`, each
+        corpus once, from the nearest project that attaches it, at most 40.
+        A sibling's or a sub-project's are never given. Attaching a corpus
+        makes no one its reader: a session searches it only as each reader
+        may. A corpus the caller may not read, or one deleted since, is left
+        out, as if it were not there.
+      x-permission: projects:read
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      responses:
+        "200":
+          description: The project's corpora.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectCorpora"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: setProjectCorpora
+      tags: [projects]
+      summary: Replace the corpora a project attaches
+      description: |
+        At most 20, attached once, each newly attached a corpus the caller
+        may read (400, in the words for one that does not exist). One
+        attached already stays when the caller may not read it, so saving
+        what they were shown drops nothing they were not shown. It needs
+        ownership of the project; the workspace and company projects need
+        `projects:govern` as well. `version` is the project's, as read; a
+        change made since answers 409.
+      x-permission: projects:write
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectCorporaInput"}
+      responses:
+        "200":
+          description: The project's corpora as they now stand.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectCorpora"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/projects/{name}/knowledge:
     get:
       operationId: getProjectKnowledge
@@ -8077,7 +9132,7 @@ paths:
       description: |
         A workspace at its cap of clients answers 429 with a plain error
         body. Every agent the client names, as its default, in its list, for
-        a bot or for an auto-label, is an agent that exists and that the
+        a bot or in an event rule, is an agent that exists and that the
         caller may read; any other is 400, in the same words whether it does
         not exist or lives in a project the caller may not read.
       x-permission: clients:write
@@ -8156,7 +9211,7 @@ paths:
         naming one they may read replaces it. The agents it names that the
         caller is not shown are kept the same way: its default unless they
         name another, its list unless they write `*`, its bots and its
-        auto-labels unless they map the same bot or label, and an agent it
+        event rules unless they map the same bot or write the same rule, and an agent it
         routed to stays one it routes to. Every other agent named is one that
         exists and that the caller may read, or one the record already holds
         (400 otherwise, as on create). A client the server's configuration
@@ -8260,6 +9315,7 @@ paths:
       - agents
       summary: Get agent control
       x-permission: agents:read
+      x-readonly: true
       responses:
         '200':
           description: The recorded resource.
@@ -8287,6 +9343,7 @@ paths:
       - agents
       summary: Put agent control
       x-permission: agents:write
+      x-idempotent: true
       responses:
         '200':
           description: The recorded resource.
@@ -8823,6 +9880,7 @@ paths:
       tags: [agents]
       summary: Read controls and visible recent state for named agents
       x-permission: agents:read
+      x-readonly: true
       parameters:
         - name: names
           in: query
@@ -8956,6 +10014,7 @@ paths:
         - agents
       summary: listAgentChanges
       x-permission: agents:read
+      x-readonly: true
       parameters:
         - name: name
           in: path
@@ -8986,6 +10045,7 @@ paths:
         - agents
       summary: getAgentHealth
       x-permission: agents:read
+      x-readonly: true
       parameters:
         - name: name
           in: path
@@ -9076,6 +10136,7 @@ paths:
       - sessions
       summary: List connection presets
       x-permission: runs:read
+      x-readonly: true
       responses:
         '200':
           description: Successful session operation
@@ -9178,6 +10239,7 @@ paths:
       - connections
       summary: Read your connection and its visible configured uses
       x-permission: runs:read
+      x-readonly: true
       parameters:
       - name: provider
         in: path
@@ -9206,6 +10268,8 @@ paths:
       - sessions
       summary: Disconnect connection
       x-permission: runs:write
+      x-destructive: true
+      x-idempotent: true
       parameters:
       - name: provider
         in: path
@@ -9392,6 +10456,12 @@ components:
       required: true
       description: The eval suite's name.
       schema: {type: string}
+    CorpusName:
+      name: name
+      in: path
+      required: true
+      description: The corpus's name.
+      schema: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}
     SourceName:
       name: name
       in: path
@@ -10641,6 +11711,11 @@ components:
           description: When a call moves to the next fallback. Empty means any error another model could get past. Needs at least one fallback.
           type: array
           items: {$ref: "#/components/schemas/FallbackCondition"}
+        effort:
+          description: "The reasoning effort the agent's own first model is asked for, such as `low`, `medium` or `high`. Absent leaves the model's default. It is sent only when that model takes it: a run moved to a fallback, or on a model that takes no such effort, answers at the model's default."
+          type: string
+          maxLength: 16
+          pattern: "^[a-z]+$"
         system_prompt: {type: string}
         tools:
           type: array
@@ -10677,22 +11752,23 @@ components:
         tagged_only:
           description: The agent runs only when a message names it. It is never asked whether to take an untagged message. Off by default.
           type: boolean
-        choices: {$ref: "#/components/schemas/AgentChoices"}
-    AgentChoices:
-      description: "What a person may pick, for one message, in place of the agent's model and reasoning effort. Absent offers nothing, and a message runs on the agent's own model at its default effort."
+        output: {$ref: "#/components/schemas/AgentOutput"}
+    AgentOutput:
+      description: |
+        The shape of the agent's answer. The model is asked for structured
+        output under `schema`, and a model that cannot give it fails the run
+        rather than answering in free text. The answer, checked against the
+        schema, is kept on the run as `output`. The approval agent's schema
+        must hold `decision` (a required string whose enum is drawn from
+        allow, ask and deny) and `reason` (a required string); anything
+        else in it is shown with the approval.
       type: object
-      additionalProperties: false
+      required: [schema]
       properties:
-        models:
-          description: "Models offered, each `provider/model`, sorted. The agent's own model needs no listing."
-          type: array
-          maxItems: 20
-          items: {type: string}
-        efforts:
-          description: "Reasoning efforts offered, such as `low` and `high`, sorted and in lower case. Whether a model takes one is checked when a run builds it."
-          type: array
-          maxItems: 10
-          items: {type: string, pattern: "^[a-z]+$"}
+        schema:
+          description: A JSON Schema for an object, at most 16 KiB.
+          type: object
+          additionalProperties: true
     FallbackCondition:
       description: A class of model error that moves a call on to the next model. `any` cannot be combined with another.
       type: string
@@ -10742,19 +11818,26 @@ components:
         created_by_name:
           description: What whoever saved it is called, their name, else their handle, never a subject that holds an address. `created_by` is the subject.
           type: string
-    RouterSettings:
-      description: |
-        Whether each agent is asked, about a message that names no agent,
-        "should I be involved?", and the model that asks. The provider is one
-        the deployment declares; its key is a reference (an environment
-        variable or a secrets manager), never stored here. Off by default:
-        no agent takes a message on its own.
+    ModelProviderVertex:
+      description: Vertex AI, where a google provider's calls go. With no key the server's own credentials are used.
       type: object
-      required: [enabled]
+      required: [project, location]
       properties:
-        enabled: {type: boolean}
-        provider: {type: string, maxLength: 64}
-        model: {type: string, maxLength: 200}
+        project: {type: string}
+        location: {type: string}
+    ModelProvider:
+      description: A model provider the workspace's administrators set up. Its key is never returned.
+      type: object
+      required: [name, kind]
+      properties:
+        name: {type: string}
+        kind: {type: string, enum: [anthropic, google, openai]}
+        base_url: {type: string}
+        vertex: {$ref: "#/components/schemas/ModelProviderVertex"}
+        key_ref: {type: string, description: "The key's env:NAME reference, when it is one."}
+        key_stored: {type: boolean, description: A value is kept for it in the secret store.}
+        added_by: {type: string}
+        added_at: {type: string, format: date-time}
     JoinDecision:
       description: One agent's answer to whether it should take a message that names no agent.
       type: object
@@ -11387,6 +12470,9 @@ components:
         parent: {type: string}
         depth: {type: integer}
         mode: {$ref: "#/components/schemas/CallMode"}
+        call_id:
+          description: "The id of the caller's tool call that started this run (htu_<run>_<n>): the call its activity streams under. Empty on a root."
+          type: string
         lifecycle:
           description: Set on a run another run called. An attached run ends with its caller. A delegated one does not.
           type: string
@@ -11474,6 +12560,14 @@ components:
             partial answer, what the agent had said when it stopped, which may
             be empty. It is never the whole answer when `status` is `stopped`.
           type: string
+        output:
+          description: |
+            The answer as structured data, for an agent whose spec declares
+            an `output` schema: the answer, checked against that schema.
+            Absent for a free-text answer and for one that did not hold to
+            the schema.
+          type: object
+          additionalProperties: true
         outcome: {$ref: "#/components/schemas/RunOutcome"}
         sandbox: {$ref: "#/components/schemas/RunSandboxRecord"}
         memory: {type: array, maxItems: 16, items: {$ref: "#/components/schemas/RunMemoryUse"}}
@@ -12015,11 +13109,37 @@ components:
         alt: {type: string}
         origin: {type: string}
         unread: {type: string}
+    ThreadFollowup:
+      description: |
+        What a message posted while agents worked in its thread does to that
+        work: `queue` (it starts once the work has ended), `replace` (the
+        work is asked to stop, keeping what it has said, and the message
+        starts once it has) or `stop` (the work is asked to stop and nothing
+        starts). The first word after any leading mentions forces it:
+        `queue`, `replace` or `stop`, with an optional colon. Otherwise a
+        model decides, and when unsure, or when there is no model, it queues.
+      type: object
+      required: [outcome, reason, waiting]
+      properties:
+        outcome: {type: string, enum: [queue, replace, stop]}
+        reason:
+          description: Why, in one line. A stop forced by its first word says what was written after it, which may be nothing.
+          type: string
+          maxLength: 300
+        waiting:
+          description: The runs it waits on, which a replace or a stop asked to stop.
+          type: array
+          maxItems: 64
+          items: {type: string}
+        handled:
+          description: It was carried out. A queue or a replace started what it calls for; a stop is handled as it is posted.
+          type: boolean
     ThreadMessage:
       description: A person's turn in a thread. It starts no run of its own. Its author is always a person.
       type: object
       required: [id, thread, by, name, text, mentions, via, at]
       properties:
+        followup: {$ref: "#/components/schemas/ThreadFollowup"}
         attachments:
           type: array
           items: {$ref: "#/components/schemas/Attachment"}
@@ -12195,15 +13315,6 @@ components:
         post_only:
           description: Post without any agent answering, unless the message tags one. In the console this is what an untagged message does anyway.
           type: boolean
-        model:
-          description: "A model, `provider/model`, the runs this message starts use in place of their agent's own. Applied only for an agent whose `choices.models` offers it; any other runs on its own model. The run's model ceilings still apply."
-          type: string
-          maxLength: 200
-        effort:
-          description: "A reasoning effort, such as `low` or `high`, the runs this message starts use. Applied only for an agent whose `choices.efforts` offers it. A model that does not take it fails the run before any model call."
-          type: string
-          maxLength: 32
-          pattern: "^[a-z]+$"
         act_as: {$ref: "#/components/schemas/ActAs"}
         surface: {$ref: "#/components/schemas/SurfaceRef"}
     HelpSuggestion:
@@ -12282,15 +13393,6 @@ components:
           description: The turn it follows. Empty follows the latest.
           type: string
         post_only: {type: boolean}
-        model:
-          description: "A model, `provider/model`, the runs this message starts use in place of their agent's own. Applied only for an agent whose `choices.models` offers it; any other runs on its own model. The run's model ceilings still apply."
-          type: string
-          maxLength: 200
-        effort:
-          description: "A reasoning effort, such as `low` or `high`, the runs this message starts use. Applied only for an agent whose `choices.efforts` offers it. A model that does not take it fails the run before any model call."
-          type: string
-          maxLength: 32
-          pattern: "^[a-z]+$"
         answers: {$ref: "#/components/schemas/ThreadAnswerRef"}
         act_as: {$ref: "#/components/schemas/ActAs"}
         surface: {$ref: "#/components/schemas/SurfaceRef"}
@@ -12376,10 +13478,11 @@ components:
         mention), `post_only`, `routed` (it tags no agent, and the thread's
         selected agents answer it, see `ThreadMode`), `untagged` (posted by
         a person as themselves, as the console does, and it tags no agent,
-        so nothing runs), or `default` (the inherited default answers, if
-        there is one).
+        so nothing runs), `default` (the inherited default answers, if
+        there is one), or `followup` (it was posted while agents worked in
+        the thread, so its `followup` decides what it starts and when).
       type: string
-      enum: [tagged, people, reply, post_only, routed, untagged, default]
+      enum: [tagged, people, reply, post_only, routed, untagged, default, followup]
     ThreadPosted:
       description: What posting a message did.
       type: object
@@ -12600,6 +13703,52 @@ components:
           description: The app's own bot user id, whose mention is not a tag.
           type: string
           maxLength: 32
+        audience: {$ref: "#/components/schemas/SurfaceAudience"}
+        action_token:
+          description: Slack's short-lived token for acting for the person in this turn. Accepted and never kept or passed on.
+          type: string
+          maxLength: 512
+    SurfaceAudience:
+      description: |
+        Who is in the Slack conversation a message was asked in. A root
+        session's audience follows it: a public channel's is shared where it
+        is filed; a private channel's or a group direct message's is private
+        to the members the client maps to people, kept to the members of the
+        latest message; a direct message's is private to its person. Absent,
+        a D channel is a direct message and anything else is private to the
+        person asking: a channel id never says the channel is public.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type: {type: string, enum: [public_channel, private_channel, mpim, im]}
+        members:
+          description: The conversation's members by Slack user id, for a private channel or a group direct message.
+          type: array
+          maxItems: 500
+          items: {type: string, maxLength: 32}
+    SessionPosted:
+      description: What one message posted to a chat surface's root session did.
+      type: object
+      additionalProperties: false
+      required: [message, runs, notified, refused, rule]
+      properties:
+        message:
+          type: object
+          additionalProperties: false
+          required: [id, text]
+          properties:
+            id: {type: string}
+            text: {type: string, description: "The text as read, Slack markup reduced."}
+        runs:
+          description: The runs it started, in the root or in the child of the agent it named.
+          type: array
+          items: {$ref: "#/components/schemas/Run"}
+        notified: {type: array, items: {type: string}}
+        refused: {type: array, items: {$ref: "#/components/schemas/ThreadMention"}}
+        rule: {type: string}
+        reason: {type: string}
+        repeated: {type: boolean, description: The message was already posted; nothing started again.}
     ThreadSurface:
       description: The thread on a client's surface this thread is. It never changes.
       type: object
@@ -12715,6 +13864,57 @@ components:
           type: array
           maxItems: 16
           items: {$ref: "#/components/schemas/ProjectKnowledgeSource"}
+    ProjectCorpora:
+      description: The corpora a project attaches, its context, at the project's version, and what a session filed in it searches.
+      type: object
+      additionalProperties: false
+      required: [version, corpora, given]
+      properties:
+        version: {type: integer}
+        corpora:
+          description: The corpora the project attaches itself, in its order, each one the caller may read.
+          type: array
+          maxItems: 20
+          items: {$ref: "#/components/schemas/ProjectCorpus"}
+        given:
+          description: |
+            What a session filed here searches: the project's corpora, then
+            each project's above it, nearest first, each once, at most 40,
+            each one the caller may read.
+          type: array
+          maxItems: 40
+          items: {$ref: "#/components/schemas/ProjectCorpusRef"}
+    ProjectCorpus:
+      description: One corpus a project attaches.
+      type: object
+      additionalProperties: false
+      required: [name, sources]
+      properties:
+        name: {type: string, maxLength: 63}
+        title: {type: string, maxLength: 120}
+        sources:
+          description: How many of its members the caller may see.
+          type: integer
+          minimum: 0
+    ProjectCorpusRef:
+      description: A corpus a session searches, and the project on its chain that attaches it (`""` is the workspace).
+      type: object
+      additionalProperties: false
+      required: [name, from]
+      properties:
+        name: {type: string, maxLength: 63}
+        from: {type: string}
+    ProjectCorporaInput:
+      description: The corpora a project attaches, as a whole, and the project's version as read.
+      type: object
+      additionalProperties: false
+      required: [version, corpora]
+      properties:
+        version: {type: integer}
+        corpora:
+          type: array
+          maxItems: 20
+          items: {type: string, maxLength: 63}
     ProjectKnowledgeInput:
       description: The knowledge sources a project names, as a whole, from the version read.
       type: object
@@ -13016,6 +14216,19 @@ components:
           maxItems: 32
           items:
             "$ref": "#/components/schemas/ProjectSkillBrief"
+        context:
+          description: |
+            What every session filed here and below is given besides its
+            instructions. Set with `PUT /api/projects/{name}/corpora`.
+            Absent when it attaches nothing.
+          type: object
+          additionalProperties: false
+          properties:
+            corpora:
+              description: The corpora it attaches, by name, leaving out each one the caller may not read.
+              type: array
+              maxItems: 20
+              items: {type: string, maxLength: 63}
         archived:
           description: An archived project takes no new sub-projects and nothing moves
             under it. The workspace is never archived.
@@ -13048,9 +14261,6 @@ components:
             on a view.
           type: string
           format: date-time
-        approve_reviews:
-          type: boolean
-          default: false
     ProjectStep:
       description: One project on the way down to another.
       type: object
@@ -13064,8 +14274,16 @@ components:
       allOf:
         - {$ref: "#/components/schemas/Project"}
         - type: object
-          required: [depth, path, children, conversations, active, schedules, notes, proposed, access, actions, mine, unread, row_agents]
+          required: [depth, path, children, conversations, active, schedules, notes, proposed, access, actions, mine, unread, row_agents, visibility]
           properties:
+            visibility:
+              description: |
+                How widely the project is read by its own entries: `private`
+                (a Personal project, or one person alone), `shared` (named
+                people or roles), or `workspace` (an entry for everyone).
+                Owners above a members-only project read it too.
+              type: string
+              enum: [private, shared, workspace]
             unread:
               description: Unread open messages and announcements in the caller's own inbox filed directly in this project, excluding every message the reader cannot see.
               type: integer
@@ -13248,9 +14466,6 @@ components:
           - ''
           - publish
           - review
-        approve_reviews:
-          type: boolean
-          default: false
     ProjectAccess:
       description: A caller's role in a project, where it comes from, and the entry or rule that gave it.
       type: object
@@ -13386,7 +14601,7 @@ components:
             names, and `channel` to one of its channels, which `channel`
             holds before and after.
           type: string
-          enum: [created, updated, deleted, managed, moved, archived, members, agents, home, experts, knowledge, skills, channel]
+          enum: [created, updated, deleted, managed, moved, archived, members, agents, home, experts, knowledge, skills, channel, context]
         agent:
           description: The agent a `home` change is about. Absent when it lives in a project the caller may not read.
           type: string
@@ -13486,15 +14701,15 @@ components:
         default: {type: string}
         available: {$ref: "#/components/schemas/AgentAvailability"}
         offers:
-          description: Each available agent and where it comes from, `*` first when every platform agent is.
+          description: Always empty. Projects no longer offer agents.
           type: array
           items: {$ref: "#/components/schemas/AgentOffer"}
         homes:
-          description: The agents that live here.
+          description: The agents homed here, which this project's readers see.
           type: array
           items: {type: string}
         default_resolved:
-          description: Who answers an untagged message here, or null when nothing does.
+          description: Who answers an untagged message here, the workspace default, or null when nothing does.
           oneOf:
             - {$ref: "#/components/schemas/DefaultResolved"}
             - {type: "null"}
@@ -13519,19 +14734,19 @@ components:
           items: {type: string}
         default: {type: string}
     AgentPlace:
-      description: Where an agent lives and which projects enable it.
+      description: Who sees an agent, as its home.
       type: object
       required: [enabled_in]
       properties:
         home:
-          description: The project it lives in. Absent for a platform agent.
+          description: The project whose readers see it. Absent when the whole workspace does.
           type: string
         enabled_in:
-          description: The projects whose enable list names it, or holds `*` for a platform agent. `~` is the workspace.
+          description: Always empty. Projects no longer enable agents; kept until the console stops reading it.
           type: array
           items: {type: string}
     AgentHome:
-      description: Where an agent now lives.
+      description: Who now sees an agent, as its home.
       allOf:
         - type: object
           required: [agent]
@@ -13734,7 +14949,7 @@ components:
         - memory_auto_approve
         - workspace_name
         - model_policies
-        - router
+        - model_providers
       properties:
         history:
           description: Whether an agent is sent the conversation so far.
@@ -13766,8 +14981,15 @@ components:
           maxItems: 32
           items:
             $ref: "#/components/schemas/ModelPolicy"
-        router:
-          $ref: "#/components/schemas/RouterSettings"
+        model_providers:
+          description: |
+            The model providers the workspace's administrators set up, with no
+            key. A settings write keeps them as they are; they change through
+            `/api/model-providers/{name}`.
+          type: array
+          maxItems: 16
+          items:
+            $ref: "#/components/schemas/ModelProvider"
         setup_at:
           description: Set once by the server when an admin first saves settings.
           type: string
@@ -13806,9 +15028,10 @@ components:
     Branding:
       description: How the console brands itself for the caller's workspace.
       type: object
-      required: [name, wordmark, title, logo, logo_dark, logo_alt, style, starters, copy]
+      required: [name, wordmark, title, logo, logo_dark, logo_alt, style, starters, copy, entry_agent]
       properties:
         name: {type: string, description: The product's name.}
+        entry_agent: {type: string, description: "The entry agent's agent name. People see it as name, never as this."}
         wordmark: {type: string, description: The text beside the logo in the sidebar. Empty shows the logo alone.}
         title: {type: string, description: What follows the page's name in the browser tab.}
         logo:
@@ -14314,6 +15537,41 @@ components:
         steered_for_name:
           description: What the person in `steered_for` is called, their name, else their handle, never a subject that holds an address. Set with `steered_for`.
           type: string
+        judgement: {$ref: "#/components/schemas/InboxJudgement"}
+    InboxJudgement:
+      description: |
+        What the approval agent said about an approval, once it was asked,
+        whether it allowed the call, denied it or left it for a person.
+      type: object
+      required: [decision, reason]
+      properties:
+        decision:
+          type: string
+          enum: [allow, ask, deny]
+        reason: {type: string}
+        references:
+          description: What the decision rests on.
+          type: array
+          items: {type: string}
+        fields:
+          description: What the workspace's own schema for the answer adds, such as a risk level, in the order the agent gave them.
+          type: array
+          items: {$ref: "#/components/schemas/InboxJudgementField"}
+        run:
+          description: The approval agent's run that decided.
+          type: string
+    InboxJudgementField:
+      description: One field a workspace's schema adds to a judgement.
+      type: object
+      required: [name, label, value]
+      properties:
+        name:
+          description: The field's name in the schema.
+          type: string
+        label:
+          description: How a person reads the name, such as `Expires in` for `expires_in`.
+          type: string
+        value: {type: string}
     InboxDraftPart:
       description: A post an agent wrote for a project, waiting for one of its owners.
       type: object
@@ -14468,11 +15726,12 @@ components:
         by: {type: string}
         what:
           type: string
-          enum: [raised, read, unread, resolved, dismissed, snoozed, withdrawn, delivered, unhidden, reminded, hidden, deleted, restored]
+          enum: [raised, read, unread, resolved, dismissed, snoozed, withdrawn, delivered, unhidden, reminded, hidden, deleted, restored, judged]
         part: {type: string}
         action: {type: string}
         note: {type: string}
         until: {type: string, format: date-time}
+        judgement: {$ref: "#/components/schemas/InboxJudgement"}
     Resolution:
       description: What a person decided about a part.
       type: object
@@ -14698,7 +15957,7 @@ components:
       description: |
         `budget` is raised by a billing policy, never by a rule, and a rule
         cannot be created with it.
-      enum: [run_failed, failure_rate, slow_run, eval_below, spend, budget, session, mention, source, approval, clarification, failure, operation, alert, connection]
+      enum: [run_failed, failure_rate, slow_run, eval_below, spend, budget, session, mention, source, approval, clarification, failure, operation, alert, connection, knowledge]
     AlertSeverity:
       type: string
       enum: [warning, critical]
@@ -14830,7 +16089,8 @@ components:
 
     EvalTarget:
       type: string
-      enum: [agent, knowledge]
+      description: "`corpus` scores a corpus's search as an agent runs it, with the access of whoever starts the run; its cases name the documents (by title) a query should return."
+      enum: [agent, knowledge, corpus]
     EvalCheck:
       description: A deterministic check on an agent's output.
       type: object
@@ -14978,6 +16238,232 @@ components:
         excluded:
           type: array
           items: {type: string}
+    CorpusMemberRef:
+      type: object
+      description: A source or catalog connector a corpus holds, by kind and name.
+      required: [kind, name]
+      properties:
+        kind:
+          type: string
+          enum: [source, catalog]
+          description: "`source` is a knowledge source; `catalog` is a catalog connector (a warehouse)."
+        name: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}
+    CorpusMember:
+      type: object
+      description: |
+        A member as the reader sees it. One the reader may not see has
+        status `hidden` and no name, except to the corpus's owner, who sees its
+        name so they can remove it; one whose source was deleted is `missing`.
+      required: [kind, name, items, status]
+      properties:
+        kind: {type: string, enum: [source, catalog]}
+        name: {type: string}
+        holds:
+          type: string
+          enum: [files, references, records]
+          description: |
+            files are indexed text; references are searched live at the
+            source; records are warehouse tables kept as schema only and
+            queried live.
+        provider: {type: string, description: "manual, drive, onedrive, notion, s3, gcs, bigquery, snowflake and so on."}
+        items: {type: integer, minimum: 0, description: "Indexed documents, or the tables and views a warehouse lists."}
+        status: {type: string, enum: [ready, syncing, failed, missing, hidden]}
+    CorpusReader:
+      type: object
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [person, project, workspace]}
+        name: {type: string, maxLength: 200, description: "A person's subject or a project's name; none for the workspace."}
+    Corpus:
+      type: object
+      required: [name, owner, readers, members, agents, links, label, created_at, updated_at, version, mine]
+      properties:
+        name: {type: string}
+        title: {type: string, description: "What people call it, such as HR policies. Absent shows the name."}
+        description: {type: string}
+        owner: {type: string, description: The subject of the person who manages it.}
+        readers:
+          type: array
+          maxItems: 50
+          items: {$ref: "#/components/schemas/CorpusReader"}
+        members:
+          type: array
+          maxItems: 50
+          items: {$ref: "#/components/schemas/CorpusMember"}
+        agents:
+          type: array
+          maxItems: 50
+          description: The agents granted it that the reader can see. A run of one reads only as the person it acts for, who must be a reader too.
+          items: {type: string}
+        ontology: {type: object, additionalProperties: true, description: "A JSON Schema (2020-12) of the types it adds to the graph: $defs, x-relations, x-metadata."}
+        proposed_ontology: {type: object, additionalProperties: true, description: "An inferred ontology waiting for its owner to accept it."}
+        ontology_seen: {type: string, description: "Marks the last inferred proposal, so one accepted or discarded is not proposed again."}
+        label: {type: string, enum: [public, internal, confidential, restricted], description: "How sensitive its content is. Confidential and restricted content stays in its reader's private conversation."}
+        purpose: {type: string, description: "Why its agents may read it; required to grant a restricted corpus."}
+        graph_search: {type: boolean, description: "Adds the workspace graph to its search."}
+        links:
+          type: string
+          enum: [isolated, shared]
+          description: Whether its graph links to other shared corpora. Isolated by default.
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        version: {type: integer, format: int64, minimum: 1}
+        mine: {type: boolean, description: "Set for its owner, who alone changes it."}
+    GraphNode:
+      type: object
+      required: [id, key, type, name]
+      properties:
+        id: {type: string}
+        key: {type: string}
+        type: {type: string, description: "person, team, project, system, topic, document, or a corpus ontology's type."}
+        name: {type: string}
+        uri: {type: string}
+        member: {type: string, description: "The corpus member it was built from, as source/<name> or catalog/<name>."}
+        props: {type: object, additionalProperties: {type: string}}
+        changed_at: {type: string, format: date-time}
+        suggested_owner: {type: string}
+        out_of_date: {type: boolean}
+        corpora: {type: array, items: {type: string}}
+    GraphEdge:
+      type: object
+      required: [from, to, type]
+      properties:
+        from: {type: string}
+        to: {type: string}
+        type: {type: string, description: "authored, edited, owns, about, mentions, supersedes, contradicts, depends_on or part_of."}
+        corpora: {type: array, items: {type: string}}
+    GraphStaleness:
+      type: object
+      required: [score, stale]
+      properties:
+        score: {type: number, minimum: 0, maximum: 1}
+        stale: {type: boolean}
+        reasons: {type: array, items: {type: string, enum: [old, unowned, out_of_date, superseded]}}
+    GraphNodeView:
+      allOf:
+        - {$ref: "#/components/schemas/GraphNode"}
+        - type: object
+          required: [owner_state]
+          properties:
+            owner: {type: string}
+            owner_name: {type: string, description: "What the owner is called, as the console names people; never a subject that holds an address."}
+            owner_state: {type: string, enum: ["", suggested, confirmed, unowned], description: "Empty for people, teams and projects."}
+            staleness: {$ref: "#/components/schemas/GraphStaleness"}
+    GraphHealth:
+      type: object
+      required: [nodes, edges, by_type, unowned, stale]
+      properties:
+        nodes: {type: integer}
+        edges: {type: integer}
+        by_type: {type: object, additionalProperties: {type: integer}}
+        unowned: {type: integer}
+        stale: {type: integer}
+        built_at: {type: string, format: date-time}
+        truncated: {type: boolean}
+    GraphView:
+      type: object
+      required: [nodes, edges, health]
+      properties:
+        nodes: {type: array, items: {$ref: "#/components/schemas/GraphNodeView"}}
+        edges: {type: array, items: {$ref: "#/components/schemas/GraphEdge"}}
+        health: {$ref: "#/components/schemas/GraphHealth"}
+        more: {type: boolean}
+    OwnerAction:
+      type: object
+      required: [action]
+      properties:
+        action: {type: string, enum: [confirm, decline, hand_off]}
+        to: {type: string, description: "Who it is handed to, for hand_off."}
+    CorpusHit:
+      type: object
+      required: [corpus, member, holds, title, text, score]
+      properties:
+        corpus: {type: string}
+        member: {$ref: "#/components/schemas/CorpusMemberRef"}
+        holds: {type: string, enum: [files, references, records]}
+        document_id: {type: string}
+        title: {type: string, description: "A document's title, or a warehouse table's path."}
+        uri: {type: string}
+        index: {type: integer}
+        text: {type: string}
+        score: {type: number, description: "The fused rank score, comparable within one answer."}
+        also:
+          type: array
+          description: Other members the same passage came through.
+          items: {$ref: "#/components/schemas/CorpusMemberRef"}
+        owner: {type: string, description: "Who owns the document, when graph retrieval found it."}
+        stale: {type: boolean}
+        label: {type: string, enum: [public, internal, confidential, restricted], description: "Its corpus's label."}
+    CorpusSearchWarning:
+      type: object
+      required: [corpus, cause]
+      properties:
+        corpus: {type: string}
+        member: {$ref: "#/components/schemas/CorpusMemberRef"}
+        cause: {type: string}
+    CorpusSearch:
+      type: object
+      required: [hits, warnings]
+      properties:
+        hits:
+          type: array
+          items: {$ref: "#/components/schemas/CorpusHit"}
+        warnings:
+          type: array
+          items: {$ref: "#/components/schemas/CorpusSearchWarning"}
+        citations:
+          type: array
+          description: Kept for a search an agent ran; absent here.
+          items: {$ref: "#/components/schemas/RunCitation"}
+    CorpusCreate:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}
+        title: {type: string, maxLength: 120}
+        description: {type: string, maxLength: 500}
+        readers:
+          type: array
+          maxItems: 50
+          items: {$ref: "#/components/schemas/CorpusReader"}
+        members:
+          type: array
+          maxItems: 50
+          items: {$ref: "#/components/schemas/CorpusMemberRef"}
+        agents:
+          type: array
+          maxItems: 50
+          items: {type: string}
+        ontology: {type: object, additionalProperties: true}
+        label: {type: string, enum: [public, internal, confidential, restricted], default: internal}
+        purpose: {type: string, maxLength: 500}
+        graph_search: {type: boolean, description: "Adds the workspace graph to its search."}
+        links: {type: string, enum: [isolated, shared]}
+    CorpusChange:
+      type: object
+      properties:
+        title: {type: string, maxLength: 120}
+        description: {type: string, maxLength: 500}
+        readers:
+          type: array
+          maxItems: 50
+          items: {$ref: "#/components/schemas/CorpusReader"}
+        members:
+          type: array
+          maxItems: 50
+          items: {$ref: "#/components/schemas/CorpusMemberRef"}
+        ontology: {type: object, additionalProperties: true, description: "Replaces its declared ontology; {} clears it."}
+        label: {type: string, enum: [public, internal, confidential, restricted], description: "Restricting a corpus that agents are granted takes a workspace admin and a purpose."}
+        purpose: {type: string, maxLength: 500}
+        graph_search: {type: boolean, description: "Adds the workspace graph to its search."}
+        links: {type: string, enum: [isolated, shared]}
+        agents:
+          type: array
+          maxItems: 50
+          description: Replaces the agents granted it; agents the owner can no longer see are kept.
+          items: {type: string}
+        owner: {type: string, minLength: 1, maxLength: 200, description: Hands the corpus to another person.}
+        version: {type: integer, format: int64, minimum: 1}
     KnowledgeSource:
       type: object
       required: [name, documents, passages, excluded, variants, updated_at]
@@ -15017,7 +16503,7 @@ components:
       type: object
       required: [provider, attribute, pattern, project]
       properties:
-        provider: {type: string, enum: [github, slack, drive, notion]}
+        provider: {type: string, enum: [github, slack, drive, onedrive, notion]}
         attribute: {type: string, maxLength: 64}
         pattern: {type: string, minLength: 1, maxLength: 256}
         project: {type: string, minLength: 1, maxLength: 64}
@@ -15177,6 +16663,25 @@ components:
         crawled_at: {type: string, format: date-time}
         entries: {type: integer, minimum: 0}
         generation: {type: integer, minimum: 0}
+    SnowflakeSetupInput:
+      type: object
+      required: [name, account, database, warehouse]
+      properties:
+        name: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}
+        account: {type: string, description: "The account identifier, such as myorg-myaccount."}
+        database: {type: string}
+        warehouse: {type: string}
+        role: {type: string, description: "The role the owner's crawl uses; empty is their default role. Queries use each reader's own default role."}
+        token_type: {type: string, enum: [OAUTH, PROGRAMMATIC_ACCESS_TOKEN], description: "How logins are given. Defaults to OAUTH."}
+        max_rows: {type: integer, minimum: 1, maximum: 10000, description: "Defaults to 200."}
+        timeout_seconds: {type: integer, minimum: 1, maximum: 600, description: "Defaults to 60."}
+        refresh_hours: {type: integer, minimum: 1, maximum: 720, description: "How often the schema is crawled again. Defaults to 24."}
+    CatalogLoginInput:
+      type: object
+      description: Exactly one of ref and value.
+      properties:
+        ref: {type: string, maxLength: 512, description: "A reference to your token, under a start the workspace lists."}
+        value: {type: string, maxLength: 8192, writeOnly: true, description: "Your token, where the workspace lets people keep values."}
     CatalogConnectorView:
       allOf:
         - {$ref: "#/components/schemas/CatalogConnector"}
@@ -15188,6 +16693,10 @@ components:
               items: {type: string, enum: [catalog, live]}
             mine: {description: "You own it, so you may publish, withdraw and crawl it.", type: boolean}
             last_error: {description: "The last crawl's failure, shown to the owner only.", type: string}
+            login:
+              type: string
+              enum: [connected, missing, unavailable]
+              description: For a warehouse queried as each reader, whether you have your own login to it.
     CatalogPage:
       type: object
       required: [connectors, entries]
@@ -15527,12 +17036,15 @@ components:
         name: {type: string, maxLength: 64}
         repository: {type: string}
         event: {type: string, enum: [check_run, issues, pull_request, push]}
-        action: {type: string, maxLength: 64}
+        action: {type: string, maxLength: 64, description: "Never `labeled` or `unlabeled`: labels start nothing. A rule stored on one reads paused, with a note."}
         conclusion: {type: string, maxLength: 64}
-        label: {type: string, maxLength: 128}
         agent: {type: string}
         instructions: {type: string, maxLength: 16000}
         paused: {type: boolean}
+        note:
+          description: Read-only. What of a rule stored earlier is ignored now, such as a label (labels start nothing). Dropped when the rule is saved.
+          type: string
+          readOnly: true
     GitHubOptions:
       type: object
       properties:
@@ -15551,12 +17063,27 @@ components:
           maxProperties: 500
           additionalProperties:
             type: string
-        auto_labels:
+        auto_review:
+          description: |
+            Reviews a pull request when it opens or reopens ready for review,
+            leaves draft, or gets a push, by the client's default agent.
+            Left out, it is on. Labels start nothing.
           type: object
-          additionalProperties:
-            type: object
-            additionalProperties:
-              type: string
+          additionalProperties: false
+          properties:
+            enabled:
+              description: The connection's switch. Left out, it is on.
+              type: boolean
+            repositories:
+              description: Exact `owner/repo` names reviewed (true) or not (false), whatever `enabled` says.
+              type: object
+              maxProperties: 64
+              additionalProperties: {type: boolean}
+        askers:
+          description: When set, the only GitHub logins whose mentions, reviews and pull requests the client acts on, among people with write access to the repository (owner, member or collaborator) and people it maps.
+          type: array
+          maxItems: 500
+          items: {type: string}
         checks:
           type: boolean
         guides:
@@ -15654,7 +17181,7 @@ components:
           description: |
             The agents it may route to besides its default, leaving out every
             agent that lives in a project the caller may not read, as `bots`
-            and `github.auto_labels` do. The machine that hosts the client's
+            and `github.automations` do. The machine that hosts the client's
             surface, its `slack.machine`, is shown every agent it names.
           type: array
           items: {type: string}
@@ -16826,6 +18353,336 @@ components:
         source_alert:
           type: string
           description: The readable session alert that anchors this fix conversation.
+    MessageFeedbackInput:
+      type: object
+      additionalProperties: false
+      required: [rating]
+      properties:
+        rating: {type: string, enum: [up, down]}
+        note: {type: string, maxLength: 4000}
+    ContextResult:
+      description: What get_context pulled, from which place, and what it drew on.
+      type: object
+      additionalProperties: false
+      required: [origin, text, sources]
+      properties:
+        origin: {type: string, description: "The place it was pulled from: the session's origin address."}
+        text: {type: string}
+        sources:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [title]
+            properties:
+              title: {type: string}
+              url: {type: string}
+        truncated: {type: boolean}
+        note: {type: string}
+    MessagesInput:
+      description: People's messages from one origin. Who said them is the caller.
+      type: object
+      additionalProperties: false
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: {$ref: "#/components/schemas/InMessage"}
+        ref: {$ref: "#/components/schemas/ExternalRef"}
+        stream:
+          type: boolean
+          description: Accepted; follow GET /api/messages/{id}/stream for what happens beneath.
+    InMessage:
+      description: One person's message. role is user; the platform writes the agents' messages.
+      type: object
+      additionalProperties: false
+      required: [role, content]
+      properties:
+        role: {type: string, enum: [user]}
+        content: {$ref: "#/components/schemas/MessageContent"}
+        ref:
+          $ref: "#/components/schemas/ExternalRef"
+          description: This message's own origin when it differs from the batch's (a Slack reply's ts); it also makes the message post once.
+        spoken:
+          description: The person said it in voice mode and the words were transcribed. It only marks the message, which is answered as a typed one is.
+          type: boolean
+    MessageContent:
+      description: A string, or content blocks.
+      oneOf:
+        - {type: string}
+        - type: array
+          items: {$ref: "#/components/schemas/ContentBlock"}
+    ContentBlock:
+      description: |
+        One block of a message: text; a mention of an agent or a person a
+        surface already resolved, which picks who answers as an @mention in
+        the text does; or a link to another place. image, document, audio and
+        answer blocks are refused for now.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type: {type: string, enum: [text, mention, link, image, document, audio, answer]}
+        text: {type: string}
+        agent: {type: string}
+        person: {type: string}
+        ref: {$ref: "#/components/schemas/ExternalRef"}
+    ExternalRef:
+      description: |
+        Where a message came from, its origin: a union on type. slack (team,
+        channel, ts, thread_ts for a reply, audience), github (repo as
+        owner/name, kind pull, issue or comment, number, comment_id; a
+        comment on a pull request sends kind pull), schedule (name,
+        occurrence), url (url) or web (the console). A place has one root
+        session, keyed slack://team/channel/thread_ts,
+        github://owner/repo/pull/N or issues/N, schedule://name/occurrence or
+        the normalized URL. client is the Humagen client the origin is
+        reached through: it files the root where the client's channel is
+        bound and maps a Slack conversation's members to people.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type: {type: string, enum: [slack, github, schedule, url, web]}
+        client: {type: string}
+        team: {type: string}
+        channel: {type: string}
+        user: {type: string, description: "Who wrote the message on the surface (a Slack user id, a GitHub login). Set by surfaces built into the server; the API ignores it, since the token says who speaks."}
+        ts: {type: string}
+        thread_ts: {type: string}
+        audience: {$ref: "#/components/schemas/SurfaceAudience"}
+        repo: {type: string}
+        kind: {type: string, enum: [pull, issue, comment]}
+        number: {type: integer, minimum: 1}
+        comment_id: {type: integer, format: int64}
+        name: {type: string}
+        occurrence: {type: string}
+        url: {type: string, maxLength: 2048}
+    MessageCreated:
+      description: The message a request created, the root it is under, and what it did.
+      type: object
+      additionalProperties: false
+      required: [id, root, role, content, created, posted]
+      properties:
+        id: {type: string, description: "The message's id, session:message."}
+        root: {type: string, description: The root session's id.}
+        role: {type: string, enum: [user]}
+        content: {$ref: "#/components/schemas/MessageContent"}
+        created: {type: boolean, description: This request started the root.}
+        posted: {$ref: "#/components/schemas/SessionPosted"}
+    MessageAudience:
+      description: Who a root's place was asked in front of, by kind alone. Who was there is never shown.
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [public, private, group, direct]}
+    MessageNode:
+      description: |
+        One message of a tree. A session stands as its first message: beneath
+        it are the agents' messages that follow it up to the next person's
+        message (its answer), the
+        child sessions started for it, and the session's later people's
+        messages. Beneath a later person's message are the agents' messages
+        that follow it and the child sessions started for it. A child session
+        is a node whose id is the session's. A child session the caller may
+        not read is left out and not counted.
+      type: object
+      additionalProperties: false
+      required: [id, session, role, author, status, content, at, children_count, latest_at, children]
+      properties:
+        id: {type: string, description: "A session's id for a session's node, else session:message."}
+        session: {type: string, description: The session the message is in.}
+        role: {type: string, enum: [user, assistant]}
+        author: {$ref: "#/components/schemas/SessionAuthor"}
+        status:
+          type: string
+          description: That of the runs beneath the message; done when there are none.
+          enum: [working, waiting, done, failed, stopped]
+        content:
+          type: array
+          description: The message's text.
+          items: {$ref: "#/components/schemas/SessionPart"}
+        at: {type: string, format: date-time}
+        children_count: {type: integer, minimum: 0, description: "How many children the message has, shown or not."}
+        latest_at: {type: string, format: date-time, description: When anything beneath the message last changed.}
+        audience:
+          $ref: "#/components/schemas/MessageAudience"
+          description: On the node read, the audience its root's place reported, when one did.
+        children:
+          type: array
+          description: The latest 200 children at most, in time order, while depth lasts; empty beyond it.
+          items: {$ref: "#/components/schemas/MessageNode"}
+    MessageTrace:
+      description: What ran to answer a message.
+      type: object
+      additionalProperties: false
+      required: [message, nodes, hidden, truncated]
+      properties:
+        message: {type: string, description: "The id asked for."}
+        nodes:
+          type: array
+          maxItems: 500
+          description: The runs that answered the message, in the order they started, each with what it called beneath it.
+          items: {$ref: "#/components/schemas/TraceNode"}
+        hidden: {type: integer, minimum: 0, description: "How many runs and child sessions were left out because the caller may not read them."}
+        truncated: {type: boolean, description: "A bound cut the trace: at most 500 nodes, and 200 tools, context reads, sources and approvals per node."}
+    TraceNode:
+      description: |
+        One run and what it did, each as the caller may see it: the tools it
+        called, the context it pulled with get_context, the sources it cited,
+        the approvals it waited on and the questions it asked a person.
+      type: object
+      additionalProperties: false
+      required: [run, agent, status, started_at, ms, tools, context, sources, approvals, questions, children]
+      properties:
+        run: {type: string}
+        agent: {type: string}
+        status: {type: string, enum: [accepted, running, parked, completed, failed, stopped]}
+        started_at: {type: string, format: date-time}
+        ended_at: {type: string, format: date-time, description: "When the run ended; absent while it works."}
+        ms: {type: integer, format: int64, minimum: 0, description: "How long it ran, or has run so far."}
+        cost: {type: integer, format: int64, minimum: 0, description: "What it spent in micro-USD, what it called included once they ended. Absent when nothing was metered."}
+        pick: {$ref: "#/components/schemas/TracePick"}
+        model: {type: string, description: "The model its latest call used, when that was recorded."}
+        answer: {type: string, description: "What it answered."}
+        error: {type: string, description: "Why it failed, when it did."}
+        tools:
+          type: array
+          maxItems: 200
+          items: {$ref: "#/components/schemas/TraceTool"}
+        context:
+          type: array
+          maxItems: 200
+          items: {$ref: "#/components/schemas/TraceContext"}
+        sources:
+          type: array
+          maxItems: 200
+          description: The run's citations as the caller is shown them.
+          items: {$ref: "#/components/schemas/TraceSource"}
+        approvals:
+          type: array
+          maxItems: 200
+          items: {$ref: "#/components/schemas/TraceApproval"}
+        questions:
+          type: array
+          maxItems: 200
+          items: {$ref: "#/components/schemas/TraceQuestion"}
+        children:
+          type: array
+          description: The runs it called, in the order they started.
+          items: {$ref: "#/components/schemas/TraceNode"}
+    TracePick:
+      description: Why a message's answer came from where it did, on the root run the platform chose. It is activity, never a line of the conversation.
+      type: object
+      additionalProperties: false
+      required: [decision, agents, reason, matched]
+      properties:
+        decision: {type: string, enum: [answer_myself, delegate]}
+        agents: {type: array, maxItems: 3, description: "The agents the message mentioned, or the one that answers in the entry agent's place, that the caller may read.", items: {type: string}}
+        reason: {type: string, description: "Why, in words. Empty when it would name an agent the caller may not read."}
+        matched: {type: array, description: "The words of the message that matched.", items: {type: string}}
+    TraceTool:
+      description: One tool call. Input and output are left out when withheld.
+      type: object
+      additionalProperties: false
+      required: [id, name, at, withheld]
+      properties:
+        id: {type: string, description: "htu_<run>_<seq>: the run's seq-th call, as the response stream names it. Provider call ids are never shown."}
+        name: {type: string}
+        at: {type: string, format: date-time, description: "When it was asked."}
+        ms: {type: integer, format: int64, minimum: 0, description: "How long it ran; absent while it runs."}
+        input: {type: object, additionalProperties: true, description: "The arguments it ran with."}
+        output: {type: string, description: "What it returned, cut at 4000 bytes and ending in an ellipsis when cut."}
+        error: {type: string}
+        withheld: {type: boolean, description: "The caller may not see its input or output."}
+    TraceContext:
+      description: One get_context call. Request, reference, summary and sources are empty when withheld.
+      type: object
+      additionalProperties: false
+      required: [id, at, request, reference, summary, sources, truncated, withheld]
+      properties:
+        id: {type: string, description: "htu_<run>_<seq>, counted with the run's tool calls."}
+        at: {type: string, format: date-time, description: "When it was asked."}
+        ms: {type: integer, format: int64, minimum: 0, description: "How long it took; absent while it runs."}
+        request: {type: string, description: "What the agent asked for, in words."}
+        reference: {type: string, description: "The place it read, such as slack://team/channel/ts: the message's own, bound by the platform."}
+        summary: {type: string, description: "The start of what came back, or why nothing could be."}
+        sources:
+          type: array
+          maxItems: 20
+          items: {$ref: "#/components/schemas/TraceSource"}
+        truncated: {type: boolean, description: "What came back was cut."}
+        error: {type: string}
+        withheld: {type: boolean}
+    TraceSource:
+      description: Something a run cited or a context read drew on.
+      type: object
+      additionalProperties: false
+      required: [title]
+      properties:
+        title: {type: string}
+        url: {type: string}
+    TraceQuestion:
+      description: |
+        A question a run asked a person with ask_person, as the caller may see
+        it: a choice among options, or a reply in words. Answer it with
+        answerToolUse and `tool`.
+      type: object
+      additionalProperties: false
+      required: [id, kind, prompt, options, status]
+      properties:
+        id: {type: string, description: "The question's id."}
+        tool: {type: string, description: "The id of the call that asked it, htu_<run>_<n>."}
+        kind: {type: string, enum: [choice, reply]}
+        prompt: {type: string}
+        options: {type: array, items: {type: string}}
+        status: {type: string, enum: [asked, answered, expired, closed], description: "asked while it waits; expired when nobody answered in time and its default stood; closed when its run ended first."}
+        answer: {type: string, description: "The choice or the reply."}
+        by: {type: string, description: "Who answered, by name."}
+        at: {type: string, format: date-time}
+    TraceApproval:
+      description: An action a run waited on a person for, and how it was decided. ask is one still waiting.
+      type: object
+      additionalProperties: false
+      required: [id, action, decision]
+      properties:
+        id: {type: string, description: "The question's id."}
+        tool: {type: string, description: "The id of the tool call it gates (a TraceTool's or a TraceContext's), when it gates one."}
+        action: {type: string, description: "The tool it would call, or what it asked."}
+        decision: {type: string, enum: [allow, deny, ask]}
+        by: {type: string, description: "Who decided, by name."}
+        note: {type: string}
+        at: {type: string, format: date-time}
+    RootMessage:
+      description: One root session, as its first message.
+      type: object
+      additionalProperties: false
+      required: [id, title, status, agent, author, parent, project, latest_at, children_count]
+      properties:
+        id: {type: string}
+        title: {type: string}
+        status: {type: string, enum: [working, waiting, done, failed, stopped]}
+        agent: {type: string, description: The agent that owns the root.}
+        author: {$ref: "#/components/schemas/SessionAuthor"}
+        parent: {type: string, description: "The root's place: its address, such as slack://team/channel/ts or github://owner/repo/pull/N."}
+        project: {type: string}
+        latest_at: {type: string, format: date-time}
+        children_count: {type: integer, minimum: 0}
+        audience: {$ref: "#/components/schemas/MessageAudience"}
+    RootMessagePage:
+      description: A page of roots, newest first.
+      type: object
+      additionalProperties: false
+      required: [messages, next]
+      properties:
+        messages:
+          type: array
+          maxItems: 200
+          items: {$ref: "#/components/schemas/RootMessage"}
+        next: {type: string, description: "The after of the next page; empty on the last."}
     SessionInput:
       type: object
       additionalProperties: false
@@ -16844,13 +18701,20 @@ components:
           type: boolean
         project:
           type: string
-        model:
-          type: string
-        effort:
-          type: string
         source_alert:
           type: string
           description: The readable session alert that anchors this fix conversation.
+        surface:
+          $ref: "#/components/schemas/SurfaceRef"
+          description: "A chat surface's thread. Only that client's machine sends it, with act_as; the thread's root session (keyed by slack://<team>/<channel>/<ts>, owned by the entry agent) is found or started, filed where the Slack channel is bound. project, parent, agent, label, fresh and source_alert are refused with it."
+        act_as:
+          $ref: "#/components/schemas/ActAs"
+        surface_kind:
+          type: string
+          description: "The kind of chat surface: slack, the default and only one taken today."
+        post_only:
+          type: boolean
+          description: "With surface: post the message without starting anything."
     SessionPostInput:
       description: A session message with optional routing to a mentioned agent.
       type: object
@@ -16862,15 +18726,6 @@ components:
           description: The turn it follows. Empty follows the latest.
           type: string
         post_only: {type: boolean}
-        model:
-          description: "A model, `provider/model`, the runs this message starts use in place of their agent's own. Applied only for an agent whose `choices.models` offers it; any other runs on its own model. The run's model ceilings still apply."
-          type: string
-          maxLength: 200
-        effort:
-          description: "A reasoning effort, such as `low` or `high`, the runs this message starts use. Applied only for an agent whose `choices.efforts` offers it. A model that does not take it fails the run before any model call."
-          type: string
-          maxLength: 32
-          pattern: "^[a-z]+$"
         answers: {$ref: "#/components/schemas/ThreadAnswerRef"}
         act_as: {$ref: "#/components/schemas/ActAs"}
         surface: {$ref: "#/components/schemas/SurfaceRef"}
@@ -16930,6 +18785,9 @@ components:
           type: "string"
         version:
           type: "string"
+        display:
+          type: "string"
+          description: "The name people see when it differs from name: the workspace's own name for its entry agent."
     SessionPart:
       type: "object"
       additionalProperties: false
@@ -16938,6 +18796,7 @@ components:
       properties:
         type:
           type: "string"
+          description: "text."
         text:
           type: "string"
         session:
@@ -17037,6 +18896,9 @@ components:
         - "cursor"
         - "thread"
       properties:
+        posted:
+          $ref: "#/components/schemas/SessionPosted"
+          description: Only on POST /api/sessions with a surface.
         more:
           type: boolean
           description: More changed messages remain after cursor; continue with since until false.

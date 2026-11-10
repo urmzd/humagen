@@ -15,6 +15,7 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
@@ -749,6 +750,11 @@ func (s *Server) putSuite(replace bool) handler {
 				return
 			}
 			_, err = s.P.Knowledge.Documents(who.Tenant, suite.Subject)
+		case evals.Corpus:
+			if !s.P.CorpusReadable(who, suite.Subject) {
+				s.problem(w, corpora.ErrNotFound)
+				return
+			}
 		}
 		if err != nil {
 			s.problem(w, err)

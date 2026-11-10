@@ -19,9 +19,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # No module cache here. gofmt downloads nothing, and this job ends
+      # first, so it would save an empty cache under the key every Go job
+      # shares. A key is written once: the others would then restore nothing
+      # and download every module from the proxy on every run.
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: false
       - name: Check formatting
         run: |
           unformatted=$(gofmt -l .)

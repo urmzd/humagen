@@ -14,7 +14,6 @@ import (
 
 	"github.com/urmzd/orchagent/flow/event"
 	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/humagen/internal/platform"
@@ -358,7 +357,7 @@ func TestStoppingCascadesThroughAttachedRunsAtDepth(t *testing.T) {
 	c := &cast{
 		says: map[string][][]saigetypes.Delta{
 			"lead": {
-				agenttest.ToolCallResponse("c1", platform.ToolDelegate, map[string]any{"agent": "worker", "text": "Write the long report"}),
+				handing("c1", "worker", "Write the long report"),
 				append(say("Lead began. "), tagging("mid", "Go deeper")...),
 				say("unreachable"),
 			},
@@ -367,7 +366,6 @@ func TestStoppingCascadesThroughAttachedRunsAtDepth(t *testing.T) {
 			"worker": {say("The report is written.")},
 		},
 		spawn: map[string][]string{"lead": {"mid", "worker"}, "mid": {"leaf"}},
-		tools: map[string][]string{"lead": {platform.ToolDelegate}},
 		talks: map[string]talk{"leaf": {after: 0, text: "Leaf was half"}},
 		gates: map[string]chan struct{}{"worker": make(chan struct{})},
 	}

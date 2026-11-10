@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/prompts"
 	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/turn/native"
 	types "github.com/urmzd/saige/agent/types"
 )
 
@@ -20,7 +18,7 @@ const (
 )
 
 func (p *Platform) builderPerson(req runtime.Request) (auth.Principal, error) {
-	if legacy.BuiltinAgent(req.Agent()) != BuiltinBuilder {
+	if !p.isHelper(req.Agent()) {
 		return auth.Principal{}, ErrBuilder
 	}
 	_, person := p.operationPlace(req)
@@ -77,13 +75,19 @@ func (p *Platform) builderConnectionsTool(req runtime.Request, connect bool) typ
 	}}
 }
 
-type workspaceApproval struct{ *types.ToolFunc }
+// sharedPromptApproval is the approval the tools that change shared
+// instructions declare in the registry: an administrator other than the
+// person asking approves every call.
+func sharedPromptApproval(prompt func(ApprovalCall) string) ToolApproval {
+	return ToolApproval{Mode: ApprovalAlways, Approvers: []string{"role:admin"}, SelfApproval: false, Prompt: prompt}
+}
 
-func (t *workspaceApproval) Approval(types.ToolCallPart) (native.ApprovalRequest, bool) {
-	return native.ApprovalRequest{Prompt: "Apply these shared instructions after every agent's sampled evals pass?", Approvers: []string{"role:admin"}, SelfApproval: false}, true
+// workspacePromptPrompt words the approval of a set_workspace_prompt call.
+func workspacePromptPrompt(ApprovalCall) string {
+	return "Apply these shared instructions after every agent's sampled evals pass?"
 }
 func (p *Platform) builderWorkspacePromptTool(req runtime.Request) types.Tool {
-	return &workspaceApproval{&types.ToolFunc{Def: types.ToolDef{Name: ToolWorkspacePrompt, Description: "Change versioned shared instructions after administrator approval and sampled eval gates. Provide the full prompts config as JSON. Existing runs retain their pinned versions.", Parameters: schema([]string{"config"}, map[string]string{"config": "JSON with platform,workspace,slack_word_budget"})}, Fn: func(ctx context.Context, args map[string]any) (string, error) {
+	return &types.ToolFunc{Def: types.ToolDef{Name: ToolWorkspacePrompt, Description: "Change versioned shared instructions after administrator approval and sampled eval gates. Provide the full prompts config as JSON. Existing runs retain their pinned versions.", Parameters: schema([]string{"config"}, map[string]string{"config": "JSON with platform,workspace,slack_word_budget"})}, Fn: func(ctx context.Context, args map[string]any) (string, error) {
 		who, err := p.builderPerson(req)
 		if err != nil {
 			return "", err
@@ -103,5 +107,5 @@ func (p *Platform) builderWorkspacePromptTool(req runtime.Request) types.Tool {
 			return "", err
 		}
 		return "Shared instructions saved; existing runs keep their pinned versions.", nil
-	}}}
+	}}
 }

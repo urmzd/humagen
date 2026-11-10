@@ -28,7 +28,13 @@ import {
   type UiAction,
 } from "@humagen/core";
 import { defaultCopy } from "../../components/src/copy.ts";
-import { interruptOf, settledFromOutcome, type WireBudget, type WireQuestion } from "./question.ts";
+import {
+  interruptOf,
+  settledFromOutcome,
+  type WireBudget,
+  type WireJudgement,
+  type WireQuestion,
+} from "./question.ts";
 
 /** Something a message is about, which the console can open. */
 export type Source = {
@@ -152,6 +158,18 @@ type Wire = Record<string, unknown>;
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 const obj = (v: unknown): Wire => (v && typeof v === "object" ? (v as Wire) : {});
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+
+/** The approval agent's judgement on a question part, read field by field. */
+const wireJudgement = (j: Wire): WireJudgement => ({
+  decision: str(j.decision),
+  reason: str(j.reason),
+  references: list(j.references).map(str),
+  fields: list(j.fields).map((f) => {
+    const o = obj(f);
+    return { name: str(o.name), label: str(o.label), value: str(o.value) };
+  }),
+  ...(str(j.run) ? { run: str(j.run) } : {}),
+});
 
 const sourceKinds = ["run", "thread", "rule", "agent", "project"] as const;
 const sourceWord: Record<(typeof sourceKinds)[number], string> = {
@@ -392,6 +410,7 @@ function partFrom(raw: unknown, at: string, updated: string): MessagePart | null
           : {}),
         ...(str(q.expires_at) ? { expires_at: str(q.expires_at) } : {}),
         ...(q.budget ? { budget: q.budget as WireBudget } : {}),
+        ...(q.judgement ? { judgement: wireJudgement(obj(q.judgement)) } : {}),
       };
       const settled = settledFromOutcome(out);
       if (p.type === "reply") {

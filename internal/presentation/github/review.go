@@ -72,6 +72,9 @@ type ReviewFinding struct {
 	Suggestion string           `json:"suggestion"`
 	Evidence   []ReviewEvidence `json:"evidence"`
 	Prompt     string           `json:"prompt"`
+	// FoundBy is the agent whose session found it, such as security-reviewer
+	// or security-reviewer#a, when a reviewer combines specialists' findings.
+	FoundBy string `json:"found_by,omitempty"`
 }
 
 // ReviewEvidence contains an observed fact and a source pointer. Source can be
@@ -152,7 +155,11 @@ func FormatReview(report ReviewReport) (string, error) {
 				}
 				evidence = append(evidence, reviewText(e.Observation)+" ("+pointer+")")
 			}
-			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s |\n", icons[f.Severity], reviewText(f.Title), reviewText(f.Suggestion), strings.Join(evidence, "<br><br>"), reviewText(f.Prompt))
+			title := reviewText(f.Title)
+			if f.FoundBy != "" {
+				title += "<br>Found by " + reviewText(f.FoundBy)
+			}
+			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s |\n", icons[f.Severity], title, reviewText(f.Suggestion), strings.Join(evidence, "<br><br>"), reviewText(f.Prompt))
 		}
 	} else {
 		b.WriteString("\nNo findings reported. See the summary and comments for review scope and limitations.\n")

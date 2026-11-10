@@ -59,6 +59,7 @@ const (
 	metaDepth  = metaPrefix + "depth"
 	metaMode   = metaPrefix + "mode"
 	metaLease  = metaPrefix + "lease"
+	metaCall   = metaPrefix + "call_id"
 )
 
 // Sentinel errors. A refusal is the policy speaking: surface it to the model as
@@ -102,6 +103,9 @@ type Edge struct {
 	// Lease is the most this run may spend, in micro-USD, including
 	// everything it calls. Zero means unmetered.
 	Lease int64
+	// CallID is the API's id for the caller's tool call that made this run
+	// (htu_<run>_<n>). Empty on a root, and on a call no tool call made.
+	CallID string
 }
 
 // IsRoot reports whether the run was raised by a trigger rather than an agent.
@@ -119,6 +123,7 @@ func EdgeOf(t event.Envelope) (Edge, error) {
 		Root:   meta[metaRoot],
 		Parent: meta[metaParent],
 		Mode:   Mode(meta[metaMode]),
+		CallID: meta[metaCall],
 	}
 	if e.Root == "" || e.Parent == "" {
 		return Edge{}, fmt.Errorf("%w: tag %q is from an agent but names no root or parent", ErrInvalid, t.ID)
@@ -190,6 +195,10 @@ type Request struct {
 	// Lease is the budget granted to the child, in micro-USD. A metered
 	// caller must grant one, and cannot grant more than it has left.
 	Lease int64
+	// CallID is the API's id for the caller's tool call that made this
+	// call (htu_<run>_<n>), when a tool call made it. The child carries it,
+	// so its stream nests under that call.
+	CallID string
 }
 
 // New builds the event that starts the child run, or refuses the call. The
@@ -259,6 +268,9 @@ func New(parent event.Envelope, req Request, st State, lim Limits, at time.Time)
 	raise.Context[metaDepth] = strconv.Itoa(edge.Depth + 1)
 	raise.Context[metaMode] = string(req.Mode)
 	raise.Context[metaLease] = strconv.FormatInt(req.Lease, 10)
+	if req.CallID != "" {
+		raise.Context[metaCall] = req.CallID
+	}
 	child := wire.NewEvent(raise)
 	return child, nil
 }

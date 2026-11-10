@@ -71,10 +71,6 @@ type ThreadInput struct {
 	Mode     string   `json:"mode,omitempty"`
 	Text     string   `json:"text"`
 	PostOnly bool     `json:"post_only,omitempty"`
-	// Model and Effort are what the runs the message starts use in place of
-	// their agents' own, where an agent offers them (message_choice.go).
-	Model  string `json:"model,omitempty"`
-	Effort string `json:"effort,omitempty"`
 	// ActAs is the person a surface's credential posts for.
 	ActAs *ActAs `json:"act_as,omitempty"`
 	// Surface is where on a client's surface the message was posted, sent
@@ -87,15 +83,14 @@ type ThreadInput struct {
 // MessageInput posts a message into a thread.
 type MessageInput struct {
 	Text string `json:"text"`
+	// messageKey is the message's identity at its origin, which makes it
+	// post once (SendMessages). It is never read from a request.
+	messageKey string
 	// After is the turn it follows: a message of the thread, a run answering
 	// one, or a run of a conversation from before threads. "" follows the
 	// latest.
 	After    string `json:"after,omitempty"`
 	PostOnly bool   `json:"post_only,omitempty"`
-	// Model and Effort are what the runs the message starts use in place of
-	// their agents' own, where an agent offers them (message_choice.go).
-	Model  string `json:"model,omitempty"`
-	Effort string `json:"effort,omitempty"`
 	// Answers records the message as a question's answer, which resumes the
 	// run parked on it.
 	Answers *threads.AnswerRef `json:"answers,omitempty"`
@@ -475,18 +470,17 @@ func (p *Platform) checkTags(tenant string, tree *projects.Tree, project string,
 }
 
 // placeOfThread is where a message in a thread is posted, for deciding who
-// answers it: the thread's project, with the thread's and its channel's
-// defaults nearer than the project's.
+// answers it: the thread's project, with the thread's default nearer than
+// the workspace's.
 func (p *Platform) placeOfThread(tenant string, th threads.Thread) Place {
 	return p.placeIn(tenant, th, "")
 }
 
 // placeIn is placeOfThread for a message a client sends, with the client's
-// default between the thread's and the channel's.
+// default after the thread's.
 func (p *Platform) placeIn(tenant string, th threads.Thread, clientDefault string) Place {
-	ch, _ := p.Projects.Channel(tenant, th.Project, cmp.Or(th.Channel, projects.General))
 	at := Place{Project: th.Project}
-	for _, d := range threads.Nearer(th, cmp.Or(clientDefault, p.clientDefault(tenant, th)), ch) {
+	for _, d := range threads.Nearer(th, cmp.Or(clientDefault, p.clientDefault(tenant, th))) {
 		at.Nearer = append(at.Nearer, Nearer{Agent: d.Agent, From: d.From})
 	}
 	return at
@@ -742,10 +736,6 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if err := threads.CheckText(in.Text); err != nil {
 		return Posted{}, err
 	}
-	choice, err := checkMessageChoice(in.Model, in.Effort)
-	if err != nil {
-		return Posted{}, err
-	}
 	if in.Visibility == "" && on == nil && in.ActAs == nil {
 		// A conversation a person starts as themselves, as in the console,
 		// starts private, its starter's alone, until they share it
@@ -812,7 +802,7 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if err != nil {
 		return Posted{}, err
 	}
-	out, err := p.carryOut(withMessageChoice(ctx, choice), person, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, false, keeps, seer.Agent)
+	out, err := p.carryOut(ctx, person, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, false, keeps, seer.Agent)
 	out.Refused = append(out.Refused, unmapped...)
 	return out, err
 }
@@ -839,10 +829,6 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	}
 	// Refused before its tags are looked up.
 	if err := threads.CheckText(in.Text); err != nil {
-		return Posted{}, err
-	}
-	choice, err := checkMessageChoice(in.Model, in.Effort)
-	if err != nil {
 		return Posted{}, err
 	}
 	by, name, via, slack, err := p.author(who, in.ActAs)
@@ -884,6 +870,11 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		text, unmapped = p.surfaceText(who.Tenant, on.client, on.ref, in.Text)
 		surfaceID, slack = on.ref.message(), nil
 	}
+	if surfaceID == "" {
+		// A message from an origin with its own identity (a Slack ts, a
+		// GitHub comment) posts once, however often it is sent.
+		surfaceID = in.messageKey
+	}
 	sees := p.Seer(person).Agent
 	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: sees, tree: tree, project: th.Project, person: humanSubject(person), console: on == nil})
 	if err != nil {
@@ -913,6 +904,14 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		a := *in.Answers
 		msg.Answers = &a
 	}
+	// A message that would start agent work, or says stop first, while
+	// agents work in the thread is a follow-up: queued, replacing that work
+	// or stopping it.
+	if !in.PostOnly && in.Answers == nil && !in.reply && (forcesStop(msg.Text) || p.startsWork(who.Tenant, th, msg.Mentions, clientOf(in.ActAs), sees)) {
+		if msg.Followup, err = p.followupOf(ctx, person, th, msg.Text); err != nil {
+			return Posted{}, err
+		}
+	}
 	if th, err = p.recordOf(who.Tenant, id, p.claimant(person, th.Project)); err != nil {
 		return Posted{}, err
 	}
@@ -924,12 +923,21 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		return Posted{}, err
 	}
 	if !fresh {
+		if m.Followup != nil {
+			return p.followThrough(ctx, person, tree, th, m, true)
+		}
 		again := p.posted(who.Tenant, th, m)
 		again.Repeated = true
 		return again, nil
 	}
+	if m.Followup != nil {
+		p.repliedTo(who.Tenant, th.ID, m)
+		out, err := p.followThrough(ctx, person, tree, th, m, false)
+		out.Refused = append(out.Refused, unmapped...)
+		return out, err
+	}
 	p.repliedTo(who.Tenant, th.ID, m)
-	out, err := p.carryOut(withMessageChoice(ctx, choice), person, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, in.Answers != nil || in.reply, keeps, sees)
+	out, err := p.carryOut(ctx, person, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, in.Answers != nil || in.reply, keeps, sees)
 	out.Refused = append(out.Refused, unmapped...)
 	return out, err
 }
@@ -1065,11 +1073,63 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 	// they tag: no default answers them. A client's surface keeps its
 	// defaults, where mentioning the app is what asks.
 	tagsOnly := via == ""
+	if !tagsOnly && def.Agent == "" {
+		// Nothing names an agent to answer here: the message lands as under
+		// an open default (land), so it never waits for a person.
+		def.Agent = Open
+	}
+	// In a session a message gets one answer, the response's root run. With
+	// no other agent mentioned, the session's agent answers. Exactly one
+	// other agent mentioned answers it itself, here, not in a child session.
+	// Several mentioned are each asked by the platform before the entry
+	// agent's first model step (callMentioned), and it answers with what
+	// they said; where the entry agent cannot run, each answers for itself.
+	var mentioned []string
+	root := ""
 	if th.Session != nil {
-		// Session ownership is immutable. Mentions are context, never a second
-		// answering agent in this transcript. Calls to another agent open children.
 		tagsOnly = false
-		m.Mentions = slices.DeleteFunc(slices.Clone(m.Mentions), func(mn threads.Mention) bool { return mn.Kind == threads.Agent && mn.Name != th.Session.Agent })
+		owner := th.Session.Agent
+		var others, barred []string
+		if !postOnly && !reply {
+			// An answer is limited to what its place's readers may read: an
+			// agent some of them may not read is not asked here, and the
+			// poster is told so, with where it can be asked.
+			m.Mentions = slices.Clone(m.Mentions)
+			for i := range m.Mentions {
+				mn := &m.Mentions[i]
+				if mn.Kind != threads.Agent || mn.Name == owner {
+					continue
+				}
+				if why := p.mentionRefusal(tenant, tree, th.Project, mn.Name); why != "" {
+					mn.Refused = why
+					barred = append(barred, mn.Name)
+				}
+			}
+			others = mentionedAgents(m.Mentions, owner)
+		}
+		entry := ""
+		if len(others) > 1 {
+			if entry = p.entryFor(ctx, tenant, th.Project, sees); entry != "" && p.entryReady(ctx, tenant) != nil {
+				entry = ""
+			}
+		}
+		keep := func(name string) bool { return name == owner }
+		switch {
+		case len(others) == 1:
+			keep = func(name string) bool { return name == others[0] }
+		case len(others) > 1 && entry != "":
+			mentioned = others[:min(len(others), maxDelegates)]
+			keep = func(string) bool { return false }
+		case len(others) > 1:
+			keep = func(name string) bool { return slices.Contains(others, name) }
+		}
+		// A mention refused here stays, so the poster is told why.
+		m.Mentions = slices.DeleteFunc(slices.Clone(m.Mentions), func(mn threads.Mention) bool {
+			return mn.Kind == threads.Agent && !keep(mn.Name) && !slices.Contains(barred, mn.Name)
+		})
+		if len(mentioned) > 0 {
+			root = entry
+		}
 	}
 	// The thread's selected agents answer an untagged message, those the
 	// poster may read: one they may not is passed over for them.
@@ -1098,7 +1158,11 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 		case d.Rule == threads.RuleRouted:
 			routedBy = threads.ModeAll
 		}
-		started, err := p.answerMessage(ctx, tenant, th, m, via, agent, d.Among, routedBy, actor, answerTagID(th.ID, m.ID, agent), keeps, sees)
+		startCtx := ctx
+		if agent == root && len(mentioned) > 0 {
+			startCtx = withMentioned(ctx, mentioned)
+		}
+		started, err := p.answerMessage(startCtx, tenant, th, m, via, agent, d.Among, routedBy, actor, answerTagID(th.ID, m.ID, agent), keeps, sees)
 		for _, run := range started {
 			out.Runs = append(out.Runs, run)
 			answered = append(answered, threads.Participant{Kind: threads.Agent, Name: run.Agent, AddedBy: m.By})
@@ -1106,6 +1170,24 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 		return started, err
 	}
 	switch {
+	case len(mentioned) > 0:
+		// The entry agent answers, told what each mentioned agent said. When
+		// it cannot be started, each of them answers for itself.
+		out.Rule, out.Reason = threads.RuleTagged, ""
+		started, err := start(root)
+		if err == nil && len(started) > 0 {
+			p.keepPick(tenant, th.ID, m.ID, pickRecord{Pick: Pick{Decision: PickDelegate, Agents: mentioned, Reason: "@" + strings.Join(mentioned, ", @") + " were mentioned, so each was asked first."}, Run: started[0].ID})
+			break
+		}
+		var refused []string
+		for _, agent := range mentioned {
+			if _, err := start(agent); err != nil {
+				refused = append(refused, refusalOf(err))
+			}
+		}
+		if len(refused) > 0 {
+			out.Reason = "Not every mentioned agent could answer: " + strings.Join(refused, "; ") + "."
+		}
 	case d.Rule == threads.RuleTagged:
 		for i := range mentions {
 			mn := &mentions[i]
@@ -1118,13 +1200,14 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 				continue
 			}
 			mn.Run = started[0].ID
+			if th.Session != nil && mn.Name != th.Session.Agent && len(d.Agents) == 1 {
+				p.keepPick(tenant, th.ID, m.ID, pickRecord{Pick: Pick{Decision: PickDelegate, Agents: []string{mn.Name}, Reason: "@" + mn.Name + " was mentioned."}, Run: started[0].ID})
+			}
 		}
 	case d.Rule == threads.RuleRouted:
 		var refused []string
 		for _, agent := range d.Agents {
-			if _, err := start(agent); errors.Is(err, ErrNoTakers) {
-				out.Reason = "No selected agent took it, so it waits for a person to answer or tag an agent."
-			} else if err != nil {
+			if _, err := start(agent); err != nil {
 				refused = append(refused, refusalOf(err))
 			}
 		}
@@ -1136,10 +1219,7 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 		}
 	case d.Default && len(d.Agents) == 1 && d.Agents[0] == Open:
 		if _, err := start(Open); err != nil {
-			out.Reason = "No agent took it, so it waits for a person to answer or tag an agent."
-			if !errors.Is(err, ErrNoTakers) {
-				out.Reason = fmt.Sprintf("The agents here could not be asked: %s.", refusalOf(err))
-			}
+			out.Reason = fmt.Sprintf("No agent could answer: %s.", refusalOf(err))
 		}
 	case d.Default && len(d.Agents) == 1:
 		if _, err := start(d.Agents[0]); err != nil {
@@ -1167,6 +1247,23 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 	}
 	out.Thread, out.Message = th, m
 	return out, nil
+}
+
+// mentionRefusal is why a mentioned agent is not asked in a conversation
+// filed in project, or "" when it may be. It is admission's one check
+// (Available), made before anything runs: an answer is limited to what the
+// readers of its place may read, so an agent that lives where not all of
+// them read is not asked there, and the poster is told where it can be.
+func (p *Platform) mentionRefusal(tenant string, tree *projects.Tree, project, agent string) string {
+	err := p.Available(tenant, project, agent)
+	if err == nil {
+		return ""
+	}
+	why := refusalOf(err)
+	if home, homed := tree.Home(agent); homed && tree.IsAvailable(projects.NameOf(project), agent) {
+		why += ", so it cannot answer here. Ask it in " + p.whereOf(tenant, tree, home)
+	}
+	return why
 }
 
 // refusalOf is why a run was not started, as a person reads it: the error's
@@ -1218,6 +1315,27 @@ func answerTagID(thread, message, agent string) string {
 // a turn does (Turn.KeepsNotes). sees is the agents that person may read:
 // one they may not read is never asked.
 func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, routed string, actor event.Actor, tagID string, keeps bool, sees func(string) bool) ([]runs.Run, error) {
+	if p.entryRoot(ctx, tenant, th, agent) {
+		return p.answerAsEntry(ctx, tenant, th, m, via, actor, tagID, keeps, sees)
+	}
+	return p.answerDirect(ctx, tenant, th, m, via, agent, among, routed, actor, tagID, keeps, sees)
+}
+
+// answerDirect is answerMessage once who answers is settled: agent itself,
+// or for Open each agent that joins.
+func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, routed string, actor event.Actor, tagID string, keeps bool, sees func(string) bool) ([]runs.Run, error) {
+	surface, surfaced := deliveryOf(ctx)
+	if !surfaced && th.Session != nil {
+		surface, surfaced = p.keptDelivery(tenant, th)
+	}
+	if surfaced {
+		// A surface's message answers where it was asked, through its client,
+		// which holds the run to the agents it routes to.
+		via = cmp.Or(via, surface.client)
+		if surface.user != "" {
+			actor.ID = surface.user
+		}
+	}
 	meta := map[string]string{
 		runs.MetaAsk: m.Text, runs.MetaThread: th.ID, runs.MetaPrev: m.ID, runs.MetaMessage: m.ID,
 		runs.MetaChannel: th.Channel, runs.MetaProject: th.Project,
@@ -1230,22 +1348,26 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	}
 	skills := p.skillsOfMessage(tenant, th, m, via, actor.User)
 	pinSkills(meta, skills)
-	pinMessageChoice(ctx, meta)
 	type answer struct{ agent, tag, picked string }
 	var who []answer
 	if agent == Open {
-		// Only agents the clients it reaches the thread through may route
-		// to are asked, and those the poster may read; each that joins is
-		// held to them, not Open.
+		// The message lands (land): only agents the clients it reaches the
+		// thread through may route to answer, that the poster may read, and
+		// among the thread's selected agents when it names any. Each is held
+		// to them, not Open.
 		keep := func(a string) bool {
 			return (len(among) == 0 || slices.Contains(among, a)) && (sees == nil || sees(a)) && p.mayRoute(tenant, th, via, a) == nil
 		}
-		joined, err := p.join(ctx, tenant, p.Projects.Tree(tenant), th.Project, pickText(m.Text, skills), keep)
+		landed, err := p.land(ctx, tenant, th.Project, pickText(m.Text, skills), keep)
 		if err != nil {
 			return nil, err
 		}
-		for _, d := range joined {
-			who = append(who, answer{agent: d.Agent, tag: joinedTagID(tagID, d.Agent), picked: joinedReason(d)})
+		for _, d := range landed {
+			tag := tagID
+			if d.Picked != "" {
+				tag = joinedTagID(tagID, d.Agent)
+			}
+			who = append(who, answer{agent: d.Agent, tag: tag, picked: d.Picked})
 		}
 	} else {
 		if err := p.mayRoute(tenant, th, via, agent); err != nil {
@@ -1254,9 +1376,18 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 		who = []answer{{agent: agent, tag: tagID}}
 	}
 	cfg := p.Settings(tenant)
-	body := m.Text
-	if cfg.History == HistoryRecent && th.Session == nil {
-		body = threads.Ask(p.roomBefore(tenant, th, m), cfg.HistoryLimit, p.shower(tenant), threads.Asker{Person: m.By, Name: m.Name}, m.Text)
+	// A session's agent carries its own transcript. Another agent answering
+	// in the session (the one a message mentions, a search match standing in
+	// for the entry agent) has none there, so it is sent the conversation up
+	// to the message, as an agent in a room is.
+	room := sync.OnceValue(func() string {
+		return threads.Ask(p.roomBefore(tenant, th, m), cfg.HistoryLimit, p.shower(tenant), threads.Asker{Person: m.By, Name: m.Name}, m.Text)
+	})
+	bodyFor := func(agent string) string {
+		if cfg.History == HistoryRecent && (th.Session == nil || th.Session.Agent != agent) {
+			return room()
+		}
+		return m.Text
 	}
 	var out []runs.Run
 	var firstErr error
@@ -1265,15 +1396,38 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 			out = append(out, existing)
 			continue
 		}
+		a.picked = cmp.Or(a.picked, pickedOf(ctx))
+		body := bodyFor(a.agent)
+		text := body
+		if hints := p.entryHintsFor(ctx, tenant, th.Project, a.agent, m.Text, sees); hints != "" {
+			text = hints + "\n\n" + body
+		}
 		mt := meta
 		if a.picked != "" {
 			mt = maps.Clone(meta)
 			mt[runs.MetaPicked] = a.picked
 		}
+		if asked := mentionedOf(ctx); len(asked) > 0 && a.agent == p.cfg.EntryAgent {
+			mt = maps.Clone(mt)
+			mt[metaMentioned] = strings.Join(asked, ",")
+		}
+		if surfaced {
+			mt = maps.Clone(mt)
+			mt[runs.MetaClient] = surface.client
+			if surface.slackChannel != "" {
+				mt[wire.MetaSlackChannel] = surface.slackChannel
+			}
+		} else if via != "" {
+			// A client's credential posted it for a person: the run is that
+			// client's, so its budget counts it and its calls are held to
+			// the agents the client may reach.
+			mt = maps.Clone(mt)
+			mt[runs.MetaClient] = via
+		}
 		run, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{
-			ID: a.tag, Tenant: tenant, Agent: a.agent, Origin: runs.OriginAPI,
+			ID: a.tag, Tenant: tenant, Agent: a.agent, Origin: runs.OriginAPI, Channel: surface.channel,
 			Attachments: m.Attachments, Actor: actor, Context: mt,
-			Text: p.turnContext(tenant, th.Project, th.Channel, a.agent, actor.User, body, mt),
+			Text: p.turnContext(tenant, th.Project, th.Channel, a.agent, actor.User, text, mt),
 		}))
 		if err != nil {
 			firstErr = cmp.Or(firstErr, err)

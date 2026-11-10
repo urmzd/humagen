@@ -40,7 +40,7 @@ and evidence when implementing a requirement.
 - **The ledger decides whether a run is over.** Events report attempts. Do not infer an ending from silence.
 - **Bound every query.** A window, a row cap and a bucket cap, enforced on the server.
 - **Evals are deterministic.** A check is a pure function of the output. Do not add a model as a judge without saying so in the suite.
-- **One title per screen, on the page.** There is no top bar. Every page uses `Page` from `apps/web/src/ui.tsx`. What is running shows in the sidebar's Conversations, and a conversation holds the history of every run in it.
+- **A page is headed by its tabs, or else by one title.** Every page uses `Page` from `apps/web/src/ui.tsx`, which does this: a page with tabs (its own, or a hub's) shows the tab row as its header, with no visible title and no lede (the title stays for assistive technology); a page without tabs shows one title. Page actions sit at the right of the header. Do not add explanatory paragraphs to pages; an empty state is a title and one action. Settings (yours, and the workspace's) open from the account row, and Connections is a section of your settings at `/settings/connections`.
 - **Every place has an address.** Pages, tabs and selections are paths in `apps/web/src/route.ts`. A new page or tab adds its route there, with a test.
 - **An agent is its initials in its color, in a thin ring.** Use `AgentMark` (or `AgentInitials` in shared packages): the ring tells an agent from a person, the orb on its corner shows it working. Controls under the composer are text, not boxes.
 - **The API has one contract.** A route, a handler's answer or a type's JSON
@@ -58,7 +58,7 @@ and evidence when implementing a requirement.
 ## Layout
 
 - `internal/legacy`: every name from before the rename to Humagen that is still read, the names kept for stored data, and the notes printed at start. `pkg/call`: the call primitive. `pkg/runs`: the run index and statistics. `pkg/auth`: principals, roles, OIDC. `pkg/authz`: the policy language. `pkg/auth/mockidp`: the loopback development provider.
-- `pkg/journal`: the event log, queries and traces. `pkg/alerts`: rules and alerts. `pkg/knowledge`: sources and search. `pkg/catalog`: what exists in connected systems, metadata only, searched hybrid (RFC 0005); `pkg/catalog/bigquery` its first connector kind; `internal/platform/catalog.go` crawls, publishing and the `catalog_search` and `catalog_query` tools.
+- `pkg/journal`: the event log, queries and traces. `pkg/alerts`: rules and alerts. `pkg/knowledge`: sources and search. `pkg/corpora`: corpora, the named bodies of knowledge that hold sources and catalog connectors. `pkg/graph`: the workspace knowledge graph, one slice per corpus. `pkg/catalog`: what exists in connected systems, metadata only, searched hybrid (RFC 0005); `pkg/catalog/bigquery` its first connector kind; `internal/platform/catalog.go` crawls, publishing and the `catalog_search` and `catalog_query` tools.
 - `pkg/memory`: what an agent carries between conversations, as notes over `pkg/drive`. `pkg/drive`: versioned file trees (manifests on `pkg/state`, content by hash in `pkg/blob`), installed into and diffed from a run's files. `internal/platform/hooks.go`: housekeeping runs.
 - `pkg/clients`: the Slack apps and GitHub installations a workspace answers through. `internal/platform/connectors.go`: one surface per scheme, fanning in and out to them.
 - `pkg/evals`: suites and runs, scored by saige. `pkg/signals`: one run's signals, folded from its events and ratings. `pkg/join`: whether each agent takes a message that names none (the dynamic router). `pkg/prefs`: a person's own settings. `pkg/marks`: what a person marked on conversations (archived for them alone, when last read, dismissed tips).
@@ -101,6 +101,22 @@ and evidence when implementing a requirement.
 - Money is an `int64` of micro-USD. No floats.
 - Tests run with `-race`.
 - No em dashes in docs or comments.
+
+## Console patterns
+
+New console pages use these and never hand-roll them:
+
+- **Cards are `ItemCard`** (`apps/web/src/cards.tsx`), in the `itemGrid` grid. The whole card is its link; there is no Open button. Slots: a leading mark, the title, one status at the top right (a Pill or a dot, never empty), a one-line description, a facts row, and a ⋯ menu.
+- **References are `Reference`** (`apps/web/src/cards.tsx`): an origin, a source an agent pulled in, an item or backlink, a knowledge source, a search hit, a child session. A leading mark, a label, an optional count, and a link when it has a target.
+- **Status is a `Pill` or a dot.** Pills are for state only, never for references.
+- **Menus use the shared rows**: `MoreMenu`, or `menuRow` and `MenuSeparator` from `apps/web/src/ui.tsx` inside a `Popover`. Plain rows, an optional leading icon, destructive rows last after a separator.
+- **The composer is `Composer`** (`apps/web/src/Composer.tsx`).
+- **A page's header is `Page`** (`apps/web/src/ui.tsx`): one title, or else its tabs, never both and never a line of explanation under either. A list page is titled as the sidebar names it.
+- **Tabs are one strip**: `Tabs` for a page's own tabs (passed to `Page` as `tabs`) and `WorkspaceTabs` for a hub's. Both draw `tabStrip` and `tabItem` from `apps/web/src/ui.tsx` at the top of the page's column, on a rule as wide as the column, with the open tab underlined in the accent. A page headed by its tabs puts its actions at the right of the tab row.
+- **Loading is `SkeletonRows`** for a list's first read, and `LoadMore` (`apps/web/src/ui.tsx`) for the next page of a list already on view. No bare "Loading" text and no spinners in a page.
+- **Relative times come from `apps/web/src/format.ts`**: `age` (short, "1d") and `ago` (words, "yesterday"), which count the same way, and `daysAgo` for a heading such as Yesterday. Do not round a time any other way.
+- **Event streams open through `openStream`** (`apps/web/src/stream.ts`), never `new EventSource`: it gives the connection back while the tab is hidden and keeps every tab's streams within a shared limit, so streams cannot use up the browser's connections to the server. The one exception is `liveSource`, a stream that ends with its answer.
+- **The way back to the end of a growing list is `LatestButton` with `useLatest`** (`packages/web/src/Latest.tsx`), as the thread and the Activity panel use it.
 
 ## Shared presentation
 

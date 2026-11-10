@@ -352,6 +352,11 @@ func Parse(b []byte) (parsed, error) {
 			if err := decodeSpec(h.Spec, &out.System.Spec); err != nil {
 				return out, fmt.Errorf("%s: spec: %w", where, err)
 			}
+			if len(out.System.Spec.Execution.RetiredBuiltin) > 0 {
+				out.System.Spec.Execution.RetiredBuiltin = nil
+				out.Old = true
+				out.Notes = append(out.Notes, where+": execution.builtin is no longer read: the platform's agents carry their own model chain, and an administrator enables providers in Settings, under Model providers")
+			}
 		case KindPlatform:
 			p := Platform{Metadata: h.Metadata}
 			if err := decodeSpec(h.Spec, &p.Spec); err != nil {
@@ -362,6 +367,7 @@ func Parse(b []byte) (parsed, error) {
 				return out, fmt.Errorf("%s: spec: %w", where, err)
 			}
 			notes = append(notes, p.Spec.adoptAutoDefaults()...)
+			notes = append(notes, p.Spec.unreadAgentFields()...)
 			for _, n := range notes {
 				out.Old = true
 				out.Notes = append(out.Notes, where+": "+n)

@@ -54,8 +54,9 @@ surface (console, Slack, GitHub, cron)
   catalog rendering, byte stable across replay. A sensitive body (human text,
   private host data) reaches the model but not egress logs or webhooks unless
   a subscriber opts in.
-- **Who answers.** Humagen picks agents itself, by name or through the
-  dynamic router (`pkg/join`). fiber's channel membership and dispatch
+- **Who answers.** Humagen picks agents itself: by name, through the entry
+  agent that owns each root session naming nobody (`internal/platform/entry.go`),
+  or through the dynamic router (`pkg/join`). fiber's channel membership and dispatch
   (`orchagent/flow/membership`, `orchagent/flow/dispatch`) are built but not wired in.
 
 ## One primitive: the call
@@ -80,8 +81,8 @@ origin, its caller and how it was called.
 
 | Lifetime | How it is started | If the caller fails or is stopped | When the caller answers first |
 |----------|-------------------|-----------------------------------|-------------------------------|
-| Attached | `call_agent` in subagent mode | It is stopped, and so is all that is attached to it | The caller is held open until it ends |
-| Delegated | `call_agent` in delegate mode, legacy `delegate_task`, or a low-level handoff call | Nothing. It carries on | Nothing. The caller is done |
+| Attached | An `agent` call, which waits | It is stopped, and so is all that is attached to it | The caller is held open until it ends |
+| Delegated | An `agent` call with `background: true`, or a low-level delegate or handoff call | Nothing. It carries on | Nothing. The caller is done |
 
 What a delegated run attaches dies with it, not with whoever delegated to it.
 A run stopped this way is `stopped`, not `failed`, and says why.
@@ -142,8 +143,9 @@ topic (`agent:<name>:<runID>`). The caller holds a reference and a result, never
 the child's work. Each branch compacts alone, and a tree can spread across
 nodes.
 
-Humagen exposes one `call_agent` tool for allowed targets. Its input combines
-ordered messages, examples and references, with a discriminated return contract.
+Humagen exposes one `agent` tool for allowed targets: `{agent, title, brief,
+background?}`. The calls endpoint takes ordered messages, examples and
+references, with a discriminated return contract.
 The harness resolves and freezes inputs, injects the return instruction, and
 validates results. See [Agent calls](agent-calls.md) for the contract and lifecycle.
 
@@ -153,7 +155,7 @@ validates results. See [Agent calls](agent-calls.md) for the contract and lifecy
 |---------|------|
 | Cost | A child leases budget from its caller and settles when it completes: the lease is released and what the child spent, priced by the runtime, becomes the caller's. Limits apply to the whole tree: every run counts against its root's project and client. See [Usage and spend](#usage-and-spend). |
 | Access | A child gets the intersection of its spec's access and its caller's grant. It is never wider. |
-| Consent | Both sides agree to a call. The caller's spec names the callee in its spawn allowlist, and the callee's call policy (`pkg/callpolicy`) admits the caller: `anyone`, only the agents it `listed`, or `none`. The policy also says which admitted calls wait for a person (`never`, `always`, or callers not `trusted` when `unlisted`), who approves them, and how long they wait. A refusal names the side that refused. The `call_agent` tool offers only the agents both sides agree to. |
+| Consent | Both sides agree to a call. The caller's spec names the callee in its spawn allowlist, and the callee's call policy (`pkg/callpolicy`) admits the caller: `anyone`, only the agents it `listed`, or `none`. The policy also says which admitted calls wait for a person (`never`, `always`, or callers not `trusted` when `unlisted`), who approves them, and how long they wait. A refusal names the side that refused. The `agent` tool offers only the agents both sides agree to. |
 | Shape | Depth and fan-out are capped. The zero limits allow no calls. |
 | Tracking | Root, parent, depth and trace context travel with the tag, so telemetry shows one tree. |
 | Stopping | Stopping a run stops everything attached beneath it, through the runtime. What it delegated carries on. |
@@ -195,7 +197,7 @@ of totals.
 An attached run (tagged, the caller waits) is rolled up into its caller: once
 it has ended and the ledger records it, the Delegator calls
 `runtime.ReportChildUsage`, and the caller's `usage.children` and `usage.total`
-include it, once. A delegated run (`delegate_task`) is not rolled up: the turn
+include it, once. A delegated run (a background `agent` call) is not rolled up: the turn
 that handed it over has moved on, so there is no turn to report it to. Its
 spend is the same request's work, so it counts against the same budgets: every
 run in a tree counts against its root's project and client, its own agent, and
@@ -211,7 +213,7 @@ the tree, attached and delegated alike.
 | A run with a lease spends | Its `spent` plus what it has handed to calls still working (`granted`), against its `lease` | Stopped through the runtime once the two reach the lease |
 | A called run ends | Its lease and its spend | The caller's `granted` releases the lease and its `spent` gains what the child spent. If the caller has already settled, the spend climbs on to the nearest ancestor still open, or the root |
 
-An agent's own calls (tagging, `delegate_task`) lease from a metered caller
+An agent's own calls, waited on or in the background, lease from a metered caller
 without naming an amount: each is granted half of what the caller has left.
 What is left is read from the calls already counted, and the model call that
 asked may not be counted yet, so the other half holds room for it; everything
@@ -350,8 +352,9 @@ new attached calls (`ErrBusy`), never hang.
 ### Calls held for a person
 
 A call the callee's policy holds for a person is decided by `callApproval` in
-`internal/platform/call_policy.go`. The `call_agent` tool is an
-`native.Approving` tool (`orchagent/flow/turn/native`) built on it, and fiber's
+`internal/platform/call_policy.go`. The `agent` tool declares it as its
+per-call approval, the wrapper every run tool passes through is a
+`native.Approving` tool (`orchagent/flow/turn/native`), and fiber's
 host call tool wrapper forwards `Approving`, so the runtime parks the caller on
 an approval addressed to the policy's approvers (`role:manager` and
 `role:admin` when it names nobody, so a held call is never open to the whole

@@ -3,8 +3,10 @@
  * when one breaks the layout checks in checks.ts. SCREENS_SUITE=legacy retains
  * the historical screen/showcase fixtures for their older interfaces.
  *
- * It starts humagen on a free loopback port with the development sign-in, the
- * seeded agents on the offline provider and state in memory, adds a little
+ * It starts humagen on a free loopback port with the development sign-in, a
+ * local OpenAI-compatible model fixture (there is no offline model), declared
+ * as screens-native and as anthropic, which the platform's agents name first,
+ * the example agents on it and state in memory, adds a little
  * more through the API (announcements, a failed run whose alert waits in the
  * inbox, a schedule), and serves the built console from apps/web/dist. Run it
  * with `make screens`, which builds both first.
@@ -126,7 +128,7 @@ const more = (page: Page) =>
 
 /** The chat bar's textarea. */
 const bar = (page: Page) => page.locator("form[aria-label='Message'] textarea");
-const plus = (page: Page) => page.getByRole("button", { name: "Add files, agents or a project" });
+const plus = (page: Page) => page.getByRole("button", { name: defaultCopy.chat.plus });
 
 /** Open an installed-app form without sending credentials to an external service. */
 async function connectSystem(page: Page, surface: "slack" | "github" = "slack"): Promise<void> {
@@ -466,7 +468,7 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
           node.scrollTop = 0;
           node.dispatchEvent(new Event("scroll"));
         });
-        await page.getByRole("button", { name: "Jump to latest", exact: true }).waitFor();
+        await page.getByRole("button", { name: /^Jump to latest/ }).waitFor();
       },
     },
     {
@@ -804,25 +806,14 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       },
     },
     {
-      name: "chat-plus-project",
-      path: "/",
-      act: async (page) => {
-        await plus(page).click();
-        const menu = page.getByRole("dialog", { name: "Add to this conversation" });
-        await menu.getByRole("button", { name: /^Projects\b/ }).click();
-        await menu.getByRole("button", { name: /^Launch(?:\s+Team)?$/ }).click();
-        await menu.getByRole("radio", { name: "#deals" }).click();
-      },
-    },
-    {
       name: "chat-conversation-plus",
       path: `/conversations/${ids.privateChat}`,
       act: async (page) => {
         await plus(page).click();
-        await page
-          .getByText("The project can't change once an agent has answered here.")
-          .first()
-          .waitFor();
+        const menu = page.getByRole("dialog", { name: defaultCopy.chat.menu, exact: true });
+        await menu.getByRole("button", { name: /^Agents\b/ }).waitFor();
+        // The composer picks no project: a session moves from its menu.
+        assert.equal(await menu.getByRole("button", { name: /^Projects\b/ }).count(), 0);
       },
     },
     {
@@ -879,58 +870,11 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       act: async (page) => {
         await plus(page).click();
         const menu = page.getByRole("dialog", { name: defaultCopy.chat.menu, exact: true });
-        for (const name of [/^Agents\b/, /^Projects\b/, /^Skills\b/])
+        for (const name of [/^Agents\b/, /^Skills\b/])
           await menu.getByRole("button", { name }).waitFor();
+        assert.equal(await menu.getByRole("button", { name: /^Projects\b/ }).count(), 0);
         assert.equal(await menu.getByRole("radio").count(), 0);
         assert.equal(await menu.getByText("#general", { exact: true }).count(), 0);
-      },
-    },
-    {
-      name: "composer-menu-projects",
-      path: "/",
-      act: async (page) => {
-        await plus(page).click();
-        const menu = page.getByRole("dialog", { name: defaultCopy.chat.menu, exact: true });
-        await menu.getByRole("button", { name: /^Projects\b/ }).click();
-        await menu.getByRole("button", { name: "Personal", exact: true }).waitFor();
-        assert.equal(await menu.getByText("#general", { exact: true }).count(), 0);
-      },
-    },
-    {
-      name: "composer-menu-channels",
-      path: "/?project=Launch&channel=deals",
-      act: async (page) => {
-        await plus(page).click();
-        const menu = page.getByRole("dialog", { name: defaultCopy.chat.menu, exact: true });
-        await menu.getByRole("button", { name: /^Projects\b/ }).click();
-        await menu.getByRole("button", { name: /^Launch(?:\s+Team)?$/ }).click();
-        const group = menu.getByRole("radiogroup", { name: "Channels in Launch", exact: true });
-        const general = group.getByRole("radio", { name: "#general", exact: true });
-        await general.waitFor();
-        await group.getByRole("radio", { name: "#deals", exact: true }).waitFor();
-        assert.equal(
-          await group
-            .getByRole("radio", { name: "#deals", exact: true })
-            .getAttribute("aria-checked"),
-          "true",
-          "Browsing channels must preserve the selected destination",
-        );
-        const geometry = await general.evaluate((element) => ({
-          width: element.getBoundingClientRect().width,
-          height: element.getBoundingClientRect().height,
-          decoration: getComputedStyle(element).textDecorationLine,
-        }));
-        const panel = await menu.boundingBox();
-        assert.ok(
-          panel && geometry.width >= panel.width * 0.8,
-          "Channel choices must use full-width rows",
-        );
-        assert.ok(geometry.height >= 44, "Channel choices must keep a comfortable target");
-        assert.equal(
-          geometry.decoration,
-          "none",
-          "The selected channel uses a check, not an underlined loose link",
-        );
       },
     },
     ...[false, true].map(
@@ -1039,29 +983,34 @@ function screens(ids: Ids, call: Call): Screen[] {
     ...chats(ids, call),
     { name: "projects", path: "/projects" },
     {
-      name: "project-template",
+      name: "project-new",
       path: "/projects",
       act: async (page) => {
         await page.getByRole("button", { name: "New Project", exact: true }).click();
-        await page.getByLabel("Start From", { exact: true }).selectOption("initiative");
+        await page.getByRole("textbox", { name: "Name", exact: true }).fill("Q4 launch");
       },
     },
-    { name: "project-initiative", path: "/projects/Strategy/overview" },
-    { name: "project-fork-ready", path: "/projects/Launch%20Copy/overview" },
+    { name: "project-initiative", path: "/projects/Strategy" },
+    { name: "project-fork-ready", path: "/projects/Launch%20Copy" },
+    // A project is one page: its old tabs open it too, so each is captured once.
+    { name: "project", path: "/projects/Launch" },
     ...[
-      "inbox",
-      "overview",
-      "context",
-      "agents",
-      "channels",
-      "schedules",
-      "people",
-      "limits",
-      "history",
-    ].map((tab) => ({
-      name: `project-${tab}`,
-      path: tab === "inbox" ? "/projects/Launch" : `/projects/Launch/${tab}`,
-    })),
+      ["project-instructions", /^(Add|Edit) Instructions$/, "Instructions"],
+      ["project-memory", /^View Memory$/, "Memory"],
+      ["project-access", /^Change Access$/, "Who can see this project"],
+    ].map(
+      ([name, action, sheet]): Screen => ({
+        name: name as string,
+        path: "/projects/Launch",
+        act: async (page) => {
+          await page
+            .getByRole("complementary", { name: "Project settings" })
+            .getByRole("button", { name: action as RegExp })
+            .click();
+          await page.getByRole("dialog", { name: sheet as string }).waitFor();
+        },
+      }),
+    ),
     { name: "project-more", path: "/projects/Launch", act: more },
     { name: "schedule-more", path: `/schedules/${ids.schedule}`, act: more },
     {
@@ -1073,18 +1022,6 @@ function screens(ids: Ids, call: Call): Screen[] {
       },
     },
     { name: "workspace", path: "/projects/~" },
-    { name: "workspace-overview", path: "/projects/~/overview" },
-    { name: "workspace-context", path: "/projects/~/context" },
-    {
-      name: "project-context-preview",
-      path: "/projects/Launch/context",
-      act: async (page) => {
-        await page.getByRole("textbox", { name: "Preview agent" }).fill("lead");
-        await page.getByRole("textbox", { name: "Preview channel" }).fill("general");
-        await page.getByRole("button", { name: "Preview Turn" }).click();
-        await page.getByRole("heading", { name: "Skill names" }).waitFor();
-      },
-    },
     { name: "inbox", path: "/inbox" },
     ...[false, true].map(
       (expanded): Screen => ({
@@ -1245,8 +1182,9 @@ function screens(ids: Ids, call: Call): Screen[] {
       name: "humagen-builtins",
       path: "/agents",
       act: async (page) => {
-        await page.getByRole("searchbox", { name: "Find an agent" }).fill("humagen-");
-        for (const name of ["humagen-analyst", "humagen-writer", "humagen-builder"])
+        await page.getByRole("searchbox", { name: "Find an agent" }).fill("humagen");
+        // The entry agent, humagen, builds agents: the builder is folded into it.
+        for (const name of ["humagen-analyst", "humagen-writer", "humagen"])
           await page.getByText(name, { exact: true }).first().waitFor();
       },
     },
@@ -1362,7 +1300,7 @@ function screens(ids: Ids, call: Call): Screen[] {
       "profile",
       "appearance",
       "workspace",
-      "routing",
+      "providers",
       "models",
       "limits",
       "connections",
@@ -1455,6 +1393,14 @@ spec:
     - name: screens-native
       kind: openai
       openai: {base_url: "${model.base}", key: {ref: env:HUMAGEN_SCREENS_MODEL_KEY}}
+    # The platform's agents name anthropic first; here it is the same fixture.
+    - name: anthropic
+      kind: openai
+      openai: {base_url: "${model.base}", key: {ref: env:HUMAGEN_SCREENS_MODEL_KEY}}
+    # Nothing answers here, so a run on it fails: what needs a person on Home.
+    - name: screens-broken
+      kind: openai
+      openai: {base_url: "http://127.0.0.1:9/v1", key: {ref: env:HUMAGEN_SCREENS_MODEL_KEY}}
 `,
   );
   const env: NodeJS.ProcessEnv = {
@@ -1477,8 +1423,6 @@ spec:
       "-storage=memory",
       `-addr=127.0.0.1:${port}`,
       `-web=${web}`,
-      "-builtin-provider=offline",
-      "-builtin-model=offline",
       // The fixture's file tools run on this host, as they did before the
       // sandbox; CI has Docker but not gVisor.
       "-sandbox=unisolated",
@@ -1496,7 +1440,8 @@ spec:
     if (proc.exitCode !== null) throw new Error(`humagen exited with ${proc.exitCode}:\n${log}`);
     try {
       const r = await fetch(`${base}/api/me`);
-      if (r.ok)
+      if (r.ok) {
+        await seedModels(api(base));
         return {
           base,
           proc,
@@ -1506,6 +1451,7 @@ spec:
             await email.close();
           },
         };
+      }
     } catch {
       // Not listening yet.
     }
@@ -1513,6 +1459,35 @@ spec:
   }
   proc.kill();
   throw new Error(`humagen did not start:\n${log}`);
+}
+
+/**
+ * The agents every screen expects, on the local model fixture: the example lead and
+ * helper, and the lead answering the workspace's untagged messages. The platform's own
+ * agents exist already, on the chain they ship with, which anthropic answers here.
+ */
+async function seedModels(call: Call): Promise<void> {
+  const fixture = { provider: "screens-native", model: "screens-native" };
+  for (const a of [
+    {
+      name: "helper",
+      description: "Does one piece of work for the lead.",
+      system_prompt: "You do one task well.",
+    },
+    {
+      name: "lead",
+      description: "Takes a request and may call the helper.",
+      system_prompt: "You coordinate work.",
+      access: { spawn: ["helper"] },
+    },
+  ])
+    await call("POST", "/api/agents", { ...a, ...fixture });
+  const root = await call<{ version: number; enable: string[] }>("GET", "/api/projects/~/agents");
+  await call("PUT", "/api/projects/~/agents", {
+    version: root.version,
+    enable: root.enable,
+    default: "lead",
+  });
 }
 
 /** One call to the API, failing loudly: a seed that did not land would make every screen lie. */
@@ -1736,7 +1711,7 @@ async function seedChats(
       text: "@helper what would you check first?",
     }),
   );
-  // This goes through native retained-document retrieval and the offline model.
+  // This goes through native retained-document retrieval and the local model fixture.
   // The capture is refused unless the API returns durable retrieval evidence.
   const requestedScreens = process.env.SCREENS_ONLY?.split(",");
   if (
@@ -2259,7 +2234,7 @@ async function main(): Promise<void> {
         name: a.name,
         description: a.description,
         model: "unavailable",
-        provider: "anthropic",
+        provider: "screens-broken",
         system_prompt: a.description,
       });
     }
@@ -2268,8 +2243,8 @@ async function main(): Promise<void> {
       await call("POST", "/api/agents", {
         name: `z-color-${i}`,
         description: "Color reservation example.",
-        model: "offline",
-        provider: "offline",
+        model: "screens-native",
+        provider: "screens-native",
         system_prompt: "Help.",
       });
     }
