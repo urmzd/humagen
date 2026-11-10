@@ -60,7 +60,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-028 | Share and People & Access are one panel | Implemented: the Share drawer is People & Access; room tests pass |
 | DES-029 | A turn shows a status only when it adds information | Implemented; checked in the browser |
 | DES-030 | One AI disclaimer, centered under the prompt bar | Implemented in `Composer`; checked in the browser |
-| DES-031 | A message names no agent under it; a router's pick is a checkpoint | Implemented: `Checkpoint` in Chat and Room; checked in the browser for a direct answer |
+| DES-031 | A message names no agent under it; a router's pick is a checkpoint | Implemented: `Checkpoint` in Chat and Room for a run the dynamic router joined. In a root session a message gets one answer, and why it came from where it did (a mentioned agent, a search match) is in the answer's activity, never a line of the conversation (`traceEvents` in `responseSource.ts`, `session-answers.dom.test.tsx`, `message-refs.dom.test.tsx`); not rechecked in the browser since |
 | DES-032 | The conversation header shows which agents took part, not a count | Implemented: `Involved` in `ConversationShell.tsx`; `ui.test.tsx` passes; checked in the browser |
 | DES-033 | A turn shows its thinking and steps inline, where they happened, with what each was given and returned | Implemented in `WorkSteps.tsx` and render-web `StepIO`; web and core tests pass; checked live |
 | DES-034 | A finished turn says how long it worked | Implemented: `turn.completed` carries `durationMs`, from the run's events or its record; adapter and core tests pass |
@@ -88,7 +88,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-054 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row says its project, its age or an unread dot, and whether it waits on a person, runs or failed | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
 | DES-055 | A sidebar row previews itself on hover or a long press, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview`, `conversation-wave-preview`) at 390x844 and 1280x800 |
 | DES-056 | A one-time tip teaches search, dismissed once per person | Evidence: `sidebar-search` checks the replacement Search navigation button; the tip card was removed |
-| DES-057 | Home files a new conversation from over its chat bar; a conversation's approval mode is a text control under the composer, Default or Approve for Me, within policy and audited | Implemented: `ApprovalModePicker.tsx`, `HomePage.tsx`, `pkg/threads/approval.go`, `internal/platform/approval_mode.go`, `PUT /api/threads/{id}/approval`; Go, DOM and screens pass (`home-project-above`, `composer-approval-mode`). The model and effort picker is not built: no agent spec allows an override yet |
+| DES-057 | Home files a new conversation from over its chat bar; a conversation's approval mode is a text control under the composer, Default or Approve for Me, within policy and audited | Implemented: `ApprovalModePicker.tsx`, `HomePage.tsx`, `pkg/threads/approval.go`, `internal/platform/approval_mode.go`, `PUT /api/threads/{id}/approval`; Go, DOM and screens pass (`home-project-above`, `composer-approval-mode`). Per-message model and effort were removed (DES-067) |
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
 | DES-050 | The Workspace is a pane of tabs beside the conversation: + opens items, tabs close, Expand and Show Two Tabs, tabs in the address, a full-screen sheet on a phone | Implemented: `Workspace.tsx`, `pane.ts`, `Inspector` `expanded`; web, pane and route tests pass; `workspace-pane-split`, `workspace-pane-expanded` and the other Workspace screens pass at 390x844 and 1280x800 |
 | DES-051 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
@@ -96,7 +96,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-064 | A connection maps its Slack members or GitHub logins to people, and a GitHub connection can be given its App's private key so the server mints installation tokens | Implemented: `ClientConnect.tsx`, `Clients.tsx`, `pkg/integrations/github/app_token.go`, `seeMapped` in `internal/platform/people.go`; web DOM, `pkg/integrations/github`, `pkg/people` and platform tests pass; live GitHub minting not yet tried |
 | DES-065 | Sources shows the data catalog a reader sees: connectors, tables and columns, never data, with Crawl, Publish and Withdraw for the owner | Implemented: `CatalogBrowser` in `SourceCatalog.tsx`, on `GET /api/catalog` and the connector routes; web DOM test passes; screens not yet captured |
 | DES-066 | A spend limit says what happens when it is reached, block or ask for approval with a grant cap, and the Directory names a person's projects | Implemented: `Billing.tsx` (`action`, `max_grant`, `max_grant_tokens`), `Directory.tsx` (`projects`, `projects_more`); web typecheck and tests pass; screens not yet captured |
-| DES-068 | The agent editor controls the models and reasoning efforts people may choose per message | Implemented: Model tab allowlists, versioned save, validation and read-only controls; six DOM regressions and console typecheck pass; native browser captures at 320, 390 and 1280 pixels |
+| DES-068 | The agent editor controls the models and reasoning efforts people may choose per message | Removed 2026-11-07: people pick agents, not models; see DES-067 |
 
 ### DES-001: Working integrations
 
@@ -315,25 +315,10 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 ### DES-067: Model and effort for one message
 
-- Under the composer, beside Approvals, a text control picks the model and
-  reasoning effort for the next message alone: "Agent's model · Default
-  effort" until something is picked. It offers what the agents the message
-  may start offer (`choices` on their spec): those the draft tags, else the
-  conversation's selected agents and default. With nothing offered it is
-  not shown.
-- Sending carries the pick with that message (`model`, `effort` on
-  `POST /api/threads` and `/api/threads/{id}/messages`) and resets the
-  control. A queued message keeps the pick it was sent with.
-- Each run applies only what its agent offers, after the run's preferred
-  model and before its model policy and ceilings. A ceiling that moves the
-  run off the picked model drops the effort. An effort the model does not
-  take fails the run before any model call.
-- Evidence: `model-picker.dom.test.tsx`, `modelPick.test.ts`,
-  `TestAMessagePicksItsRunsModelAndEffort`,
-  `TestAMessageChoiceAppliesWhereTheAgentOffersIt`,
-  `TestAgentChoicesRoundTrip`, and orchagent's `TestEffortReachesThePrimaryOnly`
-  and `TestAnthropicEffortIsSentOrRefused`. The agent editor does not yet edit
-  `choices`; a spec or the API sets them. Screens are not yet captured.
+Removed 2026-11-07: people pick agents, not models. Each
+agent's definition sets its model chain, and nothing overrides it per message.
+The picker, `model` and `effort` on posted messages, and `choices` on agent
+specs are gone.
 
 ## Review and implementation evidence
 
@@ -382,7 +367,7 @@ DES-004 have been implemented or live-validated.
 ### Built-in handles and Slack conversation navigation
 
 New agent choices and starter actions use `humagen-analyst`, `humagen-writer`
-and `humagen-builder`. The directory also provides `code-reviewer`,
+and `humagen`, the entry agent, which builds agents. The directory also provides `code-reviewer`,
 `security-reviewer`, `architect-reviewer` and `qa-reviewer` for reviews in an
 ordinary conversation. Compatibility registry definitions preserve saved
 revisions, old schedules and existing grants. The `humagen-builtins` screen
@@ -1751,23 +1736,7 @@ fixture. The Catalog and New Source captures pass at phone and desktop widths
 
 ### DES-068: Agent message choices
 
-The Model tab offers labeled lists of allowed models and reasoning efforts.
-Each model is `provider/model`, one per line. Each effort is a word, one per
-line. Empty lists offer no override; the default model remains available.
-Model providers are validated by the server, and the editor explains that an
-unsupported effort fails before a model call.
-
-Saving uses the existing versioned agent revision API. It trims and deduplicates
-lists, sorts them and lowercases efforts. Clearing both removes `choices`.
-Malformed models and efforts disable Save across tabs. Discard restores the
-saved values, a failed save preserves the draft, and built-in agents and readers
-without write permission cannot change the lists.
-
-Evidence: `agent-choices.dom.test.tsx` covers saving, validation, discard,
-clearing, errors and read-only access. Console typecheck passes. Lightweight
-native browser checks of the actual editor with fixture data pass at 320, 390
-and 1280 pixels, including overflow, invalid save and discard. Live provider
-compatibility was not exercised.
+Removed 2026-11-07 with DES-067: agents no longer offer per-message choices.
 
 ### November 7 console design review
 
@@ -1861,7 +1830,8 @@ an agent reply from a generic session update.
 
 ### DES-072: Builder sessions and evaluation health
 
-New Agent opens a session with `humagen-builder`. An existing agent's Manage
+New Agent opens a session with `humagen`, the entry agent, which took over
+from `humagen-builder`. An existing agent's Manage
 with builder action resumes its labeled management session, without sending
 another prompt merely to open it. Compatibility setup addresses provide the
 same explicit builder entry. The directory has one creation action, with no

@@ -1,21 +1,23 @@
 import {
   AnthropicIcon,
-  CircleIcon,
   GeminiIcon,
   GripIcon,
   OllamaIcon,
   PlusIcon,
+  ServerIcon,
   SparkleIcon,
   XIcon,
 } from "@humagen/render-web";
-import { useRef, useState } from "react";
-import type { ModelRef } from "./api.ts";
+import { useEffect, useRef, useState } from "react";
+import { api, type ModelRef } from "./api.ts";
 import {
+  type ConfiguredProvider,
+  catalogFor,
   chainProblem,
   conditions,
+  kindOf,
   MAX_FALLBACKS,
   modelName,
-  providerCatalog,
   providerName,
 } from "./models.ts";
 import { button, field, Menu, type Option } from "./ui.tsx";
@@ -37,45 +39,75 @@ export function ProviderMark({ provider, size = 16 }: { provider: string; size?:
   const cls = "shrink-0 text-aui-fg";
   if (provider === "anthropic") return <AnthropicIcon size={size} className={cls} />;
   if (provider === "google") return <GeminiIcon size={size} className={cls} />;
+  if (provider === "openai") return <ServerIcon size={size} className={cls} />;
   if (provider === "ollama") return <OllamaIcon size={size} className={cls} />;
-  if (provider === "offline") return <CircleIcon size={size} className="shrink-0 text-aui-muted" />;
   return <SparkleIcon size={size} className={cls} />;
 }
 
-/** Every model a row may pick, grouped by provider, plus "Another model" per provider. */
-function modelOptions(models: ModelRef[]): Option[] {
+let configuredRead: Promise<ConfiguredProvider[]> | null = null;
+
+/**
+ * The providers agents may run on, read once per page load: the ones the deployment declares
+ * and the ones an administrator set up. Null while loading.
+ */
+export function useConfiguredProviders(): ConfiguredProvider[] | null {
+  const [list, setList] = useState<ConfiguredProvider[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    configuredRead ??= api
+      .modelProviders()
+      .then((all) => all.filter((p) => p.declared).map((p) => ({ name: p.name, kind: p.kind })))
+      .catch(() => {
+        configuredRead = null;
+        return [];
+      });
+    configuredRead.then((c) => live && setList(c));
+    return () => {
+      live = false;
+    };
+  }, []);
+  return list;
+}
+
+/** Forget the providers read, so the next picker reads them again (after one is set up). */
+export function forgetConfiguredProviders() {
+  configuredRead = null;
+}
+
+/**
+ * Every model a row may pick, grouped by the providers set up, with "Another model" under
+ * each. A provider's kind decides its logo and the models suggested. A provider an agent
+ * names that is no longer set up still names itself, marked, but is never offered anew.
+ */
+function modelOptions(models: ModelRef[], configured: ConfiguredProvider[]): Option[] {
   const out: Option[] = [];
-  const known = new Set(providerCatalog.map((p) => p.id));
-  // A provider no longer offered, such as the offline test model, still names itself for an
-  // agent already on it, but is never offered to a new row.
-  const retired: Record<string, { name: string; models: Record<string, string> }> = {
-    offline: { name: "Offline test model", models: { offline: "Offline" } },
-  };
-  for (const p of providerCatalog) {
-    const mark = <ProviderMark provider={p.id} />;
-    for (const m of p.models)
-      out.push({ value: key(p.id, m.id), label: m.name, group: p.name, mark });
+  for (const c of configured) {
+    const kind = c.kind ?? catalogFor(c.name)?.id;
+    const cat = catalogFor(kind);
+    const group = cat && c.name === kind ? cat.name : c.name;
+    const mark = <ProviderMark provider={kind ?? c.name} />;
+    for (const m of cat?.models ?? [])
+      out.push({ value: key(c.name, m.id), label: m.name, group, mark });
     for (const m of models) {
-      if (m.provider === p.id && m.model.trim() && !p.models.some((x) => x.id === m.model))
-        out.push({ value: key(p.id, m.model), label: m.model, group: p.name, mark });
+      if (m.provider === c.name && m.model.trim() && !cat?.models.some((x) => x.id === m.model))
+        out.push({ value: key(c.name, m.model), label: m.model, group, mark });
     }
     out.push({
-      value: key(p.id, OTHER),
-      label: `Another ${p.name} model`,
-      group: p.name,
+      value: key(c.name, OTHER),
+      label: cat ? `Another ${group} model` : "Type a model id",
+      group,
       mark,
       hint: "Type its id",
     });
   }
   for (const m of models) {
-    if (known.has(m.provider)) continue;
-    const old = retired[m.provider];
+    if (configured.some((c) => c.name === m.provider) || !m.provider) continue;
     out.push({
       value: key(m.provider, m.model.trim() ? m.model : OTHER),
-      label: old?.models[m.model] ?? (m.model || m.provider),
-      group: old?.name ?? m.provider,
-      mark: <ProviderMark provider={m.provider} />,
-      hint: old ? "No longer offered; pick another model" : undefined,
+      label: m.model || m.provider,
+      group: m.provider,
+      mark: <ProviderMark provider={kindOf(m.provider) ?? m.provider} />,
+      hint: "Not set up; pick another model",
     });
   }
   return out.filter((o, i) => out.findIndex((x) => x.value === o.value) === i);
@@ -116,14 +148,17 @@ export function ModelChain({
     const next = on ? [...fallbackOn, c] : fallbackOn.filter((x) => x !== c);
     onChange(models, next);
   };
-  const options = modelOptions(models);
+  const configured = useConfiguredProviders();
+  const options = modelOptions(models, configured ?? []);
   const rows = useRef<(HTMLLIElement | null)[]>([]);
   const handles = useRef<(HTMLButtonElement | null)[]>([]);
   const dragging = useRef<number | null>(null);
   const [lifted, setLifted] = useState<number | null>(null);
   const [said, setSaid] = useState("");
   const nameOf = (m: ModelRef) =>
-    m.model.trim() ? modelName(m.provider, m.model) : providerName(m.provider);
+    m.model.trim()
+      ? modelName(kindOf(m.provider, configured ?? []) ?? m.provider, m.model)
+      : providerName(m.provider);
   const place = (from: number, to: number) => {
     const m = models[from];
     moveTo(from, to);
@@ -147,24 +182,35 @@ export function ModelChain({
   };
   const next = () => {
     const used = new Set(models.map((m) => key(m.provider, m.model)));
-    const first = models[0]?.provider ?? "anthropic";
-    const pool = [
-      ...(providerCatalog.find((p) => p.id === first)?.models ?? []).map((m) => ({
-        provider: first,
-        model: m.id,
-      })),
-      ...providerCatalog.flatMap((p) => p.models.map((m) => ({ provider: p.id, model: m.id }))),
-    ];
+    const set = configured ?? [];
+    const first = models[0]?.provider ?? set[0]?.name ?? "";
+    const suggested = (name: string) =>
+      (catalogFor(kindOf(name, set))?.models ?? []).map((m) => ({ provider: name, model: m.id }));
+    const pool = [...suggested(first), ...set.flatMap((c) => suggested(c.name))];
     return (
-      pool.find((m) => m.provider !== "offline" && !used.has(key(m.provider, m.model))) ?? {
-        provider: first,
+      pool.find((m) => !used.has(key(m.provider, m.model))) ?? {
+        provider: set.find((c) => c.name !== first)?.name ?? first,
         model: "",
       }
     );
   };
 
+  // A chain no enabled provider answers says what it needs, rather than fail at its first run.
+  const needs =
+    configured !== null &&
+    models.length > 0 &&
+    !models.some((m) => configured.some((c) => c.name === m.provider))
+      ? [...new Set(models.map((m) => m.provider).filter(Boolean))]
+      : [];
+
   return (
     <div className="@container flex min-w-0 flex-col gap-4">
+      {needs.length > 0 && (
+        <p className="text-aui-sm text-aui-muted">
+          Runs once an administrator enables {needs.join(", ").replace(/, ([^,]*)$/, " or $1")} in
+          Settings, under Model providers.
+        </p>
+      )}
       <p aria-live="polite" className="sr-only">
         {said}
       </p>
@@ -174,11 +220,11 @@ export function ModelChain({
       >
         {models.map((m, i) => {
           const role = i === 0 ? "Primary" : `Fallback ${i}`;
-          const listed = providerCatalog
-            .find((p) => p.id === m.provider)
-            ?.models.some((x) => x.id === m.model);
-          // An id field only for a model the catalog does not list under an offered provider.
-          const offered = providerCatalog.some((p) => p.id === m.provider);
+          const listed = catalogFor(kindOf(m.provider, configured ?? []))?.models.some(
+            (x) => x.id === m.model,
+          );
+          // An id field only for a model the catalog does not list under a provider set up.
+          const offered = (configured ?? []).some((c) => c.name === m.provider);
           const custom = offered && !listed;
           const value = m.model.trim() ? key(m.provider, m.model) : key(m.provider, OTHER);
           return (

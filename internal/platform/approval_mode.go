@@ -8,6 +8,7 @@ import (
 
 	"github.com/urmzd/orchagent/flow/event"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -90,12 +91,12 @@ func autoApprovable(q event.Question, alwaysAsk []string, forced bool, level ope
 	return true, ""
 }
 
-// autoApprove answers an approval a run parked on, when its conversation
-// approves for a person: as that person, through the path every answer
-// takes, so self-approval, the approvers the question names and the
-// runtime's own checks all hold. Whatever it may not approve stays in the
-// inbox for a person. Every approval it gives is audited, naming the person
-// who chose the mode.
+// autoApprove hands an approval a run parked on to the approval agent, when
+// its conversation is set to Run (approval_agent.go). The agent answers as
+// the person who chose Run, through the path every answer takes, so
+// self-approval, the approvers the question names and the runtime's own
+// checks all hold. Whatever it may not decide stays in the inbox for a
+// person, and every decision is audited.
 func (p *Platform) autoApprove(ctx context.Context, run runs.Run, q event.Question, m inbox.Message) {
 	if run.Thread == "" || m.ID == "" {
 		return
@@ -104,34 +105,26 @@ func (p *Platform) autoApprove(ctx context.Context, run runs.Run, q event.Questi
 	if err != nil || !th.Approval.Auto() {
 		return
 	}
-	var alwaysAsk []string
-	if rev, err := p.Catalog().Get(ctx, run.Tenant, run.Agent, 0); err == nil {
-		alwaysAsk = rev.Spec.Approvals
-	} else {
+	rev, err := p.Catalog().Get(ctx, run.Tenant, run.Agent, 0)
+	if err != nil {
 		// What the agent always asks about cannot be read: ask.
 		return
+	}
+	alwaysAsk := agentApprovals(rev.Spec.Approvals)
+	if q.Tool != nil && legacy.ToolName(q.Tool.Name) == ToolAgent && slices.Contains(alwaysAsk, tagTool+targetOf(q.Tool.Arguments)) {
+		// The agent holds its calls to this one agent itself.
+		alwaysAsk = append(alwaysAsk, q.Tool.Name)
 	}
 	forced := wire.Meta(run.Tag())[operations.MetaForceAsk] == "true"
 	level := operations.Never
 	if q.Tool != nil {
-		level = p.ActionDecision(run.Tenant, run.Project, run.Agent, runs.AskedBy(run), categoryOf(q.Tool.Name))
+		level = p.ActionDecision(run.Tenant, run.Project, run.Agent, runs.AskedBy(run), p.categoryOf(q.Tool.Name))
 	}
 	if ok, why := autoApprovable(q, alwaysAsk, forced, level); !ok {
 		p.log.Info("platform: an approval was left for a person", "tenant", run.Tenant, "run", run.ID, "question", q.ID, "why", why)
 		return
 	}
-	by := p.approvingFor(run.Tenant, *th.Approval)
-	_, first, err := p.answerFirst(ctx, by, m, QuestionAnswer{Action: ActApprove, Note: "Approved for " + p.NameOf(run.Tenant, th.Approval.By) + " by the conversation's approval mode"})
-	if err != nil || !first {
-		p.log.Info("platform: an approval was left for a person", "tenant", run.Tenant, "run", run.ID, "question", q.ID, "error", err)
-		return
-	}
-	if err := p.RecordAudit(by, audit.Change{
-		Action: "approval.auto", Resource: "run", ID: run.ID, Project: run.Project, Thread: run.Thread, Agent: run.Agent,
-		After: map[string]string{"tool": q.Tool.Name, "question": q.ID, "mode": threads.ApprovalAuto, "enabled_by": th.Approval.By},
-	}); err != nil {
-		p.log.Error("platform: an automatic approval could not be audited", "tenant", run.Tenant, "run", run.ID, "error", err)
-	}
+	p.startApproval(ctx, run, q, m, rev.Spec, p.approvingFor(run.Tenant, *th.Approval))
 }
 
 // approvingFor is the person an approval mode answers as: the roles they

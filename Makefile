@@ -51,20 +51,21 @@ start: build
 	pnpm install && pnpm --filter @humagen/console build
 	./bin/$(BIN) start
 
-# Local preview: no sign-in, loopback only, two example agents.
+# Local preview: no sign-in, loopback only, an example project. Agents need a
+# model provider: add one in Settings, or use `make dev-live`.
 dev: build
-	./bin/$(BIN) serve -auth=dev -seed -sandbox-runtime=runc -sandbox-insecure-development-runtime -builtin-provider offline -builtin-model offline
+	./bin/$(BIN) serve -auth=dev -seed -sandbox-runtime=runc -sandbox-insecure-development-runtime
 
 # Local preview on real models: Anthropic, then OpenAI, then Gemini, each
 # with its key from the shell (examples/dev/humagen.yaml). Use with `make web`.
 dev-live: build
-	./bin/$(BIN) serve -auth=dev -sandbox-runtime=runc -sandbox-insecure-development-runtime -f examples/dev/humagen.yaml -builtin-provider anthropic -builtin-model claude-haiku-5-5
+	./bin/$(BIN) serve -auth=dev -sandbox-runtime=runc -sandbox-insecure-development-runtime -f examples/dev/humagen.yaml
 
 # Local preview with sign-in: a development identity provider on loopback
 # (127.0.0.1:8081) and personas to pick from, no passwords. Use with `make web`
 # and open http://127.0.0.1:5173/auth/login.
 dev-signin: build
-	./bin/$(BIN) serve -auth=mock -seed -sandbox-runtime=runc -sandbox-insecure-development-runtime -public-url http://127.0.0.1:5173 -builtin-provider offline -builtin-model offline
+	./bin/$(BIN) serve -auth=mock -seed -sandbox-runtime=runc -sandbox-insecure-development-runtime -public-url http://127.0.0.1:5173
 
 # The web console, proxying /api and /auth to the server from `make dev`.
 web:

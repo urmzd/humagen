@@ -11,7 +11,7 @@ import (
 	"github.com/urmzd/orchagent/flow/event"
 	"github.com/urmzd/orchagent/flow/runtime"
 	"github.com/urmzd/orchagent/flow/turn"
-	"github.com/urmzd/orchagent/flow/turn/native"
+	saigetypes "github.com/urmzd/saige/agent/types"
 )
 
 func TestBuilderScorecardRequiresExplicitRegressionOverrideAndRejectsStaleCard(t *testing.T) {
@@ -21,7 +21,7 @@ func TestBuilderScorecardRequiresExplicitRegressionOverrideAndRejectsStaleCard(t
 		}
 		return turn.Result{Text: "evidence"}, nil
 	})
-	p, err := New(Config{Workspace: t.TempDir(), Runtime: engine, BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p, err := New(Config{Workspace: t.TempDir(), Runtime: engine, TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestBuilderScorecardRequiresExplicitRegressionOverrideAndRejectsStaleCard(t
 	suite := evals.Suite{Name: "evidence", Target: evals.Agent, Subject: "writer", Cases: []evals.Case{{ID: "1", Input: "question", Checks: []evals.Check{{Kind: evals.Contains, Value: "evidence"}}}}}
 	raw, _ := json.Marshal(suite)
 	write := p.builderWriteEvalTool(req)
-	if _, ok := write.(native.Approving); !ok {
+	if _, needed := declaredApproval(req, p.toolDeclaration(ToolWriteEval), saigetypes.ToolCallPart{}); !needed {
 		t.Fatal("suite save lost approval")
 	}
 	if _, err = write.Execute(t.Context(), map[string]any{"suite": string(raw)}); err != nil {
@@ -54,7 +54,7 @@ func TestBuilderScorecardRequiresExplicitRegressionOverrideAndRejectsStaleCard(t
 		t.Fatalf("missing measured regression: %+v", card)
 	}
 	apply := p.builderApplyChangeTool(req)
-	if _, ok := apply.(native.Approving); !ok {
+	if _, needed := declaredApproval(req, p.toolDeclaration(ToolApplyChange), saigetypes.ToolCallPart{}); !needed {
 		t.Fatal("apply lost approval")
 	}
 	args := map[string]any{"name": "writer", "change": card.Change.ID}

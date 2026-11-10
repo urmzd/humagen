@@ -23,7 +23,7 @@ func (p *Platform) RecordConnectionAuthFailure(ctx context.Context, tenant, pers
 		return fmt.Errorf("%w: connection provider is unavailable", alerts.ErrInvalid)
 	}
 	title := "Reconnect " + name
-	id, err := p.EnsureAlertSession(ctx, tenant, BuiltinBuilder, "", person, title)
+	id, err := p.EnsureAlertSession(ctx, tenant, p.cfg.EntryAgent, "", person, title)
 	if err != nil {
 		return err
 	}
@@ -36,7 +36,7 @@ func (p *Platform) RecordConnectionAuthFailure(ctx context.Context, tenant, pers
 	}
 	key := connectionAuthAlertKey(person, provider)
 	a, raised, err := p.Alerts.Raise(tenant, key, alerts.Alert{
-		Session: id, Project: th.Project, Agent: BuiltinBuilder, Kind: alerts.Kind("connection"),
+		Session: id, Project: th.Project, Agent: p.cfg.EntryAgent, Kind: alerts.Kind("connection"),
 		Title: title, Body: "Open Connections and reconnect this service to restore access.",
 		Priority: alerts.Normal, Severity: alerts.Warning, State: alerts.OpenState,
 		Action: "reconnect", ResolveWhen: "The connection has been authorized again.",
@@ -115,6 +115,8 @@ func connectionAlertName(provider string) (string, bool) {
 		return "Slack", true
 	case "drive":
 		return "Google Drive", true
+	case "onedrive":
+		return "OneDrive", true
 	case "notion":
 		return "Notion", true
 	case "linear":

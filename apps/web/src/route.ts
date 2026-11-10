@@ -36,6 +36,15 @@ export const AGENT_TABS: AgentTab[] = [
 export type SourceTab = "documents" | "search" | "variants" | "evals";
 export const SOURCE_TABS: SourceTab[] = ["documents", "search", "variants", "evals"];
 
+/**
+ * A corpus's tabs: the sources it holds (the default, at the corpus's own
+ * address), a search to try, with its words as `?q=`, its slice of the
+ * workspace graph, the types its ontology adds, and who may read it. A source
+ * opened from a corpus sits under it, at `/knowledge/{corpus}/sources/{source}`.
+ */
+export type CorpusTab = "sources" | "search" | "graph" | "types" | "access";
+export const CORPUS_TABS: CorpusTab[] = ["sources", "search", "graph", "types", "access"];
+
 /** Monitor: how runs are going (overview), the rules that watch them, and the health of what the deployment runs on. What a rule fires lands in the inbox. */
 export type MonitorTab = "overview" | "rules" | "health";
 export const MONITOR_TABS: MonitorTab[] = ["overview", "rules", "health"];
@@ -43,23 +52,6 @@ export const MONITOR_TABS: MonitorTab[] = ["overview", "rules", "health"];
 /** The Directory: who and what is in the workspace, for everyone in it. */
 export type DirectoryTab = "people" | "agents" | "projects";
 export const DIRECTORY_TABS: DirectoryTab[] = ["people", "agents", "projects"];
-
-/**
- * A project's tabs. The inbox is the default, so `/projects/{name}` opens what
- * is new there; an unknown tab falls back to it. More arrive with later phases
- * of docs/architecture/projects.md.
- */
-export type ProjectTab =
-  | "inbox"
-  | "overview"
-  | "context"
-  | "agents"
-  | "channels"
-  | "schedules"
-  | "people"
-  | "limits"
-  | "history";
-export const PROJECT_TABS: ProjectTab[] = ["context", "agents", "people", "limits"];
 
 /**
  * What a project is for, as the Projects page narrows to it with `?kind=`:
@@ -72,12 +64,16 @@ const KIND_SHAPE = /^[a-z][a-z0-9-]{0,31}$/;
 export const kindParam = (value: string | null | undefined): ProjectKindFilter | undefined =>
   value && KIND_SHAPE.test(value) ? value : undefined;
 
+/** How the Projects page orders its cards besides last activity, the default, which the address leaves out. */
+export type ProjectSort = "name" | "created";
+export const PROJECT_SORTS: ProjectSort[] = ["name", "created"];
+
 export type SettingsSection =
   | "notifications"
   | "profile"
   | "appearance"
   | "workspace"
-  | "routing"
+  | "providers"
   | "models"
   | "limits"
   | "connections"
@@ -89,7 +85,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   "profile",
   "appearance",
   "workspace",
-  "routing",
+  "providers",
   "models",
   "limits",
   "connections",
@@ -101,6 +97,10 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
 export type ConversationPanel =
   | "overview"
   | "activity"
+  /** One response's activity: every run behind it, flat and in time order. Needs `run`. */
+  | "response"
+  /** The session's Details: progress, agents, outputs, environment, and what it used. */
+  | "details"
   | "context"
   | "people"
   | "deliverables"
@@ -108,6 +108,8 @@ export type ConversationPanel =
 const CONVERSATION_PANELS: ConversationPanel[] = [
   "overview",
   "activity",
+  "response",
+  "details",
   "context",
   "people",
   "deliverables",
@@ -167,9 +169,25 @@ export type HistorySource = "all" | "chat" | "github" | "slack" | "scheduled" | 
 export type HistoryStatus = "needs" | "running" | "failed";
 export type CustomizeSection = "agents" | "skills" | "connections" | "tools";
 export type SessionStatus = "working" | "waiting" | "done" | "failed" | "stopped";
+/** Where a session started, as the Sessions list filters it. */
+export const SESSION_PLACES = ["slack", "github", "schedule", "console"] as const;
+export type SessionPlaceFilter = (typeof SESSION_PLACES)[number];
 export type Route =
   | { page: "not-found"; path: string }
-  | { page: "sessions"; status?: SessionStatus; agent?: string; project?: string; q?: string }
+  | {
+      page: "sessions";
+      status?: SessionStatus;
+      agent?: string;
+      project?: string;
+      q?: string;
+      place?: SessionPlaceFilter;
+      /** An item's address, such as `github://o/r/pull/5`: the sessions that worked on it. */
+      item?: string;
+    }
+  /** An item people pointed at (a PR, an issue, a Slack thread, a URL), by its address. */
+  | { page: "item"; address: string }
+  /** One message inside a session, focused: it and its direct children, under a breadcrumb back to the root. */
+  | { page: "message"; id: string }
   | {
       page: "alerts";
       tab?: "watching";
@@ -247,10 +265,19 @@ export type Route =
       fork?: string;
       bringBack?: string;
     } & ConversationView)
-  /** Every project, searched with `q` and narrowed to one kind. */
-  | { page: "projects"; q?: string; kind?: ProjectKindFilter }
-  /** One project at a tab, and in its inbox, at a message. The workspace itself is the project named "", written `~`. */
-  | { page: "project"; name: string; tab: ProjectTab; message?: string; fork?: boolean }
+  /** Every project, searched with `q`, narrowed to one kind and ordered by `sort`, last activity when absent. */
+  | { page: "projects"; q?: string; kind?: ProjectKindFilter; sort?: ProjectSort }
+  /**
+   * One project: a page of its own, with no tabs. The workspace itself is the
+   * project named "", written `~`. `fork` opens the Fork Project sheet over it.
+   */
+  | {
+      page: "project";
+      name: string;
+      fork?: boolean;
+      /** A tab an older link named. Projects have one page now, so it is ignored. */
+      tab?: string;
+    }
   /** One of a project's channels, with its shared threads. */
   | { page: "channel"; project: string; channel: string }
   | { page: "schedules"; name?: string }
@@ -258,7 +285,12 @@ export type Route =
   | { page: "monitor"; tab: MonitorTab }
   /** The inbox, at a message, at the message an alert raised, or narrowed to one kind. */
   | { page: "inbox"; message?: string; alert?: string; kind?: string; view?: NotificationView }
-  | { page: "context"; source?: string; tab?: SourceTab }
+  /** Agents › Knowledge: the corpora the reader may read. */
+  | { page: "knowledge" }
+  /** One corpus, at a tab. */
+  | { page: "corpus"; name: string; tab: CorpusTab; q?: string }
+  /** One knowledge source, under the corpus it was opened from when `corpus` is set. */
+  | { page: "context"; source?: string; tab?: SourceTab; corpus?: string }
   | { page: "agents"; state?: string }
   | { page: "agent"; name: string | null; tab: AgentTab }
   | { page: "artifacts"; artifact?: string }
@@ -287,6 +319,8 @@ const pick = <T extends string>(value: string | undefined, allowed: readonly T[]
 
 const PAGE_TITLES: Record<Page, string> = {
   "not-found": "Page not found",
+  message: "Message",
+  item: "Item",
   sessions: "Sessions",
   alerts: "Alerts",
   history: defaultCopy.history.title,
@@ -311,7 +345,9 @@ const PAGE_TITLES: Record<Page, string> = {
   automations: "Schedules",
   monitor: "Monitor",
   inbox: "Notifications",
-  context: "Context",
+  knowledge: "Knowledge",
+  corpus: "Knowledge",
+  context: "Knowledge",
   agents: "Agents",
   agent: "Agent",
   artifacts: "Artifacts",
@@ -352,6 +388,8 @@ export function documentTitle(r: Route, unread = 0, product = "Humagen"): string
   let place = pageTitle(r.page);
   if (r.page === "agent" && r.name) place = r.name;
   else if (r.page === "project") place = r.name === "" ? "Workspace" : r.name;
+  else if (r.page === "corpus") place = r.name;
+  else if (r.page === "context" && r.source) place = r.source;
   else if (r.page === "channel") place = `#${r.channel}`;
   return `${unread > 0 ? `(${unread}) ` : ""}${place} - ${product}`;
 }
@@ -363,10 +401,14 @@ export function href(r: Route): string {
       return r.path;
     case "sessions": {
       const q = new URLSearchParams();
-      for (const key of ["q", "status", "agent", "project"] as const)
+      for (const key of ["q", "status", "agent", "project", "place", "item"] as const)
         if (r[key]) q.set(key, r[key]);
       return `/sessions${q.size ? `?${q}` : ""}`;
     }
+    case "message":
+      return `/messages/${enc(r.id)}`;
+    case "item":
+      return `/items/${enc(r.address)}`;
     case "alerts": {
       const q = new URLSearchParams();
       for (const key of ["state", "priority", "source", "alert"] as const)
@@ -454,6 +496,8 @@ export function href(r: Route): string {
         workspace: "files",
         context: "sources",
         activity: "steps",
+        response: "activity",
+        details: "details",
         overview: "sessions",
         people: "people",
         deliverables: "files",
@@ -486,22 +530,20 @@ export function href(r: Route): string {
       if (r.expanded) q.set("full", "1");
       if (r.split) q.set("split", "1");
       if (r.slide) q.set("slide", String(r.slide));
-      return `/sessions/${enc(r.id)}${q.size ? `?${q}` : ""}`;
+      return `/messages/${enc(r.id)}${q.size ? `?${q}` : ""}`;
     }
     case "projects": {
       const q = new URLSearchParams();
       if (r.q) q.set("q", r.q);
       if (r.kind) q.set("kind", r.kind);
+      if (r.sort) q.set("sort", r.sort);
       const query = q.toString();
       return query ? `/projects?${query}` : "/projects";
     }
     case "project": {
-      if (r.fork) return `/projects/${enc(r.name || "~")}/fork`;
       // Names never hold "/", so nesting lives in the tree, never in the path.
       const base = `/projects/${r.name === "" ? "~" : enc(r.name)}`;
-      return PROJECT_TABS.includes(r.tab) && r.tab !== "context"
-        ? `${base}/${r.tab}`
-        : `${base}/context`;
+      return r.fork ? `${base}/fork` : base;
     }
     case "channel":
       return href({ page: "sessions", project: r.project });
@@ -518,11 +560,22 @@ export function href(r: Route): string {
     case "notifications":
     case "inbox":
       return href({ page: "alerts", alert: r.alert });
-    case "context":
-      if (!r.source) return "/connections";
-      return !r.tab || r.tab === "documents"
-        ? `/connections/sources/${enc(r.source)}`
-        : `/connections/sources/${enc(r.source)}/${r.tab}`;
+    case "knowledge":
+      return "/knowledge";
+    case "corpus":
+      if (r.tab === "search")
+        return `/knowledge/${enc(r.name)}/search${r.q ? `?q=${enc(r.q)}` : ""}`;
+      return r.tab === "sources"
+        ? `/knowledge/${enc(r.name)}`
+        : `/knowledge/${enc(r.name)}/${r.tab}`;
+    case "context": {
+      if (!r.source) return r.corpus ? `/knowledge/${enc(r.corpus)}` : "/knowledge";
+      const tab = !r.tab || r.tab === "documents" ? "" : `/${r.tab}`;
+      // A source opened from a corpus sits under it; one opened elsewhere keeps its own address.
+      return r.corpus
+        ? `/knowledge/${enc(r.corpus)}/sources/${enc(r.source)}${tab}`
+        : `/connections/sources/${enc(r.source)}${tab}`;
+    }
     case "agents":
       return r.state ? `/agents?state=${enc(r.state)}` : "/agents";
     case "agent": {
@@ -580,7 +633,7 @@ function legacy(q: URLSearchParams): Route | null {
       return { page: v };
     case "knowledge":
     case "context":
-      return { page: "context" };
+      return { page: "knowledge" };
     case "storage":
       return { page: "artifacts" };
     case "evals":
@@ -620,6 +673,9 @@ export function parse(pathname: string, search = ""): Route {
   ) as Route;
 }
 
+/** A run's id: `r` and 32 hex digits. */
+const RUN_ID = /^r[0-9a-f]{32}$/;
+
 function queryText(q: URLSearchParams, key: string, max: number): string | undefined {
   const value = q.get(key);
   // biome-ignore lint/suspicious/noControlCharactersInRegex: a NUL in a query value is refused on purpose
@@ -630,6 +686,14 @@ function read(pathname: string, search: string): Route {
   const q = new URLSearchParams(search);
   const parts = pathname.split("/").filter(Boolean).map(dec);
   const [head, a, b, c] = parts;
+  // Every message has one address, a session's root included: `/messages/<id>`.
+  // A run's id (`r` and 32 hex digits) opens that message on its own; any other
+  // id is a session's root. `/sessions/<id>` links from before still open it.
+  if (head === "messages") {
+    if (!a) return { page: "sessions" };
+    if (RUN_ID.test(a) && !b) return { page: "message", id: a };
+    return read(`/sessions/${parts.slice(1).map(enc).join("/")}`, search);
+  }
   switch (head) {
     case "sessions": {
       if (!a)
@@ -645,6 +709,8 @@ function read(pathname: string, search: string): Route {
           agent: queryText(q, "agent", 200),
           project: queryText(q, "project", 200),
           q: queryText(q, "q", 200),
+          place: oneOf(q.get("place"), SESSION_PLACES),
+          item: queryText(q, "item", 2048),
         };
       if (b) return read(`/conversations/${enc(a)}/${parts.slice(2).map(enc).join("/")}`, search);
       const panels: Record<string, ConversationPanel> = {
@@ -655,7 +721,8 @@ function read(pathname: string, search: string): Route {
         people: "people",
         workspace: "workspace",
         context: "context",
-        activity: "activity",
+        activity: "response",
+        details: "details",
         overview: "overview",
         deliverables: "deliverables",
       };
@@ -852,20 +919,21 @@ function read(pathname: string, search: string): Route {
         };
       }
       return { page: "conversation", id: a, message: q.get("message") || undefined };
+    case "items":
+      // An address holds slashes, so it is one encoded segment; a raw one is joined back.
+      return a ? { page: "item", address: parts.slice(1).join("/") } : { page: "sessions" };
     case "projects": {
       if (!a)
-        return { page: "projects", q: q.get("q") || undefined, kind: kindParam(q.get("kind")) };
-      if (b === "fork")
-        return { page: "project", name: a === "~" ? "" : a, tab: "inbox", fork: true };
-      // A channel is a page of its own, under the project's Channels tab.
-      if (b === "channels" && parts[3]) return { page: "sessions", project: a === "~" ? "" : a };
-      const tab = pick(b, PROJECT_TABS, "context");
-      return {
-        page: "project",
-        name: a === "~" ? "" : a,
-        tab,
-        message: tab === "inbox" ? (q.get("message") ?? undefined) : undefined,
-      };
+        return {
+          page: "projects",
+          q: q.get("q") || undefined,
+          kind: kindParam(q.get("kind")),
+          sort: oneOf(q.get("sort"), PROJECT_SORTS),
+        };
+      // A project is one page. Its old tabs (context, agents, people, limits,
+      // inbox, overview, schedules, history) and its old channel pages open it.
+      if (b === "fork") return { page: "project", name: a === "~" ? "" : a, fork: true };
+      return { page: "project", name: a === "~" ? "" : a };
     }
     // Scheduled was called Automations; a schedule without a name is the list.
     case "scheduled":
@@ -887,12 +955,33 @@ function read(pathname: string, search: string): Route {
       };
     case "inbox":
       return { page: "alerts", alert: q.get("alert") ?? undefined };
-    // Knowledge is called Context. Old links open the same place.
+    // Knowledge lists corpora, and a corpus is `/knowledge/{corpus}`. Knowledge
+    // was called Context: `/context/{source}` and the old
+    // `/knowledge/{source}/{tab}` still open the source.
     case "context":
-    case "knowledge":
       return a
         ? { page: "context", source: a, tab: pick(b, SOURCE_TABS, "documents") }
-        : { page: "context" };
+        : { page: "knowledge" };
+    case "knowledge": {
+      if (!a) return { page: "knowledge" };
+      if (b === "sources" && c)
+        return {
+          page: "context",
+          corpus: a,
+          source: c,
+          tab: pick(parts[4], SOURCE_TABS, "documents"),
+        };
+      // A corpus's own tabs come first: an old `/knowledge/{source}/search`
+      // opens a corpus, which opens the source when no corpus has that name.
+      const tab = oneOf(b, CORPUS_TABS);
+      if (!tab && oneOf(b, SOURCE_TABS)) return { page: "context", source: a, tab: b as SourceTab };
+      return {
+        page: "corpus",
+        name: a,
+        tab: tab ?? "sources",
+        q: tab === "search" ? queryText(q, "q", 1000) : undefined,
+      };
+    }
     case "agents":
       if (b === "setup") return { page: "agent-setup", name: a === "new" ? undefined : a };
       if (b === "control") return { page: "agent-control", agent: a };
@@ -936,6 +1025,8 @@ function read(pathname: string, search: string): Route {
       if (a === "usage") return read("/operations/usage", search);
       // Models are chosen per agent now; an old link lands on the agents.
       if (a === "models") return { page: "agents" };
+      // Routing has only its model left, which sits with the model providers.
+      if (a === "routing") return { page: "settings", section: "providers" };
       return {
         page: "settings",
         section: pick(a, SETTINGS_SECTIONS, "profile"),
@@ -964,6 +1055,8 @@ export function screenOf(r: Route): string {
       return `conversation:${r.id}`;
     case "project":
       return `project:${r.name}`;
+    case "corpus":
+      return `corpus:${r.name}`;
     case "channel":
       return `channel:${r.project}/${r.channel}`;
     case "agent":

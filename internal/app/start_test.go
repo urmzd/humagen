@@ -42,7 +42,9 @@ func TestStartWorksWithNothingConfigured(t *testing.T) {
 	case <-time.After(30 * time.Second):
 		t.Fatal("start did not listen")
 	}
-	// The seeded agents are there, signed in as the developer, with no key.
+	// Signed in as the developer with no key, the console answers with the
+	// platform's agents on the chain they ship with, and no example agent:
+	// they run once an administrator enables a provider.
 	var body []byte
 	deadline := time.Now().Add(10 * time.Second)
 	for {
@@ -61,8 +63,8 @@ func TestStartWorksWithNothingConfigured(t *testing.T) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	if !strings.Contains(string(body), `"lead"`) {
-		t.Errorf("no seeded lead agent: %s", body)
+	if !strings.Contains(string(body), `"humagen-writer"`) || strings.Contains(string(body), `"lead"`) {
+		t.Errorf("want the built-in agents and no example agent: %s", body)
 	}
 	cancel()
 	select {

@@ -106,3 +106,23 @@ func list(t *testing.T, s *Store, tenant string) []Rule {
 	}
 	return rules
 }
+
+func TestOneDriveFolderRulesMatchOneDriveSources(t *testing.T) {
+	s, err := Open(state.NewMemory())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Put("tenant", Rule{ID: "files", Provider: "onedrive", Attribute: "parent", Pattern: "x", Project: "P"}); err == nil {
+		t.Fatal("OneDrive accepted an attribute it does not report")
+	}
+	if _, err := s.Put("tenant", Rule{ID: "files", Provider: "onedrive", Attribute: "folder", Pattern: "D4648F06C91D9D3D!54927", Project: "Finance"}); err != nil {
+		t.Fatal(err)
+	}
+	matches, err := s.Match("tenant", Resource{Provider: "onedrive", ID: "D4648F06C91D9D3D!54927", Attributes: map[string][]string{"folder": {"D4648F06C91D9D3D!54927"}}})
+	if err != nil || len(matches) != 1 || matches[0].Project != "Finance" {
+		t.Fatalf("%+v %v", matches, err)
+	}
+	if matches, _ = s.Match("tenant", Resource{Provider: "drive", ID: "D4648F06C91D9D3D!54927", Attributes: map[string][]string{"folder": {"D4648F06C91D9D3D!54927"}}}); len(matches) != 0 {
+		t.Fatal("OneDrive rule matched a Drive folder")
+	}
+}

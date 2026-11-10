@@ -172,7 +172,9 @@ func AskedBy(r Run) string {
 
 // ClientOf returns the external client that raised a tag, or "".
 func ClientOf(tag event.Envelope) string {
-	if wire.Origin(tag) == "slack" || wire.Origin(tag) == "github" {
+	// The connectors write it, and the platform writes it on a run it raises
+	// for a surface's verified message. A caller of the API never can.
+	if o := wire.Origin(tag); o == "slack" || o == "github" || o == OriginAPI {
 		return wire.Meta(tag)[MetaClient]
 	}
 	return ""
@@ -264,6 +266,10 @@ type Run struct {
 	Parent string    `json:"parent,omitempty"`
 	Depth  int       `json:"depth"`
 	Mode   call.Mode `json:"mode,omitempty"`
+	// CallID is the API's id for the caller's tool call that started this
+	// run (htu_<run>_<n>): the call its activity streams under, and the one
+	// questions and stops name. Empty on a root.
+	CallID string `json:"call_id,omitempty"`
 	// Lifecycle is set on a run another run called.
 	Lifecycle Lifecycle `json:"lifecycle,omitempty"`
 	// Schedule names the schedule that raised the run, if one did.
@@ -326,8 +332,13 @@ type Run struct {
 	// Answer is the final text of a completed run. On a stopped run it is the
 	// partial answer: what the agent had said when it stopped, which people
 	// may already have read. It is never the whole answer, and Status says so.
-	Answer  string   `json:"answer,omitempty"`
-	Outcome *Outcome `json:"outcome,omitempty"`
+	Answer string `json:"answer,omitempty"`
+	// Output is the answer as structured data, for an agent whose spec
+	// declares an output schema: the answer, checked against that schema.
+	// It is absent for a free-text answer, and for one that did not hold
+	// to the schema.
+	Output  json.RawMessage `json:"output,omitempty"`
+	Outcome *Outcome        `json:"outcome,omitempty"`
 	// Sandbox is what the run left in its conversation's files.
 	Sandbox *Sandbox `json:"sandbox,omitempty"`
 	// Memory is the memory trees the run's instance was given and what it
@@ -546,7 +557,7 @@ func (x *Index) Record(runID string, tag event.Envelope, rev int) error {
 			ID:        runID, TagID: tag.ID, Tenant: tag.Tenant, Agent: wire.AgentOf(tag), Rev: rev, Origin: wire.Origin(tag),
 			Text: text, Input: input, Actor: wire.ActorOf(tag), Thread: thread, Prev: prev, Picked: picked, Routed: routed, Project: project, Within: slices.Clone(within), Client: client,
 			Channel: channel, Message: message,
-			Root: root, Parent: parent, Depth: edge.Depth, Mode: edge.Mode, Lifecycle: lifecycleOf(parent, edge.Mode),
+			Root: root, Parent: parent, Depth: edge.Depth, Mode: edge.Mode, CallID: edge.CallID, Lifecycle: lifecycleOf(parent, edge.Mode),
 			Lease: edge.Lease, Schedule: schedule,
 			Status: Accepted, CreatedAt: tag.Time, UpdatedAt: tag.Time,
 			tag: tag, observedBy: x.instance,
@@ -751,6 +762,23 @@ func (x *Index) SetUsageChecked(tenant, runID string, u *event.RunUsage, micros 
 		}
 		r.tally, r.closed = nil, true
 		r.Spent += micros
+		return nil
+	})
+}
+
+// SetOutput keeps a run's answer as structured data (Run.Output), once its
+// answer has been checked against its agent's output schema.
+func (x *Index) SetOutput(tenant, runID string, output json.RawMessage) error {
+	return x.do(tenant, func(t *txn) error {
+		r, err := t.run(runID)
+		if err != nil {
+			return err
+		}
+		if r == nil {
+			return ErrNotFound
+		}
+		t.touch(r)
+		r.Output = slices.Clone(output)
 		return nil
 	})
 }

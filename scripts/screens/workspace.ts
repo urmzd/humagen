@@ -14,32 +14,13 @@ type Screen = {
 export function workspaceScreens(call: Call): Screen[] {
   const setup = defaultCopy.agentSetup;
   const projectPickerScreen: Screen = {
-    name: "home-project-picker",
+    name: "home-starters",
     path: "/",
     act: async (page) => {
       const input = page.locator('form[aria-label="Message"] textarea');
-      await input.fill("Keep this draft when changing projects.");
-      const picker = page.getByRole("button", { name: /^Select project: (Personal|No project)/ });
-      assert.equal(await picker.getAttribute("aria-haspopup"), "dialog");
-      assert.equal(
-        await picker.locator("svg").count(),
-        1,
-        "a drawer trigger has no dropdown caret",
-      );
-      await picker.click();
-      const drawer = page.getByRole("dialog", {
-        name: defaultCopy.chat.chooseProject,
-        exact: true,
-      });
-      await drawer.waitFor();
-      const project = drawer
-        .getByRole("list", { name: "Projects" })
-        .getByRole("button")
-        .filter({ has: page.getByText("Launch", { exact: true }) });
-      await project.click();
-      assert.equal(await input.inputValue(), "Keep this draft when changing projects.");
-      await page.getByRole("button", { name: "Select project: Launch", exact: true }).waitFor();
-      await input.fill("");
+      // Home's composer picks no project: a session from Home is filed in the person's own.
+      assert.equal(await page.getByRole("button", { name: /^Select project/ }).count(), 0);
+      assert.equal(await input.getAttribute("placeholder"), defaultCopy.chat.placeholder);
       const suggestions = page.getByRole("list", { name: defaultCopy.chat.suggestions });
       await suggestions.waitFor();
       // Analyst, builder, writer and code reviewer.
@@ -62,8 +43,6 @@ export function workspaceScreens(call: Call): Screen[] {
           "Every starter fits the viewport once scrolled to",
         );
       }
-      await page.getByRole("button", { name: "Select project: Launch", exact: true }).click();
-      await drawer.waitFor();
     },
   };
 
@@ -268,12 +247,19 @@ export function workspaceScreens(call: Call): Screen[] {
       name: "workspace-motion",
       path: "/",
       act: async (page) => {
+        // A session's Details drawer: the composer no longer opens a project drawer.
+        const result = await call<{ threads: { id: string }[] }>(
+          "GET",
+          "/api/threads?project=Launch&limit=20",
+        );
+        const thread = result.threads[0];
+        assert.ok(thread, "The real seed must retain a readable Launch conversation");
+        await page.goto(
+          new URL(`/conversations/${encodeURIComponent(thread.id)}`, page.url()).href,
+        );
         await page.emulateMedia({ reducedMotion: "no-preference" });
-        const picker = page.getByRole("button", { name: /^Select project: (Personal|No project)/ });
-        const drawer = page.getByRole("dialog", {
-          name: defaultCopy.chat.chooseProject,
-          exact: true,
-        });
+        const picker = page.locator("[data-session-details]");
+        const drawer = page.getByRole("dialog", { name: "Details", exact: true });
         await picker.click();
         await drawer.waitFor();
         const moving = await drawer.evaluate((element) => ({
@@ -354,9 +340,7 @@ export function workspaceScreens(call: Call): Screen[] {
           const draft = "Keep this message while I choose the right agent.";
           await composer.fill(draft);
           assert.equal(await page.getByRole("region", { name: c.title, exact: true }).count(), 0);
-          await page
-            .getByRole("button", { name: "Add files, agents or a project", exact: true })
-            .click();
+          await page.getByRole("button", { name: defaultCopy.chat.plus, exact: true }).click();
           await page
             .getByRole("dialog", { name: defaultCopy.chat.menu, exact: true })
             .getByRole("button", { name: /^Agents\b/ })
@@ -378,9 +362,6 @@ export function workspaceScreens(call: Call): Screen[] {
             await match.waitFor();
             if (choose) {
               await match.click();
-              await page
-                .getByRole("list", { name: "Selected for this conversation", exact: true })
-                .waitFor();
               assert.equal(
                 await page
                   .getByRole("dialog", { name: defaultCopy.chat.menu, exact: true })

@@ -1,6 +1,7 @@
 package legacy
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -22,7 +23,10 @@ func BuiltinAgents() map[string]string {
 	return map[string]string{
 		"warp-writer":  "humagen-writer",
 		"warp-analyst": "humagen-analyst",
-		"warp-builder": "humagen-builder",
+		// The builder became the entry agent, humagen, which builds and
+		// changes agents with a person's approval.
+		"warp-builder":    "humagen",
+		"humagen-builder": "humagen",
 	}
 }
 
@@ -39,12 +43,27 @@ func BuiltinAgent(name string) string {
 
 // BuiltinAgentKey keeps an agent's color reservation at its original key.
 func BuiltinAgentKey(name string) string {
+	var olds []string
 	for old, current := range BuiltinAgents() {
 		if name == current {
-			return old
+			olds = append(olds, old)
 		}
 	}
-	return name
+	if len(olds) == 0 {
+		return name
+	}
+	// The oldest handle is the key: warp- before any later name.
+	slices.SortFunc(olds, func(a, b string) int {
+		return cmp.Compare(boolInt(!strings.HasPrefix(a, "warp-")), boolInt(!strings.HasPrefix(b, "warp-")))*2 + cmp.Compare(a, b)
+	})
+	return olds[0]
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // Agents were kept by fiber's registry, in fiber_agents and

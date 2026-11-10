@@ -3,7 +3,6 @@ package platform_test
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -18,12 +17,6 @@ import (
 	saigetypes "github.com/urmzd/saige/agent/types"
 )
 
-func helperCall(messages []any, format map[string]any) []saigetypes.Delta {
-	return agenttest.ToolCallResponse("helper-call", platform.ToolCallAgent, map[string]any{"agent": "helper", "messages": messages, "response_format": format})
-}
-func inputMessage(role, text string) any {
-	return map[string]any{"role": role, "content": []any{map[string]any{"type": "text", "text": text}}}
-}
 func modelFor(t *testing.T, c *cast, name string) *agenttest.ScriptedProvider {
 	t.Helper()
 	v, ok := c.models.Load(name)
@@ -32,22 +25,39 @@ func modelFor(t *testing.T, c *cast, name string) *agenttest.ScriptedProvider {
 	}
 	return v.(*agenttest.ScriptedProvider)
 }
+
+// callInput is a call's constructed input: its messages and the format the
+// helper answers in.
+func callInput(format call.ResponseFormat, messages ...call.Message) *call.Input {
+	return &call.Input{Messages: messages, ResponseFormat: format}
+}
+
+func textMessage(role, text string) call.Message {
+	return call.Message{Role: role, Content: []call.Part{call.TextPart{Text: text}}}
+}
+
+// A call with constructed input (what POST /api/runs/{id}/calls sends) gives
+// the helper exactly those messages, with the return instruction its format
+// asks for, and nothing of its caller's conversation.
 func TestHelperReceivesConstructedMessagesAndReturnsOneResultToItsCaller(t *testing.T) {
 	c := &cast{says: map[string][][]saigetypes.Delta{
-		"lead":   {helperCall([]any{inputMessage("user", "Example question"), inputMessage("assistant", "Example summary"), inputMessage("user", "Inspect the tests")}, map[string]any{"type": "summary", "max_words": 8}), say("Three tests need attention.")},
+		"lead":   {say("Parent answer")},
 		"helper": {say("Three tests fail. Investigate fixtures.")},
-	}, spawn: map[string][]string{"lead": {"helper"}}}
+	}, spawn: map[string][]string{"lead": {"helper"}}, gates: map[string]chan struct{}{"lead": make(chan struct{})}}
 	p := stage(t, c, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
 	first, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "explicit-call", Agent: "lead", Text: "PRIVATE PARENT CONTEXT"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	lead := await(t, p, first.ID, runs.Completed)
-	helper := called(t, p, lead.ID, "helper", runs.Completed)
-	conversation, err := p.Runs.Conversation(tenant, lead.Thread)
-	if err != nil || len(conversation) != 1 || conversation[0].ID != lead.ID {
-		t.Fatalf("helper became a user-facing turn: %+v, %v", conversation, err)
+	await(t, p, first.ID, runs.Running)
+	child, err := p.Call(t.Context(), tenant, first.ID, call.Request{Key: "constructed", Agent: "helper", Mode: call.Subagent, Input: callInput(call.SummaryFormat{MaxWords: 8},
+		textMessage("user", "Example question"), textMessage("assistant", "Example summary"), textMessage("user", "Inspect the tests"))})
+	if err != nil {
+		t.Fatal(err)
 	}
+	helper := await(t, p, child.ID, runs.Completed)
+	c.release("lead")
+	await(t, p, first.ID, runs.Completed)
 	if helper.Input == nil || len(helper.Input.Messages) != 3 {
 		t.Fatal("helper input is missing from run details")
 	}
@@ -56,16 +66,9 @@ func TestHelperReceivesConstructedMessagesAndReturnsOneResultToItsCaller(t *test
 		t.Fatalf("helper made %d calls", len(requests))
 	}
 	for _, tool := range requests[0].Tools {
-		if tool.Name == platform.ToolCallAgent {
-			t.Fatal("helper without a spawn grant received call_agent")
+		if tool.Name == platform.ToolAgent {
+			t.Fatal("helper without a spawn grant received the agent tool")
 		}
-	}
-	matchedCall := false
-	for _, e := range kept(p.Journal.Events(tenant, []string{lead.ID})) {
-		matchedCall = matchedCall || (e.Type == event.TypeAction && strings.Contains(wire.JSONOf(e), `"tool_call_id":"helper-call"`))
-	}
-	if !matchedCall {
-		t.Fatal("helper run was not correlated with its tool call ID")
 	}
 	msgs := requests[0].Messages
 	if len(msgs) != 4 {
@@ -82,43 +85,28 @@ func TestHelperReceivesConstructedMessagesAndReturnsOneResultToItsCaller(t *test
 			t.Fatal("parent context was inherited")
 		}
 	}
-	parentRequests := modelFor(t, c, "lead").Requests()
-	if len(parentRequests) != 2 {
-		t.Fatalf("parent made %d model calls", len(parentRequests))
-	}
-	sawResult := false
-	for _, m := range parentRequests[1].Messages {
-		for _, r := range saigetypes.Each[saigetypes.ToolResultPart](m) {
-			if strings.Contains(fmt.Sprint(r.Parts), helper.Answer) {
-				sawResult = true
-			}
-		}
-	}
-	if !sawResult {
-		t.Fatal("caller never received helper result")
-	}
-	if lead.Answer != "Three tests need attention." {
-		t.Fatalf("parent answer = %q", lead.Answer)
-	}
-	for _, tool := range parentRequests[0].Tools {
-		if strings.HasPrefix(tool.Name, "tag_") {
-			t.Fatal("per-target tool leaked beside unified call_agent")
-		}
+	if helper.Answer != "Three tests fail. Investigate fixtures." {
+		t.Fatalf("helper answer = %q", helper.Answer)
 	}
 }
 
 func TestInvalidHelperResultFailsWithoutPublishingAnAnswer(t *testing.T) {
 	c := &cast{says: map[string][][]saigetypes.Delta{
-		"lead":   {helperCall([]any{inputMessage("user", "Return a brief summary")}, map[string]any{"type": "summary", "max_words": 2}), say("The helper result failed validation.")},
+		"lead":   {say("Parent answer")},
 		"helper": {say("This is longer than two words.")},
-	}, spawn: map[string][]string{"lead": {"helper"}}}
+	}, spawn: map[string][]string{"lead": {"helper"}}, gates: map[string]chan struct{}{"lead": make(chan struct{})}}
 	p := stage(t, c, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
 	first, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "bad-format", Agent: "lead", Text: "Start"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	await(t, p, first.ID, runs.Completed)
-	helper := called(t, p, first.ID, "helper", runs.Failed)
+	await(t, p, first.ID, runs.Running)
+	child, err := p.Call(t.Context(), tenant, first.ID, call.Request{Key: "bad-format", Agent: "helper", Mode: call.Subagent, Input: callInput(call.SummaryFormat{MaxWords: 2}, textMessage("user", "Return a brief summary"))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	helper := await(t, p, child.ID, runs.Failed)
+	c.release("lead")
 	if !strings.Contains(helper.Error, "summary exceeds 2 words") {
 		t.Fatalf("helper error = %q", helper.Error)
 	}

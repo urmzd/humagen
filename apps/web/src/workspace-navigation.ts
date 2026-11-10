@@ -29,7 +29,8 @@ export function workspaceHub(route: Route): WorkspaceHub | null {
   if (route.page === "monitor" && route.tab === "rules") return "notifications";
   if (route.page === "library" && (route.section === "skills" || route.section === "memory"))
     return "agents";
-  if (route.page === "context") return "agents";
+  if (route.page === "knowledge" || route.page === "corpus" || route.page === "context")
+    return "agents";
   if (
     ["agents", "agent", "agent-setup", "agent-network", "assignments", "agent-control"].includes(
       route.page,
@@ -116,8 +117,9 @@ export function hubTabs(
               },
               {
                 label: "Knowledge",
-                route: { page: "context" },
-                active: route.page === "context",
+                route: { page: "knowledge" },
+                active:
+                  route.page === "knowledge" || route.page === "corpus" || route.page === "context",
                 visible: can("knowledge:read"),
               },
             ]

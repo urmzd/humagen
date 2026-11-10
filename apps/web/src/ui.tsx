@@ -3,6 +3,7 @@ import {
   BanIcon,
   CheckIcon,
   ChevronDownIcon,
+  EllipsisIcon,
   EllipsisVerticalIcon,
   SearchIcon,
   ShieldIcon,
@@ -12,6 +13,7 @@ import {
 import { AgentInitials, AgentOrb, type OrbState, usePresence } from "@humagen/web";
 import { createPortal } from "react-dom";
 import { agentHue, requestAgentHue, subscribeHues } from "./agentHues.ts";
+import { agentShown } from "./branding.ts";
 import { builtinAgentKey } from "./legacy.ts";
 
 export { Presence, usePresence } from "@humagen/web";
@@ -34,7 +36,7 @@ import {
 } from "react";
 import type { Run } from "./adapter.ts";
 import { skillRefs } from "./commands.ts";
-import { dollars, elapsed, took } from "./format.ts";
+import { ago, dollars, elapsed, took } from "./format.ts";
 import { moreOf, nudgeInto, revealAt } from "./layout.ts";
 import { href } from "./route.ts";
 
@@ -121,23 +123,8 @@ export function Chip({ children }: { children: ReactNode }) {
   );
 }
 
-const units: [Intl.RelativeTimeFormatUnit, number][] = [
-  ["day", 86_400],
-  ["hour", 3_600],
-  ["minute", 60],
-];
-const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-
-export function ago(iso: string): string {
-  const seconds = Math.round((Date.parse(iso) - Date.now()) / 1000);
-  for (const [unit, size] of units) {
-    if (Math.abs(seconds) >= size) return relative.format(Math.round(seconds / size), unit);
-  }
-  return "just now";
-}
-
 // Formatting with no React in it lives in format.ts, so plain modules and their tests can use it too.
-export { cause, elapsed, isEnded, took, usd } from "./format.ts";
+export { ago, cause, elapsed, isEnded, took, usd } from "./format.ts";
 
 /**
  * Every page sits in the same left-aligned column, so the title and the first
@@ -275,6 +262,18 @@ export const pageTitle =
   "humagen-display truncate text-[1.875rem] leading-[1.15] font-semibold text-aui-fg";
 export const pageLede = "max-w-[62ch] pt-1.5 text-aui-sm text-aui-muted";
 
+/**
+ * The one look of a tab strip, for a page's own tabs (Tabs) and a hub's
+ * (WorkspaceTabs): the strip sits at the top of the page's column on a rule
+ * as wide as the column, and the open tab is underlined in the accent.
+ */
+export const tabStrip = "humagen-strip aui-scroll relative flex gap-1 overflow-x-auto";
+export const tabRule = "pointer-events-none absolute inset-x-0 bottom-0 border-aui-border border-b";
+export const tabItem =
+  "inline-flex h-10 pointer-coarse:h-11 shrink-0 items-center gap-1.5 whitespace-nowrap border-transparent border-b-2 px-3 text-aui-sm text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-selected:border-aui-accent aria-selected:text-aui-fg aria-[current=page]:border-aui-accent aria-[current=page]:text-aui-fg";
+/** The page column a hub's tab strip shares with the page under it. */
+export const pageColumn = "mx-auto w-full max-w-[68rem] px-5 md:px-10";
+
 /** The label of the hub tab that is open, when a hub's tabs head the page. */
 export const HubTabLabel = createContext<string | undefined>(undefined);
 
@@ -347,14 +346,24 @@ export function Page({
     );
   }
   const width = narrow ? "max-w-3xl" : wide ? "max-w-[82rem]" : "max-w-[68rem]";
-  const tabbed = !!tabs || title === hubLabel;
+  const underHub = title === hubLabel;
+  const tabbed = !!tabs || underHub;
+  // A page headed by its tabs has nothing else in its header: the title is
+  // kept for assistive technology, and the actions join the tab row.
+  const bare = tabbed && !back && !icon && !meta && !crumbs;
   return (
     <div className="humagen-page aui-scroll min-h-0 flex-1 overflow-y-auto">
       {/* Every page is one centered column, so a wide window never strands the content against the sidebar. */}
       <div
-        className={`humagen-page-column @container humagen-fade mx-auto flex w-full ${width} flex-col gap-6 px-5 pt-8 pb-12 md:px-10`}
+        className={`humagen-page-column @container humagen-fade mx-auto flex w-full ${width} flex-col gap-6 px-5 ${underHub ? "pt-6" : "pt-8"} pb-12 md:px-10`}
       >
-        <header className="flex flex-col gap-3">
+        {bare && <h1 className="sr-only">{title}</h1>}
+        {bare && !tabs && actions && (
+          <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
+            {actions}
+          </div>
+        )}
+        <header className={bare ? "hidden" : "flex flex-col gap-3"}>
           {back && (
             <button
               type="button"
@@ -372,7 +381,7 @@ export function Page({
                     assistive technology and leaves the screen, so the title is said once. */}
                 {/* A page with tabs is headed by its tabs: the title stays for assistive
                     technology only, and there is no lede under it. */}
-                <h1 className={tabbed ? "sr-only" : pageTitle}>{title}</h1>
+                {!bare && <h1 className={tabbed ? "sr-only" : pageTitle}>{title}</h1>}
                 {meta && (
                   <div className="flex flex-wrap items-center gap-x-3 pt-1 text-aui-xs text-aui-muted">
                     {meta}
@@ -393,7 +402,16 @@ export function Page({
             data-layer="sticky"
             className="aui-chrome humagen-sticky sticky top-0 z-10 -mx-1 px-1"
           >
-            {tabs}
+            {bare && actions ? (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <div className="min-w-0 flex-1">{tabs}</div>
+                <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+                  {actions}
+                </div>
+              </div>
+            ) : (
+              tabs
+            )}
           </div>
         )}
         {/*
@@ -689,7 +707,8 @@ export function AgentTint({
  * tells an agent from a person. The same mark sits beside its answers, where
  * the glow breathes and the orb moves while the agent works, so the mark in a
  * list and the presence in a conversation are one thing. Below 16px there is
- * no room for letters, and the mark is the orb alone.
+ * no room for letters, and the mark is the orb alone. The entry agent's
+ * letters are the workspace's name's, in its own color.
  */
 export function AgentMark({
   name,
@@ -712,7 +731,7 @@ export function AgentMark({
       style={{ "--aui-accent-h": hueOf(name) } as CSSProperties}
     >
       {size >= 16 ? (
-        <AgentInitials name={name} state={state} size={size} />
+        <AgentInitials name={agentShown(name)} state={state} size={size} />
       ) : (
         <AgentOrb state={state} size={size} label="" />
       )}
@@ -1045,16 +1064,8 @@ export function Tabs<T extends string>({
   // full width while the strip's ends fade, and the chosen tab's line sits on it.
   return (
     <div className="relative">
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 bottom-0 border-aui-border border-b"
-      />
-      <div
-        ref={strip}
-        role="tablist"
-        aria-label={label}
-        className="humagen-strip aui-scroll relative flex gap-1 overflow-x-auto"
-      >
+      <span aria-hidden className={tabRule} />
+      <div ref={strip} role="tablist" aria-label={label} className={tabStrip}>
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -1062,7 +1073,7 @@ export function Tabs<T extends string>({
             role="tab"
             aria-selected={value === t.id}
             onClick={() => onChange(t.id)}
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap border-transparent border-b-2 px-3 text-aui-sm text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-selected:border-aui-accent aria-selected:text-aui-fg"
+            className={tabItem}
           >
             {t.label}
             {t.count !== undefined && t.count > 0 && <Count n={t.count} />}
@@ -1166,9 +1177,13 @@ export function Confirm({
 /** One of a page's own actions, for `PageActions`. */
 export interface PageAction {
   label: string;
+  /** A leading icon in a menu row. */
+  icon?: ReactNode;
   onSelect: () => void;
   /** Archive, Delete: last in the menu, after a rule. What it does is the same in the menu as on a button. */
   destructive?: boolean;
+  /** Shown but not pressable, such as while the page is busy. */
+  disabled?: boolean;
 }
 
 /**
@@ -1211,6 +1226,20 @@ export function PageActions({
 /** The More control: a square icon button with three vertical dots, after a page's other actions. */
 const moreControl =
   "inline-flex size-9 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg";
+
+/**
+ * One row of a menu: plain and left-aligned, with an optional leading icon, a
+ * hover background and no border. A destructive row is in the danger colour,
+ * last, after a `MenuSeparator`.
+ */
+export function menuRow(danger = false): string {
+  return `flex min-h-9 pointer-coarse:min-h-11 w-full items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm outline-none hover:bg-aui-hover focus-visible:bg-aui-hover disabled:pointer-events-none disabled:opacity-50 ${danger ? "text-aui-bad" : "text-aui-fg"}`;
+}
+
+/** The rule before a menu's destructive rows. */
+export function MenuSeparator() {
+  return <hr className="my-1 border-0 border-[var(--humagen-rule)] border-t" />;
+}
 
 /**
  * The More menu: a three-dot control that opens a list of actions. Arrow keys,
@@ -1261,12 +1290,14 @@ export function MoreMenu({
       type="button"
       role="menuitem"
       tabIndex={-1}
+      disabled={item.disabled}
       onClick={() => {
         close();
         item.onSelect();
       }}
-      className={`flex min-h-9 pointer-coarse:min-h-11 w-full items-center rounded-aui px-2.5 text-left text-aui-sm outline-none hover:bg-aui-hover focus-visible:bg-aui-hover ${item.destructive ? "text-aui-bad" : "text-aui-fg"}`}
+      className={menuRow(item.destructive)}
     >
+      {item.icon}
       {item.label}
     </button>
   );
@@ -1292,7 +1323,7 @@ export function MoreMenu({
           }
         }}
       >
-        <EllipsisVerticalIcon size={18} />
+        <EllipsisIcon size={18} />
       </button>
       {open && (
         <div
@@ -1325,9 +1356,7 @@ export function MoreMenu({
           className="humagen-glass-pop absolute top-full right-0 z-40 mt-2 flex w-56 max-w-[calc(100vw-2rem)] flex-col rounded-aui-lg p-1.5"
         >
           {everyday.map(entry)}
-          {everyday.length > 0 && destructive.length > 0 && (
-            <div role="separator" className="my-1 border-[var(--humagen-rule)] border-t" />
-          )}
+          {everyday.length > 0 && destructive.length > 0 && <MenuSeparator />}
           {destructive.map(entry)}
         </div>
       )}
@@ -1621,6 +1650,36 @@ export function FlashNote({
  * reader. They show only after a beat (aui-skeleton-delay), so a fast load
  * never flashes them. The shimmer stops when motion is reduced.
  */
+/**
+ * The control at the end of a paged list. While the next page is read it
+ * says so in place, the same way on every list: its label gives way to
+ * "Loading", shimmering, and it cannot be pressed twice. A list's first
+ * read is SkeletonRows; this is only for more of a list already on view.
+ */
+export function LoadMore({
+  busy,
+  onMore,
+  label = "Load More",
+  className = "self-center",
+}: {
+  busy: boolean;
+  onMore: () => void;
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className={`${button} ${className}`}
+      disabled={busy}
+      aria-busy={busy || undefined}
+      onClick={onMore}
+    >
+      {busy ? <span className="aui-shimmer">Loading</span> : label}
+    </button>
+  );
+}
+
 export function SkeletonRows({
   count = 4,
   height = "2rem",

@@ -2,16 +2,12 @@ package platform
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
-	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/feedback"
 	"github.com/urmzd/humagen/pkg/goodasks"
 	"github.com/urmzd/humagen/pkg/join"
-	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/state"
-	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // goodAsksStore is where the asks each agent answered well are kept.
@@ -106,51 +102,6 @@ func routePreview(ctx context.Context, a join.Asker, cs []join.Candidate, messag
 	return out
 }
 
-// search finds the agents in a project that keep passes and that are about
-// message, best first, and asks the best few whether they take it, returning
-// what it found and those that said yes. It is ErrNoTakers when search finds
-// nobody, so no agent is asked about a message that is none of theirs.
-func (p *Platform) search(ctx context.Context, tenant string, tree *projects.Tree, project, message string, keep func(string) bool) ([]join.Match, []join.Decision, error) {
-	cs, err := p.candidates(ctx, tenant, tree, project, keep)
-	if err != nil {
-		return nil, nil, err
-	}
-	found := join.Search(cs, message, join.Shortlist)
-	if len(found) == 0 {
-		return nil, nil, fmt.Errorf("%w: no agent here is about it; it waits for a person to answer or tag an agent", ErrNoTakers)
-	}
-	return found, join.Joined(join.Route(ctx, p.asker(tenant), join.Candidates(found), message)), nil
-}
-
-// routeSession picks who answers a console message that names nobody where
-// no agent is set to answer, so the message always lands: the best match
-// that takes it, or with none taking it the best match search found. When
-// search matches nobody, the workspace's named default answers, else the
-// first agent available here. The reason is shown with the answer, never
-// before it. Only a place with no agent the poster may ask is refused.
-func (p *Platform) routeSession(ctx context.Context, who auth.Principal, project, text string) (agent, picked string, err error) {
-	sees := p.Seer(who).Agent
-	tree := p.Projects.Tree(who.Tenant)
-	project = projects.NameOf(project)
-	cs, err := p.candidates(ctx, who.Tenant, tree, project, func(a string) bool { return sees(a) })
-	if err != nil {
-		return "", "", err
-	}
-	if found := join.Search(cs, text, join.Shortlist); len(found) > 0 {
-		if joined := join.Joined(join.Route(ctx, p.asker(who.Tenant), join.Candidates(found), text)); len(joined) > 0 {
-			return joined[0].Agent, joinedReason(joined[0]), nil
-		}
-		return found[0].Name, "Picked by search: matched " + strings.Join(found[0].Terms, ", ") + ".", nil
-	}
-	if d := tree.Root().Agents.Default; d != "" && d != Open && sees(d) && tree.IsAvailable(project, d) {
-		return d, "No agent matched it, so the workspace default answered.", nil
-	}
-	if len(cs) > 0 {
-		return cs[0].Name, "No agent matched it, so the first agent available here answered.", nil
-	}
-	return "", "", fmt.Errorf("%w: no agent is available here to answer; mention one with @", threads.ErrInvalid)
-}
-
 type pickedKey struct{}
 
 // withPicked carries why routing picked the agent to the run it starts.
@@ -164,4 +115,17 @@ func withPicked(ctx context.Context, picked string) context.Context {
 func pickedOf(ctx context.Context) string {
 	s, _ := ctx.Value(pickedKey{}).(string)
 	return s
+}
+
+type mentionedKey struct{}
+
+// withMentioned carries the agents a message mentions to the entry agent's
+// run that answers it, which the platform has ask each of them first.
+func withMentioned(ctx context.Context, agents []string) context.Context {
+	return context.WithValue(ctx, mentionedKey{}, agents)
+}
+
+func mentionedOf(ctx context.Context) []string {
+	agents, _ := ctx.Value(mentionedKey{}).([]string)
+	return agents
 }

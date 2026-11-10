@@ -15,9 +15,9 @@ one per agent are all the same record with different values.
 | `credentials` | `token` and `signing_secret`. Written, never read back. See [Secrets](#secrets). |
 | `default_agent` | Answers a request that named no agent. `"*"` searches the agents the client routes to and asks the best few whether to join (see [the dynamic router](../architecture/projects.md#the-dynamic-router)); `auto` reads as `"*"`. |
 | `agents` | The agents the client may route to, besides its default. |
-| `bots` | A Slack bot user id, or a GitHub login, to the agent it stands for. These three, and `github.auto_labels`, show only the agents the reader may read (see [Agents a reader may not read](#agents-a-reader-may-not-read)). |
+| `bots` | A Slack bot user id, or a GitHub login, to the agent it stands for. These three, and `github.automations`, show only the agents the reader may read (see [Agents a reader may not read](#agents-a-reader-may-not-read)). |
 | `slack` | `sessions`, `commands`, and `machine` and `people` (see [People a Slack app answers for](#people-a-slack-app-answers-for)). |
-| `github` | `auto_labels`, `checks`, `guides`, `mutations`, `read_repositories`, and `login`, the app's own login, which a comment mentions to ask the client's default (see [Who a comment asks](github.md#who-a-comment-asks)). |
+| `github` | `auto_review` (see [Automatic review](github.md#automatic-review)), `automations`, `checks`, `guides`, `mutations`, `read_repositories`, and `login`, the app's own login, which a comment mentions to ask the client's default (see [Who a comment asks](github.md#who-a-comment-asks)). |
 | `home` | `{project, channel}`: where the client files the threads it starts outside a channel bound to one, such as direct messages and GitHub issues. `project` is a project's name, or `~` for the workspace, and must exist. `channel` is one of its channels, not archived; left out, `general`. Left out entirely, the workspace's `general`. A Slack thread outside a bound channel is filed here, private for a direct message (see [Slack coworking](slack.md#coworking-channels-threads-and-mentions)). A home in a project the reader may not read is not shown to them, and their change that names no home keeps it. |
 | `enabled` | A disabled client answers nothing and carries nothing. |
 
@@ -27,7 +27,7 @@ The options under `slack` and `github` are the ones [Slack](slack.md) and
 ### Agents a reader may not read
 
 A client names agents in its default, its list, its bots and its
-auto-labels. A reader is shown only the agents they may read: one that lives
+event rules. A reader is shown only the agents they may read: one that lives
 in a project they may not read is left out of each, as if it were not there,
 as a home there is. The machine that hosts the client's surface, its
 `slack.machine`, is shown every agent the client names, since it routes by
@@ -50,10 +50,10 @@ what they were not shown:
 |--------------------------|------------------|
 | The default | Name another default. The one they were not shown joins the list, so the client still routes to it |
 | An agent in the list | Write `"*"`, which reaches it too |
-| A bot or an auto-label | Map the same bot or label themselves, or stop serving its repository's account |
+| A bot or an event rule | Map the same bot or write the same rule themselves, or stop serving its repository's account |
 
 An agent the client routed to stays one it routes to, so a bot or an
-auto-label kept for it still stands.
+event rule kept for it still stands.
 
 A default a person may not read is never available where they read, so it
 answers nothing for them, and it is passed over for them, as if it were not
@@ -68,7 +68,7 @@ Default deny. A client routes to its default agent and to the agents listed in
 `agents`. With neither, it routes to nothing. `"agents": ["*"]` means any agent
 in the workspace, and has to be written.
 
-The list is applied three times: a bot or an auto-label that names an agent
+The list is applied three times: a bot or an event rule that names an agent
 outside it is refused when the client is saved, a name in a message that is
 outside it is not read as an agent, and a tag for an agent outside it is
 dropped before it reaches the platform. In Humagen's threads it holds for every

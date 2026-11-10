@@ -122,6 +122,9 @@ type Config struct {
 	// Wording is each workspace's product name and the welcome and email
 	// text its branding replaces. Nil is Humagen's own.
 	Wording func(tenant string) Wording
+	// EntryAgent names the workspace's entry agent, which owns each root
+	// session that names nobody (entry.go). Empty is BuiltinEntry.
+	EntryAgent string
 
 	// AssignmentSources overrides the native resident source cursor for an embedding boundary. Nil uses this platform.
 	AssignmentSources operations.SourceChanges
@@ -244,10 +247,26 @@ type Config struct {
 	// OfflineHooks lets housekeeping run on the offline provider. It exists
 	// for tests: an offline answer is a notice, not a title or a fact.
 	OfflineHooks bool
-	// BuiltinProvider and BuiltinModel are what the platform's own agents
-	// run on. With either empty there are no built-in agents.
-	BuiltinProvider string
-	BuiltinModel    string
+	// ConfiguredModelsOnly holds agents to the providers someone set up:
+	// those the deployment declares (Ext.Providers) and each workspace's
+	// own (ModelProviders). The runtime's own offline, anthropic and openai
+	// are refused, so nothing runs on a stand-in or on a key nobody chose
+	// for it. The server sets it; a test that scripts the offline provider
+	// leaves it off.
+	ConfiguredModelsOnly bool
+	// ModelKinds builds the providers workspaces set up. With Build nil no
+	// workspace provider can run.
+	ModelKinds ModelKinds
+	// ShipBuiltins gives every workspace the platform's agents, each on the
+	// model chain it ships with (BuiltinChain). The server sets it.
+	ShipBuiltins bool
+	// TestBuiltinProvider and TestBuiltinModel ship the platform's agents on
+	// one model instead, such as the offline one a test scripts. For tests
+	// only: nothing in the server sets them.
+	TestBuiltinProvider, TestBuiltinModel string
+	// DeclaredKinds is the kind of each provider the deployment declares,
+	// by name, so the console can show its logo. A name with none is plain.
+	DeclaredKinds map[string]string
 	// AgentOptions are passed to every agent the sandbox builds. A test
 	// uses them to script a model.
 	AgentOptions []native.Option
@@ -276,12 +295,20 @@ type Config struct {
 
 // Platform is the assembled system.
 type Platform struct {
+	// systemTools is the registry's own tools and how its API operations
+	// reach the routes (systemtools.go).
+	systemTools systemRegistry
+	// renamedProviders notes, once per workspace and name, a stored model
+	// provider name read as the name it was renamed to (readProvider).
+	renamedProviders sync.Map
 	surfaceRecords   *surfaceRecords
 	ConnectionAuth   *connectionauth.Manager
 	GitHubInstall    *githubinstall.Manager
 	connectionHealth *state.Table[connectionObservation]
-	Sessions         session.Store
-	app              *flow.App
+	// pullReviews keeps automatic review's count and pause per pull request.
+	pullReviews *state.Table[PullReview]
+	Sessions    session.Store
+	app         *flow.App
 	// Rooms holds the conversations followed on this server (pkg/rooms).
 	Rooms    *rooms.Hub
 	roomGate *rooms.Gate
@@ -289,6 +316,16 @@ type Platform struct {
 	// GoodAsks are the asks each agent answered well, which routing
 	// searches beside its prompt (pkg/goodasks).
 	GoodAsks goodAsksStore
+	// entry is the entry agent's spawn list per workspace, and picks what
+	// each of its picks came to (entry.go).
+	entry entrySpawns
+	picks *state.Table[pickRecord]
+	// audiences is the latest audience of each surface root (surface_sessions.go).
+	audiences *state.Table[SessionAudience]
+	// contexts are get_context's resolvers by place scheme (context.go).
+	contexts contextResolvers
+	// deliveries is where each surface root answers (messages.go).
+	deliveries *state.Table[rootDelivery]
 	// health is the last health report and each component's recent checks.
 	health healthBook
 
@@ -313,11 +350,16 @@ type Platform struct {
 	catalog      catalogState
 	// Corpora are named bodies of knowledge, each holding sources and
 	// connectors (docs/architecture/sources.md#corpora).
-	Corpora     *corpora.Store
-	SourceLinks *sourcelinks.Store
-	Evals       *evals.Store
-	Feedback    *feedback.Store
-	Prefs       *prefs.Store
+	Corpora *corpora.Store
+	// Graph is each workspace's knowledge graph, one slice per corpus.
+	Graph *GraphStore
+	// audienceSource is who a surfaced session reaches, as its surface
+	// last reported; the session API sets it. Nil reads as unknown.
+	audienceSource func(tenant, session string) (ReportedAudience, bool)
+	SourceLinks    *sourcelinks.Store
+	Evals          *evals.Store
+	Feedback       *feedback.Store
+	Prefs          *prefs.Store
 	// Marks is what each person marked on the conversations they read:
 	// archived for them, when last read, and the tips they dismissed.
 	Marks *marks.Store
@@ -429,6 +471,10 @@ type Platform struct {
 	// afterAccept, when set, runs between a run's acceptance and its record.
 	// Only tests set it, to stand for a loaded machine.
 	afterAccept func(event.Envelope)
+	// beforeMentionCalls, when set, runs before the platform decides which
+	// of a message's mentioned agents it may call. Only tests set it, to
+	// change where an agent lives in that moment.
+	beforeMentionCalls func()
 	// beforeCarryOut, when set, runs after a message is posted and before
 	// what it starts is decided. Only tests set it, to move a thread then.
 	beforeCarryOut func()
@@ -475,6 +521,12 @@ type Platform struct {
 
 // New assembles a platform. Nothing runs until Run is called.
 func New(cfg Config) (*Platform, error) {
+	if cfg.EntryAgent == "" {
+		cfg.EntryAgent = BuiltinEntry
+	}
+	if !projects.ValidAgent(cfg.EntryAgent) {
+		return nil, fmt.Errorf("platform: the entry agent's name %q is not an agent name", cfg.EntryAgent)
+	}
 	if cfg.ProjectTemplates == nil {
 		cfg.ProjectTemplates = projects.DefaultTemplates()
 	}
@@ -523,7 +575,7 @@ func New(cfg Config) (*Platform, error) {
 		queue:  cfg.Backends.Queue,
 	}
 	if p.Agents == nil {
-		p.Agents = wire.NewMemoryAgents(append(providers(), cfg.Ext.ProviderNames()...)...)
+		p.Agents = wire.NewMemoryAgentsAccepting(acceptProviderName, append(providers(), cfg.Ext.ProviderNames()...)...)
 	}
 	if p.ledger == nil {
 		p.ledger, p.queue = ledger.NewMemory(), dqueue.NewMemory()
@@ -656,6 +708,9 @@ func New(cfg Config) (*Platform, error) {
 	for name, provider := range cfg.Ext.Providers {
 		flowOptions = append(flowOptions, flow.WithModelProvider(name, provider))
 	}
+	// A workspace's own providers are found when a turn runs: resolveModel
+	// names each by its workspaceRef, and resolveProvider builds it.
+	flowOptions = append(flowOptions, flow.WithModelProviderResolver(acceptProviderName, p.resolveProvider))
 	app, err := flow.New(startup, flowOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("platform: flow: %w", err)
@@ -666,6 +721,10 @@ func New(cfg Config) (*Platform, error) {
 	p.asked = p.rt.StopRequested
 	if cfg.Stops != nil {
 		p.stops = stopFunc(cfg.Stops)
+	}
+	p.SetAgentCaller(p.runAgentCall)
+	if err := p.registerOwnSystemTools(); err != nil {
+		return nil, err
 	}
 	return p, nil
 }
@@ -694,29 +753,33 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error
 	if p.cfg.Runtime != nil {
 		inner := sandbox.Sandboxed(p.cfg.Runtime, sandbox.Plane{Control: plane, Tools: tools},
 			sandbox.WithReplicas(p.slots()), sandbox.WithLogger(p.log))
-		return callExecutor{inner: inner, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding}, nil
+		return callExecutor{inner: inner, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding, mentioned: p.callMentioned, entry: p.entryTurn}, nil
 	}
 	exec, err := runtime.NewSandbox(plane, tools, p.Agents.Resolver(),
-		runtime.WithCatalog(p.operationsCatalog(p.cfg.Ext.catalog(p.fileTools(p.connectorTools)), groups)),
+		runtime.WithCatalog(p.operationsCatalog(p.cfg.Ext.catalog(p.registryTools()), groups)),
 
 		runtime.WithDelegator(p.attach),
 		runtime.WithSessionRuntime(func() *runtime.Runtime { return p.rt }),
+		// The agent tool is the one way a run calls an agent, so the
+		// runtime's own calling verbs are not offered. Reading and citing
+		// another session stays the runtime's.
+		runtime.WithSessionTools(sessionReadTools...),
 		// An agent's declared sources ground its turns, searched in the
 		// run's tenant.
 		runtime.WithKnowledge(p.knowledgeFor),
-		runtime.WithCallTool(ToolCallAgent),
+		runtime.WithCallTool(ToolAgent),
 		// Each turn claims the instance its tools execute in.
 		runtime.WithRunInstances(p.runInstances),
 		// A run waiting on an attached run of the same agent holds one of
 		// that agent's nodes, so there are as many as there are places.
 		runtime.WithReplicas(p.slots()),
-		runtime.WithAgentOptions(slices.Concat(p.cfg.Ext.agentOptions(), p.cfg.AgentOptions, []native.Option{native.WithAttachments(resolve.New(p.files))})...),
+		runtime.WithAgentOptions(slices.Concat(p.nativeOptions(), p.cfg.AgentOptions, []native.Option{native.WithAttachments(resolve.New(p.files))})...),
 		runtime.WithSandboxLogger(p.log),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("platform: sandbox: %w", err)
 	}
-	return callExecutor{inner: exec, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding}, nil
+	return callExecutor{inner: exec, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding, mentioned: p.callMentioned, entry: p.entryTurn}, nil
 }
 
 // Invoke accepts an event for the one agent it names and starts its run. The
@@ -813,6 +876,11 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 		rec, lookupErr := p.Sessions.Get(ctx, tag.Tenant, th.ID)
 		if lookupErr != nil {
 			err = lookupErr
+		} else if rec.Key.Agent != strings.ToLower(strings.TrimSpace(agent)) {
+			// Another agent answering in the session's conversation (the one a
+			// message mentions, or the entry agent for several): the session's
+			// transcript stays its owner's, and this run keeps one of its own.
+			acc, err = p.rt.AcceptOwn(ctx, tag, agent)
 		} else {
 			meta := wire.Meta(tag)
 			meta[wire.MetaSession] = rec.ID
@@ -925,7 +993,7 @@ func (p *Platform) CallAs(ctx context.Context, who auth.Principal, runID string,
 // has left is read from the calls already counted, and the model call that
 // asked for this one may not be counted yet: the other half holds room for
 // it, and for anything else still in flight. Everything is trued up when the
-// call settles. That is how an agent's own calls (tagging, delegate_task)
+// call settles. That is how an agent's own calls, waited on or in the background,
 // lease budget, since a model never names an amount. A caller with nothing
 // left is refused. sees, when set, is the agents whoever asks may read (see
 // CallAs).
@@ -943,6 +1011,9 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	}
 	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) || sees != nil && !sees(req.Agent) {
 		return runs.Run{}, fmt.Errorf("%w: refused by the caller: %q may not call %q, which its spec's spawn allowlist does not name", ErrForbidden, parent.Agent, req.Agent)
+	}
+	if err := p.entryMayCall(tenant, rev, parent, req.Agent); err != nil {
+		return runs.Run{}, err
 	}
 	if err := p.checkOperationCall(ctx, parent, req); err != nil {
 		return runs.Run{}, err
@@ -1408,6 +1479,7 @@ func (p *Platform) Run(ctx context.Context) error {
 		"email notifications": p.runEmailNotifications,
 		"source refresh":      p.refreshSources,
 		"catalog crawl":       p.crawlCatalog,
+		"knowledge graph":     p.refreshGraphs,
 		"inbox retention": func(ctx context.Context) error {
 			tick := time.NewTicker(retainEvery)
 			defer tick.Stop()

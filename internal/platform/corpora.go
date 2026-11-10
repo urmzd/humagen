@@ -1,13 +1,19 @@
 package platform
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/catalog"
 	"github.com/urmzd/humagen/pkg/corpora"
+	"github.com/urmzd/humagen/pkg/graph"
 	"github.com/urmzd/humagen/pkg/knowledge"
 )
 
@@ -64,6 +70,13 @@ type CorpusCreate struct {
 	Readers     []corpora.Reader `json:"readers"`
 	Members     []corpora.Member `json:"members"`
 	Links       corpora.Links    `json:"links"`
+	// Agents are the agents granted the corpus.
+	Agents      []string `json:"agents"`
+	GraphSearch bool     `json:"graph_search"`
+	// Ontology is a JSON Schema of the types it adds to the graph.
+	Ontology json.RawMessage `json:"ontology,omitempty"`
+	Label    corpora.Label   `json:"label"`
+	Purpose  string          `json:"purpose"`
 }
 
 // CorpusChange is a partial change to a corpus. A nil field is kept.
@@ -74,6 +87,14 @@ type CorpusChange struct {
 	Readers     *[]corpora.Reader `json:"readers,omitempty"`
 	Members     *[]corpora.Member `json:"members,omitempty"`
 	Links       *corpora.Links    `json:"links,omitempty"`
+	GraphSearch *bool             `json:"graph_search,omitempty"`
+	// Ontology replaces its declared ontology; {} clears it.
+	Ontology *json.RawMessage `json:"ontology,omitempty"`
+	Label    *corpora.Label   `json:"label,omitempty"`
+	Purpose  *string          `json:"purpose,omitempty"`
+	// Agents replaces the agents granted the corpus. Agents the owner can
+	// no longer see are kept.
+	Agents *[]string `json:"agents,omitempty"`
 	// Owner hands the corpus to another person.
 	Owner   *string `json:"owner,omitempty"`
 	Version int64   `json:"version,omitempty"`
@@ -184,6 +205,8 @@ func (p *Platform) memberView(who auth.Principal, m corpora.Member, owner bool) 
 }
 
 func (p *Platform) corpusView(who auth.Principal, c corpora.Corpus) CorpusView {
+	seer := p.Seer(who)
+	c.Agents = slices.DeleteFunc(slices.Clone(c.Agents), func(a string) bool { return !seer.Agent(a) })
 	v := CorpusView{Corpus: c, Members: make([]CorpusMemberView, 0, len(c.Members)), Mine: c.Owner == who.Subject}
 	for _, m := range c.Members {
 		v.Members = append(v.Members, p.memberView(who, m, v.Mine))
@@ -232,6 +255,17 @@ func (p *Platform) ownCorpus(who auth.Principal, name string) (corpora.Corpus, e
 	return c, nil
 }
 
+// grantable checks that every agent named exists and who may see it.
+func (p *Platform) grantable(who auth.Principal, agents []string) error {
+	seer := p.Seer(who)
+	for _, a := range agents {
+		if _, err := p.Catalog().Get(context.Background(), who.Tenant, a, 0); err != nil || !seer.Agent(a) {
+			return fmt.Errorf("%w: no agent named %q", corpora.ErrInvalid, a)
+		}
+	}
+	return nil
+}
+
 // addable checks that who may see every member they add.
 func (p *Platform) addable(who auth.Principal, ms []corpora.Member) error {
 	for _, m := range ms {
@@ -251,7 +285,17 @@ func (p *Platform) CreateCorpus(who auth.Principal, in CorpusCreate) (CorpusView
 	if err := p.addable(who, in.Members); err != nil {
 		return CorpusView{}, err
 	}
-	c, err := p.Corpora.Create(who.Tenant, corpora.Corpus{Name: in.Name, Title: in.Title, Description: in.Description, Owner: who.Subject, Readers: in.Readers, Members: in.Members, Links: in.Links}, p.now())
+	if err := p.grantable(who, in.Agents); err != nil {
+		return CorpusView{}, err
+	}
+	ontology, err := checkedOntology(in.Ontology)
+	if err != nil {
+		return CorpusView{}, err
+	}
+	if err := restrictedGrant(who, corpora.Corpus{}, corpora.Corpus{Label: in.Label, Agents: in.Agents, Purpose: in.Purpose}); err != nil {
+		return CorpusView{}, err
+	}
+	c, err := p.Corpora.Create(who.Tenant, corpora.Corpus{Name: in.Name, Title: in.Title, Description: in.Description, Owner: who.Subject, Readers: in.Readers, Members: in.Members, Agents: in.Agents, Links: in.Links, GraphSearch: in.GraphSearch, Ontology: ontology, Label: in.Label, Purpose: in.Purpose}, p.now())
 	if err != nil {
 		return CorpusView{}, err
 	}
@@ -270,6 +314,18 @@ func (p *Platform) UpdateCorpus(who auth.Principal, name string, ch CorpusChange
 			return CorpusView{}, err
 		}
 	}
+	if ch.Agents != nil {
+		if err := p.grantable(who, *ch.Agents); err != nil {
+			return CorpusView{}, err
+		}
+	}
+	var ontology json.RawMessage
+	if ch.Ontology != nil {
+		var err error
+		if ontology, err = checkedOntology(*ch.Ontology); err != nil {
+			return CorpusView{}, err
+		}
+	}
 	if ch.Owner != nil {
 		if _, err := p.People.Get(who.Tenant, *ch.Owner); err != nil {
 			return CorpusView{}, fmt.Errorf("%w: hand a corpus to a person in the workspace", corpora.ErrInvalid)
@@ -279,6 +335,8 @@ func (p *Platform) UpdateCorpus(who auth.Principal, name string, ch CorpusChange
 		if c.Owner != who.Subject {
 			return fmt.Errorf("%w: only %s's owner may change it", ErrForbidden, name)
 		}
+		before := *c
+		before.Agents = slices.Clone(c.Agents)
 		if ch.Title != nil {
 			c.Title = *ch.Title
 		}
@@ -291,6 +349,18 @@ func (p *Platform) UpdateCorpus(who auth.Principal, name string, ch CorpusChange
 		if ch.Links != nil {
 			c.Links = *ch.Links
 		}
+		if ch.GraphSearch != nil {
+			c.GraphSearch = *ch.GraphSearch
+		}
+		if ch.Ontology != nil {
+			c.Ontology = ontology
+		}
+		if ch.Label != nil {
+			c.Label = *ch.Label
+		}
+		if ch.Purpose != nil {
+			c.Purpose = *ch.Purpose
+		}
 		if ch.Members != nil {
 			next := slices.Clone(*ch.Members)
 			for _, m := range c.Members {
@@ -300,10 +370,20 @@ func (p *Platform) UpdateCorpus(who auth.Principal, name string, ch CorpusChange
 			}
 			c.Members = next
 		}
+		if ch.Agents != nil {
+			seer := p.Seer(who)
+			next := slices.Clone(*ch.Agents)
+			for _, a := range c.Agents {
+				if !seer.Agent(a) && !slices.Contains(next, a) {
+					next = append(next, a)
+				}
+			}
+			c.Agents = next
+		}
 		if ch.Owner != nil {
 			c.Owner = *ch.Owner
 		}
-		return nil
+		return restrictedGrant(who, before, *c)
 	})
 	if err != nil {
 		return CorpusView{}, err
@@ -368,5 +448,139 @@ func (p *Platform) DeleteCorpus(who auth.Principal, name string, version int64) 
 		// Delete the record whose owner was just checked, not a later one.
 		version = c.Version
 	}
-	return p.Corpora.Delete(who.Tenant, name, version)
+	if err := p.Corpora.Delete(who.Tenant, name, version); err != nil {
+		return err
+	}
+	return p.Graph.DeleteSlice(who.Tenant, name)
+}
+
+// checkedOntology checks a declared ontology and returns its canonical
+// form; empty, null or {} is none.
+func checkedOntology(raw json.RawMessage) (json.RawMessage, error) {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" || trimmed == "{}" {
+		return nil, nil
+	}
+	o, err := graph.ParseOntology(raw)
+	if err != nil {
+		return nil, err
+	}
+	return o.Raw(), nil
+}
+
+// ontologyOf reads a corpus's declared ontology, or none.
+func ontologyOf(c corpora.Corpus) graph.Ontology {
+	if len(c.Ontology) == 0 {
+		return graph.Ontology{}
+	}
+	o, err := graph.ParseOntology(c.Ontology)
+	if err != nil {
+		return graph.Ontology{}
+	}
+	return o
+}
+
+// InferOntology proposes an ontology from the warehouse tables a corpus
+// holds that its owner can see: a type per table, its columns as
+// properties, relations from columns that name another table with _id. It
+// adds nothing to the graph until the owner accepts it.
+func (p *Platform) InferOntology(who auth.Principal, name string) (CorpusView, error) {
+	c, err := p.ownCorpus(who, name)
+	if err != nil {
+		return CorpusView{}, err
+	}
+	var names []string
+	for _, m := range c.Members {
+		if m.Kind == corpora.Catalog && p.memberVisible(who, m) {
+			names = append(names, m.Name)
+		}
+	}
+	if len(names) == 0 {
+		return CorpusView{}, fmt.Errorf("%w: an ontology is inferred from the warehouse tables a corpus holds, and %s holds none you can see", corpora.ErrInvalid, name)
+	}
+	entries, err := p.CatalogStore.List(who.Tenant, names, catalog.MaxEntries)
+	if err != nil {
+		return CorpusView{}, err
+	}
+	proposed := graph.Infer(entries).Raw()
+	digest := sha256.Sum256(proposed)
+	updated, err := p.Corpora.Update(who.Tenant, name, c.Version, p.now(), func(c *corpora.Corpus) error {
+		c.Proposed, c.OntologySeen = proposed, hex.EncodeToString(digest[:12])
+		return nil
+	})
+	if err != nil {
+		return CorpusView{}, err
+	}
+	return p.corpusView(who, updated), nil
+}
+
+// AcceptOntology adds a corpus's proposed types to its declared ontology:
+// those named in only, or all of them; a type declared already keeps its
+// declaration. The proposal is cleared.
+func (p *Platform) AcceptOntology(who auth.Principal, name string, only []string) (CorpusView, error) {
+	c, err := p.ownCorpus(who, name)
+	if err != nil {
+		return CorpusView{}, err
+	}
+	if len(c.Proposed) == 0 {
+		return CorpusView{}, fmt.Errorf("%w: %s has no proposed ontology", corpora.ErrInvalid, name)
+	}
+	proposed, err := graph.ParseOntology(c.Proposed)
+	if err != nil {
+		return CorpusView{}, err
+	}
+	merged := graph.Accept(ontologyOf(c), proposed, only)
+	declared, err := checkedOntology(merged.Raw())
+	if err != nil {
+		return CorpusView{}, err
+	}
+	updated, err := p.Corpora.Update(who.Tenant, name, c.Version, p.now(), func(c *corpora.Corpus) error {
+		c.Ontology, c.Proposed = declared, nil
+		return nil
+	})
+	if err != nil {
+		return CorpusView{}, err
+	}
+	return p.corpusView(who, updated), nil
+}
+
+// DiscardOntology drops a corpus's proposed ontology.
+func (p *Platform) DiscardOntology(who auth.Principal, name string) (CorpusView, error) {
+	c, err := p.ownCorpus(who, name)
+	if err != nil {
+		return CorpusView{}, err
+	}
+	updated, err := p.Corpora.Update(who.Tenant, name, c.Version, p.now(), func(c *corpora.Corpus) error {
+		c.Proposed = nil
+		return nil
+	})
+	if err != nil {
+		return CorpusView{}, err
+	}
+	return p.corpusView(who, updated), nil
+}
+
+// restrictedGrant checks a change against the rule for restricted corpora:
+// granting one to an agent, or restricting one that agents are granted,
+// takes a workspace admin (clients:write) and a stated purpose.
+func restrictedGrant(who auth.Principal, before, after corpora.Corpus) error {
+	if after.Label != corpora.Restricted || len(after.Agents) == 0 {
+		return nil
+	}
+	added := before.Label != corpora.Restricted
+	for _, a := range after.Agents {
+		if !slices.Contains(before.Agents, a) {
+			added = true
+		}
+	}
+	if !added {
+		return nil
+	}
+	if !who.Can(auth.ClientsWrite) {
+		return fmt.Errorf("%w: granting a restricted corpus to an agent takes a workspace admin", ErrForbidden)
+	}
+	if strings.TrimSpace(after.Purpose) == "" {
+		return fmt.Errorf("%w: say why its agents may read a restricted corpus (purpose)", corpora.ErrInvalid)
+	}
+	return nil
 }

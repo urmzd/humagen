@@ -13,7 +13,6 @@ import (
 	"github.com/urmzd/orchagent/flow/event"
 	"github.com/urmzd/orchagent/flow/runtime"
 	"github.com/urmzd/orchagent/flow/turn"
-	"github.com/urmzd/orchagent/flow/turn/native"
 	types "github.com/urmzd/saige/agent/types"
 )
 
@@ -52,8 +51,7 @@ func TestSharedPromptOverrideRequiresCompletedScoresReasonAndIndependentApproval
 	if card.Passed || !card.Evaluated || len(card.Scores) != 2 || len(card.Scores[0].Results) != 5 {
 		t.Fatalf("missing sampled regression %+v", card)
 	}
-	apply := p.builderApplyWorkspacePromptTool(runtime.Request{Tenant: "acme"})
-	policy, ok := apply.(native.Approving).Approval(types.ToolCallPart{Arguments: map[string]any{"change": card.ID, "override_reason": "Accepted tradeoff"}})
+	policy, ok := declaredApproval(runtime.Request{Tenant: "acme"}, p.toolDeclaration(ToolApplyWorkspacePrompt), types.ToolCallPart{Arguments: map[string]any{"change": card.ID, "override_reason": "Accepted tradeoff"}})
 	if !ok || policy.SelfApproval || len(policy.Approvers) != 1 || policy.Approvers[0] != "role:admin" || !strings.Contains(policy.Prompt, "Override") {
 		t.Fatalf("override lost independent admin approval: %+v", policy)
 	}
@@ -69,7 +67,7 @@ func TestSharedPromptOverrideRequiresCompletedScoresReasonAndIndependentApproval
 	if got := p.Settings("acme"); got.Prompts != config || got.WorkspaceName != "Concurrent name" {
 		t.Fatalf("settings changed incorrectly: %+v", got)
 	}
-	kept, err := p.Evals.Change("acme", BuiltinBuilder, card.ID)
+	kept, err := p.Evals.Change("acme", BuiltinEntry, card.ID)
 	if err != nil || kept.OverrideReason != "Accepted tradeoff" {
 		t.Fatalf("override not retained: %+v %v", kept, err)
 	}

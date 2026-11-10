@@ -23,6 +23,7 @@ func hr() Corpus {
 		Owner:       "00u-ana",
 		Readers:     []Reader{{Kind: Project, Name: "People"}, {Kind: Person, Name: "00u-bo"}, {Kind: Person, Name: "00u-bo"}},
 		Members:     []Member{{Kind: Source, Name: "handbook"}, {Kind: Catalog, Name: "warehouse"}, {Kind: Source, Name: "handbook"}},
+		Agents:      []string{"hr-helper", "hr-helper"},
 	}
 }
 
@@ -39,7 +40,7 @@ func TestCorpusLifecycle(t *testing.T) {
 		if made.Description != "Leave, pay and conduct policies" || made.Title != "HR policies" || made.Links != Isolated || made.Version == 0 || !made.CreatedAt.Equal(at) {
 			t.Fatalf("created %+v", made)
 		}
-		if len(made.Members) != 2 || len(made.Readers) != 2 {
+		if len(made.Members) != 2 || len(made.Readers) != 2 || !slices.Equal(made.Agents, []string{"hr-helper"}) || !made.Grants("hr-helper") {
 			t.Fatalf("duplicates kept: %+v", made)
 		}
 		if _, err := s.Create("acme", hr(), at); !errors.Is(err, ErrExists) {
@@ -100,6 +101,8 @@ func TestCorpusIsChecked(t *testing.T) {
 		"unknown reader":   {Name: "hr", Owner: "o", Readers: []Reader{{Kind: "group", Name: "x"}}},
 		"too many members": {Name: "hr", Owner: "o", Members: members(MaxMembers + 1)},
 		"too many readers": {Name: "hr", Owner: "o", Readers: readers(MaxReaders + 1)},
+		"unnamed agent":    {Name: "hr", Owner: "o", Agents: []string{""}},
+		"spaced agent":     {Name: "hr", Owner: "o", Agents: []string{"hr helper"}},
 	} {
 		if _, err := s.Create("acme", c, at); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: %v", name, err)
@@ -176,4 +179,25 @@ func TestTwoProcessesAgreeOnCorpora(t *testing.T) {
 			t.Fatalf("kept %d and refused %d, want 10 and 20", kept.Load(), refused.Load())
 		}
 	})
+}
+
+// A corpus kept before labels existed reads as internal.
+func TestACorpusWithNoLabelReadsAsInternal(t *testing.T) {
+	st := state.NewMemory()
+	s, err := Open(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Create("acme", Corpus{Name: "old", Owner: "o"}, at); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.kept.Update("acme", key("old"), func(r record, _ bool) (record, error) {
+		r.Corpus.Label = ""
+		return r, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Get("acme", "old"); err != nil || got.Label != Internal {
+		t.Fatalf("an unlabelled corpus reads %q, %v", got.Label, err)
+	}
 }

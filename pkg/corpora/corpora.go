@@ -13,6 +13,8 @@
 package corpora
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -30,8 +32,10 @@ const (
 	MaxCorpora     = 200
 	MaxMembers     = 50
 	MaxReaders     = 50
+	MaxAgents      = 50
 	MaxDescription = 500
 	MaxTitle       = 120
+	MaxOntology    = 64 << 10
 )
 
 var (
@@ -90,23 +94,65 @@ const (
 	Shared Links = "shared"
 )
 
+// Label is how sensitive a corpus's content is.
+type Label string
+
+const (
+	Public       Label = "public"
+	Internal     Label = "internal"
+	Confidential Label = "confidential"
+	// Restricted is pay, health, performance, investigations and personal
+	// records. Granting it to an agent takes a workspace admin and a stated
+	// purpose.
+	Restricted Label = "restricted"
+)
+
+var labels = []Label{Public, Internal, Confidential, Restricted}
+
+// Sensitive reports whether content of the label stays in the private
+// conversation of the person who read it.
+func (l Label) Sensitive() bool { return l == Confidential || l == Restricted }
+
 // Corpus is one named body of knowledge.
 type Corpus struct {
 	Name string `json:"name"`
 	// Title is what people call it, such as "HR policies". Empty shows
 	// the name.
-	Title       string    `json:"title,omitempty"`
-	Description string    `json:"description,omitempty"`
-	Owner       string    `json:"owner"`
-	Readers     []Reader  `json:"readers"`
-	Members     []Member  `json:"members"`
-	Links       Links     `json:"links"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	Title       string   `json:"title,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Owner       string   `json:"owner"`
+	Readers     []Reader `json:"readers"`
+	Members     []Member `json:"members"`
+	// Agents are the agents granted the corpus: they may search it and
+	// query its warehouses, always as the person a run acts for, who must
+	// be a reader too.
+	Agents []string `json:"agents"`
+	Links  Links    `json:"links"`
+	// GraphSearch adds the workspace graph to its search: documents by who
+	// owns them, the systems they sit in and how stale they are.
+	GraphSearch bool `json:"graph_search,omitempty"`
+	// Label is how sensitive its content is; internal by default.
+	Label Label `json:"label"`
+	// Purpose is why its agents may read it, required to grant a
+	// restricted corpus.
+	Purpose string `json:"purpose,omitempty"`
+	// Ontology is the types the corpus adds to the workspace graph, a JSON
+	// Schema the platform checks (pkg/graph). Proposed is one inferred for
+	// the owner to accept; it adds nothing until accepted.
+	Ontology json.RawMessage `json:"ontology,omitempty"`
+	Proposed json.RawMessage `json:"proposed_ontology,omitempty"`
+	// OntologySeen marks the last inferred proposal, so one discarded or
+	// accepted is not proposed again.
+	OntologySeen string    `json:"ontology_seen,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 	// Version is the stored record's version. An update or delete that
 	// names it fails with ErrConflict once someone else changed the corpus.
 	Version int64 `json:"version"`
 }
+
+// Grants reports whether the corpus is granted to an agent.
+func (c Corpus) Grants(agent string) bool { return slices.Contains(c.Agents, agent) }
 
 // Holds reports whether the corpus has a member.
 func (c Corpus) Holds(m Member) bool { return slices.Contains(c.Members, m) }
@@ -129,11 +175,20 @@ func normal(c Corpus) (Corpus, error) {
 		return c, fmt.Errorf("%w: a description is at most %d bytes", ErrInvalid, MaxDescription)
 	case len(c.Title) > MaxTitle || !utf8.ValidString(c.Title) || strings.ContainsFunc(c.Title, unicode.IsControl):
 		return c, fmt.Errorf("%w: a title is one line of at most %d bytes", ErrInvalid, MaxTitle)
+	case len(c.Ontology) > MaxOntology || len(c.Proposed) > MaxOntology || (len(c.Ontology) > 0 && !json.Valid(c.Ontology)) || (len(c.Proposed) > 0 && !json.Valid(c.Proposed)):
+		return c, fmt.Errorf("%w: an ontology is a JSON object of at most %d bytes", ErrInvalid, MaxOntology)
 	case c.Owner == "" || len(c.Owner) > 200:
 		return c, fmt.Errorf("%w: a corpus needs an owner", ErrInvalid)
 	}
 	if c.Links == "" {
 		c.Links = Isolated
+	}
+	if c.Label == "" {
+		c.Label = Internal
+	}
+	c.Purpose = strings.TrimSpace(c.Purpose)
+	if !slices.Contains(labels, c.Label) || len(c.Purpose) > MaxDescription || !utf8.ValidString(c.Purpose) {
+		return c, fmt.Errorf("%w: label is public, internal, confidential or restricted, and a purpose at most %d bytes", ErrInvalid, MaxDescription)
 	}
 	if c.Links != Isolated && c.Links != Shared {
 		return c, fmt.Errorf("%w: links is isolated or shared", ErrInvalid)
@@ -172,7 +227,19 @@ func normal(c Corpus) (Corpus, error) {
 	if len(readers) > MaxReaders {
 		return c, fmt.Errorf("%w: at most %d readers", ErrInvalid, MaxReaders)
 	}
-	c.Members, c.Readers = members, readers
+	agents := []string{}
+	for _, a := range c.Agents {
+		if a == "" || len(a) > 64 || strings.ContainsFunc(a, unicode.IsSpace) || !utf8.ValidString(a) {
+			return c, fmt.Errorf("%w: an agent is named by its name", ErrInvalid)
+		}
+		if !slices.Contains(agents, a) {
+			agents = append(agents, a)
+		}
+	}
+	if len(agents) > MaxAgents {
+		return c, fmt.Errorf("%w: at most %d agents", ErrInvalid, MaxAgents)
+	}
+	c.Members, c.Readers, c.Agents = members, readers, agents
 	return c, nil
 }
 
@@ -236,6 +303,15 @@ func shown(it state.Item[record]) (Corpus, bool) {
 	c := *it.Value.Corpus
 	c.Readers = slices.Clone(c.Readers)
 	c.Members = slices.Clone(c.Members)
+	c.Ontology, c.Proposed = bytes.Clone(c.Ontology), bytes.Clone(c.Proposed)
+	c.Agents = slices.Clone(c.Agents)
+	if c.Agents == nil {
+		c.Agents = []string{}
+	}
+	if c.Label == "" {
+		// Kept before corpora had labels: internal, the default.
+		c.Label = Internal
+	}
 	c.Version = it.Version
 	return c, true
 }

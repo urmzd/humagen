@@ -109,7 +109,7 @@ func newSourceQueryFixture(t *testing.T, mode knowledge.Mode, provider knowledge
 
 func (f sourceQueryFixture) tool(t *testing.T) (string, error) {
 	t.Helper()
-	return f.p.sourceTools(f.req)[ToolSourceSearch].Execute(t.Context(), map[string]any{"source": "external", "query": "release"})
+	return f.p.sourceSearchTool(f.req).Execute(t.Context(), map[string]any{"source": "external", "query": "release"})
 }
 
 func TestExternalSourceQueriesUseExactSelectedResources(t *testing.T) {

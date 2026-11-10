@@ -74,7 +74,7 @@ func (a capabilityActor) Actions() []connector.Action {
 				return connector.Result{}, operations.ErrDenied
 			}
 
-			if categoryOf(name) != operations.ReadContext {
+			if a.p.categoryOf(name) != operations.ReadContext {
 				if run, err := a.p.Runs.Get(a.req.Tenant, a.req.RunID); err == nil && (a.p.privateThread(a.req.Tenant, run.Thread) || a.p.RunRequiresReviewedSummary(ctx, run, a.p.RunPlace(a.req.Tenant, run).Project)) {
 					return connector.Result{}, operations.ErrDenied
 				}
