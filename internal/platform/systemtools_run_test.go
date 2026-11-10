@@ -204,10 +204,10 @@ func TestATurnsToolsAreBuiltFromTheRegistry(t *testing.T) {
 		}
 		built++
 	}
-	if built != 37 {
-		t.Errorf("built %d tools, want 37", built)
+	if built != 36 {
+		t.Errorf("built %d tools, want 36", built)
 	}
-	for _, name := range []string{"no_such_tool", "list_schedules", "session_call"} {
+	for _, name := range []string{"no_such_tool", "list_schedules", "session_call", "delegate_task"} {
 		if _, err := tools.Lookup(name); !errors.Is(err, native.ErrNoSuchTool) {
 			t.Errorf("%s = %v, want no such tool", name, err)
 		}

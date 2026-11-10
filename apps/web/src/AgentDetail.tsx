@@ -48,7 +48,7 @@ import {
 
 export type Tab = AgentTab;
 
-/** Approvals on calls to other agents. Calls go through one host tool, so these name a tool the agent never holds, and the agent cannot start. */
+/** Approvals on calls to single agents: each holds the agent tool's calls to the agent it names. */
 const callApprovals = (spec: AgentSpec) =>
   (spec.approvals ?? []).filter((t) => t.startsWith("tag_"));
 
@@ -490,7 +490,7 @@ export function AgentDetail({
       live = false;
     };
   }, [name]);
-  const broken = callApprovals(spec);
+  const heldCalls = callApprovals(spec);
 
   const save = async () => {
     setSaving(true);
@@ -623,15 +623,15 @@ export function AgentDetail({
         </p>
       )}
 
-      {broken.length > 0 && (
+      {heldCalls.length > 0 && (
         <div
-          role="alert"
-          className={`${card} flex flex-wrap items-center justify-between gap-3 border-aui-bad/40`}
+          data-testid="agent-held-calls"
+          className={`${card} flex flex-wrap items-center justify-between gap-3`}
         >
           <p className="min-w-0 flex-1 text-aui-sm text-aui-fg">
-            This agent asks for approval before calling {broken.map((t) => t.slice(4)).join(", ")}.
-            Agents call each other through one shared tool, so that setting names a tool it never
-            holds, and the agent cannot start.
+            This agent asks for approval before calling{" "}
+            {heldCalls.map((t) => t.slice(4)).join(", ")}. Each of those calls waits until a person
+            approves it.
           </p>
           {editable && (
             <button

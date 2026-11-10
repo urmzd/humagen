@@ -760,6 +760,10 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error
 
 		runtime.WithDelegator(p.attach),
 		runtime.WithSessionRuntime(func() *runtime.Runtime { return p.rt }),
+		// The agent tool is the one way a run calls an agent, so the
+		// runtime's own calling verbs are not offered. Reading and citing
+		// another session stays the runtime's.
+		runtime.WithSessionTools(sessionReadTools...),
 		// An agent's declared sources ground its turns, searched in the
 		// run's tenant.
 		runtime.WithKnowledge(p.knowledgeFor),
@@ -989,7 +993,7 @@ func (p *Platform) CallAs(ctx context.Context, who auth.Principal, runID string,
 // has left is read from the calls already counted, and the model call that
 // asked for this one may not be counted yet: the other half holds room for
 // it, and for anything else still in flight. Everything is trued up when the
-// call settles. That is how an agent's own calls (tagging, delegate_task)
+// call settles. That is how an agent's own calls, waited on or in the background,
 // lease budget, since a model never names an amount. A caller with nothing
 // left is refused. sees, when set, is the agents whoever asks may read (see
 // CallAs).

@@ -9,6 +9,7 @@ import (
 	"github.com/urmzd/orchagent/flow/event"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/audit"
@@ -47,7 +48,7 @@ func judgedBy(t *testing.T, shape func(*wire.AgentSpec), script [][]saigetypes.D
 			"helper": {say("Checked.")},
 		},
 		spawn: map[string][]string{"lead": {"helper"}},
-		tools: map[string][]string{"lead": {platform.ToolCallAgent}},
+		tools: map[string][]string{"lead": {legacy.CallAgentTool}},
 		shape: map[string]func(*wire.AgentSpec){"lead": shape},
 	}
 	cfg := platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}, OfflineHooks: true}
@@ -208,7 +209,7 @@ func TestWhatTheApprovalAgentDoesNotDecideWaitsForAPerson(t *testing.T) {
 func TestRunLeavesWhatTheAgentAlwaysAsksAbout(t *testing.T) {
 	p, c, first := judged(t, func(s *wire.AgentSpec) {
 		s.SelfApproval = true
-		s.Approvals = []string{platform.ToolCallAgent}
+		s.Approvals = []string{legacy.CallAgentTool}
 	}, `{"decision": "allow", "reason": "Fine.", "references": []}`)
 	if _, err := p.SetApprovalMode(admin, first.Thread, threads.ApprovalAuto); err != nil {
 		t.Fatal(err)

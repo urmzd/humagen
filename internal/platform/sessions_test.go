@@ -10,8 +10,6 @@ import (
 	"github.com/urmzd/humagen/pkg/feedback"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
-	"github.com/urmzd/saige/agent/agenttest"
-	saigetypes "github.com/urmzd/saige/agent/types"
 )
 
 func TestSessionsContinueChildrenKeepOneAgentAndConfineReads(t *testing.T) {
@@ -108,43 +106,6 @@ func TestSessionsContinueChildrenKeepOneAgentAndConfineReads(t *testing.T) {
 		t.Fatal("incremental read omitted cleared feedback")
 	}
 
-}
-
-func TestNativeSessionChildReleasesSingleWorkerAndUsesGovernedCall(t *testing.T) {
-	c := &cast{says: map[string][][]saigetypes.Delta{
-		"lead":   {agenttest.ToolCallResponse("inspect", "session_call", map[string]any{"agent": "helper", "text": "Inspect the details"}), say("The helper finished.")},
-		"helper": {say("The details are sound.")},
-	}, spawn: map[string][]string{"lead": {"helper"}}}
-	p := stage(t, c, platform.Config{Concurrency: 1, Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
-	root, err := p.StartSession(t.Context(), admin, platform.SessionInput{Project: "~", Agent: "lead", Text: "Delegate the inspection"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var runID string
-	for _, m := range root.Messages {
-		if m.Run != nil {
-			runID = m.Run.ID
-		}
-	}
-	parent := await(t, p, runID, runs.Completed)
-	child := called(t, p, parent.ID, "helper", runs.Completed)
-	if child.Parent != parent.ID || child.Thread == parent.Thread || child.Depth != 1 {
-		t.Fatalf("child bypassed governed lineage: %+v", child)
-	}
-	view, err := p.ReadSession(t.Context(), admin, root.ID, "", "", false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	childView, err := p.ReadSession(t.Context(), admin, child.Thread, "", "", false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(childView.Messages) == 0 || childView.Messages[len(childView.Messages)-1].Run == nil || childView.Conversation.LastBy != "helper" || !childView.Conversation.LastAgent {
-		t.Fatalf("child transcript/summary missing: %+v", childView)
-	}
-	if len(view.Children) != 1 || view.Children[0].ID != child.Thread {
-		t.Fatalf("child session missing: %+v", view.Children)
-	}
 }
 
 // A mention in a session is answered there, by the agent it names, and the

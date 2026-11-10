@@ -3,6 +3,7 @@ package platform
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/urmzd/orchagent/flow/event"
@@ -62,14 +63,21 @@ func connectorActions() []SystemTool {
 	}
 }
 
+// sessionReadTools are the runtime's session verbs a run is still offered:
+// reading another session of its tree, or one shared with it, and linking
+// one as context or evidence. The verbs that call an agent or wait on one
+// (session_call, session_listen, session_status) are not: the agent tool is
+// the one way a run calls an agent.
+var sessionReadTools = []string{"session_read", "session_link"}
+
 // upstreamTools are the tools the runtime builds itself and offers a run
-// ahead of the platform's catalog: the session tools and ask_person. The
-// registry declares them so that each has a category. Their calls do not
-// pass the wrapper (operationTool): the runtime resolves them before it
-// asks the catalog, which only the runtime can change.
+// ahead of the platform's catalog: the session verbs that read and
+// ask_person. The registry declares them so that each has a category. Their
+// calls do not pass the wrapper (operationTool): the runtime resolves them
+// before it asks the catalog, which only the runtime can change.
 func upstreamTools() []SystemTool {
 	out := []SystemTool{}
-	for _, name := range []string{"session_call", "session_listen", "session_read", "session_status", "session_link", toolAskPerson} {
+	for _, name := range append(slices.Clone(sessionReadTools), toolAskPerson) {
 		out = append(out, SystemTool{Name: name, Category: operations.Other, Upstream: true})
 	}
 	return out
@@ -95,7 +103,6 @@ func (p *Platform) registerRunTools() error {
 		read    = operations.ReadContext
 		write   = operations.WriteFiles
 		publish = operations.PublishArtifacts
-		calls   = operations.CallAgents
 		other   = operations.Other
 	)
 	// reads marks a tool that only reads: safe to repeat and to run side
@@ -112,10 +119,6 @@ func (p *Platform) registerRunTools() error {
 		{Name: ToolPublish, Category: publish, Run: file(ToolPublish)},
 		{Name: ToolOutcome, Category: other, Run: file(ToolOutcome)},
 		{Name: ToolShell, Category: write, Destructive: true, Run: acting(p.shellTool)},
-
-		// Calling agents. The agent tool is declared with the tools MCP
-		// clients are offered too (registerOwnSystemTools).
-		{Name: ToolDelegate, Category: calls, Parallel: true, Run: acting(p.delegateTool)},
 
 		// The analyst's.
 		reads(SystemTool{Name: ToolRunsSummary, Category: read, Run: builtin(ToolRunsSummary)}),

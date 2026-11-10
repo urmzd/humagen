@@ -15,6 +15,7 @@ import (
 	"github.com/urmzd/orchagent/flow/runtime"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
@@ -227,8 +228,8 @@ func TestACallWaitingForApprovalIsInTheCalleesQueue(t *testing.T) {
 			"helper": {say("Checked.")},
 		},
 		spawn: map[string][]string{"lead": {"helper"}},
-		tools: map[string][]string{"lead": {platform.ToolCallAgent}},
-		shape: map[string]func(*wire.AgentSpec){"lead": func(s *wire.AgentSpec) { s.Approvals = []string{platform.ToolCallAgent} }},
+		tools: map[string][]string{"lead": {legacy.CallAgentTool}},
+		shape: map[string]func(*wire.AgentSpec){"lead": func(s *wire.AgentSpec) { s.Approvals = []string{legacy.CallAgentTool} }},
 	}
 	p := stage(t, c, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
 	run := ask(t, p, "api-queue", "lead")

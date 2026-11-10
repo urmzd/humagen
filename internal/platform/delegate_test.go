@@ -221,6 +221,12 @@ func tagging(agent, text string) []saigetypes.Delta {
 	return agenttest.ToolCallResponse("call-"+agent, platform.ToolAgent, map[string]any{"agent": agent, "title": "Ask " + agent, "brief": text})
 }
 
+// handing is a background agent call: the work is handed to agent and the
+// caller carries on.
+func handing(id, agent, text string) []saigetypes.Delta {
+	return agenttest.ToolCallResponse(id, platform.ToolAgent, map[string]any{"agent": agent, "title": "Hand to " + agent, "brief": text, "background": true})
+}
+
 func say(text string) []saigetypes.Delta { return agenttest.TextResponse(text) }
 
 // stage runs a platform whose agents are a cast.
@@ -371,7 +377,7 @@ func TestADelegatedRunIsIndependent(t *testing.T) {
 	c := &cast{
 		says: map[string][][]saigetypes.Delta{
 			"lead": {
-				agenttest.ToolCallResponse("c1", platform.ToolDelegate, map[string]any{"agent": "worker", "text": "Write the long report"}),
+				handing("c1", "worker", "Write the long report"),
 				tagging("mid", "Wait here"),
 				say("unreachable"),
 			},
@@ -379,7 +385,6 @@ func TestADelegatedRunIsIndependent(t *testing.T) {
 			"mid":    {say("unreachable")},
 		},
 		spawn: map[string][]string{"lead": {"worker", "mid"}},
-		tools: map[string][]string{"lead": {platform.ToolDelegate}},
 		gates: map[string]chan struct{}{"worker": make(chan struct{}), "mid": make(chan struct{})},
 	}
 	p := stage(t, c, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
@@ -398,10 +403,10 @@ func TestADelegatedRunIsIndependent(t *testing.T) {
 	if worker.CallID != "htu_"+first.ID+"_1" {
 		t.Fatalf("the delegated run's call id = %q", worker.CallID)
 	}
-	within(t, "delegate_task answered that the work was launched", func() bool {
+	within(t, "the background call answered that the work was launched", func() bool {
 		held, _ := p.Journal.Events(tenant, []string{first.ID})
 		for _, e := range held {
-			if done, ok := e.Data.(event.ToolDone); ok && done.Name == platform.ToolDelegate {
+			if done, ok := e.Data.(event.ToolDone); ok && done.Name == platform.ToolAgent {
 				var out struct{ Status, Agent, Run string }
 				return json.Unmarshal([]byte(done.Result), &out) == nil && out.Status == "launched" && out.Agent == "worker" && out.Run == worker.ID
 			}
@@ -443,12 +448,11 @@ func TestADelegatedRunIsIndependent(t *testing.T) {
 func TestAttachedToADelegateDiesWithTheDelegate(t *testing.T) {
 	c := &cast{
 		says: map[string][][]saigetypes.Delta{
-			"lead":   {agenttest.ToolCallResponse("c1", platform.ToolDelegate, map[string]any{"agent": "worker", "text": "Take this on"}), say("Handed over.")},
+			"lead":   {handing("c1", "worker", "Take this on"), say("Handed over.")},
 			"worker": {tagging("leaf", "Help me"), say("unreachable")},
 			"leaf":   {say("unreachable")},
 		},
 		spawn: map[string][]string{"lead": {"worker"}, "worker": {"leaf"}},
-		tools: map[string][]string{"lead": {platform.ToolDelegate}},
 		gates: map[string]chan struct{}{"leaf": make(chan struct{})},
 	}
 	p := stage(t, c, platform.Config{Limits: call.Limits{MaxDepth: 3, MaxFanOut: 4}})

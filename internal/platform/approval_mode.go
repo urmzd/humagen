@@ -8,6 +8,7 @@ import (
 
 	"github.com/urmzd/orchagent/flow/event"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -110,6 +111,10 @@ func (p *Platform) autoApprove(ctx context.Context, run runs.Run, q event.Questi
 		return
 	}
 	alwaysAsk := agentApprovals(rev.Spec.Approvals)
+	if q.Tool != nil && legacy.ToolName(q.Tool.Name) == ToolAgent && slices.Contains(alwaysAsk, tagTool+targetOf(q.Tool.Arguments)) {
+		// The agent holds its calls to this one agent itself.
+		alwaysAsk = append(alwaysAsk, q.Tool.Name)
+	}
 	forced := wire.Meta(run.Tag())[operations.MetaForceAsk] == "true"
 	level := operations.Never
 	if q.Tool != nil {

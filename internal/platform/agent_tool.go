@@ -22,8 +22,10 @@ import (
 // and runAgentCall runs each call as a child run of the caller that carries
 // the call's id (runs.Run.CallID), so the child's activity nests under the
 // call and its answer is the call's result. Stopping the caller stops the
-// child, and a call the callee's policy holds waits for a person, as for
-// call_agent.
+// child, and a call the callee's policy holds waits for a person. A call
+// made with background set starts the child and does not wait: it passes the
+// same checks, answers that the work was launched, and the child, which no
+// longer ends with its caller, answers later.
 
 // agentTool is the agent tool for one run.
 func (p *Platform) agentTool(parent runtime.Request, report func(event.Action) error) saigetypes.Tool {
@@ -92,7 +94,9 @@ type agentCallReportKey struct{}
 // child it already started, waited on, and answered with the child's answer.
 // A refusal (the agent is not one the caller may call, the callee's policy
 // says no, the tree is out of depth or budget) is the call's error result,
-// for the caller to read. Only a run makes agent calls.
+// for the caller to read. Only a run makes agent calls. A background call
+// (AgentCall.Background) is the same call with the child delegated instead
+// of attached: nothing waits on it.
 func (p *Platform) runAgentCall(ctx context.Context, c SystemCall, a AgentCall) (SystemResult, error) {
 	if c.Run == "" || c.ToolUseID == "" {
 		return SystemResult{IsError: true, Text: "agent calls are made by a run; to start one, use send_messages"}, nil
@@ -102,6 +106,19 @@ func (p *Platform) runAgentCall(ctx context.Context, c SystemCall, a AgentCall) 
 		report = func(event.Action) error { return nil }
 	}
 	req := call.Request{Key: c.ToolUseID, Agent: a.Agent, Text: a.Brief, Mode: call.Subagent, CallID: c.ToolUseID}
+	if a.Background {
+		// The same call, not waited on: the run it starts outlives this one,
+		// and carries the call's id so its answer, which comes after this
+		// turn has moved on, says which call it is for.
+		req.Mode = call.Delegate
+		child, err := p.call(ctx, c.Who.Tenant, c.Run, req, true, nil)
+		if err != nil {
+			return SystemResult{IsError: true, Text: err.Error()}, nil
+		}
+		tell(ctx, report, ToolAgent, child, a.Brief)
+		out, err := json.Marshal(AgentLaunched{Status: "launched", Agent: a.Agent, Run: child.ID})
+		return SystemResult{Text: string(out)}, err
+	}
 	answer, err := p.waitForCall(ctx, runtime.Request{Tenant: c.Who.Tenant, RunID: c.Run}, req, ToolAgent, report)
 	if err != nil {
 		return SystemResult{IsError: true, Text: err.Error()}, nil

@@ -250,9 +250,10 @@ export function eventsOfTrace(
 }
 
 /**
- * The old ways one agent called another. Each became a run of its own, which
- * the stream shows as the agent call, so the tool call that started it is
- * not shown a second time.
+ * The agent tool, and the ways one agent called another on responses recorded
+ * before it was the only one. Each became a run of its own, which the stream
+ * shows as the agent call, so the tool call that started it is not shown a
+ * second time.
  */
 const DELEGATION = new Set([
   "agent",

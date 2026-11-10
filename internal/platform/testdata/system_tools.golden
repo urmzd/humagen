@@ -57,7 +57,6 @@ file_write | runs | write_files | idempotent | policy
 publish_artifact | runs | publish_artifacts |  | policy
 record_outcome | runs | other |  | policy
 shell | runs | write_files | destructive | policy
-delegate_task | runs | call_agents | parallel | policy
 runs_summary | runs | read_context | idempotent,parallel,read-only | policy
 run/list_alerts (list_alerts) | runs | read_context | idempotent,parallel,read-only | policy
 project_changes | runs | other | idempotent,parallel,read-only | policy
@@ -99,10 +98,7 @@ github_create_fix_pr | runs | external_messages+write_files(both) |  | policy
 github_run_checks | runs | other |  | policy
 slack_post_message | runs | external_messages |  | policy
 slack_add_reaction | runs | external_messages |  | policy
-session_call | runs | other | upstream | policy
-session_listen | runs | other | upstream | policy
 session_read | runs | other | upstream | policy
-session_status | runs | other | upstream | policy
 session_link | runs | other | upstream | policy
 ask_person | runs | other | upstream | policy
 get_context | mcp,runs | read_context | idempotent,parallel,read-only | policy

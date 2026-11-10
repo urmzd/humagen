@@ -122,7 +122,7 @@ func (p *Platform) resolveOperations(req runtime.Request) (runtime.Request, erro
 	if err := p.operationAdmissionRequest(req); err != nil {
 		return req, err
 	}
-	req = withoutCallAgent(req)
+	req = withAgentTool(req)
 	allowed, restricted, err := p.operationTools(req)
 	if err != nil {
 		return req, err
@@ -130,17 +130,8 @@ func (p *Platform) resolveOperations(req runtime.Request) (runtime.Request, erro
 	if restricted {
 		req.Definition.Spec.Tools = slices.DeleteFunc(slices.Clone(req.Definition.Spec.Tools), func(name string) bool { return !native.IsToolGroup(name) && !slices.Contains(allowed, name) })
 		req.Definition.Spec.Access.Spawn = slices.DeleteFunc(slices.Clone(req.Definition.Spec.Access.Spawn), func(agent string) bool {
-			return !slices.Contains(allowed, ToolCallAgent) && !slices.Contains(allowed, ToolAgent) && !slices.Contains(allowed, ToolDelegate) && !slices.Contains(allowed, tagTool+agent)
+			return !legacy.AgentToolNamed(allowed, agent)
 		})
-	}
-	if p.operationDecision(req, operations.CallAgents) == operations.Ask {
-		req.Definition.Spec.Approvals = slices.Clone(req.Definition.Spec.Approvals)
-		for _, agent := range req.Definition.Spec.Access.Spawn {
-			name := tagTool + agent
-			if slices.Contains(req.Definition.Spec.Tools, name) && !slices.Contains(req.Definition.Spec.Approvals, name) {
-				req.Definition.Spec.Approvals = append(req.Definition.Spec.Approvals, name)
-			}
-		}
 	}
 	control, err := p.AgentControl(req.Tenant, req.Agent())
 	if err != nil {
@@ -161,18 +152,16 @@ func (p *Platform) categoryOf(name string) operations.Category {
 }
 
 // toolDeclaration is what the tool a run knows as name declares: its
-// registry entry. call_agent reads as the agent tool, and the runtime's
-// tag_<agent> tools, one per agent a caller may call, are one family of
-// agent calls. A tool the registry does not hold, one of an extension
-// catalog or of a tool provider, declares nothing (undeclaredCategory).
+// registry entry. An earlier name of the agent tool, as a stored question
+// or approval may still hold it, reads as the agent tool (legacy), and the
+// name of the tool that called one agent is a call to an agent. A tool the
+// registry does not hold, one of an extension catalog or of a tool provider,
+// declares nothing (undeclaredCategory).
 func (p *Platform) toolDeclaration(name string) SystemTool {
-	if name == ToolCallAgent {
-		name = ToolAgent
-	}
-	if t, ok := p.runTool(name); ok {
+	if t, ok := p.runTool(legacy.ToolName(name)); ok {
 		return t
 	}
-	if strings.HasPrefix(name, tagTool) {
+	if _, tag := legacy.TagTarget(name); tag {
 		return SystemTool{Name: name, Category: operations.CallAgents}
 	}
 	return SystemTool{Name: name, Category: undeclaredCategory(name)}
@@ -321,21 +310,34 @@ func (t *operationTool) Approval(c saigetypes.ToolCallPart) (native.ApprovalRequ
 	if t.decision() != operations.Ask {
 		return native.ApprovalRequest{}, false
 	}
-	// Without the control, the fallback approvers still answer.
-	control, _ := t.p.AgentControl(t.req.Tenant, t.req.Agent())
-	approvers := slices.Clone(t.req.Definition.Spec.Approvers)
+	return native.ApprovalRequest{Prompt: allowPrompt(ApprovalCall{Request: t.req, Tool: t.Definition().Name, Call: c}), Approvers: t.p.agentApprovers(t.req), SelfApproval: t.req.Definition.Spec.SelfApproval, ExpiresIn: policyApprovalWait}, true
+}
+
+// policyApprovalWait is how long a call the action policy, or the caller's
+// own spec, holds waits for a person before it is denied.
+const policyApprovalWait = 24 * time.Hour
+
+// agentApprovers are who approves a call an agent's own side holds: the
+// approvers its spec names, or the fallback approvers and its manager.
+func (p *Platform) agentApprovers(req runtime.Request) []string {
+	approvers := slices.Clone(req.Definition.Spec.Approvers)
 	if len(approvers) == 0 {
+		// Without the control, the fallback approvers still answer.
+		control, _ := p.AgentControl(req.Tenant, req.Agent())
 		approvers = slices.Clone(fallbackApprovers)
 		if control.Manager != "" {
 			approvers = append(approvers, control.Manager)
 		}
 	}
-	return native.ApprovalRequest{Prompt: allowPrompt(ApprovalCall{Request: t.req, Tool: t.Definition().Name, Call: c}), Approvers: approvers, SelfApproval: t.req.Definition.Spec.SelfApproval, ExpiresIn: 24 * time.Hour}, true
+	return approvers
 }
 func (t *operationTool) check(ctx context.Context) error {
 	if allowed, restricted, err := t.p.operationTools(t.req); err != nil {
 		return err
-	} else if restricted && !slices.Contains(allowed, t.Definition().Name) {
+	} else if restricted && !slices.Contains(allowed, t.Definition().Name) && (t.decl.Name != ToolAgent || !legacy.NamesAgentTool(allowed)) {
+		// A restriction that names the agent tool by an earlier name still
+		// allows it. One that names single agents is held to them when the
+		// call is made (checkOperationCall).
 		return operations.ErrDenied
 	}
 	if err := t.p.operationAdmissionRequest(t.req); err != nil {
@@ -824,33 +826,42 @@ func (p *Platform) operationForced(req runtime.Request) bool {
 	return false
 }
 
-// withoutCallAgent reads a revision that still names call_agent as the agent
-// tool, which Access.Spawn grants: call_agent leaves its tools, and an
-// approval it required is required of the agent tool.
-func withoutCallAgent(req runtime.Request) runtime.Request {
+// withAgentTool reads a revision that names an earlier way to call an agent
+// as the agent tool, which Access.Spawn grants (legacy.WithoutAgentTools):
+// the earlier names leave its tools, and an approval one of them required
+// is required of the agent tool. An approval of the calls to one agent
+// ("tag_<agent>") leaves the approvals too, and the agent tool holds the
+// calls to that agent (heldCallee).
+func withAgentTool(req runtime.Request) runtime.Request {
 	spec := &req.Definition.Spec
-	if !slices.Contains(spec.Tools, ToolCallAgent) && !slices.Contains(spec.Approvals, ToolCallAgent) {
-		return req
-	}
-	spec.Tools = slices.DeleteFunc(slices.Clone(spec.Tools), func(name string) bool { return name == ToolCallAgent })
-	spec.Approvals = agentApprovals(spec.Approvals)
+	spec.Tools, spec.Approvals, _ = legacy.WithoutAgentTools(spec.Tools, spec.Approvals, spec.Access.Spawn)
 	return req
 }
 
-// agentApprovals are a revision's approvals with call_agent read as the
-// agent tool, each once.
+// agentApprovals are a revision's approvals as they are held now: an
+// earlier name of the agent tool read as the agent tool, each once.
 func agentApprovals(approvals []string) []string {
-	if !slices.Contains(approvals, ToolCallAgent) {
-		return approvals
-	}
 	out := make([]string, 0, len(approvals))
 	for _, name := range approvals {
-		if name == ToolCallAgent {
-			name = ToolAgent
-		}
-		if !slices.Contains(out, name) {
+		if name = legacy.ToolName(name); !slices.Contains(out, name) {
 			out = append(out, name)
 		}
 	}
 	return out
+}
+
+// heldCallee reports whether the pinned spec of the run that calls holds
+// its calls to callee for a person: its approvals name "tag_<callee>".
+func (p *Platform) heldCallee(req runtime.Request, callee string) bool {
+	run, err := p.runRecordOf(req.Tenant, req.RunID)
+	if err != nil {
+		return false
+	}
+	rev, err := p.Catalog().Get(context.Background(), req.Tenant, run.Agent, run.Rev)
+	if err != nil {
+		// The call itself reads the same spec and is refused without it.
+		return false
+	}
+	_, _, held := legacy.WithoutAgentTools(nil, rev.Spec.Approvals, rev.Spec.Access.Spawn)
+	return slices.Contains(held, callee)
 }
