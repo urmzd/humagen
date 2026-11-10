@@ -213,6 +213,7 @@ func (p *Platform) recordSurfaceFeedback(ctx context.Context, c clients.Client, 
 	if !b.Removed {
 		return p.RecordFeedbackCandidate(tenant, r)
 	}
+	p.RefreshGoodAsk(tenant, run.ID)
 	return nil
 }
 

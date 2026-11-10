@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/inbox"
@@ -23,7 +24,7 @@ func (p *Platform) checkOperationCall(ctx context.Context, parent runs.Run, req 
 	restrictionReq := runtime.Request{Tenant: parent.Tenant, RunID: parent.ID}
 	if allowed, restricted, err := p.operationTools(restrictionReq); err != nil {
 		return err
-	} else if restricted && !slices.Contains(allowed, ToolCallAgent) && !slices.Contains(allowed, ToolDelegate) && !slices.Contains(allowed, tagTool+req.Agent) {
+	} else if restricted && !legacy.AgentToolNamed(allowed, req.Agent) {
 		return operations.ErrDenied
 	}
 	if err := p.operationAdmissionRequest(runtime.Request{Tenant: parent.Tenant, RunID: parent.ID, Origin: parent.Origin, Meta: wire.Meta(parent.Tag()), Definition: native.Revision{Name: parent.Agent, Version: wire.VersionOf(parent.Rev), Spec: native.Spec{Name: parent.Agent}}}); err != nil {
@@ -39,12 +40,7 @@ func (p *Platform) checkOperationCall(ctx context.Context, parent runs.Run, req 
 	}
 	if level == operations.Ask && !approvedCall(ctx, req.Agent) {
 		info, _ := saigetypes.ToolCallInfoFromContext(ctx)
-		approved := false
-		for _, name := range []string{ToolCallAgent, ToolDelegate, "tag_" + req.Agent} {
-			if p.approvedCallTo(parent.Tenant, parent.ID, info.ID+":action", "tool:"+name) {
-				approved = true
-			}
-		}
+		approved := p.approvedCallTo(parent.Tenant, parent.ID, info.ID+":action", "tool:"+ToolAgent)
 		if r, ok := ctx.Value(operationRequestKey{}).(runtime.Request); ok && r.Resume != nil {
 			if a, ok := r.Resume.Answers[info.ID]; ok && a.Decision == event.DecisionApprove {
 				approved = true

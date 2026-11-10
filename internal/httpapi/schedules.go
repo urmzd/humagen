@@ -84,10 +84,23 @@ func (s *Server) viewOf(seer *platform.Seer, e platform.ScheduleEntry, now time.
 	return v
 }
 
-func (s *Server) listSchedules(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
+// listSchedules lists the schedules the caller may read, or with ?project=
+// those filed in one project ("~" is the workspace itself): a project's page
+// lists its scheduled work so.
+func (s *Server) listSchedules(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	now := time.Now()
 	out := []scheduleView{}
 	seer := s.P.Seer(who)
+	in, filtered := r.URL.Query().Get("project"), r.URL.Query().Has("project")
+	if filtered && in == "" {
+		fail(w, http.StatusBadRequest, "project names a project, or ~ for the workspace")
+		return
+	}
+	in = projects.NameOf(in)
+	if filtered && (!s.P.HasProject(who.Tenant, in) || !seer.Project(in)) {
+		fail(w, http.StatusNotFound, "not found")
+		return
+	}
 	all, err := s.P.Schedules.List(who.Tenant)
 	if err != nil {
 		s.problem(w, err)
@@ -96,7 +109,7 @@ func (s *Server) listSchedules(w http.ResponseWriter, _ *http.Request, who auth.
 	for _, sc := range all {
 		// A schedule filed in a project the caller cannot see is not theirs
 		// to read.
-		if !seer.Project(sc.Context[runs.MetaProject]) {
+		if !seer.Project(sc.Context[runs.MetaProject]) || filtered && sc.Context[runs.MetaProject] != in {
 			continue
 		}
 		out = append(out, s.viewOf(seer, sc, now))

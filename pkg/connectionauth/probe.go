@@ -18,6 +18,8 @@ func ProbeNative(ctx context.Context, name, token, team string, provided *http.C
 	switch name {
 	case "drive":
 		target = "https://www.googleapis.com/drive/v3/about?fields=kind"
+	case "onedrive":
+		target = "https://graph.microsoft.com/v1.0/me/drive?$select=id,driveType"
 	case "bigquery":
 		target = "https://bigquery.googleapis.com/bigquery/v2/projects?maxResults=1"
 	case "slack":
@@ -64,6 +66,8 @@ func ProbeNative(ctx context.Context, name, token, team string, provided *http.C
 		OK           bool              `json:"ok"`
 		Team         string            `json:"team_id"`
 		Kind         string            `json:"kind"`
+		ID           string            `json:"id"`
+		DriveType    string            `json:"driveType"`
 		Repositories []json.RawMessage `json:"repositories"`
 		Count        *int              `json:"total_count"`
 	}
@@ -84,6 +88,10 @@ func ProbeNative(ctx context.Context, name, token, team string, provided *http.C
 		}
 	case "drive":
 		if result.Kind != "drive#about" {
+			return ErrReconnect
+		}
+	case "onedrive":
+		if result.ID == "" || result.DriveType == "" {
 			return ErrReconnect
 		}
 	case "github":

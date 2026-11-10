@@ -97,6 +97,9 @@ func (s *Store) Purge(tenantName, id, by string, at time.Time) error {
 				if m.SurfaceID != "" {
 					w.del(tenantName, postedKey(id, m.SurfaceID))
 				}
+				if m.Followup.Pending() {
+					w.del(tenantName, followupKey(id, seqOf(m.ID, next.Head)))
+				}
 				for _, word := range words(m.Text) {
 					if !seen[word] {
 						seen[word] = true

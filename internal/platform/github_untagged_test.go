@@ -164,44 +164,59 @@ func TestAGitHubCommentToTheAppIsTheClientsDefaults(t *testing.T) {
 	})
 }
 
-// With no default of its own, the client's home channel and its chain
-// answer, as for a thread there.
-func TestAnUntaggedGitHubCommentFallsToTheHomesChain(t *testing.T) {
+// With no default of its own, the client's untagged comment falls to the
+// workspace default, filed in the client's home. The home channel's own
+// default is not read: agents are independent of projects and channels.
+func TestAnUntaggedGitHubCommentFallsToTheWorkspaceDefault(t *testing.T) {
 	p, r, _ := githubRoom(t, platform.Backends{}, func(in *platform.ClientInput) {
-		in.DefaultAgent = ""
+		in.DefaultAgent, in.Agents = "", []string{"ops", "docs"}
 		in.Home = &clients.Home{Project: "Launch", Channel: "triage"}
 	})
+	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "docs"})
 	tag := fromGitHub("gh-home", platform.Untagged, "what changed?")
 	r.raise(t, tag)
-	if run := answered(t, p, r, tag); run.Agent != "ops" || run.Project != "Launch" || run.Channel != "triage" {
+	if run := answered(t, p, r, tag); run.Agent != "docs" || run.Project != "Launch" || run.Channel != "triage" {
 		t.Fatalf("the untagged comment is %s's, filed at %q #%s", run.Agent, run.Project, run.Channel)
 	}
 }
 
-// With no default anywhere, an untagged comment starts nothing and nothing
-// is posted. A default the client may not route to is refused, never swapped
-// for one it may.
+// With no default anywhere, an untagged comment to the app still lands, on
+// an agent the client may route to, saying why: it never waits for a person.
+func TestAnUntaggedGitHubCommentWithNoDefaultLands(t *testing.T) {
+	p, r, _ := githubRoom(t, platform.Backends{}, func(in *platform.ClientInput) { in.DefaultAgent = "" })
+	tag := fromGitHub("gh-landed", platform.Untagged, "what changed?")
+	r.raise(t, tag)
+	run := await(t, p, runtime.RunID(tenant, tag.ID+"-ops"), runs.Completed)
+	if run.Agent != "ops" || run.Project != "Launch" {
+		t.Fatalf("the untagged comment landed on %s, filed at %q", run.Agent, run.Project)
+	}
+}
+
+// A default the client may not route to is refused, never swapped for one it
+// may: the untagged comment starts nothing and nothing is posted.
 func TestAnUntaggedGitHubCommentNobodyMayAnswerStartsNothing(t *testing.T) {
 	for name, c := range map[string]struct {
 		mutate func(*platform.ClientInput)
+		// workspace is the workspace default, when one is set.
+		workspace string
 		// why is what the platform says when it lets the comment go, and
 		// agent one the client may route to, which answers only when named.
 		why, agent string
 	}{
-		"no default anywhere": {
-			mutate: func(in *platform.ClientInput) { in.DefaultAgent = "" },
-			why:    "no default answers an untagged message", agent: "ops",
-		},
 		"a default the client may not route to": {
 			mutate: func(in *platform.ClientInput) {
 				in.DefaultAgent, in.Agents = "", []string{"docs"}
 				in.Home = &clients.Home{Project: "Launch", Channel: "triage"}
 			},
-			why: "client may not route to that agent", agent: "docs",
+			workspace: "ops",
+			why:       "client may not route to that agent", agent: "docs",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			p, r, said := githubRoom(t, platform.Backends{}, c.mutate)
+			if c.workspace != "" {
+				setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: c.workspace})
+			}
 			tag := fromGitHub("gh-nobody", platform.Untagged, "what changed?")
 			r.raise(t, tag)
 			eventually(t, "the comment was let go", func() bool { return strings.Contains(said.String(), c.why) })
@@ -240,7 +255,7 @@ func TestASignedCommentToTheAppIsAnsweredByTheClientsDefault(t *testing.T) {
 	post := func(delivery, text string) {
 		t.Helper()
 		body := `{"action":"created","repository":{"name":"handbook","owner":{"login":"acme"}},` +
-			`"sender":{"login":"octocat","type":"User"},"issue":{"number":7},"comment":{"id":91,"body":"` + text + `"}}`
+			`"sender":{"login":"octocat","type":"User"},"issue":{"number":7},"comment":{"id":91,"body":"` + text + `","user":{"login":"octocat"},"author_association":"COLLABORATOR"}}`
 		mac := hmac.New(sha256.New, []byte("secret-gh"))
 		mac.Write([]byte(body))
 		r := httptest.NewRequest(http.MethodPost, "/connectors/github", strings.NewReader(body))

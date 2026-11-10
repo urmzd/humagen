@@ -20,6 +20,7 @@ import (
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/orchagent/flow/event"
 	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/orchagent/flow/turn/native"
 )
 
 // fakeWarehouse is a connector kind with both capabilities.
@@ -59,6 +60,9 @@ func newCatalogFixture(t *testing.T) catalogFixture {
 		t.Fatal(err)
 	}
 	p := &Platform{Operations: ops, Runs: runs.NewIndex(), Knowledge: knowledge.NewStore(), Projects: projects.NewStore(), Threads: threads.NewStore(), CatalogStore: catalog.NewStore(), now: time.Now, log: slog.New(slog.DiscardHandler)}
+	if err := p.registerOwnSystemTools(); err != nil {
+		t.Fatal(err)
+	}
 	members := []projects.Entry{{Who: "owner", Role: projects.Owner}, {Who: "bo", Role: projects.Member}}
 	if _, err := p.Projects.Create("tenant", projects.Project{Name: "Data", Members: members}, projects.Writer{By: "owner", Govern: true}, p.now()); err != nil {
 		t.Fatal(err)
@@ -101,7 +105,7 @@ func (f catalogFixture) runIn(t *testing.T, id, actor string, private bool, peop
 
 func (f catalogFixture) search(t *testing.T, req runtime.Request, q string) string {
 	t.Helper()
-	out, err := f.p.catalogTools(req)[ToolCatalogSearch].Execute(t.Context(), map[string]any{"query": q})
+	out, err := f.p.catalogSearchTool(req).Execute(t.Context(), map[string]any{"query": q})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +165,7 @@ func TestCatalogSearchFollowsTheAudience(t *testing.T) {
 func TestCatalogQueryIsTheOwnersAlone(t *testing.T) {
 	f := newCatalogFixture(t)
 	query := func(req runtime.Request, connector string) (string, error) {
-		return f.p.catalogTools(req)[ToolCatalogQuery].Execute(t.Context(), map[string]any{"connector": connector, "sql": "SELECT 1"})
+		return f.p.catalogQueryTool(req).Execute(t.Context(), map[string]any{"connector": connector, "sql": "SELECT 1"})
 	}
 	own := f.runIn(t, "own", "owner", true, "owner")
 	if out, err := query(own, "mine"); err != nil || !strings.Contains(out, `"rows":[[1]]`) {
@@ -182,7 +186,7 @@ func TestCatalogQueryIsTheOwnersAlone(t *testing.T) {
 	if f.mine.queries.Load() != 1 || f.team.queries.Load() != 0 {
 		t.Fatalf("queries ran: mine %d, team %d", f.mine.queries.Load(), f.team.queries.Load())
 	}
-	if _, ok := f.p.catalogTools(own)[ToolCatalogQuery].(interface{ ActsForPerson() bool }); !ok {
+	if held := f.p.operationTool(own, f.p.catalogQueryTool(own), f.p.toolDeclaration(ToolCatalogQuery)).(native.PersonScoped); !held.ActsForPerson() {
 		t.Fatal("catalog_query does not say it acts for a person")
 	}
 }

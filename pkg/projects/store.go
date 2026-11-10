@@ -40,7 +40,7 @@ type stored struct {
 
 func (s stored) project() Project {
 	p := s.Project
-	p.FileOwns = s.Owns
+	p.FileOwns = slices.DeleteFunc(slices.Clone(s.Owns), func(f string) bool { return retiredField[f] })
 	return p
 }
 
@@ -374,14 +374,19 @@ func (t *tenant) load(key string, raw json.RawMessage) error {
 	case strings.HasPrefix(key, keyChannel):
 		return t.loadChannel(key, raw)
 	case strings.HasPrefix(key, keyHome):
+		// A home says only who sees an agent, so one that cannot be read, or
+		// is kept under another agent's key, does not refuse the workspace.
+		// It fails closed: the agent named by the key reads as homed in no
+		// project (Unreadable), which nobody but projects:govern sees.
+		agent := strings.TrimPrefix(key, keyHome)
 		var h home
-		if err := json.Unmarshal(raw, &h); err != nil {
-			return fmt.Errorf("home %q: %w", key, err)
+		switch {
+		case !ValidAgent(agent):
+		case json.Unmarshal(raw, &h) == nil && h.Agent == agent:
+			t.homes[agent] = h
+		default:
+			t.homes[agent] = home{Agent: agent, Project: Unreadable}
 		}
-		if h.Agent != strings.TrimPrefix(key, keyHome) {
-			return fmt.Errorf("%w: the home of %q is kept under %q", ErrInvalid, h.Agent, key)
-		}
-		t.homes[h.Agent] = h
 	default:
 		return fmt.Errorf("%w: nothing is kept under %q", ErrInvalid, key)
 	}
@@ -432,14 +437,9 @@ func (t *tenant) check() error {
 			at = parent
 		}
 	}
-	for agent, h := range t.homes {
-		switch _, ok := t.projects[h.Project]; {
-		case !ValidAgent(agent):
-			return fmt.Errorf("%w: %q cannot live in a project", ErrInvalid, agent)
-		case h.Project != Root && !ok:
-			return fmt.Errorf("%w: %s lives in %q, which is not a project", ErrInvalid, agent, h.Project)
-		}
-	}
+	// A home naming no project, or no agent, is not refused: it says only
+	// who sees the agent, and one that names nothing shows it to nobody but
+	// projects:govern.
 	return t.checkChannels()
 }
 
@@ -912,6 +912,8 @@ func (s *Store) updateOnce(tenantName, name string, version int, w Writer, at ti
 		return Project{}, fmt.Errorf("%w: a project's knowledge sources are set on their own", ErrInvalid)
 	case what != SkillsChanged && !slices.Equal(next.Skills, cur.Skills):
 		return Project{}, fmt.Errorf("%w: a project's skills are set on their own", ErrInvalid)
+	case what != ContextChanged && !slices.Equal(next.Context.Corpora, cur.Context.Corpora):
+		return Project{}, fmt.Errorf("%w: a project's context is set on its own", ErrInvalid)
 	case next.Kind == Company && !w.Govern:
 		return Project{}, fmt.Errorf("%w: company projects need projects:govern", ErrForbidden)
 	}
@@ -988,7 +990,8 @@ func same(a, b Project) bool {
 			return false
 		}
 	}
-	return a.Managed == b.Managed && slices.Equal(a.FileOwns, b.FileOwns) && a.Archived == b.Archived && a.Announce == b.Announce
+	return a.Managed == b.Managed && slices.Equal(a.FileOwns, b.FileOwns) && a.Archived == b.Archived && a.Announce == b.Announce &&
+		slices.Equal(a.Context.Corpora, b.Context.Corpora)
 }
 
 func sameField(a, b Project, field string) bool {
@@ -1005,8 +1008,6 @@ func sameField(a, b Project, field string) bool {
 		return (a.Account == nil) == (b.Account == nil) && (a.Account == nil || *a.Account == *b.Account)
 	case FieldInstructions:
 		return a.Instructions == b.Instructions
-	case FieldApproveReviews:
-		return a.ApproveReviews == b.ApproveReviews
 	case FieldAgentPosts:
 		return a.AgentPosts == b.AgentPosts
 	case FieldExperts:
@@ -1169,8 +1170,6 @@ func (s *Store) upsert(tenantName string, p Project, owns []string, by string, a
 			next.Members = slices.Clone(p.Members)
 		case FieldKinds:
 			next.Kinds = slices.Clone(p.Kinds)
-		case FieldApproveReviews:
-			next.ApproveReviews = p.ApproveReviews
 		case FieldAgentPosts:
 			next.AgentPosts = p.AgentPosts
 		case FieldAgents:

@@ -10,7 +10,7 @@ import type { FilePreview } from "./artifactPreview.ts";
 import { PersonMark } from "./PersonMark.tsx";
 import { type ArtifactTab, type ConversationView, href } from "./route.ts";
 import { appendPage, contentUrl, type Stored } from "./storage.ts";
-import { AgentMark, ago, button, Problem, SkeletonRows } from "./ui.tsx";
+import { AgentMark, ago, button, LoadMore, Problem, SkeletonRows } from "./ui.tsx";
 
 const words = defaultCopy.conversation;
 const compareWords = defaultCopy.workspace.compare;
@@ -868,16 +868,7 @@ export function Deliverables({
           {items && items.length > 0 && filtered?.length === 0 && (
             <p className="text-aui-sm text-aui-muted">{words.artifactNoMatch}</p>
           )}
-          {next && (
-            <button
-              type="button"
-              className={`${button} self-center`}
-              disabled={moreBusy}
-              onClick={() => void more()}
-            >
-              {moreBusy ? "Loading" : words.more}
-            </button>
-          )}
+          {next && <LoadMore busy={moreBusy} onMore={() => void more()} label={words.more} />}
         </div>
       )}
     </>

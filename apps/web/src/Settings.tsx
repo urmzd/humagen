@@ -11,7 +11,7 @@ import {
   MoonIcon,
   PaletteIcon,
   PauseIcon,
-  ProjectIcon,
+  PlugIcon,
   ScrollTextIcon,
   ServerIcon,
   ShieldIcon,
@@ -24,15 +24,7 @@ import {
 import { Input } from "@humagen/render-web/ui/input";
 import { NativeSelect } from "@humagen/render-web/ui/native-select";
 import { Switch as SettingSwitch } from "@humagen/render-web/ui/switch";
-import {
-  type FormEvent,
-  Fragment,
-  type MouseEvent,
-  type ReactNode,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type FormEvent, Fragment, type MouseEvent, type ReactNode, useRef, useState } from "react";
 import { AccessExplain } from "./AccessExplain.tsx";
 import { doing } from "./access.ts";
 import {
@@ -41,13 +33,12 @@ import {
   type Me,
   type Preferences,
   type Revision,
-  type RouterSettings,
   type Settings as Workspace,
 } from "./api.ts";
 import { BillingSettings } from "./Billing.tsx";
-import { accentAttribute } from "./branding.ts";
 import { ClientSettings } from "./Clients.tsx";
 import { DeletionQueue } from "./DeletionQueue.tsx";
+import { ModelProviderSettings } from "./ModelProviders.tsx";
 import { PersonalPreferences } from "./PersonalPreferences.tsx";
 import type { PrefsRead } from "./preferences.ts";
 import { ReadAudit } from "./ReadAudit.tsx";
@@ -69,20 +60,6 @@ import {
 } from "./ui.tsx";
 
 export type Section = SettingsSection;
-
-const accents = (["workspace", "red", "yellow", "green", "purple", "blue", "teal"] as const).map(
-  (id) => ({
-    id,
-    label: id === "workspace" ? "Workspace default" : defaultCopy.accentPresets[id],
-    icon: (
-      <span
-        aria-hidden
-        data-accent={accentAttribute(id)}
-        className="size-2.5 rounded-full bg-aui-accent"
-      />
-    ),
-  }),
-);
 
 /** A person's picture, or their initial when they have none. */
 export function Avatar({
@@ -140,8 +117,6 @@ export function Settings({
   onWorkspace,
   onOpenProjects,
   onOpenWorkspace,
-  onOpenWorkspaceAgents = onOpenWorkspace,
-  onConnections,
   onNavigate,
 }: {
   me: Me;
@@ -164,10 +139,6 @@ export function Settings({
   onOpenProjects: () => void;
   /** Opens the workspace's own project, where its instructions and notes are. */
   onOpenWorkspace: () => void;
-  /** Opens the workspace's Agents tab, where the Workspace Default is. */
-  onOpenWorkspaceAgents?: () => void;
-  /** Opens Your connections, the tools that act as you. */
-  onConnections?: () => void;
   onNavigate?: (route: Route) => void;
 }) {
   const setSection = onSection;
@@ -257,61 +228,15 @@ export function Settings({
               </>
             ))}
 
-          {section === "routing" && (
+          {section === "providers" && (
             <>
               <header className="pb-2">
-                <h1 className={pageTitle}>Agent routing</h1>
+                <h1 className={pageTitle}>Model providers</h1>
                 <p className={pageLede}>
-                  A message goes to the agents it tags. One that tags none goes to the default where
-                  it is posted. When that is Everyone decides, each agent available there decides
-                  for itself whether to answer, and each that does answers in the same thread. When
-                  none does, the message waits for a person to answer or tag an agent.
+                  What agents run on. An agent runs once a provider its models name is enabled.
                 </p>
               </header>
-              {workspace && (
-                <RouterControl
-                  key={JSON.stringify(workspace.router ?? null)}
-                  saved={workspace.router ?? { enabled: false }}
-                  canEdit={canAdmin}
-                  onSave={(router) => saveWorkspace({ router })}
-                />
-              )}
-              <section className={`${card} flex flex-col gap-3`}>
-                <h2 className="text-aui-sm font-medium text-aui-fg">
-                  {defaultCopy.workspaceDefault}
-                </h2>
-                <p className="text-aui-sm text-aui-muted">
-                  {defaultCopy.workspaceDefault} answers a message that tags no agent, unless a
-                  project sets its own. It lives on the workspace's Agents tab.
-                </p>
-                <a
-                  href={href({ page: "project", name: "", tab: "agents" })}
-                  className={`${button} self-start`}
-                  onClick={follow(onOpenWorkspaceAgents)}
-                >
-                  {defaultCopy.workspaceDefault}
-                </a>
-              </section>
-              <section className={`${card} flex flex-col gap-3`}>
-                <h2 className="text-aui-sm font-medium text-aui-fg">Agent capabilities</h2>
-                <p className="text-aui-xs text-aui-muted">
-                  Each agent reads its description first when deciding whether to take a message.
-                  Edit them in Agents.
-                </p>
-                {agents.length === 0 && (
-                  <p className="text-aui-sm text-aui-muted">No agents configured.</p>
-                )}
-                {agents.map((a) => (
-                  <div key={a.spec.name}>
-                    <p className="text-aui-sm font-medium text-aui-fg">{a.spec.name}</p>
-                    <p className="text-aui-xs text-aui-muted">
-                      {a.spec.tagged_only
-                        ? "Only when tagged."
-                        : a.spec.description || "Decides using its name and instructions."}
-                    </p>
-                  </div>
-                ))}
-              </section>
+              <ModelProviderSettings canEdit={me.permissions.includes("clients:write")} />
             </>
           )}
 
@@ -402,23 +327,6 @@ export function Settings({
                   {notRead}
                 </section>
               )}
-              {onConnections && (
-                <section className={`${card} flex flex-wrap items-center justify-between gap-3`}>
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <p className="text-aui-sm text-aui-fg">Your connections</p>
-                    <p className="text-aui-xs text-aui-muted">
-                      The tools that act as you, and the credential you gave each.
-                    </p>
-                  </div>
-                  <a
-                    href={href({ page: "connections" })}
-                    className={button}
-                    onClick={follow(onConnections)}
-                  >
-                    Open Your Connections
-                  </a>
-                </section>
-              )}
             </>
           )}
 
@@ -426,55 +334,21 @@ export function Settings({
             <>
               <header className="pb-2">
                 <h1 className={pageTitle}>Appearance</h1>
-                <p className={pageLede}>These follow you to any browser you sign in from.</p>
               </header>
               {!read && <section className={card}>{notRead}</section>}
               {read && (
-                <section className={`${card} flex flex-col gap-4`}>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <span>
-                      <span className="block text-aui-sm text-aui-fg">Theme</span>
-                      <span className="block text-aui-xs text-aui-muted">
-                        System follows your device.
-                      </span>
-                    </span>
-                    <Segmented
-                      label="Theme"
-                      value={prefs.theme}
-                      onChange={(theme) => savePrefs({ theme })}
-                      options={[
-                        { id: "system", label: "System", icon: <MonitorIcon size={14} /> },
-                        { id: "light", label: "Light", icon: <SunIcon size={14} /> },
-                        { id: "dark", label: "Dark", icon: <MoonIcon size={14} /> },
-                      ]}
-                    />
-                  </div>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <span>
-                      <span className="block text-aui-sm text-aui-fg">Accent</span>
-                      <span className="block text-aui-xs text-aui-muted">
-                        Workspace default follows the workspace's brand. Other colors stay fixed.
-                      </span>
-                    </span>
-                    <Segmented
-                      label="Accent"
-                      value={prefs.accent}
-                      onChange={(accent) => savePrefs({ accent })}
-                      options={accents}
-                    />
-                  </div>
-                  <div className="border-t border-aui-border pt-4">
-                    <span className="block text-aui-sm text-aui-fg">
-                      {defaultCopy.preferences.typeface}
-                    </span>
-                    <p className="mt-1 text-aui-xs text-aui-muted">
-                      {defaultCopy.preferences.typefaceDescription}
-                    </p>
-                    <p className="mt-3 text-aui-sm">A clear place to think and work.</p>
-                    <p className="mt-1 font-aui-mono text-aui-xs text-aui-muted">
-                      SKILL.md / memory / agents
-                    </p>
-                  </div>
+                <section className={`${card} flex flex-wrap items-center justify-between gap-3`}>
+                  <span className="text-aui-sm text-aui-fg">Theme</span>
+                  <Segmented
+                    label="Theme"
+                    value={prefs.theme}
+                    onChange={(theme) => savePrefs({ theme })}
+                    options={[
+                      { id: "system", label: "System", icon: <MonitorIcon size={14} /> },
+                      { id: "light", label: "Light", icon: <SunIcon size={14} /> },
+                      { id: "dark", label: "Dark", icon: <MoonIcon size={14} /> },
+                    ]}
+                  />
                 </section>
               )}
             </>
@@ -700,122 +574,6 @@ export function Settings({
   );
 }
 
-/**
- * Whether agents decide for themselves to take a message that names no agent,
- * and the model that asks them. The provider is one this deployment declares;
- * its key comes from an environment variable or a secrets manager, never from
- * here.
- */
-function RouterControl({
-  saved,
-  canEdit,
-  onSave,
-}: {
-  saved: RouterSettings;
-  canEdit: boolean;
-  onSave: (next: RouterSettings) => void;
-}) {
-  const [draft, setDraft] = useState<RouterSettings>(saved);
-  const [providers, setProviders] = useState<string[] | null>(null);
-  useEffect(() => {
-    let live = true;
-    api
-      .modelProviders()
-      .then(
-        (all) =>
-          live &&
-          setProviders(all.filter((p) => p.declared && p.name !== "offline").map((p) => p.name)),
-      )
-      .catch(() => live && setProviders([]));
-    return () => {
-      live = false;
-    };
-  }, []);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
-  const problem =
-    draft.enabled && !draft.provider
-      ? "Choose a provider."
-      : draft.enabled && !draft.model?.trim()
-        ? "Name a model."
-        : null;
-  const choices = providers ?? [];
-  // A saved provider stays listed even when this deployment no longer declares it, so the field shows what is saved.
-  const listed =
-    draft.provider && !choices.includes(draft.provider) ? [draft.provider, ...choices] : choices;
-  return (
-    <section className={`${card} flex flex-col gap-3`} aria-label="Agents decide for themselves">
-      <SettingsFormRow
-        id="workspace-router"
-        label="Agents decide for themselves"
-        description="On, every agent available where an untagged message is posted is asked, all at once, whether it should answer. Off, no agent takes a message on its own."
-        compact
-      >
-        <SettingSwitch
-          id="workspace-router"
-          aria-describedby="workspace-router-hint"
-          checked={draft.enabled}
-          disabled={!canEdit}
-          onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
-        />
-      </SettingsFormRow>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Label text="Provider" hint="One this deployment declares.">
-          <NativeSelect
-            aria-label="Router provider"
-            value={draft.provider ?? ""}
-            disabled={!canEdit || !draft.enabled}
-            onChange={(e) => setDraft((d) => ({ ...d, provider: e.target.value || undefined }))}
-          >
-            <option value="">
-              {providers === null
-                ? "Loading providers"
-                : listed.length === 0
-                  ? "No provider declared"
-                  : "Choose a provider"}
-            </option>
-            {listed.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </NativeSelect>
-        </Label>
-        <Label text="Model" hint="A small, fast model is enough: each agent answers yes or no.">
-          <input
-            className={field}
-            maxLength={200}
-            value={draft.model ?? ""}
-            disabled={!canEdit || !draft.enabled}
-            onChange={(e) => setDraft((d) => ({ ...d, model: e.target.value || undefined }))}
-          />
-        </Label>
-      </div>
-      <p className="text-aui-xs text-aui-muted">
-        No credential is stored here. The provider's key comes from an environment variable or a
-        secrets manager.
-      </p>
-      {canEdit && (
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {problem && dirty && <span className="text-aui-xs text-aui-bad">{problem}</span>}
-          {dirty && (
-            <button type="button" className={button} onClick={() => setDraft(saved)}>
-              Discard
-            </button>
-          )}
-          <button
-            type="button"
-            className={primary}
-            disabled={!dirty || problem !== null}
-            onClick={() => onSave(draft)}
-          >
-            Save Routing
-          </button>
-        </div>
-      )}
-    </section>
-  );
-}
-
 // Workspace pages shown inside workspace settings. Schedules and Projects live in the sidebar.
 const linked = [
   {
@@ -858,6 +616,10 @@ const linked = [
 
 /** Your own settings; every other section is the workspace's. */
 const yours: Section[] = ["profile", "notifications", "appearance"];
+/** Pages shown inside Your settings. */
+const yourPages = [
+  { label: "Connections", icon: <PlugIcon size={16} />, route: { page: "connections" } as Route },
+];
 
 /**
  * Where Workspace settings opens for someone: its first section for an admin,
@@ -904,7 +666,7 @@ export function SettingsNav({
   const workspaceEntries: Entry[] = admin
     ? [
         { id: "workspace", label: "Workspace", icon: <ServerIcon size={16} /> },
-        { id: "routing", label: "Agent routing", icon: <BotIcon size={16} /> },
+        { id: "providers", label: "Model providers", icon: <BrainIcon size={16} /> },
         { id: "limits", label: "Limits", icon: <GaugeIcon size={16} /> },
         { id: "access", label: "Access", icon: <ShieldIcon size={16} /> },
         ...(canReadAudit
@@ -928,7 +690,11 @@ export function SettingsNav({
       ]
     : [];
   // Your settings and the workspace's are two places: the open section says which.
-  const scope = !active && section && yours.includes(section) ? "you" : "workspace";
+  const scope =
+    (!active && section && yours.includes(section)) ||
+    (active && yourPages.some((p) => p.label === active))
+      ? "you"
+      : "workspace";
   const groups = [
     scope === "you"
       ? { title: "Your settings", entries: personal }
@@ -965,6 +731,20 @@ export function SettingsNav({
                   {s.label}
                 </button>
               ))}
+              {scope === "you" &&
+                onNavigate &&
+                yourPages.map((item) => (
+                  <a
+                    key={item.label}
+                    href={href(item.route)}
+                    onClick={follow(() => onNavigate(item.route))}
+                    aria-current={active === item.label ? "page" : undefined}
+                    className={sectionLink}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </a>
+                ))}
               {scope === "workspace" &&
                 onNavigate &&
                 linked

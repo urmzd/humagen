@@ -15,6 +15,18 @@ import (
 
 var resourceID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
 
+// oneDriveID admits the "!" that personal OneDrive item IDs carry, such as
+// "D4648F06C91D9D3D!54927". Work and school item IDs are letters and digits.
+var oneDriveID = regexp.MustCompile(`^[a-zA-Z0-9_!-]{1,128}$`)
+
+// validResourceID reports whether id can name a resource of the provider.
+func validResourceID(provider, id string) bool {
+	if provider == "onedrive" {
+		return oneDriveID.MatchString(id)
+	}
+	return resourceID.MatchString(id)
+}
+
 // Mode determines whether a source supplies a retained copy or reader-scoped live results.
 type Mode string
 
@@ -422,7 +434,7 @@ func normalizeSourceConfig(cfg SourceConfig) (SourceConfig, error) {
 		return SourceConfig{}, fmt.Errorf("%w: resource selection", ErrInvalid)
 	}
 	for _, id := range cfg.Resources {
-		if !resourceID.MatchString(id) {
+		if !validResourceID(cfg.Provider, id) {
 			return SourceConfig{}, fmt.Errorf("%w: selected resource ID", ErrInvalid)
 		}
 	}
@@ -456,7 +468,7 @@ func normalizeSourceConfig(cfg SourceConfig) (SourceConfig, error) {
 			return SourceConfig{}, fmt.Errorf("%w: storage sources require indexed mode and a bucket URI", ErrInvalid)
 		}
 	}
-	if cfg.Provider != "manual" && !storageOrigin && !resourceID.MatchString(cfg.Origin) {
+	if cfg.Provider != "manual" && !storageOrigin && !validResourceID(cfg.Provider, cfg.Origin) {
 		return SourceConfig{}, fmt.Errorf("%w: provider resource ID", ErrInvalid)
 	}
 	if cfg.StopAfterSeconds == 0 {

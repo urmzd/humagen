@@ -41,7 +41,7 @@ func TestConnectionAuthFailureKeepsOnePrivateOwnerAlertAcrossReplicas(t *testing
 		return p
 	}
 	p := newReplica()
-	if _, err := p.Agents.Create(t.Context(), "acme", wire.AgentSpec{Name: BuiltinBuilder, Model: "offline", Provider: "offline", SystemPrompt: "Help reconnect"}, "test"); err != nil {
+	if _, err := p.Agents.Create(t.Context(), "acme", wire.AgentSpec{Name: BuiltinEntry, Model: "offline", Provider: "offline", SystemPrompt: "Help reconnect"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	other := newReplica()
@@ -68,7 +68,7 @@ func TestConnectionAuthFailureKeepsOnePrivateOwnerAlertAcrossReplicas(t *testing
 	}
 	a := all[0]
 	th, err := other.Threads.Get("acme", a.Session)
-	if err != nil || th.Session == nil || th.Visibility != threads.Private || th.CreatedBy != "ada" || th.Session.Agent != BuiltinBuilder || a.Action != "reconnect" || a.Title != "Reconnect Notion" {
+	if err != nil || th.Session == nil || th.Visibility != threads.Private || th.CreatedBy != "ada" || th.Session.Agent != BuiltinEntry || a.Action != "reconnect" || a.Title != "Reconnect Notion" {
 		t.Fatalf("unsafe connection attention: %+v %+v %v", a, th, err)
 	}
 	m, ok := other.Inbox.ByKey("acme", alertKey(a.ID))

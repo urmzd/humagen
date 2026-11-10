@@ -61,6 +61,7 @@ func (p *Platform) scoreOnline(run runs.Run) error {
 // RecordFeedbackCandidate is called only after the source feedback is saved.
 // Its input remains under the source run's project and visibility checks.
 func (p *Platform) RecordFeedbackCandidate(tenant string, record feedback.Record) error {
+	p.RefreshGoodAsk(tenant, record.Run)
 	if record.Rating != "down" || strings.TrimSpace(record.Reason) == "" {
 		return nil
 	}
@@ -83,7 +84,7 @@ func (p *Platform) raiseOnlineHealth(run runs.Run, result evals.Online) error {
 	if !p.openWork(run.Tenant, run.Project)(run) && owner == "" {
 		return nil
 	}
-	sessionID, err := p.EnsureAlertSession(context.Background(), run.Tenant, BuiltinBuilder, run.Project, owner, "Agent health: "+run.Agent)
+	sessionID, err := p.EnsureAlertSession(context.Background(), run.Tenant, p.cfg.EntryAgent, run.Project, owner, "Agent health: "+run.Agent)
 	if err != nil {
 		return err
 	}

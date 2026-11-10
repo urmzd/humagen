@@ -23,7 +23,7 @@ func TestConnectionPresetsAndHostRefusalsAreActionable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(all) != 8 {
+	if len(all) != 9 {
 		t.Fatalf("presets=%d", len(all))
 	}
 	for _, c := range all {
@@ -32,7 +32,7 @@ func TestConnectionPresetsAndHostRefusalsAreActionable(t *testing.T) {
 		}
 	}
 	_, err = p.DiscoverPersonTools(context.Background(), who, personctx.ToolServer{Name: "notes", URL: "https://notes.example.com/mcp"})
-	if !errors.Is(err, ErrForbidden) || !strings.Contains(err.Error(), "No tool server hosts are allowed") {
+	if !errors.Is(err, ErrForbidden) || !strings.Contains(err.Error(), "No MCP hosts are allowed") {
 		t.Fatal(err)
 	}
 	if err = p.SetRunSettings("acme", runsettings.Layer{Ceilings: runsettings.Ceilings{ToolServers: []string{"allowed.example.com"}}}, nil); err != nil {

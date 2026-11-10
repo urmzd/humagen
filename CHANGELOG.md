@@ -1,5 +1,170 @@
 # Changelog
 
+## 0.114.3 (2026-11-10)
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.114.2...v0.114.3)
+
+
+## 0.114.2 (2026-11-10)
+
+### Bug Fixes
+
+- three intermittent CI failures: a write deadlock, a test expectation, an empty module cache (#319) ([cd9a004](https://github.com/urmzd/humagen/commit/cd9a004fba2852fe3b8fc7030a323c697c246a7d))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.114.1...v0.114.2)
+
+
+## 0.114.1 (2026-11-09)
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.114.0...v0.114.1)
+
+
+## 0.114.0 (2026-11-09)
+
+### Features
+
+- **console**: Agents › Knowledge lists corpora, each with its own sources (#252) ([67f7d4f](https://github.com/urmzd/humagen/commit/67f7d4f6d74bc041ca90e7fcb851f8125beaffc5))
+- **knowledge**: OneDrive as a knowledge source (#284) ([5ed19b6](https://github.com/urmzd/humagen/commit/5ed19b6514fd24cbfb71b77b00a72006b3ab6f95))
+- **knowledge**: resolve one corpus item by its address (#276) ([44dc29c](https://github.com/urmzd/humagen/commit/44dc29ce2b0b5f61f0e523017559da8e3b88f892))
+- **knowledge**: a session reaches the corpora its project attaches (#271) ([a83f902](https://github.com/urmzd/humagen/commit/a83f902a7dc42b1caa32aec0e38e5bd88795874e))
+- **knowledge**: retrieval evals for corpora (#269) ([283d844](https://github.com/urmzd/humagen/commit/283d844659c5c636fd1e24db9c13dbb70ea2bac0))
+- **knowledge**: corpus labels decide where their content may go (#267) ([7c43c52](https://github.com/urmzd/humagen/commit/7c43c52177a93adbde3ec7a852d6d09b61eb23a1))
+- **knowledge**: maintenance tells owners what their corpora need (#265) ([3e59676](https://github.com/urmzd/humagen/commit/3e59676c8f00e6fb7113e5e1e2f475e9ddbbef05))
+- **knowledge**: a workspace graph built from what corpora hold (#253) ([3353791](https://github.com/urmzd/humagen/commit/3353791b3aaadc65ba9cd52ab37b001ec7cadfdc))
+- **knowledge**: search a corpus across what its members hold (#248) ([332075d](https://github.com/urmzd/humagen/commit/332075d27ab22fee2dca14b126242878415cf1f4))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.113.0...v0.114.0)
+
+
+## 0.112.0 (2026-11-09)
+
+### Features
+
+- **agents**: one agent tool makes every agent call (#313) ([6bf4d65](https://github.com/urmzd/humagen/commit/6bf4d655a09e7f4332cc89f35fb164efa0e565b6))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.111.1...v0.112.0)
+
+
+## 0.111.1 (2026-11-09)
+
+### Bug Fixes
+
+- **web**: console streams, Recents, times, tabs and loading (#314) ([c0d16fc](https://github.com/urmzd/humagen/commit/c0d16fc132853f64bb52bded7289411052a0e906))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.111.0...v0.111.1)
+
+
+## 0.111.0 (2026-11-09)
+
+### Features
+
+- **mcp**: a first-party MCP over one registry of system tools (#312) ([1533557](https://github.com/urmzd/humagen/commit/1533557cfd91311fd150eb246b03c3e1399f269f))
+- **agents**: output schemas; the approval agent answers in one (#308) ([cceb148](https://github.com/urmzd/humagen/commit/cceb1489f4999b79e0c2a3fd04541d817507da5f))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.110.0...v0.111.0)
+
+
+## 0.106.0 (2026-11-09)
+
+### Features
+
+- **web**: answer in Activity by the call that waits, on the message (#301) ([4bc3e43](https://github.com/urmzd/humagen/commit/4bc3e43562c614f88bed2a75649fd916d6109881))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.105.0...v0.106.0)
+
+
+## 0.103.0 (2026-11-09)
+
+### Features
+
+- **messages**: trace what ran to answer a message (#297) ([58645d6](https://github.com/urmzd/humagen/commit/58645d65e05e2eb184b8083019ad560ccf7d0604))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.102.0...v0.103.0)
+
+
+## 0.102.0 (2026-11-09)
+
+### Features
+
+- **messages**: read a message as a tree, list roots (#285) ([6f7a179](https://github.com/urmzd/humagen/commit/6f7a179347434a5b206a891af82d0f255a63ad00))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.101.0...v0.102.0)
+
+
+## 0.100.0 (2026-11-09)
+
+### Features
+
+- **api**: one messages API for every surface (#277) ([759c9c7](https://github.com/urmzd/humagen/commit/759c9c7b577eb926754ecbfe06720d4fba0b2684))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.99.2...v0.100.0)
+
+
+## 0.99.2 (2026-11-09)
+
+### Bug Fixes
+
+- **join**: route on what agents are for, not on instruction filler (#296) ([c1a8ded](https://github.com/urmzd/humagen/commit/c1a8ded5f04c4b1dd726cfc575f013ad9af35520))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.99.1...v0.99.2)
+
+
+## 0.99.0 (2026-11-08)
+
+### Features
+
+- **github**: review pull requests automatically; labels start nothing (#259) ([cdc0dd3](https://github.com/urmzd/humagen/commit/cdc0dd3331aaa86fd6503be1eb6a5765dec27179))
+- **console**: one Details panel: progress, agents, outputs, environment and what a session used (#293) ([26a466c](https://github.com/urmzd/humagen/commit/26a466c7154a66a3815231156c6913bcf7e3ee94))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.98.0...v0.99.0)
+
+
+## 0.97.1 (2026-11-08)
+
+### Bug Fixes
+
+- **sidebar**: Recents is one list by local day; Recents and Sessions list newest first (#291) ([03f5c1f](https://github.com/urmzd/humagen/commit/03f5c1f36d19453bab80cf3014dffae636588a12))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.97.0...v0.97.1)
+
+
+## 0.97.0 (2026-11-08)
+
+### Features
+
+- **console**: an item page and Sessions filters by place and item (#282) ([2a7d801](https://github.com/urmzd/humagen/commit/2a7d8014905ae644d1acddfac4dcba2a6a93d342))
+- **console**: every message has one address, its references and its delegated work (#281) ([a7a57f3](https://github.com/urmzd/humagen/commit/a7a57f3188bfcd872c6796c3994ceabbe12c6cc7))
+- **console**: one card, one reference chip and one menu for every page (#279) ([240ae87](https://github.com/urmzd/humagen/commit/240ae8737864d3ae461c372248d7a8833937c244))
+- **approvals**: the approval agent is a built-in that decides calls in Run (#255) ([5742393](https://github.com/urmzd/humagen/commit/574239398af3d6aa471e72426dedfdd1dba1227e))
+- **models**: admin model providers; no built-in or offline model (#254) ([ef75213](https://github.com/urmzd/humagen/commit/ef752139865715cf90bd6014d34740fc14ab3959))
+- **knowledge**: query a corpus's warehouses live with the reader's own login (#247) ([e71dc08](https://github.com/urmzd/humagen/commit/e71dc08634532ae3da4c5e2e1364737c62433bbc))
+- **followups**: queue, replace or stop work when a message arrives mid-run (#256) ([a3b0710](https://github.com/urmzd/humagen/commit/a3b07101a2f4f9995c8c833abb64f0af3a0eb89b))
+
+### Bug Fixes
+
+- **spec**: retired fields load with a note instead of stopping a start (#292) ([bc242a4](https://github.com/urmzd/humagen/commit/bc242a4ffb06537296e1d2eb9cde0ced23d77c7d))
+
+### Misc
+
+- **platform**: entry agent tests use the test builtin model fields (#290) ([51cb54f](https://github.com/urmzd/humagen/commit/51cb54fd2b157faeeb944c8572f8fb02ba550437))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.96.0...v0.97.0)
+
+
+## 0.95.0 (2026-11-08)
+
+### Breaking
+
+- **projects**: agents are independent of projects (#251) ([6756c49](https://github.com/urmzd/humagen/commit/6756c492d876f35e3acb9ebd5c5a859a9f3d0944))
+
+### Features
+
+- **projects**: a project's context is the corpora it attaches (#262) ([ffe374c](https://github.com/urmzd/humagen/commit/ffe374cd56db851d2b4468ae23b50a1fa3e1c5b3))
+- **console**: Projects is a grid of cards with search, sort and pins (#268) ([33aeb44](https://github.com/urmzd/humagen/commit/33aeb44285156db16eea063881a847f9b9a861fc))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.94.0...v0.95.0)
+
+
 ## 0.93.0 (2026-11-08)
 
 ### Features
