@@ -81,7 +81,8 @@ import {
   Problem,
   primary,
 } from "./ui.tsx";
-import { useVoiceNotes } from "./useVoiceNotes.ts";
+import { useVoiceMode, useVoiceNotes } from "./useVoiceNotes.ts";
+import { VoiceMode } from "./VoiceMode.tsx";
 import { Workspace } from "./Workspace.tsx";
 
 /**
@@ -245,6 +246,9 @@ function RoomComposer({
   const waitingNow = useRef<string[]>([]);
   // People's messages never wait for an agent: each is posted as it is sent.
   const voice = useVoiceNotes();
+  // Voice mode, in a session, when the workspace has a voice provider.
+  const voiceMode = useVoiceMode() && !!thread?.startsWith("s_");
+  const [talking, setTalking] = useState(false);
   const queue = useQueue({
     onStart: (m) => {
       setProblem(null);
@@ -303,8 +307,12 @@ function RoomComposer({
         sessionAgents={sessionAgents}
         plus={plus}
         voice={voice}
+        onVoiceMode={voiceMode ? () => setTalking(true) : undefined}
         trailing={trailing}
       />
+      {talking && thread && (
+        <VoiceMode session={thread} agent={sessionAgents?.[0]} onEnd={() => setTalking(false)} />
+      )}
     </div>
   );
 }

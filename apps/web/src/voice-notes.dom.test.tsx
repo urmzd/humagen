@@ -135,3 +135,28 @@ test("without voice notes from the server, the microphone dictates as before", (
   setup(undefined);
   assert.equal(screen.queryByRole("button", { name: words.record }), null);
 });
+
+test("voice mode has its own button beside the microphone, only when it is offered", () => {
+  install();
+  let opened = 0;
+  function Compose({ offered }: { offered: boolean }) {
+    const queue = useQueue({ onStart: () => {}, onInterrupt: () => {} });
+    return (
+      <Composer
+        placeholder="Message"
+        queue={queue}
+        disclaimer={null}
+        voice={{ maxBytes: 1 << 20, transcribe: async () => ({ text: "" }) }}
+        onVoiceMode={offered ? () => opened++ : undefined}
+      />
+    );
+  }
+  const { rerender } = render(<Compose offered={false} />);
+  assert.equal(screen.queryByRole("button", { name: "Voice mode" }), null);
+  // The microphone is there either way: voice input is not voice mode.
+  assert.ok(screen.getByRole("button", { name: words.record }));
+  rerender(<Compose offered />);
+  fireEvent.click(screen.getByRole("button", { name: "Voice mode" }));
+  assert.equal(opened, 1);
+  assert.ok(screen.getByRole("button", { name: words.record }));
+});
