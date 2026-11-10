@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.117.0 (2026-11-10)
+
+### Features
+
+- **console**: Workspace settings › Voice sets up the workspace's voice provider (#261) ([e1b9659](https://github.com/urmzd/humagen/commit/e1b96595b1d8de0ab9abad1a3108e8e0264cb0d7))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.116.0...v0.117.0)
+
+
 ## 0.115.0 (2026-11-10)
 
 ### Features
