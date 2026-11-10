@@ -15,6 +15,7 @@ import (
 	"github.com/urmzd/orchagent/flow/runtime"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
@@ -202,19 +203,19 @@ func TestTheCallToolOffersOnlyCalleesThatAdmitTheCaller(t *testing.T) {
 	}
 	found := false
 	for _, tool := range requests[0].Tools {
-		if tool.Name != platform.ToolCallAgent {
+		if tool.Name != platform.ToolAgent {
 			continue
 		}
 		found = true
 		if got := tool.Parameters.Properties["agent"].Enum; !slices.Equal(got, []string{"gated", "helper"}) {
-			t.Fatalf("call_agent offers %v", got)
+			t.Fatalf("the agent tool offers %v", got)
 		}
 		if strings.Contains(tool.Description, "closed") {
-			t.Fatalf("call_agent names a callee that would refuse: %s", tool.Description)
+			t.Fatalf("the agent tool names a callee that would refuse: %s", tool.Description)
 		}
 	}
 	if !found {
-		t.Fatal("lead was not offered call_agent")
+		t.Fatal("lead was not offered the agent tool")
 	}
 }
 
@@ -227,8 +228,8 @@ func TestACallWaitingForApprovalIsInTheCalleesQueue(t *testing.T) {
 			"helper": {say("Checked.")},
 		},
 		spawn: map[string][]string{"lead": {"helper"}},
-		tools: map[string][]string{"lead": {platform.ToolCallAgent}},
-		shape: map[string]func(*wire.AgentSpec){"lead": func(s *wire.AgentSpec) { s.Approvals = []string{platform.ToolCallAgent} }},
+		tools: map[string][]string{"lead": {legacy.CallAgentTool}},
+		shape: map[string]func(*wire.AgentSpec){"lead": func(s *wire.AgentSpec) { s.Approvals = []string{legacy.CallAgentTool} }},
 	}
 	p := stage(t, c, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
 	run := ask(t, p, "api-queue", "lead")

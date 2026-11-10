@@ -388,6 +388,9 @@ func (s *Seer) Suite(suite evals.Suite) bool {
 	if suite.Target == evals.Knowledge {
 		return s.p.SourceVisible(s.who, suite.Subject)
 	}
+	if suite.Target == evals.Corpus {
+		return s.p.CorpusReadable(s.who, suite.Subject)
+	}
 	return suite.Target != evals.Agent || s.Agent(suite.Subject)
 }
 

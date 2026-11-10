@@ -117,15 +117,14 @@ const ManagedFile = "file"
 // Fields the platform file can own. A field it owns is changed only by the
 // file, and a change through the API answers ErrManaged.
 const (
-	FieldTitle          = "title"
-	FieldDescription    = "description"
-	FieldKind           = "kind"
-	FieldParent         = "parent"
-	FieldAccount        = "account"
-	FieldInstructions   = "instructions"
-	FieldAgentPosts     = "agent_posts"
-	FieldApproveReviews = "approve_reviews"
-	FieldMembers        = "members"
+	FieldTitle        = "title"
+	FieldDescription  = "description"
+	FieldKind         = "kind"
+	FieldParent       = "parent"
+	FieldAccount      = "account"
+	FieldInstructions = "instructions"
+	FieldAgentPosts   = "agent_posts"
+	FieldMembers      = "members"
 	// FieldKinds is the root's own kinds.
 	FieldKinds = "kinds"
 )
@@ -204,8 +203,6 @@ type Project struct {
 	// writes: AgentPostsPublish or AgentPostsReview. Empty takes the
 	// default for the project's kind; see EffectiveAgentPosts.
 	AgentPosts string `json:"agent_posts,omitempty"`
-	// ApproveReviews explicitly permits agents to submit approving PR reviews here.
-	ApproveReviews bool `json:"approve_reviews,omitempty"`
 	// Experts are who answers for some topics here and below. Never nil.
 	Experts []Expert `json:"experts"`
 	// Members are who holds a role here. A stored project always lists
@@ -220,8 +217,9 @@ type Project struct {
 	// Announce is the lowest role that may post an announcement here. ""
 	// reads as owner.
 	Announce Role `json:"announce,omitempty"`
-	// Agents is what the project turns on: which agents are available here
-	// and below, and which answers a message that tags none.
+	// Agents is the project's agent policy: its allow list, and on the root
+	// the workspace default. Any agent answers in any project the allow
+	// lists permit.
 	Agents Agents `json:"agents"`
 	// Knowledge is the knowledge sources every run filed here and below is
 	// grounded in, besides its agent's own (Tree.Knowledge).
@@ -229,6 +227,9 @@ type Project struct {
 	// Skills are named instructions a message posted here and below can
 	// tell an agent to use (Tree.Skills).
 	Skills []Skill `json:"skills,omitempty"`
+	// Context is what every session filed here and below is given besides
+	// its instructions: the corpora it searches (Tree.Corpora).
+	Context Context `json:"context,omitzero"`
 
 	Template   string `json:"template,omitempty"`
 	Initiative bool   `json:"initiative,omitempty"`
@@ -266,6 +267,7 @@ func (p Project) clone() Project {
 	p.Agents = p.Agents.clone()
 	p.Knowledge = slices.Clone(p.Knowledge)
 	p.Skills = slices.Clone(p.Skills)
+	p.Context = p.Context.clone()
 	return p
 }
 
@@ -341,9 +343,14 @@ func ValidName(name string) bool { return validName.MatchString(name) }
 // builtIn reports whether a kind is one humagen defines.
 func builtIn(k Kind) bool { return k == Company || k == Team || k == Account }
 
+// retiredField names fields projects no longer have. A stored project may still
+// list one as the file's; reading it drops the name. approve_reviews went when
+// agents stopped approving pull requests.
+var retiredField = map[string]bool{"approve_reviews": true}
+
 var validField = map[string]bool{
 	FieldTitle: true, FieldDescription: true, FieldKind: true, FieldParent: true, FieldAccount: true, FieldInstructions: true,
-	FieldAgentPosts: true, FieldApproveReviews: true, FieldExperts: true, FieldMembers: true, FieldKinds: true, FieldAgents: true, FieldKnowledge: true, FieldSkills: true,
+	FieldAgentPosts: true, FieldExperts: true, FieldMembers: true, FieldKinds: true, FieldAgents: true, FieldKnowledge: true, FieldSkills: true,
 }
 
 // validate checks a project on its own: its fields and bounds, not its place.
@@ -417,6 +424,9 @@ func (p Project) validate() error {
 		return err
 	}
 	if err := validSkills(p.Skills); err != nil {
+		return err
+	}
+	if err := validContext(p.Context); err != nil {
 		return err
 	}
 	return p.Agents.validate()

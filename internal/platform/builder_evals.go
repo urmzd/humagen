@@ -7,13 +7,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/turn/native"
 	types "github.com/urmzd/saige/agent/types"
 )
 
@@ -25,19 +23,19 @@ const (
 	ToolReadEvals   = "read_agent_evals"
 )
 
-// approvedBuilderTool carries its own approval policy: granting the tool to
+// builderApproval is the approval the builder's changing tools declare in
+// the registry: a manager or an admin approves every call, and the person
+// asking may be the one. A tool carries it itself, so granting the tool to
 // another agent does not transfer the builder's authority.
-type approvedBuilderTool struct{ *types.ToolFunc }
-
-func (t *approvedBuilderTool) Approval(types.ToolCallPart) (native.ApprovalRequest, bool) {
-	return native.ApprovalRequest{Prompt: "Approve " + strings.ReplaceAll(t.Def.Name, "_", " ") + "?", Approvers: []string{"role:admin", "role:manager"}, SelfApproval: true}, true
+func builderApproval() ToolApproval {
+	return ToolApproval{Mode: ApprovalAlways, Approvers: []string{"role:admin", "role:manager"}, SelfApproval: true}
 }
 
 func (p *Platform) builderTarget(ctx context.Context, req runtime.Request, name string) (wire.Revision, error) {
-	if legacy.BuiltinAgent(req.Agent()) != BuiltinBuilder {
+	if !p.isHelper(req.Agent()) {
 		return wire.Revision{}, fmt.Errorf("%w: only the builder changes agents", ErrBuilder)
 	}
-	if builderProtectedAgent(name) {
+	if p.helperProtected(name) {
 		return wire.Revision{}, fmt.Errorf("%w: privileged platform agents cannot be changed by the builder", ErrBuilder)
 	}
 	if home, ok := p.ProjectTree(req.Tenant).Home(name); ok && home != projects.Root {
@@ -51,7 +49,7 @@ func (p *Platform) builderLifecycleTool(req runtime.Request, retire bool) types.
 	if retire {
 		name, description = ToolRetireAgent, "Retire an agent after approval. Its saved versions and previous work remain readable."
 	}
-	return &approvedBuilderTool{&types.ToolFunc{Def: types.ToolDef{Name: name, Description: description, Parameters: schema([]string{"name"}, map[string]string{"name": "Agent name", "paused": "true (default) or false to resume"})}, Fn: func(ctx context.Context, args map[string]any) (string, error) {
+	return &types.ToolFunc{Def: types.ToolDef{Name: name, Description: description, Parameters: schema([]string{"name"}, map[string]string{"name": "Agent name", "paused": "true (default) or false to resume"})}, Fn: func(ctx context.Context, args map[string]any) (string, error) {
 		name := strings.TrimSpace(arg(args, "name"))
 		if IsBuiltin(name) {
 			return "", fmt.Errorf("%w: built-in agents cannot be paused or retired by the builder", ErrBuilder)
@@ -75,18 +73,18 @@ func (p *Platform) builderLifecycleTool(req runtime.Request, retire bool) types.
 			return "", fmt.Errorf("%w: paused is true or false", ErrBuilder)
 		}
 		control.Paused = paused != "false"
-		if _, err = p.Operations.SetControl(req.Tenant, name, control, control.Version, "agent:"+BuiltinBuilder, p.now()); err != nil {
+		if _, err = p.Operations.SetControl(req.Tenant, name, control, control.Version, "agent:"+p.cfg.EntryAgent, p.now()); err != nil {
 			return "", err
 		}
 		if control.Paused {
 			return "Paused " + name + ".", nil
 		}
 		return "Resumed " + name + ".", nil
-	}}}
+	}}
 }
 
 func (p *Platform) builderWriteEvalTool(req runtime.Request) types.Tool {
-	return &approvedBuilderTool{&types.ToolFunc{Def: types.ToolDef{Name: ToolWriteEval, Description: "Save a deterministic eval suite after approval. A later agent revision must pass it without regressing. Provide a suite as JSON with name, target=agent, subject, and cases (id, input, checks).", Parameters: schema([]string{"suite"}, map[string]string{"suite": "Suite JSON"})}, Fn: func(ctx context.Context, args map[string]any) (string, error) {
+	return &types.ToolFunc{Def: types.ToolDef{Name: ToolWriteEval, Description: "Save a deterministic eval suite after approval. A later agent revision must pass it without regressing. Provide a suite as JSON with name, target=agent, subject, and cases (id, input, checks).", Parameters: schema([]string{"suite"}, map[string]string{"suite": "Suite JSON"})}, Fn: func(ctx context.Context, args map[string]any) (string, error) {
 		var suite evals.Suite
 		raw := arg(args, "suite")
 		if len(raw) > 128000 {
@@ -128,14 +126,14 @@ func (p *Platform) builderWriteEvalTool(req runtime.Request) types.Tool {
 		if suite.CreatedBy == "" {
 			// Legacy plain suites can still be authored without a person. They
 			// cannot supply authority for later unattended recorded replay.
-			suite.CreatedBy = "agent:" + BuiltinBuilder
+			suite.CreatedBy = "agent:" + p.cfg.EntryAgent
 		}
 		suite.UpdatedAt = p.now()
 		if err := p.Evals.Put(req.Tenant, suite, replace); err != nil {
 			return "", err
 		}
 		return "Saved eval suite " + suite.Name + ".", nil
-	}}}
+	}}
 }
 
 func (p *Platform) builderRunEvalTool(req runtime.Request) types.Tool {
@@ -150,7 +148,7 @@ func (p *Platform) builderRunEvalTool(req runtime.Request) types.Tool {
 		if err := p.builderReplaySuiteAllowed(req, suite); err != nil {
 			return "", err
 		}
-		by := "agent:" + BuiltinBuilder
+		by := "agent:" + p.cfg.EntryAgent
 		if who, err := p.builderPerson(req); err == nil {
 			by = who.Subject
 		}

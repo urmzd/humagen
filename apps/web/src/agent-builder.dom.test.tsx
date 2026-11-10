@@ -23,7 +23,7 @@ test("New agent starts one builder session and opens it only after acceptance", 
   const opened: string[] = [];
   net = stubFetch({
     "POST /api/sessions": (body) => {
-      assert.equal((body as { agent: string }).agent, "humagen-builder");
+      assert.equal((body as { agent: string }).agent, "humagen");
       assert.match((body as { text: string }).text, /before asking for approval/);
       return new Promise((resolve) => {
         finish = resolve;
@@ -45,7 +45,7 @@ test("New agent starts one builder session and opens it only after acceptance", 
 test("managing an agent resumes its labeled builder session without sending another prompt", async () => {
   net = stubFetch({
     "GET /api/sessions": (_body, query) => {
-      assert.equal(query.get("agent"), "humagen-builder");
+      assert.equal(query.get("agent"), "humagen");
       assert.equal(query.get("mine"), "true");
       return { sessions: [{ id: "s_manage", label: "manage-writer" }] };
     },
@@ -184,7 +184,7 @@ test("a recorded builder preview renders a prompt diff and eval regression witho
   });
   const turn = {
     id: "builder-run",
-    agent: { name: "humagen-builder" },
+    agent: { name: "humagen" },
     status: "done",
     text: "Review the proposed change.",
     tasks: [
@@ -230,7 +230,7 @@ test("an incomplete builder evaluation with no tools remains visibly blocked", (
   });
   const turn = {
     id: "incomplete-builder",
-    agent: { name: "humagen-builder" },
+    agent: { name: "humagen" },
     status: "done",
     text: "Evaluation could not finish.",
     tasks: [
@@ -262,7 +262,7 @@ test("workspace prompt previews use the same scorecard and stay behind native ap
     change: {
       id: "workspace-change",
       kind: "workspace_prompt",
-      agent: "humagen-builder",
+      agent: "humagen",
       evaluated: true,
       passed: true,
       scores: [],
@@ -273,7 +273,7 @@ test("workspace prompt previews use the same scorecard and stay behind native ap
   });
   const turn = {
     id: "workspace-builder",
-    agent: { name: "humagen-builder" },
+    agent: { name: "humagen" },
     status: "done",
     text: "Review workspace instructions.",
     tasks: [

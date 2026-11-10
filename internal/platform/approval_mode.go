@@ -8,6 +8,7 @@ import (
 
 	"github.com/urmzd/orchagent/flow/event"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -109,11 +110,15 @@ func (p *Platform) autoApprove(ctx context.Context, run runs.Run, q event.Questi
 		// What the agent always asks about cannot be read: ask.
 		return
 	}
-	alwaysAsk := rev.Spec.Approvals
+	alwaysAsk := agentApprovals(rev.Spec.Approvals)
+	if q.Tool != nil && legacy.ToolName(q.Tool.Name) == ToolAgent && slices.Contains(alwaysAsk, tagTool+targetOf(q.Tool.Arguments)) {
+		// The agent holds its calls to this one agent itself.
+		alwaysAsk = append(alwaysAsk, q.Tool.Name)
+	}
 	forced := wire.Meta(run.Tag())[operations.MetaForceAsk] == "true"
 	level := operations.Never
 	if q.Tool != nil {
-		level = p.ActionDecision(run.Tenant, run.Project, run.Agent, runs.AskedBy(run), categoryOf(q.Tool.Name))
+		level = p.ActionDecision(run.Tenant, run.Project, run.Agent, runs.AskedBy(run), p.categoryOf(q.Tool.Name))
 	}
 	if ok, why := autoApprovable(q, alwaysAsk, forced, level); !ok {
 		p.log.Info("platform: an approval was left for a person", "tenant", run.Tenant, "run", run.ID, "question", q.ID, "why", why)

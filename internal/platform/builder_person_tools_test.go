@@ -67,8 +67,8 @@ func TestBuilderPersonalToolsRequireExplicitReviewedChange(t *testing.T) {
 		t.Fatal("preview granted personal tools")
 	}
 	apply := p.builderApplyChangeTool(req)
-	approval, ok := apply.(native.Approving)
-	if !ok {
+	approval := p.operationTool(req, apply, p.toolDeclaration(ToolApplyChange)).(native.Approving)
+	if _, needed := declaredApproval(req, p.toolDeclaration(ToolApplyChange), types.ToolCallPart{}); !needed {
 		t.Fatal("grant bypasses person approval")
 	}
 	args := map[string]any{"name": before.Name, "change": card.ID}

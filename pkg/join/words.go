@@ -28,14 +28,35 @@ var Words Asker = AskerFunc(func(_ context.Context, c Candidate, message string)
 	return Decision{Join: true, Reason: "matched " + strings.Join(matched, ", ") + "."}, nil
 })
 
-var stopWords = map[string]bool{"the": true, "and": true, "for": true, "you": true, "can": true, "what": true, "please": true, "with": true, "this": true, "that": true}
+// stopWords say nothing about what a message is for, so neither joining by
+// words nor search matches on them, in a message or in what an agent says
+// about itself. Besides the common words, they are the filler of an
+// instruction: how long or how plainly to answer ("in one line", "briefly"),
+// and the framing around a question ("what should I use instead", "tell
+// me", "identify yourself") that every agent's prompt and every message
+// share.
+var stopWords = map[string]bool{}
 
-// words are the lowercase words of s worth matching, each with a trailing
-// "ing" or "s" cut.
+func init() {
+	for _, w := range strings.Fields(`the and for you can what please with this that why how who when where which did does was were are has have not but from about they them their there would could should will just any all also its our your
+		one two line sentence word short brief briefly quick quickly simple simply concise plain plainly
+		use used using instead rather tell give show explain need want like know think let make get got
+		only other more most some very much many way thing something anything here then than into been being these those each every
+		okay yes hey hello thank thanks really actually maybe sure yourself identify`) {
+		stopWords[w] = true
+	}
+}
+
+// words are the lowercase words of s worth matching, each with one trailing
+// "ments", "ment", "ings", "ing", "ed" or "s" cut, so "deployments",
+// "deployed" and "deploy" match, as do "failed" and "fail".
 func words(s string) []string {
 	var out []string
 	for _, w := range strings.FieldsFunc(strings.ToLower(s), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
-		for _, suffix := range []string{"ing", "s"} {
+		if stopWords[w] {
+			continue
+		}
+		for _, suffix := range []string{"ments", "ment", "ings", "ing", "ed", "s"} {
 			if len(w)-len(suffix) >= 3 && strings.HasSuffix(w, suffix) {
 				w = strings.TrimSuffix(w, suffix)
 				break

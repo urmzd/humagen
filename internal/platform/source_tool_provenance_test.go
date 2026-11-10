@@ -71,7 +71,7 @@ func TestApprovedHybridToolUsesCurrentReaderAccessAndNeverFallsBack(t *testing.T
 		Warnings  []SourceSearchWarning `json:"warnings"`
 	} {
 		t.Helper()
-		text, err := p.sourceTools(req)[ToolSourceSearch].Execute(t.Context(), map[string]any{"source": "hybrid", "query": "release"})
+		text, err := p.sourceSearchTool(req).Execute(t.Context(), map[string]any{"source": "hybrid", "query": "release"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -94,7 +94,7 @@ func TestApprovedHybridToolUsesCurrentReaderAccessAndNeverFallsBack(t *testing.T
 		t.Fatal("live evidence lost reader binding")
 	}
 	provider.fail = true
-	text, err := p.sourceTools(req)[ToolSourceSearch].Execute(t.Context(), map[string]any{"source": "hybrid", "query": "release"})
+	text, err := p.sourceSearchTool(req).Execute(t.Context(), map[string]any{"source": "hybrid", "query": "release"})
 	if text != "" || knowledge.FailureCause(err) != knowledge.AuthExpired {
 		t.Fatal("revoked reader access returned retained text", text, err)
 	}

@@ -28,6 +28,7 @@ import (
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/connectionauth"
 	"github.com/urmzd/humagen/pkg/contextflags"
+	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/evals"
@@ -228,12 +229,22 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("knowledge", err)
 	p.CatalogStore, err = catalog.Open(perRequest)
 	keep("catalog", err)
+	p.Corpora, err = corpora.Open(perRequest)
+	keep("corpora", err)
+	p.Graph, err = openGraph(perRequest)
+	keep("knowledge graph", err)
 	p.SourceEvidence, err = knowledge.OpenEvidenceStore(perRequest)
 	keep("source citation evidence", err)
 	p.Evals, err = evals.Open(perRequest)
 	keep("evals", err)
 	p.Feedback, err = feedback.Open(perRequest)
 	keep("feedback", err)
+	p.GoodAsks = openGoodAsks(perRequest)
+	p.picks = pickStore(perRequest)
+	p.audiences = audienceStore(perRequest)
+	p.deliveries = deliveryStore(perRequest)
+	// A conversation that came from a corpus item pulls that item.
+	p.RegisterContextResolver("corpus", p.corpusContext)
 	p.Prefs, err = prefs.Open(perRequest)
 	keep("prefs", err)
 	p.Marks, err = marks.Open(perRequest)
@@ -331,6 +342,13 @@ func (p *Platform) openStores(cfg Config) error {
 	p.Credentials, err = credentials.Open(perRequest, p.secrets)
 	keep("credentials", err)
 	p.connectionHealth = state.NewTable[connectionObservation](perRequest, "connection_health")
+	// A nil table counts nothing, so automatic review would never pause:
+	// without a store, the count is kept in memory.
+	reviews := perRequest
+	if reviews == nil {
+		reviews = state.NewMemory()
+	}
+	p.pullReviews = state.NewTable[PullReview](reviews, "pull_reviews")
 	if cfg.ConnectionAuth != nil {
 		connectionConfig := *cfg.ConnectionAuth
 		connectionConfig.OnAuthFailure = p.RecordConnectionAuthFailure

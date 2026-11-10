@@ -69,8 +69,18 @@ func TestCompanyRowsOfferOnlyCurrentBuiltinNames(t *testing.T) {
 			t.Fatalf("compatibility alias offered in Company marks: %v", row["row_agents"])
 		}
 	}
-	if got := len(row["row_agents"].([]any)); got != len(platform.Builtins()) {
-		t.Fatalf("duplicate or missing Company builtin marks: %v", row["row_agents"])
+	// A row names at most eight agents: the built-ins and the entry agent,
+	// each once, up to that.
+	marks := row["row_agents"].([]any)
+	seen := map[any]bool{}
+	for _, m := range marks {
+		if seen[m] {
+			t.Fatalf("duplicate Company builtin marks: %v", marks)
+		}
+		seen[m] = true
+	}
+	if got := len(marks); got != min(len(platform.Builtins())+1, 8) {
+		t.Fatalf("missing Company builtin marks: %v", marks)
 	}
 	choices := want(t, f, token, "GET", "/api/projects/~/agents", "", http.StatusOK)
 	raw, _ := json.Marshal(map[string]any{"homes": choices["homes"], "offers": choices["offers"], "available": choices["available"]})

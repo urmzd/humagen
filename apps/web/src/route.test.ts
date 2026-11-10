@@ -119,17 +119,6 @@ test("all connection addresses lead to the shared Connections page", () => {
   assert.deepEqual(at("/?view=connections"), { page: "connections" });
 });
 
-test("a project's Agents tab has its own path, the workspace's included", () => {
-  assert.equal(href({ page: "project", name: "Globex", tab: "agents" }), "/projects/Globex/agents");
-  assert.equal(href({ page: "project", name: "", tab: "agents" }), "/projects/~/agents");
-  assert.deepEqual(at("/projects/~/agents"), { page: "project", name: "", tab: "agents" });
-  assert.deepEqual(at("/projects/Globex/agents"), {
-    page: "project",
-    name: "Globex",
-    tab: "agents",
-  });
-});
-
 test("an unknown page stays visible as not found while legacy tabs fall back safely", () => {
   assert.deepEqual(at("/nowhere"), { page: "not-found", path: "/nowhere" });
   assert.equal(href(at("/nowhere")), "/nowhere");
@@ -155,7 +144,7 @@ test("the tab title names the place, then the product, with unread in front", ()
     documentTitle({ page: "agent", name: "analyst", tab: "prompt" }),
     "analyst - Humagen",
   );
-  assert.equal(documentTitle({ page: "project", name: "", tab: "inbox" }), "Workspace - Humagen");
+  assert.equal(documentTitle({ page: "project", name: "" }), "Workspace - Humagen");
   assert.equal(
     documentTitle({ page: "channel", project: "ops", channel: "launch" }),
     "#launch - Humagen",
@@ -220,10 +209,7 @@ test("a change of screen is told from a change on the same screen", () => {
   assert.ok(!same({ page: "library", section: "skills" }, { page: "library", section: "memory" }));
   // A tab, a panel or a filter on the same screen is not.
   assert.ok(
-    same(
-      { page: "project", name: "launch", tab: "inbox" },
-      { page: "project", name: "launch", tab: "agents" },
-    ),
+    same({ page: "project", name: "launch" }, { page: "project", name: "launch", fork: true }),
   );
   assert.ok(
     same({ page: "conversation", id: "a" }, { page: "conversation", id: "a", share: true }),
@@ -254,15 +240,15 @@ test("canonical sessions and alerts retain filters and anchors", () => {
     },
     { page: "conversation", id: "s_a/b", panel: "activity", step: "step/1", run: "r1" },
     { page: "conversation", id: "s_a", panel: "context", contextTab: "instructions" },
-    { page: "project", name: "Q4 launch", tab: "context" },
-    { page: "project", name: "", tab: "people" },
+    { page: "project", name: "Q4 launch" },
+    { page: "project", name: "" },
     { page: "library", section: "catalog", catalogQuery: "warehouse" },
     { page: "connections", provider: "callback" },
   ];
   for (const route of routes) assert.deepEqual(at(href(route)), route);
   assert.equal(
     href({ page: "conversation", id: "s_a", panel: "activity", step: "step1" }),
-    "/sessions/s_a?panel=steps&step=step1",
+    "/messages/s_a?panel=steps&step=step1",
   );
   assert.deepEqual(at("/sessions/s_a?panel=steps&step=step1"), {
     page: "conversation",
@@ -305,21 +291,62 @@ test("old conversation and panel URLs retain selections under canonical sessions
   ];
   for (const [url, route] of links) {
     assert.deepEqual(at(url), route);
-    assert.match(href(at(url)), /^\/sessions\//);
+    assert.match(href(at(url)), /^\/messages\//);
   }
 });
-test("project chat addresses migrate to context or filtered sessions", () => {
-  for (const tab of ["", "/inbox", "/history", "/overview", "/schedules", "/unknown"])
-    assert.deepEqual(at(`/projects/Launch${tab}`), {
-      page: "project",
-      name: "Launch",
-      tab: "context",
-    });
-  assert.deepEqual(at("/projects/Launch/channels/deals"), { page: "sessions", project: "Launch" });
-  assert.equal(
-    href({ page: "project", name: "Launch", tab: "inbox", message: "old" }),
-    "/projects/Launch/context",
-  );
+test("every old project tab, chat and channel address opens the one project page", () => {
+  for (const tab of [
+    "",
+    "/context",
+    "/agents",
+    "/people",
+    "/limits",
+    "/inbox?message=old",
+    "/history",
+    "/overview",
+    "/schedules",
+    "/channels",
+    "/channels/deals",
+    "/unknown",
+  ]) {
+    assert.deepEqual(at(`/projects/Launch${tab}`), { page: "project", name: "Launch" }, tab);
+    assert.deepEqual(at(`/projects/~${tab}`), { page: "project", name: "" }, tab);
+  }
+});
+test("a project page is written as its name alone, the workspace as ~, and Fork stays an address", () => {
+  assert.equal(href({ page: "project", name: "Launch" }), "/projects/Launch");
+  assert.equal(href({ page: "project", name: "Q4 launch" }), "/projects/Q4%20launch");
+  assert.equal(href({ page: "project", name: "" }), "/projects/~");
+  const fork = { page: "project", name: "Launch", fork: true } as const;
+  assert.equal(href(fork), "/projects/Launch/fork");
+  assert.deepEqual(at(href(fork)), fork);
+  assert.deepEqual(at("/projects/~/fork"), { page: "project", name: "", fork: true });
+});
+test("the Projects page keeps its search, kind and sort in its address, last activity left out", () => {
+  const routes: Route[] = [
+    { page: "projects" },
+    { page: "projects", q: "globex", kind: "partner", sort: "name" },
+    { page: "projects", sort: "created" },
+  ];
+  for (const route of routes) assert.deepEqual(at(href(route)), route, href(route));
+  assert.equal(href({ page: "projects" }), "/projects");
+  assert.equal(href({ page: "projects", sort: "name" }), "/projects?sort=name");
+  // Last activity is the default, so naming it, or an order there is not, reads as the default.
+  assert.equal((at("/projects?sort=activity") as { sort?: string }).sort, undefined);
+  assert.equal((at("/projects?sort=size") as { sort?: string }).sort, undefined);
+});
+test("the Projects page keeps its search, kind and sort in its address, last activity left out", () => {
+  const routes: Route[] = [
+    { page: "projects" },
+    { page: "projects", q: "globex", kind: "partner", sort: "name" },
+    { page: "projects", sort: "created" },
+  ];
+  for (const route of routes) assert.deepEqual(at(href(route)), route, href(route));
+  assert.equal(href({ page: "projects" }), "/projects");
+  assert.equal(href({ page: "projects", sort: "name" }), "/projects?sort=name");
+  // Last activity is the default, so naming it, or an order there is not, reads as the default.
+  assert.equal((at("/projects?sort=activity") as { sort?: string }).sort, undefined);
+  assert.equal((at("/projects?sort=size") as { sort?: string }).sort, undefined);
 });
 test("old hubs resolve to the seven-entry information architecture", () => {
   const links: [string, Route][] = [
@@ -374,4 +401,88 @@ test("Connections is a section of your settings with an address of its own; old 
     page: "connections",
     provider: "notion",
   });
+});
+
+test("Knowledge and each corpus have addresses, with tabs as paths, and old links still open", () => {
+  const routes: Route[] = [
+    { page: "knowledge" },
+    { page: "corpus", name: "hr-policies", tab: "sources" },
+    { page: "corpus", name: "hr-policies", tab: "access" },
+    { page: "corpus", name: "hr-policies", tab: "search" },
+    { page: "corpus", name: "hr-policies", tab: "search", q: "parental leave & pay" },
+    { page: "corpus", name: "hr-policies", tab: "graph" },
+    { page: "corpus", name: "hr-policies", tab: "types" },
+    { page: "context", corpus: "hr-policies", source: "handbook", tab: "documents" },
+    { page: "context", corpus: "hr-policies", source: "handbook", tab: "search" },
+    { page: "context", source: "handbook", tab: "evals" },
+  ];
+  for (const route of routes) assert.deepEqual(at(href(route)), route, href(route));
+  // A reload of the Knowledge tab stays on Knowledge, never Connections.
+  assert.equal(href({ page: "knowledge" }), "/knowledge");
+  assert.equal(href({ page: "context" }), "/knowledge");
+  assert.equal(
+    href({ page: "corpus", name: "hr-policies", tab: "sources" }),
+    "/knowledge/hr-policies",
+  );
+  assert.equal(
+    href({ page: "corpus", name: "hr-policies", tab: "access" }),
+    "/knowledge/hr-policies/access",
+  );
+  assert.equal(
+    href({ page: "context", corpus: "hr-policies", source: "handbook" }),
+    "/knowledge/hr-policies/sources/handbook",
+  );
+  assert.equal(href({ page: "context", corpus: "hr-policies" }), "/knowledge/hr-policies");
+  assert.equal(
+    href({ page: "corpus", name: "hr-policies", tab: "search", q: "leave" }),
+    "/knowledge/hr-policies/search?q=leave",
+  );
+  assert.equal(
+    href({ page: "corpus", name: "hr-policies", tab: "graph" }),
+    "/knowledge/hr-policies/graph",
+  );
+  assert.equal(
+    href({ page: "corpus", name: "hr-policies", tab: "types" }),
+    "/knowledge/hr-policies/types",
+  );
+  // The words of a search belong to the search tab alone.
+  assert.deepEqual(at("/knowledge/hr-policies/access?q=leave"), {
+    page: "corpus",
+    name: "hr-policies",
+    tab: "access",
+  });
+  const links: [string, Route][] = [
+    ["/knowledge", { page: "knowledge" }],
+    ["/context", { page: "knowledge" }],
+    ["/?view=knowledge", { page: "knowledge" }],
+    ["/?view=context", { page: "knowledge" }],
+    ["/context/handbook", { page: "context", source: "handbook", tab: "documents" }],
+    ["/context/handbook/variants", { page: "context", source: "handbook", tab: "variants" }],
+    // Before corpora, `/knowledge/{source}/{tab}` was a source's tab. Search is now a
+    // corpus's tab too; the corpus page opens the source when no corpus has its name.
+    ["/knowledge/handbook/variants", { page: "context", source: "handbook", tab: "variants" }],
+    ["/knowledge/handbook/search", { page: "corpus", name: "handbook", tab: "search" }],
+    ["/connections/sources/handbook", { page: "context", source: "handbook", tab: "documents" }],
+    ["/knowledge/hr-policies/sources", { page: "corpus", name: "hr-policies", tab: "sources" }],
+    ["/knowledge/hr-policies/bogus", { page: "corpus", name: "hr-policies", tab: "sources" }],
+    [
+      "/knowledge/hr-policies/sources/handbook/evals",
+      { page: "context", corpus: "hr-policies", source: "handbook", tab: "evals" },
+    ],
+  ];
+  for (const [url, route] of links) assert.deepEqual(at(url), route, url);
+  assert.equal(documentTitle({ page: "knowledge" }), "Knowledge - Humagen");
+  assert.equal(
+    documentTitle({ page: "corpus", name: "hr-policies", tab: "access" }),
+    "hr-policies - Humagen",
+  );
+  // A corpus is a screen of its own; its tabs change in place.
+  assert.notEqual(
+    screenOf({ page: "corpus", name: "a", tab: "sources" }),
+    screenOf({ page: "corpus", name: "b", tab: "sources" }),
+  );
+  assert.equal(
+    screenOf({ page: "corpus", name: "a", tab: "sources" }),
+    screenOf({ page: "corpus", name: "a", tab: "access" }),
+  );
 });

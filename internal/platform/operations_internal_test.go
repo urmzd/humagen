@@ -26,7 +26,7 @@ func TestOperationToolFailsClosedAndKeepsPersonScope(t *testing.T) {
 	}
 	req := runtime.Request{Tenant: "t", Definition: native.Revision{Spec: native.Spec{Name: "a"}}}
 	calls := 0
-	tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "file_write"}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}, operations.WriteFiles)
+	tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "file_write"}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}, SystemTool{Category: operations.WriteFiles})
 	rule := func(level operations.Level) {
 		pol, _ := p.Operations.Policy("t", operations.Scope{Kind: "workspace"})
 		if _, err := p.Operations.SetPolicy("t", operations.Policy{Scope: pol.Scope, Rules: map[operations.Category]operations.Level{operations.WriteFiles: level}}, pol.Version, "manager", time.Now()); err != nil {
@@ -129,7 +129,7 @@ func TestAnApprovedToolRechecksTightenedPolicyAndPause(t *testing.T) {
 	}
 	req := runtime.Request{Tenant: "t", RunID: "run", Definition: native.Revision{Spec: native.Spec{Name: "a"}}, Resume: &native.Parked{Answers: map[string]event.Answer{"approved": {Decision: event.DecisionApprove}}}}
 	calls := 0
-	tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "file_write"}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}, operations.WriteFiles)
+	tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "file_write"}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}, SystemTool{Category: operations.WriteFiles})
 	ctx := saigetypes.WithToolCallInfo(t.Context(), saigetypes.ToolCallInfo{ID: "approved", Name: "file_write"})
 	_, err = p.Operations.SetPolicy("t", operations.Policy{Scope: operations.Scope{Kind: "workspace"}, Rules: map[operations.Category]operations.Level{operations.WriteFiles: operations.Ask}}, 0, "manager", time.Now())
 	if err != nil {
@@ -229,7 +229,7 @@ func TestAddedAskApprovalPreservesExplicitAudienceAndUnderlyingRestrictions(t *t
 	}
 	calls := 0
 	base := &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "action"}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}
-	tool := p.operationTool(req, base, operations.Other)
+	tool := p.operationTool(req, base, SystemTool{Category: operations.Other})
 	approval, needed := tool.(native.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
 	if !needed || !approval.SelfApproval || !slices.Equal(approval.Approvers, []string{"designated-reviewer"}) {
 		t.Fatalf("declared approval audience widened: %+v", approval)
@@ -237,12 +237,12 @@ func TestAddedAskApprovalPreservesExplicitAudienceAndUnderlyingRestrictions(t *t
 	fallbackReq := req
 	fallbackReq.Definition.Spec.Approvers = nil
 	fallbackReq.Definition.Spec.SelfApproval = false
-	fallback := p.operationTool(fallbackReq, base, operations.Other)
+	fallback := p.operationTool(fallbackReq, base, SystemTool{Category: operations.Other})
 	fallbackApproval, fallbackNeeded := fallback.(native.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
 	if !fallbackNeeded || fallbackApproval.SelfApproval || !slices.Contains(fallbackApproval.Approvers, "outside-manager") {
 		t.Fatalf("missing native audience lost the existing fallback: %+v", fallbackApproval)
 	}
-	strict := p.operationTool(req, &operationStrictApprovalProbe{ToolFunc: base}, operations.Other)
+	strict := p.operationTool(req, &operationStrictApprovalProbe{ToolFunc: base}, SystemTool{Category: operations.Other})
 	approval, needed = strict.(native.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
 	if !needed || approval.SelfApproval || !slices.Equal(approval.Approvers, []string{"strict-reviewer"}) {
 		t.Fatalf("underlying tool approval weakened: %+v", approval)
@@ -258,5 +258,48 @@ func TestAddedAskApprovalPreservesExplicitAudienceAndUnderlyingRestrictions(t *t
 	}
 	if _, err := tool.Execute(t.Context(), nil); !errors.Is(err, operations.ErrPaused) || calls != 0 {
 		t.Fatalf("self approval bypassed workspace pause: %v, %d", err, calls)
+	}
+}
+
+// A skill's tool restriction written before the agent tool had its name
+// still allows it: an earlier name allows every call, and the name of one
+// agent's tool allows the tool, with the call held to that agent. A
+// restriction that names no way to call an agent refuses it.
+func TestAToolRestrictionNamesTheAgentToolByItsEarlierNames(t *testing.T) {
+	p, err := New(Config{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for restriction, want := range map[string]bool{
+		`["agent"]`: true, `["call_agent"]`: true, `["delegate_task"]`: true, `["tag_helper"]`: true,
+		`["file_read"]`: false, `[]`: false,
+	} {
+		req := runtime.Request{Tenant: "t", Definition: native.Revision{Spec: native.Spec{Name: "a"}}, Meta: map[string]string{operations.MetaTools: restriction}}
+		calls := 0
+		tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: ToolAgent}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}, p.toolDeclaration(ToolAgent))
+		_, err := tool.Execute(t.Context(), map[string]any{"agent": "helper"})
+		if allowed := err == nil && calls == 1; allowed != want {
+			t.Errorf("restricted to %s, the agent tool ran: %v (%v), want %v", restriction, allowed, err, want)
+		}
+	}
+}
+
+// A request's spec is read as it is held now before the runtime sees it: no
+// earlier way to call an agent is left in its tools for the runtime to
+// resolve, and an approval it cannot attach to a tool is not left either.
+func TestARequestsSpecNamesNoEarlierWayToCallAnAgent(t *testing.T) {
+	req := runtime.Request{Definition: native.Revision{Spec: native.Spec{
+		Name:      "lead",
+		Tools:     []string{"file_read", "delegate_task", "call_agent", "tag_helper", "tag_issue"},
+		Approvals: []string{"delegate_task", "tag_helper", "file_read"},
+		Access:    native.Access{Spawn: []string{"helper"}},
+	}}}
+	got := withAgentTool(req).Definition.Spec
+	if !slices.Equal(got.Tools, []string{"file_read", "tag_issue"}) || !slices.Equal(got.Approvals, []string{ToolAgent, "file_read"}) {
+		t.Fatalf("tools %v, approvals %v", got.Tools, got.Approvals)
+	}
+	// The pinned spec itself is not changed.
+	if len(req.Definition.Spec.Tools) != 5 || len(req.Definition.Spec.Approvals) != 3 {
+		t.Fatalf("the request's own spec was rewritten: %+v", req.Definition.Spec)
 	}
 }

@@ -252,11 +252,10 @@ func TestChildrenRollUpExactlyOnceThroughTheDelegator(t *testing.T) {
 	p := metered(t, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}}, map[string]agentModel{
 		"lead": {
 			spawn: []string{"helper", "worker"},
-			tools: []string{platform.ToolDelegate},
 			model: func(int) saigetypes.Provider {
 				return script(
 					spends(tagging("helper", "Count the failing tests"), 1000, 100),
-					spends(agenttest.ToolCallResponse("d1", platform.ToolDelegate, map[string]any{"agent": "worker", "text": "Write it up"}), 1000, 100),
+					spends(handing("d1", "worker", "Write it up"), 1000, 100),
 					spends(say("Three fail."), 2000, 100),
 				)
 			},
@@ -646,10 +645,10 @@ func TestALeaseCountsWhatIsHandedToCallsStillWorking(t *testing.T) {
 		"lead": {spawn: []string{"helper"}, model: func(int) saigetypes.Provider {
 			return &gated{ScriptedProvider: &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{say("Done.")}}, gate: gate}
 		}},
-		"helper": {spawn: []string{"worker"}, tools: append([]string{platform.ToolDelegate}, probes...), model: func(int) saigetypes.Provider {
+		"helper": {spawn: []string{"worker"}, tools: probes, model: func(int) saigetypes.Provider {
 			return priced{Provider: &heldAfter{ScriptedProvider: &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{
-				spends(agenttest.ToolCallResponse("d1", platform.ToolDelegate, map[string]any{"agent": "worker", "text": "Go"}), 1000, 100), // 4,500
-				spends(probe("p1"), 500, 100), // 3,000: 7,500 spent, below the lease on its own
+				spends(handing("d1", "worker", "Go"), 1000, 100), // 4,500
+				spends(probe("p1"), 500, 100),                    // 3,000: 7,500 spent, below the lease on its own
 			}}, n: 2}, pricing: card}
 		}},
 		// The worker holds what it was granted and never finishes.
@@ -688,9 +687,9 @@ func TestACallEndingAfterItsCallerReachesTheRoot(t *testing.T) {
 		"lead": {spawn: []string{"mid"}, model: func(int) saigetypes.Provider {
 			return &gated{ScriptedProvider: &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{say("Done.")}}, gate: rootGate}
 		}},
-		"mid": {spawn: []string{"worker"}, tools: []string{platform.ToolDelegate}, model: func(int) saigetypes.Provider {
+		"mid": {spawn: []string{"worker"}, model: func(int) saigetypes.Provider {
 			return script(
-				spends(agenttest.ToolCallResponse("d1", platform.ToolDelegate, map[string]any{"agent": "worker", "text": "Go"}), 1000, 100),
+				spends(handing("d1", "worker", "Go"), 1000, 100),
 				spends(say("Handed over."), 100, 10),
 			)
 		}},

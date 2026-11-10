@@ -6,7 +6,6 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
   api,
-  type PolicyScope,
   type ProjectChange,
   type ProjectEntry,
   type ProjectMember,
@@ -14,7 +13,6 @@ import {
   type ProjectRole,
   type ProjectView,
 } from "./api.ts";
-import { ScopeLimits } from "./Billing.tsx";
 import { KindFilter, MailboxView } from "./InboxPage.tsx";
 import { useHeld, useInbox } from "./inbox.ts";
 import { type PlatformMessage, projectInbox, projectOf, type Source } from "./mail.ts";
@@ -532,115 +530,6 @@ export function ProjectHistory({ project, tick }: { project: ProjectView; tick?:
         >
           {copy.project.older}
         </button>
-      )}
-    </div>
-  );
-}
-
-/**
- * The limits that hold a project: its own, which an admin changes, the chain
- * above it ("Field's limit also applies here"), and, for an owner of a
- * project above, a tighter limit of their own. A reader who may do neither
- * is told who may.
- */
-export function ProjectLimits({
-  project,
-  scope,
-  chain,
-  canBilling,
-  above,
-  tick,
-}: {
-  project: ProjectView;
-  /** The project's own scope: the tenant's for the workspace. */
-  scope: PolicyScope;
-  /** The limits above it, in words. */
-  chain: { scope: PolicyScope; words: string }[];
-  canBilling: boolean;
-  /** The project just above, by title, whose owners may set a tighter limit. None for the workspace. */
-  above?: string;
-  tick?: number;
-}) {
-  const [runs, setRuns] = useState("");
-  const [period, setPeriod] = useState<"day" | "month">("day");
-  const [problem, setProblem] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
-  const [reads, setReads] = useState(0);
-  return (
-    <div className="flex flex-col gap-6">
-      <section className={section} aria-label={copy.project.tabs.limits}>
-        <ScopeLimits
-          key={`${project.name}:${reads}`}
-          scope={scope}
-          canWrite={canBilling}
-          tick={tick}
-          chain={chain}
-        />
-        {!canBilling && !project.actions.includes("limits") && (
-          <p className="max-w-xl text-aui-xs text-aui-muted">
-            {copy.project.limitsReadOnly(above)}
-          </p>
-        )}
-      </section>
-      {project.actions.includes("limits") && !canBilling && (
-        <section className={section}>
-          <h2 className={heading}>{copy.project.ownerLimit}</h2>
-          <p className="max-w-xl text-aui-xs text-aui-muted">{copy.project.ownerLimitHint}</p>
-          <Problem message={problem} />
-          {note && <p className="text-aui-xs text-aui-muted">{note}</p>}
-          <form
-            className="flex flex-wrap items-end gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              setProblem(null);
-              api
-                .setProjectLimit(project.name, { period, max_runs: Number(runs), action: "block" })
-                .then(() => {
-                  setNote(`At most ${runs} runs each ${period}.`);
-                  setReads((n) => n + 1);
-                })
-                .catch((err) => setProblem(sorry("The limit could not be set.")(err)));
-            }}
-          >
-            <Label text={copy.project.maxRuns}>
-              <input
-                className={`${field} w-28`}
-                type="number"
-                min={1}
-                required
-                value={runs}
-                onChange={(e) => setRuns(e.target.value)}
-              />
-            </Label>
-            <Menu
-              label={copy.project.period}
-              value={period}
-              options={[
-                { value: "day", label: "Day" },
-                { value: "month", label: "Month" },
-              ]}
-              onChange={setPeriod}
-            />
-            <button type="submit" className={primary} disabled={!runs}>
-              {copy.project.setLimit}
-            </button>
-            <button
-              type="button"
-              className={button}
-              onClick={() =>
-                api
-                  .deleteProjectLimit(project.name)
-                  .then(() => {
-                    setNote(null);
-                    setReads((n) => n + 1);
-                  })
-                  .catch((err) => setProblem(sorry("The limit could not be removed.")(err)))
-              }
-            >
-              {copy.project.removeLimit}
-            </button>
-          </form>
-        </section>
       )}
     </div>
   );
