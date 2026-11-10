@@ -3041,6 +3041,58 @@ export const defaultCopy = {
   },
   /** The chat bar's + menu and what it selects for a conversation. */
   /** Voice notes recorded in the composer and transcribed by the deployment's speech kind. */
+  voiceSettings: {
+    /** The settings section and its nav entry. */
+    title: "Voice",
+    lede: "The service that hears people and speaks agents' answers. With one set up, a voice clip sent in Slack is heard and answered out loud as well as in writing, and the console's microphone uses it too. Without one, the microphone uses the browser's own dictation.",
+    /** The kinds, by name. */
+    kinds: { groq: "Groq", openai: "OpenAI" } as Record<string, string>,
+    off: "Not set up",
+    on: "On",
+    setUp: "Set Up",
+    replaces: (other: string) => `Replaces ${other}`,
+    edit: "Edit",
+    turnOff: "Turn Off",
+    keep: "Keep",
+    confirmOff: "Turn Off Voice",
+    tryVoice: "Try Voice",
+    trying: "Speaking a sample",
+    /** What a check heard back from its own sample. */
+    heard: (text: string) => `Heard back: "${text}"`,
+    /** One line saying how it is set up, never its key. */
+    summary: (model: string, voice: string, key: string) => `${model} · voice ${voice} · ${key}`,
+    keyKept: "key kept",
+    noKey: "no key",
+    formTitle: (kind: string) => `Set up ${kind}`,
+    changeTitle: (kind: string) => `Change ${kind}`,
+    key: "Key",
+    keyWay: "How the key is given",
+    pasteIt: "Paste it",
+    envVar: "Environment variable",
+    value: "Value",
+    keepsKey: "Leave empty to keep the key it has.",
+    keptHint: "Kept in the secret store, never shown again.",
+    reference: "Reference",
+    referenceHint: "An env:HUMAGEN_ name this server gives the workspace.",
+    voice: "Voice",
+    more: "Models and prices",
+    hearModel: "Transcription model",
+    speakModel: "Speech model",
+    hearPrice: "Dollars an hour of audio heard",
+    minSeconds: "Least seconds billed a recording",
+    speakPrice: "Dollars a million characters spoken",
+    priceHint:
+      "The provider's published price unless you change it. Every call is counted in Usage.",
+    badPrice: "A price is dollars, such as 0.04, up to 1000.",
+    cancel: "Cancel",
+    save: "Save",
+    saving: "Saving",
+    readOnly: "Only someone who manages the workspace's connections can change voice.",
+    loadFailed: "Voice settings could not be read.",
+    saveFailed: "Voice could not be saved.",
+    offFailed: "Voice could not be turned off.",
+    checkFailed: (why: string) => `The sample could not be spoken: ${why}`,
+  },
   voice: {
     /** The microphone button, before recording. */
     record: "Record a voice note",

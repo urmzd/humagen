@@ -76,6 +76,7 @@ export type SettingsSection =
   | "providers"
   | "models"
   | "limits"
+  | "voice"
   | "connections"
   | "access"
   | "read-audit"
@@ -88,6 +89,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   "providers",
   "models",
   "limits",
+  "voice",
   "connections",
   "access",
   "read-audit",

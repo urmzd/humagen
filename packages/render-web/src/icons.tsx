@@ -199,6 +199,17 @@ export const GripIcon = icon(
   <path d="M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01" strokeWidth={3} />,
   "GripIcon",
 );
+export const MicIcon = icon(
+  <>
+    <rect x="9" y="2" width="6" height="13" rx="3" />
+    <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3" />
+  </>,
+  "MicIcon",
+);
+export const AudioLinesIcon = icon(
+  <path d="M2 10v3M6 6v11M10 3v18M14 8v7M18 5v13M22 10v3" />,
+  "AudioLinesIcon",
+);
 export const BotIcon = icon(
   <>
     <rect x="4" y="8" width="16" height="12" rx="3" />
