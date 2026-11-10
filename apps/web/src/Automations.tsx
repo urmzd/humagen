@@ -36,7 +36,6 @@ export function Automations({
   return (
     <Page
       title={words.title}
-      lede={words.lede}
       actions={
         !making &&
         canSchedule && (

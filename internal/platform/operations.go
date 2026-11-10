@@ -122,6 +122,7 @@ func (p *Platform) resolveOperations(req runtime.Request) (runtime.Request, erro
 	if err := p.operationAdmissionRequest(req); err != nil {
 		return req, err
 	}
+	req = withAgentTool(req)
 	allowed, restricted, err := p.operationTools(req)
 	if err != nil {
 		return req, err
@@ -129,17 +130,8 @@ func (p *Platform) resolveOperations(req runtime.Request) (runtime.Request, erro
 	if restricted {
 		req.Definition.Spec.Tools = slices.DeleteFunc(slices.Clone(req.Definition.Spec.Tools), func(name string) bool { return !native.IsToolGroup(name) && !slices.Contains(allowed, name) })
 		req.Definition.Spec.Access.Spawn = slices.DeleteFunc(slices.Clone(req.Definition.Spec.Access.Spawn), func(agent string) bool {
-			return !slices.Contains(allowed, ToolCallAgent) && !slices.Contains(allowed, ToolDelegate) && !slices.Contains(allowed, tagTool+agent)
+			return !legacy.AgentToolNamed(allowed, agent)
 		})
-	}
-	if p.operationDecision(req, operations.CallAgents) == operations.Ask {
-		req.Definition.Spec.Approvals = slices.Clone(req.Definition.Spec.Approvals)
-		for _, agent := range req.Definition.Spec.Access.Spawn {
-			name := tagTool + agent
-			if slices.Contains(req.Definition.Spec.Tools, name) && !slices.Contains(req.Definition.Spec.Approvals, name) {
-				req.Definition.Spec.Approvals = append(req.Definition.Spec.Approvals, name)
-			}
-		}
 	}
 	control, err := p.AgentControl(req.Tenant, req.Agent())
 	if err != nil {
@@ -152,22 +144,35 @@ func (p *Platform) resolveOperations(req runtime.Request) (runtime.Request, erro
 	// at the catalog boundary, and calls also check the call admission path.
 	return req, nil
 }
-func categoryOf(name string) operations.Category {
-	switch name {
-	case ToolCallAgent, ToolDelegate:
-		return operations.CallAgents
-	case "github_read_context", "github_fix_base", "github_read_file", "github_workflow_status", ToolFileRead, ToolFileList, ToolRunsSummary, ToolListAlerts, ToolListAgents, ToolReadAgent, "source_search", ToolCatalogSearch, ToolCatalogQuery, ToolCorpusQuery, ToolGetContext:
-		return operations.ReadContext
-	case ToolFileWrite, ToolSaveAgent, ToolShell:
-		return operations.WriteFiles
-	case ToolPublish:
-		return operations.PublishArtifacts
-	case "github_comment", "github_create_fix_pr", "github_create_review", "github_request_review", "github_add_labels", "github_apply_changes", "slack_add_reaction":
-		return operations.ExternalMessages
+
+// categoryOf is the category of the tool a run knows as name: the one the
+// tool declares in the registry.
+func (p *Platform) categoryOf(name string) operations.Category {
+	return p.toolDeclaration(name).Category
+}
+
+// toolDeclaration is what the tool a run knows as name declares: its
+// registry entry. An earlier name of the agent tool, as a stored question
+// or approval may still hold it, reads as the agent tool (legacy), and the
+// name of the tool that called one agent is a call to an agent. A tool the
+// registry does not hold, one of an extension catalog or of a tool provider,
+// declares nothing (undeclaredCategory).
+func (p *Platform) toolDeclaration(name string) SystemTool {
+	if t, ok := p.runTool(legacy.ToolName(name)); ok {
+		return t
 	}
-	if strings.HasPrefix(name, "tag_") {
-		return operations.CallAgents
+	if _, tag := legacy.TagTarget(name); tag {
+		return SystemTool{Name: name, Category: operations.CallAgents}
 	}
+	return SystemTool{Name: name, Category: undeclaredCategory(name)}
+}
+
+// undeclaredCategory is the category of a tool that is not in the registry
+// and so cannot declare one: a tool of an extension catalog, or one of a
+// tool provider where only its name is known. Its name is all there is to
+// go by, so one that says it sends a message is held as an external message
+// and any other as other. No registry tool reaches this.
+func undeclaredCategory(name string) operations.Category {
 	if strings.Contains(name, "send") || strings.Contains(name, "reply") || strings.Contains(name, "post_message") {
 		return operations.ExternalMessages
 	}
@@ -196,7 +201,7 @@ func (c *operationsCatalog) Lookup(name string) (saigetypes.Tool, error) {
 	if err != nil {
 		return nil, err
 	}
-	return c.p.operationTool(c.req, t, categoryOf(name)), nil
+	return c.p.operationTool(c.req, t, c.p.toolDeclaration(name)), nil
 }
 func (c *operationsCatalog) ToolGroup(name string) (native.ToolGroup, error) {
 	if c.groups != nil {
@@ -241,26 +246,62 @@ func (c *operationsCatalog) ToolGroup(name string) (native.ToolGroup, error) {
 	return native.ToolGroup{}, native.ErrNoSuchToolGroup
 }
 
+// operationTool is the one wrapper every tool a run is offered passes
+// through. It reads what the tool declares (decl: its category, whether it
+// acts for a person, who approves a call) and the action policy, and holds
+// a call to both: the tool's own approvers are asked first, then the policy
+// for its category allows, asks or refuses.
 type operationTool struct {
 	saigetypes.Tool
-	p        *Platform
-	req      runtime.Request
-	category operations.Category
-	extra    operations.Category
+	p    *Platform
+	req  runtime.Request
+	decl SystemTool
 }
 
-func (p *Platform) operationTool(req runtime.Request, t saigetypes.Tool, c operations.Category) saigetypes.Tool {
-	wrapped := &operationTool{Tool: t, p: p, req: req, category: c}
-	if t.Definition().Name == "github_apply_changes" || t.Definition().Name == "github_create_fix_pr" {
-		wrapped.extra = operations.WriteFiles
-	}
-	return wrapped
+// operationTool wraps t for req with what it declares.
+func (p *Platform) operationTool(req runtime.Request, t saigetypes.Tool, decl SystemTool) saigetypes.Tool {
+	return &operationTool{Tool: t, p: p, req: req, decl: decl}
 }
 func (t *operationTool) ActsForPerson() bool {
+	if t.decl.ActsForPerson {
+		return true
+	}
+	// A tool from outside the registry may say so itself.
 	v, ok := t.Tool.(native.PersonScoped)
 	return ok && v.ActsForPerson()
 }
+
+// allowPrompt asks whether an agent may use a tool.
+func allowPrompt(q ApprovalCall) string {
+	return fmt.Sprintf("Allow %s to use %s?", q.Request.Agent(), q.Tool)
+}
+
+// declaredApproval is the approval decl declares for a call of req, when it
+// declares one: every call of a tool with approvers of its own, or the calls
+// its PerCall holds.
+func declaredApproval(req runtime.Request, decl SystemTool, c saigetypes.ToolCallPart) (native.ApprovalRequest, bool) {
+	q := ApprovalCall{Request: req, Tool: decl.Name, Call: c}
+	a := decl.Approval
+	if a.PerCall != nil {
+		each, needed := a.PerCall(q)
+		if !needed {
+			return native.ApprovalRequest{}, false
+		}
+		a = each
+	} else if a.Mode != ApprovalAlways {
+		return native.ApprovalRequest{}, false
+	}
+	prompt := "Approve " + strings.ReplaceAll(decl.Name, "_", " ") + "?"
+	if a.Prompt != nil {
+		prompt = a.Prompt(q)
+	}
+	return native.ApprovalRequest{Prompt: prompt, Approvers: slices.Clone(a.Approvers), SelfApproval: a.SelfApproval, ExpiresIn: a.Expires}, true
+}
 func (t *operationTool) Approval(c saigetypes.ToolCallPart) (native.ApprovalRequest, bool) {
+	if q, needed := declaredApproval(t.req, t.decl, c); needed {
+		return q, true
+	}
+	// A tool from outside the registry may hold its own calls.
 	if a, ok := t.Tool.(native.Approving); ok {
 		if q, needed := a.Approval(c); needed {
 			return q, true
@@ -269,21 +310,34 @@ func (t *operationTool) Approval(c saigetypes.ToolCallPart) (native.ApprovalRequ
 	if t.decision() != operations.Ask {
 		return native.ApprovalRequest{}, false
 	}
-	// Without the control, the fallback approvers still answer.
-	control, _ := t.p.AgentControl(t.req.Tenant, t.req.Agent())
-	approvers := slices.Clone(t.req.Definition.Spec.Approvers)
+	return native.ApprovalRequest{Prompt: allowPrompt(ApprovalCall{Request: t.req, Tool: t.Definition().Name, Call: c}), Approvers: t.p.agentApprovers(t.req), SelfApproval: t.req.Definition.Spec.SelfApproval, ExpiresIn: policyApprovalWait}, true
+}
+
+// policyApprovalWait is how long a call the action policy, or the caller's
+// own spec, holds waits for a person before it is denied.
+const policyApprovalWait = 24 * time.Hour
+
+// agentApprovers are who approves a call an agent's own side holds: the
+// approvers its spec names, or the fallback approvers and its manager.
+func (p *Platform) agentApprovers(req runtime.Request) []string {
+	approvers := slices.Clone(req.Definition.Spec.Approvers)
 	if len(approvers) == 0 {
+		// Without the control, the fallback approvers still answer.
+		control, _ := p.AgentControl(req.Tenant, req.Agent())
 		approvers = slices.Clone(fallbackApprovers)
 		if control.Manager != "" {
 			approvers = append(approvers, control.Manager)
 		}
 	}
-	return native.ApprovalRequest{Prompt: fmt.Sprintf("Allow %s to use %s?", t.req.Agent(), t.Definition().Name), Approvers: approvers, SelfApproval: t.req.Definition.Spec.SelfApproval, ExpiresIn: 24 * time.Hour}, true
+	return approvers
 }
 func (t *operationTool) check(ctx context.Context) error {
 	if allowed, restricted, err := t.p.operationTools(t.req); err != nil {
 		return err
-	} else if restricted && !slices.Contains(allowed, t.Definition().Name) {
+	} else if restricted && !slices.Contains(allowed, t.Definition().Name) && (t.decl.Name != ToolAgent || !legacy.NamesAgentTool(allowed)) {
+		// A restriction that names the agent tool by an earlier name still
+		// allows it. One that names single agents is held to them when the
+		// call is made (checkOperationCall).
 		return operations.ErrDenied
 	}
 	if err := t.p.operationAdmissionRequest(t.req); err != nil {
@@ -562,23 +616,26 @@ func (p *Platform) operationTools(req runtime.Request) ([]string, bool, error) {
 	return tools, true, nil
 }
 
+// decision is what the action policy says of a call: for the tool's
+// category, and for the second one it declares (Also), whichever is
+// tighter. A tool that needs both to allow (BothAllow) asks unless both do.
 func (t *operationTool) decision() operations.Level {
-	level := t.p.operationDecision(t.req, t.category)
-	if t.Definition().Name == "github_create_fix_pr" {
-		files := t.p.operationDecision(t.req, operations.WriteFiles)
-		if level == operations.Never || files == operations.Never {
+	level := t.p.operationDecision(t.req, t.decl.Category)
+	if t.decl.Also == "" {
+		return level
+	}
+	also := t.p.operationDecision(t.req, t.decl.Also)
+	if t.decl.BothAllow {
+		if level == operations.Never || also == operations.Never {
 			return operations.Never
 		}
-		if level != operations.Allow || files != operations.Allow {
+		if level != operations.Allow || also != operations.Allow {
 			return operations.Ask
 		}
 		return operations.Allow
 	}
-	if t.extra != "" {
-		extra := t.p.operationDecision(t.req, t.extra)
-		if extra == operations.Never || extra == operations.Ask && level != operations.Never {
-			level = extra
-		}
+	if also == operations.Never || also == operations.Ask && level != operations.Never {
+		level = also
 	}
 	return level
 }
@@ -608,16 +665,22 @@ func (p *Platform) wrapOperationGroup(req runtime.Request, name string, ts []sai
 		if restricted && !slices.Contains(allowed, t.Definition().Name) {
 			continue
 		}
-		toolCategory := category
+		// A tool of a group is not in the registry: its grant declares it.
+		// A read grant reads context, a write grant is held as other and as
+		// an external message, and a person's own tool says who approves it.
+		decl := SystemTool{Name: t.Definition().Name}
+		if personal, ok := t.(*personServerTool); ok {
+			decl = personal.declaration()
+		}
+		decl.Category = category
 		readPersonal := name == personToolsGrant && t.Definition().Capability == saigetypes.ToolCapabilityRead
 		if readPersonal {
-			toolCategory = operations.ReadContext
+			decl.Category = operations.ReadContext
 		}
-		wrapped := p.operationTool(req, t, toolCategory).(*operationTool)
 		if strings.HasSuffix(name, ":write") && !readPersonal {
-			wrapped.extra = operations.ExternalMessages
+			decl.Also = operations.ExternalMessages
 		}
-		out = append(out, wrapped)
+		out = append(out, p.operationTool(req, t, decl))
 	}
 	return native.ToolGroup{Name: name, Tools: out}, nil
 }
@@ -761,4 +824,44 @@ func (p *Platform) operationForced(req runtime.Request) bool {
 		return v.(admitted).operationMeta[operations.MetaForceAsk] == "true"
 	}
 	return false
+}
+
+// withAgentTool reads a revision that names an earlier way to call an agent
+// as the agent tool, which Access.Spawn grants (legacy.WithoutAgentTools):
+// the earlier names leave its tools, and an approval one of them required
+// is required of the agent tool. An approval of the calls to one agent
+// ("tag_<agent>") leaves the approvals too, and the agent tool holds the
+// calls to that agent (heldCallee).
+func withAgentTool(req runtime.Request) runtime.Request {
+	spec := &req.Definition.Spec
+	spec.Tools, spec.Approvals, _ = legacy.WithoutAgentTools(spec.Tools, spec.Approvals, spec.Access.Spawn)
+	return req
+}
+
+// agentApprovals are a revision's approvals as they are held now: an
+// earlier name of the agent tool read as the agent tool, each once.
+func agentApprovals(approvals []string) []string {
+	out := make([]string, 0, len(approvals))
+	for _, name := range approvals {
+		if name = legacy.ToolName(name); !slices.Contains(out, name) {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// heldCallee reports whether the pinned spec of the run that calls holds
+// its calls to callee for a person: its approvals name "tag_<callee>".
+func (p *Platform) heldCallee(req runtime.Request, callee string) bool {
+	run, err := p.runRecordOf(req.Tenant, req.RunID)
+	if err != nil {
+		return false
+	}
+	rev, err := p.Catalog().Get(context.Background(), req.Tenant, run.Agent, run.Rev)
+	if err != nil {
+		// The call itself reads the same spec and is refused without it.
+		return false
+	}
+	_, _, held := legacy.WithoutAgentTools(nil, rev.Spec.Approvals, rev.Spec.Access.Spawn)
+	return slices.Contains(held, callee)
 }

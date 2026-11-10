@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/orchagent/flow/turn/native"
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/catalog"
@@ -85,7 +86,7 @@ func TestCorpusQueryRunsOnTheReadersOwnLogin(t *testing.T) {
 	query := func(req, agent, connector string) (string, error) {
 		r := reqs[req]
 		r.Definition.Spec.Name = agent
-		return f.p.corpusTools(r)[ToolCorpusQuery].Execute(t.Context(), map[string]any{"corpus": "finance", "connector": connector, "sql": "SELECT 1"})
+		return f.p.corpusQueryTool(r).Execute(t.Context(), map[string]any{"corpus": "finance", "connector": connector, "sql": "SELECT 1"})
 	}
 
 	out, err := query("bo", "worker", "ledger")
@@ -99,8 +100,9 @@ func TestCorpusQueryRunsOnTheReadersOwnLogin(t *testing.T) {
 		"a shared conversation":                 {"shared", "worker", "ledger"},
 		"the owner, with no login of their own": {"owner", "worker", "ledger"},
 	} {
-		if _, err := query(c.req, c.agent, c.connector); err == nil {
-			t.Errorf("%s queried the warehouse", name)
+		// Refused, or answered with what was held back: never rows.
+		if out, err := query(c.req, c.agent, c.connector); err == nil && !strings.Contains(out, "held_back") {
+			t.Errorf("%s queried the warehouse: %s", name, out)
 		}
 	}
 	if _, err := query("owner", "worker", "ledger"); !errors.Is(err, errNoLogin) {
@@ -109,7 +111,7 @@ func TestCorpusQueryRunsOnTheReadersOwnLogin(t *testing.T) {
 	if len(w.tokens) != 1 || w.tokens[0] != "pat-bo" {
 		t.Fatalf("queries ran on tokens %v, want only bo's", w.tokens)
 	}
-	if _, ok := f.p.corpusTools(reqs["bo"])[ToolCorpusQuery].(interface{ ActsForPerson() bool }); !ok {
+	if held := f.p.operationTool(reqs["bo"], f.p.corpusQueryTool(reqs["bo"]), f.p.toolDeclaration(ToolCorpusQuery)).(native.PersonScoped); !held.ActsForPerson() {
 		t.Fatal("corpus_query does not say it acts for a person")
 	}
 }

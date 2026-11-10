@@ -38,6 +38,7 @@ import (
 	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/evals"
+	"github.com/urmzd/humagen/pkg/graph"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/knowledge"
@@ -120,6 +121,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/handoffs", s.authed(auth.RunsRead, s.listHandoffs))
 	mux.HandleFunc("GET /api/agent-network", s.authed(auth.AgentsRead, s.agentNetwork))
 	mux.HandleFunc("GET /api/me", s.authed("", s.me))
+	// The humagen MCP: the API's management operations as tools, each served
+	// by its own route below as the caller (mcp.go).
+	mux.HandleFunc("POST /api/mcp", s.authed("", s.mcpEndpoint))
+	s.installDispatch(mux)
 	// Any signed-in caller may ask, and only about themselves: it takes a
 	// permission and no subject.
 	mux.HandleFunc("GET /api/access/explain", s.authed("", s.explainAccess))
@@ -306,7 +311,7 @@ func agentNamed(h handler) handler {
 // An empty permission means any signed-in caller.
 func (s *Server) authed(perm auth.Permission, h handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		who, err := s.Authn.Authenticate(r)
+		who, err := s.callerOf(r)
 		if err != nil {
 			fail(w, http.StatusUnauthorized, "sign in to continue")
 			return
@@ -1192,8 +1197,12 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, detail(err, library.ErrConflict))
 	case errors.Is(err, auth.ErrForbidden):
 		fail(w, http.StatusForbidden, detail(err, auth.ErrForbidden))
-	case errors.Is(err, corpora.ErrNotFound):
+	case errors.Is(err, corpora.ErrNotFound), errors.Is(err, graph.ErrNotFound):
 		notFound(w)
+	case errors.Is(err, graph.ErrInvalid):
+		fail(w, http.StatusBadRequest, detail(err, graph.ErrInvalid))
+	case errors.Is(err, graph.ErrLimit):
+		fail(w, http.StatusTooManyRequests, detail(err, graph.ErrLimit))
 	case errors.Is(err, corpora.ErrInvalid):
 		fail(w, http.StatusBadRequest, detail(err, corpora.ErrInvalid))
 	case errors.Is(err, corpora.ErrExists):

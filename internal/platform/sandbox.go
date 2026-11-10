@@ -23,7 +23,6 @@ import (
 	"github.com/urmzd/orchagent/flow/event"
 	"github.com/urmzd/orchagent/flow/isolation"
 	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/turn/native"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/humagen/internal/textindex"
@@ -586,47 +585,10 @@ func schema(required []string, props map[string]string) saigetypes.ParameterSche
 	return out
 }
 
-// fileTools is the catalog of file tools for one turn. An agent has a tool
-// only if its spec names it; this decides what the tool does, not who has it.
-func (p *Platform) fileTools(base runtime.Catalog) runtime.Catalog {
-	return func(req runtime.Request, action func(event.Action) error) (native.Tools, error) {
-		var inner native.Tools
-		if base != nil {
-			b, err := base(req, action)
-			if err != nil {
-				return nil, err
-			}
-			inner = b
-		}
-		tools := p.turnFileTools(req, action)
-		for name, t := range p.sourceTools(req) {
-			tools[name] = t
-		}
-		for name, t := range p.builtinTools(req) {
-			tools[name] = t
-		}
-		for name, t := range p.catalogTools(req) {
-			tools[name] = t
-		}
-		for name, t := range p.contextTools(req) {
-			tools[name] = t
-		}
-		for name, t := range p.corpusTools(req) {
-			tools[name] = t
-		}
-		return native.ToolsFunc(func(name string) (saigetypes.Tool, error) {
-			if t, ok := tools[name]; ok {
-				return t, nil
-			}
-			if inner == nil {
-				return nil, fmt.Errorf("%w: %q", native.ErrNoSuchTool, name)
-			}
-			return inner.Lookup(name)
-		}), nil
-	}
-}
-
-func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) error) map[string]saigetypes.Tool {
+// fileTool is one of the file tools (FileTools) for one turn. An agent has a
+// tool only if its spec names it; this decides what the tool does, not who
+// has it.
+func (p *Platform) fileTool(name string, req runtime.Request, action func(event.Action) error) saigetypes.Tool {
 	// The conversation is looked up when a tool is used, not when the turn
 	// starts. A turn delegated by another agent inside its own turn has no
 	// run of its own, so it has no conversation and no files.
@@ -665,8 +627,9 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 	tool := func(name, desc string, params saigetypes.ParameterSchema, fn func(ctx context.Context, args map[string]any) (string, error)) saigetypes.Tool {
 		return &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: name, Description: desc, Parameters: params}, Fn: fn}
 	}
-	return map[string]saigetypes.Tool{
-		ToolOutcome: tool(ToolOutcome,
+	switch name {
+	case ToolOutcome:
+		return tool(ToolOutcome,
 			"Record the result's recommendation, decision or update as structured authored content. This never approves or executes an external action. Keep tool/call execution claims grounded in their actual results. The summary is required; decisions is a JSON array of strings; next_action describes what the person should do next.",
 			schema([]string{"kind", "summary"}, map[string]string{"kind": "recommendation, decision or update", "summary": "Result summary, up to 4000 bytes", "decisions": "JSON array of at most 20 decisions, each up to 1000 bytes", "next_action": "Next action, up to 2000 bytes"}),
 			func(_ context.Context, args map[string]any) (string, error) {
@@ -693,11 +656,9 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 					return "", err
 				}
 				return "Recorded the authored outcome. This granted no approval and executed no external action.", nil
-			}),
-		ToolShell:     p.shellTool(req, action),
-		ToolDelegate:  p.delegateTool(req, action),
-		ToolCallAgent: p.callAgentTool(req, action),
-		ToolFileWrite: tool(ToolFileWrite,
+			})
+	case ToolFileWrite:
+		return tool(ToolFileWrite,
 			"Write a file in this conversation's working directory, replacing it if it exists. For editable Office output use format=native with a .docx, .pptx, .xlsx or .pdf path and JSON content: {title?, paragraphs?:string[], slides?:[{title,body:string[],notes?,sources?:string[]}], rows?:string[][], sources?:string[]}. DOCX supports title, paragraphs, rows and sources; PPTX supports title, slides and sources; XLSX supports rows only; PDF supports title and sources with either paragraphs/rows or slides. Unsupported meaningful fields are rejected. Wait for a successful file_write before dependent file_read or publish calls; do not batch dependent calls in parallel. Max 100 slides, 1000 rows, 100 columns, 500 paragraphs, 32000 bytes per text, 1 MB JSON. PDF uses Windows-1252 text and refuses unsupported characters instead of dropping them. Other formats use plain text. Publish with publish_artifact to give it to the person.",
 			schema([]string{"path", "content"}, map[string]string{"path": "Relative path, such as report.md or data/q3.csv", "content": "The whole file content; for format=native, the complete revision JSON", "format": "native for editable DOCX, PPTX, XLSX or PDF; omit for text"}),
 			func(ctx context.Context, args map[string]any) (string, error) {
@@ -728,8 +689,9 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 					_ = p.Runs.RecordSandbox(req.Tenant, req.RunID, false, []runs.SandboxFile{{Path: f.Path, Size: f.Size, Revision: fileRevision([]byte(content))}}, nil)
 				}
 				return fmt.Sprintf("Wrote %s (%d bytes).", f.Path, f.Size), nil
-			}),
-		ToolFileRead: tool(ToolFileRead,
+			})
+	case ToolFileRead:
+		return tool(ToolFileRead,
 			"Read text or the editable revision JSON of a native Office file from this conversation. Read a scratchpad people keep in this conversation with path scratch:<name>. To revise an immutable published version, use path artifact:<id>@<version>. Read a pinned skill's supporting file with path skill:<name>/<path>. Other conversations and unselected skills are never read.",
 			schema([]string{"path"}, map[string]string{"path": "Relative path of the file"}),
 			func(ctx context.Context, args map[string]any) (string, error) {
@@ -775,8 +737,9 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 					return "", fmt.Errorf("%w: that file is not text or a native revision model", ErrSandbox)
 				}
 				return string(b), nil
-			}),
-		ToolFileList: tool(ToolFileList,
+			})
+	case ToolFileList:
+		return tool(ToolFileList,
 			"List the files in this conversation's working directory, and the scratchpads people keep in it.",
 			schema(nil, nil),
 			func(ctx context.Context, _ map[string]any) (string, error) {
@@ -798,8 +761,9 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 					fmt.Fprintf(&b, "%s (%d bytes)\n", f.Path, f.Size)
 				}
 				return b.String() + pads, nil
-			}),
-		ToolPublish: tool(ToolPublish,
+			})
+	case ToolPublish:
+		return tool(ToolPublish,
 			"Publish a file from the working directory so the person can open and download it. Publishing a title again in the same conversation makes a new version.",
 			schema([]string{"path"}, map[string]string{
 				"path":        "Relative path of the file to publish",
@@ -826,6 +790,7 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 				data, _ := json.Marshal(a)
 				_ = action(event.Action{Name: ToolPublish, Summary: fmt.Sprintf("Published %s, version %d", a.Title, a.Version), Data: data})
 				return fmt.Sprintf("Published %s as version %d (%d bytes). The person can open it now.", a.Title, a.Version, a.Size), nil
-			}),
+			})
 	}
+	return nil
 }

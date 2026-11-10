@@ -608,7 +608,7 @@ export function ResponseActivityPanel({
 }) {
   const { state, ended, said, version } = useResponse(source);
   return (
-    <Inspector open={!leaving} title={words.activity} wide onClose={onClose}>
+    <Inspector open={!leaving} title={words.activity} working={!ended} onClose={onClose}>
       <div data-testid="response-activity" data-version={version} className="flex flex-col gap-3">
         <output aria-live="polite" className="sr-only">
           {said}

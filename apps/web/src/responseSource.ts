@@ -250,11 +250,13 @@ export function eventsOfTrace(
 }
 
 /**
- * The old ways one agent called another. Each became a run of its own, which
- * the stream shows as the agent call, so the tool call that started it is
- * not shown a second time.
+ * The agent tool, and the ways one agent called another on responses recorded
+ * before it was the only one. Each became a run of its own, which the stream
+ * shows as the agent call, so the tool call that started it is not shown a
+ * second time.
  */
 const DELEGATION = new Set([
+  "agent",
   "call_agent",
   "session_call",
   "session_listen",
@@ -444,7 +446,9 @@ export function traceEvents(trace: MessageTrace): ResponseEvent[] {
         const c = step.child;
         const call = callOf(c);
         const id = call?.id ?? `htu_${node.run}_${c.run}`;
-        const title = titleOf(briefOf(call?.input));
+        // The call's own title when it gave one, else the start of its brief.
+        const named = typeof call?.input?.title === "string" ? call.input.title.trim() : "";
+        const title = named || titleOf(briefOf(call?.input));
         emit({
           type: "content_block_start",
           t_ms: ms(c.started_at),

@@ -9,6 +9,7 @@ import (
 	"github.com/urmzd/orchagent/flow/event"
 
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/prompts"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -60,6 +61,10 @@ func (p *Platform) StartEval(ctx context.Context, tenant, name, by string) (eval
 		if _, err := p.Knowledge.Documents(tenant, suite.Subject); err != nil {
 			return evals.Run{}, fmt.Errorf("the suite's source: %w", err)
 		}
+	case evals.Corpus:
+		if !p.CorpusReadable(p.invitationReader(tenant, by), suite.Subject) {
+			return evals.Run{}, fmt.Errorf("the suite's corpus: %w", corpora.ErrNotFound)
+		}
 	}
 	run, err := p.Evals.Begin(tenant, suite, rev, by, p.now())
 	if err != nil {
@@ -74,9 +79,12 @@ func (p *Platform) StartEval(ctx context.Context, tenant, name, by string) (eval
 		bg := context.WithoutCancel(ctx)
 		var results []evals.Result
 		var metrics map[string]float64
-		if suite.Target == evals.Agent {
+		switch suite.Target {
+		case evals.Agent:
 			results = p.evalAgent(bg, tenant, suite, &run, definition, prefix)
-		} else {
+		case evals.Corpus:
+			results, metrics = p.evalCorpus(bg, tenant, suite, by)
+		default:
 			results, metrics = p.evalKnowledge(tenant, suite)
 		}
 		run.Finish(results, metrics, p.now())
@@ -198,6 +206,42 @@ func (p *Platform) evalCase(ctx context.Context, tenant string, suite evals.Suit
 
 // evalKnowledge asks the source each query and scores what comes back.
 func (p *Platform) evalKnowledge(tenant string, suite evals.Suite) ([]evals.Result, map[string]float64) {
+	return evalRetrieval(suite, func(q string) ([]evals.Retrieved, error) {
+		// Ask for more passages than k: several can come from one document,
+		// and a case is judged on k distinct documents.
+		hits, err := p.Knowledge.Search(tenant, []string{suite.Subject}, q, 50, "")
+		if err != nil {
+			return nil, err
+		}
+		got := make([]evals.Retrieved, len(hits))
+		for i, h := range hits {
+			got[i] = evals.Retrieved{Title: h.Title, Score: h.Score}
+		}
+		return got, nil
+	})
+}
+
+// evalCorpus scores a corpus's search, as an agent runs it, with the access
+// of who started the run: the same fan-out, fusion and deduplication, and
+// no live member, so a suite never spends anyone's credential.
+func (p *Platform) evalCorpus(ctx context.Context, tenant string, suite evals.Suite, by string) ([]evals.Result, map[string]float64) {
+	reader := p.invitationReader(tenant, by)
+	return evalRetrieval(suite, func(q string) ([]evals.Retrieved, error) {
+		c, err := p.Corpora.Get(tenant, suite.Subject)
+		if err != nil || !p.corpusVisible(reader, c) {
+			return nil, fmt.Errorf("the suite's corpus: %w", corpora.ErrNotFound)
+		}
+		hits, _ := p.searchCorpus(ctx, reader, c, q, MaxCorpusHits, false)
+		got := make([]evals.Retrieved, len(hits))
+		for i, h := range hits {
+			got[i] = evals.Retrieved{Title: h.Title, Score: h.Score}
+		}
+		return got, nil
+	})
+}
+
+// evalRetrieval scores each case against what search returned for it.
+func evalRetrieval(suite evals.Suite, search func(q string) ([]evals.Retrieved, error)) ([]evals.Result, map[string]float64) {
 	k := suite.K
 	if k <= 0 {
 		k = evals.DefaultK
@@ -206,16 +250,10 @@ func (p *Platform) evalKnowledge(tenant string, suite evals.Suite) ([]evals.Resu
 	sums := map[string]float64{}
 	for _, c := range suite.Cases {
 		began := time.Now()
-		// Ask for more passages than k: several can come from one document,
-		// and a case is judged on k distinct documents.
-		hits, err := p.Knowledge.Search(tenant, []string{suite.Subject}, c.Input, 50, "")
+		got, err := search(c.Input)
 		if err != nil {
 			results = append(results, evals.Result{CaseID: c.ID, Input: c.Input, Error: err.Error()})
 			continue
-		}
-		got := make([]evals.Retrieved, len(hits))
-		for i, h := range hits {
-			got[i] = evals.Retrieved{Title: h.Title, Score: h.Score}
 		}
 		res, scores := evals.ScoreRetrieval(c, got, k, time.Since(began))
 		results = append(results, res)

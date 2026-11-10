@@ -27,6 +27,18 @@ fails as soon as a test sees it. What is not guaranteed: a property that is
 optional in the spec and that no test makes the server send can drift without
 notice, and so can a field of a response shape no test reaches.
 
+An operation that is offered as a tool over the humagen MCP (`POST /api/mcp`)
+says what a call does with three markers beside `x-permission`:
+`x-readonly: true` for a call that changes nothing, `x-destructive: true` for
+one that removes something, and `x-idempotent: true` for a change that is safe
+to repeat. An MCP client is given them as the tool's hints. They are read from
+the contract and never from the HTTP verb: `getMessageContext` is a `POST`
+because it takes a body, and it is a read. An unmarked operation is listed as
+a change that is neither destructive nor safe to repeat, and
+`TestAnOperationsHintsComeFromTheContract` fails for a `GET` that is offered as
+a tool and not marked `x-readonly`. `TestTheMCPListsExactlyItsTools` pins the
+tools the MCP lists.
+
 So a change to a route, a handler's answer or a type's JSON fields is a change
 to `api/openapi.yaml` in the same commit, followed by `make client`. A new
 event type registered in fiber's catalog needs its variant in `RunEvent` and

@@ -2,12 +2,23 @@ import { defaultCopy } from "@humagen/components";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type AlertRuleConfig, api, type ProjectView } from "./api.ts";
 import { agentShown } from "./branding.ts";
-import { AgentTag, FilterSelect, ItemCard, PriorityPill, StatusPill, Tag } from "./cards.tsx";
+import {
+  AgentTag,
+  FilterSelect,
+  ItemCard,
+  itemGrid,
+  PriorityPill,
+  StatusPill,
+  Tag,
+} from "./cards.tsx";
 import { type ProjectRef, readableProject } from "./projects.ts";
 import { href, type Route, SESSION_PLACES, type SessionPlaceFilter } from "./route.ts";
 import {
   type AgentSessionSummary,
   type Alert,
+  alertActionLabel,
+  alertDestination,
+  alertPage,
   alertPriority,
   attentionAlerts,
   holdsAnAlertOnly,
@@ -22,6 +33,7 @@ import {
   ago,
   button,
   Confirm,
+  LoadMore,
   Page,
   Problem,
   primary,
@@ -92,12 +104,14 @@ export function useSessionAttention(canRead: boolean, tick: unknown) {
 export function AlertMark({ alert }: { alert: Alert }) {
   return <PriorityPill priority={alertPriority(alert)} />;
 }
+/**
+ * One session a person started, as a card. What its agents did is inside it,
+ * under each response, so the card opens it and lists nothing beneath.
+ */
 export function SessionRow({
   session,
   go,
-  nested = false,
   alerts = [],
-  tick,
   projects = [],
   workspaceName,
 }: {
@@ -105,40 +119,11 @@ export function SessionRow({
   workspaceName?: string;
   session: AgentSessionSummary;
   go: (route: Route) => void;
-  nested?: boolean;
   alerts?: Alert[];
-  tick?: unknown;
 }) {
-  const [children, setChildren] = useState<AgentSessionSummary[]>();
-  const [expanded, setExpanded] = useState(false);
-  const [childCursor, setChildCursor] = useState("");
-  const [loadingChildren, setLoadingChildren] = useState(false);
-  const [problem, setProblem] = useState<string>();
-  const loadChildren = async (after?: string) => {
-    setLoadingChildren(true);
-    setProblem(undefined);
-    try {
-      const r = await sessionCenter.sessions({ parent: session.id, ...(after ? { after } : {}) });
-      setChildren((old) => (after ? [...(old ?? []), ...r.sessions] : r.sessions));
-      setChildCursor(r.next);
-    } catch (e) {
-      setProblem(failure(e));
-    } finally {
-      setLoadingChildren(false);
-    }
-  };
-  const expand = () => {
-    setExpanded((v) => !v);
-    if (!children) void loadChildren();
-  };
-  // A session event refreshes expanded children without collapsing the tree.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the event invalidation signal.
-  useEffect(() => {
-    if (expanded) void loadChildren();
-  }, [tick]);
   const attention = orderAlerts(alerts.filter((a) => a.session === session.id && openAlert(a)))[0];
   return (
-    <li className={nested ? "ml-4 border-aui-border border-l pt-3 pl-4" : ""}>
+    <li className="min-w-0">
       <ItemCard
         title={session.title || agentShown(session.agent)}
         href={href({ page: "conversation", id: session.id })}
@@ -153,62 +138,7 @@ export function SessionRow({
             <Tag>{sessionSource(session)}</Tag>
           </>
         }
-        actions={
-          <button
-            type="button"
-            aria-label={`${expanded ? "Collapse" : "Show"} children of ${session.title || agentShown(session.agent)}`}
-            aria-expanded={expanded}
-            onClick={expand}
-            className={textAction}
-          >
-            {expanded ? "Hide child sessions" : "Child sessions"}
-          </button>
-        }
       />
-      {expanded && (
-        <>
-          <Problem message={problem ?? null} />
-          {problem && (
-            <button
-              type="button"
-              className={textAction}
-              onClick={() => void loadChildren(childCursor || undefined)}
-            >
-              Try again
-            </button>
-          )}
-          {!children && !problem ? (
-            <SkeletonRows count={1} />
-          ) : children?.length ? (
-            <ul>
-              {children.map((child) => (
-                <SessionRow
-                  key={child.id}
-                  session={child}
-                  projects={projects}
-                  workspaceName={workspaceName}
-                  go={go}
-                  nested
-                  alerts={alerts}
-                  tick={tick}
-                />
-              ))}
-            </ul>
-          ) : (
-            <p className="pt-2 pl-4 text-aui-xs text-aui-muted">No child sessions.</p>
-          )}
-          {childCursor && (
-            <button
-              type="button"
-              className={textAction}
-              disabled={loadingChildren}
-              onClick={() => void loadChildren(childCursor)}
-            >
-              {loadingChildren ? "Loading…" : "More child sessions"}
-            </button>
-          )}
-        </>
-      )}
     </li>
   );
 }
@@ -290,7 +220,7 @@ export function SessionsPage({
   );
   shown.sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
   return (
-    <Page title="Sessions" lede="Your work, with each agent's child sessions kept together.">
+    <Page title="Sessions">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <SearchField
           label="Search sessions"
@@ -369,14 +299,13 @@ export function SessionsPage({
       {!sessions && !problem ? (
         <SkeletonRows count={4} />
       ) : shown.length ? (
-        <ul className="flex flex-col gap-3">
+        <ul className={itemGrid}>
           {shown.map((s) => (
             <SessionRow
               key={s.id}
               session={s}
               go={go}
               alerts={alerts}
-              tick={tick}
               projects={projects}
               workspaceName={workspaceName}
             />
@@ -385,11 +314,7 @@ export function SessionsPage({
       ) : (
         <p className="text-aui-sm text-aui-muted">No sessions match these filters.</p>
       )}
-      {next && (
-        <button type="button" className={button} disabled={busy} onClick={() => void more()}>
-          {busy ? "Loading…" : "Load more"}
-        </button>
-      )}
+      {next && <LoadMore busy={busy} onMore={() => void more()} />}
     </Page>
   );
 }
@@ -434,7 +359,10 @@ export function AlertsPage({
     else
       sessionCenter.alerts(JSON.parse(key)).then(
         (r) => {
-          if (generation === request.current) setRows(orderAlerts(r.filter((a) => !!a.session)));
+          // An alert with no session (knowledge maintenance before a workspace has a
+          // model) stays here when its action names the page it is about.
+          if (generation === request.current)
+            setRows(orderAlerts(r.filter((a) => !!a.session || !!alertPage(a))));
         },
         (e) => {
           if (generation === request.current) setProblem(failure(e));
@@ -653,9 +581,13 @@ export function AlertsPage({
                 <li key={a.id}>
                   <ItemCard
                     title={a.title}
-                    href={href({ page: "conversation", id: a.session!, message: a.message })}
+                    // An alert with no session (maintenance before a workspace has a model) opens its page.
+                    href={alertDestination(a) && href(alertDestination(a)!)}
                     time={ago(a.at)}
-                    onOpen={() => go({ page: "conversation", id: a.session!, message: a.message })}
+                    onOpen={() => {
+                      const to = alertDestination(a);
+                      if (to) go(to);
+                    }}
                     facts={
                       <>
                         {canWrite && (
@@ -688,11 +620,12 @@ export function AlertsPage({
                         <button
                           type="button"
                           className={primary}
-                          onClick={() =>
-                            go({ page: "conversation", id: a.session!, message: a.message })
-                          }
+                          onClick={() => {
+                            const to = alertPage(a) ?? alertDestination(a);
+                            if (to) go(to);
+                          }}
                         >
-                          {a.action || "Open"}
+                          {alertActionLabel(a)}
                         </button>
                         {canWrite && (
                           <>
@@ -842,10 +775,16 @@ export function HomeSessionGlance({
                         type="button"
                         className={primary}
                         onClick={() =>
-                          go({ page: "conversation", id: a.session!, message: a.message })
+                          go(
+                            alertPage(a) ?? {
+                              page: "conversation",
+                              id: a.session!,
+                              message: a.message,
+                            },
+                          )
                         }
                       >
-                        {a.action || "Open"}
+                        {alertActionLabel(a)}
                       </button>
                       {canWrite && (
                         <button

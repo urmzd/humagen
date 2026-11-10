@@ -1,12 +1,92 @@
 # Agent calls
 
-A task has one answering agent. That agent can ask helpers for work through
-`call_agent`. Helpers receive a fresh, explicitly constructed conversation and
-return material for the caller to use. The caller owns the user-facing answer.
-A helper's full result stays available in execution history; its step in the
-conversation shows completion rather than repeating the result as a preview.
+A task has one answering agent. That agent brings in other agents with the
+`agent` tool: `{agent, title, brief, background?}`. It is the one way a run
+calls an agent. The title is a few imperative words (at most 60 characters)
+shown on the call's card; the brief is everything the agent is told. Each call
+runs the agent as a child run of the caller that carries the call's id
+(`call_id`, `htu_<run>_<n>`), so its work streams under the call, and its
+answer is the call's result. The caller owns the user-facing answer. Parallel
+agents are parallel calls.
+
+`Access.Spawn` grants the tool: an agent that may call others has it without
+listing it. Stopping the caller stops the child, the child's spend counts
+toward the caller, and a call the callee's policy holds waits for a person. A
+client of the humagen MCP makes no agent call of its own: it posts a message
+(`send_messages`), which starts a run.
+
+## Background calls
+
+With `background: true` the caller hands the work over and carries on. The
+call passes the same checks as one that waits (the spawn allowlist, the
+callee's call policy, the action policy, depth, fan-out and budget) and answers
+at once with `{"status": "launched", "agent", "run"}`, never with the work's
+result. The run it starts is delegated, not attached: it outlives its caller,
+is not stopped with it, and its spend is not rolled into the caller's. It
+carries the call's id as `call_id`, and its answer arrives later, as a response
+of its own that names the call it is for and in the inbox.
+
+## Earlier names
+
+The names an agent called other agents by before are read in one place,
+`internal/legacy/tools.go`, and nothing else names them.
+
+| Stored name | Read as |
+|-------------|---------|
+| `call_agent` in a spec's tools | Nothing: `Access.Spawn` grants the agent tool |
+| `delegate_task` in a spec's tools | Nothing: `Access.Spawn` grants the agent tool, and a call that does not wait sets `background` |
+| `call_agent` or `delegate_task` in a spec's approvals | An approval of the agent tool, once |
+| `tag_<agent>` in a spec's tools | Nothing: no per-agent tool is offered |
+| `tag_<agent>` in a spec's approvals | The agent tool's calls to that one agent wait for a person, asked of the spec's approvers |
+| Any of them in a skill's tool restriction | The restriction allows the agent tool (`tag_<agent>`: for that agent only) |
+
+A saved revision is not rewritten: it keeps loading as it is, and is read this
+way each time it runs. The runtime's own calling verbs (`session_call`,
+`session_listen`, `session_status`) and per-agent `tag_<agent>` tools are not
+offered to any run. `session_read` and `session_link` are still offered to a
+run with a session: they read and cite another session, and call nothing.
+
+The tool has one definition, in the system tool registry
+([agent operations](agent-operations.md#tool-declarations)): its description,
+its arguments, its category (`call_agents`) and who approves a call. A run is
+offered that definition with `agent` narrowed to the agents the caller may
+call. A call is held twice: by the called agent's call policy, which names
+its own approvers, and by the action policy for `call_agents`. A caller whose
+spec approves `tag_<agent>` holds its own calls to that agent too.
+
+## Calls made for mentions
+
+A message that mentions several agents is answered by the entry agent, and the
+platform makes those agent calls itself before that run's first model step
+(`internal/platform/mention_calls.go`). Each is an `agent` call of the run like
+any other: a child run through the same call path, checked by the same spawn
+allowlist and call policy, keyed by its `htu_<run>_<n>` id and carrying it as
+`call_id`, with what it spent counted toward the root. The run records each as
+a call to the `agent` tool and its result, so activity shows them where the
+entry agent's own calls show. The model is never shown a tool call it did not
+make: what each agent said reaches it as content of the person's turn, with the
+answer it is to write, each result as given under a heading with its agent's
+name, then a short synthesis if one helps. The run's final text is the model's
+own; the platform does not rewrite it. A call that is refused or fails is said
+so in its place, and stopping the root stops the calls it waits on.
+
+Two checks are made before any of those calls. An agent that lives where not
+everyone who reads the conversation's project reads is not called there
+(`Available`, admission's own check): the entry agent is told it cannot answer
+here and where it can be asked. A call that waits for a person waits for one
+as the same call made by the model does, because both ask the one wrapper every
+run tool passes through: the callee's call policy holds it, or the action
+policy for `call_agents` says ask. The root parks on the approval, addressed
+to that policy's approvers and tied to the call's id, before anyone is called,
+one call at a time. Approved, the call is made; denied or expired, the entry
+agent is told so in its place. An action policy of never refuses the call.
 
 ## Constructing input
+
+A program that holds a run calls helpers with a constructed conversation and a
+return format through `POST /api/runs/{id}/calls`. Helpers receive exactly that
+conversation and return material for the caller to use. A helper's full result
+stays available in execution history.
 
 ```json
 {
@@ -81,7 +161,7 @@ Actions already performed by a helper are not undone by an invalid result.
 | Mode | Calling agent | Result |
 |------|---------------|--------|
 | `subagent`, the default | Waits for its helper | Receives validated text as the tool result |
-| `delegate` | Continues immediately | Receives the run reference; the validated result later appears in the inbox and execution history |
+| `delegate` (the agent tool's `background`) | Continues immediately | Receives the run reference; the validated result later appears in the inbox and execution history |
 
 Both modes go through `Platform.Call` and `pkg/call`. The caller's pinned spawn
 allowlist, depth, fan-out, budget and admission policy apply. Waiting calls keep
@@ -89,7 +169,7 @@ one execution slot available so a chain of helpers cannot occupy every slot
 while waiting. Attached work stops with its caller; delegated work is independent.
 A return format never changes these lifecycle or delivery rules.
 
-`call_agent` offers a run only the agents available where its calls are filed:
+The agent tool offers a run only the agents available where its calls are filed:
 one that lives elsewhere would be refused, and the run's readers may not read
 it. An agent that lives in a project a reader may not read is left out of the
 spawn list and the call policy lists they read. Naming one when they write
@@ -98,7 +178,7 @@ through the calls endpoint is refused as one the spawn allowlist does not
 name, and saving what they read keeps what they were not shown (see
 [security](security.md)).
 
-The low-level API's existing `handoff` mode is not exposed by `call_agent`.
+The low-level API's existing `handoff` mode is not exposed by the agent tool.
 A real handoff needs explicit answer ownership transfer and caller termination;
 selecting a return format does neither.
 
@@ -111,11 +191,9 @@ removed or the fan-out allowance has been consumed. Reusing a call ID with
 different input is an error. Tool call IDs also correlate parallel helper
 steps with their runs, independent of start order.
 
-`Access.Spawn` makes the unified tool available automatically. Per-target
-`tag_<agent>` tools are replaced in Humagen. The explicitly configured
-`delegate_task` tool and the calls HTTP endpoint retain their legacy `text`
-shorthand, normalized to a user message and a text return contract. The HTTP
-endpoint also accepts the structured contract under `input`.
+`Access.Spawn` makes the agent tool available automatically. The calls HTTP
+endpoint retains its `text` shorthand, normalized to a user message and a text
+return contract, and also accepts the structured contract under `input`.
 
 ## Runtime dependency
 

@@ -1072,11 +1072,58 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 		// an open default (land), so it never waits for a person.
 		def.Agent = Open
 	}
+	// In a session a message gets one answer, the response's root run. With
+	// no other agent mentioned, the session's agent answers. Exactly one
+	// other agent mentioned answers it itself, here, not in a child session.
+	// Several mentioned are each asked by the platform before the entry
+	// agent's first model step (callMentioned), and it answers with what
+	// they said; where the entry agent cannot run, each answers for itself.
+	var mentioned []string
+	root := ""
 	if th.Session != nil {
-		// Session ownership is immutable. Mentions are context, never a second
-		// answering agent in this transcript. Calls to another agent open children.
 		tagsOnly = false
-		m.Mentions = slices.DeleteFunc(slices.Clone(m.Mentions), func(mn threads.Mention) bool { return mn.Kind == threads.Agent && mn.Name != th.Session.Agent })
+		owner := th.Session.Agent
+		var others, barred []string
+		if !postOnly && !reply {
+			// An answer is limited to what its place's readers may read: an
+			// agent some of them may not read is not asked here, and the
+			// poster is told so, with where it can be asked.
+			m.Mentions = slices.Clone(m.Mentions)
+			for i := range m.Mentions {
+				mn := &m.Mentions[i]
+				if mn.Kind != threads.Agent || mn.Name == owner {
+					continue
+				}
+				if why := p.mentionRefusal(tenant, tree, th.Project, mn.Name); why != "" {
+					mn.Refused = why
+					barred = append(barred, mn.Name)
+				}
+			}
+			others = mentionedAgents(m.Mentions, owner)
+		}
+		entry := ""
+		if len(others) > 1 {
+			if entry = p.entryFor(ctx, tenant, th.Project, sees); entry != "" && p.entryReady(ctx, tenant) != nil {
+				entry = ""
+			}
+		}
+		keep := func(name string) bool { return name == owner }
+		switch {
+		case len(others) == 1:
+			keep = func(name string) bool { return name == others[0] }
+		case len(others) > 1 && entry != "":
+			mentioned = others[:min(len(others), maxDelegates)]
+			keep = func(string) bool { return false }
+		case len(others) > 1:
+			keep = func(name string) bool { return slices.Contains(others, name) }
+		}
+		// A mention refused here stays, so the poster is told why.
+		m.Mentions = slices.DeleteFunc(slices.Clone(m.Mentions), func(mn threads.Mention) bool {
+			return mn.Kind == threads.Agent && !keep(mn.Name) && !slices.Contains(barred, mn.Name)
+		})
+		if len(mentioned) > 0 {
+			root = entry
+		}
 	}
 	// The thread's selected agents answer an untagged message, those the
 	// poster may read: one they may not is passed over for them.
@@ -1105,7 +1152,11 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 		case d.Rule == threads.RuleRouted:
 			routedBy = threads.ModeAll
 		}
-		started, err := p.answerMessage(ctx, tenant, th, m, via, agent, d.Among, routedBy, actor, answerTagID(th.ID, m.ID, agent), keeps, sees)
+		startCtx := ctx
+		if agent == root && len(mentioned) > 0 {
+			startCtx = withMentioned(ctx, mentioned)
+		}
+		started, err := p.answerMessage(startCtx, tenant, th, m, via, agent, d.Among, routedBy, actor, answerTagID(th.ID, m.ID, agent), keeps, sees)
 		for _, run := range started {
 			out.Runs = append(out.Runs, run)
 			answered = append(answered, threads.Participant{Kind: threads.Agent, Name: run.Agent, AddedBy: m.By})
@@ -1113,6 +1164,24 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 		return started, err
 	}
 	switch {
+	case len(mentioned) > 0:
+		// The entry agent answers, told what each mentioned agent said. When
+		// it cannot be started, each of them answers for itself.
+		out.Rule, out.Reason = threads.RuleTagged, ""
+		started, err := start(root)
+		if err == nil && len(started) > 0 {
+			p.keepPick(tenant, th.ID, m.ID, pickRecord{Pick: Pick{Decision: PickDelegate, Agents: mentioned, Reason: "@" + strings.Join(mentioned, ", @") + " were mentioned, so each was asked first."}, Run: started[0].ID})
+			break
+		}
+		var refused []string
+		for _, agent := range mentioned {
+			if _, err := start(agent); err != nil {
+				refused = append(refused, refusalOf(err))
+			}
+		}
+		if len(refused) > 0 {
+			out.Reason = "Not every mentioned agent could answer: " + strings.Join(refused, "; ") + "."
+		}
 	case d.Rule == threads.RuleTagged:
 		for i := range mentions {
 			mn := &mentions[i]
@@ -1125,6 +1194,9 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 				continue
 			}
 			mn.Run = started[0].ID
+			if th.Session != nil && mn.Name != th.Session.Agent && len(d.Agents) == 1 {
+				p.keepPick(tenant, th.ID, m.ID, pickRecord{Pick: Pick{Decision: PickDelegate, Agents: []string{mn.Name}, Reason: "@" + mn.Name + " was mentioned."}, Run: started[0].ID})
+			}
 		}
 	case d.Rule == threads.RuleRouted:
 		var refused []string
@@ -1169,6 +1241,23 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 	}
 	out.Thread, out.Message = th, m
 	return out, nil
+}
+
+// mentionRefusal is why a mentioned agent is not asked in a conversation
+// filed in project, or "" when it may be. It is admission's one check
+// (Available), made before anything runs: an answer is limited to what the
+// readers of its place may read, so an agent that lives where not all of
+// them read is not asked there, and the poster is told where it can be.
+func (p *Platform) mentionRefusal(tenant string, tree *projects.Tree, project, agent string) string {
+	err := p.Available(tenant, project, agent)
+	if err == nil {
+		return ""
+	}
+	why := refusalOf(err)
+	if home, homed := tree.Home(agent); homed && tree.IsAvailable(projects.NameOf(project), agent) {
+		why += ", so it cannot answer here. Ask it in " + p.whereOf(tenant, tree, home)
+	}
+	return why
 }
 
 // refusalOf is why a run was not started, as a person reads it: the error's
@@ -1281,9 +1370,18 @@ func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.T
 		who = []answer{{agent: agent, tag: tagID}}
 	}
 	cfg := p.Settings(tenant)
-	body := m.Text
-	if cfg.History == HistoryRecent && th.Session == nil {
-		body = threads.Ask(p.roomBefore(tenant, th, m), cfg.HistoryLimit, p.shower(tenant), threads.Asker{Person: m.By, Name: m.Name}, m.Text)
+	// A session's agent carries its own transcript. Another agent answering
+	// in the session (the one a message mentions, a search match standing in
+	// for the entry agent) has none there, so it is sent the conversation up
+	// to the message, as an agent in a room is.
+	room := sync.OnceValue(func() string {
+		return threads.Ask(p.roomBefore(tenant, th, m), cfg.HistoryLimit, p.shower(tenant), threads.Asker{Person: m.By, Name: m.Name}, m.Text)
+	})
+	bodyFor := func(agent string) string {
+		if cfg.History == HistoryRecent && (th.Session == nil || th.Session.Agent != agent) {
+			return room()
+		}
+		return m.Text
 	}
 	var out []runs.Run
 	var firstErr error
@@ -1293,6 +1391,7 @@ func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.T
 			continue
 		}
 		a.picked = cmp.Or(a.picked, pickedOf(ctx))
+		body := bodyFor(a.agent)
 		text := body
 		if hints := p.entryHintsFor(ctx, tenant, th.Project, a.agent, m.Text, sees); hints != "" {
 			text = hints + "\n\n" + body
@@ -1301,6 +1400,10 @@ func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.T
 		if a.picked != "" {
 			mt = maps.Clone(meta)
 			mt[runs.MetaPicked] = a.picked
+		}
+		if asked := mentionedOf(ctx); len(asked) > 0 && a.agent == p.cfg.EntryAgent {
+			mt = maps.Clone(mt)
+			mt[metaMentioned] = strings.Join(asked, ",")
 		}
 		if surfaced {
 			mt = maps.Clone(mt)

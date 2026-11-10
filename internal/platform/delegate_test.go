@@ -2,6 +2,7 @@ package platform_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -68,6 +69,8 @@ type cast struct {
 	cut map[string]chan struct{}
 	// sent is every request each agent's model was sent, flattened to text.
 	sent map[string][]string
+	// shown is what every request showed each agent's model.
+	shown map[string][]modelTurn
 	// schemas is every response schema each agent's model was asked for.
 	schemas map[string][]*saigetypes.ParameterSchema
 	// freeText are agents whose model gives no structured output.
@@ -101,6 +104,29 @@ func (c *cast) requests(agent string) []string {
 	return slices.Clone(c.sent[agent])
 }
 
+// modelTurn is what one request showed a model beside its text: the tools it
+// was offered, and how many tool calls and tool results its messages held.
+type modelTurn struct {
+	tools                  []string
+	toolCalls, toolResults int
+}
+
+// turns is every request each agent's model was sent, as what it showed.
+func (c *cast) turns(agent string) []modelTurn {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.Clone(c.shown[agent])
+}
+
+// offered is the tools an agent's model was offered on its latest request.
+func (c *cast) offered(agent string) []string {
+	turns := c.turns(agent)
+	if len(turns) == 0 {
+		return nil
+	}
+	return turns[len(turns)-1].tools
+}
+
 // recorded keeps what a model is sent, for a test to read.
 type recorded struct {
 	saigetypes.Provider
@@ -111,6 +137,33 @@ type recorded struct {
 func (r *recorded) Stream(ctx context.Context, req saigetypes.Request) (<-chan saigetypes.Delta, error) {
 	r.c.mu.Lock()
 	r.c.sent[r.agent] = append(r.c.sent[r.agent], fmt.Sprintf("%+v", req.Messages))
+	shown := modelTurn{}
+	for _, d := range req.Tools {
+		shown.tools = append(shown.tools, d.Name)
+	}
+	for _, m := range req.Messages {
+		switch m := m.(type) {
+		case saigetypes.AssistantMessage:
+			for _, part := range m.Parts {
+				if _, ok := part.(saigetypes.ToolCallPart); ok {
+					shown.toolCalls++
+				}
+			}
+		case saigetypes.UserMessage:
+			for _, part := range m.Parts {
+				if _, ok := part.(saigetypes.ToolResultPart); ok {
+					shown.toolResults++
+				}
+			}
+		case saigetypes.SystemMessage:
+			for _, part := range m.Parts {
+				if _, ok := part.(saigetypes.ToolResultPart); ok {
+					shown.toolResults++
+				}
+			}
+		}
+	}
+	r.c.shown[r.agent] = append(r.c.shown[r.agent], shown)
 	if req.Schema != nil {
 		r.c.schemas[r.agent] = append(r.c.schemas[r.agent], req.Schema)
 	}
@@ -165,7 +218,13 @@ func (t *talker) Stream(ctx context.Context, req saigetypes.Request) (<-chan sai
 }
 
 func tagging(agent, text string) []saigetypes.Delta {
-	return agenttest.ToolCallResponse("call-"+agent, platform.ToolCallAgent, map[string]any{"agent": agent, "messages": []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": text}}}}, "response_format": map[string]any{"type": "text"}})
+	return agenttest.ToolCallResponse("call-"+agent, platform.ToolAgent, map[string]any{"agent": agent, "title": "Ask " + agent, "brief": text})
+}
+
+// handing is a background agent call: the work is handed to agent and the
+// caller carries on.
+func handing(id, agent, text string) []saigetypes.Delta {
+	return agenttest.ToolCallResponse(id, platform.ToolAgent, map[string]any{"agent": agent, "title": "Hand to " + agent, "brief": text, "background": true})
 }
 
 func say(text string) []saigetypes.Delta { return agenttest.TextResponse(text) }
@@ -179,6 +238,7 @@ func stage(t *testing.T, c *cast, cfg platform.Config) *platform.Platform {
 	}
 	c.instances, c.cut, c.sent = map[string]int{}, map[string]chan struct{}{}, map[string][]string{}
 	c.schemas = map[string][]*saigetypes.ParameterSchema{}
+	c.shown = map[string][]modelTurn{}
 	c.scripts = map[string]*agenttest.ScriptedProvider{}
 	cutOnce := map[string]*sync.Once{}
 	for name := range c.talks {
@@ -317,7 +377,7 @@ func TestADelegatedRunIsIndependent(t *testing.T) {
 	c := &cast{
 		says: map[string][][]saigetypes.Delta{
 			"lead": {
-				agenttest.ToolCallResponse("c1", platform.ToolDelegate, map[string]any{"agent": "worker", "text": "Write the long report"}),
+				handing("c1", "worker", "Write the long report"),
 				tagging("mid", "Wait here"),
 				say("unreachable"),
 			},
@@ -325,7 +385,6 @@ func TestADelegatedRunIsIndependent(t *testing.T) {
 			"mid":    {say("unreachable")},
 		},
 		spawn: map[string][]string{"lead": {"worker", "mid"}},
-		tools: map[string][]string{"lead": {platform.ToolDelegate}},
 		gates: map[string]chan struct{}{"worker": make(chan struct{}), "mid": make(chan struct{})},
 	}
 	p := stage(t, c, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
@@ -339,6 +398,21 @@ func TestADelegatedRunIsIndependent(t *testing.T) {
 	if worker.Lifecycle != runs.Delegated || mid.Lifecycle != runs.Attached || worker.Root != first.ID || worker.Parent != first.ID {
 		t.Fatalf("worker = %+v, mid = %+v", worker, mid)
 	}
+	// The call answered at once that the work was launched, and the run it
+	// started carries the call's id.
+	if worker.CallID != "htu_"+first.ID+"_1" {
+		t.Fatalf("the delegated run's call id = %q", worker.CallID)
+	}
+	within(t, "the background call answered that the work was launched", func() bool {
+		held, _ := p.Journal.Events(tenant, []string{first.ID})
+		for _, e := range held {
+			if done, ok := e.Data.(event.ToolDone); ok && done.Name == platform.ToolAgent {
+				var out struct{ Status, Agent, Run string }
+				return json.Unmarshal([]byte(done.Result), &out) == nil && out.Status == "launched" && out.Agent == "worker" && out.Run == worker.ID
+			}
+		}
+		return false
+	})
 
 	if _, err := p.StopRun(ctx, admin, first.ID); err != nil {
 		t.Fatal(err)
@@ -374,12 +448,11 @@ func TestADelegatedRunIsIndependent(t *testing.T) {
 func TestAttachedToADelegateDiesWithTheDelegate(t *testing.T) {
 	c := &cast{
 		says: map[string][][]saigetypes.Delta{
-			"lead":   {agenttest.ToolCallResponse("c1", platform.ToolDelegate, map[string]any{"agent": "worker", "text": "Take this on"}), say("Handed over.")},
+			"lead":   {handing("c1", "worker", "Take this on"), say("Handed over.")},
 			"worker": {tagging("leaf", "Help me"), say("unreachable")},
 			"leaf":   {say("unreachable")},
 		},
 		spawn: map[string][]string{"lead": {"worker"}, "worker": {"leaf"}},
-		tools: map[string][]string{"lead": {platform.ToolDelegate}},
 		gates: map[string]chan struct{}{"leaf": make(chan struct{})},
 	}
 	p := stage(t, c, platform.Config{Limits: call.Limits{MaxDepth: 3, MaxFanOut: 4}})

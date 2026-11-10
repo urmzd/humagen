@@ -71,7 +71,7 @@ func (p *Platform) approvalCall(run runs.Run, q event.Question, spec wire.AgentS
 		where = "project " + run.Project
 	}
 	c.Policy = []string{
-		fmt.Sprintf("In %s, calls of this kind (%s) need approval before they run.", where, strings.ReplaceAll(string(categoryOf(q.Tool.Name)), "_", " ")),
+		fmt.Sprintf("In %s, calls of this kind (%s) need approval before they run.", where, strings.ReplaceAll(string(p.categoryOf(q.Tool.Name)), "_", " ")),
 		"The session's owner set it to Run, so you decide in their place, and only within what they could approve themselves.",
 	}
 	if q.Tool.ActsForPerson {

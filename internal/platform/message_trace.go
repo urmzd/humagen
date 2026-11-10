@@ -16,16 +16,15 @@ import (
 )
 
 // A message's trace is what ran to answer it, one node per run. For a
-// person's message (or a session, read as its first message) it is the runs
-// that answered that message: the entry agent's pick, when one was made,
-// with the answers it led to beneath it (its own, and those of the child
-// sessions it handed the message to); otherwise the answers themselves.
-// For an agent's message it is that run. Beneath each run are the runs it
-// called, delegations and session calls alike. Each node says what its run
-// did: the tools it called, the context it pulled with get_context, the
-// sources it cited, and the approvals it waited on, each as the reader may
-// see it. A run or child session the reader may not read is left out with
-// everything beneath it, and counted in Hidden.
+// person's message (or a session, read as its first message) it is the run
+// that answered it, the response's root. For an agent's message it is that
+// run. Beneath each run are the runs it called: its agent calls, the calls
+// the platform made for the agents a message mentioned, and delegations
+// alike. Each node says what its run did: the tools it called, the context
+// it pulled with get_context, the sources it cited, and the approvals it
+// waited on, each as the reader may see it. A run or child session the
+// reader may not read is left out with everything beneath it, and counted
+// in Hidden.
 
 // Bounds on one trace.
 const (
@@ -65,8 +64,9 @@ type MessageTrace struct {
 
 // TraceNode is one run: who ran, how it went, how long it took and what it
 // spent (micro-USD), the model it used when that was recorded, its answer or
-// its error, and what it did. Pick is set on the entry agent's pick, the run
-// that decided who answers.
+// its error, and what it did. Pick is set on a root the platform chose, and
+// says why: the agents the message mentioned, or the search match that
+// answered because the entry agent could not run.
 type TraceNode struct {
 	Run       string          `json:"run"`
 	Agent     string          `json:"agent"`
@@ -87,9 +87,9 @@ type TraceNode struct {
 	Children  []TraceNode     `json:"children"`
 }
 
-// TracePick is what the entry agent decided about a message: answer it
-// itself, or hand it to the agents it names (those the reader may read),
-// why, and the words that matched.
+// TracePick is why a message's answer came from where it did, when the
+// platform chose: the agents it names (those the reader may read), why, and
+// the words that matched. It is activity, never a line of the conversation.
 type TracePick struct {
 	Decision string   `json:"decision"`
 	Agents   []string `json:"agents"`
@@ -176,15 +176,15 @@ type TraceApproval struct {
 }
 
 // MessageTrace is the trace of the message id names: a session's id (its
-// first message), a person's message (session:message), the entry agent's
-// pick for one (session:pick-message), or an agent's (session:run).
+// first message), a person's message (session:message), or an agent's
+// (session:run).
 func (p *Platform) MessageTrace(ctx context.Context, who auth.Principal, id string) (MessageTrace, error) {
 	session, message := SplitMessageID(id)
 	th, err := p.SessionRecord(ctx, who, session)
 	if err != nil {
 		return MessageTrace{}, err
 	}
-	t := &tracer{p: p, who: who, seer: p.Seer(who), names: p.shower(who.Tenant), root: th, seen: map[string]bool{}, trees: map[string][]runs.Run{}, left: maxTraceNodes, now: p.now()}
+	t := &tracer{p: p, who: who, seer: p.Seer(who), names: p.shower(who.Tenant), root: th, seen: map[string]bool{}, trees: map[string][]runs.Run{}, picks: map[string]*TracePick{}, left: maxTraceNodes, now: p.now()}
 	var nodes []TraceNode
 	if message == "" {
 		nodes = t.first()
@@ -211,6 +211,8 @@ type tracer struct {
 	root  threads.Thread
 	seen  map[string]bool
 	trees map[string][]runs.Run
+	// picks is why the platform chose a root, by the root's run.
+	picks map[string]*TracePick
 	left  int
 	now   time.Time
 
@@ -239,9 +241,10 @@ func (t *tracer) first() []TraceNode {
 	return nil
 }
 
-// person is the trace of a person's message: the pick made for it with
-// every answer it led to beneath it, or with no pick run the answers alone,
-// in the order they started.
+// person is the trace of a person's message: the runs that answered it, in
+// the order they started. The root the platform chose says why (Pick). A
+// message from before answers were one run keeps its shape: the pick run
+// that was made for it, with every answer it led to beneath it.
 func (t *tracer) person(m threads.Message) []TraceNode {
 	tenant := t.who.Tenant
 	var answers []runs.Run
@@ -267,13 +270,20 @@ func (t *tracer) person(m threads.Message) []TraceNode {
 	}
 	slices.SortStableFunc(answers, func(a, b runs.Run) int { return a.CreatedAt.Compare(b.CreatedAt) })
 	if rec != nil && rec.Run != "" {
-		// The pick is read wherever its root is: the root shows it.
+		pick := t.pick(rec.Pick)
+		if slices.ContainsFunc(answers, func(r runs.Run) bool { return r.ID == rec.Run }) {
+			// The root itself, chosen by the platform.
+			t.picks[rec.Run] = &pick
+			return t.each(answers)
+		}
+		// A pick run of its own, read wherever its root is: the root shows it.
 		if pr, err := t.p.Runs.Get(tenant, rec.Run); err == nil {
-			pick := t.pick(rec.Pick)
 			n, ok := t.tree(pr, &pick)
 			if !ok {
 				return nil
 			}
+			// Its answer was the pick itself.
+			n.Answer = ""
 			n.Children = append(n.Children, t.each(answers)...)
 			return []TraceNode{n}
 		}
@@ -295,7 +305,7 @@ func (t *tracer) each(list []runs.Run) []TraceNode {
 			t.hidden++
 			continue
 		}
-		n, ok := t.tree(r, nil)
+		n, ok := t.tree(r, t.picks[r.ID])
 		if !ok {
 			break
 		}
@@ -355,13 +365,17 @@ func (t *tracer) readable(r runs.Run) bool {
 	return seen
 }
 
-// pick is a pick as the reader is shown it: only the agents they may read.
+// pick is a pick as the reader is shown it: only the agents they may read,
+// and no reason when it would name one they may not.
 func (t *tracer) pick(pk Pick) TracePick {
 	out := TracePick{Decision: pk.Decision, Agents: []string{}, Reason: pk.Reason, Matched: nonNil(slices.Clone(pk.Matched))}
 	for _, a := range pk.Agents {
 		if t.seer.Agent(a) {
 			out.Agents = append(out.Agents, a)
 		}
+	}
+	if len(out.Agents) != len(pk.Agents) {
+		out.Reason = ""
 	}
 	return out
 }
@@ -379,10 +393,7 @@ func (t *tracer) node(r runs.Run, pick *TracePick) TraceNode {
 	if r.Usage != nil && r.Usage.Context != nil {
 		n.Model = r.Usage.Context.Model
 	}
-	if pick == nil {
-		// A pick's answer is the pick itself.
-		n.Answer = shown.Answer
-	}
+	n.Answer = shown.Answer
 	if r.Status == runs.Failed {
 		n.Error = shown.Error
 	}
@@ -596,6 +607,11 @@ func (t *tracer) activity(n *TraceNode, r runs.Run) {
 			// What a source search found is shown as its citations are.
 			tool.Withheld = true
 		}
+		if c.name == ToolAgent && !c.withheld && !t.calleeShown(c.input) {
+			// What an agent the reader may not read was asked, and what it
+			// said, are kept as its run is.
+			tool.Withheld = true
+		}
 		if !tool.Withheld {
 			tool.Input = c.input
 			if len(c.output) > maxTraceOutput {
@@ -635,6 +651,18 @@ func (t *tracer) activity(n *TraceNode, r runs.Run) {
 		}
 		n.Approvals = append(n.Approvals, *a)
 	}
+}
+
+// calleeShown reports whether the reader may read the agent an agent call
+// names. A call that names none is shown.
+func (t *tracer) calleeShown(input json.RawMessage) bool {
+	var in struct {
+		Agent string `json:"agent"`
+	}
+	if input == nil || json.Unmarshal(input, &in) != nil || in.Agent == "" {
+		return true
+	}
+	return t.seer.Agent(in.Agent)
 }
 
 // callMs is how long a call ran: its tool span when one was recorded, else

@@ -468,7 +468,7 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
           node.scrollTop = 0;
           node.dispatchEvent(new Event("scroll"));
         });
-        await page.getByRole("button", { name: "Jump to latest", exact: true }).waitFor();
+        await page.getByRole("button", { name: /^Jump to latest/ }).waitFor();
       },
     },
     {

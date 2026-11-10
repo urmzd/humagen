@@ -1257,6 +1257,8 @@ turned back into it.
   parent?: string;
   depth: number;
   mode?: CallMode;
+  /** The id of the caller's tool call that started this run (htu_<run>_<n>): the call its activity streams under. Empty on a root. */
+  call_id?: string;
   /** Set on a run another run called. An attached run ends with its caller. A delegated one does not. */
   lifecycle?: "attached" | "delegated";
   /** The schedule that raised the run, if one did. */
@@ -3414,7 +3416,7 @@ export interface Span {
 /** `budget` is raised by a billing policy, never by a rule, and a rule
 cannot be created with it.
  */
-export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "spend" | "budget" | "session" | "mention" | "source" | "approval" | "clarification" | "failure" | "operation" | "alert" | "connection";
+export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "spend" | "budget" | "session" | "mention" | "source" | "approval" | "clarification" | "failure" | "operation" | "alert" | "connection" | "knowledge";
 
 export type AlertSeverity = "warning" | "critical";
 
@@ -3497,7 +3499,8 @@ export interface Alert {
   acked_at?: string;
 }
 
-export type EvalTarget = "agent" | "knowledge";
+/** `corpus` scores a corpus's search as an agent runs it, with the access of whoever starts the run; its cases name the documents (by title) a query should return. */
+export type EvalTarget = "agent" | "knowledge" | "corpus";
 
 /** A deterministic check on an agent's output. */
 export interface EvalCheck {
@@ -3602,7 +3605,7 @@ source; records are warehouse tables kept as schema only and
 queried live.
  */
   holds?: "files" | "references" | "records";
-  /** manual, drive, notion, s3, gcs, bigquery, snowflake and so on. */
+  /** manual, drive, onedrive, notion, s3, gcs, bigquery, snowflake and so on. */
   provider?: string;
   /** Indexed documents, or the tables and views a warehouse lists. */
   items: number;
@@ -3626,6 +3629,18 @@ export interface Corpus {
   members: CorpusMember[];
   /** The agents granted it that the reader can see. A run of one reads only as the person it acts for, who must be a reader too. */
   agents: string[];
+  /** A JSON Schema (2020-12) of the types it adds to the graph: $defs, x-relations, x-metadata. */
+  ontology?: Record<string, unknown>;
+  /** An inferred ontology waiting for its owner to accept it. */
+  proposed_ontology?: Record<string, unknown>;
+  /** Marks the last inferred proposal, so one accepted or discarded is not proposed again. */
+  ontology_seen?: string;
+  /** How sensitive its content is. Confidential and restricted content stays in its reader's private conversation. */
+  label: "public" | "internal" | "confidential" | "restricted";
+  /** Why its agents may read it; required to grant a restricted corpus. */
+  purpose?: string;
+  /** Adds the workspace graph to its search. */
+  graph_search?: boolean;
   /** Whether its graph links to other shared corpora. Isolated by default. */
   links: "isolated" | "shared";
   created_at: string;
@@ -3635,6 +3650,95 @@ export interface Corpus {
   mine: boolean;
 }
 
+export interface GraphNode {
+  id: string;
+  key: string;
+  /** person, team, project, system, topic, document, or a corpus ontology's type. */
+  type: string;
+  name: string;
+  uri?: string;
+  /** The corpus member it was built from, as source/<name> or catalog/<name>. */
+  member?: string;
+  props?: Record<string, string>;
+  changed_at?: string;
+  suggested_owner?: string;
+  out_of_date?: boolean;
+  corpora?: string[];
+}
+
+export interface GraphEdge {
+  from: string;
+  to: string;
+  /** authored, edited, owns, about, mentions, supersedes, contradicts, depends_on or part_of. */
+  type: string;
+  corpora?: string[];
+}
+
+export interface GraphStaleness {
+  score: number;
+  stale: boolean;
+  reasons?: ("old" | "unowned" | "out_of_date" | "superseded")[];
+}
+
+export type GraphNodeView = GraphNode & { owner?: string; owner_name?: string; owner_state: "" | "suggested" | "confirmed" | "unowned"; staleness?: GraphStaleness };
+
+export interface GraphHealth {
+  nodes: number;
+  edges: number;
+  by_type: Record<string, number>;
+  unowned: number;
+  stale: number;
+  built_at?: string;
+  truncated?: boolean;
+}
+
+export interface GraphView {
+  nodes: GraphNodeView[];
+  edges: GraphEdge[];
+  health: GraphHealth;
+  more?: boolean;
+}
+
+export interface OwnerAction {
+  action: "confirm" | "decline" | "hand_off";
+  /** Who it is handed to, for hand_off. */
+  to?: string;
+}
+
+export interface CorpusHit {
+  corpus: string;
+  member: CorpusMemberRef;
+  holds: "files" | "references" | "records";
+  document_id?: string;
+  /** A document's title, or a warehouse table's path. */
+  title: string;
+  uri?: string;
+  index?: number;
+  text: string;
+  /** The fused rank score, comparable within one answer. */
+  score: number;
+  /** Other members the same passage came through. */
+  also?: CorpusMemberRef[];
+  /** Who owns the document, when graph retrieval found it. */
+  owner?: string;
+  stale?: boolean;
+  /** Its corpus's label. */
+  label?: "public" | "internal" | "confidential" | "restricted";
+}
+
+export interface CorpusSearchWarning {
+  corpus: string;
+  member?: CorpusMemberRef;
+  cause: string;
+}
+
+export interface CorpusSearch {
+  hits: CorpusHit[];
+  warnings: CorpusSearchWarning[];
+  /** Kept for a search an agent ran; absent here. */
+  citations?: RunCitation[];
+}
+
 export interface CorpusCreate {
   name: string;
   title?: string;
@@ -3642,6 +3746,11 @@ export interface CorpusCreate {
   readers?: CorpusReader[];
   members?: CorpusMemberRef[];
   agents?: string[];
+  ontology?: Record<string, unknown>;
+  label?: "public" | "internal" | "confidential" | "restricted";
+  purpose?: string;
+  /** Adds the workspace graph to its search. */
+  graph_search?: boolean;
   links?: "isolated" | "shared";
 }
 
@@ -3650,6 +3759,13 @@ export interface CorpusChange {
   description?: string;
   readers?: CorpusReader[];
   members?: CorpusMemberRef[];
+  /** Replaces its declared ontology; {} clears it. */
+  ontology?: Record<string, unknown>;
+  /** Restricting a corpus that agents are granted takes a workspace admin and a purpose. */
+  label?: "public" | "internal" | "confidential" | "restricted";
+  purpose?: string;
+  /** Adds the workspace graph to its search. */
+  graph_search?: boolean;
   links?: "isolated" | "shared";
   /** Replaces the agents granted it; agents the owner can no longer see are kept. */
   agents?: string[];
@@ -3689,7 +3805,7 @@ export interface SourceLinkSuggestion {
 }
 
 export interface SourceLinkRuleInput {
-  provider: "github" | "slack" | "drive" | "notion";
+  provider: "github" | "slack" | "drive" | "onedrive" | "notion";
   attribute: string;
   pattern: string;
   project: string;
@@ -4898,7 +5014,7 @@ export interface MessageAudience {
 
 /** One message of a tree. A session stands as its first message: beneath
 it are the agents' messages that follow it up to the next person's
-message (answers, and the entry agent's pick with its calls), the
+message (its answer), the
 child sessions started for it, and the session's later people's
 messages. Beneath a later person's message are the agents' messages
 that follow it and the child sessions started for it. A child session
@@ -4914,7 +5030,7 @@ export interface MessageNode {
   author: SessionAuthor;
   /** That of the runs beneath the message; done when there are none. */
   status: "working" | "waiting" | "done" | "failed" | "stopped";
-  /** Text, or the entry agent's pick and a call part for each child session it handed the message to. */
+  /** The message's text. */
   content: SessionPart[];
   at: string;
   /** How many children the message has, shown or not. */
@@ -4956,7 +5072,7 @@ export interface TraceNode {
   pick?: TracePick;
   /** The model its latest call used, when that was recorded. */
   model?: string;
-  /** What it answered. A pick's answer is its pick. */
+  /** What it answered. */
   answer?: string;
   /** Why it failed, when it did. */
   error?: string;
@@ -4966,15 +5082,16 @@ export interface TraceNode {
   sources: TraceSource[];
   approvals: TraceApproval[];
   questions: TraceQuestion[];
-  /** The runs it called, and for a pick the answers it led to, in the order they started. */
+  /** The runs it called, in the order they started. */
   children: TraceNode[];
 }
 
-/** The entry agent's decision about a message, on the run that made it. */
+/** Why a message's answer came from where it did, on the root run the platform chose. It is activity, never a line of the conversation. */
 export interface TracePick {
   decision: "answer_myself" | "delegate";
-  /** The agents it handed the message to that the caller may read. */
+  /** The agents the message mentioned, or the one that answers in the entry agent's place, that the caller may read. */
   agents: string[];
+  /** Why, in words. Empty when it would name an agent the caller may not read. */
   reason: string;
   /** The words of the message that matched. */
   matched: string[];
@@ -5138,7 +5255,7 @@ export interface SessionAuthor {
 }
 
 export interface SessionPart {
-  /** text, call (a child session, with its answer as text once it has one) or pick (why the entry agent chose who answers, as text). */
+  /** text. */
   type: string;
   text?: string;
   session?: string;
@@ -5981,6 +6098,10 @@ export interface ListEvalRunsResponse {
 
 export interface ListCorporaResponse {
   corpora: Corpus[];
+}
+
+export interface AcceptCorpusOntologyBody {
+  types?: string[];
 }
 
 export interface ListKnowledgeSourcesResponse {

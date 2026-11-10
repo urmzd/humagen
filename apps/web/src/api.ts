@@ -102,6 +102,8 @@ export type {
   ThreadFollowup,
 } from "../../../packages/client/src/generated/types.ts";
 
+import { openStream } from "./stream.ts";
+
 /** What the caller may do on a project: their permission and their role together. */
 export type ProjectAction = ProjectView["actions"][number];
 
@@ -651,9 +653,41 @@ import type {
   CatalogConnector,
   CatalogConnectorView,
   CatalogEntry,
+  CatalogLoginInput,
   CatalogPage,
+  Corpus,
+  CorpusChange,
+  CorpusCreate,
+  CorpusHit,
+  CorpusMember,
+  CorpusMemberRef,
+  CorpusReader,
+  CorpusSearch,
+  CorpusSearchWarning,
+  GraphNodeView,
+  GraphView,
+  OwnerAction,
+  SnowflakeSetupInput,
 } from "../../../packages/client/src/generated/types.ts";
 export type { CatalogConnector, CatalogConnectorView, CatalogEntry, CatalogPage };
+export type {
+  CatalogLoginInput,
+  Corpus,
+  CorpusChange,
+  CorpusCreate,
+  CorpusHit,
+  CorpusMember,
+  CorpusMemberRef,
+  CorpusReader,
+  CorpusSearch,
+  CorpusSearchWarning,
+  GraphNodeView,
+  GraphView,
+  OwnerAction,
+  SnowflakeSetupInput,
+};
+
+const corpusPath = (name: string) => `/api/corpora/${encodeURIComponent(name)}`;
 
 export interface Measure {
   used: number;
@@ -1381,8 +1415,6 @@ export const api = {
       version,
       corpora,
     }),
-  /** Every corpus the reader may read. */
-  corpora: () => call<{ corpora: CorpusBrief[] }>("GET", "/api/corpora").then((r) => r.corpora),
   /**
    * The schedules filed in one project, "" for the workspace. A server that
    * does not filter by project lists every schedule, so the list is narrowed
@@ -1649,6 +1681,46 @@ export const api = {
     ).then((r) => r.hits),
   catalog: (q?: string) =>
     call<CatalogPage>("GET", `/api/catalog${q ? `?${new URLSearchParams({ q })}` : ""}`),
+  /** The corpora the caller may read, by name (docs/architecture/sources.md#corpora). */
+  corpora: () => call<{ corpora: Corpus[] }>("GET", "/api/corpora").then((r) => r.corpora),
+  corpus: (name: string) => call<Corpus>("GET", corpusPath(name)),
+  createCorpus: (input: CorpusCreate) => call<Corpus>("POST", "/api/corpora", input),
+  /** Only the owner changes a corpus; with `version`, a change after someone else's is refused (409). */
+  updateCorpus: (name: string, change: CorpusChange) =>
+    call<Corpus>("PATCH", corpusPath(name), change),
+  deleteCorpus: (name: string, version?: number) =>
+    call<void>("DELETE", `${corpusPath(name)}${version ? `?version=${version}` : ""}`),
+  addCorpusMember: (name: string, member: CorpusMemberRef) =>
+    call<Corpus>("POST", `${corpusPath(name)}/members`, member),
+  /** The search an agent's corpus_search runs, with the caller's own access. */
+  searchCorpus: (name: string, q: string) =>
+    call<CorpusSearch>("GET", `${corpusPath(name)}/search?${new URLSearchParams({ q })}`),
+  /** A corpus's slice of the workspace graph, as the caller may see it, and its health. */
+  corpusGraph: (name: string) => call<GraphView>("GET", `${corpusPath(name)}/graph`),
+  /** The owner rebuilds the slice now. */
+  buildCorpusGraph: (name: string) => call<GraphView>("POST", `${corpusPath(name)}/graph/build`),
+  /** Confirm, decline or hand off who owns a document or table. */
+  decideGraphOwner: (id: string, action: OwnerAction) =>
+    call<GraphNodeView>("PUT", `/api/graph/nodes/${encodeURIComponent(id)}/owner`, action),
+  /** Propose types from the warehouse tables a corpus holds; kept as `proposed_ontology`. */
+  inferOntology: (name: string) => call<Corpus>("POST", `${corpusPath(name)}/ontology/infer`),
+  /** Accept the proposed types named, or every one when none is named. */
+  acceptOntology: (name: string, types?: string[]) =>
+    call<Corpus>("POST", `${corpusPath(name)}/ontology/accept`, types ? { types } : {}),
+  discardOntology: (name: string) => call<Corpus>("POST", `${corpusPath(name)}/ontology/discard`),
+  /** A Snowflake connector that holds no credential: each reader gives their own login. */
+  createSnowflakeConnector: (input: SnowflakeSetupInput) =>
+    call<CatalogConnector>("POST", "/api/catalog/connectors/snowflake", input),
+  /** Your own login to a warehouse: a reference, or the token where the workspace keeps values. */
+  putCatalogLogin: (name: string, login: CatalogLoginInput) =>
+    call<void>("PUT", `/api/catalog/connectors/${encodeURIComponent(name)}/login`, login),
+  deleteCatalogLogin: (name: string) =>
+    call<void>("DELETE", `/api/catalog/connectors/${encodeURIComponent(name)}/login`),
+  removeCorpusMember: (name: string, member: CorpusMemberRef) =>
+    call<Corpus>(
+      "DELETE",
+      `${corpusPath(name)}/members/${member.kind}/${encodeURIComponent(member.name)}`,
+    ),
   crawlCatalogConnector: (name: string) =>
     call<CatalogConnector>("POST", `/api/catalog/connectors/${encodeURIComponent(name)}/crawl`),
   publishCatalogConnector: (name: string) =>
@@ -1674,7 +1746,10 @@ export const runStateTypes = [
  * Subscribe to the tenant's run events, narrowed to one run and to some type
  * prefixes when given. `onOpen` fires on every (re)connect, and the stream
  * then replays what the bus still holds, so a caller that folds events into
- * state resets that state in `onOpen`.
+ * state resets that state in `onOpen`. The stream is closed while its tab is
+ * hidden and reconnects, with `onOpen`, when the tab is shown; while the
+ * browser has no connection to spare, `onOpen` is called now and then
+ * instead (stream.ts).
  */
 export function subscribe(
   /** `thread` follows one conversation as its room, and takes `type` alone. */
@@ -1696,29 +1771,34 @@ export function subscribe(
   if (filter.run) query.set("run", filter.run);
   if (filter.thread) query.set("thread", filter.thread);
   const qs = query.toString();
-  const source = new EventSource(`/api/events${qs ? `?${qs}` : ""}`);
-  source.onopen = () => {
-    handlers.onOpen?.();
-    handlers.onState?.(true);
-  };
-  source.onerror = () => handlers.onState?.(false);
-  source.onmessage = (m) => {
-    try {
-      handlers.onEvent(JSON.parse(m.data as string) as RunEvent);
-    } catch {
-      // A frame that is not an event is ignored rather than fatal.
-    }
-  };
-  source.addEventListener("inbox", () => handlers.onInbox?.());
-  source.addEventListener("thread", () => handlers.onThread?.());
-  source.addEventListener("page", (m) => {
-    try {
-      handlers.onPage?.(JSON.parse((m as MessageEvent).data as string) as RoomPage);
-    } catch {
-      // A page that does not read is ignored, as a frame is.
-    }
-  });
-  return () => source.close();
+  return openStream(
+    `/api/events${qs ? `?${qs}` : ""}`,
+    (source) => {
+      source.onopen = () => {
+        handlers.onOpen?.();
+        handlers.onState?.(true);
+      };
+      source.onerror = () => handlers.onState?.(false);
+      source.onmessage = (m) => {
+        try {
+          handlers.onEvent(JSON.parse(m.data as string) as RunEvent);
+        } catch {
+          // A frame that is not an event is ignored rather than fatal.
+        }
+      };
+      source.addEventListener("inbox", () => handlers.onInbox?.());
+      source.addEventListener("thread", () => handlers.onThread?.());
+      source.addEventListener("page", (m) => {
+        try {
+          handlers.onPage?.(JSON.parse((m as MessageEvent).data as string) as RoomPage);
+        } catch {
+          // A page that does not read is ignored, as a frame is.
+        }
+      });
+      // With no connection to spare, the caller reads again as it would on a reconnect.
+    },
+    { poll: () => handlers.onOpen?.() },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1988,7 +2068,7 @@ export interface TraceQuestion {
   at?: string;
 }
 
-/** The entry agent's decision about a message, on the run that made it. */
+/** Why a message's answer came from where it did, on the root run the platform chose: the agents it mentioned, or a search match. */
 export interface TracePick {
   decision: "answer_myself" | "delegate";
   agents: string[];
@@ -2053,41 +2133,11 @@ export interface ThreadAsk {
   owners_of?: string;
 }
 
-/** An agent a root session's entry agent handed a message to, answering in a child session. */
-export interface PickCall {
-  /** The child session it answers in. */
-  session: string;
-  agent: string;
-  status: "working" | "waiting" | "done" | "failed" | "stopped";
-  /** Its answer, empty until it has one. */
-  text: string;
-}
-
-/**
- * What a root session's entry agent picked for a person's message: why, and
- * each agent it handed the message to. Answering itself, it hands it to
- * nobody, and its own answer says why above it (`run.picked`).
- */
-export interface SessionPick {
-  id: string;
-  /** The entry agent's own name, which colors its mark. */
-  agent: string;
-  /** The name people see it by: the workspace's. */
-  by: string;
-  reason: string;
-  /** The person's message it was picked for, as the session read it. */
-  message: string;
-  at: string;
-  calls: PickCall[];
-}
-
 export interface ThreadTurn {
-  kind: "message" | "run" | "announcement" | "pick";
+  kind: "message" | "run" | "announcement";
   message?: ThreadMessage;
   run?: Run;
   announcement?: ThreadAnnouncement;
-  /** In a root session, what its entry agent picked for the message before it. */
-  pick?: SessionPick;
   /** On a run parked on a question a person answers. */
   ask?: ThreadAsk;
 }

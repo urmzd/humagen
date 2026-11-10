@@ -967,10 +967,38 @@ Every workspace has one entry agent, `humagen` unless the spec names another
 (`branding.entry_agent`), shipped with the platform's own agents on the same
 models (package `humagen/entry`). It is the agent people talk to the workspace
 through: a console session started with no mention, where no named default
-answers, belongs to it. It answers simple asks itself and calls specialists
-with `session_call`, each in a child session under the root, then answers once,
-naming who did what. Routing has no page and no switch of its own: it is this
-agent, on its own model.
+answers, belongs to it. It answers each message there in one run, the
+response's root: it answers simple asks itself and brings specialists in with
+the `agent` tool, each call a run nested under the call that made it, then
+answers once, naming who did what. No run picks who answers first, and an
+answer opens no child session. Routing has no page and no switch of its own:
+it is this agent, on its own model. The runtime's session tools are not
+offered to it.
+
+- **A message gets one answer.** With no other agent mentioned, the session's
+  agent answers. Exactly one other agent mentioned answers the message itself,
+  in the session: it is the root, the entry agent does not run, and, having no
+  transcript of its own there, it is sent the conversation so far. Several
+  agents mentioned (at most 3) are each asked by the platform before the entry
+  agent's first model step, as `agent` calls of its run
+  (`internal/platform/mention_calls.go`): activity shows them where its own
+  calls show, and the model is never shown a tool call it did not make. What
+  they said reaches it as content of the person's turn, and it is told to
+  write each result as given under a heading with its agent's name, then a
+  short synthesis if one helps. A mentioned agent that cannot be asked is said
+  so in its place, and one whose call policy holds calls for a person is
+  asked only once a person approves: the root parks on that approval first.
+  An answer is limited to what its place's readers may read: an agent that
+  lives where not everyone who reads the conversation's project reads is not
+  asked there, mentioned alone or beside others, and the poster is told why
+  and where it can be asked (the mention's `refused`). This holds in every session, whoever owns it; where the
+  entry agent cannot run, each mentioned agent answers for itself. A child
+  session opens only when a request asks for one by option (`agent` with
+  `fresh` or `label` on `POST /api/sessions/{id}/messages`).
+- **Why an answer came from where it did is activity.** A root the platform
+  chose (a mentioned agent, or a search match standing in for the entry agent)
+  says why on its node of the message's trace (`pick`), never as a line of the
+  conversation.
 
 - **Who answers a console session**, in order: an agent the message mentions;
   a default that names an agent (thread, client, workspace); the entry agent;
@@ -982,10 +1010,13 @@ agent, on its own model.
   agent it may call with what it is for (its description, or its prompt's
   first sentence), so it can choose by meaning where words did not match. It
   leaves out agents the poster may not read.
-- **When it cannot pick** (no provider of its chain is enabled, the pick
-  failed, timed out or was not a pick), a strong search match answers, else
-  the workspace's named default, else the entry agent itself. A weak match,
-  one passing word of a prompt, is never handed the message.
+- **When it cannot run** (its models name no provider the workspace has
+  enabled or a model policy it no longer has, asked before a run is started,
+  or it is refused where the message is), a strong search match answers as
+  the root in its place, else the workspace's named default. A weak match,
+  one passing word of a prompt, is never handed the message: it is refused
+  with why the entry agent cannot run. A run that starts and then fails is a
+  failed answer, not handed on.
 - **It may call every other agent whose definition pins** (`Access.Spawn`,
   kept by the platform). A run pins its whole call tree, so an agent that no
   longer pins is left out rather than stopping the entry agent. The list is
@@ -1007,8 +1038,8 @@ with `surface` and `act_as`; only the client's own machine may, for a person
 of the client. The first message starts the root (201), filed where the
 Slack channel is bound, else in the client's home (private for a direct
 message); every later message in the thread lands in it (200), once however
-often it is sent. A mention starts or continues that agent's child session
-under the root; a message naming nobody is picked for by the entry agent.
+often it is sent. The one agent a message mentions answers it in the root; a
+message naming nobody is the entry agent's.
 The request may not say where to file the session or who owns it. A Slack
 thread that started as a conversation before root sessions stays one (409).
 

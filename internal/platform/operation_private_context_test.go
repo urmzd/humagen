@@ -60,7 +60,7 @@ func TestPersonScopedOperationPersistsPrivacyBeforeExecuting(t *testing.T) {
 					}
 				}
 				probe := &privateOperationProbe{ToolFunc: &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "person_read"}, Fn: func(context.Context, map[string]any) (string, error) { verify(); return "private", nil }}, rich: func() (saigetypes.ToolResult, error) { verify(); return saigetypes.TextResult("private"), nil }}
-				tool := p.operationTool(req, probe, operations.ReadContext)
+				tool := p.operationTool(req, probe, SystemTool{Category: operations.ReadContext})
 				execute := func() error {
 					if rich {
 						_, err := tool.(saigetypes.RichTool).ExecuteRich(t.Context(), nil)

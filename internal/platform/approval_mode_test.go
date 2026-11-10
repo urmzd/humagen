@@ -9,6 +9,7 @@ import (
 	"github.com/urmzd/orchagent/flow/event"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/audit"
@@ -47,7 +48,7 @@ func judgedBy(t *testing.T, shape func(*wire.AgentSpec), script [][]saigetypes.D
 			"helper": {say("Checked.")},
 		},
 		spawn: map[string][]string{"lead": {"helper"}},
-		tools: map[string][]string{"lead": {platform.ToolCallAgent}},
+		tools: map[string][]string{"lead": {legacy.CallAgentTool}},
 		shape: map[string]func(*wire.AgentSpec){"lead": shape},
 	}
 	cfg := platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}, OfflineHooks: true}
@@ -141,7 +142,7 @@ func TestTheApprovalAgentAllowsACallInASessionSetToRun(t *testing.T) {
 		return len(got) == 1
 	})
 	a := got[0].After
-	if got[0].Actor != admin.Subject || a["verdict"] != "allow" || a["tool"] != platform.ToolCallAgent || !strings.Contains(a["references"], "call_agent to helper") {
+	if got[0].Actor != admin.Subject || a["verdict"] != "allow" || a["tool"] != platform.ToolAgent || !strings.Contains(a["references"], "call_agent to helper") {
 		t.Fatalf("audit = %+v", got[0])
 	}
 	// The decision is a run of the approval agent, which read the call.
@@ -149,7 +150,7 @@ func TestTheApprovalAgentAllowsACallInASessionSetToRun(t *testing.T) {
 	if err != nil || decided.Agent != platform.BuiltinApprover || decided.Status != runs.Completed || decided.Origin != runs.OriginSystem {
 		t.Fatalf("approval run = %+v, %v", decided, err)
 	}
-	if asked := c.requests(platform.BuiltinApprover); len(asked) != 1 || !strings.Contains(asked[0], "tool: "+platform.ToolCallAgent) || !strings.Contains(asked[0], "need approval before they run") {
+	if asked := c.requests(platform.BuiltinApprover); len(asked) != 1 || !strings.Contains(asked[0], "tool: "+platform.ToolAgent) || !strings.Contains(asked[0], "need approval before they run") {
 		t.Fatalf("the approval agent was sent %q", asked)
 	}
 	if _, err := p.SetApprovalMode(olu, first.Thread, "sometimes"); err == nil {
@@ -208,7 +209,7 @@ func TestWhatTheApprovalAgentDoesNotDecideWaitsForAPerson(t *testing.T) {
 func TestRunLeavesWhatTheAgentAlwaysAsksAbout(t *testing.T) {
 	p, c, first := judged(t, func(s *wire.AgentSpec) {
 		s.SelfApproval = true
-		s.Approvals = []string{platform.ToolCallAgent}
+		s.Approvals = []string{legacy.CallAgentTool}
 	}, `{"decision": "allow", "reason": "Fine.", "references": []}`)
 	if _, err := p.SetApprovalMode(admin, first.Thread, threads.ApprovalAuto); err != nil {
 		t.Fatal(err)

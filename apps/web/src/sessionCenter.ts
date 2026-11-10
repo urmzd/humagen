@@ -1,3 +1,4 @@
+import { defaultCopy } from "@humagen/components/copy";
 import type {
   AgentSessionSummary,
   Alert,
@@ -6,6 +7,7 @@ import type {
   ListSessionsResponse,
 } from "../../../packages/client/src/generated/types.ts";
 import { call, type ThreadSummary } from "./api.ts";
+import { parse, type Route } from "./route.ts";
 export type { AgentSessionSummary, Alert };
 export const sessionCenter = {
   sessions: (filters: Record<string, string> = {}) =>
@@ -29,6 +31,18 @@ export const isRootSession = (s: AgentSessionSummary) => !s.parent.startsWith("s
 export const holdsAnAlertOnly = (t: Pick<ThreadSummary, "messages" | "turns">) =>
   t.messages === 0 && t.turns === 0;
 export const alertPriority = (a: Alert): "urgent" | "normal" | "low" => a.priority ?? "normal";
+/**
+ * The name of an alert's main button. The action is a word the alert's rule
+ * or agent chose ("review", "reconnect"); a button is Title Case like every
+ * other, and "Open" when the alert names none.
+ */
+export const alertAction = (a: Pick<Alert, "action">) =>
+  (a.action ?? "")
+    .trim()
+    .split(/[\s_]+/)
+    .filter(Boolean)
+    .map((word) => `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`)
+    .join(" ") || "Open";
 export const openAlert = (a: Alert) => a.state === "open" || (!a.state && !a.acked_at);
 export const attentionAlerts = (alerts: Alert[]) =>
   alerts.filter((a) => !!a.session && openAlert(a) && alertPriority(a) !== "low");
@@ -54,4 +68,35 @@ export const sessionSource = (s: AgentSessionSummary) => {
 };
 export function sessionThread(s: AgentSessionSummary): ThreadSummary {
   return s.conversation;
+}
+
+/**
+ * The console page an alert's action names, such as `/knowledge/hr-policies`
+ * from knowledge maintenance, or nothing when its action is a word (retry,
+ * answer) or names no page.
+ */
+export function alertPage(a: Alert): Route | undefined {
+  const action = a.action ?? "";
+  if (!action.startsWith("/") || action.startsWith("//")) return undefined;
+  const url = new URL(action, "http://localhost");
+  const route = parse(url.pathname, url.search);
+  return route.page === "not-found" ? undefined : route;
+}
+
+/** Where opening an alert goes: its session, or the page its action names when it has no session. */
+export function alertDestination(a: Alert): Route | undefined {
+  if (a.session) return { page: "conversation", id: a.session, message: a.message };
+  return alertPage(a);
+}
+
+/** What an alert's action button says: the page it opens, or the action's own name. */
+export function alertActionLabel(a: Alert): string {
+  const page = alertPage(a);
+  const words = defaultCopy.corpora;
+  if (!page) return alertAction(a);
+  if (page.page === "corpus" && page.tab === "graph") return words.openGraph;
+  if (page.page === "corpus" && page.tab === "types") return words.openTypes;
+  if (page.page === "corpus" || page.page === "knowledge" || page.page === "context")
+    return words.openCorpus;
+  return "Open";
 }

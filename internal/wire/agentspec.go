@@ -18,6 +18,7 @@ import (
 	saigetypes "github.com/urmzd/saige/agent/types"
 	saigeeval "github.com/urmzd/saige/eval"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/pkg/approve"
 )
 
@@ -152,8 +153,9 @@ type AgentSpec struct {
 	Effort string `json:"effort,omitempty"`
 	// Approvals names the tools whose every call waits for a person to
 	// approve it. Each must be a tool the agent is granted: one in Tools, one
-	// in a tool group Tools grants (see MCPGroupPrefix), or the delegation
-	// tool "tag_<agent>" of an agent in Access.Spawn. A run
+	// in a tool group Tools grants (see MCPGroupPrefix), the agent tool when
+	// Access.Spawn names an agent, or "tag_<agent>" for the calls to one
+	// agent in Access.Spawn. A run
 	// parks on the call and resumes with the person's decision; see the
 	// runtime's "Parking a run on a person".
 	Approvals []string `json:"approvals,omitempty"`
@@ -491,7 +493,13 @@ func (s AgentSpec) ValidateAccepting(providers []string, accept func(string) boo
 		// and a definition that reads as guarded and is not is worse than one
 		// that is refused.
 		granted := slices.Contains(c.Tools, name)
-		if target, ok := strings.CutPrefix(name, "tag_"); ok && slices.Contains(c.Access.Spawn, target) {
+		// An approval of "tag_<agent>" holds the calls to that one agent.
+		if target, ok := legacy.TagTarget(name); ok && slices.Contains(c.Access.Spawn, target) {
+			granted = true
+		}
+		// The agent tool is Access.Spawn's grant: every agent the spec may
+		// call is called through it, whichever name the approval has for it.
+		if legacy.ToolName(name) == AgentTool && len(c.Access.Spawn) > 0 {
 			granted = true
 		}
 		// A group's members are known only to a deployment, so a tool that
@@ -733,3 +741,7 @@ func addressable(name string) error {
 	}
 	return runtime.CheckRun(name, "x")
 }
+
+// AgentTool is the tool an agent calls the agents in its Access.Spawn with.
+// Access.Spawn grants it, so a spec need not list it in Tools.
+const AgentTool = legacy.AgentTool
