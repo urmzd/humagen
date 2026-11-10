@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.114.2 (2026-11-10)
+
+### Bug Fixes
+
+- three intermittent CI failures: a write deadlock, a test expectation, an empty module cache (#319) ([cd9a004](https://github.com/urmzd/humagen/commit/cd9a004fba2852fe3b8fc7030a323c697c246a7d))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.114.1...v0.114.2)
+
+
 ## 0.114.1 (2026-11-09)
 
 [Full Changelog](https://github.com/urmzd/humagen/compare/v0.114.0...v0.114.1)
