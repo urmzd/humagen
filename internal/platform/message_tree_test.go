@@ -25,6 +25,23 @@ func latestOf(nodes []platform.MessageNode) time.Time {
 	return at
 }
 
+// latestIn is the latest change a session's node reports: the latest of
+// what stands beneath it and of the session's own record. The record moves
+// when the agent that answers is joined to the session, which is after its
+// run was started, and so after a quick run has ended.
+func latestIn(t *testing.T, p *platform.Platform, session string, beneath []platform.MessageNode) time.Time {
+	t.Helper()
+	th, err := p.Threads.Get(tenant, session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := latestOf(beneath)
+	if th.UpdatedAt.After(at) {
+		at = th.UpdatedAt
+	}
+	return at
+}
+
 // A root reads as its first message with what answered it beneath: one
 // answer, the entry agent's, whatever it called. A later person's message
 // hangs beneath the first with its own answer, and a child session asked for
@@ -57,8 +74,8 @@ func TestAMessageTreeShowsTheOneAnswerBeneathTheMessage(t *testing.T) {
 	if answer.Role != "assistant" || answer.Author.Name != platform.BuiltinEntry || answer.Session != v.ID || answer.ChildrenCount != 0 || len(answer.Content) != 1 || answer.Content[0].Type != "text" || !strings.Contains(answer.Content[0].Text, "## @ops") || !strings.HasSuffix(answer.Content[0].Text, "Both point at the migration.") {
 		t.Fatalf("the answer = %+v", answer)
 	}
-	if !n.LatestAt.Equal(latestOf(n.Children)) || n.LatestAt.Before(n.At) {
-		t.Errorf("the root's latest change is %v, its children's %v", n.LatestAt, latestOf(n.Children))
+	if want := latestIn(t, p, v.ID, n.Children); !n.LatestAt.Equal(want) || n.LatestAt.Before(n.At) {
+		t.Errorf("the root's latest change is %v, want %v", n.LatestAt, want)
 	}
 	// The first message read by its own id is the session's node; the answer
 	// read by its id has nothing beneath it.
@@ -101,8 +118,8 @@ func TestAMessageTreeShowsTheOneAnswerBeneathTheMessage(t *testing.T) {
 	if third.ID != v.ID+":m-3" || third.ChildrenCount != 1 || child.ID != child.Session || child.Session == v.ID || child.Role != "user" || child.ChildrenCount != 1 {
 		t.Fatalf("the child session beneath its message = %+v", third)
 	}
-	if said := child.Children[0]; said.Role != "assistant" || said.Author.Name != "ops" || said.Session != child.ID || said.Content[0].Text != "The rollback is clean." || !child.LatestAt.Equal(said.LatestAt) {
-		t.Fatalf("the child's answer = %+v", said)
+	if said := child.Children[0]; said.Role != "assistant" || said.Author.Name != "ops" || said.Session != child.ID || said.Content[0].Text != "The rollback is clean." || !child.LatestAt.Equal(latestIn(t, p, child.ID, child.Children)) {
+		t.Fatalf("the child's answer = %+v beneath %+v", said, child)
 	}
 
 	for name, id := range map[string]string{"an unknown message": v.ID + ":m-99", "an unknown session": "s_missing"} {
