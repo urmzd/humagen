@@ -384,3 +384,226 @@ test("a file that is not text, or one shown at an earlier version, has no Edit",
   await screen.findByText(copy.viewing(2));
   assert.ok(!screen.queryByRole("button", { name: copy.edit }));
 });
+
+/** The read routes, with one file's history answered apart from the tree's. */
+const readsWithFileHistory = {
+  ...reads,
+  "GET /api/memory/files/history": (_: unknown, query: URLSearchParams) =>
+    query.get("file")
+      ? {
+          versions: [
+            { tree: mine, version: 3, entries: [tree.entries[0]], by: "ada", at },
+            { tree: mine, version: 2, entries: [], by: "bo", at },
+            { tree: mine, version: 1, entries: [tree.entries[0]], by: "ada", at },
+          ],
+        }
+      : { versions },
+};
+
+test("a new file is written at the typed path against the version on view", async () => {
+  let saved = false;
+  const made = { path: "notes/plan.md", hash: "n1", size: 9 };
+  const after = { ...tree, version: 4, entries: [...tree.entries, made] };
+  net = stubFetch({
+    ...reads,
+    "GET /api/memory/files": () => (saved ? after : tree),
+    "GET /api/memory/files/content": (_, query) => ({
+      ...made,
+      version: 0,
+      content: query.get("file") === made.path ? "The plan." : first,
+    }),
+    "PUT /api/memory/files/content": () => {
+      saved = true;
+      return after;
+    },
+  });
+  const opened: string[] = [];
+  render(<MemoryFiles scope="me" onFile={(path) => opened.push(path)} />);
+  await screen.findByText(first);
+  fireEvent.click(screen.getByRole("button", { name: copy.newFile }));
+  // A path that leaves the tree, and one the tree already holds, open nothing.
+  for (const [typed, why] of [
+    ["../plan.md", copy.pathInvalid],
+    ["/etc/plan.md", copy.pathInvalid],
+    ["notes//plan.md", copy.pathInvalid],
+    ["notes/m-1.md", copy.pathTaken],
+  ] as const) {
+    fireEvent.change(screen.getByLabelText(copy.newPath), { target: { value: typed } });
+    fireEvent.click(screen.getByRole("button", { name: copy.create }));
+    assert.ok(screen.getByText(why));
+  }
+  fireEvent.change(screen.getByLabelText(copy.newPath), { target: { value: made.path } });
+  fireEvent.click(screen.getByRole("button", { name: copy.create }));
+  assert.ok(screen.getByText(copy.newDraft(made.path)));
+  fireEvent.change(screen.getByLabelText(defaultCopy.editor.edit(made.path)), {
+    target: { value: "The plan." },
+  });
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.editor.save }));
+  await screen.findByText(copy.saved(4));
+  await screen.findByText("The plan.");
+  assert.deepEqual(
+    net.seen.filter((r) => r.method === "PUT").map((r) => r.body),
+    [{ scope: "me", file: made.path, content: "The plan.", base_version: 3 }],
+  );
+  assert.deepEqual(opened, [made.path]);
+});
+
+test("delete asks with the file's name and then sends the file and the version on view", async () => {
+  let gone = false;
+  const after = { ...tree, version: 4, entries: tree.entries.slice(1) };
+  net = stubFetch({
+    ...reads,
+    "GET /api/memory/files": () => (gone ? after : tree),
+    "DELETE /api/memory/files/content": () => {
+      gone = true;
+      return after;
+    },
+  });
+  render(<MemoryFiles scope="project" project="Launch" />);
+  await screen.findByText(first);
+  fireEvent.click(screen.getByRole("button", { name: `${copy.delete} notes/m-1.md` }));
+  // Keeping it sends nothing.
+  const ask = screen.getByRole("group", { name: copy.deleteAsk("notes/m-1.md") });
+  fireEvent.keyDown(ask, { key: "Escape" });
+  assert.ok(!net.seen.some((r) => r.method === "DELETE"));
+  fireEvent.click(screen.getByRole("button", { name: `${copy.delete} notes/m-1.md` }));
+  fireEvent.click(screen.getByRole("button", { name: copy.delete }));
+  await screen.findByText(copy.deleted("notes/m-1.md"));
+  assert.deepEqual(
+    net.seen.filter((r) => r.method === "DELETE").map((r) => r.path),
+    ["/api/memory/files/content?scope=project&project=Launch&file=notes%2Fm-1.md&base_version=3"],
+  );
+  await waitFor(() => assert.ok(!screen.queryByTitle("notes/m-1.md")));
+});
+
+test("a delete that lost to a newer change, or was refused, says so and removes nothing", async () => {
+  for (const [status, why] of [
+    [409, copy.deleteConflict],
+    [403, defaultCopy.noPermission],
+  ] as const) {
+    net = stubFetch({
+      ...reads,
+      "DELETE /api/memory/files/content": () =>
+        new Response(JSON.stringify({ error: "no" }), { status }),
+    });
+    render(<MemoryFiles scope="me" />);
+    await screen.findByText(first);
+    fireEvent.click(screen.getByRole("button", { name: `${copy.delete} notes/m-1.md` }));
+    fireEvent.click(screen.getByRole("button", { name: copy.delete }));
+    await screen.findByText(why);
+    assert.ok(screen.getByTitle("notes/m-1.md"));
+    cleanup();
+    net.restore();
+  }
+});
+
+test("a reader sees no New File and no Delete", async () => {
+  net = stubFetch({ ...reads, "GET /api/memory/files": () => ({ ...tree, can_write: false }) });
+  render(<MemoryFiles scope="me" />);
+  await screen.findByText(first);
+  assert.ok(!screen.queryByRole("button", { name: copy.newFile }));
+  assert.ok(!screen.queryByRole("button", { name: `${copy.delete} notes/m-1.md` }));
+});
+
+test("an open file lists the versions that changed it and shows it as it was then", async () => {
+  net = stubFetch(readsWithFileHistory);
+  render(<MemoryFiles scope="me" />);
+  await screen.findByText(first);
+  const view = (n: number) => `${copy.view} ${copy.fileVersion("notes/m-1.md", n)}`;
+  await screen.findByRole("button", { name: view(1) });
+  assert.ok(
+    net.seen.some(
+      (r) => r.path === "/api/memory/files/history?scope=me&file=notes%2Fm-1.md&limit=20",
+    ),
+  );
+  // The version on view and the one that removed the file offer nothing to view.
+  assert.ok(screen.getByText(copy.removed));
+  assert.ok(!screen.queryByRole("button", { name: view(3) }));
+  assert.ok(!screen.queryByRole("button", { name: view(2) }));
+  fireEvent.click(screen.getByRole("button", { name: view(1) }));
+  await screen.findByText(copy.viewing(1));
+  await waitFor(() =>
+    assert.ok(
+      net?.seen.some(
+        (r) => r.path === "/api/memory/files/content?scope=me&file=notes%2Fm-1.md&version=1",
+      ),
+    ),
+  );
+  // An earlier version is only read: nothing there deletes or restores a file.
+  assert.ok(!screen.queryByRole("button", { name: `${copy.delete} notes/m-1.md` }));
+});
+
+test("leaving with a changed draft asks first, and an unchanged one does not", async () => {
+  net = stubFetch(reads);
+  render(<MemoryFiles scope="me" />);
+  await screen.findByText(first);
+  const leaving = () => {
+    const event = new Event("humagen:before-navigate", { cancelable: true });
+    window.dispatchEvent(event);
+    const unload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(unload);
+    return [event.defaultPrevented, unload.defaultPrevented];
+  };
+  const confirm = window.confirm;
+  const asked: string[] = [];
+  window.confirm = (question?: string) => {
+    asked.push(question ?? "");
+    return false;
+  };
+  try {
+    fireEvent.click(screen.getByRole("button", { name: copy.edit }));
+    assert.deepEqual(leaving(), [false, false]);
+    fireEvent.change(editor(), { target: { value: "Something else" } });
+    assert.deepEqual(leaving(), [true, true]);
+    assert.deepEqual(asked, [copy.leaveDraft]);
+    // Another file's Edit would replace the draft, so it asks as well.
+    fireEvent.click(screen.getByTitle("notes/m-2.md"));
+    fireEvent.click(await screen.findByRole("button", { name: copy.edit }));
+    assert.equal(asked.length, 2);
+    fireEvent.click(screen.getByTitle("notes/m-1.md"));
+    assert.equal(editor().value, "Something else");
+    fireEvent.click(screen.getByRole("button", { name: copy.cancel }));
+    assert.deepEqual(leaving(), [false, false]);
+  } finally {
+    window.confirm = confirm;
+  }
+});
+
+test("the Files tab keeps a changed draft until the person agrees to leave it", async () => {
+  const folder = {
+    id: "personal",
+    scope: "personal",
+    title: "Personal",
+    notes: 0,
+    pending: 0,
+    can_write: true,
+    can_propose: true,
+    can_promote: false,
+    management: "manual",
+    can_chat: false,
+  };
+  net = stubFetch({
+    ...reads,
+    "GET /api/library/memory": () => ({ folders: [folder] }),
+    "GET /api/me/memory": () => ({ notes: [] }),
+  });
+  render(<MemoryLibrary />);
+  fireEvent.click(await screen.findByRole("tab", { name: copy.files }));
+  await screen.findByText(first);
+  fireEvent.click(screen.getByRole("button", { name: copy.edit }));
+  fireEvent.change(editor(), { target: { value: "Something else" } });
+  const confirm = window.confirm;
+  let agree = false;
+  window.confirm = () => agree;
+  try {
+    fireEvent.click(screen.getByRole("tab", { name: copy.notes }));
+    assert.equal(editor().value, "Something else");
+    agree = true;
+    fireEvent.click(screen.getByRole("tab", { name: copy.notes }));
+    await waitFor(() =>
+      assert.ok(!screen.queryByLabelText(defaultCopy.editor.edit("notes/m-1.md"))),
+    );
+  } finally {
+    window.confirm = confirm;
+  }
+});
