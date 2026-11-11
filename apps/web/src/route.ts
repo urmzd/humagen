@@ -42,8 +42,8 @@ export const SOURCE_TABS: SourceTab[] = ["documents", "search", "variants", "eva
  * workspace graph, the types its ontology adds, and who may read it. A source
  * opened from a corpus sits under it, at `/knowledge/{corpus}/sources/{source}`.
  */
-export type CorpusTab = "sources" | "search" | "graph" | "types" | "access";
-export const CORPUS_TABS: CorpusTab[] = ["sources", "search", "graph", "types", "access"];
+export type CorpusTab = "sources" | "search" | "graph" | "types" | "evals" | "access";
+export const CORPUS_TABS: CorpusTab[] = ["sources", "search", "graph", "types", "evals", "access"];
 
 /** Monitor: how runs are going (overview), the rules that watch them, and the health of what the deployment runs on. What a rule fires lands in the inbox. */
 export type MonitorTab = "overview" | "rules" | "health";
