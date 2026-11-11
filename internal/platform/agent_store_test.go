@@ -476,3 +476,54 @@ func TestAMentionOrACallOfAnUninstalledStoreAgentSaysWhatToInstall(t *testing.T)
 		t.Fatalf("a call to an installed writer = %v", err)
 	}
 }
+
+// Before a package is installed, its listing says what each of its agents
+// is granted: the model, the tools, the connectors those tools need and the
+// agents it may call, read from the spec the package ships.
+func TestTheStoreSaysWhatEachAgentIsGrantedBeforeInstall(t *testing.T) {
+	p := shipping(t, platform.Config{})
+	review := storePackage(t, p, "humagen/review")
+	if review.Installed || len(review.Agents) != len(reviewAgents) {
+		t.Fatalf("review = %+v", review)
+	}
+	for _, a := range review.Agents {
+		if a.Installed || a.Provider != "offline" || a.Model != "offline" || a.Fallbacks == nil || len(a.Fallbacks) != 0 {
+			t.Errorf("%s runs on %s/%s with %v", a.Name, a.Provider, a.Model, a.Fallbacks)
+		}
+		if want := []string{platform.ToolFileRead, platform.ToolFileList, "github_read_context", "github_read_file"}; !slices.Equal(a.Tools, want) {
+			t.Errorf("%s tools = %v, want %v", a.Name, a.Tools, want)
+		}
+		if !slices.Equal(a.Connectors, []string{"github"}) || a.ToolServers == nil || len(a.ToolServers) != 0 {
+			t.Errorf("%s needs %v and %v", a.Name, a.Connectors, a.ToolServers)
+		}
+		want := []string{}
+		if a.Name == platform.BuiltinCodeReviewer {
+			want = []string{platform.BuiltinSecurityReviewer, platform.BuiltinArchitectReviewer, platform.BuiltinQAReviewer}
+		}
+		if a.Access.Spawn == nil || !slices.Equal(a.Access.Spawn, want) {
+			t.Errorf("%s may call %v, want %v", a.Name, a.Access.Spawn, want)
+		}
+	}
+	// The writer's tools act through no connection.
+	writer := storePackage(t, p, "humagen/core").Agents[0]
+	if writer.Name != platform.BuiltinWriter || !slices.Equal(writer.Tools, platform.FileTools()) || len(writer.Connectors) != 0 || len(writer.Access.Spawn) != 0 {
+		t.Fatalf("writer = %+v", writer)
+	}
+	// It is the package's spec, not the workspace's: a change made to an
+	// installed agent does not change what the store says the package grants.
+	install(t, p, tenant, "review")
+	have, err := p.Agents.Get(t.Context(), tenant, platform.BuiltinQAReviewer, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := have.Spec.Clone()
+	spec.Tools = []string{platform.ToolFileRead}
+	if _, err := p.Agents.Revise(t.Context(), tenant, spec, have.Rev, "ada"); err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range storePackage(t, p, "humagen/review").Agents {
+		if a.Name == platform.BuiltinQAReviewer && (!a.Customized || len(a.Tools) != 4) {
+			t.Fatalf("a changed agent's listing = %+v", a)
+		}
+	}
+}

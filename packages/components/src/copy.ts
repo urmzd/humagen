@@ -550,6 +550,17 @@ export const defaultCopy = {
       `Remove ${title}? Its agents are retired; their history stays.${customized.length ? ` Changes to ${customized.join(", ")} stay in ${customized.length === 1 ? "its" : "their"} history too.` : ""}`,
     installedNote: (names: string[]) => `Added ${names.join(", ")}.`,
     removedNote: (names: string[]) => `Retired ${names.join(", ")}. Their history stays.`,
+    uses: "What each agent is granted",
+    model: "Model",
+    needs: "Needs",
+    calls: "May call",
+    tools: "Tools",
+    modelName: (provider: string, model: string) => `${provider} / ${model}`,
+    fallback: (provider: string, model: string) => `Then ${provider} / ${model}`,
+    connector: (surface: string) =>
+      ({ github: "GitHub connection", slack: "Slack connection" })[surface] ??
+      `${surface} connection`,
+    toolServer: (name: string) => `${name} tool server`,
   },
   agentSetup: {
     title: "New Agent",

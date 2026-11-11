@@ -16,6 +16,13 @@ function agent(name: string, over: Partial<StoreAgent> = {}): StoreAgent {
     customized: false,
     update_available: false,
     taken: false,
+    provider: "anthropic",
+    model: "claude-sonnet-5-5",
+    fallbacks: [],
+    tools: [],
+    access: {},
+    connectors: [],
+    tool_servers: [],
     ...over,
   };
 }
@@ -74,6 +81,53 @@ test("the store lists each package with its version and agents, and Install adds
   assert.equal(changed, 1);
   assert.ok(screen.getByRole("button", { name: `${words.remove} Core` }));
   assert.equal(screen.queryByRole("button", { name: `${words.install} Core` }), null);
+});
+
+test("a card says what each agent is granted, above Install", async () => {
+  const review: StorePackage = {
+    name: "humagen/review",
+    title: "Review",
+    description: "Pull request reviews.",
+    version: "sha256:abcdef1234",
+    installed: false,
+    agents: [
+      agent("code-reviewer", {
+        fallbacks: [{ provider: "openai", model: "gpt-5.1" }],
+        tools: ["file_read", "github_read_context", "mcp:docs"],
+        access: { spawn: ["qa-reviewer"] },
+        connectors: ["github"],
+        tool_servers: ["docs"],
+      }),
+      agent("qa-reviewer", { tools: ["file_read"] }),
+    ],
+    missing: ["code-reviewer", "qa-reviewer"],
+  };
+  net = stubFetch({ "GET /api/store/packages": () => ({ packages: [review] }) });
+  const { container } = render(<AgentStore canWrite />);
+  const install = await screen.findByRole("button", { name: `${words.install} Review` });
+  const uses = screen.getByRole("list", { name: words.uses });
+  // What is granted comes before the button that grants it.
+  assert.ok(uses.compareDocumentPosition(install) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const lead = container.querySelector('[data-agent="code-reviewer"]') as HTMLElement;
+  const text = lead.textContent ?? "";
+  for (const want of [
+    "@code-reviewer",
+    words.modelName("anthropic", "claude-sonnet-5-5"),
+    words.fallback("openai", "gpt-5.1"),
+    words.connector("github"),
+    words.toolServer("docs"),
+    "@qa-reviewer",
+    "file_read",
+    "github_read_context",
+    "mcp:docs",
+  ])
+    assert.ok(text.includes(want), `${want} in ${text}`);
+  assert.equal(words.connector("github"), "GitHub connection");
+  // An agent that needs no connection and calls no one has no such rows.
+  const qa = container.querySelector('[data-agent="qa-reviewer"]') as HTMLElement;
+  assert.ok(qa.textContent?.includes("file_read"));
+  assert.equal(qa.textContent?.includes(words.needs), false);
+  assert.equal(qa.textContent?.includes(words.calls), false);
 });
 
 test("Remove asks first, saying the agents are retired and their history stays", async () => {

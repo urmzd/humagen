@@ -29,6 +29,13 @@ func TestTheStoreInstallsAndRemovesPackages(t *testing.T) {
 	if len(store) != 2 || store[0].(map[string]any)["installed"] != false || store[1].(map[string]any)["title"] != "Review" {
 		t.Fatalf("store = %v", store)
 	}
+	// A reader sees what the lead reviewer would be granted, before anyone installs it.
+	lead := store[1].(map[string]any)["agents"].([]any)[0].(map[string]any)
+	if lead["name"] != platform.BuiltinCodeReviewer || lead["model"] != "offline" || len(lead["tools"].([]any)) != 4 ||
+		len(lead["connectors"].([]any)) != 1 || lead["connectors"].([]any)[0] != "github" || len(lead["tool_servers"].([]any)) != 0 ||
+		len(lead["access"].(map[string]any)["spawn"].([]any)) != 3 {
+		t.Fatalf("the lead reviewer's listing = %v", lead)
+	}
 	want(t, f, reader, "POST", "/api/store/packages/core/install", "", http.StatusForbidden)
 	added := want(t, f, admin, "POST", "/api/store/packages/core/install", "", http.StatusOK)
 	if pkg := added["package"].(map[string]any); pkg["installed"] != true || len(added["added"].([]any)) != 2 {
