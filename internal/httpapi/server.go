@@ -205,6 +205,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/memory/files/content", s.authed(auth.RunsRead, s.readMemoryFile))
 	mux.HandleFunc("GET /api/memory/files/history", s.authed(auth.RunsRead, s.memoryHistory))
 	mux.HandleFunc("PUT /api/memory/files/content", s.authed(auth.RunsWrite, s.writeMemoryFile))
+	mux.HandleFunc("DELETE /api/memory/files/content", s.authed(auth.RunsWrite, s.deleteMemoryFile))
 	mux.HandleFunc("POST /api/memory/files/restore", s.authed(auth.RunsWrite, s.restoreMemory))
 	mux.HandleFunc("POST /api/memory/files/proposals/{id}", s.authed(auth.RunsWrite, s.decideMemoryProposal))
 	mux.HandleFunc("GET /api/memory/search", s.authed(auth.RunsRead, s.searchMemory))
