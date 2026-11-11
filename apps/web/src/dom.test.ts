@@ -55,6 +55,7 @@ await loadTests([
   "/src/workspace-hub.dom.test.tsx",
   "/src/scratchpads.dom.test.tsx",
   "/src/memories.dom.test.tsx",
+  "/src/memory-files.dom.test.tsx",
   "/src/artifact-save.dom.test.tsx",
   "/src/code-editor.dom.test.tsx",
   "/src/navigation-guard.dom.test.tsx",

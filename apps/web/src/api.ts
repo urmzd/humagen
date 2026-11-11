@@ -10,6 +10,7 @@ import type {
   AnalyticsGroup,
   AuditRecord,
   Branding,
+  DriveVersion,
   Note as GeneratedNote,
   GitHubAutomation,
   Health as HealthReport,
@@ -18,6 +19,9 @@ import type {
   LibraryScope,
   LibrarySkill,
   LibrarySkillDefinition,
+  MemoryFile,
+  MemoryFiles,
+  MemoryRestoreInput,
   MentionItem,
   MentionKind,
   NativeNotification,
@@ -106,6 +110,18 @@ import { openStream } from "./stream.ts";
 
 /** What the caller may do on a project: their permission and their role together. */
 export type ProjectAction = ProjectView["actions"][number];
+
+/** Which memory tree a files request is about: your own, a project's or an agent's. */
+export type MemoryTreeRef = Pick<MemoryRestoreInput, "scope" | "project" | "agent">;
+
+/** A memory tree and the rest of a request's query. A zero or empty value is left out. */
+function memoryTreeQuery(at: MemoryTreeRef, rest: Record<string, string | number>): string {
+  const q = new URLSearchParams({ scope: at.scope });
+  if (at.project) q.set("project", at.project);
+  if (at.agent) q.set("agent", at.agent);
+  for (const [key, value] of Object.entries(rest)) if (value) q.set(key, String(value));
+  return q.toString();
+}
 
 export class ApiError extends Error {
   constructor(
@@ -1126,6 +1142,23 @@ export const api = {
       "GET",
       `/api/library/memory?${new URLSearchParams({ q, selected, limit: "50" })}`,
     ).then((r) => r.folders),
+  // Memory as files: one tree per scope, read at a version, restored whole.
+  memoryFiles: (at: MemoryTreeRef, version = 0) =>
+    call<MemoryFiles>("GET", `/api/memory/files?${memoryTreeQuery(at, { version })}`),
+  memoryFile: (at: MemoryTreeRef, file: string, version = 0) =>
+    call<MemoryFile>("GET", `/api/memory/files/content?${memoryTreeQuery(at, { file, version })}`),
+  memoryHistory: (at: MemoryTreeRef, before = 0, limit = 20) =>
+    call<{ versions: DriveVersion[] }>(
+      "GET",
+      `/api/memory/files/history?${memoryTreeQuery(at, { before, limit })}`,
+    ).then((r) => r.versions),
+  restoreMemoryFiles: (at: MemoryTreeRef, version: number) =>
+    call<MemoryFiles>("POST", "/api/memory/files/restore", { ...at, version }),
+  decideMemoryProposal: (at: MemoryTreeRef, id: string, decision: "approve" | "discard") =>
+    call<MemoryFiles>("POST", `/api/memory/files/proposals/${encodeURIComponent(id)}`, {
+      ...at,
+      decision,
+    }),
   personalMemory: () =>
     call<{ notes: GeneratedNote[] }>("GET", "/api/me/memory").then((r) => r.notes),
   rememberPersonal: (note: NoteInput) => call<GeneratedNote>("POST", "/api/me/memory", note),

@@ -228,6 +228,8 @@ export type Route =
       file?: string;
       catalogQuery?: string;
       libraryTab?: "overview" | "contents" | "versions";
+      /** Memory shown as its files instead of its notes. */
+      memoryView?: "files";
     }
   | {
       page: "operations";
@@ -446,6 +448,7 @@ export function href(r: Route): string {
       if (r.file) q.set("file", r.file);
       if (r.catalogQuery) q.set("q", r.catalogQuery);
       if (r.libraryTab) q.set("tab", r.libraryTab);
+      if (r.section === "memory" && r.memoryView) q.set("view", r.memoryView);
       return `/library/${r.section}${q.size ? `?${q}` : ""}`;
     }
     case "operations":
@@ -781,6 +784,7 @@ function read(pathname: string, search: string): Route {
         file: queryText(q, "file", 256),
         catalogQuery: queryText(q, "q", 1000),
         libraryTab: oneOf(q.get("tab"), ["overview", "contents", "versions"] as const),
+        memoryView: a === "memory" ? oneOf(q.get("view"), ["files"] as const) : undefined,
         page: "library",
         section: pick(
           a,
