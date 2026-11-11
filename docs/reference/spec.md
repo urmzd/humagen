@@ -272,7 +272,7 @@ Flags override the block: `-sandbox`, `-sandbox-runtime`,
 `-sandbox-connectors-image`, `-sandbox-work-root`, `-sandbox-host` and
 `-sandbox-tls-dir`. A binary can register
 another kind with `humagen.WithKind(humagen.Sandbox, name, factory)`, whose
-factory returns an `isolation.Leaser` (`orchagent/flow/isolation`).
+factory returns an `isolation.Leaser` (`saige/flow/isolation`).
 
 ### Egress
 
@@ -1267,7 +1267,7 @@ unknown-field errors as the built-ins'. Sign-in and stores are built in only,
 for now.
 
 `humagen.WithRuntime(rt)` runs every turn on your own `turn.Runtime`
-(`github.com/urmzd/orchagent/flow/turn`) in place of the native saige
+(`github.com/urmzd/saige/flow/turn`) in place of the native saige
 turn. It is handed the pinned definition and the triggering event and streams
 back catalog event bodies. It runs inside the same sandbox and on
 the same durable runs; it brings its own models and tools, so the spec's
@@ -1300,6 +1300,36 @@ recorded before keeps its trigger, and a schedule keeps its context
 ([upgrading-from-warp.md](../guides/upgrading-from-warp.md)). The API sends a run's
 events as the union too: each has a `type` and its `data` inline
 ([API contract](api.md#events)).
+
+### Since orchagent moved into saige
+
+orchagent has since been folded into saige. Humagen requires only
+`github.com/urmzd/saige` v0.45.0 and Go 1.26.11 or later, and a program built
+on the `humagen` package drops `github.com/urmzd/orchagent` from its `go.mod`.
+`flow`, `durable` and `sandbox` keep their package paths under saige; a few
+packages moved into Humagen instead, and a few were not carried over. Stored
+and wire names are unchanged: the `fiber_*` tables, the event type names and
+the envelope fields. This is a breaking change for such a program, not for a
+file:
+
+| Before | Now |
+|--------|-----|
+| `github.com/urmzd/orchagent/flow/...` | `github.com/urmzd/saige/flow/...` (`flow/event`, `flow/bus`, `flow/turn/native`, `flow/isolation` and the rest) |
+| `github.com/urmzd/orchagent/durable/...` | `github.com/urmzd/saige/durable/...` |
+| `github.com/urmzd/orchagent/sandbox/...` | `github.com/urmzd/saige/sandbox/...` |
+| `flow/turn/native/saigetypes`, `ragtypes`, `agenttest` | `github.com/urmzd/saige/agent/types`, `rag/types`, `agent/agenttest` |
+| `flow/runschema` | Humagen's `internal/runschema` |
+| `flow/toolprovider`, `flow/mcptools` | Humagen's `internal/toolprovider`, `internal/mcptools` |
+| the embedders of `flow/knowledge` | `github.com/urmzd/humagen/pkg/dense` |
+| orchagent's `flow` root package (`flow.New`, `flow.App`) | gone: compose `runtime.New(durable.New(ledger, queue), resolver, bus, ...)` from `saige/flow/runtime`, as `internal/platform/platform.go` does |
+| `flow/dispatch`, the Jira, webhook and author connectors, the knowledge store | not carried into saige, and not used by Humagen |
+| `github.PrepareReview(r, files, false)` | `github.PrepareReview(r, files)`: an `APPROVE` review is refused with `github.ErrNoApproval` |
+| one question per park | `event.Parked.Questions` and `event.Resumed.Answers` for a batch of waiting tool calls |
+
+`scripts/rewrite-orchagent-imports.sh` rewrites the imports that map one to
+one and lists what it left. See
+[upgrading-to-saige.md](../guides/upgrading-to-saige.md) for what changes at
+runtime.
 
 
 ## Managed source records

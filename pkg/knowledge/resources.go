@@ -2,7 +2,7 @@ package knowledge
 
 import (
 	"context"
-	"github.com/urmzd/orchagent/flow/mcptools"
+	"github.com/urmzd/humagen/internal/mcptools"
 	"net/url"
 	"slices"
 	"strings"

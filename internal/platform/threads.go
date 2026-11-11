@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
@@ -167,8 +167,13 @@ type ThreadTurn struct {
 	Run          *runs.Run             `json:"run,omitempty"`
 	Announcement *threads.Announcement `json:"announcement,omitempty"`
 	// Ask is the question a parked run waits on, as the reader stands to
-	// it (AsksIn).
+	// it (AsksIn): the first, when it waits on several.
 	Ask *Ask `json:"ask,omitempty"`
+	// Asks is every question a parked run waits on that a person answers,
+	// as the reader stands to each, in the order the run asked them. A run
+	// parked on a batch of tool calls waits on several at once. Ask is the
+	// first of them.
+	Asks []Ask `json:"asks,omitempty"`
 }
 
 // Turn kinds.

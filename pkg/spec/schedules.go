@@ -7,7 +7,7 @@ import (
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
-	"github.com/urmzd/orchagent/flow/connectors/cron"
+	"github.com/urmzd/saige/flow/connectors/cron"
 )
 
 // What becomes of what a scheduled agent posts in a project.

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/urmzd/humagen/pkg/state"
-	"github.com/urmzd/orchagent/flow/attachment"
-	"github.com/urmzd/orchagent/flow/thread"
+	"github.com/urmzd/saige/flow/attachment"
+	"github.com/urmzd/saige/flow/thread"
 )
 
 // Journal is the append-only agent transcript. The sequence and appended batch

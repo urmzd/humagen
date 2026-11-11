@@ -6,10 +6,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/threads"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/event"
 )
 
 // Every tool call a run makes has one id in the API, htu_<run>_<seq>: the
@@ -67,28 +68,43 @@ func toolCallOf(e event.Envelope) (id, name string) {
 
 // questionsAt are the questions a run asked a person at each of its tool
 // calls, by the provider's call id, oldest first. An approval names its
-// call. A question ask_person asked does not: it is the latest ask_person
-// call before it.
+// call. A question ask_person asked does not: it is the oldest ask_person
+// call before it that has no question yet, so a batch of ask_person calls
+// that parks the run once puts each question at its own call, in call order,
+// or failing that the latest ask_person call.
 func questionsAt(held []event.Envelope) map[string][]string {
 	out := map[string][]string{}
 	asking := ""
+	var unasked []string
+	seen := map[string]bool{}
 	for _, e := range held {
-		if id, name := toolCallOf(e); id != "" && name == toolAskPerson {
-			asking = id
+		if id, name := toolCallOf(e); id != "" && name == toolAskPerson && !seen[id] {
+			seen[id] = true
+			unasked = append(unasked, id)
 		}
-		var q *event.Question
+		var qs []event.Question
 		switch b := e.Data.(type) {
 		case event.Parked:
-			q = b.Question
+			qs = wire.QuestionsOf(b)
 		case *event.Parked:
-			q = b.Question
+			qs = wire.QuestionsOf(*b)
 		}
-		switch {
-		case q == nil || q.ID == "":
-		case q.Tool != nil && q.Tool.CallID != "":
-			out[q.Tool.CallID] = append(out[q.Tool.CallID], q.ID)
-		case asking != "":
-			out[asking] = append(out[asking], q.ID)
+		// A park on several questions holds one for each waiting call of
+		// the batch.
+		for _, q := range qs {
+			if q.ID == "" {
+				continue
+			}
+			if q.Tool != nil && q.Tool.CallID != "" {
+				out[q.Tool.CallID] = append(out[q.Tool.CallID], q.ID)
+				continue
+			}
+			if len(unasked) > 0 {
+				asking, unasked = unasked[0], unasked[1:]
+			}
+			if asking != "" {
+				out[asking] = append(out[asking], q.ID)
+			}
 		}
 	}
 	return out

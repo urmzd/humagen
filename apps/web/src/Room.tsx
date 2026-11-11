@@ -32,7 +32,7 @@ import {
   type ThreadSummary,
   type ThreadTurn,
 } from "./api.ts";
-import { askedOf, copyFor, type Refusal, stillAsks } from "./asks.ts";
+import { askedOf, asksOf, copyFor, type Refusal, stillAsks } from "./asks.ts";
 import { answersLine } from "./availability.ts";
 import { agentShown } from "./branding.ts";
 import { Composer, type ComposerSeed } from "./Composer.tsx";
@@ -525,7 +525,7 @@ function AnswerView({
   activityOpen?: boolean;
   me: string;
   live: boolean;
-  ask?: ThreadAsk;
+  ask?: ThreadAsk[];
   refused?: Refusal;
   /** That it answers because the conversation routes to it, not because it was tagged. */
   routed?: string;
@@ -1184,7 +1184,7 @@ export function ThreadRoom({
                           : undefined
                       }
                       me={me}
-                      ask={t.ask}
+                      ask={asksOf(t)}
                       refused={refusals[t.run.id]}
                       live={
                         t === last ||

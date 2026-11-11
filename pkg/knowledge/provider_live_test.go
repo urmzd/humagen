@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/humagen/internal/mcptools"
 	"github.com/urmzd/humagen/pkg/credref"
-	"github.com/urmzd/orchagent/flow/mcptools"
 )
 
 // TestProviderLiveSmoke uses read-only, explicitly selected provider resources.

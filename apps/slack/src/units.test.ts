@@ -20,7 +20,7 @@ test("a thread names its conversation, and the name leads back to the thread", (
   assert.match(key, /^[A-Za-z0-9_-]+$/, "a run id is a bus topic segment");
   assert.deepEqual(sessionOf("svc-slack", tagId("svc-slack", key)), session);
   // The run id is the runtime's: the workspace and the trigger id, hashed as
-  // `RunID` in `orchagent/flow/runtime` does. These match the Go implementation.
+  // `RunID` in `saige/flow/runtime` does. These match the Go implementation.
   assert.equal(runId("acme", "svc-slack", key), "rdd6a9402cbeb5e28153f6bf63050792c");
   assert.match(runId("acme", "svc-slack", key), /^r[0-9a-f]{32}$/);
   assert.notEqual(runId("acme", "svc-slack", key), runId("globex", "svc-slack", key));

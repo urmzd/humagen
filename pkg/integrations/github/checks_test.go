@@ -11,9 +11,9 @@ import (
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/integrations/github"
-	"github.com/urmzd/orchagent/flow/address"
-	"github.com/urmzd/orchagent/flow/connectors/mention"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/address"
+	"github.com/urmzd/saige/flow/connectors/mention"
+	"github.com/urmzd/saige/flow/event"
 )
 
 var commitSHA = strings.Repeat("a", 40)

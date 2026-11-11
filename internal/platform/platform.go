@@ -19,35 +19,36 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/urmzd/orchagent/durable/ledger"
-	dqueue "github.com/urmzd/orchagent/durable/queue"
-	drun "github.com/urmzd/orchagent/durable/run"
-	"github.com/urmzd/orchagent/durable/worker"
-	"github.com/urmzd/orchagent/flow"
-	"github.com/urmzd/orchagent/flow/attachment/resolve"
-	filesblob "github.com/urmzd/orchagent/flow/blob"
-	"github.com/urmzd/orchagent/flow/bus"
-	"github.com/urmzd/orchagent/flow/connector"
-	"github.com/urmzd/orchagent/flow/connectors/cron"
-	"github.com/urmzd/orchagent/flow/egress"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/isolation"
-	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/session"
-	"github.com/urmzd/orchagent/flow/toolprovider"
-	"github.com/urmzd/orchagent/flow/turn"
-	"github.com/urmzd/orchagent/flow/turn/native"
-	"github.com/urmzd/orchagent/flow/turn/sandbox"
-	"github.com/urmzd/orchagent/sandbox/controlplane"
-	"github.com/urmzd/orchagent/sandbox/metrics"
-	"github.com/urmzd/orchagent/sandbox/node/inproc"
-	"github.com/urmzd/orchagent/sandbox/tool"
-	"github.com/urmzd/orchagent/sandbox/workspace"
+	"github.com/urmzd/humagen/internal/toolprovider"
+	"github.com/urmzd/saige/durable"
+	"github.com/urmzd/saige/durable/ledger"
+	dqueue "github.com/urmzd/saige/durable/queue"
+	drun "github.com/urmzd/saige/durable/run"
+	"github.com/urmzd/saige/durable/worker"
+	"github.com/urmzd/saige/flow/attachment/resolve"
+	filesblob "github.com/urmzd/saige/flow/blob"
+	"github.com/urmzd/saige/flow/bus"
+	"github.com/urmzd/saige/flow/connector"
+	"github.com/urmzd/saige/flow/connectors/cron"
+	"github.com/urmzd/saige/flow/egress"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/isolation"
+	"github.com/urmzd/saige/flow/runtime"
+	"github.com/urmzd/saige/flow/session"
+	"github.com/urmzd/saige/flow/turn"
+	"github.com/urmzd/saige/flow/turn/native"
+	"github.com/urmzd/saige/flow/turn/sandbox"
+	"github.com/urmzd/saige/sandbox/controlplane"
+	"github.com/urmzd/saige/sandbox/metrics"
+	"github.com/urmzd/saige/sandbox/node/inproc"
+	"github.com/urmzd/saige/sandbox/tool"
+	"github.com/urmzd/saige/sandbox/workspace"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
@@ -324,7 +325,6 @@ type Platform struct {
 	// pullReviews keeps automatic review's count and pause per pull request.
 	pullReviews *state.Table[PullReview]
 	Sessions    session.Store
-	app         *flow.App
 	// Rooms holds the conversations followed on this server (pkg/rooms).
 	Rooms    *rooms.Hub
 	roomGate *rooms.Gate
@@ -711,34 +711,32 @@ func New(cfg Config) (*Platform, error) {
 	if o := cfg.Backends.Outbox; o != nil && p.broker == cfg.Backends.Bus && p.ledger == cfg.Backends.Ledger {
 		opts = append(opts, runtime.WithOutbox(o))
 	}
-	flowOptions := []flow.Option{
-		flow.WithDefinitionResolver(p.Agents.Resolver()),
-		flow.WithDurable(p.ledger, p.queue), flow.WithBus(p.broker),
-		flow.WithSessions(p.Sessions), flow.WithThreads(sessionstate.NewJournal(p.sharedState())),
-		flow.WithWorkspace(p.dir), flow.WithTurnRuntime(exec),
-		flow.WithRuntimeOptions(append(opts,
-			runtime.WithSessions(p.Sessions), runtime.WithChildStarter(p.startSessionChild),
-			runtime.WithChildRunID(func(parent runtime.Input, c runtime.SessionCall) string {
-				return runtime.RunID(parent.Trigger.Tenant, call.TagID(parent.Trigger.ID, c.ID))
-			}), runtime.WithLogger(log),
-			runtime.WithStopGrace(cfg.StopGrace), runtime.WithStopLedger(p.ledger),
-			runtime.WithWaker(p.queue), runtime.WithRoles(p.rolesOf),
-			runtime.WithQuestionTTL(cfg.QuestionTTL),
-		)...),
-	}
-	for name, provider := range cfg.Ext.Providers {
-		flowOptions = append(flowOptions, flow.WithModelProvider(name, provider))
-	}
-	// A workspace's own providers are found when a turn runs: resolveModel
-	// names each by its workspaceRef, and resolveProvider builds it.
-	flowOptions = append(flowOptions, flow.WithModelProviderResolver(acceptProviderName, p.resolveProvider))
-	app, err := flow.New(startup, flowOptions...)
+	// The durable turn, composed on the flow runtime: the turn runtime, the
+	// thread journal, child runs, and the surface message id that is kept on
+	// the journal entry for a run's request.
+	opts = append([]runtime.Option{
+		runtime.WithRuntime(exec),
+		runtime.WithThreads(sessionstate.NewJournal(p.sharedState())),
+		runtime.WithChildRuns(),
+		runtime.WithMessageID(surfaceMessageID),
+	}, opts...)
+	// Model providers are not named here: the executor above was built with
+	// the extension's providers and with resolveProvider, which finds a
+	// workspace's own providers when a turn runs.
+	opts = append(opts,
+		runtime.WithSessions(p.Sessions), runtime.WithChildStarter(p.startSessionChild),
+		runtime.WithChildRunID(func(parent runtime.Input, c runtime.SessionCall) string {
+			return runtime.RunID(parent.Trigger.Tenant, call.TagID(parent.Trigger.ID, c.ID))
+		}), runtime.WithLogger(log),
+		runtime.WithStopGrace(cfg.StopGrace), runtime.WithStopLedger(p.ledger),
+		runtime.WithWaker(p.queue), runtime.WithRoles(p.rolesOf),
+		runtime.WithQuestionTTL(cfg.QuestionTTL),
+	)
+	rt, err := runtime.New(durable.New(p.ledger, p.queue), p.Agents.Resolver(), p.broker, opts...)
 	if err != nil {
-		return nil, fmt.Errorf("platform: flow: %w", err)
+		return nil, fmt.Errorf("platform: runtime: %w", err)
 	}
-	p.app = app
-	p.closers = append(p.closers, app.Close)
-	p.rt, p.stops = app.Runtime(), app.Runtime()
+	p.rt, p.stops = rt, rt
 	p.asked = p.rt.StopRequested
 	if cfg.Stops != nil {
 		p.stops = stopFunc(cfg.Stops)
@@ -1732,4 +1730,31 @@ func defaultWorkspace() string {
 		base = os.TempDir()
 	}
 	return legacy.WorkspaceDir(base)
+}
+
+// surfaceMessageID names the surface message that raised a run, from the
+// fields the triggers set. It is kept on the journal entry for the run's
+// request, so a thread that is later reconciled with its surface recognises
+// the message instead of journaling it a second time.
+func surfaceMessageID(e event.Envelope) string {
+	switch b := e.Data.(type) {
+	case event.MessagePosted:
+		if b.Slack != nil {
+			return b.Slack.TS
+		}
+	case event.GitHubIssueCommentCreated:
+		return commentID(b.CommentID)
+	case event.GitHubReviewCommentCreated:
+		return commentID(b.CommentID)
+	case event.GitHubReviewSubmitted:
+		return commentID(b.CommentID)
+	}
+	return ""
+}
+
+func commentID(id int64) string {
+	if id == 0 {
+		return ""
+	}
+	return strconv.FormatInt(id, 10)
 }

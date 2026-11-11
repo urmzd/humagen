@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	dense "github.com/urmzd/humagen/pkg/dense"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/spec"
-	dense "github.com/urmzd/orchagent/flow/knowledge"
 )
 
 // embedderKeyEnv carries an openai embedder's key from the spec's reference

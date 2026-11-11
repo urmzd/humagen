@@ -10,8 +10,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/urmzd/orchagent/flow/attachment"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/attachment"
+	"github.com/urmzd/saige/flow/event"
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/policy"

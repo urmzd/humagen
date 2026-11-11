@@ -163,6 +163,8 @@ export interface Run {
   cause?: string;
   /** What a parked run is waiting on a person for. */
   question?: WireQuestion;
+  /** Every question a parked run waits on, when a batch of tool calls parked it on more than one. */
+  questions?: WireQuestion[];
   /** The trigger id the run was accepted with. Its `id` is derived from it and the workspace. */
   tag_id?: string;
   /** Asked to stop and not ended yet. It ends stopped, or completed or failed if it finished first. */
@@ -311,37 +313,52 @@ export function adapter(
       case "run.started.v1":
         return [{ type: "activity", activity: "thinking" }];
       case "run.resumed.v1": {
-        const a = e.data?.answer;
-        const open = a?.question_id ? asked.get(a.question_id) : undefined;
-        if (!a || !open) return [{ type: "activity", activity: "thinking" }];
-        asked.delete(a.question_id);
-        const settled = settledOf(a);
+        // A run parked on several questions resumes once, with every answer.
+        const answers: (Parameters<typeof settledOf>[0] & { question_id?: string })[] = e.data?.answers?.length
+          ? e.data.answers
+          : e.data?.answer
+            ? [e.data.answer]
+            : [];
         const out: TurnEvent[] = [];
-        const resolved = interruptOf(open.question, settled);
-        if (resolved) out.push({ type: "interrupt.resolved", interrupt: resolved });
-        const call = open.question.tool?.call_id;
-        if (call && open.question.kind === "approval") {
-          const denied = settled.action !== "approve";
-          out.push({ type: "task.upserted", task: task(call, open.question.tool?.name, { status: denied ? "denied" : "in_progress" }) });
+        for (const a of answers) {
+          const open = a?.question_id ? asked.get(a.question_id) : undefined;
+          if (!a?.question_id || !open) continue;
+          asked.delete(a.question_id);
+          const settled = settledOf(a);
+          const resolved = interruptOf(open.question, settled);
+          if (resolved) out.push({ type: "interrupt.resolved", interrupt: resolved });
+          const call = open.question.tool?.call_id;
+          if (call && open.question.kind === "approval") {
+            const denied = settled.action !== "approve";
+            out.push({ type: "task.upserted", task: task(call, open.question.tool?.name, { status: denied ? "denied" : "in_progress" }) });
+          }
         }
         out.push({ type: "activity", activity: "thinking" });
         return out;
       }
       case "run.parked.v1": {
-        // Blocked on a person. humagen does not animate waiting.
-        const q: WireQuestion | undefined = e.data?.question;
-        const interrupt = q?.id ? interruptOf(q, undefined) : null;
-        if (!q || !interrupt) return [{ type: "activity", activity: "waiting" }];
-        asked.set(q.id, { question: q, interrupt });
-        const out: TurnEvent[] = [{ type: "interrupt.raised", interrupt }];
-        // The call an approval holds reads "waiting", not "running". It is not
-        // tied to the approval (`interruptId`): humagen then gives the web inline
-        // row controls and Slack the card, and the two surfaces would differ.
-        // humagen: one rendering of a task-owned approval on both surfaces.
-        const call = q.tool?.call_id;
-        if (call && q.kind === "approval") {
-          tools.set(call, q.tool?.name ?? "tool");
-          out.push({ type: "task.upserted", task: task(call, q.tool?.name, { status: "waiting" }) });
+        // Blocked on a person. humagen does not animate waiting. A batch of
+        // tool calls that each wait parks the run once, on every question.
+        const questions: WireQuestion[] = e.data?.questions?.length
+          ? e.data.questions
+          : e.data?.question
+            ? [e.data.question]
+            : [];
+        const out: TurnEvent[] = [];
+        for (const q of questions) {
+          const interrupt = q?.id ? interruptOf(q, undefined) : null;
+          if (!interrupt) continue;
+          asked.set(q.id, { question: q, interrupt });
+          out.push({ type: "interrupt.raised", interrupt });
+          // The call an approval holds reads "waiting", not "running". It is not
+          // tied to the approval (`interruptId`): humagen then gives the web inline
+          // row controls and Slack the card, and the two surfaces would differ.
+          // humagen: one rendering of a task-owned approval on both surfaces.
+          const call = q.tool?.call_id;
+          if (call && q.kind === "approval") {
+            tools.set(call, q.tool?.name ?? "tool");
+            out.push({ type: "task.upserted", task: task(call, q.tool?.name, { status: "waiting" }) });
+          }
         }
         out.push({ type: "activity", activity: "waiting" });
         return out;
@@ -585,8 +602,13 @@ export function turnOf(run: Run): Turn {
     // The record says what a parked run waits on, for a reader who missed
     // the event that raised it.
     interrupts: (() => {
-      const i = run.status === "parked" && run.question ? interruptOf(run.question, undefined) : null;
-      return i ? [i] : [];
+      if (run.status !== "parked") return [];
+      // A run parked by a batch of tool calls waits on several questions.
+      const waits = run.questions?.length ? run.questions : run.question ? [run.question] : [];
+      return waits.flatMap((q) => {
+        const i = interruptOf(q, undefined);
+        return i ? [i] : [];
+      });
     })(),
     notices: [],
     activity: run.status === "parked" ? "waiting" : undefined,

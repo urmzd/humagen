@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/urmzd/orchagent/flow/attachment"
-	filesblob "github.com/urmzd/orchagent/flow/blob"
+	"github.com/urmzd/saige/flow/attachment"
+	filesblob "github.com/urmzd/saige/flow/blob"
 
 	"github.com/urmzd/humagen/pkg/speech"
 	"github.com/urmzd/humagen/pkg/threads"

@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	transport "github.com/urmzd/orchagent/flow/connectors/github"
+	transport "github.com/urmzd/saige/flow/connectors/github"
 )
 
 // ReviewScope pins the review to the exact source revision it inspected.
@@ -64,7 +64,7 @@ func NativeReview(report ReviewReport, files []transport.ContextFile) (transport
 	if err != nil {
 		return transport.Review{}, err
 	}
-	return transport.PrepareReview(r, files, false)
+	return transport.PrepareReview(r, files)
 }
 
 // RecoveredReview reproduces a review already posted, so a retried delivery
@@ -80,7 +80,7 @@ func RecoveredReview(report ReviewReport, files []transport.ContextFile, disposi
 		r.Event = disposition
 		return r, nil
 	}
-	return transport.PrepareReview(r, files, false)
+	return transport.PrepareReview(r, files)
 }
 
 func nativeReview(report ReviewReport) (transport.Review, error) {

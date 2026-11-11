@@ -7,12 +7,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/event"
 )
 
 // A message's trace is what ran to answer it, one node per run. For a
@@ -438,6 +439,20 @@ type toolData struct {
 type lifecycleData struct {
 	Question *event.Question `json:"question"`
 	Answer   *event.Answer   `json:"answer"`
+	// A park on a batch of tool calls that each wait carries every
+	// question, and its resume every answer.
+	Questions []event.Question `json:"questions"`
+	Answers   []event.Answer   `json:"answers"`
+}
+
+// questions is every question a parked event carries, in call order.
+func (d lifecycleData) questions() []event.Question {
+	return wire.QuestionsOf(event.Parked{Question: d.Question, Questions: d.Questions})
+}
+
+// answers is every answer a resumed event carries.
+func (d lifecycleData) answers() []event.Answer {
+	return wire.AnswersOf(event.Resumed{Answer: d.Answer, Answers: d.Answers})
 }
 
 // activity fills in what a run did, from its events as the run events route
@@ -528,54 +543,62 @@ func (t *tracer) activity(n *TraceNode, r runs.Run) {
 			}
 		case event.TypeParked:
 			var d lifecycleData
-			if !shown || json.Unmarshal(v.Data, &d) != nil || d.Question == nil || d.Question.ID == "" {
+			if !shown || json.Unmarshal(v.Data, &d) != nil {
 				continue
 			}
-			if k := d.Question.Kind; k == event.QuestionChoice || k == event.QuestionReply {
-				if _, ok := questions[d.Question.ID]; !ok {
-					q := &TraceQuestion{ID: d.Question.ID, Kind: k, Prompt: d.Question.Prompt, Options: slices.Clone(d.Question.Options), Status: TraceAsked, At: d.Question.At}
-					if q.Options == nil {
-						q.Options = []string{}
-					}
-					if q.At.IsZero() {
-						q.At = e.Time
-					}
-					if call, ok := askedAt[q.ID]; ok {
-						q.Tool = toolUseID(r.ID, seqs[call])
-					}
-					questions[q.ID] = q
-					posed = append(posed, q)
+			// One park holds every question of a batch of waiting calls.
+			for _, asks := range d.questions() {
+				if asks.ID == "" {
+					continue
 				}
-				continue
+				if k := asks.Kind; k == event.QuestionChoice || k == event.QuestionReply {
+					if _, ok := questions[asks.ID]; !ok {
+						q := &TraceQuestion{ID: asks.ID, Kind: k, Prompt: asks.Prompt, Options: slices.Clone(asks.Options), Status: TraceAsked, At: asks.At}
+						if q.Options == nil {
+							q.Options = []string{}
+						}
+						if q.At.IsZero() {
+							q.At = e.Time
+						}
+						if call, ok := askedAt[q.ID]; ok {
+							q.Tool = toolUseID(r.ID, seqs[call])
+						}
+						questions[q.ID] = q
+						posed = append(posed, q)
+					}
+					continue
+				}
+				if asks.Kind != event.QuestionApproval {
+					continue
+				}
+				if _, ok := approvals[asks.ID]; ok {
+					continue
+				}
+				a := &TraceApproval{ID: asks.ID, Action: headline(asks.Prompt, 200), Decision: TraceAsk, At: asks.At}
+				if asks.Tool != nil && asks.Tool.Name != "" {
+					a.Action = asks.Tool.Name
+				}
+				if asks.Tool != nil && asks.Tool.CallID != "" {
+					gates[a] = asks.Tool.CallID
+				}
+				if a.At.IsZero() {
+					a.At = e.Time
+				}
+				approvals[a.ID] = a
+				asked = append(asked, a)
 			}
-			if d.Question.Kind != event.QuestionApproval {
-				continue
-			}
-			if _, ok := approvals[d.Question.ID]; ok {
-				continue
-			}
-			a := &TraceApproval{ID: d.Question.ID, Action: headline(d.Question.Prompt, 200), Decision: TraceAsk, At: d.Question.At}
-			if d.Question.Tool != nil && d.Question.Tool.Name != "" {
-				a.Action = d.Question.Tool.Name
-			}
-			if d.Question.Tool != nil && d.Question.Tool.CallID != "" {
-				gates[a] = d.Question.Tool.CallID
-			}
-			if a.At.IsZero() {
-				a.At = e.Time
-			}
-			approvals[a.ID] = a
-			asked = append(asked, a)
 		case event.TypeResumed:
 			var d lifecycleData
-			if !shown || json.Unmarshal(v.Data, &d) != nil || d.Answer == nil {
+			if !shown || json.Unmarshal(v.Data, &d) != nil {
 				continue
 			}
-			if a := approvals[d.Answer.QuestionID]; a != nil && a.Decision == TraceAsk {
-				t.decided(a, outcomeOf(*d.Answer, e.Time), d.Answer.Decision)
-			}
-			if q := questions[d.Answer.QuestionID]; q != nil && q.Status == TraceAsked {
-				t.answered(q, outcomeOf(*d.Answer, e.Time), cmpOr(d.Answer.Choice, d.Answer.Text))
+			for _, answer := range d.answers() {
+				if a := approvals[answer.QuestionID]; a != nil && a.Decision == TraceAsk {
+					t.decided(a, outcomeOf(answer, e.Time), answer.Decision)
+				}
+				if q := questions[answer.QuestionID]; q != nil && q.Status == TraceAsked {
+					t.answered(q, outcomeOf(answer, e.Time), cmpOr(answer.Choice, answer.Text))
+				}
 			}
 		case event.TypeUsageCall:
 			if b, ok := e.Data.(event.UsageCall); ok && b.Model != "" {

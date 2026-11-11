@@ -3,7 +3,7 @@
 | Document | Kind | Purpose |
 |----------|------|---------|
 | [Architecture](architecture/overview.md) | Architecture | Plan of record: what Humagen composes and the status table of what exists |
-| [The ecosystem](architecture/ecosystem.md) | Architecture | The layers (Humagen, saige, and orchagent: flow, sandbox, durable) and the rules each keeps |
+| [The ecosystem](architecture/ecosystem.md) | Architecture | The layers (Humagen and saige: its agent, flow, sandbox, durable) and the rules each keeps |
 | [One model, two surfaces](architecture/surfaces.md) | Architecture | How each agent concept reaches the web and Slack, and the open gaps |
 | [Projects](architecture/projects.md) | Architecture | Design of record for nested projects, policies, agents, inboxes and shared threads |
 | [Company, personal work and finding help](architecture/company-workspace.md) | Architecture | The Company root project, personal projects, publishing work and Find Help |
@@ -23,6 +23,7 @@
 | [GitHub and Slack trial](guides/integrations.md) | Guide | Set up a local trial with a GitHub installation and a Slack app |
 | [Email notifications](guides/email-notifications.md) | Guide | Configure the outbound email notification relay |
 | [Upgrading from the old name](guides/upgrading-from-warp.md) | Guide | What changed in the rename and how an operator moves to the new names |
+| [Upgrading to saige v0.45.0](guides/upgrading-to-saige.md) | Guide | What changes for operators and Go programs now that orchagent is folded into saige |
 | [Names](guides/renaming.md) | Guide | The ecosystem's current names and the retired ones |
 | [Rename verification](guides/rename-verification.md) | Guide | Verification of the install and upgrade paths after the rename |
 | [The Humagen spec](reference/spec.md) | Reference | The System and Platform configuration documents |

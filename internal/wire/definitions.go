@@ -9,7 +9,7 @@ import (
 
 	sdef "github.com/urmzd/saige/agent/definition"
 
-	"github.com/urmzd/orchagent/flow/definition"
+	"github.com/urmzd/saige/flow/definition"
 )
 
 // DefinitionCatalog is an AgentCatalog over saige definitions (pkg/agents,

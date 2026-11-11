@@ -8,7 +8,7 @@ and the wiring is `internal/platform/egress_guard.go`.
 ## The defect it contains
 
 A run owns one message on its surface: a GitHub comment, a reaction, a check,
-a Slack message. orchagent's connector commits each event of the run to that
+a Slack message. saige's connector commits each event of the run to that
 message's delivery state, marks it pending, and writes it. When the write
 fails the message stays pending, and the connector's `Flush` writes every
 pending message again. The platform calls `Flush` for every client once a
@@ -88,10 +88,9 @@ from those fields, so the connector's own errors carry them and nothing more.
 ## What the runtime should do
 
 The guard exists because the connector's delivery engine
-(`orchagent/flow/connectors/internal/sink`) has one policy for every error:
+(`saige/flow/connectors/internal/sink`) has one policy for every error:
 stay pending, retry on the next event and the next flush. These are the
-changes that belong there, and that should be made when the engine moves into
-saige. Each one retires a part of the guard.
+changes that belong there, in saige. Each one retires a part of the guard.
 
 1. Let a surface say what an error means. `Surface.Create` and `Update` return
    a plain error; the engine should accept a typed one (permanent, retry

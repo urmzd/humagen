@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/humagen/internal/toolprovider"
 	"github.com/urmzd/humagen/internal/wire"
-	"github.com/urmzd/orchagent/flow/toolprovider"
 )
 
 // The reference's own examples load, so docs/reference/spec.md cannot drift from the

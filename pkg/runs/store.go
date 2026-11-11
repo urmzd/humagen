@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/urmzd/humagen/internal/legacy"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/event"
 
 	"github.com/urmzd/humagen/pkg/state"
 )

@@ -12,9 +12,9 @@ import (
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/runs"
-	"github.com/urmzd/orchagent/flow/event"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/event"
 )
 
 func modelFor(t *testing.T, c *cast, name string) *agenttest.ScriptedProvider {

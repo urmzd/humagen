@@ -57,7 +57,8 @@ over it and never guesses its shape. The API sends run events only (`run.*`).
 | `type` | `data` | Was |
 |--------|--------|-----|
 | `run.accepted.v1`, `run.started.v1`, `run.resumed.v1` | `RunAcceptedEvent`, `RunStartedEvent`, `RunResumedEvent` | `lifecycle.accepted`, `.started`, `.resumed` |
-| `run.parked.v1`, `run.child.parked.v1` | the question, the child's question | `lifecycle.parked`, `lifecycle.child.parked` |
+| `run.parked.v1`, `run.child.parked.v1` | the question (`question`, and `questions` with every one when a batch of tool calls parked the run on several; `run.resumed.v1` then carries `answers`), the child's question | `lifecycle.parked`, `lifecycle.child.parked` |
+| `run.delta.tool.marker.v1` | `ToolMarkerEvent`: a tool call that waits for a decision, such as an approval. The question a person answers is on `run.parked.v1` | none |
 | `run.completed.v1`, `run.failed.v1`, `run.stopped.v1` | the answer and usage, the error and `terminal`, the reason and partial answer | `lifecycle.completed`, `.failed`, `.stopped` |
 | `run.delta.text.v1`, `run.delta.thinking.v1`, `run.delta.tool.call.v1`, `run.delta.tool.done.v1`, `run.delta.citation.v1` | one fragment each | `delta.*` |
 | `run.action.taken.v1` | the action and its summary | `action.taken` |

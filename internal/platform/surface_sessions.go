@@ -14,7 +14,7 @@ import (
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
-	"github.com/urmzd/orchagent/flow/session"
+	"github.com/urmzd/saige/flow/session"
 )
 
 // A thread on a chat surface, such as a Slack thread, has one root session:

@@ -18,7 +18,7 @@ import (
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/clients"
 	slackflow "github.com/urmzd/humagen/pkg/integrations/slack"
-	"github.com/urmzd/orchagent/flow/signature"
+	"github.com/urmzd/saige/flow/signature"
 )
 
 // The secrets a test writes. Nothing the server says or logs may contain them.

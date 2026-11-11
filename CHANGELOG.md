@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.117.3 (2026-11-11)
+
+### Bug Fixes
+
+- **messages**: the root and session listings page by place, not by position (#323) ([b298185](https://github.com/urmzd/humagen/commit/b2981851cb4a7160abd5530d85eadacd91d250f5))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.117.2...v0.117.3)
+
+
 ## 0.117.1 (2026-11-11)
 
 ### Bug Fixes

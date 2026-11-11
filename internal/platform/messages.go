@@ -16,8 +16,8 @@ import (
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
-	"github.com/urmzd/orchagent/flow/address"
-	"github.com/urmzd/orchagent/flow/session"
+	"github.com/urmzd/saige/flow/address"
+	"github.com/urmzd/saige/flow/session"
 )
 
 // One way in for every surface: a batch of people's messages from one

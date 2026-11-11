@@ -16,7 +16,7 @@ import (
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/speech"
-	"github.com/urmzd/orchagent/flow/bus"
+	"github.com/urmzd/saige/flow/bus"
 )
 
 // Slot names, for a binary registering a kind.

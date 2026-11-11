@@ -12,8 +12,8 @@ import (
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/clients"
-	"github.com/urmzd/orchagent/flow/signature"
 	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/signature"
 )
 
 // Every GitHub delivery says in one log line whether it became a request,
