@@ -26,6 +26,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/authz"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/egressguard"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -92,6 +93,10 @@ type seat struct {
 	// files reads source at a commit for the console (GitHubSource). Nil
 	// for a surface with no files.
 	files sourceReader
+	// guard holds the client's writes to its surface to the egress policy
+	// (egress_guard.go). Nil for a Connection, and for a client whose API
+	// the embedding program supplied: their calls are not the platform's.
+	guard *egressguard.Guard
 
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -450,7 +455,7 @@ func (s *surface) retire(st *seat) {
 	st.stop()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := st.peer.Flush(ctx); err != nil {
+	if err := st.flush(ctx); err != nil {
 		s.p.log.Warn("platform: client flush", "surface", s.name, "tenant", st.client.Tenant, "client", st.client.ID, "error", err)
 	}
 }
@@ -735,7 +740,7 @@ func (s *surface) Deliver(ctx context.Context, to address.Address, e event.Envel
 	if err != nil {
 		return err
 	}
-	return st.peer.Deliver(ctx, to, e)
+	return st.deliver(ctx, to, e)
 }
 
 // carrier picks the client an event goes out through. It is the client that
@@ -892,11 +897,18 @@ func (p *Platform) flushConnections(ctx context.Context) error {
 		case <-tick.C:
 			for name, s := range p.surfaces {
 				for _, st := range s.all() {
+					// A client whose writes are held (a rate limit, an open
+					// circuit, a backoff) is left alone until they resume:
+					// this loop is what turned one refused write into one a
+					// second.
+					if _, held := st.held(); held {
+						continue
+					}
 					// Durable delivery holds a database row lock through the
 					// surface request. Bound each flush so a stalled API releases
 					// its connection and lets the next client make progress.
 					flushCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-					err := st.peer.Flush(flushCtx)
+					err := st.flush(flushCtx)
 					if err == nil {
 						err = p.pollSurfaceFeedback(flushCtx, st)
 					}

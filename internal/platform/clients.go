@@ -449,7 +449,8 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 	refused := func(err error) error { return fmt.Errorf("%w: %v", clients.ErrInvalid, err) }
 	switch c.Surface {
 	case clients.Slack:
-		var api slack.API = slack.NewHTTPAPI(secrets.token, http.DefaultClient)
+		guard := p.guardFor(c)
+		var api slack.API = slack.NewHTTPAPI(secrets.token, guarded(p.clientHTTP(), guard, slack.Classifier{}))
 		var tokenSource func(context.Context) (string, error)
 		if c.Credentials.Token.Ref == slackOAuthRef {
 			var err error
@@ -457,17 +458,21 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 			if err != nil {
 				return nil, refused(err)
 			}
-			api = slack.NewHTTPAPI("", p.slackOAuthClient(c, tokenSource))
+			api = slack.NewHTTPAPI("", guarded(p.slackOAuthClient(c, tokenSource), guard, slack.Classifier{}))
 		}
 		if p.cfg.SlackAPI != nil {
-			api = p.cfg.SlackAPI(secrets.token)
+			api, guard = p.cfg.SlackAPI(secrets.token), nil
+		}
+		deliveryState := p.cfg.Backends.DeliveryState
+		if guard != nil {
+			deliveryState = guard.Store(deliveryState)
 		}
 		cfg := slack.Config{
 			API: api, Verifier: signature.NewSlack(secrets.signing), Team: c.Identity.Team,
 			Tenant: c.Tenant, Files: connectors.Files{Store: p.files, Log: p.log}, FileToken: secrets.token,
 			Bots: c.Bots, Agents: agents,
 			Interval: p.cfg.ClientInterval, Log: p.log,
-			DeliveryState: p.cfg.Backends.DeliveryState, DeliveryScope: clientDeliveryScope(c),
+			DeliveryState: deliveryState, DeliveryScope: clientDeliveryScope(c),
 		}
 		cfg.Feedback, cfg.ObserveDelivery = p.feedbackFor(c), p.deliveredFor(c)
 		cfg.ContinueThread = func(team, channel, thread string) bool {
@@ -486,26 +491,34 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		if err != nil {
 			return nil, refused(err)
 		}
-		return &seat{client: c, peer: peer, verifier: cfg.Verifier}, nil
+		return &seat{client: c, peer: peer, verifier: cfg.Verifier, guard: guard}, nil
 	case clients.GitHub:
+		guard := p.guardFor(c)
 		var api github.API
 		if github.IsPrivateKeyPEM(secrets.token) {
 			appAPI, err := github.NewAppHTTPAPI(p.observeGitHubAppAuth(c, github.AppConfig{
 				AppID:          c.Identity.AppID,
 				InstallationID: c.Identity.Installation,
 				PrivateKey:     secrets.token,
-				HTTPClient:     http.DefaultClient,
+				HTTPClient:     p.clientHTTP(),
 				Clock:          p.now,
+				Wrap: func(authenticated http.RoundTripper) http.RoundTripper {
+					return guard.Transport(authenticated, github.Classifier{})
+				},
 			}))
 			if err != nil {
 				return nil, refused(err)
 			}
 			api = appAPI
 		} else {
-			api = github.NewHTTPAPI(secrets.token, http.DefaultClient)
+			api = github.NewHTTPAPI(secrets.token, guarded(p.clientHTTP(), guard, github.Classifier{}))
 		}
 		if p.cfg.GitHubAPI != nil {
-			api = p.cfg.GitHubAPI(secrets.token)
+			api, guard = p.cfg.GitHubAPI(secrets.token), nil
+		}
+		deliveryState := p.cfg.Backends.DeliveryState
+		if guard != nil {
+			deliveryState = guard.Store(deliveryState)
 		}
 		cfg := github.Config{
 			API: api, Verifier: signature.NewGitHub(secrets.signing), Owners: c.Identity.Owners,
@@ -514,7 +527,7 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 			// webhook secret, so one client's grant is worth nothing to another.
 			MutationSecret: []byte(secrets.signing),
 			Tenant:         c.Tenant,
-			DeliveryState:  p.cfg.Backends.DeliveryState, DeliveryScope: clientDeliveryScope(c),
+			DeliveryState:  deliveryState, DeliveryScope: clientDeliveryScope(c),
 		}
 		// A comment that mentions the app and names no agent is raised
 		// naming none, and stamp decides who answers it where it is filed.
@@ -535,7 +548,7 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		if err != nil {
 			return nil, refused(err)
 		}
-		st := &seat{client: c, peer: peer, verifier: cfg.Verifier}
+		st := &seat{client: c, peer: peer, verifier: cfg.Verifier, guard: guard}
 		if files, ok := api.(github.FileAPI); ok {
 			st.files = files
 		}

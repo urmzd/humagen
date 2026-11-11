@@ -68,6 +68,7 @@ import (
 	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/drive"
+	"github.com/urmzd/humagen/pkg/egressguard"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
 	"github.com/urmzd/humagen/pkg/githubinstall"
@@ -194,6 +195,14 @@ type Config struct {
 	// ClientInterval coalesces a client's edits to its surface. Zero means
 	// the connector's default.
 	ClientInterval time.Duration
+	// ClientHTTP is the HTTP client a client's connector reaches Slack or
+	// GitHub through, under its credentials and its egress guard. Nil means
+	// the default client.
+	ClientHTTP *http.Client
+	// EgressPolicy bounds what a client does after its surface refuses a
+	// write: backoff, rate-limit pauses and the circuit breaker
+	// (pkg/egressguard). Zero fields take the package's defaults.
+	EgressPolicy egressguard.Policy
 	// Workspace is the directory agents write artifacts under. Empty takes a
 	// directory under the user's cache.
 	Workspace string
@@ -308,6 +317,10 @@ type Platform struct {
 	ConnectionAuth   *connectionauth.Manager
 	GitHubInstall    *githubinstall.Manager
 	connectionHealth *state.Table[connectionObservation]
+	// deliveryFailures keeps the run messages a surface refused for good
+	// (egress_guard.go).
+	deliveryFailures *state.Table[deliveryFailure]
+	memoryFailures   *egressguard.MemoryFailures
 	// pullReviews keeps automatic review's count and pause per pull request.
 	pullReviews *state.Table[PullReview]
 	Sessions    session.Store

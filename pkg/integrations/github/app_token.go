@@ -40,6 +40,9 @@ type AppConfig struct {
 	// confirmed HTTP 401 reports it back; network and permission failures do not.
 	AuthRevision   func(context.Context) string
 	OnAuthRejected func(context.Context, string)
+	// Wrap, when set, is put around the authenticating transport: a call it
+	// does not send mints no token. It is where a client's egress guard goes.
+	Wrap func(http.RoundTripper) http.RoundTripper
 }
 
 // IsPrivateKeyPEM reports whether s looks like a PEM-encoded private key
@@ -268,11 +271,9 @@ func (rt *appRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// HTTPAPI includes provider response bodies in its errors. Keep the
-		// status while preventing reflected tokens or private content escaping.
-		_ = resp.Body.Close()
-		body := `{"message":"GitHub installation request failed"}`
-		resp.Body = io.NopCloser(strings.NewReader(body))
-		resp.ContentLength = int64(len(body))
+		// status and the named fields of the refusal (refusal.go) while
+		// preventing reflected tokens or private content escaping.
+		_ = refusalOf(cloned, resp, time.Now(), token)
 	}
 	return resp, nil
 }
@@ -296,9 +297,13 @@ func NewAppHTTPAPIAt(base string, cfg AppConfig) (*HTTPAPI, error) {
 	if cfg.HTTPClient != nil {
 		baseTransport = cfg.HTTPClient.Transport
 	}
+	var authenticated http.RoundTripper = &appRoundTripper{base: baseTransport, source: source}
+	if cfg.Wrap != nil {
+		authenticated = cfg.Wrap(authenticated)
+	}
 	authed := &http.Client{
 		Timeout:       timeout,
-		Transport:     &appRoundTripper{base: baseTransport, source: source},
+		Transport:     authenticated,
 		CheckRedirect: refuseAppRedirect,
 	}
 	base = source.base
