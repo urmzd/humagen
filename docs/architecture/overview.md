@@ -501,6 +501,17 @@ default), and it resumes from the last cursor committed. anchor's Postgres
 queue still has no delta log; the bus carries every event, so streaming does
 not need it.
 
+The in-memory bus reaches one process only: two replicas on it would each
+miss the other's events, with no error. So more than one replica on it is
+refused (RFC 0006, change 8). A deployment declares its replica count as
+`server.replicas` (or `-replicas`, 1 when left out); `humagen config check`
+refuses a file that declares more than one with a memory bus (a bus left out
+is memory unless the file says `stores.kind: postgres`), the start
+refuses it on the bus it opened, and the Helm chart refuses `replicaCount`
+or `autoscaling.maxReplicas` above 1 with memory stores or
+`system.spec.bus.kind=memory`. The message names the fix: stores and the bus
+on Postgres, or one replica.
+
 The inbox's and the threads' change notices (`Watch`, which feeds the event
 stream and a conversation's live updates) reach every replica through
 `bus.Notices`: Postgres NOTIFY on the channel `fiber_notices`, with no table,

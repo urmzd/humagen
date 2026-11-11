@@ -207,6 +207,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	addr := fs.String("addr", "127.0.0.1:8080", "listen address")
 	webhookAddr := fs.String("webhook-addr", "", "optional separate listener exposing only signed connector webhooks")
 	roleFlag := fs.String("role", string(platform.RoleAll), `which parts of the platform this process runs: "all", the API and the turns; "api", the API, executing no turns; or "worker", the turns on the run queue, serving nothing. api and worker share the queue, so they need -state=postgres`)
+	replicas := fs.Int("replicas", 1, "how many server processes the deployment runs on these stores and this bus (server.replicas). More than one is refused on the in-memory bus, which reaches one process only")
 	authDefault := d.auth
 	if authDefault == "" {
 		authDefault = "oidc"
@@ -426,6 +427,9 @@ func serve(o Options, args []string, d serveDefaults) error {
 	defer releaseState()
 	broker, err := openBus(ctx, o, file, *busKind, backends)
 	if err != nil {
+		return err
+	}
+	if err := checkReplicas(*replicas, broker); err != nil {
 		return err
 	}
 	// A bus that can say whether it is connected is asked too.

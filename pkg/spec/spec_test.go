@@ -396,6 +396,42 @@ func TestAServerRoleIsCheckedAgainstTheStores(t *testing.T) {
 	}
 }
 
+// Each process has its own in-memory bus, so more than one replica on it is
+// refused, and the message says what to set. A bus left out follows the
+// stores the file declares. One replica, and any number on the Postgres bus,
+// pass.
+func TestMoreThanOneReplicaOnTheMemoryBusIsRefused(t *testing.T) {
+	sys := "api_version: humagen/v1\nkind: System\nspec:\n"
+	pgStores := "  stores: {kind: postgres, postgres: {url: {ref: env:HUMAGEN_POSTGRES_URL}}}\n"
+	refused := "bus: the in-memory bus reaches one process only, so 2 replicas would each miss the other's events; set stores.kind: postgres and bus.kind: postgres (or leave bus out), or set server.replicas: 1"
+	for body, want := range map[string]string{
+		sys + "  server: {replicas: 2}\n  bus: {kind: memory}\n":              refused,
+		sys + "  server: {replicas: 2}\n  stores: {kind: memory}\n":           refused,
+		sys + pgStores + "  server: {replicas: 2}\n  bus: {kind: memory}\n":   refused,
+		sys + "  server: {replicas: -1}\n":                                    "replicas -1 is negative",
+		sys + "  server: {replicas: 1}\n  bus: {kind: memory}\n":              "",
+		sys + "  bus: {kind: memory}\n":                                       "",
+		sys + "  server: {replicas: 2}\n":                                     refused,
+		sys + pgStores + "  server: {replicas: 2}\n":                          "",
+		sys + pgStores + "  server: {replicas: 4}\n  bus: {kind: postgres}\n": "",
+	} {
+		path := filepath.Join(t.TempDir(), "humagen.yaml")
+		writeFile(t, path, body)
+		cfg, err := Load(path)
+		if err == nil {
+			err = cfg.Check(Kinds{})
+		}
+		if want == "" && err != nil || want != "" && (err == nil || !strings.Contains(err.Error(), want)) {
+			t.Errorf("%q: err = %v, want %q", body, err, want)
+		}
+	}
+	var s System
+	s.Defaults()
+	if s.Spec.Server.Replicas != 1 {
+		t.Errorf("server.replicas defaults to %d, want 1", s.Spec.Server.Replicas)
+	}
+}
+
 // A policy goes only with an .agent.md file, and never says what wakes the
 // agent.
 func TestAnAgentPolicyNeedsAnAgentMdFile(t *testing.T) {
