@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.117.1 (2026-11-11)
+
+### Bug Fixes
+
+- **egress**: a refused write to Slack or GitHub stops, pauses or backs off instead of repeating (#321) ([ba6b515](https://github.com/urmzd/humagen/commit/ba6b515d1b7e6a454d4f1f2e500e90b36b4a8456))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.117.0...v0.117.1)
+
+
 ## 0.117.0 (2026-11-10)
 
 ### Features
