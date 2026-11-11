@@ -1,6 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import { ArrowUpIcon, FileIcon, XIcon } from "@humagen/render-web";
 import { Modal, type QueueControls, QueueStrip } from "@humagen/web";
+import { MetalFx } from "metal-fx";
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -9,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { VoiceLevel, WorkingBeam } from "./ComposerLight.tsx";
 import {
   type Command,
   commandsFor,
@@ -236,6 +238,8 @@ export function Composer({
   const picker = useRef<HTMLInputElement>(null);
   const speech = useRef<Recognizer | null>(null);
   const [recording, setRecording] = useState(false);
+  // The microphone while a voice note records, for the level along the bar.
+  const [mic, setMic] = useState<MediaStream | null>(null);
   const [transcribing, setTranscribing] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
   const form = useRef<HTMLFormElement>(null);
@@ -554,6 +558,7 @@ export function Composer({
       for (const track of stream.getTracks()) track.stop();
       recorder.current = null;
       setRecording(false);
+      setMic(null);
       const audio = new Blob(chunks, { type: r.mimeType || type || "audio/webm" });
       if (audio.size === 0) return;
       if (audio.size > voice.maxBytes) {
@@ -577,6 +582,7 @@ export function Composer({
     recorder.current = r;
     setNotice(defaultCopy.voice.recording);
     setRecording(true);
+    setMic(stream);
     // A chunk a second, so the size is known while it records.
     r.start(1000);
   };
@@ -669,15 +675,10 @@ export function Composer({
           send(false);
         }}
         data-working={queue.running ? "" : undefined}
-        className="humagen-glow humagen-composer relative flex flex-col gap-1 rounded-[1.25rem] border bg-aui-surface p-2"
+        className="humagen-composer relative flex flex-col gap-1 rounded-[1.25rem] border bg-aui-surface p-2"
       >
-        {/* The brand's glow round the bar (styles.css). */}
-        <span aria-hidden className="humagen-glow-halo">
-          <span className="humagen-glow-sweep" />
-        </span>
-        <span aria-hidden className="humagen-glow-ring">
-          <span className="humagen-glow-sweep" />
-        </span>
+        <WorkingBeam working={queue.running} host={form.current} />
+        {mic && <VoiceLevel stream={mic} host={form.current} />}
         {tags && commands.length > 0 && (
           // Still: a list waiting on a person does not animate.
           <ul
@@ -1013,15 +1014,30 @@ export function Composer({
               )}
             </button>
           ) : (
-            <button
-              type="submit"
-              disabled={!ready}
-              aria-label={queue.running ? "Queue message" : "Send message"}
-              title={queue.running ? "Queue behind the reply in flight" : "Send"}
-              className={`${action} humagen-composer-send bg-aui-primary text-aui-primary-fg hover:opacity-90 disabled:opacity-40`}
+            // Send is the one metal thing in the bar: a ring of liquid silver
+            // round it once there is something to send (metal-fx; without
+            // WebGL2 it is the plain button).
+            <MetalFx
+              variant="circle"
+              preset="silver"
+              theme={document.documentElement.dataset.theme === "dark" ? "dark" : "light"}
+              strength={ready ? 1 : 0}
+              paused={!ready}
+              disableGlow={!ready}
+              className="humagen-composer-send shrink-0"
             >
-              <ArrowUpIcon size={16} strokeWidth={2.5} />
-            </button>
+              <button
+                type="submit"
+                disabled={!ready}
+                aria-label={queue.running ? "Queue message" : "Send message"}
+                title={queue.running ? "Queue behind the reply in flight" : "Send"}
+                // metal-fx lays its own disc under the arrow and clears the fill here;
+                // the fill is what shows without WebGL2.
+                className={`${action} bg-aui-hover text-aui-fg hover:opacity-90 disabled:opacity-40`}
+              >
+                <ArrowUpIcon size={16} strokeWidth={2.5} />
+              </button>
+            </MetalFx>
           )}
         </div>
       </form>

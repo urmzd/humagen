@@ -983,72 +983,8 @@ body {
   .humagen-update { left: max(1rem, env(safe-area-inset-left)); }
 }
 
-/*
- * The chat bar glows: a ring in the brand's sweep, with a soft halo of the
- * same colors under it. Quiet at rest, brighter while the person writes. While
- * a reply is in flight the sweep turns slowly round the bar, so the system
- * reads as working; it stops when the reply ends, and never moves with
- * reduced motion. The sweep is a square of conic gradient turned by
- * transform, clipped to the bar's corners (Composer.tsx).
- */
-/* At rest and in focus the bar has its plain border; colour appears only while an agent works. */
-.humagen-glow[data-working] {
-  border-color: transparent;
-}
-.humagen-glow-ring,
-.humagen-glow-halo {
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  overflow: hidden;
-  pointer-events: none;
-  transition: opacity var(--humagen-dur) var(--humagen-ease-out);
-}
-/* The ring: the sweep, cut to a 1px line along the bar's own corners. */
-.humagen-glow-ring {
-  padding: 1px;
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#000 0 0) content-box exclude,
-    linear-gradient(#000 0 0);
-  opacity: 0;
-}
-/* The halo, under the bar's own surface. */
-.humagen-glow-halo {
-  z-index: -1;
-  filter: blur(18px);
-  opacity: 0;
-}
-.humagen-glow-sweep {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 150%;
-  aspect-ratio: 1;
-  transform: translate(-50%, -50%);
-  /* Neutral: the moving light says "working"; colour is kept for meaning. */
-  background: conic-gradient(
-    transparent,
-    color-mix(in oklch, var(--aui-fg) 60%, transparent) 15%,
-    transparent 35%
-  );
-}
-.humagen-glow[data-working] > .humagen-glow-ring { opacity: 1; }
-.humagen-glow[data-working] > .humagen-glow-halo { opacity: 0.4; }
-.humagen-glow[data-working] .humagen-glow-sweep {
-  animation: humagen-glow-turn 4s linear infinite;
-}
-@keyframes humagen-glow-turn {
-  to { transform: translate(-50%, -50%) rotate(360deg); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .humagen-glow[data-working] .humagen-glow-sweep {
-    animation: none;
-  }
-}
+/* While a reply is in flight the beam is the bar's border (ComposerLight.tsx). */
+.humagen-composer[data-working] { border-color: transparent; }
 
 /* Composer controls adapt to their own column, including beside Details. */
 .humagen-composer-container { container: composer / inline-size; }
