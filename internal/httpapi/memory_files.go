@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -22,6 +23,9 @@ type memoryTree struct {
 	At        time.Time        `json:"at,omitzero"`
 	Entries   []drive.Entry    `json:"entries"`
 	Proposals []drive.Proposal `json:"proposals"`
+	// CanWrite says whether the caller may write a file in this tree, by the
+	// check the write route makes.
+	CanWrite bool `json:"can_write"`
 }
 
 type memoryFile struct {
@@ -41,6 +45,21 @@ type memoryRestore struct {
 	Version int64  `json:"version"`
 }
 
+// memoryWriteBody bounds a file write's request. A UTF-8 file can expand to
+// six JSON bytes per input byte.
+const memoryWriteBody = 6*drive.MaxFileBytes + 4096
+
+// memoryWrite is one file's new content, and the tree version the edit was
+// made against.
+type memoryWrite struct {
+	Scope       string `json:"scope"`
+	Project     string `json:"project,omitempty"`
+	Agent       string `json:"agent,omitempty"`
+	File        string `json:"file"`
+	Content     string `json:"content"`
+	BaseVersion int64  `json:"base_version"`
+}
+
 // driveProblem answers a drive error.
 func (s *Server) driveProblem(w http.ResponseWriter, err error) {
 	switch {
@@ -48,6 +67,8 @@ func (s *Server) driveProblem(w http.ResponseWriter, err error) {
 		notFound(w)
 	case errors.Is(err, drive.ErrForbidden):
 		fail(w, http.StatusForbidden, "you may not change this memory")
+	case errors.Is(err, drive.ErrConflict):
+		fail(w, http.StatusConflict, "the file changed since it was read")
 	case errors.Is(err, drive.ErrInvalid), errors.Is(err, drive.ErrTooLarge), errors.Is(err, drive.ErrRefused):
 		fail(w, http.StatusBadRequest, err.Error())
 	default:
@@ -92,7 +113,7 @@ func (s *Server) viewMemoryTree(w http.ResponseWriter, r *http.Request, who auth
 		s.driveProblem(w, err)
 		return
 	}
-	ok(w, 200, memoryTree{Tree: t, Mount: "/" + t.Mount(), Version: v.N, By: v.By, At: v.At, Entries: v.Entries, Proposals: proposals})
+	ok(w, 200, memoryTree{Tree: t, Mount: "/" + t.Mount(), Version: v.N, By: v.By, At: v.At, Entries: v.Entries, Proposals: proposals, CanWrite: s.P.MayWriteMemory(r.Context(), who, t)})
 }
 
 // listMemoryFiles answers a memory tree's manifest at a version, the head by
@@ -151,6 +172,64 @@ func (s *Server) memoryHistory(w http.ResponseWriter, r *http.Request, who auth.
 		return
 	}
 	ok(w, 200, map[string]any{"versions": versions})
+}
+
+// writeMemoryFile writes one text file as the tree's newest version. Only
+// whoever may write the tree directly is answered: nothing is proposed here.
+// A file that changed since the version the edit was made against is a
+// conflict, and nothing is written.
+func (s *Server) writeMemoryFile(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body memoryWrite
+	if !decode(w, r, &body) {
+		return
+	}
+	t, err := platform.MemoryTree(who, body.Scope, body.Project, body.Agent)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	file, err := drive.CleanPath(body.File)
+	if err != nil {
+		fail(w, 400, "file is a path inside the tree")
+		return
+	}
+	// A negative base would skip the check against the version read.
+	if body.BaseVersion < 0 {
+		fail(w, 400, "base_version is the version the file was read at")
+		return
+	}
+	if len(body.Content) > drive.MaxFileBytes {
+		fail(w, 400, "content is at most "+strconv.Itoa(drive.MaxFileBytes)+" bytes")
+		return
+	}
+	if !utf8.ValidString(body.Content) || strings.ContainsRune(body.Content, 0) {
+		fail(w, 400, "content is text")
+		return
+	}
+	actor := s.P.MemoryActor(who)
+	// A tree the caller may not read is 404, before anything is recorded.
+	if _, err := s.P.Drive.Head(r.Context(), who.Tenant, actor, t); err != nil {
+		s.driveProblem(w, err)
+		return
+	}
+	attempt, err := s.P.BeginAudit(who, audit.Change{Action: "memory.write", Resource: "memory", ID: t.Key(), Subject: who.Subject, Project: t.Project, Agent: t.Agent, Route: "PUT /api/memory/files/content", Rule: string(auth.RunsWrite), After: map[string]string{"file": file, "base_version": strconv.FormatInt(body.BaseVersion, 10)}})
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	if s.P.MayWriteMemory(r.Context(), who, t) {
+		_, err = s.P.Drive.Commit(r.Context(), who.Tenant, actor, t, drive.CommitInput{Base: body.BaseVersion, Changes: []drive.Change{{Path: file, Data: []byte(body.Content)}}, By: who.Subject, At: time.Now(), Origin: "api"})
+	} else {
+		err = drive.ErrForbidden
+	}
+	if auditErr := attempt.Finish(err); auditErr != nil {
+		s.P.LogAuditCompletionFailure(auditErr)
+	}
+	if err != nil {
+		s.driveProblem(w, err)
+		return
+	}
+	s.viewMemoryTree(w, r, who, t, 0)
 }
 
 // restoreMemory checks out an earlier version as the tree's newest.

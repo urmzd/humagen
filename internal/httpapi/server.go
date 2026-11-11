@@ -204,6 +204,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/memory/files", s.authed(auth.RunsRead, s.listMemoryFiles))
 	mux.HandleFunc("GET /api/memory/files/content", s.authed(auth.RunsRead, s.readMemoryFile))
 	mux.HandleFunc("GET /api/memory/files/history", s.authed(auth.RunsRead, s.memoryHistory))
+	mux.HandleFunc("PUT /api/memory/files/content", s.authed(auth.RunsWrite, s.writeMemoryFile))
 	mux.HandleFunc("POST /api/memory/files/restore", s.authed(auth.RunsWrite, s.restoreMemory))
 	mux.HandleFunc("POST /api/memory/files/proposals/{id}", s.authed(auth.RunsWrite, s.decideMemoryProposal))
 	mux.HandleFunc("GET /api/memory/search", s.authed(auth.RunsRead, s.searchMemory))
@@ -331,6 +332,8 @@ func (s *Server) authed(perm auth.Permission, h handler) http.HandlerFunc {
 		case "PUT /api/threads/{id}/files/content":
 			// A UTF-8 file can expand to six JSON bytes per input byte.
 			bodyLimit = 6*platform.MaxFileBytes + 4096
+		case "PUT /api/memory/files/content":
+			bodyLimit = memoryWriteBody
 		case "POST /api/threads/{id}/scratchpads", "PUT /api/threads/{id}/scratchpads/{pad}":
 			bodyLimit = 6*scratchpads.MaxContent + 4096
 		case "POST /api/voice/transcriptions", "POST /api/sessions/{id}/voice/transcriptions":
