@@ -199,9 +199,24 @@ func TestAMessageTreeWithholdsAChildSessionItsReaderMayNotRead(t *testing.T) {
 	}
 }
 
+// rootAnswered waits until every run a message started has ended, so nothing
+// more changes beneath its root.
+func rootAnswered(t *testing.T, p *platform.Platform, m platform.MessageView) {
+	t.Helper()
+	if len(m.Posted.Runs) == 0 {
+		t.Fatalf("message %s started no run", m.ID)
+	}
+	for _, r := range m.Posted.Runs {
+		eventually(t, "run "+r.ID+" ends", func() bool {
+			now, err := p.Runs.Get(tenant, r.ID)
+			return err == nil && now.Status.Terminal()
+		})
+	}
+}
+
 // The roots listing is each place's root its reader may read, newest
 // first, with the place, the agent that owns it, who asked and the kind of
-// audience asked in front of, paged by the root before.
+// audience asked in front of, paged by the place of the root before.
 func TestTheRootsAreListedNewestFirstWithTheirPlaceAndAudience(t *testing.T) {
 	p, ana := slackWorkspace(t)
 	public := slackRef("C01ANY", "1700000000.000100", "")
@@ -210,10 +225,15 @@ func TestTheRootsAreListedNewestFirstWithTheirPlaceAndAudience(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Newest is by the latest change beneath a root, and an answer is one:
+	// the first root is answered before the second is asked, so the answer
+	// to the first is not what changed last.
+	rootAnswered(t, p, first)
 	second, err := p.SendMessages(t.Context(), ana, sayIn("howdy", slackRef("D0ANA", "1700000000.000200", "")))
 	if err != nil {
 		t.Fatal(err)
 	}
+	rootAnswered(t, p, second)
 	page, err := p.ListRootMessages(t.Context(), ana, 50, "")
 	if err != nil {
 		t.Fatal(err)
@@ -237,17 +257,53 @@ func TestTheRootsAreListedNewestFirstWithTheirPlaceAndAudience(t *testing.T) {
 	}
 
 	one, err := p.ListRootMessages(t.Context(), ana, 1, "")
-	if err != nil || len(one.Messages) != 1 || one.Next != second.Root {
+	if err != nil || len(one.Messages) != 1 || one.Messages[0].ID != second.Root || one.Next == "" {
 		t.Fatalf("a page of one = %+v, %v", one, err)
 	}
 	rest, err := p.ListRootMessages(t.Context(), ana, 1, one.Next)
 	if err != nil || len(rest.Messages) != 1 || rest.Messages[0].ID != first.Root || rest.Next != "" {
 		t.Fatalf("the page after = %+v, %v", rest, err)
 	}
-	if _, err := p.ListRootMessages(t.Context(), ana, 1, "s_missing"); !errors.Is(err, threads.ErrCursor) {
-		t.Errorf("a cursor naming no root = %v", err)
+	for _, bad := range []string{"s_missing", "bm90IGEgY3Vyc29y", "c29vbjpzX3Jvb3Q"} {
+		if _, err := p.ListRootMessages(t.Context(), ana, 1, bad); !errors.Is(err, threads.ErrCursor) {
+			t.Errorf("a cursor no page returned (%q) = %v", bad, err)
+		}
 	}
 	if _, err := p.ListRootMessages(t.Context(), ana, platform.MaxRootPage+1, ""); !errors.Is(err, threads.ErrInvalid) {
 		t.Errorf("a page larger than %d = %v", platform.MaxRootPage, err)
+	}
+}
+
+// A root that changes while a reader pages moves to the top. The page after
+// the one it ended goes on from where that page ended: it repeats no root
+// already read and skips none below.
+func TestARootThatChangesBetweenPagesNeitherRepeatsNorHidesTheRootsAfterIt(t *testing.T) {
+	p, ana := slackWorkspace(t)
+	var roots []string
+	for _, ts := range []string{"1700000000.000100", "1700000000.000200", "1700000000.000300"} {
+		m, err := p.SendMessages(t.Context(), ana, sayIn("howdy", slackRef("C01ANY", ts, "")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		rootAnswered(t, p, m)
+		roots = append(roots, m.Root)
+	}
+	oldest, middle, newest := roots[0], roots[1], roots[2]
+	top, err := p.ListRootMessages(t.Context(), ana, 2, "")
+	if err != nil || len(top.Messages) != 2 || top.Messages[0].ID != newest || top.Messages[1].ID != middle || top.Next == "" {
+		t.Fatalf("the first page of two = %+v, %v", top, err)
+	}
+	// The root the page ended on is spoken in again: it is now the newest.
+	again, err := p.SendMessages(t.Context(), ana, sayIn("and again", slackRef("C01ANY", "1700000000.000250", "1700000000.000200")))
+	if err != nil || again.Root != middle {
+		t.Fatalf("a reply in the middle root = %+v, %v", again, err)
+	}
+	rootAnswered(t, p, again)
+	if now, err := p.ListRootMessages(t.Context(), ana, 1, ""); err != nil || now.Messages[0].ID != middle {
+		t.Fatalf("the root spoken in again is not the newest: %+v, %v", now, err)
+	}
+	rest, err := p.ListRootMessages(t.Context(), ana, 2, top.Next)
+	if err != nil || len(rest.Messages) != 1 || rest.Messages[0].ID != oldest || rest.Next != "" {
+		t.Fatalf("the page after = %+v, %v, want the oldest root alone", rest, err)
 	}
 }

@@ -2,8 +2,10 @@ package platform
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -108,8 +110,17 @@ func (p *Platform) ReadMessage(ctx context.Context, who auth.Principal, id strin
 }
 
 // ListRootMessages is a page of the root sessions who may read, newest
-// first by when anything beneath them last changed, at most limit (1 to
-// MaxRootPage), after the root the previous page's cursor names.
+// first by when anything beneath them last changed and then by id, at most
+// limit (1 to MaxRootPage), after the place the previous page's cursor
+// names.
+//
+// A cursor is the place of the last root on a page: when it last changed,
+// and its id to break ties. The next page is every root strictly after that
+// place, wherever the root that set it stands by then. A change only ever
+// moves a root toward the top, so a root already read is never read again
+// on a later page, and one that changes while a reader pages moves above
+// the cursor: it is absent from the pages still to come and present the
+// next time the first page is read.
 func (p *Platform) ListRootMessages(ctx context.Context, who auth.Principal, limit int, after string) (RootMessagePage, error) {
 	if limit < 1 || limit > MaxRootPage {
 		return RootMessagePage{}, fmt.Errorf("%w: limit is 1 to %d", threads.ErrInvalid, MaxRootPage)
@@ -126,6 +137,13 @@ func (p *Platform) ListRootMessages(ctx context.Context, who auth.Principal, lim
 		n := r.sessionNode(th, 0)
 		all = append(all, RootMessage{ID: th.ID, Title: th.Title, Status: n.Status, Agent: th.Session.Agent, Author: n.Author, Parent: th.Session.Parent, Project: th.Project, LatestAt: n.LatestAt, ChildrenCount: n.ChildrenCount, Audience: p.messageAudience(who.Tenant, th.ID)})
 	}
+	return pageRoots(all, limit, after)
+}
+
+// pageRoots orders roots, newest first by their latest change and then by
+// id, so roots that changed at the same instant stand in one order on
+// every read, and cuts the page of at most limit that follows after.
+func pageRoots(all []RootMessage, limit int, after string) (RootMessagePage, error) {
 	slices.SortFunc(all, func(a, b RootMessage) int {
 		if n := b.LatestAt.Compare(a.LatestAt); n != 0 {
 			return n
@@ -134,18 +152,30 @@ func (p *Platform) ListRootMessages(ctx context.Context, who auth.Principal, lim
 	})
 	start := 0
 	if after != "" {
-		i := slices.IndexFunc(all, func(m RootMessage) bool { return m.ID == after })
-		if i < 0 {
-			return RootMessagePage{}, fmt.Errorf("%w: after is not a root in this listing", threads.ErrCursor)
+		at, id, err := decodeThreadCursor(after)
+		if err != nil {
+			return RootMessagePage{}, fmt.Errorf("%w: after is not the next of a page of roots", threads.ErrCursor)
 		}
-		start = i + 1
+		start = len(all)
+		if i := slices.IndexFunc(all, func(m RootMessage) bool {
+			changed := m.LatestAt.UnixNano()
+			return changed < at || (changed == at && m.ID > id)
+		}); i >= 0 {
+			start = i
+		}
 	}
 	end := min(start+limit, len(all))
 	out := RootMessagePage{Messages: all[start:end]}
 	if end < len(all) {
-		out.Next = all[end-1].ID
+		out.Next = encodeRootCursor(all[end-1])
 	}
 	return out, nil
+}
+
+// encodeRootCursor is the place of a root in the listing, in the form a
+// cursor into a list of conversations has (decodeThreadCursor).
+func encodeRootCursor(m RootMessage) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(strconv.FormatInt(m.LatestAt.UnixNano(), 10) + ":" + m.ID))
 }
 
 // messageAudience is the kind of audience session's root was asked in

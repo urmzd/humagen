@@ -115,6 +115,9 @@ func (p *Platform) prioritizeSessions(who auth.Principal, rows []SessionSummary)
 			ranks[a.Session] = rank
 		}
 	}
-	slices.SortStableFunc(rows, func(a, b SessionSummary) int { return ranks[b.ID] - ranks[a.ID] })
+	for i := range rows {
+		rows[i].rank = ranks[rows[i].ID]
+	}
+	slices.SortStableFunc(rows, func(a, b SessionSummary) int { return b.rank - a.rank })
 	return nil
 }
