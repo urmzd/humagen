@@ -5,9 +5,9 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/urmzd/orchagent/flow/address"
-	transport "github.com/urmzd/orchagent/flow/connectors/slack"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/address"
+	transport "github.com/urmzd/saige/flow/connectors/slack"
+	"github.com/urmzd/saige/flow/event"
 )
 
 // StopFunc asks one run to stop at the request of the Slack user who pressed

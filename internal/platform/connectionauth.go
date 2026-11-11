@@ -6,12 +6,12 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/urmzd/humagen/internal/mcptools"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/connectionauth"
 	"github.com/urmzd/humagen/pkg/personctx"
-	"github.com/urmzd/orchagent/flow/mcptools"
 )
 
 // ConnectionPreset lists a service and the next available connection action.

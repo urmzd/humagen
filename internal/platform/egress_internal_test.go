@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/orchagent/sandbox/isolate/egress"
 	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/sandbox/isolate/egress"
 
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/personctx"
 	"github.com/urmzd/humagen/pkg/runctx"
 	runsettings "github.com/urmzd/humagen/pkg/settings"
-	"github.com/urmzd/orchagent/flow/isolation"
+	"github.com/urmzd/saige/flow/isolation"
 )
 
 // A run's instance is granted the hosts its pinned egress ceiling allows,

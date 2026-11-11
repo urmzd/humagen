@@ -10,14 +10,13 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/urmzd/orchagent/durable/adapters/postgres/pgledger"
-	"github.com/urmzd/orchagent/durable/run"
+	"github.com/urmzd/saige/durable/adapters/postgres/pgledger"
+	"github.com/urmzd/saige/durable/run"
 
 	"github.com/urmzd/humagen/internal/legacy"
-	"github.com/urmzd/orchagent/flow/knowledge"
-	"github.com/urmzd/orchagent/flow/runschema"
-	"github.com/urmzd/orchagent/flow/thread"
-	"github.com/urmzd/orchagent/flow/toolprovider"
+	"github.com/urmzd/humagen/internal/runschema"
+	"github.com/urmzd/humagen/internal/toolprovider"
+	"github.com/urmzd/saige/flow/thread"
 )
 
 const postgresEnv = "FLOW_POSTGRES_TEST_URL"
@@ -102,7 +101,6 @@ SELECT (SELECT count(*) FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relna
 
 type stores struct {
 	threads *thread.Postgres
-	docs    *knowledge.Postgres
 	tools   *toolprovider.Postgres
 	ledger  *pgledger.Ledger
 }
@@ -111,11 +109,10 @@ func migrate(t *testing.T, ctx context.Context, p *pgxpool.Pool) stores {
 	t.Helper()
 	s := stores{
 		threads: thread.NewPostgres(p),
-		docs:    knowledge.NewPostgres(p, knowledge.NewHashing(0)),
 		tools:   toolprovider.NewPostgres(p),
 	}
 	for name, m := range map[string]func(context.Context) error{
-		"threads": s.threads.Migrate, "knowledge": s.docs.Migrate, "tool providers": s.tools.Migrate,
+		"threads": s.threads.Migrate, "tool providers": s.tools.Migrate,
 	} {
 		if err := m(ctx); err != nil {
 			t.Fatalf("migrate %s: %v", name, err)
@@ -142,9 +139,6 @@ func TestADatabaseFromBeforeTheRenameKeepsItsData(t *testing.T) {
 	if _, err := before.threads.Append(ctx, key, thread.Entry{Role: thread.RoleUser, Text: "hello", RunID: "r1"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := before.docs.Upsert(ctx, "acme", knowledge.Document{Source: "handbook", URI: "release.md", Content: "Merging to main runs the release workflow."}); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := before.tools.PutProvider(ctx, toolprovider.Provider{Tenant: "acme", Name: "issues", Transport: toolprovider.TransportHTTP, Endpoint: "https://mcp.example.com"}); err != nil {
 		t.Fatal(err)
 	}
@@ -165,10 +159,6 @@ func TestADatabaseFromBeforeTheRenameKeepsItsData(t *testing.T) {
 	entries, err := after.threads.History(ctx, key, 1)
 	if err != nil || len(entries) != 1 || entries[0].Text != "hello" {
 		t.Errorf("thread after the upgrade = %+v, %v", entries, err)
-	}
-	hits, err := after.docs.Search(ctx, "acme", knowledge.Query{Text: "release workflow", Sources: []string{"handbook"}})
-	if err != nil || len(hits) == 0 {
-		t.Errorf("knowledge after the upgrade = %v, %v", hits, err)
 	}
 	if _, err := after.tools.GetProvider(ctx, "acme", "issues"); err != nil {
 		t.Errorf("tool provider after the upgrade: %v", err)

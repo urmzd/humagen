@@ -21,7 +21,7 @@
 
 # At least the go directive in go.mod: the golang image sets GOTOOLCHAIN=local,
 # so it cannot fetch a newer toolchain.
-ARG GO_VERSION=1.26.10
+ARG GO_VERSION=1.26.11
 ARG NODE_VERSION=24
 
 # 1. The web console: a Vite build inside the pnpm workspace.

@@ -10,10 +10,10 @@ import (
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
-	"github.com/urmzd/orchagent/flow/connector"
-	transport "github.com/urmzd/orchagent/flow/connectors/github"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/session"
+	"github.com/urmzd/saige/flow/connector"
+	transport "github.com/urmzd/saige/flow/connectors/github"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/session"
 )
 
 func TestFixPullContextUsesPinnedAlertAndCurrentSessionAccess(t *testing.T) {

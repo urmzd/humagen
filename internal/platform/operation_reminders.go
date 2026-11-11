@@ -2,8 +2,11 @@ package platform
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"time"
+
+	"github.com/urmzd/saige/flow/event"
 
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/operations"
@@ -68,10 +71,14 @@ func (p *Platform) reconcileOperationReminders(ctx context.Context) {
 				switch {
 				case part.Question != nil:
 					q := part.Question
-					pending, ok, err := p.rt.PendingQuestion(ctx, tenant, q.Run)
-					if err != nil || !ok || pending.ID != q.ID || (!pending.ExpiresAt.IsZero() && !at.Before(pending.ExpiresAt)) {
+					// A run parked on a batch waits on several questions at
+					// once: the reminder is for this one while it is open.
+					open, err := p.rt.PendingQuestions(ctx, tenant, q.Run)
+					i := slices.IndexFunc(open, func(x event.Question) bool { return x.ID == q.ID })
+					if err != nil || i < 0 || (!open[i].ExpiresAt.IsZero() && !at.Before(open[i].ExpiresAt)) {
 						continue
 					}
+					pending := open[i]
 					agent = q.Agent
 					if agent == "" {
 						agent = message.Source.Agent

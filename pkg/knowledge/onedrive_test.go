@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/orchagent/flow/mcptools"
+	"github.com/urmzd/humagen/internal/mcptools"
 )
 
 // oneDriveFake serves Microsoft Graph and its download hosts from one httptest

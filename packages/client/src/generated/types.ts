@@ -1330,6 +1330,8 @@ the schema.
   /** What a parked run is waiting for. */
   reason?: string;
   question?: Question;
+  /** Every question a parked run waits on, in the order its tool calls asked them, when a batch of tool calls parked it on more than one. Each is answered on its own, and the run resumes once every one is. Absent for a run parked on `question` alone. */
+  questions?: Question[];
   /** Why a stopped run was stopped, as the runtime reported it, such as `Stopped by ada`. */
   cause?: string;
   /** The run was asked to stop and has not ended yet. It starts no further calls. Absent once the run has ended, however it ended. */
@@ -1713,6 +1715,8 @@ export interface ThreadTurn {
   run?: Run;
   announcement?: ThreadAnnouncement;
   ask?: ThreadAsk;
+  /** Every question a parked run waits on that a person answers, as the reader stands to each, in the order the run asked them. A run parked by a batch of tool calls waits on several at once. */
+  asks?: ThreadAsk[];
 }
 
 /** The question a parked run waits on, as the reader stands to it, on a
@@ -4424,16 +4428,20 @@ discriminator: dotted segments and a version, such as
 or one type. The set is open: a reader passes over a type it does not
 know (`UnknownEvent`). This list is the catalog this build registers.
  */
-export type EventType = "control.compact.v1" | "control.stop.v1" | "cron.tick.v1" | "github.issue_comment.created.v1" | "github.issues.labeled.v1" | "github.issues.opened.v1" | "github.pull_request.labeled.v1" | "github.pull_request.opened.v1" | "github.pull_request.ready_for_review.v1" | "github.pull_request.review_requested.v1" | "github.pull_request.synchronize.v1" | "github.pull_request_review.submitted.v1" | "github.pull_request_review_comment.created.v1" | "jira.comment.created.v1" | "jira.issue.assigned.v1" | "jira.issue.created.v1" | "message.posted.v1" | "run.accepted.v1" | "run.action.taken.v1" | "run.child.parked.v1" | "run.completed.v1" | "run.context.compacted.v1" | "run.delta.citation.v1" | "run.delta.text.v1" | "run.delta.thinking.v1" | "run.delta.tool.call.v1" | "run.delta.tool.done.v1" | "run.failed.v1" | "run.feedback.v1" | "run.parked.v1" | "run.resumed.v1" | "run.started.v1" | "run.stopped.v1" | "run.usage.child.v1" | "run.usage.v1" | "slack.command.invoked.v1" | "slack.session.stopped.v1";
+export type EventType = "control.compact.v1" | "control.stop.v1" | "cron.tick.v1" | "github.issue_comment.created.v1" | "github.issues.labeled.v1" | "github.issues.opened.v1" | "github.pull_request.labeled.v1" | "github.pull_request.opened.v1" | "github.pull_request.ready_for_review.v1" | "github.pull_request.review_requested.v1" | "github.pull_request.synchronize.v1" | "github.pull_request_review.submitted.v1" | "github.pull_request_review_comment.created.v1" | "jira.comment.created.v1" | "jira.issue.assigned.v1" | "jira.issue.created.v1" | "message.posted.v1" | "run.accepted.v1" | "run.action.taken.v1" | "run.child.parked.v1" | "run.completed.v1" | "run.context.compacted.v1" | "run.delta.citation.v1" | "run.delta.text.v1" | "run.delta.thinking.v1" | "run.delta.tool.call.v1" | "run.delta.tool.done.v1" | "run.delta.tool.marker.v1" | "run.failed.v1" | "run.feedback.v1" | "run.parked.v1" | "run.resumed.v1" | "run.started.v1" | "run.stopped.v1" | "run.usage.child.v1" | "run.usage.v1" | "slack.command.invoked.v1" | "slack.session.stopped.v1";
 
 /** One fragment of the agent's answer, in order. Concatenate fragments. */
 export interface TextPayload {
   text: string;
+  /** The tool call ids, from the run's own agent down, of the nested agent that produced this, when an agent the run's agent runs as a tool did. Absent for the run's own agent. */
+  parent?: string[];
 }
 
 /** One fragment of extended reasoning. Most surfaces do not show it. */
 export interface ThinkingPayload {
   text: string;
+  /** The tool call ids, from the run's own agent down, of the nested agent that produced this, when an agent the run's agent runs as a tool did. Absent for the run's own agent. */
+  parent?: string[];
 }
 
 /** The agent reaching for a tool. */
@@ -4447,6 +4455,8 @@ export interface ToolCallPayload {
   arguments?: Record<string, unknown>;
   /** The size of arguments left out for being too large, so "left out" reads apart from "none". */
   arguments_bytes?: number;
+  /** The tool call ids, from the run's own agent down, of the nested agent that produced this, when an agent the run's agent runs as a tool did. Absent for the run's own agent. */
+  parent?: string[];
 }
 
 /** A tool execution finished. */
@@ -4460,6 +4470,8 @@ export interface ToolDonePayload {
   arguments?: Record<string, unknown>;
   /** The size of arguments left out for being too large, so "left out" reads apart from "none". */
   arguments_bytes?: number;
+  /** The tool call ids, from the run's own agent down, of the nested agent that produced this, when an agent the run's agent runs as a tool did. Absent for the run's own agent. */
+  parent?: string[];
 }
 
 /** Where a cited passage came from. */
@@ -4494,6 +4506,37 @@ export interface CitationPayload {
   text: string;
   source: Provenance;
   index: number;
+  /** The tool call whose result the citation came from, when a tool's result rather than retrieval cited the source. */
+  tool_call_id?: string;
+  /** The tool call ids, from the run's own agent down, of the nested agent that produced this, when an agent the run's agent runs as a tool did. Absent for the run's own agent. */
+  parent?: string[];
+}
+
+/** The body of `run.delta.tool.marker.v1`, a tool call that waits for a decision before it runs, such as an approval. The call's arguments are on its `run.delta.tool.call.v1` events. The question a person answers is on `run.parked.v1`. */
+export interface ToolMarkerPayload {
+  /** The call's id, as its `run.delta.tool.call.v1` and `run.delta.tool.done.v1` carry it. */
+  id: string;
+  name?: string;
+  /** Why the call waits. */
+  markers?: ToolMarker[];
+  interrupt?: ToolMarkerInterrupt;
+  /** The tool call ids, from the run's own agent down, of the nested agent that produced this, when an agent the run's agent runs as a tool did. Absent for the run's own agent. */
+  parent?: string[];
+}
+
+/** One reason a tool call waits. */
+export interface ToolMarker {
+  /** The marker's kind, such as `human_approval` or `clarification`. */
+  kind: string;
+  message?: string;
+}
+
+/** The pending decision a waiting tool call names. */
+export interface ToolMarkerInterrupt {
+  id: string;
+  /** What the decision is, such as `approval`, `clarification`, `budget` or `input`. */
+  kind?: string;
+  expires_at?: string;
 }
 
 /** The body of `run.accepted.v1`. */
@@ -4513,12 +4556,16 @@ export interface ParkedPayload {
   /** What the run is waiting for. */
   reason?: string;
   question?: Question;
+  /** Every question of a park that waits on more than one at once, in the order the agent's tool calls asked them. A batch of calls that each wait parks the run once, on all of them. Each is answered on its own, and the run resumes when every one is. Absent when the run parked on one question. */
+  questions?: Question[];
 }
 
 /** The body of `run.resumed.v1`. */
 export interface ResumedPayload {
   attempt?: number;
   answer?: Answer;
+  /** Every answer the run resumed with, in the order of its park's `questions`, when it parked on more than one. Absent otherwise. */
+  answers?: Answer[];
 }
 
 /** The body of `run.completed.v1`. */
@@ -4752,9 +4799,24 @@ export interface EventRequest {
   actor?: Actor;
   /** The agents the request names, in order. */
   mentions?: string[];
+  /** The agents, people, places and links the request refers to, in the order each was first written. The model is shown the people, places and links next to the text. */
+  references?: EventReference[];
   attachments?: Attachment[];
   /** Host context shown to the model next to the body's own fields. */
   context?: Record<string, string>;
+}
+
+/** One thing a request refers to, an agent or a person it names, a place it points at, or a link it carries. */
+export interface EventReference {
+  kind: "agent" | "person" | "place" | "link";
+  /** The agent's name, or what a person saw in the text, such as `@ada` or `#12`. */
+  name?: string;
+  /** The native id on the surface the event came from, such as a Slack user id or a GitHub login. */
+  id?: string;
+  /** The canonical address of what is referred to, when it is known. */
+  address?: string;
+  /** A link exactly as it was written. */
+  url?: string;
 }
 
 /** Where in Slack a message was posted. */
@@ -4890,7 +4952,7 @@ which variant it is. A type not in the mapping is an `UnknownEvent`.
 The API sends run events only (`run.*`); the other types are listed
 so the union is the whole catalog.
  */
-export type RunEvent = CompactRequestedEvent | StopRequestedEvent | CronTickEvent | GitHubIssueCommentCreatedEvent | GitHubIssueLabeledEvent | GitHubIssueOpenedEvent | GitHubPullLabeledEvent | GitHubPullOpenedEvent | GitHubPullReadyForReviewEvent | GitHubReviewRequestedEvent | GitHubPullSynchronizeEvent | GitHubReviewSubmittedEvent | GitHubReviewCommentCreatedEvent | JiraCommentCreatedEvent | JiraIssueAssignedEvent | JiraIssueCreatedEvent | MessagePostedEvent | RunAcceptedEvent | ActionTakenEvent | ChildParkedEvent | RunCompletedEvent | ContextCompactedEvent | CitationEvent | TextDeltaEvent | ThinkingDeltaEvent | ToolCallEvent | ToolDoneEvent | RunFailedEvent | RunFeedbackEvent | RunParkedEvent | RunResumedEvent | RunStartedEvent | RunStoppedEvent | UsageChildEvent | UsageCallEvent | SlackCommandInvokedEvent | SlackSessionStoppedEvent;
+export type RunEvent = CompactRequestedEvent | StopRequestedEvent | CronTickEvent | GitHubIssueCommentCreatedEvent | GitHubIssueLabeledEvent | GitHubIssueOpenedEvent | GitHubPullLabeledEvent | GitHubPullOpenedEvent | GitHubPullReadyForReviewEvent | GitHubReviewRequestedEvent | GitHubPullSynchronizeEvent | GitHubReviewSubmittedEvent | GitHubReviewCommentCreatedEvent | JiraCommentCreatedEvent | JiraIssueAssignedEvent | JiraIssueCreatedEvent | MessagePostedEvent | RunAcceptedEvent | ActionTakenEvent | ChildParkedEvent | RunCompletedEvent | ContextCompactedEvent | CitationEvent | TextDeltaEvent | ThinkingDeltaEvent | ToolCallEvent | ToolDoneEvent | ToolMarkerEvent | RunFailedEvent | RunFeedbackEvent | RunParkedEvent | RunResumedEvent | RunStartedEvent | RunStoppedEvent | UsageChildEvent | UsageCallEvent | SlackCommandInvokedEvent | SlackSessionStoppedEvent;
 
 /** A request that a run compact its context. The runtime's traffic, never sent on this API. */
 export type CompactRequestedEvent = EventEnvelope & { type: "control.compact.v1"; data: CompactRequestPayload };
@@ -4972,6 +5034,9 @@ export type ToolCallEvent = EventEnvelope & { type: "run.delta.tool.call.v1"; da
 
 /** A tool finished. */
 export type ToolDoneEvent = EventEnvelope & { type: "run.delta.tool.done.v1"; data: ToolDonePayload };
+
+/** A tool call waits for a decision before it runs. */
+export type ToolMarkerEvent = EventEnvelope & { type: "run.delta.tool.marker.v1"; data: ToolMarkerPayload };
 
 /** An attempt failed. Final only when `terminal` is true. */
 export type RunFailedEvent = EventEnvelope & { type: "run.failed.v1"; data: FailedPayload };

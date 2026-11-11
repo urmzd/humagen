@@ -2187,8 +2187,10 @@ export interface ThreadTurn {
   message?: ThreadMessage;
   run?: Run;
   announcement?: ThreadAnnouncement;
-  /** On a run parked on a question a person answers. */
+  /** On a run parked on a question a person answers: the first of `asks`. */
   ask?: ThreadAsk;
+  /** Every question a parked run waits on that a person answers. Absent from a server older than batches of questions. */
+  asks?: ThreadAsk[];
 }
 
 /** An archived conversation waiting on an admin to approve its deletion. */

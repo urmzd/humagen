@@ -18,7 +18,7 @@ import {
   type Source,
   type ThreadAsk,
 } from "./api.ts";
-import { askedOf, copyFor } from "./asks.ts";
+import { allForOthers, askedOf, asksOf, copyFor } from "./asks.ts";
 import { MessageTime } from "./MessageTime.tsx";
 import { accessLabel, accessOf } from "./projects.ts";
 import { useRunStop } from "./RunStop.tsx";
@@ -33,7 +33,7 @@ const terminal = (run?: Run) => !!run && ["completed", "failed", "stopped"].incl
 function TestResult({ run, onRefresh }: { run: Run; onRefresh: () => void }) {
   const { run: shown, stop } = useRunStop(run, !terminal(run));
   const live = useRunTurn(shown);
-  const [ask, setAsk] = useState<ThreadAsk>();
+  const [ask, setAsk] = useState<ThreadAsk[]>();
   const [problem, setProblem] = useState("");
   useEffect(() => {
     let active = true;
@@ -41,7 +41,7 @@ function TestResult({ run, onRefresh }: { run: Run; onRefresh: () => void }) {
       coworking
         .thread(shown.thread)
         .then((page) => {
-          if (active) setAsk(page.turns.find((turn) => turn.run?.id === shown.id)?.ask);
+          if (active) setAsk(asksOf(page.turns.find((turn) => turn.run?.id === shown.id)));
         })
         .catch(() => {});
     return () => {
@@ -51,7 +51,7 @@ function TestResult({ run, onRefresh }: { run: Run; onRefresh: () => void }) {
   const turn = askedOf(live ?? turnOf(shown), ask);
   return (
     <section className="flex min-w-0 flex-col gap-3 rounded-aui border border-aui-border p-3">
-      {ask && !ask.yours && <p className="text-aui-sm text-aui-muted">{words.reviewerNeeded}</p>}
+      {allForOthers(ask) && <p className="text-aui-sm text-aui-muted">{words.reviewerNeeded}</p>}
       <WebSurface
         onAction={(action) => {
           if (!answers(action)) return;

@@ -1,10 +1,11 @@
 package github
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
-	transport "github.com/urmzd/orchagent/flow/connectors/github"
+	transport "github.com/urmzd/saige/flow/connectors/github"
 )
 
 func reviewV2() ReviewReport {
@@ -61,6 +62,20 @@ func TestNativeReviewChecksDiffAndSuggestions(t *testing.T) {
 	review, err = NativeReview(r, files)
 	if err != nil || review.Event != "COMMENT" || strings.Contains(review.Body, "policy") {
 		t.Fatalf("an approve verdict was not posted as a plain comment: %+v %v", review, err)
+	}
+}
+
+// The transport refuses an approving review outright, whatever asks for one:
+// nothing in Humagen can grant it.
+func TestTheTransportRefusesAnApprovingReview(t *testing.T) {
+	files := []transport.ContextFile{{Filename: "a.go", Patch: "@@ -1,2 +1,2 @@\n unchanged\n-old\n+new"}}
+	review, err := nativeReview(reviewV2())
+	if err != nil {
+		t.Fatal(err)
+	}
+	review.Event = "APPROVE"
+	if _, err := transport.PrepareReview(review, files); !errors.Is(err, transport.ErrNoApproval) {
+		t.Fatalf("an approving review was prepared: %v", err)
 	}
 }
 

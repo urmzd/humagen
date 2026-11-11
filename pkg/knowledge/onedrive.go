@@ -12,7 +12,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/urmzd/orchagent/flow/mcptools"
+	"github.com/urmzd/humagen/internal/mcptools"
 )
 
 // OneDrive is read through Microsoft Graph v1.0 with the reader's delegated

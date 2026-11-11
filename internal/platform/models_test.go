@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/urmzd/humagen/internal/wire"
-	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/turn/native"
+	"github.com/urmzd/saige/flow/runtime"
+	"github.com/urmzd/saige/flow/turn/native"
 )
 
 func TestResolveModelPutsThePolicyInPlace(t *testing.T) {
