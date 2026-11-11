@@ -293,6 +293,8 @@ export type Route =
   | { page: "knowledge" }
   /** One corpus, at a tab. */
   | { page: "corpus"; name: string; tab: CorpusTab; q?: string }
+  /** The workspace graph across every corpus the reader may read. */
+  | { page: "knowledge-graph" }
   /** One knowledge source, under the corpus it was opened from when `corpus` is set. */
   | { page: "context"; source?: string; tab?: SourceTab; corpus?: string }
   | { page: "agents"; state?: string }
@@ -352,6 +354,7 @@ const PAGE_TITLES: Record<Page, string> = {
   knowledge: "Knowledge",
   corpus: "Knowledge",
   context: "Knowledge",
+  "knowledge-graph": defaultCopy.corpora.graph.workspaceTitle,
   agents: "Agents",
   agent: "Agent",
   artifacts: "Artifacts",
@@ -573,6 +576,9 @@ export function href(r: Route): string {
       return r.tab === "sources"
         ? `/knowledge/${enc(r.name)}`
         : `/knowledge/${enc(r.name)}/${r.tab}`;
+    // Its own first segment: under `/knowledge/` it would take a corpus's name.
+    case "knowledge-graph":
+      return "/knowledge-graph";
     case "context": {
       if (!r.source) return r.corpus ? `/knowledge/${enc(r.corpus)}` : "/knowledge";
       const tab = !r.tab || r.tab === "documents" ? "" : `/${r.tab}`;
@@ -968,6 +974,8 @@ function read(pathname: string, search: string): Route {
       return a
         ? { page: "context", source: a, tab: pick(b, SOURCE_TABS, "documents") }
         : { page: "knowledge" };
+    case "knowledge-graph":
+      return { page: "knowledge-graph" };
     case "knowledge": {
       if (!a) return { page: "knowledge" };
       if (b === "sources" && c)

@@ -91,6 +91,7 @@ import {
   SkeletonRows,
   setAgentHues,
 } from "./ui.tsx";
+import { WorkspaceGraph } from "./WorkspaceGraph.tsx";
 import { WorkspaceTabs } from "./WorkspaceTabs.tsx";
 import { hubTabs, settingsPageLabel, workspaceHub } from "./workspace-navigation.ts";
 import { useBrandingStyle } from "./workspaceBranding.ts";
@@ -1384,6 +1385,18 @@ function Console({
                       )
                     ) : (
                       <Page title={defaultCopy.corpora.title}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "knowledge-graph" &&
+                    (can("knowledge:read") ? (
+                      <WorkspaceGraph
+                        viewer={me.principal.subject}
+                        onBack={() => go({ page: "knowledge" })}
+                        onOpenCorpus={(name) => go({ page: "corpus", name, tab: "graph" })}
+                      />
+                    ) : (
+                      <Page title={defaultCopy.corpora.graph.workspaceTitle}>
                         <Problem message={defaultCopy.noPermission} />
                       </Page>
                     ))}
