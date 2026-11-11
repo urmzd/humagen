@@ -111,27 +111,12 @@ func (s *Server) listSessions(w http.ResponseWriter, r *http.Request, who auth.P
 		filtered = append(filtered, v)
 	}
 	all = filtered
-	start := 0
-	if after := q.Get("after"); after != "" {
-		found := false
-		for i, v := range all {
-			if v.ID == after {
-				start = i + 1
-				found = true
-				break
-			}
-		}
-		if !found {
-			fail(w, 400, "after is not a session cursor in this listing")
-			return
-		}
+	page, next, err := platform.PageSessions(all, limit, q.Get("after"))
+	if err != nil {
+		fail(w, 400, "after is not the next of a page of sessions")
+		return
 	}
-	end := min(start+limit, len(all))
-	next := ""
-	if end < len(all) {
-		next = all[end-1].ID
-	}
-	ok(w, 200, map[string]any{"sessions": all[start:end], "next": next})
+	ok(w, 200, map[string]any{"sessions": page, "next": next})
 }
 func (s *Server) getSession(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	q := r.URL.Query()

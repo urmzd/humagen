@@ -169,3 +169,67 @@ func TestSessionAncestorRevocationConfinesCompatibilityRoutesAndStream(t *testin
 		t.Fatal("existing stream gate retained revoked inherited access")
 	}
 }
+
+// A session that is spoken in while a reader pages the listing moves to the
+// top. The page after the one it ended is the sessions below it: none
+// already read, none skipped.
+func TestTheSessionListingPagesOnWhenASessionChangesBetweenPages(t *testing.T) {
+	f := newFixture(t)
+	ana := f.person(t, "acme", "ana", "Ana", "humagen-admins")
+	if res, out := f.do(t, nil, "POST", "/api/agents", ana, helperSpec); res.StatusCode != 201 {
+		t.Fatalf("agent: %d %v", res.StatusCode, out)
+	}
+	// answered waits until nothing more changes in a session: its agent
+	// has answered.
+	answered := func(id string) {
+		t.Helper()
+		for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+			res, out := f.do(t, nil, "GET", "/api/sessions/"+id, ana, "")
+			if res.StatusCode == 200 && out["status"] != "working" {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("session %s is never answered: %d %v", id, res.StatusCode, out["status"])
+			}
+		}
+	}
+	var ids []string
+	for _, text := range []string{"First", "Second", "Third"} {
+		res, out := f.do(t, nil, "POST", "/api/sessions", ana, fmt.Sprintf(`{"agent":"helper","text":%q}`, text))
+		if res.StatusCode != 201 {
+			t.Fatalf("start: %d %v", res.StatusCode, out)
+		}
+		ids = append(ids, out["id"].(string))
+		answered(out["id"].(string))
+	}
+	oldest, middle, newest := ids[0], ids[1], ids[2]
+	list := func(query string) ([]string, string) {
+		t.Helper()
+		res, out := f.do(t, nil, "GET", "/api/sessions?"+query, ana, "")
+		if res.StatusCode != 200 {
+			t.Fatalf("list %s: %d %v", query, res.StatusCode, out)
+		}
+		var got []string
+		for _, v := range out["sessions"].([]any) {
+			got = append(got, v.(map[string]any)["id"].(string))
+		}
+		return got, out["next"].(string)
+	}
+	top, next := list("limit=2")
+	if len(top) != 2 || top[0] != newest || top[1] != middle || next == "" {
+		t.Fatalf("the first page of two = %v, next %q, want %s then %s", top, next, newest, middle)
+	}
+	if res, out := f.do(t, nil, "POST", "/api/sessions/"+middle+"/messages", ana, `{"text":"And again"}`); res.StatusCode != 201 {
+		t.Fatalf("post: %d %v", res.StatusCode, out)
+	}
+	answered(middle)
+	if now, _ := list("limit=1"); len(now) != 1 || now[0] != middle {
+		t.Fatalf("the session spoken in again is not first: %v", now)
+	}
+	if rest, next := list("limit=2&after=" + next); len(rest) != 1 || rest[0] != oldest || next != "" {
+		t.Fatalf("the page after = %v, next %q, want %s alone", rest, next, oldest)
+	}
+	if res, _ := f.do(t, nil, "GET", "/api/sessions?after="+middle, ana, ""); res.StatusCode != 400 {
+		t.Fatalf("a session's id as a cursor: %d", res.StatusCode)
+	}
+}

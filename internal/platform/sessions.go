@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -101,6 +102,9 @@ type SessionSummary struct {
 	Title        string        `json:"title"`
 	Status       string        `json:"status"`
 	UpdatedAt    time.Time     `json:"updated_at"`
+	// rank is how far the reader's open alerts raise the session in a
+	// listing (prioritizeSessions): 0 for a session with none.
+	rank int
 }
 type SessionView struct {
 	SessionSummary
@@ -465,6 +469,63 @@ func (p *Platform) ListSessions(ctx context.Context, who auth.Principal, parent,
 	}
 	return out, nil
 }
+
+// PageSessions cuts one page from a listing ListSessions ordered: at most
+// limit sessions, after the place the previous page's cursor names, and the
+// cursor of the page that follows ("" on the last).
+//
+// A cursor is the place of the last session on a page: how far alerts raise
+// it, when it last changed, and its id to break ties. The next page is every
+// session strictly after that place, wherever the session that set it
+// stands by then. So a session that changes while a reader pages, which
+// moves it to the top, makes no later page repeat the sessions already
+// read: it is absent from the pages still to come and present the next
+// time the first page is read.
+func PageSessions(rows []SessionSummary, limit int, after string) ([]SessionSummary, string, error) {
+	start := 0
+	if after != "" {
+		rank, at, id, err := decodeSessionListCursor(after)
+		if err != nil {
+			return nil, "", err
+		}
+		start = len(rows)
+		if i := slices.IndexFunc(rows, func(v SessionSummary) bool {
+			if v.rank != rank {
+				return v.rank < rank
+			}
+			changed := v.UpdatedAt.UnixNano()
+			return changed < at || (changed == at && v.ID > id)
+		}); i >= 0 {
+			start = i
+		}
+	}
+	end := min(start+max(limit, 0), len(rows))
+	next := ""
+	if end < len(rows) && end > start {
+		last := rows[end-1]
+		next = base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(last.rank) + ":" + strconv.FormatInt(last.UpdatedAt.UnixNano(), 10) + ":" + last.ID))
+	}
+	return rows[start:end], next, nil
+}
+
+func decodeSessionListCursor(c string) (rank int, at int64, id string, err error) {
+	raw, err := base64.RawURLEncoding.DecodeString(c)
+	if err != nil || len(c) > 2048 {
+		return 0, 0, "", threads.ErrCursor
+	}
+	part := strings.SplitN(string(raw), ":", 3)
+	if len(part) != 3 || part[2] == "" {
+		return 0, 0, "", threads.ErrCursor
+	}
+	if rank, err = strconv.Atoi(part[0]); err != nil {
+		return 0, 0, "", threads.ErrCursor
+	}
+	if at, err = strconv.ParseInt(part[1], 10, 64); err != nil {
+		return 0, 0, "", threads.ErrCursor
+	}
+	return rank, at, part[2], nil
+}
+
 func sessionCursor(at time.Time) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(at.UTC().Format(time.RFC3339Nano)))
 }
