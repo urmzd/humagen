@@ -31,6 +31,7 @@ import (
 	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/drive"
+	"github.com/urmzd/humagen/pkg/egressguard"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
 	"github.com/urmzd/humagen/pkg/inbox"
@@ -342,6 +343,8 @@ func (p *Platform) openStores(cfg Config) error {
 	p.Credentials, err = credentials.Open(perRequest, p.secrets)
 	keep("credentials", err)
 	p.connectionHealth = state.NewTable[connectionObservation](perRequest, "connection_health")
+	p.deliveryFailures = state.NewTable[deliveryFailure](perRequest, "delivery_failures")
+	p.memoryFailures = egressguard.NewMemoryFailures()
 	// A nil table counts nothing, so automatic review would never pause:
 	// without a store, the count is kept in memory.
 	reviews := perRequest
