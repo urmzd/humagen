@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.117.2 (2026-11-11)
+
+### Bug Fixes
+
+- **usage**: opening the counters cannot deadlock with a call being counted (#322) ([4bf84b4](https://github.com/urmzd/humagen/commit/4bf84b4323f63e2fc0170e5ef1eb69eb15752542))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.117.1...v0.117.2)
+
+
 ## 0.117.1 (2026-11-11)
 
 ### Bug Fixes
