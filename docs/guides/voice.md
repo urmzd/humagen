@@ -128,7 +128,7 @@ spec:
 |------|-----|----------------------|
 | Slack | Record an audio clip in a thread the app answers, or attach an audio file | The message's text, then `[Voice note, english] what you said`. With a workspace voice provider the agent reads the clip's words, and the answer comes back as text and as an audio clip in the thread |
 | The console | Press the microphone in the message box, speak, press it again | The words come back into the box, marked the same way, for you to read, change and send |
-| WhatsApp, iMessage, SMS | Not yet: the messaging connectors in `urmzd/orchagent` will carry a voice note as an audio attachment and call the same hook | The same |
+| WhatsApp, iMessage, SMS | Not yet: the messaging connectors in `urmzd/saige` will carry a voice note as an audio attachment and call the same hook | The same |
 
 A message has at most four voice notes transcribed. A note that is too long,
 has no words in it, or reaches a provider that fails or does not answer in

@@ -10,10 +10,10 @@ and the stores behind them. It does not reimplement what it composes.
 
 | Part | Owns | Repo |
 |------|------|------|
-| Event union, bus, egress, connectors, durable runtime, definition pinning | Transport and surfaces | fiber, now [orchagent/flow](https://github.com/urmzd/orchagent/tree/main/flow) (`github.com/urmzd/orchagent/flow/...`) |
+| Event union, bus, egress, connectors, durable runtime, definition pinning | Transport and surfaces | fiber, now [saige/flow](https://github.com/urmzd/saige/tree/main/flow) (`github.com/urmzd/saige/flow/...`) |
 | Agent loop, tools, MCP client, RAG, evals, OTel | Runtime | [saige](https://github.com/urmzd/saige) |
-| Sandboxed execution nodes, NGAC | Confinement | [orchagent/sandbox](https://github.com/urmzd/orchagent/tree/main/sandbox), formerly playscape |
-| Durable runs and replay | Crash survival | [orchagent/durable](https://github.com/urmzd/orchagent/tree/main/durable), formerly anchor |
+| Sandboxed execution nodes, NGAC | Confinement | [saige/sandbox](https://github.com/urmzd/saige/tree/main/sandbox), formerly playscape |
+| Durable runs and replay | Crash survival | [saige/durable](https://github.com/urmzd/saige/tree/main/durable), formerly anchor |
 | Components and helpers for web, Slack and GitHub | Presentation | This repository: `packages/`, `internal/presentation/github` |
 
 ## The presentation boundary
@@ -29,7 +29,7 @@ events. `internal/wire` is the only place the two meet.
 
 Every event is one `event.Envelope` with a typed body, and `type` is its only
 discriminator, such as `message.posted.v1` or `run.completed.v1`
-([fiber's design](https://github.com/urmzd/orchagent/blob/main/flow/docs/architecture/events.md)). A run goes:
+([fiber's design](https://github.com/urmzd/saige/blob/main/docs/architecture/flow-events.md)). A run goes:
 
 ```text
 surface (console, Slack, GitHub, cron)
@@ -56,8 +56,8 @@ surface (console, Slack, GitHub, cron)
   a subscriber opts in.
 - **Who answers.** Humagen picks agents itself: by name, through the entry
   agent that owns each root session naming nobody (`internal/platform/entry.go`),
-  or through the dynamic router (`pkg/join`). fiber's channel membership and dispatch
-  (`orchagent/flow/membership`, `orchagent/flow/dispatch`) are built but not wired in.
+  or through the dynamic router (`pkg/join`). fiber's channel membership
+  (`saige/flow/membership`) is built but not wired in; its dispatch package was not carried into saige.
 
 ## One primitive: the call
 
@@ -278,6 +278,14 @@ waiting: the question is recorded on the run in the ledger, the run holds no
 worker while it waits, and the first answer recorded is the answer. Humagen
 owns who is asked and where.
 
+A batch of tool calls that each wait (several approvals, several `ask_person`
+questions, several calls to other agents in one model message) parks the run
+once on all of them. `run.parked.v1` carries `question`, the first, and
+`questions`, all of them, when there is more than one; `run.resumed.v1` carries
+`answer` and `answers`. Each question is still answered on its own, and the run
+resumes when every one is answered. Calls to other agents in one batch start
+side by side.
+
 | Question | Raised by | Answered with |
 |---|---|---|
 | Budget | The platform, when a run reaches a limit whose policy asks for approval (`runtime.Hold`, see [Approving a run at a limit](#approving-a-run-at-a-limit)) | `approve`, which grants the policy's amount and resumes the run, or `deny`, which stops it. Answered by `billing:write` only |
@@ -354,7 +362,7 @@ new attached calls (`ErrBusy`), never hang.
 A call the callee's policy holds for a person is decided by `callApproval` in
 `internal/platform/call_policy.go`. The `agent` tool declares it as its
 per-call approval, the wrapper every run tool passes through is a
-`native.Approving` tool (`orchagent/flow/turn/native`), and fiber's
+`native.Approving` tool (`saige/flow/turn/native`), and fiber's
 host call tool wrapper forwards `Approving`, so the runtime parks the caller on
 an approval addressed to the policy's approvers (`role:manager` and
 `role:admin` when it names nobody, so a held call is never open to the whole

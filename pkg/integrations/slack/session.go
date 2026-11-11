@@ -7,10 +7,10 @@ import (
 	"strings"
 	"sync"
 
-	transport "github.com/urmzd/orchagent/flow/connectors/slack"
+	transport "github.com/urmzd/saige/flow/connectors/slack"
 
-	"github.com/urmzd/orchagent/flow/address"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/address"
+	"github.com/urmzd/saige/flow/event"
 )
 
 // MaxCommands is Slack's limit on commands in one code channel. The limit is

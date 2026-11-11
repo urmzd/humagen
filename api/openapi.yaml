@@ -12757,8 +12757,12 @@ components:
           description: What a parked run is waiting for.
           type: string
         question:
-          description: What a parked run is waiting on a person for. Absent once it resumes or ends.
+          description: What a parked run is waiting on a person for, the first when it waits on several. Absent once it resumes or ends.
           $ref: "#/components/schemas/Question"
+        questions:
+          description: Every question a parked run waits on, in the order its tool calls asked them, when a batch of tool calls parked it on more than one. Each is answered on its own, and the run resumes once every one is. Absent for a run parked on `question` alone.
+          type: array
+          items: {$ref: "#/components/schemas/Question"}
         cause:
           description: Why a stopped run was stopped, as the runtime reported it, such as `Stopped by ada`.
           type: string
@@ -13391,7 +13395,13 @@ components:
         message: {$ref: "#/components/schemas/ThreadMessage"}
         run: {$ref: "#/components/schemas/Run"}
         announcement: {$ref: "#/components/schemas/ThreadAnnouncement"}
-        ask: {$ref: "#/components/schemas/ThreadAsk"}
+        ask:
+          description: The question a parked run waits on, as the reader stands to it. The first of `asks`.
+          $ref: "#/components/schemas/ThreadAsk"
+        asks:
+          description: Every question a parked run waits on that a person answers, as the reader stands to each, in the order the run asked them. A run parked by a batch of tool calls waits on several at once.
+          type: array
+          items: {$ref: "#/components/schemas/ThreadAsk"}
     ThreadAsk:
       description: |
         The question a parked run waits on, as the reader stands to it, on a
@@ -17425,6 +17435,7 @@ components:
       - run.delta.thinking.v1
       - run.delta.tool.call.v1
       - run.delta.tool.done.v1
+      - run.delta.tool.marker.v1
       - run.failed.v1
       - run.feedback.v1
       - run.parked.v1
@@ -17441,12 +17452,20 @@ components:
       required: [text]
       properties:
         text: {type: string}
+        parent:
+          description: The tool call ids, from the run's own agent down, of the nested agent that produced this, when an agent the run's agent runs as a tool did. Absent for the run's own agent.
+          type: array
+          items: {type: string}
     ThinkingPayload:
       description: One fragment of extended reasoning. Most surfaces do not show it.
       type: object
       required: [text]
       properties:
         text: {type: string}
+        parent:
+          description: The tool call ids, from the run's own agent down, of the nested agent that produced this, when an agent the run's agent runs as a tool did. Absent for the run's own agent.
+          type: array
+          items: {type: string}
     ToolCallPayload:
       description: The agent reaching for a tool.
       type: object
@@ -17467,6 +17486,10 @@ components:
         arguments_bytes:
           description: The size of arguments left out for being too large, so "left out" reads apart from "none".
           type: integer
+        parent:
+          description: The tool call ids, from the run's own agent down, of the nested agent that produced this, when an agent the run's agent runs as a tool did. Absent for the run's own agent.
+          type: array
+          items: {type: string}
     ToolDonePayload:
       description: A tool execution finished.
       type: object
@@ -17485,6 +17508,10 @@ components:
         arguments_bytes:
           description: The size of arguments left out for being too large, so "left out" reads apart from "none".
           type: integer
+        parent:
+          description: The tool call ids, from the run's own agent down, of the nested agent that produced this, when an agent the run's agent runs as a tool did. Absent for the run's own agent.
+          type: array
+          items: {type: string}
     Provenance:
       description: Where a cited passage came from.
       type: object
@@ -17523,6 +17550,50 @@ components:
           type: string
         source: {$ref: "#/components/schemas/Provenance"}
         index: {type: integer}
+        tool_call_id:
+          description: The tool call whose result the citation came from, when a tool's result rather than retrieval cited the source.
+          type: string
+        parent:
+          description: The tool call ids, from the run's own agent down, of the nested agent that produced this, when an agent the run's agent runs as a tool did. Absent for the run's own agent.
+          type: array
+          items: {type: string}
+    ToolMarkerPayload:
+      description: The body of `run.delta.tool.marker.v1`, a tool call that waits for a decision before it runs, such as an approval. The call's arguments are on its `run.delta.tool.call.v1` events. The question a person answers is on `run.parked.v1`.
+      type: object
+      required: [id]
+      properties:
+        id:
+          description: The call's id, as its `run.delta.tool.call.v1` and `run.delta.tool.done.v1` carry it.
+          type: string
+        name: {type: string}
+        markers:
+          description: Why the call waits.
+          type: array
+          items: {$ref: "#/components/schemas/ToolMarker"}
+        interrupt: {$ref: "#/components/schemas/ToolMarkerInterrupt"}
+        parent:
+          description: The tool call ids, from the run's own agent down, of the nested agent that produced this, when an agent the run's agent runs as a tool did. Absent for the run's own agent.
+          type: array
+          items: {type: string}
+    ToolMarker:
+      description: One reason a tool call waits.
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          description: The marker's kind, such as `human_approval` or `clarification`.
+          type: string
+        message: {type: string}
+    ToolMarkerInterrupt:
+      description: The pending decision a waiting tool call names.
+      type: object
+      required: [id]
+      properties:
+        id: {type: string}
+        kind:
+          description: What the decision is, such as `approval`, `clarification`, `budget` or `input`.
+          type: string
+        expires_at: {type: string, format: date-time}
     AcceptedPayload:
       description: The body of `run.accepted.v1`.
       type: object
@@ -17544,16 +17615,24 @@ components:
           description: What the run is waiting for.
           type: string
         question:
-          description: What the run is waiting on a person for, when it parked on one.
+          description: What the run is waiting on a person for, when it parked on one. The first of `questions` when it parked on several.
           $ref: "#/components/schemas/Question"
+        questions:
+          description: Every question of a park that waits on more than one at once, in the order the agent's tool calls asked them. A batch of calls that each wait parks the run once, on all of them. Each is answered on its own, and the run resumes when every one is. Absent when the run parked on one question.
+          type: array
+          items: {$ref: "#/components/schemas/Question"}
     ResumedPayload:
       description: The body of `run.resumed.v1`.
       type: object
       properties:
         attempt: {type: integer}
         answer:
-          description: The answer the run resumed with, after a question.
+          description: The answer the run resumed with, after a question. The first of `answers` when it parked on several.
           $ref: "#/components/schemas/Answer"
+        answers:
+          description: Every answer the run resumed with, in the order of its park's `questions`, when it parked on more than one. Absent otherwise.
+          type: array
+          items: {$ref: "#/components/schemas/Answer"}
     CompletedPayload:
       description: The body of `run.completed.v1`.
       type: object
@@ -17841,6 +17920,10 @@ components:
           description: The agents the request names, in order.
           type: array
           items: {type: string}
+        references:
+          description: The agents, people, places and links the request refers to, in the order each was first written. The model is shown the people, places and links next to the text.
+          type: array
+          items: {$ref: "#/components/schemas/EventReference"}
         attachments:
           type: array
           items: {$ref: "#/components/schemas/Attachment"}
@@ -17848,6 +17931,24 @@ components:
           description: Host context shown to the model next to the body's own fields.
           type: object
           additionalProperties: {type: string}
+    EventReference:
+      description: One thing a request refers to, an agent or a person it names, a place it points at, or a link it carries.
+      type: object
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [agent, person, place, link]}
+        name:
+          description: The agent's name, or what a person saw in the text, such as `@ada` or `#12`.
+          type: string
+        id:
+          description: The native id on the surface the event came from, such as a Slack user id or a GitHub login.
+          type: string
+        address:
+          description: The canonical address of what is referred to, when it is known.
+          type: string
+        url:
+          description: A link exactly as it was written.
+          type: string
     SlackRef:
       description: Where in Slack a message was posted.
       type: object
@@ -18093,6 +18194,7 @@ components:
       - "$ref": "#/components/schemas/ThinkingDeltaEvent"
       - "$ref": "#/components/schemas/ToolCallEvent"
       - "$ref": "#/components/schemas/ToolDoneEvent"
+      - "$ref": "#/components/schemas/ToolMarkerEvent"
       - "$ref": "#/components/schemas/RunFailedEvent"
       - "$ref": "#/components/schemas/RunFeedbackEvent"
       - "$ref": "#/components/schemas/RunParkedEvent"
@@ -18133,6 +18235,7 @@ components:
           run.delta.thinking.v1: "#/components/schemas/ThinkingDeltaEvent"
           run.delta.tool.call.v1: "#/components/schemas/ToolCallEvent"
           run.delta.tool.done.v1: "#/components/schemas/ToolDoneEvent"
+          run.delta.tool.marker.v1: "#/components/schemas/ToolMarkerEvent"
           run.failed.v1: "#/components/schemas/RunFailedEvent"
           run.feedback.v1: "#/components/schemas/RunFeedbackEvent"
           run.parked.v1: "#/components/schemas/RunParkedEvent"
@@ -18386,6 +18489,15 @@ components:
           properties:
             type: {type: string, const: run.delta.tool.done.v1}
             data: {$ref: "#/components/schemas/ToolDonePayload"}
+    ToolMarkerEvent:
+      description: A tool call waits for a decision before it runs.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: run.delta.tool.marker.v1}
+            data: {$ref: "#/components/schemas/ToolMarkerPayload"}
     RunFailedEvent:
       description: An attempt failed. Final only when `terminal` is true.
       allOf:

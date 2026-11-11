@@ -11,11 +11,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/urmzd/orchagent/sandbox/isolate/egress"
+	"github.com/urmzd/saige/sandbox/isolate/egress"
 
 	"github.com/urmzd/humagen/pkg/spec"
-	"github.com/urmzd/orchagent/flow/isolation"
-	poolleaser "github.com/urmzd/orchagent/flow/isolation/isolate"
+	"github.com/urmzd/saige/flow/isolation"
+	poolleaser "github.com/urmzd/saige/flow/isolation/isolate"
 )
 
 // The egress gate (docs/reference/spec.md, Egress): playscape's forward

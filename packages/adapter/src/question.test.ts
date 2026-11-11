@@ -4,7 +4,7 @@ import { ActionId, type UiAction } from "@humagen/core";
 import { follow } from "./fold.ts";
 import { fromServer, toRequest } from "./mail.ts";
 import { answerOfAction, interruptOf } from "./question.ts";
-import type { RunEvent } from "./run.ts";
+import { type Run, type RunEvent, turnOf } from "./run.ts";
 
 let seq = 0;
 const ev = (type: string, data: unknown = {}): RunEvent => {
@@ -110,6 +110,39 @@ for (const kind of ["approval", "choice", "reply"] as const) {
     else assert.deepEqual(inMail?.type === "reply" && inMail.resolution, { outcome: "replied", by: "olu", at, detail: "OPS-42" });
   });
 }
+
+test("a batch of waiting calls parks once on every question, and one resume settles them all", () => {
+  const f = follow({ id: "r1", agent: "lead" });
+  for (const e of [ev("run.accepted.v1"), ev("run.started.v1", { attempt: 1 })]) f.apply(e);
+  f.apply(ev("run.delta.tool.call.v1", { id: "call-1", name: "file_write", phase: "requested" }));
+  const all = [questions.choice, questions.reply, questions.approval];
+  let turn = f.apply(ev("run.parked.v1", { reason: "waiting on a person", question: all[0], questions: all }));
+  assert.equal(turn.status, "waiting");
+  assert.deepEqual(
+    turn.interrupts,
+    all.map((q) => interruptOf(q)),
+    "every question of the batch is shown, in the order the calls asked them",
+  );
+  assert.equal(turn.tasks.find((t) => t.id === "call-1")?.status, "waiting");
+
+  const given = [answers.choice.answer, answers.reply.answer, answers.approval.answer];
+  turn = f.apply(ev("run.resumed.v1", { attempt: 2, answer: given[0], answers: given }));
+  assert.notEqual(turn.status, "waiting");
+  assert.equal(turn.interrupts.length, 3);
+  const [choice, reply, approval] = turn.interrupts;
+  assert.deepEqual(choice?.type === "clarification" && choice.answer, { kind: "answered", by: "olu", at, optionIds: ["blue"] });
+  assert.deepEqual(reply?.type === "clarification" && reply.answer, { kind: "answered", by: "olu", at, optionIds: [], other: "OPS-42" });
+  assert.deepEqual(approval?.type === "approval" && approval.decision, { kind: "approved", by: "olu", at });
+});
+
+test("a parked run's record shows every question it waits on to a reader who missed the park", () => {
+  const all = [questions.choice, questions.approval];
+  const base = { id: "r1", agent: "lead", text: "Go", calls: 0, created_at: at, updated_at: at };
+  const batch = turnOf({ ...base, status: "parked", question: all[0], questions: all } as unknown as Run);
+  assert.deepEqual(batch.interrupts, all.map((q) => interruptOf(q)));
+  const one = turnOf({ ...base, status: "parked", question: questions.choice } as unknown as Run);
+  assert.deepEqual(one.interrupts, [interruptOf(questions.choice)]);
+});
 
 test("a click on a question asks for the answer it means, on the run and in the inbox", () => {
   const click = (id: UiAction["id"], turnId: string, target: string, extra: Partial<UiAction["payload"]> = {}): UiAction => ({

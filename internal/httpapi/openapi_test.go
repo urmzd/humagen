@@ -30,16 +30,16 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/santhosh-tekuri/jsonschema/v6"
+	"github.com/urmzd/humagen/internal/mcptools"
+	"github.com/urmzd/humagen/internal/toolprovider"
 	"github.com/urmzd/humagen/internal/wire"
-	"github.com/urmzd/orchagent/flow/connectors/cron"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/mcptools"
-	"github.com/urmzd/orchagent/flow/runtime"
-	orchsession "github.com/urmzd/orchagent/flow/session"
-	"github.com/urmzd/orchagent/flow/toolprovider"
-	"github.com/urmzd/orchagent/flow/turn/native"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/connectors/cron"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
+	orchsession "github.com/urmzd/saige/flow/session"
+	"github.com/urmzd/saige/flow/turn/native"
 	"go.yaml.in/yaml/v4"
 
 	"github.com/urmzd/humagen/internal/platform"
@@ -76,7 +76,7 @@ import (
 	"github.com/urmzd/humagen/pkg/speech"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
-	"github.com/urmzd/orchagent/flow/attachment"
+	"github.com/urmzd/saige/flow/attachment"
 )
 
 // The API contract is api/openapi.yaml. These tests are what keep it true:

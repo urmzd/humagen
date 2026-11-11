@@ -27,8 +27,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
 
 	"github.com/urmzd/humagen/internal/wire"
 
@@ -348,9 +348,15 @@ type Run struct {
 	// Reason says what a parked run is waiting for, or that a run which has
 	// answered is waiting for the agents attached to it.
 	Reason string `json:"reason,omitempty"`
-	// Question is what a parked run is waiting on a person for. It is gone
+	// Question is what a parked run is waiting on a person for: the first
+	// question, when a batch of tool calls parked it on several. It is gone
 	// once the run resumes or ends.
 	Question *event.Question `json:"question,omitempty"`
+	// Questions is every question a parked run waits on when it waits on
+	// more than one, in the order its tool calls asked them. Each is
+	// answered on its own, and the run resumes once every one is. Empty for
+	// a run parked on Question alone. Waits reads either form.
+	Questions []event.Question `json:"questions,omitempty"`
 	// Cause says why a stopped run was stopped.
 	Cause string `json:"cause,omitempty"`
 	// Stopping is true from the moment someone asks a run to stop until the
@@ -388,6 +394,28 @@ type Run struct {
 	observedBy   string
 	lastSeq      uint64
 	openAttached int
+}
+
+// Waits returns every question a parked run waits on, in the order its tool
+// calls asked them: Questions when there are several, else Question alone.
+func (r Run) Waits() []event.Question {
+	if len(r.Questions) > 0 {
+		return slices.Clone(r.Questions)
+	}
+	if r.Question == nil {
+		return nil
+	}
+	return []event.Question{*r.Question}
+}
+
+// WaitsOn reports whether a parked run waits on the question id.
+func (r Run) WaitsOn(id string) (event.Question, bool) {
+	for _, q := range r.Waits() {
+		if q.ID == id {
+			return q, true
+		}
+	}
+	return event.Question{}, false
 }
 
 // Requesters returns the names pinned for the person who asked for the run.
@@ -620,9 +648,9 @@ func (x *Index) Observe(e event.Envelope) (Run, bool) {
 		r.UpdatedAt = e.Time
 		switch b := e.Data.(type) {
 		case event.Started, event.Resumed:
-			r.Status, r.Reason, r.Question = Running, "", nil
+			r.Status, r.Reason, r.Question, r.Questions = Running, "", nil, nil
 		case event.Parked:
-			r.Status, r.Reason, r.Question = Parked, b.Reason, b.Question
+			r.Status, r.Reason, r.Question, r.Questions = Parked, b.Reason, b.Question, slices.Clone(b.Questions)
 			if b.Question != nil {
 				if err := t.neededPerson(r); err != nil {
 					return err
@@ -660,7 +688,7 @@ func (x *Index) Observe(e event.Envelope) (Run, bool) {
 		}
 		if r.Status.Terminal() {
 			x.finishAssistance(r)
-			r.Stopping, r.Question = false, nil
+			r.Stopping, r.Question, r.Questions = false, nil, nil
 		}
 		out, ended = citationSnapshot(r), r.Status.Terminal()
 		return nil
@@ -901,7 +929,7 @@ func (x *Index) End(tenant, runID string, status Status, answer, failure string,
 			// Held open: written, but not ended.
 			return Run{}, false
 		}
-		r.Status, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping, r.Question = status, at, false, "", false, nil
+		r.Status, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping, r.Question, r.Questions = status, at, false, "", false, nil, nil
 		x.finishAssistance(r)
 		return citationSnapshot(r), true
 	})
@@ -996,7 +1024,7 @@ func (x *Index) Stop(tenant, runID, answer, cause string, at time.Time) (Run, bo
 		if answer != "" {
 			r.Answer = answer
 		}
-		r.Status, r.Cause, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping, r.Question = Stopped, causeOf(cause, ""), at, false, "", false, nil
+		r.Status, r.Cause, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping, r.Question, r.Questions = Stopped, causeOf(cause, ""), at, false, "", false, nil, nil
 		x.finishAssistance(r)
 		return citationSnapshot(r), true
 	})

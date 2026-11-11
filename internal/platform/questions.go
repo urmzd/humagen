@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -483,15 +483,18 @@ func (p *Platform) askedMessage(ctx context.Context, run runs.Run, questionID st
 	if m, ok := p.Inbox.ByKey(run.Tenant, questionKey(run.ID, questionID)); ok {
 		return m, nil
 	}
-	// The event announces the question a moment before the runtime's
-	// record of it is written, so the run's own report is used first.
-	q, pending := event.Question{}, false
-	if run.Question != nil && run.Question.ID == questionID {
-		q, pending = *run.Question, true
-	} else if got, ok, err := p.rt.PendingQuestion(ctx, run.Tenant, run.ID); err == nil && ok {
-		q, pending = got, true
+	// The run's own report of what it waits on is used first, then the
+	// runtime's record. A run parked on a batch of questions waits on every
+	// one of them, and each is answered on its own.
+	q, pending := run.WaitsOn(questionID)
+	if !pending {
+		if open, err := p.rt.PendingQuestions(ctx, run.Tenant, run.ID); err == nil {
+			if i := slices.IndexFunc(open, func(x event.Question) bool { return x.ID == questionID }); i >= 0 {
+				q, pending = open[i], true
+			}
+		}
 	}
-	if !pending || q.ID != questionID {
+	if !pending {
 		return inbox.Message{}, fmt.Errorf("%w: run %q has no question %q", inbox.ErrNotFound, run.ID, questionID)
 	}
 	if IsEvaluation(run) {
@@ -635,7 +638,10 @@ func (p *Platform) wakeAtExpiry(tenant, runID string, q event.Question) {
 			return
 		}
 		run, err := p.Runs.Get(tenant, runID)
-		if err != nil || run.Status != runs.Parked || run.Question == nil || run.Question.ID != q.ID {
+		if err != nil || run.Status != runs.Parked {
+			return
+		}
+		if _, waits := run.WaitsOn(q.ID); !waits {
 			return
 		}
 		_ = p.queue.Enqueue(context.Background(), runID, 0)
@@ -662,15 +668,21 @@ func (p *Platform) observeQuestion(ctx context.Context, e event.Envelope) {
 	switch e.Type {
 	case event.TypeParked:
 		body, err := wire.LifecycleOf(e)
-		if err != nil || body.Question == nil {
+		if err != nil || len(body.Questions) == 0 {
 			return
 		}
 		if run, err := p.Runs.Get(e.Tenant, e.Run); err == nil {
-			// What could not be kept is logged where it was tried.
-			if m, err := p.raiseQuestion(ctx, run, *body.Question, ""); err == nil {
-				// A conversation that approves for a person answers here,
-				// off the event loop, since an answer wakes the run.
-				go p.autoApprove(ctx, run, *body.Question, m)
+			// A batch of tool calls that each wait parks the run once, on
+			// every question: each is raised as its own message, and
+			// answered on its own.
+			for _, q := range body.Questions {
+				// What could not be kept is logged where it was tried.
+				if m, err := p.raiseQuestion(ctx, run, q, ""); err == nil {
+					// A conversation that approves for a person answers
+					// here, off the event loop, since an answer wakes the
+					// run.
+					go p.autoApprove(ctx, run, q, m)
+				}
 			}
 		}
 	case event.TypeChildParked:
@@ -687,10 +699,13 @@ func (p *Platform) observeQuestion(ctx context.Context, e event.Envelope) {
 		p.answers.Lock()
 		defer p.answers.Unlock()
 		body, err := wire.LifecycleOf(e)
-		if err != nil || body.Answer == nil {
+		if err != nil || len(body.Answers) == 0 {
 			return
 		}
-		p.settleQuestion(e.Tenant, e.Run, body.Answer.QuestionID, outcomeOf(*body.Answer, p.now()), "")
+		// A run parked on several questions resumes once, with every answer.
+		for _, a := range body.Answers {
+			p.settleQuestion(e.Tenant, e.Run, a.QuestionID, outcomeOf(a, p.now()), "")
+		}
 		if run, err := p.Runs.Get(e.Tenant, e.Run); err == nil {
 			if err = p.settleSessionAlerts(e.Tenant, run.Thread); err != nil {
 				p.log.Error("session alerts could not be settled", "error", err)

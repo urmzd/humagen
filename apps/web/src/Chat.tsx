@@ -18,7 +18,7 @@ import {
   type Thread as ThreadRecord,
   type ThreadSummary,
 } from "./api.ts";
-import { askedOf, copyFor } from "./asks.ts";
+import { askedOf, asksOf, copyFor } from "./asks.ts";
 import { Composer, type ComposerSeed } from "./Composer.tsx";
 import { type ConversationForkActions, ConversationForkPanels } from "./ConversationForkPanels.tsx";
 import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
@@ -175,8 +175,8 @@ function TurnView({
   /** The reader's subject. */
   me: string;
   siblings: Run[];
-  /** The question the run waits on, as the reader stands to it: it is offered only when it is theirs. */
-  ask?: ThreadAsk;
+  /** The questions the run waits on, as the reader stands to each: one is offered only when it is theirs. */
+  ask?: ThreadAsk[];
   /** Follow the run's events. Off for settled turns, whose record is enough. */
   live: boolean;
   onSwitch: (id: string) => void;
@@ -584,7 +584,9 @@ export function Chat({
   const asks = useMemo(
     () =>
       Object.fromEntries(
-        (room?.turns ?? []).flatMap((t) => (t.run && t.ask ? [[t.run.id, t.ask]] : [])),
+        (room?.turns ?? []).flatMap((t) =>
+          t.run && asksOf(t).length ? [[t.run.id, asksOf(t)]] : [],
+        ),
       ),
     [room],
   );

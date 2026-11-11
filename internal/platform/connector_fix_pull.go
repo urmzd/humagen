@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/runs"
-	"github.com/urmzd/orchagent/flow/connector"
-	transport "github.com/urmzd/orchagent/flow/connectors/github"
+	"github.com/urmzd/saige/flow/connector"
+	transport "github.com/urmzd/saige/flow/connectors/github"
 )
 
 // authorizeFixPull binds repository writes to the actual run's requester.

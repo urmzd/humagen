@@ -8,9 +8,9 @@ import (
 
 	presentation "github.com/urmzd/humagen/internal/presentation/github"
 	github "github.com/urmzd/humagen/pkg/integrations/github"
-	"github.com/urmzd/orchagent/flow/address"
-	transport "github.com/urmzd/orchagent/flow/connectors/github"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/address"
+	transport "github.com/urmzd/saige/flow/connectors/github"
+	"github.com/urmzd/saige/flow/event"
 )
 
 func TestReviewHostProjectionPrecedesNativeAndCommentRendering(t *testing.T) {

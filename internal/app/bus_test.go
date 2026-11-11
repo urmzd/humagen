@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/orchagent/flow/bus"
+	"github.com/urmzd/saige/flow/bus"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/credref"
