@@ -1001,6 +1001,8 @@ export interface MemoryFiles {
   at?: string;
   entries: DriveEntry[];
   proposals: DriveProposal[];
+  /** You may write a file in this tree, by the check the write route makes. */
+  can_write: boolean;
 }
 
 export interface MemoryFile {
@@ -1012,6 +1014,18 @@ export interface MemoryFile {
   /** The file as text, empty when it is not text. */
   content: string;
   binary?: boolean;
+}
+
+export interface MemoryWriteInput {
+  scope: "me" | "project" | "agent";
+  project?: string;
+  agent?: string;
+  /** The file's path in the tree. */
+  file: string;
+  /** The file's new text, at most 1 MiB. */
+  content: string;
+  /** The tree version the file was read at. 0 is a tree never written. */
+  base_version: number;
 }
 
 export interface MemoryRestoreInput {

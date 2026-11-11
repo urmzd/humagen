@@ -2751,6 +2751,30 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: writeMemoryFile
+      tags: [agents]
+      summary: Write one memory file
+      description: "The file's new text becomes a new version of the tree; the history is kept. `base_version` is the tree version the file was read at: if the file changed since, the answer is 409 and nothing is written. Only whoever may write the tree directly is answered, which `can_write` on the tree says: your own tree you write yourself; a project's takes whoever may change its notes; an agent's takes agents:write and, for an agent that lives in a project, owning that project. Nothing is proposed here. Content is text of at most 1 MiB."
+      x-permission: runs:write
+      x-idempotent: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MemoryWriteInput"}
+      responses:
+        "200":
+          description: The tree as written.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MemoryFiles"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/memory/files/history:
     get:
       operationId: listMemoryHistory
@@ -12254,7 +12278,7 @@ components:
         snippet: {type: string}
     MemoryFiles:
       type: object
-      required: [tree, mount, version, entries, proposals]
+      required: [tree, mount, version, entries, proposals, can_write]
       properties:
         tree: {$ref: "#/components/schemas/DriveTree"}
         mount: {description: Where a run finds the tree., type: string}
@@ -12267,6 +12291,7 @@ components:
         proposals:
           type: array
           items: {$ref: "#/components/schemas/DriveProposal"}
+        can_write: {description: "You may write a file in this tree, by the check the write route makes.", type: boolean}
     MemoryFile:
       type: object
       required: [path, hash, size, version, content]
@@ -12277,6 +12302,17 @@ components:
         version: {description: "The version asked for, 0 for the newest.", type: integer, minimum: 0}
         content: {description: "The file as text, empty when it is not text.", type: string}
         binary: {type: boolean}
+    MemoryWriteInput:
+      type: object
+      additionalProperties: false
+      required: [scope, file, content, base_version]
+      properties:
+        scope: {type: string, enum: [me, project, agent]}
+        project: {type: string}
+        agent: {type: string}
+        file: {description: "The file's path in the tree.", type: string, maxLength: 512}
+        content: {description: "The file's new text, at most 1 MiB.", type: string, maxLength: 1048576}
+        base_version: {description: "The tree version the file was read at. 0 is a tree never written.", type: integer, minimum: 0}
     MemoryRestoreInput:
       type: object
       additionalProperties: false

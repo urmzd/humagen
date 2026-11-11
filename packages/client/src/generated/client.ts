@@ -160,6 +160,7 @@ import type {
   MemoryFile,
   MemoryFiles,
   MemoryRestoreInput,
+  MemoryWriteInput,
   MessageCreated,
   MessageFeedbackInput,
   MessageNode,
@@ -2721,6 +2722,25 @@ owner is no agent's, and answers 404.
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<MemoryFile>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** The file's new text becomes a new version of the tree; the history is kept. `base_version` is the tree version the file was read at: if the file changed since, the answer is 409 and nothing is written. Only whoever may write the tree directly is answered, which `can_write` on the tree says: your own tree you write yourself; a project's takes whoever may change its notes; an agent's takes agents:write and, for an agent that lives in a project, owning that project. Nothing is proposed here. Content is text of at most 1 MiB. */
+  async writeMemoryFile(body: MemoryWriteInput, options?: RequestOptions): Promise<MemoryFiles> {
+    const path = "/api/memory/files/content";
+    return this.request<MemoryFiles>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async writeMemoryFileRaw(body: MemoryWriteInput, options?: RequestOptions): Promise<ApiResponse<MemoryFiles>> {
+    const path = "/api/memory/files/content";
+    return this.rawRequest<MemoryFiles>("PUT", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }

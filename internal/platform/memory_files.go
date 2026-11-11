@@ -53,6 +53,31 @@ func (p *Platform) MemoryActor(who auth.Principal) drive.Actor {
 	}}
 }
 
+// MayWriteMemory reports whether who may write a file straight into a memory
+// tree. It is the rule the memory folders show as can_write, and it grants
+// nothing the notes routes do not: a person's own tree is theirs alone, a
+// project's takes whoever may change its notes (MayChangeNotes), and an
+// agent's takes agents:write, an agent that exists, and ownership of the
+// project the agent lives in (OwnsHome). Every case also takes runs:write,
+// which the file routes ask for, and what MemoryActor grants the tree.
+func (p *Platform) MayWriteMemory(ctx context.Context, who auth.Principal, t drive.Tree) bool {
+	if !who.Can(auth.RunsWrite) {
+		return false
+	}
+	switch t.Kind {
+	case drive.PersonKind:
+		return who.Kind == auth.User && who.Subject != "" && who.Subject == t.Person
+	case drive.AgentKind:
+		if _, err := p.Catalog().Get(ctx, who.Tenant, t.Agent, 0); err != nil {
+			return false
+		}
+		if p.OwnsHome(who, t.Agent) != nil {
+			return false
+		}
+	}
+	return p.MemoryActor(who).Grants(t).Write
+}
+
 // runActor is what a run may do to memory trees: what its requester may
 // read, it reads; it writes the requester's own tree; everything else it
 // only proposes, for a person to decide.

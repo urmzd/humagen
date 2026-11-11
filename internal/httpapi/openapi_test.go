@@ -627,7 +627,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: wire.AgentSpec{}}, "AgentSource": {typ: wire.Source{}},
 		"StorePackage": {typ: platform.StorePackage{}}, "StoreAgent": {typ: platform.StoreAgent{}}, "StoreInstall": {typ: platform.StoreInstall{}}, "StoreRemoval": {typ: platform.StoreRemoval{}},
 		"PackageBase": {typ: wire.PackageBase{}}, "AgentPackage": {typ: wire.AgentPackage{}}, "AgentAccess": {typ: wire.Access{}}, "Revision": {typ: revisionView{}}, "JoinDecision": {typ: join.Decision{}},
-		"Note": {typ: noteView{}}, "DriveTree": {typ: drive.Tree{}}, "DriveEntry": {typ: drive.Entry{}}, "DriveChange": {typ: drive.Change{}}, "DriveProposal": {typ: drive.Proposal{}}, "DriveVersion": {typ: drive.Version{}}, "DriveHit": {typ: drive.Hit{}}, "MemoryFiles": {typ: memoryTree{}}, "MemoryFile": {typ: memoryFile{}}, "MemoryRestoreInput": {typ: memoryRestore{}, written: true}, "MemoryDecisionInput": {typ: memoryDecision{}, written: true}, "LibraryScope": {typ: library.Scope{}}, "MemoryFolder": {typ: platform.MemoryFolder{}}, "LibrarySkillFile": {typ: library.File{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: event.Actor{}}, "Run": {typ: runs.Run{}},
+		"Note": {typ: noteView{}}, "DriveTree": {typ: drive.Tree{}}, "DriveEntry": {typ: drive.Entry{}}, "DriveChange": {typ: drive.Change{}}, "DriveProposal": {typ: drive.Proposal{}}, "DriveVersion": {typ: drive.Version{}}, "DriveHit": {typ: drive.Hit{}}, "MemoryFiles": {typ: memoryTree{}}, "MemoryFile": {typ: memoryFile{}}, "MemoryRestoreInput": {typ: memoryRestore{}, written: true}, "MemoryWriteInput": {typ: memoryWrite{}, written: true}, "MemoryDecisionInput": {typ: memoryDecision{}, written: true}, "LibraryScope": {typ: library.Scope{}}, "MemoryFolder": {typ: platform.MemoryFolder{}}, "LibrarySkillFile": {typ: library.File{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: event.Actor{}}, "Run": {typ: runs.Run{}},
 
 		"SourceDependency": {typ: platform.SourceDependency{}}, "SourceDependencies": {typ: platform.SourceDependencies{}},
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
@@ -1226,6 +1226,16 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(auditAdmin, "POST", decide, "/api/memory/files/proposals/"+proposal.ID, `{"scope":"me","decision":"maybe"}`, http.StatusBadRequest)
 	c.call(auditAdmin, "POST", decide, "/api/memory/files/proposals/"+proposal.ID, `{"scope":"me","decision":"approve"}`, http.StatusOK)
 	c.call(auditAdmin, "POST", decide, "/api/memory/files/proposals/"+proposal.ID, `{"scope":"me","decision":"discard"}`, http.StatusNotFound)
+	// A file is written against the version it was read at. A stale base is a
+	// conflict that writes nothing.
+	head := int(c.call(auditAdmin, "GET", files, files+"?scope=me", "", http.StatusOK).field("version").(float64))
+	written := c.call(auditAdmin, "PUT", content, content, fmt.Sprintf(`{"scope":"me","file":"plan.md","content":"Final plan","base_version":%d}`, head), http.StatusOK)
+	if written.field("can_write") != true || int(written.field("version").(float64)) != head+1 {
+		t.Errorf("the written tree = %s", written.raw)
+	}
+	c.call(auditAdmin, "PUT", content, content, fmt.Sprintf(`{"scope":"me","file":"plan.md","content":"Stale plan","base_version":%d}`, head), http.StatusConflict)
+	c.call(auditAdmin, "PUT", content, content, `{"scope":"me","file":"../x","content":"x","base_version":0}`, http.StatusBadRequest)
+	c.call(acme, "PUT", content, content, `{"scope":"me","file":"plan.md","content":"x","base_version":0}`, http.StatusNotFound)
 	found := c.call(auditAdmin, "GET", "/api/memory/search", "/api/memory/search?q=concise", "", http.StatusOK)
 	if len(sliceOf(found.field("hits"))) != 1 {
 		t.Errorf("search found %v", found.field("hits"))
