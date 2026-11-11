@@ -167,10 +167,21 @@ test("Library resource links retain their confined scope and selection", () => {
       skill: "sk-123",
     },
     { page: "library", section: "memory", scope: "agent", owner: "helper" },
+    {
+      page: "library",
+      section: "memory",
+      scope: "project",
+      owner: "Launch",
+      memoryView: "files",
+      file: "notes/m-1.md",
+    },
   ] as Route[]) {
     const url = new URL(href(route), "http://localhost");
     assert.deepEqual(parse(url.pathname, url.search), route);
   }
+  // Only memory has a files view, and only that one view is an address.
+  assert.deepEqual(parse("/library/skills", "?view=files"), { page: "library", section: "skills" });
+  assert.deepEqual(parse("/library/memory", "?view=other"), { page: "library", section: "memory" });
   assert.deepEqual(parse("/library/skills", `?scope=unexpected&skill=${"x".repeat(161)}`), {
     page: "library",
     section: "skills",
