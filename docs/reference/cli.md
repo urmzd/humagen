@@ -89,3 +89,49 @@ under Agents, Store in the console, or with
 For Slack, configure Slack's Events API endpoint and mention the app in Slack.
 See the [GitHub](github.md), [Slack](slack.md) and [client](clients.md) references
 for app setup, webhook verification and routing.
+
+## Use the agent store
+
+`humagen store` lists, installs and removes the agent store's packages in a
+running platform, through the same API as the console's Store page. Run
+`humagen start` first. The command only sends the request and prints the
+server's answer: the server decides what is installed, what an install adds and
+what a removal retires.
+
+```sh
+humagen store list
+humagen store install review
+humagen store remove review
+```
+
+| Verb | Request | Behavior |
+| --- | --- | --- |
+| `list` | `GET /api/store/packages` | One row per package: its name, its current version, whether the workspace has it installed, the agents for which the server offers an update, the agents installing would add, and its title |
+| `install NAME` | `POST /api/store/packages/{name}/install` | Adds the package's missing agents and prints the ones added. Installing an installed package adds nothing |
+| `remove NAME` | `DELETE /api/store/packages/{name}` | Retires the package's agents and prints the ones retired. An agent changed in the workspace is retired only with `--force` |
+
+`NAME` is a package's name (`humagen/core`) or its last part (`core`). Flags may
+come before or after it.
+
+| Flag | Behavior |
+| --- | --- |
+| `--server URL` | API base URL; defaults to `$HUMAGEN_URL`, then `http://localhost:8080` |
+| `--token REF` | API bearer token reference; defaults to `env:HUMAGEN_TOKEN`. An unset default sends no token for dev mode. `--token ''` explicitly disables authentication. An explicit non-empty reference must resolve locally. The token is never printed |
+| `--json` | Print the API's response as JSON, unchanged, without human output |
+| `--force` | `remove` only: sends `force=true`, which also retires agents changed in the workspace |
+
+```sh
+humagen store list --json
+humagen store remove core --force --server https://humagen.example.com --token op://vault/humagen/token
+```
+
+There is no `humagen store update`: the API has no call that takes a package
+update. `list` shows where the server offers one (`update_available`, per
+agent), and the API does not report an installed version separate from the
+package's current `version`.
+
+Errors go to stderr with exit code 1, with the HTTP status, the server's
+response and what to do: 401 and 403 name `--token` and `HUMAGEN_TOKEN` (`list`
+needs `agents:read`, `install` and `remove` need `agents:write`), 404 names the
+unknown package, 409 on `remove` names `--force`, and a server that cannot be
+reached names `--server` and `HUMAGEN_URL`.
