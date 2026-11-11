@@ -206,6 +206,8 @@ var copyKeyList = []string{
 	"agentStore.loading",
 	"agentStore.model",
 	"agentStore.needs",
+	"agentStore.openAgent",
+	"agentStore.page",
 	"agentStore.remove",
 	"agentStore.removing",
 	"agentStore.restore",

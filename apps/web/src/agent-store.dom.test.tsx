@@ -123,11 +123,60 @@ test("a card says what each agent is granted, above Install", async () => {
   ])
     assert.ok(text.includes(want), `${want} in ${text}`);
   assert.equal(words.connector("github"), "GitHub connection");
+  // Each agent is one line that says the same in short.
+  assert.equal(
+    lead.querySelector("summary")?.textContent,
+    `@code-reviewer ${words.summary("anthropic / claude-sonnet-5-5", 3, ["GitHub connection", "docs tool server"], 1)}`,
+  );
+  assert.equal(
+    words.summary("anthropic / claude-sonnet-5-5", 4, ["GitHub connection"], 3),
+    "anthropic / claude-sonnet-5-5 · 4 tools, GitHub connection, calls 3 agents",
+  );
+  assert.equal(
+    words.summary("offline / offline", 1, [], 1),
+    "offline / offline · 1 tool, calls 1 agent",
+  );
+  assert.equal(words.summary("offline / offline", 0, [], 0), "offline / offline · no tools");
+  // The rows are a definition list: each label is a term and its chips are
+  // inside its definition, so a chip that wraps stays beside the label.
+  const terms = [...lead.querySelectorAll("dl > dt")].map((dt) => dt.textContent);
+  assert.deepEqual(terms, [words.model, words.needs, words.calls, words.tools]);
+  const tools = [...lead.querySelectorAll("dl > dt")].find((dt) => dt.textContent === words.tools)
+    ?.nextElementSibling as HTMLElement;
+  assert.equal(tools.tagName, "DD");
+  assert.deepEqual(
+    [...tools.children].map((chip) => chip.textContent),
+    ["file_read", "github_read_context", "mcp:docs"],
+  );
+  assert.match(lead.querySelector("dl")?.className ?? "", /grid-cols-\[4rem_minmax\(0,1fr\)\]/);
   // An agent that needs no connection and calls no one has no such rows.
   const qa = container.querySelector('[data-agent="qa-reviewer"]') as HTMLElement;
-  assert.ok(qa.textContent?.includes("file_read"));
-  assert.equal(qa.textContent?.includes(words.needs), false);
-  assert.equal(qa.textContent?.includes(words.calls), false);
+  assert.deepEqual(
+    [...qa.querySelectorAll("dl > dt")].map((dt) => dt.textContent),
+    [words.model, words.tools],
+  );
+});
+
+test("a package not installed opens its agents, and an installed one keeps them closed", async () => {
+  net = stubFetch({
+    "GET /api/store/packages": () => ({ packages: [core()] }),
+    "POST /api/store/packages/humagen%2Fcore/install": () => ({
+      package: installedCore(),
+      added: ["humagen-writer", "humagen-analyst"],
+    }),
+  });
+  const { container } = render(<AgentStore canWrite />);
+  await screen.findByText("Core");
+  const all = () => [...container.querySelectorAll("details")] as HTMLDetailsElement[];
+  assert.equal(all().length, 2);
+  assert.ok(all().every((d) => d.open));
+  fireEvent.click(screen.getByRole("button", { name: `${words.install} Core` }));
+  await screen.findByText(words.installed);
+  assert.ok(all().every((d) => !d.open));
+  // An installed agent's rows end with the way to its page.
+  const link = container.querySelector('[data-agent="humagen-writer"] dd a') as HTMLAnchorElement;
+  assert.equal(link.textContent, words.openAgent);
+  assert.match(link.getAttribute("href") ?? "", /humagen-writer/);
 });
 
 test("Remove asks first, saying the agents are retired and their history stays", async () => {

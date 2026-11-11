@@ -561,6 +561,15 @@ export const defaultCopy = {
       ({ github: "GitHub connection", slack: "Slack connection" })[surface] ??
       `${surface} connection`,
     toolServer: (name: string) => `${name} tool server`,
+    page: "Page",
+    openAgent: "Open Agent",
+    // One line on a closed agent: "anthropic / claude-sonnet-5-5 · 4 tools, GitHub connection, calls 3 agents".
+    summary: (model: string, tools: number, needs: string[], calls: number) =>
+      `${model} · ${[
+        tools === 0 ? "no tools" : `${tools} ${tools === 1 ? "tool" : "tools"}`,
+        ...needs,
+        ...(calls > 0 ? [`calls ${calls} ${calls === 1 ? "agent" : "agents"}`] : []),
+      ].join(", ")}`,
   },
   agentSetup: {
     title: "New Agent",
