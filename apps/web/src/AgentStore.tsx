@@ -1,10 +1,11 @@
 import { defaultCopy } from "@humagen/components";
+import { ChevronRightIcon } from "@humagen/render-web";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { api, type StoreAgent, type StorePackage } from "./api.ts";
 import { ItemCard, itemGrid, Pill, Reference, Tag } from "./cards.tsx";
 import { href } from "./route.ts";
-import { button, Confirm, Problem, primary, Section } from "./ui.tsx";
+import { AgentMark, button, Confirm, Problem, primary, Section } from "./ui.tsx";
 
 /**
  * The agent store, on the Agents page: the platform's optional agents as
@@ -143,9 +144,9 @@ export function AgentStore({
                   ))
                 }
               >
-                <ul aria-label={words.uses} className="mb-2 flex min-w-0 flex-col gap-3">
+                <ul aria-label={words.uses} className="mb-2 flex min-w-0 flex-col">
                   {pkg.agents.map((a) => (
-                    <AgentUses key={a.name} agent={a} />
+                    <AgentUses key={a.name} agent={a} open={!pkg.installed} />
                   ))}
                 </ul>
                 {(partial || taken.length > 0 || customized.length > 0 || note[pkg.name]) && (
@@ -167,61 +168,85 @@ export function AgentStore({
 
 /**
  * One agent of a package and what installing grants it, above the card's
- * Install button: its model, the connections and tool servers its tools
- * need, the agents it may call, and its tools. Each row wraps, so a narrow
- * screen reads it top to bottom. An agent the workspace has opens its page;
- * one it lacks is only named.
+ * Install button. Closed, it is one line: the agent and a summary of its
+ * model, tools, connections and calls. Open, it is a definition list of
+ * Model, Needs, May call and Tools, each label in a fixed column with its
+ * chips wrapping beside it, never under it. A package not installed yet
+ * opens its agents, since that is when a person reads what they grant.
  */
-function AgentUses({ agent }: { agent: StoreAgent }) {
+function AgentUses({ agent, open }: { agent: StoreAgent; open: boolean }) {
   const words = defaultCopy.agentStore;
   const calls = agent.access.spawn ?? [];
   const row = (label: string, chips: ReactNode[]) =>
     chips.length > 0 && (
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-        <span className="w-14 shrink-0 text-aui-2xs text-aui-muted">{label}</span>
-        {chips}
-      </div>
+      <>
+        <dt className="flex min-h-5 items-center text-aui-2xs text-aui-muted">{label}</dt>
+        <dd className="m-0 flex min-w-0 flex-wrap items-center gap-1.5">{chips}</dd>
+      </>
     );
   return (
-    <li data-agent={agent.name} className="flex min-w-0 flex-col gap-1.5">
-      <div className="flex min-w-0">
-        {agent.installed ? (
-          <Reference
-            kind="agent"
-            label={`@${agent.name}`}
-            title={agent.description}
-            href={href({ page: "agent", name: agent.name, tab: "prompt" })}
+    <li data-agent={agent.name} className="min-w-0">
+      <details open={open} className="group/uses min-w-0">
+        <summary className="flex min-h-7 cursor-pointer list-none items-center gap-1.5 rounded-aui text-aui-xs hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden">
+          <ChevronRightIcon
+            size={12}
+            aria-hidden
+            className="shrink-0 text-aui-muted transition-transform group-open/uses:rotate-90"
           />
-        ) : (
-          <Reference label={`@${agent.name}`} title={agent.description} />
-        )}
-      </div>
-      {row(words.model, [
-        <Tag key="model">{words.modelName(agent.provider, agent.model)}</Tag>,
-        ...agent.fallbacks.map((f) => (
-          <Tag key={`${f.provider}/${f.model}`}>{words.fallback(f.provider, f.model)}</Tag>
-        )),
-      ])}
-      {row(words.needs, [
-        ...agent.connectors.map((surface) => (
-          <Reference
-            key={surface}
-            kind={surface === "github" || surface === "slack" ? surface : undefined}
-            label={words.connector(surface)}
-          />
-        )),
-        ...agent.tool_servers.map((name) => (
-          <Tag key={`server:${name}`}>{words.toolServer(name)}</Tag>
-        )),
-      ])}
-      {row(
-        words.calls,
-        calls.map((name) => <Reference key={name} kind="agent" label={`@${name}`} />),
-      )}
-      {row(
-        words.tools,
-        agent.tools.map((tool) => <Tag key={tool}>{tool}</Tag>),
-      )}
+          <AgentMark name={agent.name} size={14} />
+          <span className="min-w-0 text-aui-muted">
+            <span className="text-aui-fg">@{agent.name}</span>{" "}
+            {words.summary(
+              words.modelName(agent.provider, agent.model),
+              agent.tools.length,
+              [
+                ...agent.connectors.map(words.connector),
+                ...agent.tool_servers.map(words.toolServer),
+              ],
+              calls.length,
+            )}
+          </span>
+        </summary>
+        <dl className="m-0 grid min-w-0 grid-cols-[4rem_minmax(0,1fr)] gap-x-2 gap-y-1.5 pt-1 pb-2 pl-[18px]">
+          {row(words.model, [
+            <Tag key="model">{words.modelName(agent.provider, agent.model)}</Tag>,
+            ...agent.fallbacks.map((f) => (
+              <Tag key={`${f.provider}/${f.model}`}>{words.fallback(f.provider, f.model)}</Tag>
+            )),
+          ])}
+          {row(words.needs, [
+            ...agent.connectors.map((surface) => (
+              <Reference
+                key={surface}
+                kind={surface === "github" || surface === "slack" ? surface : undefined}
+                label={words.connector(surface)}
+              />
+            )),
+            ...agent.tool_servers.map((name) => (
+              <Tag key={`server:${name}`}>{words.toolServer(name)}</Tag>
+            )),
+          ])}
+          {row(
+            words.calls,
+            calls.map((name) => <Reference key={name} kind="agent" label={`@${name}`} />),
+          )}
+          {row(
+            words.tools,
+            agent.tools.map((tool) => <Tag key={tool}>{tool}</Tag>),
+          )}
+          {agent.installed &&
+            row(words.page, [
+              // An agent the workspace has opens its page; one it lacks is only named.
+              <Reference
+                key="page"
+                kind="agent"
+                label={words.openAgent}
+                title={agent.description}
+                href={href({ page: "agent", name: agent.name, tab: "prompt" })}
+              />,
+            ])}
+        </dl>
+      </details>
     </li>
   );
 }
