@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.118.0 (2026-11-11)
+
+### Features
+
+- **console**: agents are bots, activity is drawn, and the composer lights up ([ad815f6](https://github.com/urmzd/humagen/commit/ad815f6aa7ba417e4bd166ed73626db1eb35dacc))
+- **evals**: review feedback candidates into eval suites ([dde57c6](https://github.com/urmzd/humagen/commit/dde57c63fddc4aac1241cc6ae7a2b37ce2ed4b40))
+- **console**: create and delete memory files, list a file's versions, guard drafts ([147190e](https://github.com/urmzd/humagen/commit/147190ef00cdc5ddda39badf1350bab62c1eb9d4))
+- **memory**: delete one memory file and list one file's versions over the API ([f8c33b8](https://github.com/urmzd/humagen/commit/f8c33b86516cfefd78a1985640884cd8934e47be))
+- **store**: show what each agent is granted before install ([eaa1c10](https://github.com/urmzd/humagen/commit/eaa1c10f53e9ba98b3ffbe62878034ee29e2a684))
+- **console**: a workspace Knowledge graph page beside Agents > Knowledge ([7d8aff1](https://github.com/urmzd/humagen/commit/7d8aff1fc3a45a4bd239f51ad50ed669317d40a1))
+- **notifications**: start quiet hours from the browser's time zone ([623faaf](https://github.com/urmzd/humagen/commit/623faafe7fd5093b79b47d5aee70a24f3ab9329e))
+- **console**: add an Evals tab to a corpus ([938871a](https://github.com/urmzd/humagen/commit/938871a02126a0b001de1cb7259f3b07b187c9fd))
+- **console**: edit memory files ([8863ebc](https://github.com/urmzd/humagen/commit/8863ebc08064704f569e894e03a183cb7f3d5e65))
+- **memory**: write one memory file over the API ([c2a86b3](https://github.com/urmzd/humagen/commit/c2a86b3bfd72ac9328e2df36b7322718f269894a))
+- **console**: browse memory as files ([d215aac](https://github.com/urmzd/humagen/commit/d215aac2eb39616855831145f642f2cbc4fdb5ec))
+- **console**: show how fresh a corpus's sources are ([14ac8f2](https://github.com/urmzd/humagen/commit/14ac8f23c60109c3299dfc47ed35821adbd8ac1e))
+- **console**: agent calls as items, one activity tree, working threads in the prompt ([bcf30b4](https://github.com/urmzd/humagen/commit/bcf30b42b4a9539490a493fc09f3f1777585f555))
+
+### Bug Fixes
+
+- **console**: store requirement labels sit at the top of their row ([2b8d492](https://github.com/urmzd/humagen/commit/2b8d492c85b203bc7f1a145ddf47a3a7c18a7784))
+- **store**: each agent is one line that opens to aligned rows ([d57a29a](https://github.com/urmzd/humagen/commit/d57a29a1ef6cb300de09427fc86d589e1da8c04c))
+
+### Misc
+
+- regenerate copy keys for the consolidated console changes ([f1a88ef](https://github.com/urmzd/humagen/commit/f1a88ef16d5f092ef1bc342a7164fc0b3686b5c4))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.117.4...v0.118.0)
+
+
 ## 0.117.4 (2026-11-11)
 
 [Full Changelog](https://github.com/urmzd/humagen/compare/v0.117.3...v0.117.4)
