@@ -12,14 +12,31 @@ import {
   waiting,
   worked,
 } from "@humagen/core";
-import { ChevronRightIcon, MaximizeIcon } from "@humagen/render-web";
+import { CheckIcon, ChevronRightIcon, CopyIcon, MaximizeIcon, Shimmer } from "@humagen/render-web";
 import { Inspector } from "@humagen/web";
-import { type FormEvent, useEffect, useRef, useState } from "react";
-import { call } from "./api.ts";
+import {
+  createContext,
+  type FormEvent,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import type { Run } from "./adapter.ts";
+import { api, call } from "./api.ts";
 import { took, usd } from "./format.ts";
 import { Chips, inApp } from "./refChips.tsx";
-import type { ResponseSource } from "./responseSource.ts";
+import {
+  defaultTraceLoader,
+  messageIdOf,
+  type ResponseSource,
+  runsOf,
+  type TraceLoader,
+  traceSource,
+} from "./responseSource.ts";
 import { href } from "./route.ts";
+import { DetailsNavigation } from "./SessionDetails.tsx";
 import type { Chip, Reference } from "./trace.ts";
 import { AgentMark, SkeletonRows } from "./ui.tsx";
 
@@ -172,6 +189,64 @@ export function responseChips(state: ResponseState, origin?: Reference): Chip[] 
   return chips;
 }
 
+/**
+ * What the panel was opened on: a call, by the run it started, and a step,
+ * by its tool call. Every lane on the way down to it is open, and it is
+ * scrolled to.
+ */
+const Focus = createContext<{ run?: string; step?: string }>({});
+
+const marks = (t: ResponseTool, f: { run?: string; step?: string }) =>
+  (f.run !== undefined && t.runId === f.run) || (f.step !== undefined && t.id === f.step);
+
+/** The calls from the root down to the one focused, or none when it is not here. */
+export function pathTo(
+  blocks: ResponseBlock[],
+  focus: { run?: string; step?: string },
+): ResponseTool[] {
+  for (const b of blocks) {
+    if (b.type !== "tool") continue;
+    if (marks(b, focus)) return [b];
+    const under = pathTo(b.content, focus);
+    if (under.length) return [b, ...under];
+  }
+  return [];
+}
+
+/** Scrolls the focused item into view once it is drawn. */
+function useArrive(on: boolean) {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (on) ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, [on]);
+  return ref;
+}
+
+/** Stops the run behind a call that is still working, from its own line. */
+function LaneStop({ run, agent }: { run: string; agent: string }) {
+  const [state, setState] = useState<"idle" | "pending" | "failed">("idle");
+  return (
+    <button
+      type="button"
+      data-testid="lane-stop"
+      disabled={state === "pending"}
+      onClick={(e) => {
+        // The line is a summary: stopping must not also fold it.
+        e.preventDefault();
+        setState("pending");
+        api.stopRun(run).catch(() => setState("failed"));
+      }}
+      className={`inline-flex min-h-7 shrink-0 items-center rounded-aui px-1.5 text-aui-xs hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-60 ${state === "failed" ? "text-aui-bad" : "text-aui-muted hover:text-aui-fg"}`}
+    >
+      {state === "pending"
+        ? defaultCopy.conversation.stoppingAgent(agent)
+        : state === "failed"
+          ? defaultCopy.conversation.stopDelayed
+          : defaultCopy.conversation.stopAgent(agent)}
+    </button>
+  );
+}
+
 const statusTone = (t: ResponseTool) =>
   t.status === "error" || t.status === "denied"
     ? "text-aui-bad"
@@ -308,7 +383,9 @@ function ToolPart({
   messageId?: string;
   onAnswered?: () => void;
 }) {
-  const urgent = tool.status === "error" || isAwaiting(tool.status);
+  const focused = useContext(Focus).step === tool.id;
+  const arrive = useArrive(focused);
+  const urgent = focused || tool.status === "error" || isAwaiting(tool.status);
   const meta = [
     words.status[tool.status],
     tool.elapsedMs !== undefined && isTerminal(tool.status) ? took(tool.elapsedMs) : "",
@@ -317,7 +394,13 @@ function ToolPart({
     .filter(Boolean)
     .join(" · ");
   return (
-    <li data-testid="activity-part" data-tool={tool.id} data-status={tool.status}>
+    <li
+      ref={arrive as React.Ref<HTMLLIElement>}
+      data-testid="activity-part"
+      data-tool={tool.id}
+      data-status={tool.status}
+      data-focused={focused || undefined}
+    >
       <details open={urgent} className="group/part">
         <summary className="flex min-h-7 cursor-pointer list-none items-center gap-1.5 rounded-aui text-aui-xs hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent">
           <ChevronRightIcon
@@ -385,6 +468,7 @@ function Lane({
   tool,
   blocks,
   root,
+  result,
   messageId,
   onAnswered,
 }: {
@@ -394,6 +478,8 @@ function Lane({
   tool?: ResponseTool;
   blocks: ResponseBlock[];
   root?: boolean;
+  /** What the call came back with, when its own blocks do not already say it. */
+  result?: ReactNode;
   messageId?: string;
   onAnswered?: () => void;
 }) {
@@ -407,47 +493,69 @@ function Lane({
   ).length;
   // A lane that runs while someone under it waits or failed says so.
   const shown = tool?.attention && status === "running" ? tool.attention.status : status;
-  return (
-    <section
-      data-testid="activity-lane"
-      data-agent={agent}
-      aria-label={agent}
-      className={
-        root
-          ? "flex flex-col gap-2"
-          : "flex flex-col gap-2 border-[var(--humagen-rule)] border-l pl-3"
-      }
-    >
-      <p className="flex min-w-0 items-center gap-2 text-aui-sm">
-        <AgentMark name={agent} size={18} />
-        <span className="max-w-[50%] shrink-0 truncate font-medium text-aui-fg">{agent}</span>
-        {title && (
-          <span className="min-w-0 flex-1 truncate text-aui-muted text-aui-xs">{title}</span>
-        )}
-        {shown && shown !== "done" && (
-          <span
-            className={`ml-auto shrink-0 text-aui-xs ${shown === "error" || shown === "denied" ? "text-aui-bad" : isAwaiting(shown) ? "text-aui-warn" : "text-aui-muted"}`}
-          >
-            {words.status[shown]}
-          </span>
-        )}
-        {tool?.elapsedMs !== undefined && status === "done" && (
-          <span className="ml-auto shrink-0 text-aui-muted text-aui-xs tabular-nums">
-            {took(tool.elapsedMs)}
-          </span>
-        )}
-        {tool?.runId && (
-          <a
-            href={href({ page: "message", id: tool.runId })}
-            onClick={inApp}
-            aria-label={words.focus(agent)}
-            title={words.focus(agent)}
-            className="inline-flex size-7 shrink-0 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-          >
-            <MaximizeIcon size={14} />
-          </a>
-        )}
-      </p>
+  const running = shown === "running";
+  // A called agent is one item: its line, and under it what it did. It is
+  // open while it works, waits on someone or failed, and closed once done.
+  const focus = useContext(Focus);
+  const focused = !!tool && marks(tool, focus);
+  const arrive = useArrive(focused);
+  // A call that does not wait is delegated: the agent carries on by itself
+  // and answers later, not back into its caller's turn.
+  const delegated = tool?.input.background === true;
+  const urgent =
+    focused ||
+    pathTo(blocks, focus).length > 0 ||
+    running ||
+    shown === "error" ||
+    shown === "denied" ||
+    (shown !== undefined && isAwaiting(shown));
+  const line = (
+    <>
+      {!root && (
+        <ChevronRightIcon
+          size={12}
+          aria-hidden
+          className="shrink-0 text-aui-muted transition-transform group-open/lane:rotate-90"
+        />
+      )}
+      <AgentMark name={agent} size={18} />
+      <span className="max-w-[50%] shrink-0 truncate font-medium text-aui-fg">
+        {running && !root ? <Shimmer>{agent}</Shimmer> : agent}
+      </span>
+      {delegated && (
+        <span className="shrink-0 rounded-full border border-aui-border px-1.5 text-aui-2xs text-aui-muted">
+          {words.delegated}
+        </span>
+      )}
+      {title && <span className="min-w-0 flex-1 truncate text-aui-muted text-aui-xs">{title}</span>}
+      {shown && shown !== "done" && (
+        <span
+          className={`ml-auto shrink-0 text-aui-xs ${shown === "error" || shown === "denied" ? "text-aui-bad" : isAwaiting(shown) ? "text-aui-warn" : "text-aui-muted"}`}
+        >
+          {words.status[shown]}
+        </span>
+      )}
+      {tool?.elapsedMs !== undefined && status === "done" && (
+        <span className="ml-auto shrink-0 text-aui-muted text-aui-xs tabular-nums">
+          {took(tool.elapsedMs)}
+        </span>
+      )}
+      {tool?.runId && running && !root && <LaneStop run={tool.runId} agent={agent} />}
+      {tool?.runId && (
+        <a
+          href={href({ page: "message", id: tool.runId })}
+          onClick={inApp}
+          aria-label={words.focus(agent)}
+          title={words.focus(agent)}
+          className="inline-flex size-7 shrink-0 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+        >
+          <MaximizeIcon size={14} />
+        </a>
+      )}
+    </>
+  );
+  const body = (
+    <>
       {tool?.progress && shown === "running" && (
         <p className="text-aui-muted text-aui-xs">{tool.progress}</p>
       )}
@@ -494,16 +602,18 @@ function Lane({
                     blocks={b.content}
                     messageId={messageId}
                     onAnswered={onAnswered}
+                    result={
+                      b.result &&
+                      b.status !== "stopped" &&
+                      b.content.every((c) => c.type !== "text") && (
+                        <p
+                          className={`whitespace-pre-wrap text-aui-sm ${b.result.isError ? "text-aui-bad" : "text-aui-fg"}`}
+                        >
+                          {b.result.text}
+                        </p>
+                      )
+                    }
                   />
-                  {b.result &&
-                    b.status !== "stopped" &&
-                    b.content.every((c) => c.type !== "text") && (
-                      <p
-                        className={`mt-1 whitespace-pre-wrap pl-3 text-aui-sm ${b.result.isError ? "text-aui-bad" : "text-aui-fg"}`}
-                      >
-                        {b.result.text}
-                      </p>
-                    )}
                 </li>
               );
             return <ToolPart key={b.id} tool={b} messageId={messageId} onAnswered={onAnswered} />;
@@ -512,6 +622,41 @@ function Lane({
         })}
       </ul>
       {hidden > 0 && <p className="text-aui-muted text-aui-xs">{words.privateSteps(hidden)}</p>}
+      {result}
+    </>
+  );
+  if (root)
+    return (
+      <section
+        data-testid="activity-lane"
+        data-agent={agent}
+        aria-label={agent}
+        className="flex flex-col gap-2"
+      >
+        <p className="flex min-w-0 items-center gap-2 text-aui-sm">{line}</p>
+        {body}
+      </section>
+    );
+  return (
+    <section
+      ref={arrive}
+      data-testid="activity-lane"
+      data-agent={agent}
+      data-focused={focused || undefined}
+      data-delegated={delegated || undefined}
+      aria-label={agent}
+      className="scroll-mt-4"
+    >
+      <details open={urgent} className="group/lane">
+        <summary
+          className={`-mx-1.5 flex min-h-9 pointer-coarse:min-h-11 min-w-0 cursor-pointer list-none items-center gap-2 rounded-aui px-1.5 text-aui-sm hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent [&::-webkit-details-marker]:hidden ${focused ? "bg-aui-hover" : ""}`}
+        >
+          {line}
+        </summary>
+        <div className="mt-1 ml-1.5 flex flex-col gap-2 border-[var(--humagen-rule)] border-l pl-3">
+          {body}
+        </div>
+      </details>
     </section>
   );
 }
@@ -551,6 +696,28 @@ export function ActivityLanes({
       />
     </div>
   );
+}
+
+/** A response's activity as Markdown: each agent under who called it, with what it did and said. */
+export function activityMarkdown(state: ResponseState): string {
+  const lane = (
+    agent: string,
+    title: string | undefined,
+    blocks: ResponseBlock[],
+    depth: number,
+  ) => {
+    const out = [`${"#".repeat(Math.min(depth + 2, 6))} ${agent}${title ? `: ${title}` : ""}`];
+    for (const b of blocks) {
+      if (b.type === "text" && b.text.trim()) out.push(b.text.trim());
+      if (b.type !== "tool" || b.hidden) continue;
+      if (b.kind === "agent") {
+        out.push(lane(b.agent ?? b.name, b.title, b.content, depth + 1));
+        if (b.result && b.content.every((c) => c.type !== "text")) out.push(b.result.text.trim());
+      } else out.push(`- ${b.title || b.name} (${words.status[b.status]})`);
+    }
+    return out.join("\n\n");
+  };
+  return `${lane(state.agent ?? "", undefined, state.content, 0)}\n`;
 }
 
 /**
@@ -597,18 +764,62 @@ export function summaryOf(state: ResponseState): string {
 export function ResponseActivityPanel({
   source,
   messageId,
+  focus,
+  step,
   leaving,
+  onFocus,
   onClose,
 }: {
   source: ResponseSource;
   /** The message to answer questions on; without it, questions show but cannot be answered here. */
   messageId?: string;
+  /** A call to open on, by the run it started: every lane down to it is open. */
+  focus?: string;
+  /** A step to open on, by its tool call. */
+  step?: string;
   leaving?: boolean;
+  /** Steps along the path to the focused call, or back to the root with nothing. */
+  onFocus?: (run?: string) => void;
   onClose: () => void;
 }) {
   const { state, ended, said, version } = useResponse(source);
+  const navigation = useContext(DetailsNavigation);
+  const [copied, setCopied] = useState(false);
+  const path = focus || step ? pathTo(state.content, { run: focus, step }) : [];
+  // The trail ends at the agent the focus is in: a step is in its caller's lane.
+  const trail = path.filter((t) => t.kind === "agent");
+  const copy = () =>
+    void navigator.clipboard?.writeText(activityMarkdown(state)).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
   return (
-    <Inspector open={!leaving} title={words.activity} working={!ended} onClose={onClose}>
+    <Inspector
+      open={!leaving}
+      title={navigation ? "Details" : words.activity}
+      lead={navigation}
+      working={!ended}
+      onClose={onClose}
+      onEscape={() => (focus && onFocus ? onFocus() : onClose())}
+      actions={
+        state.content.length > 0 && (
+          <button
+            type="button"
+            data-testid="activity-copy"
+            onClick={copy}
+            className="inline-flex size-9 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+            aria-label={
+              copied ? defaultCopy.conversation.copied : defaultCopy.conversation.copyConversation
+            }
+            title={
+              copied ? defaultCopy.conversation.copied : defaultCopy.conversation.copyConversation
+            }
+          >
+            {copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
+          </button>
+        )
+      }
+    >
       <div data-testid="response-activity" data-version={version} className="flex flex-col gap-3">
         <output aria-live="polite" className="sr-only">
           {said}
@@ -617,16 +828,118 @@ export function ResponseActivityPanel({
           <SkeletonRows count={3} />
         ) : (
           <>
+            {trail.length > 0 && (
+              <nav
+                aria-label="Called by"
+                data-testid="activity-trail"
+                className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-aui-muted text-aui-xs"
+              >
+                <button
+                  type="button"
+                  onClick={() => onFocus?.()}
+                  className="inline-flex items-center gap-1 rounded-aui-sm hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+                >
+                  <AgentMark name={state.agent ?? ""} size={12} />
+                  {state.agent}
+                </button>
+                {trail.map((t, i) => (
+                  <span key={t.id} className="inline-flex items-center gap-1">
+                    <ChevronRightIcon size={12} aria-hidden />
+                    {i === trail.length - 1 ? (
+                      <span
+                        aria-current="page"
+                        className="inline-flex items-center gap-1 text-aui-fg"
+                      >
+                        <AgentMark name={t.agent ?? t.name} size={12} />
+                        {t.agent ?? t.name}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onFocus?.(t.runId)}
+                        className="inline-flex items-center gap-1 rounded-aui-sm hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+                      >
+                        <AgentMark name={t.agent ?? t.name} size={12} />
+                        {t.agent ?? t.name}
+                      </button>
+                    )}
+                  </span>
+                ))}
+              </nav>
+            )}
             {costOf(state) && (
               <p className="text-aui-muted text-aui-xs" data-testid="activity-summary">
                 {costOf(state)}
               </p>
             )}
             {state.error && <p className="text-aui-bad text-aui-sm">{state.error}</p>}
-            <ActivityLanes state={state} messageId={messageId} />
+            <Focus.Provider value={{ run: focus, step }}>
+              <ActivityLanes state={state} messageId={messageId} />
+            </Focus.Provider>
           </>
         )}
       </div>
     </Inspector>
+  );
+}
+
+/**
+ * A conversation's activity: the tree of one turn, rooted at the agent that
+ * answered it. A turn is opened as its own root. Any other run is a call
+ * somewhere under a turn: the turn that holds it is found and its tree opens
+ * on that call. With no run named, the latest turn shows.
+ */
+export function ConversationActivity({
+  turns,
+  focus,
+  step,
+  leaving,
+  loader = defaultTraceLoader,
+  onFocus,
+  onClose,
+}: {
+  /** The conversation's turns, oldest first. */
+  turns: Run[];
+  focus?: string | null;
+  step?: string;
+  leaving?: boolean;
+  loader?: TraceLoader;
+  onFocus?: (run: string | null) => void;
+  onClose: () => void;
+}) {
+  const own = turns.find((t) => t.id === focus);
+  const latest = turns[turns.length - 1];
+  const [found, setFound] = useState<{ focus: string; root: string }>();
+  const ids = turns.map((t) => t.id).join(",");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the turns are named by ids
+  useEffect(() => {
+    if (!focus || own) return;
+    let on = true;
+    (async () => {
+      // Newest first: a call is most often asked about on the turn just read.
+      for (const turn of [...turns].reverse()) {
+        const trace = await loader.trace(messageIdOf(turn)).catch(() => undefined);
+        if (!on) return;
+        if (trace && runsOf(trace).has(focus)) return setFound({ focus, root: turn.id });
+      }
+    })();
+    return () => {
+      on = false;
+    };
+  }, [focus, ids, !!own]);
+  const root =
+    own ??
+    (focus && found?.focus === focus ? turns.find((t) => t.id === found.root) : undefined) ??
+    latest;
+  if (!root) return null;
+  return (
+    <ResponseActivityPanel
+      source={traceSource(root, loader)}
+      focus={focus && focus !== root.id ? focus : undefined}
+      step={step}
+      leaving={leaving}
+      onFocus={(run) => onFocus?.(run ?? root.id)}
+      onClose={onClose}
+    />
   );
 }

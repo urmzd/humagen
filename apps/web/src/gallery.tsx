@@ -3,7 +3,6 @@ import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "@humagen/render-web/fonts.css";
 import "./styles.css";
-import { ActivityPanel } from "./Activity.tsx";
 import { sampleTrees } from "./activity.fixtures.ts";
 import { InboxPage } from "./InboxPage.tsx";
 import { LimitsPanel } from "./Limits.tsx";
@@ -283,29 +282,6 @@ function Gallery() {
               <LimitsPanel data={l} onAnalytics={() => {}} onRaise={() => {}} />
             </div>
           ))}
-        </div>
-      </Section>
-
-      <Section title="Activity: a conversation's runs, then one run's whole conversation">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* The panel is a full sheet below the lg width. A transform keeps each one inside its box here. */}
-          <div
-            data-testid="gallery-activity"
-            className="relative flex h-[40rem] overflow-hidden rounded-aui-lg border border-[var(--humagen-rule)] [transform:translateZ(0)] [&>aside]:w-full"
-          >
-            <ActivityPanel
-              trees={trees}
-              selected={run}
-              onSelect={setRun}
-              onClose={() => setRun(null)}
-            />
-          </div>
-          <div className="relative flex h-[40rem] overflow-hidden rounded-aui-lg border border-[var(--humagen-rule)] [transform:translateZ(0)] [&>aside]:w-full">
-            <ActivityPanel trees={trees} selected="r2a" onSelect={() => {}} onClose={() => {}} />
-          </div>
-          <div className="relative flex h-[40rem] overflow-hidden rounded-aui-lg border border-[var(--humagen-rule)] [transform:translateZ(0)] [&>aside]:w-full">
-            <ActivityPanel trees={[]} selected={null} onSelect={() => {}} onClose={() => {}} />
-          </div>
         </div>
       </Section>
 

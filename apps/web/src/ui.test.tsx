@@ -6,7 +6,6 @@ import { WebSurface } from "@humagen/render-web";
 import { AgentMessage, agentInitials } from "@humagen/web";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ActivityPanel, ordered, ordinals, trailOf } from "./Activity.tsx";
 import { sampleTrees } from "./activity.fixtures.ts";
 import { type Run, turnOf } from "./adapter.ts";
 import type { Me, ProjectView, ScheduleView, ThreadSummary } from "./api.ts";
@@ -28,6 +27,7 @@ import { DrawerButton, Sidebar } from "./Sidebar.tsx";
 import { StorageUsed, StoredDetail, StoredList } from "./Storage.tsx";
 import { memoryStorage, sampleFiles, sampleUse } from "./storage.fixtures.ts";
 import { bytes, contentUrl, matches, showsInline } from "./storage.ts";
+import { WorkingStrip } from "./WorkingStrip.tsx";
 
 const sidebarMe: Me = {
   principal: { subject: "ada", tenant: "acme", name: "Ada", roles: ["member"] },
@@ -1273,91 +1273,6 @@ test("on a phone, one small button opens the sidebar, and there is no bottom bar
   );
 });
 
-const activity = (
-  selected: string | null,
-  trees = sampleTrees(),
-  over: Partial<Parameters<typeof ActivityPanel>[0]> = {},
-) =>
-  html(
-    <ActivityPanel
-      trees={trees}
-      selected={selected}
-      onSelect={() => {}}
-      onClose={() => {}}
-      {...over}
-    />,
-  );
-
-test("activity: a tree is listed parent first, in the order things were called", () => {
-  const [, second] = sampleTrees();
-  assert.ok(second);
-  assert.deepEqual(
-    ordered({ ...second, runs: [...second.runs].reverse() }).map((r) => r.id),
-    ["r2", "r2a", "r2a1", "r2b"],
-  );
-});
-
-test("activity: an agent that runs again gets a number, and the trail leads from the turn to the run", () => {
-  const trees = sampleTrees();
-  const nth = ordinals(trees);
-  assert.equal(nth.get("r1"), 1);
-  assert.equal(nth.get("r2"), 2, "lead answers a second turn");
-  assert.equal(nth.get("r3"), 3);
-  assert.equal(nth.get("r2b"), 1);
-  assert.equal(nth.get("r3a"), 2, "oncall is called again");
-  const runs = new Map(trees.flatMap((t) => t.runs.map((r) => [r.id, r] as const)));
-  assert.deepEqual(
-    trailOf(runs, "r2a1").map((r) => r.agent),
-    ["lead", "releaser", "helper"],
-  );
-});
-
-test("ActivityPanel: with nothing run, it says so, and says Loading while it is finding out", () => {
-  assert.match(activity(null, []), /Nothing has run yet/);
-  assert.match(activity(null, [], { loading: true }), />Loading</);
-  assert.doesNotMatch(activity(null, []), /data-testid="activity-row"/);
-});
-
-test("ActivityPanel: every agent run, oldest first, with no filters", () => {
-  const out = activity(null);
-  const ids = [...out.matchAll(/data-testid="activity-row" data-run="([^"]+)"/g)].map((m) => m[1]);
-  const all = sampleTrees()
-    .flatMap((t) => t.runs)
-    .sort((a, b) => a.created_at.localeCompare(b.created_at))
-    .map((r) => r.id);
-  assert.deepEqual(ids, all);
-  assert.doesNotMatch(out, /Handoffs|Hide Tools|Show Tools|\d+ runs?,/);
-});
-
-test("ActivityPanel: a row says how its agent stands only when a still mark would not", () => {
-  const out = activity(null);
-  assert.match(out, />Failed</);
-  assert.doesNotMatch(out, />Done</);
-  assert.match(out, /aria-label="Stop oncall"/, "a working agent's mark stops it");
-});
-
-test("ActivityPanel: an agent opens to its conversation: what it was asked, by whom, and how it answered", () => {
-  const out = activity("r2a");
-  assert.match(out, /data-testid="activity-conversation"/);
-  assert.match(out, /lead asked/);
-  assert.match(out, /Tag 2\.4\.0 and write the changelog/, "what it was asked");
-  assert.match(out, /already exists/, "why it failed");
-});
-
-test("ActivityPanel: every call of an agent is one conversation, and the trail steps back out through each caller", () => {
-  assert.equal(activity("r2").match(/data-testid="activity-conversation"/g)?.length, 3);
-  const out = activity("r2a1");
-  const nav = out.match(/<nav aria-label="Called by".*?<\/nav>/s)?.[0] ?? "";
-  assert.match(nav, />All runs</);
-  assert.match(nav, /<button[^>]*>.*?lead<\/button>/s);
-  assert.match(nav, /<button[^>]*>.*?releaser<\/button>/s);
-  assert.match(nav, /aria-current="page"[^>]*>.*?helper</s);
-});
-
-test("ActivityPanel: a selection that no longer exists falls back to the list", () => {
-  assert.match(activity("gone"), /data-testid="activity-row"/);
-});
-
 const second = () => {
   const tree = sampleTrees()[1];
   assert.ok(tree);
@@ -1821,24 +1736,6 @@ test("a stopped run is over, is not a failure, and says why when the platform do
   assert.match(md, /- Status: Stopped/);
   assert.match(md, /\*\*Stopped\*\*\n\nStopped by Ada/);
   assert.doesNotMatch(md, /\*\*Failed\*\*/);
-
-  const [tree] = sampleTrees().slice(1);
-  assert.ok(tree);
-  const trees = [
-    {
-      ...tree,
-      runs: tree.runs.map((r) => (r.id === "r2b" ? { ...r, status: "stopped" as const } : r)),
-    },
-  ];
-  const out = html(
-    <ActivityPanel trees={trees} selected={null} onSelect={() => {}} onClose={() => {}} />,
-  );
-  assert.doesNotMatch(
-    out,
-    /data-testid="activity-running"/,
-    "a stopped run does not count as running",
-  );
-  assert.match(out, /data-run="r2b"[^>]*data-status="stopped"/);
 });
 
 const panel = (
@@ -1961,32 +1858,6 @@ test("SessionGauge: the bottom edge follows the binding limit, and without one i
   assert.match(plain, /\$0\.50 of \$2\.00 spent or handed to calls, 25%/);
 });
 
-test("Activity: a selected run shows the limits it draws on, with only its own runs", () => {
-  const out = html(
-    <ActivityPanel
-      trees={sampleTrees()}
-      selected="r2a"
-      limits={sessionBound()}
-      onSelect={() => {}}
-      onClose={() => {}}
-    />,
-  );
-  assert.match(out, /data-testid="activity-limits"/);
-  assert.match(out, /Limits it draws on/);
-  const within = out.slice(out.indexOf('data-testid="activity-limits"'));
-  assert.equal(
-    within.slice(0, within.indexOf("</details>")).match(/data-testid="limits-agent"/g)?.length,
-    2,
-    "releaser and the helper it called",
-  );
-  assert.doesNotMatch(
-    html(
-      <ActivityPanel trees={sampleTrees()} selected="r2a" onSelect={() => {}} onClose={() => {}} />,
-    ),
-    /activity-limits/,
-  );
-});
-
 test("every custom property the console reads is one it defines", () => {
   const dir = new URL("./", import.meta.url);
   const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
@@ -2012,35 +1883,6 @@ test("every custom property the console reads is one it defines", () => {
   );
   assert.deepEqual(missing, [], "read but never defined");
   assert.doesNotMatch(code, /\boap-/, "the old prefix is gone");
-});
-
-test("Activity preserves a helper's constructed examples and resolved input", () => {
-  const trees = sampleTrees();
-  const selected = trees.flatMap((tree) => tree.runs).find((run) => run.id === "r2a");
-  assert.ok(selected);
-  selected.input = {
-    input: {
-      messages: [
-        { role: "user", content: [{ type: "text", text: "Example question" }] },
-        { role: "assistant", content: [{ type: "text", text: "Example answer" }] },
-        { role: "user", content: [{ type: "artifact", id: "art-1", version: 2 }] },
-      ],
-      response_format: { type: "summary", max_words: 80 },
-    },
-    messages: [
-      { role: "user", text: "Example question" },
-      { role: "assistant", text: "Example answer" },
-      { role: "user", text: "Frozen artifact contents" },
-    ],
-  };
-  const out = html(
-    <ActivityPanel trees={trees} selected="r2a" onSelect={() => {}} onClose={() => {}} />,
-  );
-  assert.match(out, /Return format: summary/);
-  assert.match(out, /Example response/);
-  assert.match(out, /Example answer/);
-  assert.match(out, /Frozen artifact contents/);
-  assert.ok(out.indexOf("Example question") < out.indexOf("Example answer"));
 });
 
 test("a page's actions shrink to its column and wrap there, so none runs off a phone's edge", () => {
@@ -2320,4 +2162,28 @@ test("under a hub's tabs, a page whose title repeats the open tab says it once",
   );
   assert.doesNotMatch(detail, /class="sr-only">lead/);
   assert.match(detail, />lead<\/h1>/);
+});
+
+test("the prompt lists every thread at work: agent, for whom when not the reader, Stop, and folds past three", () => {
+  const runs = ["lead", "researcher", "writer", "qa-reviewer"].map((agent, i) =>
+    runOf({
+      id: `w${i}`,
+      agent,
+      status: "running",
+      actor:
+        i === 1 ? { id: "u2", user: "ada@example.com", display: "Ada" } : { id: "u1", user: "me" },
+    }),
+  );
+  const out = html(<WorkingStrip runs={runs.slice(0, 2)} me="me" onOpen={() => {}} />);
+  assert.equal(out.match(/data-testid="working-thread"/g)?.length, 2);
+  assert.match(out, /aria-label="2 threads working"/);
+  assert.match(out, />lead</);
+  assert.match(out, /Open researcher&#x27;s activity/);
+  assert.equal(out.match(/>for Ada</g)?.length, 1, "only another person's thread says for whom");
+  assert.doesNotMatch(out, /ada@example\.com/, "by name, never by the subject");
+  assert.equal(out.match(/>Stop</g)?.length, 2, "each thread has its own Stop");
+  const many = html(<WorkingStrip runs={runs} me="me" />);
+  assert.equal(many.match(/data-testid="working-thread"/g)?.length, 3);
+  assert.match(many, />\+1 working</);
+  assert.equal(html(<WorkingStrip runs={[]} />), "", "nothing at work, nothing said");
 });

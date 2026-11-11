@@ -39,7 +39,6 @@ await loadTests([
   "/src/catalog.dom.test.tsx",
   "/src/corpora.dom.test.tsx",
   "/src/email-preferences.dom.test.tsx",
-  "/src/activity.dom.test.tsx",
   "/src/patterns.dom.test.tsx",
   "/src/message-refs.dom.test.tsx",
   "/src/item-page.dom.test.tsx",

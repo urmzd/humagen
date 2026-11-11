@@ -173,8 +173,14 @@ export function Composer({
   sessionAgents,
   plus,
   voice,
+  status,
   disclaimer = defaultCopy.disclaimer(defaultCopy.product),
 }: {
+  /**
+   * What is at work here, said at the top of the box: one line for each
+   * thread, each with its own Stop, which stands in for the bar's.
+   */
+  status?: ReactNode;
   /**
    * Voice notes, when the deployment transcribes them: the microphone
    * records, and the words come back into the draft, marked, to read and
@@ -778,6 +784,7 @@ export function Composer({
             )}
           </Presence>
         )}
+        {status}
         <QueueStrip queue={queue} />
         {sessionPick && mentionsIn(value, [sessionPick.agent]).length > 0 && (
           <div className="flex items-center gap-2 px-2 text-aui-xs text-aui-muted">
@@ -972,7 +979,7 @@ export function Composer({
           {/* What the + menu picked sits in the bar, beside +, so nothing under it moves. */}
           <div className="humagen-composer-chips min-w-0 flex-1">{plus?.chips}</div>
           {trailing}
-          {queue.running && (
+          {queue.running && !status && (
             <button
               type="button"
               onClick={() => queue.stop()}

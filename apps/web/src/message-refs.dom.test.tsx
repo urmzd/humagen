@@ -339,7 +339,8 @@ test("a question two agents deep opens where it waits and is answered there", as
   const deployer = screen
     .getAllByTestId("activity-lane")
     .find((l) => l.getAttribute("data-agent") === "deployer");
-  assert.match(deployer?.querySelector("p")?.textContent ?? "", /Waiting for approval/);
+  assert.match(deployer?.querySelector("summary")?.textContent ?? "", /Waiting for approval/);
+  assert.equal(deployer?.querySelector("details")?.open, true, "a lane that waits is open");
   assert.equal(
     !!within(deployer as HTMLElement).queryByText("Waiting for approval to rotate the token"),
     false,
@@ -719,4 +720,47 @@ test("the session menu is a compact list: plain rows, Delete last after a rule",
   for (const item of within(menu).getAllByRole("menuitem"))
     assert.doesNotMatch(item.className, /\bborder\b/, `${item.textContent} has no border`);
   assert.match(within(menu).getByRole("menuitem", { name: "Delete" }).className, /text-aui-bad/);
+});
+
+test("a called agent is one closed item once done, and the tree opens on a step down to it with the trail", async () => {
+  const state = foldAll(responseStreams.parallelAgents);
+  const step = allTools(state).find((t) => t.kind !== "agent" && t.depth > 1 && !t.hidden);
+  assert.ok(step, "the fixture has a tool a called agent ran");
+  const first = render(
+    <ResponseActivityPanel
+      source={replaySource("closed", responseStreams.parallelAgents)}
+      onClose={() => {}}
+    />,
+  );
+  const lanes = (await screen.findAllByTestId("activity-lane")).filter((l) =>
+    l.querySelector(":scope > details"),
+  );
+  assert.ok(lanes.length > 0);
+  for (const lane of lanes) {
+    if (lane.querySelector(`[data-tool="${step.id}"]`)) continue;
+    const done = !/Working|Waiting|Failed/.test(lane.querySelector("summary")?.textContent ?? "");
+    if (done) assert.equal(lane.querySelector("details")?.open, false, "a finished call is closed");
+  }
+  assert.equal(screen.queryByTestId("activity-trail"), null, "no trail with nothing focused");
+  first.unmount();
+
+  render(
+    <ResponseActivityPanel
+      source={replaySource("focused", responseStreams.parallelAgents)}
+      step={step.id}
+      onClose={() => {}}
+    />,
+  );
+  const part = (await screen.findAllByTestId("activity-part")).find(
+    (p) => p.getAttribute("data-tool") === step.id,
+  );
+  assert.ok(part);
+  assert.equal(part.querySelector("details")?.open, true, "the step asked for is open");
+  const holder = part.closest('[data-testid="activity-lane"]');
+  assert.equal(holder?.querySelector("details")?.open, true, "and so is the agent that ran it");
+  const trail = screen.getByTestId("activity-trail");
+  assert.match(
+    trail.textContent ?? "",
+    new RegExp(holder?.getAttribute("data-agent") ?? "missing"),
+  );
 });

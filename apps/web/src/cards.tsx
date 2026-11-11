@@ -151,7 +151,7 @@ export function ItemCard({
   const linked = !!href || !!onOpen;
   return (
     <article
-      className={`humagen-glass relative flex h-full min-w-0 flex-col gap-3 rounded-aui-lg p-4 ${linked ? "hover:bg-aui-hover" : ""}`}
+      className={`humagen-glass relative isolate flex h-full min-w-0 flex-col gap-3 rounded-aui-lg p-4 ${linked ? "hover:bg-aui-hover" : ""}`}
     >
       <header className="flex min-w-0 items-start gap-3">
         {mark && <span className="flex size-6 shrink-0 items-center justify-center">{mark}</span>}
