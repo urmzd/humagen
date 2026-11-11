@@ -2190,6 +2190,12 @@ paths:
         it is installed while any of its agents is there, not retired.
         `missing` names the agents installing would add. A server that
         ships no agents of its own lists no packages.
+
+        Each agent says what installing grants it: its model, its tools,
+        the connectors and tool servers those tools need, and the agents it
+        may call. These come from the spec the package ships, so they are
+        the same for every workspace. The store's packages are built in and
+        few, so the listing is not paged.
       x-permission: agents:read
       x-readonly: true
       responses:
@@ -11845,7 +11851,7 @@ components:
       description: One agent of a store package, as the workspace has it.
       type: object
       additionalProperties: false
-      required: [name, description, installed, customized, update_available, taken]
+      required: [name, description, installed, customized, update_available, taken, provider, model, fallbacks, tools, access, connectors, tool_servers]
       properties:
         name: {type: string}
         description: {type: string}
@@ -11861,6 +11867,35 @@ components:
         taken:
           description: One of the workspace's own agents, not based on this package, holds the name. Installing is refused until it is renamed.
           type: boolean
+        provider:
+          description: |
+            The model provider it runs on, as `AgentSpec.provider`. This and
+            the fields after it are what installing grants the agent, read
+            from the spec the package ships: the same for every workspace,
+            and never the workspace's own revision. An installed agent that
+            someone changed may differ; its own revision says what it has.
+          type: string
+        model:
+          description: The model it runs on, as `AgentSpec.model`.
+          type: string
+        fallbacks:
+          description: The models tried in order when the first fails, as `AgentSpec.fallbacks`.
+          type: array
+          maxItems: 4
+          items: {$ref: "#/components/schemas/ModelRef"}
+        tools:
+          description: The tools it is granted, as `AgentSpec.tools`. A tool group is one name, `mcp:<server>` or `mcp:<server>:write`. The agents it may call are in `access.spawn`, each an agent of the platform.
+          type: array
+          items: {type: string}
+        access: {$ref: "#/components/schemas/AgentAccess"}
+        connectors:
+          description: The surfaces whose connection its tools act through (`github`, `slack`), sorted and worked out from `tools`. Such a tool works only once the workspace has connected one.
+          type: array
+          items: {type: string}
+        tool_servers:
+          description: The tool servers its tool groups name, sorted and worked out from `tools`.
+          type: array
+          items: {type: string}
     StoreInstall:
       description: What installing a package added.
       type: object

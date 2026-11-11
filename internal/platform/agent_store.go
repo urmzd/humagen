@@ -12,6 +12,7 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/clients"
 )
 
 // The agent store holds the platform's optional agents as packages, each a
@@ -102,6 +103,30 @@ type StoreAgent struct {
 	// Taken: one of the workspace's own agents, not based on this package,
 	// holds the name. Installing is refused until it is renamed.
 	Taken bool `json:"taken"`
+
+	// What follows is what installing grants the agent, read from the spec
+	// the package ships and in that spec's own fields. It is the same for
+	// every workspace and never read from a workspace's revision, so a
+	// listing shows nothing a reader of agents could not already see. An
+	// installed agent someone changed may differ: its own page says what it
+	// has now.
+
+	// Provider and Model are the model it runs on, and Fallbacks the models
+	// tried in order when that one fails.
+	Provider  string          `json:"provider"`
+	Model     string          `json:"model"`
+	Fallbacks []wire.ModelRef `json:"fallbacks"`
+	// Tools are the tools it is granted, as its spec names them. A tool
+	// group is one name (wire.MCPGroupPrefix).
+	Tools []string `json:"tools"`
+	// Access.Spawn names the agents it may call.
+	Access wire.Access `json:"access"`
+	// Connectors are the surfaces whose connection its tools act through
+	// (github, slack), sorted. A tool works only once the workspace has
+	// connected one.
+	Connectors []string `json:"connectors"`
+	// ToolServers are the tool servers its tool groups name, sorted.
+	ToolServers []string `json:"tool_servers"`
 }
 
 // StoreInstall is what installing a package did.
@@ -155,6 +180,7 @@ func (p *Platform) storePackage(name string) (storeListing, []wire.AgentSpec, er
 // at when the workspace has it.
 func (p *Platform) storeAgent(ctx context.Context, tenant string, spec wire.AgentSpec) (StoreAgent, wire.Revision, error) {
 	a := StoreAgent{Name: spec.Name, Description: spec.Description}
+	a.uses(spec)
 	have, err := p.Catalog().Get(ctx, tenant, spec.Name, 0)
 	switch {
 	case errors.Is(err, wire.ErrNotFound):
@@ -169,6 +195,34 @@ func (p *Platform) storeAgent(ctx context.Context, tenant string, spec wire.Agen
 	r := p.PackageRevision(have)
 	a.Installed, a.Customized, a.UpdateAvailable = true, r.Customized, r.UpdateAvailable
 	return a, have, nil
+}
+
+// uses fills what the agent is granted from the spec its package ships. The
+// connectors and tool servers are worked out from its tools, not kept beside
+// the package, so the spec stays the one place that says what an agent uses.
+// The listing stays small without a cap of its own: the store's packages are
+// built in (agentStore), a few agents each with a handful of tools.
+func (a *StoreAgent) uses(spec wire.AgentSpec) {
+	a.Provider, a.Model = spec.Provider, spec.Model
+	a.Fallbacks = append([]wire.ModelRef{}, spec.Fallbacks...)
+	a.Tools = append([]string{}, spec.Tools...)
+	a.Access = wire.Access{Spawn: append([]string{}, spec.Access.Spawn...)}
+	a.Connectors, a.ToolServers = []string{}, []string{}
+	for _, tool := range spec.Tools {
+		if g, ok, err := wire.ParseMCPGrant(tool); ok {
+			if err == nil && !slices.Contains(a.ToolServers, g.Provider) {
+				a.ToolServers = append(a.ToolServers, g.Provider)
+			}
+			continue
+		}
+		for _, surface := range clients.Surfaces() {
+			if slices.Contains(clients.ActionIDs(surface), tool) && !slices.Contains(a.Connectors, string(surface)) {
+				a.Connectors = append(a.Connectors, string(surface))
+			}
+		}
+	}
+	slices.Sort(a.Connectors)
+	slices.Sort(a.ToolServers)
 }
 
 // storeView is a package as tenant has it now.

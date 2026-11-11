@@ -680,6 +680,24 @@ export interface StoreAgent {
   update_available: boolean;
   /** One of the workspace's own agents, not based on this package, holds the name. Installing is refused until it is renamed. */
   taken: boolean;
+  /** The model provider it runs on, as `AgentSpec.provider`. This and
+the fields after it are what installing grants the agent, read
+from the spec the package ships: the same for every workspace,
+and never the workspace's own revision. An installed agent that
+someone changed may differ; its own revision says what it has.
+ */
+  provider: string;
+  /** The model it runs on, as `AgentSpec.model`. */
+  model: string;
+  /** The models tried in order when the first fails, as `AgentSpec.fallbacks`. */
+  fallbacks: ModelRef[];
+  /** The tools it is granted, as `AgentSpec.tools`. A tool group is one name, `mcp:<server>` or `mcp:<server>:write`. The agents it may call are in `access.spawn`, each an agent of the platform. */
+  tools: string[];
+  access: AgentAccess;
+  /** The surfaces whose connection its tools act through (`github`, `slack`), sorted and worked out from `tools`. Such a tool works only once the workspace has connected one. */
+  connectors: string[];
+  /** The tool servers its tool groups name, sorted and worked out from `tools`. */
+  tool_servers: string[];
 }
 
 /** What installing a package added. */

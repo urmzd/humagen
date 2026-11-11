@@ -1,6 +1,7 @@
 import { defaultCopy } from "@humagen/components";
+import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { api, type StorePackage } from "./api.ts";
+import { api, type StoreAgent, type StorePackage } from "./api.ts";
 import { ItemCard, itemGrid, Pill, Reference, Tag } from "./cards.tsx";
 import { href } from "./route.ts";
 import { button, Confirm, Problem, primary, Section } from "./ui.tsx";
@@ -100,25 +101,7 @@ export function AgentStore({
                 title={pkg.title}
                 status={pkg.installed ? <Pill tone="ok">{words.installed}</Pill> : undefined}
                 description={pkg.description}
-                facts={
-                  <>
-                    <Tag>{words.version(pkg.version)}</Tag>
-                    {pkg.agents.map((a) =>
-                      // An agent the workspace has opens its page; one it lacks is only named.
-                      a.installed ? (
-                        <Reference
-                          key={a.name}
-                          kind="agent"
-                          label={`@${a.name}`}
-                          title={a.description}
-                          href={href({ page: "agent", name: a.name, tab: "prompt" })}
-                        />
-                      ) : (
-                        <Reference key={a.name} label={`@${a.name}`} title={a.description} />
-                      ),
-                    )}
-                  </>
-                }
+                facts={<Tag>{words.version(pkg.version)}</Tag>}
                 actions={
                   canWrite &&
                   (removing === pkg.name ? (
@@ -160,6 +143,11 @@ export function AgentStore({
                   ))
                 }
               >
+                <ul aria-label={words.uses} className="mb-2 flex min-w-0 flex-col gap-3">
+                  {pkg.agents.map((a) => (
+                    <AgentUses key={a.name} agent={a} />
+                  ))}
+                </ul>
                 {(partial || taken.length > 0 || customized.length > 0 || note[pkg.name]) && (
                   <div className="flex flex-col gap-1 text-aui-xs text-aui-muted">
                     {partial && <p>{words.missing(pkg.missing)}</p>}
@@ -174,5 +162,66 @@ export function AgentStore({
         </div>
       )}
     </Section>
+  );
+}
+
+/**
+ * One agent of a package and what installing grants it, above the card's
+ * Install button: its model, the connections and tool servers its tools
+ * need, the agents it may call, and its tools. Each row wraps, so a narrow
+ * screen reads it top to bottom. An agent the workspace has opens its page;
+ * one it lacks is only named.
+ */
+function AgentUses({ agent }: { agent: StoreAgent }) {
+  const words = defaultCopy.agentStore;
+  const calls = agent.access.spawn ?? [];
+  const row = (label: string, chips: ReactNode[]) =>
+    chips.length > 0 && (
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        <span className="w-14 shrink-0 text-aui-2xs text-aui-muted">{label}</span>
+        {chips}
+      </div>
+    );
+  return (
+    <li data-agent={agent.name} className="flex min-w-0 flex-col gap-1.5">
+      <div className="flex min-w-0">
+        {agent.installed ? (
+          <Reference
+            kind="agent"
+            label={`@${agent.name}`}
+            title={agent.description}
+            href={href({ page: "agent", name: agent.name, tab: "prompt" })}
+          />
+        ) : (
+          <Reference label={`@${agent.name}`} title={agent.description} />
+        )}
+      </div>
+      {row(words.model, [
+        <Tag key="model">{words.modelName(agent.provider, agent.model)}</Tag>,
+        ...agent.fallbacks.map((f) => (
+          <Tag key={`${f.provider}/${f.model}`}>{words.fallback(f.provider, f.model)}</Tag>
+        )),
+      ])}
+      {row(words.needs, [
+        ...agent.connectors.map((surface) => (
+          <Reference
+            key={surface}
+            kind={surface === "github" || surface === "slack" ? surface : undefined}
+            label={words.connector(surface)}
+          />
+        )),
+        ...agent.tool_servers.map((name) => (
+          <Tag key={`server:${name}`}>{words.toolServer(name)}</Tag>
+        )),
+      ])}
+      {row(
+        words.calls,
+        calls.map((name) => <Reference key={name} kind="agent" label={`@${name}`} />),
+      )}
+      {row(
+        words.tools,
+        agent.tools.map((tool) => <Tag key={tool}>{tool}</Tag>),
+      )}
+    </li>
   );
 }

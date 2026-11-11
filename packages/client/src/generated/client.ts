@@ -2214,6 +2214,12 @@ Whether a package is installed is read from the workspace's agents:
 it is installed while any of its agents is there, not retired.
 `missing` names the agents installing would add. A server that
 ships no agents of its own lists no packages.
+
+Each agent says what installing grants it: its model, its tools,
+the connectors and tool servers those tools need, and the agents it
+may call. These come from the spec the package ships, so they are
+the same for every workspace. The store's packages are built in and
+few, so the listing is not paged.
  */
   async listStorePackages(options?: RequestOptions): Promise<ListStorePackagesResponse> {
     const path = "/api/store/packages";

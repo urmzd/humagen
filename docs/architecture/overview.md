@@ -806,7 +806,11 @@ only keeps the store's installed agents current: it never adds or restores one.
 Whether a package is installed is read from the workspace's agents, never
 stored: it is installed while any of its agents is there, not retired.
 `GET /api/store/packages` (`agents:read`) lists each package with its version,
-its agents, `installed` and the `missing` agents.
+its agents, `installed` and the `missing` agents. Each agent says what
+installing grants it, read from the spec the package ships and never stored
+beside it: its `provider`, `model` and `fallbacks`, its `tools`, the agents
+it may call (`access.spawn`), and the `connectors` and `tool_servers` those
+tools need. The console shows them on the package's card, above Install.
 `POST /api/store/packages/{name}/install` (`agents:write`) adds the missing
 agents as platform revisions at the current version, with their old handles; a
 retired name is revived, so its versions continue and pinned revisions stay
