@@ -13,7 +13,7 @@ import { Input } from "@humagen/render-web/ui/input";
 import { NativeSelect } from "@humagen/render-web/ui/native-select";
 import { Textarea } from "@humagen/render-web/ui/textarea";
 import { FileBrowser, Inspector, ResourceBrowser } from "@humagen/web";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   MemoryFolder,
   Note,
@@ -62,6 +62,14 @@ export function MemoryLibrary({
     return () => window.removeEventListener("popstate", follow);
   }, []);
   useEffect(() => setSelectedFile(file ?? ""), [file]);
+  // Whether the Files view holds a changed draft. Leaving the view or the
+  // chain asks before the draft is lost.
+  const unsavedFile = useRef(false);
+  const noteDraft = useCallback((unsaved: boolean) => {
+    unsavedFile.current = unsaved;
+  }, []);
+  const mayLeaveFiles = () =>
+    !unsavedFile.current || window.confirm(defaultCopy.memoryFiles.leaveDraft);
   const [destinationsCatalog, setDestinationsCatalog] = useState<MemoryFolder[]>([]);
   const [folders, setFolders] = useState<MemoryFolder[] | null>(null);
   const [folderQuery, setFolderQuery] = useState("");
@@ -381,7 +389,7 @@ export function MemoryLibrary({
           }
           onScopeChange={(next) => {
             const found = folders.find((folder) => folder.id === next);
-            if (!found) return;
+            if (!found || !mayLeaveFiles()) return;
             setScope(found.scope);
             setOwner(found.owner ?? "");
             setSelectedFile("");
@@ -435,6 +443,7 @@ export function MemoryLibrary({
                   { id: "files", label: defaultCopy.memoryFiles.files },
                 ]}
                 onChange={(next) => {
+                  if (!mayLeaveFiles()) return;
                   setView(next);
                   setSelectedFile("");
                   onLocationChange?.({
@@ -450,6 +459,7 @@ export function MemoryLibrary({
                   project={scope === "project" ? owner : undefined}
                   agent={scope === "agent" ? owner : undefined}
                   file={selectedFile}
+                  onDraft={noteDraft}
                   onFile={(path) => {
                     setSelectedFile(path);
                     onLocationChange?.({ scope, owner, file: path, memoryView: "files" });

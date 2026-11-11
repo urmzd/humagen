@@ -1150,14 +1150,21 @@ export const api = {
     call<MemoryFiles>("GET", `/api/memory/files?${memoryTreeQuery(at, { version })}`),
   memoryFile: (at: MemoryTreeRef, file: string, version = 0) =>
     call<MemoryFile>("GET", `/api/memory/files/content?${memoryTreeQuery(at, { file, version })}`),
-  memoryHistory: (at: MemoryTreeRef, before = 0, limit = 20) =>
+  // With a file, only the versions in which that file changed.
+  memoryHistory: (at: MemoryTreeRef, before = 0, limit = 20, file = "") =>
     call<{ versions: DriveVersion[] }>(
       "GET",
-      `/api/memory/files/history?${memoryTreeQuery(at, { before, limit })}`,
+      `/api/memory/files/history?${memoryTreeQuery(at, { file, before, limit })}`,
     ).then((r) => r.versions),
   // base_version is the tree version the file was read at. A newer change to the file answers 409.
   writeMemoryFile: (at: MemoryTreeRef, file: string, content: string, base_version: number) =>
     call<MemoryFiles>("PUT", "/api/memory/files/content", { ...at, file, content, base_version }),
+  // Deleting follows the write's rule: a file changed since base_version answers 409.
+  deleteMemoryFile: (at: MemoryTreeRef, file: string, base_version: number) =>
+    call<MemoryFiles>(
+      "DELETE",
+      `/api/memory/files/content?${memoryTreeQuery(at, { file, base_version })}`,
+    ),
   restoreMemoryFiles: (at: MemoryTreeRef, version: number) =>
     call<MemoryFiles>("POST", "/api/memory/files/restore", { ...at, version }),
   decideMemoryProposal: (at: MemoryTreeRef, id: string, decision: "approve" | "discard") =>
