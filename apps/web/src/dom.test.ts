@@ -38,6 +38,7 @@ await loadTests([
   "/src/automations.dom.test.tsx",
   "/src/catalog.dom.test.tsx",
   "/src/corpora.dom.test.tsx",
+  "/src/corpus-evals.dom.test.tsx",
   "/src/email-preferences.dom.test.tsx",
   "/src/patterns.dom.test.tsx",
   "/src/message-refs.dom.test.tsx",

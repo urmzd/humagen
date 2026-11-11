@@ -36,6 +36,7 @@ import {
 } from "./api.ts";
 import { BigQueryConnection } from "./BigQueryConnection.tsx";
 import { ConnectionLogo } from "./ConnectionLogo.tsx";
+import { CorpusEvals } from "./CorpusEvals.tsx";
 import { ItemCard, itemGrid, Pill, Reference, type ReferenceKind, Tag } from "./cards.tsx";
 import { connectionApi } from "./connectionApi.ts";
 import {
@@ -867,6 +868,7 @@ export function CorpusPage({
             { id: "search", label: words.tabs.search },
             { id: "graph", label: words.tabs.graph },
             { id: "types", label: words.tabs.types },
+            { id: "evals", label: words.tabs.evals },
             { id: "access", label: words.tabs.access },
           ]}
         />
@@ -924,6 +926,7 @@ export function CorpusPage({
           onConflict={reloadAfterConflict}
         />
       )}
+      {tab === "evals" && <CorpusEvals key={corpus.name} corpus={corpus.name} />}
       {tab === "access" && (
         <Access
           key={corpus.version}
