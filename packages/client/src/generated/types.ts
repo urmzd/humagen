@@ -989,7 +989,7 @@ export interface DriveVersion {
   tree: DriveTree;
   version: number;
   parent?: number;
-  /** Absent from a history listing. */
+  /** Absent from a history listing. In one file's history, that file's entry alone, or none where it was removed. */
   entries: DriveEntry[] | null;
   by?: string;
   at?: string;

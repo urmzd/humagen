@@ -2751,8 +2751,39 @@ owner is no agent's, and answers 404.
     });
   }
 
-  /** A tree keeps its last 200 versions. */
-  async listMemoryHistory(scope: "me" | "project" | "agent", project?: string, agent?: string, before?: number, limit?: number, options?: RequestOptions): Promise<ListMemoryHistoryResponse> {
+  /** The tree without the file becomes a new version; the history is kept, so an earlier version still holds it. `base_version` is the tree version the file was read at: if the file changed since, the answer is 409 and nothing is removed. Only whoever may write the tree directly is answered, by the rule a write follows, which `can_write` on the tree says. A file the tree does not hold is 404. */
+  async deleteMemoryFile(scope: "me" | "project" | "agent", file: string, baseVersion: number, project?: string, agent?: string, options?: RequestOptions): Promise<MemoryFiles> {
+    let path = "/api/memory/files/content";
+    const _q = new URLSearchParams();
+    if (scope !== undefined && scope !== null) _q.set("scope", String(scope));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
+    if (file !== undefined && file !== null) _q.set("file", String(file));
+    if (baseVersion !== undefined && baseVersion !== null) _q.set("base_version", String(baseVersion));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<MemoryFiles>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteMemoryFileRaw(scope: "me" | "project" | "agent", file: string, baseVersion: number, project?: string, agent?: string, options?: RequestOptions): Promise<ApiResponse<MemoryFiles>> {
+    let path = "/api/memory/files/content";
+    const _q = new URLSearchParams();
+    if (scope !== undefined && scope !== null) _q.set("scope", String(scope));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
+    if (file !== undefined && file !== null) _q.set("file", String(file));
+    if (baseVersion !== undefined && baseVersion !== null) _q.set("base_version", String(baseVersion));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<MemoryFiles>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** A tree keeps its last 200 versions. With `file`, the answer is only the versions in which that file changed (written, rewritten or removed), each carrying that file's entry alone in `entries`, which is empty where the file was removed. `before` is a place in the versions either way. */
+  async listMemoryHistory(scope: "me" | "project" | "agent", project?: string, agent?: string, before?: number, limit?: number, file?: string, options?: RequestOptions): Promise<ListMemoryHistoryResponse> {
     let path = "/api/memory/files/history";
     const _q = new URLSearchParams();
     if (scope !== undefined && scope !== null) _q.set("scope", String(scope));
@@ -2760,6 +2791,7 @@ owner is no agent's, and answers 404.
     if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     if (before !== undefined && before !== null) _q.set("before", String(before));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (file !== undefined && file !== null) _q.set("file", String(file));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.request<ListMemoryHistoryResponse>("GET", path, {
@@ -2767,7 +2799,7 @@ owner is no agent's, and answers 404.
     });
   }
 
-  async listMemoryHistoryRaw(scope: "me" | "project" | "agent", project?: string, agent?: string, before?: number, limit?: number, options?: RequestOptions): Promise<ApiResponse<ListMemoryHistoryResponse>> {
+  async listMemoryHistoryRaw(scope: "me" | "project" | "agent", project?: string, agent?: string, before?: number, limit?: number, file?: string, options?: RequestOptions): Promise<ApiResponse<ListMemoryHistoryResponse>> {
     let path = "/api/memory/files/history";
     const _q = new URLSearchParams();
     if (scope !== undefined && scope !== null) _q.set("scope", String(scope));
@@ -2775,6 +2807,7 @@ owner is no agent's, and answers 404.
     if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     if (before !== undefined && before !== null) _q.set("before", String(before));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (file !== undefined && file !== null) _q.set("file", String(file));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListMemoryHistoryResponse>("GET", path, {

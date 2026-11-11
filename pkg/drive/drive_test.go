@@ -390,3 +390,66 @@ func TestEveryKeyCarriesItsOwner(t *testing.T) {
 		}
 	}
 }
+
+// One file's history is the versions in which that file changed, newest
+// first: written, rewritten and removed, each holding that file's entry alone.
+// Versions that changed other files are left out, a page ends at its limit and
+// the next starts before the last version seen, and a tree the actor may not
+// read or a path outside the tree answers nothing.
+func TestAFilesHistoryIsTheVersionsThatChangedIt(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		ctx := context.Background()
+		d, err := drive.Open(open(t), blob.NewMemory())
+		if err != nil {
+			t.Fatal(err)
+		}
+		tree := drive.Person("ada")
+		ada := drive.Actor{Subject: "ada"}
+		for _, changes := range [][]drive.Change{
+			{put("plan.md", "one"), put("other.md", "x")},
+			{put("other.md", "y")},
+			{put("plan.md", "two")},
+			{{Path: "plan.md", Delete: true}},
+			{put("other.md", "z")},
+			{put("plan.md", "three")},
+		} {
+			if _, err := d.Commit(ctx, "acme", ada, tree, drive.CommitInput{Base: drive.Head, Changes: changes, By: "ada", At: at}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		numbers := func(vs []drive.Version) string {
+			var out []string
+			for _, v := range vs {
+				held := "gone"
+				if len(v.Entries) == 1 && v.Entries[0].Path == "plan.md" {
+					held = "held"
+				} else if len(v.Entries) != 0 {
+					t.Fatalf("version %d carries %+v", v.N, v.Entries)
+				}
+				out = append(out, fmt.Sprintf("%d:%s", v.N, held))
+			}
+			return strings.Join(out, " ")
+		}
+		all, err := d.FileHistory(ctx, "acme", ada, tree, "plan.md", 0, 0)
+		if err != nil || numbers(all) != "6:held 4:gone 3:held 1:held" {
+			t.Fatalf("the file's history = %s, %v", numbers(all), err)
+		}
+		page, err := d.FileHistory(ctx, "acme", ada, tree, "plan.md", 0, 2)
+		if err != nil || numbers(page) != "6:held 4:gone" {
+			t.Fatalf("the first page = %s, %v", numbers(page), err)
+		}
+		rest, err := d.FileHistory(ctx, "acme", ada, tree, "plan.md", page[1].N, 2)
+		if err != nil || numbers(rest) != "3:held 1:held" {
+			t.Fatalf("the next page = %s, %v", numbers(rest), err)
+		}
+		if none, err := d.FileHistory(ctx, "acme", ada, tree, "missing.md", 0, 0); err != nil || len(none) != 0 {
+			t.Fatalf("a file never written = %+v, %v", none, err)
+		}
+		if _, err := d.FileHistory(ctx, "acme", drive.Actor{Subject: "bo"}, tree, "plan.md", 0, 0); !errors.Is(err, drive.ErrNotFound) && !errors.Is(err, drive.ErrForbidden) {
+			t.Fatalf("another person's read = %v", err)
+		}
+		if _, err := d.FileHistory(ctx, "acme", ada, tree, "../plan.md", 0, 0); !errors.Is(err, drive.ErrInvalid) {
+			t.Fatalf("a path outside the tree = %v", err)
+		}
+	})
+}

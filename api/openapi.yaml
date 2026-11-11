@@ -2781,12 +2781,38 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: deleteMemoryFile
+      tags: [agents]
+      summary: Delete one memory file
+      description: "The tree without the file becomes a new version; the history is kept, so an earlier version still holds it. `base_version` is the tree version the file was read at: if the file changed since, the answer is 409 and nothing is removed. Only whoever may write the tree directly is answered, by the rule a write follows, which `can_write` on the tree says. A file the tree does not hold is 404."
+      x-permission: runs:write
+      x-destructive: true
+      x-idempotent: true
+      parameters:
+        - {name: scope, in: query, required: true, description: "me for your own memory, project for a project's, agent for an agent's.", schema: {type: string, enum: [me, project, agent]}}
+        - {name: project, in: query, description: "The project. Empty is the workspace.", schema: {type: string}}
+        - {name: agent, in: query, description: "The agent, for scope agent.", schema: {type: string}}
+        - {name: file, in: query, required: true, description: "The file's path in the tree.", schema: {type: string, maxLength: 512}}
+        - {name: base_version, in: query, required: true, description: "The tree version the file was read at.", schema: {type: integer, minimum: 0}}
+      responses:
+        "200":
+          description: The tree without the file.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MemoryFiles"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/memory/files/history:
     get:
       operationId: listMemoryHistory
       tags: [agents]
       summary: List a memory tree's versions, newest first
-      description: A tree keeps its last 200 versions.
+      description: "A tree keeps its last 200 versions. With `file`, the answer is only the versions in which that file changed (written, rewritten or removed), each carrying that file's entry alone in `entries`, which is empty where the file was removed. `before` is a place in the versions either way."
       x-permission: runs:read
       parameters:
         - {name: scope, in: query, required: true, description: "me for your own memory, project for a project's, agent for an agent's.", schema: {type: string, enum: [me, project, agent]}}
@@ -2794,6 +2820,7 @@ paths:
         - {name: agent, in: query, description: "The agent, for scope agent.", schema: {type: string}}
         - {name: before, in: query, description: Versions older than this one. Absent starts at the newest., schema: {type: integer, minimum: 0}}
         - {name: limit, in: query, description: "At most this many, and at most 100.", schema: {type: integer, minimum: 0, maximum: 100}}
+        - {name: file, in: query, description: "A file's path in the tree. Absent lists every version.", schema: {type: string, maxLength: 512}}
       responses:
         "200":
           description: The versions, without their manifests.
@@ -12290,7 +12317,7 @@ components:
         version: {type: integer, minimum: 0}
         parent: {type: integer, minimum: 0}
         entries:
-          description: Absent from a history listing.
+          description: Absent from a history listing. In one file's history, that file's entry alone, or none where it was removed.
           type: [array, "null"]
           items: {$ref: "#/components/schemas/DriveEntry"}
         by: {type: string}

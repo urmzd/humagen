@@ -1228,14 +1228,23 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(auditAdmin, "POST", decide, "/api/memory/files/proposals/"+proposal.ID, `{"scope":"me","decision":"discard"}`, http.StatusNotFound)
 	// A file is written against the version it was read at. A stale base is a
 	// conflict that writes nothing.
-	head := int(c.call(auditAdmin, "GET", files, files+"?scope=me", "", http.StatusOK).field("version").(float64))
+	number := func(r reply) int { n, _ := strconv.Atoi(string(r.field("version").(json.Number))); return n }
+	head := number(c.call(auditAdmin, "GET", files, files+"?scope=me", "", http.StatusOK))
 	written := c.call(auditAdmin, "PUT", content, content, fmt.Sprintf(`{"scope":"me","file":"plan.md","content":"Final plan","base_version":%d}`, head), http.StatusOK)
-	if written.field("can_write") != true || int(written.field("version").(float64)) != head+1 {
+	if written.field("can_write") != true || number(written) != head+1 {
 		t.Errorf("the written tree = %s", written.raw)
 	}
 	c.call(auditAdmin, "PUT", content, content, fmt.Sprintf(`{"scope":"me","file":"plan.md","content":"Stale plan","base_version":%d}`, head), http.StatusConflict)
 	c.call(auditAdmin, "PUT", content, content, `{"scope":"me","file":"../x","content":"x","base_version":0}`, http.StatusBadRequest)
 	c.call(acme, "PUT", content, content, `{"scope":"me","file":"plan.md","content":"x","base_version":0}`, http.StatusNotFound)
+	// One file's history, and a delete against the version read.
+	c.call(auditAdmin, "GET", history, history+"?scope=me&file=plan.md&limit=2", "", http.StatusOK)
+	c.call(auditAdmin, "GET", history, history+"?scope=me&file=../x", "", http.StatusBadRequest)
+	c.call(auditAdmin, "DELETE", content, content+fmt.Sprintf("?scope=me&file=plan.md&base_version=%d", head), "", http.StatusConflict)
+	c.call(auditAdmin, "DELETE", content, content+"?scope=me&file=../x&base_version=0", "", http.StatusBadRequest)
+	c.call(auditAdmin, "DELETE", content, content+fmt.Sprintf("?scope=me&file=missing.md&base_version=%d", head+1), "", http.StatusNotFound)
+	c.call(acme, "DELETE", content, content+"?scope=me&file=plan.md&base_version=0", "", http.StatusNotFound)
+	c.call(auditAdmin, "DELETE", content, content+fmt.Sprintf("?scope=me&file=plan.md&base_version=%d", head+1), "", http.StatusOK)
 	found := c.call(auditAdmin, "GET", "/api/memory/search", "/api/memory/search?q=concise", "", http.StatusOK)
 	if len(sliceOf(found.field("hits"))) != 1 {
 		t.Errorf("search found %v", found.field("hits"))

@@ -166,7 +166,14 @@ func (s *Server) memoryHistory(w http.ResponseWriter, r *http.Request, who auth.
 		fail(w, 400, "before is a version and limit at most 100")
 		return
 	}
-	versions, err := s.P.Drive.History(r.Context(), who.Tenant, s.P.MemoryActor(who), t, before, int(limit))
+	// With a file, the answer is the versions in which that file changed.
+	var versions []drive.Version
+	var err error
+	if file := r.URL.Query().Get("file"); file != "" {
+		versions, err = s.P.Drive.FileHistory(r.Context(), who.Tenant, s.P.MemoryActor(who), t, file, before, int(limit))
+	} else {
+		versions, err = s.P.Drive.History(r.Context(), who.Tenant, s.P.MemoryActor(who), t, before, int(limit))
+	}
 	if err != nil {
 		s.driveProblem(w, err)
 		return
@@ -219,6 +226,59 @@ func (s *Server) writeMemoryFile(w http.ResponseWriter, r *http.Request, who aut
 	}
 	if s.P.MayWriteMemory(r.Context(), who, t) {
 		_, err = s.P.Drive.Commit(r.Context(), who.Tenant, actor, t, drive.CommitInput{Base: body.BaseVersion, Changes: []drive.Change{{Path: file, Data: []byte(body.Content)}}, By: who.Subject, At: time.Now(), Origin: "api"})
+	} else {
+		err = drive.ErrForbidden
+	}
+	if auditErr := attempt.Finish(err); auditErr != nil {
+		s.P.LogAuditCompletionFailure(auditErr)
+	}
+	if err != nil {
+		s.driveProblem(w, err)
+		return
+	}
+	s.viewMemoryTree(w, r, who, t, 0)
+}
+
+// deleteMemoryFile removes one file as the tree's newest version, by the
+// rule a write follows: only whoever may write the tree directly is answered,
+// and a file that changed since the version the caller was looking at is a
+// conflict that removes nothing. A file the tree does not hold is 404.
+func (s *Server) deleteMemoryFile(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	t, good := s.memoryTreeOf(w, r, who)
+	if !good {
+		return
+	}
+	file, err := drive.CleanPath(r.URL.Query().Get("file"))
+	if err != nil {
+		fail(w, 400, "file is a path inside the tree")
+		return
+	}
+	// An absent base is version 0, the empty tree, so it never skips the
+	// check against the version read.
+	base, valid := queryInt(r, "base_version")
+	if !valid {
+		fail(w, 400, "base_version is the version the file was read at")
+		return
+	}
+	actor := s.P.MemoryActor(who)
+	// A tree the caller may not read is 404, before anything is recorded.
+	head, err := s.P.Drive.Head(r.Context(), who.Tenant, actor, t)
+	if err != nil {
+		s.driveProblem(w, err)
+		return
+	}
+	attempt, err := s.P.BeginAudit(who, audit.Change{Action: "memory.delete", Resource: "memory", ID: t.Key(), Subject: who.Subject, Project: t.Project, Agent: t.Agent, Route: "DELETE /api/memory/files/content", Rule: string(auth.RunsWrite), After: map[string]string{"file": file, "base_version": strconv.FormatInt(base, 10)}})
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	if s.P.MayWriteMemory(r.Context(), who, t) {
+		_, err = s.P.Drive.Commit(r.Context(), who.Tenant, actor, t, drive.CommitInput{Base: base, Changes: []drive.Change{{Path: file, Delete: true}}, By: who.Subject, At: time.Now(), Origin: "api"})
+		// A file gone since the version read is a conflict, which the commit
+		// reports. One the tree never held is not found.
+		if _, held := head.Lookup(file); err == nil && !held {
+			err = drive.ErrNotFound
+		}
 	} else {
 		err = drive.ErrForbidden
 	}
