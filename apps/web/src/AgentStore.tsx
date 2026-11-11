@@ -180,7 +180,7 @@ function AgentUses({ agent, open }: { agent: StoreAgent; open: boolean }) {
   const row = (label: string, chips: ReactNode[]) =>
     chips.length > 0 && (
       <>
-        <dt className="flex min-h-5 items-center text-aui-2xs text-aui-muted">{label}</dt>
+        <dt className="flex min-h-5 items-start pt-0.5 text-aui-2xs text-aui-muted">{label}</dt>
         <dd className="m-0 flex min-w-0 flex-wrap items-center gap-1.5">{chips}</dd>
       </>
     );
