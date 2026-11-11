@@ -23,6 +23,7 @@ const tree = {
   version: 3,
   by: "ada",
   at,
+  can_write: true,
   entries: [
     { path: "notes/m-1.md", hash: "a1", size: 24 },
     { path: "notes/m-2.md", hash: "b2", size: 31 },
@@ -231,4 +232,155 @@ test("the Files tab of a memory chain opens that chain's tree", async () => {
   await screen.findByText(first);
   assert.deepEqual(places, [{ scope: "personal", owner: "", memoryView: "files" }]);
   assert.ok(net.seen.some((r) => r.path === "/api/memory/files?scope=me"));
+});
+
+const editor = () =>
+  screen.getByLabelText(defaultCopy.editor.edit("notes/m-1.md")) as HTMLTextAreaElement;
+
+test("saving sends the text and the version the file was read at, then shows the new tree", async () => {
+  let saved = false;
+  const after = {
+    ...tree,
+    version: 4,
+    entries: [{ path: "notes/m-1.md", hash: "z9", size: 30 }],
+  };
+  net = stubFetch({
+    ...reads,
+    "GET /api/memory/files/content": (_, query) => ({
+      ...tree.entries[0],
+      version: 0,
+      content: saved ? "Releases go out on Wednesdays." : text[query.get("file") ?? ""],
+    }),
+    "GET /api/memory/files": () => (saved ? after : tree),
+    "PUT /api/memory/files/content": () => {
+      saved = true;
+      return after;
+    },
+  });
+  render(<MemoryFiles scope="project" project="Launch" />);
+  await screen.findByText(first);
+  fireEvent.click(screen.getByRole("button", { name: copy.edit }));
+  fireEvent.change(editor(), { target: { value: "Releases go out on Wednesdays." } });
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.editor.save }));
+  await screen.findByText(copy.saved(4));
+  await screen.findByText("Releases go out on Wednesdays.");
+  assert.deepEqual(
+    net.seen.filter((r) => r.method === "PUT").map((r) => r.body),
+    [
+      {
+        scope: "project",
+        project: "Launch",
+        file: "notes/m-1.md",
+        content: "Releases go out on Wednesdays.",
+        base_version: 3,
+      },
+    ],
+  );
+  // The editor closed and the other files are gone with the new tree.
+  assert.ok(!screen.queryByTitle("notes/m-2.md"));
+  assert.ok(screen.getByRole("button", { name: copy.edit }));
+});
+
+test("cancel drops the draft and sends nothing", async () => {
+  net = stubFetch(reads);
+  render(<MemoryFiles scope="me" />);
+  await screen.findByText(first);
+  fireEvent.click(screen.getByRole("button", { name: copy.edit }));
+  fireEvent.change(editor(), { target: { value: "Something else" } });
+  fireEvent.click(screen.getByRole("button", { name: copy.cancel }));
+  assert.ok(screen.getByText(first));
+  assert.ok(!net.seen.some((r) => r.method === "PUT"));
+});
+
+test("a save that lost to a newer change keeps the text until the latest is asked for", async () => {
+  let latest = false;
+  net = stubFetch({
+    ...reads,
+    "GET /api/memory/files": () => (latest ? { ...tree, version: 5 } : tree),
+    "GET /api/memory/files/content": (_, query) => ({
+      ...tree.entries[0],
+      version: 0,
+      content: latest ? "Releases go out on Fridays." : text[query.get("file") ?? ""],
+    }),
+    "PUT /api/memory/files/content": () => {
+      latest = true;
+      return new Response(JSON.stringify({ error: "the file changed since it was read" }), {
+        status: 409,
+      });
+    },
+  });
+  render(<MemoryFiles scope="me" />);
+  await screen.findByText(first);
+  fireEvent.click(screen.getByRole("button", { name: copy.edit }));
+  fireEvent.change(editor(), { target: { value: "Releases go out on Wednesdays." } });
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.editor.save }));
+  await screen.findByText(copy.conflict);
+  assert.equal(editor().value, "Releases go out on Wednesdays.");
+  fireEvent.click(screen.getByRole("button", { name: copy.loadLatest }));
+  await waitFor(() => assert.equal(editor().value, "Releases go out on Fridays."));
+  assert.ok(!screen.queryByText(copy.conflict));
+  // The next save is based on the version just loaded.
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.editor.save }));
+  await waitFor(() =>
+    assert.deepEqual(
+      net?.seen
+        .filter((r) => r.method === "PUT")
+        .map((r) => (r.body as { base_version: number }).base_version),
+      [3, 5],
+    ),
+  );
+});
+
+test("a save the server refuses as invalid shows its reason and keeps the text", async () => {
+  net = stubFetch({
+    ...reads,
+    "PUT /api/memory/files/content": () =>
+      new Response(JSON.stringify({ error: "content is at most 1 MiB" }), { status: 400 }),
+  });
+  render(<MemoryFiles scope="me" />);
+  await screen.findByText(first);
+  fireEvent.click(screen.getByRole("button", { name: copy.edit }));
+  fireEvent.change(editor(), { target: { value: "Too much" } });
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.editor.save }));
+  await screen.findByText("content is at most 1 MiB");
+  assert.equal(editor().value, "Too much");
+});
+
+test("a reader sees no Edit, Restore or Approve", async () => {
+  net = stubFetch({
+    ...reads,
+    "GET /api/memory/files": () => ({
+      ...tree,
+      can_write: false,
+      proposals: [
+        {
+          id: "p-1",
+          tree: mine,
+          base: 3,
+          changes: [{ path: "notes/m-9.md" }],
+          message: "Proposed",
+        },
+      ],
+    }),
+  });
+  render(<MemoryFiles scope="me" />);
+  await screen.findByText(first);
+  await screen.findByText("Proposed");
+  await screen.findByRole("button", { name: `${copy.view} ${copy.version(2)}` });
+  assert.ok(!screen.queryByRole("button", { name: copy.edit }));
+  assert.ok(!screen.queryByRole("button", { name: `${copy.restore} ${copy.version(2)}` }));
+  assert.ok(!screen.queryByRole("button", { name: copy.approve }));
+  assert.ok(!screen.queryByRole("button", { name: copy.discard }));
+});
+
+test("a file that is not text, or one shown at an earlier version, has no Edit", async () => {
+  net = stubFetch(reads);
+  render(<MemoryFiles scope="me" file="pictures/chart.png" />);
+  await screen.findByText(copy.binary);
+  assert.ok(!screen.queryByRole("button", { name: copy.edit }));
+  fireEvent.click(screen.getByTitle("notes/m-1.md"));
+  await screen.findByRole("button", { name: copy.edit });
+  fireEvent.click(screen.getByRole("button", { name: `${copy.view} ${copy.version(2)}` }));
+  await screen.findByText(copy.viewing(2));
+  assert.ok(!screen.queryByRole("button", { name: copy.edit }));
 });

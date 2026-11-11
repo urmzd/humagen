@@ -1,5 +1,5 @@
 import { defaultCopy } from "@humagen/components";
-import { FileBrowser } from "@humagen/web";
+import { CodeEditor, FileBrowser } from "@humagen/web";
 import { useEffect, useState } from "react";
 import type {
   DriveVersion,
@@ -21,15 +21,29 @@ import {
 
 /** A file larger than this is named and sized, not fetched and drawn. */
 const LARGEST_SHOWN = 512 * 1024;
+/** The most text one save may carry, which is the server's own limit. */
+const LARGEST_SAVED = 1024 * 1024;
 /** How many versions one read of the history asks for. */
 const HISTORY_PAGE = 20;
 
 /**
  * One memory tree as files: the tree at a version, the open file's text, the
- * proposals waiting on it and its versions. Nothing here edits a file. The
- * server does not say who may restore or decide, so those controls are shown
- * to every reader, and a refusal says so and leaves the view as it was.
+ * proposals waiting on it and its versions. Someone who may write the tree
+ * can edit a text file at the newest version, restore an earlier version and
+ * decide proposals. A reader sees none of those controls, and a refusal that
+ * arrives anyway says so and leaves the view as it was.
  */
+/** A file being edited: the person's text and the tree version it was read at. */
+interface Draft {
+  path: string;
+  text: string;
+  base: number;
+  /** The file changed on the server after it was read, so the save was refused. */
+  conflict?: boolean;
+  /** Why the last save or reload did not happen, in words. */
+  error?: string;
+}
+
 export function MemoryFiles({
   scope,
   project,
@@ -58,6 +72,9 @@ export function MemoryFiles({
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // A draft stays with its file, so opening another file and coming back keeps the text.
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => setPicked(file ?? ""), [file]);
 
@@ -147,6 +164,59 @@ export function MemoryFiles({
     setAsking(null);
     void change(() => api.restoreMemoryFiles({ scope, project, agent }, n), copy.restored(n));
   };
+  const save = async () => {
+    if (!draft) return;
+    setSaving(true);
+    setProblem(null);
+    setNotice(null);
+    try {
+      const next = await api.writeMemoryFile(
+        { scope, project, agent },
+        draft.path,
+        draft.text,
+        draft.base,
+      );
+      setTree(next);
+      setDraft(null);
+      setReload((n) => n + 1);
+      setNotice(copy.saved(next.version));
+    } catch (err) {
+      const status = err instanceof ApiError ? err.status : 0;
+      // The text is kept whatever went wrong. Only the reason shown differs.
+      setDraft({
+        ...draft,
+        conflict: status === 409,
+        error:
+          status === 409
+            ? undefined
+            : status === 403
+              ? defaultCopy.noPermission
+              : status === 400 && err instanceof Error
+                ? err.message
+                : copy.actionFailed,
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+  /** Replaces the draft with the file as it is now, once the person asks for that. */
+  const loadLatest = async () => {
+    if (!draft) return;
+    setSaving(true);
+    try {
+      const at = { scope, project, agent };
+      const [next, latest] = await Promise.all([
+        api.memoryFiles(at),
+        api.memoryFile(at, draft.path),
+      ]);
+      setTree(next);
+      setDraft({ path: draft.path, text: latest.content, base: next.version });
+    } catch {
+      setDraft({ ...draft, error: copy.latestFailed });
+    } finally {
+      setSaving(false);
+    }
+  };
   const older = async () => {
     const last = history?.at(-1);
     if (!last) return;
@@ -174,6 +244,7 @@ export function MemoryFiles({
   if (!tree) return <SkeletonRows count={4} />;
 
   const newest = history?.[0]?.version ?? tree.version;
+  const editing = version === 0 && tree.can_write && draft?.path === path ? draft : null;
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <Problem message={problem} />
@@ -209,7 +280,41 @@ export function MemoryFiles({
                 <span className="min-w-0 break-all">{`${tree.mount}/${path}`}</span>
                 <span>{bytes(entry?.size ?? 0)}</span>
               </p>
-              {tooLarge ? (
+              {editing ? (
+                <div className="flex min-w-0 flex-col gap-3">
+                  {editing.conflict && (
+                    <div className="flex flex-col items-start gap-3">
+                      <Problem message={copy.conflict} />
+                      <button
+                        type="button"
+                        className={button}
+                        disabled={saving}
+                        onClick={() => void loadLatest()}
+                      >
+                        {copy.loadLatest}
+                      </button>
+                    </div>
+                  )}
+                  <Problem message={editing.error ?? null} />
+                  <CodeEditor
+                    path={path}
+                    value={editing.text}
+                    readOnly={saving}
+                    saving={saving}
+                    maxBytes={LARGEST_SAVED}
+                    onChange={(text) => setDraft({ ...editing, text })}
+                    onSave={() => void save()}
+                  />
+                  <button
+                    type="button"
+                    className={`${button} self-start`}
+                    disabled={saving}
+                    onClick={() => setDraft(null)}
+                  >
+                    {copy.cancel}
+                  </button>
+                </div>
+              ) : tooLarge ? (
                 <p className="text-sm text-muted-foreground">
                   {copy.tooLarge(bytes(entry?.size ?? 0))}
                 </p>
@@ -225,9 +330,21 @@ export function MemoryFiles({
               ) : content.binary ? (
                 <p className="text-sm text-muted-foreground">{copy.binary}</p>
               ) : (
-                <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-6">
-                  {content.content}
-                </pre>
+                <>
+                  {tree.can_write && version === 0 && (
+                    <button
+                      type="button"
+                      className={`${button} self-start`}
+                      disabled={busy}
+                      onClick={() => setDraft({ path, text: content.content, base: tree.version })}
+                    >
+                      {copy.edit}
+                    </button>
+                  )}
+                  <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-6">
+                    {content.content}
+                  </pre>
+                </>
               )}
             </div>
           </FileBrowser>
@@ -253,32 +370,34 @@ export function MemoryFiles({
                     {p.at && <time dateTime={p.at}>{ago(p.at)}</time>}
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className={button}
-                    disabled={busy}
-                    onClick={() =>
-                      void change(() =>
-                        api.decideMemoryProposal({ scope, project, agent }, p.id, "approve"),
-                      )
-                    }
-                  >
-                    {copy.approve}
-                  </button>
-                  <button
-                    type="button"
-                    className={button}
-                    disabled={busy}
-                    onClick={() =>
-                      void change(() =>
-                        api.decideMemoryProposal({ scope, project, agent }, p.id, "discard"),
-                      )
-                    }
-                  >
-                    {copy.discard}
-                  </button>
-                </div>
+                {tree.can_write && (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className={button}
+                      disabled={busy}
+                      onClick={() =>
+                        void change(() =>
+                          api.decideMemoryProposal({ scope, project, agent }, p.id, "approve"),
+                        )
+                      }
+                    >
+                      {copy.approve}
+                    </button>
+                    <button
+                      type="button"
+                      className={button}
+                      disabled={busy}
+                      onClick={() =>
+                        void change(() =>
+                          api.decideMemoryProposal({ scope, project, agent }, p.id, "discard"),
+                        )
+                      }
+                    >
+                      {copy.discard}
+                    </button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -323,15 +442,17 @@ export function MemoryFiles({
                       >
                         {copy.view}
                       </button>
-                      <button
-                        type="button"
-                        className={textAction}
-                        aria-label={`${copy.restore} ${copy.version(v.version)}`}
-                        disabled={busy}
-                        onClick={() => setAsking(v.version)}
-                      >
-                        {copy.restore}
-                      </button>
+                      {tree.can_write && (
+                        <button
+                          type="button"
+                          className={textAction}
+                          aria-label={`${copy.restore} ${copy.version(v.version)}`}
+                          disabled={busy}
+                          onClick={() => setAsking(v.version)}
+                        >
+                          {copy.restore}
+                        </button>
+                      )}
                     </span>
                   )}
                 </div>

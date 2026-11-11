@@ -2342,6 +2342,12 @@ export const defaultCopy = {
     restoreAsk: (n: number) =>
       `Restore every file in this memory to version ${n}? Files changed since then go back to how they were.`,
     restored: (n: number) => `Every file was restored to version ${n}.`,
+    edit: "Edit",
+    cancel: "Cancel",
+    saved: (n: number) => `Saved as version ${n}.`,
+    conflict: "This file changed since it was read. Your text is still here and was not saved.",
+    loadLatest: "Load Latest Version",
+    latestFailed: "The latest version could not be loaded. Your text is still here.",
     proposals: "Proposed changes",
     proposalBy: (who: string) => `Proposed by ${who}`,
     proposalOn: (n: number) => `On version ${n}`,
