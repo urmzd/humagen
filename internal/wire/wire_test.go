@@ -107,10 +107,11 @@ func TestSeam(t *testing.T) {
 		"github.com/urmzd/saige/flow/definition":   true,
 		"github.com/urmzd/saige/flow/event/legacy": true,
 	}
-	// Who else may import them: the store of definitions, and the one home
-	// of names from before the union.
+	// Who else may import them: the store of definitions, the one home of
+	// names from before the union, and the MCP grants, which read a grant's
+	// name ("mcp:<provider>[:write]") with the parser that compiled it.
 	allowed := map[string][]string{
-		"github.com/urmzd/saige/flow/definition":   {"pkg/agents/", "internal/legacy/"},
+		"github.com/urmzd/saige/flow/definition":   {"pkg/agents/", "internal/legacy/", "internal/mcptools/"},
 		"github.com/urmzd/saige/flow/event/legacy": {"internal/legacy/"},
 	}
 	keys := map[string]bool{}
