@@ -823,7 +823,7 @@ export interface EvalResult {
 export interface EvalRun {
   id: string;
   suite: string;
-  target: "agent" | "knowledge";
+  target: "agent" | "knowledge" | "corpus";
   subject: string;
   rev?: number;
   status: "running" | "passed" | "failed" | "errored";
@@ -833,6 +833,8 @@ export interface EvalRun {
   threshold: number;
   metrics?: Record<string, number>;
   results: EvalResult[];
+  /** Why the run could not be scored, when it errored. */
+  error?: string;
   started_by?: string;
   started_at: string;
   ended_at?: string;
@@ -841,7 +843,8 @@ export interface EvalRun {
 export interface Suite {
   name: string;
   description?: string;
-  target: "agent" | "knowledge";
+  /** A corpus suite scores the corpus's search; its cases name the documents, by title, a query should return. */
+  target: "agent" | "knowledge" | "corpus";
   subject: string;
   cases: EvalCase[];
   k?: number;

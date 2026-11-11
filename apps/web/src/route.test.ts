@@ -423,6 +423,7 @@ test("Knowledge and each corpus have addresses, with tabs as paths, and old link
     { page: "corpus", name: "hr-policies", tab: "search", q: "parental leave & pay" },
     { page: "corpus", name: "hr-policies", tab: "graph" },
     { page: "corpus", name: "hr-policies", tab: "types" },
+    { page: "corpus", name: "hr-policies", tab: "evals" },
     { page: "context", corpus: "hr-policies", source: "handbook", tab: "documents" },
     { page: "context", corpus: "hr-policies", source: "handbook", tab: "search" },
     { page: "context", source: "handbook", tab: "evals" },
