@@ -3652,6 +3652,39 @@ export interface Alert {
 /** `corpus` scores a corpus's search as an agent runs it, with the access of whoever starts the run; its cases name the documents (by title) a query should return. */
 export type EvalTarget = "agent" | "knowledge" | "corpus";
 
+/** The question behind an answer rated down with a reason, awaiting a reviewer. It never holds the answer. */
+export interface EvalCandidate {
+  id: string;
+  /** The run that was rated. */
+  run: string;
+  /** The agent that answered. */
+  agent: string;
+  /** The project the run was filed in; empty for the root. */
+  project: string;
+  /** The question that was asked. */
+  input: string;
+  /** The reason given with the rating. */
+  reason: string;
+  /** What the person added. */
+  comment?: string;
+  /** When the rating last changed. */
+  at: string;
+}
+
+/** A page of candidates, newest first. */
+export interface EvalCandidatePage {
+  candidates: EvalCandidate[];
+  /** The after of the next page; empty on the last. */
+  next: string;
+}
+
+export interface EvalCandidateAccept {
+  /** The name of the suite the case is added to. */
+  suite: string;
+  /** What a good answer to the question looks like. Every one must pass. */
+  checks: EvalCheck[];
+}
+
 /** A deterministic check on an agent's output. */
 export interface EvalCheck {
   kind: "contains" | "not_contains" | "matches" | "equals" | "within_ms";

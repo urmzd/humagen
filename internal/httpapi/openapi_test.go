@@ -1435,6 +1435,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/runs/{id}/feedback", "/api/runs/"+id+"/feedback", `{"rating":"down","reason":"incomplete","comment":"Please add sources"}`, http.StatusOK)
 	c.call(acme, "GET", "/api/runs/{id}/feedback", "/api/runs/"+id+"/feedback", "", http.StatusOK)
 	c.call(acme, "GET", "/api/runs/{id}/feedback", "/api/runs/"+id+"/feedback?after=ada@example.com", "", http.StatusBadRequest)
+	// The down rating opened an eval candidate, which waits for a reviewer.
+	candidate, _ := obj(sliceOf(c.call(acme, "GET", "/api/eval-candidates", "/api/eval-candidates?agent=helper&limit=1", "", http.StatusOK).field("candidates"))[0])["id"].(string)
+	c.call(acme, "GET", "/api/eval-candidates", "/api/eval-candidates?limit=0", "", http.StatusBadRequest)
 	next := c.call(acme, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"And again","after":"`+id+`"}`, http.StatusAccepted)
 	if next.str("thread") != first.str("thread") || next.str("prev") != id {
 		t.Errorf("the follow-up is not in the first turn's conversation: %s", next.raw)
@@ -2747,7 +2750,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/knowledge/{name}/attachment":           {"name": "handbook"},
 		"/api/knowledge/{name}/attachments":          {"name": "handbook"},
 		"/api/clients/{id}":                          {"id": "support"}, "/api/clients/{id}/bindings": {"id": "app"}, "/api/evals/{name}": {"name": "smoke"}, "/api/evals/{name}/runs": {"name": "smoke"},
-		"/api/evals/{name}/run": {"name": "smoke"}, "/api/knowledge/{name}": {"name": "handbook"},
+		"/api/eval-candidates/{id}/accept": {"id": candidate},
+		"/api/evals/{name}/run":            {"name": "smoke"}, "/api/knowledge/{name}": {"name": "handbook"},
 		"/api/knowledge/{name}/resources": {"name": "handbook"}, "/api/knowledge/{name}/snapshot": {"name": "handbook"}, "/api/knowledge/{name}/replace": {"name": "handbook"}, "/api/knowledge/{name}/sync-settings": {"name": "handbook"},
 		"/api/knowledge/{name}/dependencies": {"name": "handbook"},
 		"/api/corpora/{name}":                {"name": "policies"}, "/api/corpora/{name}/members": {"name": "policies"}, "/api/corpora/{name}/search": {"name": "policies"}, "/api/corpora/{name}/graph": {"name": "policies"}, "/api/corpora/{name}/graph/build": {"name": "policies"}, "/api/corpora/{name}/ontology/infer": {"name": "policies"}, "/api/corpora/{name}/ontology/accept": {"name": "policies"}, "/api/corpora/{name}/ontology/discard": {"name": "policies"},
@@ -2809,6 +2813,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}/members": `{"version":1,"members":[{"who":"*","role":"member"}]}`, "/api/projects/{name}/move": `{"version":1,"parent":""}`,
 		"/api/projects/{name}/limits": `{"period":"day","max_runs":1}`, "/api/projects/{name}/announcements": `{"subject":"Hi","text":"Hi."}`,
 		"/api/memory/files/proposals/{id}": `{"scope":"project","decision":"discard"}`,
+		"/api/eval-candidates/{id}/accept": `{"suite":"smoke","checks":[{"kind":"contains","value":"x"}]}`,
 		"/api/corpora/{name}":              `{}`, "/api/corpora/{name}/members": `{"kind":"source","name":"handbook"}`,
 		"/api/catalog/connectors/{name}/login": `{"ref":"op://People/svc-globex/x"}`,
 		"/api/graph/nodes/{id}/owner":          `{"action":"confirm"}`,
@@ -2858,6 +2863,17 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/spare", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/clients/{id}", "/api/clients/support", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/clients/{id}", "/api/clients/support", "", http.StatusNotFound)
+	// A reviewer accepts the candidate into a suite, or dismisses it. Either
+	// way it leaves the queue.
+	c.call(acme, "POST", "/api/eval-candidates/{id}/accept", "/api/eval-candidates/"+candidate+"/accept", `{"suite":"smoke","checks":[]}`, http.StatusBadRequest)
+	c.call(acme, "POST", "/api/eval-candidates/{id}/accept", "/api/eval-candidates/"+candidate+"/accept", `{"suite":"smoke","checks":[{"kind":"contains","value":"hello"}]}`, http.StatusOK)
+	c.call(acme, "POST", "/api/eval-candidates/{id}/accept", "/api/eval-candidates/"+candidate+"/accept", `{"suite":"smoke","checks":[{"kind":"contains","value":"hello"}]}`, http.StatusNotFound)
+	rated := c.call(acme, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"Say it again"}`, http.StatusAccepted).str("id")
+	c.settled(acme, rated)
+	c.call(acme, "PUT", "/api/runs/{id}/feedback", "/api/runs/"+rated+"/feedback", `{"rating":"down","reason":"slow"}`, http.StatusOK)
+	dismissed, _ := obj(sliceOf(c.call(acme, "GET", "/api/eval-candidates", "/api/eval-candidates?agent=helper", "", http.StatusOK).field("candidates"))[0])["id"].(string)
+	c.call(acme, "DELETE", "/api/eval-candidates/{id}", "/api/eval-candidates/"+dismissed, "", http.StatusNoContent)
+	c.call(acme, "DELETE", "/api/eval-candidates/{id}", "/api/eval-candidates/"+dismissed, "", http.StatusNotFound)
 	c.call(acme, "DELETE", "/api/evals/{name}", "/api/evals/smoke", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/corpora/{name}", "/api/corpora/policies?version=999999", "", http.StatusConflict)
 	c.call(acme, "DELETE", "/api/corpora/{name}", "/api/corpora/policies", "", http.StatusNoContent)
