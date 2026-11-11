@@ -1094,6 +1094,25 @@
     box-shadow: 0 0 0 1px color-mix(in oklab, var(--aui-accent) 45%, transparent);
     user-select: none;
   }
+  /* An agent's bot (AgentInitials): the canvas, in the agent's color. */
+  .aui-bot {
+    --s: var(--initials-size, 28px);
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+    width: var(--s);
+    height: var(--s);
+    color: var(--aui-accent);
+  }
+  /* The drawn orb (AgentOrb): the canvas takes this color as its ink. */
+  .aui-orb-drawn {
+    display: inline-flex;
+    flex-shrink: 0;
+    width: var(--orb-size);
+    height: var(--orb-size);
+    color: var(--aui-accent);
+    vertical-align: middle;
+  }
   .aui-initials[data-live="true"] {
     animation: aui-initials-glow 2.4s ease-in-out infinite;
   }

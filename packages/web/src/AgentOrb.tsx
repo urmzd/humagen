@@ -1,5 +1,7 @@
 import type { AgentActivity, Turn, TurnStatus } from "@humagen/core";
-import type { CSSProperties } from "react";
+import { BotAvatar, type BotAvatarType } from "bot-avatars";
+import { type CSSProperties, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type OrbState as Motion, ThinkingOrb } from "thinking-orbs";
 
 /**
  * What the orb depicts. The activities come from the runtime; `done`,
@@ -61,6 +63,77 @@ export function turnOrbState(turn: Turn): OrbState {
   return "thinking";
 }
 
+/**
+ * The motion each live activity is drawn with (thinking-orbs). Thinking
+ * scrambles and clicks back, searching sweeps a globe, a tool call sends
+ * particles round, delegating wires a constellation, composing rolls a sash.
+ * A state that is not here (idle, waiting, the outcomes) is a still mark.
+ */
+const MOTION: Partial<Record<OrbState, Motion>> = {
+  thinking: "solving",
+  searching: "searching",
+  calling: "working",
+  delegating: "connecting",
+  composing: "composing",
+};
+
+/** The smallest footprint the drawn orb reads at; under it the mark is the plain dot. */
+const DRAWN_FROM = 12;
+
+// The page's theme and accent are attributes on the root (apps set them); a
+// color read from CSS is read again when either changes.
+const subscribeTheme = (changed: () => void) => {
+  if (typeof MutationObserver === "undefined") return () => {};
+  const o = new MutationObserver(changed);
+  o.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme", "data-accent", "class", "style"],
+  });
+  return () => o.disconnect();
+};
+const themeKey = () => {
+  const d = document.documentElement.dataset;
+  return `${d.theme ?? ""}/${d.accent ?? ""}`;
+};
+
+let pixel: CanvasRenderingContext2D | null | undefined;
+const resolved = new Map<string, string | undefined>();
+/** Any CSS color as `rgb(r, g, b)`, which is what the canvas marks take. Undefined without a canvas. */
+function toRgb(css: string): string | undefined {
+  if (resolved.has(css)) return resolved.get(css);
+  let out: string | undefined;
+  try {
+    pixel ??= document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+    if (pixel) {
+      pixel.clearRect(0, 0, 1, 1);
+      pixel.fillStyle = css;
+      pixel.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = pixel.getImageData(0, 0, 1, 1).data;
+      if (a) out = `rgb(${r}, ${g}, ${b})`;
+    }
+  } catch {
+    pixel = null;
+  }
+  resolved.set(css, out);
+  return out;
+}
+
+/**
+ * The element's own text color, as rgb: how a mark drawn on a canvas takes
+ * the accent it sits in (--aui-accent, an agent's hue). Undefined until it is
+ * read, and where there is no canvas to draw on.
+ */
+function useInk<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const theme = useSyncExternalStore(subscribeTheme, themeKey, () => "");
+  const [ink, setInk] = useState<string>();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: read again when the theme changes
+  useLayoutEffect(() => {
+    if (ref.current) setInk(toRgb(getComputedStyle(ref.current).color));
+  }, [theme]);
+  return { ref, ink, dark: theme.startsWith("dark") };
+}
+
 const tone = (s: OrbState) => (s === "error" ? "bad" : s === "stopped" ? "muted" : undefined);
 
 /**
@@ -88,10 +161,39 @@ export function AgentOrb({
   const name = label ?? orbLabel[state];
   const style = {
     "--orb-size": `${typeof size === "number" ? size : PX[size]}px`,
+    // The ink a drawn orb takes is read from here.
+    color: "var(--aui-accent)",
   } as CSSProperties;
   const bars = variant === "dots" ? 3 : 4;
+  const px = typeof size === "number" ? size : PX[size];
+  const motion = variant === "orb" && px >= DRAWN_FROM ? MOTION[state] : undefined;
+  const { ref, ink, dark } = useInk<HTMLSpanElement>();
+  if (motion && ink)
+    return (
+      <span
+        ref={ref}
+        className={`aui-orb-drawn ${className ?? ""}`}
+        data-state={state}
+        style={style}
+        {...(name ? { role: "img", "aria-label": name } : { "aria-hidden": true })}
+      >
+        <ThinkingOrb
+          aria-hidden
+          state={motion}
+          // Three tuned drawings; the nearest is fitted to the footprint, with
+          // heavier dots where it is drawn smaller than it was tuned for.
+          size={px >= 48 ? 64 : px >= 26 ? 32 : 20}
+          dotSize={px < 20 ? Math.min(2, 24 / px) : 1}
+          dots={px < 16 ? 0.7 : 1}
+          color={ink}
+          theme={dark ? "dark" : "light"}
+          style={{ width: px, height: px, display: "block" }}
+        />
+      </span>
+    );
   return (
     <span
+      ref={ref}
       className={`aui-orb ${className ?? ""}`}
       data-state={state}
       data-variant={variant}
@@ -133,10 +235,40 @@ export function agentInitials(name: string): string {
   return `${first[0]}${second ? second[0] : (first[1] ?? "")}`.toUpperCase();
 }
 
+const BOTS: readonly BotAvatarType[] = [
+  "clover",
+  "flower",
+  "triangle",
+  "square",
+  "blob",
+  "ghost",
+  "circle",
+  "drop",
+  "star",
+  "droid",
+  "mech",
+  "alien",
+  "hexagon",
+  "cat",
+  "cloud",
+  "pill",
+  "pebble",
+  "puddle",
+];
+
+/** The shape an agent's name always draws: the same agent is the same bot everywhere. */
+export function agentBot(name: string): BotAvatarType {
+  let h = 2166136261;
+  for (let i = 0; i < name.length; i++) h = Math.imul(h ^ name.charCodeAt(i), 16777619);
+  return BOTS[(h >>> 0) % BOTS.length] ?? "circle";
+}
+
 /**
- * An agent's face: its initials in its color, ringed by a glow that tells an
- * agent from a person. While the agent works the glow breathes and the orb
- * sits on its corner, moving with what the agent is doing.
+ * An agent's face: a small bot in the agent's color, its shape drawn from
+ * its name, which no person's mark looks like. It hops while the agent
+ * works, sits still while it waits on a person or has nothing to do, and
+ * from 32px looks toward the pointer. Where there is no canvas to draw on it
+ * is the agent's initials in a thin ring, with the orb on its corner.
  */
 export function AgentInitials({
   name,
@@ -150,8 +282,40 @@ export function AgentInitials({
   className?: string;
 }) {
   const live = !["idle", "done", "error", "stopped", "waiting"].includes(state);
+  const { ref, ink, dark } = useInk<HTMLSpanElement>();
+  if (ink)
+    return (
+      <span
+        ref={ref}
+        aria-hidden
+        className={`aui-bot ${className ?? ""}`}
+        data-live={live || undefined}
+        style={{ "--initials-size": `${size}px` } as CSSProperties}
+      >
+        <BotAvatar
+          type={agentBot(name)}
+          state={live ? "working" : "default"}
+          size={size}
+          color={ink}
+          theme={dark ? "dark" : "light"}
+          shading={size < 24 ? "flat" : "fabric"}
+          interactive={size >= 32}
+          // Small marks hold still unless they work: a list of agents does not fidget.
+          paused={!live && size < 32}
+        />
+        {live && size >= 24 && (
+          <AgentOrb
+            state={state}
+            size={Math.max(12, Math.round(size * 0.42))}
+            label=""
+            className="absolute -right-1 -bottom-1"
+          />
+        )}
+      </span>
+    );
   return (
     <span
+      ref={ref}
       aria-hidden
       className={`aui-initials ${className ?? ""}`}
       data-live={live || undefined}

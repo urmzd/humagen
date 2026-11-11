@@ -64,7 +64,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-032 | The conversation header shows which agents took part, not a count | Implemented: `Involved` in `ConversationShell.tsx`; `ui.test.tsx` passes; checked in the browser |
 | DES-033 | A turn shows its thinking and steps inline, where they happened, with what each was given and returned | Implemented in `WorkSteps.tsx` and render-web `StepIO`; web and core tests pass; checked live |
 | DES-034 | A finished turn says how long it worked | Implemented: `turn.completed` carries `durationMs`, from the run's events or its record; adapter and core tests pass |
-| DES-035 | Agents are told apart by initials on their color; a mention opens a profile on hover | Implemented: `AgentInitials`, `MentionLink`; `ui.test.tsx` passes; checked in the browser |
+| DES-035 | Agents are told apart by a bot in their color; a mention opens a profile on hover | Implemented: `AgentInitials` (drawn by `bot-avatars`, initials where there is no canvas), `MentionLink`; `ui.test.tsx` passes; marks checked in the browser on `/gallery.html`, dark and light |
 | DES-036 | The composer holds what is picked, and the first message posts before anything else runs | Implemented in `Composer.tsx` and `Chat.tsx`; web tests and the `home` screens pass |
 | DES-037 | Health is a status page of each model provider and dependency | Implemented: `GET /api/health`, `Health.tsx`; `health_test.go` and `health.test.tsx` pass; checked live |
 | DES-038 | Screens open ready to read, filter once, and keep message actions quiet at rest | Implemented in #112; web, core and Slack tests pass; phone and desktop screens pass |
@@ -972,9 +972,11 @@ approval, disabled early approval, restoration, refusal and the combined menu.
 
 ### DES-035: Initials and mention profiles
 
-- An agent's mark at 16px or more shows its initials on its color: two words
-  give two letters, one word adds A for agent ("LA" for lead). A working
-  agent's mark glows.
+- An agent's mark at 16px or more is a small bot in its color, its shape
+  drawn from its name. A working agent's bot hops, and from 24px the orb on
+  its corner moves with what it is doing. Where there is no canvas the mark is
+  its initials on its color: two words give two letters, one word adds A for
+  agent ("LA" for lead).
 - A mention of an agent is a link to its profile. Hover or focus shows a card
   with its initials, name, model or model policy and description.
 - Acceptance: `@lead` in a message links to lead, and hovering it shows lead's

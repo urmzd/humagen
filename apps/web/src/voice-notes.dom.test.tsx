@@ -78,8 +78,12 @@ test("a voice note is recorded, transcribed, and put in the draft marked, to rea
   const stop = await screen.findByRole("button", { name: words.stop });
   assert.equal(stop.getAttribute("aria-pressed"), "true");
   assert.ok(screen.getByText(words.recording), "the person is told the microphone is on");
+  const level = () => document.querySelector("[data-voice-level]");
+  assert.ok(level(), "the bar shows the microphone's level while it records");
+  assert.equal(level()?.getAttribute("aria-hidden"), "true");
   await act(async () => fireEvent.click(stop));
   await waitFor(() => assert.equal(box.value, "[Voice note, english] Move standup to ten."));
+  assert.equal(level(), null, "and the level leaves with the recording");
   assert.equal(heard.length, 1);
   assert.equal(heard[0]?.type, "audio/webm;codecs=opus");
   assert.deepEqual(stopped, ["track"], "the microphone is let go");

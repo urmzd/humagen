@@ -16,7 +16,9 @@
     "@humagen/components": "workspace:*",
     "@humagen/core": "workspace:*",
     "@humagen/primitives": "workspace:*",
-    "@humagen/render-web": "workspace:*"
+    "@humagen/render-web": "workspace:*",
+    "bot-avatars": "0.2.2",
+    "thinking-orbs": "0.3.2"
   },
   "peerDependencies": {
     "react": "^19",

@@ -1,9 +1,10 @@
-import { type OrbState, orbLabel } from "@humagen/web";
-import { StrictMode, useState } from "react";
+import { type OrbState, orbLabel, useQueue } from "@humagen/web";
+import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "@humagen/render-web/fonts.css";
 import "./styles.css";
 import { sampleTrees } from "./activity.fixtures.ts";
+import { Composer } from "./Composer.tsx";
 import { InboxPage } from "./InboxPage.tsx";
 import { LimitsPanel } from "./Limits.tsx";
 import { overLimit, parentBound, sessionBound, unlimited } from "./limits.fixtures.ts";
@@ -22,6 +23,7 @@ import {
   Segmented,
   Stroke,
   type StrokeState,
+  setAgentHues,
   UsageMeter,
 } from "./ui.tsx";
 
@@ -32,6 +34,8 @@ import {
  */
 const states: StrokeState[] = ["idle", "working", "waiting", "failed", "done"];
 const agents = ["lead", "oncall", "releaser", "helper", "billing", "triage"];
+// The page calls nothing, so the hues the server would give are given here.
+setAgentHues(Object.fromEntries(agents.map((a, i) => [a, (25 + i * 58) % 360])));
 const M = 1_000_000;
 // One inbox for the page's life, so what is resolved in it stays resolved.
 const inbox = memoryTransport();
@@ -44,6 +48,22 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h2 className="humagen-display text-aui-lg font-semibold text-aui-fg">{title}</h2>
       {children}
     </section>
+  );
+}
+
+/** The composer at rest, or with a reply in flight (Send starts one; Stop ends it). */
+function ComposerSample({ working }: { working: boolean }) {
+  const queue = useQueue({ onStart: () => {}, onInterrupt: () => queue.turnEnded("stopped") });
+  const begun = useRef(false);
+  useEffect(() => {
+    if (!working || begun.current) return;
+    begun.current = true;
+    queue.adopt("A reply in flight");
+  }, [working, queue]);
+  return (
+    <div className="w-full max-w-xl">
+      <Composer placeholder="Message" queue={queue} disclaimer={null} />
+    </div>
   );
 }
 
@@ -107,6 +127,11 @@ function Gallery() {
             </div>
           ))}
         </div>
+      </Section>
+
+      <Section title="Composer: at rest, then with a reply in flight">
+        <ComposerSample working={false} />
+        <ComposerSample working />
       </Section>
 
       <Section title="Stroke, by state">
