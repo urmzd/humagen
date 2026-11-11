@@ -258,6 +258,59 @@ test("a corpus page has Sources, Search and Access tabs, members with what they 
   assert.ok(screen.getByRole("button", { name: words.addSource }));
 });
 
+test("a source says how fresh it is and when it last synced, and its corpus says the worst", async () => {
+  const hour = 3600_000;
+  const synced = (name: string, every: number, hoursAgo: number): Source => ({
+    ...source(name),
+    lifecycle: {
+      provider: "drive",
+      mode: "indexed",
+      status: "in_sync",
+      connected_at: at,
+      stop_after_seconds: 86400,
+      sync_every_seconds: every,
+      last_good_at: new Date(Date.now() - hoursAgo * hour).toISOString(),
+      attempts: [],
+    },
+  });
+  // Both sync hourly: one synced within the hour, the other five hours ago.
+  const sources = [synced("handbook", 3600, 0.5), synced("drive-hr", 3600, 5)];
+  const held = corpus({
+    members: corpus().members.map((m) => ({ ...m, status: "ready" as const })),
+  });
+  net = stubFetch({
+    "GET /api/corpora/hr-policies": () => held,
+    "GET /api/corpora": () => ({ corpora: [held] }),
+    ...directory,
+  });
+  const page = render(
+    <CorpusPage
+      name="hr-policies"
+      tab="sources"
+      sources={sources}
+      canWrite
+      onTab={() => {}}
+      onBack={() => {}}
+      onOpenSource={() => {}}
+    />,
+  );
+  const fresh = await screen.findByRole("listitem", { name: "handbook" });
+  assert.ok(within(fresh).getByText(words.freshness.state.fresh));
+  assert.ok(within(fresh).getByText(/30 minutes ago/));
+  const stale = screen.getByRole("listitem", { name: "drive-hr" });
+  assert.ok(within(stale).getByText(words.freshness.state.stale));
+  assert.ok(within(stale).getByText(/5 hours ago/));
+  // A warehouse has no sync time in the console: it keeps its status.
+  const warehouse = screen.getByRole("listitem", { name: "people-warehouse" });
+  assert.ok(within(warehouse).getByText(words.status.ready));
+  page.unmount();
+
+  render(<KnowledgePage sources={sources} canWrite onOpen={() => {}} />);
+  const card = await screen.findByRole("listitem", { name: "HR policies" });
+  assert.ok(within(card).getByText(words.freshness.rollup.stale));
+  assert.ok(within(card).getByText(words.labels.internal));
+});
+
 test("the owner adds an existing source and removes a member", async () => {
   let current = corpus();
   net = stubFetch({

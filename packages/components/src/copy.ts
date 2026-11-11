@@ -935,6 +935,25 @@ export const defaultCopy = {
       missing: "Missing",
       hidden: "Hidden",
     },
+    // How fresh a source is, from its syncs. Not the Graph tab's stale, which is about one document.
+    freshness: {
+      state: {
+        fresh: "Fresh",
+        stale: "Stale",
+        syncing: "Syncing",
+        failed: "Failed",
+        never: "Never synced",
+      },
+      // A corpus card says the worst state among its sources.
+      rollup: {
+        fresh: "Sources fresh",
+        stale: "Source stale",
+        syncing: "Source syncing",
+        failed: "Source failed",
+        never: "Source never synced",
+      },
+      synced: (when: string) => `Last synced ${when}`,
+    },
     hidden: "A source you cannot see",
     hiddenToOwner: "You can no longer see this source",
     remove: "Remove",

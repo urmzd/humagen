@@ -59,6 +59,12 @@ import {
   titleOf,
   unfiledSources,
 } from "./corpora.ts";
+import {
+  corpusFreshness,
+  freshnessTone,
+  type MemberFreshness,
+  memberFreshness,
+} from "./freshness.ts";
 import { ConnectSource } from "./Integrations.tsx";
 import { type CorpusTab, href } from "./route.ts";
 import { addTextFiles } from "./sourceUpload.ts";
@@ -492,6 +498,8 @@ export function KnowledgePage({
           {list.map((c) => {
             const owner = c.mine && canWrite;
             const title = titleOf(c);
+            // The worst state among its sources, said beside what they bring.
+            const fresh = corpusFreshness(c, sources);
             return (
               <li key={c.name} aria-label={title}>
                 <ItemCard
@@ -502,16 +510,21 @@ export function KnowledgePage({
                   status={<Pill>{words.labels[c.label || "internal"]}</Pill>}
                   description={c.description || undefined}
                   facts={
-                    providerItems(c).length > 0
-                      ? providerItems(c).map(({ provider, items }) => (
+                    providerItems(c).length > 0 || fresh ? (
+                      <>
+                        {providerItems(c).map(({ provider, items }) => (
                           <Reference
                             key={provider}
                             {...sourceMark(provider)}
                             label={providerLabel(provider)}
                             count={items}
                           />
-                        ))
-                      : undefined
+                        ))}
+                        {fresh && (
+                          <Pill tone={freshnessTone[fresh]}>{words.freshness.rollup[fresh]}</Pill>
+                        )}
+                      </>
+                    ) : undefined
                   }
                   menu={
                     owner
@@ -874,6 +887,7 @@ export function CorpusPage({
                 key={m.name ? `${m.kind}:${m.name}` : `hidden:${i}`}
                 corpus={corpus.name}
                 member={m}
+                freshness={memberFreshness(m, sources)}
                 mine={corpus.mine}
                 owner={owner}
                 connector={m.kind === "catalog" ? connectors[m.name] : undefined}
@@ -961,6 +975,7 @@ export function CorpusPage({
 function MemberCard({
   corpus,
   member,
+  freshness,
   mine,
   owner,
   connector,
@@ -971,6 +986,8 @@ function MemberCard({
 }: {
   corpus: string;
   member: CorpusMember;
+  /** How fresh its syncs are, where that is known; its status is shown otherwise. */
+  freshness?: MemberFreshness | null;
   /** The reader owns the corpus, so a member hidden from them still shows its name. */
   mine: boolean;
   /** The reader owns the corpus and may change it. */
@@ -1003,7 +1020,11 @@ function MemberCard({
         href={opens ? href({ page: "context", source: member.name, corpus }) : undefined}
         onOpen={opens ? onOpen : undefined}
         status={
-          hidden ? undefined : (
+          hidden ? undefined : freshness ? (
+            <Pill tone={freshnessTone[freshness.state]}>
+              {words.freshness.state[freshness.state]}
+            </Pill>
+          ) : (
             <Pill tone={member.status === "failed" ? "bad" : "neutral"}>
               {words.status[member.status]}
             </Pill>
@@ -1016,7 +1037,9 @@ function MemberCard({
               ? words.login.connected
               : login === "unavailable"
                 ? words.login.unavailable
-                : undefined
+                : freshness?.at
+                  ? words.freshness.synced(ago(freshness.at))
+                  : undefined
         }
         facts={
           !hidden && member.holds ? (
