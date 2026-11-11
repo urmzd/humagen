@@ -3899,6 +3899,16 @@ export const defaultCopy = {
     /** Something arrived out of view and has not been seen. */
     unseen: "Jump to latest, new content",
   },
+  /** The prompt's lines for the threads at work in a session. */
+  working: {
+    label: (n: number) => (n === 1 ? "1 thread working" : `${n} threads working`),
+    open: (agent: string) => `Open ${agent}'s activity`,
+    for: (who: string) => `for ${who}`,
+    stop: "Stop",
+    stopping: "Stopping…",
+    more: (n: number) => `+${n} working`,
+    fewer: "Show fewer",
+  },
   /** A message's references and the work under it: its origin, what it read and touched, what it delegated. */
   trace: {
     /** The section in Details that collects every message's references. */
@@ -3909,6 +3919,8 @@ export const defaultCopy = {
     agents: (n: number) => `${n} agents`,
     /** Every run behind a response, flat, in Details and on a focused message. */
     activity: "Activity",
+    /** On a call that does not wait: the agent carries on by itself and answers later. */
+    delegated: "Delegated",
     asked: "Asked",
     /** Under an answer: how long the response worked and how much it brought in. */
     worked: (time: string, agents: number, tools: number) =>

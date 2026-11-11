@@ -30,15 +30,14 @@ function show(turn: Turn, opened: string[] = []) {
   );
 }
 
-test("delegated calls share one collapsed line and expand to their agent rows", () => {
+test("each delegated call is its own item, named for its agent", () => {
   show(delegatingTurn);
-  const calls = screen.getByRole("article").querySelector('ul[aria-label="Agent calls"]')!;
-  const group = calls.closest("details")!;
-  assert.equal(group.open, false);
+  const items = screen.getByRole("article").querySelectorAll('[data-aui="agent-call"]');
   const names = delegatingTurn.tasks.flatMap((task) => (task.subagent ? [task.subagent.name] : []));
-  assert.equal(group.querySelector("summary")?.textContent, `Asked ${names.join(", ")}▸`);
-  fireEvent.click(group.querySelector("summary")!);
-  assert.equal(calls.children.length, names.length);
+  assert.equal(items.length, names.length);
+  items.forEach((item, i) => {
+    assert.ok(item.querySelector("button")?.textContent?.includes(names[i]!));
+  });
 });
 
 test("a turn reads as its words and runs of steps, in the order they came", () => {

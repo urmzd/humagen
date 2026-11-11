@@ -12,7 +12,6 @@ import {
   useQueue,
 } from "@humagen/web";
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { Activity } from "./Activity.tsx";
 import { ApprovalToggle } from "./ApprovalToggle.tsx";
 import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
 import {
@@ -51,7 +50,7 @@ import { OutcomeActions } from "./OutcomeActions.tsx";
 import { PersonMark } from "./PersonMark.tsx";
 import { mentionPicks, PlusMenu } from "./Plus.tsx";
 import { openPane } from "./pane.ts";
-import { ResponseActivityPanel } from "./ResponseActivity.tsx";
+import { ConversationActivity, ResponseActivityPanel } from "./ResponseActivity.tsx";
 import { RunFeedbackHost } from "./RunFeedback.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
@@ -82,6 +81,7 @@ import {
   primary,
 } from "./ui.tsx";
 import { useVoiceNotes } from "./useVoiceNotes.ts";
+import { WorkingStrip } from "./WorkingStrip.tsx";
 import { Workspace } from "./Workspace.tsx";
 
 /**
@@ -223,9 +223,16 @@ function RoomComposer({
   onDraft,
   onPost,
   runs = [],
+  working = [],
+  me,
+  onOpenRun,
   sessionAgents,
 }: {
   runs?: Run[];
+  /** Every thread at work in the session, whoever asked: the prompt lists them. */
+  working?: Run[];
+  me?: string;
+  onOpenRun?: (run: string) => void;
   sessionAgents?: string[];
   /** Text controls in the bar, before Send: the conversation's approval mode. */
   trailing?: ReactNode;
@@ -304,6 +311,11 @@ function RoomComposer({
         plus={plus}
         voice={voice}
         trailing={trailing}
+        status={
+          working.length > 0 ? (
+            <WorkingStrip runs={working} me={me} onOpen={onOpenRun} />
+          ) : undefined
+        }
       />
     </div>
   );
@@ -575,6 +587,7 @@ function AnswerView({
               actions={actions}
               stop={stop}
               disclaimer={false}
+              activity={false}
               timestamp={<MessageTime at={run.created_at} />}
               turn={rated}
               copy={copyFor(ask)}
@@ -1206,6 +1219,11 @@ export function ThreadRoom({
                 runs={turns.flatMap((turn) =>
                   turn.run && actedFor(turn.run) === me ? [turn.run] : [],
                 )}
+                working={turns.flatMap((turn) =>
+                  turn.run && isWorking(turn.run.status) ? [turn.run] : [],
+                )}
+                me={me}
+                onOpenRun={(run) => openPanel("activity", { run })}
                 thread={id}
                 trailing={<ApprovalToggle thread={th} me={handle || me} />}
                 seed={seed}
@@ -1361,14 +1379,13 @@ export function ThreadRoom({
         </Presence>
         <Presence when={shownView.panel === "activity"} ms={220}>
           {(leaving) => (
-            <Activity
+            <ConversationActivity
               step={shownView.step}
               leaving={leaving}
               turns={turns.flatMap((turn) => (turn.run ? [turn.run] : []))}
-              stamp={turns.map((turn) => `${turn.run?.id}:${turn.run?.status}`).join("|")}
               focus={shownView.run ?? null}
-              onFocus={(run) => openPanel("activity", run ? { run } : {})}
               onClose={() => openPanel()}
+              onFocus={(run) => openPanel("activity", run ? { run } : {})}
             />
           )}
         </Presence>

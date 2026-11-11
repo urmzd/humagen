@@ -4,7 +4,6 @@ import { ActionId, type UiAction } from "@humagen/core";
 import { ForkIcon, WebSurface } from "@humagen/render-web";
 import { AgentMessage, messageActionButton, railEntry, Thread, useQueue } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity } from "./Activity.tsx";
 import { type ApprovalMode, ApprovalToggle } from "./ApprovalToggle.tsx";
 import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
 import {
@@ -33,7 +32,7 @@ import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { emptySelection, mentionPicks, PlusMenu, type Selection } from "./Plus.tsx";
 import { openPane } from "./pane.ts";
-import { ResponseActivityPanel } from "./ResponseActivity.tsx";
+import { ConversationActivity, ResponseActivityPanel } from "./ResponseActivity.tsx";
 import { ThreadRoom, topicsOf } from "./Room.tsx";
 import { RunFeedbackHost } from "./RunFeedback.tsx";
 import { useRunStop } from "./RunStop.tsx";
@@ -59,6 +58,7 @@ import {
   Problem,
 } from "./ui.tsx";
 import { useVoiceNotes } from "./useVoiceNotes.ts";
+import { WorkingStrip } from "./WorkingStrip.tsx";
 import { Workspace } from "./Workspace.tsx";
 import { useWide } from "./wide.ts";
 
@@ -226,6 +226,7 @@ function TurnView({
               actions={actions}
               stop={stop}
               disclaimer={false}
+              activity={false}
               timestamp={<MessageTime at={run.created_at} />}
               turn={rated}
               copy={copyFor(ask)}
@@ -815,6 +816,15 @@ export function Chat({
     >
       <Problem message={problem} />
       <ChatBar
+        status={
+          path.some((r) => isWorking(r.status)) ? (
+            <WorkingStrip
+              runs={path.filter((r) => isWorking(r.status))}
+              me={me}
+              onOpen={(run) => openPanel("activity", { run })}
+            />
+          ) : undefined
+        }
         project={where}
         agents={agents}
         homes={homes}
@@ -1260,11 +1270,10 @@ export function Chat({
         </Presence>
         <Presence when={activity !== null} ms={220}>
           {(leaving) => (
-            <Activity
+            <ConversationActivity
               step={shownView.step}
               leaving={leaving}
               turns={path}
-              stamp={turns.map((t) => `${t.id}:${t.calls}:${t.status}`).join("|")}
               focus={(activity ?? lastActivity.current)?.focus ?? null}
               onClose={() => openPanel()}
               onFocus={(run) => openPanel("activity", run ? { run } : {})}

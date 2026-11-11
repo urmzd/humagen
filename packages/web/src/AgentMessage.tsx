@@ -18,6 +18,7 @@ import {
 } from "@humagen/core";
 import {
   ActionContext,
+  ChevronRightIcon,
   FeedbackPromptContext,
   GaugeIcon,
   type ItemActions,
@@ -26,6 +27,7 @@ import {
   RedirectIcon,
   RefreshIcon,
   RequestBubble,
+  Shimmer,
   ShimmerVerb,
   SuppressContext,
   THINKING_VERBS,
@@ -37,7 +39,6 @@ import {
   type CSSProperties,
   type ReactNode,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -151,7 +152,8 @@ const dot: Record<Exclude<Turn["status"], "done">, string> = {
 };
 
 /** What the agent is doing right now, as a verb: the running task, else a thinking sequence. */
-function useActivity(turn: Turn): string | null {
+/** What a turn at work is doing now, in a few words that turn while it only thinks; null once it is not working. */
+export function useTurnActivity(turn: Turn): string | null {
   // A run followed quietly shows its status, not motion.
   const busy = (turn.status === "working" || turn.status === "queued") && !turn.detached;
   const nothingYet = !turn.text && turn.tasks.length === 0;
@@ -219,7 +221,16 @@ export function callPrompt(task: Task): string {
   if (!raw) return "";
   try {
     const args = JSON.parse(raw) as Record<string, unknown>;
-    for (const key of ["task", "prompt", "message", "input", "text", "query", "instructions"]) {
+    for (const key of [
+      "brief",
+      "task",
+      "prompt",
+      "message",
+      "input",
+      "text",
+      "query",
+      "instructions",
+    ]) {
       const v = args[key];
       if (typeof v === "string" && v.trim()) return v.trim();
     }
@@ -245,10 +256,23 @@ export function callPrompt(task: Task): string {
   return raw;
 }
 
+/** One line for a call: the title the caller gave it, else the first line of what it asked. */
+export function callTitle(task: Task): string {
+  try {
+    const args = JSON.parse(task.input?.trim() || "{}") as Record<string, unknown>;
+    if (typeof args.title === "string" && args.title.trim()) return args.title.trim();
+  } catch {
+    // Not JSON: the arguments are the prompt.
+  }
+  return callPrompt(task).split("\n", 1)[0] ?? "";
+}
+
 /**
- * A call this turn made to another agent, as a message from the caller to
- * it: both marks, what it was asked and what it answered. A call at work is
- * open; one that ended folds to a line that opens again.
+ * A call this turn made to another agent, as one item where it happened:
+ * the agent's mark, its name, where it stands and one line of what it was
+ * asked. Its name shimmers while it works. The item opens the run it
+ * started, with every step that run took (`ActionId.openRun`). A call that
+ * started no run opens in place, to what it was asked and what came back.
  */
 function AgentCall({
   task,
@@ -263,35 +287,54 @@ function AgentCall({
 }) {
   const onAction = useContext(ActionContext);
   const sub = task.subagent as NonNullable<Task["subagent"]>;
-  const live = task.status === "in_progress" || task.status === "waiting";
-  const [open, setOpen] = useState(live);
-  useEffect(() => {
-    if (live) setOpen(true);
-  }, [live]);
+  const live = task.status === "in_progress";
+  const [open, setOpen] = useState(false);
   const prompt = callPrompt(task);
+  const title = callTitle(task);
   const answer = task.status === "complete" ? task.output?.trim() : undefined;
   const word = copy.conversation.callStatus[task.status];
+  const ms = sub.durationMs ?? task.durationMs;
   const tint =
     sub.hue === undefined
       ? {}
       : { "data-accent": "agent", style: { "--aui-accent-h": sub.hue } as CSSProperties };
   const runId = sub.runId;
   return (
-    <li className="min-w-0 border-aui-border border-l-2 pl-3" {...tint}>
-      <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)} className="min-w-0">
-        <summary className="flex min-h-7 cursor-pointer list-none items-center gap-1.5 text-aui-xs text-aui-muted [&::-webkit-details-marker]:hidden">
-          <span className="sr-only">{copy.conversation.callAsked(caller)} </span>
-          <span aria-hidden>→</span>
-          <AgentOrb state={live ? "thinking" : "idle"} size={14} label="" />
-          <span className="font-medium text-aui-fg">{sub.name}</span>
-          {word && (
-            <span className={task.status === "error" ? "text-aui-bad" : "text-aui-accent"}>
-              {word}
-            </span>
-          )}
-          {!open && prompt && <span className="min-w-0 flex-1 truncate">{prompt}</span>}
-        </summary>
-        <div className="flex min-w-0 flex-col gap-2 pt-1 pb-2">
+    <div data-aui="agent-call" data-status={task.status} className="min-w-0" {...tint}>
+      <button
+        type="button"
+        {...(runId ? { "aria-haspopup": "dialog" as const } : { "aria-expanded": open })}
+        onClick={() =>
+          runId
+            ? onAction({ id: ActionId.openRun, payload: { turnId, target: runId } })
+            : setOpen(!open)
+        }
+        className="group/call flex w-full min-w-0 pointer-coarse:min-h-11 items-center gap-2 rounded-aui border border-aui-border px-2.5 py-1.5 text-left text-aui-sm transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent motion-reduce:transition-none"
+      >
+        <span className="sr-only">{copy.conversation.callAsked(caller)} </span>
+        <AgentInitials name={sub.name} size={18} />
+        <span className="shrink-0 font-medium text-aui-fg">
+          {live ? <Shimmer>{sub.name}</Shimmer> : sub.name}
+        </span>
+        {word && (
+          <span
+            className={`shrink-0 text-aui-xs ${task.status === "error" || task.status === "denied" ? "text-aui-bad" : "text-aui-accent"}`}
+          >
+            {word}
+          </span>
+        )}
+        <span className="min-w-0 flex-1 truncate text-aui-xs text-aui-muted">{title}</span>
+        {!live && ms !== undefined && ms > 0 && (
+          <span className="shrink-0 text-aui-2xs text-aui-muted tabular-nums">{seconds(ms)}</span>
+        )}
+        <ChevronRightIcon
+          size={12}
+          strokeWidth={2.5}
+          className={`shrink-0 text-aui-muted opacity-60 group-hover/call:opacity-100 ${!runId && open ? "rotate-90" : ""}`}
+        />
+      </button>
+      {!runId && open && (
+        <div className="flex min-w-0 flex-col gap-2 px-2.5 pt-2 pb-1">
           {prompt && (
             <p className="w-fit max-w-full whitespace-pre-wrap rounded-aui bg-aui-hover px-3 py-1.5 text-aui-sm text-aui-fg">
               {prompt}
@@ -303,19 +346,9 @@ function AgentCall({
           ) : (
             !answer && sub.summary && <p className="text-aui-xs text-aui-muted">{sub.summary}</p>
           )}
-          {runId && (
-            <button
-              type="button"
-              aria-haspopup="dialog"
-              onClick={() => onAction({ id: ActionId.openRun, payload: { turnId, target: runId } })}
-              className="w-fit rounded-aui text-aui-xs text-aui-muted underline-offset-2 hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
-            >
-              {copy.conversation.openCall(sub.name)}
-            </button>
-          )}
         </div>
-      </details>
-    </li>
+      )}
+    </div>
   );
 }
 
@@ -425,8 +458,14 @@ export function AgentMessage({
   onRedirect,
   stop,
   disclaimer = true,
+  activity: sayActivity = true,
 }: {
   turn: Turn;
+  /**
+   * Say what the agent is doing beside its name while it works. A host that
+   * says it in its prompt, for every thread at work, turns it off.
+   */
+  activity?: boolean;
   /** Stop the run from its mark while it works. Leave out where it cannot be stopped. */
   stop?: MarkStop;
   /**
@@ -483,7 +522,8 @@ export function AgentMessage({
     disclaimer,
     copy,
   ]);
-  const activity = useActivity(turn);
+  const doing = useTurnActivity(turn);
+  const activity = sayActivity ? doing : null;
   const orb = turn.detached ? "idle" : turnOrbState(turn);
   const busy = turn.status === "working" || turn.status === "queued";
   const reasoningLive =
@@ -501,7 +541,6 @@ export function AgentMessage({
     lastThought?.at === turn.text.length &&
     lastThought.after === turn.tasks.length;
   const [traceOpen, setTraceOpen] = useState(true);
-  const calls = [...blocks, ...rest].filter((b) => b.kind === "call");
   // A review's Ask Follow-up writes in the composer, which a host that may ask this agent has.
   const followUp = capabilities?.followUp ?? onAskAgent !== undefined;
   const block = (b: Block) =>
@@ -520,29 +559,9 @@ export function AgentMessage({
       <Reasoning key={b.key} text={b.text} streaming={thinkingNow && b.last} />
     ) : b.kind === "tools" ? (
       <StepGroup key={b.key} turn={turn} tasks={b.tasks} copy={copy} />
-    ) : b.key === calls[0]?.key ? (
-      <details key={b.key} className="min-w-0 py-1">
-        <summary className="flex min-h-7 cursor-pointer list-none items-center gap-1.5 text-aui-xs text-aui-muted [&::-webkit-details-marker]:hidden group">
-          {copy.conversation.askedAgents([
-            ...new Set(calls.map((call) => call.task.subagent?.name ?? call.task.title)),
-          ])}
-          <span aria-hidden className="group-open:rotate-90">
-            ▸
-          </span>
-        </summary>
-        <ul aria-label="Agent calls" className="flex min-w-0 flex-col gap-2 pt-2">
-          {calls.map((call) => (
-            <AgentCall
-              key={call.key}
-              task={call.task}
-              caller={turn.agent.name}
-              turnId={turn.id}
-              copy={copy}
-            />
-          ))}
-        </ul>
-      </details>
-    ) : null;
+    ) : (
+      <AgentCall key={b.key} task={b.task} caller={turn.agent.name} turnId={turn.id} copy={copy} />
+    );
 
   return (
     <article
@@ -577,7 +596,7 @@ export function AgentMessage({
           <span className="flex min-w-0 items-center gap-1.5 text-aui-2xs text-aui-muted">
             {activity ? (
               <ShimmerVerb className="truncate">{activity}</ShimmerVerb>
-            ) : turn.status !== "done" ? (
+            ) : turn.status !== "done" && (sayActivity || !busy) ? (
               <>
                 <span aria-hidden className={`size-1.5 rounded-full ${dot[turn.status]}`} />
                 <span>{copy.status[turn.status]}</span>

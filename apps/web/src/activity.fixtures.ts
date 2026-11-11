@@ -1,6 +1,8 @@
-import type { Tree } from "./Activity.tsx";
 import type { Run } from "./adapter.ts";
 import type { Span } from "./api.ts";
+
+/** One turn and every run under it. */
+export type Tree = { root: string; runs: Run[]; spans: Span[] };
 
 // One clock reading per set of trees, so a run's duration does not depend on
 // how long building the fixtures took.
