@@ -365,7 +365,7 @@ seconds (`clients.Generations`, a change count every replica reads), and a
 webhook or an event no seat on a replica matches makes that replica look at
 once, at most every 250ms. Managed Slack and GitHub connectors keep the native
 message handle, rendered answer and sequence cursor in `Backends.DeliveryState`.
-`OpenPostgres` opens and migrates orchagent's shared delivery store, so a new
+`OpenPostgres` opens and migrates saige's shared delivery store, so a new
 replica edits the existing message with the full answer. A default in-memory
 platform shares this state across client rebuilds within that process.
 
