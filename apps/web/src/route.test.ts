@@ -414,6 +414,14 @@ test("Connections is a section of your settings with an address of its own; old 
   });
 });
 
+test("the workspace graph has its own address, apart from any corpus's name", () => {
+  assert.equal(href({ page: "knowledge-graph" }), "/knowledge-graph");
+  assert.deepEqual(at("/knowledge-graph"), { page: "knowledge-graph" });
+  assert.equal(documentTitle({ page: "knowledge-graph" }), "Knowledge graph - Humagen");
+  // Under Knowledge the same word is a corpus's name.
+  assert.deepEqual(at("/knowledge/graph"), { page: "corpus", name: "graph", tab: "sources" });
+});
+
 test("Knowledge and each corpus have addresses, with tabs as paths, and old links still open", () => {
   const routes: Route[] = [
     { page: "knowledge" },

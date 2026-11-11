@@ -1788,6 +1788,8 @@ export const api = {
   /** The owner rebuilds the slice now. */
   buildCorpusGraph: (name: string) => call<GraphView>("POST", `${corpusPath(name)}/graph/build`),
   /** Confirm, decline or hand off who owns a document or table. */
+  /** The workspace graph across every corpus the caller may read, and its health. */
+  workspaceGraph: () => call<GraphView>("GET", "/api/graph"),
   decideGraphOwner: (id: string, action: OwnerAction) =>
     call<GraphNodeView>("PUT", `/api/graph/nodes/${encodeURIComponent(id)}/owner`, action),
   /** Propose types from the warehouse tables a corpus holds; kept as `proposed_ontology`. */

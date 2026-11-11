@@ -66,6 +66,7 @@ import {
   type MemberFreshness,
   memberFreshness,
 } from "./freshness.ts";
+import { GraphNodeCards, graphHealthParts } from "./GraphNodes.tsx";
 import { ConnectSource } from "./Integrations.tsx";
 import { type CorpusTab, href } from "./route.ts";
 import { addTextFiles } from "./sourceUpload.ts";
@@ -485,7 +486,29 @@ export function KnowledgePage({
   ) : null;
 
   return (
-    <Page title={words.title} actions={list.length > 0 ? newCorpus : undefined}>
+    <Page
+      title={words.title}
+      actions={
+        list.length > 0 ? (
+          <>
+            <a
+              href={href({ page: "knowledge-graph" })}
+              className={button}
+              onClick={(event) => {
+                // A plain click moves the address and tells the router, as Back would.
+                if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
+                event.preventDefault();
+                window.history.pushState(null, "", event.currentTarget.getAttribute("href"));
+                window.dispatchEvent(new PopStateEvent("popstate"));
+              }}
+            >
+              {words.graph.openWorkspace}
+            </a>
+            {newCorpus}
+          </>
+        ) : undefined
+      }
+    >
       <Problem message={problem} />
       {corpora === null ? (
         <SkeletonRows count={3} height="7rem" />
@@ -1959,19 +1982,7 @@ function GraphTab({
   };
 
   if (!view) return <SkeletonRows count={4} />;
-  const by = view.health.by_type;
-  const count = (types: string[]) => types.reduce((n, t) => n + (by[t] ?? 0), 0);
-  const documents = Object.entries(by)
-    .filter(([type]) => isDocumentNode({ type }))
-    .reduce((n, [, c]) => n + c, 0);
-  const health = gw.health([
-    gw.documents(documents),
-    gw.systems(count(["system"])),
-    gw.people(count(["person"])),
-    gw.unowned(view.health.unowned),
-    gw.stale(view.health.stale),
-    view.health.built_at ? gw.built(ago(view.health.built_at)) : gw.notBuilt,
-  ]);
+  const health = gw.health(graphHealthParts(view.health));
   const rowsShown = view.nodes.filter(isDocumentNode);
   const providerOf = (member?: string) => {
     const ref = memberOfNode(member);
@@ -1979,13 +1990,6 @@ function GraphTab({
       ? corpus.members.find((m) => m.kind === ref.kind && m.name === ref.name)?.provider
       : undefined;
   };
-  // The graph names each owner itself; the reader's own rows say You.
-  const ownerName = (node: GraphNodeView) =>
-    !node.owner || node.owner_state === "unowned"
-      ? gw.noOwner
-      : node.owner === viewer
-        ? gw.you
-        : node.owner_name || gw.someone;
   const people = directory.peopleOptions.filter((p) => p.value !== handing?.owner);
 
   return (
@@ -2002,57 +2006,34 @@ function GraphTab({
       {rowsShown.length === 0 ? (
         <Empty title={gw.empty} />
       ) : (
-        <ul aria-label={words.tabs.graph} className={itemGrid}>
-          {rowsShown.map((node) => {
-            const link = safeLink(node.uri);
-            const reasons = node.staleness?.stale ? (node.staleness.reasons ?? []) : [];
-            return (
-              <li key={node.id} aria-label={node.name}>
-                <ItemCard
-                  title={node.name}
-                  mark={<ProviderMark provider={providerOf(node.member) ?? "manual"} />}
-                  href={link}
-                  onOpen={
-                    link ? () => window.open(link, "_blank", "noopener,noreferrer") : undefined
+        <GraphNodeCards
+          label={words.tabs.graph}
+          nodes={rowsShown}
+          viewer={viewer}
+          mark={(node) => <ProviderMark provider={providerOf(node.member) ?? "manual"} />}
+          menu={(node) =>
+            ownerChoices(node, viewer, owner).map((c) =>
+              c === "confirm"
+                ? {
+                    label: gw.confirm,
+                    onSelect: () => void decide(node, { action: "confirm" }),
                   }
-                  status={node.owner_state ? <Pill>{gw.states[node.owner_state]}</Pill> : undefined}
-                  description={ownerName(node)}
-                  facts={
-                    node.type !== "document" || node.staleness?.stale ? (
-                      <>
-                        {node.type !== "document" && <Reference label={node.type} />}
-                        {node.staleness?.stale && <Pill>{gw.staleLabel}</Pill>}
-                        {reasons.length > 0 && (
-                          <Tag>{reasons.map((r) => gw.reasons[r] ?? r).join(", ")}</Tag>
-                        )}
-                      </>
-                    ) : undefined
-                  }
-                  menu={ownerChoices(node, viewer, owner).map((c) =>
-                    c === "confirm"
-                      ? {
-                          label: gw.confirm,
-                          onSelect: () => void decide(node, { action: "confirm" }),
-                        }
-                      : c === "hand_off"
-                        ? {
-                            label: gw.handOff,
-                            onSelect: () => {
-                              setTo("");
-                              setHanding(node);
-                            },
-                          }
-                        : {
-                            label: gw.decline,
-                            destructive: true,
-                            onSelect: () => void decide(node, { action: "decline" }),
-                          },
-                  )}
-                />
-              </li>
-            );
-          })}
-        </ul>
+                : c === "hand_off"
+                  ? {
+                      label: gw.handOff,
+                      onSelect: () => {
+                        setTo("");
+                        setHanding(node);
+                      },
+                    }
+                  : {
+                      label: gw.decline,
+                      destructive: true,
+                      onSelect: () => void decide(node, { action: "decline" }),
+                    },
+            )
+          }
+        />
       )}
       {view.more && <p className="text-aui-xs text-aui-muted">{gw.more}</p>}
       <SideSheet

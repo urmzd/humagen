@@ -904,6 +904,13 @@ export const defaultCopy = {
       handedOff: (name: string, to: string) => `${name} handed to ${to}`,
       handOffTitle: (name: string) => `Hand off ${name}`,
       to: "New owner",
+      workspaceTitle: "Knowledge graph",
+      openWorkspace: "Graph",
+      nodes: (n: number) => `${n} ${n === 1 ? "node" : "nodes"}`,
+      relations: (n: number) => `${n} ${n === 1 ? "relation" : "relations"}`,
+      howBuilt: "A corpus's owner builds its part with Rebuild on the corpus's Graph tab.",
+      openKnowledge: "Open Knowledge",
+      retry: "Retry",
     },
     types: {
       declared: "Types",

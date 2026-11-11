@@ -84,4 +84,5 @@ await loadTests([
   "/src/slash-commands.dom.test.tsx",
   // Waits on real timers, so it loads last: every hook is registered by then.
   "/src/sidebar-peek.dom.test.tsx",
+  "/src/workspace-graph.dom.test.tsx",
 ]);
