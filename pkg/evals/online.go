@@ -3,6 +3,7 @@ package evals
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -85,7 +86,58 @@ func (s *Store) SaveCandidate(tenant, subject string, c Candidate) error {
 		return ErrInvalid
 	}
 	c.ID = identity(c.Run, subject)
+	// A candidate a reviewer already accepted or dismissed stays out of the
+	// queue when the person who rated the run changes their rating.
+	if _, err := s.resolved.Lookup(tenant, c.ID); err == nil {
+		return nil
+	} else if !errors.Is(err, state.ErrNotFound) {
+		return err
+	}
 	return s.candidates.Put(tenant, c.Agent+"/"+c.ID, c)
+}
+
+// Resolution is what a reviewer decided about a candidate: accepted into a
+// suite, or dismissed. It holds no text from the run.
+type Resolution struct {
+	Decision string    `json:"decision"`
+	Suite    string    `json:"suite,omitempty"`
+	By       string    `json:"by"`
+	At       time.Time `json:"at"`
+}
+
+// OpenCandidates returns the candidates no reviewer has decided, for one
+// agent or, when agent is empty, for every agent, at most state.MaxList.
+// Callers must apply the source run's read policy to each.
+func (s *Store) OpenCandidates(tenant, agent string) ([]Candidate, error) {
+	if tenant == "" {
+		return nil, ErrInvalid
+	}
+	prefix := ""
+	if agent != "" {
+		prefix = agent + "/"
+	}
+	rows, _, err := s.candidates.List(tenant, state.Query{Prefix: prefix, Limit: state.MaxList})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Candidate, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row.Value)
+	}
+	return out, nil
+}
+
+// ResolveCandidate records a reviewer's decision and takes the candidate
+// out of the queue. The decision is written first, so a candidate is never
+// removed without it.
+func (s *Store) ResolveCandidate(tenant string, c Candidate, r Resolution) error {
+	if tenant == "" || c.ID == "" || c.Agent == "" || r.By == "" || r.At.IsZero() || (r.Decision != "accepted" && r.Decision != "dismissed") {
+		return ErrInvalid
+	}
+	if err := s.resolved.Put(tenant, c.ID, r); err != nil {
+		return err
+	}
+	return s.candidates.Delete(tenant, c.Agent+"/"+c.ID)
 }
 
 func (s *Store) Candidates(tenant, agent string, limit int) ([]Candidate, error) {

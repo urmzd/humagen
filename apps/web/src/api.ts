@@ -11,6 +11,8 @@ import type {
   AuditRecord,
   Branding,
   DriveVersion,
+  EvalCandidate,
+  EvalCandidatePage,
   Note as GeneratedNote,
   GitHubAutomation,
   Health as HealthReport,
@@ -794,6 +796,8 @@ export interface Preferences {
   /** Projects whose announcements stay out of this person's own inbox. */
   muted: string[];
 }
+
+export type { EvalCandidate, EvalCandidatePage };
 
 export interface Check {
   kind: "contains" | "not_contains" | "matches" | "equals" | "within_ms";
@@ -1589,6 +1593,17 @@ export const api = {
   saveSuite: (s: Suite) => call<Suite>("PUT", `/api/evals/${encodeURIComponent(s.name)}`, s),
   deleteSuite: (name: string) => call<void>("DELETE", `/api/evals/${encodeURIComponent(name)}`),
   runSuite: (name: string) => call<EvalRun>("POST", `/api/evals/${encodeURIComponent(name)}/run`),
+  /** A page of the questions behind answers rated down, awaiting review, newest first. */
+  evalCandidates: (agent: string, after = "") =>
+    call<EvalCandidatePage>(
+      "GET",
+      `/api/eval-candidates?${new URLSearchParams({ agent, limit: "20", ...(after ? { after } : {}) })}`,
+    ),
+  /** Adds a candidate's question to a suite as a case with these checks. The answer is never copied. */
+  acceptEvalCandidate: (id: string, suite: string, checks: Check[]) =>
+    call<Suite>("POST", `/api/eval-candidates/${encodeURIComponent(id)}/accept`, { suite, checks }),
+  dismissEvalCandidate: (id: string) =>
+    call<void>("DELETE", `/api/eval-candidates/${encodeURIComponent(id)}`),
   schedules: () =>
     call<{ schedules: ScheduleView[] }>("GET", "/api/schedules").then((r) => r.schedules),
   createSchedule: (s: Schedule) => call<ScheduleView>("POST", "/api/schedules", s),

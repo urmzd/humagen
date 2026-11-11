@@ -72,8 +72,10 @@ type hidden struct {
 	run, thread, message, artifact, agentNote, projectNote, doc   string
 	workspaceFile, workspaceRevision                              string
 	scratchpad                                                    string
-	memoryProposal                                                string
-	personalNote                                                  string
+	// candidate is the eval candidate a down rating of the hidden run opened.
+	candidate      string
+	memoryProposal string
+	personalNote   string
 	// connector is a catalog connector of the hidden project, owned by the
 	// workspace's machine and published to that project.
 	connector string
@@ -215,6 +217,7 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	run := must("POST", "/api/runs", `{"agent":"`+h.agent+`","text":"Run `+marker+`.","project":"`+h.project+`"}`, http.StatusAccepted)
 	h.run, h.thread = str(run, "id"), str(run, "thread")
 	ended(t, f, owner, h.run)
+	h.rateDown(t, f, owner)
 	h.seedSession(t, f, f.person(t, "acme", "00u-session-owner", "Canary", "humagen-admins"))
 	h.handoff = "handoff-" + marker
 	if _, err := f.p.Operations.SetHandoff("acme", operations.Handoff{ID: h.handoff, From: h.agent, To: h.agent, Project: h.project, Thread: h.thread, Owner: "svc-acme", Goal: "Contract " + marker, DoneWhen: "Review " + marker, State: operations.Result, RunID: h.run, Chain: []string{"root", h.agent}, Inputs: []operations.Input{}}, 0, time.Now()); err != nil {
@@ -393,6 +396,21 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	return h
 }
 
+// rateDown rates the hidden run down with a reason, as tok, which opens an
+// eval candidate holding the run's words.
+func (h *hidden) rateDown(t *testing.T, f *fixture, tok string) {
+	t.Helper()
+	want(t, f, tok, "PUT", "/api/runs/"+h.run+"/feedback", `{"rating":"down","reason":"wrong","comment":"Comment `+marker+`"}`, http.StatusOK)
+	for _, c := range kept(f.p.Evals.OpenCandidates("acme", h.agent)) {
+		if c.Run == h.run {
+			h.candidate = c.ID
+		}
+	}
+	if h.candidate == "" {
+		t.Fatal("the down rating of the hidden run opened no eval candidate")
+	}
+}
+
 // naming is a Slack client's body naming the hidden agent: as its default,
 // in its list, beside an agent the outsider sees when they are in the
 // workspace, and as the agent a bot stands for.
@@ -421,6 +439,7 @@ func hidePrivate(t *testing.T, f *fixture, owner string) hidden {
 	h.thread = started["thread"].(map[string]any)["id"].(string)
 	h.run = started["runs"].([]any)[0].(map[string]any)["id"].(string)
 	ended(t, f, ana, h.run)
+	h.rateDown(t, f, ana)
 	h.seedSession(t, f, ana)
 	h.handoff = "private-handoff-" + marker
 	if _, err := f.p.Operations.SetHandoff("acme", operations.Handoff{ID: h.handoff, From: h.agent, To: h.agent, Project: h.project, Thread: h.thread, Owner: "00u-ana", Goal: "Contract " + marker, DoneWhen: "Review " + marker, State: operations.Result, RunID: h.run, Chain: []string{"root", h.agent}, Inputs: []operations.Input{}}, 0, time.Now()); err != nil {
@@ -585,7 +604,7 @@ func (h hidden) unplaced(path, param string) bool {
 		case strings.HasPrefix(path, "/api/inbox/"):
 			return h.message == ""
 		}
-		return !slices.ContainsFunc([]string{"/api/runs/", "/api/threads/", "/api/deletions/", "/api/artifacts/", "/api/alerts/", "/api/assignments/", "/api/handoffs/"}, func(p string) bool { return strings.HasPrefix(path, p) })
+		return !slices.ContainsFunc([]string{"/api/runs/", "/api/threads/", "/api/deletions/", "/api/artifacts/", "/api/alerts/", "/api/assignments/", "/api/handoffs/", "/api/eval-candidates/"}, func(p string) bool { return strings.HasPrefix(path, p) })
 	}
 	if !h.inside {
 		return false
@@ -661,6 +680,8 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.sourceRule, true
 		case prefix("/api/handoffs/"):
 			return h.handoff, true
+		case prefix("/api/eval-candidates/"):
+			return h.candidate, true
 		case prefix("/api/assignments/"):
 			return h.assignment, true
 		case prefix("/api/runs/"):

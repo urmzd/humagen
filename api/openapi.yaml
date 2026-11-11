@@ -6363,6 +6363,100 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/eval-candidates:
+    get:
+      operationId: listEvalCandidates
+      tags: [evals]
+      summary: List the feedback candidates awaiting review, newest first
+      description: |
+        A candidate is the question behind an answer someone rated down with a
+        reason. It waits here until a reviewer accepts it into a suite or
+        dismisses it. Newest first by when the rating last changed, then by
+        id; `next` is the place of the last candidate on the page, so a later
+        page never repeats one already read. A candidate whose agent or
+        source run the caller may not read is left out, and no count of those
+        is given. At most 1000 undecided candidates are read per request;
+        name an `agent` to read only that agent's.
+      x-permission: evals:read
+      x-readonly: true
+      parameters:
+        - name: agent
+          in: query
+          description: Only candidates from this agent's answers.
+          schema: {type: string}
+        - name: limit
+          in: query
+          description: The page size. 50 when left out.
+          schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+        - name: after
+          in: query
+          description: The `next` of the previous page.
+          schema: {type: string}
+      responses:
+        "200":
+          description: A page of candidates.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EvalCandidatePage"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/eval-candidates/{id}:
+    delete:
+      operationId: dismissEvalCandidate
+      tags: [evals]
+      summary: Dismiss a feedback candidate
+      description: |
+        Takes the candidate out of the queue without a case. A candidate that
+        does not exist, one already decided and one the caller may not read
+        all answer 404 in the same words.
+      x-permission: evals:write
+      x-destructive: true
+      x-idempotent: true
+      parameters:
+        - {$ref: "#/components/parameters/EvalCandidateID"}
+      responses:
+        "204":
+          description: Dismissed.
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/eval-candidates/{id}/accept:
+    post:
+      operationId: acceptEvalCandidate
+      tags: [evals]
+      summary: Accept a feedback candidate into an eval suite
+      description: |
+        Adds the question that was asked to the suite as a new case with the
+        reviewer's checks, and takes the candidate out of the queue. Only the
+        question and the checks are copied: never the agent's answer, the
+        rating's reason or its comment. The suite must test the agent that
+        answered, and changing it takes what replacing it does: a suite that
+        tries an agent homed in a project takes a member of that project
+        (403). A candidate or a suite that does not exist, or that the caller
+        may not read, answers 404 in the same words.
+      x-permission: evals:write
+      parameters:
+        - {$ref: "#/components/parameters/EvalCandidateID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/EvalCandidateAccept"}
+      responses:
+        "200":
+          description: The suite, with the new case.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EvalSuite"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
 
   /api/corpora:
     get:
@@ -10619,6 +10713,12 @@ components:
       in: path
       required: true
       description: The eval suite's name.
+      schema: {type: string}
+    EvalCandidateID:
+      name: id
+      in: path
+      required: true
+      description: The candidate's id.
       schema: {type: string}
     CorpusName:
       name: name
@@ -16376,6 +16476,41 @@ components:
       type: string
       description: "`corpus` scores a corpus's search as an agent runs it, with the access of whoever starts the run; its cases name the documents (by title) a query should return."
       enum: [agent, knowledge, corpus]
+    EvalCandidate:
+      description: The question behind an answer rated down with a reason, awaiting a reviewer. It never holds the answer.
+      type: object
+      required: [id, run, agent, project, input, reason, at]
+      properties:
+        id: {type: string}
+        run: {type: string, description: The run that was rated.}
+        agent: {type: string, description: The agent that answered.}
+        project: {type: string, description: "The project the run was filed in; empty for the root."}
+        input: {type: string, description: The question that was asked.}
+        reason: {type: string, description: The reason given with the rating.}
+        comment: {type: string, description: What the person added.}
+        at: {type: string, format: date-time, description: When the rating last changed.}
+    EvalCandidatePage:
+      description: A page of candidates, newest first.
+      type: object
+      additionalProperties: false
+      required: [candidates, next]
+      properties:
+        candidates:
+          type: array
+          maxItems: 200
+          items: {$ref: "#/components/schemas/EvalCandidate"}
+        next: {type: string, description: "The after of the next page; empty on the last."}
+    EvalCandidateAccept:
+      type: object
+      additionalProperties: false
+      required: [suite, checks]
+      properties:
+        suite: {type: string, description: The name of the suite the case is added to.}
+        checks:
+          description: What a good answer to the question looks like. Every one must pass.
+          type: array
+          minItems: 1
+          items: {$ref: "#/components/schemas/EvalCheck"}
     EvalCheck:
       description: A deterministic check on an agent's output.
       type: object

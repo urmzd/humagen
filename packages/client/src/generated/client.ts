@@ -70,6 +70,8 @@ import type {
   DismissTipBody,
   DraftLibrarySkillBody,
   DraftSkillFromOutcomeBody,
+  EvalCandidateAccept,
+  EvalCandidatePage,
   EvalRun,
   EvalSuite,
   FindHelpResponse,
@@ -5670,6 +5672,90 @@ in a project takes a member of that project (403).
     let path = "/api/evals/{name}/runs";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<ListEvalRunsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** A candidate is the question behind an answer someone rated down with a
+reason. It waits here until a reviewer accepts it into a suite or
+dismisses it. Newest first by when the rating last changed, then by
+id; `next` is the place of the last candidate on the page, so a later
+page never repeats one already read. A candidate whose agent or
+source run the caller may not read is left out, and no count of those
+is given. At most 1000 undecided candidates are read per request;
+name an `agent` to read only that agent's.
+ */
+  async listEvalCandidates(agent?: string, limit?: number, after?: string, options?: RequestOptions): Promise<EvalCandidatePage> {
+    let path = "/api/eval-candidates";
+    const _q = new URLSearchParams();
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (after !== undefined && after !== null) _q.set("after", String(after));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<EvalCandidatePage>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listEvalCandidatesRaw(agent?: string, limit?: number, after?: string, options?: RequestOptions): Promise<ApiResponse<EvalCandidatePage>> {
+    let path = "/api/eval-candidates";
+    const _q = new URLSearchParams();
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (after !== undefined && after !== null) _q.set("after", String(after));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<EvalCandidatePage>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Takes the candidate out of the queue without a case. A candidate that
+does not exist, one already decided and one the caller may not read
+all answer 404 in the same words.
+ */
+  async dismissEvalCandidate(id: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/eval-candidates/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async dismissEvalCandidateRaw(id: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/eval-candidates/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Adds the question that was asked to the suite as a new case with the
+reviewer's checks, and takes the candidate out of the queue. Only the
+question and the checks are copied: never the agent's answer, the
+rating's reason or its comment. The suite must test the agent that
+answered, and changing it takes what replacing it does: a suite that
+tries an agent homed in a project takes a member of that project
+(403). A candidate or a suite that does not exist, or that the caller
+may not read, answers 404 in the same words.
+ */
+  async acceptEvalCandidate(id: string, body: EvalCandidateAccept, options?: RequestOptions): Promise<EvalSuite> {
+    let path = "/api/eval-candidates/{id}/accept";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<EvalSuite>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async acceptEvalCandidateRaw(id: string, body: EvalCandidateAccept, options?: RequestOptions): Promise<ApiResponse<EvalSuite>> {
+    let path = "/api/eval-candidates/{id}/accept";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<EvalSuite>("POST", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }

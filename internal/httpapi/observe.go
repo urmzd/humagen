@@ -49,6 +49,9 @@ func (s *Server) observeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/evals/{name}", s.authed(auth.EvalsWrite, s.seenSuite(s.deleteSuite)))
 	mux.HandleFunc("POST /api/evals/{name}/run", s.authed(auth.EvalsWrite, s.seenSuite(s.runSuite)))
 	mux.HandleFunc("GET /api/evals/{name}/runs", s.authed(auth.EvalsRead, s.seenSuite(s.suiteRuns)))
+	mux.HandleFunc("GET /api/eval-candidates", s.authed(auth.EvalsRead, s.listEvalCandidates))
+	mux.HandleFunc("POST /api/eval-candidates/{id}/accept", s.authed(auth.EvalsWrite, s.acceptEvalCandidate))
+	mux.HandleFunc("DELETE /api/eval-candidates/{id}", s.authed(auth.EvalsWrite, s.dismissEvalCandidate))
 
 	mux.HandleFunc("GET /api/knowledge/{name}/dependencies", s.authed(auth.KnowledgeRead, s.seenSource(s.sourceDependencies)))
 	mux.HandleFunc("GET /api/knowledge", s.authed(auth.KnowledgeRead, s.listSources))
