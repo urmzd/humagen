@@ -1152,6 +1152,9 @@ export const api = {
       "GET",
       `/api/memory/files/history?${memoryTreeQuery(at, { before, limit })}`,
     ).then((r) => r.versions),
+  // base_version is the tree version the file was read at. A newer change to the file answers 409.
+  writeMemoryFile: (at: MemoryTreeRef, file: string, content: string, base_version: number) =>
+    call<MemoryFiles>("PUT", "/api/memory/files/content", { ...at, file, content, base_version }),
   restoreMemoryFiles: (at: MemoryTreeRef, version: number) =>
     call<MemoryFiles>("POST", "/api/memory/files/restore", { ...at, version }),
   decideMemoryProposal: (at: MemoryTreeRef, id: string, decision: "approve" | "discard") =>
