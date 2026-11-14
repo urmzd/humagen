@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.119.0 (2026-11-14)
+
+### Features
+
+- **cli**: add humagen store list, install and remove (#327) ([e6a905b](https://github.com/urmzd/humagen/commit/e6a905b40eaf9d105e7ed0b144ae889e22405cc0))
+- **platform**: refuse more than one replica on the in-memory bus (#326) ([027c2a1](https://github.com/urmzd/humagen/commit/027c2a172f81f2f36c885cb79952ba46b4e6c53f))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.118.0...v0.119.0)
+
+
 ## 0.118.0 (2026-11-11)
 
 ### Features
