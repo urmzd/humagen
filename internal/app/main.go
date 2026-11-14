@@ -88,6 +88,7 @@ const usage = `usage: humagen start [-f PATH] [flags]     run the platform here;
        humagen deploy [-f PATH] [-o DIR]  run it where the spec's deploy says: local, compose or kubernetes
        humagen setup                      answer a few questions and write humagen.yaml
        humagen create github|slack [flags] connect a surface through the API
+       humagen store list|install|remove  use the agent store through the API
        humagen config check|print -f PATH check a spec, or print it with every default
        humagen config copy-keys           list the console's text branding.copy may replace
        humagen slack manifest [flags]     print the Slack app manifest
@@ -158,6 +159,8 @@ func run(o Options, args []string) error {
 		return setupCmd(o, args[1:], os.Stdin, os.Stdout)
 	case "create":
 		return createCmd(args[1:], os.Stdout)
+	case "store":
+		return storeCmd(args[1:], os.Stdout)
 	case "slack":
 		return slackCmd(args[1:], os.Stdout)
 	case "config":
