@@ -79,6 +79,12 @@ refuse --set shutdown.httpTimeout=500ms
 # single-writer.
 refuse --set autoscaling.enabled=true --set autoscaling.maxReplicas=2
 refuse --set autoscaling.enabled=true --set autoscaling.minReplicas=2
+# More than one replica needs a bus the replicas share: never the in-memory
+# bus, on memory stores or declared over Postgres stores.
+refuse -f "$chart/ci/scale-values.yaml" --set system.spec.bus.kind=memory
+refuse -f "$chart/ci/scale-values.yaml" --set autoscaling.enabled=false --set replicaCount=2 --set system.spec.bus.kind=memory
+refuse --set replicaCount=2 --set system.spec.stores.kind=memory --set system.spec.stores.postgres=null
+"$helm" template humagen "$chart" -f "$chart/ci/scale-values.yaml" --set autoscaling.enabled=false --set replicaCount=2 >/dev/null
 # The worker needs Postgres stores and a bucket; KEDA needs the Secret.
 refuse --set worker.enabled=true
 refuse -f "$chart/ci/scale-values.yaml" --set system.spec.blobs.kind=disk --set system.spec.blobs.s3=null

@@ -162,6 +162,7 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 	set("drain-grace", sp.Server.DrainGrace)
 	set("shutdown-timeout", sp.Server.ShutdownTimeout)
 	set("role", sp.Server.Role)
+	set("replicas", strconv.Itoa(sp.Server.Replicas))
 	if !sp.Server.Console.On() {
 		l.args = append(l.args, "-web=")
 	} else if d := sp.Server.Console.Dir; d != "" && d != "auto" {
@@ -334,6 +335,20 @@ func openBus(ctx context.Context, o Options, l loaded, kind string, backends pla
 		}
 		return nil, fmt.Errorf("bus: -bus=%q is not memory or postgres", kind)
 	}
+}
+
+// checkReplicas refuses a deployment of more than one replica on the
+// in-memory bus, which a nil bus means to the platform. It runs at start,
+// on the bus that was opened, because the flags and $HUMAGEN_POSTGRES_URL
+// can choose a bus the spec file does not name.
+func checkReplicas(replicas int, broker bus.Bus) error {
+	if replicas < 1 {
+		return fmt.Errorf("-replicas=%d: give the number of server processes the deployment runs, 1 or more", replicas)
+	}
+	if broker != nil {
+		return nil
+	}
+	return spec.MemoryBusReplicas(replicas)
 }
 
 // fileExtensions are the Platform documents' models and tools, as the

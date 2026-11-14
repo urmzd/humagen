@@ -160,6 +160,10 @@ type Server struct {
 	// worker (the turns on the run queue, serving nothing). api and worker
 	// share the run queue, so they need stores on Postgres.
 	Role string `json:"role,omitempty"`
+	// Replicas is how many server processes the deployment runs on these
+	// stores and this bus. Left out, 1. More than one needs a bus they
+	// share: the in-memory bus reaches one process only, so it is refused.
+	Replicas int `json:"replicas,omitempty"`
 }
 
 // Defaults for Server's durations.
@@ -178,7 +182,21 @@ func (s Server) check() error {
 			return fmt.Errorf("server: %s %q is not a duration, such as 25s", f.name, f.v)
 		}
 	}
+	if s.Replicas < 0 {
+		return fmt.Errorf("server: replicas %d is negative; give the number of server processes, 1 or more, or leave it out for 1", s.Replicas)
+	}
 	return nil
+}
+
+// MemoryBusReplicas refuses more than one replica on the in-memory bus.
+// Each process has its own in-memory bus, so with two replicas a run's
+// events reach only the process that ran it: streams, delivery and the
+// run index on the other replica miss them, with no error anywhere.
+func MemoryBusReplicas(replicas int) error {
+	if replicas <= 1 {
+		return nil
+	}
+	return fmt.Errorf("bus: the in-memory bus reaches one process only, so %d replicas would each miss the other's events; set stores.kind: postgres and bus.kind: postgres (or leave bus out), or set server.replicas: 1", replicas)
 }
 
 // Roles are the values server.role takes.
@@ -543,6 +561,9 @@ func (s *System) Defaults() {
 	if sp.Server.Role == "" {
 		sp.Server.Role = "all"
 	}
+	if sp.Server.Replicas == 0 {
+		sp.Server.Replicas = 1
+	}
 	if sp.Auth.Kind == "" {
 		sp.Auth.Kind = "dev"
 	}
@@ -675,6 +696,14 @@ func (s System) check(kinds Kinds) error {
 	}
 	if sp.Bus.Kind == "postgres" && sp.Stores.Kind != "postgres" {
 		return errors.New("system: bus: kind postgres shares the stores' database; set stores.kind: postgres")
+	}
+	// A bus left out follows the stores the file declares, as server.role
+	// does: a file with more than one replica says stores.kind: postgres.
+	// The start checks again, on the bus it opens.
+	if sp.Bus.Kind == "memory" || (sp.Bus.Kind == "" && sp.Stores.Kind != "postgres") {
+		if err := MemoryBusReplicas(sp.Server.Replicas); err != nil {
+			return fmt.Errorf("system: %w", err)
+		}
 	}
 	for _, x := range slots {
 		if err := kinds.check(x.name, x.slot); err != nil {

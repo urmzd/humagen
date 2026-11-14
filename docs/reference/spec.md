@@ -63,6 +63,7 @@ spec:
     drain_grace: 25s        # after SIGTERM, how long runs in flight may finish before they are handed back
     shutdown_timeout: 10s   # then how long open requests and event streams may take to end
     role: all               # all | api | worker: which parts this process runs (Process roles)
+    replicas: 1             # how many server processes the deployment runs; more than 1 is refused on the memory bus (Process roles)
 
   auth:                     # slot: dev | tailscale | oidc | mock
     kind: oidc
@@ -486,6 +487,15 @@ file's `server.role` says; a different `-role` on its command line is
 refused. `api` and `worker` hand runs to each other through the run ledger
 and queue, so both need `stores.kind: postgres`, and a split role on memory
 stores is refused at start.
+
+`server.replicas` (or `-replicas`) declares how many server processes the
+deployment runs, 1 when left out. Humagen does not count its replicas; the
+number is what the operator says. More than one on the in-memory bus is
+refused, by `humagen config check` and at start, because each process has
+its own in-memory bus and would miss the other's events: set
+`stores.kind: postgres` and leave `bus` out (or `bus.kind: postgres`), or
+set `server.replicas: 1`. The Helm chart refuses the same combination from
+`replicaCount` and `autoscaling.maxReplicas`.
 
 ```bash
 humagen serve -f humagen.yaml -role api     # behind the load balancer
