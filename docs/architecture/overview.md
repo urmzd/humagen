@@ -545,6 +545,11 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+Public-source research has a [configured CLI path](../guides/public-web.md)
+restricted to WebSearch and WebFetch. A real HTTP run executed both and its
+reported version matched a separate official-feed retrieval. This does not
+establish authenticated browser access or validate every generated claim.
+
 The response's Worked/tools control has a 44px minimum touch target on coarse
 pointers. The canonical `session` browser check measures the visible control
 and opens/closes Details before its capture.
