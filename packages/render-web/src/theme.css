@@ -482,6 +482,7 @@
 /* ---------- Prose ---------- */
 
 .aui-prose {
+  --aui-inline-code-padding: 0.3rem;
   font-size: var(--aui-prose-size, var(--text-aui-base));
   line-height: var(--aui-prose-leading, var(--text-aui-base--line-height));
   color: inherit;
@@ -542,13 +543,17 @@
 .aui-prose :where(strong) {
   font-weight: 600;
 }
+.aui-prose :where(p:has(code)) {
+  /* Cloned end padding must fit inside the paragraph at a line break. */
+  padding-inline-end: var(--aui-inline-code-padding);
+}
 .aui-prose :where(:not(pre) > code) {
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
   overflow-wrap: anywhere;
   border-radius: 0.3rem;
   background: var(--aui-code-bg);
-  padding: 0.1rem 0.3rem;
+  padding: 0.1rem var(--aui-inline-code-padding);
   font-family: var(--font-aui-mono);
   font-size: 0.85em;
 }
