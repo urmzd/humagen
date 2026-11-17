@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -26,12 +27,17 @@ type importServer struct {
 	mu      sync.Mutex
 	cap     int
 	docs    map[string][]map[string]string
+	said    map[string]string // each source's description
 	skills  []map[string]any
 	agents  []map[string]any
 	corpora map[string][]string
-	auth    []string
-	writes  int
-	refused map[string]bool
+	// projects are the workspace's project names, and attached what each
+	// source was attached to.
+	projects []string
+	attached map[string]string
+	auth     []string
+	writes   int
+	refused  map[string]bool
 }
 
 func (s *importServer) start(t *testing.T) *httptest.Server {
@@ -56,17 +62,21 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 		case r.Method == "GET" && r.URL.Path == "/api/knowledge":
 			var sources []map[string]string
 			for name := range s.docs {
-				sources = append(sources, map[string]string{"name": name})
+				sources = append(sources, map[string]string{"name": name, "description": s.said[name]})
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"sources": sources})
 		case r.Method == "POST" && r.URL.Path == "/api/knowledge":
-			var body struct{ Name string }
+			var body struct{ Name, Description string }
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			if _, ok := s.docs[body.Name]; ok {
 				problem(409, "exists")
 				return
 			}
 			s.docs[body.Name] = []map[string]string{}
+			if s.said == nil {
+				s.said = map[string]string{}
+			}
+			s.said[body.Name] = body.Description
 			w.WriteHeader(201)
 			fmt.Fprint(w, `{}`)
 		case len(parts) == 3 && parts[0] == "knowledge" && parts[2] == "documents" && r.Method == "GET":
@@ -85,6 +95,27 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 			s.docs[parts[1]] = append(s.docs[parts[1]], doc)
 			w.WriteHeader(201)
 			fmt.Fprint(w, `{}`)
+		case r.Method == "GET" && r.URL.Path == "/api/projects":
+			// Two to a page, as the real list pages at its limit.
+			from, _ := strconv.Atoi(r.URL.Query().Get("before"))
+			out := []map[string]string{}
+			var next any
+			for i := from; i < len(s.projects); i++ {
+				if len(out) == 2 {
+					next = strconv.Itoa(i)
+					break
+				}
+				out = append(out, map[string]string{"name": s.projects[i]})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"projects": out, "next": next})
+		case len(parts) == 3 && parts[0] == "knowledge" && parts[2] == "attachment" && r.Method == "PUT":
+			var body struct{ Project string }
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if s.attached == nil {
+				s.attached = map[string]string{}
+			}
+			s.attached[parts[1]] = body.Project
+			_ = json.NewEncoder(w).Encode(map[string]string{"source": parts[1], "project": body.Project})
 		case len(parts) >= 1 && parts[0] == "corpora":
 			if s.corpora == nil {
 				s.corpora = map[string][]string{}
@@ -529,5 +560,188 @@ func TestImportSessionsCanLeaveSourcesOutOfACorpusOrNameIt(t *testing.T) {
 	}
 	if _, err := runImport(t, "sessions", "--dry-run", "--corpus", "Not Valid"); err == nil || !strings.Contains(err.Error(), "--corpus must be") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestImportSessionsByProjectKeepsADirectorysSessionsTogether(t *testing.T) {
+	api := &importServer{projects: []string{"App", "Field notes"}}
+	server := api.start(t)
+	home := sessionHome(t)
+	out, err := runImport(t, "sessions", "--home", home, "--server", server.URL, "--by-project")
+	if err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	var names []string
+	for name, docs := range api.docs {
+		names = append(names, fmt.Sprintf("%s=%d", name, len(docs)))
+	}
+	sort.Strings(names)
+	if got := strings.Join(names, " "); got != "sessions-in-api=1 sessions-in-app=3" {
+		t.Fatalf("sources = %s", got)
+	}
+	// The directory with a project of its name is attached to it. The
+	// other is named, and stays in the corpus.
+	if len(api.attached) != 1 || api.attached["sessions-in-app"] != "App" {
+		t.Fatalf("attached = %v", api.attached)
+	}
+	for _, want := range []string{
+		"Attached to projects: sessions-in-app=App.",
+		"No project is named for: api. Their sessions are in the corpus; make the project and run this again to attach them.",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("out lacks %q:\n%s", want, out)
+		}
+	}
+	if len(api.corpora["sessions"]) != 2 {
+		t.Fatalf("corpus = %v", api.corpora)
+	}
+	// Once the project exists, a later run attaches what is already there.
+	api.projects = append(api.projects, "api")
+	out, err = runImport(t, "sessions", "--home", home, "--server", server.URL, "--by-project", "--json")
+	var res sessionsResult
+	if jerr := json.Unmarshal([]byte(out), &res); err != nil || jerr != nil || res.Added != 0 || api.attached["sessions-in-api"] != "api" || len(res.Unfiled) != 0 {
+		t.Fatalf("err = %v, json = %v, attached = %v\n%s", err, jerr, api.attached, out)
+	}
+}
+
+func TestImportSessionsByProjectAttachesTheSourcesThatContinueAFullOne(t *testing.T) {
+	api := &importServer{cap: 1, projects: []string{"app"}}
+	server := api.start(t)
+	if out, err := runImport(t, "sessions", "--home", sessionHome(t), "--from", "claude", "--server", server.URL, "--by-project"); err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	for _, name := range []string{"sessions-in-app", "sessions-in-app-2", "sessions-in-app-3"} {
+		if len(api.docs[name]) != 1 || api.attached[name] != "app" {
+			t.Fatalf("%s: docs = %d, attached = %q", name, len(api.docs[name]), api.attached[name])
+		}
+	}
+}
+
+func TestDirSlug(t *testing.T) {
+	for dir, want := range map[string]string{
+		"/work/app":      "app",
+		"/work/App":      "app",
+		"/work/site.dev": "site-dev-x",
+		"/work/My Notes": "my-notes-x",
+		"/work/__init__": "init-x",
+		"/work/app-2":    "app-2-x",
+		"/work/a-very-long-repository-name-that-goes-on": "a-very-long-re-x",
+		"":  "",
+		"/": "",
+	} {
+		// A name ending in -x is a prefix: eight digits of the hash follow.
+		got := dirSlug(dir)
+		if strings.HasSuffix(want, "-x") {
+			if !strings.HasPrefix(got, want) || len(got) != len(want)+8 || len(got) > 24 {
+				t.Errorf("dirSlug(%q) = %q, want %sNNNN", dir, got, want)
+			}
+			continue
+		}
+		if got != want {
+			t.Errorf("dirSlug(%q) = %q, want %q", dir, got, want)
+		}
+	}
+}
+
+// cwdSession is a Claude Code session that ran in dir.
+func cwdSession(id, dir string) string {
+	return strings.Replace(claudeSession(id, "2026-10-03T10:00:00Z", "ask "+id), "/work/app", dir, 1)
+}
+
+func TestImportSessionsByProjectReadsEveryPageOfProjects(t *testing.T) {
+	// The directory's project is on the third page of the list.
+	api := &importServer{projects: []string{"a", "b", "c", "d", "app"}}
+	server := api.start(t)
+	if out, err := runImport(t, "sessions", "--home", sessionHome(t), "--from", "claude", "--server", server.URL, "--by-project"); err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	if api.attached["sessions-in-app"] != "app" {
+		t.Fatalf("attached = %v", api.attached)
+	}
+}
+
+func TestImportSessionsByProjectTellsDirectoriesOfLikeNamesApart(t *testing.T) {
+	api := &importServer{projects: []string{"foo_bar", "foo-bar", "app"}}
+	server := api.start(t)
+	home := t.TempDir()
+	putFile(t, home, ".claude/projects/-work-foo-bar/a.jsonl", cwdSession("a", "/work/foo-bar"))
+	putFile(t, home, ".claude/projects/-work-foo_bar/b.jsonl", cwdSession("b", "/work/foo_bar"))
+	putFile(t, home, ".claude/projects/-work-app/c.jsonl", cwdSession("c", "/work/app"))
+	putFile(t, home, ".claude/projects/-work-app-2/d.jsonl", cwdSession("d", "/work/app-2"))
+	putFile(t, home, ".claude/projects/-work-My-App/e.jsonl", cwdSession("e", "/work/My App"))
+	out, err := runImport(t, "sessions", "--home", home, "--server", server.URL, "--by-project", "--json")
+	var res sessionsResult
+	if jerr := json.Unmarshal([]byte(out), &res); err != nil || jerr != nil {
+		t.Fatalf("err = %v, json = %v\n%s", err, jerr, out)
+	}
+	// Each directory has a source of its own, and each source one session.
+	if len(api.docs) != 5 {
+		t.Fatalf("sources = %v", api.docs)
+	}
+	for name, docs := range api.docs {
+		if len(docs) != 1 {
+			t.Errorf("%s holds %d sessions", name, len(docs))
+		}
+	}
+	// A project takes the directory named as it is and no other: foo-bar's
+	// is not foo_bar's, and app-2 is not a second source of app.
+	projects := map[string]string{}
+	for source, project := range api.attached {
+		if projects[project] != "" {
+			t.Errorf("%s has %s and %s", project, projects[project], source)
+		}
+		projects[project] = source
+	}
+	if len(api.attached) != 3 || projects["foo-bar"] != "sessions-in-foo-bar" || projects["app"] != "sessions-in-app" || !strings.HasPrefix(projects["foo_bar"], "sessions-in-foo-bar-x") {
+		t.Fatalf("attached = %v", api.attached)
+	}
+	if got := strings.Join(res.Unfiled, ", "); got != "My App, app-2" {
+		t.Fatalf("unfiled = %s", got)
+	}
+}
+
+func TestImportSessionsByProjectRefusesToMixTwoDirectoriesInOneSource(t *testing.T) {
+	// Every hash is the same, as two names' may be.
+	sum := slugSum
+	slugSum = func(string) string { return "00000000" }
+	t.Cleanup(func() { slugSum = sum })
+	api := &importServer{projects: []string{"a_1", "a 1"}}
+	server := api.start(t)
+	home := t.TempDir()
+	putFile(t, home, ".claude/projects/-work-a-1/a.jsonl", cwdSession("a", "/work/a_1"))
+	out, err := runImport(t, "sessions", "--home", home, "--server", server.URL, "--by-project")
+	if err != nil || api.attached["sessions-in-a-1-x00000000"] != "a_1" {
+		t.Fatalf("err = %v, attached = %v\n%s", err, api.attached, out)
+	}
+	// A later run meets a directory of the same slug: its session is not
+	// added to the first one's source, and the source stays a_1's.
+	putFile(t, home, ".claude/projects/-work-a-2/b.jsonl", cwdSession("b", "/work/a 1"))
+	out, err = runImport(t, "sessions", "--home", home, "--server", server.URL, "--by-project", "--json")
+	var res sessionsResult
+	if jerr := json.Unmarshal([]byte(out), &res); jerr != nil {
+		t.Fatalf("json = %v\n%s", jerr, out)
+	}
+	if err == nil || len(res.Failed) != 1 || !strings.Contains(res.Failed[0].Reason, "would share the source") {
+		t.Fatalf("err = %v, failed = %v", err, res.Failed)
+	}
+	if len(api.docs) != 1 || len(api.docs["sessions-in-a-1-x00000000"]) != 1 || api.attached["sessions-in-a-1-x00000000"] != "a_1" {
+		t.Fatalf("docs = %v, attached = %v", api.docs, api.attached)
+	}
+	// The same holds when only the second directory is read: the source
+	// says whose it is.
+	home = t.TempDir()
+	putFile(t, home, ".claude/projects/-work-a-2/b.jsonl", cwdSession("b", "/work/a 1"))
+	out, err = runImport(t, "sessions", "--home", home, "--server", server.URL, "--by-project", "--json")
+	res = sessionsResult{}
+	if jerr := json.Unmarshal([]byte(out), &res); jerr != nil {
+		t.Fatalf("json = %v\n%s", jerr, out)
+	}
+	// Neither is the source attached to the second directory's project,
+	// which exists: the source is not that directory's.
+	if err == nil || len(res.Failed) != 2 || !strings.Contains(res.Failed[0].Reason, "holds another directory") || !strings.Contains(res.Failed[1].Reason, "not attached for a 1") || len(res.Attached) != 0 {
+		t.Fatalf("err = %v, failed = %v, attached = %v", err, res.Failed, res.Attached)
+	}
+	if len(api.docs["sessions-in-a-1-x00000000"]) != 1 || api.attached["sessions-in-a-1-x00000000"] != "a_1" {
+		t.Fatalf("docs = %v, attached = %v", api.docs, api.attached)
 	}
 }

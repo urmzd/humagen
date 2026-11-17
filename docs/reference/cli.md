@@ -174,7 +174,23 @@ A source holds at most 200 documents and 8 MiB, so a busy month continues in
 Imported sessions and named as `--source` is, because the console's Knowledge
 page shows sources by corpus: without one they are counted there and cannot be
 opened. A corpus holds 50 sources, so a long history continues in `sessions-2`.
-To let an agent search the sessions, give it the corpus under Knowledge. Imported sessions are
+To let an agent search the sessions, give it the corpus under Knowledge.
+
+With `--by-project`, a session that ran in a directory goes in a source named
+for that directory's last name (`sessions-in-my-repo`), whichever tool it came
+from, and each such source is attached to the workspace's project of the same
+name, so a run filed in that project is grounded in the sessions that ran
+there. The project is the one named exactly as the directory is, ignoring
+case: the directory `my-repo` is the project `My-Repo`, and not `my_repo` or
+`My Repo`. A directory whose name a source's name cannot spell (`my_repo`,
+`My Repo`, a name over 24 characters) or that ends in a number (`app-2`) has
+eight digits of a hash of the directory's name added to its source's name. Two
+directories are never kept in one source: if two names would still give the
+same source, the second directory's sessions are not sent and the command
+says which two they are. A directory no project is named for is
+listed, and its sessions stay in the corpus; make the project and run the
+command again to attach them. A session from an export has no directory and is
+kept by month as before. A session already imported by month is not moved. Imported sessions are
 references an agent searches and cites; they are not conversations to continue.
 
 A skill is checked here the way the server checks it: `SKILL.md` frontmatter
@@ -197,6 +213,7 @@ the ones it left out.
 | `--since WHEN` | `sessions`: only sessions started since a date (`2026-10-01`) or an age (`720h`) |
 | `--match TEXT` | `sessions`: only sessions whose directory or title contains the text |
 | `--source PREFIX` | `sessions`: what the sources' names start with; defaults to `sessions` |
+| `--by-project` | `sessions`: keep each directory's sessions in a source of their own, `PREFIX-in-NAME`, and attach it to the project of that name |
 | `--corpus NAME` | `sessions`: the corpus the sources are put in; defaults to the `--source` prefix. `none` puts them in no corpus |
 | `--max-bytes N` | `sessions`: the most one document may be; defaults to 49152 |
 | `--children` | `sessions`: also add sessions another session started, such as a sub-agent's or a reviewer's |
