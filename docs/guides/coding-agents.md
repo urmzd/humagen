@@ -110,6 +110,11 @@ too, as `--effort` to Claude Code and as `model_reasoning_effort` to Codex.
 - **Tool activity.** Each tool the program runs is published as the run's tool
   call and its outcome, with the command or file it worked on and the end of
   its output.
+- **Notices are not failures.** Codex reports some things as errors and then
+  goes on to answer: that it left skill descriptions out of what the model
+  sees, or that it is reconnecting. The run fails only when the program says
+  the turn failed or ends without finishing it, so such a notice does not make
+  Humagen run the turn again.
 - **Usage.** Tokens are counted on the run. A subscription has no price per
   token, so the run is counted as unpriced.
 - **Stopping.** Stopping the run stops the program and what it started.
