@@ -2580,5 +2580,243 @@
     "height": "480",
     "sha256": "80a6c9eab00c7784d81923cd85b92031535fe6e6588fd56eee72647e3107a13d",
     "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-check-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "39e5e0e848bb359d1297ee85aa1bfc0fe3817b8476cf93049972f08699d75221",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-check-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "f34087430492a4f345831ddc91de896cea52d846b38b11c6939f94acae94a670",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-check-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "4da4fbe366f7be0df20517db3305aefea97853b578240f31abbdea245bfcf211",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-check-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "fbd4df16aee4c6d98f916550ac026f8aaf252aeb56ea79ea1ea82221b0ae9e4b",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-guide-pair-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "8e5d88b352cbabb4d1e1bde6ec5d201ce47c969f6d6aea6704c79af171b80fb8",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-guide-pair-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "5022f08bf55293680380c55a923d96098287b0fa9c03cce04570397b665d692f",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-guide-pair-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "51da8240d8f7961ab9372fe5b732e4e7619f880826263201ee9b8025dd01595f",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-guide-pair-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "5d7c5712aa403a0a77827df33aa462ac135bc46eeead7b5d1f56be2c73fcf01f",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-guide-pair-before-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "28c1f13c0827295ed2f091810d1d61fbb7def34060f19aecdb3ae995b911197e",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-guide-pair-before-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "84c3851c72a37b14665ebefa5d4c8307da2ac742df4c91374e799dac7862fe39",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-guide-pair-before-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "b32c18429e4304eb4420a3294cf3a9b3310c38a7274810b8532590389e333b9e",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-guide-pair-before-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "6bb72a04afb7504b94d3cdb537ee6af3e84fbcf2b9b308a2e1a3b915272b0001",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-status-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "a3f36c7b02e781a42c1e0b4ea6b38d6c113c3aab64b8b38fac0e5fe71296a5b9",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-status-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "14652824d3fe8358fb037b334ac0415fba7b41f6a32a57031aba3cf33742aecf",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-status-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "0e39fb080b18ca4a7a02716f5b4e10a513fe6fa5afbecd0aeb57352d4f3c4e9f",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-status-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "51e2be05c38c32b0f5a8c827b511299cb62e06a71a6e71615049ecdccd467156",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-status-before-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "ace583f204c2d08ff03f0e93f679251fd6c137d0dc7108e5851a8ab2593c9172",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-status-before-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "fb32a84429ab1f64f98dfd14a46cbeab151117eba1ecf553a7635c99b4301b0a",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-status-before-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "237f0969fc058bf8ac5c68193fcdf9666237f7eade163dcf0887b84030bb65ec",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-status-before-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "f3bc090f503a3e372404a1395024dc94e9a35a82ed2009d4250b0bb7a49bd5e9",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-steps-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "d0d8d118c36146e6bcf02d5efc01518f74d6967cdacda7cd661bc5d45279a9eb",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-steps-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "3f605e24965715beb4dfddfea63323e65fe90a0413bfa1c912991a11740637fb",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-steps-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "8d49c8ee5820bae7d1c700e08d1365f3a1d967eb41b0a1b825e82c78ee99f78f",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-steps-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "af1d2cbad47ab42bc82e7f0b537495a825c1c48f575227984d47ea728374a7c4",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-terminal-after.png",
+    "width": "1568",
+    "height": "392",
+    "sha256": "500e4e21d80eaea41e8f98a0afc428a9615eee020cecb01a33d7bb12f817132c",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/compare-terminal-before.png",
+    "width": "1568",
+    "height": "392",
+    "sha256": "2213fb2095b52ae4151532c985d17d8e0af931b3919c41f0fb25bbbe11a0dce2",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/runtime-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "cca2a64e2d484dbabce3f15e4cae9ed87dd3689efba75e5e3325beb8a50134a0",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/runtime-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "c4cd5829c6b2371081f5098f0fdf0bdf91487b6a27873e7ff5970804cb369272",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/runtime-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "e845bca403e06a205a9a46ecce2623fce32f54b167afd317e5bd231cc8ce576f",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/runtime-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "ae32f7d513156927efda7ff170ef853ec290c98a6e870e46d003062a96be2cff",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/runtime-before-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "216a2dbd2e4f93c416a0082cba1a6e10140fbefd931deb48fe8d282f21352b34",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/runtime-before-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "3d3cea55cf178c0006c8c1ff4e5fb76ad0c5d4c43e912276e02611c18c1cbc17",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/runtime-before-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "e59c96efefc54a8132f5b0695918e5ec50ec3d13d3cf9c68fc74ebdbe9352092",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "screenshot-comparison/runtime-before-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "a53e3a10358fb7c2062b526071165199db972655b7bd5a9e1fe2e6073621eb91",
+    "inspected_by": "codex"
   }
 ]
