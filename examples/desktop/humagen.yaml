@@ -42,14 +42,14 @@ spec:
         args: ['--yes', '@steipete/peekaboo@4.9.9', mcp, serve, '--no-remote', '--allow-foreground']
         accept:
           - {name: action, schema_hash: 079332d0c8e0781598a8a1774da321cbc8bdd65ca978a0e072ec78f60f371db2, class: write}
-          - {name: app, schema_hash: ec0849f5662d5f49cc0c06f9dff1bbad6a2e739225be1542fee6ed813ed41c25, class: write}
+          - {name: app, schema_hash: c90703dc8e8014eb4c8bb05a6b51e1312dacb79be647d6f555047d866266ce53, class: write}
           - {name: scroll, schema_hash: fe139e82091f975d60c132b44c730d9063a07f6acd60bc672e7f239ede56c4ff, class: write}
           - {name: image, schema_hash: 1586ac145ff92814c6ef419562da52c8a298d1d99a679792b63bfdaebbd2cdb0, class: write}
-          - {name: press, schema_hash: 47fc42fc2b7662cb08228a277c0c4b2100624e71d06693e0e9c701efea4cc4f5, class: write}
+          - {name: press, schema_hash: 42d1754c6a810976f22089d2b0ba105adf499ee053c04752a55e18ca2e66c7e3, class: write}
           - {name: click, schema_hash: 03e8ec066f1fab528360fef148a3e3825e074462b343d5556d5009de76ae20f8, class: write}
-          - {name: window, schema_hash: 71d7eee3d5ebd91ad98218c4bbe448e2cd565fae16c6b765ff8494ead8a67986, class: write}
-          - {name: dialog, schema_hash: f94ac23163b275977f224ea5deb93dac9bf034f83bfd2cbec77e0291e3e0d555, class: write}
-          - {name: menu, schema_hash: 940880d69d69793b4cff52e9ef56273e3574d02fb29c6ca0d2cb2781e3419134, class: write}
+          - {name: window, schema_hash: 880593cef8dec7f62b973fadc8d8c184ec60d0e5ae97bf8483a7560c9a52918f, class: write}
+          - {name: dialog, schema_hash: 20a1cb9a24d5215a65e1f772ec8b8498f273b9ed2c504384515cff7326287a2b, class: write}
+          - {name: menu, schema_hash: e0963b363f4a373b5856387aa939ebe0b8c53851ed7aaf4c7413d55dda9c9ff8, class: write}
           - {name: permissions, schema_hash: 99334726611ccf58a148b0814696bfa6fe08c1b2d027e946beccf5a74331c9aa, class: write}
-          - {name: type, schema_hash: 66d864058d28ce8fddbfa86f8ddad589f9d56418584d9d831af478a90c13f56b, class: write}
+          - {name: type, schema_hash: e5b948410cf8bc449dec4b4e42b9b015b6367949bef713d6de44c447cb968a8e, class: write}
           - {name: see, schema_hash: f53b3e4863075a85c711cba9e47a9e9cdc9e9a0a2e0ef4765363f79deb787fdf, class: write}

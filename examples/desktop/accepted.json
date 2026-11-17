@@ -29,16 +29,21 @@
   },
   {
     "name": "app",
-    "description": "Control applications under immutable background-only authority. Available actions are `list`, `quit`,\n`hide`, and `launch`; background `launch` is only an exact already-running readiness probe and never cold\nstarts an app. Focus, switch, open, relaunch, unhide, new-instance, and `foreground=true` are unavailable\nhere because they can activate shared desktop UI. A human must start a foreground-capable Agent session or\nuse the standalone CLI with explicit foreground consent for those operations.\n\nProcess-generation chaining must use `target_identity.process_start_identity_decimal`; the numeric\n`process_start_identity` field remains compatibility-only and can lose precision above 2^53.\n\nAlways include the `action` field in your JSON payload. Examples:\n- { \"action\": \"list\" }\n- Already-running readiness probe: { \"action\": \"launch\", \"name\": \"Finder\" }\n- { \"action\": \"quit\", \"name\": \"Slack\", \"force\": false }",
+    "description": "Control applications with explicit foreground-capable authority. Focus and switch activate shared desktop UI;\ncold launch, open, new-instance, relaunch, and unhide require `foreground=true` because macOS cannot guarantee\nthose operations preserve the user's foreground work. Prefer background targeting after foreground setup.\nProcess-generation chaining must use `target_identity.process_start_identity_decimal`; the numeric\n`process_start_identity` field remains compatibility-only and can lose precision above 2^53.\n\nAlways include the `action` field in your JSON payload. Examples:\n- Already-running readiness probe: { \"action\": \"launch\", \"name\": \"PID:1234\" }\n- Cold launch with foreground consent: { \"action\": \"launch\", \"name\": \"Calendar\", \"foreground\": true }\n- { \"action\": \"launch\", \"name\": \"TextEdit\", \"newInstance\": true, \"foreground\": true }\n- { \"action\": \"open\", \"name\": \"Safari\", \"openTargets\": [\"https://example.com\"], \"foreground\": true }\n- { \"action\": \"switch\", \"to\": \"Safari\" }\n- { \"action\": \"focus\", \"name\": \"Google Chrome\" }\n- { \"action\": \"quit\", \"name\": \"Slack\", \"force\": false }",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
         "action": {
-          "description": "Background-only action; foreground lifecycle, focus, and switch actions are unavailable",
+          "description": "Action to perform; focus and switch use the session's explicit foreground authority",
           "enum": [
             "launch",
+            "open",
             "quit",
+            "relaunch",
+            "focus",
             "hide",
+            "unhide",
+            "switch",
             "list"
           ],
           "type": "string"
@@ -52,6 +57,11 @@
           "description": "Bundle identifier when launching",
           "type": "string"
         },
+        "cycle": {
+          "default": false,
+          "description": "Cycle to the next application (like Cmd+Tab)",
+          "type": "boolean"
+        },
         "except": {
           "description": "Comma-separated list of apps to exclude when quitting all",
           "type": "string"
@@ -61,9 +71,36 @@
           "description": "Force quit application",
           "type": "boolean"
         },
+        "foreground": {
+          "default": false,
+          "description": "Required for cold launch, open, new-instance, relaunch, and unhide",
+          "type": "boolean"
+        },
         "name": {
           "description": "App name/bundle ID/PID (e.g., 'Safari', 'com.apple.Safari', 'PID:663')",
           "type": "string"
+        },
+        "newInstance": {
+          "default": false,
+          "description": "Launch a distinct process even if the app is already running",
+          "type": "boolean"
+        },
+        "openTargets": {
+          "description": "URL or file paths to open; required for open, optional for launch",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": false
+        },
+        "to": {
+          "description": "Target application when switching",
+          "type": "string"
+        },
+        "wait": {
+          "default": 2,
+          "description": "Wait time (seconds) between quit/launch for relaunch",
+          "type": "number"
         },
         "waitForWindow": {
           "default": false,
@@ -81,7 +118,7 @@
       ],
       "type": "object"
     },
-    "schema_hash": "ec0849f5662d5f49cc0c06f9dff1bbad6a2e739225be1542fee6ed813ed41c25",
+    "schema_hash": "c90703dc8e8014eb4c8bb05a6b51e1312dacb79be647d6f555047d866266ce53",
     "class": "write"
   },
   {
@@ -220,10 +257,14 @@
   },
   {
     "name": "press",
-    "description": "Presses one or more raw keyboard chords. Use `keys` for a Peekaboo chord sequence such as\n[\"cmd+c\", \"Return\"], or use `key` plus `modifiers` for a single chord. The two input shapes are\nmutually exclusive. Background-only MCP/Agent delivery requires an explicit fresh exact non-dialog snapshot receipt.\nApp, PID, window-selector-only, targetless, competing-selector, and foreground forms are refused.\nUse case-insensitive macOS key names joined with '+' (cmd+shift+t). delete (also Delete, backspace or del) erases backward; forwarddelete/forward_delete erase forward. Use cmd/command for Command, not super.\nRaw chords cannot prove semantic intent or effect; observe the exact target after unverified delivery.\nPeekaboo MCP 4.9.9 using openai/gpt-5.6, anthropic/claude-opus-5",
+    "description": "Presses one or more raw keyboard chords. Use `keys` for a Peekaboo chord sequence such as\n[\"cmd+c\", \"Return\"], or use `key` plus `modifiers` for a single chord. The two input shapes are\nmutually exclusive. Foreground-capable callers may use foreground=true or an exact window/snapshot receipt whose focused\nelement can be pinned through native background dispatch.\nUse case-insensitive macOS key names joined with '+' (cmd+shift+t). delete (also Delete, backspace or del) erases backward; forwarddelete/forward_delete erase forward. Use cmd/command for Command, not super.\nRaw chords cannot prove semantic intent or effect; observe the exact target after unverified delivery.\nPeekaboo MCP 4.9.9 using openai/gpt-5.6, anthropic/claude-opus-5",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
+        "app": {
+          "description": "Optional target app name/bundle ID, or 'PID:<n>'.",
+          "type": "string"
+        },
         "count": {
           "default": 1,
           "description": "Optional repeat count for the complete chord sequence. Default: 1.",
@@ -237,6 +278,11 @@
           "maximum": 10000,
           "minimum": 0,
           "type": "integer"
+        },
+        "foreground": {
+          "default": false,
+          "description": "Required true for targetless, app-only, or PID-only raw input; false is allowed only with an exact window or fresh snapshot receipt.",
+          "type": "boolean"
         },
         "hold": {
           "default": 50,
@@ -276,17 +322,31 @@
           "type": "array",
           "uniqueItems": false
         },
+        "pid": {
+          "description": "Optional process to focus before foreground raw input.",
+          "minimum": 1,
+          "type": "integer"
+        },
         "snapshot": {
-          "description": "Required fresh exact non-dialog snapshot for receipt-pinned background press.",
+          "description": "Optional exact-window snapshot for receipt-pinned background press.",
+          "type": "string"
+        },
+        "window_id": {
+          "description": "Optional window ID to focus before raw input.",
+          "type": "integer"
+        },
+        "window_index": {
+          "description": "Optional window index (0-based); requires app/pid.",
+          "type": "integer"
+        },
+        "window_title": {
+          "description": "Optional window title (substring match) to focus before raw input.",
           "type": "string"
         }
       },
-      "required": [
-        "snapshot"
-      ],
       "type": "object"
     },
-    "schema_hash": "47fc42fc2b7662cb08228a277c0c4b2100624e71d06693e0e9c701efea4cc4f5",
+    "schema_hash": "42d1754c6a810976f22089d2b0ba105adf499ee053c04752a55e18ca2e66c7e3",
     "class": "write"
   },
   {
@@ -393,12 +453,12 @@
   },
   {
     "name": "window",
-    "description": "List and manipulate application windows.\n\nActions:\n- list: List windows with IDs, bounds, off-screen state, and combined-observation eligibility\n- close: Close a window\n- minimize: Minimize a window\n- restore: Restore a minimized window without activating or focusing its application\n- maximize: Maximize a window\n- move: Move a window to specific coordinates (requires x, y)\n- resize: Resize a window to specific dimensions (requires width, height)\n- set-bounds: Set both position and size (requires x, y, width, height)\n- focus: Unavailable under background-only authority; use a human-authorized foreground session or CLI\n\nBackground-only close uses Accessibility and fails rather than focusing the app for a global fallback.\nA focused/global close fallback is available only to a foreground-capable session with `foreground=true`.\n\nTarget windows by application name and optionally by window title or index.\nFor deterministic targeting, prefer `window_id` (from `peekaboo window list`).\nSupports partial title matching for convenience.\n\nJSON Examples (ALWAYS include `action`):\n- { \"action\": \"list\", \"app\": \"Safari\" }\n- { \"action\": \"move\", \"app\": \"TextEdit\", \"x\": 100, \"y\": 100 }\n- { \"action\": \"restore\", \"app\": \"PID:1234\", \"window_id\": 5678 }\n- { \"action\": \"set-bounds\", \"app\": \"Terminal\", \"x\": 0, \"y\": 0, \"width\": 1280, \"height\": 720 }\n- { \"action\": \"close\", \"app\": \"Safari\", \"title\": \"Document\" }\nPeekaboo MCP 4.9.9 using openai/gpt-5.6, anthropic/claude-opus-5",
+    "description": "List and manipulate application windows.\n\nActions:\n- list: List windows with IDs, bounds, off-screen state, and combined-observation eligibility\n- close: Close a window\n- minimize: Minimize a window\n- restore: Restore a minimized window without activating or focusing its application\n- maximize: Maximize a window\n- move: Move a window to specific coordinates (requires x, y)\n- resize: Resize a window to specific dimensions (requires width, height)\n- set-bounds: Set both position and size (requires x, y, width, height)\n- focus: Bring a window to the foreground using the session's explicit foreground authority\n\nBackground-only close uses Accessibility and fails rather than focusing the app for a global fallback.\nA focused/global close fallback is available only to a foreground-capable session with `foreground=true`.\n\nTarget windows by application name and optionally by window title or index.\nFor deterministic targeting, prefer `window_id` (from `peekaboo window list`).\nSupports partial title matching for convenience.\n\nJSON Examples (ALWAYS include `action`):\n- { \"action\": \"list\", \"app\": \"Safari\" }\n- { \"action\": \"move\", \"app\": \"TextEdit\", \"x\": 100, \"y\": 100 }\n- { \"action\": \"restore\", \"app\": \"PID:1234\", \"window_id\": 5678 }\n- { \"action\": \"set-bounds\", \"app\": \"Terminal\", \"x\": 0, \"y\": 0, \"width\": 1280, \"height\": 720 }\n- { \"action\": \"close\", \"app\": \"Safari\", \"title\": \"Document\" }\n- { \"action\": \"focus\", \"app\": \"Google Chrome\" }\nPeekaboo MCP 4.9.9 using openai/gpt-5.6, anthropic/claude-opus-5",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
         "action": {
-          "description": "The background-safe action to perform; focus is unavailable",
+          "description": "The action to perform; focus uses the session's explicit foreground authority",
           "enum": [
             "list",
             "close",
@@ -407,13 +467,19 @@
             "maximize",
             "move",
             "resize",
-            "set-bounds"
+            "set-bounds",
+            "focus"
           ],
           "type": "string"
         },
         "app": {
           "description": "Target application name, bundle ID, or process ID",
           "type": "string"
+        },
+        "foreground": {
+          "default": false,
+          "description": "For close only: allow focused/global fallback after AX close fails.",
+          "type": "boolean"
         },
         "height": {
           "description": "Height for resize or set-bounds action",
@@ -462,21 +528,22 @@
       ],
       "type": "object"
     },
-    "schema_hash": "71d7eee3d5ebd91ad98218c4bbe448e2cd565fae16c6b765ff8494ead8a67986",
+    "schema_hash": "880593cef8dec7f62b973fadc8d8c184ec60d0e5ae97bf8483a7560c9a52918f",
     "class": "write"
   },
   {
     "name": "dialog",
-    "description": "Inspect and interact with system dialogs under immutable background-only authority. Available actions are\n`list`, targeted `click`, targeted `input`, and targeted non-forced `dismiss`. Every mutation requires an\nexplicit app, PID, or exact window target. File-dialog keyboard navigation, forced dismissal, targetless\ninput, and foreground fallback are unavailable; use a human-authorized foreground-capable session or CLI.\n\nExamples:\n- Click OK: { \"action\": \"click\", \"button\": \"OK\", \"app\": \"TextEdit\" }\n- Background input: { \"action\": \"input\", \"text\": \"hello\", \"field\": \"Name\", \"app\": \"TextEdit\" }\n- Dismiss: { \"action\": \"dismiss\", \"app\": \"TextEdit\" }",
+    "description": "Interact with system dialogs and alerts (alerts, sheets, NSSavePanel/NSOpenPanel).\n\nActions:\n- list: inspect dialog structure (buttons, text fields, static text)\n- click: press a dialog button\n- input: type into a dialog text field\n- file: drive NSOpenPanel/NSSavePanel dialogs (path/name/select/verify)\n- dismiss: close the active dialog\n\nTargeting:\n- click and non-forced dismiss require app/pid or an exact window_id target.\n- targeted input defaults to background AXValue delivery; targetless input requires foreground=true.\n- file interaction always requires foreground=true.\n- list may be targetless; targeted list remains read-only and must resolve exactly one dialog.\n- app and pid are alternatives. Provide at most one window selector; title/index require app or pid.\n- Set foreground=true only for explicit keyboard/file interaction or a global fallback.\n\nExamples:\n- Click OK: { \"action\": \"click\", \"button\": \"OK\", \"app\": \"TextEdit\" }\n- Default action: { \"action\": \"click\", \"button\": \"default\", \"app\": \"TextEdit\" }\n- Background input: { \"action\": \"input\", \"text\": \"hello\", \"field\": \"Name\", \"app\": \"TextEdit\" }\n- Save file (OKButton): { \"action\": \"file\", \"path\": \"/tmp\", \"name\": \"poem.rtf\",\n  \"select\": \"default\", \"ensure_expanded\": true, \"app\": \"TextEdit\", \"foreground\": true }",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
         "action": {
-          "description": "Background-safe dialog action; file and global input are unavailable",
+          "description": "Action to perform",
           "enum": [
             "list",
             "click",
             "input",
+            "file",
             "dismiss"
           ],
           "type": "string"
@@ -494,6 +561,11 @@
           "description": "Clear existing text first.",
           "type": "boolean"
         },
+        "ensure_expanded": {
+          "default": false,
+          "description": "Ensure file dialogs are expanded (Show Details) before applying path navigation.",
+          "type": "boolean"
+        },
         "field": {
           "description": "Field label/placeholder to target (for input action).",
           "type": "string"
@@ -502,9 +574,31 @@
           "description": "Field index (0-based) to target (for input action).",
           "type": "integer"
         },
+        "force": {
+          "default": false,
+          "description": "Force dismiss (sends Escape).",
+          "type": "boolean"
+        },
+        "foreground": {
+          "default": false,
+          "description": "Allow focus/global input. Required for targetless input, file, and forced dismiss.",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "Filename to enter (for save dialogs).",
+          "type": "string"
+        },
+        "path": {
+          "description": "Directory (or full path) to navigate to (for file action).",
+          "type": "string"
+        },
         "pid": {
           "description": "Target process ID (alternative to app).",
           "type": "integer"
+        },
+        "select": {
+          "description": "Button to click after setting path/name; default clicks OKButton.",
+          "type": "string"
         },
         "text": {
           "description": "Text to input (for input action).",
@@ -528,12 +622,12 @@
       ],
       "type": "object"
     },
-    "schema_hash": "f94ac23163b275977f224ea5deb93dac9bf034f83bfd2cbec77e0291e3e0d555",
+    "schema_hash": "20a1cb9a24d5215a65e1f772ec8b8498f273b9ed2c504384515cff7326287a2b",
     "class": "write"
   },
   {
     "name": "menu",
-    "description": "Inspect or click application menu items under immutable background-only authority. Available actions are\n`list` and `click`; neither activates the application. Click requires an exact app name, bundle ID, or PID,\nwhile read-only list retains fuzzy name matching. Foreground menu expansion is unavailable in this session.\n\nExamples:\n- List Chrome menus: { \"action\": \"list\", \"app\": \"Google Chrome\" }\n- Save document: { \"action\": \"click\", \"app\": \"TextEdit\", \"path\": \"File > Save\" }\nPeekaboo MCP 4.9.9",
+    "description": "Interact with application menu bars - list available menus and menu items\nfor an application, or click on a specific menu item using path notation.\n\nActions:\n- list: Discover all available menus and menu items for an application\n- click: Click on a specific menu item using path notation\n\nTarget applications by name (e.g., \"Safari\"), bundle ID (e.g., \"com.apple.Safari\"),\nor process ID (e.g., \"PID:663\"). Click and foreground-list actions require an exact\nname, bundle ID, or PID; background read-only listing retains fuzzy name matching.\n\nExamples:\n- List Chrome menus: { \"action\": \"list\", \"app\": \"Google Chrome\" }\n- Save document: { \"action\": \"click\", \"app\": \"TextEdit\", \"path\": \"File > Save\" }\n- Copy selection: { \"action\": \"click\", \"app\": \"Safari\", \"path\": \"Edit > Copy\" }\nPeekaboo MCP 4.9.9 using openai/gpt-5.6\nand anthropic/claude-opus-5",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -549,6 +643,11 @@
           "description": "Target application name, bundle ID, or process ID. Click and foreground list require an exact selector; background list permits fuzzy names.",
           "type": "string"
         },
+        "foreground": {
+          "default": false,
+          "description": "Focus the target before list/click. Defaults to background AX access.",
+          "type": "boolean"
+        },
         "item": {
           "description": "Simple menu item to click (for non-nested items)",
           "type": "string"
@@ -563,7 +662,7 @@
       ],
       "type": "object"
     },
-    "schema_hash": "940880d69d69793b4cff52e9ef56273e3574d02fb29c6ca0d2cb2781e3419134",
+    "schema_hash": "e0963b363f4a373b5856387aa939ebe0b8c53851ed7aaf4c7413d55dda9c9ff8",
     "class": "write"
   },
   {
@@ -579,10 +678,14 @@
   },
   {
     "name": "type",
-    "description": "Types text into UI elements, a targeted app process, or one exact background window.\nSupports human typing (--wpm) or fixed-delay (--delay) pacing. Use `press` for key presses and chords.\nDefault background-only MCP/Agent delivery requires an explicit fresh exact non-dialog snapshot receipt.\nAn optional element ID must come from that snapshot. App/PID/window-only, implicit-latest, competing\nselector, targetless, and foreground forms are refused before dispatch. Use clear=true with literal text\nwhen replacement is intended and a confirmed typing result is required; other event injection remains\nhonestly unverifiable and requires fresh observation.\nPeekaboo MCP 4.9.9 using openai/gpt-5.6\nand anthropic/claude-opus-5",
+    "description": "Types text into UI elements, a targeted app process, or one exact background window.\nSupports human typing (--wpm) or fixed-delay (--delay) pacing. Use `press` for key presses and chords.\nForeground-capable callers may use snapshot, element, app, PID, or exact-window targeting and set\nforeground=true when focused/global input is intentional.\nPeekaboo MCP 4.9.9 using openai/gpt-5.6\nand anthropic/claude-opus-5",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
+        "app": {
+          "description": "Optional foreground-capable app target; unavailable with background snapshot typing.",
+          "type": "string"
+        },
         "clear": {
           "default": false,
           "description": "Optional. Clear before typing. Clear plus literal text can be confirmed by private non-secure AX value readback; clear=false typing remains unverifiable.",
@@ -610,20 +713,41 @@
           "description": "Optional. Delay between keystrokes in milliseconds (linear profile). Default: 0.",
           "type": "integer"
         },
+        "foreground": {
+          "default": false,
+          "description": "Optional. Focus a supplied target or intentionally send global keyboard input.",
+          "type": "boolean"
+        },
         "on": {
-          "description": "Optional element ID from the required explicit snapshot.",
+          "description": "Optional element ID from a supplied or current snapshot.",
           "type": "string"
+        },
+        "pid": {
+          "description": "Optional foreground-capable process target; unavailable with background snapshots.",
+          "type": "integer"
         },
         "profile": {
           "description": "Optional. Typing profile: linear (default) or human.",
           "type": "string"
         },
         "snapshot": {
-          "description": "Required fresh exact non-dialog snapshot ID from `see` or `inspect_ui`.",
+          "description": "Optional snapshot ID from `see` or `inspect_ui`.",
           "type": "string"
         },
         "text": {
           "description": "The text to type.",
+          "type": "string"
+        },
+        "window_id": {
+          "description": "Optional foreground-capable exact-window target; unavailable with background snapshots.",
+          "type": "integer"
+        },
+        "window_index": {
+          "description": "Optional. Window index (0-based); requires app/pid.",
+          "type": "integer"
+        },
+        "window_title": {
+          "description": "Optional. Exact window title substring; must resolve uniquely.",
           "type": "string"
         },
         "wpm": {
@@ -631,12 +755,9 @@
           "type": "integer"
         }
       },
-      "required": [
-        "snapshot"
-      ],
       "type": "object"
     },
-    "schema_hash": "66d864058d28ce8fddbfa86f8ddad589f9d56418584d9d831af478a90c13f56b",
+    "schema_hash": "e5b948410cf8bc449dec4b4e42b9b015b6367949bef713d6de44c447cb968a8e",
     "class": "write"
   },
   {
