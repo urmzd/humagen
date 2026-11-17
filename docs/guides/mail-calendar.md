@@ -18,6 +18,9 @@ humagen start -f examples/mail-calendar/humagen.yaml
 ```
 
 Codex enables `apps`, ignores user config and uses a read-only local filesystem.
+The profile does not pin cloud approvals or a cloud read-only mode; those follow
+the installed program and app settings. Its read-only agent prompts are instructions,
+not cloud access controls.
 Claude Code exposes only ToolSearch as a built-in tool and permits the exact
 native Calendar names in the profile. Its user settings, hooks and account
 connections still load. Neither model configuration confines cloud access to
