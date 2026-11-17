@@ -36,6 +36,8 @@ import (
 
 	saigetypes "github.com/urmzd/saige/agent/types"
 	"github.com/urmzd/saige/flow/turn/native"
+
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 // The kinds of program.
@@ -262,7 +264,7 @@ func (p *provider) key(turns []said) string {
 // provider is not told which conversation a request is in, and reads it
 // here. The first turn of a conversation started as a run has no such line:
 // its thread is named after that run, which the request does not say.
-var threadLine = regexp.MustCompile(`(?m)^- (?:warp|humagen)\.thread: (\S+)$`)
+var threadLine = regexp.MustCompile(`(?m)^- ` + regexp.QuoteMeta(runs.MetaThread) + `: (\S+)$`)
 
 // conversation is the platform thread a request is in, or "" when what is
 // asked does not say.

@@ -12,6 +12,8 @@ import (
 
 	saigetypes "github.com/urmzd/saige/agent/types"
 	"github.com/urmzd/saige/flow/turn/native"
+
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 // program writes a stand-in for a vendor program: a shell script that
@@ -215,9 +217,9 @@ func containsArg(args []string, want string) bool {
 // platformAsk is a turn as the platform writes it: one message holding the
 // trigger's context, the conversation so far, and what is asked.
 func platformAsk(thread, sofar, ask string) saigetypes.Message {
-	s := "Context from the trigger:\n- warp.ask: " + ask + "\n"
+	s := "Context from the trigger:\n- " + runs.MetaAsk + ": " + ask + "\n"
 	if thread != "" {
-		s += "- warp.prev: r1\n- warp.thread: " + thread + "\n"
+		s += "- " + runs.MetaPrev + ": r1\n- " + runs.MetaThread + ": " + thread + "\n"
 	}
 	s += "\n"
 	if sofar != "" {
