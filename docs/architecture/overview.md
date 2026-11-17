@@ -555,6 +555,13 @@ marker; contact writes are not exposed. Calendar schemas were discovered, but
 an exact event action still needs approval. The full mail/contacts/calendar
 requirement remains partial; no event, personal mail or contact was changed.
 
+Cloud documents have an [existing-account CLI path](../guides/cloud-documents.md):
+Codex apps retrieve actual Drive revision text, and a separately selected
+Claude Code agent applies an approved Docs edit with the required revision.
+A real private-account fixture exercised history fetches, an exact guarded
+change and an actual stale-token rejection. Coalesced revisions were reported
+as unknown; exhaustive history, real user documents and OneDrive are not covered.
+
 Account exports have a [configured CLI path](../guides/finance-exports.md): an
 agent on Claude Code runs a shipped script that removes duplicates, reconciles
 balances and totals months and debts, and drafts a plan whose amounts are all
