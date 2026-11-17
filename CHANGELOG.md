@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.131.0 (2026-11-17)
+
+### Features
+
+- **models**: configure reading and organizing a local folder ([32bc4aa](https://github.com/urmzd/humagen/commit/32bc4aab90333467c5bef0782a6407fb8699317d))
+
+### Bug Fixes
+
+- **models**: the local files checker checks each file where the plan puts it ([20584be](https://github.com/urmzd/humagen/commit/20584bea041229559ba639c3a8225ba731f329e4))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.130.0...v0.131.0)
+
+
 ## 0.129.0 (2026-11-17)
 
 ### Features
