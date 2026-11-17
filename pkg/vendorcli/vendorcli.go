@@ -522,14 +522,19 @@ func spoken(line string) string {
 // holds reports whether the conversation so far begins with everything the
 // session of n holds: the lines it was sent, then what it was asked, then,
 // after any lines of others, what it answered. Where the platform left
-// earlier turns out, on either side, the lines both have must agree and
-// what one lacks must be among those left out.
+// earlier turns out, of this turn's history or of what the session was
+// sent, the start of the conversation cannot be compared: two branches can
+// end alike and differ in what was left out. Such a session is not
+// continued.
 func (n note) holds(h history) bool {
 	if n.Asked == "" {
 		// A first turn noted before sessions kept their history: only a
 		// conversation that is that turn and nothing more continues it.
 		return n.Ask != "" && n.Answer != "" && !h.omitted && len(h.lines) == 2 &&
 			strings.Contains(spoken(h.lines[0]), n.Ask) && strings.Contains(spoken(h.lines[1]), n.Answer)
+	}
+	if h.omitted || n.Omitted {
+		return false
 	}
 	for at, line := range h.lines {
 		if digest(spoken(line)) != n.Asked {
@@ -550,7 +555,7 @@ func (n note) holds(h history) bool {
 			mine, theirs = mine-1, theirs-1
 			same = digest(h.lines[theirs]) == n.Lines[mine]
 		}
-		if same && (mine == 0 || h.omitted) && (theirs == 0 || n.Omitted) {
+		if same && mine == 0 && theirs == 0 {
 			return true
 		}
 	}

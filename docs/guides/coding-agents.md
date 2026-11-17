@@ -81,9 +81,12 @@ too, as `--effort` to Claude Code and as `model_reasoning_effort` to Codex.
   Humagen sends with each turn, so a session is also left behind, and a new
   one started and told what was said, when: its turn failed or was stopped;
   the workspace replays no history; the message itself holds lines that read
-  like Humagen's "Conversation so far"; or two sessions fit equally. Where
-  only the newest turns are replayed, the turns that are replayed are what
-  is checked. A session recorded by a release before this one has no history
+  like Humagen's "Conversation so far"; or two sessions fit equally. A
+  conversation too long to be replayed whole (the workspace's history limit)
+  continues no session either: what is left out cannot be compared, and two
+  branches can end alike, so each turn from then on starts a session that is
+  told the turns that were replayed, and the program no longer remembers the
+  files it read in earlier turns. A session recorded by a release before this one has no history
   on record, so the next message of its conversation starts a new session
   once. A session's own `/compact` does not change which branch it belongs
   to: it goes on being continued.

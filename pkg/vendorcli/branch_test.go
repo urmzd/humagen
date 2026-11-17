@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -244,32 +245,60 @@ func TestAFirstFollowUpContinuesOnlyTheTurnItFollows(t *testing.T) {
 	}
 }
 
-// The platform replays only the newest turns of a long conversation. A
-// session is continued when the turns that are replayed are the end of what
-// it holds, and a branch is still told apart.
-func TestAConversationReplayedInPartStillContinuesItsOwnSession(t *testing.T) {
-	command, continued, answer := sessions(t, ClaudeCode)
-	p := build(t, ClaudeCode, Config{Command: command}, "default")
-	one, two, three := exchange{"one " + strings.Repeat("a", 200), answer}, exchange{"two " + strings.Repeat("b", 200), answer}, exchange{"three", answer}
-	ask(t, p, turn("", nil, one.ask))
-	ask(t, p, turn("r1", []exchange{one}, two.ask))
-	ask(t, p, turn("r1", []exchange{one, two}, three.ask))
-	// Only the last two turns fit now.
-	m := turnOfBranch("r1", []exchange{one, two, three}, 400, "four")
-	if !strings.Contains(text(m.(saigetypes.UserMessage).Parts), "earlier turns omitted)") {
-		t.Fatalf("the conversation was replayed whole: %s", text(m.(saigetypes.UserMessage).Parts))
+// Where the platform replays only the newest turns, what was left out
+// cannot be compared with what a session holds: two branches can end alike
+// and differ before that. So no session is continued, the conversation's own
+// included, and each such turn starts one that is told what was replayed.
+func TestAConversationReplayedInPartContinuesNoSession(t *testing.T) {
+	for _, kind := range []string{ClaudeCode, Codex} {
+		t.Run(kind, func(t *testing.T) {
+			command, continued, answer := sessions(t, kind)
+			p := build(t, kind, Config{Command: command}, "default")
+			one, two, three := exchange{"one " + strings.Repeat("a", 200), answer}, exchange{"two " + strings.Repeat("b", 200), answer}, exchange{"three", answer}
+			ask(t, p, turn("", nil, one.ask))
+			ask(t, p, turn("r1", []exchange{one}, two.ask))
+			ask(t, p, turn("r1", []exchange{one, two}, three.ask))
+			// Only the last two turns fit now.
+			m := turnOfBranch("r1", []exchange{one, two, three}, 400, "four")
+			if !strings.Contains(text(m.(saigetypes.UserMessage).Parts), "earlier turns omitted)") {
+				t.Fatalf("the conversation was replayed whole: %s", text(m.(saigetypes.UserMessage).Parts))
+			}
+			ask(t, p, m)
+			// A branch that differs only in what is left out, and ends as
+			// the conversation does.
+			ask(t, p, turnOfBranch("r1", []exchange{{"one, with a private word", answer}, two, three}, 400, "four"))
+			ask(t, p, turnOfBranch("r1", []exchange{one, two, three, {"four", answer}}, 400, "five"))
+			if a, b := continued(1), continued(2); a == "" || b == "" {
+				t.Fatalf("a conversation replayed whole continued %q, then %q", a, b)
+			}
+			for i := 3; i <= 5; i++ {
+				if got := continued(i); got != "" {
+					t.Fatalf("turn %d, replayed in part, continued %q", i+1, got)
+				}
+			}
+		})
 	}
-	ask(t, p, m)
-	ask(t, p, turnOfBranch("r1", []exchange{one, two, {"another three", answer}}, 400, "four"))
-	ask(t, p, turnOfBranch("r1", []exchange{one, two, three, {"four", answer}}, 400, "five"))
-	if a, b, c := continued(1), continued(2), continued(3); a != "sess-0" || b != "sess-1" || c != "sess-2" {
-		t.Fatalf("continued %q, %q, %q", a, b, c)
-	}
-	if got := continued(4); got != "" {
-		t.Fatalf("a branch replayed in part continued %q", got)
-	}
-	if got := continued(5); got != "sess-3" {
-		t.Fatalf("a conversation replayed in part continued %q, not sess-3", got)
+}
+
+// A session that ends as a turn's replayed history does, and holds a
+// sibling branch's words in what was left out, does not hold that history.
+func TestALeftOutStartCannotChooseASiblingsSession(t *testing.T) {
+	for _, kind := range []string{ClaudeCode, Codex} {
+		p := &provider{kind: kind, cfg: Config{Dir: "/fixture"}}
+		sent := history{known: true, lines: []string{"Dev (@dev): branch A private word HERON", "coder (agent): noted"}, typed: "shared question"}
+		n := p.noteOf("branch-a-session", sent, "shared answer")
+		whole := history{known: true, lines: append(slices.Clone(sent.lines), "Dev (@dev): shared question", "coder (agent): shared answer"), typed: "next"}
+		if !n.holds(whole) {
+			t.Fatalf("%s: the session does not hold its own conversation, replayed whole", kind)
+		}
+		other := history{known: true, omitted: true, lines: []string{"Dev (@dev): shared question", "coder (agent): shared answer"}, typed: "What private word were you told?"}
+		if n.holds(other) {
+			t.Fatalf("%s: a branch whose start was left out chose its sibling's session", kind)
+		}
+		n.Omitted = true
+		if n.holds(whole) {
+			t.Fatalf("%s: a session that was sent part of a conversation was continued", kind)
+		}
 	}
 }
 
