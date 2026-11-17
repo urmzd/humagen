@@ -103,6 +103,21 @@ deterministic identity before calling the existing conversation composer and
 between reservation and admission. An assignment in an existing conversation
 must pass the same posting rule, including private-thread participation.
 
+A manual assignment may carry `done_checks`: up to eight text rules its
+agent's answer must pass (`contains`, `not_contains`, `equals`, `matches`).
+They are the answer checks of an eval and ask no model. With them, a completed
+run does not settle the assignment by completing. An answer that fails a check
+is continued: the platform reserves the next run under a deterministic
+identity, then asks the same agent in the same conversation to go on, as the
+owner, naming the checks that failed. It does so at most `max_continue` times
+(3 when left out, 10 at most), after which the assignment is blocked for its
+owner with the checks that never passed. The owner's project membership is
+rechecked before each continuation. The reservation is written before the run
+is admitted, so a restart between the two admits the same run again. An
+assignment on a clock or a source change takes no checks: each of its
+occurrences is its own run. Checks are part of the execution contract, so a
+change to them needs a new assignment; a change that names none keeps them.
+
 Standing assignments are project-scoped. Cron plus an existing conversation is
 refused, so a private conversation goal cannot be replayed into a wider room.
 Every occurrence rechecks the owner's ordinary project membership without

@@ -440,6 +440,12 @@ export interface Assignment {
   owner: string;
   goal: string;
   done_when: string;
+  /** Checks the agent's answer must pass before the assignment settles as a result. A completed run whose answer fails one is continued in the same conversation. For a manual assignment only. */
+  done_checks?: AssignmentCheck[];
+  /** How many times failing work is continued before the assignment is blocked for its owner. Absent or 0 with checks means 3. */
+  max_continue?: number;
+  /** How many times the work in progress was continued. Kept by the server. */
+  continued?: number;
   due_at?: string;
   deadline_missed?: boolean;
   schedule?: string;
@@ -454,6 +460,13 @@ export interface Assignment {
   created_at: string;
 }
 
+/** One thing an answer must satisfy. Nothing here asks a model. */
+export interface AssignmentCheck {
+  /** `contains` and `not_contains` look for the value in the answer; `equals` compares the whole answer, spacing aside; `matches` reads the value as a regular expression. */
+  kind: "contains" | "not_contains" | "matches" | "equals";
+  value: string;
+}
+
 export interface AssignmentInput {
   trigger?: "manual" | "cron" | "source_change";
   source?: string;
@@ -464,6 +477,10 @@ export interface AssignmentInput {
   owner: string;
   goal: string;
   done_when: string;
+  /** Checks the agent's answer must pass before the assignment settles as a result. A completed run whose answer fails one is continued in the same conversation. For a manual assignment only. */
+  done_checks?: AssignmentCheck[];
+  /** How many times failing work is continued before the assignment is blocked for its owner. Absent or 0 with checks means 3. */
+  max_continue?: number;
   due_at?: string;
   cron?: string;
   state: "requested" | "accepted" | "in_progress" | "watching" | "result" | "blocked" | "needs_person" | "cancelled";

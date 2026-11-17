@@ -508,6 +508,7 @@ func (s *Store) SetAssignment(t string, a Assignment, version int, by string, at
 			}
 			a.CreatedAt = old.CreatedAt
 			a.RunID = old.RunID
+			a.Continued = old.Continued
 			a.SourceVersion = old.SourceVersion
 			a.TagID = old.TagID
 			a.DeadlineMissed = old.DeadlineMissed
@@ -523,6 +524,7 @@ func (s *Store) SetAssignment(t string, a Assignment, version int, by string, at
 			}
 			a.CreatedAt = at
 			a.RunID = ""
+			a.Continued = 0
 		}
 		if version != v {
 			return record{}, ErrConflict
@@ -554,9 +556,53 @@ func (s *Store) Reserve(t, id, run string, version int, at time.Time) (Assignmen
 		if a.Version != version || !transition(a.State, InProgress) || !identifier(run) {
 			return record{}, ErrConflict
 		}
+		// Work a person starts begins its continuations again.
+		a.Continued = 0
 		a.State, a.RunID, a.UpdatedAt, a.Version = InProgress, run, at, a.Version+1
 		return record{Assignment: &a}, nil
 	})
+}
+
+// Continue moves an assignment in progress from a run that completed
+// without passing its checks to the run that continues it: from must be the
+// run it holds, and to the next run's deterministic identity. It counts the
+// continuation and leaves the version, which names the work a person
+// started, as it is. Repeating it for the same to changes nothing, so a
+// continuation interrupted between this and its admission is retried under
+// the same identity.
+func (s *Store) Continue(t, id, from, to string, at time.Time) (Assignment, error) {
+	return s.reserve(t, id, func(r record) (record, error) {
+		a := *r.Assignment
+		if a.State == InProgress && a.RunID == to {
+			return record{}, state.ErrUnchanged
+		}
+		if a.State != InProgress || a.RunID != from || !identifier(to) || a.Continued >= a.Continues() {
+			return record{}, ErrConflict
+		}
+		a.RunID, a.Continued, a.UpdatedAt = to, a.Continued+1, at
+		return record{Assignment: &a}, nil
+	})
+}
+
+// AssignmentOfRun is the assignment that holds run as its reserved run.
+func (s *Store) AssignmentOfRun(t, run string) (Assignment, bool, error) {
+	var keys []string
+	if _, err := s.lookup(t, runKey(run), &keys); err != nil {
+		if errors.Is(err, state.ErrNotFound) {
+			return Assignment{}, false, nil
+		}
+		return Assignment{}, false, err
+	}
+	for _, k := range keys {
+		r, _, ok, err := s.get(t, k)
+		if err != nil {
+			return Assignment{}, false, err
+		}
+		if ok && r.Assignment != nil && r.Assignment.RunID == run {
+			return *r.Assignment, true, nil
+		}
+	}
+	return Assignment{}, false, nil
 }
 
 // reserve changes an assignment that must exist.
