@@ -545,6 +545,12 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+Public-source research has a [configured CLI path](../guides/public-web.md)
+with built-in tools restricted to WebSearch and WebFetch; the program's user
+settings, hooks and plugins still load. A real HTTP run executed both and its
+reported version matched a separate official-feed retrieval. This does not
+establish authenticated browser access or validate every generated claim.
+
 Native Mac control has a pinned stdio connection in
 [the desktop guide](../guides/desktop.md). Exact-window targeting is requested
 by the prompt; the granted tools can also address other windows or global input.
