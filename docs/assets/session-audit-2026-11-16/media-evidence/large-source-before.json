@@ -1,0 +1,20 @@
+{
+  "bytes": 126498214,
+  "sha256": "c17f0c5720d781b1939843260c475aa82548c95fbeda6dab40299e9c314162f1",
+  "probe": {
+    "programs": [],
+    "stream_groups": [],
+    "streams": [
+      {
+        "codec_name": "rawvideo",
+        "width": 720,
+        "height": 480,
+        "r_frame_rate": "10/1",
+        "nb_frames": "122"
+      }
+    ],
+    "format": {
+      "duration": "12.200000"
+    }
+  }
+}

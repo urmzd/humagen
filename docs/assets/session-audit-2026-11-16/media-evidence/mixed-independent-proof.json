@@ -1,0 +1,47 @@
+{
+  "frame_count": 122,
+  "actual_color_transitions": [
+    {
+      "frame": 0,
+      "source_time": 0.0,
+      "rgb": [
+        22,
+        91,
+        201
+      ],
+      "color": "blue"
+    },
+    {
+      "frame": 42,
+      "source_time": 4.2,
+      "rgb": [
+        19,
+        146,
+        69
+      ],
+      "color": "green"
+    },
+    {
+      "frame": 82,
+      "source_time": 8.2,
+      "rgb": [
+        200,
+        41,
+        40
+      ],
+      "color": "red"
+    }
+  ],
+  "nominal_caption_boundaries": [
+    0,
+    4,
+    8
+  ],
+  "note": "The original generated concat/CFR fixture changes actual pixels at4.2/8.2s, not nominal caption4/8. Keep original unchanged; cite observed source-frame PTS, not labels.",
+  "original_sources_unchanged": {
+    "scanned-notes.pdf": true,
+    "scene.mp4": true,
+    "illustration.png": true,
+    "recording.m4a": true
+  }
+}

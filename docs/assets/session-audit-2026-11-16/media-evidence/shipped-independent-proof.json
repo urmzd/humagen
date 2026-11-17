@@ -1,0 +1,7 @@
+{
+  "audio_original_unchanged": true,
+  "clip_word_source_offsets_validated": true,
+  "large_original_unchanged": true,
+  "asr_answer_error": "Answer table incorrectly gives clip B word range ending at 10.52; raw last-word JSON actually ends 11.24. Treat raw JSON as authoritative; summary range is not exact proof.",
+  "unseen": "No manual hearing; generated TTS only. Not every video frame visually read; no real incident/media or long/noisy/language coverage."
+}

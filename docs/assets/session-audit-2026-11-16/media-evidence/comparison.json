@@ -1,0 +1,408 @@
+{
+ "original": "recording.m4a",
+ "sha256": "5e12cbb49b15a280ca4d02d5ab840bf882c8370c99127cc66e70ad45864766ab",
+ "source_duration_s": 12.509,
+ "model": "mlx-community/whisper-base.en-mlx",
+ "mlx_whisper": "0.4.3",
+ "full": {
+  "raw_json": "asr-check/full.json",
+  "srt": "asr-check/full.srt",
+  "text": " The revised delivery is Tuesday at 9.30. The deposit is $720.",
+  "offset": 0,
+  "segments": [
+   {
+    "id": 0,
+    "text": " The revised delivery is Tuesday at 9.30.",
+    "local": [
+     2.2599999999999993,
+     5.56
+    ],
+    "source": [
+     2.26,
+     5.56
+    ],
+    "avg_logprob": -0.4502008983067104,
+    "no_speech_prob": 0.015044093132019043,
+    "compression_ratio": 0.8333333333333334,
+    "words": [
+     {
+      "word": " The",
+      "local": [
+       2.2599999999999993,
+       3.06
+      ],
+      "source": [
+       2.26,
+       3.06
+      ],
+      "probability": 0.88037109375
+     },
+     {
+      "word": " revised",
+      "local": [
+       3.06,
+       3.42
+      ],
+      "source": [
+       3.06,
+       3.42
+      ],
+      "probability": 0.95458984375
+     },
+     {
+      "word": " delivery",
+      "local": [
+       3.42,
+       3.88
+      ],
+      "source": [
+       3.42,
+       3.88
+      ],
+      "probability": 0.9970703125
+     },
+     {
+      "word": " is",
+      "local": [
+       3.88,
+       4.28
+      ],
+      "source": [
+       3.88,
+       4.28
+      ],
+      "probability": 0.9931640625
+     },
+     {
+      "word": " Tuesday",
+      "local": [
+       4.28,
+       4.48
+      ],
+      "source": [
+       4.28,
+       4.48
+      ],
+      "probability": 0.98583984375
+     },
+     {
+      "word": " at",
+      "local": [
+       4.48,
+       4.92
+      ],
+      "source": [
+       4.48,
+       4.92
+      ],
+      "probability": 0.99755859375
+     },
+     {
+      "word": " 9",
+      "local": [
+       4.92,
+       5.18
+      ],
+      "source": [
+       4.92,
+       5.18
+      ],
+      "probability": 0.666015625
+     },
+     {
+      "word": ".30.",
+      "local": [
+       5.18,
+       5.56
+      ],
+      "source": [
+       5.18,
+       5.56
+      ],
+      "probability": 0.833984375
+     }
+    ]
+   },
+   {
+    "id": 1,
+    "text": " The deposit is $720.",
+    "local": [
+     8.4,
+     11.28
+    ],
+    "source": [
+     8.4,
+     11.28
+    ],
+    "avg_logprob": -0.4244226879543728,
+    "no_speech_prob": 0.05712631344795227,
+    "compression_ratio": 0.7142857142857143,
+    "words": [
+     {
+      "word": " The",
+      "local": [
+       8.4,
+       9.8
+      ],
+      "source": [
+       8.4,
+       9.8
+      ],
+      "probability": 0.79638671875
+     },
+     {
+      "word": " deposit",
+      "local": [
+       9.8,
+       10.18
+      ],
+      "source": [
+       9.8,
+       10.18
+      ],
+      "probability": 0.9951171875
+     },
+     {
+      "word": " is",
+      "local": [
+       10.18,
+       10.52
+      ],
+      "source": [
+       10.18,
+       10.52
+      ],
+      "probability": 0.99658203125
+     },
+     {
+      "word": " $720.",
+      "local": [
+       10.52,
+       11.28
+      ],
+      "source": [
+       10.52,
+       11.28
+      ],
+      "probability": 0.9638671875
+     }
+    ]
+   }
+  ]
+ },
+ "clips": [
+  {
+   "name": "A",
+   "extraction_interval_source_s": [
+    2.5,
+    6.5
+   ],
+   "wav": "asr-check/clipA_2.5-6.5.wav",
+   "raw_json": "asr-check/clipA.json",
+   "srt": "asr-check/clipA.srt",
+   "text": " The revised delivery is Tuesday at 9.30.",
+   "segments": [
+    {
+     "id": 0,
+     "text": " The revised delivery is Tuesday at 9.30.",
+     "local": [
+      0.0,
+      3.02
+     ],
+     "source": [
+      2.5,
+      5.52
+     ],
+     "avg_logprob": -0.39491649774404675,
+     "no_speech_prob": 0.011120740324258804,
+     "compression_ratio": 0.8333333333333334,
+     "words": [
+      {
+       "word": " The",
+       "local": [
+        0.0,
+        0.56
+       ],
+       "source": [
+        2.5,
+        3.06
+       ],
+       "probability": 0.9111328125
+      },
+      {
+       "word": " revised",
+       "local": [
+        0.56,
+        0.82
+       ],
+       "source": [
+        3.06,
+        3.32
+       ],
+       "probability": 0.986328125
+      },
+      {
+       "word": " delivery",
+       "local": [
+        0.82,
+        1.36
+       ],
+       "source": [
+        3.32,
+        3.86
+       ],
+       "probability": 0.9970703125
+      },
+      {
+       "word": " is",
+       "local": [
+        1.36,
+        1.76
+       ],
+       "source": [
+        3.86,
+        4.26
+       ],
+       "probability": 0.9951171875
+      },
+      {
+       "word": " Tuesday",
+       "local": [
+        1.76,
+        2.0
+       ],
+       "source": [
+        4.26,
+        4.5
+       ],
+       "probability": 0.99560546875
+      },
+      {
+       "word": " at",
+       "local": [
+        2.0,
+        2.4
+       ],
+       "source": [
+        4.5,
+        4.9
+       ],
+       "probability": 0.99609375
+      },
+      {
+       "word": " 9",
+       "local": [
+        2.4,
+        2.68
+       ],
+       "source": [
+        4.9,
+        5.18
+       ],
+       "probability": 0.9375
+      },
+      {
+       "word": ".30.",
+       "local": [
+        2.68,
+        3.02
+       ],
+       "source": [
+        5.18,
+        5.52
+       ],
+       "probability": 0.81591796875
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "B",
+   "extraction_interval_source_s": [
+    9.2,
+    12.509
+   ],
+   "wav": "asr-check/clipB_9.2-12.509.wav",
+   "raw_json": "asr-check/clipB.json",
+   "srt": "asr-check/clipB.srt",
+   "text": " The deposit is $720.",
+   "segments": [
+    {
+     "id": 0,
+     "text": " The deposit is $720.",
+     "local": [
+      0.0,
+      2.04
+     ],
+     "source": [
+      9.2,
+      11.24
+     ],
+     "avg_logprob": -0.5216773351033529,
+     "no_speech_prob": 0.00469536567106843,
+     "compression_ratio": 0.7142857142857143,
+     "words": [
+      {
+       "word": " The",
+       "local": [
+        0.0,
+        0.62
+       ],
+       "source": [
+        9.2,
+        9.82
+       ],
+       "probability": 0.90673828125
+      },
+      {
+       "word": " deposit",
+       "local": [
+        0.62,
+        0.98
+       ],
+       "source": [
+        9.82,
+        10.18
+       ],
+       "probability": 0.99755859375
+      },
+      {
+       "word": " is",
+       "local": [
+        0.98,
+        1.32
+       ],
+       "source": [
+        10.18,
+        10.52
+       ],
+       "probability": 0.99755859375
+      },
+      {
+       "word": " $720.",
+       "local": [
+        1.32,
+        2.04
+       ],
+       "source": [
+        10.52,
+        11.24
+       ],
+       "probability": 0.96484375
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "uncertainty": {
+  "notes": [
+   "ASR output only; no manual listening was done.",
+   "Second pass on clips is correlated with the first, not independent confirmation.",
+   "Clip extraction intervals are exact cut points; speech/word times are ASR estimates and may be off by a few tenths of a second.",
+   "Clip padding beyond the requested 2.5-6.5 and 9.2-end was not added; the requested intervals were used as given.",
+   "Segment/word times differ between full and clip passes (see segments); numbers are approximate."
+  ]
+ }
+}
