@@ -5,6 +5,7 @@ import { agentShown } from "./branding.ts";
 import {
   AgentTag,
   FilterSelect,
+  follow,
   ItemCard,
   itemGrid,
   PriorityPill,
@@ -28,6 +29,7 @@ import {
   sessionCenter,
   sessionSource,
 } from "./sessionCenter.ts";
+import { kindWord, type StorageTransport, type Stored, transport as storage } from "./storage.ts";
 import { referenceOf } from "./trace.ts";
 import {
   ago,
@@ -45,6 +47,7 @@ import {
 } from "./ui.tsx";
 
 const places = defaultCopy.places;
+const words = defaultCopy.attention;
 
 /** Where a root session started, as the place filter names it. */
 export function placeOfSession(s: AgentSessionSummary): SessionPlaceFilter | undefined {
@@ -65,6 +68,9 @@ export function placeOfSession(s: AgentSessionSummary): SessionPlaceFilter | und
                 ? "schedule"
                 : undefined;
 }
+
+/** How many of the newest artifacts Home shows. The rest are under Artifacts. */
+const HOME_MADE = 3;
 
 const failure = (error: unknown) =>
   error instanceof Error ? error.message : "This could not be loaded. Try again.";
@@ -444,7 +450,7 @@ export function AlertsPage({
       <Problem message={problem ?? null} />
       {undo.length > 0 && (
         <p role="status" className="flex items-center gap-3 text-aui-sm">
-          Updated {undo.length} {undo.length === 1 ? "alert" : "alerts"}.{" "}
+          {words.updated(undo.length)}{" "}
           <button
             type="button"
             className={textAction}
@@ -499,13 +505,12 @@ export function AlertsPage({
         <>
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             <Segmented<"open" | "snoozed" | "resolved">
-              label="Alert state"
+              label={words.stateLabel}
               value={route.state ?? "open"}
-              options={[
-                { id: "open", label: "Open" },
-                { id: "snoozed", label: "Snoozed" },
-                { id: "resolved", label: "Resolved" },
-              ]}
+              options={(["open", "snoozed", "resolved"] as const).map((id) => ({
+                id,
+                label: words.states[id],
+              }))}
               onChange={(v) => go({ ...route, state: v })}
             />
             <Segmented<"any" | keyof typeof priorityLabel>
@@ -556,7 +561,7 @@ export function AlertsPage({
                   )
                 }
               >
-                Resolve selected
+                {words.markSelectedDone}
               </button>
               <button
                 type="button"
@@ -569,7 +574,7 @@ export function AlertsPage({
                   )
                 }
               >
-                Snooze selected for 1 hour
+                {words.snoozeSelected}
               </button>
             </div>
           )}
@@ -635,7 +640,7 @@ export function AlertsPage({
                               className={textAction}
                               onClick={() => void change([a], "resolved")}
                             >
-                              Resolve
+                              {words.markDone}
                             </button>
                             <button
                               type="button"
@@ -643,7 +648,7 @@ export function AlertsPage({
                               className={textAction}
                               onClick={() => void change([a], "snoozed")}
                             >
-                              Snooze 1h
+                              {words.snooze}
                             </button>
                           </>
                         )}
@@ -654,9 +659,7 @@ export function AlertsPage({
               ))}
             </ul>
           ) : (
-            <p className="text-aui-sm text-aui-muted">
-              No {route.state ?? "open"} alerts match these filters.
-            </p>
+            <p className="text-aui-sm text-aui-muted">{words.empty[route.state ?? "open"]}</p>
           )}
         </>
       )}
@@ -674,163 +677,126 @@ export function AlertsPage({
     </Page>
   );
 }
+/**
+ * Under the chat bar: one quiet line saying how many alerts wait on the
+ * person, which opens them, and one strip of the newest things their agents
+ * made. Nothing is listed, decided or dismissed here, and nothing moves. With
+ * nothing waiting and nothing made, Home is the greeting and the chat bar.
+ */
 export function HomeSessionGlance({
   alerts,
   go,
-  canWrite,
-  onChanged,
   tick,
   onHasSessions,
-  projects = [],
-  workspaceName,
+  canArtifacts = true,
+  via = storage,
 }: {
-  projects?: ProjectRef[];
-  workspaceName?: string;
   alerts: Alert[];
   go: (route: Route) => void;
-  canWrite: boolean;
-  onChanged: () => void;
   tick: unknown;
   onHasSessions?: (has: boolean) => void;
+  /** False when the person may not read artifacts, so none are asked for. */
+  canArtifacts?: boolean;
+  via?: Pick<StorageTransport, "list">;
 }) {
-  const [sessions, setSessions] = useState<AgentSessionSummary[]>();
-  const [problem, setProblem] = useState<string>();
-  const [undo, setUndo] = useState<Alert>();
+  const [made, setMade] = useState<Stored[]>([]);
+  const [madeFailed, setMadeFailed] = useState(false);
+  // Whether the person has started anything yet, which decides the starters above.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick asks for a fresh read
   useEffect(() => {
+    if (!onHasSessions) return;
     let live = true;
-    sessionCenter.sessions({ roots: "true", mine: "true", limit: "3" }).then(
+    sessionCenter.sessions({ roots: "true", mine: "true", limit: "1" }).then(
       (r) => {
-        if (live) {
-          setSessions(r.sessions.filter(isRootSession));
-          onHasSessions?.(r.sessions.length > 0);
-        }
+        if (live) onHasSessions(r.sessions.length > 0);
       },
-      (e) => {
-        if (live) setProblem(failure(e));
-      },
+      () => {},
     );
     return () => {
       live = false;
     };
   }, [tick, onHasSessions]);
-  const items = orderAlerts(attentionAlerts(alerts)).slice(0, 3);
-  const resolve = async (a: Alert) => {
-    try {
-      await sessionCenter.change(a.id, { state: "resolved" });
-      setUndo(a);
-      onChanged();
-    } catch (e) {
-      setProblem(failure(e));
+  // A strip that could not be read says so in one quiet line: Home still works without it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick asks for a fresh read
+  useEffect(() => {
+    if (!canArtifacts) {
+      setMade([]);
+      setMadeFailed(false);
+      return;
     }
-  };
+    let live = true;
+    via.list({ project: "", agent: "", kind: "", q: "", limit: HOME_MADE }).then(
+      (r) => {
+        if (!live) return;
+        setMade(r.artifacts.slice(0, HOME_MADE));
+        setMadeFailed(false);
+      },
+      () => {
+        // What was read before stays; only a strip with nothing to show says it failed.
+        if (live) setMadeFailed(true);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [tick, canArtifacts, via]);
+  const waiting = attentionAlerts(alerts).length;
+  const failed = madeFailed && made.length === 0;
+  if (waiting === 0 && made.length === 0 && !failed) return null;
+  const c = defaultCopy.home;
+  const link =
+    "rounded-aui-sm text-aui-xs text-aui-muted underline-offset-4 hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent";
+  const alertsRoute: Route = { page: "alerts" };
+  const artifactsRoute: Route = { page: "artifacts" };
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 pt-8">
-      <Problem message={problem ?? null} />
-      {undo && (
-        <p role="status" className="mb-2 text-aui-xs">
-          Alert resolved.{" "}
-          <button
-            type="button"
-            className={textAction}
-            onClick={() => {
-              void sessionCenter.change(undo.id, { state: "open" }).then(
-                () => {
-                  setUndo(undefined);
-                  onChanged();
-                },
-                (e) => setProblem(failure(e)),
-              );
-            }}
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 pt-6">
+      {waiting > 0 && (
+        <p className="flex justify-center">
+          <a
+            href={href(alertsRoute)}
+            onClick={(event) => follow(event, () => go(alertsRoute))}
+            className={`${link} inline-flex min-h-6 items-center gap-2 pointer-coarse:min-h-11`}
           >
-            Undo
-          </button>
+            <span aria-hidden className="size-1.5 rounded-full bg-aui-accent" />
+            {c.waitingOnYou(waiting)}
+          </a>
         </p>
       )}
-      {items.length > 0 && (
-        <section aria-labelledby="home-needs" className="pb-6">
-          <div className="flex items-center justify-between pb-2">
-            <h2 id="home-needs" className="font-medium text-aui-xs text-aui-muted">
-              Needs you
+      {failed && <p className="text-center text-aui-xs text-aui-muted">{c.madeFailed}</p>}
+      {made.length > 0 && (
+        <section aria-labelledby="home-made">
+          <div className="flex items-center justify-between gap-3 pb-2">
+            <h2 id="home-made" className="font-medium text-aui-xs text-aui-muted">
+              {c.recentlyMade}
             </h2>
-            <button className={textAction} type="button" onClick={() => go({ page: "alerts" })}>
-              All alerts
-            </button>
+            <a
+              href={href(artifactsRoute)}
+              onClick={(event) => follow(event, () => go(artifactsRoute))}
+              className={`${link} inline-flex min-h-6 items-center pointer-coarse:min-h-11`}
+            >
+              {c.allArtifacts}
+            </a>
           </div>
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {items.map((a) => (
-              <li key={a.id}>
-                <ItemCard
-                  title={a.title}
-                  time={ago(a.at)}
-                  onOpen={() => go({ page: "conversation", id: a.session!, message: a.message })}
-                  facts={
-                    <>
-                      <PriorityPill priority={alertPriority(a)} />
-                      {a.agent && <AgentTag name={a.agent} />}
-                    </>
-                  }
-                  actions={
-                    <>
-                      <button
-                        type="button"
-                        className={primary}
-                        onClick={() =>
-                          go(
-                            alertPage(a) ?? {
-                              page: "conversation",
-                              id: a.session!,
-                              message: a.message,
-                            },
-                          )
-                        }
-                      >
-                        {alertActionLabel(a)}
-                      </button>
-                      {canWrite && (
-                        <button
-                          type="button"
-                          className={textAction}
-                          aria-label={`Resolve ${a.title}`}
-                          onClick={() => void resolve(a)}
-                        >
-                          Resolve
-                        </button>
-                      )}
-                    </>
-                  }
-                />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {items.length === 0 && sessions && sessions.length > 0 && (
-        <section aria-labelledby="home-continue">
-          <div className="flex items-center justify-between pb-2">
-            <h2 id="home-continue" className="font-medium text-aui-xs text-aui-muted">
-              Continue
-            </h2>
-            <button className={textAction} type="button" onClick={() => go({ page: "sessions" })}>
-              All sessions
-            </button>
-          </div>
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {sessions.slice(0, 3).map((s) => (
-              <li key={s.id}>
-                <ItemCard
-                  title={s.title || agentShown(s.agent)}
-                  time={ago(s.updated_at)}
-                  onOpen={() => go({ page: "conversation", id: s.id })}
-                  facts={
-                    <>
-                      <StatusPill status={s.status} />
-                      <AgentTag name={s.agent} />
-                      <Tag>{readableProject(s.project, projects, workspaceName)}</Tag>
-                    </>
-                  }
-                />
-              </li>
-            ))}
+          <ul className="grid gap-3 sm:grid-cols-3">
+            {made.map((file) => {
+              const to: Route = { page: "artifacts", artifact: file.id };
+              return (
+                <li key={file.id} className="min-w-0">
+                  <ItemCard
+                    title={file.title}
+                    href={href(to)}
+                    onOpen={() => go(to)}
+                    time={<time dateTime={file.created_at}>{ago(file.created_at)}</time>}
+                    facts={
+                      <>
+                        <Tag>{kindWord[file.kind]}</Tag>
+                        {file.agent && <AgentTag name={file.agent} />}
+                      </>
+                    }
+                  />
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}

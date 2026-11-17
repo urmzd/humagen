@@ -1110,13 +1110,10 @@ function Console({
                       findHelp={can("projects:read") ? api.findHelp : undefined}
                       home={
                         <HomeSessionGlance
-                          projects={projects ?? []}
-                          workspaceName={workspaceName}
                           onHasSessions={setHasSessions}
                           alerts={attention.alerts}
                           go={go}
-                          canWrite={can("alerts:write")}
-                          onChanged={attention.refresh}
+                          canArtifacts={can("artifacts:read")}
                           tick={tick}
                         />
                       }

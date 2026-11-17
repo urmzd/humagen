@@ -9,7 +9,7 @@ const TABS: { id: InboxFilter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "needs", label: "Needs you" },
   { id: "alerts", label: "Alerts" },
-  { id: "resolved", label: "Resolved" },
+  { id: "resolved", label: "Done" },
 ];
 
 function matches(item: InboxItem, filter: InboxFilter) {
@@ -25,12 +25,12 @@ function matches(item: InboxItem, filter: InboxFilter) {
   }
 }
 
-/** How long a just-resolved item keeps its record in place before moving to Resolved. */
+/** How long a just-resolved item keeps its record in place before moving to Done. */
 const LINGER_MS = 2500;
 
 /**
  * Items that just left "open" stay put for a moment, showing their record
- * ("Approved by You · just now"), then move to Resolved.
+ * ("Approved by You · just now"), then move to Done.
  */
 function useLinger(items: InboxItem[]): InboxItem[] {
   const prev = useRef(new Map<string, InboxItem["state"]>());
@@ -182,7 +182,7 @@ export function Inbox({
           <div className="flex flex-col items-center gap-1.5 py-10 text-center">
             <CheckCircleIcon size={20} className="text-aui-ok" />
             <p className="font-medium text-aui-sm">
-              {filter === "resolved" ? "Nothing resolved yet" : "Nothing waiting on you"}
+              {filter === "resolved" ? "Nothing done yet" : "Nothing waiting on you"}
             </p>
             <p className="text-aui-muted text-aui-xs">
               Approvals, questions, and alerts show up here.

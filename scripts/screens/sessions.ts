@@ -90,6 +90,49 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
   const session = `/messages/${ids.work.id}`;
   return [
     {
+      name: "session-inline-code",
+      path: `/messages/${ids.inlineCode.id}`,
+      act: async (page) => {
+        await readySession(page);
+        const answer = page.getByRole("article", { name: "screens-writer message", exact: true });
+        await answer.getByText("ok example.com/calc", { exact: true }).waitFor();
+        await page.evaluate(() => document.fonts.ready);
+        const fragments = await answer.locator(".aui-prose code").evaluateAll((nodes) =>
+          nodes.flatMap((node) => {
+            const parent = node.closest("p")?.getBoundingClientRect();
+            if (!parent) throw new Error("Inline code must belong to prose");
+            return Array.from(node.getClientRects(), (rect) => ({
+              left: rect.left,
+              right: rect.right,
+              min: parent.left,
+              max: parent.right,
+            }));
+          }),
+        );
+        assert.ok(fragments.length >= 3, "The recorded short chips and long path must render");
+        for (const fragment of fragments)
+          assert.ok(
+            fragment.left >= fragment.min - 1 && fragment.right <= fragment.max + 1,
+            `Inline code escapes its text column: ${JSON.stringify(fragment)}`,
+          );
+      },
+    },
+    {
+      name: "session-uploads",
+      path: session,
+      act: async (page) => {
+        await readySession(page);
+        // Reloaded from the actual session API, rather than the composer's local draft.
+        const message = page
+          .getByRole("article", { name: "Message from Developer", exact: true })
+          .first();
+        await message.scrollIntoViewIfNeeded();
+        const uploads = message.getByRole("list", { name: defaultCopy.details.used.uploads });
+        await uploads.getByText("capture.png", { exact: true }).waitFor();
+        await uploads.getByText("launch-notes.txt", { exact: true }).waitFor();
+      },
+    },
+    {
       name: "composer-attachments",
       path: "/",
       act: async (page) => {
@@ -108,6 +151,51 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: "/",
       act: async (page) => {
         await composer(page).waitFor();
+      },
+    },
+    {
+      // Nothing seeds an artifact (there is no model to publish one), so the
+      // strip is drawn from three answered here, as the list route answers.
+      name: "home-made",
+      path: "/",
+      act: async (page) => {
+        const at = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+        const made = (id: string, title: string, kind: string, days: number) => ({
+          id,
+          title,
+          kind,
+          mime: "text/markdown",
+          size: 2048,
+          sha256: id,
+          version: 1,
+          run: `run-${id}`,
+          thread: ids.work.id,
+          agent: "screens-approval",
+          created_by: "screens-approval",
+          created_at: at(days),
+        });
+        await page.route(/\/api\/artifacts\?limit=3$/, (route) =>
+          route.fulfill({
+            json: {
+              artifacts: [
+                made("a_plan", "Launch plan", "document", 0),
+                made("a_budget", "Briefing budget", "spreadsheet", 2),
+                made("a_deck", "Owner briefing deck", "presentation", 5),
+              ],
+              next: null,
+            },
+          }),
+        );
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await composer(page).waitFor();
+        const strip = page.getByRole("region", {
+          name: defaultCopy.home.recentlyMade,
+          exact: true,
+        });
+        await strip.getByRole("link", { name: "Launch plan", exact: true }).waitFor();
+        await strip
+          .getByRole("link", { name: defaultCopy.home.allArtifacts, exact: true })
+          .waitFor();
       },
     },
     {
@@ -211,7 +299,23 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
         await page.getByRole("heading", { name: "Appearance", exact: true }).waitFor();
       },
     },
-    { name: "session", path: session, act: readySession },
+    {
+      name: "session",
+      path: session,
+      act: async (page) => {
+        await readySession(page);
+        const worked = page.getByTestId("worked").first();
+        await worked.scrollIntoViewIfNeeded();
+        const bounds = await worked.boundingBox();
+        if (await page.evaluate(() => matchMedia("(pointer: coarse)").matches))
+          assert.ok(bounds && bounds.height >= 44, "Worked must have a 44px touch target");
+        await worked.click();
+        await detailsReady(page);
+        await details(page).getByRole("button", { name: "Close Details", exact: true }).click();
+        await details(page).waitFor({ state: "hidden" });
+        await worked.scrollIntoViewIfNeeded();
+      },
+    },
     {
       name: "session-menu",
       path: session,

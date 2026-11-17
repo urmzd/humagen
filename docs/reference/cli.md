@@ -201,7 +201,7 @@ library reads the frontmatter the skill standard names (`name`, `description`,
 read because of other fields, such as one assistant's `arguments` list, is
 drafted with only those, and the command names each field it left out. Hidden files are left out. A skill is
 drafted with no tools permitted; choose its tools, test it and publish it under
-Library, Skills. A scope holds at most 32 skills: past that the command names
+Library, Skills. A scope holds at most 256 skills: past that the command names
 the ones it left out.
 
 | Flag | Behavior |

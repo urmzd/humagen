@@ -145,7 +145,7 @@ export function WorkedButton({
       aria-expanded={open}
       onClick={onToggle}
       data-testid="worked"
-      className={`inline-flex min-h-7 items-center gap-1 self-start rounded-aui px-1.5 text-aui-xs hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent ${awaited ? "text-aui-warn" : "text-aui-muted"}`}
+      className={`inline-flex min-h-7 pointer-coarse:min-h-11 items-center gap-1 self-start rounded-aui px-1.5 text-aui-xs hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent ${awaited ? "text-aui-warn" : "text-aui-muted"}`}
     >
       <ChevronRightIcon
         size={12}
