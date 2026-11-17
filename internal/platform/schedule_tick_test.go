@@ -2,6 +2,8 @@ package platform_test
 
 import (
 	"context"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -91,6 +93,50 @@ func TestAClockTickStartsARunOfTheSchedulesAgent(t *testing.T) {
 			p.Ingest(t.Context(), tick)
 			if again := p.Runs.ForSchedule(tenant, "new-year", 0, nil); len(again) != 1 || again[0].ID != got[0].ID {
 				t.Fatalf("the same occurrence again = %+v, want the run %s only", again, got[0].ID)
+			}
+		})
+	}
+}
+
+// A paused schedule runs nothing on the clock: a tick published just before
+// the pause is dropped without an error, and once the schedule is resumed
+// its next tick starts one run.
+func TestAPausedSchedulesTickStartsNoRun(t *testing.T) {
+	for _, tc := range []struct{ name, project string }{{"in-workspace", ""}, {"in-project", "Field"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			said := &logs{}
+			p := startWith(t, platform.Config{Log: slog.New(slog.NewTextHandler(said, nil))})
+			field(t, p)
+			meta := map[string]string{"created_by": "ada"}
+			if tc.project != "" {
+				meta[runs.MetaProject] = tc.project
+			}
+			if err := p.Schedules.Add(cron.Schedule{Name: "new-year", Expression: "0 0 1 1 *", Agent: "helper", Text: "Sum up the year.", Tenant: tenant, Context: meta}, platform.About{}); err != nil {
+				t.Fatal(err)
+			}
+			due := time.Date(2031, 1, 1, 0, 0, 0, 0, time.UTC)
+			tick := clockTick(t, p, "new-year", due.Add(-30*time.Second), due.Add(30*time.Second))
+			if err := p.Schedules.SetPaused(tenant, "new-year", true); err != nil {
+				t.Fatal(err)
+			}
+
+			p.Ingest(t.Context(), tick)
+
+			if got := p.Runs.ForSchedule(tenant, "new-year", 0, nil); len(got) != 0 {
+				t.Fatalf("a paused schedule's tick started %+v", got)
+			}
+			if out := said.String(); strings.Contains(out, "level=ERROR") || !strings.Contains(out, "a paused schedule's tick was not run") || !strings.Contains(out, "schedule=new-year") {
+				t.Fatalf("the log of a paused schedule's tick:\n%s", out)
+			}
+
+			if err := p.Schedules.SetPaused(tenant, "new-year", false); err != nil {
+				t.Fatal(err)
+			}
+			next := due.AddDate(1, 0, 0)
+			p.Ingest(t.Context(), clockTick(t, p, "new-year", next.Add(-30*time.Second), next.Add(30*time.Second)))
+			got := p.Runs.ForSchedule(tenant, "new-year", 0, nil)
+			if len(got) != 1 || got[0].Agent != "helper" || got[0].Project != tc.project {
+				t.Fatalf("the resumed schedule's runs = %+v, want one of helper in %q", got, tc.project)
 			}
 		})
 	}
