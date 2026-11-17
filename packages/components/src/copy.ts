@@ -729,7 +729,7 @@ export const defaultCopy = {
       inbox: ["You're all caught up", "New approvals, alerts and updates land here."],
       unread: ["Nothing unread", "Opening a notification marks it read."],
       hidden: ["Nothing hidden", "What you hide moves here. Others still see it."],
-      done: ["Nothing done yet", "What was resolved or dismissed for everyone lands here."],
+      done: ["Nothing done yet", "What was handled or dismissed for everyone lands here."],
     } as Record<"inbox" | "unread" | "hidden" | "done", [string, string]>,
   },
   inboxControls: {
@@ -2800,7 +2800,7 @@ export const defaultCopy = {
   needsYou: "Needs you",
   alerts: "System alerts",
   failures: "Failed runs",
-  resolved: "Resolved",
+  resolved: "Done",
   openConversation: "Open Conversation",
   dismiss: "Dismiss",
   snooze: "Snooze 1 Hour",
@@ -2823,12 +2823,12 @@ export const defaultCopy = {
   budgetTitle: "Limit reached",
   budgetBody: (used: string, limit: string, period?: string, needs?: string) =>
     `${used} of ${limit} used${period ? ` this ${period}` : ""}.${needs ? ` This run needs ${needs} more.` : ""}`,
-  noPermission: "You can read this, but you don't have permission to resolve it.",
+  noPermission: "You can read this, but you don't have permission to act on it.",
   mailbox: {
     /** How many are open, beside the Inbox's title. */
     openCount: (n: number) => `${n} open`,
     empty: "Nothing here",
-    emptyHint: "Approvals, questions, alerts and new artifacts arrive here, and are resolved here.",
+    emptyHint: "Approvals, questions, alerts and new artifacts arrive here, and are handled here.",
     emptyOpen: "You're all caught up",
     emptyOpenHint: "Nothing is waiting on you. New approvals, alerts and artifacts land here.",
     pick: "Select a notification",
@@ -2859,7 +2859,31 @@ export const defaultCopy = {
       .join(" | "),
   /** Said next to the kind tag, so urgency never rests on color. */
   severity: { bad: "Urgent", warn: "Warning" } as Partial<Record<string, string>>,
-  show: { label: "Show", open: "Open", resolved: "Resolved", all: "All" },
+  /** Whose move it is: waiting on the reader, or done. The stored states keep their names. */
+  show: { label: "Show", open: "Waiting", resolved: "Done", all: "All" },
+  /**
+   * An alert, by whose move it is: waiting on the person, put off for an hour,
+   * or done. The API and the address keep open, snoozed and resolved.
+   */
+  attention: {
+    stateLabel: "Alert state",
+    states: { open: "Waiting", snoozed: "Snoozed", resolved: "Done" } as Record<
+      "open" | "snoozed" | "resolved",
+      string
+    >,
+    empty: {
+      open: "Nothing is waiting on you.",
+      snoozed: "Nothing is snoozed.",
+      resolved: "Nothing is done yet.",
+    } as Record<"open" | "snoozed" | "resolved", string>,
+    markDone: "Mark Done",
+    markDoneNamed: (title: string) => `Mark ${title} done`,
+    markSelectedDone: "Mark Selected Done",
+    snooze: "Snooze 1h",
+    snoozeSelected: "Snooze Selected for 1 Hour",
+    doneWhen: (condition: string) => `Done when: ${condition}`,
+    updated: (n: number) => `Updated ${n} ${n === 1 ? "alert" : "alerts"}.`,
+  },
   /** The tag every message carries, in the list and above its parts. */
   partKind: {
     text: "Note",
@@ -2903,7 +2927,7 @@ export const defaultCopy = {
     /** Under an open announcement, whose button is Hide for Me. */
     readOnly: "Nothing to decide. Hide it when you're done. Others still see it.",
     /** A project's inbox with nothing open for the reader. */
-    emptyOpenHint: "New announcements land here. What you hid is under Resolved.",
+    emptyOpenHint: "New announcements land here. What you hid is under Done.",
     includeSubProjects: "Include Sub-projects",
     postedIn: (project: string) => `Posted in ${project}`,
     withdrawnBy: (who: string) => `Withdrawn by ${who}`,
@@ -3542,6 +3566,13 @@ export const defaultCopy = {
       },
     } as Record<string, { label: string; description: string; slack?: string }>,
     needsYou: "Needs you",
+    /** The one quiet line under the chat bar on the web: how many alerts wait on the person, linking to them. */
+    waitingOnYou: (n: number) => `${n} waiting on you`,
+    /** The strip under the chat bar on the web: the newest things the person's agents made. */
+    recentlyMade: "Recently made",
+    allArtifacts: "All artifacts",
+    /** In place of the strip when it could not be read. */
+    madeFailed: "Recent artifacts could not be loaded.",
     nothingWaiting: "Nothing needs you right now, and no alerts are open.",
     /** The page's one-line point, after the greeting. */
     notificationCount: (n: number) =>

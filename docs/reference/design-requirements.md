@@ -1834,9 +1834,8 @@ a terminal run without an answer does not. Connection authentication failures
 join a private owner session with sanitized reconnect attention. See
 [session alerts](../guides/session-alerts.md).
 Watching lists standing rules with Pause/Resume and confirmed Delete. The shared badge
-counts only the person's open Urgent and Normal alerts. Home shows at most three
-of those alerts or three recent root sessions, and puts its disclaimer directly
-under the composer. Sidebar hover controls contain one menu.
+counts only the person's open Urgent and Normal alerts. Home puts its disclaimer
+directly under the composer; what it shows beneath is DES-075. Sidebar hover controls contain one menu.
 
 Evidence: `session-center.dom.test.tsx` checks the seven destinations, attention
 priority and three-row cap, resolve/undo, and nested child reads. `route.test.ts`
@@ -1950,3 +1949,28 @@ checks priority defaults and saved quiet hours.
 Browser checks were unavailable during source validation. Phone, short-screen
 and split-pane visual acceptance, live provider behavior and measured browser
 request totals remain open.
+
+### DES-075: A calm Home and states that say whose move it is
+
+Home under the chat bar is one quiet line and one strip. The line says how many
+of the person's Urgent and Normal alerts are waiting ("2 waiting on you") and
+opens Alerts; it lists none of them and offers no decision. The strip, Recently
+made, shows the three newest artifacts the person may read from the existing
+`GET /api/artifacts`, each card opening it at `/artifacts/{id}`, with All
+artifacts beside the heading. With nothing waiting and nothing made, Home is the
+greeting and the chat bar. Home no longer lists alerts or recent sessions:
+sessions are in the sidebar's Recents and on Sessions.
+
+An alert is named by whose move it is: Waiting, Snoozed or Done, with Mark Done
+in place of Resolve, in the alert center, on a session's alert card and in bulk
+actions. A project's inbox switch reads Waiting, Done and All. The API, the
+stored states and the addresses keep `open`, `snoozed` and `resolved`, so
+existing links hold. The words are in `copy.ts` (`attention`, `show`, `home`).
+
+Evidence: `session-center.dom.test.tsx` checks the single waiting link, the
+three-card strip and its destinations, and that nothing is drawn or asked for
+when there is nothing to show or no permission; `session-ux.dom.test.tsx` and
+`roles.dom.test.tsx` check the new words. Console screens `new` and `alerts`
+and `home-made` pass at 1280x800 and 390x844 in light and dark. Artifact
+cards show no preview of their content. A strip that cannot be read says so in
+one line.

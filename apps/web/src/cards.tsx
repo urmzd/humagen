@@ -88,7 +88,7 @@ export const itemGrid =
   "grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] gap-3";
 
 /** A plain click on an in-app link moves the address and tells the router, as Back would. */
-function follow(event: MouseEvent<HTMLAnchorElement>, onOpen?: () => void) {
+export function follow(event: MouseEvent<HTMLAnchorElement>, onOpen?: () => void) {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
     return;
   const to = event.currentTarget.getAttribute("href") ?? "";
