@@ -545,6 +545,12 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+Bulk local files have a [configured CLI path](../guides/local-files.md): an
+agent on Claude Code surveys a folder on this host in place, writes a plan with
+a hash for every file, and applies only the part a person approves. Checked on a
+generated folder of 322 files and 117 MiB; real folders, cloud folders and a
+console view of the plan are not covered.
+
 Public-source research has a [configured CLI path](../guides/public-web.md)
 with built-in tools restricted to WebSearch and WebFetch; the program's user
 settings, hooks and plugins still load. A real HTTP run executed both and its
