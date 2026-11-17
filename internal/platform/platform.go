@@ -1609,9 +1609,14 @@ func (p *Platform) ingest(ctx context.Context, tag event.Envelope) {
 	}
 	// A tick names no agent: the schedule it fires does.
 	if tick, ok := tag.Data.(event.CronTick); ok && wire.AgentOf(tag) == "" {
-		if sc, found, err := p.Schedules.Get(tag.Tenant, tick.Schedule); err == nil && found {
-			wire.SetAgent(&tag, sc.Agent)
+		// Get's second result is whether the schedule is paused, not whether
+		// it exists: a schedule that is gone is an error.
+		sc, _, err := p.Schedules.Get(tag.Tenant, tick.Schedule)
+		if err != nil {
+			p.log.Error("platform: accept event", "event", tag.ID, "type", tag.Type, "schedule", tick.Schedule, "error", err)
+			return
 		}
+		wire.SetAgent(&tag, sc.Agent)
 	}
 	if r, err := p.Invoke(ctx, tag); err != nil {
 		p.log.Error("platform: accept event", "event", tag.ID, "type", tag.Type, "agent", wire.AgentOf(tag), "error", err)
