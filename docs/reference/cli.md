@@ -170,8 +170,11 @@ was asked, leaves out tool results first and then cuts the answers. The document
 run knows it is there.
 
 A source holds at most 200 documents and 8 MiB, so a busy month continues in
-`sessions-TOOL-YYYY-MM-2` and so on. To let an agent search the sessions, give
-it or its project the sources under Knowledge. Imported sessions are
+`sessions-TOOL-YYYY-MM-2` and so on. The sources are put in a corpus, titled
+Imported sessions and named as `--source` is, because the console's Knowledge
+page shows sources by corpus: without one they are counted there and cannot be
+opened. A corpus holds 50 sources, so a long history continues in `sessions-2`.
+To let an agent search the sessions, give it the corpus under Knowledge. Imported sessions are
 references an agent searches and cites; they are not conversations to continue.
 
 A skill is checked here the way the server checks it: `SKILL.md` frontmatter
@@ -194,6 +197,7 @@ the ones it left out.
 | `--since WHEN` | `sessions`: only sessions started since a date (`2026-10-01`) or an age (`720h`) |
 | `--match TEXT` | `sessions`: only sessions whose directory or title contains the text |
 | `--source PREFIX` | `sessions`: what the sources' names start with; defaults to `sessions` |
+| `--corpus NAME` | `sessions`: the corpus the sources are put in; defaults to the `--source` prefix. `none` puts them in no corpus |
 | `--max-bytes N` | `sessions`: the most one document may be; defaults to 49152 |
 | `--children` | `sessions`: also add sessions another session started, such as a sub-agent's or a reviewer's |
 | `--home DIR` | `sessions`: the home directory the tools keep their sessions under |

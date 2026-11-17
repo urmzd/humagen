@@ -58,6 +58,7 @@ type importOptions struct {
 	maxBytes int
 	children bool
 	home     string
+	corpus   string
 
 	// skills and agents
 	dir   string
@@ -110,6 +111,7 @@ func parseImport(args []string, out io.Writer) (importOptions, error) {
 		fs.IntVar(&c.maxBytes, "max-bytes", 48<<10, "the most one session's document may be; a longer session keeps what was asked and cuts answers")
 		fs.BoolVar(&c.children, "children", false, "also add the sessions other sessions started, such as sub-agents'")
 		fs.StringVar(&c.home, "home", home, "the home directory the tools keep their sessions under")
+		fs.StringVar(&c.corpus, "corpus", "", "the corpus the sources are put in, so the console's Knowledge page shows them; left out it is named as --source is, and none puts them in no corpus")
 	case "skills":
 		fs.StringVar(&c.scope, "scope", "personal", "the library scope the skills are drafted in: personal or workspace")
 		fs.StringVar(&c.only, "only", "", "only these skills, by folder name, separated by commas")
@@ -160,6 +162,12 @@ func parseImport(args []string, out io.Writer) (importOptions, error) {
 	if c.verb == "sessions" {
 		if !knowledge.ValidName(c.prefix) || len(c.prefix) > 32 {
 			return c, errors.New("--source must be lower case letters, digits and hyphens, at most 32 characters")
+		}
+		if c.corpus == "" {
+			c.corpus = c.prefix
+		}
+		if c.corpus != "none" && !knowledge.ValidName(c.corpus) {
+			return c, errors.New("--corpus must be lower case letters, digits and hyphens, or none")
 		}
 		if c.maxBytes < sessionimport.MinMarkdown || c.maxBytes > 512<<10 {
 			return c, fmt.Errorf("--max-bytes must be between %d and %d", sessionimport.MinMarkdown, 512<<10)
@@ -304,6 +312,8 @@ type sessionsResult struct {
 	Skipped int            `json:"skipped"`
 	Failed  []importFailed `json:"failed"`
 	Sources []string       `json:"sources"`
+	// Corpora are the corpora the sources are in after the import.
+	Corpora []string       `json:"corpora"`
 	DryRun  bool           `json:"dry_run,omitempty"`
 	ByTool  map[string]int `json:"by_tool"`
 }
@@ -429,6 +439,72 @@ func (k *sessionSink) add(s sessionimport.Session) {
 	k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: "every source for " + base + " is full"})
 }
 
+// maxCorpusMembers is how many sources one corpus holds.
+const maxCorpusMembers = 50
+
+// file puts every source of the import in a corpus, which is where the
+// console's Knowledge page shows sources: one the importer made, and a
+// further one when it is full. A source already in one is left there.
+func (k *sessionSink) file() {
+	var sources []string
+	for name := range k.exists {
+		sources = append(sources, name)
+	}
+	sort.Strings(sources)
+	if len(sources) == 0 {
+		return
+	}
+	type corpus struct {
+		Members []struct {
+			Kind string `json:"kind"`
+			Name string `json:"name"`
+		} `json:"members"`
+	}
+	fail := func(what string, err error) {
+		k.res.Failed = append(k.res.Failed, importFailed{Name: "corpus " + what, Reason: err.Error()})
+	}
+	for n := 1; len(sources) > 0 && n <= 20; n++ {
+		name := k.c.corpus
+		if n > 1 {
+			name = fmt.Sprintf("%s-%d", k.c.corpus, n)
+		}
+		var have corpus
+		err := k.api.do(k.ctx, http.MethodGet, "/api/corpora/"+url.PathEscape(name), nil, &have)
+		if status(err) == http.StatusNotFound {
+			err = k.api.do(k.ctx, http.MethodPost, "/api/corpora", map[string]any{
+				"name": name, "title": "Imported sessions", "description": "Sessions imported from other assistants with humagen import sessions.",
+			}, &have)
+		}
+		if err != nil {
+			fail(name, err)
+			return
+		}
+		in := map[string]bool{}
+		for _, m := range have.Members {
+			if m.Kind == "source" {
+				in[m.Name] = true
+			}
+		}
+		room := maxCorpusMembers - len(have.Members)
+		var left []string
+		for _, src := range sources {
+			switch {
+			case in[src]:
+			case room <= 0:
+				left = append(left, src)
+			default:
+				if err := k.api.do(k.ctx, http.MethodPost, "/api/corpora/"+url.PathEscape(name)+"/members", map[string]string{"kind": "source", "name": src}, nil); err != nil {
+					fail(name, err)
+					return
+				}
+				room--
+			}
+		}
+		k.res.Corpora = append(k.res.Corpora, name)
+		sources = left
+	}
+}
+
 func (k *sessionSink) sent(name string, s sessionimport.Session) {
 	k.count[name]++
 	k.have[s.URI()] = true
@@ -458,7 +534,7 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 	if len(tools) == 0 && len(c.exports) == 0 {
 		return errors.New("nothing to read; name a tool with --from or an export with --export FILE")
 	}
-	res := sessionsResult{Failed: []importFailed{}, Sources: []string{}, ByTool: map[string]int{}, DryRun: c.dryRun}
+	res := sessionsResult{Failed: []importFailed{}, Sources: []string{}, Corpora: []string{}, ByTool: map[string]int{}, DryRun: c.dryRun}
 	sink := &sessionSink{ctx: ctx, c: c, api: api, res: &res, have: map[string]bool{}, exists: map[string]bool{}, count: map[string]int{}, full: map[string]bool{}}
 	if !c.dryRun {
 		if err := sink.load(); err != nil {
@@ -510,6 +586,9 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 			return fmt.Errorf("%s: %w", path, err)
 		}
 	}
+	if !c.dryRun && c.corpus != "none" {
+		sink.file()
+	}
 	if c.json {
 		if err := json.NewEncoder(out).Encode(res); err != nil {
 			return err
@@ -530,7 +609,11 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 	for _, f := range res.Failed {
 		fmt.Fprintf(out, "  failed %s: %s\n", f.Name, f.Reason)
 	}
-	if res.Added > 0 && !c.dryRun {
+	switch {
+	case c.dryRun:
+	case len(res.Corpora) > 0:
+		fmt.Fprintf(out, "They are in the corpus %s under Knowledge. Next: give an agent that corpus, so it can search them.\n", strings.Join(res.Corpora, ", "))
+	case res.Added > 0:
 		fmt.Fprintf(out, "Next: give an agent or a project the sources named %s-… under Knowledge, so it can search them.\n", c.prefix)
 	}
 	if len(res.Failed) > 0 {

@@ -28,6 +28,7 @@ type importServer struct {
 	docs    map[string][]map[string]string
 	skills  []map[string]any
 	agents  []map[string]any
+	corpora map[string][]string
 	auth    []string
 	writes  int
 	refused map[string]bool
@@ -84,6 +85,42 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 			s.docs[parts[1]] = append(s.docs[parts[1]], doc)
 			w.WriteHeader(201)
 			fmt.Fprint(w, `{}`)
+		case len(parts) >= 1 && parts[0] == "corpora":
+			if s.corpora == nil {
+				s.corpora = map[string][]string{}
+			}
+			members := func(name string) {
+				out := []map[string]string{}
+				for _, m := range s.corpora[name] {
+					out = append(out, map[string]string{"kind": "source", "name": m})
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"name": name, "members": out})
+			}
+			switch {
+			case r.Method == "GET" && len(parts) == 2:
+				if _, ok := s.corpora[parts[1]]; !ok {
+					problem(404, "no such corpus")
+					return
+				}
+				members(parts[1])
+			case r.Method == "POST" && len(parts) == 1:
+				var body struct{ Name string }
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				s.corpora[body.Name] = []string{}
+				w.WriteHeader(201)
+				members(body.Name)
+			case r.Method == "POST" && len(parts) == 3 && parts[2] == "members":
+				var body struct{ Kind, Name string }
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				if len(s.corpora[parts[1]]) >= 50 {
+					problem(400, "a corpus holds at most 50 members")
+					return
+				}
+				s.corpora[parts[1]] = append(s.corpora[parts[1]], body.Name)
+				members(parts[1])
+			default:
+				problem(404, "no such route")
+			}
 		case r.Method == "GET" && r.URL.Path == "/api/agents":
 			_ = json.NewEncoder(w).Encode(map[string]any{"agents": s.agents})
 		case r.Method == "POST" && r.URL.Path == "/api/agents":
@@ -172,8 +209,12 @@ func TestImportSessionsAddsEachOnceToItsMonthsSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err = %v\n%s", err, out)
 	}
-	if !strings.HasPrefix(out, "Added 4 sessions (claude 3, codex 1) to 3 knowledge sources; 0 already there, 2 skipped, 0 failed.\n") || !strings.Contains(out, "Next: give an agent or a project the sources named sessions-…") {
+	if !strings.HasPrefix(out, "Added 4 sessions (claude 3, codex 1) to 3 knowledge sources; 0 already there, 2 skipped, 0 failed.\n") || !strings.Contains(out, "They are in the corpus sessions under Knowledge. Next: give an agent that corpus, so it can search them.") {
 		t.Fatalf("out = %s", out)
+	}
+	sort.Strings(api.corpora["sessions"])
+	if got := strings.Join(api.corpora["sessions"], " "); got != "sessions-claude-2026-10 sessions-claude-2026-11 sessions-codex-2026-11" {
+		t.Fatalf("corpus members = %s", got)
 	}
 	var names []string
 	for name, docs := range api.docs {
@@ -198,7 +239,7 @@ func TestImportSessionsAddsEachOnceToItsMonthsSource(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &res); err != nil {
 		t.Fatal(err)
 	}
-	if res.Added != 0 || res.Present != 4 || api.writes != 0 {
+	if res.Added != 0 || res.Present != 4 || api.writes != 0 || len(api.corpora["sessions"]) != 3 || strings.Join(res.Corpora, ",") != "sessions" {
 		t.Fatalf("second run = %+v, writes = %d", res, api.writes)
 	}
 }
@@ -471,5 +512,22 @@ func TestImportSkillsNamesTheFrontmatterItLeavesOut(t *testing.T) {
 	}
 	if got := api.skills[0]["instructions"]; got != "# Ship\n\nCommit, then push.\n" {
 		t.Fatalf("instructions = %q", got)
+	}
+}
+
+func TestImportSessionsCanLeaveSourcesOutOfACorpusOrNameIt(t *testing.T) {
+	home := sessionHome(t)
+	api := &importServer{}
+	server := api.start(t)
+	out, err := runImport(t, "sessions", "--home", home, "--server", server.URL, "--corpus", "none")
+	if err != nil || len(api.corpora) != 0 || !strings.Contains(out, "Next: give an agent or a project the sources named sessions-…") {
+		t.Fatalf("err = %v, corpora = %v\n%s", err, api.corpora, out)
+	}
+	// A later run files what is already there.
+	if out, err := runImport(t, "sessions", "--home", home, "--server", server.URL, "--corpus", "history"); err != nil || len(api.corpora["history"]) != 3 || !strings.Contains(out, "They are in the corpus history") {
+		t.Fatalf("err = %v, corpora = %v\n%s", err, api.corpora, out)
+	}
+	if _, err := runImport(t, "sessions", "--dry-run", "--corpus", "Not Valid"); err == nil || !strings.Contains(err.Error(), "--corpus must be") {
+		t.Fatalf("err = %v", err)
 	}
 }
