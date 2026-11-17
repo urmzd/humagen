@@ -616,6 +616,14 @@ fixture checks each fragment against its text column at responsive widths.
 
 ### Multimodal message and MCP content
 
+The [browser screenshot workflow](../guides/browser.md#compare-an-uploaded-screenshot-with-a-changed-page)
+has an opt-in real acceptance check: a PNG is uploaded and analyzed without
+tools, then the same conversation captures and compares an actually changed
+page. All four desktop/phone and light/dark cases passed on a generated local
+fixture, with real PNG response blocks before and after the action. This does
+not establish a third-party portal, every-pixel comparison or the same workflow
+through the console.
+
 A [local media CLI path](../guides/media-evidence.md) renders original PDF
 pages, inspects image pixels and video frames, and retains source offsets for
 local English ASR and original-clip checks. Generated-fixture acceptance
