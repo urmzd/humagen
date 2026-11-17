@@ -130,3 +130,57 @@ func solidPNG(w, h int, r, g, b byte) []byte {
 	_ = png.Encode(&buf, img)
 	return buf.Bytes()
 }
+
+// TestLiveResume carries a conversation on from a session the real program
+// already has, named with /resume. It runs only when asked, as TestLive.
+func TestLiveResume(t *testing.T) {
+	for _, kind := range strings.Split(os.Getenv("VENDORCLI_LIVE"), ",") {
+		if kind == "" {
+			continue
+		}
+		t.Run(kind, func(t *testing.T) {
+			dir := t.TempDir()
+			dir, _ = filepath.EvalSymlinks(dir)
+			model := map[string]string{ClaudeCode: "haiku", Codex: "default"}[kind]
+			build := func() saigetypes.Provider {
+				fn, err := New(kind, Config{Dir: dir, StateDir: t.TempDir()})
+				if err != nil {
+					t.Fatal(err)
+				}
+				p, err := fn(native.Spec{Name: "coder", Model: model})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return p
+			}
+			// A session made elsewhere: another provider, with its own state.
+			_, _, _, usage, err := collect(t, build(), user("Remember the word persimmon for later. Reply with exactly: noted"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			original := usage.ResponseID
+			// A new conversation names it.
+			p := build()
+			first := "/resume " + original + " Which word did I ask you to remember? Reply with that word only."
+			said, _, _, usage2, err := collect(t, p, user(first))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("resumed said %q, session %s from %s", said, usage2.ResponseID, original)
+			if !strings.Contains(strings.ToLower(said), "persimmon") {
+				t.Fatalf("the session was not carried on: %q", said)
+			}
+			if usage2.ResponseID == original || usage2.ResponseID == "" {
+				t.Fatalf("the conversation runs in the original session %s, not a copy", original)
+			}
+			// The conversation then continues in the copy.
+			said3, _, _, usage3, err := collect(t, p, user(first), assistant(said), user("Say it once more, in upper case only."))
+			if err != nil || !strings.Contains(said3, "PERSIMMON") {
+				t.Fatalf("second turn: %q, %v", said3, err)
+			}
+			if kind == ClaudeCode && usage3.ResponseID != usage2.ResponseID {
+				t.Fatalf("the second turn left the copy: %s then %s", usage2.ResponseID, usage3.ResponseID)
+			}
+		})
+	}
+}

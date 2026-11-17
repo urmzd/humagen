@@ -155,17 +155,26 @@ humagen import agents --provider anthropic --model claude-sonnet-5-5
 | `skills [DIR]` | Each folder under `DIR` that holds a `SKILL.md`. `DIR` defaults to `~/.agents/skills`, the store [agentspec](https://github.com/urmzd/agentspec) keeps | One draft per skill in the skill library, with the folder's files. `POST /api/library/skills` |
 | `agents [DIR]` | Each Markdown agent file in `DIR` with YAML frontmatter, as Claude Code, Copilot and agentspec write them. `DIR` defaults to `~/.agents/agents` | One agent per file: its `name` and `description` from the frontmatter, its text as the system prompt. `POST /api/agents` |
 
-A session's document holds what was asked, what was answered and one line per
-tool call (the tool and what it ran or read). Tool output is left out. What
+A session's document holds what was asked, what was answered, one line per
+tool call (the tool and what it ran or read) and the start of each tool's
+result, at most 1,500 bytes of it. An attachment in an export is named, with
+the text the export extracted from it; its bytes are not in an export. A
+session another session started says which (`Started by`), and a ChatGPT
+conversation says how many branches it left behind (`Branches not shown`): the
+branch imported is the one last shown. A conversation in an export with nothing
+asked in it is counted as skipped. What
 looks like a credential (an API key, a token, a private key) is replaced with
 `[redacted]` before anything is sent. A session over `--max-bytes` keeps what
-was asked and cuts the answers first. The document's `uri` is the session's id
+was asked, leaves out tool results first and then cuts the answers. The document's `uri` is the session's id
 (`claude:ID`, `codex:ID`, `chatgpt:ID`, `claude-ai:ID`), which is how a later
 run knows it is there.
 
 A source holds at most 200 documents and 8 MiB, so a busy month continues in
-`sessions-TOOL-YYYY-MM-2` and so on. To let an agent search the sessions, give
-it or its project the sources under Knowledge. Imported sessions are
+`sessions-TOOL-YYYY-MM-2` and so on. The sources are put in a corpus, titled
+Imported sessions and named as `--source` is, because the console's Knowledge
+page shows sources by corpus: without one they are counted there and cannot be
+opened. A corpus holds 50 sources, so a long history continues in `sessions-2`.
+To let an agent search the sessions, give it the corpus under Knowledge. Imported sessions are
 references an agent searches and cites; they are not conversations to continue.
 
 A skill is checked here the way the server checks it: `SKILL.md` frontmatter
@@ -176,7 +185,7 @@ library reads the frontmatter the skill standard names (`name`, `description`,
 read because of other fields, such as one assistant's `arguments` list, is
 drafted with only those, and the command names each field it left out. Hidden files are left out. A skill is
 drafted with no tools permitted; choose its tools, test it and publish it under
-Library, Skills. A scope holds at most 32 skills: past that the command names
+Library, Skills. A scope holds at most 256 skills: past that the command names
 the ones it left out.
 
 | Flag | Behavior |
@@ -188,6 +197,7 @@ the ones it left out.
 | `--since WHEN` | `sessions`: only sessions started since a date (`2026-10-01`) or an age (`720h`) |
 | `--match TEXT` | `sessions`: only sessions whose directory or title contains the text |
 | `--source PREFIX` | `sessions`: what the sources' names start with; defaults to `sessions` |
+| `--corpus NAME` | `sessions`: the corpus the sources are put in; defaults to the `--source` prefix. `none` puts them in no corpus |
 | `--max-bytes N` | `sessions`: the most one document may be; defaults to 49152 |
 | `--children` | `sessions`: also add sessions another session started, such as a sub-agent's or a reviewer's |
 | `--home DIR` | `sessions`: the home directory the tools keep their sessions under |

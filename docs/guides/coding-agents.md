@@ -82,6 +82,15 @@ too, as `--effort` to Claude Code and as `model_reasoning_effort` to Codex.
   document) is refused with an error that names it, and the program is not
   run. A session that is starting is shown the images of earlier messages
   too.
+- **Carrying on from a session you already have.** Start a conversation with
+  `/resume ID`, where ID is a session of the program's own (as
+  `humagen import sessions` shows it after the colon in a document's `uri`,
+  or as the program lists it). The conversation carries on from a copy of
+  that session, so the original is left as it was. Say what to ask after the
+  id (`/resume ID what was left to do?`); with nothing more, it is asked
+  where it stands. Claude Code finds only sessions that began in `dir`. A
+  Codex session that began outside `dir` is refused, and its copy runs under
+  this model's `permissions`, not the ones it began with.
 - **Tool activity.** Each tool the program runs is published as the run's tool
   call and its outcome, with the command or file it worked on and the end of
   its output.

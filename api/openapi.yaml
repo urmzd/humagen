@@ -1081,7 +1081,7 @@ paths:
                 properties:
                   skills:
                     type: array
-                    maxItems: 32
+                    maxItems: 256
                     items: {$ref: '#/components/schemas/LibrarySkill'}
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}

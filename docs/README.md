@@ -22,6 +22,7 @@
 | [Deploy](guides/deploy.md) | Guide | Run Humagen locally, with Compose, Helm, Flux or `humagen deploy` |
 | [Coding agents](guides/coding-agents.md) | Guide | Run an agent on Claude Code or Codex, in a repository on this host, with the account the program is signed in to |
 | [GitHub and Slack trial](guides/integrations.md) | Guide | Set up a local trial with a GitHub installation and a Slack app |
+| [Connect a Mac desktop](guides/desktop.md) | Guide | Pinned native MCP tools, permissions, targeting instructions, and an opt-in fixture check |
 | [Connect a browser](guides/browser.md) | Guide | Pinned Playwright MCP configuration, existing-tab connection, and real browser acceptance |
 | [Email notifications](guides/email-notifications.md) | Guide | Configure the outbound email notification relay |
 | [Upgrading from the old name](guides/upgrading-from-warp.md) | Guide | What changed in the rename and how an operator moves to the new names |
