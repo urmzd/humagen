@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.135.3 (2026-11-17)
+
+### Bug Fixes
+
+- **platform**: drop a paused schedule's clock tick ([a4486a7](https://github.com/urmzd/humagen/commit/a4486a797d723d270826e664145d7b6720038aac))
+- **platform**: give a clock tick its schedule's agent ([16322a0](https://github.com/urmzd/humagen/commit/16322a073112e0bfdaba0fb07d858540202afccc))
+
+### Misc
+
+- **platform**: bound the waits of the clock tick test ([6092bfc](https://github.com/urmzd/humagen/commit/6092bfc36264a66678f05d5d3f01eac527aac397))
+- **platform**: discard the ingest error the test cancels into ([5873e47](https://github.com/urmzd/humagen/commit/5873e4702608f43714f0d00b2dd23229dae71de5))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.135.2...v0.135.3)
+
+
 ## 0.135.2 (2026-11-17)
 
 ### Bug Fixes
