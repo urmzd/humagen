@@ -1,61 +1,65 @@
 # Read selected mail and approve a calendar change
 
-`examples/mail-calendar/claude-code.yaml` uses the signed-in Claude Code
-program's existing native Gmail and Google Calendar connections. Humagen runs
-two agents: `account-reader` has selected read tools; `calendar-writer` has
-calendar read/create/update tools. Neither has a mail send, label or delete
-tool in its allow list. This is a configured local CLI path, not a native
-Humagen Gmail or calendar adapter.
+`examples/mail-calendar/humagen.yaml` uses existing signed-in Codex apps for
+Gmail and Contacts reads, and Claude Code's native Google Calendar tools for
+an explicitly approved event action. No mail send, invitation, contact write
+or event deletion is part of this example. These are local CLI account
+connections, not native Humagen Gmail or calendar adapters.
 
 ## Connect and start
 
-Sign in to Claude Code on this host and connect the intended Gmail and Google
-Calendar accounts there. In the example, replace both `claude-code.dir` values
-with an existing dedicated download folder, then run:
+Sign in to Codex and Claude Code on this host and connect the intended accounts
+in those programs. Set both model directories to an existing absolute work
+folder, then start:
 
 ```sh
-humagen config check -f examples/mail-calendar/claude-code.yaml
-humagen start -f examples/mail-calendar/claude-code.yaml
+humagen config check -f examples/mail-calendar/humagen.yaml
+humagen start -f examples/mail-calendar/humagen.yaml
 ```
 
-The names in the example were discovered from the installed account tools.
-`ToolSearch` loads their schemas before use. Do not add `--strict-mcp-config`
-with an empty configuration: that would hide the native connections this path
-needs. The local program's user settings, hooks and connected servers still
-load. The allow list is not an account-object authorization boundary; the
-person must trust the local program and authorize exact targets. It uses
-account usage and sends opened content to its model provider.
+Codex enables `apps`, ignores user config and uses a read-only local filesystem.
+Claude Code exposes only ToolSearch as a built-in tool and permits the exact
+native Calendar names in the profile. Its user settings, hooks and account
+connections still load. Neither model configuration confines cloud access to
+one account object: explicit target selection and approval remain necessary.
+Opened content enters the model providers and consumes account usage.
 
 ## Select the message and attachment
 
-Give `account-reader` a narrow search or an exact message ID, the intended
-account, and the attachment name or ID. Ask it to open only that message and
-attachment, cite their identifiers, and distinguish attachment metadata from
-bytes it actually opened. If more than one result matches, select one before
-reading further. For example:
+Choose `account-reader` and give a narrow search or exact message ID, intended
+account and attachment name. For example:
 
 ```text
-In my connected Gmail account, find only the message matching EXACT_QUERY.
-Show the matching identifiers so I can select one. Do not open attachments,
-modify mail or read unrelated messages.
+Search only EXACT_QUERY, with at most one result, in my connected Gmail.
+Confirm it is EXPECTED_MESSAGE_ID before reading full MIME. Open only its
+selected ATTACHMENT_NAME using the attachment ID from that message. Cite
+actual identifiers and content, not only a file name. Do not send or modify
+mail, read unrelated messages or use Calendar.
 ```
 
-After selecting the message, explicitly request the attachment. The discovered
-`download_gmail_attachment` schema accepts a message ID and attachment ID,
-index or filename metadata, and states a 12 MB limit. Its returned file shape
-and attachment rendering have not been exercised here. A returned file name
-alone does not establish that the agent read its contents. If a file needs
-another reader, download only the selected attachment to the dedicated folder
-and use the [local media path](media-evidence.md) for the actual file format.
-Contacts, Outlook and another person's account were not checked.
+The Codex app path uses `search_email_ids` or `search_emails`, `read_email` and
+`read_attachment`. Select the returned attachment by its actual message and
+attachment ID. Its supported rendering and size depend on the tool and file
+format; a saved-file reference alone does not prove the agent read the bytes.
+For an unsupported attachment, download only that selected file to the work
+folder and use the [local media path](media-evidence.md) for its actual format.
+
+## Read a selected contact
+
+Choose `contacts-reader` and give an exact name/query or selected resource ID.
+The connected app exposes `search_contacts` and `read_contact`. Read only the
+selected person after resolving an ambiguous match. This connector exposes
+no create/update/delete tool here. Contact writes need a write-capable People
+or Contacts MCP connection and an exact authorized change; this example does
+not invent that capability.
 
 ## Approve one exact calendar action
 
-Give `calendar-writer` the calendar ID, title, start and end with an IANA time
-zone, and whether to create or update. For an update, also give the event ID,
-the expected current values and only the fields to change. Ask for the proposed
-values first. Approve that exact proposal before it writes. Invitations and
-attendees require their own explicit authorization.
+Choose `calendar-writer` and supply the calendar ID, title, start and end with
+an IANA time zone, and whether to create or update. For an update also provide
+the event ID, expected current values and only the fields to change. Review
+the concrete proposal before approving it. Invitations, guests, notifications
+and reminders need their own explicit authorization.
 
 ```text
 Prepare, but do not save, this change in calendar EXACT_CALENDAR_ID:
@@ -63,26 +67,36 @@ update event EXACT_EVENT_ID from EXPECTED_OLD_VALUES to APPROVED_NEW_VALUES.
 Keep every other field and event unchanged. Show the proposal for approval.
 ```
 
-After the approved action, read the event back and compare its ID, calendar,
-start/end and fields with the proposal. After an uncertain create response,
-read the selected time range before retrying so a duplicate is not created.
-The discovered update tool has no expected-version or etag argument. A
-read-before-update can detect an earlier change but cannot prevent a race
-between that read and the write. Do not claim an atomic guarded update.
+The native tool prefix is `mcp__claude_ai_Google_Calendar__`; discover the exact
+`get_event`, `list_events`, `create_event` and `update_event` names. After the
+approved action, read it back and compare its ID, calendar and fields. After
+an uncertain create response, check only the selected time range before retrying
+to avoid duplicates. The discovered update schema has no expected-version or
+etag field. Read-before-update detects an earlier change but cannot prevent a
+race between read and write; do not claim an atomic guarded update.
 
 ## What was checked
 
-On 17 November 2026, the shipped profile, with only directory and port changed,
-ran through a real Humagen server and signed-in program. ToolSearch discovered
-the exact Gmail search/read/attachment and Calendar list/read/create/update
-tools. One deliberately nonexistent, non-personal `rfc822msgid:` audit-marker
-query was sent to `search_threads` with page size 1. The provider call returned
-an empty object without an error; the trace contains only ToolSearch and that
-one search. This does not establish message contents, attachment access, the
-account identity or calendar access. No mail or event was changed.
+On 17 November 2026, these existing connectors ran through real Humagen servers
+and signed-in programs, with non-personal fixture content only:
 
-The full acceptance is blocked until the person selects an exact message and
-attachment and authorizes one exact calendar change in a connected account.
-An example configuration and discovered tool names are not proof of a working
-end-to-end account operation. Missing connections, consent errors, unsupported
-attachments and an ambiguous target must be reported instead of substituted.
+- One unsent Gmail draft with no recipients was created, with the generated
+  `req026-fixture.csv`. Nothing was sent. Codex searched only its exact subject,
+  confirmed the selected message, read full MIME, then opened the actual
+  127-byte attachment. All five original CSV fields matched the local fixture;
+  the attachment renderer also showed an added index column, not a source
+  column. The draft remains available for peer review.
+- Claude Code's native attachment tool also opened those bytes, but its
+  `get_message` call returned a permission error. The cause is unconfirmed;
+  the working message path uses the connected Codex Gmail app instead.
+- One exact nonexistent Contacts audit marker returned zero matches. No real
+  contact was opened or modified. No contact write tool was exposed.
+- Calendar tool schemas and primary-calendar metadata were discovered. No
+  event was created or changed. A concrete private historical fixture proposal
+  awaits explicit approval, so the calendar-write acceptance is still blocked.
+
+No original personal message or appointment was used. Contacts writes, Outlook,
+another account and the console flow were not checked. The full requirement
+is not closed by the working mail/attachment path: the remaining asks are an
+exact approved Calendar action and, for contact writes, a write-capable connector
+plus the selected contact and change.

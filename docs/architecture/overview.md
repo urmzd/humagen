@@ -545,12 +545,12 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
-Mail and calendar have an [example native-account CLI configuration](../guides/mail-calendar.md).
-Exact tool schemas and one empty-marker Gmail search were exercised through a
-real signed-in program. Message/attachment reads and a calendar write have not
-been validated: no selected message or approved event action was supplied.
-The full account requirement remains blocked; the configuration is not an
-account-object authorization boundary or an atomic versioned calendar update.
+Mail has an [existing-account CLI path](../guides/mail-calendar.md): Codex apps
+searched and read one exact unsent non-personal Gmail fixture and its actual
+CSV attachment through Humagen. Contacts returned no match for an exact audit
+marker; contact writes are not exposed. Calendar schemas were discovered, but
+an exact event action still needs approval. The full mail/contacts/calendar
+requirement remains partial; no event, personal mail or contact was changed.
 
 Travel refunds have a [configured CLI path](../guides/travel-refund.md): one
 agent on Claude Code reads a booking and current policy pages and cannot write,
