@@ -995,11 +995,18 @@ approval, disabled early approval, restoration, refusal and the combined menu.
   with original bytes and names retained through queue editing, waiting and retry.
   A failed first send restores its files beside its text. MIME types are sniffed
   on the server; metadata never grants a model a modality it cannot read.
+- Posted messages retain a file reference for each upload, for the author and
+  other readers, after reloading the conversation. A file without a name uses
+  its alternative text or media type. These references describe retained files;
+  they do not imply a preview or download is available.
 - Acceptance: a failed first message leaves its text and files in the composer
   and an empty queue. Evidence: `attachments.test.ts`, queue regression tests,
   `TestUploadedImageReachesModelAndLaterHistory`, and the phone/desktop
   `composer-attachments` screen. Live model and connected browser acceptance are
   tracked separately in the session audit ledger.
+- Retained upload references are checked for both message authors and other
+  readers in `room.dom.test.tsx`, and from actual session API records by the
+  `session-uploads` browser state at phone and desktop widths in both themes.
 
 ### DES-037: Health
 
