@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.132.0 (2026-11-17)
+
+### Features
+
+- **models**: the travel researcher reads the annual regulation edition when the official page refuses ([aec062d](https://github.com/urmzd/humagen/commit/aec062d7505fe043677c7c162201421bdca6709a))
+- **models**: configure working out a refund path and writing only what is approved ([ce65791](https://github.com/urmzd/humagen/commit/ce657918d893fa6c61f8b0881c6a0e11facb772a))
+- **models**: configure a sourced chronology from a folder of records ([ae6962e](https://github.com/urmzd/humagen/commit/ae6962e981ce742347ee0c1be67f854d68bf2928))
+- **models**: configure account-backed raster generation ([5426167](https://github.com/urmzd/humagen/commit/542616773478cd751f8ac6f59f9e4a96a6bce008))
+
+### Bug Fixes
+
+- **models**: the travel researcher leads with conditions and quotes what starts a deadline ([f15648e](https://github.com/urmzd/humagen/commit/f15648e00b7bef7bae6089304aec7b385117daf2))
+- **models**: the chronology checker refuses a certainty that is not one of the three words ([e81be7e](https://github.com/urmzd/humagen/commit/e81be7e116f917ef9b8e8fdfe58240550e7c4201))
+- **models**: a chronology row's date must be stated by its own quote ([0afc09f](https://github.com/urmzd/humagen/commit/0afc09ffe4b059e9834b2e96cd86d9f8647e7ecf))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.131.0...v0.132.0)
+
+
 ## 0.129.0 (2026-11-17)
 
 ### Features
