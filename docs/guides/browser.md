@@ -88,6 +88,52 @@ the actual bytes into a model that supports images. A saved path alone does not
 prove that the model saw the screenshot. In this pinned version, specifying
 `filename` returns a saved-file reference instead of inline image bytes.
 
+## Compare an uploaded screenshot with a changed page
+
+With the Claude Code profile below, first attach the original PNG to a message
+for the browser agent and ask it to inspect only that image. For example:
+
+```text
+Read only the attached screenshot's pixels. Describe the visible heading and
+the unlabelled panels' colors from left to right. Do not use tools, open a
+browser or change the page yet. Say what you cannot see.
+```
+
+After reviewing that answer, authorize the specific connected tab and action
+in a follow-up in the same conversation:
+
+```text
+Use only my authorized tab at EXACT_ORIGIN_AND_PATH. Inspect its current
+snapshot, capture its pixels, and perform APPROVED_ACTION. Capture the changed
+page again without filename and with scale css. Compare its visible heading
+and panels with the original uploaded screenshot in this conversation. Do not
+infer visual changes from a successful click or snapshot text. Preserve the
+original image and report what is outside the captured viewport.
+```
+
+Replace the tab address and action with the actual authorized target. The
+profile's image-only instruction avoids opening the browser for the first
+answer. Browser/tab access still has the authorization limits described above.
+Color names are visual estimates; this is not a pixel-diff regression service.
+
+### Check the comparison
+
+The fixture helper below can exercise both steps through the session message
+API. Add `HUMAGEN_BROWSER_COMPARE_UPLOAD=1` to its environment and use a fresh
+capture directory. It uploads the original PNG through `POST /api/sessions`,
+checks the random visible record and colors with zero tool calls, and posts a
+follow-up to that same session. The approved fixture action really changes
+yellow/purple panels to green/orange. The forwarding observer must see PNG
+image blocks both before and after that action at the requested dimensions.
+Each case retains the upload hash, first answer, follow-up answer and events
+alongside the before/after page captures. It also retains the existing tab,
+download-byte and outside-directory refusal checks.
+
+The real model and connector passed all four size/theme cases on a generated
+local fixture. This does not cover a real user's screenshot, every pixel of a
+long page, a third-party portal or this two-step workflow through the console.
+The checked path uses the message API and the signed-in local program.
+
 ## Run acceptance against the real connector
 
 Start the isolated worker, then run:

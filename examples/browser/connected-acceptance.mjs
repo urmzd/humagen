@@ -21,6 +21,7 @@ if (!process.env.HUMAGEN_BROWSER_TOOL_DIR)
     "Set HUMAGEN_BROWSER_TOOL_DIR to a prefix containing npm-installed @playwright/mcp@0.0.85.",
   );
 const tools = resolve(process.env.HUMAGEN_BROWSER_TOOL_DIR);
+const compareUpload = process.env.HUMAGEN_BROWSER_COMPARE_UPLOAD === "1";
 const metadata = join(tools, "node_modules/@playwright/mcp/package.json");
 if (JSON.parse(readFileSync(metadata, "utf8")).version !== "0.0.85")
   throw new Error("Acceptance requires the pinned @playwright/mcp@0.0.85.");
@@ -91,6 +92,17 @@ let record = "",
   loginCount = 0;
 let base = "";
 const api = "http://127.0.0.1:" + apiPort;
+async function sessionRun(session, previous = new Set()) {
+  for (let i = 0; i < 240; i++) {
+    const response = await fetch(api + "/api/sessions/" + session);
+    if (!response.ok) throw new Error(await response.text());
+    const view = await response.json();
+    const run = view.messages.map((m) => m.run).find((r) => r && !previous.has(r.id));
+    if (run && ["completed", "failed", "stopped"].includes(run.status)) return run;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  throw new Error("Session did not complete: " + session);
+}
 // Observe the exact bytes returned to the CLI, rather than inferring inline
 // images from its text-only journal or from a saved screenshot path.
 const wireImages = [];
@@ -143,6 +155,7 @@ const bridge = createServer(async (req, res) => {
           width: bytes.readUInt32BE(16),
           height: bytes.readUInt32BE(20),
           sha256: createHash("sha256").update(bytes).digest("hex"),
+          fixtureChanged: changed,
         });
       }
     };
@@ -217,7 +230,7 @@ const server = createServer(async (req, res) => {
   res
     .writeHead(200, { "Content-Type": "text/html" })
     .end(
-      `<!doctype html><title>Connected browser fixture</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>:root{color-scheme:light dark}*{box-sizing:border-box}body{margin:0;padding:24px;font:18px/1.5 system-ui;background:light-dark(#fafafa,#171717);color:light-dark(#171717,#fafafa)}main{max-width:900px;margin:auto}h1{font-size:30px;line-height:1.2}button,a{display:inline-block;font:inherit;min-height:44px;padding:10px 14px;margin:8px 0}a{color:light-dark(#1256b0,#8ec2ff)}.panels{display:flex;gap:16px;margin:20px 0}.panels div{height:120px;flex:1;border-radius:12px}.one{background:#ffdf00}.two{background:#800080}</style><main><p>Authorized fixture account</p><h1>${changed ? "Fixture approved" : "Signed-in records"}</h1><p>Record: <strong>${record}</strong></p><p>The two panels have no text labels. Inspect their pixels.</p><div class="panels" aria-hidden="true"><div class="one"></div><div class="two"></div></div><form action="/approve" method="post"><button>Approve fixture</button></form><a href="/record.csv" download>Download selected record</a></main>`,
+      `<!doctype html><title>Connected browser fixture</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>:root{color-scheme:light dark}*{box-sizing:border-box}body{margin:0;padding:24px;font:18px/1.5 system-ui;background:light-dark(#fafafa,#171717);color:light-dark(#171717,#fafafa)}main{max-width:900px;margin:auto}h1{font-size:30px;line-height:1.2}button,a{display:inline-block;font:inherit;min-height:44px;padding:10px 14px;margin:8px 0}a{color:light-dark(#1256b0,#8ec2ff)}.panels{display:flex;gap:16px;margin:20px 0}.panels div{height:120px;flex:1;border-radius:12px}.one{background:${compareUpload && changed ? "#16803c" : "#ffdf00"}}.two{background:${compareUpload && changed ? "#ff8c00" : "#800080"}}</style><main><p>Authorized fixture account</p><h1>${changed ? "Fixture approved" : "Signed-in records"}</h1><p>Record: <strong>${record}</strong></p><p>The two panels have no text labels. Inspect their pixels.</p><div class="panels" aria-hidden="true"><div class="one"></div><div class="two"></div></div><form action="/approve" method="post"><button>Approve fixture</button></form><a href="/record.csv" download>Download selected record</a></main>`,
     );
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -395,20 +408,87 @@ try {
     await page.emulateMedia({ colorScheme: theme });
     await page.goto(base + "/portal");
     await page.getByRole("heading", { name: "Signed-in records", exact: true }).waitFor();
-    await page.screenshot({ path: `${root}/before-${theme}-${width}x${height}.png` });
+    await page.screenshot({
+      path: `${root}/before-${theme}-${width}x${height}.png`,
+    });
     // Keep the fixture's CDP connection attached: disconnecting clears its
     // viewport/media emulation and makes the paired screenshots incomparable.
     // Chrome was launched independently with its own selected-download folder.
     await startWorker();
     if (results.length === 0) await checkReadScope();
     const text = `Use only the already signed-in authorized fixture tab at ${base}/portal. List the tabs, inspect its snapshot, and take a screenshot to read the two unlabelled panels' fill colors in left-to-right order. Do not inspect source code. For browser_take_screenshot omit filename entirely and set scale css, so its image bytes are returned instead of only a saved path. Read those returned image pixels directly, do not use browser_evaluate. Then click Approve fixture, inspect the changed page, and click Download selected record. Chrome is explicitly configured to save selected files into ${root}/downloads. Use Glob there and Read only the selected CSV to verify its record and value. Return the record identifier, colors, changed heading, actual saved download path and CSV value. These exact fixture actions are authorized. Do not navigate away from this origin or close any tab.`;
-    let res = await fetch(api + "/api/runs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agent: "browser", text }),
-    });
-    if (!res.ok) throw new Error(await res.text());
-    const created = await res.json();
+    let created, uploadAnalysis;
+    if (compareUpload) {
+      const png = readFileSync(`${root}/before-${theme}-${width}x${height}.png`);
+      let res = await fetch(api + "/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agent: "browser",
+          text: "Analyze only the attached screenshot's actual pixels. Return its record identifier and the two unlabelled panels' fill colors in left-to-right order. Do not use any tool, browser, source code or local file. Do not change anything yet.",
+          uploads: [
+            {
+              name: "original-page.png",
+              kind: "image",
+              data: png.toString("base64"),
+            },
+          ],
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const session = (await res.json()).id;
+      const first = await sessionRun(session);
+      const firstEvents = await (await fetch(api + "/api/runs/" + first.id + "/events")).json();
+      writeFileSync(
+        `${root}/upload-state-${theme}-${width}x${height}.json`,
+        JSON.stringify(first, null, 2),
+      );
+      writeFileSync(
+        `${root}/upload-events-${theme}-${width}x${height}.json`,
+        JSON.stringify(firstEvents, null, 2),
+      );
+      if (
+        first.status !== "completed" ||
+        !first.answer?.includes(record) ||
+        !first.answer.toLowerCase().includes("yellow") ||
+        !first.answer.toLowerCase().includes("purple") ||
+        firstEvents.events.some((e) => e.type === "run.delta.tool.call.v1")
+      )
+        throw new Error(
+          "Uploaded pixels were not independently analyzed without tools; inspect upload-state/events",
+        );
+      uploadAnalysis = {
+        session,
+        run: first.id,
+        answer: first.answer,
+        bytes: png.length,
+        sha256: createHash("sha256").update(png).digest("hex"),
+        toolCalls: 0,
+      };
+      writeFileSync(
+        `${root}/upload-proof-${theme}-${width}x${height}.json`,
+        JSON.stringify(uploadAnalysis, null, 2),
+      );
+      res = await fetch(api + "/api/sessions/" + session + "/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text:
+            text +
+            " Now take another screenshot after approving, also without filename and with scale css. Compare its actual panel pixels and heading against the original uploaded screenshot in this conversation. Report each original and changed color in left-to-right order. Do not infer visual changes from the button response, snapshot text or source code.",
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      created = await sessionRun(session, new Set([first.id]));
+    } else {
+      const res = await fetch(api + "/api/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent: "browser", text }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      created = await res.json();
+    }
     let state;
     for (let i = 0; i < 240; i++) {
       state = await (await fetch(api + "/api/runs/" + created.id)).json();
@@ -432,6 +512,8 @@ try {
     const calls = events.events
       .filter((e) => e.type === "run.delta.tool.call.v1")
       .map((e) => e.data.name);
+    if (compareUpload && calls.some((name) => /browser_(evaluate|run_code)$/.test(name)))
+      throw new Error("Screenshot comparison attempted source-code evaluation");
     if (
       !calls.includes("mcp__browser__browser_take_screenshot") ||
       !calls.includes("mcp__browser__browser_tabs")
@@ -443,6 +525,24 @@ try {
     if (!reads.some((e) => (e.data.result ?? "").includes(record)))
       throw new Error("selected CSV was not actually read");
     const images = wireImages.slice(imageStart).filter((i) => i.tool === "browser_take_screenshot");
+    if (
+      compareUpload &&
+      (!answer.toLowerCase().includes("green") ||
+        !answer.toLowerCase().includes("orange") ||
+        !images.some((i) => !i.fixtureChanged && i.width === width && i.height === height) ||
+        !images.some((i) => i.fixtureChanged && i.width === width && i.height === height))
+    )
+      throw new Error("Changed pixels were not captured and compared with the original upload");
+    if (compareUpload) {
+      const beforeImages = images.filter(
+        (i) => !i.fixtureChanged && i.width === width && i.height === height,
+      );
+      const afterImages = images.filter(
+        (i) => i.fixtureChanged && i.width === width && i.height === height,
+      );
+      if (!afterImages.some((after) => beforeImages.some((before) => before.sha256 !== after.sha256)))
+        throw new Error("Before and after inline screenshot bytes did not differ");
+    }
     if (
       wireErrors.length ||
       !images.some((i) => i.width === width && i.height === height) ||
@@ -491,12 +591,15 @@ try {
       verifiedDownloadPath,
       inlineImages: images,
       restrictedReadRefused: true,
+      ...(compareUpload ? { uploadAnalysis } : {}),
     });
     writeFileSync(root + "/results.json", JSON.stringify(results, null, 2));
     console.log(
       "PASS",
       stem,
-      "same authenticated target, real model screenshot colors, selected mutation and exact downloaded CSV",
+      compareUpload
+        ? "uploaded pixels without tools, same conversation, real changed screenshot comparison and exact downloaded CSV"
+        : "same authenticated target, real model screenshot colors, selected mutation and exact downloaded CSV",
       created.id,
     );
   }
