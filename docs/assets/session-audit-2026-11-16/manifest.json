@@ -1990,24 +1990,27 @@
     "asset": "image-generation-docs/image-status-before-dark-1280x800.png",
     "width": 1280,
     "height": 800,
-    "sha256": "4b3b95acc22809d858162fc1e09290167869c6fca9a079b4e6014119be5200b7",
-    "inspected_by": "codex"
+    "sha256": "e2c201ee0fcb76966310205b63103244f77ff7e71012a19299464f5ef8ee5aef",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-status-before-dark-390x844.png",
     "asset": "image-generation-docs/image-status-before-dark-390x844.png",
     "width": 390,
     "height": 844,
-    "sha256": "3c759f240696f2a862782fc461795254e6eab83938a1f487a9e00c489bad8ee7",
-    "inspected_by": "codex"
+    "sha256": "43c708cec0c463f8878125374bb2530b03ae84b45bfdbae417cbe600fb49e2e3",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-status-after-light-1280x800.png",
     "asset": "image-generation-docs/image-status-after-light-1280x800.png",
     "width": 1280,
     "height": 800,
-    "sha256": "b2d0c44896832c4dcd947f0c56889348065f1faad1b1fa78c33a52175df1df57",
-    "inspected_by": "codex"
+    "sha256": "6c1cad64f9603d996320ba24dc3f134de634461595bd78f6e2c763704590fe4a",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-guide-after-light-390x844.png",
@@ -2015,23 +2018,26 @@
     "width": 390,
     "height": 844,
     "sha256": "58357f3f2c8ce9d2006e836d5c57ff85a6ea2fc382dfb08fb3c93d507211bba4",
-    "inspected_by": "codex"
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-index-after-light-390x844.png",
     "asset": "image-generation-docs/image-index-after-light-390x844.png",
     "width": 390,
     "height": 844,
-    "sha256": "a3957ebc8dd434cd0b048ef540129653bd71f57f7ec21db2361c0dc43c13378b",
-    "inspected_by": "codex"
+    "sha256": "8367b39197c4431051c28420cad5cfdd5a7cb8654b109f8b4b6095566084eac8",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-index-before-light-390x844.png",
     "asset": "image-generation-docs/image-index-before-light-390x844.png",
     "width": 390,
     "height": 844,
-    "sha256": "119da796aa151a5fe357e513f744a371bcd850892f1c3d4ca554a326f908082b",
-    "inspected_by": "codex"
+    "sha256": "1596a418da2b1d0c83bff488e5e1839dab5c27698407f6f7ea692cd9938cddb8",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-guide-after-dark-390x844.png",
@@ -2039,15 +2045,26 @@
     "width": 390,
     "height": 844,
     "sha256": "86b0744713e42fce143f21de1898db9985af80bcd1d4d280561692c1361cc9e3",
-    "inspected_by": "codex"
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-index-before-light-1280x800.png",
     "asset": "image-generation-docs/image-index-before-light-1280x800.png",
     "width": 1280,
     "height": 800,
-    "sha256": "9478266102c8c8c9c1087f368c12d913c0d00eae8cf0d354661fca027807a489",
-    "inspected_by": "codex"
+    "sha256": "a3bd9d131508e7c3204312da38b3ed54989a287290567880e02ceca556de128b",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
+  },
+  {
+    "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-account-after-dark-1280x800.png",
+    "asset": "image-generation-docs/image-account-after-dark-1280x800.png",
+    "width": 1280,
+    "height": 800,
+    "sha256": "8e27425948dcb5b0834f36f9a16fe9ee6dbb1e93fbff4acfea04989e26fe2a9c",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-config-before.png",
@@ -2055,15 +2072,17 @@
     "width": 1088,
     "height": 272,
     "sha256": "6c6e571deaf0dc8cad814c6415d9ac41c7bafc798876f12b7a599a55a459f001",
-    "inspected_by": "codex"
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-limits-after-light-390x844.png",
     "asset": "image-generation-docs/image-limits-after-light-390x844.png",
     "width": 390,
     "height": 844,
-    "sha256": "2101b94e205b32348ff5104c801ccb09891e7c4f4253a454841e88ef5feebbe5",
-    "inspected_by": "codex"
+    "sha256": "6824b059c0b05f5afa31eaec958e0ade9809800d111d0049cb625a391ace9be4",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-config-after.png",
@@ -2071,71 +2090,107 @@
     "width": 1088,
     "height": 272,
     "sha256": "88f88eb251f4f005ee4d829625a75a8d10067a434c5870f01111022ad2a98b53",
-    "inspected_by": "codex"
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-limits-after-dark-390x844.png",
     "asset": "image-generation-docs/image-limits-after-dark-390x844.png",
     "width": 390,
     "height": 844,
-    "sha256": "d48a3a51f94722247c5e8280912e770d344cd9156ae65814065d2bad18c0b2de",
-    "inspected_by": "codex"
+    "sha256": "f822ce6845c03707637468013b68eec40d6c11ad59482c09147a9394071a9ef5",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-limits-after-light-1280x800.png",
     "asset": "image-generation-docs/image-limits-after-light-1280x800.png",
     "width": 1280,
     "height": 800,
-    "sha256": "41abb1bb313e488ac152f8b59d3a436a97ce95fac34855f93625ee1a095a69ce",
-    "inspected_by": "codex"
+    "sha256": "66e8dfa12dee05bbfcf453c284c65ebf759964c30908eabc82e64b8bc942a95d",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-status-after-dark-1280x800.png",
     "asset": "image-generation-docs/image-status-after-dark-1280x800.png",
     "width": 1280,
     "height": 800,
-    "sha256": "165cc070284108c024626a32ca22b063a063d8a9b315fb0943d69e6568f46a20",
-    "inspected_by": "codex"
+    "sha256": "2409e613d45f0b679da87fb986961fdde4c42a0e54e0888a4dc77261ac2c069f",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-status-after-light-390x844.png",
     "asset": "image-generation-docs/image-status-after-light-390x844.png",
     "width": 390,
     "height": 844,
-    "sha256": "89cf9aca152744c59109219ac5e7e19fddc7fdac0c780280e0580fc2e78bd7ae",
-    "inspected_by": "codex"
+    "sha256": "7929e8edeadf80c98bea6b0f60d43ad3fb0c1d03bce7b66eb5f129d3d58023b0",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-index-after-dark-390x844.png",
     "asset": "image-generation-docs/image-index-after-dark-390x844.png",
     "width": 390,
     "height": 844,
-    "sha256": "1b8b1a28a8c0c616a0add80dce3e8d912531568be22cc6a27c5de06c6a90fdb1",
-    "inspected_by": "codex"
+    "sha256": "5bc62a556a30c091fe47a54feadd8567581d1c4c6c7c0f6a40c7ed7583cfff37",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-index-before-dark-390x844.png",
     "asset": "image-generation-docs/image-index-before-dark-390x844.png",
     "width": 390,
     "height": 844,
-    "sha256": "2e1a6e63f99d9da6e8628e0634ea83f6d786ac73984202c7cfdc8c0a5a1c14cc",
-    "inspected_by": "codex"
+    "sha256": "a016436ac4b01e28f3ad3a8c21960e97d86fd08a3875bc4dc2ee32bf75091a5b",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
+  },
+  {
+    "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-account-after-dark-390x844.png",
+    "asset": "image-generation-docs/image-account-after-dark-390x844.png",
+    "width": 390,
+    "height": 844,
+    "sha256": "d67e00d99141a117192883753e027e7525eeda4ce33ee887458571d9762674df",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
+  },
+  {
+    "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-account-after-light-390x844.png",
+    "asset": "image-generation-docs/image-account-after-light-390x844.png",
+    "width": 390,
+    "height": 844,
+    "sha256": "e478fc8ec624e329ac208e490a917d6f49c00aafe56b1a809649be0858a5d15a",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-limits-after-dark-1280x800.png",
     "asset": "image-generation-docs/image-limits-after-dark-1280x800.png",
     "width": 1280,
     "height": 800,
-    "sha256": "8cdc245cfcae6ab71b58a1e5610ddfb0ac140096f905eb1fdb4ff55c0e4f4cbc",
-    "inspected_by": "codex"
+    "sha256": "8e27425948dcb5b0834f36f9a16fe9ee6dbb1e93fbff4acfea04989e26fe2a9c",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
+  },
+  {
+    "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-account-after-light-1280x800.png",
+    "asset": "image-generation-docs/image-account-after-light-1280x800.png",
+    "width": 1280,
+    "height": 800,
+    "sha256": "66e8dfa12dee05bbfcf453c284c65ebf759964c30908eabc82e64b8bc942a95d",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-status-after-dark-390x844.png",
     "asset": "image-generation-docs/image-status-after-dark-390x844.png",
     "width": 390,
     "height": 844,
-    "sha256": "c8072fc4a8629b0d09c6cf08b43ce4ceeb4552aee5b3f186df76ed065a40a7bd",
-    "inspected_by": "codex"
+    "sha256": "9bf7324d2e895eb4ad99deea423c7dd33973c515159a9f05793e7be3561e40c6",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-guide-after-light-1280x800.png",
@@ -2143,47 +2198,53 @@
     "width": 1280,
     "height": 800,
     "sha256": "51ce426f12659b4a8141d18b6ac22c2516a282372b2527ee827690436dee9246",
-    "inspected_by": "codex"
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-status-before-light-390x844.png",
     "asset": "image-generation-docs/image-status-before-light-390x844.png",
     "width": 390,
     "height": 844,
-    "sha256": "940f76227e3aad8145aeac468f149804917a179763ad2a85efc0a1755d9f11f2",
-    "inspected_by": "codex"
+    "sha256": "0456c0c144fabc361697ff21d8775373d0bc166a433ff785f0b6b18bc6085430",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-status-before-light-1280x800.png",
     "asset": "image-generation-docs/image-status-before-light-1280x800.png",
     "width": 1280,
     "height": 800,
-    "sha256": "29a7db42020bc5e93d1b8959c2c933da74644c18468094bbd7c5a956995234e4",
-    "inspected_by": "codex"
+    "sha256": "c2ae0b99aea0dc583bdd7ca14689f5443ccc34f8dcd41c03cad8ebb2ab82cbb1",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-index-before-dark-1280x800.png",
     "asset": "image-generation-docs/image-index-before-dark-1280x800.png",
     "width": 1280,
     "height": 800,
-    "sha256": "65cacdf7f13098dc910ee2702d5ff94e9df8c50f754bd54c9c61b11b7a138d7f",
-    "inspected_by": "codex"
+    "sha256": "4d65b3e2501354a890500ecdcb82f7f1675843b69bad5fdfb3e1462724760342",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-index-after-light-1280x800.png",
     "asset": "image-generation-docs/image-index-after-light-1280x800.png",
     "width": 1280,
     "height": 800,
-    "sha256": "3f79634a4d162a9a864b4b852559afa0a4efbbfb5a27c9bd02676ee9d2708344",
-    "inspected_by": "codex"
+    "sha256": "4e8690b1bb3837c12369994e2ed4ca415ff7ec04e707a7d5c46ae3e92fe7ac65",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-index-after-dark-1280x800.png",
     "asset": "image-generation-docs/image-index-after-dark-1280x800.png",
     "width": 1280,
     "height": 800,
-    "sha256": "286918a89ee340cbb57648bc72cb019b462bfdee696713ecb7abe89373b604fc",
-    "inspected_by": "codex"
+    "sha256": "33f3114ee44722b7fd7019f3e116f30dd1dbb7059c91fe4e7c35c697880e3331",
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-guide-after-dark-1280x800.png",
@@ -2191,7 +2252,8 @@
     "width": 1280,
     "height": 800,
     "sha256": "f51ee3fcb3e818b6b95cee3b083d3ba1b0989c674c7a4dcbbaa36dd1d8c56817",
-    "inspected_by": "codex"
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-validation/outputs/fox-v1.png",
@@ -2199,7 +2261,8 @@
     "width": 1254,
     "height": 1254,
     "sha256": "1ff512e7d2b395b2aaec15caa1529b7cc7db46c603d99ce34b164dd05b5f0b55",
-    "inspected_by": "codex"
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   },
   {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-validation/outputs/fox-v2.png",
@@ -2207,6 +2270,7 @@
     "width": 1254,
     "height": 1254,
     "sha256": "1fe6dae61edd59fc1f37d16bbd4e9d69140b7ff8f7cbdf849950937311cc072c",
-    "inspected_by": "codex"
+    "inspected_by": "codex",
+    "head": "c756d78e7fdde6437d04b80bb3a620181e570a3d"
   }
 ]
