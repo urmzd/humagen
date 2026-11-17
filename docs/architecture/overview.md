@@ -545,6 +545,13 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+Records research has a [configured CLI path](../guides/records-research.md):
+an agent on Claude Code builds a chronology from a folder of records, quoting
+each dated event from its record, lists what is unknown or in conflict, and
+opens current official pages, with writes confined to an output folder. Checked
+on six invented records; real records, scans and legal correctness are not
+covered.
+
 Raster generation has a [configured Codex path](../guides/image-generation.md):
 a real account-backed image was generated, inspected and revised using its
 actual pixels, with both PNGs independently opened and the original hash

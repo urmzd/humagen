@@ -1,0 +1,59 @@
+# Trusted local trial. Set dir to the existing absolute folder that holds the
+# records. The agent reads there, writes only under out/, and opens public
+# pages with the signed-in Claude Code program's WebSearch and WebFetch.
+api_version: humagen/v1
+kind: System
+metadata: {name: records-research-local}
+spec:
+  server: {addr: '127.0.0.1:8080'}
+  auth: {kind: dev, tenant: {fixed: default}}
+  stores: {kind: memory}
+  sandbox: {kind: unisolated}
+---
+api_version: humagen/v1
+kind: Platform
+metadata: {name: default}
+spec:
+  models:
+    - name: records-research-cli
+      kind: claude-code
+      claude-code:
+        dir: /absolute/path/to/records
+        permissions: default
+        allow:
+          - Read(./**)
+          - Glob(./**)
+          - Grep(./**)
+          - Edit(./out/**)
+          - WebSearch
+          - WebFetch
+        timeout: 20m
+        args:
+          - --restricted
+          - --tools
+          - Read,Glob,Grep,Write,WebSearch,WebFetch
+          - --strict-mcp-config
+          - --mcp-config
+          - '{"mcpServers":{}}'
+  agents:
+    - spec:
+        name: records
+        description: Builds a sourced chronology from a folder of records
+        provider: records-research-cli
+        model: sonnet
+        system_prompt: >-
+          You build chronologies from the records in your working directory
+          and from current official pages. Read every record before you
+          answer. Every dated event cites the record's file name and quotes
+          the words that carry the date, exactly as written. A row's date is
+          only what its own quote states: YYYY-MM-DD when the quote gives the
+          day, month and year; ????-MM-DD when it gives a day and month and
+          no year; the word unknown when it gives no date. Never fill in a
+          year or a day from another record, however likely: say in the
+          event text what the other record suggests. Where two records disagree, give both and say so.
+          For a current rule, fee or policy, open the official page and cite
+          the exact URL you opened; a search snippet is not a source. Never
+          put a person's name, a case or receipt number, or any other
+          identifier from the records into a search or a URL. Write only
+          under out/. You are not a lawyer: report what the records and
+          pages say, and give no advice.
