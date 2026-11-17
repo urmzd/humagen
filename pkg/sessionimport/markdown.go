@@ -70,6 +70,12 @@ func (s Session) render(answer int) string {
 	if !s.Started.IsZero() {
 		fmt.Fprintf(&b, "- Started: %s\n", s.Started.UTC().Format("2006-01-02 15:04 UTC"))
 	}
+	if s.Parent != "" {
+		fmt.Fprintf(&b, "- Started by: %s\n", s.Parent)
+	}
+	if s.Branches > 0 {
+		fmt.Fprintf(&b, "- Branches not shown: %d\n", s.Branches)
+	}
 	for _, t := range s.Turns {
 		text := Redact(t.Text)
 		switch t.Role {
@@ -89,7 +95,20 @@ func (s Session) render(answer int) string {
 			for _, c := range calls {
 				fmt.Fprintf(&b, "- %s\n", c)
 			}
+		case "result":
+			// A result is the first thing cut from a session that is too
+			// long: what was asked and answered matters more.
+			if answer > 0 {
+				continue
+			}
+			fmt.Fprintf(&b, "\nTool result:\n\n%s\n", indent(text))
 		}
 	}
 	return b.String()
+}
+
+// indent sets a tool's output apart from the session's own headings, which
+// it may itself hold.
+func indent(s string) string {
+	return "    " + strings.ReplaceAll(s, "\n", "\n    ")
 }

@@ -46,7 +46,7 @@ func TestClaudeKeepsWhatWasSaidAndNamesToolCalls(t *testing.T) {
 	if want := time.Date(2026, 10, 3, 10, 0, 0, 0, time.UTC); !s.Started.Equal(want) {
 		t.Fatalf("started = %v", s.Started)
 	}
-	want := "user=fix the login bug | assistant=Looking. | tool=Bash: go test ./...\nRead: /work/app/login.go | user=/goal ship it | user=[image] | user=why is this red | assistant=Fixed."
+	want := "user=fix the login bug | assistant=Looking. | tool=Bash: go test ./...\nRead: /work/app/login.go | result=ok secret output | user=/goal ship it | user=[image] | user=why is this red | assistant=Fixed."
 	if got := roles(s); got != want {
 		t.Fatalf("turns:\n got %s\nwant %s", got, want)
 	}
@@ -63,7 +63,9 @@ const codexFile = `{"timestamp":"2026-11-03T16:27:42Z","type":"session_meta","pa
 {"type":"event_msg","payload":{"type":"user_message","message":"add a health route"}}
 {"type":"response_item","payload":{"type":"reasoning","encrypted_content":"zzz"}}
 {"type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":[\"bash\",\"-lc\",\"make test\"]}"}}
+{"type":"response_item","payload":{"type":"function_call_output","call_id":"c1","output":"PASS\nok"}}
 {"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":"const r = 1"}}
+{"type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"c2","output":{"output":"1"}}}
 {"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Added."}]}}
 `
 
@@ -75,7 +77,7 @@ func TestCodexSkipsItsOwnPreambleAndEvents(t *testing.T) {
 	if s.ID != "x-1" || s.Dir != "/work/api" || s.Child || s.Title != "add a health route" {
 		t.Fatalf("session = %+v", s)
 	}
-	want := "user=add a health route | user=[image] | tool=shell: bash -lc make test\nexec: const r = 1 | assistant=Added."
+	want := "user=add a health route | user=[image] | tool=shell: bash -lc make test | result=PASS\nok | tool=exec: const r = 1 | result=1 | assistant=Added."
 	if got := roles(s); got != want {
 		t.Fatalf("turns:\n got %s\nwant %s", got, want)
 	}
@@ -89,6 +91,9 @@ func TestCodexMarksSessionsAnotherSessionStarted(t *testing.T) {
 		s, err := ReadCodex(strings.NewReader(meta + "\n" + `{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"judge this"}]}}`))
 		if err != nil || !s.Child {
 			t.Fatalf("%s: child = %v, err = %v", meta, s.Child, err)
+		}
+		if strings.Contains(meta, "parent_thread_id") && (s.Parent != "codex:x-1" || !strings.Contains(s.Markdown(4096), "- Started by: codex:x-1\n")) {
+			t.Fatalf("parent = %q", s.Parent)
 		}
 	}
 }
@@ -131,16 +136,35 @@ const exportFile = `[
  {"uuid":"a-1","name":"Essay notes","created_at":"2026-09-01T08:00:00Z","chat_messages":[
    {"sender":"human","text":"outline my essay","created_at":"2026-09-01T08:00:01Z"},
    {"sender":"assistant","text":"Three parts."}
+ ]},
+ {"uuid":"a-2","name":"","chat_messages":[{"sender":"human","text":"","content":[{"type":"text","text":""}]},{"sender":"assistant","text":""}]},
+ {"uuid":"a-3","name":"Detention figures","chat_messages":[
+   {"sender":"human","text":"find the figures","content":[{"type":"text","text":"find the figures"}],
+    "attachments":[{"file_name":"notes.txt","extracted_content":"my notes"}],"files":[{"file_name":"chart.png"}]},
+   {"sender":"assistant","text":"Searching. Found them.","content":[
+     {"type":"text","text":"Searching."},
+     {"type":"tool_use","name":"web_search","input":{"query":"detention statistics"}},
+     {"type":"tool_result","name":"web_search","content":[{"type":"knowledge","title":"A source page"},{"type":"text","text":"12 results"}]},
+     {"type":"text","text":"Found them."}]}
  ]}
 ]`
 
 func TestAnExportHoldsChatGPTAndClaudeAIConversations(t *testing.T) {
 	var got []Session
-	if err := ReadExport(strings.NewReader(exportFile), func(s Session) error { got = append(got, s); return nil }); err != nil {
+	empty, err := ReadExport(strings.NewReader(exportFile), func(s Session) error { got = append(got, s); return nil })
+	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 {
-		t.Fatalf("got %d sessions", len(got))
+	// The empty ChatGPT conversation and the empty claude.ai one.
+	if len(got) != 3 || empty != 2 {
+		t.Fatalf("got %d sessions, %d empty", len(got), empty)
+	}
+	if g := got[0]; g.Branches != 1 || !strings.Contains(g.Markdown(4096), "- Branches not shown: 1\n") {
+		t.Fatalf("branches = %d", g.Branches)
+	}
+	want := "user=find the figures | user=[attachment: notes.txt]\nmy notes | user=[file: chart.png] | assistant=Searching. | tool=web_search: detention statistics | result=A source page\n12 results | assistant=Found them."
+	if r := roles(got[2]); r != want {
+		t.Fatalf("claude.ai blocks:\n got %s\nwant %s", r, want)
 	}
 	if g := got[0]; g.URI() != "chatgpt:g-1" || g.Title != "Trip plan" || g.Started.Unix() != 1760000000 || roles(g) != "user=plan a trip\n[attachment] | assistant=Here is a plan." {
 		t.Fatalf("chatgpt = %+v", g)
@@ -148,7 +172,7 @@ func TestAnExportHoldsChatGPTAndClaudeAIConversations(t *testing.T) {
 	if a := got[1]; a.URI() != "claude-ai:a-1" || a.Title != "Essay notes" || roles(a) != "user=outline my essay | assistant=Three parts." {
 		t.Fatalf("claude.ai = %+v", a)
 	}
-	if err := ReadExport(strings.NewReader(`{"not":"a list"}`), func(Session) error { return nil }); !errors.Is(err, ErrNotSession) {
+	if _, err := ReadExport(strings.NewReader(`{"not":"a list"}`), func(Session) error { return nil }); !errors.Is(err, ErrNotSession) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -228,5 +252,28 @@ func TestDiscoverFindsEachToolsFilesAndOpenReadsZstd(t *testing.T) {
 	}
 	if _, err := Discover("cursor", home); err == nil {
 		t.Fatal("an unknown tool was read")
+	}
+}
+
+func TestToolResultsAreKeptCutAndTheFirstThingLeftOut(t *testing.T) {
+	s := Session{Tool: Claude, ID: "c", Title: "Results", Turns: []Turn{
+		{Role: "user", Text: "run the tests"},
+		{Role: "tool", Text: "Bash: go test ./..."},
+		{Role: "result", Text: result("## Asked\n" + strings.Repeat("x", 5000))},
+		{Role: "tool", Text: "Bash: go vet ./..."},
+		{Role: "result", Text: result(strings.Repeat("y", 5000))},
+		{Role: "assistant", Text: "They pass."},
+	}}
+	if got := len(s.Turns[2].Text); got > MaxResult+len("…") {
+		t.Fatalf("a result of %d bytes was kept", got)
+	}
+	full := s.Markdown(1 << 20)
+	// A result that looks like a heading does not become one.
+	if !strings.Contains(full, "Tool result:\n\n    ## Asked\n    xxx") || strings.Count(full, "\n## Asked") != 1 {
+		t.Fatalf("full:\n%s", full[:300])
+	}
+	short := s.Markdown(MinMarkdown)
+	if strings.Contains(short, "Tool result:") || !strings.Contains(short, "They pass.") || !strings.Contains(short, "- Bash: go test ./...") {
+		t.Fatalf("short:\n%s", short)
 	}
 }

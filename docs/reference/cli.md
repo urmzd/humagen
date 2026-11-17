@@ -155,11 +155,17 @@ humagen import agents --provider anthropic --model claude-sonnet-5-5
 | `skills [DIR]` | Each folder under `DIR` that holds a `SKILL.md`. `DIR` defaults to `~/.agents/skills`, the store [agentspec](https://github.com/urmzd/agentspec) keeps | One draft per skill in the skill library, with the folder's files. `POST /api/library/skills` |
 | `agents [DIR]` | Each Markdown agent file in `DIR` with YAML frontmatter, as Claude Code, Copilot and agentspec write them. `DIR` defaults to `~/.agents/agents` | One agent per file: its `name` and `description` from the frontmatter, its text as the system prompt. `POST /api/agents` |
 
-A session's document holds what was asked, what was answered and one line per
-tool call (the tool and what it ran or read). Tool output is left out. What
+A session's document holds what was asked, what was answered, one line per
+tool call (the tool and what it ran or read) and the start of each tool's
+result, at most 1,500 bytes of it. An attachment in an export is named, with
+the text the export extracted from it; its bytes are not in an export. A
+session another session started says which (`Started by`), and a ChatGPT
+conversation says how many branches it left behind (`Branches not shown`): the
+branch imported is the one last shown. A conversation in an export with nothing
+asked in it is counted as skipped. What
 looks like a credential (an API key, a token, a private key) is replaced with
 `[redacted]` before anything is sent. A session over `--max-bytes` keeps what
-was asked and cuts the answers first. The document's `uri` is the session's id
+was asked, leaves out tool results first and then cuts the answers. The document's `uri` is the session's id
 (`claude:ID`, `codex:ID`, `chatgpt:ID`, `claude-ai:ID`), which is how a later
 run knows it is there.
 

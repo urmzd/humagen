@@ -502,7 +502,9 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 		if err != nil {
 			return err
 		}
-		err = sessionimport.ReadExport(f, func(s sessionimport.Session) error { take(s); return nil })
+		var empty int
+		empty, err = sessionimport.ReadExport(f, func(s sessionimport.Session) error { take(s); return nil })
+		res.Skipped += empty
 		f.Close()
 		if err != nil {
 			return fmt.Errorf("%s: %w", path, err)

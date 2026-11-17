@@ -37,8 +37,10 @@ const (
 // in a shape this package does not read.
 var ErrNotSession = errors.New("sessionimport: not a session")
 
-// Turn is one thing said. Role is "user", "assistant" or "tool": a tool turn
-// is one line naming a tool the assistant called and what it called it on.
+// Turn is one thing said. Role is "user", "assistant", "tool" or "result": a
+// tool turn is one line naming a tool the assistant called and what it
+// called it on, and a result turn is what a tool gave back, cut to
+// MaxResult.
 type Turn struct {
 	Role string
 	Text string
@@ -57,7 +59,14 @@ type Session struct {
 	// Child is set on a session another session started: a sub-agent's or a
 	// reviewer's. A person did not write its prompts.
 	Child bool
-	Turns []Turn
+	// Parent is the URI of the session that started a child, when the file
+	// says.
+	Parent string
+	// Branches counts the branches of the conversation left out: the edits
+	// and retries a person moved on from. An export keeps them; the session
+	// is the branch that was last shown.
+	Branches int
+	Turns    []Turn
 }
 
 // URI names the session where it came from, the same on every read.
@@ -73,6 +82,13 @@ func (s Session) Asked() int {
 	}
 	return n
 }
+
+// MaxResult bounds what is kept of one tool result.
+const MaxResult = 1500
+
+// result is a tool's output as a turn keeps it: its start, and a mark when
+// cut.
+func result(s string) string { return clip(strings.TrimSpace(s), MaxResult) }
 
 // maxLine bounds one record of a session file. A record holds at most one
 // message; a larger one is a tool's output, which is skipped anyway.
@@ -186,7 +202,7 @@ func (s *Session) add(role, text string, at time.Time) {
 	if text == "" {
 		return
 	}
-	if n := len(s.Turns); n > 0 && s.Turns[n-1].Role == role && role != "user" {
+	if n := len(s.Turns); n > 0 && s.Turns[n-1].Role == role && role != "user" && role != "result" {
 		sep := "\n\n"
 		if role == "tool" {
 			sep = "\n"
@@ -223,10 +239,41 @@ func (s Session) finish() (Session, error) {
 }
 
 type block struct {
-	Type  string          `json:"type"`
-	Text  string          `json:"text"`
-	Name  string          `json:"name"`
-	Input json.RawMessage `json:"input"`
+	Type    string          `json:"type"`
+	Text    string          `json:"text"`
+	Name    string          `json:"name"`
+	Input   json.RawMessage `json:"input"`
+	Content json.RawMessage `json:"content"`
+	Output  json.RawMessage `json:"output"`
+}
+
+// blockText is the text of a tool result's content: a string, or a list of
+// blocks whose text is joined and whose other kinds are named.
+func blockText(raw json.RawMessage) string {
+	var str string
+	if json.Unmarshal(raw, &str) == nil {
+		return str
+	}
+	var blocks []struct {
+		Type  string `json:"type"`
+		Text  string `json:"text"`
+		Title string `json:"title"`
+	}
+	if json.Unmarshal(raw, &blocks) != nil {
+		return ""
+	}
+	var out []string
+	for _, b := range blocks {
+		switch {
+		case b.Text != "":
+			out = append(out, b.Text)
+		case b.Title != "":
+			out = append(out, b.Title)
+		case b.Type != "":
+			out = append(out, "["+b.Type+"]")
+		}
+	}
+	return strings.Join(out, "\n")
 }
 
 // ReadClaude reads one Claude Code session file (~/.claude/projects/*/*.jsonl).
@@ -282,6 +329,8 @@ func ReadClaude(r io.Reader) (Session, error) {
 					s.add("user", "[image]", at)
 				case b.Type == "tool_use":
 					s.add("tool", called(b.Name, b.Input), at)
+				case b.Type == "tool_result":
+					s.add("result", result(blockText(b.Content)), at)
 				}
 			}
 		}
@@ -325,6 +374,7 @@ func ReadCodex(r io.Reader) (Session, error) {
 			Name           string          `json:"name"`
 			Arguments      json.RawMessage `json:"arguments"`
 			Input          json.RawMessage `json:"input"`
+			Output         json.RawMessage `json:"output"`
 			Content        []block         `json:"content"`
 		}
 		if json.Unmarshal(body, &p) != nil {
@@ -336,6 +386,9 @@ func ReadCodex(r io.Reader) (Session, error) {
 		case meta:
 			if s.ID == "" {
 				s.ID, s.Dir, s.Started = p.ID, p.Cwd, parseTime(p.Timestamp)
+				if p.ParentThreadID != "" {
+					s.Parent = Codex + ":" + p.ParentThreadID
+				}
 				// A sub-agent's source is an object naming what started it.
 				s.Child = p.ParentThreadID != "" || bytes.HasPrefix(bytes.TrimSpace(p.Source), []byte("{"))
 			}
@@ -372,6 +425,18 @@ func ReadCodex(r io.Reader) (Session, error) {
 				name = "shell"
 			}
 			s.add("tool", called(name, args), at)
+		case p.Type == "function_call_output", p.Type == "custom_tool_call_output", p.Type == "local_shell_call_output":
+			// The output is a string, or an object that holds one.
+			var out string
+			if json.Unmarshal(p.Output, &out) != nil {
+				var obj struct {
+					Output  string `json:"output"`
+					Content string `json:"content"`
+				}
+				_ = json.Unmarshal(p.Output, &obj)
+				out = obj.Output + obj.Content
+			}
+			s.add("result", result(out), at)
 		}
 	})
 	if err != nil {
@@ -383,28 +448,31 @@ func ReadCodex(r io.Reader) (Session, error) {
 // ReadExport reads a conversations.json from a ChatGPT or a claude.ai data
 // export, calling fn with each conversation that has something asked in it.
 // It reads one conversation at a time, so a large export is not held whole.
-func ReadExport(r io.Reader, fn func(Session) error) error {
+// empty counts the conversations with nothing asked in them, which an
+// export holds for every chat that was opened and left.
+func ReadExport(r io.Reader, fn func(Session) error) (empty int, err error) {
 	dec := json.NewDecoder(r)
 	if tok, err := dec.Token(); err != nil || tok != json.Delim('[') {
-		return fmt.Errorf("%w: an export is a JSON list of conversations", ErrNotSession)
+		return 0, fmt.Errorf("%w: an export is a JSON list of conversations", ErrNotSession)
 	}
 	for dec.More() {
 		var raw json.RawMessage
 		if err := dec.Decode(&raw); err != nil {
-			return err
+			return empty, err
 		}
 		s, err := exported(raw)
 		if errors.Is(err, ErrNotSession) {
+			empty++
 			continue
 		}
 		if err != nil {
-			return err
+			return empty, err
 		}
 		if err := fn(s); err != nil {
-			return err
+			return empty, err
 		}
 	}
-	return nil
+	return empty, nil
 }
 
 func unix(f float64) time.Time {
@@ -442,9 +510,17 @@ func exported(raw json.RawMessage) (Session, error) {
 		Name      string `json:"name"`
 		CreatedAt string `json:"created_at"`
 		Messages  []struct {
-			Sender    string `json:"sender"`
-			Text      string `json:"text"`
-			CreatedAt string `json:"created_at"`
+			Sender      string  `json:"sender"`
+			Text        string  `json:"text"`
+			CreatedAt   string  `json:"created_at"`
+			Content     []block `json:"content"`
+			Attachments []struct {
+				Name    string `json:"file_name"`
+				Content string `json:"extracted_content"`
+			} `json:"attachments"`
+			Files []struct {
+				Name string `json:"file_name"`
+			} `json:"files"`
 		} `json:"chat_messages"`
 	}
 	if err := json.Unmarshal(raw, &c); err != nil {
@@ -453,11 +529,35 @@ func exported(raw json.RawMessage) (Session, error) {
 	if c.Mapping == nil {
 		s := Session{Tool: ClaudeAI, ID: c.UUID, Title: c.Name, Started: parseTime(c.CreatedAt)}
 		for _, m := range c.Messages {
-			role := "assistant"
+			role, at := "assistant", parseTime(m.CreatedAt)
 			if m.Sender == "human" {
 				role = "user"
 			}
-			s.add(role, m.Text, parseTime(m.CreatedAt))
+			// A message's blocks hold its text among the tools it used. An
+			// older export has only the text.
+			blocks := 0
+			for _, b := range m.Content {
+				switch b.Type {
+				case "text":
+					if strings.TrimSpace(b.Text) != "" {
+						s.add(role, b.Text, at)
+						blocks++
+					}
+				case "tool_use":
+					s.add("tool", called(b.Name, b.Input), at)
+				case "tool_result":
+					s.add("result", result(blockText(b.Content)), at)
+				}
+			}
+			if blocks == 0 {
+				s.add(role, m.Text, at)
+			}
+			for _, a := range m.Attachments {
+				s.add(role, "[attachment: "+a.Name+"]\n"+result(a.Content), at)
+			}
+			for _, f := range m.Files {
+				s.add(role, "[file: "+f.Name+"]", at)
+			}
 		}
 		return s.finish()
 	}
@@ -475,6 +575,16 @@ func exported(raw json.RawMessage) (Session, error) {
 		}
 		path = append(path, id)
 		id = node.Parent
+	}
+	// A node off the path with something said in it is a branch left behind.
+	shown := map[string]bool{}
+	for _, id := range path {
+		shown[id] = true
+	}
+	for id, node := range c.Mapping {
+		if !shown[id] && shown[node.Parent] && node.Message != nil && (node.Message.Author.Role == "user" || node.Message.Author.Role == "assistant") {
+			s.Branches++
+		}
 	}
 	for i := len(path) - 1; i >= 0; i-- {
 		m := c.Mapping[path[i]].Message
