@@ -1,0 +1,45 @@
+{
+  "fixture_kind": "non-personal generated four-line Google Doc in an explicitly approved real private connected account",
+  "native_original_read": "r60c63e61877ebceda6b5f638b80bed4b",
+  "native_first_required_revision_edit": "rf7131eb59c6f553774c19fa78dafea18",
+  "native_stale_provider_rejection": "rbbe18d8834a4c453125e606bcb071b56",
+  "codex_history": "rf1f9b4232b0668e803aa92e891fd6109",
+  "combined_profile_final_edit": "r1a3410d5c2cd701f33da818081bbdd8c",
+  "combined_profile_final_history": "r2c601af384ef98476c49225786821a99",
+  "controls_before": "HUMAGEN revision audit\nValue: baseline\nRevision marker: second\nPreserve this exact line: REQ027-CONTROL.",
+  "controls_after": "HUMAGEN revision audit\nValue: approved\nRevision marker: second\nPreserve this exact line: REQ027-CONTROL.",
+  "actual_available_history": [
+    {
+      "ids": [
+        "1",
+        "3"
+      ],
+      "meaning": "1 BOM only, 3 baseline/second control lines"
+    },
+    {
+      "ids": [
+        "1",
+        "4"
+      ],
+      "meaning": "1 BOM only, 4 approved/second control lines"
+    }
+  ],
+  "missing_revision": "2 returned provider404 after coalescing; content unknown",
+  "limits": [
+    "native Claude historical downloads return not yet supported",
+    "Codex cloud-write policy refuses noninteractive writes; no permission broadening used",
+    "local read-only Codex history + existing scoped native Docs write are separate person-selected agents",
+    "first marker edit had no paired provider render; final Value edit has actual provider before/after PDFs",
+    "native Docs web UI, original user document, OneDrive and complex format not tested"
+  ],
+  "before_pdf_sha256": "6672c5f87aed9be12cec513f8943f7806a6633097f7de66589f678889634cfb8",
+  "before_png_dimensions": [
+    918,
+    1188
+  ],
+  "after_pdf_sha256": "e2865c4a073d1c962f7fb4738170bd2d9acc6e057240ccc307640816fc9ef94f",
+  "after_png_dimensions": [
+    918,
+    1188
+  ]
+}

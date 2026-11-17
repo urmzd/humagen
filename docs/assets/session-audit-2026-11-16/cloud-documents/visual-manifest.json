@@ -1,0 +1,305 @@
+{
+  "branch": "feat/cloud-documents",
+  "head": "358b9e552dbc67cb622130d2f09be6c1b60183d0",
+  "before": "c3fc6449cd7c1849ea770952309ad7046eda9dfb",
+  "images": [
+    {
+      "asset": "cloud-documents/drive-checked-after-dark-1280x800.png",
+      "width": "1280",
+      "height": "800",
+      "sha256": "78c94a958b7234d4826dc0a0332a4a011cef1c7ae3cbf02efffb32a477ca63a7",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-checked-after-dark-1280x800.png"
+    },
+    {
+      "asset": "cloud-documents/drive-checked-after-dark-390x844.png",
+      "width": "390",
+      "height": "844",
+      "sha256": "cbc0abecec31839d1f9c72d2eb03a6d4f208f0cbe6bae19a13b37c2fc648c337",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-checked-after-dark-390x844.png"
+    },
+    {
+      "asset": "cloud-documents/drive-checked-after-light-1280x800.png",
+      "width": "1280",
+      "height": "800",
+      "sha256": "66895e46fbbd06f46d7dc8760ed8fb5e24db243303c9cfa9d4f46fee20a26c95",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-checked-after-light-1280x800.png"
+    },
+    {
+      "asset": "cloud-documents/drive-checked-after-light-390x844.png",
+      "width": "390",
+      "height": "844",
+      "sha256": "96215f5ffe4083b6a2c3d69325244946ed4c6d1bd56f4f8b047f0e503c4d65cf",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-checked-after-light-390x844.png"
+    },
+    {
+      "asset": "cloud-documents/drive-edit-after-dark-1280x800.png",
+      "width": "1280",
+      "height": "800",
+      "sha256": "956146f9e3ca57b1b10572954827656b60287eeab59a23b858b1cef115c43880",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-edit-after-dark-1280x800.png"
+    },
+    {
+      "asset": "cloud-documents/drive-edit-after-dark-390x844.png",
+      "width": "390",
+      "height": "844",
+      "sha256": "2b358e03ff655c2c8b12622f35ee3263fec34683f27c0cc2b03528a5fedeeb88",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-edit-after-dark-390x844.png"
+    },
+    {
+      "asset": "cloud-documents/drive-edit-after-light-1280x800.png",
+      "width": "1280",
+      "height": "800",
+      "sha256": "f879caf0229d89c0db8adde8b5eb77e93a43751fa508153be78a2fe01022dab5",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-edit-after-light-1280x800.png"
+    },
+    {
+      "asset": "cloud-documents/drive-edit-after-light-390x844.png",
+      "width": "390",
+      "height": "844",
+      "sha256": "ebd6510bcd816957f13ea5cafbc8038d0c273d810130583da8811e6f86ca5685",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-edit-after-light-390x844.png"
+    },
+    {
+      "asset": "cloud-documents/drive-guide-after-dark-1280x800.png",
+      "width": "1280",
+      "height": "800",
+      "sha256": "2faf83eea4e61f0168e2fbc766fc1bc0f8899cb8ab2b12a38f2e9b7f2949f4a3",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-guide-after-dark-1280x800.png"
+    },
+    {
+      "asset": "cloud-documents/drive-guide-after-dark-390x844.png",
+      "width": "390",
+      "height": "844",
+      "sha256": "7efbf25d2dd1e06ee900856658e11ad33006ff78bd7f0f44f854df88f73c6c67",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-guide-after-dark-390x844.png"
+    },
+    {
+      "asset": "cloud-documents/drive-guide-after-light-1280x800.png",
+      "width": "1280",
+      "height": "800",
+      "sha256": "cab73ee3e2a5b4a49884466e9d107481e2702e2037111af87445cd71d46cd528",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-guide-after-light-1280x800.png"
+    },
+    {
+      "asset": "cloud-documents/drive-guide-after-light-390x844.png",
+      "width": "390",
+      "height": "844",
+      "sha256": "c52211204b5121a9c65e8f01ab8b9f6cd51e5ce022ed1d6eebc7ef07361d5e0f",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-guide-after-light-390x844.png"
+    },
+    {
+      "asset": "cloud-documents/drive-index-after-dark-1280x800.png",
+      "width": "1280",
+      "height": "800",
+      "sha256": "e221f545b88bc807a29792de81c4af8b74c726c1972bfe8fce59d7b57d0d3a8e",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-index-after-dark-1280x800.png"
+    },
+    {
+      "asset": "cloud-documents/drive-index-after-dark-390x844.png",
+      "width": "390",
+      "height": "844",
+      "sha256": "e4097ef1473fe274f0f61a24b141d3dea81459a3392d0b5ed9c3041ed5fe7e68",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-index-after-dark-390x844.png"
+    },
+    {
+      "asset": "cloud-documents/drive-index-after-light-1280x800.png",
+      "width": "1280",
+      "height": "800",
+      "sha256": "16d6adbb5c2b790c6d703db9fe13f0b137fd3daafe8e93602c87b8ae618c18a0",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-index-after-light-1280x800.png"
+    },
+    {
+      "asset": "cloud-documents/drive-index-after-light-390x844.png",
+      "width": "390",
+      "height": "844",
+      "sha256": "5b4eb958c327963bb202a85a34e79776d7264a9f438dd2ba1d66e20d1ffdb408",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-index-after-light-390x844.png"
+    },
+    {
+      "asset": "cloud-documents/drive-index-before-dark-1280x800.png",
+      "width": "1280",
+      "height": "800",
+      "sha256": "816cca54c6f8c97dd76ba487ec8a371b97b6a750f8075f59dd2465bc550b50ea",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-index-before-dark-1280x800.png"
+    },
+    {
+      "asset": "cloud-documents/drive-index-before-dark-390x844.png",
+      "width": "390",
+      "height": "844",
+      "sha256": "16537960901691eb5357358cd820554931910064bdb1c497ee12140e40734840",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-index-before-dark-390x844.png"
+    },
+    {
+      "asset": "cloud-documents/drive-index-before-light-1280x800.png",
+      "width": "1280",
+      "height": "800",
+      "sha256": "f49a1b75f104a2f779d5d90d65284c4d99dddfbbf57bd921fbd75e6acd2909f9",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-index-before-light-1280x800.png"
+    },
+    {
+      "asset": "cloud-documents/drive-index-before-light-390x844.png",
+      "width": "390",
+      "height": "844",
+      "sha256": "a7947e15ea5a83c18441601562b1a2a1e147d75f940e1f57d25af9d49ec2eba1",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-index-before-light-390x844.png"
+    },
+    {
+      "asset": "cloud-documents/drive-limits-after-dark-1280x800.png",
+      "width": "1280",
+      "height": "800",
+      "sha256": "78c94a958b7234d4826dc0a0332a4a011cef1c7ae3cbf02efffb32a477ca63a7",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-limits-after-dark-1280x800.png"
+    },
+    {
+      "asset": "cloud-documents/drive-limits-after-dark-390x844.png",
+      "width": "390",
+      "height": "844",
+      "sha256": "e675fcc0151927f2e5bb21fa34c4ab717c9a5920f32e6a197a3592cbffbb3ad6",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-limits-after-dark-390x844.png"
+    },
+    {
+      "asset": "cloud-documents/drive-limits-after-light-1280x800.png",
+      "width": "1280",
+      "height": "800",
+      "sha256": "66895e46fbbd06f46d7dc8760ed8fb5e24db243303c9cfa9d4f46fee20a26c95",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-limits-after-light-1280x800.png"
+    },
+    {
+      "asset": "cloud-documents/drive-limits-after-light-390x844.png",
+      "width": "390",
+      "height": "844",
+      "sha256": "5e7939240b9c2b0e4dcf281c02a170a8f84f576567ba84a202aadd4b31d38169",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-limits-after-light-390x844.png"
+    },
+    {
+      "asset": "cloud-documents/drive-status-after-dark-1280x800.png",
+      "width": "1280",
+      "height": "800",
+      "sha256": "79de078ed70331523b8752b49639ff4467a29b1dd99b4c44d565837142f320c2",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-status-after-dark-1280x800.png"
+    },
+    {
+      "asset": "cloud-documents/drive-status-after-dark-390x844.png",
+      "width": "390",
+      "height": "844",
+      "sha256": "cee30aa5bb8b4ac81347922ccd1c50b9fb80427d0d4d7b2612af2e8f6469b8b0",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-status-after-dark-390x844.png"
+    },
+    {
+      "asset": "cloud-documents/drive-status-after-light-1280x800.png",
+      "width": "1280",
+      "height": "800",
+      "sha256": "88f2ada4a406d8148a902cd00305181c30366cc8bc4dd1f42ee0605473e6f702",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-status-after-light-1280x800.png"
+    },
+    {
+      "asset": "cloud-documents/drive-status-after-light-390x844.png",
+      "width": "390",
+      "height": "844",
+      "sha256": "224027edf141edf8031b4e5ae8a5c28147badc2eef246b6385d96da7bb2cee8b",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-status-after-light-390x844.png"
+    },
+    {
+      "asset": "cloud-documents/drive-status-before-dark-1280x800.png",
+      "width": "1280",
+      "height": "800",
+      "sha256": "769ef4444a2aa9e0aef815f896e093f8952f15255383f09cc0811c9f5b801f47",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-status-before-dark-1280x800.png"
+    },
+    {
+      "asset": "cloud-documents/drive-status-before-dark-390x844.png",
+      "width": "390",
+      "height": "844",
+      "sha256": "d0febcfa132b7ea66e86bfb3dd599ee46b728257d3aa2d8b8a3f427df850c164",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-status-before-dark-390x844.png"
+    },
+    {
+      "asset": "cloud-documents/drive-status-before-light-1280x800.png",
+      "width": "1280",
+      "height": "800",
+      "sha256": "72c406034fc736e0b4a230c7001bdfaba700bebc772de26d4a07671d753ecbb1",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-status-before-light-1280x800.png"
+    },
+    {
+      "asset": "cloud-documents/drive-status-before-light-390x844.png",
+      "width": "390",
+      "height": "844",
+      "sha256": "5a8554da40a99559197d5476bb4f24fac6ae4bea343ab3701c1bab746452560b",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-status-before-light-390x844.png"
+    },
+    {
+      "asset": "cloud-documents/drive-terminal-after.png",
+      "width": "1184",
+      "height": "352",
+      "sha256": "c977743f255c09a8ca44782c0701504c01e14471332d32a033f2d4a3e67b7ba6",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-terminal-after.png"
+    },
+    {
+      "asset": "cloud-documents/drive-terminal-before.png",
+      "width": "1184",
+      "height": "352",
+      "sha256": "f2da6d26a478c7d36f30ce3aae31c7ae72edcec26c8399a8ad07f361bee5c798",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-visuals/captures/drive-terminal-before.png"
+    },
+    {
+      "asset": "cloud-documents/fixture-before.png",
+      "width": "918",
+      "height": "1188",
+      "sha256": "c66d1ee1ec30e97fa2d00c4e30abfe80d6c01aae1071c25451191c3e56960a25",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-validation/fixture-before.png"
+    },
+    {
+      "asset": "cloud-documents/fixture-after.png",
+      "width": "918",
+      "height": "1188",
+      "sha256": "521e0b00710de51628185e1dfc87e533ae0e8a06edb575e306b9b5b0728d8f86",
+      "inspected_by": "codex",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/cloud-documents-validation/fixture-after.png"
+    }
+  ],
+  "index_position": "same tbody tr:nth-of-type(30), before Email notifications / after new guide insertion",
+  "terminal": "actual config-check output and sanitized real-run receipt, 120x14 Dracula, not a fresh replay of the model in the frame",
+  "not_seen": [
+    "native Google Docs web interface",
+    "paired render before the earlier marker edit (only final Value edit is paired)",
+    "original user documents or complex formatting",
+    "OneDrive",
+    "coalesced revision2 content (provider404)",
+    "off-viewport phone code/table text and intermediate scroll positions"
+  ]
+}
