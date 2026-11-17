@@ -548,6 +548,13 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+Mail has an [existing-account CLI path](../guides/mail-calendar.md): Codex apps
+searched and read one exact unsent non-personal Gmail fixture and its actual
+CSV attachment through Humagen. Contacts returned no match for an exact audit
+marker; contact writes are not exposed. Calendar schemas were discovered, but
+an exact event action still needs approval. The full mail/contacts/calendar
+requirement remains partial; no event, personal mail or contact was changed.
+
 Cloud documents have an [existing-account CLI path](../guides/cloud-documents.md):
 Codex apps retrieve actual Drive revision text, and a separately selected
 Claude Code agent applies an approved Docs edit with the required revision.

@@ -30,6 +30,7 @@
 | [Reconcile account exports](guides/finance-exports.md) | Guide | An agent on Claude Code runs a shipped script over authorized exports, reports what does not reconcile, and drafts a plan whose amounts are all sourced |
 | [Connect a Mac desktop](guides/desktop.md) | Guide | Pinned native MCP tools, permissions, targeting instructions, and an opt-in fixture check |
 | [Connect a browser](guides/browser.md) | Guide | Pinned Playwright MCP configuration, existing-tab connection, and real browser acceptance |
+| [Read selected mail and approve a calendar change](guides/mail-calendar.md) | Guide | Native account-tool profile, exact-target approval, and the limits of the checked read-only preflight |
 | [Read mixed evidence and transcribe local media](guides/media-evidence.md) | Guide | Inspect original pages and frames, preserve ASR source timestamps and report uncertainty |
 | [Compare cloud document revisions and approve an edit](guides/cloud-documents.md) | Guide | Existing Codex history and native Docs guarded-write connectors, with real private-fixture checks and missing-history limits |
 | [Email notifications](guides/email-notifications.md) | Guide | Configure the outbound email notification relay |
