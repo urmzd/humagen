@@ -71,3 +71,20 @@ The browser guide is new, so no earlier guide existed to capture. Its first view
 - [upload-display/after/dark/1280x800/session-uploads.png](upload-display/after/dark/1280x800/session-uploads.png)
 - [upload-display/after/light/390x844/session-uploads.full.png](upload-display/after/light/390x844/session-uploads.full.png)
 - [upload-display/after/dark/390x844/session-uploads.full.png](upload-display/after/dark/390x844/session-uploads.full.png)
+
+## Upload display documentation pairs
+
+| Section and viewport | Before | After |
+|---|---|---|
+| architecture, light, 390x844 | [Before](upload-display-docs/captures/architecture-before-light-390x844.png) | [After](upload-display-docs/captures/architecture-after-light-390x844.png) |
+| architecture, light, 1280x800 | [Before](upload-display-docs/captures/architecture-before-light-1280x800.png) | [After](upload-display-docs/captures/architecture-after-light-1280x800.png) |
+| architecture, dark, 390x844 | [Before](upload-display-docs/captures/architecture-before-dark-390x844.png) | [After](upload-display-docs/captures/architecture-after-dark-390x844.png) |
+| architecture, dark, 1280x800 | [Before](upload-display-docs/captures/architecture-before-dark-1280x800.png) | [After](upload-display-docs/captures/architecture-after-dark-1280x800.png) |
+| requirements, light, 390x844 | [Before](upload-display-docs/captures/requirements-before-light-390x844.png) | [After](upload-display-docs/captures/requirements-after-light-390x844.png) |
+| requirements, light, 1280x800 | [Before](upload-display-docs/captures/requirements-before-light-1280x800.png) | [After](upload-display-docs/captures/requirements-after-light-1280x800.png) |
+| requirements, dark, 390x844 | [Before](upload-display-docs/captures/requirements-before-dark-390x844.png) | [After](upload-display-docs/captures/requirements-after-dark-390x844.png) |
+| requirements, dark, 1280x800 | [Before](upload-display-docs/captures/requirements-before-dark-1280x800.png) | [After](upload-display-docs/captures/requirements-after-dark-1280x800.png) |
+| screen-guide, light, 390x844 | [Before](upload-display-docs/captures/screen-guide-before-light-390x844.png) | [After](upload-display-docs/captures/screen-guide-after-light-390x844.png) |
+| screen-guide, light, 1280x800 | [Before](upload-display-docs/captures/screen-guide-before-light-1280x800.png) | [After](upload-display-docs/captures/screen-guide-after-light-1280x800.png) |
+| screen-guide, dark, 390x844 | [Before](upload-display-docs/captures/screen-guide-before-dark-390x844.png) | [After](upload-display-docs/captures/screen-guide-after-dark-390x844.png) |
+| screen-guide, dark, 1280x800 | [Before](upload-display-docs/captures/screen-guide-before-dark-1280x800.png) | [After](upload-display-docs/captures/screen-guide-after-dark-1280x800.png) |

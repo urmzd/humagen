@@ -306,5 +306,173 @@
     "height": "1918",
     "sha256": "fd23280f11d9de12070ce22cf012e5fdb6ee9b7b698ba97f879c2574474a2b81",
     "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/architecture-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "e31386bf2e619ef686c9b4759413cb4e215693a4e0b934a6ff5059d071d1ef45",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/architecture-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "316d2d5841f74169627b67966ed9825056b95eb6685f6798bdef090216fdc2c6",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/architecture-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "402bb6c2d126cf577b446e0e4d4e894aa8dc790c6b03f998396f22d8b0d2677c",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/architecture-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "d73978a2be55c4ebcdd64e5d3f332396ac651f52a93e4e6a751de8cc11d466bb",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/architecture-before-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "4e9dc4383e8423774a988593941bbe28832383d0364f6e82cf04ed207e05e79d",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/architecture-before-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "b018f13d2b9c8045dbfb13582400bc59ddf94982b531ed1cec127aa4e3bcb303",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/architecture-before-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "067c51c0bc7202382e510ebc231390fa1db9d14ec5487ca1a20dd43b3d0fbd04",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/architecture-before-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "35984fdf3167d0bef514dcefb7d50f983931c4974b6f62687e371b605db92a9c",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/requirements-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "c871a90d8abf0226faf286b63a506e09cda56ae8e998f3c8ad3f080340560e44",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/requirements-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "835e664f635f7e6d30029ab631265bd2cd77814ca62f247c6507ca19fb966236",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/requirements-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "8c697f45ce23adbfc5215e3b0ac446339c63d968791f634ec15a258f3cc835a7",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/requirements-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "cea56a76e96e59b5878b07f829dbaa768c854a811ad8a6d8dc4512dea1e388a7",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/requirements-before-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "414452fd6c473ea548e990419c06423fcc37323b3c8dccf19958d574ae5cf13f",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/requirements-before-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "96988f224f8e4dedd34dc2c067ab050a20dc8237c3035521d8a3e5116f070112",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/requirements-before-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "e76a54f5ce1fcc03aff63058561362a0823fdc9af1bff319b3402e1f2ec36e8a",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/requirements-before-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "a9877d3fd80291277d13a1f807e48c42176551be1cd13dafacc2d12a51a9be8d",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/screen-guide-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "43a3c4c7d76c63f29d47b0f622e5bf11134d3482cc9261443e896bce4991900a",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/screen-guide-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "d294a685722d2e8501014b88e3e71787914bbe5332535f76a031fd2add2210b6",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/screen-guide-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "fde7ac9c5030feb6c488287f21b7001523abe33d374a0b68cc521245efd5a536",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/screen-guide-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "5528507026b2bd6ba9bb18893cdf9fdf255726922435bfc59847d3ddf0c828ca",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/screen-guide-before-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "df5ad8d6c92229207f84f2b7f9f12648e50862a256f3361b5947a2393679183d",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/screen-guide-before-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "198dc9069e1b66a36878ca57bff202aa08ab214611760a7031285686a50249c3",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/screen-guide-before-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "0b545981f01c6818ff560125c5666ceac5bf6d34fbc33fe415ed6f889a0ee33d",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display-docs/captures/screen-guide-before-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "61a0028346df2b1ed8b1351ad193f4fa4d0a44c215b59312d2a06940ba02d8b7",
+    "inspected_by": "codex"
   }
 ]
