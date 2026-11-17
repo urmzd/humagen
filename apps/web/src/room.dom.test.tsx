@@ -1600,6 +1600,68 @@ test("a thread started in Slack says so, and so does each message posted there; 
   }
 });
 
+test("retained uploads remain visible on the author's and another reader's message", async () => {
+  const restore = stubEventSource();
+  try {
+    const message = page.turns[0]?.message;
+    assert.ok(message);
+    const uploaded: ThreadPage = {
+      ...page,
+      turns: [
+        {
+          kind: "message",
+          message: {
+          ...message,
+            text: "Inspect these files.",
+            attachments: [
+              { name: "capture.png", media_type: "image/png" },
+              { name: "capture.png", media_type: "image/png" },
+              {
+                alt: "Meeting recording",
+                media_type: "audio/wav",
+                unread: "Audio is not supported by this model",
+              },
+              { media_type: "application/pdf" },
+            ],
+          },
+        },
+      ],
+    };
+    for (const me of ["ana", "ben"]) {
+      net = stubFetch({
+        "GET /api/threads/th-0123456789abcdef": () => uploaded,
+      });
+      const view = render(
+        <ThreadRoom
+          id="th-0123456789abcdef"
+          me={me}
+          initial={uploaded}
+          tick={0}
+          agents={[helper]}
+          projects={tree}
+          root={null}
+          workspaceName="Acme"
+          canRun={false}
+          onOpenChannel={() => {}}
+          onChanged={() => {}}
+        />,
+      );
+      const message = await screen.findByRole("article", { name: "Message from Ana" });
+      assert.equal(message.dataset.side, me === "ana" ? "mine" : "theirs");
+      const uploads = within(message).getByRole("list", { name: defaultCopy.details.used.uploads });
+      assert.equal(within(uploads).getAllByRole("listitem").length, 4);
+      assert.equal(within(uploads).getAllByText("capture.png").length, 2);
+      assert.ok(within(uploads).getByText("Meeting recording"));
+      assert.ok(within(uploads).getByText("application/pdf"));
+      assert.equal(within(uploads).queryByRole("link"), null, "no download route is invented");
+      assert.ok(within(uploads).getByTitle("Audio is not supported by this model"));
+      view.unmount();
+    }
+  } finally {
+    restore();
+  }
+});
+
 test("a run a message in the room answered is read from its journal, so its question shows though turns came after it", async () => {
   const restore = stubEventSource();
   try {
