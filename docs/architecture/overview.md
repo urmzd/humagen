@@ -545,6 +545,13 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+Cloud documents have an [existing-account CLI path](../guides/cloud-documents.md):
+Codex apps retrieve actual Drive revision text, and a separately selected
+Claude Code agent applies an approved Docs edit with the required revision.
+A real private-account fixture exercised history fetches, an exact guarded
+change and an actual stale-token rejection. Coalesced revisions were reported
+as unknown; exhaustive history, real user documents and OneDrive are not covered.
+
 Travel refunds have a [configured CLI path](../guides/travel-refund.md): one
 agent on Claude Code reads a booking and current policy pages and cannot write,
 and a second writes the request a person approves, under an output folder only.
