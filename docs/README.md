@@ -25,9 +25,11 @@
 | [GitHub and Slack trial](guides/integrations.md) | Guide | Set up a local trial with a GitHub installation and a Slack app |
 | [Read and organize a local folder](guides/local-files.md) | Guide | An agent on Claude Code surveys a folder on this host in place, plans, and applies only what a person approves |
 | [Edit a document and audit a workbook](guides/office-files.md) | Guide | An agent on Claude Code edits a .docx in place and audits .xlsx formulas and revisions in a folder on this host |
+| [Work out a refund path](guides/travel-refund.md) | Guide | Two agents on Claude Code: one reads a booking and current policy pages and cannot write, one writes the approved request and nothing else |
 | [Build a sourced chronology from records](guides/records-research.md) | Guide | An agent on Claude Code reads a folder of records, cites and quotes each dated event, lists unknowns, and opens current official pages |
 | [Connect a Mac desktop](guides/desktop.md) | Guide | Pinned native MCP tools, permissions, targeting instructions, and an opt-in fixture check |
 | [Connect a browser](guides/browser.md) | Guide | Pinned Playwright MCP configuration, existing-tab connection, and real browser acceptance |
+| [Read mixed evidence and transcribe local media](guides/media-evidence.md) | Guide | Inspect original pages and frames, preserve ASR source timestamps and report uncertainty |
 | [Email notifications](guides/email-notifications.md) | Guide | Configure the outbound email notification relay |
 | [Upgrading from the old name](guides/upgrading-from-warp.md) | Guide | What changed in the rename and how an operator moves to the new names |
 | [Upgrading to saige v0.45.0](guides/upgrading-to-saige.md) | Guide | What changes for operators and Go programs now that orchagent is folded into saige |

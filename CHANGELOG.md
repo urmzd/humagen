@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.133.0 (2026-11-17)
+
+### Features
+
+- **models**: configure local mixed evidence and timestamped ASR ([9e75057](https://github.com/urmzd/humagen/commit/9e75057ceaac427caf219fea693abbbfd0a729c3))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.132.0...v0.133.0)
+
+
 ## 0.129.0 (2026-11-17)
 
 ### Features

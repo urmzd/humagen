@@ -545,6 +545,12 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+Travel refunds have a [configured CLI path](../guides/travel-refund.md): one
+agent on Claude Code reads a booking and current policy pages and cannot write,
+and a second writes the request a person approves, under an output folder only.
+Checked on an invented booking; a real itinerary, an airline's own policy and
+sending anything are not covered.
+
 Records research has a [configured CLI path](../guides/records-research.md):
 an agent on Claude Code builds a chronology from a folder of records, quoting
 each dated event from its record, lists what is unknown or in conflict, and
@@ -609,6 +615,14 @@ when they wrap, including long unbroken paths. The `session-inline-code` browser
 fixture checks each fragment against its text column at responsive widths.
 
 ### Multimodal message and MCP content
+
+A [local media CLI path](../guides/media-evidence.md) renders original PDF
+pages, inspects image pixels and video frames, and retains source offsets for
+local English ASR and original-clip checks. Generated-fixture acceptance
+includes a valid 126 MB video and independently verified frame PTS. ASR errors
+and coarse word boundaries are retained as uncertainty; correlated passes are
+not manual listening. Real records, long-recording coverage and a native
+console media timeline are not covered.
 
 People can supply up to five inline uploads, 25 MiB decoded in total, with a
 session or thread message. The platform sniffs the bytes, stores them through
