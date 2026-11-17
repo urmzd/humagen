@@ -30,6 +30,7 @@
 | [Connect a Mac desktop](guides/desktop.md) | Guide | Pinned native MCP tools, permissions, targeting instructions, and an opt-in fixture check |
 | [Connect a browser](guides/browser.md) | Guide | Pinned Playwright MCP configuration, existing-tab connection, and real browser acceptance |
 | [Read selected mail and approve a calendar change](guides/mail-calendar.md) | Guide | Native account-tool profile, exact-target approval, and the limits of the checked read-only preflight |
+| [Read mixed evidence and transcribe local media](guides/media-evidence.md) | Guide | Inspect original pages and frames, preserve ASR source timestamps and report uncertainty |
 | [Email notifications](guides/email-notifications.md) | Guide | Configure the outbound email notification relay |
 | [Upgrading from the old name](guides/upgrading-from-warp.md) | Guide | What changed in the rename and how an operator moves to the new names |
 | [Upgrading to saige v0.45.0](guides/upgrading-to-saige.md) | Guide | What changes for operators and Go programs now that orchagent is folded into saige |

@@ -623,6 +623,14 @@ fixture checks each fragment against its text column at responsive widths.
 
 ### Multimodal message and MCP content
 
+A [local media CLI path](../guides/media-evidence.md) renders original PDF
+pages, inspects image pixels and video frames, and retains source offsets for
+local English ASR and original-clip checks. Generated-fixture acceptance
+includes a valid 126 MB video and independently verified frame PTS. ASR errors
+and coarse word boundaries are retained as uncertainty; correlated passes are
+not manual listening. Real records, long-recording coverage and a native
+console media timeline are not covered.
+
 People can supply up to five inline uploads, 25 MiB decoded in total, with a
 session or thread message. The platform sniffs the bytes, stores them through
 saige's existing attachment intake under the principal's tenant, and retains
