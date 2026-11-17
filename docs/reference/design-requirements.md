@@ -965,6 +965,9 @@ approval, disabled early approval, restoration, refusal and the combined menu.
 
 ### DES-034: How long a turn worked
 
+- The Worked/tools control has a minimum 44px touch target on a coarse pointer.
+  The canonical `session` browser state scrolls it into view, measures it and
+  opens/closes Details before capture.
 - A finished turn's "Worked" line says how long it worked: "Worked for 32s".
   The time runs from the run's acceptance to its completion on the stream, or
   from the run record's creation to its last change when the stream is gone.
