@@ -1,5 +1,6 @@
 # Existing Codex app reads and native Claude Code Calendar tools.
-# Codex local files are read-only. Cloud actions require exact approval.
+# Codex local files are read-only. Cloud read-only and exact approval are
+# prompt instructions, not cloud access controls or Humagen approval gates.
 api_version: humagen/v1
 kind: System
 metadata: { name: mail-calendar-apps-local }

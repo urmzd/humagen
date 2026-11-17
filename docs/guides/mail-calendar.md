@@ -17,14 +17,19 @@ humagen config check -f examples/mail-calendar/humagen.yaml
 humagen start -f examples/mail-calendar/humagen.yaml
 ```
 
-Codex enables `apps`, ignores user config and uses a read-only local filesystem.
-The profile does not pin cloud approvals or a cloud read-only mode; those follow
-the installed program and app settings. Its read-only agent prompts are instructions,
-not cloud access controls.
-Claude Code exposes only ToolSearch as a built-in tool and permits the exact
-native Calendar names in the profile. Its user settings, hooks and account
-connections still load. Neither model configuration confines cloud access to
-one account object: explicit target selection and approval remain necessary.
+## Permission boundaries
+
+Codex's read-only setting restricts local files only. The mail and contacts
+prompts ask for reads; they do not restrict the program's connected app tool
+list. Cloud approvals follow the installed program and app settings. Gmail
+access is mailbox-wide: the prompt selects the message. The Calendar allow
+list preauthorizes create/update tools; person approval is an instruction,
+not a Humagen approval gate. Neither configuration confines access to one
+account object.
+
+Codex enables `apps` and ignores user config. Claude Code exposes only
+ToolSearch as a built-in tool and permits the exact native Calendar names
+in the profile. Its user settings, hooks and account connections still load.
 Opened content enters the model providers and consumes account usage.
 
 ## Select the message and attachment
@@ -84,11 +89,17 @@ On 17 November 2026, these existing connectors ran through real Humagen servers
 and signed-in programs, with non-personal fixture content only:
 
 - One unsent Gmail draft with no recipients was created, with the generated
-  `req026-fixture.csv`. Nothing was sent. Codex searched only its exact subject,
-  confirmed the selected message, read full MIME, then opened the actual
-  127-byte attachment. All five original CSV fields matched the local fixture;
-  the attachment renderer also showed an added index column, not a source
-  column. The draft remains available for peer review.
+  `req026-fixture.csv`. Nothing was sent. This was a draft fixture, not a
+  received message. Codex searched only its exact subject, confirmed the
+  selected message, read full MIME, then opened the selected attachment's
+  rendered content and reported size of 127 bytes. All five original CSV
+  fields matched the local fixture; the renderer also showed an added index
+  column, not a source column. The draft remains available for peer review.
+- Independent acceptance instrumentation downloaded the fixture through the
+  native Gmail attachment tool and compared its 127 raw bytes and SHA-256
+  with the generated source. That download tool is not granted by this
+  shipped profile. The profile's checked result is rendered text and size,
+  not a reproducible raw-byte hash or byte-for-byte validation.
 - Claude Code's native attachment tool also opened those bytes, but its
   `get_message` call returned a permission error. The cause is unconfirmed;
   the working message path uses the connected Codex Gmail app instead.
@@ -98,7 +109,7 @@ and signed-in programs, with non-personal fixture content only:
   event was created or changed. A concrete private historical fixture proposal
   awaits explicit approval, so the calendar-write acceptance is still blocked.
 
-No original personal message or appointment was used. Contacts writes, Outlook,
+No received message, original personal message or appointment was used. Contacts writes, Outlook,
 another account and the console flow were not checked. The full requirement
 is not closed by the working mail/attachment path: the remaining asks are an
 exact approved Calendar action and, for contact writes, a write-capable connector
