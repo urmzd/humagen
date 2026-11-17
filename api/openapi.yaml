@@ -18952,8 +18952,8 @@ components:
       required: [name, data]
       properties:
         name: {type: string, minLength: 1, maxLength: 512}
-        data: {type: string, contentEncoding: base64, writeOnly: true, description: Base64-encoded file bytes, at most 25 MiB decoded across the request.}
-        kind: {type: string, description: Optional expected content kind, checked against sniffed bytes.}
+        data: {type: string, contentEncoding: base64, writeOnly: true, description: "Base64-encoded file bytes, at most 25 MiB decoded across the request."}
+        kind: {type: string, description: "Optional expected content kind, checked against sniffed bytes."}
     ContentBlock:
       description: |
         One block of a message: text; a mention of an agent or a person a

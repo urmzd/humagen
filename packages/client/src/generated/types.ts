@@ -5203,9 +5203,9 @@ export type MessageContent = string | ContentBlock[];
 
 export interface Upload {
   name: string;
-  /** Base64-encoded file bytes */
+  /** Base64-encoded file bytes, at most 25 MiB decoded across the request. */
   data: string;
-  /** Optional expected content kind */
+  /** Optional expected content kind, checked against sniffed bytes. */
   kind?: string;
 }
 
