@@ -3,6 +3,7 @@ package vendorcli
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -335,5 +336,113 @@ func TestAConversationSoFarThatWasTypedIsNotBelieved(t *testing.T) {
 	ask(t, p, turn("r1", []exchange{one, {"something else", answer}}, typed))
 	if got := continued(2); got != "" {
 		t.Fatalf("a typed conversation so far continued %q", got)
+	}
+}
+
+// takeInAnotherProcess is not a test of its own: it is the body of each
+// process TestTwoProcessesNeverTakeOneSession starts, and takes the session
+// a branch's turn would continue once both processes are ready.
+func TestTakeInAnotherProcess(t *testing.T) {
+	dir, label := os.Getenv("VENDORCLI_TEST_STATE_DIR"), os.Getenv("VENDORCLI_TEST_CHILD")
+	if dir == "" {
+		return
+	}
+	p := &provider{kind: ClaudeCode, cfg: Config{Dir: "/fixture", StateDir: dir}}
+	if err := os.WriteFile(filepath.Join(dir, "ready-"+label), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for start := time.Now(); ; time.Sleep(time.Millisecond) {
+		if _, err := os.Stat(filepath.Join(dir, "start")); err == nil {
+			break
+		}
+		if time.Since(start) > 10*time.Second {
+			t.Fatal("never told to start")
+		}
+	}
+	got := p.take("shared-thread", history{known: true, lines: []string{"Dev (@dev): root ask", "coder (agent): root answer"}, typed: "child " + label})
+	if err := os.WriteFile(filepath.Join(dir, "result-"+label), []byte(got), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A server and its workers share one state directory. Two of them that are
+// asked two branches of one turn at once must not both continue the turn's
+// session: one takes it, the other starts its own.
+func TestTwoProcessesNeverTakeOneSession(t *testing.T) {
+	for round := range 5 {
+		dir := t.TempDir()
+		p := &provider{kind: ClaudeCode, cfg: Config{Dir: "/fixture", StateDir: dir}}
+		state := thread{Sessions: []note{p.noteOf("one-parent-session", history{known: true, typed: "root ask"}, "root answer")}}
+		// A state file as large as one gets, so reading and rewriting it
+		// takes long enough for the two processes to overlap.
+		for i := range maxSessions - 1 {
+			other := p.noteOf("unmatched-"+strings.Repeat("x", i+1), history{known: true, typed: "different"}, "different answer")
+			other.Lines = slices.Repeat([]string{digest("line")}, maxLines)
+			state.Sessions = append(state.Sessions, other)
+		}
+		if err := p.writeThread("shared-thread", state); err != nil {
+			t.Fatal(err)
+		}
+		var children []*exec.Cmd
+		for _, label := range []string{"a", "b"} {
+			c := exec.Command(os.Args[0], "-test.run=^TestTakeInAnotherProcess$", "-test.timeout=30s")
+			c.Env = append(os.Environ(), "VENDORCLI_TEST_STATE_DIR="+dir, "VENDORCLI_TEST_CHILD="+label)
+			if err := c.Start(); err != nil {
+				t.Fatal(err)
+			}
+			children = append(children, c)
+		}
+		for start := time.Now(); ; time.Sleep(time.Millisecond) {
+			_, a := os.Stat(filepath.Join(dir, "ready-a"))
+			_, b := os.Stat(filepath.Join(dir, "ready-b"))
+			if a == nil && b == nil {
+				break
+			}
+			if time.Since(start) > 20*time.Second {
+				t.Fatal("the processes never became ready")
+			}
+		}
+		if err := os.WriteFile(filepath.Join(dir, "start"), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range children {
+			if err := c.Wait(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		a, errA := os.ReadFile(filepath.Join(dir, "result-a"))
+		b, errB := os.ReadFile(filepath.Join(dir, "result-b"))
+		if errA != nil || errB != nil {
+			t.Fatal(errA, errB)
+		}
+		if took := []string{string(a), string(b)}; !slices.Contains(took, "one-parent-session") || !slices.Contains(took, "") {
+			t.Fatalf("round %d: the processes took %q and %q, not the session once", round, a, b)
+		}
+	}
+}
+
+// A session that cannot be taken out of the state is not continued: the
+// next turn could take it too.
+func TestASessionThatCannotBeTakenIsNotContinued(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("a directory cannot be closed to root")
+	}
+	dir := t.TempDir()
+	p := &provider{kind: ClaudeCode, cfg: Config{Dir: "/fixture", StateDir: dir}}
+	p.keep("thread", p.noteOf("the-session", history{known: true, typed: "root ask"}, "root answer"))
+	next := history{known: true, lines: []string{"Dev (@dev): root ask", "coder (agent): root answer"}, typed: "next"}
+	// The lock file stays writable; nothing else in the directory can change.
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	got := p.take("thread", next)
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got != "" {
+		t.Fatalf("took %q, which stayed in the state", got)
+	}
+	if got := p.take("thread", next); got != "the-session" {
+		t.Fatalf("took %q once the state could change again", got)
 	}
 }

@@ -89,7 +89,10 @@ too, as `--effort` to Claude Code and as `model_reasoning_effort` to Codex.
   files it read in earlier turns. A session recorded by a release before this one has no history
   on record, so the next message of its conversation starts a new session
   once. A session's own `/compact` does not change which branch it belongs
-  to: it goes on being continued.
+  to: it goes on being continued. Processes that share a `state_dir` (a
+  server and its workers on one host) hold it one at a time, so two branches
+  asked at once never continue the same session; a session that cannot be
+  taken out of the state is not continued.
 - **The program's own commands.** In a conversation that is continuing, a
   message that is one line starting with `/` goes to Claude Code as typed, so
   `/compact`, `/context` and `/cost` act on that conversation's session and

@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -596,7 +597,50 @@ func (p *provider) named(conv string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// stateMu holds the session state within this process, and locked holds it
+// against the other processes that share the state directory too (a server
+// and its workers): a session is taken by one turn only, whichever process
+// runs it. When the state cannot be held, locked says so, and nothing is
+// continued or noted.
 var stateMu sync.Mutex
+
+func (p *provider) locked() (unlock func(), ok bool) {
+	stateMu.Lock()
+	release, err := lockState(p.cfg.StateDir)
+	if err != nil {
+		stateMu.Unlock()
+		return nil, false
+	}
+	return func() { release(); stateMu.Unlock() }, true
+}
+
+// writeState replaces a state file whole, so no reader sees part of one.
+func writeState(path string, b []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(b)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(f.Name(), path)
+	}
+	if err != nil {
+		_ = os.Remove(f.Name())
+	}
+	return err
+}
+
+// gone removes a state file, and reports whether it is no longer there.
+func gone(path string) bool {
+	err := os.Remove(path)
+	return err == nil || errors.Is(err, fs.ErrNotExist)
+}
 
 // begin notes a first turn, which names no thread: its second turn has one
 // but no session under it yet, and finds this note by what it holds.
@@ -605,12 +649,12 @@ func (p *provider) begin(n note) {
 		return
 	}
 	b, _ := json.Marshal(n)
-	stateMu.Lock()
-	defer stateMu.Unlock()
-	dir := filepath.Join(p.cfg.StateDir, "begun")
-	if os.MkdirAll(dir, 0o700) == nil {
-		_ = os.WriteFile(filepath.Join(dir, n.Session), b, 0o600)
+	unlock, ok := p.locked()
+	if !ok {
+		return
 	}
+	defer unlock()
+	_ = writeState(filepath.Join(p.cfg.StateDir, "begun", n.Session), b)
 }
 
 // readThread is a conversation's state file. One written before sessions
@@ -624,14 +668,15 @@ func (p *provider) readThread(conv string) thread {
 	return t
 }
 
-func (p *provider) writeThread(conv string, t thread) {
+func (p *provider) writeThread(conv string, t thread) error {
 	if len(t.Sessions) > maxSessions {
 		t.Sessions = t.Sessions[len(t.Sessions)-maxSessions:]
 	}
-	b, _ := json.Marshal(t)
-	if os.MkdirAll(p.cfg.StateDir, 0o700) == nil {
-		_ = os.WriteFile(filepath.Join(p.cfg.StateDir, p.named(conv)), append(b, '\n'), 0o600)
+	b, err := json.Marshal(t)
+	if err != nil {
+		return err
 	}
+	return writeState(filepath.Join(p.cfg.StateDir, p.named(conv)), append(b, '\n'))
 }
 
 // take finds the one session whose history the turn's conversation so far
@@ -641,13 +686,18 @@ func (p *provider) writeThread(conv string, t thread) {
 // answers. A turn that fails may have left part of itself in the session,
 // which no later conversation so far will say, so the session is left
 // behind. When more than one session fits, none is taken, and the turn
-// starts one from what was said rather than guess.
+// starts one from what was said rather than guess. The same holds when the
+// state cannot be held against other processes, or the session cannot be
+// taken out of it: another turn could then take it too.
 func (p *provider) take(conv string, h history) string {
 	if !h.known || len(h.lines) == 0 {
 		return ""
 	}
-	stateMu.Lock()
-	defer stateMu.Unlock()
+	unlock, ok := p.locked()
+	if !ok {
+		return ""
+	}
+	defer unlock()
 	t := p.readThread(conv)
 	found, at, file, key := "", -1, "", ""
 	for i, n := range t.Sessions {
@@ -682,13 +732,14 @@ func (p *provider) take(conv string, h history) string {
 	}
 	switch {
 	case file != "":
-		_ = os.Remove(file)
-		if key != "" {
-			_ = os.Remove(filepath.Join(p.cfg.StateDir, key))
+		if !gone(file) || (key != "" && key != "." && !gone(filepath.Join(p.cfg.StateDir, key))) {
+			return ""
 		}
 	case at >= 0:
 		t.Sessions = slices.Delete(t.Sessions, at, at+1)
-		p.writeThread(conv, t)
+		if p.writeThread(conv, t) != nil {
+			return ""
+		}
 	}
 	return found
 }
@@ -698,12 +749,15 @@ func (p *provider) keep(conv string, n note) {
 	if n.Session == "" {
 		return
 	}
-	stateMu.Lock()
-	defer stateMu.Unlock()
+	unlock, ok := p.locked()
+	if !ok {
+		return
+	}
+	defer unlock()
 	t := p.readThread(conv)
 	t.Sessions = slices.DeleteFunc(t.Sessions, func(o note) bool { return o.Session == n.Session })
 	t.Sessions = append(t.Sessions, n)
-	p.writeThread(conv, t)
+	_ = p.writeThread(conv, t)
 }
 
 // held is a session's state file for a caller that keeps the messages
@@ -719,18 +773,20 @@ type held struct {
 // session stayed under every key it had passed, so it may hold more than
 // its key says, and is not continued.
 func (p *provider) session(key string) string {
-	stateMu.Lock()
-	defer stateMu.Unlock()
-	path := filepath.Join(p.cfg.StateDir, key)
-	b, err := os.ReadFile(path)
-	if err != nil {
+	unlock, ok := p.locked()
+	if !ok {
 		return ""
 	}
-	_ = os.Remove(path)
+	defer unlock()
+	path := filepath.Join(p.cfg.StateDir, key)
+	b, err := os.ReadFile(path)
+	if err != nil || !gone(path) {
+		return ""
+	}
 	var h held
 	_ = json.Unmarshal(b, &h)
-	if h.Session != "" {
-		_ = os.Remove(filepath.Join(p.cfg.StateDir, "begun", filepath.Base(h.Session)))
+	if h.Session != "" && !gone(filepath.Join(p.cfg.StateDir, "begun", filepath.Base(h.Session))) {
+		return ""
 	}
 	return h.Session
 }
@@ -740,11 +796,12 @@ func (p *provider) remember(key, session string) {
 		return
 	}
 	b, _ := json.Marshal(held{Session: session})
-	stateMu.Lock()
-	defer stateMu.Unlock()
-	if os.MkdirAll(p.cfg.StateDir, 0o700) == nil {
-		_ = os.WriteFile(filepath.Join(p.cfg.StateDir, key), append(b, '\n'), 0o600)
+	unlock, ok := p.locked()
+	if !ok {
+		return
 	}
+	defer unlock()
+	_ = writeState(filepath.Join(p.cfg.StateDir, key), append(b, '\n'))
 }
 
 // resumeLine is a conversation's first message that asks to carry on from a
