@@ -573,16 +573,6 @@ func (p *provider) noteOf(session string, h history, answer string) note {
 // begunFor is how long a first turn waits for its second.
 const begunFor = 7 * 24 * time.Hour
 
-// opening is the start of a text on one line, as a conversation so far
-// repeats it.
-func opening(s string) string {
-	s = strings.Join(strings.Fields(s), " ")
-	if len(s) > 160 {
-		s = strings.ToValidUTF8(s[:160], "")
-	}
-	return s
-}
-
 // lastParagraph is what a person typed, after the context the platform
 // puts before it.
 func lastParagraph(ask string) string {
