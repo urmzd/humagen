@@ -607,6 +607,8 @@ func TestWhatAProgramCannotBeShownIsRefusedByName(t *testing.T) {
 		{"audio", ClaudeCode, saigetypes.AudioPart{Source: saigetypes.Source{MediaType: "audio/wav", Inline: []byte("RIFF")}}, "not audio"},
 		{"codex and a PDF", Codex, pdf, "reads no application/pdf document"},
 		{"a document that is not a PDF", ClaudeCode, saigetypes.DocumentPart{Source: saigetypes.Source{MediaType: "application/msword", Inline: []byte("x")}}, "reads PDF documents"},
+		{"an image type that names a path", Codex, saigetypes.ImagePart{Source: saigetypes.Source{MediaType: "image/../../etc/x", Inline: []byte("x")}}, "not image/../../etc/x"},
+		{"an image type no program is shown", ClaudeCode, saigetypes.ImagePart{Source: saigetypes.Source{MediaType: "image/svg+xml", Inline: []byte("<svg/>")}}, "not image/svg+xml"},
 		{"an image whose bytes are missing", Codex, saigetypes.ImagePart{Source: saigetypes.Source{MediaType: "image/png", Filename: "gone.png", Unresolved: "the upload expired"}}, "the upload expired"},
 	}
 	for _, tt := range tests {

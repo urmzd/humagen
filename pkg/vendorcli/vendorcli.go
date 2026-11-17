@@ -209,7 +209,10 @@ func (p *provider) Name() string { return p.kind }
 // their type is here, and as derived text otherwise. Known is false, so
 // nothing else about the model is taken as declared.
 func (p *provider) Capabilities() saigetypes.ModelCapabilities {
-	types := map[saigetypes.MediaType]bool{"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true}
+	types := map[saigetypes.MediaType]bool{}
+	for t := range imageExt {
+		types[saigetypes.MediaType(t)] = true
+	}
 	if p.kind == ClaudeCode {
 		types["application/pdf"] = true
 	}
@@ -236,6 +239,10 @@ type media struct {
 	data []byte
 }
 
+// imageExt is the file extension of each image type a program is shown. A
+// type is never read into a file name: one that is not here is refused.
+var imageExt = map[string]string{"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}
+
 // ErrMedia is something sent that the program cannot be shown.
 var ErrMedia = errors.New("vendorcli: unsupported content")
 
@@ -250,6 +257,9 @@ func (p *provider) mediaOf(parts []saigetypes.UserPart) ([]media, error) {
 		case saigetypes.TextPart:
 			continue
 		case saigetypes.ImagePart:
+			if _, ok := imageExt[string(v.Source.MediaType)]; !ok {
+				return nil, fmt.Errorf("%w: %s is shown PNG, JPEG, GIF and WebP images, not %s", ErrMedia, p.kind, v.Source.MediaType)
+			}
 			src = v.Source
 		case saigetypes.DocumentPart:
 			if p.kind != ClaudeCode {
@@ -584,8 +594,7 @@ func (p *provider) command(t turnOf, session string) (args []string, stdin []byt
 			}
 			done = func() { _ = os.RemoveAll(dir) }
 			for i, m := range sent {
-				ext, _, _ := strings.Cut(strings.TrimPrefix(m.typ, "image/"), "+")
-				path := filepath.Join(dir, fmt.Sprintf("image-%d.%s", i+1, ext))
+				path := filepath.Join(dir, fmt.Sprintf("image-%d.%s", i+1, imageExt[m.typ]))
 				if err := os.WriteFile(path, m.data, 0o600); err != nil {
 					return nil, nil, done, err
 				}
