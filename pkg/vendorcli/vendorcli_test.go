@@ -242,8 +242,8 @@ func TestAPlatformThreadKeepsOneSessionFromItsFirstTurn(t *testing.T) {
 	if _, _, _, _, err := collect(t, p, platformAsk("r1", "Dev (@dev): fix the test\ncoder (agent): Looking. Fixed.", "and the docs")); err != nil {
 		t.Fatal(err)
 	}
-	// From then on the thread's name is enough.
-	if _, _, _, _, err := collect(t, p, platformAsk("r1", "trimmed away", "and the changelog")); err != nil {
+	// And so does each turn after it, which repeats those before.
+	if _, _, _, _, err := collect(t, p, platformAsk("r1", "Dev (@dev): fix the test\ncoder (agent): Looking. Fixed.\nDev (@dev): and the docs\ncoder (agent): Looking. Fixed.", "and the changelog")); err != nil {
 		t.Fatal(err)
 	}
 	// Another thread is another session.
@@ -442,7 +442,8 @@ func TestACommandOfTheProgramsOwnReachesAContinuedSessionAlone(t *testing.T) {
 	// The program's answer to its own command is the turn's answer.
 	command2, runs2 := program(t, compactOut, 0)
 	p2 := build(t, ClaudeCode, Config{Command: command2, StateDir: state, Dir: providerDir(t, p)}, "default")
-	said, _, _, _, err := collect(t, p2, platformAsk("r1", "trimmed", "/compact"))
+	sofar := "Dev (@dev): /compact\ncoder (agent): Looking. Fixed.\nDev (@dev): and the docs\ncoder (agent): Looking. Fixed."
+	said, _, _, _, err := collect(t, p2, platformAsk("r1", sofar, "/compact"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -453,11 +454,14 @@ func TestACommandOfTheProgramsOwnReachesAContinuedSessionAlone(t *testing.T) {
 		t.Fatalf("said %q", said)
 	}
 	// Something typed that only starts like a command, over more than a line, is asked whole.
-	if _, _, _, _, err := collect(t, p2, platformAsk("r1", "trimmed", "/tmp/a.log is full\nwhy?")); err != nil {
+	// The session goes on after its compaction: what it holds is no longer
+	// what was said, and it is still this branch's and no other's.
+	sofar += "\nDev (@dev): /compact\ncoder (agent): " + said
+	if _, _, _, _, err := collect(t, p2, platformAsk("r1", sofar, "/tmp/a.log is full\nwhy?")); err != nil {
 		t.Fatal(err)
 	}
-	if got := args(t, runs2, 1); !strings.HasPrefix(got[1], "Context from the trigger:") {
-		t.Fatalf("args %q", got[1])
+	if got := args(t, runs2, 1); !strings.HasPrefix(got[1], "Context from the trigger:") || !containsArg(got, "--resume") {
+		t.Fatalf("args %q", got)
 	}
 }
 
@@ -468,7 +472,7 @@ func providerDir(t *testing.T, p saigetypes.Provider) string {
 
 func TestAThreadIsFoundWhenWhatWasTypedRunsOverParagraphs(t *testing.T) {
 	typed := "Thanks.\n\nNow the second part:\n\n- one\n- two"
-	ask := "Context from the trigger:\n- " + runs.MetaAsk + ": " + typed + "\n- " + runs.MetaPrev + ": r1\n- " + runs.MetaThread + ": r1\n\nConversation so far.\nEnd.\n\n" + typed
+	ask := "Context from the trigger:\n- " + runs.MetaAsk + ": " + typed + "\n- " + runs.MetaPrev + ": r1\n- " + runs.MetaThread + ": r1\n\nConversation so far, oldest first.\nDev (@dev): first\ncoder (agent): Looking. Fixed.\nEnd of the conversation so far.\n\n" + typed
 	if got := conversation(ask); got != "r1" {
 		t.Fatalf("thread = %q", got)
 	}

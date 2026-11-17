@@ -71,6 +71,22 @@ too, as `--effort` to Claude Code and as `model_reasoning_effort` to Codex.
   the program's own session (`claude --resume`, `codex exec resume`), so it
   still knows the files it read and the commands it ran. A conversation it has
   no session for starts one and is told what was said so far.
+- **A branch has its own session.** A message that follows an earlier turn,
+  one that already has a reply, starts a branch, and a branch sees its own
+  turns only. A session is continued only by a turn whose conversation so far
+  begins with everything that session was sent and answered; the two programs
+  can copy a whole session but not one up to an earlier turn, so a branch
+  starts a new session, told what was said in that branch, and each branch
+  then continues its own. The check reads the conversation so far that
+  Humagen sends with each turn, so a session is also left behind, and a new
+  one started and told what was said, when: its turn failed or was stopped;
+  the workspace replays no history; the message itself holds lines that read
+  like Humagen's "Conversation so far"; or two sessions fit equally. Where
+  only the newest turns are replayed, the turns that are replayed are what
+  is checked. A session recorded by a release before this one has no history
+  on record, so the next message of its conversation starts a new session
+  once. A session's own `/compact` does not change which branch it belongs
+  to: it goes on being continued.
 - **The program's own commands.** In a conversation that is continuing, a
   message that is one line starting with `/` goes to Claude Code as typed, so
   `/compact`, `/context` and `/cost` act on that conversation's session and
@@ -116,6 +132,6 @@ too, as `--effort` to Claude Code and as `model_reasoning_effort` to Codex.
   which conversation a request is in, so this kind reads the thread from the
   turn's context. A conversation started with `POST /api/runs` names no thread
   on its first turn; its second turn is matched to the first by what was asked
-  and answered. If two conversations in the same directory began with the same
-  words and the same answer, the second turn starts a new session, told what
-  was said, instead of guessing.
+  and answered, in full. If two conversations in the same directory began with
+  the same words and the same answer, the second turn starts a new session,
+  told what was said, instead of guessing.

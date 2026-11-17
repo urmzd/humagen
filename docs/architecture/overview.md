@@ -548,6 +548,12 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+A branch of a conversation on a coding agent (Claude Code or Codex) is
+answered by a session of its own: a session is continued only by a turn whose
+conversation so far begins with everything that session holds, so a branch
+never sees a sibling branch's turns
+([coding agents](../guides/coding-agents.md)).
+
 Mail has an [existing-account CLI path](../guides/mail-calendar.md): Codex apps
 searched and read one exact unsent non-personal Gmail fixture and its actual
 CSV attachment through Humagen. Contacts returned no match for an exact audit

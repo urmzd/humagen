@@ -383,70 +383,195 @@ func conversation(ask string) string {
 	return thread
 }
 
-// begun and begin carry a session over the one step the thread's name does
-// not cover: from a conversation's first turn, which has no thread line, to
-// its second, which has one but no session under it yet. begin notes how a
-// first turn went: the start of what was asked and of what was answered.
-// begun finds the session whose first turn the second turn's conversation
-// so far repeats. It answers only when exactly one fits, so two
-// conversations that began alike each start again from what was said,
-// rather than one continuing the other's session.
-func (p *provider) begin(session, ask, answer string) {
-	if session == "" {
-		return
+// A session is continued only by a turn whose conversation so far begins
+// with everything the session holds. Two messages that follow the same turn
+// are two branches of a conversation, and each must see its own turns and
+// never the other's, so the thread a turn names is not enough to choose a
+// session: the session's history has to be the start of the turn's.
+//
+// The provider is not told which turn a request follows in a way it can
+// place its own turn by, so it reads the history the platform sends: the
+// conversation so far, one line a turn. A note keeps, for one session, a
+// digest of each line it was sent, and of what it was then asked and what it
+// answered. A later turn continues the session when its conversation so far
+// holds those lines in that order, then what was asked, then the answer.
+// Anything else starts a session, which is told what was said so far in its
+// own branch.
+
+// note is what one session of the program holds, as far as the platform's
+// history says it.
+type note struct {
+	Kind    string `json:"kind"`
+	Dir     string `json:"dir"`
+	Session string `json:"session"`
+	// Ask and Answer are the start of a first turn's question and answer,
+	// as notes were written before sessions kept their history. A note
+	// with these and no Asked is one of those.
+	Ask    string `json:"ask,omitempty"`
+	Answer string `json:"answer,omitempty"`
+	// Lines are the digests of the conversation so far the session was last
+	// sent, oldest first, and Omitted says the platform had left earlier
+	// turns out of it.
+	Lines   []string `json:"lines,omitempty"`
+	Omitted bool     `json:"omitted,omitempty"`
+	// Asked and Answered are the digests of what the session was then
+	// asked and what it answered, spacing made single as a line has it.
+	Asked    string `json:"asked,omitempty"`
+	Answered string `json:"answered,omitempty"`
+	// Key is the state file a first turn's session is also under, for a
+	// caller that keeps the messages itself (held). Whichever way the
+	// session is continued, the other way to it is removed.
+	Key string    `json:"key,omitempty"`
+	At  time.Time `json:"at"`
+}
+
+// thread is the state file of one platform conversation: a session for each
+// of its branches the program has answered.
+type thread struct {
+	Sessions []note `json:"sessions"`
+}
+
+// maxLines bounds the lines a note keeps, the newest, and maxSessions the
+// sessions kept for one conversation, the newest.
+const (
+	maxLines    = 4096
+	maxSessions = 64
+)
+
+// history is the conversation so far as a request states it.
+type history struct {
+	// known is false when the request does not say its history in a way
+	// that can be believed: no session is continued for it.
+	known bool
+	// lines are the turns before what is asked, one a line, oldest first,
+	// and omitted says earlier ones were left out.
+	lines   []string
+	omitted bool
+	// typed is what is asked now.
+	typed string
+}
+
+// What the platform puts around the conversation so far (threads.Ask).
+const (
+	historyOpen  = "Conversation so far, oldest first"
+	historyClose = "End of the conversation so far."
+)
+
+var omittedLine = regexp.MustCompile(`^\(\d+ earlier turns omitted\)$`)
+
+// historyOf reads the conversation so far out of what the platform asks. A
+// first turn has none. Each earlier turn is one line, so what a person typed
+// in one cannot begin or end the history; what they type now can hold lines
+// that read like the platform's, and it is repeated in the context, so a
+// request with more than one beginning or end is not believed.
+func historyOf(ask string) history {
+	lines := strings.Split(ask, "\n")
+	open, end, opens, ends := -1, -1, 0, 0
+	for i, l := range lines {
+		if strings.HasPrefix(l, historyOpen) {
+			open, opens = i, opens+1
+		}
+		if strings.HasPrefix(l, historyClose) {
+			end, ends = i, ends+1
+		}
 	}
-	note, _ := json.Marshal(begunNote{Kind: p.kind, Dir: p.cfg.Dir, Session: session, Ask: opening(lastParagraph(ask)), Answer: opening(answer), At: time.Now()})
-	stateMu.Lock()
-	defer stateMu.Unlock()
-	dir := filepath.Join(p.cfg.StateDir, "begun")
-	if os.MkdirAll(dir, 0o700) == nil {
-		_ = os.WriteFile(filepath.Join(dir, session), note, 0o600)
+	if opens == 0 && ends == 0 {
+		return history{known: true, typed: typedAlone(ask)}
+	}
+	if opens != 1 || ends != 1 || end < open || end+1 >= len(lines) || lines[end+1] != "" {
+		return history{}
+	}
+	h := history{known: true, lines: lines[open+1 : end], typed: strings.Join(lines[end+2:], "\n")}
+	if len(h.lines) > 0 && omittedLine.MatchString(h.lines[0]) {
+		h.lines, h.omitted = h.lines[1:], true
+	}
+	return h
+}
+
+// typedAlone is what a person typed in a request with no conversation so
+// far: what follows the context, which repeats it.
+func typedAlone(ask string) string {
+	if !strings.HasPrefix(ask, "Context from the trigger:") {
+		return ask
+	}
+	for i := 0; ; {
+		j := strings.Index(ask[i:], "\n\n")
+		if j < 0 {
+			return lastParagraph(ask)
+		}
+		i += j + 2
+		if strings.Contains(ask[:i], "\n- "+runs.MetaAsk+": "+ask[i:]+"\n") {
+			return ask[i:]
+		}
 	}
 }
 
-func (p *provider) begun(ask string) string {
-	stateMu.Lock()
-	defer stateMu.Unlock()
-	dir := filepath.Join(p.cfg.StateDir, "begun")
-	entries, _ := os.ReadDir(dir)
-	flat := strings.Join(strings.Fields(ask), " ")
-	found, file := "", ""
-	for _, e := range entries {
-		path := filepath.Join(dir, e.Name())
-		b, err := os.ReadFile(path)
-		var n begunNote
-		if err != nil || json.Unmarshal(b, &n) != nil {
-			continue
-		}
-		if time.Since(n.At) > begunFor {
-			_ = os.Remove(path)
-			continue
-		}
-		if n.Kind != p.kind || n.Dir != p.cfg.Dir || n.Ask == "" || n.Answer == "" || !strings.Contains(flat, n.Ask) || !strings.Contains(flat, n.Answer) {
-			continue
-		}
-		if found != "" {
-			return ""
-		}
-		found, file = n.Session, path
+// digest names a text without keeping it. Spacing is made single first, as
+// a line of the conversation so far has it.
+func digest(s string) string {
+	sum := sha256.Sum256([]byte(strings.Join(strings.Fields(s), " ")))
+	return hex.EncodeToString(sum[:16])
+}
+
+// spoken is what a line of the conversation so far says, after who said it.
+func spoken(line string) string {
+	_, said, _ := strings.Cut(line, ": ")
+	return said
+}
+
+// holds reports whether the conversation so far begins with everything the
+// session of n holds: the lines it was sent, then what it was asked, then,
+// after any lines of others, what it answered. Where the platform left
+// earlier turns out, on either side, the lines both have must agree and
+// what one lacks must be among those left out.
+func (n note) holds(h history) bool {
+	if n.Asked == "" {
+		// A first turn noted before sessions kept their history: only a
+		// conversation that is that turn and nothing more continues it.
+		return n.Ask != "" && n.Answer != "" && !h.omitted && len(h.lines) == 2 &&
+			strings.Contains(spoken(h.lines[0]), n.Ask) && strings.Contains(spoken(h.lines[1]), n.Answer)
 	}
-	if file != "" {
-		_ = os.Remove(file)
+	for at, line := range h.lines {
+		if digest(spoken(line)) != n.Asked {
+			continue
+		}
+		answered := false
+		for _, later := range h.lines[at+1:] {
+			if digest(spoken(later)) == n.Answered {
+				answered = true
+				break
+			}
+		}
+		if !answered {
+			continue
+		}
+		mine, theirs, same := len(n.Lines), at, true
+		for mine > 0 && theirs > 0 && same {
+			mine, theirs = mine-1, theirs-1
+			same = digest(h.lines[theirs]) == n.Lines[mine]
+		}
+		if same && (mine == 0 || h.omitted) && (theirs == 0 || n.Omitted) {
+			return true
+		}
 	}
-	return found
+	return false
+}
+
+// noteOf is the note of a session that was sent h and answered.
+func (p *provider) noteOf(session string, h history, answer string) note {
+	n := note{Kind: p.kind, Dir: p.cfg.Dir, Session: session, Omitted: h.omitted, Asked: digest(h.typed), Answered: digest(answer), At: time.Now()}
+	lines := h.lines
+	if len(lines) > maxLines {
+		lines, n.Omitted = lines[len(lines)-maxLines:], true
+	}
+	for _, l := range lines {
+		n.Lines = append(n.Lines, digest(l))
+	}
+	return n
 }
 
 // begunFor is how long a first turn waits for its second.
 const begunFor = 7 * 24 * time.Hour
-
-type begunNote struct {
-	Kind    string    `json:"kind"`
-	Dir     string    `json:"dir"`
-	Session string    `json:"session"`
-	Ask     string    `json:"ask"`
-	Answer  string    `json:"answer"`
-	At      time.Time `json:"at"`
-}
 
 // opening is the start of a text on one line, as a conversation so far
 // repeats it.
@@ -470,7 +595,7 @@ func lastParagraph(ask string) string {
 	return ask
 }
 
-// named is the key of the program's session for a platform conversation.
+// named is the key of the program's sessions for a platform conversation.
 func (p *provider) named(conv string) string {
 	sum := sha256.Sum256([]byte(p.kind + "\x00" + p.cfg.Dir + "\x00conversation\x00" + conv))
 	return hex.EncodeToString(sum[:])
@@ -478,24 +603,152 @@ func (p *provider) named(conv string) string {
 
 var stateMu sync.Mutex
 
+// begin notes a first turn, which names no thread: its second turn has one
+// but no session under it yet, and finds this note by what it holds.
+func (p *provider) begin(n note) {
+	if n.Session == "" {
+		return
+	}
+	b, _ := json.Marshal(n)
+	stateMu.Lock()
+	defer stateMu.Unlock()
+	dir := filepath.Join(p.cfg.StateDir, "begun")
+	if os.MkdirAll(dir, 0o700) == nil {
+		_ = os.WriteFile(filepath.Join(dir, n.Session), b, 0o600)
+	}
+}
+
+// readThread is a conversation's state file. One written before sessions
+// kept their history is a session's id alone: it says nothing of what the
+// session holds, so it reads as no session at all.
+func (p *provider) readThread(conv string) thread {
+	var t thread
+	if b, err := os.ReadFile(filepath.Join(p.cfg.StateDir, p.named(conv))); err == nil {
+		_ = json.Unmarshal(b, &t)
+	}
+	return t
+}
+
+func (p *provider) writeThread(conv string, t thread) {
+	if len(t.Sessions) > maxSessions {
+		t.Sessions = t.Sessions[len(t.Sessions)-maxSessions:]
+	}
+	b, _ := json.Marshal(t)
+	if os.MkdirAll(p.cfg.StateDir, 0o700) == nil {
+		_ = os.WriteFile(filepath.Join(p.cfg.StateDir, p.named(conv)), append(b, '\n'), 0o600)
+	}
+}
+
+// take finds the one session whose history the turn's conversation so far
+// begins with, among those of its thread and the first turns that name
+// none, and takes it out of the state: a session is continued by one turn
+// at a time, and is noted again, a turn longer, only when that turn
+// answers. A turn that fails may have left part of itself in the session,
+// which no later conversation so far will say, so the session is left
+// behind. When more than one session fits, none is taken, and the turn
+// starts one from what was said rather than guess.
+func (p *provider) take(conv string, h history) string {
+	if !h.known || len(h.lines) == 0 {
+		return ""
+	}
+	stateMu.Lock()
+	defer stateMu.Unlock()
+	t := p.readThread(conv)
+	found, at, file, key := "", -1, "", ""
+	for i, n := range t.Sessions {
+		if n.Kind != p.kind || n.Dir != p.cfg.Dir || n.Session == "" || !n.holds(h) {
+			continue
+		}
+		if found != "" {
+			return ""
+		}
+		found, at = n.Session, i
+	}
+	dir := filepath.Join(p.cfg.StateDir, "begun")
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		path := filepath.Join(dir, e.Name())
+		b, err := os.ReadFile(path)
+		var n note
+		if err != nil || json.Unmarshal(b, &n) != nil {
+			continue
+		}
+		if time.Since(n.At) > begunFor {
+			_ = os.Remove(path)
+			continue
+		}
+		if n.Kind != p.kind || n.Dir != p.cfg.Dir || n.Session == "" || !n.holds(h) {
+			continue
+		}
+		if found != "" {
+			return ""
+		}
+		found, file, key = n.Session, path, filepath.Base(n.Key)
+	}
+	switch {
+	case file != "":
+		_ = os.Remove(file)
+		if key != "" {
+			_ = os.Remove(filepath.Join(p.cfg.StateDir, key))
+		}
+	case at >= 0:
+		t.Sessions = slices.Delete(t.Sessions, at, at+1)
+		p.writeThread(conv, t)
+	}
+	return found
+}
+
+// keep notes a session under its thread once its turn has answered.
+func (p *provider) keep(conv string, n note) {
+	if n.Session == "" {
+		return
+	}
+	stateMu.Lock()
+	defer stateMu.Unlock()
+	t := p.readThread(conv)
+	t.Sessions = slices.DeleteFunc(t.Sessions, func(o note) bool { return o.Session == n.Session })
+	t.Sessions = append(t.Sessions, n)
+	p.writeThread(conv, t)
+}
+
+// held is a session's state file for a caller that keeps the messages
+// itself: the session is named by everything said in it (key).
+type held struct {
+	Session string `json:"session"`
+}
+
+// session takes the session named by key out of the state, so that only the
+// turn that follows everything it holds continues it: a later request that
+// repeats an earlier part of the conversation and says something else is a
+// branch, and starts its own. A file that is an id alone was written when a
+// session stayed under every key it had passed, so it may hold more than
+// its key says, and is not continued.
 func (p *provider) session(key string) string {
 	stateMu.Lock()
 	defer stateMu.Unlock()
-	b, err := os.ReadFile(filepath.Join(p.cfg.StateDir, key))
+	path := filepath.Join(p.cfg.StateDir, key)
+	b, err := os.ReadFile(path)
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(b))
+	_ = os.Remove(path)
+	var h held
+	_ = json.Unmarshal(b, &h)
+	if h.Session != "" {
+		_ = os.Remove(filepath.Join(p.cfg.StateDir, "begun", filepath.Base(h.Session)))
+	}
+	return h.Session
 }
 
 func (p *provider) remember(key, session string) {
 	if session == "" {
 		return
 	}
+	b, _ := json.Marshal(held{Session: session})
 	stateMu.Lock()
 	defer stateMu.Unlock()
 	if os.MkdirAll(p.cfg.StateDir, 0o700) == nil {
-		_ = os.WriteFile(filepath.Join(p.cfg.StateDir, key), []byte(session+"\n"), 0o600)
+		_ = os.WriteFile(filepath.Join(p.cfg.StateDir, key), append(b, '\n'), 0o600)
 	}
 }
 
@@ -733,14 +986,19 @@ func (p *provider) Stream(ctx context.Context, req saigetypes.Request) (<-chan s
 	// A turn the platform runs names its thread in what it asks. Anything
 	// else that calls the provider is known by what was said so far.
 	conv := conversation(t.ask)
+	// A session is continued only when everything it holds is the start of
+	// this turn's conversation so far, so a branch never continues the
+	// session of another branch.
+	var h history
 	session := ""
 	switch {
 	case conv != "":
-		if session = p.session(p.named(conv)); session == "" {
-			session = p.begun(t.ask)
-		}
+		h = historyOf(t.ask)
+		session = p.take(conv, h)
 	case len(t.before) > 0:
 		session = p.session(p.key(t.before))
+	default:
+		h = historyOf(t.ask)
 	}
 	// A conversation that has no session yet may name one to carry on from.
 	if session == "" && len(t.before) == 0 {
@@ -808,11 +1066,18 @@ func (p *provider) Stream(ctx context.Context, req saigetypes.Request) (<-chan s
 		// what has been said up to and including this answer.
 		switch {
 		case conv != "":
-			p.remember(p.named(conv), res.session)
+			// A turn whose history is not known leaves no note: nothing
+			// could tell which later turn follows it.
+			if h.known && res.answer != "" {
+				p.keep(conv, p.noteOf(res.session, h, res.answer))
+			}
 		case res.answer != "":
-			p.remember(p.key(append(slices.Clone(t.before), said{"user", t.ask}, said{"assistant", res.answer})), res.session)
-			if len(t.before) == 0 {
-				p.begin(res.session, t.ask, res.answer)
+			key := p.key(append(slices.Clone(t.before), said{"user", t.ask}, said{"assistant", res.answer}))
+			p.remember(key, res.session)
+			if len(t.before) == 0 && h.known && len(h.lines) == 0 {
+				n := p.noteOf(res.session, h, res.answer)
+				n.Key = key
+				p.begin(n)
 			}
 		}
 		res.usage.ResponseModel = res.model
