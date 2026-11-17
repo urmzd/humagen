@@ -1594,5 +1594,299 @@
     "height": "844",
     "sha256": "4b84c981230670dfea966cf134296a2b60c891093024d905e19afd94b887e29d",
     "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-config-after.png",
+    "width": "1088",
+    "height": "272",
+    "sha256": "a0a3f58d9f160b05a5d811d808a93c1896ac3798ff7dd6c50ff41b9a3056a9d4",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-config-before.png",
+    "width": "1088",
+    "height": "272",
+    "sha256": "bf6174260e2c234e7823f12b791f7e9b4e017df5cce265fd758f831280cdb4b4",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-guide-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "db5d717d7bc09f49a9e41d98701bc83e4475086bbfaad2c93732ebbd40db1d38",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-guide-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "9b4773a093476f31cfbe38940b14913b849dc0bb0d1cbd373e95cd5706c92f71",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-guide-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "7cbcdb35394e507309752f372768b7f9c392e9f60e719fc25d43bce8f7531b12",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-guide-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "1149b68802e156e73dcaa6e8dcfc0536c31a5c5041d2fd26babbf253340afa67",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-guide-before-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "ef44e16dbfb7aadbec67483b4ad90fc40decb44c5367a0b85437ca077e3baf3f",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-guide-before-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "a2aa1951b3ccc257783c65691e116d5c77de8daa71393a6a66df248357093ed5",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-guide-before-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "ab6fa3a708591fe83a608497cbc82a08ab4f2c87a401ed0c9942a3c0c698bbde",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-guide-before-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "3cda7d3dd66a725ab44017dbc57d678af042d176cd1b9314b30c2e44224ccf03",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-requirements-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "552f9e400a32922fc372780cf0c1ace54adda0f1c6b70688f3bd015952e18d20",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-requirements-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "c7fdba6f10502cdc4a13470b1530179eed65d0b4014b5644dce98b40ef1e548c",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-requirements-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "d089a7159fcbac99cd64bdcf72afe3e0489908bce86acb2f8144b5df757b263f",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-requirements-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "cb2ce42145131b31fad3c7a7b85e5f5ce9a04cdc7a4127372fffd9c4c664ea14",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-requirements-before-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "ca6d0cb33f8c4e09d5f7f1de3c41bcd85a4a754caa4bf594fbe6018df541c53d",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-requirements-before-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "eee25a985545001bf039a4be94e5aba3d2b5c0111640411f5e1e4281151d5724",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-requirements-before-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "df19784cd42bef37c3183f50b688e1bd372ca3a4e1257ec9e1115cff06216023",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-requirements-before-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "a454ad3f51f73b5774f48d4dd5a915c84aaed7c8dc5c2dbb30186394e81bd620",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-status-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "a8970a6cb42b7f31d10e678e38fe14403a7d5fabff025a749e66edfb73677969",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-status-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "55550129d1dac4ad79901ab8d0b7a7602790903f8712eaf3f251a94da5452e79",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-status-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "54f464706a945d2cc07440ea0a7127f62eaaafa9890b9cb4fada6bdeaf58fa44",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-status-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "5c439cf2f53fd6c46ff7be66b24be9da0282d3ef847398b49fbdcd38df7a06da",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-status-before-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "bf7291bbd06ef1c345ad39673e036d0f5f939ceb446f1e5aca777d3f86c778d2",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-status-before-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "a6fb8cbbfb9bd0f323e4432b8260e3d7814b7ac44e0d66b9a26dd26d3a8d75c3",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-status-before-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "653227f9e0536aef4f45b67665bb1abac7bc1d2b780c328a996f0903a24b665e",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-status-before-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "8e5a7f9e15f84333a00a2ceefe6330585cb3abdd72cfda74a1b9913770689ed4",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-test-the-signed-in-fixture-end-to-end-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "e7a5e31681c08a064c6ccde87b71e03d2859d8ccb4323274bda19c6f99c1befd",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-test-the-signed-in-fixture-end-to-end-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "6400bd32009c9b42d150fa5c24361dcf41f041cf1cb22473b6f4f20fcd63311a",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-test-the-signed-in-fixture-end-to-end-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "16ad558a896d2eac71ad0c74aa93b00954bebe27d5380309961366cf2eb6fc2b",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-test-the-signed-in-fixture-end-to-end-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "8bc64b6e8cd363c81f5fb38125b1df55add8445eca522f617c36f9e874da1089",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-use-an-existing-claude-code-account-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "7cacffc02cebfb57efa5ac6d31c880c14064dc1c5118710d5f06589417158bc7",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-use-an-existing-claude-code-account-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "bd09eed9742ca4ad48f6421f629097420445cb54ee09b1a2f6df8d8323c6f5d0",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-use-an-existing-claude-code-account-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "54ddd5e1c598936b0d74f3f32a34f1f25b7df732de73577ba60ec5006b61c4b0",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-docs/browser-use-an-existing-claude-code-account-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "15a540f0defed315a2beb4888d886fc7679ef704eb801ce1975584a01124dff4",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-live/after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "cd47a869b7958e0e82fe67c901bdf7887f9acbf63fc2ff23c26c98d7cd915970",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-live/after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "fa05dc5a974d33c12d8cf38e5c949fe6a9bc07c5ab4d717e0f78d624d6bbdadb",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-live/after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "71758762115f1811b40ecbb0a7d5b1b60b7e48fe215d64745779c94df37207d4",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-live/after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "e8625929e36399ce4dfe1c7dc788b717b446688c4fb5192c14d728630581355d",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-live/before-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "8d2403263eff5984c2dc86ab425f038a16e557e326189b84b007d8791e275e8b",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-live/before-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "c75611d751d42b8381a539363424b3c6f2e28cd68ce627de933aa8f4f68f5482",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-live/before-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "772004a2ba07bc7bdf3ce9f3d64fd37e74b41a8540eb252a1073701213950cfd",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "browser-connected-live/before-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "dbe5de90589ac3b3775c837df04e1e2acd25c5cf86ff6d2393cfcfb739554585",
+    "inspected_by": "codex"
   }
 ]

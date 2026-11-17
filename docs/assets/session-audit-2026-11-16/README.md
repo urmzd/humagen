@@ -242,3 +242,5 @@ Desktop review qualifications, updated screenshots inspected by Codex:
 - [desktop-native-before-dark-390x844](desktop-review/desktop-native-before-dark-390x844.png)
 - [desktop-native-before-light-1280x800](desktop-review/desktop-native-before-light-1280x800.png)
 - [desktop-native-before-light-390x844](desktop-review/desktop-native-before-light-390x844.png)
+
+Connected-browser acceptance: eight matching light/dark phone/desktop fixture captures in `browser-connected-live/`, paired actual config-check terminal frames and32 rendered guide/Status/DES-062 captures in `browser-connected-docs/`. Local authenticated fixture only; no third-party SSO/MFA or extension handoff established. All42 opened by Codex.
