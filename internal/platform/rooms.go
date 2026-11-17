@@ -43,8 +43,9 @@ const replaySlack = time.Second
 const roomCache = 4096
 
 // roomSource reads one conversation's run events and thread notices once,
-// for every viewer of its room, and says whom each involves.
-func (p *Platform) roomSource(ctx context.Context, tenant, thread string, publish func(rooms.Item)) error {
+// for every viewer of its room, and says whom each involves. It is ready
+// once it has subscribed to both.
+func (p *Platform) roomSource(ctx context.Context, tenant, thread string, ready func(), publish func(rooms.Item)) error {
 	opened := time.Now()
 	stream, err := p.Subscribe(ctx, tenant, EventFilter{})
 	if err != nil {
@@ -53,6 +54,7 @@ func (p *Platform) roomSource(ctx context.Context, tenant, thread string, publis
 	defer func() { _ = stream.Close() }()
 	notices, unwatch := p.WatchThreads(tenant)
 	defer unwatch()
+	ready()
 
 	events := make(chan event.Envelope)
 	failed := make(chan error, 1)

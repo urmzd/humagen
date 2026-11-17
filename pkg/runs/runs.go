@@ -914,11 +914,21 @@ func (x *Index) Unfinished() []Run {
 // ledger's call, and the two can disagree: a run that exhausts its retries is
 // failed in the ledger without a final event ever being published.
 func (x *Index) End(tenant, runID string, status Status, answer, failure string, at time.Time) (Run, bool) {
+	return x.EndRecorded(tenant, runID, status, answer, failure, nil, at)
+}
+
+// EndRecorded is End for a run whose usage the ledger already holds: usage,
+// when given, is the runtime's own record of the run, and goes on the run in
+// the write that ends it, as a completed event's does. A reader that sees the
+// run ended therefore sees what it used, never what had been tallied from
+// the events folded so far.
+func (x *Index) EndRecorded(tenant, runID string, status Status, answer, failure string, usage *event.RunUsage, at time.Time) (Run, bool) {
 	return x.update("end", tenant, runID, func(t *txn, r *Run) (Run, bool) {
 		if r.Status.Terminal() || !status.Terminal() {
 			return Run{}, false
 		}
 		t.touch(r)
+		recordUsage(r, usage)
 		if answer != "" {
 			r.Answer = answer
 		}
@@ -933,6 +943,16 @@ func (x *Index) End(tenant, runID string, status Status, answer, failure string,
 		x.finishAssistance(r)
 		return citationSnapshot(r), true
 	})
+}
+
+// recordUsage keeps the runtime's own record of what a run used, once: a
+// record already kept stands.
+func recordUsage(r *Run, usage *event.RunUsage) {
+	if usage == nil || r.final {
+		return
+	}
+	u := *usage
+	r.Usage, r.final = &u, true
 }
 
 // hold keeps a run that has answered open while runs attached to it are still
@@ -1016,11 +1036,18 @@ func (x *Index) AskStop(tenant, runID string, at time.Time) (Run, bool) {
 // what the run had said, and cause is why it stopped. It returns the run and
 // whether this call is what ended it.
 func (x *Index) Stop(tenant, runID, answer, cause string, at time.Time) (Run, bool) {
+	return x.StopRecorded(tenant, runID, answer, cause, nil, at)
+}
+
+// StopRecorded is Stop for a run whose usage the ledger already holds, kept
+// on the run in the write that ends it (see EndRecorded).
+func (x *Index) StopRecorded(tenant, runID, answer, cause string, usage *event.RunUsage, at time.Time) (Run, bool) {
 	return x.update("stop", tenant, runID, func(t *txn, r *Run) (Run, bool) {
 		if r.Status.Terminal() {
 			return Run{}, false
 		}
 		t.touch(r)
+		recordUsage(r, usage)
 		if answer != "" {
 			r.Answer = answer
 		}
