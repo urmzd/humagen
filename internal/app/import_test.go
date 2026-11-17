@@ -388,7 +388,7 @@ func TestImportSkillsStopsAtWhatAScopeHolds(t *testing.T) {
 	server := api.start(t)
 	out, err := runImport(t, "skills", skillStore(t), "--only", "review,ship,tidy", "--server", server.URL)
 	if err == nil || err.Error() != "2 skills were not drafted" || !strings.Contains(out, "Drafted 1 skills") ||
-		!strings.Contains(out, "no room for 2 more: the personal library holds at most 32 skills. Choose which with --only, or draft the rest in another scope: ship, tidy") {
+		!strings.Contains(out, fmt.Sprintf("no room for 2 more: the personal library holds at most %d skills. Choose which with --only, or draft the rest in another scope: ship, tidy", library.MaxSkills)) {
 		t.Fatalf("err = %v\n%s", err, out)
 	}
 	if len(api.skills) != library.MaxSkills {
