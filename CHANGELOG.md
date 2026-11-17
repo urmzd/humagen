@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.123.1 (2026-11-17)
+
+### Bug Fixes
+
+- **console**: keep posted uploads visible in the conversation (#337) ([250556e](https://github.com/urmzd/humagen/commit/250556effef33744aa06c34aa97bdf961e74c521))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.123.0...v0.123.1)
+
+
 ## 0.123.0 (2026-11-17)
 
 ### Features
