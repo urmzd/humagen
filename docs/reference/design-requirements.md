@@ -1964,6 +1964,6 @@ Evidence: `session-center.dom.test.tsx` checks the single waiting link, the
 three-card strip and its destinations, and that nothing is drawn or asked for
 when there is nothing to show or no permission; `session-ux.dom.test.tsx` and
 `roles.dom.test.tsx` check the new words. Console screens `new` and `alerts`
-pass at 1280x800 and 390x844 in light and dark. Artifact cards show no
-preview of their content, and a strip that cannot be read is left out without
-a message.
+and `home-made` pass at 1280x800 and 390x844 in light and dark. Artifact
+cards show no preview of their content. A strip that cannot be read says so in
+one line.

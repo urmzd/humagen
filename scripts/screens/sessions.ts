@@ -127,8 +127,8 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
           version: 1,
           run: `run-${id}`,
           thread: ids.work.id,
-          agent: "screens-native",
-          created_by: "screens-native",
+          agent: "screens-approval",
+          created_by: "screens-approval",
           created_at: at(days),
         });
         await page.route(/\/api\/artifacts\?limit=3$/, (route) =>

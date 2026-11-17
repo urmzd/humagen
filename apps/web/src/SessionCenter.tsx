@@ -700,6 +700,7 @@ export function HomeSessionGlance({
   via?: Pick<StorageTransport, "list">;
 }) {
   const [made, setMade] = useState<Stored[]>([]);
+  const [madeFailed, setMadeFailed] = useState(false);
   // Whether the person has started anything yet, which decides the starters above.
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick asks for a fresh read
   useEffect(() => {
@@ -715,26 +716,33 @@ export function HomeSessionGlance({
       live = false;
     };
   }, [tick, onHasSessions]);
-  // A strip that could not be read is left out: Home still works without it.
+  // A strip that could not be read says so in one quiet line: Home still works without it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick asks for a fresh read
   useEffect(() => {
     if (!canArtifacts) {
       setMade([]);
+      setMadeFailed(false);
       return;
     }
     let live = true;
     via.list({ project: "", agent: "", kind: "", q: "", limit: HOME_MADE }).then(
       (r) => {
-        if (live) setMade(r.artifacts.slice(0, HOME_MADE));
+        if (!live) return;
+        setMade(r.artifacts.slice(0, HOME_MADE));
+        setMadeFailed(false);
       },
-      () => {},
+      () => {
+        // What was read before stays; only a strip with nothing to show says it failed.
+        if (live) setMadeFailed(true);
+      },
     );
     return () => {
       live = false;
     };
   }, [tick, canArtifacts, via]);
   const waiting = attentionAlerts(alerts).length;
-  if (waiting === 0 && made.length === 0) return null;
+  const failed = madeFailed && made.length === 0;
+  if (waiting === 0 && made.length === 0 && !failed) return null;
   const c = defaultCopy.home;
   const link =
     "rounded-aui-sm text-aui-xs text-aui-muted underline-offset-4 hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent";
@@ -754,6 +762,7 @@ export function HomeSessionGlance({
           </a>
         </p>
       )}
+      {failed && <p className="text-center text-aui-xs text-aui-muted">{c.madeFailed}</p>}
       {made.length > 0 && (
         <section aria-labelledby="home-made">
           <div className="flex items-center justify-between gap-3 pb-2">

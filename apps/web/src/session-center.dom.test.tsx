@@ -133,6 +133,24 @@ test("Home shows the three newest artifacts in one strip, each opening where it 
   assert.equal(screen.queryByText(/waiting on you/), null);
 });
 
+test("Home says in one line when its recent artifacts could not be read", async () => {
+  net = stubFetch({ "GET /api/sessions": () => ({ sessions: [], next: "" }) });
+  render(
+    <HomeSessionGlance
+      alerts={[]}
+      go={() => {}}
+      tick={0}
+      via={{
+        list: async () => {
+          throw new Error("offline");
+        },
+      }}
+    />,
+  );
+  assert.ok(await screen.findByText("Recent artifacts could not be loaded."));
+  assert.equal(screen.queryByRole("region", { name: "Recently made" }), null);
+});
+
 test("Home with nothing waiting and nothing made draws nothing, and asks for no artifacts it may not read", async () => {
   net = stubFetch({ "GET /api/sessions": () => ({ sessions: [], next: "" }) });
   let asked = 0;

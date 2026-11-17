@@ -3571,6 +3571,8 @@ export const defaultCopy = {
     /** The strip under the chat bar on the web: the newest things the person's agents made. */
     recentlyMade: "Recently made",
     allArtifacts: "All artifacts",
+    /** In place of the strip when it could not be read. */
+    madeFailed: "Recent artifacts could not be loaded.",
     nothingWaiting: "Nothing needs you right now, and no alerts are open.",
     /** The page's one-line point, after the greeting. */
     notificationCount: (n: number) =>
