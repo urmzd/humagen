@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -59,6 +60,7 @@ type importOptions struct {
 	children bool
 	home     string
 	corpus   string
+	byProj   bool
 
 	// skills and agents
 	dir   string
@@ -111,6 +113,7 @@ func parseImport(args []string, out io.Writer) (importOptions, error) {
 		fs.IntVar(&c.maxBytes, "max-bytes", 48<<10, "the most one session's document may be; a longer session keeps what was asked and cuts answers")
 		fs.BoolVar(&c.children, "children", false, "also add the sessions other sessions started, such as sub-agents'")
 		fs.StringVar(&c.home, "home", home, "the home directory the tools keep their sessions under")
+		fs.BoolVar(&c.byProj, "by-project", false, "put each session in a source named for the directory it ran in (PREFIX-in-NAME), and attach that source to the project of the same name when the workspace has one")
 		fs.StringVar(&c.corpus, "corpus", "", "the corpus the sources are put in, so the console's Knowledge page shows them; left out it is named as --source is, and none puts them in no corpus")
 	case "skills":
 		fs.StringVar(&c.scope, "scope", "personal", "the library scope the skills are drafted in: personal or workspace")
@@ -313,9 +316,13 @@ type sessionsResult struct {
 	Failed  []importFailed `json:"failed"`
 	Sources []string       `json:"sources"`
 	// Corpora are the corpora the sources are in after the import.
-	Corpora []string       `json:"corpora"`
-	DryRun  bool           `json:"dry_run,omitempty"`
-	ByTool  map[string]int `json:"by_tool"`
+	Corpora []string `json:"corpora"`
+	// Attached are the sources now attached to a project, as SOURCE=PROJECT,
+	// and Unfiled the directories no project is named for.
+	Attached []string       `json:"attached,omitempty"`
+	Unfiled  []string       `json:"unfiled,omitempty"`
+	DryRun   bool           `json:"dry_run,omitempty"`
+	ByTool   map[string]int `json:"by_tool"`
 }
 
 type importFailed struct {
@@ -394,6 +401,12 @@ func (k *sessionSink) add(s sessionimport.Session) {
 		month = s.Started.UTC().Format("2006-01")
 	}
 	base := k.c.prefix + "-" + s.Tool + "-" + month
+	what := fmt.Sprintf("Sessions imported from %s, started %s.", s.Tool, month)
+	// By project, a session is kept with the others of its directory.
+	if slug := dirSlug(s.Dir); k.c.byProj && slug != "" {
+		base = k.c.prefix + "-in-" + slug
+		what = "Sessions imported from other assistants that ran in " + filepath.Base(s.Dir) + "."
+	}
 	title := s.Title
 	if s.Dir != "" {
 		title += " (" + filepath.Base(s.Dir) + ")"
@@ -413,7 +426,7 @@ func (k *sessionSink) add(s sessionimport.Session) {
 		if !k.exists[name] {
 			err := k.api.do(k.ctx, http.MethodPost, "/api/knowledge", map[string]string{
 				"name":        name,
-				"description": fmt.Sprintf("Sessions imported from %s, started %s.", s.Tool, month),
+				"description": what,
 			}, nil)
 			if err != nil && status(err) != http.StatusConflict {
 				k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: err.Error()})
@@ -437,6 +450,83 @@ func (k *sessionSink) add(s sessionimport.Session) {
 		return
 	}
 	k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: "every source for " + base + " is full"})
+}
+
+// dirSlug is a directory's last name as a source's name may hold it: lower
+// case letters, digits and hyphens, at most 24. "" is a directory with no
+// name to go by.
+func dirSlug(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range strings.ToLower(filepath.Base(dir)) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case b.Len() > 0 && !strings.HasSuffix(b.String(), "-"):
+			b.WriteByte('-')
+		}
+	}
+	slug := strings.Trim(b.String(), "-")
+	if len(slug) > 24 {
+		slug = strings.Trim(slug[:24], "-")
+	}
+	return slug
+}
+
+// continued matches the name of a source that continues a full one.
+var continued = regexp.MustCompile(`^(.+)-\d+$`)
+
+// attach attaches each by-project source to the workspace's project of the
+// same name, so runs filed there are grounded in the sessions that ran in
+// that directory. A directory no project is named for is reported, and its
+// sessions stay in the corpus.
+func (k *sessionSink) attach() {
+	var listed struct {
+		Projects []struct {
+			Name string `json:"name"`
+		} `json:"projects"`
+	}
+	if err := k.api.do(k.ctx, http.MethodGet, "/api/projects", nil, &listed); err != nil {
+		k.res.Failed = append(k.res.Failed, importFailed{Name: "projects", Reason: err.Error()})
+		return
+	}
+	projects := map[string]string{}
+	for _, p := range listed.Projects {
+		projects[dirSlug(p.Name)] = p.Name
+	}
+	var sources []string
+	for name := range k.exists {
+		sources = append(sources, name)
+	}
+	sort.Strings(sources)
+	in := k.c.prefix + "-in-"
+	unfiled := map[string]bool{}
+	for _, source := range sources {
+		if !strings.HasPrefix(source, in) {
+			continue
+		}
+		slug := strings.TrimPrefix(source, in)
+		// NAME-2 continues NAME, and is its directory's too.
+		if m := continued.FindStringSubmatch(slug); m != nil && k.exists[in+m[1]] {
+			slug = m[1]
+		}
+		project, ok := projects[slug]
+		if !ok {
+			unfiled[slug] = true
+			continue
+		}
+		if err := k.api.do(k.ctx, http.MethodPut, "/api/knowledge/"+url.PathEscape(source)+"/attachment", map[string]string{"project": project}, nil); err != nil {
+			k.res.Failed = append(k.res.Failed, importFailed{Name: source, Reason: err.Error()})
+			continue
+		}
+		k.res.Attached = append(k.res.Attached, source+"="+project)
+	}
+	for slug := range unfiled {
+		k.res.Unfiled = append(k.res.Unfiled, slug)
+	}
+	sort.Strings(k.res.Unfiled)
 }
 
 // maxCorpusMembers is how many sources one corpus holds.
@@ -589,6 +679,9 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 	if !c.dryRun && c.corpus != "none" {
 		sink.file()
 	}
+	if !c.dryRun && c.byProj {
+		sink.attach()
+	}
 	if c.json {
 		if err := json.NewEncoder(out).Encode(res); err != nil {
 			return err
@@ -608,6 +701,12 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 	}
 	for _, f := range res.Failed {
 		fmt.Fprintf(out, "  failed %s: %s\n", f.Name, f.Reason)
+	}
+	if len(res.Attached) > 0 {
+		fmt.Fprintf(out, "Attached to projects: %s.\n", strings.Join(res.Attached, ", "))
+	}
+	if len(res.Unfiled) > 0 {
+		fmt.Fprintf(out, "No project is named for: %s. Their sessions are in the corpus; make the project and run this again to attach them.\n", strings.Join(res.Unfiled, ", "))
 	}
 	switch {
 	case c.dryRun:

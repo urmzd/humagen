@@ -29,9 +29,13 @@ type importServer struct {
 	skills  []map[string]any
 	agents  []map[string]any
 	corpora map[string][]string
-	auth    []string
-	writes  int
-	refused map[string]bool
+	// projects are the workspace's project names, and attached what each
+	// source was attached to.
+	projects []string
+	attached map[string]string
+	auth     []string
+	writes   int
+	refused  map[string]bool
 }
 
 func (s *importServer) start(t *testing.T) *httptest.Server {
@@ -85,6 +89,20 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 			s.docs[parts[1]] = append(s.docs[parts[1]], doc)
 			w.WriteHeader(201)
 			fmt.Fprint(w, `{}`)
+		case r.Method == "GET" && r.URL.Path == "/api/projects":
+			out := []map[string]string{}
+			for _, name := range s.projects {
+				out = append(out, map[string]string{"name": name})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"projects": out})
+		case len(parts) == 3 && parts[0] == "knowledge" && parts[2] == "attachment" && r.Method == "PUT":
+			var body struct{ Project string }
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if s.attached == nil {
+				s.attached = map[string]string{}
+			}
+			s.attached[parts[1]] = body.Project
+			_ = json.NewEncoder(w).Encode(map[string]string{"source": parts[1], "project": body.Project})
 		case len(parts) >= 1 && parts[0] == "corpora":
 			if s.corpora == nil {
 				s.corpora = map[string][]string{}
@@ -529,5 +547,75 @@ func TestImportSessionsCanLeaveSourcesOutOfACorpusOrNameIt(t *testing.T) {
 	}
 	if _, err := runImport(t, "sessions", "--dry-run", "--corpus", "Not Valid"); err == nil || !strings.Contains(err.Error(), "--corpus must be") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestImportSessionsByProjectKeepsADirectorysSessionsTogether(t *testing.T) {
+	api := &importServer{projects: []string{"App", "Field notes"}}
+	server := api.start(t)
+	home := sessionHome(t)
+	out, err := runImport(t, "sessions", "--home", home, "--server", server.URL, "--by-project")
+	if err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	var names []string
+	for name, docs := range api.docs {
+		names = append(names, fmt.Sprintf("%s=%d", name, len(docs)))
+	}
+	sort.Strings(names)
+	if got := strings.Join(names, " "); got != "sessions-in-api=1 sessions-in-app=3" {
+		t.Fatalf("sources = %s", got)
+	}
+	// The directory with a project of its name is attached to it. The
+	// other is named, and stays in the corpus.
+	if len(api.attached) != 1 || api.attached["sessions-in-app"] != "App" {
+		t.Fatalf("attached = %v", api.attached)
+	}
+	for _, want := range []string{
+		"Attached to projects: sessions-in-app=App.",
+		"No project is named for: api. Their sessions are in the corpus; make the project and run this again to attach them.",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("out lacks %q:\n%s", want, out)
+		}
+	}
+	if len(api.corpora["sessions"]) != 2 {
+		t.Fatalf("corpus = %v", api.corpora)
+	}
+	// Once the project exists, a later run attaches what is already there.
+	api.projects = append(api.projects, "api")
+	out, err = runImport(t, "sessions", "--home", home, "--server", server.URL, "--by-project", "--json")
+	var res sessionsResult
+	if jerr := json.Unmarshal([]byte(out), &res); err != nil || jerr != nil || res.Added != 0 || api.attached["sessions-in-api"] != "api" || len(res.Unfiled) != 0 {
+		t.Fatalf("err = %v, json = %v, attached = %v\n%s", err, jerr, api.attached, out)
+	}
+}
+
+func TestImportSessionsByProjectAttachesTheSourcesThatContinueAFullOne(t *testing.T) {
+	api := &importServer{cap: 1, projects: []string{"app"}}
+	server := api.start(t)
+	if out, err := runImport(t, "sessions", "--home", sessionHome(t), "--from", "claude", "--server", server.URL, "--by-project"); err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	for _, name := range []string{"sessions-in-app", "sessions-in-app-2", "sessions-in-app-3"} {
+		if len(api.docs[name]) != 1 || api.attached[name] != "app" {
+			t.Fatalf("%s: docs = %d, attached = %q", name, len(api.docs[name]), api.attached[name])
+		}
+	}
+}
+
+func TestDirSlug(t *testing.T) {
+	for dir, want := range map[string]string{
+		"/work/app":                                      "app",
+		"/Users/me/github/urmzd.com":                     "urmzd-com",
+		"/Users/me/Documents/Frebarz Business":           "frebarz-business",
+		"/work/__init__":                                 "init",
+		"/work/a-very-long-repository-name-that-goes-on": "a-very-long-repository-n",
+		"":  "",
+		"/": "",
+	} {
+		if got := dirSlug(dir); got != want {
+			t.Errorf("dirSlug(%q) = %q, want %q", dir, got, want)
+		}
 	}
 }
