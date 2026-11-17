@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.135.4 (2026-11-17)
+
+### Bug Fixes
+
+- **vendorcli**: take a session once across processes ([1d0351a](https://github.com/urmzd/humagen/commit/1d0351a082c6af829409bd248fc3aac1d468b602))
+- **vendorcli**: continue no session where history was left out ([96688f2](https://github.com/urmzd/humagen/commit/96688f2ba18e9cc45fb76817c929614b46d2f1ab))
+- **vendorcli**: give each branch of a conversation its own CLI session ([ffa0746](https://github.com/urmzd/humagen/commit/ffa074647e9df4a224a33b52d8f8eb4b1507a7ab))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.135.3...v0.135.4)
+
+
 ## 0.135.3 (2026-11-17)
 
 ### Bug Fixes
