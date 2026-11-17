@@ -1,0 +1,26 @@
+[
+  {
+    "file": "scanned-notes.pdf",
+    "bytes": 123326,
+    "sha256": "5b124970181edc54c7bb86c35b948a7f8dcddb155fdff5b471110a3831ee4a8f",
+    "fixture": "GENERATED, not real records or footage"
+  },
+  {
+    "file": "scene.mp4",
+    "bytes": 18118,
+    "sha256": "178d54e8ce6c9ffafe0bf57fe16e2ae4370d34d41425ccb12ab201fc5d5f06ea",
+    "fixture": "GENERATED, not real records or footage"
+  },
+  {
+    "file": "illustration.png",
+    "bytes": 2481608,
+    "sha256": "1ff512e7d2b395b2aaec15caa1529b7cc7db46c603d99ce34b164dd05b5f0b55",
+    "fixture": "GENERATED, not real records or footage"
+  },
+  {
+    "file": "recording.m4a",
+    "bytes": 58782,
+    "sha256": "5e12cbb49b15a280ca4d02d5ab840bf882c8370c99127cc66e70ad45864766ab",
+    "fixture": "GENERATED, not real records or footage"
+  }
+]
