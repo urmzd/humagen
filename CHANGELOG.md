@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.135.1 (2026-11-17)
+
+### Bug Fixes
+
+- **runs**: do not end a run from the ledger while its usage cannot be read ([9b40089](https://github.com/urmzd/humagen/commit/9b4008922389b3204b66e5c37514612561b3c9ad))
+- **runs**: end a run from the ledger with the usage it recorded ([8492ebf](https://github.com/urmzd/humagen/commit/8492ebfc9511e7c81397cd378dae8e8a444399b9))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.135.0...v0.135.1)
+
+
 ## 0.135.0 (2026-11-17)
 
 ### Features
