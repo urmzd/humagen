@@ -605,6 +605,9 @@ remain valid. Gold attention, green success and agent identity colors retain
 their separate meanings. Glass and a thin static color streak belong to chrome;
 content and popovers keep opaque readable surfaces with restrained bevel/shadow.
 Existing button and field helpers share the same variants and sizing.
+Wrapped inline code repeats its padding and rounded background for each fragment,
+and long tokens stay inside the text column. The `session-inline-code` browser
+fixture replays the confirmed message and a long path, checking every fragment.
 Web-only resource browsers remain controlled presentation components;
 the shared surface-neutral contracts and Slack renderer remain intact.
 

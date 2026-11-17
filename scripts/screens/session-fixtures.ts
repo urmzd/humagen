@@ -14,6 +14,9 @@ export const REVIEW_ASK = "Review the canonical session fixture.";
 export const REVIEW_TITLE = "Launch readiness review";
 export const FINDING_TITLE = "Confirm the owner before publication";
 export const ALERT_TITLE = "Confirm the launch briefing owner";
+export const INLINE_CODE_ASK = "Show the inline-code wrapping example.";
+export const INLINE_CODE_ANSWER =
+  "**Green.** The repo's tests also pass (`go test ./...` → `ok example.com/calc`, cached).\n\nRetained file: `workspace/reports/november-2026/budget-reconciliation-notes-approved-for-review.csv`.";
 export const REVIEW_CONTEXT = JSON.parse(
   readFileSync(new URL("./fixture-host/review-context.json", import.meta.url), "utf8"),
 ) as {
@@ -57,6 +60,7 @@ export interface SessionFixtures {
   review: AgentSession;
   approval: AgentSession;
   child: AgentSession;
+  inlineCode: AgentSession;
 }
 
 /** Real session, run, approval, alert and file APIs, backed by the existing local model. */
@@ -164,7 +168,8 @@ export async function seedSessionFixtures(call: Call): Promise<SessionFixtures> 
     priority: "normal",
     message: anchor,
   } satisfies CreateSessionAlertBody);
-  return { work, review, child, approval };
+  const inlineCode = await start({ agent: "screens-writer", text: INLINE_CODE_ASK });
+  return { work, review, child, approval, inlineCode };
 }
 
 /** A completed run alone is insufficient: the host must retain the v2 card and receipt. */

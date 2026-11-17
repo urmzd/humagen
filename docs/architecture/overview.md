@@ -556,6 +556,10 @@ connector acceptance uses a real isolated browser. Existing authenticated tabs
 still require the person to connect the official extension or a CDP endpoint;
 an isolated browser does not establish signed-in portal coverage.
 
+Markdown inline-code fragments retain their own padding and rounded background
+when they wrap, including long unbroken paths. The `session-inline-code` browser
+fixture checks each fragment against its text column at responsive widths.
+
 ### Multimodal message and MCP content
 
 People can supply up to five inline uploads, 25 MiB decoded in total, with a
