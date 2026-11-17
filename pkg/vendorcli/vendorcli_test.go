@@ -497,3 +497,18 @@ func TestACompactionIsReportedOverAnEarlierResult(t *testing.T) {
 		t.Fatalf("said %q, err %v", said, err)
 	}
 }
+
+func TestACompactionTheProgramMadeItselfDoesNotHideTheAnswer(t *testing.T) {
+	out := `{"type":"system","subtype":"init","session_id":"sess-1","model":"claude-test"}
+{"type":"system","subtype":"compact_boundary","session_id":"sess-1","compact_metadata":{"trigger":"auto","pre_tokens":190000,"post_tokens":40000}}
+{"type":"assistant","session_id":"sess-1","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"go test ./..."}}]}}
+{"type":"user","session_id":"sess-1","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}
+{"type":"assistant","session_id":"sess-1","message":{"content":[{"type":"text","text":"The tests pass."}]}}
+{"type":"result","subtype":"success","is_error":false,"session_id":"sess-1","result":"The tests pass.","usage":{"input_tokens":1,"output_tokens":3}}
+`
+	command, _ := program(t, out, 0)
+	said, calls, results, _, err := collect(t, build(t, ClaudeCode, Config{Command: command}, "default"), user("run the tests"))
+	if err != nil || said != "The tests pass." || len(calls) != 1 || len(results) != 1 {
+		t.Fatalf("said %q, calls %v, results %v, err %v", said, calls, results, err)
+	}
+}

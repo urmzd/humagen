@@ -754,8 +754,9 @@ func readClaude(r io.Reader, w *writer) result {
 	records(r, func(line []byte) {
 		var rec struct {
 			Compact struct {
-				Before int `json:"pre_tokens"`
-				After  int `json:"post_tokens"`
+				Trigger string `json:"trigger"`
+				Before  int    `json:"pre_tokens"`
+				After   int    `json:"post_tokens"`
 			} `json:"compact_metadata"`
 			Type      string `json:"type"`
 			Subtype   string `json:"subtype"`
@@ -794,13 +795,16 @@ func readClaude(r io.Reader, w *writer) result {
 			if rec.Subtype == "init" && rec.Model != "" {
 				res.model = rec.Model
 			}
-			if rec.Subtype == "compact_boundary" {
+			// Only a compaction that was asked for is the turn's answer. One
+			// the program makes on its own, in a long session, comes before
+			// the answer to what was asked, which is read as usual.
+			if rec.Subtype == "compact_boundary" && rec.Compact.Trigger == "manual" {
 				compacted = fmt.Sprintf("Compacted the session: %d tokens before, %d after.", rec.Compact.Before, rec.Compact.After)
 			}
 		case "assistant", "user":
 			// What a sub-agent says is its caller's tool result, not the
-			// answer. And after a compaction the program replays what it
-			// kept of the session, which was said in an earlier turn.
+			// answer. And after a compaction that was asked for, the program
+			// replays what it kept of the session, said in an earlier turn.
 			if rec.Parent != "" || compacted != "" {
 				return
 			}
