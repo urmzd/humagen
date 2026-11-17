@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.127.0 (2026-11-17)
+
+### Features
+
+- **models**: carry a conversation on from a Claude Code or Codex session (#340) ([9961025](https://github.com/urmzd/humagen/commit/9961025313bd077f7d6a973770b1c67e143a6ce1))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.126.0...v0.127.0)
+
+
 ## 0.125.0 (2026-11-17)
 
 ### Features
