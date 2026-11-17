@@ -545,6 +545,30 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+### Multimodal message and MCP content
+
+People can supply up to five inline uploads, 25 MiB decoded in total, with a
+session or thread message. The platform sniffs the bytes, stores them through
+saige's existing attachment intake under the principal's tenant, and retains
+immutable references in the transcript and run trigger. Existing attachment
+resolution sends a supported modality to the model and reports unsupported
+forms explicitly. Console queues retain uploaded bytes through waiting, editing
+and retry. Text file selection retains its existing 200 KiB picker cap.
+
+Reviewed workspace and personal MCP tools now return saige's `RichTool` output:
+ordered text, image, audio and embedded document/file parts, with cumulative
+bounds and credential-redacted text. Grant, schema, personal consent and
+revocation checks apply on the rich path. Text-only callers receive a media
+summary. Media bytes are not included in debug logs. Native continuation codecs
+retain inline media; user uploads use the deployment's existing file-blob store.
+Workers must share that store's directory for cross-host attachment reads.
+
+Evidence: `TestAcceptedMCPMediaReachesTheNextModelCall`, personal-tool revocation
+regression, `TestUploadedImageReachesModelAndLaterHistory`, message batch
+validation, API schema tests and `attachments.test.ts`. These are content-path
+checks, not a claim that OCR, video transcription, a signed-in browser, a
+hardware connector or an external provider has been configured.
+
 Session persistence now has a shared-state adapter for stable identities, read
 grants, child admission, usage receipts and an append-only transcript. Thread
 records can carry one immutable session agent. Runtime and console integration

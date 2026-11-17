@@ -55,6 +55,7 @@ var ErrAnswered = errors.New("platform: no longer waiting for an answer")
 
 // ThreadInput starts a thread with its first message.
 type ThreadInput struct {
+	Uploads []Upload `json:"uploads,omitempty"`
 	// Project is where it is filed: "" or "~" is the root.
 	Project string `json:"project"`
 	// Channel is the project's channel. "" is general.
@@ -82,7 +83,8 @@ type ThreadInput struct {
 
 // MessageInput posts a message into a thread.
 type MessageInput struct {
-	Text string `json:"text"`
+	Uploads []Upload `json:"uploads,omitempty"`
+	Text    string   `json:"text"`
 	// messageKey is the message's identity at its origin, which makes it
 	// post once (SendMessages). It is never read from a request.
 	messageKey string
@@ -733,6 +735,9 @@ func detailOf(err, sentinel error) string {
 // message, and starts what the message calls for.
 func (p *Platform) StartThread(ctx context.Context, who auth.Principal, in ThreadInput) (Posted, error) {
 	if in.Surface != nil {
+		if len(in.Uploads) > 0 {
+			return Posted{}, fmt.Errorf("%w: surface files cannot be mixed with inline uploads", threads.ErrInvalid)
+		}
 		return p.startFromSurface(ctx, who, in)
 	}
 	return p.startThread(ctx, who, in, nil)
@@ -740,6 +745,13 @@ func (p *Platform) StartThread(ctx context.Context, who auth.Principal, in Threa
 
 // startThread starts a thread, on a client's surface when on says which.
 func (p *Platform) startThread(ctx context.Context, who auth.Principal, in ThreadInput, on *surfaced) (Posted, error) {
+	if err := checkUploads(in.Uploads); err != nil {
+		return Posted{}, err
+	}
+	if on != nil && len(in.Uploads) > 0 {
+		return Posted{}, fmt.Errorf("%w: surface files cannot be mixed with inline uploads", threads.ErrInvalid)
+	}
+	in.Text = uploadText(in.Text, in.Uploads)
 	by, name, via, slack, err := p.author(who, in.ActAs)
 	if err != nil {
 		return Posted{}, err
@@ -801,6 +813,10 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if mentions, err = skillTags(mentions, on != nil, on == nil && in.ActAs == nil && !in.PostOnly, len(routed) > 0); err != nil {
 		return Posted{}, err
 	}
+	first.Attachments, err = p.storeUploads(ctx, who.Tenant, in.Uploads)
+	if err != nil {
+		return Posted{}, err
+	}
 	if on != nil && on.ref.Files {
 		first.Attachments, err = p.surfaceFiles(ctx, who, on.ref, in.ActAs)
 		if err != nil {
@@ -834,6 +850,10 @@ func clientOf(as *ActAs) string {
 // second post with a surface's id already posted is the first, and starts
 // nothing again.
 func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id string, in MessageInput) (Posted, error) {
+	if err := checkUploads(in.Uploads); err != nil {
+		return Posted{}, err
+	}
+	in.Text = uploadText(in.Text, in.Uploads)
 	// Another tenant's thread is not there, whoever asks.
 	th, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil {
@@ -900,6 +920,13 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	}
 	mentions = p.checkTags(who.Tenant, tree, th.Project, mentions)
 	msg := threads.Message{By: by, Name: name, Text: text, Mentions: mentions, Via: via, Prev: prev, SurfaceID: surfaceID, Spoken: in.Spoken}
+	if on != nil && len(in.Uploads) > 0 {
+		return Posted{}, fmt.Errorf("%w: surface files cannot be mixed with inline uploads", threads.ErrInvalid)
+	}
+	msg.Attachments, err = p.storeUploads(ctx, who.Tenant, in.Uploads)
+	if err != nil {
+		return Posted{}, err
+	}
 	if on != nil && on.ref.Files {
 		msg.Attachments, err = p.surfaceFiles(ctx, who, on.ref, in.ActAs)
 		if err != nil {

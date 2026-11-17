@@ -13677,6 +13677,11 @@ components:
       additionalProperties: false
       required: [text]
       properties:
+        uploads:
+          description: Inline uploaded files, sniffed and stored under the caller's tenant; at most 25 MiB decoded bytes in total.
+          type: array
+          maxItems: 5
+          items: {$ref: "#/components/schemas/Upload"}
         project:
           description: Where it is filed. Empty or `~` is the workspace itself.
           type: string
@@ -13773,6 +13778,11 @@ components:
       additionalProperties: false
       required: [text]
       properties:
+        uploads:
+          description: Inline uploaded files, sniffed and stored under the caller's tenant; at most 25 MiB decoded bytes in total.
+          type: array
+          maxItems: 5
+          items: {$ref: "#/components/schemas/Upload"}
         text: {type: string, maxLength: 8000}
         after:
           description: The turn it follows. Empty follows the latest.
@@ -18936,17 +18946,27 @@ components:
         - {type: string}
         - type: array
           items: {$ref: "#/components/schemas/ContentBlock"}
+    Upload:
+      type: object
+      additionalProperties: false
+      required: [name, data]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 512}
+        data: {type: string, contentEncoding: base64, writeOnly: true, description: "Base64-encoded file bytes, at most 25 MiB decoded across the request."}
+        kind: {type: string, description: "Optional expected content kind, checked against sniffed bytes."}
     ContentBlock:
       description: |
         One block of a message: text; a mention of an agent or a person a
         surface already resolved, which picks who answers as an @mention in
-        the text does; or a link to another place. image, document, audio and
-        answer blocks are refused for now.
+        the text does; or a link to another place. image, document, audio, video and file blocks carry inline base64 data and a name.
+        Their bytes are sniffed and stored as durable attachments. Answer blocks remain refused.
       type: object
       additionalProperties: false
       required: [type]
       properties:
-        type: {type: string, enum: [text, mention, link, image, document, audio, answer]}
+        type: {type: string, enum: [text, mention, link, image, document, audio, video, file, answer]}
+        data: {type: string, contentEncoding: base64, writeOnly: true, description: Base64-encoded file bytes.}
+        name: {type: string, maxLength: 512}
         text: {type: string}
         agent: {type: string}
         person: {type: string}
@@ -19211,6 +19231,11 @@ components:
       required:
       - text
       properties:
+        uploads:
+          description: Inline uploaded files, sniffed and stored under the caller's tenant; at most 25 MiB decoded bytes in total.
+          type: array
+          maxItems: 5
+          items: {$ref: "#/components/schemas/Upload"}
         text:
           type: string
         agent:
@@ -19243,6 +19268,11 @@ components:
       additionalProperties: false
       required: [text]
       properties:
+        uploads:
+          type: array
+          maxItems: 5
+          description: Inline uploaded files, at most 25 MiB decoded bytes in total.
+          items: {$ref: "#/components/schemas/Upload"}
         text: {type: string, maxLength: 8000}
         after:
           description: The turn it follows. Empty follows the latest.

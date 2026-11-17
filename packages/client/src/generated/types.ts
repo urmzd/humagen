@@ -1812,6 +1812,8 @@ export interface ThreadPage {
 channel, visibility and default are left out.
  */
 export interface ThreadInput {
+  /** Inline uploaded files, sniffed and stored under the caller's tenant; at most 25 MiB decoded bytes in total. */
+  uploads?: Upload[];
   /** Where it is filed. Empty or `~` is the workspace itself. */
   project?: string;
   /** The project's channel. Empty is `general`. */
@@ -1873,6 +1875,8 @@ export interface ThreadNotAdded {
 
 /** A message posted in a thread. */
 export interface ThreadMessageInput {
+  /** Inline uploaded files, sniffed and stored under the caller's tenant; at most 25 MiB decoded bytes in total. */
+  uploads?: Upload[];
   text: string;
   /** The turn it follows. Empty follows the latest. */
   after?: string;
@@ -5197,13 +5201,24 @@ export interface InMessage {
 /** A string, or content blocks. */
 export type MessageContent = string | ContentBlock[];
 
+export interface Upload {
+  name: string;
+  /** Base64-encoded file bytes, at most 25 MiB decoded across the request. */
+  data: string;
+  /** Optional expected content kind, checked against sniffed bytes. */
+  kind?: string;
+}
+
 /** One block of a message: text; a mention of an agent or a person a
 surface already resolved, which picks who answers as an @mention in
-the text does; or a link to another place. image, document, audio and
-answer blocks are refused for now.
+the text does; or a link to another place. image, document, audio, video and file blocks carry inline base64 data and a name.
+Their bytes are sniffed and stored as durable attachments. Answer blocks remain refused.
  */
 export interface ContentBlock {
-  type: "text" | "mention" | "link" | "image" | "document" | "audio" | "answer";
+  type: "text" | "mention" | "link" | "image" | "document" | "audio" | "video" | "file" | "answer";
+  /** Base64-encoded file bytes. */
+  data?: string;
+  name?: string;
   text?: string;
   agent?: string;
   person?: string;
@@ -5448,6 +5463,8 @@ export interface RootMessagePage {
 }
 
 export interface SessionInput {
+  /** Inline uploaded files, sniffed and stored under the caller's tenant; at most 25 MiB decoded bytes in total. */
+  uploads?: Upload[];
   text: string;
   agent?: string;
   parent?: string;
@@ -5466,6 +5483,8 @@ export interface SessionInput {
 
 /** A session message with optional routing to a mentioned agent. */
 export interface SessionPostInput {
+  /** Inline uploaded files, at most 25 MiB decoded bytes in total. */
+  uploads?: Upload[];
   text: string;
   /** The turn it follows. Empty follows the latest. */
   after?: string;

@@ -27,13 +27,14 @@ import (
 // SessionInput selects one agent's continuing conversation. Parent is a session
 // ID; external places are accepted only by trusted connector ingress.
 type SessionInput struct {
-	Text        string `json:"text"`
-	Agent       string `json:"agent,omitempty"`
-	Parent      string `json:"parent,omitempty"`
-	Label       string `json:"label,omitempty"`
-	Fresh       bool   `json:"fresh,omitempty"`
-	Project     string `json:"project,omitempty"`
-	SourceAlert string `json:"source_alert,omitempty"`
+	Uploads     []Upload `json:"uploads,omitempty"`
+	Text        string   `json:"text"`
+	Agent       string   `json:"agent,omitempty"`
+	Parent      string   `json:"parent,omitempty"`
+	Label       string   `json:"label,omitempty"`
+	Fresh       bool     `json:"fresh,omitempty"`
+	Project     string   `json:"project,omitempty"`
+	SourceAlert string   `json:"source_alert,omitempty"`
 	// Surface and ActAs are a chat surface's thread and the person a
 	// message from it is posted for: only that client's machine sends them,
 	// and the place's root session is found or started (surface_sessions.go).
@@ -197,6 +198,10 @@ func (p *Platform) sessionAgent(ctx context.Context, who auth.Principal, project
 	return explicit, picked, nil
 }
 func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in SessionInput) (SessionView, error) {
+	if err := checkUploads(in.Uploads); err != nil {
+		return SessionView{}, err
+	}
+	in.Text = uploadText(in.Text, in.Uploads)
 	ctx = context.WithValue(ctx, sessionReaderKey{}, who)
 	if in.Surface != nil {
 		v, _, err := p.StartSurfaceSession(ctx, who, in)
@@ -293,7 +298,7 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 	if existing.Session == nil || existing.Session.SourceAlert != in.SourceAlert {
 		return SessionView{}, fmt.Errorf("%w: this session belongs to another source alert", threads.ErrInvalid)
 	}
-	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: in.Text, Spoken: in.spoken}); err != nil {
+	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: in.Text, Spoken: in.spoken, Uploads: in.Uploads}); err != nil {
 		return SessionView{}, err
 	}
 	return p.ReadSession(ctx, who, rec.ID, "", "", false)
@@ -359,7 +364,7 @@ func (p *Platform) PostSession(ctx context.Context, who auth.Principal, id strin
 		if _, err := p.PostMessage(ctx, who, id, posted); err != nil {
 			return SessionView{}, err
 		}
-		if _, err := p.StartSession(ctx, who, SessionInput{Text: in.Text, Agent: target, Parent: id, Fresh: option.Fresh, Label: option.Label}); err != nil {
+		if _, err := p.StartSession(ctx, who, SessionInput{Text: in.Text, Uploads: in.Uploads, Agent: target, Parent: id, Fresh: option.Fresh, Label: option.Label}); err != nil {
 			return SessionView{}, err
 		}
 		return p.ReadSession(ctx, who, id, "", "", false)

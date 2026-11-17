@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import type { Page } from "playwright-core";
 import { defaultCopy } from "../../packages/components/src/copy.ts";
 import {
@@ -88,6 +89,20 @@ async function filesReady(page: Page): Promise<void> {
 export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
   const session = `/messages/${ids.work.id}`;
   return [
+    {
+      name: "composer-attachments",
+      path: "/",
+      act: async (page) => {
+        await composer(page).waitFor();
+        await page.locator('input[type="file"]').setInputFiles({
+          name: "capture.png",
+          mimeType: "image/png",
+          buffer: readFileSync(new URL("../../showcase/ui-approval.png", import.meta.url)),
+        });
+        await page.getByText("capture.png", { exact: true }).waitFor();
+        await composer(page).fill("Inspect this screenshot.");
+      },
+    },
     {
       name: "new",
       path: "/",
