@@ -165,3 +165,7 @@ func (p *Platform) BeforeMentionCalls(fn func()) {
 	var once sync.Once
 	p.beforeMentionCalls = func() { once.Do(fn) }
 }
+
+// Ingest hands the platform an event a trigger published, as the tags loop
+// does.
+func (p *Platform) Ingest(ctx context.Context, e event.Envelope) { p.ingest(ctx, e) }

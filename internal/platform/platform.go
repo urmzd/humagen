@@ -1609,9 +1609,22 @@ func (p *Platform) ingest(ctx context.Context, tag event.Envelope) {
 	}
 	// A tick names no agent: the schedule it fires does.
 	if tick, ok := tag.Data.(event.CronTick); ok && wire.AgentOf(tag) == "" {
-		if sc, found, err := p.Schedules.Get(tag.Tenant, tick.Schedule); err == nil && found {
-			wire.SetAgent(&tag, sc.Agent)
+		// Get's second result is whether the schedule is paused, not whether
+		// it exists: a schedule that is gone is an error.
+		sc, paused, err := p.Schedules.Get(tag.Tenant, tick.Schedule)
+		if err != nil {
+			p.log.Error("platform: accept event", "event", tag.ID, "type", tag.Type, "schedule", tick.Schedule, "error", err)
+			return
 		}
+		// A paused schedule runs nothing on the clock. The connector is not
+		// shown one (Schedules.Schedules), so its ticks normally stop at the
+		// source: this catches the tick published just before the pause.
+		// Run now does not come through here, and works while paused.
+		if paused {
+			p.log.Info("platform: a paused schedule's tick was not run", "event", tag.ID, "schedule", tick.Schedule)
+			return
+		}
+		wire.SetAgent(&tag, sc.Agent)
 	}
 	if r, err := p.Invoke(ctx, tag); err != nil {
 		p.log.Error("platform: accept event", "event", tag.ID, "type", tag.Type, "agent", wire.AgentOf(tag), "error", err)
