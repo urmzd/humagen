@@ -552,6 +552,13 @@ preserved. Checked on Codex CLI 0.167.0 and a generated fixture. Files stay on
 the CLI host; automatic console publication and image-specific journal events
 are not covered. Edits can change texture outside the requested region.
 
+Office files have a [configured CLI path](../guides/office-files.md): an agent
+on Claude Code edits a `.docx` run by run and audits `.xlsx` formulas across
+saved revisions, in a folder on this host. Checked on generated files, with a
+part-by-part comparison and Quick Look renders of the document; real
+templates, Word and Excel, tracked changes and cloud revision history are not
+covered.
+
 Public-source research has a [configured CLI path](../guides/public-web.md)
 with built-in tools restricted to WebSearch and WebFetch; the program's user
 settings, hooks and plugins still load. A real HTTP run executed both and its
@@ -573,9 +580,16 @@ and opens/closes Details before its capture.
 Browser automation has a pinned external-worker path in
 [the browser guide](../guides/browser.md): explicit MCP grants, inline page
 snapshots, interactions, selected downloads, and image results. The local
-connector acceptance uses a real isolated browser. Existing authenticated tabs
-still require the person to connect the official extension or a CDP endpoint;
-an isolated browser does not establish signed-in portal coverage.
+connector acceptance uses a real isolated browser. The optional Claude Code
+profile and connected acceptance helper also exercise an independently launched,
+signed-in local fixture through an explicit CDP endpoint: actual model screenshot
+interpretation, the same retained tab, a selected action and exact-byte CSV reads
+pass at both widths and themes. The CLI's restricted file tools actually refuse
+an outside-directory Read; capture artifacts and previously verified downloads
+stay outside that directory. Wire receipts verify inline PNG blocks, not just
+saved paths. Third-party portal login, SSO/MFA and extension
+handoff remain unverified. Prompts are not tab authorization boundaries; existing
+browser downloads follow Chrome settings and need explicit shared file access.
 
 Markdown inline-code fragments retain their own padding and rounded background
 when they wrap, including long unbroken paths. The `session-inline-code` browser
