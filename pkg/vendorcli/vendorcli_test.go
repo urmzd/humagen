@@ -642,3 +642,93 @@ func TestTheProviderSaysWhatTheProgramCanBeShown(t *testing.T) {
 		}
 	}
 }
+
+func TestAConversationCarriesOnFromASessionAPersonNames(t *testing.T) {
+	id := "67f9a5c0-ca00-4dbe-8ece-3808aef67c44"
+	t.Run(ClaudeCode, func(t *testing.T) {
+		command, record := program(t, claudeOut, 0)
+		p := build(t, ClaudeCode, Config{Command: command}, "default")
+		if _, _, _, _, err := collect(t, p, platformAsk("", "", "/resume "+id+" where were we?")); err != nil {
+			t.Fatal(err)
+		}
+		got := args(t, record, 0)
+		// A copy carries on, and it is asked only what the person asked.
+		if got[1] != "where were we?" || !strings.Contains(strings.Join(got, " "), "--resume "+id+" --fork-session") {
+			t.Fatalf("args %q", got)
+		}
+		// The conversation then continues in the copy, not in the named session.
+		if _, _, _, _, err := collect(t, p, platformAsk("r1", "Dev (@dev): /resume "+id+" where were we?\ncoder (agent): Looking. Fixed.", "go on")); err != nil {
+			t.Fatal(err)
+		}
+		if second := strings.Join(args(t, record, 1), " "); !strings.Contains(second, "--resume sess-1") || strings.Contains(second, "--fork-session") {
+			t.Fatalf("second run: %s", second)
+		}
+	})
+	t.Run("only as a first message, and only an id", func(t *testing.T) {
+		command, record := program(t, claudeOut, 0)
+		p := build(t, ClaudeCode, Config{Command: command}, "default")
+		for _, ask := range []string{"/resume", "/resume ../../etc", "/resume --dangerously-skip-permissions", "please /resume " + id} {
+			if _, _, _, _, err := collect(t, p, user(ask)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// Later in a conversation it is something typed, not a session to take.
+		if _, _, _, _, err := collect(t, p, user("hello"), assistant("hi"), user("/resume "+id)); err != nil {
+			t.Fatal(err)
+		}
+		for n := range 5 {
+			if got := strings.Join(args(t, record, n), " "); strings.Contains(got, "--fork-session") {
+				t.Fatalf("run %d took a session: %s", n, got)
+			}
+		}
+		// With nothing more said, the session is asked where it stands.
+		if _, _, _, _, err := collect(t, p, user("/resume "+id)); err != nil {
+			t.Fatal(err)
+		}
+		if got := args(t, record, 5); got[1] != resumeAsk {
+			t.Fatalf("asked %q", got[1])
+		}
+	})
+}
+
+func TestACodexSessionFromAnotherDirectoryIsNotCarriedOn(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	inside, outside := t.TempDir(), t.TempDir()
+	session := func(id, dir string) {
+		path := filepath.Join(home, ".codex", "sessions", "2026", "11", "17")
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := `{"type":"session_meta","payload":{"id":"` + id + `","cwd":"` + dir + `"}}` + "\n" +
+			`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}}` + "\n"
+		if err := os.WriteFile(filepath.Join(path, "rollout-2026-11-17T00-00-00-"+id+".jsonl"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	session("aaaaaaaa-0000-0000-0000-000000000001", filepath.Join(inside, "sub"))
+	session("bbbbbbbb-0000-0000-0000-000000000002", outside)
+	command, record := program(t, codexOut, 0)
+	p := build(t, Codex, Config{Command: command, Dir: inside, Permissions: "read-only"}, "default")
+
+	if _, _, _, _, err := collect(t, p, user("/resume aaaaaaaa-0000-0000-0000-000000000001 go on")); err != nil {
+		t.Fatal(err)
+	}
+	// The copy is given this provider's sandbox, and takes no directory.
+	want := []string{"exec", "fork", "aaaaaaaa-0000-0000-0000-000000000001", "-c", `sandbox_mode="read-only"`, "--json", "--skip-git-repo-check", "--", "go on"}
+	if got := args(t, record, 0); strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("args\n got %q\nwant %q", got, want)
+	}
+	for id, why := range map[string]string{
+		"bbbbbbbb-0000-0000-0000-000000000002": "outside this agent's directory",
+		"cccccccc-0000-0000-0000-000000000003": "codex has no session",
+	} {
+		_, err := p.Stream(context.Background(), saigetypes.Request{Messages: []saigetypes.Message{user("/resume " + id)}})
+		if !errors.Is(err, ErrSession) || !strings.Contains(err.Error(), why) {
+			t.Fatalf("%s: err = %v", id, err)
+		}
+	}
+	if runs, _ := filepath.Glob(filepath.Join(record, "*.args")); len(runs) != 1 {
+		t.Fatalf("the program ran for a refused session: %d runs", len(runs))
+	}
+}

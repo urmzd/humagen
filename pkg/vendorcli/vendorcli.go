@@ -41,6 +41,7 @@ import (
 	"github.com/urmzd/saige/flow/turn/native"
 
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/sessionimport"
 )
 
 // The kinds of program.
@@ -229,6 +230,12 @@ type turnOf struct {
 	// earlier are those sent with earlier messages, which a session that
 	// is starting has not seen.
 	media, earlier []media
+	// fork is a session of the program's own that this conversation is to
+	// carry on from: one a person names with /resume as a conversation's
+	// first message. The program copies it, so the original is not changed.
+	fork string
+	// forkAsk is what that session is asked.
+	forkAsk string
 }
 
 // media is one image or document a person sent.
@@ -492,9 +499,90 @@ func (p *provider) remember(key, session string) {
 	}
 }
 
+// resumeLine is a conversation's first message that asks to carry on from a
+// session of the program's own: "/resume ID", and optionally what to ask it.
+var resumeLine = regexp.MustCompile(`^/resume[ \t]+([0-9A-Za-z][0-9A-Za-z-]{7,63})(?:\s+([\s\S]+))?$`)
+
+// resumeAsk is what a session is asked when a person names it and says
+// nothing more.
+const resumeAsk = "Carry on from where this session left off. First say, in two sentences, where it stands."
+
+// resumed reads a first message as a request to carry on from a session. It
+// returns the session and what to ask it, or "" when the message is not one.
+func resumed(ask string) (session, rest string) {
+	m := resumeLine.FindStringSubmatch(strings.TrimSpace(lastParagraph(ask)))
+	if m == nil {
+		return "", ""
+	}
+	if rest = strings.TrimSpace(m[2]); rest == "" {
+		rest = resumeAsk
+	}
+	return m[1], rest
+}
+
+// ErrSession is a session a conversation may not carry on from.
+var ErrSession = errors.New("vendorcli: session")
+
+// mayFork refuses a session that began outside the provider's directory. A
+// copy of a Codex session works where the original did, so one from another
+// directory would take the agent out of the directory the configuration
+// gave it. Claude Code finds a session only from the directory it began in,
+// so it needs no check here.
+func (p *provider) mayFork(session string) error {
+	if session == "" || p.kind != Codex {
+		return nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrSession, err)
+	}
+	var found string
+	for _, root := range []string{"sessions", "archived_sessions"} {
+		for _, depth := range []string{"", "*", filepath.Join("*", "*"), filepath.Join("*", "*", "*")} {
+			paths, _ := filepath.Glob(filepath.Join(home, ".codex", root, depth, "*"+session+".jsonl*"))
+			if len(paths) > 0 {
+				found = paths[0]
+			}
+		}
+	}
+	if found == "" {
+		return fmt.Errorf("%w: codex has no session %s on this host", ErrSession, session)
+	}
+	s, err := sessionimport.Open(sessionimport.Codex, found)
+	if err != nil && !errors.Is(err, sessionimport.ErrNotSession) {
+		return fmt.Errorf("%w: %s: %v", ErrSession, session, err)
+	}
+	began, dir := realPath(s.Dir), realPath(p.cfg.Dir)
+	if s.Dir == "" || (began != dir && !strings.HasPrefix(began, dir+string(filepath.Separator))) {
+		return fmt.Errorf("%w: session %s began in %q, outside this agent's directory %q", ErrSession, session, s.Dir, p.cfg.Dir)
+	}
+	return nil
+}
+
+// realPath is path with its links followed, as far along it as exists: a
+// session's directory may be gone, and what is left of it still says where
+// it was.
+func realPath(path string) string {
+	path = filepath.Clean(path)
+	rest := ""
+	for at := path; ; {
+		if real, err := filepath.EvalSymlinks(at); err == nil {
+			return filepath.Join(real, rest)
+		}
+		parent := filepath.Dir(at)
+		if parent == at {
+			return path
+		}
+		rest, at = filepath.Join(filepath.Base(at), rest), parent
+	}
+}
+
 // prompt is what the program is asked: the new message alone when it
 // continues its own session, and otherwise the conversation so far with it.
 func prompt(t turnOf, resumed bool) string {
+	if t.fork != "" {
+		return t.forkAsk
+	}
 	// A command of the program's own, such as /compact, is one only when it
 	// is all the program is given. It acts on the session, so it is passed
 	// alone only to a session that is being continued.
@@ -567,6 +655,10 @@ func (p *provider) command(t turnOf, session string) (args []string, stdin []byt
 		if session != "" {
 			args = append(args, "--resume", session)
 		}
+		if t.fork != "" {
+			// A copy carries on, so the session a person named stays as it was.
+			args = append(args, "--resume", t.fork, "--fork-session")
+		}
 		if len(p.cfg.Allow) > 0 {
 			args = append(args, "--allowedTools", strings.Join(p.cfg.Allow, ","))
 		}
@@ -576,9 +668,15 @@ func (p *provider) command(t turnOf, session string) (args []string, stdin []byt
 		if session != "" {
 			args = append(args, "resume", session)
 		}
+		if t.fork != "" {
+			// A copy keeps the directory it began in, which mayFork has
+			// checked, and is given this provider's sandbox, not its own.
+			args = append(args, "fork", t.fork, "-c", "sandbox_mode="+strconv.Quote(p.cfg.Permissions))
+		}
 		args = append(args, "--json", "--skip-git-repo-check")
-		if session == "" {
-			// A resumed session keeps the sandbox and directory it began with.
+		if session == "" && t.fork == "" {
+			// A resumed session, and a copy of one, keeps the sandbox and
+			// directory it began with.
 			args = append(args, "--sandbox", p.cfg.Permissions, "--cd", p.cfg.Dir)
 		}
 		if model != "" {
@@ -643,6 +741,13 @@ func (p *provider) Stream(ctx context.Context, req saigetypes.Request) (<-chan s
 		}
 	case len(t.before) > 0:
 		session = p.session(p.key(t.before))
+	}
+	// A conversation that has no session yet may name one to carry on from.
+	if session == "" && len(t.before) == 0 {
+		t.fork, t.forkAsk = resumed(t.ask)
+		if err := p.mayFork(t.fork); err != nil {
+			return nil, err
+		}
 	}
 	args, stdin, cleanup, err := p.command(t, session)
 	if err != nil {
