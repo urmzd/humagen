@@ -93,7 +93,7 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 			run, err = p.keepOutput(run)
 			return err
 		}},
-		{"operation", func() error { return p.Operations.Settle(run.Tenant, run.ID, run.Status == runs.Completed, p.now()) }},
+		{"operation", func() error { return p.settleRunOperations(ctx, run) }},
 		{"usage", func() error { return p.settleUsage(ctx, run) }},
 		{"alerts", func() error { return p.raise(run) }},
 		{"online_eval", func() error { return p.scoreOnline(run) }},
