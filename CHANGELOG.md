@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.134.0 (2026-11-17)
+
+### Features
+
+- **browser**: verify uploaded pixels against a changed page ([fa936f2](https://github.com/urmzd/humagen/commit/fa936f2f163b806576c58de0418518e30b8394c7))
+
+### Misc
+
+- **browser**: require changed screenshot response bytes ([a388ac1](https://github.com/urmzd/humagen/commit/a388ac11fc254fd12bc95bfb21060144441197a7))
+- **browser**: reject code evaluation during pixel comparison ([51840de](https://github.com/urmzd/humagen/commit/51840dee30d5664c8ff5c9ca89625dab29787ed4))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.133.0...v0.134.0)
+
+
 ## 0.133.0 (2026-11-17)
 
 ### Features
