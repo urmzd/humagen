@@ -1,0 +1,60 @@
+# Visual acceptance evidence
+
+These are actual captured pixels. Codex opened and inspected every listed image. Only public synthetic fixtures, public documentation, and a credential-free configuration check are included.
+
+## Media transport, PR330
+
+Same capture.png and draft, same canonical fixture, light/dark and both widths. Before:216ee14f5 rejects PNG. After:eca9872fe accepts it. The historical capture harness adds the scenario only; application code is unchanged.
+
+| Theme and viewport | Before | After |
+|---|---|---|
+| light, 390x844 | ![](media-paired/before/light/390x844/new.png) | ![](media-paired/after/light/390x844/composer-attachments.png) |
+| light, 1280x800 | ![](media-paired/before/light/1280x800/new.png) | ![](media-paired/after/light/1280x800/composer-attachments.png) |
+| dark, 390x844 | ![](media-paired/before/dark/390x844/new.png) | ![](media-paired/after/dark/390x844/composer-attachments.png) |
+| dark, 1280x800 | ![](media-paired/before/dark/1280x800/new.png) | ![](media-paired/after/dark/1280x800/composer-attachments.png) |
+
+## Browser connector, PR334
+
+Actual Playwright MCP0.0.85 through Humagen RichTool. Within each pair the same page changes its heading after a reference-based click; selected CSV bytes and PNG pixels are independently checked. The page itself verifies light/dark appearance.
+
+| Theme and viewport | Before action | After action |
+|---|---|---|
+| light, 390x844 | ![](browser-paired/light/390x844/before.png) | ![](browser-paired/light/390x844/after.png) |
+| light, 1280x800 | ![](browser-paired/light/1280x800/before.png) | ![](browser-paired/light/1280x800/after.png) |
+| dark, 390x844 | ![](browser-paired/dark/390x844/before.png) | ![](browser-paired/dark/390x844/after.png) |
+| dark, 1280x800 | ![](browser-paired/dark/1280x800/before.png) | ![](browser-paired/dark/1280x800/after.png) |
+
+## Real configuration command
+
+Same command and100x18 terminal size, run in an actual PTY. Before has no shipped browser config. After validates it and explicitly reports the unset model API key.
+
+| Before | After |
+|---|---|
+| ![](browser-terminal/browser-config-before.png) | ![](browser-terminal/browser-config-after.png) |
+
+## Rendered documentation
+
+Same documentation section and viewport, with scroll settled. The mobile index table has pre-existing horizontal overflow in both states; its rightmost column was not fully visible.
+
+| Theme and viewport | Before index | After index |
+|---|---|---|
+| light, 390x844 | ![](browser-doc-index/docs-index-section-before-light-390x844.png) | ![](browser-doc-index/docs-index-section-after-light-390x844.png) |
+| light, 1280x800 | ![](browser-doc-index/docs-index-section-before-light-1280x800.png) | ![](browser-doc-index/docs-index-section-after-light-1280x800.png) |
+| dark, 390x844 | ![](browser-doc-index/docs-index-section-before-dark-390x844.png) | ![](browser-doc-index/docs-index-section-after-dark-390x844.png) |
+| dark, 1280x800 | ![](browser-doc-index/docs-index-section-before-dark-1280x800.png) | ![](browser-doc-index/docs-index-section-after-dark-1280x800.png) |
+
+The browser guide is new, so no earlier guide existed to capture. Its first viewport and full page were opened in each theme and width. Fenced commands scroll horizontally on a phone.
+
+| Theme and viewport | First viewport | Full guide |
+|---|---|---|
+| light, 390x844 | ![](browser-guide/browser-guide-top-light-390x844.png) | [Full guide](browser-guide/browser-guide-light-390x844.png) |
+| light, 1280x800 | ![](browser-guide/browser-guide-top-light-1280x800.png) | [Full guide](browser-guide/browser-guide-light-1280x800.png) |
+| dark, 390x844 | ![](browser-guide/browser-guide-top-dark-390x844.png) | [Full guide](browser-guide/browser-guide-dark-390x844.png) |
+| dark, 1280x800 | ![](browser-guide/browser-guide-top-dark-1280x800.png) | [Full guide](browser-guide/browser-guide-dark-1280x800.png) |
+
+## Unseen states
+
+- Signed-in portal/extension handoff and a real model interpreting browser screenshots remain unverified.
+- Native desktop capture/actions remain blocked by the locked Mac GUI.
+- Documentation links were not followed, and mobile tables/code blocks were not panned horizontally.
+- This is visual/connector evidence, not the final all-main end-to-end audit.
