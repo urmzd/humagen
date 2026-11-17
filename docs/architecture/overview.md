@@ -197,7 +197,10 @@ of totals.
 An attached run (tagged, the caller waits) is rolled up into its caller: once
 it has ended and the ledger records it, the Delegator calls
 `runtime.ReportChildUsage`, and the caller's `usage.children` and `usage.total`
-include it, once. A delegated run (a background `agent` call) is not rolled up: the turn
+include it, once. A run the platform ends from the ledger, before it has
+observed the run's final event, is ended with the usage the runtime recorded
+in the same write, so a caller that reads it as ended reads all it used and
+does not leave it out. A delegated run (a background `agent` call) is not rolled up: the turn
 that handed it over has moved on, so there is no turn to report it to. Its
 spend is the same request's work, so it counts against the same budgets: every
 run in a tree counts against its root's project and client, its own agent, and
@@ -860,7 +863,7 @@ and GitHub release from `main`, using the main-only `release` environment.
 | Parking a run on a person: approvals of tool calls, choices and replies (`ask_person`), on fiber v0.11.0 with the run queue as waker, Humagen's roles, and a question deadline. See [People in the loop](#people-in-the-loop) | Built. Answer recording and inbox settlement are serialized so resumed or terminal events cannot drop surface attribution. Tested under the race detector with scripted models: each kind, who may answer, a requester refused, two answers at once, expiry, stop while parked, a called run's question, usage counted once, tenant isolation. Not run against a real model here: no model key was available |
 | Agent editor: may ask a person, approve a tool first, who may approve, self-approval, who may answer | Built. Not checked in a browser |
 | Run manifest: one JSON document of a run, every run under it, each pinned definition, every event with its body, and the tree's usage | Built, from the journal. A run older than the journal's ring comes back marked incomplete |
-| Token counts, context window and cost per run: `usage` on the run (own, rolled-up attached runs, total, context), live while it works and the runtime's record once it ends, recorded once whatever is redelivered | Built, tested with redelivered events, a reconciler pass, a stopped run and a three-run tree. Context fill is the latest call's prompt against the window saige's catalog declares; a model with no declared window shows tokens only |
+| Token counts, context window and cost per run: `usage` on the run (own, rolled-up attached runs, total, context), live while it works and the runtime's record once it ends, recorded once whatever is redelivered | Built, tested with redelivered events, a reconciler pass, a stopped run and a three-run tree. A run ended from the ledger carries the usage the runtime recorded in the write that ends it, and is not ended in a pass where that record cannot be read. Context fill is the latest call's prompt against the window saige's catalog declares; a model with no declared window shows tokens only |
 | Leases on real cost: a called run is held to its lease by what it spends and what it has handed on, and settles with its caller when it ends, climbing past a caller that settled first | Built, tested, with a grant made before the caller's own call was counted and a call that ends after its caller. An API caller still names a lease; an agent's own calls lease half of what is left |
 | Usage in the Slack app | Not shown, on purpose: the console shows none on a turn either. A Humagen usage summary would let both show it |
 | Uploading binary files (PDF, images) to knowledge or a message | Not built. Files are read as text in the browser |
