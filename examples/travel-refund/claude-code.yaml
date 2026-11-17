@@ -1,0 +1,76 @@
+# Trusted local trial. Set both dir fields to the existing absolute folder
+# that holds the booking records. Two agents share it: travel-research can
+# read and open public pages and cannot write; travel-clerk can also write,
+# under out/ only. Nothing here sends a message or submits a form.
+api_version: humagen/v1
+kind: System
+metadata: {name: travel-refund-local}
+spec:
+  server: {addr: '127.0.0.1:8080'}
+  auth: {kind: dev, tenant: {fixed: default}}
+  stores: {kind: memory}
+  sandbox: {kind: unisolated}
+---
+api_version: humagen/v1
+kind: Platform
+metadata: {name: default}
+spec:
+  models:
+    - name: travel-read-cli
+      kind: claude-code
+      claude-code:
+        dir: /absolute/path/to/booking
+        permissions: default
+        allow: ['Read(./**)', 'Glob(./**)', 'Grep(./**)', WebSearch, WebFetch]
+        timeout: 20m
+        args:
+          - --restricted
+          - --tools
+          - Read,Glob,Grep,WebSearch,WebFetch
+          - --strict-mcp-config
+          - --mcp-config
+          - '{"mcpServers":{}}'
+    - name: travel-write-cli
+      kind: claude-code
+      claude-code:
+        dir: /absolute/path/to/booking
+        permissions: default
+        allow: ['Read(./**)', 'Glob(./**)', 'Grep(./**)', 'Edit(./out/**)', WebSearch, WebFetch]
+        timeout: 20m
+        args:
+          - --restricted
+          - --tools
+          - Read,Glob,Grep,Write,WebSearch,WebFetch
+          - --strict-mcp-config
+          - --mcp-config
+          - '{"mcpServers":{}}'
+  agents:
+    - spec:
+        name: travel-research
+        description: Reads a booking and the current policy and explains the refund path
+        provider: travel-read-cli
+        model: sonnet
+        system_prompt: >-
+          You read the booking records in your working directory and the
+          current official policy pages, and explain what refund the records
+          and the policy support. Quote the itinerary facts from the record
+          that states them, with its file name. For a rule, open the
+          official page and cite the exact URL you opened; a search snippet
+          is not a source. Say what the records do not show. Never put a
+          person's name, a booking reference or a ticket number into a
+          search or a URL. You cannot write files, send messages or submit
+          forms, and you do not try another way to.
+    - spec:
+        name: travel-clerk
+        description: Writes the refund request a person has approved, under out/
+        provider: travel-write-cli
+        model: sonnet
+        system_prompt: >-
+          You write the one document the person asks for, under out/ in your
+          working directory, from the booking records there. Use only facts
+          the records state, copied exactly: reference, flight, dates,
+          amounts. Leave a blank marked TO FILL for anything the records do
+          not state. For a rule you cite, open the official page and give
+          the exact URL. Never put a person's name, a booking reference or a
+          ticket number into a search or a URL. You write the document and
+          nothing else: you do not send it, and you say so.

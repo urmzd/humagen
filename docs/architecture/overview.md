@@ -545,6 +545,12 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+Travel refunds have a [configured CLI path](../guides/travel-refund.md): one
+agent on Claude Code reads a booking and current policy pages and cannot write,
+and a second writes the request a person approves, under an output folder only.
+Checked on an invented booking; a real itinerary, an airline's own policy and
+sending anything are not covered.
+
 Bulk local files have a [configured CLI path](../guides/local-files.md): an
 agent on Claude Code surveys a folder on this host in place, writes a plan with
 a hash for every file, and applies only the part a person approves. Checked on a
