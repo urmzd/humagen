@@ -1,0 +1,258 @@
+[
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/goals/contains-screens/contains-before-1280x800-light.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/contains-before-1280x800-light.png",
+    "sha256": "aa6ba761255fda47d6cf27b4bb45e5bee8eb4aaed085c4f55ef66a13c50fda2d",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/goals/contains-screens/contains-after-1280x800-dark.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/contains-after-1280x800-dark.png",
+    "sha256": "0dab178e02fe22ce6fd7b5c50a1168280ca3f86a45d19a2fc139a4ba7d53e661",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/goals/contains-screens/contains-after-390x844-dark.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/contains-after-390x844-dark.png",
+    "sha256": "f3b1f4387ac62baabf8cccda1b38cbb6d1612d09d246a2c96753c6a09a7339d0",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/goals/contains-screens/contains-before-390x844-dark.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/contains-before-390x844-dark.png",
+    "sha256": "3500fbbecec9ae1d029369751a21bec19cf3b4f85b6a4c8098a969d0084a2adc",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/goals/contains-screens/contains-after-390x844-light.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/contains-after-390x844-light.png",
+    "sha256": "7f9d3c8d3bd5db3f3c5908579e89893a0a7e970a1eb97b9a58a62613e89e66b6",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/goals/contains-screens/contains-before-1280x800-dark.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/contains-before-1280x800-dark.png",
+    "sha256": "c05878b234ba0150f19a0cc739e1a94f0465e3b2698490feaecbb64a94f1a376",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/goals/contains-screens/contains-before-390x844-light.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/contains-before-390x844-light.png",
+    "sha256": "b4430a3ce2ee6f5ed421f2592ff637d90cd94a9717865682ba507bb0c76a71ff",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/goals/contains-screens/contains-after-1280x800-light.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/contains-after-1280x800-light.png",
+    "sha256": "c402f13bd6f90d5e00827d438d1fef27702660ab7da4b7193474964424ea2262",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/rendered/records-sources-1280x800-light.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/records-sources-1280x800-light.png",
+    "sha256": "2dd5621c160a81cdeac0015bf20daef88c2a05b5aa723d497406a0a164aae228",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/rendered/records-sources-390x844-dark.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/records-sources-390x844-dark.png",
+    "sha256": "652cce270180becceba3fdd442bee41c488aa331a530cfb8658606b48f652cc6",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/rendered/records-sources-390x844-light.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/records-sources-390x844-light.png",
+    "sha256": "5a0407ff8ca808cb36f14a63937d7d566d333479dd326dfccb6ad1142493d9c1",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/rendered/records-sources-1280x800-dark.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/records-sources-1280x800-dark.png",
+    "sha256": "eb1ab5d008f4d078dd5152f40fcc8bd2ee85a2de0a8a252ff03238e740c08c9a",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/rendered/travel-request-1280x800-light.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/travel-request-1280x800-light.png",
+    "sha256": "bf9edf867a6bf81d3a51eb1d94cb640e5cbcfd31550866acc4329e96dad8ae35",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/rendered/travel-request-1280x800-dark.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/travel-request-1280x800-dark.png",
+    "sha256": "76c94bff6893ba5609873a6fde509b77ff76492bdc1fa95ee3cf5b799246ae73",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/rendered/travel-request-390x844-dark.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/travel-request-390x844-dark.png",
+    "sha256": "68d1216077e6c9dcec92304e738e6f446751f9e6164a7657e794a6b39c2bd7b5",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/rendered/travel-request-390x844-light.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/travel-request-390x844-light.png",
+    "sha256": "eb0bccb9055712a357a7e8a6b9fa959358d847a57df2ff9483337864d7de25b7",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/rendered/office-audit-1280x800-dark-before.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/office-audit-1280x800-dark-before.png",
+    "sha256": "d8a8354855717d3968aa90042461d1a1a2bbd46a8db51b7810c4958ab123a9cb",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/rendered/office-audit-1280x800-light-before.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/office-audit-1280x800-light-before.png",
+    "sha256": "30cf6986d24b6043ab37cb9e98db9d89af3f84150a4983a4fdfd664098a66041",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/rendered/office-audit-390x844-dark-before.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/office-audit-390x844-dark-before.png",
+    "sha256": "8447bd87d58d955d85640aa607f8c307d1280bfa5ee2d4c02892312980d7f8f2",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/rendered/office-audit-390x844-light-before.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/office-audit-390x844-light-before.png",
+    "sha256": "227166bbf1c5d779dfce6937e7feacf8a5d2b35902f4cc19a92a2122d21834e9",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/rendered/office-audit-1280x800-dark-after.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/office-audit-1280x800-dark-after.png",
+    "sha256": "2ccbe2cc260906ff852f071ca4ab033b6dea10974bf78b41cfd7f08ac5d83afd",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/rendered/office-audit-1280x800-light-after.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/office-audit-1280x800-light-after.png",
+    "sha256": "ae3b0733dd2e58effe4600d5b5f991b50703c5108ee5c395de5edd71257e78c4",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/rendered/office-audit-390x844-dark-after.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/office-audit-390x844-dark-after.png",
+    "sha256": "e4184bcdf4975ede4eaa0bbca575b201f7d5a2538d44efe4d268bb6bb66ed0f7",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/rendered/office-audit-390x844-light-after.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/office-audit-390x844-light-after.png",
+    "sha256": "1b8775402f5684260d9d872fa1821bffed5b1c31cc0181e54e560ff773c783e8",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/terminal-screens/bulk-before.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/bulk-before.png",
+    "sha256": "e56bafccc96b396e840176c2a45f518b2b224261cfba8950de48869d05bfed2c",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/terminal-screens/finance-before.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/finance-before.png",
+    "sha256": "730e287dfc37dc8ab5b0d1bb51eac806f97d9b28ada1470f00a0f03d1eec47c8",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/terminal-screens/detached-before.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/detached-before.png",
+    "sha256": "eed4ed759bcc6cd48c17d988069e04f1e705048bf48342aa3495136c69150f39",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/terminal-screens/bulk-after.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/bulk-after.png",
+    "sha256": "46a2daeaabed6420b856ea745c8758d13edd8a9e6846219ad6087cc77aeeedbc",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/terminal-screens/detached-after.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/detached-after.png",
+    "sha256": "9cf43766a9adfc31f278ea080548a529109685ed73ac02ead80e375ef054f0cc",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/terminal-screens/finance-after.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/finance-after.png",
+    "sha256": "bfb3af2ac86bbd62f59d1eb360a6f2158b152d8743474889c8a83d47e56e9459",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/office/renders/resume.docx.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/resume.docx.png",
+    "sha256": "2005dda7ab01479b5c33b33449e21c458c233730e9b07a56aa0766006c0d68d4",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  },
+  {
+    "file": "/Users/urmzd/humagen-session-audit-2026-11-16/final-main-e2e/codex/office/renders/resume-updated.docx.png",
+    "asset_path": "audit-2026-11-16/final-8a20a984/resume-updated.docx.png",
+    "sha256": "719f231ece2fd1453e4b3c5e81e2999bac1307bb496cec43b16e98ba46557ee7",
+    "main_sha": "8a20a9846048abf020e836b45539fbfef27377c7",
+    "personally_opened": true,
+    "scope": "generated fixtures; recorded terminal evidence explicitly labelled; no actual Word/Excel UI"
+  }
+]
