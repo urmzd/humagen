@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.124.0 (2026-11-17)
+
+### Features
+
+- **models**: show images and PDFs to Claude Code and Codex (#335) ([b84680f](https://github.com/urmzd/humagen/commit/b84680f25127c78a9df86f96ba5f661608b5fee4))
+
+### Bug Fixes
+
+- **console**: give Worked a 44px touch target (#339) ([50d1080](https://github.com/urmzd/humagen/commit/50d1080943c01a4b1ef76840af2878a1bb3c69b4))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.123.1...v0.124.0)
+
+
 ## 0.123.0 (2026-11-17)
 
 ### Features
