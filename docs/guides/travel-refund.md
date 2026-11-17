@@ -48,6 +48,24 @@ paid back to the original payment method. Use only facts from the records. Do
 not send it.
 ```
 
+## When the official page refuses
+
+Official pages do not always answer a program. In the checks here the transport
+department's refunds page answered 403 and the electronic regulations site sent
+an unblock page. The research agent is told what to read instead: the
+regulation in the annual Code of Federal Regulations edition on govinfo.gov,
+which does answer. For refunds of air fares in the United States that is 14 CFR
+Part 260:
+
+```text
+https://www.govinfo.gov/content/pkg/CFR-2026-title14-vol4/xml/CFR-2026-title14-vol4-part260.xml
+```
+
+An annual edition is the text as of its revision date, January 1 of its year
+for this title. A change made after that date is not in it. The agent is told
+to name the edition and that date, and to say that no policy was verified when
+no official text opens. A search result or a news page is not a source.
+
 ## Check it yourself
 
 Give the checker the facts as the records write them:
@@ -68,24 +86,31 @@ a booking, the airline's cancellation notice and the passenger's notes.
   do not show (no proof the rebooking was declined, no refund request, whether
   the rule applies to this airline). Asked to save a request as well, it could
   not, and said so.
-- It reported that the transport department's refunds page refused it and that
-  it read the refund rule as published in the Federal Register instead, in
-  part. The refusal was the same when fetched separately, and the deadline it
-  gave (7 business days for a credit card, 20 calendar days otherwise) is in
-  that text.
+- In a first run it reported that the transport department's refunds page
+  refused it, read the rule's Federal Register publication in part, and said it
+  had not seen the codified text. The refusal was the same when fetched
+  separately.
+- With the fallback above, it opened only the 2026 annual edition of 14 CFR
+  Part 260 on govinfo.gov, said its dates read 2026-01-01 and that its source
+  note runs to an amendment of August 12, 2024, and quoted the sections on a
+  cancelled flight, a full and prompt refund, 7 business days for a credit card
+  and the original form of payment. Each quotation is in that text when fetched
+  separately. It ran no search and opened no other site.
 - `travel-clerk`, with the approval, wrote `out/refund-request.md` and nothing
   else. Reference, flight, date, amount and ticket number matched the records,
   and what the records do not state was left as TO FILL. The records were
   unchanged.
 - No address either agent opened held the passenger's name, the reference or
-  the ticket number. The text of its searches was not inspected.
+  the ticket number. The text of the first run's two searches was not
+  inspected.
 
 Not checked:
 
 - **A real itinerary and a real airline.** The booking is invented, so no
   airline's own policy was read and nothing was asked of an airline.
-- **The current codified rule.** The agent said it had not seen it. Treat the
-  policy summary as a starting point, not as advice.
+- **Changes after the edition's date,** and whether the airline in a real
+  booking is one the rule covers. Treat the summary as a starting point, not
+  as advice.
 - **Finding the itinerary in mail.** The records were files in a folder.
 - **Sending the request, a form, a chargeback or a complaint.** No tool here
   does any of them.
