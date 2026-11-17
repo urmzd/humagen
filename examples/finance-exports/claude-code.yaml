@@ -1,7 +1,10 @@
 # Trusted local trial. Set dir to the existing absolute folder that holds the
 # account exports, authorized.txt and a copy of reconcile.py. The agent may
-# read the folder, run that one script and write under out/. It cannot run
-# any other command, and nothing here reaches a bank or moves money.
+# read the folder, run that one script and write under out/. A command that
+# changes anything else is refused; the program still runs commands it
+# treats as read-only, such as ls. Keep a file the agent must not see out of
+# the folder: authorized.txt is an instruction to it, not a lock. Nothing
+# here reaches a bank or moves money.
 api_version: humagen/v1
 kind: System
 metadata: {name: finance-exports-local}
