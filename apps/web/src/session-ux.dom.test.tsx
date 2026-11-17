@@ -473,7 +473,7 @@ test("session UX alerts read without resolving, offer governed fix review, and k
   assert.deepEqual(fixes, [
     { source_alert: "alert-fix", agent: "reviewer", text: "Investigate before editing." },
   ]);
-  fireEvent.click(within(card).getByRole("button", { name: "Resolve" }));
+  fireEvent.click(within(card).getByRole("button", { name: "Mark Done" }));
   const undo = await screen.findByRole("button", { name: "Undo alert" });
   await waitFor(() =>
     assert.equal(screen.queryByRole("region", { name: "Alert: Review failed" }), null),

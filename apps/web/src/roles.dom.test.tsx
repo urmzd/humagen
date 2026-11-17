@@ -346,16 +346,14 @@ test("hiding the only announcement keeps the inbox and its switch, and Show for 
       onChanged={() => {}}
     />,
   );
-  assert.ok(
-    await screen.findByText("New announcements land here. What you hid is under Resolved."),
-  );
+  assert.ok(await screen.findByText("New announcements land here. What you hid is under Done."));
   assert.ok(!screen.queryByText(/Nothing has been announced/));
   assert.equal(
     (screen.getByRole("combobox", { name: "Filter updates" }) as HTMLSelectElement).value,
     "",
     "the kind filter stays",
   );
-  fireEvent.click(screen.getByText("Resolved"));
+  fireEvent.click(screen.getByText("Done"));
   fireEvent.click(await screen.findByText("Field offsite"));
   assert.ok(screen.getByText("Hidden"), "its row says it is hidden, not dismissed");
   assert.equal(opened, "m-1");
@@ -558,9 +556,7 @@ test("an empty kind other than announcements keeps the mailbox's own words", asy
       onChanged={() => {}}
     />,
   );
-  assert.ok(
-    await screen.findByText("New announcements land here. What you hid is under Resolved."),
-  );
+  assert.ok(await screen.findByText("New announcements land here. What you hid is under Done."));
   fireEvent.change(screen.getByRole("combobox", { name: "Filter updates" }), {
     target: { value: "approval" },
   });
@@ -574,9 +570,7 @@ test("an empty kind other than announcements keeps the mailbox's own words", asy
   fireEvent.change(screen.getByRole("combobox", { name: "Filter updates" }), {
     target: { value: "announcement" },
   });
-  assert.ok(
-    await screen.findByText("New announcements land here. What you hid is under Resolved."),
-  );
+  assert.ok(await screen.findByText("New announcements land here. What you hid is under Done."));
 });
 
 test("an announcement filed in a project below is withdrawn where it was filed", async () => {
@@ -651,9 +645,7 @@ test("a link to a message filed in another project is not shown in this one's in
     />,
   );
   await waitFor(() => assert.ok(net?.seen.some((s) => s.path === "/api/inbox/m-1")));
-  assert.ok(
-    await screen.findByText("New announcements land here. What you hid is under Resolved."),
-  );
+  assert.ok(await screen.findByText("New announcements land here. What you hid is under Done."));
   assert.ok(!screen.queryByText("Field offsite"));
   assert.ok(!screen.queryByText("Withdraw"));
 });

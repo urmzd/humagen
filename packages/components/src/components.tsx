@@ -1133,7 +1133,7 @@ function itemActions(item: InboxItem, copy: Copy) {
 /**
  * Everything waiting on a person, across conversations. Slack publishes it as
  * the App Home tab (placement "home"); the web wraps it in an inbox panel.
- * Decisions resolve the item in place; the next refresh moves it to Resolved.
+ * Decisions resolve the item in place; the next refresh moves it to Done.
  */
 export function InboxView({
   items,

@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.125.0 (2026-11-17)
+
+### Features
+
+- **operations**: an assignment is continued until its answer passes its checks ([4f77d3e](https://github.com/urmzd/humagen/commit/4f77d3e1169ffa45cecf79947a6302551424e8fc))
+
+### Misc
+
+- **operations**: a continuation reserved before a restart is admitted after it ([b06d849](https://github.com/urmzd/humagen/commit/b06d849e061f356efef78b65cb32f95ad2fa1309))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.124.1...v0.125.0)
+
+
+## 0.124.0 (2026-11-17)
+
+### Features
+
+- **models**: show images and PDFs to Claude Code and Codex (#335) ([b84680f](https://github.com/urmzd/humagen/commit/b84680f25127c78a9df86f96ba5f661608b5fee4))
+
+### Bug Fixes
+
+- **console**: give Worked a 44px touch target (#339) ([50d1080](https://github.com/urmzd/humagen/commit/50d1080943c01a4b1ef76840af2878a1bb3c69b4))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.123.1...v0.124.0)
+
+
+## 0.123.0 (2026-11-17)
+
+### Features
+
+- **models**: pass effort and the program's own commands to Claude Code and Codex (#333) ([4d1657d](https://github.com/urmzd/humagen/commit/4d1657dade89d8b9e30f00299f3fd209501ef4d1))
+- **console**: calm Home strip and states that say whose move it is (#332) ([04ea8fd](https://github.com/urmzd/humagen/commit/04ea8fd99018d0848871f1ad2afe9f4cae66cebb))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.122.0...v0.123.0)
+
+
 ## 0.121.0 (2026-11-17)
 
 ### Features

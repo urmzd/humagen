@@ -605,6 +605,9 @@ remain valid. Gold attention, green success and agent identity colors retain
 their separate meanings. Glass and a thin static color streak belong to chrome;
 content and popovers keep opaque readable surfaces with restrained bevel/shadow.
 Existing button and field helpers share the same variants and sizing.
+Wrapped inline code repeats its padding and rounded background for each fragment,
+and long tokens stay inside the text column. The `session-inline-code` browser
+fixture replays the confirmed message and a long path, checking every fragment.
 Web-only resource browsers remain controlled presentation components;
 the shared surface-neutral contracts and Slack renderer remain intact.
 
@@ -965,6 +968,9 @@ approval, disabled early approval, restoration, refusal and the combined menu.
 
 ### DES-034: How long a turn worked
 
+- The Worked/tools control has a minimum 44px touch target on a coarse pointer.
+  The canonical `session` browser state scrolls it into view, measures it and
+  opens/closes Details before capture.
 - A finished turn's "Worked" line says how long it worked: "Worked for 32s".
   The time runs from the run's acceptance to its completion on the stream, or
   from the run record's creation to its last change when the stream is gone.
@@ -995,11 +1001,18 @@ approval, disabled early approval, restoration, refusal and the combined menu.
   with original bytes and names retained through queue editing, waiting and retry.
   A failed first send restores its files beside its text. MIME types are sniffed
   on the server; metadata never grants a model a modality it cannot read.
+- Posted messages retain a file reference for each upload, for the author and
+  other readers, after reloading the conversation. A file without a name uses
+  its alternative text or media type. These references describe retained files;
+  they do not imply a preview or download is available.
 - Acceptance: a failed first message leaves its text and files in the composer
   and an empty queue. Evidence: `attachments.test.ts`, queue regression tests,
   `TestUploadedImageReachesModelAndLaterHistory`, and the phone/desktop
   `composer-attachments` screen. Live model and connected browser acceptance are
   tracked separately in the session audit ledger.
+- Retained upload references are checked for both message authors and other
+  readers in `room.dom.test.tsx`, and from actual session API records by the
+  `session-uploads` browser state at phone and desktop widths in both themes.
 
 ### DES-037: Health
 
@@ -1712,6 +1725,13 @@ Evidence: `replay.test.ts`, `replay.dom.test.tsx`; the phone and desktop
 
 ### DES-062: Customize and personal tool servers
 
+The browser worker configuration and connection instructions are in
+`examples/browser/` and `docs/guides/browser.md`. Browser tool schemas are pinned;
+navigation and interaction require a write grant. The real connector acceptance
+is opt-in (`TestBrowserLive`), and signed-in tabs require the person's explicit
+extension connection. No console control implies an authenticated browser
+connection before that handoff.
+
 - Customize groups the existing Agents, Skills, Connected Accounts and Your tool
   servers sections at `/customize/{section}`, with permission-filtered tabs.
 - Personal MCP clients run in the trusted worker using the existing credential
@@ -1827,9 +1847,8 @@ a terminal run without an answer does not. Connection authentication failures
 join a private owner session with sanitized reconnect attention. See
 [session alerts](../guides/session-alerts.md).
 Watching lists standing rules with Pause/Resume and confirmed Delete. The shared badge
-counts only the person's open Urgent and Normal alerts. Home shows at most three
-of those alerts or three recent root sessions, and puts its disclaimer directly
-under the composer. Sidebar hover controls contain one menu.
+counts only the person's open Urgent and Normal alerts. Home puts its disclaimer
+directly under the composer; what it shows beneath is DES-075. Sidebar hover controls contain one menu.
 
 Evidence: `session-center.dom.test.tsx` checks the seven destinations, attention
 priority and three-row cap, resolve/undo, and nested child reads. `route.test.ts`
@@ -1943,3 +1962,28 @@ checks priority defaults and saved quiet hours.
 Browser checks were unavailable during source validation. Phone, short-screen
 and split-pane visual acceptance, live provider behavior and measured browser
 request totals remain open.
+
+### DES-075: A calm Home and states that say whose move it is
+
+Home under the chat bar is one quiet line and one strip. The line says how many
+of the person's Urgent and Normal alerts are waiting ("2 waiting on you") and
+opens Alerts; it lists none of them and offers no decision. The strip, Recently
+made, shows the three newest artifacts the person may read from the existing
+`GET /api/artifacts`, each card opening it at `/artifacts/{id}`, with All
+artifacts beside the heading. With nothing waiting and nothing made, Home is the
+greeting and the chat bar. Home no longer lists alerts or recent sessions:
+sessions are in the sidebar's Recents and on Sessions.
+
+An alert is named by whose move it is: Waiting, Snoozed or Done, with Mark Done
+in place of Resolve, in the alert center, on a session's alert card and in bulk
+actions. A project's inbox switch reads Waiting, Done and All. The API, the
+stored states and the addresses keep `open`, `snoozed` and `resolved`, so
+existing links hold. The words are in `copy.ts` (`attention`, `show`, `home`).
+
+Evidence: `session-center.dom.test.tsx` checks the single waiting link, the
+three-card strip and its destinations, and that nothing is drawn or asked for
+when there is nothing to show or no permission; `session-ux.dom.test.tsx` and
+`roles.dom.test.tsx` check the new words. Console screens `new` and `alerts`
+and `home-made` pass at 1280x800 and 390x844 in light and dark. Artifact
+cards show no preview of their content. A strip that cannot be read says so in
+one line.
