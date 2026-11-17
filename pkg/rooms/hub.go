@@ -57,7 +57,11 @@ type Page struct {
 // publish, until ctx is done. It is started when a room gains its first
 // viewer and its ctx is cancelled when the room loses its last. An error it
 // returns ends every viewer of the room, who reconnect.
-type Source func(ctx context.Context, tenant, thread string, publish func(Item)) error
+//
+// It calls ready once it is listening: whatever happens in the conversation
+// after that is published. Until then the room hears nothing, so a viewer
+// waits on Viewer.Ready before it is told it is following the conversation.
+type Source func(ctx context.Context, tenant, thread string, ready func(), publish func(Item)) error
 
 type key struct{ tenant, thread string }
 
@@ -123,10 +127,12 @@ func (h *Hub) Join(tenant, thread, who string) *Viewer {
 	r, ok := h.rooms[k]
 	if !ok {
 		ctx, cancel := context.WithCancel(context.Background())
-		r = &room{h: h, key: k, cancel: cancel, bySubject: map[string]map[*Viewer]struct{}{}, index: map[*Viewer]int{}}
+		r = &room{h: h, key: k, cancel: cancel, ready: make(chan struct{}), bySubject: map[string]map[*Viewer]struct{}{}, index: map[*Viewer]int{}}
 		h.rooms[k] = r
 		go func() {
-			err := h.source(ctx, tenant, thread, func(it Item) { r.publish(it) })
+			var once sync.Once
+			ready := func() { once.Do(func() { close(r.ready) }) }
+			err := h.source(ctx, tenant, thread, ready, func(it Item) { r.publish(it) })
 			if ctx.Err() == nil {
 				// The source ended on its own: the room cannot be
 				// followed, so its viewers reconnect to a new one.
@@ -222,6 +228,8 @@ type room struct {
 	h      *Hub
 	key    key
 	cancel context.CancelFunc
+	// ready is closed once the room's source is listening.
+	ready chan struct{}
 
 	mu sync.Mutex
 	// viewers is a slice so a page is sent with one pass and no map walk;
@@ -385,6 +393,16 @@ func (v *Viewer) Page() (Page, bool) {
 	}
 	v.seen = p.Seq
 	return p, true
+}
+
+// Ready is closed once the room's source is listening: nothing that happens
+// in the conversation after that is missed, so only then is a reader told
+// they are following it. A viewer ended first (Done) is never ready.
+func (v *Viewer) Ready() <-chan struct{} {
+	if v.room == nil {
+		return nil
+	}
+	return v.room.ready
 }
 
 // Done is closed when the viewer is ended; Err says why.
