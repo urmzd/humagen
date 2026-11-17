@@ -27,6 +27,7 @@ type importServer struct {
 	mu      sync.Mutex
 	cap     int
 	docs    map[string][]map[string]string
+	said    map[string]string // each source's description
 	skills  []map[string]any
 	agents  []map[string]any
 	corpora map[string][]string
@@ -61,17 +62,21 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 		case r.Method == "GET" && r.URL.Path == "/api/knowledge":
 			var sources []map[string]string
 			for name := range s.docs {
-				sources = append(sources, map[string]string{"name": name})
+				sources = append(sources, map[string]string{"name": name, "description": s.said[name]})
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"sources": sources})
 		case r.Method == "POST" && r.URL.Path == "/api/knowledge":
-			var body struct{ Name string }
+			var body struct{ Name, Description string }
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			if _, ok := s.docs[body.Name]; ok {
 				problem(409, "exists")
 				return
 			}
 			s.docs[body.Name] = []map[string]string{}
+			if s.said == nil {
+				s.said = map[string]string{}
+			}
+			s.said[body.Name] = body.Description
 			w.WriteHeader(201)
 			fmt.Fprint(w, `{}`)
 		case len(parts) == 3 && parts[0] == "knowledge" && parts[2] == "documents" && r.Method == "GET":
@@ -620,14 +625,14 @@ func TestDirSlug(t *testing.T) {
 		"/work/My Notes": "my-notes-x",
 		"/work/__init__": "init-x",
 		"/work/app-2":    "app-2-x",
-		"/work/a-very-long-repository-name-that-goes-on": "a-very-long-reposi-x",
+		"/work/a-very-long-repository-name-that-goes-on": "a-very-long-re-x",
 		"":  "",
 		"/": "",
 	} {
-		// A name ending in -x is a prefix: four digits of the hash follow.
+		// A name ending in -x is a prefix: eight digits of the hash follow.
 		got := dirSlug(dir)
 		if strings.HasSuffix(want, "-x") {
-			if !strings.HasPrefix(got, want) || len(got) != len(want)+4 || len(got) > 24 {
+			if !strings.HasPrefix(got, want) || len(got) != len(want)+8 || len(got) > 24 {
 				t.Errorf("dirSlug(%q) = %q, want %sNNNN", dir, got, want)
 			}
 			continue
@@ -692,5 +697,49 @@ func TestImportSessionsByProjectTellsDirectoriesOfLikeNamesApart(t *testing.T) {
 	}
 	if got := strings.Join(res.Unfiled, ", "); got != "My App, app-2" {
 		t.Fatalf("unfiled = %s", got)
+	}
+}
+
+func TestImportSessionsByProjectRefusesToMixTwoDirectoriesInOneSource(t *testing.T) {
+	// Every hash is the same, as two names' may be.
+	sum := slugSum
+	slugSum = func(string) string { return "00000000" }
+	t.Cleanup(func() { slugSum = sum })
+	api := &importServer{projects: []string{"a_1", "a_2"}}
+	server := api.start(t)
+	home := t.TempDir()
+	putFile(t, home, ".claude/projects/-work-a-1/a.jsonl", cwdSession("a", "/work/a_1"))
+	out, err := runImport(t, "sessions", "--home", home, "--server", server.URL, "--by-project")
+	if err != nil || api.attached["sessions-in-a-1-x00000000"] != "a_1" {
+		t.Fatalf("err = %v, attached = %v\n%s", err, api.attached, out)
+	}
+	// A later run meets a directory of the same slug: its session is not
+	// added to the first one's source, and the source stays a_1's.
+	putFile(t, home, ".claude/projects/-work-a-2/b.jsonl", cwdSession("b", "/work/a.1"))
+	out, err = runImport(t, "sessions", "--home", home, "--server", server.URL, "--by-project", "--json")
+	var res sessionsResult
+	if jerr := json.Unmarshal([]byte(out), &res); jerr != nil {
+		t.Fatalf("json = %v\n%s", jerr, out)
+	}
+	if err == nil || len(res.Failed) != 1 || !strings.Contains(res.Failed[0].Reason, "would share the source") {
+		t.Fatalf("err = %v, failed = %v", err, res.Failed)
+	}
+	if len(api.docs) != 1 || len(api.docs["sessions-in-a-1-x00000000"]) != 1 || api.attached["sessions-in-a-1-x00000000"] != "a_1" {
+		t.Fatalf("docs = %v, attached = %v", api.docs, api.attached)
+	}
+	// The same holds when only the second directory is read: the source
+	// says whose it is.
+	home = t.TempDir()
+	putFile(t, home, ".claude/projects/-work-a-2/b.jsonl", cwdSession("b", "/work/a.1"))
+	out, err = runImport(t, "sessions", "--home", home, "--server", server.URL, "--by-project", "--json")
+	res = sessionsResult{}
+	if jerr := json.Unmarshal([]byte(out), &res); jerr != nil {
+		t.Fatalf("json = %v\n%s", jerr, out)
+	}
+	if err == nil || len(res.Failed) != 1 || !strings.Contains(res.Failed[0].Reason, "holds another directory") {
+		t.Fatalf("err = %v, failed = %v", err, res.Failed)
+	}
+	if len(api.docs["sessions-in-a-1-x00000000"]) != 1 || api.attached["sessions-in-a-1-x00000000"] != "a_1" {
+		t.Fatalf("docs = %v, attached = %v", api.docs, api.attached)
 	}
 }

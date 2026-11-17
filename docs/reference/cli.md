@@ -184,8 +184,10 @@ there. The project is the one named exactly as the directory is, ignoring
 case: the directory `my-repo` is the project `My-Repo`, and not `my_repo` or
 `My Repo`. A directory whose name a source's name cannot spell (`my_repo`,
 `My Repo`, a name over 24 characters) or that ends in a number (`app-2`) has a
-few digits added to its source's name, so two directories never share a
-source. A directory no project is named for is
+eight digits of a hash of the directory's name added to its source's name. Two
+directories are never kept in one source: if two names would still give the
+same source, the second directory's sessions are not sent and the command
+says which two they are. A directory no project is named for is
 listed, and its sessions stay in the corpus; make the project and run the
 command again to attach them. A session from an export has no directory and is
 kept by month as before. A session already imported by month is not moved. Imported sessions are

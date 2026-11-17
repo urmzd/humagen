@@ -357,6 +357,7 @@ type sessionSink struct {
 	count  map[string]int  // documents in each
 	full   map[string]bool
 	dirs   map[string]string // by project: a directory's slug to its name
+	owner  map[string]string // by project: what each source says it holds
 	res    *sessionsResult
 }
 
@@ -364,7 +365,8 @@ type sessionSink struct {
 func (k *sessionSink) load() error {
 	var listed struct {
 		Sources []struct {
-			Name string `json:"name"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
 		} `json:"sources"`
 	}
 	if err := k.api.do(k.ctx, http.MethodGet, "/api/knowledge", nil, &listed); err != nil {
@@ -383,6 +385,7 @@ func (k *sessionSink) load() error {
 			return err
 		}
 		k.exists[src.Name] = true
+		k.owner[src.Name] = src.Description
 		k.count[src.Name] = len(docs.Documents)
 		for _, d := range docs.Documents {
 			if d.URI != "" {
@@ -400,7 +403,15 @@ func (k *sessionSink) add(s sessionimport.Session) {
 	slug := ""
 	if k.c.byProj {
 		if slug = dirSlug(s.Dir); slug != "" {
-			k.dirs[slug] = filepath.Base(s.Dir)
+			// Two directories are never kept in one source. A slug is made
+			// not to be shared, and one that is all the same is refused
+			// here, before a session of the second is sent.
+			dir := filepath.Base(s.Dir)
+			if held, ok := k.dirs[slug]; ok && !strings.EqualFold(held, dir) {
+				k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: fmt.Sprintf("the directories %s and %s would share the source %s-in-%s; import one of them by month, without --by-project", held, dir, k.c.prefix, slug)})
+				return
+			}
+			k.dirs[slug] = dir
 		}
 	}
 	if k.have[s.URI()] {
@@ -427,6 +438,12 @@ func (k *sessionSink) add(s sessionimport.Session) {
 		if n > 1 {
 			name = fmt.Sprintf("%s-%d", base, n)
 		}
+		// A source an earlier run made for another directory is not added
+		// to: it says which directory it holds.
+		if held := k.owner[name]; slug != "" && k.exists[name] && held != "" && !strings.EqualFold(held, what) {
+			k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: fmt.Sprintf("the source %s holds another directory's sessions (%q); import %s by month, without --by-project", name, held, filepath.Base(s.Dir))})
+			return
+		}
 		if k.full[name] || k.count[name] >= knowledge.MaxImportDocuments {
 			continue
 		}
@@ -444,6 +461,7 @@ func (k *sessionSink) add(s sessionimport.Session) {
 				return
 			}
 			k.exists[name] = true
+			k.owner[name] = what
 		}
 		err := k.api.do(k.ctx, http.MethodPost, "/api/knowledge/"+url.PathEscape(name)+"/documents", map[string]string{
 			"title": title, "uri": s.URI(), "text": s.Markdown(k.c.maxBytes),
@@ -467,8 +485,8 @@ func (k *sessionSink) add(s sessionimport.Session) {
 // case letters, digits and hyphens, at most 24. "" is a directory with no
 // name to go by. Two directories share a slug only when their names differ
 // in case alone: a name the slug does not spell exactly (foo_bar, My App, a
-// long one) or one that ends as a continued source does (app-2) carries a
-// few digits of its hash, so foo_bar is not kept with foo-bar and app-2 is
+// long one) or one that ends as a continued source does (app-2) carries
+// eight digits of its hash, so foo_bar is not kept with foo-bar and app-2 is
 // not taken for the second source of app.
 func dirSlug(dir string) string {
 	if dir == "" {
@@ -491,11 +509,18 @@ func dirSlug(dir string) string {
 	if slug == base && len(slug) <= 24 && !continued.MatchString(slug) {
 		return slug
 	}
-	if len(slug) > 18 {
-		slug = strings.Trim(slug[:18], "-")
+	if len(slug) > 14 {
+		slug = strings.Trim(slug[:14], "-")
 	}
+	return slug + "-x" + slugSum(base)
+}
+
+// slugSum is the eight digits a slug carries of its directory's name. They
+// make a shared slug unlikely, not impossible: add refuses the second
+// directory of one.
+var slugSum = func(base string) string {
 	sum := sha256.Sum256([]byte(base))
-	return slug + "-x" + hex.EncodeToString(sum[:2])
+	return hex.EncodeToString(sum[:4])
 }
 
 // continued matches the name of a source that continues a full one.
@@ -668,7 +693,7 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 		return errors.New("nothing to read; name a tool with --from or an export with --export FILE")
 	}
 	res := sessionsResult{Failed: []importFailed{}, Sources: []string{}, Corpora: []string{}, ByTool: map[string]int{}, DryRun: c.dryRun}
-	sink := &sessionSink{ctx: ctx, c: c, api: api, res: &res, have: map[string]bool{}, exists: map[string]bool{}, count: map[string]int{}, full: map[string]bool{}, dirs: map[string]string{}}
+	sink := &sessionSink{ctx: ctx, c: c, api: api, res: &res, have: map[string]bool{}, exists: map[string]bool{}, count: map[string]int{}, full: map[string]bool{}, dirs: map[string]string{}, owner: map[string]string{}}
 	if !c.dryRun {
 		if err := sink.load(); err != nil {
 			return err
