@@ -174,9 +174,11 @@ export function MessageFocus({
               <AgentMark name={self.agent} size={24} />
               {self.agent}
             </p>
-            {answer?.text ? (
+            {answer?.text || self.answer ? (
+              // A run outside a session has no trace to read its answer
+              // from. The run keeps the answer itself.
               <p className="whitespace-pre-wrap break-words text-aui-fg text-aui-sm">
-                {answer.text}
+                {answer?.text || self.answer}
               </p>
             ) : (
               node.error && <p className="text-aui-bad text-aui-sm">{node.error}</p>
