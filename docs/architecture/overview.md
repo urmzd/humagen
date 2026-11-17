@@ -552,9 +552,13 @@ and opens/closes Details before its capture.
 Browser automation has a pinned external-worker path in
 [the browser guide](../guides/browser.md): explicit MCP grants, inline page
 snapshots, interactions, selected downloads, and image results. The local
-connector acceptance uses a real isolated browser. Existing authenticated tabs
-still require the person to connect the official extension or a CDP endpoint;
-an isolated browser does not establish signed-in portal coverage.
+connector acceptance uses a real isolated browser. The optional Claude Code
+profile and connected acceptance helper also exercise an independently launched,
+signed-in local fixture through an explicit CDP endpoint: actual model screenshot
+interpretation, the same retained tab, a selected action and exact-byte CSV reads
+pass at both widths and themes. Third-party portal login, SSO/MFA and extension
+handoff remain unverified. Prompts are not tab authorization boundaries; existing
+browser downloads follow Chrome settings and need explicit shared file access.
 
 Markdown inline-code fragments retain their own padding and rounded background
 when they wrap, including long unbroken paths. The `session-inline-code` browser

@@ -65,8 +65,17 @@ Approve the extension's browser/tab connection when prompted. The same Humagen
 tool configuration then operates that connected browser. Login, SSO, MFA, and
 the extension's tab handoff remain with the person. No existing profile is copied
 or silently opened. Until that connection is approved, signed-in portal work is
-blocked even if isolated-browser tests pass. A CDP endpoint explicitly opened
-by the person is another server-supported connection, using `--cdp-endpoint`.
+blocked even if isolated-browser tests pass. For a CDP endpoint explicitly opened by the person, use:
+
+```sh
+HUMAGEN_BROWSER_CDP_ENDPOINT=http://127.0.0.1:9222 \
+  sh examples/browser/start.sh cdp
+```
+
+Do not expose that endpoint publicly or copy a personal browser profile.
+`HUMAGEN_BROWSER_MCP_PORT` changes the worker port; update the configured MCP
+URL to match. Connecting an existing browser grants access to its context; the
+prompt asking for a particular tab and origin is not an authorization boundary.
 
 ## Read pages and inspect pixels
 
@@ -74,9 +83,10 @@ After navigation or interaction, call `browser_snapshot` without `filename`.
 In this pinned version, automatic snapshots are links to files on the browser
 worker; they do not supply the tree to Humagen. Use the latest snapshot's
 reference as `target` for click/type/form operations. For a screenshot, call
-`browser_take_screenshot` with `scale: css`; the typed MCP image result carries
+`browser_take_screenshot` without `filename` and with `scale: css`; the typed MCP image result carries
 the actual bytes into a model that supports images. A saved path alone does not
-prove that the model saw the screenshot.
+prove that the model saw the screenshot. In this pinned version, specifying
+`filename` returns a saved-file reference instead of inline image bytes.
 
 ## Run acceptance against the real connector
 
@@ -104,3 +114,68 @@ and another with `dark` in its Playwright JSON config (`--config PATH`);
 `HUMAGEN_BROWSER_EXPECT_THEME` checks that the page actually uses the chosen
 appearance. Open both images in every pair before approval. These are synthetic
 fixture pages, not evidence of a signed-in portal.
+
+
+## Use an existing Claude Code account
+
+`examples/browser/claude-code.yaml` uses the signed-in Claude Code account and
+connects its browser MCP client to the same loopback worker. Set its
+`claude-code.dir` to an existing absolute work directory, then start it with:
+
+```sh
+humagen start -f examples/browser/claude-code.yaml
+```
+
+No separate model API key is required. This profile allows twelve named browser
+tools and built-in Read/Glob for `./downloads/**`, and supplies one strict MCP
+configuration. User settings, hooks, plugins and skills still load; their behavior
+is unverified. External program permissions govern these tools, not Humagen's
+native sandbox or MCP grants. Requests to preserve other tabs and selected files
+are instructions to the agent, not resource isolation. Use real workspace sign-in
+for an authenticated browser, as described above.
+
+For an existing CDP browser, downloads follow Chrome's own download settings,
+not the MCP output directory. Explicitly select the download folder and provide
+that folder to the agent. For this example, configure the owned browser to save
+into `<claude-code.dir>/downloads`. The CLI must run on the same host or have an
+explicit shared mount; a remote path alone cannot be read. Do not silently change
+someone's personal browser preferences. Only authorize the selected download.
+
+## Test the signed-in fixture end to end
+
+The opt-in helper runs a real Humagen server, the pinned MCP worker, an independent
+headless Chrome process, and the signed-in Claude Code model. Install the worker
+in a separate prefix and build Humagen, then run from the repository root:
+
+```sh
+npm install --prefix /tmp/humagen-browser-tools @playwright/mcp@0.0.85
+go build -o /tmp/humagen-browser ./cmd/humagen
+HUMAGEN_BROWSER_LIVE=1 \
+HUMAGEN_BROWSER_TOOL_DIR=/tmp/humagen-browser-tools \
+HUMAGEN_BROWSER_BINARY=/tmp/humagen-browser \
+HUMAGEN_BROWSER_CAPTURE_DIR=/tmp/humagen-browser-evidence \
+node examples/browser/connected-acceptance.mjs
+```
+
+Set `HUMAGEN_BROWSER_CHROME` if Chrome is not at the standard macOS path or the
+Linux `chromium` command. The helper requires Node.js, installed Chrome, and a
+working Claude Code sign-in. It creates only owned local fixture processes and
+state, and stops those processes when finished; it does not touch a personal
+profile. It uses a unique fixture workspace and verifies its identity before
+submitting any work.
+
+The actual acceptance passed at 390x844 and 1280x800 in light and dark. It logs
+into a local fixture once, retains the same authenticated Chrome target across
+all four model runs, and verifies the requested viewport and theme. Each run
+reads two unlabelled panel colours from returned screenshot pixels, performs the
+authorized button action, downloads the selected CSV, and reads it through the
+CLI. Independent checks verify the changed heading, exactly one download,
+record identity and exact file bytes. Paired PNGs and retained run/tool events
+are written to the capture directory. Open every before/after pair before
+approval. Disconnecting the fixture's CDP client resets its display emulation,
+so the helper keeps that connection attached while the MCP worker operates.
+
+This is real connector and model evidence on a controlled local authenticated
+fixture. It does not establish a third-party portal login, SSO/MFA, extension
+handoff, cross-host download mount, or an authorization boundary around a tab.
+Those remain separate checks with the person and target service.
