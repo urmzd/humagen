@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.129.0 (2026-11-17)
+
+### Features
+
+- **cli**: import sessions by project (#342) ([60ed4c4](https://github.com/urmzd/humagen/commit/60ed4c4820b9d6564cff0aff5788b63625c6e697))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.128.0...v0.129.0)
+
+
 ## 0.125.0 (2026-11-17)
 
 ### Features
