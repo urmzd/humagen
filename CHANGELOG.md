@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.135.2 (2026-11-17)
+
+### Bug Fixes
+
+- **models**: a failed Codex turn is an error even when it gives no reason ([9aa051c](https://github.com/urmzd/humagen/commit/9aa051c8a2309019f51971dcd0309803cf72739a))
+- **models**: a notice from Codex does not fail the turn ([96d2c40](https://github.com/urmzd/humagen/commit/96d2c40a8f461fb4d5aa80231c9558ebc105924f))
+
+### Misc
+
+- **examples**: format mail connector profile ([79b4a6c](https://github.com/urmzd/humagen/commit/79b4a6c93198cf71b760774fb07bc1fb3efef4cf))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.135.1...v0.135.2)
+
+
 ## 0.135.0 (2026-11-17)
 
 ### Features
