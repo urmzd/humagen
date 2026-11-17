@@ -655,8 +655,9 @@ func (p *provider) Stream(ctx context.Context, req saigetypes.Request) (<-chan s
 	out := make(chan saigetypes.Delta, 64)
 	go func() {
 		defer cancel()
-		defer cleanup()
+		// The files given to the program are gone before the stream ends.
 		defer close(out)
+		defer cleanup()
 		w := &writer{ctx: ctx, out: out, calls: map[string]called{}}
 		var res result
 		if p.kind == ClaudeCode {
