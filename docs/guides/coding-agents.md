@@ -97,6 +97,15 @@ too, as `--effort` to Claude Code and as `model_reasoning_effort` to Codex.
 - **Usage.** Tokens are counted on the run. A subscription has no price per
   token, so the run is counted as unpriced.
 - **Stopping.** Stopping the run stops the program and what it started.
+- **A job that outlasts the run.** A command the program runs in the
+  foreground ends with its run. For a job that should keep going, ask the
+  program to start it detached and to leave its handle in `dir`:
+  `nohup ./job.sh > job.log 2>&1 & echo $! > job.pid`. The run ends and the
+  job goes on. A later message, in that conversation or a new one, reads the
+  end of `job.log` and stops the job with the pid in `job.pid`, so the job is
+  not started twice. Humagen keeps no record of such a job: it is not listed
+  anywhere, its log is not shown in the console as it grows, and it ends with
+  the host. It needs `Bash` in `allow`.
 - **The agent's own tools do not reach the program.** Tools granted to the
   agent in Humagen (file tools, `mcp:` servers, calling another agent) are not
   offered to it. It uses the tools and MCP servers of its own configuration.
