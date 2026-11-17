@@ -8,7 +8,8 @@ import (
 )
 
 // idle is a source that publishes nothing: tests publish through the hub.
-func idle(ctx context.Context, _, _ string, _ func(Item)) error {
+func idle(ctx context.Context, _, _ string, ready func(), _ func(Item)) error {
+	ready()
 	<-ctx.Done()
 	return nil
 }
@@ -90,7 +91,7 @@ func TestALargeRoomSendsWhatInvolvesYouAndPagesTheRest(t *testing.T) {
 // opens a new one.
 func TestARoomReadsItsSourceOnlyWhileItHasViewers(t *testing.T) {
 	started, stopped := make(chan string, 4), make(chan string, 4)
-	src := func(ctx context.Context, tenant, thread string, _ func(Item)) error {
+	src := func(ctx context.Context, tenant, thread string, _ func(), _ func(Item)) error {
 		started <- thread
 		<-ctx.Done()
 		stopped <- thread
@@ -120,10 +121,44 @@ func TestARoomReadsItsSourceOnlyWhileItHasViewers(t *testing.T) {
 	}
 }
 
+// A viewer is ready only once the room's source says it is listening, and
+// one who joins a room already listening is ready at once.
+func TestAViewerIsReadyOnceTheSourceListens(t *testing.T) {
+	started, listen := make(chan struct{}), make(chan struct{})
+	src := func(ctx context.Context, _, _ string, ready func(), _ func(Item)) error {
+		close(started)
+		<-listen
+		ready()
+		<-ctx.Done()
+		return nil
+	}
+	h := NewHub(Config{}, src)
+	defer func() { _ = h.Close() }()
+	ana := h.Join("acme", "th-1", "ana")
+	<-started
+	select {
+	case <-ana.Ready():
+		t.Fatal("the viewer was ready before the source was listening")
+	default:
+	}
+	close(listen)
+	select {
+	case <-ana.Ready():
+	case <-time.After(2 * time.Second):
+		t.Fatal("the viewer was never ready")
+	}
+	bo := h.Join("acme", "th-1", "bo")
+	select {
+	case <-bo.Ready():
+	default:
+		t.Fatal("a viewer joining a listening room was not ready")
+	}
+}
+
 // A source that fails ends its room's viewers, who reconnect.
 func TestASourceThatFailsEndsItsViewers(t *testing.T) {
 	boom := errors.New("bus gone")
-	h := NewHub(Config{}, func(context.Context, string, string, func(Item)) error { return boom })
+	h := NewHub(Config{}, func(context.Context, string, string, func(), func(Item)) error { return boom })
 	defer func() { _ = h.Close() }()
 	v := h.Join("acme", "th-1", "ana")
 	select {

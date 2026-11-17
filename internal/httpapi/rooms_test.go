@@ -157,6 +157,55 @@ func TestALargeRoomPagesWhatDoesNotInvolveYou(t *testing.T) {
 	}
 }
 
+// A stream is answered only once its room hears the conversation: a reader
+// who has the answer misses nothing posted after it. Answered when the
+// viewer was only counted, a message posted before the room's source was
+// listening was never sent.
+func TestARoomStreamIsAnsweredOnceTheRoomListens(t *testing.T) {
+	f := newFixture(t)
+	listen := make(chan struct{})
+	hub := rooms.NewHub(rooms.Config{}, func(ctx context.Context, _, _ string, ready func(), _ func(rooms.Item)) error {
+		select {
+		case <-listen:
+			ready()
+		case <-ctx.Done():
+			return nil
+		}
+		<-ctx.Done()
+		return nil
+	})
+	f.p.Rooms = hub
+	t.Cleanup(func() { _ = hub.Close() })
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-admins")
+	id := startThread(t, f, ana)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	req, _ := http.NewRequestWithContext(ctx, "GET", f.srv.URL+"/api/events?thread="+id, nil)
+	req.Header.Set("Authorization", "Bearer "+ana)
+	answered := make(chan int, 1)
+	go func() {
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return
+		}
+		_ = res.Body.Close()
+		answered <- res.StatusCode
+	}()
+	for hub.Viewers("acme", id) < 1 {
+		time.Sleep(time.Millisecond)
+	}
+	select {
+	case code := <-answered:
+		t.Fatalf("the stream was answered %d before its room was listening", code)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(listen)
+	if code := <-answered; code != http.StatusOK {
+		t.Fatalf("the stream = %d, want 200", code)
+	}
+}
+
 func TestARoomStreamIsOneConversationsAndChecked(t *testing.T) {
 	f := newFixture(t)
 	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-admins")
