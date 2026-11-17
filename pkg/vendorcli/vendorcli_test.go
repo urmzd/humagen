@@ -631,3 +631,12 @@ func TestWhatAProgramCannotBeShownIsRefusedByName(t *testing.T) {
 		t.Fatalf("stdin %s", raw)
 	}
 }
+
+func TestTheProviderSaysWhatTheProgramCanBeShown(t *testing.T) {
+	for kind, pdf := range map[string]bool{ClaudeCode: true, Codex: false} {
+		caps, ok := saigetypes.ProviderCapabilities(build(t, kind, Config{Command: "unused"}, "default"))
+		if !ok || caps.Known || !caps.Media.Supports("image/png") || !caps.Media.Supports("image/jpeg") || caps.Media.Supports("audio/wav") || caps.Media.Supports("application/pdf") != pdf {
+			t.Fatalf("%s: %+v", kind, caps)
+		}
+	}
+}

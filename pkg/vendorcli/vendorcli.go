@@ -204,6 +204,18 @@ type provider struct {
 // Name implements saigetypes.NamedProvider.
 func (p *provider) Name() string { return p.kind }
 
+// Capabilities implements saigetypes.CapabilityReporter. It says only what
+// the program can be shown: a turn's attachments are sent as they are when
+// their type is here, and as derived text otherwise. Known is false, so
+// nothing else about the model is taken as declared.
+func (p *provider) Capabilities() saigetypes.ModelCapabilities {
+	types := map[saigetypes.MediaType]bool{"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true}
+	if p.kind == ClaudeCode {
+		types["application/pdf"] = true
+	}
+	return saigetypes.ModelCapabilities{Provider: p.kind, Model: p.model, Media: saigetypes.ContentSupport{NativeTypes: types}}
+}
+
 // turnOf is a request as the program needs it: the instructions, what was
 // said before, and what is asked now.
 type turnOf struct {
