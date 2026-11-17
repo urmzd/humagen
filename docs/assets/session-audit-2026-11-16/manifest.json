@@ -2823,7 +2823,7 @@
     "asset": "cloud-documents/drive-checked-after-dark-1280x800.png",
     "width": "1280",
     "height": "800",
-    "sha256": "78c94a958b7234d4826dc0a0332a4a011cef1c7ae3cbf02efffb32a477ca63a7",
+    "sha256": "20fe98858327ff62a1145d684f6f493ee4f78131ac262c847b0e2fe3779f87be",
     "inspected_by": "codex"
   },
   {
@@ -2837,7 +2837,7 @@
     "asset": "cloud-documents/drive-checked-after-light-1280x800.png",
     "width": "1280",
     "height": "800",
-    "sha256": "66895e46fbbd06f46d7dc8760ed8fb5e24db243303c9cfa9d4f46fee20a26c95",
+    "sha256": "01cbac6cf6d7d789887ace2dad14c1d03f2ec75c057dd36c0e8709746c496632",
     "inspected_by": "codex"
   },
   {
@@ -2963,28 +2963,28 @@
     "asset": "cloud-documents/drive-limits-after-dark-1280x800.png",
     "width": "1280",
     "height": "800",
-    "sha256": "78c94a958b7234d4826dc0a0332a4a011cef1c7ae3cbf02efffb32a477ca63a7",
+    "sha256": "20fe98858327ff62a1145d684f6f493ee4f78131ac262c847b0e2fe3779f87be",
     "inspected_by": "codex"
   },
   {
     "asset": "cloud-documents/drive-limits-after-dark-390x844.png",
     "width": "390",
     "height": "844",
-    "sha256": "e675fcc0151927f2e5bb21fa34c4ab717c9a5920f32e6a197a3592cbffbb3ad6",
+    "sha256": "674db22f1075cddf8987569d9b6d5b1436a02648d61a9b7dff6475edc238b2a3",
     "inspected_by": "codex"
   },
   {
     "asset": "cloud-documents/drive-limits-after-light-1280x800.png",
     "width": "1280",
     "height": "800",
-    "sha256": "66895e46fbbd06f46d7dc8760ed8fb5e24db243303c9cfa9d4f46fee20a26c95",
+    "sha256": "01cbac6cf6d7d789887ace2dad14c1d03f2ec75c057dd36c0e8709746c496632",
     "inspected_by": "codex"
   },
   {
     "asset": "cloud-documents/drive-limits-after-light-390x844.png",
     "width": "390",
     "height": "844",
-    "sha256": "5e7939240b9c2b0e4dcf281c02a170a8f84f576567ba84a202aadd4b31d38169",
+    "sha256": "616dd2a1c2d1e8cccf5e9098f96a4099a5021aa8e9b597a66218f32a82c3fd0d",
     "inspected_by": "codex"
   },
   {
@@ -3069,6 +3069,13 @@
     "width": "918",
     "height": "1188",
     "sha256": "521e0b00710de51628185e1dfc87e533ae0e8a06edb575e306b9b5b0728d8f86",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "cloud-documents/fixture-review-after.png",
+    "width": "918",
+    "height": "1188",
+    "sha256": "2ec76fd87d54d89256041b8de1203d94f579543c255b727cdd60917067c430cb",
     "inspected_by": "codex"
   }
 ]

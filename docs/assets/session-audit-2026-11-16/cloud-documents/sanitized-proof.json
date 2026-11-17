@@ -41,5 +41,12 @@
   "after_png_dimensions": [
     918,
     1188
-  ]
+  ],
+  "cross_review": {
+    "reviewer": "Claude",
+    "result": "live history read, approved guarded marker write, same old-revision write refused, exact readback; original controls preserved",
+    "added_line": "cross-review marker 2026-11-17T19:07:02Z",
+    "visual_pair": "owner fixture-after.png before marker; fixture-review-after.png after marker, same918x1188 provider render"
+  },
+  "cloud_approval_limit": "Profile pins only Codex local read-only sandbox; cloud approvals depend on installed program/app settings. Proposed broadening was rejected and never executed; native Docs allowed path works."
 }
