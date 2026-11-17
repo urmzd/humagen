@@ -47,6 +47,32 @@ func TestUpdateAcrossProcesses(t *testing.T) {
 	})
 }
 
+// As many writers as Retry has tries, started at once on one record from two
+// processes, all write: each loses to the others at most, one fewer than its
+// tries. Run after run, so a writer that only usually wins is caught.
+func TestRetryKeepsEveryWriterWithinItsTries(t *testing.T) {
+	statetest.Processes(t, func(t *testing.T, a, b state.Store) {
+		tables := []*state.Table[int]{state.NewTable[int](a, "ns"), state.NewTable[int](b, "ns")}
+		const rounds = 4
+		for range rounds {
+			var wg sync.WaitGroup
+			for i := range state.MaxTries {
+				tb := tables[i%2]
+				wg.Go(func() {
+					if _, err := tb.Update("t", "n", func(n int, _ bool) (int, error) { return n + 1, nil }); err != nil {
+						t.Error(err)
+					}
+				})
+			}
+			wg.Wait()
+		}
+		it, err := tables[0].Lookup("t", "n")
+		if err != nil || it.Value != rounds*state.MaxTries {
+			t.Fatalf("n = %+v, %v; want %d", it, err, rounds*state.MaxTries)
+		}
+	})
+}
+
 func TestRetryGivesUp(t *testing.T) {
 	n := 0
 	if err := state.Retry(func() error { n++; return state.ErrConflict }); !errors.Is(err, state.ErrBusy) || n != state.MaxTries {
