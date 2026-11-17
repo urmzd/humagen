@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.135.5 (2026-11-17)
+
+### Bug Fixes
+
+- **memory**: send a note with the artifact version it was drawn from (#366) ([c766dd0](https://github.com/urmzd/humagen/commit/c766dd0ace7bc619abf7b617519de841f93c07ac))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.135.4...v0.135.5)
+
+
 ## 0.135.4 (2026-11-17)
 
 ### Bug Fixes
