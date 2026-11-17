@@ -1426,5 +1426,173 @@
     "height": "844",
     "sha256": "78c8b152c84b92bae3cb3f55cb75ac13456a95d74e065e9e4df69dc4d979346a",
     "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-docs/assignment-requirements-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "298aa86867db3786bbb1b8aa0bc5165b1044fd22a7a09287e257ba940e4c44e3",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-docs/assignment-requirements-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "71fddbd9514ccf12c9a74a29c2de344c91d3548ca4b50020502dde5b12ac5fca",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-docs/assignment-requirements-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "dbf60f3c4de6b828d41e3a4fd3e44561fbf59c0f785e1b88ac4eb1e6e377610e",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-docs/assignment-requirements-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "8597e0b4d4e9984bb2fb310772f8ca803b33640d762b9e84183b143819f266fa",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-docs/assignment-requirements-before-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "07352d7736ab5663cbbceeb865033af46623ab87f8868ba238937a4661f0efb2",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-docs/assignment-requirements-before-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "b94edc1527048a015f5e0bea52dded09bfbca8864a43a32ed6e1b914d32f7031",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-docs/assignment-requirements-before-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "99a020f67bbacc1f80376187c16ce34fd5becf16eeb2eb8bd8d66d36184c4aec",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-docs/assignment-requirements-before-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "849566965937a6b28523c66388d02387e05558db4639e99bdfd17c1cbb1e9b59",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-docs/assignment-status-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "a8430bdec42dff2db6391f101e533a2d04d37c0802772b8408d1b44ada60a6e5",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-docs/assignment-status-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "bee318aec998174f136e2dca76e4fb402df124f0a26b6453953e17e38db04d2d",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-docs/assignment-status-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "42fd83f1492dbc4f482236ae837ce5a9d7fda731e4797d0b0e29ecfd327545b7",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-docs/assignment-status-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "2366b9a9969cc4da2029fe02634c1cb104c6877ade6b14449376a96ca360a06f",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-docs/assignment-status-before-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "8eb839bccffaa02abf842c7b49429c3f30bacb57b87920e1e4de95624f9434a7",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-docs/assignment-status-before-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "29ba57008c105b7622457d46755d59b7177ebad6d35b474488dd02a24b0f41e4",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-docs/assignment-status-before-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "cc296adf11781abf311432dca9d0d9779ebec944f72e5255b579b7e6c02a58f7",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-docs/assignment-status-before-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "8c58b2ae3de5f8179b5b9464899796c15089caa5332a92cbfdf7d4a3894e84ef",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-own/card-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "300f51303559b8d589df3fc79c12b5095fbe8489b4a38a72b2c7b71a44cad2ad",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-own/card-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "575b29238874d016e390268a2f8f57dfcbfa70e12fa1e9ab0feb6a5c50c65323",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-own/card-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "d5e096abf0d04c11b3f9727f3f5420399c5ccc6eacec33e6c69263094b1c1b67",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-own/card-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "816ff1d76aa546902e9a1f55453047b19d9e0105c987cb7977f3b4fcbf9c17cb",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-own/run-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "0db45eb6eb4d1d81102d996cb167892ce39de21405a423c7b56a1bb1c41a33d5",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-own/run-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "7b224d65181bde73eb7068c1242edc275d7bd4473e752f3b3b9af79a631bbf9a",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-own/run-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "2f8fd6c74a3df26db7fa678d8f368c81d5d19c2570b888461ef5db1cecf59081",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-own/run-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "4b84c981230670dfea966cf134296a2b60c891093024d905e19afd94b887e29d",
+    "inspected_by": "codex"
   }
 ]
