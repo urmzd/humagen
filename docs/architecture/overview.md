@@ -565,6 +565,10 @@ immutable references in the transcript and run trigger. Existing attachment
 resolution sends a supported modality to the model and reports unsupported
 forms explicitly. Console queues retain uploaded bytes through waiting, editing
 and retry. Text file selection retains its existing 200 KiB picker cap.
+Posted human messages render retained upload names as shared file references,
+including after a reload and when another participant reads them. References
+without names fall back to alternative text or media type; they do not expose
+storage digests or offer an unimplemented download.
 
 Reviewed workspace and personal MCP tools now return saige's `RichTool` output:
 ordered text, image, audio and embedded document/file parts, with cumulative

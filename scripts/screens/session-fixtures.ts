@@ -126,6 +126,18 @@ export async function seedSessionFixtures(call: Call): Promise<SessionFixtures> 
     agent: "screens-writer",
     text: "Write a multi-step plan for launch.",
     project: "Launch",
+    uploads: [
+      {
+        name: "capture.png",
+        data: readFileSync(new URL("../../showcase/ui-approval.png", import.meta.url)).toString(
+          "base64",
+        ),
+      },
+      {
+        name: "launch-notes.txt",
+        data: Buffer.from("Developer owns the briefing.\n").toString("base64"),
+      },
+    ],
   });
   const review = await start({ agent: "screens-reviewer", text: REVIEW_ASK, project: "Launch" });
   assertProjectedReview(review);

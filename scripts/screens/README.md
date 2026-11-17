@@ -5,9 +5,10 @@ sign-in and the deterministic local model, and captures the canonical session
 interface. No live OAuth connection or model provider is used.
 
 The `Console screens (light)` and `Console screens (dark)` CI jobs each capture
-23 focused states at 390, 480, 768, 1024 and 1280 pixels wide: the seven navigation
+24 focused states at 390, 480, 768, 1024 and 1280 pixels wide: the seven navigation
 entries, Home's strip of recent artifacts (answered in the browser, since nothing
-publishes one offline), the composer with attachments, composer and session menus, feedback, all four Details sections, an
+publishes one offline), the composer with attachments, retained uploads in a reloaded
+session, composer and session menus, feedback, all four Details sections, an
 actual parked approval and a review v2 answer. A child session, alert and
 scratchpad files are created through the real session APIs. Details assertions
 check modal behavior below 1024 and composer reflow beside the desktop pane.

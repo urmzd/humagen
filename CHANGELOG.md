@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.123.0 (2026-11-17)
+
+### Features
+
+- **models**: pass effort and the program's own commands to Claude Code and Codex (#333) ([4d1657d](https://github.com/urmzd/humagen/commit/4d1657dade89d8b9e30f00299f3fd209501ef4d1))
+- **console**: calm Home strip and states that say whose move it is (#332) ([04ea8fd](https://github.com/urmzd/humagen/commit/04ea8fd99018d0848871f1ad2afe9f4cae66cebb))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.122.0...v0.123.0)
+
+
 ## 0.121.0 (2026-11-17)
 
 ### Features
