@@ -548,6 +548,13 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+Account exports have a [configured CLI path](../guides/finance-exports.md): an
+agent on Claude Code runs a shipped script that removes duplicates, reconciles
+balances and totals months and debts, and drafts a plan whose amounts are all
+copied from that output, with writes confined to an output folder. Checked on
+five invented exports with a checker that shares no code with the script; real
+exports, a bank's own format and the quality of the plan are not covered.
+
 Travel refunds have a [configured CLI path](../guides/travel-refund.md): one
 agent on Claude Code reads a booking and current policy pages and cannot write,
 and a second writes the request a person approves, under an output folder only.
@@ -618,6 +625,14 @@ when they wrap, including long unbroken paths. The `session-inline-code` browser
 fixture checks each fragment against its text column at responsive widths.
 
 ### Multimodal message and MCP content
+
+The [browser screenshot workflow](../guides/browser.md#compare-an-uploaded-screenshot-with-a-changed-page)
+has an opt-in real acceptance check: a PNG is uploaded and analyzed without
+tools, then the same conversation captures and compares an actually changed
+page. All four desktop/phone and light/dark cases passed on a generated local
+fixture, with real PNG response blocks before and after the action. This does
+not establish a third-party portal, every-pixel comparison or the same workflow
+through the console.
 
 A [local media CLI path](../guides/media-evidence.md) renders original PDF
 pages, inspects image pixels and video frames, and retains source offsets for

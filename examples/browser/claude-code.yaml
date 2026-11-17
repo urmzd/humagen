@@ -46,8 +46,10 @@ spec:
         provider: browser-cli
         model: haiku
         system_prompt: >-
-          Use only the explicitly connected browser and the target tab and origin
-          the person authorizes. List tabs first, then inspect the exact tab with
+          When asked to analyze an uploaded image alone, inspect its pixels without
+          using tools or a browser. For browser work, use only the explicitly
+          connected browser and the target tab and origin the person authorizes.
+          List tabs first, then inspect the exact tab with
           browser_snapshot without a filename. Use fresh target references for
           actions. Take a screenshot without filename, with scale css, to inspect returned
           pixels before visual claims, and

@@ -27,6 +27,7 @@
 | [Edit a document and audit a workbook](guides/office-files.md) | Guide | An agent on Claude Code edits a .docx in place and audits .xlsx formulas and revisions in a folder on this host |
 | [Work out a refund path](guides/travel-refund.md) | Guide | Two agents on Claude Code: one reads a booking and current policy pages and cannot write, one writes the approved request and nothing else |
 | [Build a sourced chronology from records](guides/records-research.md) | Guide | An agent on Claude Code reads a folder of records, cites and quotes each dated event, lists unknowns, and opens current official pages |
+| [Reconcile account exports](guides/finance-exports.md) | Guide | An agent on Claude Code runs a shipped script over authorized exports, reports what does not reconcile, and drafts a plan whose amounts are all sourced |
 | [Connect a Mac desktop](guides/desktop.md) | Guide | Pinned native MCP tools, permissions, targeting instructions, and an opt-in fixture check |
 | [Connect a browser](guides/browser.md) | Guide | Pinned Playwright MCP configuration, existing-tab connection, and real browser acceptance |
 | [Read mixed evidence and transcribe local media](guides/media-evidence.md) | Guide | Inspect original pages and frames, preserve ASR source timestamps and report uncertainty |
