@@ -603,6 +603,14 @@ fixture checks each fragment against its text column at responsive widths.
 
 ### Multimodal message and MCP content
 
+The [browser screenshot workflow](../guides/browser.md#compare-an-uploaded-screenshot-with-a-changed-page)
+has an opt-in real acceptance check: a PNG is uploaded and analyzed without
+tools, then the same conversation captures and compares an actually changed
+page. All four desktop/phone and light/dark cases passed on a generated local
+fixture, with real PNG response blocks before and after the action. This does
+not establish a third-party portal, every-pixel comparison or the same workflow
+through the console.
+
 People can supply up to five inline uploads, 25 MiB decoded in total, with a
 session or thread message. The platform sniffs the bytes, stores them through
 saige's existing attachment intake under the principal's tenant, and retains
