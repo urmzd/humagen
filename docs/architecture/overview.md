@@ -551,6 +551,13 @@ and a second writes the request a person approves, under an output folder only.
 Checked on an invented booking; a real itinerary, an airline's own policy and
 sending anything are not covered.
 
+Raster generation has a [configured Codex path](../guides/image-generation.md):
+a real account-backed image was generated, inspected and revised using its
+actual pixels, with both PNGs independently opened and the original hash
+preserved. Checked on Codex CLI 0.167.0 and a generated fixture. Files stay on
+the CLI host; automatic console publication and image-specific journal events
+are not covered. Edits can change texture outside the requested region.
+
 Bulk local files have a [configured CLI path](../guides/local-files.md): an
 agent on Claude Code surveys a folder on this host in place, writes a plan with
 a hash for every file, and applies only the part a person approves. Checked on a
