@@ -183,7 +183,7 @@ name, so a run filed in that project is grounded in the sessions that ran
 there. The project is the one named exactly as the directory is, ignoring
 case: the directory `my-repo` is the project `My-Repo`, and not `my_repo` or
 `My Repo`. A directory whose name a source's name cannot spell (`my_repo`,
-`My Repo`, a name over 24 characters) or that ends in a number (`app-2`) has a
+`My Repo`, a name over 24 characters) or that ends in a number (`app-2`) has
 eight digits of a hash of the directory's name added to its source's name. Two
 directories are never kept in one source: if two names would still give the
 same source, the second directory's sessions are not sent and the command
