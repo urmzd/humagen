@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.126.0 (2026-11-17)
+
+### Features
+
+- **tools**: connect a pinned native Mac desktop worker ([58f2411](https://github.com/urmzd/humagen/commit/58f241142bc30e0c6a3e817163e227e76b1e4cce))
+
+### Bug Fixes
+
+- **tools**: pin desktop schemas for foreground authority ([c00a52e](https://github.com/urmzd/humagen/commit/c00a52e963afd3457d3f18faff72fd2bc1b84828))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.125.0...v0.126.0)
+
+
 ## 0.125.0 (2026-11-17)
 
 ### Features
