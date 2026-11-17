@@ -865,6 +865,7 @@ function Console({
                         subject={me.principal.subject}
                         canWrite={can("runs:write")}
                         onRun={openRun}
+                        onMessage={(id) => go({ page: "message", id })}
                         onConversation={openThread}
                       />
                     ) : (
