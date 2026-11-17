@@ -43,7 +43,7 @@ const done: Record<string, string> = {
 function Record({ resolution }: { resolution: Resolution }) {
   return (
     <p data-testid="part-resolved" className="text-aui-xs text-aui-muted">
-      {done[resolution.outcome] ?? "Resolved"}
+      {done[resolution.outcome] ?? "Done"}
       {resolution.by ? ` by ${resolution.by}` : ""}, {ago(resolution.at)}.
     </p>
   );

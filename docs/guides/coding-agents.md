@@ -44,7 +44,8 @@ spec:
 
 `humagen start -f humagen.yaml`, then message `@coder`. The agent's `model` is
 passed to the program as its model (`opus`, `sonnet`, a full model name);
-`default` leaves the program's own choice.
+`default` leaves the program's own choice. The agent's `effort` is passed
+too, as `--effort` to Claude Code and as `model_reasoning_effort` to Codex.
 
 | Field | Behavior |
 | --- | --- |
@@ -59,10 +60,28 @@ passed to the program as its model (`opus`, `sonnet`, a full model name);
 
 ## What carries over, and what does not
 
+- **The program's own configuration applies.** It runs as you, in `dir`, so it
+  reads what it reads in a terminal: `CLAUDE.md` and `AGENTS.md` files, nearest
+  first, its skills and sub-agents, its MCP servers, its hooks and its
+  permission settings. A rule its settings deny stays denied whatever `allow`
+  says. What [agentspec](https://github.com/urmzd/agentspec) links into the
+  program is there too.
+
 - **One session a conversation.** The next message in a conversation continues
   the program's own session (`claude --resume`, `codex exec resume`), so it
   still knows the files it read and the commands it ran. A conversation it has
   no session for starts one and is told what was said so far.
+- **The program's own commands.** In a conversation that is continuing, a
+  message that is one line starting with `/` goes to Claude Code as typed, so
+  `/compact`, `/context` and `/cost` act on that conversation's session and
+  their output is the answer. A conversation's first message is always asked
+  as a question.
+- **Images and PDFs.** An image sent with a message is shown to the program:
+  to Claude Code on its input, to Codex as a file kept only for the run.
+  Claude Code also reads a PDF. Anything else (audio, video, another kind of
+  document) is refused with an error that names it, and the program is not
+  run. A session that is starting is shown the images of earlier messages
+  too.
 - **Tool activity.** Each tool the program runs is published as the run's tool
   call and its outcome, with the command or file it worked on and the end of
   its output.

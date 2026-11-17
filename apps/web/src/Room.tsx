@@ -37,6 +37,7 @@ import { agentShown } from "./branding.ts";
 import { Composer, type ComposerSeed } from "./Composer.tsx";
 import { type ConversationForkActions, ConversationForkPanels } from "./ConversationForkPanels.tsx";
 import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
+import { Reference } from "./cards.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
 import { deriveTitle } from "./conversationList.ts";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
@@ -370,6 +371,20 @@ function MessageView({
 }) {
   const who = m.name || m.by;
   const followup = followupNote(m);
+  const uploads = m.attachments?.length ? (
+    <ul className="flex max-w-full flex-wrap gap-1" aria-label={defaultCopy.details.used.uploads}>
+      {m.attachments.map((file, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: A retained message's files are immutable and may share both name and bytes.
+        <li key={index} className="min-w-0 max-w-full">
+          <Reference
+            kind="file"
+            label={file.name || file.alt || file.media_type}
+            title={file.unread || file.media_type}
+          />
+        </li>
+      ))}
+    </ul>
+  ) : null;
   const notes = (
     <>
       {m.surface_id && <span>{words.fromSlack}</span>}
@@ -400,6 +415,7 @@ function MessageView({
         <p className="humagen-glass max-w-[85%] whitespace-pre-wrap break-words rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg sm:max-w-[70%]">
           <Mentioned text={m.text} />
         </p>
+        {uploads}
         {/* Its actions show on hover and keep their place when hidden. They share the
             time's line, so a hidden row leaves no empty band under the message. */}
         <div className="flex max-w-full flex-wrap items-center justify-end gap-x-2">
@@ -443,6 +459,7 @@ function MessageView({
             skills={m.mentions.filter((t) => t.kind === "skill" && !t.refused).map((t) => t.name)}
           />
         </p>
+        {uploads}
         {refs}
         {row}
       </div>

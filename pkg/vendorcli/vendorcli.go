@@ -17,8 +17,10 @@ package vendorcli
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -29,6 +31,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -165,7 +168,7 @@ func New(kind string, c Config) (native.ProviderFunc, error) {
 		return nil, err
 	}
 	return func(s native.Spec) (saigetypes.Provider, error) {
-		return &provider{kind: kind, cfg: c, model: s.Model}, nil
+		return &provider{kind: kind, cfg: c, model: s.Model, effort: s.Effort}, nil
 	}, nil
 }
 
@@ -193,10 +196,28 @@ type provider struct {
 	kind  string
 	cfg   Config
 	model string
+	// effort is the reasoning effort the agent asks for, in the program's
+	// own words ("low", "high"). Empty leaves the program's default.
+	effort string
 }
 
 // Name implements saigetypes.NamedProvider.
 func (p *provider) Name() string { return p.kind }
+
+// Capabilities implements saigetypes.CapabilityReporter. It says only what
+// the program can be shown: a turn's attachments are sent as they are when
+// their type is here, and as derived text otherwise. Known is false, so
+// nothing else about the model is taken as declared.
+func (p *provider) Capabilities() saigetypes.ModelCapabilities {
+	types := map[saigetypes.MediaType]bool{}
+	for t := range imageExt {
+		types[saigetypes.MediaType(t)] = true
+	}
+	if p.kind == ClaudeCode {
+		types["application/pdf"] = true
+	}
+	return saigetypes.ModelCapabilities{Provider: p.kind, Model: p.model, Media: saigetypes.ContentSupport{NativeTypes: types}}
+}
 
 // turnOf is a request as the program needs it: the instructions, what was
 // said before, and what is asked now.
@@ -204,6 +225,63 @@ type turnOf struct {
 	system string
 	before []said
 	ask    string
+	// media are the images and documents sent with what is asked now, and
+	// earlier are those sent with earlier messages, which a session that
+	// is starting has not seen.
+	media, earlier []media
+}
+
+// media is one image or document a person sent.
+type media struct {
+	kind saigetypes.PartKind
+	typ  string
+	name string
+	data []byte
+}
+
+// imageExt is the file extension of each image type a program is shown. A
+// type is never read into a file name: one that is not here is refused.
+var imageExt = map[string]string{"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}
+
+// ErrMedia is something sent that the program cannot be shown.
+var ErrMedia = errors.New("vendorcli: unsupported content")
+
+// mediaOf reads the images and documents among a user message's parts. A
+// part the program has no way to take is an error that names it, never
+// something left out without a word.
+func (p *provider) mediaOf(parts []saigetypes.UserPart) ([]media, error) {
+	var out []media
+	for _, part := range parts {
+		var src saigetypes.Source
+		switch v := part.(type) {
+		case saigetypes.TextPart:
+			continue
+		case saigetypes.ImagePart:
+			if _, ok := imageExt[string(v.Source.MediaType)]; !ok {
+				return nil, fmt.Errorf("%w: %s is shown PNG, JPEG, GIF and WebP images, not %s", ErrMedia, p.kind, v.Source.MediaType)
+			}
+			src = v.Source
+		case saigetypes.DocumentPart:
+			if p.kind != ClaudeCode {
+				return nil, fmt.Errorf("%w: %s reads no %s document; send its text", ErrMedia, p.kind, v.Source.MediaType)
+			}
+			if v.Source.MediaType != "application/pdf" {
+				return nil, fmt.Errorf("%w: %s reads PDF documents, not %s; send its text", ErrMedia, p.kind, v.Source.MediaType)
+			}
+			src = v.Source
+		default:
+			return nil, fmt.Errorf("%w: %s takes text, images and (Claude Code) PDF documents, not %s", ErrMedia, p.kind, part.Kind())
+		}
+		if len(src.Inline) == 0 {
+			why := src.Unresolved
+			if why == "" {
+				why = "its bytes were not given"
+			}
+			return nil, fmt.Errorf("%w: %s %q: %s", ErrMedia, part.Kind(), src.Filename, why)
+		}
+		out = append(out, media{kind: part.Kind(), typ: string(src.MediaType), name: src.Filename, data: src.Inline})
+	}
+	return out, nil
 }
 
 type said struct{ role, text string }
@@ -219,7 +297,7 @@ func text[P any](parts []P) string {
 	return strings.Join(out, "\n\n")
 }
 
-func split(msgs []saigetypes.Message) (turnOf, error) {
+func (p *provider) split(msgs []saigetypes.Message) (turnOf, error) {
 	var t turnOf
 	var all []said
 	for _, m := range msgs {
@@ -229,8 +307,20 @@ func split(msgs []saigetypes.Message) (turnOf, error) {
 				t.system = strings.TrimSpace(t.system + "\n\n" + s)
 			}
 		case saigetypes.UserMessage:
-			if s := text(m.Parts); s != "" {
+			sent, err := p.mediaOf(m.Parts)
+			if err != nil {
+				return t, err
+			}
+			s := text(m.Parts)
+			if s == "" && len(sent) > 0 {
+				s = "See what is attached."
+			}
+			if s != "" {
 				all = append(all, said{"user", s})
+				// What came with an earlier message is kept until a later
+				// one is asked.
+				t.earlier = append(t.earlier, t.media...)
+				t.media = sent
 			}
 		case saigetypes.AssistantMessage:
 			if s := text(m.Parts); s != "" {
@@ -267,16 +357,23 @@ func (p *provider) key(turns []said) string {
 var threadLine = regexp.MustCompile(`(?m)^- ` + regexp.QuoteMeta(runs.MetaThread) + `: (\S+)$`)
 
 // conversation is the platform thread a request is in, or "" when what is
-// asked does not say.
+// asked does not say. What a person typed is repeated in the context and may
+// run over several paragraphs, so the line is looked for in all of it. A
+// person can type a line of that shape too: when what is asked names more
+// than one thread, none is taken, and the turn starts from what was said
+// rather than continue a session that may be another conversation's.
 func conversation(ask string) string {
 	if !strings.HasPrefix(ask, "Context from the trigger:") {
 		return ""
 	}
-	head, _, _ := strings.Cut(ask, "\n\n")
-	if m := threadLine.FindStringSubmatch(head); m != nil {
-		return m[1]
+	thread := ""
+	for _, m := range threadLine.FindAllStringSubmatch(ask, -1) {
+		if thread != "" && m[1] != thread {
+			return ""
+		}
+		thread = m[1]
 	}
-	return ""
+	return thread
 }
 
 // begun and begin carry a session over the one step the thread's name does
@@ -398,6 +495,12 @@ func (p *provider) remember(key, session string) {
 // prompt is what the program is asked: the new message alone when it
 // continues its own session, and otherwise the conversation so far with it.
 func prompt(t turnOf, resumed bool) string {
+	// A command of the program's own, such as /compact, is one only when it
+	// is all the program is given. It acts on the session, so it is passed
+	// alone only to a session that is being continued.
+	if typed := strings.TrimSpace(lastParagraph(t.ask)); resumed && strings.HasPrefix(typed, "/") && !strings.ContainsAny(typed, "\n") {
+		return typed
+	}
 	if resumed || len(t.before) == 0 {
 		return t.ask
 	}
@@ -415,17 +518,48 @@ func prompt(t turnOf, resumed bool) string {
 	return b.String()
 }
 
-func (p *provider) command(t turnOf, session string) []string {
+// command is one run of the program: its arguments, what it reads on its
+// standard input, and what to remove when it is done. Claude Code is sent
+// images and documents as a message on its input. Codex is given images as
+// files, kept only for the run.
+func (p *provider) command(t turnOf, session string) (args []string, stdin []byte, done func(), err error) {
+	done = func() {}
 	model := p.model
 	if model == "default" {
 		model = ""
 	}
-	var args []string
+	// A session that is starting is shown what earlier messages carried too.
+	sent := t.media
+	if session == "" {
+		sent = append(slices.Clone(t.earlier), t.media...)
+	}
 	switch p.kind {
 	case ClaudeCode:
-		args = []string{"-p", prompt(t, session != ""), "--output-format", "stream-json", "--verbose", "--permission-mode", p.cfg.Permissions}
+		args = []string{"-p"}
+		if len(sent) == 0 {
+			args = append(args, prompt(t, session != ""))
+		} else {
+			content := []map[string]any{{"type": "text", "text": prompt(t, session != "")}}
+			for _, m := range sent {
+				block := "image"
+				if m.kind == saigetypes.KindDocument {
+					block = "document"
+				}
+				content = append(content, map[string]any{"type": block, "source": map[string]any{"type": "base64", "media_type": m.typ, "data": base64.StdEncoding.EncodeToString(m.data)}})
+			}
+			line, err := json.Marshal(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": content}})
+			if err != nil {
+				return nil, nil, done, err
+			}
+			stdin = append(line, '\n')
+			args = append(args, "--input-format", "stream-json")
+		}
+		args = append(args, "--output-format", "stream-json", "--verbose", "--permission-mode", p.cfg.Permissions)
 		if model != "" {
 			args = append(args, "--model", model)
+		}
+		if p.effort != "" {
+			args = append(args, "--effort", p.effort)
 		}
 		if t.system != "" {
 			args = append(args, "--append-system-prompt", t.system)
@@ -450,14 +584,32 @@ func (p *provider) command(t turnOf, session string) []string {
 		if model != "" {
 			args = append(args, "--model", model)
 		}
+		if p.effort != "" {
+			args = append(args, "-c", "model_reasoning_effort="+strconv.Quote(p.effort))
+		}
+		if len(sent) > 0 {
+			dir, err := os.MkdirTemp("", "humagen-vendorcli-")
+			if err != nil {
+				return nil, nil, done, err
+			}
+			done = func() { _ = os.RemoveAll(dir) }
+			for i, m := range sent {
+				path := filepath.Join(dir, fmt.Sprintf("image-%d.%s", i+1, imageExt[m.typ]))
+				if err := os.WriteFile(path, m.data, 0o600); err != nil {
+					return nil, nil, done, err
+				}
+				args = append(args, "--image", path)
+			}
+		}
 		args = append(args, p.cfg.Args...)
 		ask := prompt(t, session != "")
 		if t.system != "" && session == "" {
 			ask = "Instructions for this conversation:\n" + t.system + "\n\n" + ask
 		}
-		args = append(args, ask)
+		// What follows -- is the prompt, however many images came before it.
+		args = append(args, "--", ask)
 	}
-	return args
+	return args, stdin, done, nil
 }
 
 func (p *provider) env() []string {
@@ -476,7 +628,7 @@ func (p *provider) env() []string {
 
 // Stream implements saigetypes.Provider: one run of the program.
 func (p *provider) Stream(ctx context.Context, req saigetypes.Request) (<-chan saigetypes.Delta, error) {
-	t, err := split(req.Messages)
+	t, err := p.split(req.Messages)
 	if err != nil {
 		return nil, err
 	}
@@ -492,8 +644,16 @@ func (p *provider) Stream(ctx context.Context, req saigetypes.Request) (<-chan s
 	case len(t.before) > 0:
 		session = p.session(p.key(t.before))
 	}
+	args, stdin, cleanup, err := p.command(t, session)
+	if err != nil {
+		cleanup()
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(p.cfg.Timeout))
-	cmd := exec.CommandContext(ctx, p.cfg.Command, p.command(t, session)...)
+	cmd := exec.CommandContext(ctx, p.cfg.Command, args...)
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
 	cmd.Dir = p.cfg.Dir
 	cmd.Env = p.env()
 	// The program starts its own children. Ending the run ends them all.
@@ -503,18 +663,22 @@ func (p *provider) Stream(ctx context.Context, req saigetypes.Request) (<-chan s
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		cancel()
+		cleanup()
 		return nil, err
 	}
 	stderr := &tail{max: 4 << 10}
 	cmd.Stderr = stderr
 	if err := cmd.Start(); err != nil {
 		cancel()
+		cleanup()
 		return nil, fmt.Errorf("vendorcli: start %s: %w; is it installed and on PATH?", p.cfg.Command, err)
 	}
 	out := make(chan saigetypes.Delta, 64)
 	go func() {
 		defer cancel()
+		// The files given to the program are gone before the stream ends.
 		defer close(out)
+		defer cleanup()
 		w := &writer{ctx: ctx, out: out, calls: map[string]called{}}
 		var res result
 		if p.kind == ClaudeCode {
@@ -726,8 +890,14 @@ func content(raw json.RawMessage) string {
 // readClaude reads `claude -p --output-format stream-json --verbose`.
 func readClaude(r io.Reader, w *writer) result {
 	var res result
+	compacted := ""
 	records(r, func(line []byte) {
 		var rec struct {
+			Compact struct {
+				Trigger string `json:"trigger"`
+				Before  int    `json:"pre_tokens"`
+				After   int    `json:"post_tokens"`
+			} `json:"compact_metadata"`
 			Type      string `json:"type"`
 			Subtype   string `json:"subtype"`
 			SessionID string `json:"session_id"`
@@ -765,10 +935,17 @@ func readClaude(r io.Reader, w *writer) result {
 			if rec.Subtype == "init" && rec.Model != "" {
 				res.model = rec.Model
 			}
+			// Only a compaction that was asked for is the turn's answer. One
+			// the program makes on its own, in a long session, comes before
+			// the answer to what was asked, which is read as usual.
+			if rec.Subtype == "compact_boundary" && rec.Compact.Trigger == "manual" {
+				compacted = fmt.Sprintf("Compacted the session: %d tokens before, %d after.", rec.Compact.Before, rec.Compact.After)
+			}
 		case "assistant", "user":
 			// What a sub-agent says is its caller's tool result, not the
-			// answer.
-			if rec.Parent != "" {
+			// answer. And after a compaction that was asked for, the program
+			// replays what it kept of the session, said in an earlier turn.
+			if rec.Parent != "" || compacted != "" {
 				return
 			}
 			for _, b := range rec.Message.Content {
@@ -785,6 +962,13 @@ func readClaude(r io.Reader, w *writer) result {
 			res.done = true
 			if rec.IsError || (rec.Subtype != "" && rec.Subtype != "success") {
 				res.err = strings.TrimSpace(rec.Subtype + ": " + rec.Result)
+			}
+			// A command of the program's own answers in its result, or not
+			// at all, rather than as something the model said.
+			if res.err == "" && len(w.said) == 0 {
+				// After a compaction the result can still hold the answer
+				// before it, so what the compaction reported comes first.
+				w.text(cmp.Or(compacted, strings.TrimSpace(rec.Result)))
 			}
 			u := rec.Usage
 			res.usage = saigetypes.UsageDelta{

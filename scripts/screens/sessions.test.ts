@@ -12,6 +12,7 @@ const ids = {
   review: { id: "s_review" },
   approval: { id: "s_approval" },
   child: { id: "s_child" },
+  inlineCode: { id: "s_inline" },
 } as SessionFixtures;
 
 /** Runs selector actions without starting Playwright or claiming browser validation. */
@@ -52,11 +53,11 @@ function recorder({ pickerVisible = true, fileContent = "" } = {}) {
   return { page, calls };
 }
 
-test("the canonical session suite keeps 21 unique states at all five widths", () => {
+test("the canonical session suite keeps 24 unique states at all five widths", () => {
   const screens = sessionScreens(ids);
-  assert.equal(screens.length, 21);
-  assert.equal(new Set(screens.map((screen) => screen.name)).size, 21);
-  assert.equal(screens.length * viewports().length, 105);
+  assert.equal(screens.length, 24);
+  assert.equal(new Set(screens.map((screen) => screen.name)).size, 24);
+  assert.equal(screens.length * viewports().length, 120);
   for (const [name, path] of Object.entries({
     new: "/",
     sessions: "/sessions",

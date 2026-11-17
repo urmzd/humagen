@@ -2096,7 +2096,7 @@ export interface ThreadMessage {
   via: string;
   surface_id?: string;
   /** Files posted with it, by name where the poster gave one. */
-  attachments?: { name?: string; alt?: string; media_type: string }[];
+  attachments?: { name?: string; alt?: string; media_type: string; unread?: string }[];
   at: string;
 }
 

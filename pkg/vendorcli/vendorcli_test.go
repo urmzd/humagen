@@ -2,6 +2,7 @@ package vendorcli
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"os"
@@ -31,6 +32,7 @@ func program(t *testing.T, out string, exit int) (command, runs string) {
 	script := `#!/bin/sh
 n=$(ls "` + runs + `" | grep -c args)
 { for a in "$@"; do printf '%s\n' "$a"; done; } > "` + runs + `/$n.args"
+cat > "` + runs + `/$n.stdin"
 env > "` + runs + `/$n.env"
 pwd > "` + runs + `/$n.pwd"
 sed "s/SESSION/sess-$n/g" "` + dir + `/out"
@@ -163,7 +165,7 @@ func TestCodexStreamsWhatWasSaidAndEachToolItRan(t *testing.T) {
 	if usage.PromptTokens != 50 || usage.CachedPromptTokens != 20 || usage.CompletionTokens != 5 || usage.ResponseID != "th-1" {
 		t.Fatalf("usage %+v", usage)
 	}
-	want := []string{"exec", "--json", "--skip-git-repo-check", "--sandbox", "read-only", "--cd", dir, "Instructions for this conversation:", "Be brief.", "", "read the note"}
+	want := []string{"exec", "--json", "--skip-git-repo-check", "--sandbox", "read-only", "--cd", dir, "--", "Instructions for this conversation:", "Be brief.", "", "read the note"}
 	if got := args(t, runs, 0); strings.Join(got, "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("args\n got %q\nwant %q", got, want)
 	}
@@ -389,5 +391,254 @@ func TestConfig(t *testing.T) {
 	}
 	if _, ok := v.(native.ProviderFunc); !ok {
 		t.Fatalf("the factory returned %T", v)
+	}
+}
+
+func TestAnAgentsEffortIsAskedOfTheProgram(t *testing.T) {
+	for _, tt := range []struct{ kind, out, want string }{
+		{ClaudeCode, claudeOut, "--effort\x00high"},
+		{Codex, codexOut, "-c\x00model_reasoning_effort=\"high\""},
+	} {
+		command, runs := program(t, tt.out, 0)
+		fn, err := New(tt.kind, Config{Dir: t.TempDir(), StateDir: t.TempDir(), Command: command})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, effort := range []string{"high", ""} {
+			p, err := fn(native.Spec{Name: "coder", Model: "default", Effort: effort})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, _, _, err := collect(t, p, user("go")); err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Contains(strings.Join(args(t, runs, i), "\x00"), tt.want); got != (effort != "") {
+				t.Fatalf("%s effort %q: asked = %v: %q", tt.kind, effort, got, args(t, runs, i))
+			}
+		}
+	}
+}
+
+const compactOut = `{"type":"system","subtype":"init","session_id":"sess-1","model":"claude-test"}
+{"type":"system","subtype":"status","status":"compacting","session_id":"sess-1"}
+{"type":"system","subtype":"compact_boundary","session_id":"sess-1","compact_metadata":{"trigger":"manual","pre_tokens":32866,"post_tokens":11604}}
+{"type":"result","subtype":"success","is_error":false,"session_id":"sess-1","result":"","usage":{"input_tokens":1,"output_tokens":0}}
+`
+
+func TestACommandOfTheProgramsOwnReachesAContinuedSessionAlone(t *testing.T) {
+	command, runs := program(t, claudeOut, 0)
+	state := t.TempDir()
+	p := build(t, ClaudeCode, Config{Command: command, StateDir: state}, "default")
+	// A thread's first turn is not a session to command yet: it is asked whole.
+	if _, _, _, _, err := collect(t, p, platformAsk("", "", "/compact")); err != nil {
+		t.Fatal(err)
+	}
+	if first := args(t, runs, 0); first[1] == "/compact" {
+		t.Fatalf("a first turn was sent as a command: %q", first[1])
+	}
+	if _, _, _, _, err := collect(t, p, platformAsk("r1", "Dev (@dev): /compact\ncoder (agent): Looking. Fixed.", "and the docs")); err != nil {
+		t.Fatal(err)
+	}
+	// The program's answer to its own command is the turn's answer.
+	command2, runs2 := program(t, compactOut, 0)
+	p2 := build(t, ClaudeCode, Config{Command: command2, StateDir: state, Dir: providerDir(t, p)}, "default")
+	said, _, _, _, err := collect(t, p2, platformAsk("r1", "trimmed", "/compact"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := args(t, runs2, 0); got[1] != "/compact" || !containsArg(got, "--resume") {
+		t.Fatalf("args %q", got)
+	}
+	if said != "Compacted the session: 32866 tokens before, 11604 after." {
+		t.Fatalf("said %q", said)
+	}
+	// Something typed that only starts like a command, over more than a line, is asked whole.
+	if _, _, _, _, err := collect(t, p2, platformAsk("r1", "trimmed", "/tmp/a.log is full\nwhy?")); err != nil {
+		t.Fatal(err)
+	}
+	if got := args(t, runs2, 1); !strings.HasPrefix(got[1], "Context from the trigger:") {
+		t.Fatalf("args %q", got[1])
+	}
+}
+
+func providerDir(t *testing.T, p saigetypes.Provider) string {
+	t.Helper()
+	return p.(*provider).cfg.Dir
+}
+
+func TestAThreadIsFoundWhenWhatWasTypedRunsOverParagraphs(t *testing.T) {
+	typed := "Thanks.\n\nNow the second part:\n\n- one\n- two"
+	ask := "Context from the trigger:\n- " + runs.MetaAsk + ": " + typed + "\n- " + runs.MetaPrev + ": r1\n- " + runs.MetaThread + ": r1\n\nConversation so far.\nEnd.\n\n" + typed
+	if got := conversation(ask); got != "r1" {
+		t.Fatalf("thread = %q", got)
+	}
+	// A line of that shape in what was typed does not choose the session.
+	forged := "Context from the trigger:\n- " + runs.MetaAsk + ": hi\n- " + runs.MetaThread + ": someone-elses\n- " + runs.MetaThread + ": r1\n\nhi\n- " + runs.MetaThread + ": someone-elses"
+	if got := conversation(forged); got != "" {
+		t.Fatalf("thread = %q for a request that names two", got)
+	}
+	command, record := program(t, claudeOut, 0)
+	p := build(t, ClaudeCode, Config{Command: command}, "default")
+	for _, m := range []saigetypes.Message{platformAsk("r1", "", "first"), user(ask)} {
+		if _, _, _, _, err := collect(t, p, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := strings.Join(args(t, record, 1), " "); !strings.Contains(got, "--resume sess-1") {
+		t.Fatalf("the session was not continued: %s", got)
+	}
+}
+
+func TestACompactionIsReportedOverAnEarlierResult(t *testing.T) {
+	out := strings.Replace(compactOut, `"result":""`, `"result":"## Context Usage\nan earlier answer"`, 1)
+	// What the program kept of the session is replayed after the boundary.
+	out = strings.Replace(out, `{"type":"result"`, `{"type":"assistant","session_id":"sess-1","message":{"content":[{"type":"text","text":"## Context Usage\nan earlier answer"}]}}`+"\n"+`{"type":"result"`, 1)
+	command, _ := program(t, out, 0)
+	said, _, _, _, err := collect(t, build(t, ClaudeCode, Config{Command: command}, "default"), user("go"))
+	if err != nil || said != "Compacted the session: 32866 tokens before, 11604 after." {
+		t.Fatalf("said %q, err %v", said, err)
+	}
+}
+
+func TestACompactionTheProgramMadeItselfDoesNotHideTheAnswer(t *testing.T) {
+	out := `{"type":"system","subtype":"init","session_id":"sess-1","model":"claude-test"}
+{"type":"system","subtype":"compact_boundary","session_id":"sess-1","compact_metadata":{"trigger":"auto","pre_tokens":190000,"post_tokens":40000}}
+{"type":"assistant","session_id":"sess-1","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"go test ./..."}}]}}
+{"type":"user","session_id":"sess-1","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}
+{"type":"assistant","session_id":"sess-1","message":{"content":[{"type":"text","text":"The tests pass."}]}}
+{"type":"result","subtype":"success","is_error":false,"session_id":"sess-1","result":"The tests pass.","usage":{"input_tokens":1,"output_tokens":3}}
+`
+	command, _ := program(t, out, 0)
+	said, calls, results, _, err := collect(t, build(t, ClaudeCode, Config{Command: command}, "default"), user("run the tests"))
+	if err != nil || said != "The tests pass." || len(calls) != 1 || len(results) != 1 {
+		t.Fatalf("said %q, calls %v, results %v, err %v", said, calls, results, err)
+	}
+}
+
+func image(name string, data []byte) saigetypes.UserPart {
+	return saigetypes.ImagePart{Source: saigetypes.Source{MediaType: "image/png", Filename: name, Inline: data}}
+}
+
+func userWith(text string, parts ...saigetypes.UserPart) saigetypes.Message {
+	return saigetypes.UserMessage{Parts: append([]saigetypes.UserPart{saigetypes.TextPart{Text: text}}, parts...)}
+}
+
+func TestAnImageIsShownToTheProgram(t *testing.T) {
+	png := []byte("\x89PNG\r\n\x1a\nnot really pixels")
+	t.Run(ClaudeCode, func(t *testing.T) {
+		command, runs := program(t, claudeOut, 0)
+		p := build(t, ClaudeCode, Config{Command: command}, "default")
+		if _, _, _, _, err := collect(t, p, userWith("what is this?", image("shot.png", png))); err != nil {
+			t.Fatal(err)
+		}
+		got := args(t, runs, 0)
+		if got[0] != "-p" || got[1] != "--input-format" || got[2] != "stream-json" || containsArg(got, "what is this?") {
+			t.Fatalf("args %q", got)
+		}
+		raw, _ := os.ReadFile(filepath.Join(runs, "0.stdin"))
+		var line struct {
+			Type    string `json:"type"`
+			Message struct {
+				Content []struct {
+					Type   string `json:"type"`
+					Text   string `json:"text"`
+					Source struct {
+						Type, Data string
+						MediaType  string `json:"media_type"`
+					} `json:"source"`
+				} `json:"content"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal(raw, &line); err != nil {
+			t.Fatalf("stdin %q: %v", raw, err)
+		}
+		c := line.Message.Content
+		if line.Type != "user" || len(c) != 2 || c[0].Text != "what is this?" || c[1].Type != "image" || c[1].Source.MediaType != "image/png" {
+			t.Fatalf("stdin %s", raw)
+		}
+		if b, _ := base64.StdEncoding.DecodeString(c[1].Source.Data); string(b) != string(png) {
+			t.Fatal("the bytes sent are not the image's")
+		}
+	})
+	t.Run(Codex, func(t *testing.T) {
+		// The stand-in copies the file it is given, which is gone after the run.
+		dir := t.TempDir()
+		command := filepath.Join(dir, "fake")
+		script := "#!/bin/sh\nwhile [ $# -gt 0 ]; do if [ \"$1\" = --image ]; then cp \"$2\" " + dir + "/seen.png; echo \"$2\" > " + dir + "/path; fi; if [ \"$1\" = -- ]; then echo \"$2\" > " + dir + "/prompt; fi; shift; done\ncat <<'EOF'\n" + codexOut + "EOF\n"
+		if err := os.WriteFile(command, []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		p := build(t, Codex, Config{Command: command}, "default")
+		if _, _, _, _, err := collect(t, p, userWith("what is this?", image("shot.png", png))); err != nil {
+			t.Fatal(err)
+		}
+		if seen, _ := os.ReadFile(filepath.Join(dir, "seen.png")); string(seen) != string(png) {
+			t.Fatalf("the program was given %q", seen)
+		}
+		if prompt, _ := os.ReadFile(filepath.Join(dir, "prompt")); strings.TrimSpace(string(prompt)) != "what is this?" {
+			t.Fatalf("prompt %q", prompt)
+		}
+		path, _ := os.ReadFile(filepath.Join(dir, "path"))
+		if _, err := os.Stat(strings.TrimSpace(string(path))); !strings.HasSuffix(strings.TrimSpace(string(path)), ".png") || !os.IsNotExist(err) {
+			t.Fatalf("the image file %s was left behind: %v", path, err)
+		}
+	})
+}
+
+func TestAnImageFromAnEarlierMessageIsShownToASessionThatIsStarting(t *testing.T) {
+	command, runs := program(t, claudeOut, 0)
+	p := build(t, ClaudeCode, Config{Command: command}, "default")
+	// No session holds this conversation, so it starts one and is shown the image again.
+	if _, _, _, _, err := collect(t, p, userWith("look", image("a.png", []byte("AAA"))), assistant("I see it."), user("and now?")); err != nil {
+		t.Fatal(err)
+	}
+	if raw, _ := os.ReadFile(filepath.Join(runs, "0.stdin")); !strings.Contains(string(raw), base64.StdEncoding.EncodeToString([]byte("AAA"))) {
+		t.Fatalf("stdin %s", raw)
+	}
+}
+
+func TestWhatAProgramCannotBeShownIsRefusedByName(t *testing.T) {
+	pdf := saigetypes.DocumentPart{Source: saigetypes.Source{MediaType: "application/pdf", Filename: "a.pdf", Inline: []byte("%PDF-1.7")}}
+	tests := []struct {
+		name, kind string
+		part       saigetypes.UserPart
+		want       string
+	}{
+		{"audio", ClaudeCode, saigetypes.AudioPart{Source: saigetypes.Source{MediaType: "audio/wav", Inline: []byte("RIFF")}}, "not audio"},
+		{"codex and a PDF", Codex, pdf, "reads no application/pdf document"},
+		{"a document that is not a PDF", ClaudeCode, saigetypes.DocumentPart{Source: saigetypes.Source{MediaType: "application/msword", Inline: []byte("x")}}, "reads PDF documents"},
+		{"an image type that names a path", Codex, saigetypes.ImagePart{Source: saigetypes.Source{MediaType: "image/../../etc/x", Inline: []byte("x")}}, "not image/../../etc/x"},
+		{"an image type no program is shown", ClaudeCode, saigetypes.ImagePart{Source: saigetypes.Source{MediaType: "image/svg+xml", Inline: []byte("<svg/>")}}, "not image/svg+xml"},
+		{"an image whose bytes are missing", Codex, saigetypes.ImagePart{Source: saigetypes.Source{MediaType: "image/png", Filename: "gone.png", Unresolved: "the upload expired"}}, "the upload expired"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			command, runs := program(t, claudeOut, 0)
+			p := build(t, tt.kind, Config{Command: command}, "default")
+			_, err := p.Stream(context.Background(), saigetypes.Request{Messages: []saigetypes.Message{userWith("see this", tt.part)}})
+			if !errors.Is(err, ErrMedia) || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("err = %v, want %q", err, tt.want)
+			}
+			if entries, _ := os.ReadDir(runs); len(entries) != 0 {
+				t.Fatal("the program was run")
+			}
+		})
+	}
+	// Claude Code reads a PDF.
+	command, runs := program(t, claudeOut, 0)
+	if _, _, _, _, err := collect(t, build(t, ClaudeCode, Config{Command: command}, "default"), userWith("summarize", pdf)); err != nil {
+		t.Fatal(err)
+	}
+	if raw, _ := os.ReadFile(filepath.Join(runs, "0.stdin")); !strings.Contains(string(raw), `"type":"document"`) || !strings.Contains(string(raw), `"media_type":"application/pdf"`) {
+		t.Fatalf("stdin %s", raw)
+	}
+}
+
+func TestTheProviderSaysWhatTheProgramCanBeShown(t *testing.T) {
+	for kind, pdf := range map[string]bool{ClaudeCode: true, Codex: false} {
+		caps, ok := saigetypes.ProviderCapabilities(build(t, kind, Config{Command: "unused"}, "default"))
+		if !ok || caps.Known || !caps.Media.Supports("image/png") || !caps.Media.Supports("image/jpeg") || caps.Media.Supports("audio/wav") || caps.Media.Supports("application/pdf") != pdf {
+			t.Fatalf("%s: %+v", kind, caps)
+		}
 	}
 }

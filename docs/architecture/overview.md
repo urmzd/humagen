@@ -552,6 +552,21 @@ The connector's real discovery and permission checks run through Humagen.
 The opt-in native fixture test requires an unlocked GUI session; permissions
 alone do not establish capture or action success.
 
+The response's Worked/tools control has a 44px minimum touch target on coarse
+pointers. The canonical `session` browser check measures the visible control
+and opens/closes Details before its capture.
+
+Browser automation has a pinned external-worker path in
+[the browser guide](../guides/browser.md): explicit MCP grants, inline page
+snapshots, interactions, selected downloads, and image results. The local
+connector acceptance uses a real isolated browser. Existing authenticated tabs
+still require the person to connect the official extension or a CDP endpoint;
+an isolated browser does not establish signed-in portal coverage.
+
+Markdown inline-code fragments retain their own padding and rounded background
+when they wrap, including long unbroken paths. The `session-inline-code` browser
+fixture checks each fragment against its text column at responsive widths.
+
 ### Multimodal message and MCP content
 
 People can supply up to five inline uploads, 25 MiB decoded in total, with a
@@ -561,6 +576,10 @@ immutable references in the transcript and run trigger. Existing attachment
 resolution sends a supported modality to the model and reports unsupported
 forms explicitly. Console queues retain uploaded bytes through waiting, editing
 and retry. Text file selection retains its existing 200 KiB picker cap.
+Posted human messages render retained upload names as shared file references,
+including after a reload and when another participant reads them. References
+without names fall back to alternative text or media type; they do not expose
+storage digests or offer an unimplemented download.
 
 Reviewed workspace and personal MCP tools now return saige's `RichTool` output:
 ordered text, image, audio and embedded document/file parts, with cumulative
