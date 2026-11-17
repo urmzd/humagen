@@ -1946,11 +1946,51 @@
     "inspected_by": "codex"
   },
   {
+    "path": "/Users/urmzd/humagen-session-audit-2026-11-16/review-github-e2e/captures/github-restack-after.png",
+    "asset": "github-workflows/github-restack-after.png",
+    "width": 1088,
+    "height": 372,
+    "sha256": "83b49db631083125d3f3340da0f0461cd61d1b9e6270a4b22b138e82c5f6b726",
+    "inspected_by": "codex"
+  },
+  {
+    "path": "/Users/urmzd/humagen-session-audit-2026-11-16/review-github-e2e/captures/github-ci-after.png",
+    "asset": "github-workflows/github-ci-after.png",
+    "width": 1088,
+    "height": 332,
+    "sha256": "1719e3bb922b0e785b002541f0f118726cdd0291b1bb15bb6f97ded658146509",
+    "inspected_by": "codex"
+  },
+  {
+    "path": "/Users/urmzd/humagen-session-audit-2026-11-16/review-github-e2e/captures/github-release-receipt.png",
+    "asset": "github-workflows/github-release-receipt.png",
+    "width": 1165,
+    "height": 392,
+    "sha256": "4bd274f3dd258d362559bbcf0cb57f899665915728ced688946d671e2294b491",
+    "inspected_by": "codex"
+  },
+  {
+    "path": "/Users/urmzd/humagen-session-audit-2026-11-16/review-github-e2e/captures/github-ci-before.png",
+    "asset": "github-workflows/github-ci-before.png",
+    "width": 1088,
+    "height": 332,
+    "sha256": "691a493931e0a9c4b2e5c4daf48563832002c69412c887ba607fc988eacf8aca",
+    "inspected_by": "codex"
+  },
+  {
+    "path": "/Users/urmzd/humagen-session-audit-2026-11-16/review-github-e2e/captures/github-restack-before.png",
+    "asset": "github-workflows/github-restack-before.png",
+    "width": 1088,
+    "height": 372,
+    "sha256": "77f27b34bb7aba9af9b9cdb00f33c3e3040463ff74c922f48e48b1a82173aafd",
+    "inspected_by": "codex"
+  },
+  {
     "path": "/Users/urmzd/humagen-session-audit-2026-11-16/image-generation-visuals/captures/image-status-before-dark-1280x800.png",
     "asset": "image-generation-docs/image-status-before-dark-1280x800.png",
     "width": 1280,
     "height": 800,
-    "sha256": "340be7bbe5dd05c0c90dea26e2e5e6d7a24d37ea67b5468ccce87c1a5ee11907",
+    "sha256": "4b3b95acc22809d858162fc1e09290167869c6fca9a079b4e6014119be5200b7",
     "inspected_by": "codex"
   },
   {
@@ -1958,7 +1998,7 @@
     "asset": "image-generation-docs/image-status-before-dark-390x844.png",
     "width": 390,
     "height": 844,
-    "sha256": "408da48271aa7c293fa7ce0fe53af27984b3b9ef532e8136cfd26f85cdd4b31e",
+    "sha256": "3c759f240696f2a862782fc461795254e6eab83938a1f487a9e00c489bad8ee7",
     "inspected_by": "codex"
   },
   {
@@ -1966,7 +2006,7 @@
     "asset": "image-generation-docs/image-status-after-light-1280x800.png",
     "width": 1280,
     "height": 800,
-    "sha256": "c846fd7ab289a3dc2429930166637bcea2bd59051448a885f6dcefe7c99aceff",
+    "sha256": "b2d0c44896832c4dcd947f0c56889348065f1faad1b1fa78c33a52175df1df57",
     "inspected_by": "codex"
   },
   {
@@ -1982,7 +2022,7 @@
     "asset": "image-generation-docs/image-index-after-light-390x844.png",
     "width": 390,
     "height": 844,
-    "sha256": "116ad2bfb0da41857512565e73b752b9c7e77702b2910ac81d1346d6cdcefcee",
+    "sha256": "a3957ebc8dd434cd0b048ef540129653bd71f57f7ec21db2361c0dc43c13378b",
     "inspected_by": "codex"
   },
   {
@@ -1990,7 +2030,7 @@
     "asset": "image-generation-docs/image-index-before-light-390x844.png",
     "width": 390,
     "height": 844,
-    "sha256": "e0f981f5fac3ea5f24439c26f54e4d80c7cace10be9624c8714c288f4d7c69b8",
+    "sha256": "119da796aa151a5fe357e513f744a371bcd850892f1c3d4ca554a326f908082b",
     "inspected_by": "codex"
   },
   {
@@ -2006,7 +2046,7 @@
     "asset": "image-generation-docs/image-index-before-light-1280x800.png",
     "width": 1280,
     "height": 800,
-    "sha256": "a54b37805e502d633a49a11c9e70764049dbe50ee24c23797b31da993618e3bb",
+    "sha256": "9478266102c8c8c9c1087f368c12d913c0d00eae8cf0d354661fca027807a489",
     "inspected_by": "codex"
   },
   {
@@ -2054,7 +2094,7 @@
     "asset": "image-generation-docs/image-status-after-dark-1280x800.png",
     "width": 1280,
     "height": 800,
-    "sha256": "859b1a93804c4c17d812d69e20929f442e1357836bd78a06f18bb8f27b6ec8d7",
+    "sha256": "165cc070284108c024626a32ca22b063a063d8a9b315fb0943d69e6568f46a20",
     "inspected_by": "codex"
   },
   {
@@ -2062,7 +2102,7 @@
     "asset": "image-generation-docs/image-status-after-light-390x844.png",
     "width": 390,
     "height": 844,
-    "sha256": "040bcf9a89ec95f38b636a72bade933331be5204a3766b0b886af78e9f8b7f33",
+    "sha256": "89cf9aca152744c59109219ac5e7e19fddc7fdac0c780280e0580fc2e78bd7ae",
     "inspected_by": "codex"
   },
   {
@@ -2070,7 +2110,7 @@
     "asset": "image-generation-docs/image-index-after-dark-390x844.png",
     "width": 390,
     "height": 844,
-    "sha256": "1d9dc8e1a5dc5521c598d1bd078c25eaad39442b857d1df7ab1db81f82555485",
+    "sha256": "1b8b1a28a8c0c616a0add80dce3e8d912531568be22cc6a27c5de06c6a90fdb1",
     "inspected_by": "codex"
   },
   {
@@ -2078,7 +2118,7 @@
     "asset": "image-generation-docs/image-index-before-dark-390x844.png",
     "width": 390,
     "height": 844,
-    "sha256": "49aaccb63283cdcec2a32fa37cb557e0ea36c7e737fc0cae182c6ada5bb78cfe",
+    "sha256": "2e1a6e63f99d9da6e8628e0634ea83f6d786ac73984202c7cfdc8c0a5a1c14cc",
     "inspected_by": "codex"
   },
   {
@@ -2094,7 +2134,7 @@
     "asset": "image-generation-docs/image-status-after-dark-390x844.png",
     "width": 390,
     "height": 844,
-    "sha256": "a0a05a598e38d2cc26a7024b5e8c47e46d2c0dc6ec18486b348a30a7ca91ca6b",
+    "sha256": "c8072fc4a8629b0d09c6cf08b43ce4ceeb4552aee5b3f186df76ed065a40a7bd",
     "inspected_by": "codex"
   },
   {
@@ -2110,7 +2150,7 @@
     "asset": "image-generation-docs/image-status-before-light-390x844.png",
     "width": 390,
     "height": 844,
-    "sha256": "ce01daec171fcffa5cf2face64f871c96a6b1c785f8d64577e0405adeaaf341d",
+    "sha256": "940f76227e3aad8145aeac468f149804917a179763ad2a85efc0a1755d9f11f2",
     "inspected_by": "codex"
   },
   {
@@ -2118,7 +2158,7 @@
     "asset": "image-generation-docs/image-status-before-light-1280x800.png",
     "width": 1280,
     "height": 800,
-    "sha256": "7c6c9b4d53170deeb23c946354c7415079b23d2bc3d780096406cb64493a57f0",
+    "sha256": "29a7db42020bc5e93d1b8959c2c933da74644c18468094bbd7c5a956995234e4",
     "inspected_by": "codex"
   },
   {
@@ -2126,7 +2166,7 @@
     "asset": "image-generation-docs/image-index-before-dark-1280x800.png",
     "width": 1280,
     "height": 800,
-    "sha256": "084988994f81b6b55fc9cdde1038ffa2a5b9e34d1dd0b5bbfbcb758060156875",
+    "sha256": "65cacdf7f13098dc910ee2702d5ff94e9df8c50f754bd54c9c61b11b7a138d7f",
     "inspected_by": "codex"
   },
   {
@@ -2134,7 +2174,7 @@
     "asset": "image-generation-docs/image-index-after-light-1280x800.png",
     "width": 1280,
     "height": 800,
-    "sha256": "c1080ab1e4585131d339a794f22d1081430512c70f35061546646502e0d63a7a",
+    "sha256": "3f79634a4d162a9a864b4b852559afa0a4efbbfb5a27c9bd02676ee9d2708344",
     "inspected_by": "codex"
   },
   {
@@ -2142,7 +2182,7 @@
     "asset": "image-generation-docs/image-index-after-dark-1280x800.png",
     "width": 1280,
     "height": 800,
-    "sha256": "031b49bb0bf0e3d93cd80d9027ccbacae9eb048cc72bd4e6eb933151392928b4",
+    "sha256": "286918a89ee340cbb57648bc72cb019b462bfdee696713ecb7abe89373b604fc",
     "inspected_by": "codex"
   },
   {
@@ -2167,46 +2207,6 @@
     "width": 1254,
     "height": 1254,
     "sha256": "1fe6dae61edd59fc1f37d16bbd4e9d69140b7ff8f7cbdf849950937311cc072c",
-    "inspected_by": "codex"
-  },
-  {
-    "path": "/Users/urmzd/humagen-session-audit-2026-11-16/review-github-e2e/captures/github-restack-after.png",
-    "asset": "github-workflows/github-restack-after.png",
-    "width": 1088,
-    "height": 372,
-    "sha256": "83b49db631083125d3f3340da0f0461cd61d1b9e6270a4b22b138e82c5f6b726",
-    "inspected_by": "codex"
-  },
-  {
-    "path": "/Users/urmzd/humagen-session-audit-2026-11-16/review-github-e2e/captures/github-ci-after.png",
-    "asset": "github-workflows/github-ci-after.png",
-    "width": 1088,
-    "height": 332,
-    "sha256": "1719e3bb922b0e785b002541f0f118726cdd0291b1bb15bb6f97ded658146509",
-    "inspected_by": "codex"
-  },
-  {
-    "path": "/Users/urmzd/humagen-session-audit-2026-11-16/review-github-e2e/captures/github-release-receipt.png",
-    "asset": "github-workflows/github-release-receipt.png",
-    "width": 1165,
-    "height": 392,
-    "sha256": "4bd274f3dd258d362559bbcf0cb57f899665915728ced688946d671e2294b491",
-    "inspected_by": "codex"
-  },
-  {
-    "path": "/Users/urmzd/humagen-session-audit-2026-11-16/review-github-e2e/captures/github-ci-before.png",
-    "asset": "github-workflows/github-ci-before.png",
-    "width": 1088,
-    "height": 332,
-    "sha256": "691a493931e0a9c4b2e5c4daf48563832002c69412c887ba607fc988eacf8aca",
-    "inspected_by": "codex"
-  },
-  {
-    "path": "/Users/urmzd/humagen-session-audit-2026-11-16/review-github-e2e/captures/github-restack-before.png",
-    "asset": "github-workflows/github-restack-before.png",
-    "width": 1088,
-    "height": 372,
-    "sha256": "77f27b34bb7aba9af9b9cdb00f33c3e3040463ff74c922f48e48b1a82173aafd",
     "inspected_by": "codex"
   }
 ]
