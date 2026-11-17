@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.122.0 (2026-11-17)
+
+### Features
+
+- **browser**: connect a pinned Playwright worker (#334) ([c665bea](https://github.com/urmzd/humagen/commit/c665bea0291557efb987e5d5068e717f055e1b1e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.121.0...v0.122.0)
+
+
 ## 0.121.0 (2026-11-17)
 
 ### Features
