@@ -545,6 +545,13 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+Raster generation has a [configured Codex path](../guides/image-generation.md):
+a real account-backed image was generated, inspected and revised using its
+actual pixels, with both PNGs independently opened and the original hash
+preserved. Checked on Codex CLI 0.167.0 and a generated fixture. Files stay on
+the CLI host; automatic console publication and image-specific journal events
+are not covered. Edits can change texture outside the requested region.
+
 Public-source research has a [configured CLI path](../guides/public-web.md)
 with built-in tools restricted to WebSearch and WebFetch; the program's user
 settings, hooks and plugins still load. A real HTTP run executed both and its
