@@ -26,9 +26,11 @@ func clockTick(t *testing.T, p *platform.Platform, name string, from, to time.Ti
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	published := make(chan event.Envelope, 8)
-	done := make(chan error, 1)
+	done := make(chan struct{})
 	go func() {
-		done <- clock.Ingest(ctx, func(_ context.Context, e event.Envelope) error {
+		defer close(done)
+		// Ingest ends with the context's error when the test cancels it.
+		_ = clock.Ingest(ctx, func(_ context.Context, e event.Envelope) error {
 			published <- e
 			return nil
 		})
