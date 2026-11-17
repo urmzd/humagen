@@ -2,7 +2,8 @@
 
 `examples/public-web/claude-code.yaml` connects Humagen to the signed-in Claude
 Code program's WebSearch and WebFetch tools. It searches current public sources,
-opens pages, and returns supporting URLs. It needs no separate search API key.
+opens pages, and reports supporting URLs in the model's answer. These links
+are not platform-verified citation provenance; native run citations remain empty. It needs no separate search API key.
 The installed program and account must support these tools.
 
 ## Start the researcher
@@ -14,8 +15,10 @@ Claude Code on that host. Then start the example:
 humagen start -f examples/public-web/claude-code.yaml
 ```
 
-The model profile enables only WebSearch and WebFetch, preauthorizes those two
-tool names, and ignores other MCP configurations. Program permissions govern
+The model profile limits built-in tools to WebSearch and WebFetch, preauthorizes
+those two tool names, and sets an empty strict MCP configuration. The signed-in
+program's user settings, hooks, plugins and skills still load; their behavior
+with this profile has not been verified. Program permissions govern
 this host path. Humagen's native tool grants do not gate the program's tools.
 The native execution sandbox does not confine the external program.
 
@@ -40,7 +43,8 @@ not connection proof.
 ## Actual acceptance and limits
 
 A real Humagen HTTP run used both tools and opened `https://go.dev/dl/?mode=json`.
-Its version matched a separate direct retrieval of the official feed. The answer
+Its model-reported version and URL matched a separate direct retrieval of the
+official feed. The URL is answer text, not a verified native citation record. The answer
 left the date unknown because that feed has no release-date field. This proves
 the installed program's public-source path, not every search result or a
 permanent release version. Search results can be stale; dates and claims still

@@ -101,7 +101,8 @@ planned collections, browser, protocol and improvement work from this UI pass.
 ### DES-001: Working integrations
 
 The public-web profile in `examples/public-web/claude-code.yaml` enables the
-program's own WebSearch and WebFetch only. Actual HTTP tool events and a separate
+program's built-in WebSearch and WebFetch only; user hooks and plugins still
+load. Supporting URLs are model-reported answer text, not verified citations. Actual HTTP tool events and a separate
 official-source retrieval validate search/open/version agreement. See
 [public-source research](../guides/public-web.md) for identity, permissions and
 unsupported browser operations. No console connection control is implied.
