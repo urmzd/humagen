@@ -548,6 +548,12 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+Coding agents on Claude Code or Codex have a [model kind](../guides/coding-agents.md)
+each. A turn on Codex fails only when the program says the turn failed, with
+or without a reason, or ends without finishing it; what it reports along the
+way, such as skill descriptions left out or a reconnection, does not fail the
+turn or make the platform run it again.
+
 Mail has an [existing-account CLI path](../guides/mail-calendar.md): Codex apps
 searched and read one exact unsent non-personal Gmail fixture and its actual
 CSV attachment through Humagen. Contacts returned no match for an exact audit
