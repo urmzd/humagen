@@ -533,6 +533,16 @@ try {
         !images.some((i) => i.fixtureChanged && i.width === width && i.height === height))
     )
       throw new Error("Changed pixels were not captured and compared with the original upload");
+    if (compareUpload) {
+      const beforeImages = images.filter(
+        (i) => !i.fixtureChanged && i.width === width && i.height === height,
+      );
+      const afterImages = images.filter(
+        (i) => i.fixtureChanged && i.width === width && i.height === height,
+      );
+      if (!afterImages.some((after) => beforeImages.some((before) => before.sha256 !== after.sha256)))
+        throw new Error("Before and after inline screenshot bytes did not differ");
+    }
     if (
       wireErrors.length ||
       !images.some((i) => i.width === width && i.height === height) ||
