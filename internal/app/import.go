@@ -3,6 +3,8 @@ package app
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -354,6 +356,7 @@ type sessionSink struct {
 	exists map[string]bool // sources the server has
 	count  map[string]int  // documents in each
 	full   map[string]bool
+	dirs   map[string]string // by project: a directory's slug to its name
 	res    *sessionsResult
 }
 
@@ -392,6 +395,14 @@ func (k *sessionSink) load() error {
 
 // add sends one session, to the first source of its month with room.
 func (k *sessionSink) add(s sessionimport.Session) {
+	// A directory is noted even when its sessions are all there, so a later
+	// run attaches a source whose project was made since.
+	slug := ""
+	if k.c.byProj {
+		if slug = dirSlug(s.Dir); slug != "" {
+			k.dirs[slug] = filepath.Base(s.Dir)
+		}
+	}
 	if k.have[s.URI()] {
 		k.res.Present++
 		return
@@ -403,7 +414,7 @@ func (k *sessionSink) add(s sessionimport.Session) {
 	base := k.c.prefix + "-" + s.Tool + "-" + month
 	what := fmt.Sprintf("Sessions imported from %s, started %s.", s.Tool, month)
 	// By project, a session is kept with the others of its directory.
-	if slug := dirSlug(s.Dir); k.c.byProj && slug != "" {
+	if slug != "" {
 		base = k.c.prefix + "-in-" + slug
 		what = "Sessions imported from other assistants that ran in " + filepath.Base(s.Dir) + "."
 	}
@@ -454,13 +465,18 @@ func (k *sessionSink) add(s sessionimport.Session) {
 
 // dirSlug is a directory's last name as a source's name may hold it: lower
 // case letters, digits and hyphens, at most 24. "" is a directory with no
-// name to go by.
+// name to go by. Two directories share a slug only when their names differ
+// in case alone: a name the slug does not spell exactly (foo_bar, My App, a
+// long one) or one that ends as a continued source does (app-2) carries a
+// few digits of its hash, so foo_bar is not kept with foo-bar and app-2 is
+// not taken for the second source of app.
 func dirSlug(dir string) string {
 	if dir == "" {
 		return ""
 	}
+	base := strings.ToLower(filepath.Base(dir))
 	var b strings.Builder
-	for _, r := range strings.ToLower(filepath.Base(dir)) {
+	for _, r := range base {
 		switch {
 		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
 			b.WriteRune(r)
@@ -469,10 +485,17 @@ func dirSlug(dir string) string {
 		}
 	}
 	slug := strings.Trim(b.String(), "-")
-	if len(slug) > 24 {
-		slug = strings.Trim(slug[:24], "-")
+	if slug == "" {
+		return ""
 	}
-	return slug
+	if slug == base && len(slug) <= 24 && !continued.MatchString(slug) {
+		return slug
+	}
+	if len(slug) > 18 {
+		slug = strings.Trim(slug[:18], "-")
+	}
+	sum := sha256.Sum256([]byte(base))
+	return slug + "-x" + hex.EncodeToString(sum[:2])
 }
 
 // continued matches the name of a source that continues a full one.
@@ -483,18 +506,30 @@ var continued = regexp.MustCompile(`^(.+)-\d+$`)
 // that directory. A directory no project is named for is reported, and its
 // sessions stay in the corpus.
 func (k *sessionSink) attach() {
-	var listed struct {
-		Projects []struct {
-			Name string `json:"name"`
-		} `json:"projects"`
-	}
-	if err := k.api.do(k.ctx, http.MethodGet, "/api/projects", nil, &listed); err != nil {
-		k.res.Failed = append(k.res.Failed, importFailed{Name: "projects", Reason: err.Error()})
-		return
-	}
-	projects := map[string]string{}
-	for _, p := range listed.Projects {
-		projects[dirSlug(p.Name)] = p.Name
+	// Every page: a workspace holds more projects than one page does.
+	projects := map[string]string{} // lower case name to name
+	for before := ""; ; {
+		var listed struct {
+			Projects []struct {
+				Name string `json:"name"`
+			} `json:"projects"`
+			Next *string `json:"next"`
+		}
+		path := "/api/projects?limit=200"
+		if before != "" {
+			path += "&before=" + url.QueryEscape(before)
+		}
+		if err := k.api.do(k.ctx, http.MethodGet, path, nil, &listed); err != nil {
+			k.res.Failed = append(k.res.Failed, importFailed{Name: "projects", Reason: err.Error()})
+			return
+		}
+		for _, p := range listed.Projects {
+			projects[strings.ToLower(p.Name)] = p.Name
+		}
+		if listed.Next == nil || *listed.Next == "" || *listed.Next == before {
+			break
+		}
+		before = *listed.Next
 	}
 	var sources []string
 	for name := range k.exists {
@@ -508,13 +543,21 @@ func (k *sessionSink) attach() {
 			continue
 		}
 		slug := strings.TrimPrefix(source, in)
-		// NAME-2 continues NAME, and is its directory's too.
-		if m := continued.FindStringSubmatch(slug); m != nil && k.exists[in+m[1]] {
+		// NAME-2 continues NAME, and is its directory's too. No directory's
+		// own slug ends that way (dirSlug).
+		if m := continued.FindStringSubmatch(slug); m != nil {
 			slug = m[1]
 		}
-		project, ok := projects[slug]
+		// A source of a directory this run did not read is left as it is.
+		dir, ok := k.dirs[slug]
 		if !ok {
-			unfiled[slug] = true
+			continue
+		}
+		// The project is the one named as the directory is, ignoring case
+		// and nothing else: foo-bar is not foo_bar's.
+		project, ok := projects[strings.ToLower(dir)]
+		if !ok {
+			unfiled[dir] = true
 			continue
 		}
 		if err := k.api.do(k.ctx, http.MethodPut, "/api/knowledge/"+url.PathEscape(source)+"/attachment", map[string]string{"project": project}, nil); err != nil {
@@ -523,8 +566,8 @@ func (k *sessionSink) attach() {
 		}
 		k.res.Attached = append(k.res.Attached, source+"="+project)
 	}
-	for slug := range unfiled {
-		k.res.Unfiled = append(k.res.Unfiled, slug)
+	for dir := range unfiled {
+		k.res.Unfiled = append(k.res.Unfiled, dir)
 	}
 	sort.Strings(k.res.Unfiled)
 }
@@ -625,7 +668,7 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 		return errors.New("nothing to read; name a tool with --from or an export with --export FILE")
 	}
 	res := sessionsResult{Failed: []importFailed{}, Sources: []string{}, Corpora: []string{}, ByTool: map[string]int{}, DryRun: c.dryRun}
-	sink := &sessionSink{ctx: ctx, c: c, api: api, res: &res, have: map[string]bool{}, exists: map[string]bool{}, count: map[string]int{}, full: map[string]bool{}}
+	sink := &sessionSink{ctx: ctx, c: c, api: api, res: &res, have: map[string]bool{}, exists: map[string]bool{}, count: map[string]int{}, full: map[string]bool{}, dirs: map[string]string{}}
 	if !c.dryRun {
 		if err := sink.load(); err != nil {
 			return err

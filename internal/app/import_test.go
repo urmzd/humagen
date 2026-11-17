@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -90,11 +91,18 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 			w.WriteHeader(201)
 			fmt.Fprint(w, `{}`)
 		case r.Method == "GET" && r.URL.Path == "/api/projects":
+			// Two to a page, as the real list pages at its limit.
+			from, _ := strconv.Atoi(r.URL.Query().Get("before"))
 			out := []map[string]string{}
-			for _, name := range s.projects {
-				out = append(out, map[string]string{"name": name})
+			var next any
+			for i := from; i < len(s.projects); i++ {
+				if len(out) == 2 {
+					next = strconv.Itoa(i)
+					break
+				}
+				out = append(out, map[string]string{"name": s.projects[i]})
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"projects": out})
+			_ = json.NewEncoder(w).Encode(map[string]any{"projects": out, "next": next})
 		case len(parts) == 3 && parts[0] == "knowledge" && parts[2] == "attachment" && r.Method == "PUT":
 			var body struct{ Project string }
 			_ = json.NewDecoder(r.Body).Decode(&body)
@@ -617,5 +625,62 @@ func TestDirSlug(t *testing.T) {
 		if got := dirSlug(dir); got != want {
 			t.Errorf("dirSlug(%q) = %q, want %q", dir, got, want)
 		}
+	}
+}
+
+// cwdSession is a Claude Code session that ran in dir.
+func cwdSession(id, dir string) string {
+	return strings.Replace(claudeSession(id, "2026-10-03T10:00:00Z", "ask "+id), "/work/app", dir, 1)
+}
+
+func TestImportSessionsByProjectReadsEveryPageOfProjects(t *testing.T) {
+	// The directory's project is on the third page of the list.
+	api := &importServer{projects: []string{"a", "b", "c", "d", "app"}}
+	server := api.start(t)
+	if out, err := runImport(t, "sessions", "--home", sessionHome(t), "--from", "claude", "--server", server.URL, "--by-project"); err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	if api.attached["sessions-in-app"] != "app" {
+		t.Fatalf("attached = %v", api.attached)
+	}
+}
+
+func TestImportSessionsByProjectTellsDirectoriesOfLikeNamesApart(t *testing.T) {
+	api := &importServer{projects: []string{"foo_bar", "foo-bar", "app"}}
+	server := api.start(t)
+	home := t.TempDir()
+	putFile(t, home, ".claude/projects/-work-foo-bar/a.jsonl", cwdSession("a", "/work/foo-bar"))
+	putFile(t, home, ".claude/projects/-work-foo_bar/b.jsonl", cwdSession("b", "/work/foo_bar"))
+	putFile(t, home, ".claude/projects/-work-app/c.jsonl", cwdSession("c", "/work/app"))
+	putFile(t, home, ".claude/projects/-work-app-2/d.jsonl", cwdSession("d", "/work/app-2"))
+	putFile(t, home, ".claude/projects/-work-My-App/e.jsonl", cwdSession("e", "/work/My App"))
+	out, err := runImport(t, "sessions", "--home", home, "--server", server.URL, "--by-project", "--json")
+	var res sessionsResult
+	if jerr := json.Unmarshal([]byte(out), &res); err != nil || jerr != nil {
+		t.Fatalf("err = %v, json = %v\n%s", err, jerr, out)
+	}
+	// Each directory has a source of its own, and each source one session.
+	if len(api.docs) != 5 {
+		t.Fatalf("sources = %v", api.docs)
+	}
+	for name, docs := range api.docs {
+		if len(docs) != 1 {
+			t.Errorf("%s holds %d sessions", name, len(docs))
+		}
+	}
+	// A project takes the directory named as it is and no other: foo-bar's
+	// is not foo_bar's, and app-2 is not a second source of app.
+	projects := map[string]string{}
+	for source, project := range api.attached {
+		if projects[project] != "" {
+			t.Errorf("%s has %s and %s", project, projects[project], source)
+		}
+		projects[project] = source
+	}
+	if len(api.attached) != 3 || projects["foo-bar"] != "sessions-in-foo-bar" || projects["app"] != "sessions-in-app" || !strings.HasPrefix(projects["foo_bar"], "sessions-in-foo-bar-x") {
+		t.Fatalf("attached = %v", api.attached)
+	}
+	if got := strings.Join(res.Unfiled, ", "); got != "My App, app-2" {
+		t.Fatalf("unfiled = %s", got)
 	}
 }
