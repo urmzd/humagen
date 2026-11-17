@@ -4,9 +4,11 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { ItemCard } from "./cards.tsx";
 import { stubFetch } from "./dom.ts";
 import { unreadPrefs } from "./preferences.ts";
+import { href } from "./route.ts";
 import { AlertsPage, HomeSessionGlance, SessionsPage } from "./SessionCenter.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { type AgentSessionSummary, type Alert, attentionAlerts } from "./sessionCenter.ts";
+import { sampleFiles } from "./storage.fixtures.ts";
 
 let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
@@ -62,7 +64,7 @@ const alert = (
   severity: "warning",
   at: now,
 });
-test("Home attention counts only open urgent and normal session alerts and caps rows at three", async () => {
+test("Home says how many alerts wait in one link and lists none of them", async () => {
   const alerts = [
     alert("low", "low"),
     alert("resolved", "urgent", "resolved"),
@@ -77,23 +79,80 @@ test("Home attention counts only open urgent and normal session alerts and caps 
   );
   net = stubFetch({ "GET /api/sessions": () => ({ sessions: [session("s_root")], next: "" }) });
   let sessionsLoaded = false;
+  const went: unknown[] = [];
   render(
     <HomeSessionGlance
       alerts={alerts}
-      go={() => {}}
-      canWrite={false}
-      onChanged={() => {}}
+      go={(route) => went.push(route)}
       tick={0}
+      via={{ list: async () => ({ artifacts: [], next: null }) }}
       onHasSessions={() => {
         sessionsLoaded = true;
       }}
     />,
   );
   await waitFor(() => assert.equal(sessionsLoaded, true));
-  assert.equal(screen.getAllByRole("listitem").length, 3);
-  assert.equal(screen.getAllByRole("listitem")[0]?.textContent?.includes("Alert b"), true);
-  assert.equal(screen.queryByText("Continue"), null);
-  assert.ok(screen.getByRole("button", { name: "All alerts" }));
+  const waiting = screen.getByRole("link", { name: "4 waiting on you" });
+  assert.equal(waiting.getAttribute("href"), "/alerts");
+  fireEvent.click(waiting);
+  assert.deepEqual(went, [{ page: "alerts" }]);
+  assert.equal(screen.queryAllByRole("listitem").length, 0);
+  assert.equal(screen.queryByText("Alert b"), null);
+  assert.equal(screen.queryByRole("button", { name: /Resolve|Mark Done/ }), null);
+  assert.equal(screen.queryByText("Recently made"), null);
+});
+
+test("Home shows the three newest artifacts in one strip, each opening where it lives", async () => {
+  net = stubFetch({ "GET /api/sessions": () => ({ sessions: [], next: "" }) });
+  const asked: number[] = [];
+  const went: unknown[] = [];
+  render(
+    <HomeSessionGlance
+      alerts={[]}
+      go={(route) => went.push(route)}
+      tick={0}
+      via={{
+        list: async (q) => {
+          asked.push(q.limit);
+          return { artifacts: sampleFiles().slice(0, 4), next: null };
+        },
+      }}
+    />,
+  );
+  const strip = await screen.findByRole("region", { name: "Recently made" });
+  assert.deepEqual(asked, [3]);
+  const cards = within(strip).getAllByRole("listitem");
+  assert.equal(cards.length, 3);
+  const first = sampleFiles()[0];
+  assert.ok(first);
+  const card = within(strip).getByRole("link", { name: first.title });
+  assert.equal(card.getAttribute("href"), href({ page: "artifacts", artifact: first.id }));
+  fireEvent.click(card);
+  fireEvent.click(within(strip).getByRole("link", { name: "All artifacts" }));
+  assert.deepEqual(went, [{ page: "artifacts", artifact: first.id }, { page: "artifacts" }]);
+  assert.equal(screen.queryByText(/waiting on you/), null);
+});
+
+test("Home with nothing waiting and nothing made draws nothing, and asks for no artifacts it may not read", async () => {
+  net = stubFetch({ "GET /api/sessions": () => ({ sessions: [], next: "" }) });
+  let asked = 0;
+  const { container } = render(
+    <HomeSessionGlance
+      alerts={[]}
+      go={() => {}}
+      tick={0}
+      canArtifacts={false}
+      via={{
+        list: async () => {
+          asked++;
+          return { artifacts: sampleFiles(), next: null };
+        },
+      }}
+    />,
+  );
+  await new Promise((done) => setTimeout(done, 0));
+  assert.equal(asked, 0);
+  assert.equal(container.textContent, "");
 });
 
 test("alert source filters reach the server and do not expose another source", async () => {
@@ -167,7 +226,7 @@ test("Alerts resolves selected records and Undo reopens only successful changes"
     />,
   );
   fireEvent.click(await screen.findByRole("checkbox", { name: "Select Alert one" }));
-  fireEvent.click(screen.getByRole("button", { name: "Resolve selected" }));
+  fireEvent.click(screen.getByRole("button", { name: "Mark Selected Done" }));
   fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
   await waitFor(() => assert.deepEqual(sent, [{ state: "resolved" }, { state: "open" }]));
   assert.equal(changed.length, 2);
