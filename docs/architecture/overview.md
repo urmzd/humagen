@@ -545,6 +545,13 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+Native Mac control has a pinned stdio connection in
+[the desktop guide](../guides/desktop.md). Foreground-authorized tools target exact
+windows, preserve producer-bound references and return actual image content.
+The connector's real discovery and permission checks run through Humagen.
+The opt-in native fixture test requires an unlocked GUI session; permissions
+alone do not establish capture or action success.
+
 ### Multimodal message and MCP content
 
 People can supply up to five inline uploads, 25 MiB decoded in total, with a

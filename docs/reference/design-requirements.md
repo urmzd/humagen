@@ -1712,6 +1712,11 @@ Evidence: `replay.test.ts`, `replay.dom.test.tsx`; the phone and desktop
 
 ### DES-062: Customize and personal tool servers
 
+The native Mac connection in `examples/desktop/` pins an explicit tool set with foreground authority for the
+named fixture. `docs/guides/desktop.md` documents worker placement, permissions, exact
+window/snapshot targeting, and an opt-in native fixture test. A locked session
+is a connection blocker, not a successful desktop-control result.
+
 - Customize groups the existing Agents, Skills, Connected Accounts and Your tool
   servers sections at `/customize/{section}`, with permission-filtered tabs.
 - Personal MCP clients run in the trusted worker using the existing credential
