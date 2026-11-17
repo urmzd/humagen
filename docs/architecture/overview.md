@@ -545,6 +545,13 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+Browser automation has a pinned external-worker path in
+[the browser guide](../guides/browser.md): explicit MCP grants, inline page
+snapshots, interactions, selected downloads, and image results. The local
+connector acceptance uses a real isolated browser. Existing authenticated tabs
+still require the person to connect the official extension or a CDP endpoint;
+an isolated browser does not establish signed-in portal coverage.
+
 ### Multimodal message and MCP content
 
 People can supply up to five inline uploads, 25 MiB decoded in total, with a
