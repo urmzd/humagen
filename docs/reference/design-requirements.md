@@ -1004,6 +1004,9 @@ approval, disabled early approval, restoration, refusal and the combined menu.
   `TestUploadedImageReachesModelAndLaterHistory`, and the phone/desktop
   `composer-attachments` screen. Live model and connected browser acceptance are
   tracked separately in the session audit ledger.
+- Retained upload references are checked for both message authors and other
+  readers in `room.dom.test.tsx`, and from actual session API records by the
+  `session-uploads` browser state at phone and desktop widths in both themes.
 
 ### DES-037: Health
 

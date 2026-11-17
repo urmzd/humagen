@@ -90,6 +90,21 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
   const session = `/messages/${ids.work.id}`;
   return [
     {
+      name: "session-uploads",
+      path: session,
+      act: async (page) => {
+        await readySession(page);
+        // Reloaded from the actual session API, rather than the composer's local draft.
+        const message = page
+          .getByRole("article", { name: "Message from Developer", exact: true })
+          .first();
+        await message.scrollIntoViewIfNeeded();
+        const uploads = message.getByRole("list", { name: defaultCopy.details.used.uploads });
+        await uploads.getByText("capture.png", { exact: true }).waitFor();
+        await uploads.getByText("launch-notes.txt", { exact: true }).waitFor();
+      },
+    },
+    {
       name: "composer-attachments",
       path: "/",
       act: async (page) => {

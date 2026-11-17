@@ -1611,7 +1611,7 @@ test("retained uploads remain visible on the author's and another reader's messa
         {
           kind: "message",
           message: {
-          ...message,
+            ...message,
             text: "Inspect these files.",
             attachments: [
               { name: "capture.png", media_type: "image/png" },
