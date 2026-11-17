@@ -29,8 +29,9 @@ control, so read the run's tool events if it matters.
 ```text
 Build a chronology of this application from the records in this folder. Write
 out/chronology.csv with the columns date, event, source_file, quote,
-certainty: date as YYYY-MM-DD or the word unknown, quote copied exactly from
-the record, certainty one of stated, conflicting, unknown. Write
+certainty: quote copied exactly from the record; date only what that quote
+states, as YYYY-MM-DD, or ????-MM-DD when it gives a day and month and no
+year, or the word unknown; certainty one of stated, conflicting, unknown. Write
 out/unknowns.md listing what the records mention and do not prove, and where
 they disagree. Then open the official page for the current filing fee for
 this form and tell me whether the amount paid matches the fee for filing
@@ -43,10 +44,15 @@ online today, with the exact URL you opened.
 python3 examples/records-research/check.py DIR
 ```
 
-It fails when a row names a file that is not in the folder or quotes words that
-are not in that file. It does not judge whether the date follows from the
-quote: read the rows. For a page, open the URL the answer gives and find the
-sentence.
+It fails when a row names a file that is not in the folder, quotes words that
+are not in that file, or carries a date its own quote does not state: a full
+date needs the day, month and year in the quote, `????-MM-DD` needs a day and
+month there and no year, and anything else must be `unknown`. So a likely date
+borrowed from another record fails. `python3 examples/records-research/check.py
+--self-test` runs its own cases. It reads dates written as `March 4, 2025`,
+`3/4/2025` (month first) and `2025-03-04`; a date written another way has to be
+`unknown`, and it does not judge the event text. For a page, open the URL the
+answer gives and find the sentence.
 
 ## What was checked, and what was not
 
@@ -55,7 +61,9 @@ an application with three traps: a request for evidence that an email mentions
 and the folder does not hold, a response whose mailing nothing proves, and a
 note that disagrees with a notice about a day.
 
-- 13 rows, each quote found word for word in its record, every record cited.
+- 13 rows, each quote found word for word in its record, every record cited,
+  and every date stated by its own quote: eight full dates, three with a day
+  and month and no year, and two unknown.
 - The disagreement was reported with both records. The missing request, the
   unproven mailing, the undated interview and the missing decision were listed
   as unknown.
@@ -63,9 +71,10 @@ note that disagrees with a notice about a day.
   fetched separately, at the URL it gave.
 - A write outside `out/` was refused, and the records were unchanged.
 
-Seen and worth knowing: for two events whose record gives a day and no year,
-the row carried the year of the surrounding records while its text said the
-year was not stated. The checker does not catch that.
+An earlier run, before the checker read dates, gave a note that says "4/3" the
+date of the appointment the day before, and gave "June 6" the year of the
+records around it. Both now fail the checker, and the prompt now asks for
+`????-MM-DD`.
 
 Not checked:
 
