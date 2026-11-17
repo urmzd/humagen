@@ -1712,6 +1712,13 @@ Evidence: `replay.test.ts`, `replay.dom.test.tsx`; the phone and desktop
 
 ### DES-062: Customize and personal tool servers
 
+The browser worker configuration and connection instructions are in
+`examples/browser/` and `docs/guides/browser.md`. Browser tool schemas are pinned;
+navigation and interaction require a write grant. The real connector acceptance
+is opt-in (`TestBrowserLive`), and signed-in tabs require the person's explicit
+extension connection. No console control implies an authenticated browser
+connection before that handoff.
+
 - Customize groups the existing Agents, Skills, Connected Accounts and Your tool
   servers sections at `/customize/{section}`, with permission-filtered tabs.
 - Personal MCP clients run in the trusted worker using the existing credential
