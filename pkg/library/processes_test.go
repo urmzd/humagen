@@ -91,9 +91,15 @@ func TestSkillsTwoProcessesAgree(t *testing.T) {
 
 		// New skills in one scope from both processes stop at the cap.
 		personal := library.Scope{Kind: "personal", Subject: "bob"}
+		// Every new skill writes the scope's one count, and a write gives up
+		// after state.MaxTries losses. So as many race at once as that
+		// allows, not the whole cap.
+		racing := make(chan struct{}, state.MaxTries/2)
 		for i := range library.MaxSkills + 8 {
 			s := []*library.Store{one, two}[i%2]
 			wg.Go(func() {
+				racing <- struct{}{}
+				defer func() { <-racing }()
 				_, err := s.Draft("acme", "bob", personal, definition(fmt.Sprintf("skill-%d", i), "x"), 0, nil, time.Now())
 				if err != nil && !errors.Is(err, library.ErrInvalid) {
 					t.Error(err)
