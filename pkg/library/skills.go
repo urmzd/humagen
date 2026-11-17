@@ -21,7 +21,10 @@ import (
 	"github.com/urmzd/humagen/pkg/state"
 )
 
-const MaxSkills = 32
+// MaxSkills is how many skills one scope holds. A person's own skills, kept
+// in one store for every assistant they use, number in the hundreds, and a
+// scope must take them. Listing a scope reads at most this many.
+const MaxSkills = 256
 const MaxVersions = 32
 const MaxScopes = 1000
 
