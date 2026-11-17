@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.121.0 (2026-11-17)
+
+### Features
+
+- **models**: run a turn on Claude Code or Codex (#329) ([f2ab255](https://github.com/urmzd/humagen/commit/f2ab2558c394ff5f64ba9314d75fce4d9aa7c869))
+- **cli**: import sessions, skills and agents from other assistants (#328) ([bf8fa87](https://github.com/urmzd/humagen/commit/bf8fa87e5f569f09af0f58e182b33b343fcb2928))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.120.0...v0.121.0)
+
+
 ## 0.119.0 (2026-11-14)
 
 ### Features
