@@ -1740,9 +1740,14 @@ is a connection blocker, not a successful desktop-control result.
 The browser worker configuration and connection instructions are in
 `examples/browser/` and `docs/guides/browser.md`. Browser tool schemas are pinned;
 navigation and interaction require a write grant. The real connector acceptance
-is opt-in (`TestBrowserLive`), and signed-in tabs require the person's explicit
-extension connection. No console control implies an authenticated browser
-connection before that handoff.
+is opt-in (`TestBrowserLive`). The separate Claude Code/CDP helper verifies an
+actual model using the same signed-in local fixture tab, screenshot pixels, an
+authorized action and selected CSV read at both widths and themes. Actual wire
+receipts check PNG blocks; restricted file-tool refusal and separated artifact
+and download directories are exercised. Existing tabs
+require an explicit extension or CDP connection; third-party SSO/MFA and extension
+handoff remain unverified. The CLI profile uses its own tool permissions, not
+native grants. No console control implies an authenticated browser connection.
 
 - Customize groups the existing Agents, Skills, Connected Accounts and Your tool
   servers sections at `/customize/{section}`, with permission-filtered tabs.
