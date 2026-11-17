@@ -17,6 +17,7 @@ package vendorcli
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -29,6 +30,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -165,7 +167,7 @@ func New(kind string, c Config) (native.ProviderFunc, error) {
 		return nil, err
 	}
 	return func(s native.Spec) (saigetypes.Provider, error) {
-		return &provider{kind: kind, cfg: c, model: s.Model}, nil
+		return &provider{kind: kind, cfg: c, model: s.Model, effort: s.Effort}, nil
 	}, nil
 }
 
@@ -193,6 +195,9 @@ type provider struct {
 	kind  string
 	cfg   Config
 	model string
+	// effort is the reasoning effort the agent asks for, in the program's
+	// own words ("low", "high"). Empty leaves the program's default.
+	effort string
 }
 
 // Name implements saigetypes.NamedProvider.
@@ -398,6 +403,12 @@ func (p *provider) remember(key, session string) {
 // prompt is what the program is asked: the new message alone when it
 // continues its own session, and otherwise the conversation so far with it.
 func prompt(t turnOf, resumed bool) string {
+	// A command of the program's own, such as /compact, is one only when it
+	// is all the program is given. It acts on the session, so it is passed
+	// alone only to a session that is being continued.
+	if typed := strings.TrimSpace(lastParagraph(t.ask)); resumed && strings.HasPrefix(typed, "/") && !strings.ContainsAny(typed, "\n") {
+		return typed
+	}
 	if resumed || len(t.before) == 0 {
 		return t.ask
 	}
@@ -427,6 +438,9 @@ func (p *provider) command(t turnOf, session string) []string {
 		if model != "" {
 			args = append(args, "--model", model)
 		}
+		if p.effort != "" {
+			args = append(args, "--effort", p.effort)
+		}
 		if t.system != "" {
 			args = append(args, "--append-system-prompt", t.system)
 		}
@@ -449,6 +463,9 @@ func (p *provider) command(t turnOf, session string) []string {
 		}
 		if model != "" {
 			args = append(args, "--model", model)
+		}
+		if p.effort != "" {
+			args = append(args, "-c", "model_reasoning_effort="+strconv.Quote(p.effort))
 		}
 		args = append(args, p.cfg.Args...)
 		ask := prompt(t, session != "")
@@ -726,8 +743,13 @@ func content(raw json.RawMessage) string {
 // readClaude reads `claude -p --output-format stream-json --verbose`.
 func readClaude(r io.Reader, w *writer) result {
 	var res result
+	compacted := ""
 	records(r, func(line []byte) {
 		var rec struct {
+			Compact struct {
+				Before int `json:"pre_tokens"`
+				After  int `json:"post_tokens"`
+			} `json:"compact_metadata"`
 			Type      string `json:"type"`
 			Subtype   string `json:"subtype"`
 			SessionID string `json:"session_id"`
@@ -765,6 +787,9 @@ func readClaude(r io.Reader, w *writer) result {
 			if rec.Subtype == "init" && rec.Model != "" {
 				res.model = rec.Model
 			}
+			if rec.Subtype == "compact_boundary" {
+				compacted = fmt.Sprintf("Compacted the session: %d tokens before, %d after.", rec.Compact.Before, rec.Compact.After)
+			}
 		case "assistant", "user":
 			// What a sub-agent says is its caller's tool result, not the
 			// answer.
@@ -785,6 +810,11 @@ func readClaude(r io.Reader, w *writer) result {
 			res.done = true
 			if rec.IsError || (rec.Subtype != "" && rec.Subtype != "success") {
 				res.err = strings.TrimSpace(rec.Subtype + ": " + rec.Result)
+			}
+			// A command of the program's own answers in its result, or not
+			// at all, rather than as something the model said.
+			if res.err == "" && len(w.said) == 0 {
+				w.text(cmp.Or(strings.TrimSpace(rec.Result), compacted))
 			}
 			u := rec.Usage
 			res.usage = saigetypes.UsageDelta{

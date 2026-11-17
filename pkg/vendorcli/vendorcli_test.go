@@ -391,3 +391,75 @@ func TestConfig(t *testing.T) {
 		t.Fatalf("the factory returned %T", v)
 	}
 }
+
+func TestAnAgentsEffortIsAskedOfTheProgram(t *testing.T) {
+	for _, tt := range []struct{ kind, out, want string }{
+		{ClaudeCode, claudeOut, "--effort\x00high"},
+		{Codex, codexOut, "-c\x00model_reasoning_effort=\"high\""},
+	} {
+		command, runs := program(t, tt.out, 0)
+		fn, err := New(tt.kind, Config{Dir: t.TempDir(), StateDir: t.TempDir(), Command: command})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, effort := range []string{"high", ""} {
+			p, err := fn(native.Spec{Name: "coder", Model: "default", Effort: effort})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, _, _, err := collect(t, p, user("go")); err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Contains(strings.Join(args(t, runs, i), "\x00"), tt.want); got != (effort != "") {
+				t.Fatalf("%s effort %q: asked = %v: %q", tt.kind, effort, got, args(t, runs, i))
+			}
+		}
+	}
+}
+
+const compactOut = `{"type":"system","subtype":"init","session_id":"sess-1","model":"claude-test"}
+{"type":"system","subtype":"status","status":"compacting","session_id":"sess-1"}
+{"type":"system","subtype":"compact_boundary","session_id":"sess-1","compact_metadata":{"trigger":"manual","pre_tokens":32866,"post_tokens":11604}}
+{"type":"result","subtype":"success","is_error":false,"session_id":"sess-1","result":"","usage":{"input_tokens":1,"output_tokens":0}}
+`
+
+func TestACommandOfTheProgramsOwnReachesAContinuedSessionAlone(t *testing.T) {
+	command, runs := program(t, claudeOut, 0)
+	state := t.TempDir()
+	p := build(t, ClaudeCode, Config{Command: command, StateDir: state}, "default")
+	// A thread's first turn is not a session to command yet: it is asked whole.
+	if _, _, _, _, err := collect(t, p, platformAsk("", "", "/compact")); err != nil {
+		t.Fatal(err)
+	}
+	if first := args(t, runs, 0); first[1] == "/compact" {
+		t.Fatalf("a first turn was sent as a command: %q", first[1])
+	}
+	if _, _, _, _, err := collect(t, p, platformAsk("r1", "Dev (@dev): /compact\ncoder (agent): Looking. Fixed.", "and the docs")); err != nil {
+		t.Fatal(err)
+	}
+	// The program's answer to its own command is the turn's answer.
+	command2, runs2 := program(t, compactOut, 0)
+	p2 := build(t, ClaudeCode, Config{Command: command2, StateDir: state, Dir: providerDir(t, p)}, "default")
+	said, _, _, _, err := collect(t, p2, platformAsk("r1", "trimmed", "/compact"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := args(t, runs2, 0); got[1] != "/compact" || !containsArg(got, "--resume") {
+		t.Fatalf("args %q", got)
+	}
+	if said != "Compacted the session: 32866 tokens before, 11604 after." {
+		t.Fatalf("said %q", said)
+	}
+	// Something typed that only starts like a command, over more than a line, is asked whole.
+	if _, _, _, _, err := collect(t, p2, platformAsk("r1", "trimmed", "/tmp/a.log is full\nwhy?")); err != nil {
+		t.Fatal(err)
+	}
+	if got := args(t, runs2, 1); !strings.HasPrefix(got[1], "Context from the trigger:") {
+		t.Fatalf("args %q", got[1])
+	}
+}
+
+func providerDir(t *testing.T, p saigetypes.Provider) string {
+	t.Helper()
+	return p.(*provider).cfg.Dir
+}
