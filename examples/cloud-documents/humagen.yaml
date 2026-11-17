@@ -21,7 +21,6 @@ spec:
         permissions: default
         allow:
           - ToolSearch
-          - mcp__claude_ai_Google_Drive__get_file_metadata
           - mcp__claude_ai_Google_Docs__read_doc
           - mcp__claude_ai_Google_Docs__update_doc
         args: [--tools, ToolSearch]

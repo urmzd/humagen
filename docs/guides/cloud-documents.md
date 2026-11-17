@@ -103,9 +103,12 @@ and consent.
 Claude Code's native Drive `download_file_content` exposed a revisionId
 argument but actually refused historical downloads with "not yet supported."
 The working history path therefore uses Codex's connected Drive app.
-Codex's noninteractive cloud write attempt was refused by its approval policy;
-the example retains its read-only role and uses the existing permitted native
-Docs path for approved guarded writes. It does not disable approval review or
-broaden local permissions. A similarly named Claude Docs connector was not
+Codex's noninteractive cloud write attempt was refused by the installed
+program's default approval policy. Only its local filesystem mode is pinned
+by this profile; cloud-tool approvals follow the program and app settings on
+the host. The history instruction requests reads, and the existing permitted
+native Docs path handles approved guarded writes. Recheck those runtime
+settings when using this path. The example does not disable approval review
+or broaden local permissions. A similarly named Claude Docs connector was not
 in the allow list and was refused; the explicit Google_Docs tool names avoid
 that ambiguous discovery path.
