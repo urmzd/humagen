@@ -236,5 +236,75 @@
     "height": "844",
     "sha256": "e041b6c6bc7f2d56b42d90196c96c35e20c1a6d7fb3b7b4fd618f10266eb16bf",
     "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display/before/light/390x844/session-uploads.png",
+    "width": "780",
+    "height": "1688",
+    "sha256": "3f210d26a0da4dbc1ba062ec773e2c1153380d84e397f69551a0583ae3521571",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display/before/light/1280x800/session-uploads.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "c9074edb17f8bff7e2566fe1aee9e234507bddf8a774e83c8890e22f3525288f",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display/before/dark/390x844/session-uploads.png",
+    "width": "780",
+    "height": "1688",
+    "sha256": "001ca214b824bf07a0b9b986031963af14b33b4b06078d7b41268f64a804c5d5",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display/before/dark/1280x800/session-uploads.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "7f8e0f36bf33fc7a8b8921644b73a6b19b0a51ee29799d5f5a12f995391137bd",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display/after/light/390x844/session-uploads.png",
+    "width": "780",
+    "height": "1688",
+    "sha256": "eed8ade01a2e2b45c0e1dac9cfd10810eb69bddcbfa60010c1c5ae6ecdf44e4a",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display/after/light/1280x800/session-uploads.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "e90a7c94a546265be47a9753372fb647bbc82c2960d4092baa7548f3515c41fd",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display/after/dark/390x844/session-uploads.png",
+    "width": "780",
+    "height": "1688",
+    "sha256": "5baf419cb2670e15bf31765e489f433c1eb29ed094cfa4ee2018e4fcbb0ca323",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display/after/dark/1280x800/session-uploads.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "52b026a4499def61d8e437967893004f3913a436310d9c3fd8f1d213ae84343b",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display/after/light/390x844/session-uploads.full.png",
+    "width": "780",
+    "height": "1918",
+    "sha256": "9ede46334da49ef3dcb44659fef1ad68a6f32c6902de91405334bab86dbf6d26",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "upload-display/after/dark/390x844/session-uploads.full.png",
+    "width": "780",
+    "height": "1918",
+    "sha256": "fd23280f11d9de12070ce22cf012e5fdb6ee9b7b698ba97f879c2574474a2b81",
+    "inspected_by": "codex"
   }
 ]

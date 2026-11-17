@@ -58,3 +58,16 @@ The browser guide is new, so no earlier guide existed to capture. Its first view
 - Native desktop capture/actions remain blocked by the locked Mac GUI.
 - Documentation links were not followed, and mobile tables/code blocks were not panned horizontally.
 - This is visual/connector evidence, not the final all-main end-to-end audit.
+
+## Posted upload references
+
+- [upload-display/before/light/390x844/session-uploads.png](upload-display/before/light/390x844/session-uploads.png)
+- [upload-display/before/light/1280x800/session-uploads.png](upload-display/before/light/1280x800/session-uploads.png)
+- [upload-display/before/dark/390x844/session-uploads.png](upload-display/before/dark/390x844/session-uploads.png)
+- [upload-display/before/dark/1280x800/session-uploads.png](upload-display/before/dark/1280x800/session-uploads.png)
+- [upload-display/after/light/390x844/session-uploads.png](upload-display/after/light/390x844/session-uploads.png)
+- [upload-display/after/light/1280x800/session-uploads.png](upload-display/after/light/1280x800/session-uploads.png)
+- [upload-display/after/dark/390x844/session-uploads.png](upload-display/after/dark/390x844/session-uploads.png)
+- [upload-display/after/dark/1280x800/session-uploads.png](upload-display/after/dark/1280x800/session-uploads.png)
+- [upload-display/after/light/390x844/session-uploads.full.png](upload-display/after/light/390x844/session-uploads.full.png)
+- [upload-display/after/dark/390x844/session-uploads.full.png](upload-display/after/dark/390x844/session-uploads.full.png)
