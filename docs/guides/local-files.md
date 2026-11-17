@@ -58,7 +58,10 @@ python3 examples/local-files/check.py after DIR before.sha invoice photo
 
 `plan` fails when a row's size or hash is not the file's, or a file is missing
 from the plan. `after` fails when a content hash of the snapshot is gone, an
-approved row did not move, or another row did.
+approved row is not at its proposed path with its own size and hash, or another
+row is not still at its original path with its own. Both fail on a row whose
+path is absolute or leaves the folder, and on two rows that share a path. A
+name that starts with a dot is kept as it is.
 
 ## What was checked, and what was not
 
