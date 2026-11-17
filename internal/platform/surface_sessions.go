@@ -41,6 +41,9 @@ func surfacePlace(team, channel, ts string) string {
 // post, for a person of the client (act_as), and the request may not say
 // where to file the session or who owns it.
 func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, in SessionInput) (out SessionView, started bool, err error) {
+	if len(in.Uploads) > 0 {
+		return SessionView{}, false, fmt.Errorf("%w: surface files cannot be mixed with inline uploads", threads.ErrInvalid)
+	}
 	if in.Surface == nil {
 		return SessionView{}, false, fmt.Errorf("%w: a surface session needs its surface", threads.ErrInvalid)
 	}

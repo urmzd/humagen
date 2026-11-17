@@ -245,7 +245,11 @@ function RoomComposer({
   /** Called as the text changes, so the + menu shows the agents it mentions. */
   onDraft?: (text: string) => void;
   plus?: Parameters<typeof Composer>[0]["plus"];
-  onPost: (text: string, pick?: QueuedMessage["pick"]) => Promise<ThreadPosted>;
+  onPost: (
+    text: string,
+    pick?: QueuedMessage["pick"],
+    uploads?: QueuedMessage["uploads"],
+  ) => Promise<ThreadPosted>;
 }) {
   const [problem, setProblem] = useState<string | null>(null);
   const [waiting, setWaiting] = useState<string[]>([]);
@@ -255,7 +259,7 @@ function RoomComposer({
   const queue = useQueue({
     onStart: (m) => {
       setProblem(null);
-      onPost(m.text, m.pick)
+      onPost(m.text, m.pick, m.uploads)
         .then((p) => {
           setProblem(postedLine(p) || null);
           const ids = p.runs.filter((run) => isWorking(run.status)).map((run) => run.id);
@@ -1249,10 +1253,10 @@ export function ThreadRoom({
                   ),
                 }}
                 autoFocus={sharing ? false : undefined}
-                onPost={(text, pick) =>
+                onPost={(text, pick, uploads) =>
                   // It follows the newest message, so a run it starts reads the conversation so far.
                   coworking
-                    .post(id, { text, ...pick })
+                    .post(id, { text, ...pick, uploads })
                     .then((p) => {
                       // What was posted shows at once: the message, and any run its tags started.
                       setTurns((t) =>
@@ -1602,13 +1606,14 @@ export function ChannelPage({
               />
             ),
           }}
-          onPost={(text) =>
+          onPost={(text, _pick, uploads) =>
             // Started in a channel, a thread is shared there: the channel is where it was posted.
             coworking
               .start({
                 project,
                 channel,
                 text,
+                uploads,
                 visibility: "shared",
               })
               .then((p) => {

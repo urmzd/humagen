@@ -615,6 +615,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 	shapes := map[string]shape{
 		"EvalTrace": {typ: evals.Trace{}}, "EvalToolOutcome": {typ: evals.ToolResult{}},
 		"EvalRetrieval": {typ: evals.Retrieval{}}, "EvalContextBlock": {typ: evals.ContextBlock{}}, "EvalProvenance": {typ: evals.Provenance{}},
+		"Upload":          {typ: platform.Upload{}, written: true},
 		"SessionIdentity": {typ: threads.SessionIdentity{}}, "SessionInput": {typ: platform.SessionInput{}, written: true}, "SessionPostInput": {typ: platform.SessionPostInput{}, written: true},
 		"AgentSessionSummary": {typ: platform.SessionSummary{}}, "SessionAuthor": {typ: platform.SessionAuthor{}},
 		"SessionPart": {typ: platform.SessionPart{}}, "SessionFeedback": {typ: platform.SessionFeedback{}},

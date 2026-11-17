@@ -330,6 +330,8 @@ func (s *Server) authed(perm auth.Permission, h handler) http.HandlerFunc {
 		}
 		bodyLimit := int64(maxBody)
 		switch r.Pattern {
+		case "POST /api/messages", "POST /api/messages/{id}", "POST /api/sessions", "POST /api/sessions/{id}/messages", "POST /api/threads", "POST /api/threads/{id}/messages":
+			bodyLimit = 4*(platform.MaxUploadBytes/3+1) + maxBody
 		case "PUT /api/threads/{id}/files/content":
 			// A UTF-8 file can expand to six JSON bytes per input byte.
 			bodyLimit = 6*platform.MaxFileBytes + 4096

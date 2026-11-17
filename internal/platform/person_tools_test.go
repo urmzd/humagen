@@ -1,11 +1,14 @@
 package platform
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/urmzd/humagen/internal/mcptools"
 	runsettings "github.com/urmzd/humagen/pkg/settings"
+	"image"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -99,9 +102,13 @@ func (t *fixturePersonTool) Definition() saigetypes.ToolDef {
 func (t *fixturePersonTool) Execute(context.Context, map[string]any) (string, error) { return "", nil }
 
 func TestPersonalToolsTrustedWorkerSnapshotsAndRevocation(t *testing.T) {
+	var pixels bytes.Buffer
+	if err := png.Encode(&pixels, image.NewRGBA(image.Rect(0, 0, 1, 1))); err != nil {
+		t.Fatal(err)
+	}
 	server := mcp.NewServer(&mcp.Implementation{Name: "notes", Version: "1"}, nil)
 	server.AddTool(&mcp.Tool{Name: "lookup", Description: "Read notes", InputSchema: map[string]any{"type": "object"}, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "a note"}}}, nil
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "a note"}, &mcp.ImageContent{MIMEType: "image/png", Data: pixels.Bytes()}}}, nil
 	})
 	httpServer := httptest.NewTLSServer(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, nil))
 	defer httpServer.Close()
@@ -148,12 +155,30 @@ func TestPersonalToolsTrustedWorkerSnapshotsAndRevocation(t *testing.T) {
 	if err != nil || !strings.Contains(text, "a note") {
 		t.Fatalf("execute: %q %v", text, err)
 	}
+	rich, ok := group.Tools[0].(saigetypes.RichTool)
+	if !ok {
+		t.Fatal("personal connection stripped the rich-tool interface")
+	}
+	result, err := rich.ExecuteRich(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Parts) != 2 {
+		t.Fatalf("personal rich result parts=%d", len(result.Parts))
+	}
+	src, ok := saigetypes.SourceOf(result.Parts[1])
+	if !ok || !bytes.Equal(src.Inline, pixels.Bytes()) {
+		t.Fatal("personal connection lost screenshot bytes")
+	}
 	// Adding a write tool invalidates the entire list, including held reads.
 	server.AddTool(&mcp.Tool{Name: "write", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return &mcp.CallToolResult{}, nil
 	})
 	if _, err := group.Tools[0].Execute(ctx, nil); !errors.Is(err, mcptools.ErrHeldBack) {
 		t.Fatalf("changed list: %v", err)
+	}
+	if _, err := rich.ExecuteRich(ctx, nil); !errors.Is(err, mcptools.ErrHeldBack) {
+		t.Fatalf("changed rich tool list: %v", err)
 	}
 	changed, err := p.DiscoverPersonTools(ctx, who, host)
 	if err != nil {
@@ -168,5 +193,8 @@ func TestPersonalToolsTrustedWorkerSnapshotsAndRevocation(t *testing.T) {
 	}
 	if _, err := group.Tools[0].Execute(ctx, nil); !errors.Is(err, mcptools.ErrHeldBack) {
 		t.Fatalf("revoked server: %v", err)
+	}
+	if _, err := rich.ExecuteRich(ctx, nil); !errors.Is(err, mcptools.ErrHeldBack) {
+		t.Fatalf("revoked rich server: %v", err)
 	}
 }

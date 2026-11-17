@@ -1199,10 +1199,10 @@ test("the composer opens discovery in its picker and preserves the draft and att
   assert.equal(started.project, "Personal", "the match's project does not move the session");
   assert.equal(started.channel, undefined, "sessions have no channel");
   assert.equal(started.agents, undefined, "the mention routes it, as any tag does");
-  assert.equal(
-    started.text,
-    "Keep my detailed request. @globex-helper\n\nAttached file: evidence.txt\n```\nRenewal evidence\n```",
-  );
+  assert.equal(started.text, "Keep my detailed request. @globex-helper");
+  assert.deepEqual((started as unknown as { uploads: { name: string; data: string }[] }).uploads, [
+    { name: "evidence.txt", data: btoa("Renewal evidence") },
+  ]);
 });
 
 test("discovery seeds an empty composer only after an explicit match choice", async () => {
@@ -1302,10 +1302,10 @@ test("choosing a project skill keeps the draft and attached file and waits for e
   const started = net?.seen.find(
     (request) => request.method === "POST" && request.path === "/api/sessions",
   )?.body as { text: string };
-  assert.equal(
-    started.text,
-    "/review Review this launch change.\n\nAttached file: launch.txt\n```\nLaunch evidence\n```",
-  );
+  assert.equal(started.text, "/review Review this launch change.");
+  assert.deepEqual((started as unknown as { uploads: { name: string; data: string }[] }).uploads, [
+    { name: "launch.txt", data: btoa("Launch evidence") },
+  ]);
 });
 
 test("a structured review is a card, and Ask Follow-up puts @agent and its prompt in the box without sending", async () => {

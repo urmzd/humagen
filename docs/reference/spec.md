@@ -678,6 +678,12 @@ spec:
       navigation.projects: Accounts
 ```
 
+The `humagen` binary also has two model kinds that run a turn on a coding agent
+installed on the host, signed in as that program is, a subscription included:
+`claude-code` and `codex`. Each needs `dir`, the directory the program works
+in. The program runs on the host, outside the sandbox. See
+[Run an agent on Claude Code or Codex](../guides/coding-agents.md).
+
 ### Branding
 
 `branding` is how the console looks and what it calls itself. Everything left

@@ -1,5 +1,3 @@
-# CLI
-
 ## Connect a surface
 
 `humagen create` creates a client in the running platform's store through the
@@ -135,3 +133,78 @@ response and what to do: 401 and 403 name `--token` and `HUMAGEN_TOKEN` (`list`
 needs `agents:read`, `install` and `remove` need `agents:write`), 404 names the
 unknown package, 409 on `remove` names `--force`, and a server that cannot be
 reached names `--server` and `HUMAGEN_URL`.
+
+## Import sessions, skills and agents
+
+`humagen import` brings what you already have in other assistants into a
+running platform, through its API. It adds and never changes or removes: what
+the server already has is left as it is, so a second run sends only what is new.
+
+```sh
+humagen import sessions
+humagen import sessions --since 720h --match humagen
+humagen import sessions --from none --export ~/Downloads/conversations.json
+humagen import skills
+humagen import skills ~/.agents/skills --only ship,pr --scope workspace
+humagen import agents --provider anthropic --model claude-sonnet-5-5
+```
+
+| Verb | Reads | Sends |
+| --- | --- | --- |
+| `sessions` | Claude Code sessions (`~/.claude/projects/*/*.jsonl`), Codex sessions (`~/.codex/sessions` and `~/.codex/archived_sessions`, plain or `.zst`), and with `--export` a `conversations.json` from a ChatGPT or claude.ai data export | One knowledge document per session, in sources named `sessions-TOOL-YYYY-MM` by the month the session started. `POST /api/knowledge`, then `POST /api/knowledge/{name}/documents` |
+| `skills [DIR]` | Each folder under `DIR` that holds a `SKILL.md`. `DIR` defaults to `~/.agents/skills`, the store [agentspec](https://github.com/urmzd/agentspec) keeps | One draft per skill in the skill library, with the folder's files. `POST /api/library/skills` |
+| `agents [DIR]` | Each Markdown agent file in `DIR` with YAML frontmatter, as Claude Code, Copilot and agentspec write them. `DIR` defaults to `~/.agents/agents` | One agent per file: its `name` and `description` from the frontmatter, its text as the system prompt. `POST /api/agents` |
+
+A session's document holds what was asked, what was answered and one line per
+tool call (the tool and what it ran or read). Tool output is left out. What
+looks like a credential (an API key, a token, a private key) is replaced with
+`[redacted]` before anything is sent. A session over `--max-bytes` keeps what
+was asked and cuts the answers first. The document's `uri` is the session's id
+(`claude:ID`, `codex:ID`, `chatgpt:ID`, `claude-ai:ID`), which is how a later
+run knows it is there.
+
+A source holds at most 200 documents and 8 MiB, so a busy month continues in
+`sessions-TOOL-YYYY-MM-2` and so on. To let an agent search the sessions, give
+it or its project the sources under Knowledge. Imported sessions are
+references an agent searches and cites; they are not conversations to continue.
+
+A skill is checked here the way the server checks it: `SKILL.md` frontmatter
+the parser accepts, at most 64 files, 128 KiB a file and 512 KiB in all. The
+skill keeps the `name` in its `SKILL.md`, whatever its folder is called. The
+library reads the frontmatter the skill standard names (`name`, `description`,
+`license`, `compatibility`, `metadata`, `allowed-tools`). A `SKILL.md` it cannot
+read because of other fields, such as one assistant's `arguments` list, is
+drafted with only those, and the command names each field it left out. Hidden files are left out. A skill is
+drafted with no tools permitted; choose its tools, test it and publish it under
+Library, Skills. A scope holds at most 32 skills: past that the command names
+the ones it left out.
+
+| Flag | Behavior |
+| --- | --- |
+| `--server URL`, `--token REF`, `--json` | As for `humagen store` |
+| `--dry-run` | Say what would be sent and send nothing. It does not ask the server what is already there |
+| `--from LIST` | `sessions`: which tools' files to read: `claude`, `codex`, both (the default) or `none` |
+| `--export FILE` | `sessions`: a `conversations.json` from a ChatGPT or claude.ai export; may repeat |
+| `--since WHEN` | `sessions`: only sessions started since a date (`2026-10-01`) or an age (`720h`) |
+| `--match TEXT` | `sessions`: only sessions whose directory or title contains the text |
+| `--source PREFIX` | `sessions`: what the sources' names start with; defaults to `sessions` |
+| `--max-bytes N` | `sessions`: the most one document may be; defaults to 49152 |
+| `--children` | `sessions`: also add sessions another session started, such as a sub-agent's or a reviewer's |
+| `--home DIR` | `sessions`: the home directory the tools keep their sessions under |
+| `--scope KIND` | `skills`: `personal` (the default) or `workspace` |
+| `--only NAMES` | `skills`: only these folders; `agents`: only these agents. Separated by commas |
+| `--provider NAME`, `--model NAME` | `agents`: required. A model provider and its model, or `policy` and a model policy |
+
+An agent file names its model and its tools as another assistant knows them,
+and neither names anything on this server. So `agents` needs `--provider` and
+`--model`, the model every imported agent runs on, and creates each agent with
+no tools: grant what it needs under Agents. The file's `model` and `tools` are
+not sent.
+
+`sessions` needs `knowledge:read` and `knowledge:write`; `skills` needs
+`projects:read` and `projects:write`; `agents` needs `agents:read` and
+`agents:write`. When some sessions, skills or agents are not
+sent, the rest still are, each one left out is named with the reason, and the
+exit code is 1.
+
+# CLI

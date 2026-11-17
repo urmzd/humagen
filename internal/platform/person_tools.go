@@ -219,25 +219,45 @@ func (t *personServerTool) declaration() SystemTool {
 	}
 	return d
 }
-func (t *personServerTool) Execute(ctx context.Context, args map[string]any) (string, error) {
+func (t *personServerTool) checkCurrent(ctx context.Context) error {
 	own, err := t.p.PersonContexts.Get(t.req.Tenant, t.person)
 	if err != nil {
-		return "", err
+		return err
 	}
 	if !slices.ContainsFunc(own.ToolServers, func(s personctx.ToolServer) bool {
 		return s.Name == t.server.Name && s.URL == t.server.URL && s.Credential == t.server.Credential && s.OAuth == t.server.OAuth && samePersonTools(s.Tools, t.server.Tools)
 	}) {
-		return "", mcptools.ErrHeldBack
+		return mcptools.ErrHeldBack
 	}
 	offered, err := t.p.discoverPersonToolsFor(ctx, t.req.Tenant, t.person, t.server)
 	if err != nil {
-		return "", err
+		return err
 	}
 	if !samePersonTools(offered, t.server.Tools) {
-		return "", mcptools.ErrHeldBack
+		return mcptools.ErrHeldBack
+	}
+	return nil
+}
+
+func (t *personServerTool) Execute(ctx context.Context, args map[string]any) (string, error) {
+	if err := t.checkCurrent(ctx); err != nil {
+		return "", err
 	}
 	return t.Tool.Execute(ctx, args)
 }
+
+func (t *personServerTool) ExecuteRich(ctx context.Context, args map[string]any) (saigetypes.ToolResult, error) {
+	if err := t.checkCurrent(ctx); err != nil {
+		return saigetypes.ToolResult{}, err
+	}
+	if rich, ok := t.Tool.(saigetypes.RichTool); ok {
+		return rich.ExecuteRich(ctx, args)
+	}
+	text, err := t.Tool.Execute(ctx, args)
+	return saigetypes.TextResult(text), err
+}
+
+var _ saigetypes.RichTool = (*personServerTool)(nil)
 
 func (p *Platform) personHTTPClient() *http.Client {
 	base := http.DefaultClient
