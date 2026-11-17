@@ -4,6 +4,8 @@ kind: System
 metadata: {name: browser-local}
 spec:
   server: {addr: '127.0.0.1:8080'}
+  # Trusted local fixtures only: this browser can reach a dev API as admin.
+  # For public pages or existing signed-in tabs, use real OIDC sign-in.
   auth: {kind: dev, tenant: {fixed: default}}
   stores: {kind: memory}
   sandbox: {kind: unisolated}

@@ -152,7 +152,10 @@ func TestBrowserLive(t *testing.T) {
 		t.Fatalf("download action has no result evidence: %s", downloaded)
 	}
 	data, err := os.ReadFile(downloadPath)
-	if err != nil || string(data) != "record,value\nfixture,329\n" {
+	if err != nil {
+		t.Fatalf("cannot read downloaded record in HUMAGEN_BROWSER_OUTPUT_DIR=%q: this must match the running browser worker's output directory: %v", outputDir, err)
+	}
+	if string(data) != "record,value\nfixture,329\n" {
 		t.Fatalf("downloaded record bytes = %q, %v", data, err)
 	}
 	tool, err := set.Lookup("browser__browser_take_screenshot")

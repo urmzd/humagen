@@ -35,6 +35,17 @@ screenshots. Browser operations are classified as writes because even navigation
 can change an authenticated service. The grant allows those operations; use
 the workspace's approval policy where each operation needs a person's review.
 
+**Development sign-in is only for trusted local fixtures.** Every client that
+can reach that API is an administrator, including this browser worker. An
+untrusted page can instruct an agent to navigate to the Humagen API, read its
+private records, and leak them through a later URL. Before researching public
+pages or connecting signed-in tabs, use an existing workspace with real OIDC
+sign-in, or replace this example's `auth: dev` with the
+[OIDC configuration](../reference/spec.md#system). Keep the browser's profile
+separate from the profile signed in to Humagen. A loopback bind or a system-prompt
+instruction does not authenticate the browser; Playwright origin filters also
+do not provide a complete network security boundary.
+
 The MCP endpoint is `http://127.0.0.1:8931/mcp`, reached by the Humagen server.
 For a remote deployment, keep the browser on its own trusted worker and use an
 authenticated tunnel or service. Exposing this unauthenticated loopback server
