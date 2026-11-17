@@ -49,6 +49,7 @@ export function Assignments({
   subject,
   canWrite,
   onRun,
+  onMessage,
   onConversation,
 }: {
   selectedId?: string;
@@ -59,6 +60,8 @@ export function Assignments({
   subject: string;
   canWrite: boolean;
   onRun: (id: string) => void;
+  /** Opens a run's own message, where its answer is. Left out, a recorded run opens as onRun does. */
+  onMessage?: (id: string) => void;
   onConversation?: (id: string) => void;
 }) {
   const [items, setItems] = useState<Assignment[]>([]);
@@ -270,6 +273,19 @@ export function Assignments({
               <p className="text-aui-sm text-aui-muted">
                 {words.doneWhen}: {a.done_when}
               </p>
+              {a.done_checks && a.done_checks.length > 0 && (
+                <div className="flex flex-col gap-1 text-aui-sm text-aui-muted">
+                  <p>{words.doneChecks}</p>
+                  <ul className="list-disc pl-5">
+                    {a.done_checks.map((c) => (
+                      <li key={`${c.kind}:${c.value}`} className="break-words">
+                        {words.doneCheckKinds[c.kind]} <code>{c.value}</code>
+                      </li>
+                    ))}
+                  </ul>
+                  {!!a.continued && <p>{words.continued(a.continued)}</p>}
+                </div>
+              )}
               <dl className="flex flex-wrap gap-x-5 gap-y-2 text-aui-xs text-aui-muted">
                 <div>
                   <dt className="inline">{words.owner}: </dt>
@@ -365,7 +381,7 @@ export function Assignments({
                     </>
                   )}
                 {a.run_id && (
-                  <button type="button" onClick={() => onRun(a.run_id as string)}>
+                  <button type="button" onClick={() => (onMessage ?? onRun)(a.run_id as string)}>
                     {words.openRun}
                   </button>
                 )}

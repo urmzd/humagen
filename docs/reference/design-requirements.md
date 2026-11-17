@@ -33,7 +33,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-002 | Use spacing instead of dots between words in UI metadata | All boards and touched console metadata implemented and checked; audit other console screens when changing them |
 | DES-003 | Reveal the message Fork action on hover and keyboard focus | Native saved-fork API, immutable lineage, source checks and inspector built; shared action wiring pending |
 | DES-004 | Reveal full message date and time on hover and keyboard focus | Human messages and announcements implemented, DOM-tested and browser-checked; agent-message timestamps pending |
-| OPS-001 | Durable assignments, scoped autonomy, agent pause and recorded coordination | Domain stores, admission/tool guards, OpenAPI routes and console components implemented. Restart tests cover memory and Postgres; UI DOM tests cover saved and refused actions, inherited policy provenance, effective pause, typed contract inputs and reviewed deadlines. Native reminders survive restart on the same confined inbox item. Global navigation, screenshots and source-health integration belong to the following stack layers. |
+| OPS-001 | Durable assignments, scoped autonomy, agent pause and recorded coordination | Domain stores, admission/tool guards, OpenAPI routes and console components implemented. Restart tests cover memory and Postgres; UI DOM tests cover saved and refused actions, inherited policy provenance, effective pause, typed contract inputs and reviewed deadlines. Native reminders survive restart on the same confined inbox item. Done checks and continuation are shown on the assignment's card, and its recorded run opens the message page of the run that answered, which shows the recorded answer when the run has no session trace: DOM tests cover a card with and without checks, and all eight light, dark, desktop and phone before and after captures of the card and the run page are in pull request 343. Not seen in a browser: a card without checks and a count above one. Global navigation, screenshots and source-health integration belong to the following stack layers. |
 | DES-005 | Keep this requirements record discoverable and accurate | Documented; AGENTS.md references this file |
 | DES-006 | Keep sidebar and main content scrolling independent | Implemented; Chromium wheel regression covers phone and desktop |
 | DES-007 | Agent badge text remains contained at narrow widths and enlarged text sizes | Fixed; dark phone/desktop containment regression passes |
@@ -99,6 +99,13 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-068 | The agent editor controls the models and reasoning efforts people may choose per message | Removed 2026-11-07: people pick agents, not models; see DES-067 |
 
 ### DES-001: Working integrations
+
+The public-web profile in `examples/public-web/claude-code.yaml` enables the
+program's built-in WebSearch and WebFetch only; user hooks and plugins still
+load. Supporting URLs are model-reported answer text, not verified citations. Actual HTTP tool events and a separate
+official-source retrieval validate search/open/version agreement. See
+[public-source research](../guides/public-web.md) for identity, permissions and
+unsupported browser operations. No console connection control is implied.
 
 - Build on the existing client, connector, credentials, project-binding, and
   generated API client paths. Keep API calls and identity in surface hosts and
