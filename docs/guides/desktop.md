@@ -75,9 +75,11 @@ background failure is retried using global input or another host.
 Call `permissions`, then `see` with the exact application/PID and window ID.
 Use its snapshot reference and actionable element IDs. After a change, call
 `see` again; an earlier snapshot is not authority to act on a later state.
-`type` with `clear: true` supports a text-field update, and `action` with
-`AXPress` supports an accessible button. Returned PNG bytes pass through the
-same rich MCP adapter as browser screenshots.
+The selected schemas describe text replacement with `type` and `clear: true`,
+and button activation with `action` and `AXPress`. The adapter is intended to
+carry returned PNG bytes as it does browser screenshots. These native actions,
+the snapshot reference parser and PNG delivery remain unverified while capture
+is blocked. The live fixture check must pass before claiming this workflow.
 
 The selected inventory omits `set_value`, whose union-valued schema is not
 representable by the current saige parameter schema. It also omits the server's

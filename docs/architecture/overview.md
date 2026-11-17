@@ -546,8 +546,9 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 ## Status
 
 Native Mac control has a pinned stdio connection in
-[the desktop guide](../guides/desktop.md). Foreground-authorized tools target exact
-windows, preserve producer-bound references and return actual image content.
+[the desktop guide](../guides/desktop.md). Exact-window targeting is requested
+by the prompt; the granted tools can also address other windows or global input.
+Native image capture, producer-bound references and actions remain unverified.
 The connector's real discovery and permission checks run through Humagen.
 The opt-in native fixture test requires an unlocked GUI session; permissions
 alone do not establish capture or action success.
