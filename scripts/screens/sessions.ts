@@ -90,6 +90,34 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
   const session = `/messages/${ids.work.id}`;
   return [
     {
+      name: "session-inline-code",
+      path: `/messages/${ids.inlineCode.id}`,
+      act: async (page) => {
+        await readySession(page);
+        const answer = page.getByRole("article", { name: "screens-writer message", exact: true });
+        await answer.getByText("ok example.com/calc", { exact: true }).waitFor();
+        await page.evaluate(() => document.fonts.ready);
+        const fragments = await answer.locator(".aui-prose code").evaluateAll((nodes) =>
+          nodes.flatMap((node) => {
+            const parent = node.closest("p")?.getBoundingClientRect();
+            if (!parent) throw new Error("Inline code must belong to prose");
+            return Array.from(node.getClientRects(), (rect) => ({
+              left: rect.left,
+              right: rect.right,
+              min: parent.left,
+              max: parent.right,
+            }));
+          }),
+        );
+        assert.ok(fragments.length >= 3, "The recorded short chips and long path must render");
+        for (const fragment of fragments)
+          assert.ok(
+            fragment.left >= fragment.min - 1 && fragment.right <= fragment.max + 1,
+            `Inline code escapes its text column: ${JSON.stringify(fragment)}`,
+          );
+      },
+    },
+    {
       name: "composer-attachments",
       path: "/",
       act: async (page) => {

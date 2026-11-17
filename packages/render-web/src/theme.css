@@ -543,6 +543,9 @@
   font-weight: 600;
 }
 .aui-prose :where(:not(pre) > code) {
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  overflow-wrap: anywhere;
   border-radius: 0.3rem;
   background: var(--aui-code-bg);
   padding: 0.1rem 0.3rem;
