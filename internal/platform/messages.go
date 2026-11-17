@@ -167,6 +167,8 @@ func githubPart(s string) bool {
 // ContentBlock is one block of a message's content: text, a mention of an
 // agent or a person a surface already resolved, or a link to another place.
 type ContentBlock struct {
+	Data   []byte       `json:"data,omitempty"`
+	Name   string       `json:"name,omitempty"`
 	Type   string       `json:"type"`
 	Text   string       `json:"text,omitempty"`
 	Agent  string       `json:"agent,omitempty"`
@@ -201,6 +203,9 @@ func (c *Content) UnmarshalJSON(b []byte) error {
 func (c Content) text() (string, error) {
 	var parts, mentions []string
 	for _, b := range c {
+		if len(b.Data) > 0 && b.Type != "image" && b.Type != "document" && b.Type != "audio" && b.Type != "video" && b.Type != "file" {
+			return "", fmt.Errorf("%w: data is only accepted on file content blocks", threads.ErrInvalid)
+		}
 		switch b.Type {
 		case "text":
 			parts = append(parts, b.Text)
@@ -219,8 +224,13 @@ func (c Content) text() (string, error) {
 				return "", err
 			}
 			parts = append(parts, at)
-		case "image", "document", "audio", "answer":
-			return "", fmt.Errorf("%w: %s blocks are not taken here yet", threads.ErrInvalid, b.Type)
+		case "image", "document", "audio", "video", "file":
+			if len(b.Data) == 0 || b.Name == "" {
+				return "", fmt.Errorf("%w: %s blocks need name and data", threads.ErrInvalid, b.Type)
+			}
+			parts = append(parts, "Attached "+b.Type+".")
+		case "answer":
+			return "", fmt.Errorf("%w: answer blocks are not taken here", threads.ErrInvalid)
 		default:
 			return "", fmt.Errorf("%w: a content block is text, mention, link, image, document, audio or answer", threads.ErrInvalid)
 		}
@@ -293,12 +303,17 @@ func (in MessagesInput) check() error {
 	if len(in.Messages) == 0 || len(in.Messages) > MaxBatch {
 		return fmt.Errorf("%w: a request carries 1 to %d messages", threads.ErrInvalid, MaxBatch)
 	}
+	var allUploads []Upload
 	for _, m := range in.Messages {
 		if m.Role != "user" {
 			return fmt.Errorf("%w: callers send people's messages, role user; the platform writes the agents'", threads.ErrInvalid)
 		}
+		if _, err := m.Content.text(); err != nil {
+			return err
+		}
+		allUploads = append(allUploads, m.Content.uploads()...)
 	}
-	return nil
+	return checkUploads(allUploads)
 }
 
 // SendMessages posts a batch of who's messages from one origin: under the
@@ -408,11 +423,11 @@ func (p *Platform) sendToNewConsoleRoot(ctx context.Context, who auth.Principal,
 	if err != nil {
 		return MessageView{}, err
 	}
-	v, err := p.StartSession(ctx, who, SessionInput{Text: text, spoken: in.Messages[0].Spoken})
+	v, err := p.StartSession(ctx, who, SessionInput{Text: text, Uploads: in.Messages[0].Content.uploads(), spoken: in.Messages[0].Spoken})
 	if err != nil {
 		return MessageView{}, err
 	}
-	out := MessageView{Root: v.ID, Role: "user", Content: in.Messages[0].Content, Created: true}
+	out := MessageView{Root: v.ID, Role: "user", Content: publicContent(in.Messages[0].Content), Created: true}
 	for _, m := range v.Messages {
 		if m.Message != nil {
 			out.ID = messageID(v.ID, m.Message.ID)
@@ -553,12 +568,12 @@ func (p *Platform) sendUnder(ctx context.Context, who auth.Principal, th threads
 		if m.Ref != nil {
 			ref = *m.Ref
 		}
-		in := MessageInput{Text: text, PostOnly: i < len(msgs)-1, messageKey: ref.key(), Spoken: m.Spoken}
+		in := MessageInput{Text: text, Uploads: m.Content.uploads(), PostOnly: i < len(msgs)-1, messageKey: ref.key(), Spoken: m.Spoken}
 		v, err := p.surfacePost(ctx, who, th, in)
 		if err != nil {
 			return MessageView{}, err
 		}
-		out = MessageView{Root: th.ID, Role: "user", Content: m.Content, Posted: *v.Posted}
+		out = MessageView{Root: th.ID, Role: "user", Content: publicContent(m.Content), Posted: *v.Posted}
 		out.ID = messageID(th.ID, v.Posted.Message.ID)
 		out.Posted.Message.ID = out.ID
 	}
@@ -659,4 +674,27 @@ func withDelivery(ctx context.Context, d delivery) context.Context {
 func deliveryOf(ctx context.Context) (delivery, bool) {
 	d, ok := ctx.Value(deliveryKey{}).(delivery)
 	return d, ok
+}
+
+func (c Content) uploads() []Upload {
+	var out []Upload
+	for _, b := range c {
+		switch b.Type {
+		case "image", "document", "audio", "video", "file":
+			kind := b.Type
+			if kind == "file" {
+				kind = ""
+			}
+			out = append(out, Upload{Name: b.Name, Data: b.Data, Kind: kind})
+		}
+	}
+	return out
+}
+
+func publicContent(c Content) Content {
+	out := append(Content(nil), c...)
+	for i := range out {
+		out[i].Data = nil
+	}
+	return out
 }

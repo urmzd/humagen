@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -153,27 +152,36 @@ func (c *callable) ActsForPerson() bool {
 // Execute checks the grant, checks the server still offers the tool exactly
 // as accepted, and only then calls it.
 func (c *callable) Execute(ctx context.Context, args map[string]any) (string, error) {
-	out, err := c.execute(ctx, args)
-	if err != nil {
-		return "", c.session.red.err(err)
-	}
-	return c.session.red.text(out), nil
+	result, err := c.ExecuteRich(ctx, args)
+	return textProjection(result), err
 }
 
-func (c *callable) execute(ctx context.Context, args map[string]any) (string, error) {
+// ExecuteRich preserves the accepted server's ordered content. Credential
+// redaction and the same grant/revision checks apply to both entry points.
+func (c *callable) ExecuteRich(ctx context.Context, args map[string]any) (saigetypes.ToolResult, error) {
+	result, err := c.execute(ctx, args)
+	if err != nil {
+		return saigetypes.ToolResult{}, c.session.red.err(err)
+	}
+	return result, nil
+}
+
+var _ saigetypes.RichTool = (*callable)(nil)
+
+func (c *callable) execute(ctx context.Context, args map[string]any) (saigetypes.ToolResult, error) {
 	if !c.grant.Permits(c.tool.Class) {
-		return "", fmt.Errorf("%w: %q is a %s tool and the grant is %s",
+		return saigetypes.ToolResult{}, fmt.Errorf("%w: %q is a %s tool and the grant is %s",
 			ErrDenied, c.def.Name, c.tool.Class.Effective(), grantName(c.grant))
 	}
 	offered, ok, err := c.session.current(ctx, c.tool.Name)
 	if err != nil {
-		return "", err
+		return saigetypes.ToolResult{}, err
 	}
 	switch {
 	case !ok:
-		return "", fmt.Errorf("%w: %q is no longer offered by %q", ErrHeldBack, c.def.Name, c.session.provider.Name)
+		return saigetypes.ToolResult{}, fmt.Errorf("%w: %q is no longer offered by %q", ErrHeldBack, c.def.Name, c.session.provider.Name)
 	case offered.Description != c.tool.Description || offered.SchemaHash != c.tool.SchemaHash:
-		return "", fmt.Errorf("%w: %q changed on %q since it was accepted", ErrHeldBack, c.def.Name, c.session.provider.Name)
+		return saigetypes.ToolResult{}, fmt.Errorf("%w: %q changed on %q since it was accepted", ErrHeldBack, c.def.Name, c.session.provider.Name)
 	}
 	if args == nil {
 		args = map[string]any{}
@@ -181,50 +189,19 @@ func (c *callable) execute(ctx context.Context, args map[string]any) (string, er
 	log := c.session.logger.With("tool", c.def.Name)
 	res, err := c.session.cs.CallTool(ctx, &mcp.CallToolParams{Name: c.tool.Name, Arguments: args})
 	if err != nil {
-		// The logger scrubs the credential itself, so the raw error is safe here.
 		log.Warn("mcptools: call failed", "err", err)
-		return "", fmt.Errorf("mcptools: call %q: %w", c.def.Name, err)
+		return saigetypes.ToolResult{}, fmt.Errorf("mcptools: call %q: %w", c.def.Name, err)
 	}
-	raw := render(res)
+	result, err := richResult(res, c.session.red)
+	if err != nil {
+		return saigetypes.ToolResult{}, err
+	}
 	if res.IsError {
-		log.Warn("mcptools: tool reported failure", "result", raw)
-		return "", fmt.Errorf("%w: %s: %s", ErrToolFailed, c.def.Name, raw)
+		log.Warn("mcptools: tool reported failure", "result", result.Text())
+		return saigetypes.ToolResult{}, fmt.Errorf("%w: %s: %s", ErrToolFailed, c.def.Name, result.Text())
 	}
 	log.Debug("mcptools: call", "class", string(c.tool.Class.Effective()))
-	return raw, nil
-}
-
-// render turns a tool result into the text a model reads. Text blocks are
-// kept; anything a text-only tool result cannot carry is named instead of
-// silently dropped.
-func render(res *mcp.CallToolResult) string {
-	var parts []string
-	for _, c := range res.Content {
-		switch v := c.(type) {
-		case *mcp.TextContent:
-			parts = append(parts, v.Text)
-		case *mcp.ImageContent:
-			parts = append(parts, fmt.Sprintf("[image %s omitted]", v.MIMEType))
-		case *mcp.AudioContent:
-			parts = append(parts, fmt.Sprintf("[audio %s omitted]", v.MIMEType))
-		case *mcp.ResourceLink:
-			parts = append(parts, fmt.Sprintf("[resource %s]", v.URI))
-		case *mcp.EmbeddedResource:
-			if v.Resource != nil && v.Resource.Text != "" {
-				parts = append(parts, v.Resource.Text)
-			} else if v.Resource != nil {
-				parts = append(parts, fmt.Sprintf("[resource %s omitted]", v.Resource.URI))
-			}
-		default:
-			parts = append(parts, "[unsupported content omitted]")
-		}
-	}
-	if len(parts) == 0 && res.StructuredContent != nil {
-		if b, err := json.Marshal(res.StructuredContent); err == nil {
-			return string(b)
-		}
-	}
-	return strings.Join(parts, "\n")
+	return result, nil
 }
 
 // marshalSchema renders the SDK's decoded input schema back to JSON.

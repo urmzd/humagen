@@ -8,7 +8,14 @@
  * - turnEnded: release the next message (auto), or hold it (manual / after a failure).
  */
 
+export interface QueuedUpload {
+  name: string;
+  data: string;
+  kind?: string;
+}
+
 export interface QueuedMessage {
+  uploads?: QueuedUpload[];
   id: string;
   text: string;
   queuedAt: string;

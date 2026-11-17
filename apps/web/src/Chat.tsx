@@ -644,7 +644,15 @@ export function Chat({
         // behind it: one that did not post goes back in the box to send again.
         if (!threadId) {
           queue.clear();
-          setSeed({ text: m.text });
+          setSeed({
+            text: m.text,
+            files: m.uploads?.map((f, i) => ({
+              id: `retry-${i}`,
+              name: f.name,
+              text: "",
+              data: f.data,
+            })),
+          });
         }
       };
       // Home starts a private conversation in the picked project, or a
@@ -656,6 +664,7 @@ export function Chat({
             project: project ?? "",
             channel: selection.channel,
             text: m.text,
+            uploads: m.uploads,
             visibility: startChannel ? "shared" : "private",
           })
           .then((p) => {
@@ -671,7 +680,7 @@ export function Chat({
       // A conversation of runs takes the message after the turn on screen.
       // Posted, it is a room: the message, and any run its tags started.
       coworking
-        .post(threadId, { text: m.text, ...(tail ? { after: tail.id } : {}) })
+        .post(threadId, { text: m.text, uploads: m.uploads, ...(tail ? { after: tail.id } : {}) })
         .then((p) => {
           setRoom((r) =>
             r
@@ -803,8 +812,8 @@ export function Chat({
   // tags or the conversation name, never a pick the composer carries.
   const sending: typeof queue = {
     ...queue,
-    send: (text) => queue.send(text),
-    sendNow: (text) => queue.sendNow(text),
+    send: (text, _pick, uploads) => queue.send(text, undefined, uploads),
+    sendNow: (text, _pick, uploads) => queue.sendNow(text, undefined, uploads),
   };
   const composer = canRun && agents.length > 0 && (
     <div

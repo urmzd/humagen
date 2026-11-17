@@ -991,8 +991,15 @@ approval, disabled early approval, restoration, refusal and the combined menu.
   with fades and chevrons at the ends.
 - A new conversation's first message posts before anything queued behind it.
   If it fails, its words return to the composer and nothing queued is sent.
-- Acceptance: a failed first message leaves its text in the composer and an
-  empty queue.
+- Binary image, PDF, Office, audio and video files travel as bounded uploads,
+  with original bytes and names retained through queue editing, waiting and retry.
+  A failed first send restores its files beside its text. MIME types are sniffed
+  on the server; metadata never grants a model a modality it cannot read.
+- Acceptance: a failed first message leaves its text and files in the composer
+  and an empty queue. Evidence: `attachments.test.ts`, queue regression tests,
+  `TestUploadedImageReachesModelAndLaterHistory`, and the phone/desktop
+  `composer-attachments` screen. Live model and connected browser acceptance are
+  tracked separately in the session audit ledger.
 
 ### DES-037: Health
 

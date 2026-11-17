@@ -41,54 +41,10 @@ import {
 } from "./voice.ts";
 
 const MAX_HEIGHT = 200;
-const MAX_FILES = 5;
-const MAX_FILE_BYTES = 200 * 1024;
 
-// Files are read in the browser and sent as part of the message, so only text
-// can be attached. These are the extensions treated as text when the browser
-// does not say.
-const TEXT_EXT =
-  /\.(txt|md|markdown|csv|tsv|json|ya?ml|toml|xml|html?|css|log|sql|sh|py|go|rs|ts|tsx|js|jsx|java|rb|c|h|cpp)$/i;
+export { readAttached, withAttached } from "./attachments.ts";
 
-export interface Attached {
-  id: string;
-  name: string;
-  text: string;
-}
-
-/** Read picked files as text to send with a message, and say why any were left out. */
-export async function readAttached(
-  picked: FileList | File[],
-  already: Attached[],
-): Promise<{ files: Attached[]; skipped: string[] }> {
-  const skipped: string[] = [];
-  const next = [...already];
-  for (const file of Array.from(picked)) {
-    const textual =
-      file.type.startsWith("text/") ||
-      /json|xml|yaml|javascript/.test(file.type) ||
-      TEXT_EXT.test(file.name);
-    if (next.length >= MAX_FILES) skipped.push(`${file.name}: at most ${MAX_FILES} files`);
-    else if (!textual) skipped.push(`${file.name}: only text files can be attached`);
-    else if (file.size > MAX_FILE_BYTES)
-      skipped.push(`${file.name}: larger than ${MAX_FILE_BYTES / 1024} KB`);
-    else {
-      const text = await file.text();
-      // A NUL byte means the file is not text, whatever its name says.
-      if (text.includes("\u0000")) skipped.push(`${file.name}: only text files can be attached`);
-      else
-        next.push({ id: `${file.name}:${file.size}:${file.lastModified}`, name: file.name, text });
-    }
-  }
-  return { files: next, skipped };
-}
-
-/** A message with its attached files after it. */
-export function withAttached(text: string, files: Attached[]): string {
-  return [text.trim(), ...files.map((f) => `Attached file: ${f.name}\n\`\`\`\n${f.text}\n\`\`\``)]
-    .filter(Boolean)
-    .join("\n\n");
-}
+import { type Attached, readAttached, uploadsOf, withAttached } from "./attachments.ts";
 
 // The browser's speech recognizer, where it exists. It has no standard type yet.
 interface Recognizer {
@@ -151,12 +107,12 @@ const tool =
  * as the `@` completion writes it, or taken out.
  */
 export type ComposerSeed =
-  | { text: string; mode?: "prepend" | "append" }
+  | { text: string; mode?: "prepend" | "append"; files?: Attached[] }
   | { quote: { label: string; url: string; text?: string; agent?: string } }
   | { mention: string; remove?: boolean };
 
 /**
- * The message box. Type, attach text files, record a voice note (where the
+ * The message box. Type, attach files, record a voice note (where the
  * deployment transcribes them) or dictate. Enter sends and
  * Shift+Enter adds a line. While a reply is in flight, sending queues the
  * message behind it, Cmd+Enter (Ctrl+Enter) stops the reply and sends it
@@ -351,6 +307,7 @@ export function Composer({
   // biome-ignore lint/correctness/useExhaustiveDependencies: once per seed
   useEffect(() => {
     if (!seed) return;
+    if ("files" in seed && seed.files) setFiles(seed.files);
     const el = input.current;
     let next: string;
     let caret: number;
@@ -459,16 +416,17 @@ export function Composer({
 
   const send = (now: boolean) => {
     if (!ready) return;
-    const text = withAttached(
-      quote
-        ? `${quote.agent ? `@${quote.agent} ` : ""}Replying to [${quote.label}](${quote.url}):\n\n${value}`
-        : value,
-      files,
-    );
+    const text =
+      withAttached(
+        quote
+          ? `${quote.agent ? `@${quote.agent} ` : ""}Replying to [${quote.label}](${quote.url}):\n\n${value}`
+          : value,
+        files,
+      ) || "Please inspect the attached files.";
     const pick =
       sessionPick && mentionsIn(text, [sessionPick.agent]).length ? sessionPick : undefined;
-    if (now) queue.sendNow(text, pick);
-    else queue.send(text, pick);
+    if (now) queue.sendNow(text, pick, uploadsOf(files));
+    else queue.send(text, pick, uploadsOf(files));
     change("");
     setFiles([]);
     setQuote(undefined);

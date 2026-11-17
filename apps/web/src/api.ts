@@ -2427,6 +2427,7 @@ export const coworking = {
    * for the agents it tags.
    */
   start: (t: {
+    uploads?: { name: string; data: string; kind?: string }[];
     project: string;
     channel: string;
     text: string;
@@ -2439,6 +2440,7 @@ export const coworking = {
       ? call<ThreadPosted>("POST", "/api/threads", t)
       : call<AgentSession>("POST", "/api/sessions", {
           text: t.text,
+          uploads: t.uploads,
           project: t.project,
           agent: t.agents?.[0],
         }).then(sessionPosted),
