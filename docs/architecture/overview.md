@@ -545,6 +545,10 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+The response's Worked/tools control has a 44px minimum touch target on coarse
+pointers. The canonical `session` browser check measures the visible control
+and opens/closes Details before its capture.
+
 Browser automation has a pinned external-worker path in
 [the browser guide](../guides/browser.md): explicit MCP grants, inline page
 snapshots, interactions, selected downloads, and image results. The local

@@ -271,7 +271,23 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
         await page.getByRole("heading", { name: "Appearance", exact: true }).waitFor();
       },
     },
-    { name: "session", path: session, act: readySession },
+    {
+      name: "session",
+      path: session,
+      act: async (page) => {
+        await readySession(page);
+        const worked = page.getByTestId("worked").first();
+        await worked.scrollIntoViewIfNeeded();
+        const bounds = await worked.boundingBox();
+        if (await page.evaluate(() => matchMedia("(pointer: coarse)").matches))
+          assert.ok(bounds && bounds.height >= 44, "Worked must have a 44px touch target");
+        await worked.click();
+        await detailsReady(page);
+        await details(page).getByRole("button", { name: "Close Details", exact: true }).click();
+        await details(page).waitFor({ state: "hidden" });
+        await worked.scrollIntoViewIfNeeded();
+      },
+    },
     {
       name: "session-menu",
       path: session,
