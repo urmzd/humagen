@@ -1,0 +1,107 @@
+package vendorcli
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/turn/native"
+)
+
+// collect runs one request and returns what was said, the tools called and
+// the error, if any.
+func collect(t *testing.T, p saigetypes.Provider, msgs ...saigetypes.Message) (said string, calls []string, results []string, usage saigetypes.UsageDelta, err error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+	ch, serr := p.Stream(ctx, saigetypes.Request{Messages: msgs})
+	if serr != nil {
+		return "", nil, nil, usage, serr
+	}
+	done := false
+	for d := range ch {
+		switch d := d.(type) {
+		case saigetypes.PartDelta:
+			said += d.Text
+		case saigetypes.ToolExecStartDelta:
+			calls = append(calls, d.Name)
+		case saigetypes.ToolExecEndDelta:
+			results = append(results, d.Result+d.Error)
+		case saigetypes.UsageDelta:
+			usage = d
+		case saigetypes.ErrorDelta:
+			err = d.Error
+		case saigetypes.DoneDelta:
+			done = true
+		}
+	}
+	if err == nil && !done {
+		t.Fatal("the stream ended without Done or an error")
+	}
+	return said, calls, results, usage, err
+}
+
+func user(s string) saigetypes.Message {
+	return saigetypes.UserMessage{Parts: []saigetypes.UserPart{saigetypes.TextPart{Text: s}}}
+}
+
+func assistant(s string) saigetypes.Message {
+	return saigetypes.AssistantMessage{Parts: []saigetypes.AssistantPart{saigetypes.TextPart{Text: s}}}
+}
+
+// TestLive runs the real programs, signed in as they are on this host. It
+// spends a little of that account, so it runs only when asked:
+// VENDORCLI_LIVE=claude-code,codex.
+func TestLive(t *testing.T) {
+	for _, kind := range strings.Split(os.Getenv("VENDORCLI_LIVE"), ",") {
+		if kind == "" {
+			continue
+		}
+		t.Run(kind, func(t *testing.T) {
+			dir, state := t.TempDir(), t.TempDir()
+			dir, _ = filepath.EvalSymlinks(dir)
+			if err := os.WriteFile(filepath.Join(dir, "note.txt"), []byte("the heron lands at dusk\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			fn, err := New(kind, Config{Dir: dir, StateDir: state})
+			if err != nil {
+				t.Fatal(err)
+			}
+			model := map[string]string{ClaudeCode: "haiku", Codex: "default"}[kind]
+			p, err := fn(native.Spec{Name: "coder", Model: model})
+			if err != nil {
+				t.Fatal(err)
+			}
+			first := "Read note.txt, then create a file named done.txt whose content is the word ok. Reply with the contents of note.txt only."
+			said, calls, results, usage, err := collect(t, p, user(first))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("said %q calls %v results %d usage %+v", said, calls, len(results), usage)
+			if !strings.Contains(said, "heron") || len(calls) == 0 || len(results) == 0 || usage.CompletionTokens == 0 || usage.ResponseID == "" {
+				t.Fatalf("first turn: said %q, calls %v", said, calls)
+			}
+			if b, err := os.ReadFile(filepath.Join(dir, "done.txt")); err != nil || !strings.Contains(string(b), "ok") {
+				t.Fatalf("done.txt = %q, %v", b, err)
+			}
+			session := usage.ResponseID
+			// The second request carries the conversation, as the server sends
+			// it. The program continues its own session.
+			said2, _, _, usage2, err := collect(t, p, user(first), assistant(said), user("Which two files did you just touch? Name them only."))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("second said %q session %s", said2, usage2.ResponseID)
+			if !strings.Contains(said2, "note.txt") || !strings.Contains(said2, "done.txt") {
+				t.Fatalf("second turn: %q", said2)
+			}
+			if kind == ClaudeCode && usage2.ResponseID != session {
+				t.Fatalf("session %s was not continued: %s", session, usage2.ResponseID)
+			}
+		})
+	}
+}
