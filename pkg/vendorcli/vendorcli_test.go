@@ -305,6 +305,8 @@ func TestARunThatFailsIsTheTurnsError(t *testing.T) {
 		{"claude runs out of turns", ClaudeCode, `{"type":"result","subtype":"error_max_turns","is_error":false,"session_id":"s"}` + "\n", 0, "error_max_turns"},
 		{"codex turn fails", Codex, `{"type":"thread.started","thread_id":"t"}` + "\n" + `{"type":"turn.failed","error":{"message":"usage limit reached"}}` + "\n", 1, "usage limit reached"},
 		{"no answer at all", Codex, "not signed in\n", 1, "ended without an answer"},
+		{"codex complains and never ends the turn", Codex, `{"type":"thread.started","thread_id":"t"}` + "\n" + `{"type":"error","message":"stream disconnected"}` + "\n", 1, "stream disconnected"},
+		{"codex notices something and then the turn fails", Codex, `{"type":"thread.started","thread_id":"t"}` + "\n" + `{"type":"item.completed","item":{"id":"i1","type":"error","message":"Exceeded skills context budget."}}` + "\n" + `{"type":"turn.failed","error":{"message":"usage limit reached"}}` + "\n", 1, "usage limit reached"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -321,6 +323,28 @@ func TestARunThatFailsIsTheTurnsError(t *testing.T) {
 	}
 	if _, err := p.Stream(context.Background(), saigetypes.Request{Messages: []saigetypes.Message{assistant("hi")}}); err == nil {
 		t.Fatal("a request that asks nothing was run")
+	}
+}
+
+// A notice is not a failure: Codex reports that it dropped some skills'
+// descriptions, or that it is reconnecting, as an error item or event, and
+// then answers. Taking it for the turn's error made the platform run the
+// turn again, and a request that generates an image generated two.
+func TestACodexNoticeBeforeACompletedTurnIsNotAnError(t *testing.T) {
+	for name, notice := range map[string]string{
+		"an error item":  `{"type":"item.completed","item":{"id":"i0","type":"error","message":"Exceeded skills context budget. All skill descriptions were removed."}}`,
+		"an error event": `{"type":"error","message":"stream disconnected, retrying 1/5"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			out := `{"type":"thread.started","thread_id":"t"}` + "\n" + notice + "\n" +
+				`{"type":"item.completed","item":{"id":"i1","type":"agent_message","text":"Saved the image."}}` + "\n" +
+				`{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":4}}` + "\n"
+			command, _ := program(t, out, 0)
+			text, _, _, _, err := collect(t, build(t, Codex, Config{Command: command}, "default"), user("draw it"))
+			if err != nil || !strings.Contains(text, "Saved the image.") {
+				t.Fatalf("text = %q, err = %v", text, err)
+			}
+		})
 	}
 }
 

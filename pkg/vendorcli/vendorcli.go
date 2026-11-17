@@ -1089,6 +1089,7 @@ func readClaude(r io.Reader, w *writer) result {
 // readCodex reads `codex exec --json`.
 func readCodex(r io.Reader, w *writer) result {
 	var res result
+	var notice string
 	records(r, func(line []byte) {
 		var rec struct {
 			Type     string `json:"type"`
@@ -1149,18 +1150,26 @@ func readCodex(r io.Reader, w *writer) result {
 				w.call(id, "file_change", map[string]any{"changes": changes})
 				w.result(id, it.Status, it.Status == "failed")
 			case "error":
-				res.err = it.Message
+				// A notice, not the turn's end: the program says here that
+				// it dropped some of its skills' descriptions, or that it is
+				// reconnecting, and then goes on to answer.
+				notice = it.Message
 			}
 		case "turn.completed":
-			res.done = true
+			res.done, res.err = true, ""
 			u := rec.Usage
 			res.usage = saigetypes.UsageDelta{PromptTokens: u.Input, CachedPromptTokens: u.Cached, CompletionTokens: u.Output, TotalTokens: u.Input + u.Output}
 		case "turn.failed":
 			res.done, res.err = true, rec.Error.Message
 		case "error":
-			res.err = rec.Message
+			notice = rec.Message
 		}
 	})
+	// Only a turn that failed, or one that never ended, is an error. What
+	// the program last complained of says why it never ended.
+	if !res.done && res.err == "" {
+		res.err = notice
+	}
 	res.answer = w.answer()
 	return res
 }
