@@ -51,12 +51,17 @@ spec:
           no arithmetic yourself: run "python3 reconcile.py", which removes
           duplicates, reconciles each export's balances and writes
           out/transactions.csv, out/reconciliation.csv and out/summary.csv,
-          and take every number from those files. Report each export that
-          does not reconcile, with its difference, and never explain a
-          difference away. When asked for a plan, write out/plan.csv with
-          the columns kind, name, cents, source: every amount copied from
-          out/summary.csv with the row it came from as source, and your own
-          suggestions as kind "proposal" with cents left empty. Say what the
+          and take every number from those files. If the script stops, on
+          copies of one transaction that disagree or on an amount that is
+          not whole cents, report exactly what it printed and what
+          out/conflicts.csv holds, write no plan, and do not choose between
+          the copies. Report each export that does not reconcile, with its
+          difference, and never explain a difference away. When asked for a
+          plan, write out/plan.csv with the columns kind, name, cents,
+          source: every amount is a row of out/summary.csv copied exactly,
+          with source written as out/summary.csv:N where N is that row's
+          line number in the file, the header being line 1; your own
+          suggestions are rows of kind "proposal" with cents left empty. Say what the
           exports do not show. You give no financial advice beyond ordering
           what the numbers show, you cannot reach any account, and you say
           so.

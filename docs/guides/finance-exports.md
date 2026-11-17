@@ -17,7 +17,11 @@ export is a CSV that starts with `# key: value` lines (`account`, `kind` as
 `closing_balance`, and for a debt `apr_percent` and `minimum_payment`),
 followed by the header `id,date,description,amount`. Money in is positive. Two
 rows are one transaction when they have the same account and id, and nothing
-else is merged, so two purchases of the same amount on one day both stay.
+else is merged, so two purchases of the same amount on one day both stay. An
+amount is digits with at most two decimals. The script stops, and writes no
+figures, on an amount written any other way and on two rows with one account
+and id that disagree on date, description or amount: it lists those in
+`out/conflicts.csv` and leaves the choice to you.
 
 ## Start the agent
 
@@ -48,17 +52,32 @@ which debt to pay down first and why as proposals. Say what the exports do not
 show.
 ```
 
+A plan row that carries an amount names its source as `out/summary.csv:N`, the
+line of the summary it copies, the header being line 1.
+
 ## Check it yourself
 
 ```sh
 python3 examples/finance-exports/check.py DIR
 ```
 
-The checker shares no code with the script. It rebuilds the transactions, the
-balance differences and the monthly and debt figures from the exports, and
-fails when `out/` disagrees, when a row comes from a file that is not
-authorized, when an amount in the plan is not a row of the summary, or when a
+The checker shares no code with the script: its rules are written out a second
+time, including the words that give a category. From the exports it rebuilds
+every transaction with its date, description, amount, category, the file and
+line it is first on and the lines of its exact copies, and the balance
+differences and the monthly and debt figures. It fails when anything under
+`out/` differs field for field, when a row comes from a file that is not
+authorized, when copies of a transaction disagree, when an amount is not whole
+cents, when a plan amount is not the summary line its source names, or when a
 proposal carries an amount.
+
+```sh
+python3 examples/finance-exports/regress.py
+```
+
+runs both against twenty cases that must pass or fail: the generated exports
+untouched, fourteen changes to what was written, and five changes to the
+exports themselves.
 
 ## What was checked, and what was not
 
@@ -71,11 +90,14 @@ folder and not authorized.
   The two coffees of one day stayed two.
 - The card statement was reported as not reconciling, by 2,500 cents, and not
   explained away. The others reconciled.
-- The plan copied 26 amounts from the summary and made 2 proposals with no
-  amount: the debt with the higher rate first, and asking the card's issuer
-  about the difference.
+- The plan copied 26 amounts from the summary, each naming its line, and made
+  proposals with no amount, among them the debt with the higher rate first and
+  asking the card's issuer about the difference.
 - The export that is not authorized was not opened, and the exports were
   unchanged.
+- On a copy in which one transaction's second copy has another amount, with
+  the balance adjusted so that the export still reconciles, the script stopped,
+  and the agent reported the two lines, chose neither and wrote no plan.
 - With the profile's flags, `python3 reconcile.py` ran, `python3 -c
   "print(1)"` was refused, and `ls -la` ran.
 
