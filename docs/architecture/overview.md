@@ -545,6 +545,13 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+Office files have a [configured CLI path](../guides/office-files.md): an agent
+on Claude Code edits a `.docx` run by run and audits `.xlsx` formulas across
+saved revisions, in a folder on this host. Checked on generated files, with a
+part-by-part comparison and Quick Look renders of the document; real
+templates, Word and Excel, tracked changes and cloud revision history are not
+covered.
+
 Public-source research has a [configured CLI path](../guides/public-web.md)
 with built-in tools restricted to WebSearch and WebFetch; the program's user
 settings, hooks and plugins still load. A real HTTP run executed both and its
