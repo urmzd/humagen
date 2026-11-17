@@ -37,10 +37,16 @@ func clockTick(t *testing.T, p *platform.Platform, name string, from, to time.Ti
 	}()
 	defer func() {
 		cancel()
-		<-done
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Error("the clock did not stop ingesting when its context ended")
+		}
 	}()
-	for !clock.Ingesting() {
-		time.Sleep(time.Millisecond)
+	for start := time.Now(); !clock.Ingesting(); time.Sleep(time.Millisecond) {
+		if time.Since(start) > 10*time.Second {
+			t.Fatal("the clock never began ingesting")
+		}
 	}
 	// The store leaves a schedule out of the first read after it is written,
 	// and the connector only notes a schedule the first time it is shown it.
