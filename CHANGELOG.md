@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.135.0 (2026-11-17)
+
+### Features
+
+- **models**: configure reconciling account exports and drafting a sourced plan ([31fc5ed](https://github.com/urmzd/humagen/commit/31fc5ed31c272649847ab3726381cea59a227d20))
+
+### Bug Fixes
+
+- **rooms**: answer a room stream only once its source is listening ([d2c9758](https://github.com/urmzd/humagen/commit/d2c9758ff9e3dd43fec9be55934bdfe4011c7406))
+- **models**: the finance profile writes under out/ wherever the shell is, and the checker validates the whole summary ([3710043](https://github.com/urmzd/humagen/commit/371004367b8b6dc8f16c800607403e4bd16fc907))
+- **models**: the finance script stops on copies that disagree and the checker validates every field ([154134f](https://github.com/urmzd/humagen/commit/154134f3573fc8f509b1aa8e24123da8cbc90fd9))
+
+### Misc
+
+- **rooms**: bound the readiness waits and pin a failed source's 500 ([6d0f354](https://github.com/urmzd/humagen/commit/6d0f354847dcfced469a2dbe6901b25c57c4a0fa))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.134.0...v0.135.0)
+
+
 ## 0.133.0 (2026-11-17)
 
 ### Features
