@@ -1245,7 +1245,9 @@ Memory corrections preserve original provenance and record the editor and review
 opaque, so public IDs do not expose private note volume. Explicit promotion copies a selected
 approved, unexpired note to a destination project as a pending suggestion. Only text, kind and
 expiry cross the boundary; the copier replaces private source provenance. The destination owners
-must review it before it enters context. ReadContext Ask and Never, including forced-approval dry
+must review it before it enters context. An approved note drawn from an artifact is sent to
+agents with the address of that artifact's version after its text, so an agent can say where the
+note comes from; who wrote or copied a note is not sent. ReadContext Ask and Never, including forced-approval dry
 runs, withhold automatic memory grounding; fixed instructions and briefing preferences remain.
 
 Catalog connectors include Snowflake (catalog and live SELECT) and GCS/S3
