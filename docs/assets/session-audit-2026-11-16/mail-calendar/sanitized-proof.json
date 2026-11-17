@@ -18,5 +18,7 @@
     "native_attachment": "r3f2abe1fbb40e7b891badee5fa2e11d6",
     "contacts": "r8b11841aadf14b5f390b45e4d95fb08c"
   },
-  "native_get_message": "403; cause unconfirmed; Codex MIME succeeded"
+  "native_get_message": "403; cause unconfirmed; Codex MIME succeeded",
+  "scope": "Unsent generated draft, not a received message. Profile sees rendered CSV+reported size. Raw-byte hash/download is separate native instrumentation NOT granted by the shipped profile.",
+  "permission_boundary": "Codex read-only restricts local files. Connected app tool list is not narrowed by the profile; read-only mailbox selection and approval rules are prompt instructions. Native Calendar allow list preauthorizes create/update, not Humagen approval gating."
 }

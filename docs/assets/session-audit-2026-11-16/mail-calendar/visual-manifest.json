@@ -1,134 +1,150 @@
 {
   "branch": "feat/mail-calendar-connectors",
-  "head": "164708afa600a0d5d07cea79e0fc3f07bc1449d6",
-  "before": "63ef44f9222b4734592679339e9bf80ed6c63950",
+  "head": "1d8de070ad205d9f68a40340f4b2dfaf8c6baa00",
+  "before": "cda845371c7c856a2ccabce7402bbc3c1fb308d8",
   "images": [
     {
       "asset": "mail-calendar/mail-action-after-dark-1280x800.png",
       "width": "1280",
       "height": "800",
-      "sha256": "d20df4b3fe8186690ca8cfeff8f716c1e434f61a4ba5cb9175a08f2635100e1b",
+      "sha256": "808fdd0b033256f282448a9c7bee143719d9ce464014df8e68763ba544a5f8fa",
       "inspected_by": "codex",
+      "inspection": "opened after review fixes",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-action-after-dark-1280x800.png"
     },
     {
       "asset": "mail-calendar/mail-action-after-dark-390x844.png",
       "width": "390",
       "height": "844",
-      "sha256": "df4884507bd7861b2e3e9713009338ecc26af70442164218905c0205b264cdeb",
+      "sha256": "d8fac540f3834a0ad73cfa0af06288f2370b7c116a1390ca43bbb4b99039909e",
       "inspected_by": "codex",
+      "inspection": "opened after review fixes",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-action-after-dark-390x844.png"
     },
     {
       "asset": "mail-calendar/mail-action-after-light-1280x800.png",
       "width": "1280",
       "height": "800",
-      "sha256": "6c54380a2e7843f062fdd7443633544837f952c50bded4478a6093c61f99d52c",
+      "sha256": "24c08dd7040d7a84a44b6bd0be0dedd17e1a31814160201237099bc60509e81e",
       "inspected_by": "codex",
+      "inspection": "opened after review fixes",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-action-after-light-1280x800.png"
     },
     {
       "asset": "mail-calendar/mail-action-after-light-390x844.png",
       "width": "390",
       "height": "844",
-      "sha256": "f2e4b3868c914556df7659f9e420aa5261b6bea77dd7eab8d4188720f7c9c35e",
+      "sha256": "6846b9e7a6eb57a9d478006adb60d4d302bfdc16db116888d66915657526598b",
       "inspected_by": "codex",
+      "inspection": "opened after review fixes",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-action-after-light-390x844.png"
     },
     {
       "asset": "mail-calendar/mail-checked-after-dark-1280x800.png",
       "width": "1280",
       "height": "800",
-      "sha256": "10c15eba9048faac46205606b041ed46b5d4ce0bff627cf9b7e694cb177f6b20",
+      "sha256": "52671275ced10bb75c50f41d1a4d306a2f83b2c4a1fd612a7a9a549f059ad54b",
       "inspected_by": "codex",
+      "inspection": "opened after review fixes",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-checked-after-dark-1280x800.png"
     },
     {
       "asset": "mail-calendar/mail-checked-after-dark-390x844.png",
       "width": "390",
       "height": "844",
-      "sha256": "c4c1acc351fec4cc069421f2b60f3025eac03109132e873de8e9291788b87b2d",
+      "sha256": "823e4cb5b532fc08291d7cf06531ad96322628082fce70c42403b7c87aa128f6",
       "inspected_by": "codex",
+      "inspection": "opened after review fixes",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-checked-after-dark-390x844.png"
     },
     {
       "asset": "mail-calendar/mail-checked-after-light-1280x800.png",
       "width": "1280",
       "height": "800",
-      "sha256": "eb0ad5f75e3eac019ccd0f1c76da4326d184904ee96201e77b84df3af164a00b",
+      "sha256": "976f741cc400bd97d0c51965dae2d844fde0e27520d999ac591fb367de5ceb87",
       "inspected_by": "codex",
+      "inspection": "opened after review fixes",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-checked-after-light-1280x800.png"
     },
     {
       "asset": "mail-calendar/mail-checked-after-light-390x844.png",
       "width": "390",
       "height": "844",
-      "sha256": "d7effe538c55fd513a03315cfba18cfb3eb3b4229bf67a963597c9dcbe421e0c",
+      "sha256": "3ee238777bbd3f9baa49443f9bdfd2027cce39e1ad606efb2926bbf2edb81885",
       "inspected_by": "codex",
+      "inspection": "opened after review fixes",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-checked-after-light-390x844.png"
     },
     {
       "asset": "mail-calendar/mail-contacts-after-dark-1280x800.png",
       "width": "1280",
       "height": "800",
-      "sha256": "5c1c9fcba88aea74adab83d6bb87fc6dca57cb33c98f3e57952700cd163546ec",
+      "sha256": "1d8966c0dda98256258b9da0eebbcf97b9df8519b94639053f2b9d383126ffd3",
       "inspected_by": "codex",
+      "inspection": "opened after review fixes",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-contacts-after-dark-1280x800.png"
     },
     {
       "asset": "mail-calendar/mail-contacts-after-dark-390x844.png",
       "width": "390",
       "height": "844",
-      "sha256": "13695c507d386c93b700b13dd3ffde68ca8508a33bdfb9460b458e9ba7b6593a",
+      "sha256": "302bed4c71d90675dc555d0682689c5eaa3bb678ec4c125695f7f23610f6d531",
       "inspected_by": "codex",
+      "inspection": "opened after review fixes",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-contacts-after-dark-390x844.png"
     },
     {
       "asset": "mail-calendar/mail-contacts-after-light-1280x800.png",
       "width": "1280",
       "height": "800",
-      "sha256": "33c9e8456a9e383dff75071fa697e0e45c9c6662e7346fa68fe0918b8fefecef",
+      "sha256": "0b3bc2f3a493ef5ca9a01df59276454090504d72efec2a800034d471cd5410c7",
       "inspected_by": "codex",
+      "inspection": "opened after review fixes",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-contacts-after-light-1280x800.png"
     },
     {
       "asset": "mail-calendar/mail-contacts-after-light-390x844.png",
       "width": "390",
       "height": "844",
-      "sha256": "beb5c5dacd8adeca3d5656666291fe8fe9561fe6b7e47cc6b5ba955f9116bdfb",
+      "sha256": "c39017b1de37909f3796ff8cfc4b966508f6a8b63f126ab0acab6c91500891e3",
       "inspected_by": "codex",
+      "inspection": "opened after review fixes",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-contacts-after-light-390x844.png"
     },
     {
       "asset": "mail-calendar/mail-guide-after-dark-1280x800.png",
       "width": "1280",
       "height": "800",
-      "sha256": "38851853538befec9bb6b28921232a84a05da362441948df11fee67ea1a2820a",
+      "sha256": "afb681d8ac4b98694fe04619c4df61ba955508318dc19d93517a9a1f606dc69b",
       "inspected_by": "codex",
+      "inspection": "opened after review fixes",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-guide-after-dark-1280x800.png"
     },
     {
       "asset": "mail-calendar/mail-guide-after-dark-390x844.png",
       "width": "390",
       "height": "844",
-      "sha256": "323f98ef55f87e2996a466894c81fbd51d319b456da87a97db86487aab45ef02",
+      "sha256": "1a2d4e00cfb2ffec48493e39fbd020709f7ea6ca59682fbd42222c506aacbdfc",
       "inspected_by": "codex",
+      "inspection": "opened after review fixes",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-guide-after-dark-390x844.png"
     },
     {
       "asset": "mail-calendar/mail-guide-after-light-1280x800.png",
       "width": "1280",
       "height": "800",
-      "sha256": "5c3aa421e688415309d3cc004a0115e8e02d0c8644cac06395af5ee0ba8121c0",
+      "sha256": "3838302d9ca7505f42ed2747ea6c87faaafba88239643c92a8fded28363a3de8",
       "inspected_by": "codex",
+      "inspection": "opened after review fixes",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-guide-after-light-1280x800.png"
     },
     {
       "asset": "mail-calendar/mail-guide-after-light-390x844.png",
       "width": "390",
       "height": "844",
-      "sha256": "bbb217a0652b6bc4ce5454c6351d918d4cb5096866caafee761460171f39b775",
+      "sha256": "1a41c88c68b4aaf86a55a5428b4130a5588d276d61f9062d7714494da49c1e74",
       "inspected_by": "codex",
+      "inspection": "opened after review fixes",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-guide-after-light-390x844.png"
     },
     {
@@ -137,6 +153,7 @@
       "height": "800",
       "sha256": "f53230349fccfe611507fccfdb5df531315fe200ab7773d31278ad5a5fd8dedd",
       "inspected_by": "codex",
+      "inspection": "previously opened, byte-identical",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-index-after-dark-1280x800.png"
     },
     {
@@ -145,6 +162,7 @@
       "height": "844",
       "sha256": "3496ad7dded59da77a7e7bb24a9960e2251cb71d677c3bded4f98257b77bb26d",
       "inspected_by": "codex",
+      "inspection": "previously opened, byte-identical",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-index-after-dark-390x844.png"
     },
     {
@@ -153,6 +171,7 @@
       "height": "800",
       "sha256": "16f1802b5e1cd47bdb43d953970da9785bc8c2861a65499a5dd9a3990ff74013",
       "inspected_by": "codex",
+      "inspection": "previously opened, byte-identical",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-index-after-light-1280x800.png"
     },
     {
@@ -161,6 +180,7 @@
       "height": "844",
       "sha256": "a741930cdf1771755bda89f80465b1ca3d91d3b432826cca5d7f398d75820aac",
       "inspected_by": "codex",
+      "inspection": "previously opened, byte-identical",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-index-after-light-390x844.png"
     },
     {
@@ -169,6 +189,7 @@
       "height": "800",
       "sha256": "b8526acb22a377e338c3c3bcde2b3fde4ddd8fd3c6cba985d82cd3c6ba1fe9f1",
       "inspected_by": "codex",
+      "inspection": "previously opened, byte-identical",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-index-before-dark-1280x800.png"
     },
     {
@@ -177,6 +198,7 @@
       "height": "844",
       "sha256": "3954c8530364fab0ccf8dcf758df5b62d23a8978356aa21c4162f0953e156d1c",
       "inspected_by": "codex",
+      "inspection": "previously opened, byte-identical",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-index-before-dark-390x844.png"
     },
     {
@@ -185,6 +207,7 @@
       "height": "800",
       "sha256": "33fd743c1644b33f3e8f8babee73320c3da9395ac01c73dd96a8bcb4c6693c47",
       "inspected_by": "codex",
+      "inspection": "previously opened, byte-identical",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-index-before-light-1280x800.png"
     },
     {
@@ -193,7 +216,44 @@
       "height": "844",
       "sha256": "e32587b25937eacaad9dd4b6cb33e50445004a330728348dd74578971783ebb2",
       "inspected_by": "codex",
+      "inspection": "previously opened, byte-identical",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-index-before-light-390x844.png"
+    },
+    {
+      "asset": "mail-calendar/mail-permissions-after-dark-1280x800.png",
+      "width": "1280",
+      "height": "800",
+      "sha256": "adf0d04d67e308cb8bec5c1309363600a06826aca113f172e4a5a6a0ad59f51d",
+      "inspected_by": "codex",
+      "inspection": "opened after review fixes",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-permissions-after-dark-1280x800.png"
+    },
+    {
+      "asset": "mail-calendar/mail-permissions-after-dark-390x844.png",
+      "width": "390",
+      "height": "844",
+      "sha256": "f0316180da551343fa74cffd34eae53e811073a24640e73b3ceccc5ba5a8716d",
+      "inspected_by": "codex",
+      "inspection": "opened after review fixes",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-permissions-after-dark-390x844.png"
+    },
+    {
+      "asset": "mail-calendar/mail-permissions-after-light-1280x800.png",
+      "width": "1280",
+      "height": "800",
+      "sha256": "499966a88719d8c45056ec2490c8e868ebb761f550a9d224d08e0b7b16c87cc7",
+      "inspected_by": "codex",
+      "inspection": "opened after review fixes",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-permissions-after-light-1280x800.png"
+    },
+    {
+      "asset": "mail-calendar/mail-permissions-after-light-390x844.png",
+      "width": "390",
+      "height": "844",
+      "sha256": "b60fad0444c73d31d9a20eff2dcde8a8c55860c6deb6993697f2f65b1415e89b",
+      "inspected_by": "codex",
+      "inspection": "opened after review fixes",
+      "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-permissions-after-light-390x844.png"
     },
     {
       "asset": "mail-calendar/mail-status-after-dark-1280x800.png",
@@ -201,6 +261,7 @@
       "height": "800",
       "sha256": "70bcf18efec34238b9e4c62fd972282f3c179eb77348c1b060845244e4803d38",
       "inspected_by": "codex",
+      "inspection": "previously opened, byte-identical",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-status-after-dark-1280x800.png"
     },
     {
@@ -209,6 +270,7 @@
       "height": "844",
       "sha256": "6003ad5081f2eb8a15d71a7f9e629dc0f1d97f535a4164de3442c29de1600caa",
       "inspected_by": "codex",
+      "inspection": "previously opened, byte-identical",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-status-after-dark-390x844.png"
     },
     {
@@ -217,6 +279,7 @@
       "height": "800",
       "sha256": "132f92a19fbf0c1703f5631ba13dbd56bad9ac26880eb7973e6f608bf82978a0",
       "inspected_by": "codex",
+      "inspection": "previously opened, byte-identical",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-status-after-light-1280x800.png"
     },
     {
@@ -225,6 +288,7 @@
       "height": "844",
       "sha256": "5597ece017111be9a56299f9f95507351d4d6d45bbaf881a480bd74b197ad9d4",
       "inspected_by": "codex",
+      "inspection": "previously opened, byte-identical",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-status-after-light-390x844.png"
     },
     {
@@ -233,6 +297,7 @@
       "height": "800",
       "sha256": "79de078ed70331523b8752b49639ff4467a29b1dd99b4c44d565837142f320c2",
       "inspected_by": "codex",
+      "inspection": "previously opened, byte-identical",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-status-before-dark-1280x800.png"
     },
     {
@@ -241,6 +306,7 @@
       "height": "844",
       "sha256": "cee30aa5bb8b4ac81347922ccd1c50b9fb80427d0d4d7b2612af2e8f6469b8b0",
       "inspected_by": "codex",
+      "inspection": "previously opened, byte-identical",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-status-before-dark-390x844.png"
     },
     {
@@ -249,6 +315,7 @@
       "height": "800",
       "sha256": "88f2ada4a406d8148a902cd00305181c30366cc8bc4dd1f42ee0605473e6f702",
       "inspected_by": "codex",
+      "inspection": "previously opened, byte-identical",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-status-before-light-1280x800.png"
     },
     {
@@ -257,22 +324,25 @@
       "height": "844",
       "sha256": "224027edf141edf8031b4e5ae8a5c28147badc2eef246b6385d96da7bb2cee8b",
       "inspected_by": "codex",
+      "inspection": "previously opened, byte-identical",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-status-before-light-390x844.png"
     },
     {
       "asset": "mail-calendar/mail-terminal-after.png",
       "width": "1184",
-      "height": "432",
-      "sha256": "3e01931697267cd0c382870dd7f19e874032cd8191ce48a65ca59153f8c6fa20",
+      "height": "552",
+      "sha256": "ba51c30394e40bde5e0487cb865686b2849d6e6887782979d0bb721560a04ea7",
       "inspected_by": "codex",
+      "inspection": "opened after review fixes",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-terminal-after.png"
     },
     {
       "asset": "mail-calendar/mail-terminal-before.png",
       "width": "1184",
-      "height": "432",
-      "sha256": "ac549036b2282d0de405459a5369afbf4dd69f1f5176afa1cfcc90dc289fc853",
+      "height": "552",
+      "sha256": "8103be8b5d28fc2b90a7d7929a720c0259ad167421bf2036598c2205316303e0",
       "inspected_by": "codex",
+      "inspection": "opened after review fixes",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/mail-calendar-visuals/captures/mail-terminal-before.png"
     }
   ],
@@ -284,5 +354,5 @@
     "Every intermediate guide scroll position",
     "Phone final checked paragraph below captured viewport"
   ],
-  "note": "New guide after-only; Status and index paired at same headings/row and size/theme; terminal120x18Dracula before/after."
+  "note": "After review fixes all36 docs recaptured.22 new/changed PNGs personally opened;16 Status/index byte-identical to previously opened images. Real config-check terminal pair120x24Dracula; account receipt explicitly recorded not new calls. Five guide positions after-only."
 }
