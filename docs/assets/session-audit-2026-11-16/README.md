@@ -88,3 +88,30 @@ The browser guide is new, so no earlier guide existed to capture. Its first view
 | screen-guide, light, 1280x800 | [Before](upload-display-docs/captures/screen-guide-before-light-1280x800.png) | [After](upload-display-docs/captures/screen-guide-after-light-1280x800.png) |
 | screen-guide, dark, 390x844 | [Before](upload-display-docs/captures/screen-guide-before-dark-390x844.png) | [After](upload-display-docs/captures/screen-guide-after-dark-390x844.png) |
 | screen-guide, dark, 1280x800 | [Before](upload-display-docs/captures/screen-guide-before-dark-1280x800.png) | [After](upload-display-docs/captures/screen-guide-after-dark-1280x800.png) |
+
+## Worked touch target
+
+- [worked-target/before/light/390x844/session.png](worked-target/before/light/390x844/session.png)
+- [worked-target/before/light/1280x800/session.png](worked-target/before/light/1280x800/session.png)
+- [worked-target/before/dark/390x844/session.png](worked-target/before/dark/390x844/session.png)
+- [worked-target/before/dark/1280x800/session.png](worked-target/before/dark/1280x800/session.png)
+- [worked-target/after/light/390x844/session.png](worked-target/after/light/390x844/session.png)
+- [worked-target/after/light/1280x800/session.png](worked-target/after/light/1280x800/session.png)
+- [worked-target/after/dark/390x844/session.png](worked-target/after/dark/390x844/session.png)
+- [worked-target/after/dark/1280x800/session.png](worked-target/after/dark/1280x800/session.png)
+- [worked-target-docs/captures/requirements-after-dark-1280x800.png](worked-target-docs/captures/requirements-after-dark-1280x800.png)
+- [worked-target-docs/captures/requirements-after-dark-390x844.png](worked-target-docs/captures/requirements-after-dark-390x844.png)
+- [worked-target-docs/captures/requirements-after-light-1280x800.png](worked-target-docs/captures/requirements-after-light-1280x800.png)
+- [worked-target-docs/captures/requirements-after-light-390x844.png](worked-target-docs/captures/requirements-after-light-390x844.png)
+- [worked-target-docs/captures/requirements-before-dark-1280x800.png](worked-target-docs/captures/requirements-before-dark-1280x800.png)
+- [worked-target-docs/captures/requirements-before-dark-390x844.png](worked-target-docs/captures/requirements-before-dark-390x844.png)
+- [worked-target-docs/captures/requirements-before-light-1280x800.png](worked-target-docs/captures/requirements-before-light-1280x800.png)
+- [worked-target-docs/captures/requirements-before-light-390x844.png](worked-target-docs/captures/requirements-before-light-390x844.png)
+- [worked-target-docs/captures/status-after-dark-1280x800.png](worked-target-docs/captures/status-after-dark-1280x800.png)
+- [worked-target-docs/captures/status-after-dark-390x844.png](worked-target-docs/captures/status-after-dark-390x844.png)
+- [worked-target-docs/captures/status-after-light-1280x800.png](worked-target-docs/captures/status-after-light-1280x800.png)
+- [worked-target-docs/captures/status-after-light-390x844.png](worked-target-docs/captures/status-after-light-390x844.png)
+- [worked-target-docs/captures/status-before-dark-1280x800.png](worked-target-docs/captures/status-before-dark-1280x800.png)
+- [worked-target-docs/captures/status-before-dark-390x844.png](worked-target-docs/captures/status-before-dark-390x844.png)
+- [worked-target-docs/captures/status-before-light-1280x800.png](worked-target-docs/captures/status-before-light-1280x800.png)
+- [worked-target-docs/captures/status-before-light-390x844.png](worked-target-docs/captures/status-before-light-390x844.png)
