@@ -548,6 +548,13 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+A branch of a conversation on a coding agent (Claude Code or Codex) is
+answered by a session of its own: a session is continued only by a turn whose
+conversation so far begins with everything that session holds, so a branch
+never sees a sibling branch's turns. A conversation too long to be replayed
+whole continues no session: each turn starts one, told what was replayed
+([coding agents](../guides/coding-agents.md)).
+
 Coding agents on Claude Code or Codex have a [model kind](../guides/coding-agents.md)
 each. A turn on Codex fails only when the program says the turn failed, with
 or without a reason, or ends without finishing it; what it reports along the
