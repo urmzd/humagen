@@ -48,7 +48,8 @@ It fails when a row names a file that is not in the folder, quotes words that
 are not in that file, or carries a date its own quote does not state: a full
 date needs the day, month and year in the quote, `????-MM-DD` needs a day and
 month there and no year, and anything else must be `unknown`. So a likely date
-borrowed from another record fails. `python3 examples/records-research/check.py
+borrowed from another record fails, and so does a certainty that is not exactly
+one of the three words. `python3 examples/records-research/check.py
 --self-test` runs its own cases. It reads dates written as `March 4, 2025`,
 `3/4/2025` (month first) and `2025-03-04`; a date written another way has to be
 `unknown`, and it does not judge the event text. For a page, open the URL the

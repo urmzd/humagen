@@ -13,7 +13,8 @@ space). The date must be one the quote itself states:
   unknown     the quote states no date
 
 A date that is plausible and not in the quote fails: the day of a nearby
-appointment, or the year of the records around it.
+appointment, or the year of the records around it. The certainty must be
+exactly stated, conflicting or unknown.
 """
 import csv
 import os
@@ -55,6 +56,11 @@ def date_fault(date, quote):
     return "" if (int(m.group(1)), month, day) in full else "the quote does not state that date"
 
 
+def certainty_fault(certainty):
+    """Why a row's certainty is not one of the three words, or ""."""
+    return "" if certainty in ("stated", "conflicting", "unknown") else "certainty is not stated, conflicting or unknown"
+
+
 def flat(text):
     return " ".join(text.split())
 
@@ -71,7 +77,7 @@ def check(root):
         elif not r["quote"].strip() or flat(r["quote"]) not in flat(open(path).read()):
             why = "quote is not in the record"
         else:
-            why = date_fault(r["date"], r["quote"])
+            why = date_fault(r["date"], r["quote"]) or certainty_fault(r["certainty"])
         if why:
             bad += 1
             print(f"row {i}: {why}: {r['date']} {name!r} {r['quote'][:60]!r}")
@@ -107,7 +113,13 @@ def self_test():
         ok = (fault == "") == passes
         wrong += not ok
         print(("ok   " if ok else "WRONG"), date, repr(quote[:44]), "->", fault or "accepted")
-    print(f"{len(cases)} cases, {wrong} wrong")
+    for certainty, passes in [("stated", True), ("conflicting", True), ("unknown", True),
+                              ("stated (probably)", False), ("Stated", False), ("", False)]:
+        fault = certainty_fault(certainty)
+        ok = (fault == "") == passes
+        wrong += not ok
+        print(("ok   " if ok else "WRONG"), "certainty", repr(certainty), "->", fault or "accepted")
+    print(f"{len(cases) + 6} cases, {wrong} wrong")
     return 1 if wrong else 0
 
 
