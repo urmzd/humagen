@@ -545,6 +545,13 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+Mail and calendar have an [example native-account CLI configuration](../guides/mail-calendar.md).
+Exact tool schemas and one empty-marker Gmail search were exercised through a
+real signed-in program. Message/attachment reads and a calendar write have not
+been validated: no selected message or approved event action was supplied.
+The full account requirement remains blocked; the configuration is not an
+account-object authorization boundary or an atomic versioned calendar update.
+
 Travel refunds have a [configured CLI path](../guides/travel-refund.md): one
 agent on Claude Code reads a booking and current policy pages and cannot write,
 and a second writes the request a person approves, under an output folder only.
