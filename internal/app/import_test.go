@@ -705,7 +705,7 @@ func TestImportSessionsByProjectRefusesToMixTwoDirectoriesInOneSource(t *testing
 	sum := slugSum
 	slugSum = func(string) string { return "00000000" }
 	t.Cleanup(func() { slugSum = sum })
-	api := &importServer{projects: []string{"a_1", "a_2"}}
+	api := &importServer{projects: []string{"a_1", "a 1"}}
 	server := api.start(t)
 	home := t.TempDir()
 	putFile(t, home, ".claude/projects/-work-a-1/a.jsonl", cwdSession("a", "/work/a_1"))
@@ -715,7 +715,7 @@ func TestImportSessionsByProjectRefusesToMixTwoDirectoriesInOneSource(t *testing
 	}
 	// A later run meets a directory of the same slug: its session is not
 	// added to the first one's source, and the source stays a_1's.
-	putFile(t, home, ".claude/projects/-work-a-2/b.jsonl", cwdSession("b", "/work/a.1"))
+	putFile(t, home, ".claude/projects/-work-a-2/b.jsonl", cwdSession("b", "/work/a 1"))
 	out, err = runImport(t, "sessions", "--home", home, "--server", server.URL, "--by-project", "--json")
 	var res sessionsResult
 	if jerr := json.Unmarshal([]byte(out), &res); jerr != nil {
@@ -730,14 +730,16 @@ func TestImportSessionsByProjectRefusesToMixTwoDirectoriesInOneSource(t *testing
 	// The same holds when only the second directory is read: the source
 	// says whose it is.
 	home = t.TempDir()
-	putFile(t, home, ".claude/projects/-work-a-2/b.jsonl", cwdSession("b", "/work/a.1"))
+	putFile(t, home, ".claude/projects/-work-a-2/b.jsonl", cwdSession("b", "/work/a 1"))
 	out, err = runImport(t, "sessions", "--home", home, "--server", server.URL, "--by-project", "--json")
 	res = sessionsResult{}
 	if jerr := json.Unmarshal([]byte(out), &res); jerr != nil {
 		t.Fatalf("json = %v\n%s", jerr, out)
 	}
-	if err == nil || len(res.Failed) != 1 || !strings.Contains(res.Failed[0].Reason, "holds another directory") {
-		t.Fatalf("err = %v, failed = %v", err, res.Failed)
+	// Neither is the source attached to the second directory's project,
+	// which exists: the source is not that directory's.
+	if err == nil || len(res.Failed) != 2 || !strings.Contains(res.Failed[0].Reason, "holds another directory") || !strings.Contains(res.Failed[1].Reason, "not attached for a 1") || len(res.Attached) != 0 {
+		t.Fatalf("err = %v, failed = %v, attached = %v", err, res.Failed, res.Attached)
 	}
 	if len(api.docs["sessions-in-a-1-x00000000"]) != 1 || api.attached["sessions-in-a-1-x00000000"] != "a_1" {
 		t.Fatalf("docs = %v, attached = %v", api.docs, api.attached)

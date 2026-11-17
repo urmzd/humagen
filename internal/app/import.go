@@ -427,7 +427,7 @@ func (k *sessionSink) add(s sessionimport.Session) {
 	// By project, a session is kept with the others of its directory.
 	if slug != "" {
 		base = k.c.prefix + "-in-" + slug
-		what = "Sessions imported from other assistants that ran in " + filepath.Base(s.Dir) + "."
+		what = ranIn(filepath.Base(s.Dir))
 	}
 	title := s.Title
 	if s.Dir != "" {
@@ -523,6 +523,12 @@ var slugSum = func(base string) string {
 	return hex.EncodeToString(sum[:4])
 }
 
+// ranIn is what a by-project source says it holds: the directory's name,
+// which is how a later run knows whose the source is.
+func ranIn(dir string) string {
+	return "Sessions imported from other assistants that ran in " + dir + "."
+}
+
 // continued matches the name of a source that continues a full one.
 var continued = regexp.MustCompile(`^(.+)-\d+$`)
 
@@ -576,6 +582,12 @@ func (k *sessionSink) attach() {
 		// A source of a directory this run did not read is left as it is.
 		dir, ok := k.dirs[slug]
 		if !ok {
+			continue
+		}
+		// A source that says it holds another directory is not this one's
+		// to attach, whatever the slug: its sessions were refused above.
+		if held := k.owner[source]; held != "" && !strings.EqualFold(held, ranIn(dir)) {
+			k.res.Failed = append(k.res.Failed, importFailed{Name: source, Reason: fmt.Sprintf("not attached for %s: the source holds another directory's sessions (%q)", dir, held)})
 			continue
 		}
 		// The project is the one named as the directory is, ignoring case
