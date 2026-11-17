@@ -26,6 +26,13 @@ var ErrUnchanged = errors.New("state: unchanged")
 // first waits a little longer, at random, so writers on one record spread
 // out. try reads what it changes afresh every time: a conflict means what it
 // read has moved on.
+//
+// What Retry promises is counted in writes, not in writers at once. A try
+// conflicts only when another write to its records commits after it read
+// them, so a change succeeds whenever fewer than MaxTries other writes commit
+// on its records while it runs. Past that it may return ErrBusy: nothing
+// orders the writers, and one that has lost often waits longest, so a steady
+// arrival of new writers can pass it every time however few run at once.
 func Retry(try func() error) error {
 	for n := range MaxTries {
 		if n > 0 {
