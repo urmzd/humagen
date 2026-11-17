@@ -866,5 +866,292 @@
     "height": "844",
     "sha256": "692044205eb39adde262e8862c6bc24871147a2f9181419c290e791149116353",
     "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-guide-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "8e251d9c4f6d8e650200e4f46d3e966d4174a9360f98a3b3b088608ef8b5fb6b",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-guide-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "334a07d2993c52cdafd723263bbaf3fcdb47e57ecdf480543050a3bc09977f63",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-guide-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "ef5bd3206a2c2ac7113692b9351e2045596ad3f1415d1b00f1d0497c238f0532",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-guide-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "7bcb6ceedd5ca2a155ac3d3643aed70bfa292ad3823d345c58f29dad322525da",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-index-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "f4e0c3f8929c58ba5267c6f3843c2be920942e8a3b271547c99b51ea586f647b",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-index-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "42fb3bfd4c12bc78103932fac28168c44ce48bcc098522f04efd5da509a51313",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-index-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "f4995acfd8b42a8657a785c42622ddafe2fd1767c341add008188d27fcdc035b",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-index-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "697879f34e029fee43ee793b84a087a9fd222477a2fcafcae0aa06c566e552da",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-index-before-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "f191e804788b9935bfb1f45011e454c07bfe94271d85a78667cebb0b940bbcf1",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-index-before-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "ec2ec9db556b5f2713b073f3de8fdde91fdf24431242d6c64e5ab79127845213",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-index-before-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "98a84d61ac8898d67f23ddf0faeb57beefc9fe0dc2fed0173fe4781be1b17a42",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-index-before-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "3e03c6424ea663cdd3a4e87ad072dd643c563f0fc534a4df7afbf44385f65373",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-native-after.png",
+    "width": "992",
+    "height": "432",
+    "sha256": "a2c91fae9a56bf1ee105c2ba239c26c07232dea5d6b328ca2a43f6942042c87a",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-native-before.png",
+    "width": "992",
+    "height": "432",
+    "sha256": "c68511bd5a64df5183486073dfe11760b4a4da77e13f0314e06bfdbe14c3ec41",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-native-blocker.png",
+    "width": "1088",
+    "height": "512",
+    "sha256": "a1d99962d74d3a38cd85b2d7703c82d9530f757d50415fc6ccba54b97aba5a99",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-requirements-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "f0e83aa8a0304dedf5daa7e21b67da1eeaef6a8e1ec877284bbad0fd63926166",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-requirements-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "5faf6e5d73ddf35ed795ddf75aaace268dab01619bf562d0e25f71517ff03452",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-requirements-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "bbd14e2e3f5cb3077093e1c986fe1ca5c6553f9c2a1d552ac9e9c06560a90079",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-requirements-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "9fb476646052ba6b5f5d56189cf8bbb85d8e363bde3004c993e414989c12d905",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-requirements-before-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "ca6d0cb33f8c4e09d5f7f1de3c41bcd85a4a754caa4bf594fbe6018df541c53d",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-requirements-before-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "eee25a985545001bf039a4be94e5aba3d2b5c0111640411f5e1e4281151d5724",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-requirements-before-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "df19784cd42bef37c3183f50b688e1bd372ca3a4e1257ec9e1115cff06216023",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-requirements-before-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "a454ad3f51f73b5774f48d4dd5a915c84aaed7c8dc5c2dbb30186394e81bd620",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-status-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "5d02334a59a1ff3fd1bd6a668bbfd6f4c2696190cf47b7ec5189b29dc9058e27",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-status-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "d65cdc9c024783898551ce52b8493b1f409a885feecda671b8c80dcad9128bc1",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-status-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "d0d5bde7e26e3e6e9039c9b3d310ad0516167d8d2de4b14265c49fdf105a376d",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-status-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "ab97d3189aa5e8bbe704ad00bbc3635d2b8b2f6844ce3b6cfc9975289ee10c46",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-status-before-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "5f8f25784dcf55e3e20d11b6d4bf06eae8aba34ca1519dfccfa99606fcb2df3f",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-status-before-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "c1a0367e10ca2c4a29660b79917a829168107a34b6847281550ea31a437bf7d6",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-status-before-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "3313375eda0f9bb4bffee8f43f295288c86fb9298d21eb7a65a67446ead3e75a",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-status-before-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "e60038d6f485a4427df8bfc9e79fe07899ec21097057d3e17c63bee6da12f638",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-subscription-after.png",
+    "width": "992",
+    "height": "432",
+    "sha256": "14e0ce87dabbbfe6f5e7d3f0f1c9b6936753d1863e50173d0fdf4e213a9a77c5",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop/desktop-subscription-before.png",
+    "width": "992",
+    "height": "432",
+    "sha256": "22a2c2cd1161d6361a67602b63ddaaf27ebd74d6c320db39130c5727fc01f05a",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-guide/assignment-guide-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "e0e2f4585739dd59e65387f136d28d34b6a343c115a35a7cb3e37a675db1f5ca",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-guide/assignment-guide-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "dca36aa5cff5246d7e6e8eb2020c8a3a4f7fbd4a6a03ea6ee238aa3e175e8b10",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-guide/assignment-guide-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "2a60dca2023b4f211ea4505331c683173bec8df6e6fea8fae6fb4a9142274904",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-guide/assignment-guide-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "04400b0af9f3f5bcfe73124780a7c2387ba9b74e32d56bb3003bae145d21d5c0",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-guide/assignment-guide-before-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "6d0e9eb79c1efc92792a4b3bbd868e86df9ba758d357bf125d37acb889b2d6b7",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-guide/assignment-guide-before-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "a6fd91f6d8dd941e2cae6dbf1d4ffba52d2e3ef263e2d4cd8df588d07f9b8d2f",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-guide/assignment-guide-before-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "32e77a16b272c92d868b304be9076ba8ca14e111c0a05eda0751f7c0d91047fa",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "assignment-guide/assignment-guide-before-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "5347fc3eeb7f5de9a7c2dc320eec4f8c9f06c2fc799fa7fc875d3cb53e0d5d42",
+    "inspected_by": "codex"
   }
 ]
