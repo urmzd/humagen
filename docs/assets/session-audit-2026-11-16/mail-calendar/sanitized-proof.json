@@ -1,0 +1,22 @@
+{
+  "source_bytes": 127,
+  "source_sha256": "5c336435c387adf70e0d394b8dd1a0e7dec33e7551488ca6b2cf4b6c4ce2957e",
+  "download_checks": [
+    {
+      "tool": "native attachment download + actual Read",
+      "bytes": 127,
+      "same_bytes_as_generated_source": true,
+      "sha256": "5c336435c387adf70e0d394b8dd1a0e7dec33e7551488ca6b2cf4b6c4ce2957e"
+    }
+  ],
+  "codex_app_parse": "5 source CSV fields exactly match; renderer adds index column not in original",
+  "contacts": "Exact generated marker searched, zero matches; no personal contact opened or modified; write tools not exposed",
+  "calendar": "Schemas and primary metadata only; no event created/changed; exact fixture approval pending",
+  "mail": "One unsent no-recipient non-personal fixture draft; exact subject->confirmed message->full MIME->actual selected attachment via Codex app",
+  "runs": {
+    "codex_attachment": "rd458b9fbfb90f4419b6ce8a19973376e",
+    "native_attachment": "r3f2abe1fbb40e7b891badee5fa2e11d6",
+    "contacts": "r8b11841aadf14b5f390b45e4d95fb08c"
+  },
+  "native_get_message": "403; cause unconfirmed; Codex MIME succeeded"
+}
