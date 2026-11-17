@@ -91,20 +91,25 @@ func TestSkillsTwoProcessesAgree(t *testing.T) {
 
 		// New skills in one scope from both processes stop at the cap.
 		personal := library.Scope{Kind: "personal", Subject: "bob"}
-		// Every new skill writes the scope's one count, and a write gives up
-		// after state.MaxTries losses. So as many race at once as that
-		// allows, not the whole cap.
-		racing := make(chan struct{}, state.MaxTries/2)
+		// Every new skill writes the scope's one count, and state.Retry
+		// promises a write only while fewer than state.MaxTries others
+		// commit on its records. So the drafts race a wave at a time, each
+		// wave no larger than that and finished before the next starts: a
+		// draft then loses to the rest of its own wave at most. Bounding
+		// how many run at once is not enough, since a draft that keeps
+		// losing meets every draft admitted after it.
+		const wave = state.MaxTries
 		for i := range library.MaxSkills + 8 {
 			s := []*library.Store{one, two}[i%2]
 			wg.Go(func() {
-				racing <- struct{}{}
-				defer func() { <-racing }()
 				_, err := s.Draft("acme", "bob", personal, definition(fmt.Sprintf("skill-%d", i), "x"), 0, nil, time.Now())
 				if err != nil && !errors.Is(err, library.ErrInvalid) {
 					t.Error(err)
 				}
 			})
+			if (i+1)%wave == 0 {
+				wg.Wait()
+			}
 		}
 		wg.Wait()
 		list, err := two.List("acme", personal)
