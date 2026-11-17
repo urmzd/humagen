@@ -1888,5 +1888,19 @@
     "height": "844",
     "sha256": "dbe5de90589ac3b3775c837df04e1e2acd25c5cf86ff6d2393cfcfb739554585",
     "inspected_by": "codex"
+  },
+  {
+    "asset": "detached-jobs/detached-running.png",
+    "width": "1088",
+    "height": "312",
+    "sha256": "e15e45d1f4fefdcbb39eb6b43ca6bf137d04bd1a7c0efbdb0e0b91480ad79148",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "detached-jobs/detached-stopped.png",
+    "width": "1088",
+    "height": "312",
+    "sha256": "b51d8eab5d72400d00dc17cbde0a454369b547827142e3c1a8ebc85087a2126f",
+    "inspected_by": "codex"
   }
 ]
