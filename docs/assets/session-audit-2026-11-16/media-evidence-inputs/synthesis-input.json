@@ -1,0 +1,17 @@
+{
+  "fixture": "GENERATED TTS fixture; not a user recording",
+  "duration": 12.508813,
+  "statements": [
+    {
+      "start": 3.0,
+      "end": 5.760187999999999,
+      "text": "The revised delivery is Tuesday at nine thirty."
+    },
+    {
+      "start": 9.760188,
+      "end": 12.508813,
+      "text": "The deposit is seven hundred and twenty dollars."
+    }
+  ],
+  "provenance": "Retained inputs supplied to the macOS speech synthesizer for this generated fixture. No manual listening or word alignment; start/end are assembly intervals including silence, not speech-word ground truth. The synthesis shell script was not retained as a published script."
+}
