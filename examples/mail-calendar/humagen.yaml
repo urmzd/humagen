@@ -2,16 +2,16 @@
 # Codex local files are read-only. Cloud actions require exact approval.
 api_version: humagen/v1
 kind: System
-metadata: {name: mail-calendar-apps-local}
+metadata: { name: mail-calendar-apps-local }
 spec:
-  server: {addr: '127.0.0.1:8080'}
-  auth: {kind: dev, tenant: {fixed: default}}
-  stores: {kind: memory}
-  sandbox: {kind: unisolated}
+  server: { addr: "127.0.0.1:8080" }
+  auth: { kind: dev, tenant: { fixed: default } }
+  stores: { kind: memory }
+  sandbox: { kind: unisolated }
 ---
 api_version: humagen/v1
 kind: Platform
-metadata: {name: default}
+metadata: { name: default }
 spec:
   models:
     - name: account-apps
