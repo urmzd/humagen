@@ -1160,7 +1160,15 @@ func readCodex(r io.Reader, w *writer) result {
 			u := rec.Usage
 			res.usage = saigetypes.UsageDelta{PromptTokens: u.Input, CachedPromptTokens: u.Cached, CompletionTokens: u.Output, TotalTokens: u.Input + u.Output}
 		case "turn.failed":
+			// A failed turn is an error whatever it says, or does not say,
+			// about why.
 			res.done, res.err = true, rec.Error.Message
+			if res.err == "" {
+				res.err = "the turn failed"
+				if notice != "" {
+					res.err += ": " + notice
+				}
+			}
 		case "error":
 			notice = rec.Message
 		}

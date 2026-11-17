@@ -306,6 +306,9 @@ func TestARunThatFailsIsTheTurnsError(t *testing.T) {
 		{"codex turn fails", Codex, `{"type":"thread.started","thread_id":"t"}` + "\n" + `{"type":"turn.failed","error":{"message":"usage limit reached"}}` + "\n", 1, "usage limit reached"},
 		{"no answer at all", Codex, "not signed in\n", 1, "ended without an answer"},
 		{"codex complains and never ends the turn", Codex, `{"type":"thread.started","thread_id":"t"}` + "\n" + `{"type":"error","message":"stream disconnected"}` + "\n", 1, "stream disconnected"},
+		{"codex turn fails and says nothing", Codex, `{"type":"thread.started","thread_id":"t"}` + "\n" + `{"type":"turn.failed"}` + "\n", 1, "the turn failed"},
+		{"codex turn fails with an empty message after an answer", Codex, `{"type":"thread.started","thread_id":"t"}` + "\n" + `{"type":"item.completed","item":{"id":"i1","type":"agent_message","text":"Half done."}}` + "\n" + `{"type":"turn.failed","error":{"message":""}}` + "\n", 0, "the turn failed"},
+		{"codex turn fails silently after a notice", Codex, `{"type":"thread.started","thread_id":"t"}` + "\n" + `{"type":"error","message":"stream disconnected"}` + "\n" + `{"type":"turn.failed","error":{}}` + "\n", 1, "the turn failed: stream disconnected"},
 		{"codex notices something and then the turn fails", Codex, `{"type":"thread.started","thread_id":"t"}` + "\n" + `{"type":"item.completed","item":{"id":"i1","type":"error","message":"Exceeded skills context budget."}}` + "\n" + `{"type":"turn.failed","error":{"message":"usage limit reached"}}` + "\n", 1, "usage limit reached"},
 	}
 	for _, tt := range tests {
