@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.130.0 (2026-11-17)
+
+### Features
+
+- **models**: configure editing a document and auditing a workbook ([b1c734a](https://github.com/urmzd/humagen/commit/b1c734a0d1b695e84480868853e3ed3d8401c8ce))
+- **browser**: exercise connected tabs through a signed-in CLI ([18bcf29](https://github.com/urmzd/humagen/commit/18bcf290479c2eb394aaab40b0e421759cdd654c))
+
+### Bug Fixes
+
+- **browser**: isolate downloads and verify inline image transport ([95fee10](https://github.com/urmzd/humagen/commit/95fee101869bfe7dace243b099c739b22b80131b))
+
+### Misc
+
+- **library**: race new skills a wave of state.MaxTries at a time ([150b9d9](https://github.com/urmzd/humagen/commit/150b9d9cadffa4c4859a51da6e4c47b5be726226))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.129.0...v0.130.0)
+
+
 ## 0.129.0 (2026-11-17)
 
 ### Features
