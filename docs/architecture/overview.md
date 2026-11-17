@@ -552,6 +552,12 @@ preserved. Checked on Codex CLI 0.167.0 and a generated fixture. Files stay on
 the CLI host; automatic console publication and image-specific journal events
 are not covered. Edits can change texture outside the requested region.
 
+Bulk local files have a [configured CLI path](../guides/local-files.md): an
+agent on Claude Code surveys a folder on this host in place, writes a plan with
+a hash for every file, and applies only the part a person approves. Checked on a
+generated folder of 322 files and 117 MiB; real folders, cloud folders and a
+console view of the plan are not covered.
+
 Office files have a [configured CLI path](../guides/office-files.md): an agent
 on Claude Code edits a `.docx` run by run and audits `.xlsx` formulas across
 saved revisions, in a folder on this host. Checked on generated files, with a
