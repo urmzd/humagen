@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.128.0 (2026-11-17)
+
+### Features
+
+- **models**: configure public source search and page retrieval (#345) ([4e0ff56](https://github.com/urmzd/humagen/commit/4e0ff5620ff187599f244fb1c7f8d460eab0c0a4))
+- **console**: an assignment shows its checks and opens the run that answered (#343) ([a3163ea](https://github.com/urmzd/humagen/commit/a3163eab57d4aa36fbbd4cadb985731d2ccc65d3))
+- **cli**: imported sessions keep tool results, attachments and lineage (#331) ([5339bcf](https://github.com/urmzd/humagen/commit/5339bcf91cef40119ba26b75e7a4398a31b75abc))
+- **library**: a scope holds 256 skills (#336) ([eeed73c](https://github.com/urmzd/humagen/commit/eeed73c49ac326c94164d27c650cf64baea084f3))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.127.0...v0.128.0)
+
+
 ## 0.125.0 (2026-11-17)
 
 ### Features
