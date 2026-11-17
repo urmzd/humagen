@@ -512,6 +512,8 @@ try {
     const calls = events.events
       .filter((e) => e.type === "run.delta.tool.call.v1")
       .map((e) => e.data.name);
+    if (compareUpload && calls.some((name) => /browser_(evaluate|run_code)$/.test(name)))
+      throw new Error("Screenshot comparison attempted source-code evaluation");
     if (
       !calls.includes("mcp__browser__browser_take_screenshot") ||
       !calls.includes("mcp__browser__browser_tabs")

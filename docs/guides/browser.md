@@ -116,6 +116,8 @@ profile's image-only instruction avoids opening the browser for the first
 answer. Browser/tab access still has the authorization limits described above.
 Color names are visual estimates; this is not a pixel-diff regression service.
 
+### Check the comparison
+
 The fixture helper below can exercise both steps through the session message
 API. Add `HUMAGEN_BROWSER_COMPARE_UPLOAD=1` to its environment and use a fresh
 capture directory. It uploads the original PNG through `POST /api/sessions`,
