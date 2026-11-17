@@ -3,8 +3,8 @@
 `examples/media-evidence/claude-code.yaml` runs an agent on the signed-in
 Claude Code program with a folder of original evidence on this host. It renders
 scanned PDF pages, reads image pixels, extracts video frames and uses local
-Whisper ASR for English audio. It keeps original files and writes derived
-outputs separately, citing original pages and source times.
+Whisper ASR for English audio. Its prompt asks it to preserve original files and
+write derived outputs separately, citing original pages and source times.
 
 ## Start the analyst
 
@@ -71,7 +71,9 @@ uv run --with mlx-whisper==0.4.3 mlx_whisper recording.m4a \
   --condition-on-previous-text False --output-format all --output-dir asr
 ```
 
-Keep raw JSON as well as SRT. Ask the agent to cut padded intervals from the
+Keep raw JSON as well as SRT. A clip's SRT uses clip-local times starting at zero;
+retain its source offset separately to place it on the original timeline.
+Ask the agent to cut padded intervals from the
 **original recording**, transcribe those clips again and record both local
 clip times and source times. For example, a clip beginning at source 2.5 s
 maps a local word time of 1.0 s to source 3.5 s. Retain the requested extraction
@@ -89,6 +91,11 @@ three-page PDF, a schematic video, an AI illustration and a short synthetic
 speech recording. Nothing in it is a real incident or a user's recording.
 Download the four originals and their [hash manifest](https://raw.githubusercontent.com/urmzd/humagen/3f80e938d748cadb7f2a9e372af0a4f57a54dd1c/docs/assets/session-audit-2026-11-16/media-evidence-inputs/sources.json)
 into a fresh folder, then use the prompt above.
+
+The retained [speech synthesis inputs](https://raw.githubusercontent.com/urmzd/humagen/1dd93dd5b7d712afc440609008737fb7ec430a13/docs/assets/session-audit-2026-11-16/media-evidence-inputs/synthesis-input.json)
+give the two supplied utterances for a wording comparison. Their assembly
+intervals include silence and are not word-level ground truth. No synthesis
+script, manual listening result or automatic recognition score is published.
 
 The large-file check can be recreated from the small schematic video:
 
