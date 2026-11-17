@@ -899,28 +899,28 @@
     "asset": "desktop/desktop-index-after-dark-1280x800.png",
     "width": "1280",
     "height": "800",
-    "sha256": "f4e0c3f8929c58ba5267c6f3843c2be920942e8a3b271547c99b51ea586f647b",
+    "sha256": "084988994f81b6b55fc9cdde1038ffa2a5b9e34d1dd0b5bbfbcb758060156875",
     "inspected_by": "codex"
   },
   {
     "asset": "desktop/desktop-index-after-dark-390x844.png",
     "width": "390",
     "height": "844",
-    "sha256": "42fb3bfd4c12bc78103932fac28168c44ce48bcc098522f04efd5da509a51313",
+    "sha256": "49aaccb63283cdcec2a32fa37cb557e0ea36c7e737fc0cae182c6ada5bb78cfe",
     "inspected_by": "codex"
   },
   {
     "asset": "desktop/desktop-index-after-light-1280x800.png",
     "width": "1280",
     "height": "800",
-    "sha256": "f4995acfd8b42a8657a785c42622ddafe2fd1767c341add008188d27fcdc035b",
+    "sha256": "a54b37805e502d633a49a11c9e70764049dbe50ee24c23797b31da993618e3bb",
     "inspected_by": "codex"
   },
   {
     "asset": "desktop/desktop-index-after-light-390x844.png",
     "width": "390",
     "height": "844",
-    "sha256": "697879f34e029fee43ee793b84a087a9fd222477a2fcafcae0aa06c566e552da",
+    "sha256": "e0f981f5fac3ea5f24439c26f54e4d80c7cace10be9624c8714c288f4d7c69b8",
     "inspected_by": "codex"
   },
   {
@@ -1032,28 +1032,28 @@
     "asset": "desktop/desktop-status-after-dark-1280x800.png",
     "width": "1280",
     "height": "800",
-    "sha256": "5d02334a59a1ff3fd1bd6a668bbfd6f4c2696190cf47b7ec5189b29dc9058e27",
+    "sha256": "dc2f7748ef4549fc3776584fc9fd5b4556bff243e002c48779682cd4af39c337",
     "inspected_by": "codex"
   },
   {
     "asset": "desktop/desktop-status-after-dark-390x844.png",
     "width": "390",
     "height": "844",
-    "sha256": "d65cdc9c024783898551ce52b8493b1f409a885feecda671b8c80dcad9128bc1",
+    "sha256": "20c9d366406c1958c1797a928f508766c9f0c01ec0f27a397edf0d0bcb591ab7",
     "inspected_by": "codex"
   },
   {
     "asset": "desktop/desktop-status-after-light-1280x800.png",
     "width": "1280",
     "height": "800",
-    "sha256": "d0d5bde7e26e3e6e9039c9b3d310ad0516167d8d2de4b14265c49fdf105a376d",
+    "sha256": "0afa7600cb627d346dd9cd634c4afcf26ad9614cd816ec84b052703fc9951e60",
     "inspected_by": "codex"
   },
   {
     "asset": "desktop/desktop-status-after-light-390x844.png",
     "width": "390",
     "height": "844",
-    "sha256": "ab97d3189aa5e8bbe704ad00bbc3635d2b8b2f6844ce3b6cfc9975289ee10c46",
+    "sha256": "78c8b152c84b92bae3cb3f55cb75ac13456a95d74e065e9e4df69dc4d979346a",
     "inspected_by": "codex"
   },
   {
@@ -1313,6 +1313,62 @@
     "width": "390",
     "height": "844",
     "sha256": "e60038d6f485a4427df8bfc9e79fe07899ec21097057d3e17c63bee6da12f638",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop-review/desktop-native-after-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "02dbd3111d881a07bafc39c70c385241caf300c88e9cee936c383c616b583252",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop-review/desktop-native-after-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "d507753492a55d2fab95c0a1382a244107c242acb04e47e53fdf42b4a2de11e6",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop-review/desktop-native-after-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "4d73bfebc0f768292d048803ef272529107f826f2fcf9173e175c30e7052bb10",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop-review/desktop-native-after-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "b2f012f55cecf37654cb6498b4ed71aef3ca37e210924664959edaaa9b6e1345",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop-review/desktop-native-before-dark-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "a022d1c5e7899da210eac7a0503e07524ca8002e519bb4bc48fcac8ad6fe1765",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop-review/desktop-native-before-dark-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "9826cb5268534895154ac8c7f9660f6f677f6fb369aa437148594db2e2bd8d30",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop-review/desktop-native-before-light-1280x800.png",
+    "width": "1280",
+    "height": "800",
+    "sha256": "eac511919a1fc065690fdf7e5a456c046d71a59b7ce51718e75c5d27a9912127",
+    "inspected_by": "codex"
+  },
+  {
+    "asset": "desktop-review/desktop-native-before-light-390x844.png",
+    "width": "390",
+    "height": "844",
+    "sha256": "965a9d6f50f919afc5d7179f93be4685f0af9c7e333001f1a2db0adf2da0df6d",
     "inspected_by": "codex"
   }
 ]

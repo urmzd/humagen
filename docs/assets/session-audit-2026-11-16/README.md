@@ -222,3 +222,23 @@ Public-source research, all23 images inspected by Codex:
 - [web-status-before-dark-390x844](public-web/web-status-before-dark-390x844.png)
 - [web-status-before-light-1280x800](public-web/web-status-before-light-1280x800.png)
 - [web-status-before-light-390x844](public-web/web-status-before-light-390x844.png)
+
+
+Desktop review qualifications, updated screenshots inspected by Codex:
+
+- [desktop-index-after-dark-1280x800](desktop/desktop-index-after-dark-1280x800.png)
+- [desktop-index-after-dark-390x844](desktop/desktop-index-after-dark-390x844.png)
+- [desktop-index-after-light-1280x800](desktop/desktop-index-after-light-1280x800.png)
+- [desktop-index-after-light-390x844](desktop/desktop-index-after-light-390x844.png)
+- [desktop-status-after-dark-1280x800](desktop/desktop-status-after-dark-1280x800.png)
+- [desktop-status-after-dark-390x844](desktop/desktop-status-after-dark-390x844.png)
+- [desktop-status-after-light-1280x800](desktop/desktop-status-after-light-1280x800.png)
+- [desktop-status-after-light-390x844](desktop/desktop-status-after-light-390x844.png)
+- [desktop-native-after-dark-1280x800](desktop-review/desktop-native-after-dark-1280x800.png)
+- [desktop-native-after-dark-390x844](desktop-review/desktop-native-after-dark-390x844.png)
+- [desktop-native-after-light-1280x800](desktop-review/desktop-native-after-light-1280x800.png)
+- [desktop-native-after-light-390x844](desktop-review/desktop-native-after-light-390x844.png)
+- [desktop-native-before-dark-1280x800](desktop-review/desktop-native-before-dark-1280x800.png)
+- [desktop-native-before-dark-390x844](desktop-review/desktop-native-before-dark-390x844.png)
+- [desktop-native-before-light-1280x800](desktop-review/desktop-native-before-light-1280x800.png)
+- [desktop-native-before-light-390x844](desktop-review/desktop-native-before-light-390x844.png)
