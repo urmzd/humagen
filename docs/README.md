@@ -26,6 +26,7 @@
 | [Read and organize a local folder](guides/local-files.md) | Guide | An agent on Claude Code surveys a folder on this host in place, plans, and applies only what a person approves |
 | [Edit a document and audit a workbook](guides/office-files.md) | Guide | An agent on Claude Code edits a .docx in place and audits .xlsx formulas and revisions in a folder on this host |
 | [Work out a refund path](guides/travel-refund.md) | Guide | Two agents on Claude Code: one reads a booking and current policy pages and cannot write, one writes the approved request and nothing else |
+| [Build a sourced chronology from records](guides/records-research.md) | Guide | An agent on Claude Code reads a folder of records, cites and quotes each dated event, lists unknowns, and opens current official pages |
 | [Connect a Mac desktop](guides/desktop.md) | Guide | Pinned native MCP tools, permissions, targeting instructions, and an opt-in fixture check |
 | [Connect a browser](guides/browser.md) | Guide | Pinned Playwright MCP configuration, existing-tab connection, and real browser acceptance |
 | [Email notifications](guides/email-notifications.md) | Guide | Configure the outbound email notification relay |

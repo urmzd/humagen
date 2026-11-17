@@ -96,6 +96,18 @@ a booking, the airline's cancellation notice and the passenger's notes.
   cancelled flight, a full and prompt refund, 7 business days for a credit card
   and the original form of payment. Each quotation is in that text when fetched
   separately. It ran no search and opened no other site.
+- An earlier answer led with a full refund as if it were settled, although the
+  records do not show that the rule covers this airline or who sold the
+  ticket, and it said that filing a request would settle the deadline's start,
+  which no passage it had read says: the rule's deadline refers to a section
+  that makes a refund due on events such as declining a rebooking. The prompt
+  now requires conditions first, a quoted passage for the period and for what
+  starts it, and a refund due on an event kept apart from a request filed.
+  The answer after that change named three conditions before any entitlement,
+  quoted the period and the section it refers to, and said it could not quote
+  what starts the clock. Its reader returns summaries with short quotations,
+  so long passages are not quoted in full. This is a limit of the output, not
+  a finding about the rule: read the cited text yourself.
 - `travel-clerk`, with the approval, wrote `out/refund-request.md` and nothing
   else. Reference, flight, date, amount and ticket number matched the records,
   and what the records do not state was left as TO FILL. The records were
@@ -108,6 +120,7 @@ Not checked:
 
 - **A real itinerary and a real airline.** The booking is invented, so no
   airline's own policy was read and nothing was asked of an airline.
+- **Whether the summary is legally right.** Nobody qualified reviewed it.
 - **Changes after the edition's date,** and whether the airline in a real
   booking is one the rule covers. Treat the summary as a starting point, not
   as advice.
