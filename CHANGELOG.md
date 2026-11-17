@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.124.1 (2026-11-17)
+
+### Bug Fixes
+
+- **markdown**: reserve room for cloned code padding ([3cd4bcb](https://github.com/urmzd/humagen/commit/3cd4bcbd58d6de3e0544b7982759d97be366f74b))
+- **markdown**: preserve padding on wrapped inline code ([c753ba2](https://github.com/urmzd/humagen/commit/c753ba22f220eb10e2464866ec08d9b617dd1286))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.124.0...v0.124.1)
+
+
 ## 0.124.0 (2026-11-17)
 
 ### Features
