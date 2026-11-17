@@ -47,8 +47,8 @@ const paneButton = `${buttonClass("ghost")} h-7 px-2`;
  * A project's inbox: what is filed in it, and its announcements, which reach
  * the members of the project and of every project below it. Those allowed post
  * here, and the author or an owner withdraws what was posted, from the
- * announcement itself. The inbox and its Open, Resolved and All switch stay
- * whatever is open, so what the reader hid is always found under Resolved.
+ * announcement itself. The inbox and its Waiting, Done and All switch stay
+ * whatever is open, so what the reader hid is always found under Done.
  */
 export function ProjectInbox({
   project,
@@ -215,7 +215,7 @@ export function ProjectInbox({
           viewer={me}
           show={show}
           onShow={setShow}
-          // Announcements land here, and what the reader hid of them is under Resolved.
+          // Announcements land here, and what the reader hid of them is under Done.
           // A chosen kind of anything else keeps the mailbox's own words.
           emptyOpen={
             kind === "" || kind === "announcement"

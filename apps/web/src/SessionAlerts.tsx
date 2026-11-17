@@ -1,3 +1,4 @@
+import { defaultCopy } from "@humagen/components";
 import { Modal } from "@humagen/web";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentSession } from "../../../packages/client/src/generated/types.ts";
@@ -147,7 +148,9 @@ export function SessionAlerts({
             </div>
             {alert.body && <p className="whitespace-pre-wrap text-aui-muted">{alert.body}</p>}
             {alert.resolve_when && (
-              <p className="text-aui-xs text-aui-muted">Resolved when: {alert.resolve_when}</p>
+              <p className="text-aui-xs text-aui-muted">
+                {defaultCopy.attention.doneWhen(alert.resolve_when)}
+              </p>
             )}
             <div className="flex flex-wrap gap-2">
               <a
@@ -174,7 +177,7 @@ export function SessionAlerts({
                     disabled={attention.busy}
                     onClick={() => void attention.change(alert, "resolved")}
                   >
-                    Resolve
+                    {defaultCopy.attention.markDone}
                   </button>
                   <button
                     type="button"
@@ -182,7 +185,7 @@ export function SessionAlerts({
                     disabled={attention.busy}
                     onClick={() => void attention.change(alert, "snoozed")}
                   >
-                    Snooze 1h
+                    {defaultCopy.attention.snooze}
                   </button>
                 </>
               )}
