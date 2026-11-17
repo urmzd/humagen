@@ -197,7 +197,10 @@ of totals.
 An attached run (tagged, the caller waits) is rolled up into its caller: once
 it has ended and the ledger records it, the Delegator calls
 `runtime.ReportChildUsage`, and the caller's `usage.children` and `usage.total`
-include it, once. A delegated run (a background `agent` call) is not rolled up: the turn
+include it, once. A run the platform ends from the ledger, before it has
+observed the run's final event, is ended with the usage the runtime recorded
+in the same write, so a caller that reads it as ended reads all it used and
+does not leave it out. A delegated run (a background `agent` call) is not rolled up: the turn
 that handed it over has moved on, so there is no turn to report it to. Its
 spend is the same request's work, so it counts against the same budgets: every
 run in a tree counts against its root's project and client, its own agent, and
