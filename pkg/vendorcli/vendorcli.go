@@ -272,16 +272,23 @@ func (p *provider) key(turns []said) string {
 var threadLine = regexp.MustCompile(`(?m)^- ` + regexp.QuoteMeta(runs.MetaThread) + `: (\S+)$`)
 
 // conversation is the platform thread a request is in, or "" when what is
-// asked does not say.
+// asked does not say. What a person typed is repeated in the context and may
+// run over several paragraphs, so the line is looked for in all of it. A
+// person can type a line of that shape too: when what is asked names more
+// than one thread, none is taken, and the turn starts from what was said
+// rather than continue a session that may be another conversation's.
 func conversation(ask string) string {
 	if !strings.HasPrefix(ask, "Context from the trigger:") {
 		return ""
 	}
-	head, _, _ := strings.Cut(ask, "\n\n")
-	if m := threadLine.FindStringSubmatch(head); m != nil {
-		return m[1]
+	thread := ""
+	for _, m := range threadLine.FindAllStringSubmatch(ask, -1) {
+		if thread != "" && m[1] != thread {
+			return ""
+		}
+		thread = m[1]
 	}
-	return ""
+	return thread
 }
 
 // begun and begin carry a session over the one step the thread's name does
@@ -792,8 +799,9 @@ func readClaude(r io.Reader, w *writer) result {
 			}
 		case "assistant", "user":
 			// What a sub-agent says is its caller's tool result, not the
-			// answer.
-			if rec.Parent != "" {
+			// answer. And after a compaction the program replays what it
+			// kept of the session, which was said in an earlier turn.
+			if rec.Parent != "" || compacted != "" {
 				return
 			}
 			for _, b := range rec.Message.Content {
@@ -814,7 +822,9 @@ func readClaude(r io.Reader, w *writer) result {
 			// A command of the program's own answers in its result, or not
 			// at all, rather than as something the model said.
 			if res.err == "" && len(w.said) == 0 {
-				w.text(cmp.Or(strings.TrimSpace(rec.Result), compacted))
+				// After a compaction the result can still hold the answer
+				// before it, so what the compaction reported comes first.
+				w.text(cmp.Or(compacted, strings.TrimSpace(rec.Result)))
 			}
 			u := rec.Usage
 			res.usage = saigetypes.UsageDelta{
