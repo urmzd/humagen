@@ -28,7 +28,9 @@ spec:
           - Read(./**)
           - Glob(./**)
           - Grep(./**)
-          - Edit(./out/**)
+          # Anchored at the folder, not at the shell's current directory: a
+          # read-only "cd out" must not move what may be written.
+          - Edit(/out/**)
           - Bash(python3 reconcile.py)
         timeout: 20m
         args:

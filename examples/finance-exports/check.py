@@ -14,7 +14,11 @@ figures. It fails when:
   amount (reconcile.py must have stopped, not merged them);
 - out/transactions.csv is not exactly those transactions, field for
   field, or draws on a file that is not authorized;
-- out/reconciliation.csv or out/summary.csv differ from the figures;
+- out/reconciliation.csv differs from the figures;
+- out/summary.csv is not exactly the rows the exports give, each once:
+  every month and category, and for each debt its balance, rate, date
+  and file from the statement with the latest period end, and its
+  minimum payment;
 - a row of out/plan.csv that carries an amount is not the row of
   out/summary.csv its source names (out/summary.csv:N, the header being
   line 1), or a row of kind proposal carries an amount.
@@ -85,7 +89,10 @@ for name in allowed:
     diffs[name] = (money(meta["opening_balance"], f"{name} opening_balance") + total
                    - money(meta["closing_balance"], f"{name} closing_balance"))
     if meta.get("kind") in ("card", "loan"):
-        debts[meta["account"]] = -money(meta["closing_balance"], f"{name} closing_balance")
+        statement = (meta["period_end"], -money(meta["closing_balance"], f"{name} closing_balance"),
+                     meta.get("apr_percent", ""), money(meta.get("minimum_payment", "0"), f"{name} minimum_payment"), name)
+        if meta["account"] not in debts or statement[0] >= debts[meta["account"]][0]:
+            debts[meta["account"]] = statement
 for clash in clashes:
     faults.append(f"copies of one transaction disagree: {clash}")
 if clashes and os.path.isfile(at("out/transactions.csv")):
@@ -116,19 +123,22 @@ if written:
     if recon != diffs:
         faults.append(f"reconciliation differs: {recon} against {diffs}")
     rows = table("out/summary.csv")
-    summary = {(r["kind"], r["name"]): int(r["cents"]) for r in rows}
     months = {}
     for want in truth.values():
-        key = ("month", f"{want['date'][:7]} {want['category']}")
+        key = f"{want['date'][:7]} {want['category']}"
         months[key] = months.get(key, 0) + want["cents"]
-    figures = dict(months)
-    figures.update({("debt", account): owed for account, owed in debts.items()})
-    for key, value in figures.items():
-        if summary.get(key) != value:
-            faults.append(f"summary {key} is {summary.get(key)}, the exports give {value}")
-    extra = sorted(k for k in summary if k not in figures and k[0] != "minimum")
-    if extra:
-        faults.append(f"summary rows the exports do not give: {extra}")
+    expected = [("month", name, str(value), "") for name, value in months.items()]
+    for account, (end, owed, apr, minimum, name) in debts.items():
+        expected.append(("debt", account, str(owed), f"apr_percent={apr} as of {end} from {name}"))
+        expected.append(("minimum", account, str(minimum), f"from {name}"))
+    have = [(r["kind"], r["name"], r["cents"], r["detail"]) for r in rows]
+    for row in sorted(set(have)):
+        if have.count(row) > 1:
+            faults.append(f"summary row written {have.count(row)} times: {row}")
+    for row in sorted(set(have) - set(expected)):
+        faults.append(f"summary row the exports do not give: {row}")
+    for row in sorted(set(expected) - set(have)):
+        faults.append(f"summary lacks the row the exports give: {row}")
     copied = proposals = 0
     if not os.path.isfile(at("out/plan.csv")):
         faults.append("no out/plan.csv")

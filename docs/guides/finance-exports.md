@@ -34,7 +34,10 @@ humagen start -f examples/finance-exports/claude-code.yaml
 
 The profile runs the program in its restricted mode with an empty strict MCP
 configuration. File tools are confined to the folder and writing is allowed
-under `out/` only. Of shell commands, `python3 reconcile.py` is allowed. A
+under `out/` only. That rule is anchored at the folder (`Edit(/out/**)`), not
+at the shell's current directory: written as `./out/**` it stopped matching
+once the program had run a read-only `cd out`, and the plan could not be
+written. Of shell commands, `python3 reconcile.py` is allowed. A
 command that changes something else is refused. The program still runs commands
 it treats as read-only, such as `ls`. So `authorized.txt` is an instruction to
 the agent, not a lock: a file it must not see should not be in the folder. The
@@ -68,16 +71,19 @@ line it is first on and the lines of its exact copies, and the balance
 differences and the monthly and debt figures. It fails when anything under
 `out/` differs field for field, when a row comes from a file that is not
 authorized, when copies of a transaction disagree, when an amount is not whole
-cents, when a plan amount is not the summary line its source names, or when a
-proposal carries an amount.
+cents, when the summary is not exactly the rows the exports give (each month
+and category, and for each debt its balance, rate, date and file from the
+statement with the latest period end, and its minimum payment), when a plan
+amount is not the summary line its source names, or when a proposal carries an
+amount.
 
 ```sh
 python3 examples/finance-exports/regress.py
 ```
 
-runs both against twenty cases that must pass or fail: the generated exports
-untouched, fourteen changes to what was written, and five changes to the
-exports themselves.
+runs both against twenty-six cases that must pass or fail: the generated
+exports untouched, nineteen changes to what was written, and six changes to
+the exports themselves.
 
 ## What was checked, and what was not
 
@@ -99,7 +105,9 @@ folder and not authorized.
   the balance adjusted so that the export still reconciles, the script stopped,
   and the agent reported the two lines, chose neither and wrote no plan.
 - With the profile's flags, `python3 reconcile.py` ran, `python3 -c
-  "print(1)"` was refused, and `ls -la` ran.
+  "print(1)"` was refused, and `ls -la` ran. After a `cd out`, a write under
+  `out/` succeeded and writes to the folder itself and to `authorized.txt`
+  were refused.
 
 Not checked:
 
