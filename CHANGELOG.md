@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.120.0 (2026-11-17)
+
+### Features
+
+- **content**: preserve uploads and rich MCP media (#330) ([2faf7c8](https://github.com/urmzd/humagen/commit/2faf7c8768ec3c4d82d224e783357de43dfb0d8e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.119.0...v0.120.0)
+
+
 ## 0.119.0 (2026-11-14)
 
 ### Features
