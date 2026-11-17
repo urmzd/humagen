@@ -76,6 +76,12 @@ too, as `--effort` to Claude Code and as `model_reasoning_effort` to Codex.
   `/compact`, `/context` and `/cost` act on that conversation's session and
   their output is the answer. A conversation's first message is always asked
   as a question.
+- **Images and PDFs.** An image sent with a message is shown to the program:
+  to Claude Code on its input, to Codex as a file kept only for the run.
+  Claude Code also reads a PDF. Anything else (audio, video, another kind of
+  document) is refused with an error that names it, and the program is not
+  run. A session that is starting is shown the images of earlier messages
+  too.
 - **Tool activity.** Each tool the program runs is published as the run's tool
   call and its outcome, with the command or file it worked on and the end of
   its output.

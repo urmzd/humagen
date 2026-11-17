@@ -1,7 +1,10 @@
 package vendorcli
 
 import (
+	"bytes"
 	"context"
+	image2 "image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,6 +105,28 @@ func TestLive(t *testing.T) {
 			if kind == ClaudeCode && usage2.ResponseID != session {
 				t.Fatalf("session %s was not continued: %s", session, usage2.ResponseID)
 			}
+			// An image, sent into the session that is continuing.
+			third := "Which two files did you just touch? Name them only."
+			said3, _, _, _, err := collect(t, p, user(first), assistant(said), user(third), assistant(said2),
+				userWith("What single colour fills this image? Answer with one word.", image("fill.png", solidPNG(64, 64, 0, 0, 255))))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("image said %q", said3)
+			if !strings.Contains(strings.ToLower(said3), "blue") {
+				t.Fatalf("the image was not read: %q", said3)
+			}
 		})
 	}
+}
+
+// solidPNG is a PNG of one colour.
+func solidPNG(w, h int, r, g, b byte) []byte {
+	img := image2.NewRGBA(image2.Rect(0, 0, w, h))
+	for i := 0; i < len(img.Pix); i += 4 {
+		img.Pix[i], img.Pix[i+1], img.Pix[i+2], img.Pix[i+3] = r, g, b, 255
+	}
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, img)
+	return buf.Bytes()
 }

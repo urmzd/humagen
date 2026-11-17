@@ -2,6 +2,7 @@ package vendorcli
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"os"
@@ -31,6 +32,7 @@ func program(t *testing.T, out string, exit int) (command, runs string) {
 	script := `#!/bin/sh
 n=$(ls "` + runs + `" | grep -c args)
 { for a in "$@"; do printf '%s\n' "$a"; done; } > "` + runs + `/$n.args"
+cat > "` + runs + `/$n.stdin"
 env > "` + runs + `/$n.env"
 pwd > "` + runs + `/$n.pwd"
 sed "s/SESSION/sess-$n/g" "` + dir + `/out"
@@ -163,7 +165,7 @@ func TestCodexStreamsWhatWasSaidAndEachToolItRan(t *testing.T) {
 	if usage.PromptTokens != 50 || usage.CachedPromptTokens != 20 || usage.CompletionTokens != 5 || usage.ResponseID != "th-1" {
 		t.Fatalf("usage %+v", usage)
 	}
-	want := []string{"exec", "--json", "--skip-git-repo-check", "--sandbox", "read-only", "--cd", dir, "Instructions for this conversation:", "Be brief.", "", "read the note"}
+	want := []string{"exec", "--json", "--skip-git-repo-check", "--sandbox", "read-only", "--cd", dir, "--", "Instructions for this conversation:", "Be brief.", "", "read the note"}
 	if got := args(t, runs, 0); strings.Join(got, "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("args\n got %q\nwant %q", got, want)
 	}
@@ -510,5 +512,122 @@ func TestACompactionTheProgramMadeItselfDoesNotHideTheAnswer(t *testing.T) {
 	said, calls, results, _, err := collect(t, build(t, ClaudeCode, Config{Command: command}, "default"), user("run the tests"))
 	if err != nil || said != "The tests pass." || len(calls) != 1 || len(results) != 1 {
 		t.Fatalf("said %q, calls %v, results %v, err %v", said, calls, results, err)
+	}
+}
+
+func image(name string, data []byte) saigetypes.UserPart {
+	return saigetypes.ImagePart{Source: saigetypes.Source{MediaType: "image/png", Filename: name, Inline: data}}
+}
+
+func userWith(text string, parts ...saigetypes.UserPart) saigetypes.Message {
+	return saigetypes.UserMessage{Parts: append([]saigetypes.UserPart{saigetypes.TextPart{Text: text}}, parts...)}
+}
+
+func TestAnImageIsShownToTheProgram(t *testing.T) {
+	png := []byte("\x89PNG\r\n\x1a\nnot really pixels")
+	t.Run(ClaudeCode, func(t *testing.T) {
+		command, runs := program(t, claudeOut, 0)
+		p := build(t, ClaudeCode, Config{Command: command}, "default")
+		if _, _, _, _, err := collect(t, p, userWith("what is this?", image("shot.png", png))); err != nil {
+			t.Fatal(err)
+		}
+		got := args(t, runs, 0)
+		if got[0] != "-p" || got[1] != "--input-format" || got[2] != "stream-json" || containsArg(got, "what is this?") {
+			t.Fatalf("args %q", got)
+		}
+		raw, _ := os.ReadFile(filepath.Join(runs, "0.stdin"))
+		var line struct {
+			Type    string `json:"type"`
+			Message struct {
+				Content []struct {
+					Type   string `json:"type"`
+					Text   string `json:"text"`
+					Source struct {
+						Type, Data string
+						MediaType  string `json:"media_type"`
+					} `json:"source"`
+				} `json:"content"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal(raw, &line); err != nil {
+			t.Fatalf("stdin %q: %v", raw, err)
+		}
+		c := line.Message.Content
+		if line.Type != "user" || len(c) != 2 || c[0].Text != "what is this?" || c[1].Type != "image" || c[1].Source.MediaType != "image/png" {
+			t.Fatalf("stdin %s", raw)
+		}
+		if b, _ := base64.StdEncoding.DecodeString(c[1].Source.Data); string(b) != string(png) {
+			t.Fatal("the bytes sent are not the image's")
+		}
+	})
+	t.Run(Codex, func(t *testing.T) {
+		// The stand-in copies the file it is given, which is gone after the run.
+		dir := t.TempDir()
+		command := filepath.Join(dir, "fake")
+		script := "#!/bin/sh\nwhile [ $# -gt 0 ]; do if [ \"$1\" = --image ]; then cp \"$2\" " + dir + "/seen.png; echo \"$2\" > " + dir + "/path; fi; if [ \"$1\" = -- ]; then echo \"$2\" > " + dir + "/prompt; fi; shift; done\ncat <<'EOF'\n" + codexOut + "EOF\n"
+		if err := os.WriteFile(command, []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		p := build(t, Codex, Config{Command: command}, "default")
+		if _, _, _, _, err := collect(t, p, userWith("what is this?", image("shot.png", png))); err != nil {
+			t.Fatal(err)
+		}
+		if seen, _ := os.ReadFile(filepath.Join(dir, "seen.png")); string(seen) != string(png) {
+			t.Fatalf("the program was given %q", seen)
+		}
+		if prompt, _ := os.ReadFile(filepath.Join(dir, "prompt")); strings.TrimSpace(string(prompt)) != "what is this?" {
+			t.Fatalf("prompt %q", prompt)
+		}
+		path, _ := os.ReadFile(filepath.Join(dir, "path"))
+		if _, err := os.Stat(strings.TrimSpace(string(path))); !strings.HasSuffix(strings.TrimSpace(string(path)), ".png") || !os.IsNotExist(err) {
+			t.Fatalf("the image file %s was left behind: %v", path, err)
+		}
+	})
+}
+
+func TestAnImageFromAnEarlierMessageIsShownToASessionThatIsStarting(t *testing.T) {
+	command, runs := program(t, claudeOut, 0)
+	p := build(t, ClaudeCode, Config{Command: command}, "default")
+	// No session holds this conversation, so it starts one and is shown the image again.
+	if _, _, _, _, err := collect(t, p, userWith("look", image("a.png", []byte("AAA"))), assistant("I see it."), user("and now?")); err != nil {
+		t.Fatal(err)
+	}
+	if raw, _ := os.ReadFile(filepath.Join(runs, "0.stdin")); !strings.Contains(string(raw), base64.StdEncoding.EncodeToString([]byte("AAA"))) {
+		t.Fatalf("stdin %s", raw)
+	}
+}
+
+func TestWhatAProgramCannotBeShownIsRefusedByName(t *testing.T) {
+	pdf := saigetypes.DocumentPart{Source: saigetypes.Source{MediaType: "application/pdf", Filename: "a.pdf", Inline: []byte("%PDF-1.7")}}
+	tests := []struct {
+		name, kind string
+		part       saigetypes.UserPart
+		want       string
+	}{
+		{"audio", ClaudeCode, saigetypes.AudioPart{Source: saigetypes.Source{MediaType: "audio/wav", Inline: []byte("RIFF")}}, "not audio"},
+		{"codex and a PDF", Codex, pdf, "reads no application/pdf document"},
+		{"a document that is not a PDF", ClaudeCode, saigetypes.DocumentPart{Source: saigetypes.Source{MediaType: "application/msword", Inline: []byte("x")}}, "reads PDF documents"},
+		{"an image whose bytes are missing", Codex, saigetypes.ImagePart{Source: saigetypes.Source{MediaType: "image/png", Filename: "gone.png", Unresolved: "the upload expired"}}, "the upload expired"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			command, runs := program(t, claudeOut, 0)
+			p := build(t, tt.kind, Config{Command: command}, "default")
+			_, err := p.Stream(context.Background(), saigetypes.Request{Messages: []saigetypes.Message{userWith("see this", tt.part)}})
+			if !errors.Is(err, ErrMedia) || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("err = %v, want %q", err, tt.want)
+			}
+			if entries, _ := os.ReadDir(runs); len(entries) != 0 {
+				t.Fatal("the program was run")
+			}
+		})
+	}
+	// Claude Code reads a PDF.
+	command, runs := program(t, claudeOut, 0)
+	if _, _, _, _, err := collect(t, build(t, ClaudeCode, Config{Command: command}, "default"), userWith("summarize", pdf)); err != nil {
+		t.Fatal(err)
+	}
+	if raw, _ := os.ReadFile(filepath.Join(runs, "0.stdin")); !strings.Contains(string(raw), `"type":"document"`) || !strings.Contains(string(raw), `"media_type":"application/pdf"`) {
+		t.Fatalf("stdin %s", raw)
 	}
 }
