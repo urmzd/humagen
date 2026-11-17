@@ -30,6 +30,17 @@ func (s *Server) roomEvents(w http.ResponseWriter, r *http.Request, who auth.Pri
 	}
 	v := s.P.Rooms.Join(who.Tenant, thread, who.Subject)
 	defer v.Leave()
+	// The stream opens only once the room hears the conversation: a reader
+	// who has the stream's answer misses nothing posted after it.
+	select {
+	case <-v.Ready():
+	case <-v.Done():
+		// The room's source could not subscribe: the client reconnects.
+		fail(w, http.StatusInternalServerError, "the conversation cannot be followed right now")
+		return
+	case <-r.Context().Done():
+		return
+	}
 
 	rc := http.NewResponseController(w)
 	_ = rc.SetWriteDeadline(time.Time{})
