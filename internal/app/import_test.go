@@ -614,15 +614,25 @@ func TestImportSessionsByProjectAttachesTheSourcesThatContinueAFullOne(t *testin
 
 func TestDirSlug(t *testing.T) {
 	for dir, want := range map[string]string{
-		"/work/app":                                      "app",
-		"/Users/me/github/urmzd.com":                     "urmzd-com",
-		"/Users/me/Documents/Frebarz Business":           "frebarz-business",
-		"/work/__init__":                                 "init",
-		"/work/a-very-long-repository-name-that-goes-on": "a-very-long-repository-n",
+		"/work/app":      "app",
+		"/work/App":      "app",
+		"/work/site.dev": "site-dev-x",
+		"/work/My Notes": "my-notes-x",
+		"/work/__init__": "init-x",
+		"/work/app-2":    "app-2-x",
+		"/work/a-very-long-repository-name-that-goes-on": "a-very-long-reposi-x",
 		"":  "",
 		"/": "",
 	} {
-		if got := dirSlug(dir); got != want {
+		// A name ending in -x is a prefix: four digits of the hash follow.
+		got := dirSlug(dir)
+		if strings.HasSuffix(want, "-x") {
+			if !strings.HasPrefix(got, want) || len(got) != len(want)+4 || len(got) > 24 {
+				t.Errorf("dirSlug(%q) = %q, want %sNNNN", dir, got, want)
+			}
+			continue
+		}
+		if got != want {
 			t.Errorf("dirSlug(%q) = %q, want %q", dir, got, want)
 		}
 	}
