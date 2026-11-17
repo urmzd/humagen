@@ -127,15 +127,23 @@ func TestAViewerIsReadyOnceTheSourceListens(t *testing.T) {
 	started, listen := make(chan struct{}), make(chan struct{})
 	src := func(ctx context.Context, _, _ string, ready func(), _ func(Item)) error {
 		close(started)
-		<-listen
-		ready()
+		select {
+		case <-listen:
+			ready()
+		case <-ctx.Done():
+			return nil
+		}
 		<-ctx.Done()
 		return nil
 	}
 	h := NewHub(Config{}, src)
 	defer func() { _ = h.Close() }()
 	ana := h.Join("acme", "th-1", "ana")
-	<-started
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the room's source was never started")
+	}
 	select {
 	case <-ana.Ready():
 		t.Fatal("the viewer was ready before the source was listening")

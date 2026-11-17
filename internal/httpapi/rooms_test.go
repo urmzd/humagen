@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -157,6 +158,49 @@ func TestALargeRoomPagesWhatDoesNotInvolveYou(t *testing.T) {
 	}
 }
 
+// streamAnswer is how a request for a stream was answered: its status, and
+// its body when that is not a stream.
+type streamAnswer struct {
+	code int
+	body map[string]any
+}
+
+// streamStatus asks for a conversation's stream and sends how it was
+// answered, once it is.
+func (f *fixture) streamStatus(t *testing.T, tok, thread string) <-chan streamAnswer {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	req, _ := http.NewRequestWithContext(ctx, "GET", f.srv.URL+"/api/events?thread="+thread, nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	answered := make(chan streamAnswer, 1)
+	go func() {
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return
+		}
+		defer func() { _ = res.Body.Close() }()
+		a := streamAnswer{code: res.StatusCode}
+		if res.StatusCode != http.StatusOK {
+			_ = json.NewDecoder(res.Body).Decode(&a.body)
+		}
+		answered <- a
+	}()
+	return answered
+}
+
+// awaitViewers waits until a conversation's room on hub has n viewers.
+func awaitViewers(t *testing.T, hub *rooms.Hub, thread string, n int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for hub.Viewers("acme", thread) < n {
+		if time.Now().After(deadline) {
+			t.Fatalf("the room has %d viewers, want %d", hub.Viewers("acme", thread), n)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 // A stream is answered only once its room hears the conversation: a reader
 // who has the answer misses nothing posted after it. Answered when the
 // viewer was only counted, a message posted before the room's source was
@@ -179,30 +223,44 @@ func TestARoomStreamIsAnsweredOnceTheRoomListens(t *testing.T) {
 	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-admins")
 	id := startThread(t, f, ana)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	req, _ := http.NewRequestWithContext(ctx, "GET", f.srv.URL+"/api/events?thread="+id, nil)
-	req.Header.Set("Authorization", "Bearer "+ana)
-	answered := make(chan int, 1)
-	go func() {
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return
-		}
-		_ = res.Body.Close()
-		answered <- res.StatusCode
-	}()
-	for hub.Viewers("acme", id) < 1 {
-		time.Sleep(time.Millisecond)
-	}
+	answered := f.streamStatus(t, ana, id)
+	awaitViewers(t, hub, id, 1)
 	select {
-	case code := <-answered:
-		t.Fatalf("the stream was answered %d before its room was listening", code)
+	case a := <-answered:
+		t.Fatalf("the stream was answered %d before its room was listening", a.code)
 	case <-time.After(50 * time.Millisecond):
 	}
 	close(listen)
-	if code := <-answered; code != http.StatusOK {
-		t.Fatalf("the stream = %d, want 200", code)
+	select {
+	case a := <-answered:
+		if a.code != http.StatusOK {
+			t.Fatalf("the stream = %d %v, want 200", a.code, a.body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stream was not answered once its room was listening")
+	}
+}
+
+// A room whose source fails before it is listening cannot be followed: the
+// stream is refused with 500, which the client retries, and is not left
+// waiting on a room that will never be ready.
+func TestARoomStreamWhoseSourceFailsIsRefused(t *testing.T) {
+	f := newFixture(t)
+	hub := rooms.NewHub(rooms.Config{}, func(context.Context, string, string, func(), func(rooms.Item)) error {
+		return errors.New("bus gone")
+	})
+	f.p.Rooms = hub
+	t.Cleanup(func() { _ = hub.Close() })
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-admins")
+	id := startThread(t, f, ana)
+
+	select {
+	case a := <-f.streamStatus(t, ana, id):
+		if a.code != http.StatusInternalServerError || a.body["error"] != "the conversation cannot be followed right now" {
+			t.Fatalf("the stream = %d %v, want 500 and why", a.code, a.body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stream of a room whose source failed was never answered")
 	}
 }
 
