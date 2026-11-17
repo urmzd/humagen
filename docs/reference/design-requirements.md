@@ -1732,6 +1732,11 @@ Evidence: `replay.test.ts`, `replay.dom.test.tsx`; the phone and desktop
 
 ### DES-062: Customize and personal tool servers
 
+The native Mac connection in `examples/desktop/` pins an explicit tool set with foreground authority for the
+named fixture. `docs/guides/desktop.md` documents worker placement, permissions, exact
+window/snapshot targeting, and an opt-in native fixture test. A locked session
+is a connection blocker, not a successful desktop-control result.
+
 The browser worker configuration and connection instructions are in
 `examples/browser/` and `docs/guides/browser.md`. Browser tool schemas are pinned;
 navigation and interaction require a write grant. The real connector acceptance

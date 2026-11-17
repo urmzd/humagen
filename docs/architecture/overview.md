@@ -551,6 +551,14 @@ settings, hooks and plugins still load. A real HTTP run executed both and its
 reported version matched a separate official-feed retrieval. This does not
 establish authenticated browser access or validate every generated claim.
 
+Native Mac control has a pinned stdio connection in
+[the desktop guide](../guides/desktop.md). Exact-window targeting is requested
+by the prompt; the granted tools can also address other windows or global input.
+Native image capture, producer-bound references and actions remain unverified.
+The connector's real discovery and permission checks run through Humagen.
+The opt-in native fixture test requires an unlocked GUI session; permissions
+alone do not establish capture or action success.
+
 The response's Worked/tools control has a 44px minimum touch target on coarse
 pointers. The canonical `session` browser check measures the visible control
 and opens/closes Details before its capture.
