@@ -96,3 +96,11 @@ the checked-in accepted schemas rather than accepting whatever tools the server
 offers. It needs no model credential and does not touch personal browser state.
 An image-capable model reading the screenshot and a person connecting an
 authenticated tab are additional end-to-end checks, not implied by this test.
+
+For visual review, set `HUMAGEN_BROWSER_CAPTURE_DIR` to retain `before.png` and
+`after.png` from the same page, and `HUMAGEN_BROWSER_VIEWPORT` to `390x844` or
+`1280x800`. Run a worker with `browser.contextOptions.colorScheme` set to `light`
+and another with `dark` in its Playwright JSON config (`--config PATH`);
+`HUMAGEN_BROWSER_EXPECT_THEME` checks that the page actually uses the chosen
+appearance. Open both images in every pair before approval. These are synthetic
+fixture pages, not evidence of a signed-in portal.

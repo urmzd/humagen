@@ -89,7 +89,8 @@ func TestBrowserLive(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "text/html")
 		_, _ = w.Write([]byte(`<!doctype html><title>Browser acceptance</title>
-<style>body{background:#208040;color:white;font:32px sans-serif;padding:40px}</style>
+<style>html{color-scheme:light dark}body{background:#208040;color:white;font:32px sans-serif;padding:40px}button{font:inherit;min-height:44px;padding:8px 12px}a{display:block;margin-top:20px;color:white}.dark{display:none}@media(prefers-color-scheme:dark){.light{display:none}.dark{display:inline}}</style>
+<p><span class="light">Light appearance</span><span class="dark">Dark appearance</span></p>
 <h1>Browser evidence</h1><button onclick="document.querySelector('h1').textContent='Fixture accepted'">Approve fixture</button>
 <a href="/record.csv" download>Download selected record</a>`))
 	}))
@@ -128,12 +129,42 @@ func TestBrowserLive(t *testing.T) {
 	}
 	defer func() { call("browser_close", nil) }()
 	call("browser_navigate", map[string]any{"url": page.URL})
+	if size := os.Getenv("HUMAGEN_BROWSER_VIEWPORT"); size != "" {
+		var width, height int
+		if _, err := fmt.Sscanf(size, "%dx%d", &width, &height); err != nil || fmt.Sprintf("%dx%d", width, height) != size || width < 320 || width > 4096 || height < 320 || height > 4096 {
+			t.Fatal("HUMAGEN_BROWSER_VIEWPORT must be WIDTHxHEIGHT, each from 320 to 4096")
+		}
+		call("browser_resize", map[string]any{"width": width, "height": height})
+	}
+	shot, err := set.Lookup("browser__browser_take_screenshot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	capture := func(state string) {
+		t.Helper()
+		data := browserPixels(t, ctx, shot)
+		if out := os.Getenv("HUMAGEN_BROWSER_CAPTURE_DIR"); out != "" {
+			if err := os.MkdirAll(out, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(out, state+".png"), data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	// Playwright 0.0.85 saves automatic snapshots as server-side files.
 	// An explicit snapshot without a filename returns the accessible tree.
 	snapshot := call("browser_snapshot", nil)
 	if !strings.Contains(snapshot, "Browser evidence") {
 		t.Fatalf("did not read the real page: %s", snapshot)
 	}
+	if theme := os.Getenv("HUMAGEN_BROWSER_EXPECT_THEME"); theme != "" {
+		label := map[string]string{"light": "Light appearance", "dark": "Dark appearance"}[theme]
+		if label == "" || !strings.Contains(snapshot, label) {
+			t.Fatalf("worker appearance does not match HUMAGEN_BROWSER_EXPECT_THEME=%q", theme)
+		}
+	}
+	capture("before")
 	ref := regexp.MustCompile(`button "Approve fixture" \[ref=([^\]]+)\]`).FindStringSubmatch(snapshot)
 	if len(ref) != 2 {
 		t.Fatalf("button reference not found in %s", snapshot)
@@ -158,10 +189,12 @@ func TestBrowserLive(t *testing.T) {
 	if string(data) != "record,value\nfixture,329\n" {
 		t.Fatalf("downloaded record bytes = %q, %v", data, err)
 	}
-	tool, err := set.Lookup("browser__browser_take_screenshot")
-	if err != nil {
-		t.Fatal(err)
-	}
+	capture("after")
+	t.Log("real navigation, changed page, downloaded CSV bytes, and before/after PNG pixels passed")
+}
+
+func browserPixels(t *testing.T, ctx context.Context, tool saigetypes.Tool) []byte {
+	t.Helper()
 	rich, ok := tool.(saigetypes.RichTool)
 	if !ok {
 		t.Fatal("browser screenshot tool does not preserve image content")
@@ -189,8 +222,9 @@ func TestBrowserLive(t *testing.T) {
 		if r>>8 != 0x20 || g>>8 != 0x80 || b>>8 != 0x40 {
 			t.Fatalf("screenshot pixels do not match the rendered fixture: %x %x %x", r, g, b)
 		}
-		t.Logf("real browser navigation, ref click, and %dx%d PNG pixels passed (%d bytes)", pic.Bounds().Dx(), pic.Bounds().Dy(), len(source.Inline))
-		return
+		t.Logf("real browser PNG: %dx%d, %d bytes", pic.Bounds().Dx(), pic.Bounds().Dy(), len(source.Inline))
+		return source.Inline
 	}
 	t.Fatal("browser_take_screenshot returned no image bytes")
+	return nil
 }
