@@ -570,7 +570,10 @@ connector acceptance uses a real isolated browser. The optional Claude Code
 profile and connected acceptance helper also exercise an independently launched,
 signed-in local fixture through an explicit CDP endpoint: actual model screenshot
 interpretation, the same retained tab, a selected action and exact-byte CSV reads
-pass at both widths and themes. Third-party portal login, SSO/MFA and extension
+pass at both widths and themes. The CLI's restricted file tools actually refuse
+an outside-directory Read; capture artifacts and previously verified downloads
+stay outside that directory. Wire receipts verify inline PNG blocks, not just
+saved paths. Third-party portal login, SSO/MFA and extension
 handoff remain unverified. Prompts are not tab authorization boundaries; existing
 browser downloads follow Chrome settings and need explicit shared file access.
 

@@ -120,24 +120,30 @@ fixture pages, not evidence of a signed-in portal.
 
 `examples/browser/claude-code.yaml` uses the signed-in Claude Code account and
 connects its browser MCP client to the same loopback worker. Set its
-`claude-code.dir` to an existing absolute work directory, then start it with:
+`claude-code.dir` to an existing dedicated download directory, then start it with:
 
 ```sh
 humagen start -f examples/browser/claude-code.yaml
 ```
 
 No separate model API key is required. This profile allows twelve named browser
-tools and built-in Read/Glob for `./downloads/**`, and supplies one strict MCP
-configuration. User settings, hooks, plugins and skills still load; their behavior
-is unverified. External program permissions govern these tools, not Humagen's
-native sandbox or MCP grants. Requests to preserve other tabs and selected files
-are instructions to the agent, not resource isolation. Use real workspace sign-in
-for an authenticated browser, as described above.
+tools and built-in Read/Glob for that directory, and supplies one strict MCP
+configuration. It requires a Claude Code version with `--restricted` (tested
+with 2.1.326). That mode confines built-in file tools to the working directories
+and ignores user, project and local settings; managed settings still apply.
+The acceptance actually attempts an outside-directory Read and verifies refusal.
+This does not establish that every other customization is disabled. External
+program permissions govern these tools, not Humagen's native sandbox or MCP
+grants. The connected browser's tabs and origins are not confined by this file
+control. Use real workspace sign-in for an authenticated browser, as above.
 
 For an existing CDP browser, downloads follow Chrome's own download settings,
 not the MCP output directory. Explicitly select the download folder and provide
 that folder to the agent. For this example, configure the owned browser to save
-into `<claude-code.dir>/downloads`. The CLI must run on the same host or have an
+into `<claude-code.dir>`. Put only authorized downloads in that dedicated folder:
+all files inside it are readable, and selection among them remains an instruction.
+Keep browser profiles, MCP capture output and unrelated files outside it.
+The CLI must run on the same host or have an
 explicit shared mount; a remote path alone cannot be read. Do not silently change
 someone's personal browser preferences. Only authorize the selected download.
 
@@ -159,7 +165,7 @@ node examples/browser/connected-acceptance.mjs
 
 Set `HUMAGEN_BROWSER_CHROME` if Chrome is not at the standard macOS path or the
 Linux `chromium` command. The helper requires Node.js, installed Chrome, and a
-working Claude Code sign-in. It creates only owned local fixture processes and
+working Claude Code sign-in supporting `--restricted`. It creates only owned local fixture processes and
 state, and stops those processes when finished; it does not touch a personal
 profile. It uses a unique fixture workspace and verifies its identity before
 submitting any work.
@@ -170,8 +176,15 @@ all four model runs, and verifies the requested viewport and theme. Each run
 reads two unlabelled panel colours from returned screenshot pixels, performs the
 authorized button action, downloads the selected CSV, and reads it through the
 CLI. Independent checks verify the changed heading, exactly one download,
-record identity and exact file bytes. Paired PNGs and retained run/tool events
-are written to the capture directory. Open every before/after pair before
+record identity and exact file bytes. A loopback forwarding observer also checks
+the actual MCP response delivered to the CLI: a nonempty PNG image block at the
+requested pixel dimensions, with retained byte count and SHA256. A saved-file
+link in the CLI's text journal is not used as proof of inline image delivery.
+The helper keeps MCP images/snapshots in a separate artifacts directory and
+archives each verified CSV outside the CLI directory before the next case; that
+directory must be empty at each case's start. A separate harmless outside-file
+Read must be refused by the real program. Paired PNGs, retained run/tool events
+and wire image receipts are written to the capture directory. Open every before/after pair before
 approval. Disconnecting the fixture's CDP client resets its display emulation,
 so the helper keeps that connection attached while the MCP worker operates.
 
