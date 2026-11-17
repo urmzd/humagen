@@ -1,0 +1,211 @@
+{
+  "additional_live_check": "Final assertion requires differing before/after response SHA256; 4/4 fresh real model + native MCP cases passed after review fix. Earlier visual runtime pairs retained; new captures available locally.",
+  "results": [
+    {
+      "theme": "light",
+      "width": 390,
+      "height": 844,
+      "run": "ra1f1f0ee6db3481e40fb4b49859a86d4",
+      "record": "AUDIT-CAAB889C",
+      "answer": "Before approving, the panels are yellow (left) and purple (right). Approving the fixture now.\n\nThe download link ref went stale after the approval, so I'm taking a fresh snapshot to get its current reference.\n\nFixture approved, the download saved, and the CSV matches the record.\n\n- **Record identifier:** AUDIT-CAAB889C\n- **Colors before approval (left to right):** yellow, purple\n- **Colors after approval (left to right):** green, orange\n- **Heading changed:** \"Signed-in records\" \u2192 \"Fixture approved\"\n- **Saved download:** `/Users/urmzd/humagen-session-audit-2026-11-16/screenshot-comparison-byte-assert/downloads/AUDIT-CAAB889C.csv`\n- **CSV contents:** `record,value` / `AUDIT-CAAB889C,42`\n\nThe color readings are visual estimates from the returned screenshot pixels, not sampled values. I did not navigate away from the origin or close any tab. The first download click failed because the link's reference had gone stale after approval; I took a fresh snapshot and clicked the new reference.",
+      "calls": [
+        "mcp__browser__browser_tabs",
+        "mcp__browser__browser_snapshot",
+        "mcp__browser__browser_take_screenshot",
+        "mcp__browser__browser_click",
+        "mcp__browser__browser_take_screenshot",
+        "mcp__browser__browser_click",
+        "mcp__browser__browser_snapshot",
+        "mcp__browser__browser_click",
+        "Glob",
+        "Read"
+      ],
+      "sameTarget": true,
+      "loginCount": 1,
+      "downloads": 1,
+      "downloadSHA256": "d68679a7bcb4fd18ee1586a281cbcbca7c4aee92797c5cce7dc1cb04ac03433a",
+      "verifiedDownloadPath": "/Users/urmzd/humagen-session-audit-2026-11-16/screenshot-comparison-byte-assert/verified-downloads/AUDIT-CAAB889C.csv",
+      "inlineImages": [
+        {
+          "tool": "browser_take_screenshot",
+          "bytes": 25361,
+          "width": 390,
+          "height": 844,
+          "sha256": "d1a516eed51a427756bc1c881e1f7aaa574c423e648bef9708179907574047fe",
+          "fixtureChanged": false
+        },
+        {
+          "tool": "browser_take_screenshot",
+          "bytes": 24670,
+          "width": 390,
+          "height": 844,
+          "sha256": "f7cfd7d32965970abe4ac7a86f0a43c43c4b66c0b85c5b99c12f68dd2af2d9b3",
+          "fixtureChanged": true
+        }
+      ],
+      "restrictedReadRefused": true,
+      "uploadAnalysis": {
+        "session": "s_d82f31bd1313398a5ccf04886fda616f",
+        "run": "r148914d8185c9229f43b4d2ad74a8ce0",
+        "answer": "Record identifier: **AUDIT-CAAB889C**\n\nPanel fill colors, left to right:\n1. **Yellow**, roughly #FFDF00 (estimated by eye from the pixels)\n2. **Purple**, roughly #800080 (estimated by eye from the pixels)\n\nI made no tool calls and changed nothing.",
+        "bytes": 25361,
+        "sha256": "d1a516eed51a427756bc1c881e1f7aaa574c423e648bef9708179907574047fe",
+        "toolCalls": 0
+      }
+    },
+    {
+      "theme": "dark",
+      "width": 390,
+      "height": 844,
+      "run": "rb6af6213473877d9d15f3cb6b05f4283",
+      "record": "AUDIT-996CABF0",
+      "answer": "The pre-approval screenshot matches the original: yellow on the left, purple on the right, heading \"Signed-in records\". Next I'll click Approve fixture.\n\nThe Download click failed on a stale reference, so I'm taking a fresh snapshot to get the current link ref.\n\nRecord **AUDIT-996CABF0**. Approve and download both completed, and the CSV has value **42**.\n\n- **Colors before approval (left to right):** yellow (about #FFDF00), purple (about #800080)\n- **Colors after approval (left to right):** green (about #15803D), orange (about #FF8C00)\n- **Heading:** changed from \"Signed-in records\" to \"Fixture approved\". The record ID and panel layout are unchanged.\n- **Saved download:** `/Users/urmzd/humagen-session-audit-2026-11-16/screenshot-comparison-byte-assert/downloads/AUDIT-996CABF0.csv`\n- **CSV contents:**\n  ```\n  record,value\n  AUDIT-996CABF0,42\n  ```\n\nThe first Download click failed because its element reference was stale. I took a fresh snapshot and clicked the new reference, and that one succeeded. The colors are visual estimates from the screenshot pixels, not sampled values. I stayed on `http://127.0.0.1:51514/portal` and closed no tabs.",
+      "calls": [
+        "mcp__browser__browser_tabs",
+        "mcp__browser__browser_snapshot",
+        "mcp__browser__browser_take_screenshot",
+        "mcp__browser__browser_click",
+        "mcp__browser__browser_click",
+        "mcp__browser__browser_take_screenshot",
+        "mcp__browser__browser_snapshot",
+        "mcp__browser__browser_click",
+        "Glob",
+        "Read"
+      ],
+      "sameTarget": true,
+      "loginCount": 1,
+      "downloads": 1,
+      "downloadSHA256": "45b422472ddaab3be3eff20caaa7c8c2f57f6fc937765c6e092bd5b6f9fc7283",
+      "verifiedDownloadPath": "/Users/urmzd/humagen-session-audit-2026-11-16/screenshot-comparison-byte-assert/verified-downloads/AUDIT-996CABF0.csv",
+      "inlineImages": [
+        {
+          "tool": "browser_take_screenshot",
+          "bytes": 25450,
+          "width": 390,
+          "height": 844,
+          "sha256": "75d3687cf2419a18c7fb207c91c6a88831e6515149d6cf09a509245ab58c4095",
+          "fixtureChanged": false
+        },
+        {
+          "tool": "browser_take_screenshot",
+          "bytes": 24674,
+          "width": 390,
+          "height": 844,
+          "sha256": "c55732d45a1f7e9a41e58fa1bcaab38e5f5e4ffc7ddcc572fca569ced9bc18cd",
+          "fixtureChanged": true
+        }
+      ],
+      "restrictedReadRefused": true,
+      "uploadAnalysis": {
+        "session": "s_de0714b8d373c50424d78b1cc8b150e0",
+        "run": "rfcc550a16bf395d067b3697b439ec42a",
+        "answer": "Record identifier: **AUDIT-996CABF0**\n\nPanel fill colors, left to right:\n1. **Yellow**, approximately #FFDF00\n2. **Purple**, approximately #800080\n\nThese are visual estimates from the image. I didn't use any tools, so I haven't read exact pixel values. Nothing was changed.",
+        "bytes": 25450,
+        "sha256": "75d3687cf2419a18c7fb207c91c6a88831e6515149d6cf09a509245ab58c4095",
+        "toolCalls": 0
+      }
+    },
+    {
+      "theme": "light",
+      "width": 1280,
+      "height": 800,
+      "run": "r5fc1292c95b90dfb64c8b1c5a46bc7fa",
+      "record": "AUDIT-4A0A5B32",
+      "answer": "The pre-approval screenshot matches the original: yellow on the left, purple on the right. Now I'll click Approve fixture.\n\nThe page changed after approval. Now I'll download the selected record.\n\n**Record:** AUDIT-4A0A5B32\n\n**Panel colors, left to right:**\n- Before approval (fresh screenshot and original upload match): yellow, then purple.\n- After approval: green (about #168039), then orange (about #FF8C00). These are visual estimates from the pixels; I can't read exact values without a tool.\n\n**Heading:** changed from \"Signed-in records\" to \"Fixture approved\".\n\n**Download:** saved to `/Users/urmzd/humagen-session-audit-2026-11-16/screenshot-comparison-byte-assert/downloads/AUDIT-4A0A5B32.csv`. The CSV contains `record,value` and `AUDIT-4A0A5B32,42`.\n\nI stayed on `http://127.0.0.1:51514/portal`, used the one open tab, and didn't run any script or read source code.",
+      "calls": [
+        "mcp__browser__browser_tabs",
+        "mcp__browser__browser_snapshot",
+        "mcp__browser__browser_take_screenshot",
+        "mcp__browser__browser_click",
+        "mcp__browser__browser_take_screenshot",
+        "mcp__browser__browser_snapshot",
+        "mcp__browser__browser_click",
+        "Glob",
+        "Read"
+      ],
+      "sameTarget": true,
+      "loginCount": 1,
+      "downloads": 1,
+      "downloadSHA256": "9735ae17405d5f43408f6bd58b12a07b8349c441fc6d983a197dcac72021cb2d",
+      "verifiedDownloadPath": "/Users/urmzd/humagen-session-audit-2026-11-16/screenshot-comparison-byte-assert/verified-downloads/AUDIT-4A0A5B32.csv",
+      "inlineImages": [
+        {
+          "tool": "browser_take_screenshot",
+          "bytes": 29628,
+          "width": 1280,
+          "height": 800,
+          "sha256": "2eaccb0b080ccd28787afcf8e12fd8dae71993952463d702788bf53a48ee80c9",
+          "fixtureChanged": false
+        },
+        {
+          "tool": "browser_take_screenshot",
+          "bytes": 28708,
+          "width": 1280,
+          "height": 800,
+          "sha256": "a7021f9f966facaf2eec67556965bcc2c4ad60af42b3eafb97694b72a798929f",
+          "fixtureChanged": true
+        }
+      ],
+      "restrictedReadRefused": true,
+      "uploadAnalysis": {
+        "session": "s_2bb54e6e0cba7b569218291c7b5a0a6c",
+        "run": "r7fd21e54e6b11bd2421fecd2e2884329",
+        "answer": "**Record:** AUDIT-4A0A5B32\n\n**Panel fills, left to right:**\n1. Yellow, roughly #FFDD00 (255, 221, 0)\n2. Purple, roughly #800080 (128, 0, 128)\n\nThese are visual estimates from the image. I can't read exact pixel values without a tool, so treat the hex codes as approximate.",
+        "bytes": 29628,
+        "sha256": "2eaccb0b080ccd28787afcf8e12fd8dae71993952463d702788bf53a48ee80c9",
+        "toolCalls": 0
+      }
+    },
+    {
+      "theme": "dark",
+      "width": 1280,
+      "height": 800,
+      "run": "r0d98f8861fc88b238716807748cca048",
+      "record": "AUDIT-B48BF619",
+      "answer": "The pre-approval screenshot shows yellow on the left and purple on the right. Next I'll click Approve fixture.\n\nThe page changed after approval: the heading now reads \"Fixture approved\" and the panels are green and orange. Next I'll click the download link.\n\n**Record:** AUDIT-B48BF619\n\n**Panel colors, left to right:**\n- Before approval: yellow, then purple\n- After approval: green, then orange\n\nThese are visual estimates from the returned screenshot pixels, not measured values.\n\n**Heading:** changed from \"Signed-in records\" to \"Fixture approved\".\n\n**Download:** saved to `/Users/urmzd/humagen-session-audit-2026-11-16/screenshot-comparison-byte-assert/downloads/AUDIT-B48BF619.csv`. The CSV contains:\n```\nrecord,value\nAUDIT-B48BF619,42\n```\n\nI stayed on the fixture tab at `http://127.0.0.1:51514/portal` and closed nothing. I didn't use `browser_evaluate` or read any source code.",
+      "calls": [
+        "mcp__browser__browser_tabs",
+        "mcp__browser__browser_snapshot",
+        "mcp__browser__browser_take_screenshot",
+        "mcp__browser__browser_click",
+        "mcp__browser__browser_take_screenshot",
+        "mcp__browser__browser_snapshot",
+        "mcp__browser__browser_click",
+        "Glob",
+        "Read"
+      ],
+      "sameTarget": true,
+      "loginCount": 1,
+      "downloads": 1,
+      "downloadSHA256": "4989380bc488cad42ca61b0814c1ffdc488e692a9e04c3bdf228458d475f33d2",
+      "verifiedDownloadPath": "/Users/urmzd/humagen-session-audit-2026-11-16/screenshot-comparison-byte-assert/verified-downloads/AUDIT-B48BF619.csv",
+      "inlineImages": [
+        {
+          "tool": "browser_take_screenshot",
+          "bytes": 29409,
+          "width": 1280,
+          "height": 800,
+          "sha256": "ece883f3b26a3e1dc8f289972b3250ec5cfdd6c725033aed2a32a2e8da327cc3",
+          "fixtureChanged": false
+        },
+        {
+          "tool": "browser_take_screenshot",
+          "bytes": 28402,
+          "width": 1280,
+          "height": 800,
+          "sha256": "fa32bb1efdca1a98d821d53df33f2595b6210e83563872e41a7b4911e5a7d87d",
+          "fixtureChanged": true
+        }
+      ],
+      "restrictedReadRefused": true,
+      "uploadAnalysis": {
+        "session": "s_9afd5fd90e745dc4d2351dd69384aef8",
+        "run": "r55eefa6eadb8da5e0ac10e37e586118b",
+        "answer": "**Record:** AUDIT-B48BF619\n\n**Panel fill colors, left to right:**\n1. Yellow, approximately rgb(255, 221, 0)\n2. Purple, approximately rgb(128, 0, 128)\n\nThese are visual estimates from the pixels. I didn't run any tools or measure exact values. I changed nothing.",
+        "bytes": 29409,
+        "sha256": "ece883f3b26a3e1dc8f289972b3250ec5cfdd6c725033aed2a32a2e8da327cc3",
+        "toolCalls": 0
+      }
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 {
   "branch": "feat/screenshot-comparison",
-  "head": "51840dee30d5664c8ff5c9ca89625dab29787ed4",
-  "before": "24fcee849b6b1190761815328f3b1f609dfef71b",
+  "head": "a388ac11fc254fd12bc95bfb21060144441197a7",
+  "before": "04fc9f1ffceef3132009203d004dc5de786555e2",
   "images": [
     {
       "asset": "screenshot-comparison/compare-check-after-dark-1280x800.png",
@@ -103,7 +103,7 @@
       "asset": "screenshot-comparison/compare-status-after-dark-1280x800.png",
       "width": "1280",
       "height": "800",
-      "sha256": "a3f36c7b02e781a42c1e0b4ea6b38d6c113c3aab64b8b38fac0e5fe71296a5b9",
+      "sha256": "238e6dd12cbde1a28387b08ef8fb233586ea470f6e679b8d791a872dd1e993c8",
       "inspected_by": "codex",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/screenshot-comparison-visuals/captures/compare-status-after-dark-1280x800.png"
     },
@@ -111,7 +111,7 @@
       "asset": "screenshot-comparison/compare-status-after-dark-390x844.png",
       "width": "390",
       "height": "844",
-      "sha256": "14652824d3fe8358fb037b334ac0415fba7b41f6a32a57031aba3cf33742aecf",
+      "sha256": "6d1a3cf504040ca4c716fb8819b305488b992e0dbfa708a5a87887f147b2819e",
       "inspected_by": "codex",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/screenshot-comparison-visuals/captures/compare-status-after-dark-390x844.png"
     },
@@ -119,7 +119,7 @@
       "asset": "screenshot-comparison/compare-status-after-light-1280x800.png",
       "width": "1280",
       "height": "800",
-      "sha256": "0e39fb080b18ca4a7a02716f5b4e10a513fe6fa5afbecd0aeb57352d4f3c4e9f",
+      "sha256": "9d834575015c7f7564b37ac39db8675511403e59c95d80500458d29f08583a29",
       "inspected_by": "codex",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/screenshot-comparison-visuals/captures/compare-status-after-light-1280x800.png"
     },
@@ -127,7 +127,7 @@
       "asset": "screenshot-comparison/compare-status-after-light-390x844.png",
       "width": "390",
       "height": "844",
-      "sha256": "51e2be05c38c32b0f5a8c827b511299cb62e06a71a6e71615049ecdccd467156",
+      "sha256": "b3c6c7d624ef1f5330dec8fc8f76d6e85678d68bf6e1d3d5a866ba03afe61d9a",
       "inspected_by": "codex",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/screenshot-comparison-visuals/captures/compare-status-after-light-390x844.png"
     },
@@ -135,7 +135,7 @@
       "asset": "screenshot-comparison/compare-status-before-dark-1280x800.png",
       "width": "1280",
       "height": "800",
-      "sha256": "ace583f204c2d08ff03f0e93f679251fd6c137d0dc7108e5851a8ab2593c9172",
+      "sha256": "a1f04d5a6d8411399ebdf1c93d247106b7724813c5480e437a3122f7d271baf2",
       "inspected_by": "codex",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/screenshot-comparison-visuals/captures/compare-status-before-dark-1280x800.png"
     },
@@ -143,7 +143,7 @@
       "asset": "screenshot-comparison/compare-status-before-dark-390x844.png",
       "width": "390",
       "height": "844",
-      "sha256": "fb32a84429ab1f64f98dfd14a46cbeab151117eba1ecf553a7635c99b4301b0a",
+      "sha256": "e76dc8f60ad3ccf67983407ed92cee725184938e0bc37d10e477ae1f2f236cce",
       "inspected_by": "codex",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/screenshot-comparison-visuals/captures/compare-status-before-dark-390x844.png"
     },
@@ -151,7 +151,7 @@
       "asset": "screenshot-comparison/compare-status-before-light-1280x800.png",
       "width": "1280",
       "height": "800",
-      "sha256": "237f0969fc058bf8ac5c68193fcdf9666237f7eade163dcf0887b84030bb65ec",
+      "sha256": "2acad09ee4bfc3d5e4e95e757a7541300c8133f329f7c764de651b80f0d6843d",
       "inspected_by": "codex",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/screenshot-comparison-visuals/captures/compare-status-before-light-1280x800.png"
     },
@@ -159,7 +159,7 @@
       "asset": "screenshot-comparison/compare-status-before-light-390x844.png",
       "width": "390",
       "height": "844",
-      "sha256": "f3bc090f503a3e372404a1395024dc94e9a35a82ed2009d4250b0bb7a49bd5e9",
+      "sha256": "3426b7fd66dd796c818279140b0a7535352f728a2dcc04cf90b76b10f6f77680",
       "inspected_by": "codex",
       "path": "/Users/urmzd/humagen-session-audit-2026-11-16/screenshot-comparison-visuals/captures/compare-status-before-light-390x844.png"
     },
@@ -283,5 +283,6 @@
     "intermediate document scroll positions",
     "every pixel of a long page"
   ],
-  "terminal": "Actual acceptance log readback, same 160 columns/16 rows, Dracula. Baseline is the old standard browser helper: optional comparison flag was ignored, not an API failure. Runtime pairs show actual state changes on the new branch."
+  "terminal": "Actual acceptance log readback, same 160 columns/16 rows, Dracula. Baseline is the old standard browser helper: optional comparison flag was ignored, not an API failure. Runtime pairs show actual state changes on the new branch.",
+  "note": "Status pairs refreshed after main merge; guide, runtime and terminal views unchanged from already opened earlier captures. Byte-difference assertion fresh live rerun is additional machine acceptance, not a different UI state."
 }
