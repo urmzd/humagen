@@ -89,3 +89,15 @@ and accounts. This is a generated fixture, not a real brand asset. Tool-specific
 image generation and viewing events are not currently rendered in Humagen's
 run journal; the local files and Codex trace supply that evidence. Automatic
 console publication and cross-host delivery are not covered.
+
+## Account usage and retained copies
+
+Generation uses the signed-in account's available image capability and usage
+allowance, subject to the provider's [content policies](https://openai.com/policies/usage-policies/).
+This profile adds no quota and cannot override a provider refusal. A separate
+image API key was not needed for the tested account; that does not establish
+availability for another account.
+
+Copying a result into the output folder leaves the original under Codex's
+generated-image folder, typically `$CODEX_HOME/generated_images/`. Both copies
+remain on the host. The example does not remove them or apply a retention rule.
