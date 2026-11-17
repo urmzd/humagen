@@ -70,6 +70,15 @@ too, as `--effort` to Claude Code and as `model_reasoning_effort` to Codex.
   permission settings. A rule its settings deny stays denied whatever `allow`
   says. What [agentspec](https://github.com/urmzd/agentspec) links into the
   program is there too.
+- **Which settings file applies.** Claude Code's project settings (hooks,
+  `deny` rules) are read from `dir` itself: `dir/.claude/settings.json`.
+  A settings file in a directory above `dir` was not applied in our checks,
+  though the `CLAUDE.md` files above `dir` were read: with `dir` set to a
+  folder inside a project, a `deny` rule and a hook in the project's own
+  `.claude/settings.json` did nothing. To make a settings file apply
+  wherever `dir` is, name it: `args: ["--settings",
+  "/Users/me/github/my-repo/.claude/settings.json"]`. Do not rely on a hook
+  or a `deny` rule you have not seen act in a run.
 
 - **One session a conversation.** The next message in a conversation continues
   the program's own session (`claude --resume`, `codex exec resume`), so it
