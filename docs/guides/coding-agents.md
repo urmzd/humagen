@@ -16,6 +16,10 @@ reach: files, the network, signed-in command-line tools. That is what makes it
 useful and why it is for your own machine, not a server other people share.
 Nothing turns it on but a model of this kind in the spec.
 
+The host is macOS or Linux. These kinds stop a program and what it started,
+and hold their session state between processes, in ways only those systems
+have; Humagen does not build them for Windows.
+
 ## Set it up
 
 Sign the program in once, the way it documents (`claude` then `/login`, or
