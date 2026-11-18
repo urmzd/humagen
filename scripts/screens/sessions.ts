@@ -215,7 +215,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
           "Scheduled",
           "Artifacts",
         ])
-          await sections.getByRole("link", { name: new RegExp(`^${name}(?:,|$)`) }).waitFor();
+          await sections.getByRole("link", { name: new RegExp(`^${name}(?:[ ,]|$)`) }).waitFor();
       },
     },
     {

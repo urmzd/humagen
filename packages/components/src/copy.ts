@@ -688,6 +688,8 @@ export const defaultCopy = {
 
   preferences: {
     openFor: (name: string) => `Preferences for ${name}`,
+    /** Said after the name the account button shows, to say what it opens. */
+    open: "preferences",
     ownershipTitle: "Your workspace, your infrastructure",
     ownershipDescription:
       "Deploy Humagen internally to control your workspace data, storage and access in your own environment.",
@@ -2995,6 +2997,10 @@ export const defaultCopy = {
     moreParticipants: (count: number) => `+${count}`,
     pinProject: (title: string, pinned: boolean) => `${pinned ? "Unpin" : "Pin"} project ${title}`,
     dismiss: "Dismiss navigation",
+    /** A section's name on the icon rail, where its count is not shown as text. */
+    needYou: (label: string, count: number) => `${label}, ${count} need you`,
+    /** Said after a section's label and count, which the open sidebar shows. */
+    needYouSuffix: "need you",
     /** The conversation list's views, chosen from its filter menu. */
     view: "View",
     recents: "Recents",
