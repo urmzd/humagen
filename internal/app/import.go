@@ -36,7 +36,8 @@ through its API.
 
 sessions  adds your Claude Code and Codex sessions, and ChatGPT or claude.ai
           exports, to knowledge sources as one document each, so agents can
-          search and cite them. A session already added is skipped.
+          search and cite them. A session already added is skipped, unless
+          it has grown since: then its document is replaced.
 skills    drafts each skill folder under DIR (default ~/.agents/skills) in
           the skill library. A skill the library already has is skipped.
 agents    creates an agent from each Markdown agent file in DIR (default
@@ -312,7 +313,10 @@ func importCmd(args []string, out io.Writer) error {
 
 // sessionsResult is what an import of sessions did.
 type sessionsResult struct {
-	Added   int            `json:"added"`
+	Added int `json:"added"`
+	// Updated are the sessions that had grown since they were added, whose
+	// documents were replaced.
+	Updated int            `json:"updated"`
 	Present int            `json:"present"`
 	Skipped int            `json:"skipped"`
 	Failed  []importFailed `json:"failed"`
@@ -352,13 +356,22 @@ type sessionSink struct {
 	ctx    context.Context
 	c      importOptions
 	api    importAPI
-	have   map[string]bool // session URIs the server has
+	have   map[string]held // the sessions the server has, by URI
 	exists map[string]bool // sources the server has
 	count  map[string]int  // documents in each
 	full   map[string]bool
 	dirs   map[string]string // by project: a directory's slug to its name
 	owner  map[string]string // by project: what each source says it holds
 	res    *sessionsResult
+}
+
+// held is a session's document as the server has it. A session is known by
+// its URI alone, whatever its document says, so a document written by an
+// earlier version is the same session's.
+type held struct {
+	source, id string
+	addedAt    time.Time
+	excluded   bool
 }
 
 // load reads what the server already has under the prefix.
@@ -378,7 +391,10 @@ func (k *sessionSink) load() error {
 		}
 		var docs struct {
 			Documents []struct {
-				URI string `json:"uri"`
+				ID       string    `json:"id"`
+				URI      string    `json:"uri"`
+				Excluded bool      `json:"excluded"`
+				AddedAt  time.Time `json:"added_at"`
 			} `json:"documents"`
 		}
 		if err := k.api.do(k.ctx, http.MethodGet, "/api/knowledge/"+url.PathEscape(src.Name)+"/documents", nil, &docs); err != nil {
@@ -388,8 +404,8 @@ func (k *sessionSink) load() error {
 		k.owner[src.Name] = src.Description
 		k.count[src.Name] = len(docs.Documents)
 		for _, d := range docs.Documents {
-			if d.URI != "" {
-				k.have[d.URI] = true
+			if _, ok := k.have[d.URI]; d.URI != "" && !ok {
+				k.have[d.URI] = held{source: src.Name, id: d.ID, addedAt: d.AddedAt, excluded: d.Excluded}
 			}
 		}
 	}
@@ -414,9 +430,24 @@ func (k *sessionSink) add(s sessionimport.Session) {
 			k.dirs[slug] = dir
 		}
 	}
-	if k.have[s.URI()] {
-		k.res.Present++
-		return
+	was, replacing := k.have[s.URI()]
+	if replacing {
+		// A session that said something after its document was added has
+		// grown: the document is replaced. One whose export gives no times
+		// cannot be told to have grown, and is left as it is.
+		if k.c.dryRun || was.id == "" || was.addedAt.IsZero() || !s.Latest().After(was.addedAt) {
+			k.res.Present++
+			return
+		}
+		// The API has no call that changes a document's text, so the old one
+		// is removed and the session added again under the same URI. Should
+		// the add fail, the next run finds the session missing and adds it.
+		if err := k.api.do(k.ctx, http.MethodDelete, "/api/knowledge/"+url.PathEscape(was.source)+"/documents/"+url.PathEscape(was.id), nil, nil); err != nil && status(err) != http.StatusNotFound {
+			k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: "not updated: " + err.Error()})
+			return
+		}
+		delete(k.have, s.URI())
+		k.count[was.source]--
 	}
 	month := "undated"
 	if !s.Started.IsZero() {
@@ -448,7 +479,7 @@ func (k *sessionSink) add(s sessionimport.Session) {
 			continue
 		}
 		if k.c.dryRun {
-			k.sent(name, s)
+			k.sent(name, s, false)
 			return
 		}
 		if !k.exists[name] {
@@ -463,9 +494,12 @@ func (k *sessionSink) add(s sessionimport.Session) {
 			k.exists[name] = true
 			k.owner[name] = what
 		}
+		var added struct {
+			ID string `json:"id"`
+		}
 		err := k.api.do(k.ctx, http.MethodPost, "/api/knowledge/"+url.PathEscape(name)+"/documents", map[string]string{
 			"title": title, "uri": s.URI(), "text": s.Markdown(k.c.maxBytes),
-		}, nil)
+		}, &added)
 		var refused *apiError
 		if errors.As(err, &refused) && refused.status == http.StatusBadRequest && strings.Contains(refused.body, "limit reached") {
 			k.full[name] = true
@@ -475,7 +509,13 @@ func (k *sessionSink) add(s sessionimport.Session) {
 			k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: err.Error()})
 			return
 		}
-		k.sent(name, s)
+		// A document a person left out of search stays out of it.
+		if replacing && was.excluded && added.ID != "" {
+			if err := k.api.do(k.ctx, http.MethodPut, "/api/knowledge/"+url.PathEscape(name)+"/documents/"+url.PathEscape(added.ID), map[string]bool{"excluded": true}, nil); err != nil {
+				k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: "updated, and no longer left out of search: " + err.Error()})
+			}
+		}
+		k.sent(name, s, replacing)
 		return
 	}
 	k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: "every source for " + base + " is full"})
@@ -675,11 +715,15 @@ func (k *sessionSink) file() {
 	}
 }
 
-func (k *sessionSink) sent(name string, s sessionimport.Session) {
+func (k *sessionSink) sent(name string, s sessionimport.Session, replaced bool) {
 	k.count[name]++
-	k.have[s.URI()] = true
-	k.res.Added++
-	k.res.ByTool[s.Tool]++
+	k.have[s.URI()] = held{source: name}
+	if replaced {
+		k.res.Updated++
+	} else {
+		k.res.Added++
+		k.res.ByTool[s.Tool]++
+	}
 	if i := sort.SearchStrings(k.res.Sources, name); i == len(k.res.Sources) || k.res.Sources[i] != name {
 		k.res.Sources = append(k.res.Sources, name)
 		sort.Strings(k.res.Sources)
@@ -705,7 +749,7 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 		return errors.New("nothing to read; name a tool with --from or an export with --export FILE")
 	}
 	res := sessionsResult{Failed: []importFailed{}, Sources: []string{}, Corpora: []string{}, ByTool: map[string]int{}, DryRun: c.dryRun}
-	sink := &sessionSink{ctx: ctx, c: c, api: api, res: &res, have: map[string]bool{}, exists: map[string]bool{}, count: map[string]int{}, full: map[string]bool{}, dirs: map[string]string{}, owner: map[string]string{}}
+	sink := &sessionSink{ctx: ctx, c: c, api: api, res: &res, have: map[string]held{}, exists: map[string]bool{}, count: map[string]int{}, full: map[string]bool{}, dirs: map[string]string{}, owner: map[string]string{}}
 	if !c.dryRun {
 		if err := sink.load(); err != nil {
 			return err
@@ -778,6 +822,9 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 	if _, err := fmt.Fprintf(out, "%s %d sessions (%s) to %d knowledge sources; %d already there, %d skipped, %d failed.\n",
 		verb, res.Added, toolCounts(res.ByTool), len(res.Sources), res.Present, res.Skipped, len(res.Failed)); err != nil {
 		return err
+	}
+	if res.Updated > 0 {
+		fmt.Fprintf(out, "Updated %d sessions that had grown since they were added.\n", res.Updated)
 	}
 	for _, f := range res.Failed {
 		fmt.Fprintf(out, "  failed %s: %s\n", f.Name, f.Reason)

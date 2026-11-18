@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/urmzd/humagen/pkg/library"
 )
@@ -38,6 +39,10 @@ type importServer struct {
 	auth     []string
 	writes   int
 	refused  map[string]bool
+	// seq numbers the documents, and now is when the next one is added:
+	// the present, unless a test says.
+	seq int
+	now time.Time
 }
 
 func (s *importServer) start(t *testing.T) *httptest.Server {
@@ -80,7 +85,26 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 			w.WriteHeader(201)
 			fmt.Fprint(w, `{}`)
 		case len(parts) == 3 && parts[0] == "knowledge" && parts[2] == "documents" && r.Method == "GET":
-			_ = json.NewEncoder(w).Encode(map[string]any{"documents": s.docs[parts[1]]})
+			out := []map[string]any{}
+			for _, d := range s.docs[parts[1]] {
+				out = append(out, map[string]any{"id": d["id"], "title": d["title"], "uri": d["uri"], "added_at": d["added_at"], "excluded": d["excluded"] == "true"})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"documents": out})
+		case len(parts) == 4 && parts[0] == "knowledge" && parts[2] == "documents" && (r.Method == "DELETE" || r.Method == "PUT"):
+			for i, d := range s.docs[parts[1]] {
+				if d["id"] != parts[3] {
+					continue
+				}
+				if r.Method == "PUT" {
+					d["excluded"] = "true"
+					fmt.Fprint(w, `{}`)
+					return
+				}
+				s.docs[parts[1]] = append(s.docs[parts[1]][:i:i], s.docs[parts[1]][i+1:]...)
+				w.WriteHeader(204)
+				return
+			}
+			problem(404, "no such document")
 		case len(parts) == 3 && parts[0] == "knowledge" && parts[2] == "documents" && r.Method == "POST":
 			var doc map[string]string
 			_ = json.NewDecoder(r.Body).Decode(&doc)
@@ -92,9 +116,15 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 				problem(400, "knowledge: invalid: source document or byte limit reached")
 				return
 			}
+			at := s.now
+			if at.IsZero() {
+				at = time.Now()
+			}
+			s.seq++
+			doc["id"], doc["added_at"] = fmt.Sprintf("d%d", s.seq), at.UTC().Format(time.RFC3339Nano)
 			s.docs[parts[1]] = append(s.docs[parts[1]], doc)
 			w.WriteHeader(201)
-			fmt.Fprint(w, `{}`)
+			fmt.Fprintf(w, `{"id":%q}`, doc["id"])
 		case r.Method == "GET" && r.URL.Path == "/api/projects":
 			// Two to a page, as the real list pages at its limit.
 			from, _ := strconv.Atoi(r.URL.Query().Get("before"))
@@ -743,5 +773,205 @@ func TestImportSessionsByProjectRefusesToMixTwoDirectoriesInOneSource(t *testing
 	}
 	if len(api.docs["sessions-in-a-1-x00000000"]) != 1 || api.attached["sessions-in-a-1-x00000000"] != "a_1" {
 		t.Fatalf("docs = %v, attached = %v", api.docs, api.attached)
+	}
+}
+
+// syntheticHome is a home directory and two exports made from the synthetic
+// exports under pkg/sessionimport/testdata, one of each format.
+func syntheticHome(t *testing.T) (home, chatgpt, claudeAI string) {
+	t.Helper()
+	home = t.TempDir()
+	data := func(name string) string {
+		b, err := os.ReadFile(filepath.Join("..", "..", "pkg", "sessionimport", "testdata", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	putFile(t, home, ".claude/projects/-synthetic-work-alpha-site/cc0rig1d-aaaa-4bbb-8ccc-000000000001.jsonl", data("claude-session.jsonl"))
+	putFile(t, home, ".codex/sessions/2026/10/06/rollout-2026-10-06T09-00-00-c0dex0r1-bbbb-4ccc-8ddd-000000000002.jsonl", data("codex-rollout.jsonl"))
+	putFile(t, home, "chatgpt/conversations.json", data("chatgpt-conversations.json"))
+	putFile(t, home, "claude-ai/conversations.json", data("claudeai-conversations.json"))
+	return home, filepath.Join(home, "chatgpt", "conversations.json"), filepath.Join(home, "claude-ai", "conversations.json")
+}
+
+// counts reads the added, updated and present counts of an import's JSON.
+func counts(t *testing.T, out string) string {
+	t.Helper()
+	var res map[string]any
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	return fmt.Sprintf("added %v updated %v present %v failed %v", res["added"], res["updated"], res["present"], res["failed"])
+}
+
+// held is every document the server has, as source, id, uri and text.
+func (s *importServer) held() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []string
+	for name, docs := range s.docs {
+		for _, d := range docs {
+			out = append(out, strings.Join([]string{name, d["id"], d["uri"], d["title"], d["text"]}, "\x00"))
+		}
+	}
+	sort.Strings(out)
+	return strings.Join(out, "\x01")
+}
+
+func TestImportSessionsKeepsWhatEachExportHoldsAndASecondRunChangesNothing(t *testing.T) {
+	api := &importServer{projects: []string{"alpha-site", "beta-tools"}}
+	server := api.start(t)
+	home, chatgpt, claudeAI := syntheticHome(t)
+	args := []string{"sessions", "--home", home, "--export", chatgpt, "--export", claudeAI, "--by-project", "--server", server.URL, "--json"}
+	out, err := runImport(t, args...)
+	if err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	if got := counts(t, out); got != "added 4 updated 0 present 0 failed []" {
+		t.Fatalf("first run: %s", got)
+	}
+	for _, tt := range []struct {
+		source, uri string
+		has         []string
+	}{
+		{"sessions-in-alpha-site", "claude:cc0rig1d-aaaa-4bbb-8ccc-000000000001", []string{
+			"## Asked [2026-10-05T10:00:00Z id=cc-msg-u1]",
+			"- Bash: ls alpha-site --CC-TOOL-CALL [2026-10-05T10:30:00Z id=cc-msg-a1 call=toolu_cc_orig_42]",
+			"Tool result [2026-10-05T10:05:00Z id=cc-msg-r1 call=toolu_cc_orig_42]:",
+			"[attachment: image/png, 8 bytes; the image itself is not imported]",
+			"## Branch 1: forks after id=cc-msg-a2\n\n### Asked [2026-10-05T10:40:00Z id=cc-msg-u3a]",
+		}},
+		{"sessions-in-beta-tools", "codex:c0dex0r1-bbbb-4ccc-8ddd-000000000002", []string{
+			"## Asked [2026-10-06T09:01:00Z id=cx-msg-u1]",
+			"- shell: ls beta-tools --CX-TOOL-CALL [2026-10-06T09:05:00Z id=cx-fc-1 call=call_cx_orig_77]",
+			"Tool result [2026-10-06T09:06:00Z call=call_cx_orig_77]:",
+			"[attachment: image/png, 8 bytes; the image itself is not imported]",
+		}},
+		{"sessions-chatgpt-2026-10", "chatgpt:gpt0r1g1-cccc-4ddd-8eee-000000000003", []string{
+			"## Asked [2026-10-07T08:00:00Z id=gpt-node-u1]",
+			"- python: print(\"GPT-TOOL-CALL\") [2026-10-07T08:40:00Z id=gpt-node-a1]",
+			"Tool result [2026-10-07T08:41:00Z id=gpt-node-t1 call=gpt-node-a1]:\n\n    GPT-TOOL-RESULT 42 rows",
+			"[attachment: gpt-sheet.png, image/png, 11 bytes; the image itself is not imported]",
+			"## Branch 1: forks after id=gpt-node-a2\n\n### Asked [2026-10-07T08:50:00Z id=gpt-node-u2a]",
+		}},
+		{"sessions-claude-ai-2026-10", "claude-ai:cai0r1g1-dddd-4eee-8fff-000000000004", []string{
+			"## Asked [2026-10-08T07:00:00Z id=cai-msg-u1]",
+			"- web_search: CAI-TOOL-CALL lime note [2026-10-08T07:30:00Z id=cai-msg-a1 call=toolu_cai_orig_9]",
+			"Tool result [2026-10-08T07:30:00Z id=cai-msg-a1 call=toolu_cai_orig_9]:",
+			"[attachment: cai-note.txt, txt, 28 bytes]\nCAI-ATTACHMENT-TEXT lime 9",
+			"## Branch 1: forks after id=cai-msg-a1\n\n### Asked [2026-10-08T07:05:00Z id=cai-msg-u2a]",
+		}},
+	} {
+		docs := api.docs[tt.source]
+		if len(docs) != 1 || docs[0]["uri"] != tt.uri {
+			t.Fatalf("%s holds %v", tt.source, docs)
+		}
+		for _, h := range tt.has {
+			if !strings.Contains(docs[0]["text"], h) {
+				t.Errorf("%s: no %q in:\n%s", tt.uri, h, docs[0]["text"])
+			}
+		}
+	}
+	if api.attached["sessions-in-alpha-site"] != "alpha-site" || api.attached["sessions-in-beta-tools"] != "beta-tools" || len(api.attached) != 2 {
+		t.Fatalf("attached = %v", api.attached)
+	}
+	// A second run adds, replaces and removes nothing: the same documents,
+	// under the same ids.
+	before := api.held()
+	out, err = runImport(t, args...)
+	if err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	if got := counts(t, out); got != "added 0 updated 0 present 4 failed []" || api.held() != before {
+		t.Fatalf("second run: %s, changed: %v", got, api.held() != before)
+	}
+}
+
+// A session is known by its URI, not by what its document says: one an
+// earlier version wrote its own way is not added a second time.
+func TestImportSessionsDoesNotAddAgainASessionAnEarlierVersionWrote(t *testing.T) {
+	old := "# CC-USER-ONE list the files in the alpha site\n\n- Source: claude session cc0rig1d-aaaa-4bbb-8ccc-000000000001\n- Directory: /synthetic/work/alpha-site\n- Started: 2026-10-05 10:00 UTC\n\n## Asked\n\nCC-USER-ONE list the files in the alpha site\n\n## Asked\n\n[image]\n\n## Answered\n\nCC-ASSISTANT-LATE-STAMP (stamped 10:30, second in file)\n\nTools used:\n- Bash: ls alpha-site --CC-TOOL-CALL\n"
+	api := &importServer{docs: map[string][]map[string]string{"sessions-claude-2026-10": {{
+		"id": "old1", "uri": "claude:cc0rig1d-aaaa-4bbb-8ccc-000000000001", "title": "CC-USER-ONE list the files in the alpha site (alpha-site)", "text": old, "added_at": "2026-10-20T00:00:00Z",
+	}}}}
+	server := api.start(t)
+	home, _, _ := syntheticHome(t)
+	before := api.held()
+	for _, more := range [][]string{nil, {"--by-project"}} {
+		out, err := runImport(t, append([]string{"sessions", "--home", home, "--from", "claude", "--server", server.URL, "--json"}, more...)...)
+		if err != nil {
+			t.Fatalf("err = %v\n%s", err, out)
+		}
+		if got := counts(t, out); got != "added 0 updated 0 present 1 failed []" || api.held() != before {
+			t.Fatalf("%v: %s, changed: %v\n%s", more, got, api.held() != before, api.held())
+		}
+	}
+}
+
+// A session that went on after it was imported has its document replaced:
+// one document under the same URI, in the same source.
+func TestImportSessionsUpdatesTheDocumentOfASessionThatGrew(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		// old is a document an earlier version wrote, or "" for one this
+		// version adds first. excluded is whether a person left it out.
+		old      string
+		excluded bool
+	}{
+		{name: "added by this version"},
+		{name: "written by an earlier version", old: "# Old\n\n- Source: claude session cc0rig1d-aaaa-4bbb-8ccc-000000000001\n\n## Asked\n\nCC-USER-ONE list the files in the alpha site\n"},
+		{name: "left out of search", excluded: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			const uri, source = "claude:cc0rig1d-aaaa-4bbb-8ccc-000000000001", "sessions-claude-2026-10"
+			api := &importServer{now: time.Date(2026, 10, 5, 11, 0, 0, 0, time.UTC)}
+			if tt.old != "" {
+				api.docs = map[string][]map[string]string{source: {{"id": "old1", "uri": uri, "title": "Old", "text": tt.old, "added_at": "2026-10-05T11:00:00Z"}}}
+			}
+			server := api.start(t)
+			home, _, _ := syntheticHome(t)
+			args := []string{"sessions", "--home", home, "--from", "claude", "--server", server.URL, "--json"}
+			run := func(want string) {
+				t.Helper()
+				out, err := runImport(t, args...)
+				if err != nil {
+					t.Fatalf("err = %v\n%s", err, out)
+				}
+				if got := counts(t, out); got != want {
+					t.Fatalf("got %s, want %s", got, want)
+				}
+			}
+			if tt.old == "" {
+				run("added 1 updated 0 present 0 failed []")
+			}
+			if tt.excluded {
+				api.docs[source][0]["excluded"] = "true"
+			}
+			run("added 0 updated 0 present 1 failed []")
+			// The session goes on at noon, an hour after it was imported.
+			path := filepath.Join(home, ".claude/projects/-synthetic-work-alpha-site/cc0rig1d-aaaa-4bbb-8ccc-000000000001.jsonl")
+			f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fmt.Fprintln(f, `{"type":"user","uuid":"cc-msg-u4","parentUuid":"cc-msg-a3b","sessionId":"cc0rig1d-aaaa-4bbb-8ccc-000000000001","cwd":"/synthetic/work/alpha-site","timestamp":"2026-10-05T12:00:00.000Z","message":{"role":"user","content":"CC-GREW one more thing"}}`)
+			f.Close()
+			api.now = time.Date(2026, 10, 5, 13, 0, 0, 0, time.UTC)
+			run("added 0 updated 1 present 0 failed []")
+			docs := api.docs[source]
+			if len(api.docs) != 1 || len(docs) != 1 || docs[0]["uri"] != uri || !strings.Contains(docs[0]["text"], "## Asked [2026-10-05T12:00:00Z id=cc-msg-u4]\n\nCC-GREW one more thing") || !strings.Contains(docs[0]["text"], "## Branch 1: forks after id=cc-msg-a2") {
+				t.Fatalf("documents = %v", api.docs)
+			}
+			if got := docs[0]["excluded"] == "true"; got != tt.excluded {
+				t.Fatalf("excluded = %v", got)
+			}
+			// Nothing more was said: the next run leaves it.
+			before := api.held()
+			run("added 0 updated 0 present 1 failed []")
+			if api.held() != before {
+				t.Fatal("a run with nothing new changed the document")
+			}
+		})
 	}
 }

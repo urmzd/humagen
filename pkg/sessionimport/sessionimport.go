@@ -44,7 +44,19 @@ var ErrNotSession = errors.New("sessionimport: not a session")
 type Turn struct {
 	Role string
 	Text string
-	At   time.Time
+	// At is when the export says it was said. Zero is an export that does
+	// not say.
+	At time.Time
+	// ID is the original id of the message the turn is from, and Call the
+	// original id of the tool call a tool or result turn is of. ChatGPT gives
+	// a call no id of its own: a result's Call is the id of the message that
+	// made the call. "" is an export that has none.
+	ID   string
+	Call string
+	// Attached names the files the message carried: each one's name, type
+	// and size where the export states them, and its text where the export
+	// holds text. The files themselves are not read.
+	Attached string
 }
 
 // Session is one conversation.
@@ -62,11 +74,34 @@ type Session struct {
 	// Parent is the URI of the session that started a child, when the file
 	// says.
 	Parent string
-	// Branches counts the branches of the conversation left out: the edits
-	// and retries a person moved on from. An export keeps them; the session
-	// is the branch that was last shown.
+	// Turns is the main path: the branch of the conversation that was last
+	// shown, or that the file ends on.
+	Turns []Turn
+	// Side holds the other branches: the edits and retries a person moved on
+	// from, at most MaxBranches. Branches counts the ones left out past that.
+	Side     []Branch
 	Branches int
-	Turns    []Turn
+	// Causal is set when the export says which turn each turn follows, and
+	// the turns are in that order. Otherwise they are in time order.
+	Causal bool
+}
+
+// Latest is the time of the last thing said in the session, on any branch.
+// Zero is a session whose export gives no times.
+func (s Session) Latest() time.Time {
+	var out time.Time
+	see := func(ts []Turn) {
+		for _, t := range ts {
+			if t.At.After(out) {
+				out = t.At
+			}
+		}
+	}
+	see(s.Turns)
+	for _, b := range s.Side {
+		see(b.Turns)
+	}
+	return out
 }
 
 // URI names the session where it came from, the same on every read.
@@ -196,23 +231,6 @@ func parseTime(s string) time.Time {
 	return t
 }
 
-// add appends a turn, joining it to the last when the same role spoke again.
-func (s *Session) add(role, text string, at time.Time) {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return
-	}
-	if n := len(s.Turns); n > 0 && s.Turns[n-1].Role == role && role != "user" && role != "result" {
-		sep := "\n\n"
-		if role == "tool" {
-			sep = "\n"
-		}
-		s.Turns[n-1].Text += sep + text
-		return
-	}
-	s.Turns = append(s.Turns, Turn{Role: role, Text: text, At: at})
-}
-
 // finish titles a session and refuses one nobody asked anything in.
 func (s Session) finish() (Session, error) {
 	if s.ID == "" || s.Asked() == 0 {
@@ -220,9 +238,14 @@ func (s Session) finish() (Session, error) {
 	}
 	if strings.TrimSpace(s.Title) == "" {
 		for _, t := range s.Turns {
-			if t.Role == "user" {
+			if t.Role == "user" && s.Title == "" {
 				s.Title = clip(oneLine(t.Text), 80)
-				break
+			}
+		}
+		// Nothing typed: the first thing asked was a file.
+		for _, t := range s.Turns {
+			if t.Role == "user" && s.Title == "" {
+				s.Title = clip(oneLine(t.Attached), 80)
 			}
 		}
 	}
@@ -239,12 +262,20 @@ func (s Session) finish() (Session, error) {
 }
 
 type block struct {
-	Type    string          `json:"type"`
-	Text    string          `json:"text"`
-	Name    string          `json:"name"`
-	Input   json.RawMessage `json:"input"`
-	Content json.RawMessage `json:"content"`
-	Output  json.RawMessage `json:"output"`
+	Type      string          `json:"type"`
+	ID        string          `json:"id"`
+	ToolUseID string          `json:"tool_use_id"`
+	Text      string          `json:"text"`
+	Name      string          `json:"name"`
+	Input     json.RawMessage `json:"input"`
+	Content   json.RawMessage `json:"content"`
+	Output    json.RawMessage `json:"output"`
+	// ImageURL is a Codex image, and Source a Claude Code image or document.
+	ImageURL string `json:"image_url"`
+	Source   struct {
+		MediaType string `json:"media_type"`
+		Data      string `json:"data"`
+	} `json:"source"`
 }
 
 // blockText is the text of a tool result's content: a string, or a list of
@@ -269,6 +300,8 @@ func blockText(raw json.RawMessage) string {
 			out = append(out, b.Text)
 		case b.Title != "":
 			out = append(out, b.Title)
+		case b.Type == "image":
+			out = append(out, "[image; the image itself is not imported]")
 		case b.Type != "":
 			out = append(out, "["+b.Type+"]")
 		}
@@ -277,18 +310,26 @@ func blockText(raw json.RawMessage) string {
 }
 
 // ReadClaude reads one Claude Code session file (~/.claude/projects/*/*.jsonl).
+// Its records name their parents: the main path is the one the file's last
+// message ends, and a message a person went back and wrote again starts a
+// branch.
 func ReadClaude(r io.Reader) (Session, error) {
 	s := Session{Tool: Claude}
+	var nodes []node
+	leaf := -1
 	err := lines(r, func(line []byte) {
 		var rec struct {
-			Type        string `json:"type"`
-			SessionID   string `json:"sessionId"`
-			Cwd         string `json:"cwd"`
-			Timestamp   string `json:"timestamp"`
-			IsSidechain bool   `json:"isSidechain"`
-			IsMeta      bool   `json:"isMeta"`
-			AITitle     string `json:"aiTitle"`
-			Message     struct {
+			Type          string `json:"type"`
+			UUID          string `json:"uuid"`
+			Parent        string `json:"parentUuid"`
+			LogicalParent string `json:"logicalParentUuid"`
+			SessionID     string `json:"sessionId"`
+			Cwd           string `json:"cwd"`
+			Timestamp     string `json:"timestamp"`
+			IsSidechain   bool   `json:"isSidechain"`
+			IsMeta        bool   `json:"isMeta"`
+			AITitle       string `json:"aiTitle"`
+			Message       struct {
 				Content json.RawMessage `json:"content"`
 			} `json:"message"`
 		}
@@ -305,13 +346,20 @@ func ReadClaude(r io.Reader) (Session, error) {
 		if s.Started.IsZero() {
 			s.Started = at
 		}
-		switch rec.Type {
-		case "ai-title":
+		if rec.Type == "ai-title" {
 			s.Title = rec.AITitle
-		case "user", "assistant":
-			if rec.IsSidechain || rec.IsMeta {
-				return
-			}
+		}
+		spoke := rec.Type == "user" || rec.Type == "assistant"
+		// A sub-agent's records are a chain of their own. Every other record
+		// with an id may be a parent, whatever it holds.
+		if rec.IsSidechain || (!spoke && rec.UUID == "") {
+			return
+		}
+		nd := node{id: rec.UUID, parent: rec.Parent}
+		if nd.parent == "" {
+			nd.parent = rec.LogicalParent
+		}
+		if spoke && !rec.IsMeta {
 			var text string
 			var blocks []block
 			if json.Unmarshal(rec.Message.Content, &text) != nil {
@@ -319,25 +367,34 @@ func ReadClaude(r io.Reader) (Session, error) {
 			} else {
 				blocks = []block{{Type: "text", Text: text}}
 			}
+			var ts turns
+			var files []attachment
 			for _, b := range blocks {
 				switch {
 				case b.Type == "text" && rec.Type == "user":
-					s.add("user", claudeText(b.Text), at)
+					ts.add("user", claudeText(b.Text), at, rec.UUID, "")
 				case b.Type == "text":
-					s.add("assistant", b.Text, at)
-				case b.Type == "image" && rec.Type == "user":
-					s.add("user", "[image]", at)
+					ts.add("assistant", b.Text, at, rec.UUID, "")
+				case (b.Type == "image" || b.Type == "document") && rec.Type == "user":
+					files = append(files, attachment{name: b.Name, kind: b.Source.MediaType, size: encoded(b.Source.Data), image: b.Type == "image"})
 				case b.Type == "tool_use":
-					s.add("tool", called(b.Name, b.Input), at)
+					ts.add("tool", called(b.Name, b.Input), at, rec.UUID, b.ID)
 				case b.Type == "tool_result":
-					s.add("result", result(blockText(b.Content)), at)
+					ts.add("result", result(blockText(b.Content)), at, rec.UUID, b.ToolUseID)
 				}
 			}
+			ts.attach("user", files, at, rec.UUID)
+			nd.turns = ts
+		}
+		nodes = append(nodes, nd)
+		if len(nd.turns) > 0 {
+			leaf = len(nodes) - 1
 		}
 	})
 	if err != nil {
 		return Session{}, err
 	}
+	s.grow(nodes, leaf, true)
 	return s.finish()
 }
 
@@ -349,6 +406,7 @@ var codexPreamble = []string{"# AGENTS.md instructions", "<environment_context",
 // already decompressed.
 func ReadCodex(r io.Reader) (Session, error) {
 	s := Session{Tool: Codex}
+	var ts turns
 	err := lines(r, func(line []byte) {
 		var rec struct {
 			Type      string          `json:"type"`
@@ -366,6 +424,7 @@ func ReadCodex(r io.Reader) (Session, error) {
 		var p struct {
 			Type           string          `json:"type"`
 			ID             string          `json:"id"`
+			CallID         string          `json:"call_id"`
 			Cwd            string          `json:"cwd"`
 			Timestamp      string          `json:"timestamp"`
 			ParentThreadID string          `json:"parent_thread_id"`
@@ -395,6 +454,7 @@ func ReadCodex(r io.Reader) (Session, error) {
 		case rec.Type == "event_msg", rec.Type == "turn_context", rec.Type == "world_state":
 			// Events repeat the items; the rest is the harness's own state.
 		case p.Type == "message" && (p.Role == "user" || p.Role == "assistant"):
+			var files []attachment
 			for _, b := range p.Content {
 				text := strings.TrimSpace(b.Text)
 				if p.Role == "user" {
@@ -405,11 +465,17 @@ func ReadCodex(r io.Reader) (Session, error) {
 						}
 					}
 					if b.Type == "input_image" {
-						text = "[image]"
+						kind, size := dataURL(b.ImageURL)
+						if kind == "" {
+							kind = "image"
+						}
+						files = append(files, attachment{kind: kind, size: size, image: true})
+						continue
 					}
 				}
-				s.add(p.Role, text, at)
+				ts.add(p.Role, text, at, p.ID, "")
 			}
+			ts.attach(p.Role, files, at, p.ID)
 		case p.Type == "function_call", p.Type == "custom_tool_call", p.Type == "local_shell_call":
 			args := p.Arguments
 			if len(args) == 0 {
@@ -424,7 +490,7 @@ func ReadCodex(r io.Reader) (Session, error) {
 			if name == "" {
 				name = "shell"
 			}
-			s.add("tool", called(name, args), at)
+			ts.add("tool", called(name, args), at, p.ID, p.CallID)
 		case p.Type == "function_call_output", p.Type == "custom_tool_call_output", p.Type == "local_shell_call_output":
 			// The output is a string, or an object that holds one.
 			var out string
@@ -436,12 +502,14 @@ func ReadCodex(r io.Reader) (Session, error) {
 				_ = json.Unmarshal(p.Output, &obj)
 				out = obj.Output + obj.Content
 			}
-			s.add("result", result(out), at)
+			ts.add("result", result(out), at, p.ID, p.CallID)
 		}
 	})
 	if err != nil {
 		return Session{}, err
 	}
+	// A rollout is one line of turns and names no parents: time orders it.
+	s.Turns = timed(ts)
 	return s.finish()
 }
 
@@ -482,6 +550,98 @@ func unix(f float64) time.Time {
 	return time.Unix(0, int64(f*float64(time.Second))).UTC()
 }
 
+// gptMessage is one message of a ChatGPT conversation.
+type gptMessage struct {
+	ID     string `json:"id"`
+	Author struct {
+		Role string `json:"role"`
+		Name string `json:"name"`
+	} `json:"author"`
+	CreateTime float64 `json:"create_time"`
+	Content    struct {
+		Parts []json.RawMessage `json:"parts"`
+		Text  string            `json:"text"`
+	} `json:"content"`
+	// Recipient is "all", or the tool an assistant's message calls.
+	Recipient string `json:"recipient"`
+	Metadata  struct {
+		Hidden      bool `json:"is_visually_hidden_from_conversation"`
+		Attachments []struct {
+			ID       string `json:"id"`
+			Name     string `json:"name"`
+			MimeType string `json:"mime_type"`
+			Size     int64  `json:"size"`
+		} `json:"attachments"`
+	} `json:"metadata"`
+}
+
+// turns is what the message says. A message an assistant sends to a tool is
+// a tool call, and a tool's message is its result: caller is the id of the
+// message that called it.
+func (m *gptMessage) turns(key, caller string) []Turn {
+	role := m.Author.Role
+	if m.Metadata.Hidden || (role != "user" && role != "assistant" && role != "tool") {
+		return nil
+	}
+	id := m.ID
+	if id == "" {
+		id = key
+	}
+	at := unix(m.CreateTime)
+	var parts []string
+	var files []attachment
+	named := make([]attachment, len(m.Metadata.Attachments))
+	for i, a := range m.Metadata.Attachments {
+		named[i] = attachment{name: a.Name, kind: a.MimeType, size: a.Size, image: isImage(a.MimeType, a.Name)}
+	}
+	for _, p := range m.Content.Parts {
+		var text string
+		if json.Unmarshal(p, &text) == nil {
+			parts = append(parts, text)
+			continue
+		}
+		// A part that is not text points at a file. It is one of the
+		// message's named attachments, or is named by its kind alone.
+		var ptr struct {
+			ContentType string `json:"content_type"`
+			Pointer     string `json:"asset_pointer"`
+			Size        int64  `json:"size_bytes"`
+		}
+		_ = json.Unmarshal(p, &ptr)
+		found := false
+		for i, a := range m.Metadata.Attachments {
+			if a.ID != "" && strings.Contains(ptr.Pointer, a.ID) {
+				if found = true; named[i].size == 0 {
+					named[i].size = ptr.Size
+				}
+				break
+			}
+		}
+		if !found {
+			files = append(files, attachment{kind: ptr.ContentType, size: ptr.Size, image: isImage(ptr.ContentType, "")})
+		}
+	}
+	if m.Content.Text != "" {
+		parts = append(parts, m.Content.Text)
+	}
+	text := strings.Join(parts, "\n")
+	var ts turns
+	switch {
+	case role == "tool":
+		ts.add("result", result(text), at, id, caller)
+	case role == "assistant" && m.Recipient != "" && m.Recipient != "all":
+		if line := clip(oneLine(text), 200); line != "" {
+			ts.add("tool", m.Recipient+": "+line, at, id, "")
+		}
+	default:
+		ts.add(role, text, at, id, "")
+	}
+	if role != "tool" {
+		ts.attach(role, append(named, files...), at, id)
+	}
+	return ts
+}
+
 func exported(raw json.RawMessage) (Session, error) {
 	var c struct {
 		// ChatGPT.
@@ -491,35 +651,31 @@ func exported(raw json.RawMessage) (Session, error) {
 		CreateTime     float64 `json:"create_time"`
 		CurrentNode    string  `json:"current_node"`
 		Mapping        map[string]struct {
-			Parent  string `json:"parent"`
-			Message *struct {
-				Author struct {
-					Role string `json:"role"`
-				} `json:"author"`
-				CreateTime float64 `json:"create_time"`
-				Content    struct {
-					Parts []json.RawMessage `json:"parts"`
-				} `json:"content"`
-				Metadata struct {
-					Hidden bool `json:"is_visually_hidden_from_conversation"`
-				} `json:"metadata"`
-			} `json:"message"`
+			Parent   string      `json:"parent"`
+			Children []string    `json:"children"`
+			Message  *gptMessage `json:"message"`
 		} `json:"mapping"`
 		// claude.ai.
 		UUID      string `json:"uuid"`
 		Name      string `json:"name"`
 		CreatedAt string `json:"created_at"`
+		Leaf      string `json:"current_leaf_message_uuid"`
 		Messages  []struct {
+			UUID        string  `json:"uuid"`
+			Parent      string  `json:"parent_message_uuid"`
 			Sender      string  `json:"sender"`
 			Text        string  `json:"text"`
 			CreatedAt   string  `json:"created_at"`
 			Content     []block `json:"content"`
 			Attachments []struct {
 				Name    string `json:"file_name"`
+				Type    string `json:"file_type"`
+				Size    int64  `json:"file_size"`
 				Content string `json:"extracted_content"`
 			} `json:"attachments"`
 			Files []struct {
 				Name string `json:"file_name"`
+				Kind string `json:"file_kind"`
 			} `json:"files"`
 		} `json:"chat_messages"`
 	}
@@ -528,11 +684,15 @@ func exported(raw json.RawMessage) (Session, error) {
 	}
 	if c.Mapping == nil {
 		s := Session{Tool: ClaudeAI, ID: c.UUID, Title: c.Name, Started: parseTime(c.CreatedAt)}
-		for _, m := range c.Messages {
+		var nodes []node
+		var all turns
+		tree, leaf := false, -1
+		for i, m := range c.Messages {
 			role, at := "assistant", parseTime(m.CreatedAt)
 			if m.Sender == "human" {
 				role = "user"
 			}
+			var ts turns
 			// A message's blocks hold its text among the tools it used. An
 			// older export has only the text.
 			blocks := 0
@@ -540,24 +700,40 @@ func exported(raw json.RawMessage) (Session, error) {
 				switch b.Type {
 				case "text":
 					if strings.TrimSpace(b.Text) != "" {
-						s.add(role, b.Text, at)
+						ts.add(role, b.Text, at, m.UUID, "")
 						blocks++
 					}
 				case "tool_use":
-					s.add("tool", called(b.Name, b.Input), at)
+					ts.add("tool", called(b.Name, b.Input), at, m.UUID, b.ID)
 				case "tool_result":
-					s.add("result", result(blockText(b.Content)), at)
+					ts.add("result", result(blockText(b.Content)), at, m.UUID, b.ToolUseID)
 				}
 			}
 			if blocks == 0 {
-				s.add(role, m.Text, at)
+				ts.add(role, m.Text, at, m.UUID, "")
 			}
+			var files []attachment
 			for _, a := range m.Attachments {
-				s.add(role, "[attachment: "+a.Name+"]\n"+result(a.Content), at)
+				files = append(files, attachment{name: a.Name, kind: a.Type, size: a.Size, text: a.Content, image: isImage(a.Type, a.Name)})
 			}
 			for _, f := range m.Files {
-				s.add(role, "[file: "+f.Name+"]", at)
+				files = append(files, attachment{name: f.Name, kind: f.Kind, image: isImage(f.Kind, f.Name)})
 			}
+			ts.attach(role, files, at, m.UUID)
+			tree = tree || m.Parent != ""
+			nodes = append(nodes, node{id: m.UUID, parent: m.Parent, turns: ts})
+			all = append(all, ts...)
+			// The export names no branch as the one shown, unless it names
+			// its last message: the main path ends at the last one listed.
+			if len(ts) > 0 && (leaf < 0 || c.Messages[leaf].UUID != c.Leaf || c.Leaf == "") {
+				leaf = i
+			}
+		}
+		if tree {
+			s.grow(nodes, leaf, false)
+		} else {
+			// An older export names no parents: time orders it.
+			s.Turns = timed(all)
 		}
 		return s.finish()
 	}
@@ -565,43 +741,83 @@ func exported(raw json.RawMessage) (Session, error) {
 	if s.ID == "" {
 		s.ID = c.ID
 	}
-	// The conversation shown is the path from the current node to the root;
-	// other branches are edits the person left behind.
-	var path []string
-	for id, hops := c.CurrentNode, 0; id != "" && hops <= len(c.Mapping); hops++ {
-		node, ok := c.Mapping[id]
-		if !ok {
-			break
-		}
-		path = append(path, id)
-		id = node.Parent
+	// A mapping has no order of its own. Its records are read from each
+	// start down, a record's children in the order it lists them, so the
+	// same export always reads the same.
+	keys := make([]string, 0, len(c.Mapping))
+	under := map[string][]string{}
+	for key := range c.Mapping {
+		keys = append(keys, key)
 	}
-	// A node off the path with something said in it is a branch left behind.
-	shown := map[string]bool{}
-	for _, id := range path {
-		shown[id] = true
-	}
-	for id, node := range c.Mapping {
-		if !shown[id] && shown[node.Parent] && node.Message != nil && (node.Message.Author.Role == "user" || node.Message.Author.Role == "assistant") {
-			s.Branches++
-		}
-	}
-	for i := len(path) - 1; i >= 0; i-- {
-		m := c.Mapping[path[i]].Message
-		if m == nil || m.Metadata.Hidden || (m.Author.Role != "user" && m.Author.Role != "assistant") {
-			continue
-		}
-		var parts []string
-		for _, p := range m.Content.Parts {
-			var text string
-			if json.Unmarshal(p, &text) == nil {
-				parts = append(parts, text)
-			} else {
-				parts = append(parts, "[attachment]")
+	sort.Strings(keys)
+	var stack []string
+	for i := len(keys) - 1; i >= 0; i-- {
+		key := keys[i]
+		if p := c.Mapping[key].Parent; p != "" && p != key {
+			if _, ok := c.Mapping[p]; ok {
+				under[p] = append(under[p], key)
+				continue
 			}
 		}
-		s.add(m.Author.Role, strings.Join(parts, "\n"), unix(m.CreateTime))
+		stack = append(stack, key)
 	}
+	var nodes []node
+	seen := map[string]bool{}
+	leaf := -1
+	for len(stack) > 0 {
+		key := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		rec := c.Mapping[key]
+		nd := node{id: key, parent: rec.Parent}
+		if rec.Message != nil {
+			// A tool's result names the message that called the tool.
+			caller := ""
+			if p, ok := c.Mapping[rec.Parent]; ok && p.Message != nil && p.Message.Author.Role == "assistant" && p.Message.Recipient != "" && p.Message.Recipient != "all" {
+				if caller = p.Message.ID; caller == "" {
+					caller = rec.Parent
+				}
+			}
+			nd.turns = rec.Message.turns(key, caller)
+		}
+		nodes = append(nodes, nd)
+		if key == c.CurrentNode {
+			leaf = len(nodes) - 1
+		}
+		// Listed children first, in their order, then any the record does
+		// not list; under holds them in reverse order already.
+		var next []string
+		for _, child := range rec.Children {
+			if c.Mapping[child].Parent == key && child != key {
+				next = append(next, child)
+			}
+		}
+		listed := map[string]bool{}
+		for _, child := range next {
+			listed[child] = true
+		}
+		for _, child := range under[key] {
+			if !listed[child] {
+				stack = append(stack, child)
+			}
+		}
+		for i := len(next) - 1; i >= 0; i-- {
+			stack = append(stack, next[i])
+		}
+	}
+	if leaf < 0 {
+		// No record is named as the one shown: the path ends at the last
+		// one that says something.
+		for i, nd := range nodes {
+			if len(nd.turns) > 0 {
+				leaf = i
+			}
+		}
+	}
+	s.grow(nodes, leaf, false)
 	return s.finish()
 }
 

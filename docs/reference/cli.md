@@ -137,8 +137,9 @@ reached names `--server` and `HUMAGEN_URL`.
 ## Import sessions, skills and agents
 
 `humagen import` brings what you already have in other assistants into a
-running platform, through its API. It adds and never changes or removes: what
-the server already has is left as it is, so a second run sends only what is new.
+running platform, through its API. What the server already has is left as it
+is, so a second run sends only what is new. The one thing it replaces is the
+document of a session that has grown since it was imported.
 
 ```sh
 humagen import sessions
@@ -157,17 +158,82 @@ humagen import agents --provider anthropic --model claude-sonnet-5-5
 
 A session's document holds what was asked, what was answered, one line per
 tool call (the tool and what it ran or read) and the start of each tool's
-result, at most 1,500 bytes of it. An attachment in an export is named, with
-the text the export extracted from it; its bytes are not in an export. A
-session another session started says which (`Started by`), and a ChatGPT
-conversation says how many branches it left behind (`Branches not shown`): the
-branch imported is the one last shown. A conversation in an export with nothing
-asked in it is counted as skipped. What
+result, at most 1,500 bytes of it. Each turn's heading carries what the export
+states about it, in one form for every format:
+
+```text
+## Asked [2026-10-05T10:00:00Z id=cc-msg-u1]
+Tools used:
+- Bash: ls alpha-site [2026-10-05T10:30:00Z id=cc-msg-a1 call=toolu_cc_orig_42]
+Tool result [2026-10-05T10:05:00Z id=cc-msg-r1 call=toolu_cc_orig_42]:
+## Branch 1: forks after id=cc-msg-a2
+### Asked [2026-10-05T10:40:00Z id=cc-msg-u3a]
+```
+
+The time is the one the export states, in UTC. `id` is the original id of the
+message, and `call` the original id of the tool call, so a result names the
+call it answers. A part the export does not state is left out of the brackets.
+An id is cut to 64 bytes.
+
+| Kept in the document | Claude Code | Codex | ChatGPT | claude.ai |
+| --- | --- | --- | --- | --- |
+| Roles | Yes | Yes | Yes, with the messages tools sent | Yes |
+| Time of each turn | Yes | Yes | Yes | Yes |
+| Order | Each turn after the one it replies to (`parentUuid`) | By time: a rollout names no parents | Each turn after the one it replies to (`mapping`) | Each turn after the one it replies to (`parent_message_uuid`); by time in an older export that names no parents |
+| Tool calls and results | Yes, linked by the call's id | Yes, linked by `call_id` | Yes: a message sent to a tool is a call, and a tool's message its result. The format gives a call no id, so the result's `call` is the id of the message that called it | Yes, linked by the call's id |
+| Message ids | Yes | Where the rollout gives one | Yes | Yes |
+| Attachments | Type and size of an image or document, not the file | Type and size of an image, not the file | Name, type and size, not the file | Name, type, size and the text the export extracted; a file with no text is named |
+| Branches | Yes | Not supported: the format is one line of turns | Yes | Yes |
+| Conversation id | Yes, in the `uri` and the `Source` line | Yes | Yes | Yes |
+| Provenance | Tool, id, directory, start | Tool, id, directory, start, and the session that started it | Tool, id, start | Tool, id, start |
+| Project (`--by-project`) | Yes, by directory | Yes, by directory | Not supported: the format has no directory | Not supported: the format has no directory |
+
+Where the export says which turn each turn replies to, that orders the
+document: a turn is never put before the turn it replies to, whatever their
+times say, and the `Order` line of the heading counts the turns stamped earlier
+than a turn before them. Each still shows the time the export states. Time
+orders only what the export leaves unordered: the turns of a format with no
+parents, and the branches that fork after one turn. There, a turn with no time
+stays after the turn listed before it, turns of one time keep the export's
+order, and a tool's result stays after its call.
+
+The main path comes first: for ChatGPT the branch the export names as current
+(`current_node`), for Claude Code the one the file's last message ends, and
+for claude.ai the one the export names (`current_leaf_message_uuid`) or else
+the one its last listed message ends. Every other branch, the edits and
+retries a person moved on from, follows in a section of its own headed with
+the id of the turn it forks after (`Branch 2: forks after id=… in branch 1`
+for a fork inside a branch, `starts the conversation again` for a second
+first message). The same export always gives the same document. Tool results
+that hang off the path with nothing said are not a branch and stay on the
+path. A Claude Code record with no parent in the file, which is how a file
+goes on after its history is compacted, follows the record before it. At most
+20 branches are kept, and the heading counts the rest (`Branches not shown`).
+
+An image is named with `the image itself is not imported`, and another file
+with no text in the export with `its content is not in the export`: no
+format's file bytes are sent. At most 20 attachments of one message are
+named. A session another session started says which (`Started by`). A
+conversation in an export with nothing asked in it is counted as skipped. What
 looks like a credential (an API key, a token, a private key) is replaced with
-`[redacted]` before anything is sent. A session over `--max-bytes` keeps what
-was asked, leaves out tool results first and then cuts the answers. The document's `uri` is the session's id
-(`claude:ID`, `codex:ID`, `chatgpt:ID`, `claude-ai:ID`), which is how a later
-run knows it is there.
+`[redacted]` before anything is sent.
+
+A session over `--max-bytes` keeps what was asked and says in its heading what
+it cut (`Shortened to fit the size limit`): first the tool results, each
+answer to its opening and runs of tool calls to six, then the branches, whose
+fork points the heading lists, then the middle of the session, marked where it
+is left out.
+
+The document's `uri` is the session's id (`claude:ID`, `codex:ID`,
+`chatgpt:ID`, `claude-ai:ID`), which is how a later run knows it is there,
+whatever the document says: a document an earlier version wrote is the same
+session's and is not added again. A session with a turn stamped after its
+document was added has grown, and its document is replaced under the same
+`uri` (`updated` in the output). The API has no call that changes a document's
+text, so the old one is removed and the session added again: the server gives
+the new one a new id, and a document left out of search stays left out. A
+session whose export gives no times is never replaced, and a document an
+earlier version wrote keeps its old form until its session grows.
 
 A source holds at most 200 documents and 8 MiB, so a busy month continues in
 `sessions-TOOL-YYYY-MM-2` and so on. The sources are put in a corpus, titled

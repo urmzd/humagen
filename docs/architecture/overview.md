@@ -559,6 +559,15 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+`humagen import sessions` keeps in each session's document what its export
+holds: every turn's time and original id, tool calls linked to their results
+(ChatGPT's too), attachments by name, type and size, and each branch in a
+section naming the turn it forks after, in the order the export's parent links
+give. A session that grew is replaced under the same `uri`. It is tested with
+synthetic exports and read back from a local server; it is not checked
+against real exports of each tool, and file bytes are not imported
+([import](../reference/cli.md#import-sessions-skills-and-agents)).
+
 A branch of a conversation on a coding agent (Claude Code or Codex) is
 answered by a session of its own: a session is continued only by a turn whose
 conversation so far begins with everything that session holds, so a branch
