@@ -598,20 +598,17 @@ func seenSessions(seer *Seer, rows []sessionRow) []sessionRow {
 var errReadUnrecorded = fmt.Errorf("%w: sessions", threads.ErrNotFound)
 
 // disclosedSessions records the reads by exception the summaries a response
-// is about to return rest on, and returns the summaries. When any record
-// cannot be written the whole answer is refused: no summary is returned, and
-// the caller returns no cursor either, since a cursor names a row's
-// identity, time and rank and a shorter page would say one was left out.
+// is about to return rest on, together, and returns the summaries. When the
+// records cannot be written none is, and the whole answer is refused: no
+// summary is returned, and the caller returns no cursor either, since a
+// cursor names a row's identity, time and rank.
 func disclosedSessions(seer *Seer, out []SessionSummary) ([]SessionSummary, error) {
 	ids := make([]string, len(out))
 	for i, v := range out {
 		ids[i] = v.ID
 	}
-	shown := seer.Disclose(ids...)
-	for _, id := range ids {
-		if !shown[id] {
-			return nil, errReadUnrecorded
-		}
+	if !seer.Disclose(ids...) {
+		return nil, errReadUnrecorded
 	}
 	return out, nil
 }

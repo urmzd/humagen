@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"mime"
 	"net/http"
 	"os"
@@ -347,10 +348,73 @@ func (s *Server) authed(perm auth.Permission, h handler) http.HandlerFunc {
 			s.Log.Info("httpapi: change", "subject", who.Subject, "kind", who.Kind, "tenant", who.Tenant,
 				"method", r.Method, "path", r.URL.Path)
 		}
-		who = s.P.AuditedReader(who, r.Pattern)
-		h(w, r.WithContext(auth.With(r.Context(), who)), who)
+		// A read is what a response shows: the records of what this one
+		// shows by exception are written together before its first byte, and
+		// when they cannot be the answer is that nothing is there.
+		who, commit := s.P.ResponseReader(who, r.Pattern)
+		if r.Method != http.MethodGet {
+			h(w, r.WithContext(auth.With(r.Context(), who)), who)
+			return
+		}
+		recorded := &recordedResponse{ResponseWriter: w, commit: commit, had: w.Header().Clone()}
+		h(recorded, r.WithContext(auth.With(r.Context(), who)), who)
+		// An answer with no body is still an answer.
+		recorded.decide()
 	}
 }
+
+// recordedResponse holds a response back until the records of what it shows
+// by exception are written (Platform.ResponseReader). The first header or
+// byte the handler sends decides it: with the records written the response
+// goes out as the handler wrote it, and without them the caller is told 404
+// and nothing the handler wrote or set, a header included, leaves.
+type recordedResponse struct {
+	http.ResponseWriter
+	commit func() bool
+	// had is the headers set before the handler ran, which a refusal keeps.
+	had     http.Header
+	decided bool
+	refused bool
+}
+
+// decide writes the records once and reports whether the response may go.
+func (w *recordedResponse) decide() bool {
+	if !w.decided {
+		w.decided = true
+		if !w.commit() {
+			w.refused = true
+			header := w.Header()
+			clear(header)
+			maps.Copy(header, w.had)
+			notFound(w.ResponseWriter)
+		}
+	}
+	return !w.refused
+}
+
+func (w *recordedResponse) WriteHeader(code int) {
+	if w.decide() {
+		w.ResponseWriter.WriteHeader(code)
+	}
+}
+
+func (w *recordedResponse) Write(b []byte) (int, error) {
+	if !w.decide() {
+		return len(b), nil
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+// FlushError is what http.ResponseController flushes a stream through.
+func (w *recordedResponse) FlushError() error {
+	if !w.decide() {
+		return nil
+	}
+	return http.NewResponseController(w.ResponseWriter).Flush()
+}
+
+// Unwrap gives http.ResponseController the writer's deadlines.
+func (w *recordedResponse) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func (s *Server) me(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	// first_admin says the caller is the one who should set the workspace

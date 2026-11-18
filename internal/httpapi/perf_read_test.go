@@ -324,10 +324,11 @@ func TestASessionPageRecordsExactlyTheExceptionalReadsItShows(t *testing.T) {
 	})
 }
 
-// When the record of a read by exception cannot be written, the page that
-// would show it is refused whole: an error, no rows and no cursor, whichever
-// row's record failed, since the cursor names the last row's identity, time
-// and rank. The same request answers once the record can be written again.
+// When the record of a read by exception cannot be written, the response
+// that would show it is refused whole: an error, no rows and no cursor,
+// whichever row's record failed, and no record of any of its rows is kept,
+// since nothing was shown. The same request answers once records can be
+// written again, and then exactly its rows are recorded.
 func TestASessionPageIsRefusedWholeWhenARecordCannotBeWritten(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		store := &failingAudit{Store: open(t)}
@@ -336,6 +337,20 @@ func TestASessionPageIsRefusedWholeWhenARecordCannotBeWritten(t *testing.T) {
 		olu := auth.Principal{Subject: "olu", Tenant: "acme", Kind: auth.User, Name: "Olu", Roles: []auth.Role{auth.Admin}}
 		seedVolume(t, f.p, olu, volume{Sessions: 12, Children: 2, Runs: 20, Alerts: 0, Parallel: 4})
 		ana := f.person(t, "acme", "ana", "Ana", "humagen-admins")
+		// kept is the threads of the read records the store holds, in the
+		// order they were written.
+		kept := func() []string {
+			t.Helper()
+			all, err := f.p.ReadAudit.List("acme", time.Now().Add(-25*24*time.Hour), time.Now().Add(24*time.Hour), readaudit.MaxRows)
+			if err != nil || len(all) >= readaudit.MaxRows {
+				t.Fatalf("the read records = %d, %v", len(all), err)
+			}
+			out := make([]string, len(all))
+			for i, r := range all {
+				out[len(all)-1-i] = r.Thread
+			}
+			return out
+		}
 		page := func(path string) ([]string, string) {
 			t.Helper()
 			res, body := f.do(t, nil, "GET", path, ana, "")
@@ -349,8 +364,11 @@ func TestASessionPageIsRefusedWholeWhenARecordCannotBeWritten(t *testing.T) {
 			next, _ := body["next"].(string)
 			return ids, next
 		}
+		// refused makes a request that must be refused, tell of no row, and
+		// leave no read record behind.
 		refused := func(path, why string, ids []string) {
 			t.Helper()
+			before := kept()
 			res, body := f.do(t, nil, "GET", path, ana, "")
 			if res.StatusCode != http.StatusNotFound || len(body) != 1 || body["error"] != "not found" {
 				t.Fatalf("%s, %s: GET = %d %v, want 404 and nothing but that it was not found", path, why, res.StatusCode, body)
@@ -364,11 +382,32 @@ func TestASessionPageIsRefusedWholeWhenARecordCannotBeWritten(t *testing.T) {
 					}
 				}
 			}
+			if after := kept(); !slices.Equal(after, before) {
+				t.Fatalf("%s, %s: the refused request left read records of %v", path, why, after[len(before):])
+			}
+		}
+		// answered makes a request that must answer, and returns the threads
+		// it left read records of.
+		answered := func(get func()) []string {
+			t.Helper()
+			before := len(kept())
+			get()
+			return slices.Sorted(slices.Values(kept()[before:]))
 		}
 		for _, path := range []string{"/api/sessions?limit=3", "/api/sessions?limit=3&status=done"} {
 			ids, next := page(path)
 			if len(ids) != 3 || next == "" {
 				t.Fatalf("GET %s = %v, next %q; want a page of 3 and a page after it", path, ids, next)
+			}
+			// What a page that answers records: its rows, each with the
+			// session above it.
+			want := map[string]bool{}
+			for _, id := range ids {
+				want[id] = true
+				_, body := f.do(t, nil, "GET", "/api/sessions/"+id, ana, "")
+				if up, _ := body["parent"].(string); strings.HasPrefix(up, "s_") {
+					want[up] = true
+				}
 			}
 			store.all.Store(true)
 			refused(path, "no record can be written", ids)
@@ -377,31 +416,49 @@ func TestASessionPageIsRefusedWholeWhenARecordCannotBeWritten(t *testing.T) {
 				store.thread.Store(ids[i])
 				refused(path, "the record of "+where+" cannot be written", ids)
 				store.thread.Store("")
-				if again, after := page(path); !slices.Equal(again, ids) || after != next {
-					t.Fatalf("GET %s once records can be written = %v, next %q; want %v, %q", path, again, after, ids, next)
+				got := answered(func() {
+					if again, after := page(path); !slices.Equal(again, ids) || after != next {
+						t.Fatalf("GET %s once records can be written = %v, next %q; want %v, %q", path, again, after, ids, next)
+					}
+				})
+				if !slices.Equal(got, slices.Sorted(maps.Keys(want))) {
+					t.Fatalf("GET %s once records can be written recorded %v, want exactly its rows %v", path, got, slices.Sorted(maps.Keys(want)))
 				}
 			}
 		}
-		// A session's own read lists the sessions under it, all of them: one
-		// whose record cannot be written refuses the read as well.
+		// A session's own read shows the sessions under it too: when the
+		// record of one of those cannot be written the read is refused, and
+		// no record is kept of the session itself either.
 		all, _ := page("/api/sessions?limit=200")
+		under := map[string][]string{}
 		for _, id := range all {
 			_, body := f.do(t, nil, "GET", "/api/sessions/"+id, ana, "")
-			up, _ := body["parent"].(string)
-			if !strings.HasPrefix(up, "s_") {
-				continue
+			if up, _ := body["parent"].(string); strings.HasPrefix(up, "s_") {
+				under[up] = append(under[up], id)
 			}
-			store.thread.Store(id)
-			if res, body := f.do(t, nil, "GET", "/api/sessions/"+up, ana, ""); res.StatusCode != http.StatusNotFound || len(body) != 1 {
-				t.Fatalf("a session whose child cannot be recorded = %d %v, want 404", res.StatusCode, body)
-			}
-			store.thread.Store("")
-			if res, _ := f.do(t, nil, "GET", "/api/sessions/"+up, ana, ""); res.StatusCode != http.StatusOK {
-				t.Fatalf("the same session once its child can be recorded = %d", res.StatusCode)
-			}
-			return
 		}
-		t.Fatal("no session under another was seeded")
+		if len(under) == 0 {
+			t.Fatal("no session under another was seeded")
+		}
+		for up, children := range under {
+			path := "/api/sessions/" + up
+			for _, fail := range []string{up, children[0]} {
+				store.thread.Store(fail)
+				refused(path, "the record of "+fail+" cannot be written", append([]string{up}, children...))
+				store.thread.Store("")
+			}
+			store.all.Store(true)
+			refused(path, "no record can be written", append([]string{up}, children...))
+			store.all.Store(false)
+			got := answered(func() {
+				if res, _ := f.do(t, nil, "GET", path, ana, ""); res.StatusCode != http.StatusOK {
+					t.Fatalf("GET %s once records can be written = %d", path, res.StatusCode)
+				}
+			})
+			if want := slices.Sorted(slices.Values(append([]string{up}, children...))); !slices.Equal(got, want) {
+				t.Fatalf("GET %s recorded %v, want the session and those under it %v", path, got, want)
+			}
+		}
 	})
 }
 

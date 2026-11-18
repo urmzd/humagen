@@ -186,8 +186,9 @@ func (s *Seer) Snapshot() *Seer {
 // written. A row that is returned is recorded with every exceptional grant
 // its decision rested on: its own conversation, and each session above it
 // that the reader also sees only by exception, which the row names as its
-// parent. Recording still comes first: when the record of any row an answer
-// would show cannot be written, the answer is refused whole.
+// parent. Recording still comes first, and the records of one answer are
+// written together or not at all: when they cannot be written the answer is
+// refused whole and no record of it is kept.
 //
 // A seer that is not holding records each exceptional read as it grants it,
 // which is right wherever everything decided is shown.
@@ -211,30 +212,46 @@ func (s *Seer) deciding(row string, decide func() bool) bool {
 }
 
 // Disclose records the exceptional reads the decisions of rows rested on,
-// now that the rows are to be shown, and reports for each whether its
-// records were written. One whose record could not be written must not be
-// shown, nor anything that tells of it: the caller refuses its whole answer
+// now that the rows are to be shown, and reports whether they may be. The
+// records are one answer's: a request's are kept back with the rest of its
+// response's and written together before the response is sent
+// (Platform.ResponseReader), and a reader with no request has them written
+// here in one write. Either way all are written or none, and when none is
+// nothing of the rows may be shown: the caller refuses its whole answer
 // (disclosedSessions). A seer that is not holding recorded them as it
-// decided, and every row may be shown.
-func (s *Seer) Disclose(rows ...string) map[string]bool {
-	shown := make(map[string]bool, len(rows))
+// decided.
+func (s *Seer) Disclose(rows ...string) bool {
+	if s.held == nil {
+		return true
+	}
+	var unwritten []readPlace
 	for _, row := range rows {
-		shown[row] = true
-		if s.held == nil {
-			continue
-		}
 		for _, at := range s.held.by[row] {
 			ok, done := s.held.recorded[at]
-			if !done {
-				ok = s.recordExceptional(Place{Project: at.project, Thread: at.thread})
-				s.held.recorded[at] = ok
+			if done && !ok {
+				return false
 			}
-			if !ok {
-				shown[row] = false
+			if !done && !slices.Contains(unwritten, at) {
+				unwritten = append(unwritten, at)
 			}
 		}
 	}
-	return shown
+	ok := true
+	if s.who.AuditRead != nil {
+		for _, at := range unwritten {
+			ok = s.who.AuditRead(s.who.Subject, at.project, at.thread) && ok
+		}
+	} else if len(unwritten) > 0 {
+		places := make([]Place, len(unwritten))
+		for i, at := range unwritten {
+			places[i] = Place{Project: at.project, Thread: at.thread}
+		}
+		ok = s.p.recordReads(s.who, places, "platform")
+	}
+	for _, at := range unwritten {
+		s.held.recorded[at] = ok
+	}
+	return ok
 }
 
 // recordExceptional writes the record of a read granted by exception, and
