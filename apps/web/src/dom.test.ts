@@ -42,6 +42,7 @@ await loadTests([
   "/src/corpus-evals.dom.test.tsx",
   "/src/email-preferences.dom.test.tsx",
   "/src/patterns.dom.test.tsx",
+  "/src/lazy.dom.test.tsx",
   "/src/message-refs.dom.test.tsx",
   "/src/item-page.dom.test.tsx",
   "/src/wave.dom.test.tsx",

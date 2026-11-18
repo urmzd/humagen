@@ -1584,6 +1584,8 @@ var copyKeyList = []string{
 	"outcomeLearning.stale",
 	"outcomeLearning.steps",
 	"outcomeLearning.text",
+	"pageLoad.failed",
+	"pageLoad.title",
 	"partKind.alert",
 	"partKind.approval",
 	"partKind.artifact",

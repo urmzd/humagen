@@ -1,7 +1,6 @@
 import { defaultCopy } from "@humagen/components";
 import { ArrowUpIcon, FileIcon, XIcon } from "@humagen/render-web";
 import { Modal, type QueueControls, QueueStrip } from "@humagen/web";
-import { MetalFx } from "metal-fx";
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -10,7 +9,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { VoiceLevel, WorkingBeam } from "./ComposerLight.tsx";
 import {
   type Command,
   commandsFor,
@@ -19,6 +17,8 @@ import {
   nextEnabled,
   segments,
 } from "./commands.ts";
+import { LazyFrame, whenIdle } from "./lazy.tsx";
+import { SendRing, VoiceLevel, WorkingBeam } from "./pages.ts";
 import {
   insertTag,
   matching,
@@ -413,6 +413,15 @@ export function Composer({
   );
 
   const ready = value.trim().length > 0 || files.length > 0;
+  // The bar's light (ComposerLight.tsx) shows only on a bar in use, so it is
+  // read once the bar sits idle on screen, or the moment it is due.
+  const [light, setLight] = useState(false);
+  const due = ready || queue.running || !!mic;
+  useEffect(() => {
+    if (light) return;
+    if (due) return setLight(true);
+    return whenIdle(() => setLight(true));
+  }, [light, due]);
 
   const send = (now: boolean) => {
     if (!ready) return;
@@ -635,7 +644,7 @@ export function Composer({
         data-working={queue.running ? "" : undefined}
         className="humagen-composer relative flex flex-col gap-1 rounded-[1.25rem] border bg-aui-surface p-2"
       >
-        <WorkingBeam working={queue.running} host={form.current} />
+        {light && <WorkingBeam working={queue.running} host={form.current} />}
         {mic && <VoiceLevel stream={mic} host={form.current} />}
         {tags && commands.length > 0 && (
           // Still: a list waiting on a person does not animate.
@@ -974,30 +983,36 @@ export function Composer({
               )}
             </button>
           ) : (
-            // Send is the one metal thing in the bar: a ring of liquid silver
-            // round it once there is something to send (metal-fx; without
-            // WebGL2 it is the plain button).
-            <MetalFx
-              variant="circle"
-              preset="silver"
-              theme={document.documentElement.dataset.theme === "dark" ? "dark" : "light"}
-              strength={ready ? 1 : 0}
-              paused={!ready}
-              disableGlow={!ready}
-              className="humagen-composer-send shrink-0"
-            >
-              <button
-                type="submit"
-                disabled={!ready}
-                aria-label={queue.running ? "Queue message" : "Send message"}
-                title={queue.running ? "Queue behind the reply in flight" : "Send"}
-                // metal-fx lays its own disc under the arrow and clears the fill here;
-                // the fill is what shows without WebGL2.
-                className={`${action} bg-aui-hover text-aui-fg hover:opacity-90 disabled:opacity-40`}
-              >
-                <ArrowUpIcon size={16} strokeWidth={2.5} />
-              </button>
-            </MetalFx>
+            // The ring round Send is drawn once the composer's light is read; until
+            // then, and if it cannot be read, Send is the plain button in the same box.
+            (() => {
+              const send = (
+                <button
+                  type="submit"
+                  disabled={!ready}
+                  aria-label={queue.running ? "Queue message" : "Send message"}
+                  title={queue.running ? "Queue behind the reply in flight" : "Send"}
+                  className={`${action} bg-aui-hover text-aui-fg hover:opacity-90 disabled:opacity-40`}
+                >
+                  <ArrowUpIcon size={16} strokeWidth={2.5} />
+                </button>
+              );
+              const plain = (
+                <div
+                  className="metal-fx-fallback humagen-composer-send shrink-0"
+                  style={{ display: "inline-flex" }}
+                >
+                  {send}
+                </div>
+              );
+              return light ? (
+                <LazyFrame fallback={plain} instead={plain}>
+                  <SendRing ready={ready}>{send}</SendRing>
+                </LazyFrame>
+              ) : (
+                plain
+              );
+            })()
           )}
         </div>
       </form>

@@ -53,8 +53,8 @@ import { useMarks } from "./marks.ts";
 import { ConversationPeek, PeekCard, usePeek } from "./RowPreview.tsx";
 import { type Standing, useRecents, useRecentsRow } from "./recents.ts";
 import { href, type Route, type Page as RoutePage } from "./route.ts";
-import { Avatar, workspaceSettingsRoute } from "./Settings.tsx";
 import { type Alert, holdsAnAlertOnly, openAlert, orderAlerts } from "./sessionCenter.ts";
+import { Avatar, workspaceSettingsRoute } from "./settingsLinks.tsx";
 import { AgentMark, type Flash, FlashNote, Popover, SkeletonRows, useFlash } from "./ui.tsx";
 import { workspaceHub } from "./workspace-navigation.ts";
 
