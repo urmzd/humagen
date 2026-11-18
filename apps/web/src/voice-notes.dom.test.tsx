@@ -79,7 +79,8 @@ test("a voice note is recorded, transcribed, and put in the draft marked, to rea
   assert.equal(stop.getAttribute("aria-pressed"), "true");
   assert.ok(screen.getByText(words.recording), "the person is told the microphone is on");
   const level = () => document.querySelector("[data-voice-level]");
-  assert.ok(level(), "the bar shows the microphone's level while it records");
+  // The level is part of the composer's light, read when it is first due.
+  await waitFor(() => assert.ok(level(), "the bar shows the microphone's level while it records"));
   assert.equal(level()?.getAttribute("aria-hidden"), "true");
   await act(async () => fireEvent.click(stop));
   await waitFor(() => assert.equal(box.value, "[Voice note, english] Move standup to ten."));

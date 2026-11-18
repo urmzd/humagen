@@ -64,3 +64,8 @@ export function contextWords(u: RunUsage | undefined, showPercentage = true): st
       : "Not reported yet";
   return `${count(fill.used)} of ${count(fill.limit)} tokens${showPercentage ? `, ${Math.round((100 * fill.used) / fill.limit)}%` : ""}`;
 }
+
+/** What the Usage page shows: how many days, one day picked from them, and as a chart or a table. */
+export type UsageView = { days: 7 | 14 | 30; day?: string; display: "chart" | "table" };
+/** The Usage page as it opens. It lives here so its address is read without loading the page. */
+export const defaultUsageView: UsageView = { days: 14, display: "chart" };

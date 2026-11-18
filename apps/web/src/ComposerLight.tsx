@@ -1,5 +1,14 @@
 import { BorderBeam } from "border-beam";
+import { MetalFx } from "metal-fx";
+import type { ReactNode } from "react";
 import { VoiceBeam } from "voice-glow";
+
+/*
+ * The composer's light: the working beam, the voice level and the metal ring
+ * round Send. None of it shows on an idle bar, so the composer reads this
+ * file once it sits idle on screen, or the moment one of them is due
+ * (pages.ts), and is usable before.
+ */
 
 /** The light is laid over the bar, to its border's edge and corners, and never in the way of a click. */
 const over = { position: "absolute", inset: -1, pointerEvents: "none" } as const;
@@ -49,5 +58,27 @@ export function VoiceLevel({ stream, host }: { stream: MediaStream; host: HTMLEl
     >
       <span className="block h-full" />
     </VoiceBeam>
+  );
+}
+
+/**
+ * Send is the one metal thing in the bar: a ring of liquid silver round it
+ * once there is something to send (metal-fx; without WebGL2 it is the plain
+ * button). metal-fx lays its own disc under the arrow and clears the button's
+ * fill, which is what shows without it.
+ */
+export function SendRing({ ready, children }: { ready: boolean; children: ReactNode }) {
+  return (
+    <MetalFx
+      variant="circle"
+      preset="silver"
+      theme={theme()}
+      strength={ready ? 1 : 0}
+      paused={!ready}
+      disableGlow={!ready}
+      className="humagen-composer-send shrink-0"
+    >
+      {children}
+    </MetalFx>
   );
 }

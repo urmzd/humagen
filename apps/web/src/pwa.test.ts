@@ -10,11 +10,14 @@ import {
 } from "./pwa.ts";
 import { syncThemeColor, THEME_COLORS } from "./standalone.ts";
 import {
+  type BuiltScript,
   CACHE_PREFIX,
   cacheName,
+  keeps,
   OFFLINE_PATH,
   precacheList,
   serverPath,
+  shellFiles,
   staleCaches,
   strategyFor,
 } from "./swPolicy.ts";
@@ -76,21 +79,115 @@ test("built assets come from the cache; anything else, another origin and writes
   );
 });
 
-test("a build precaches its scripts, styles and offline screen, never the page or what branding replaces", () => {
-  assert.deepEqual(
-    precacheList([
-      "index.html",
-      "sw.js",
-      "offline.html",
-      "manifest.webmanifest",
-      "icon-192.png",
-      "assets/App-abc.js",
-      "assets/App-abc.js.map",
-      "assets/index-def.css",
-      "assets/plex-latin-400.woff2",
-    ]),
-    ["/assets/App-abc.js", "/assets/index-def.css", "/offline.html"],
+/** A build shaped like the console's: the entry reads the console, which reads its pages on demand. */
+const built: BuiltScript[] = [
+  {
+    fileName: "assets/index-aaa.js",
+    isEntry: true,
+    imports: [],
+    dynamicImports: ["assets/App-bbb.js", "assets/UpdatePrompt-ccc.js"],
+    css: ["assets/index-def.css"],
+  },
+  {
+    fileName: "assets/App-bbb.js",
+    isEntry: false,
+    imports: ["assets/index-aaa.js", "assets/ui-ddd.js"],
+    dynamicImports: ["assets/Agents-eee.js", "assets/Settings-fff.js", "assets/Room-ggg.js"],
+    css: ["assets/App-abc.css"],
+  },
+  {
+    fileName: "assets/UpdatePrompt-ccc.js",
+    isEntry: false,
+    imports: ["assets/ui-ddd.js"],
+    dynamicImports: [],
+  },
+  {
+    fileName: "assets/ui-ddd.js",
+    isEntry: false,
+    imports: ["assets/index-aaa.js"],
+    dynamicImports: [],
+  },
+  {
+    fileName: "assets/Agents-eee.js",
+    isEntry: false,
+    imports: ["assets/ui-ddd.js", "assets/sheet-hhh.js"],
+    dynamicImports: [],
+  },
+  {
+    fileName: "assets/Settings-fff.js",
+    isEntry: false,
+    imports: ["assets/ui-ddd.js"],
+    dynamicImports: [],
+    css: ["assets/Settings-xyz.css"],
+  },
+  {
+    fileName: "assets/Room-ggg.js",
+    isEntry: false,
+    imports: ["assets/ui-ddd.js"],
+    dynamicImports: [],
+  },
+  { fileName: "assets/sheet-hhh.js", isEntry: false, imports: [], dynamicImports: [] },
+  { fileName: "sw.js", isEntry: true, imports: [], dynamicImports: [] },
+];
+
+test("the shell is what the first screen loads: the entry, the console it reads, and what those load with themselves", () => {
+  assert.deepEqual([...shellFiles(built)].sort(), [
+    "assets/App-abc.css",
+    "assets/App-bbb.js",
+    "assets/UpdatePrompt-ccc.js",
+    "assets/index-aaa.js",
+    "assets/index-def.css",
+    "assets/ui-ddd.js",
+  ]);
+});
+
+test("a build precaches its shell and offline screen, never a page read on demand, the page itself or what branding replaces", () => {
+  const files = [
+    "index.html",
+    "sw.js",
+    "offline.html",
+    "manifest.webmanifest",
+    "icon-192.png",
+    "assets/App-bbb.js.map",
+    "assets/plex-latin-400.woff2",
+    ...built.flatMap((script) => [script.fileName, ...(script.css ?? [])]),
+  ];
+  const precache = precacheList(files, shellFiles(built));
+  assert.deepEqual(precache, [
+    "/assets/App-abc.css",
+    "/assets/App-bbb.js",
+    "/assets/UpdatePrompt-ccc.js",
+    "/assets/index-aaa.js",
+    "/assets/index-def.css",
+    "/assets/ui-ddd.js",
+    "/offline.html",
+  ]);
+  // The pages, what only they load, and their styles are kept when first asked for.
+  for (const lazy of [
+    "Agents-eee.js",
+    "Settings-fff.js",
+    "Room-ggg.js",
+    "sheet-hhh.js",
+    "Settings-xyz.css",
+  ]) {
+    assert.ok(!precache.includes(`/assets/${lazy}`), `${lazy} is precached`);
+    assert.equal(
+      strategyFor(get(`/assets/${lazy}`), ORIGIN, new Set(precache)),
+      "cache-first",
+      `${lazy} is not kept when asked for`,
+    );
+  }
+});
+
+test("the page answered for a script that is gone is never kept as the script", () => {
+  assert.equal(
+    keeps({ ok: true, type: "basic", contentType: "text/javascript; charset=utf-8" }),
+    true,
   );
+  assert.equal(keeps({ ok: true, type: "basic", contentType: "font/woff2" }), true);
+  assert.equal(keeps({ ok: true, type: "basic", contentType: "text/html; charset=utf-8" }), false);
+  assert.equal(keeps({ ok: false, type: "basic", contentType: "text/javascript" }), false);
+  assert.equal(keeps({ ok: true, type: "opaque", contentType: null }), false);
 });
 
 test("an activated version deletes its own older caches and nobody else's", () => {
