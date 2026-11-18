@@ -537,7 +537,12 @@ A run delivered again to the process still executing it, because its lease
 lapsed under the attempt at work, is handed back to the queue uncharged and
 offered again every second until that attempt lets go
 (`TestARunDeliveredAgainWhileItsFirstAttemptWorksCompletes`); a lease that
-lapses still costs the run one failure.
+lapses still costs the run one failure. The wait is bounded: 5 seconds after
+the attempt's heartbeat is told its lease is gone, or one lease (30 seconds)
+after the run first came back if that heartbeat says nothing, the next
+delivery is taken whether or not the attempt let go
+(`TestTheGateStopsWaitingForAnAttemptToldItsLeaseIsGone`,
+`TestTheGateStopsWaitingForAnAttemptWithNoHeartbeat`).
 
 ## Limits at scale
 

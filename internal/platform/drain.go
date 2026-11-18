@@ -7,6 +7,7 @@ import (
 	"time"
 
 	dqueue "github.com/urmzd/saige/durable/queue"
+	drun "github.com/urmzd/saige/durable/run"
 
 	"github.com/urmzd/humagen/pkg/call"
 )
@@ -24,6 +25,15 @@ const drainRetry = 250 * time.Millisecond
 // process still executes it, waits before the queue offers it once more.
 const heldRetry = time.Second
 
+// heldGrace is how long an attempt whose heartbeat was told its lease is gone
+// has to let go of its run before the gate stops waiting for it. The worker
+// cancels such an attempt at once, and what is left is to stop the model
+// call, record what the attempt spent and say it failed: well under a second
+// in the tests here, so five leaves room for a slow database. It is far below
+// the 30 second lease, so a run whose attempt never lets go is taken again
+// long before it could be mistaken for lost a second time.
+const heldGrace = 5 * time.Second
+
 // drainIdlePoll is how often WaitIdle looks at what this process holds.
 const drainIdlePoll = 50 * time.Millisecond
 
@@ -39,22 +49,36 @@ type drain struct {
 	stop context.CancelFunc
 
 	mu sync.Mutex
-	// held is every claim this process holds, by run id: the attempt.
-	held map[string]int
+	// held is every claim this process holds, by run id.
+	held map[string]held
+	// now is the clock the holds are timed by.
+	now func() time.Time
 	// children are runs a held run called, by the caller's run id.
 	children map[string]map[string]bool
 }
 
 func newDrain() *drain {
 	ctx, stop := context.WithCancel(context.Background())
-	return &drain{ctx: ctx, stop: stop, held: map[string]int{}, children: map[string]map[string]bool{}}
+	return &drain{ctx: ctx, stop: stop, held: map[string]held{}, children: map[string]map[string]bool{}, now: time.Now}
+}
+
+// held is one claim this process holds.
+type held struct {
+	// attempt is the claim's fence.
+	attempt int
+	// again is when the queue first delivered the run again under this
+	// claim, which means the claim's lease had lapsed. Zero until then.
+	again time.Time
+	// lost is when the claim's own heartbeat was told the lease is gone, at
+	// which the worker cancels the attempt. Zero until then.
+	lost time.Time
 }
 
 func (d *drain) draining() bool { return d.ctx.Err() != nil }
 
 func (d *drain) hold(it dqueue.Item) {
 	d.mu.Lock()
-	d.held[it.RunID] = it.Attempt
+	d.held[it.RunID] = held{attempt: it.Attempt}
 	d.mu.Unlock()
 }
 
@@ -62,20 +86,62 @@ func (d *drain) hold(it dqueue.Item) {
 // queue answered: the worker holds it no longer either way.
 func (d *drain) let(it dqueue.Item) {
 	d.mu.Lock()
-	if d.held[it.RunID] == it.Attempt {
+	if h, ok := d.held[it.RunID]; ok && h.attempt == it.Attempt {
 		delete(d.held, it.RunID)
 		delete(d.children, it.RunID)
 	}
 	d.mu.Unlock()
 }
 
-// holding reports whether this process holds a claim on a run from an attempt
-// other than this one, which is to say it is still executing the run.
-func (d *drain) holding(it dqueue.Item) bool {
+// lost notes that a held claim's heartbeat was told its lease is gone.
+func (d *drain) lost(it dqueue.Item) {
+	d.mu.Lock()
+	if h, ok := d.held[it.RunID]; ok && h.attempt == it.Attempt && h.lost.IsZero() {
+		h.lost = d.now()
+		d.held[it.RunID] = h
+	}
+	d.mu.Unlock()
+}
+
+// forget drops what a run called, if the run is no longer held.
+func (d *drain) forget(runID string) {
+	d.mu.Lock()
+	if _, ok := d.held[runID]; !ok {
+		delete(d.children, runID)
+	}
+	d.mu.Unlock()
+}
+
+// holding reports whether a run just delivered, on a lease of ttl, is one
+// this process still executes under an earlier claim, so that the delivery is
+// to be handed back.
+//
+// The earlier claim is waited for only while there is reason to think its
+// attempt is at work and will let go. Once its heartbeat has been told the
+// lease is gone the attempt is cancelled, and it has heldGrace to let go.
+// And a claim whose heartbeat has said nothing for a whole lease since the
+// run first came back has no heartbeat: a worker renews well inside its
+// lease, so by the queue's own rule that attempt is dead. Past either bound
+// the hold is dropped and holding reports false, so the gate can never keep
+// a run from being executed for good, whatever the worker does with a claim
+// it lost.
+func (d *drain) holding(it dqueue.Item, ttl time.Duration) bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	attempt, ok := d.held[it.RunID]
-	return ok && attempt != it.Attempt
+	h, ok := d.held[it.RunID]
+	if !ok || h.attempt == it.Attempt {
+		return false
+	}
+	now := d.now()
+	if h.again.IsZero() {
+		h.again = now
+		d.held[it.RunID] = h
+	}
+	if (!h.lost.IsZero() && now.Sub(h.lost) >= heldGrace) || now.Sub(h.again) >= ttl {
+		delete(d.held, it.RunID)
+		return false
+	}
+	return true
 }
 
 // called notes a run a run this process holds called.
@@ -162,6 +228,13 @@ type gatedDeltaQueue struct {
 // next heartbeat learns the lease is no longer its own and cancels it. Each
 // hand-back is one claim and one release. The lapse itself has already cost
 // the run one failure, which the queue charges as it delivers the run again.
+//
+// The wait is bounded (see holding): heldGrace after the first attempt's
+// heartbeat was told its lease is gone, or one lease after the run first
+// came back if that heartbeat never speaks. After that the delivery is taken
+// whether or not the first attempt let go. If it is somehow still executing,
+// the worker fails this delivery and charges it, as it did before the gate
+// handed anything back, which is better than a run nobody executes.
 func (q *gatedQueue) Claim(ctx context.Context, ttl time.Duration) (dqueue.Item, time.Time, error) {
 	for {
 		if q.d.draining() && !q.d.waiting() {
@@ -185,7 +258,7 @@ func (q *gatedQueue) Claim(ctx context.Context, ttl time.Duration) (dqueue.Item,
 			}
 			return it, deadline, err
 		}
-		if q.d.holding(it) {
+		if q.d.holding(it, ttl) {
 			// Handed back on the queue itself: the gate's own Release would
 			// let go of nothing here, but this claim was never the gate's.
 			_ = q.Queue.Release(context.WithoutCancel(ctx), it, heldRetry, false)
@@ -199,8 +272,19 @@ func (q *gatedQueue) Claim(ctx context.Context, ttl time.Duration) (dqueue.Item,
 		// hand it back unexecuted, charging it nothing.
 		// It comes back after a moment, so this slot's next claim can reach
 		// the run it waits for rather than take the same one again.
+		q.d.forget(it.RunID)
 		_ = q.Queue.Release(context.WithoutCancel(ctx), it, drainRetry, false)
 	}
+}
+
+// Heartbeat implements dqueue.Queue. An attempt told its lease is gone is one
+// the gate stops waiting for after heldGrace.
+func (q *gatedQueue) Heartbeat(ctx context.Context, it dqueue.Item, ttl time.Duration) (time.Time, error) {
+	deadline, err := q.Queue.Heartbeat(ctx, it, ttl)
+	if errors.Is(err, drun.ErrSuperseded) {
+		q.d.lost(it)
+	}
+	return deadline, err
 }
 
 // Release implements dqueue.Queue.

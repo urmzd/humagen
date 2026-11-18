@@ -60,6 +60,10 @@ func (m *slowFirst) Stream(ctx context.Context, _ saigetypes.Request) (<-chan sa
 // the run spent all its attempts in about four seconds, ending failed while
 // its first attempt was still answering. The second delivery is handed back
 // uncharged instead, and the run ends completed with its answer.
+//
+// The worker here always releases or settles a claim it lost. One that did
+// not is covered at the gate alone, by
+// TestTheGateStopsWaitingForAnAttemptToldItsLeaseIsGone.
 func TestARunDeliveredAgainWhileItsFirstAttemptWorksCompletes(t *testing.T) {
 	for _, c := range []struct {
 		name string
@@ -139,6 +143,15 @@ func TestARunDeliveredAgainWhileItsFirstAttemptWorksCompletes(t *testing.T) {
 			}
 			if _, failures := queued(); failures != 1 {
 				t.Errorf("the run was charged %d failures, want 1: the lapsed lease and nothing for being delivered again", failures)
+			}
+			// Nothing of the first run is left held: the agent's next run is
+			// taken and answered, and then the platform holds no run at all.
+			next, err := p.Invoke(ctx, tag("after-delivered-again", "lead"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := await(t, p, next.ID, runs.Completed); got.Answer != answer {
+				t.Errorf("the agent's next run answered %q, want %q", got.Answer, answer)
 			}
 			eventually(t, "the platform holds no run", func() bool { return p.InFlight() == 0 })
 		})
