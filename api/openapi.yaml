@@ -7461,7 +7461,7 @@ paths:
       operationId: replaceKnowledgeDocumentText
       tags: [knowledge]
       summary: Replace a document's title and text in place
-      description: The document keeps its id, its URI, who added it and whether it is left out of search. The replacement is made only if the document's text is still the text `digest` names, and is one write with that check. A document changed since answers 409 and nothing is written. Only documents of a manual source are replaced this way.
+      description: The document keeps its id, its URI, who added it and whether it is left out of search. The replacement is made only if the document's title and text are still the ones `digest` names, and is one write with that check. A document changed since answers 409 and nothing is written. Only documents of a manual source are replaced this way.
       x-permission: knowledge:write
       parameters:
         - {$ref: "#/components/parameters/SourceName"}
@@ -7478,7 +7478,7 @@ paths:
                 text: {type: string}
                 digest:
                   type: string
-                  description: The document's `digest` as last read, or the empty string for a document that has none.
+                  description: The document's `digest` as last read, or the empty string for a document that has none. Such a document is replaced once this way, and has a digest from then on.
       responses:
         "200":
           description: The document, with its new digest.
@@ -17114,7 +17114,7 @@ components:
         added_at: {type: string, format: date-time}
         digest:
           type: string
-          description: The SHA-256 of the document's text without the space around it, in hex. A document kept before digests were has none.
+          description: The SHA-256, in hex, of the document's title, a zero byte and its text, each without the space around it, so it changes when either does. A document kept before digests were has none.
         updated_at:
           type: string
           format: date-time

@@ -47,6 +47,30 @@ func TestADocumentsTextIsReplacedInPlaceFromTheDigestItWasReadWith(t *testing.T)
 		t.Fatalf("a refused replacement changed the document: %v", got)
 	}
 
+	// The digest covers the title and the text: a writer that read the
+	// document before another changed only one of them is refused, and what
+	// the other wrote stays.
+	text := "Refunds are issued within five days."
+	renamed := want(t, f, ana, "PUT", path+"/text", `{"title":"Refunds, renamed","text":"`+text+`","digest":"`+digest+`"}`, http.StatusOK)
+	if renamed["digest"] == digest || renamed["id"] != id {
+		t.Fatalf("a rename left the digest as it was: %v", renamed)
+	}
+	want(t, f, ana, "PUT", path+"/text", `{"title":"A stale rename","text":"`+text+`","digest":"`+digest+`"}`, http.StatusConflict)
+	want(t, f, ana, "PUT", path+"/text", `{"title":"Refunds","text":"A stale text.","digest":"`+digest+`"}`, http.StatusConflict)
+	if got := listed(); got["title"] != "Refunds, renamed" || got["digest"] != renamed["digest"] || hits("stale") != 0 {
+		t.Fatalf("a stale rename changed the document: %v", got)
+	}
+	reworded := want(t, f, ana, "PUT", path+"/text", `{"title":"Refunds, renamed","text":"Refunds are issued within nine days.","digest":"`+fmt.Sprint(renamed["digest"])+`"}`, http.StatusOK)
+	want(t, f, ana, "PUT", path+"/text", `{"title":"A stale rename","text":"`+text+`","digest":"`+fmt.Sprint(renamed["digest"])+`"}`, http.StatusConflict)
+	if got := listed(); got["title"] != "Refunds, renamed" || got["digest"] != reworded["digest"] || hits("nine") != 1 {
+		t.Fatalf("a stale write after a text change changed the document: %v", got)
+	}
+	// Back to where it began, for what follows.
+	back := want(t, f, ana, "PUT", path+"/text", `{"title":"Refunds","text":"`+text+`","digest":"`+fmt.Sprint(reworded["digest"])+`"}`, http.StatusOK)
+	if back["digest"] != digest {
+		t.Fatalf("the same title and text have another digest: %v", back)
+	}
+
 	// Left out of search, it stays out through a refusal and a replacement.
 	want(t, f, ana, "PUT", path, `{"excluded":true}`, http.StatusOK)
 	want(t, f, ana, "PUT", path+"/text", `{"title":"Refunds","text":"Zeppelins fly on Tuesdays.","digest":"stale"}`, http.StatusConflict)

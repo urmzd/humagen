@@ -619,8 +619,8 @@ func (s *Server) removeDocument(w http.ResponseWriter, r *http.Request, who auth
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// replaceDocument replaces a document's title and text in place, if its text
-// is still the text the caller names by digest. The store checks the digest
+// replaceDocument replaces a document's title and text in place, if they are
+// still the title and text the caller names by digest. The store checks the digest
 // and writes in one step, so the document keeps its id and whether it is
 // left out of search, and a refused replacement changes nothing.
 func (s *Server) replaceDocument(w http.ResponseWriter, r *http.Request, who auth.Principal) {

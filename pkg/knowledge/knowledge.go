@@ -39,8 +39,8 @@ var (
 	ErrInvalid  = errors.New("knowledge: invalid")
 	ErrExists   = errors.New("knowledge: source already exists")
 	ErrNotFound = errors.New("knowledge: not found")
-	// ErrChanged is a replacement of a document whose text is no longer the
-	// text the caller last saw.
+	// ErrChanged is a replacement of a document whose title or text is no
+	// longer what the caller last saw.
 	ErrChanged      = errors.New("knowledge: the document changed")
 	ErrUpstreamRead = fmt.Errorf("%w: current upstream file access is required before reading retained external data", ErrInvalid)
 )
@@ -99,18 +99,20 @@ type Document struct {
 	Excluded bool      `json:"excluded"`
 	AddedBy  string    `json:"added_by,omitempty"`
 	AddedAt  time.Time `json:"added_at"`
-	// Digest names the document's text (TextDigest), so a writer can tell
-	// whether what it holds is what is kept, and replace it only if nobody
-	// else has. A document kept before digests were has none.
+	// Digest names the document's title and text together (Digest), which
+	// are what a replacement replaces: a writer can tell whether what it
+	// holds is what is kept, and replace it only if nobody has changed
+	// either since. A document kept before digests were has none.
 	Digest string `json:"digest,omitempty"`
 	// UpdatedAt is when its text was last replaced. Nil is never.
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
 }
 
-// TextDigest is the digest a document of this text is kept with: the SHA-256
-// of the text without the space around it, in hex.
-func TextDigest(text string) string {
-	sum := sha256.Sum256([]byte(strings.TrimSpace(text)))
+// Digest is the digest a document of this title and text is kept with: the
+// SHA-256, in hex, of the title, a zero byte and the text, each without the
+// space around it. It changes when either does.
+func Digest(title, text string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(title) + "\x00" + strings.TrimSpace(text)))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -705,7 +707,7 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 	if _, err := rand.Read(id); err != nil {
 		return Document{}, err
 	}
-	doc := &Document{ID: hex.EncodeToString(id), Title: title, URI: uri, Bytes: len(text), AddedBy: by, AddedAt: at, Digest: TextDigest(text)}
+	doc := &Document{ID: hex.EncodeToString(id), Title: title, URI: uri, Bytes: len(text), AddedBy: by, AddedAt: at, Digest: Digest(title, text)}
 	texts := split(text)
 	doc.Passages = len(texts)
 
@@ -768,11 +770,12 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 	return *doc, nil
 }
 
-// ReplaceForScope replaces one document's title and text in place, if its
-// text is still the text digest names ("" for a document kept with no
-// digest). The document keeps its id, its place in the source, its URI,
+// ReplaceForScope replaces one document's title and text in place, if they
+// are still the title and text digest names ("" for a document kept with
+// no digest, which is so replaced once: the replacement gives it one). The document keeps its id, its place in the source, its URI,
 // who added it and when, and whether it is left out of search. A document
-// whose digest is another's by now is ErrChanged, and nothing is written.
+// whose title or text is another's by now is ErrChanged, and nothing is
+// written.
 //
 // The condition, the new passages and the document's record are one write
 // at the version of the source read, as an insertion is: a failed
@@ -814,7 +817,7 @@ func (s *Store) ReplaceForScope(tenant, name, id, title, text, digest string, at
 		}
 		doc := row.doc
 		stamp := at
-		doc.Title, doc.Bytes, doc.Passages, doc.Digest, doc.UpdatedAt = title, len(text), len(texts), TextDigest(text), &stamp
+		doc.Title, doc.Bytes, doc.Passages, doc.Digest, doc.UpdatedAt = title, len(text), len(texts), Digest(title, text), &stamp
 		docs[i].doc = doc
 		totalBytes := 0
 		for _, d := range docs {

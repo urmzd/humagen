@@ -264,9 +264,9 @@ The document's `uri` is the session's id (`claude:ID`, `codex:ID`,
 whatever the document says: a document an earlier version wrote is the same
 session's and is not added again.
 
-The server keeps a digest of each document's text. A run writes the document
-the session would have now and compares its digest and title with what the
-server has. The same: nothing is written. Different: the document is replaced
+The server keeps a digest of each document's title and text together. A run
+writes the document the session would have now and compares its digest with
+the one the server has. The same: nothing is written. Different: the document is replaced
 in place (`updated` in the output), whatever the times in the export say, so a
 turn added to an old export is picked up, and so is a session with no times.
 A document an earlier version wrote has no digest and reads differently, so
@@ -274,10 +274,19 @@ the next run replaces it once with the fuller document.
 
 The replacement is one call, `PUT /api/knowledge/{name}/documents/{id}/text`,
 which the server makes only if the document's digest is still the one the run
-read. The document keeps its id, its source and whether it is left out of
-search. A call that fails or is refused leaves the document as it was. Of two
-runs replacing one document at once, the second is refused (409), reads the
-document again and finds it already as it would write it.
+read, so a change to its title or its text since refuses the call (409). The
+document keeps its id, its source and whether it is left out of search. A call
+that fails or is refused leaves the document as it was.
+
+A run makes that call once for a session. A run that is refused lost to
+another writer and never writes over what that writer left. It reads the
+document again. If the document is what the run would have written, the
+session is counted `present`. If it differs, the document is left as it is and
+the session is named in `conflicts`, with the line `Left N sessions as another
+import wrote them while this one ran`. The run cannot know which of the two
+holds the later state of the session, so it does not choose. A conflict is not
+a failure: the exit code stays 0, and `conflicts` is empty in every other
+case. Run the import again from the copy you want kept.
 
 A source holds at most 200 documents and 8 MiB, so a busy month continues in
 `sessions-TOOL-YYYY-MM-2` and so on. The sources are put in a corpus, titled

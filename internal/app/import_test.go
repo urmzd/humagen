@@ -19,6 +19,7 @@ import (
 
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/library"
+	"github.com/urmzd/humagen/pkg/sessionimport"
 )
 
 // importServer plays the knowledge and skill library routes the import
@@ -45,6 +46,13 @@ type importServer struct {
 	seq         int
 	docWrites   int
 	failReplace bool
+	// puts are the answers each caller's replacements got, by its
+	// Authorization header. hold is a caller whose next replacement waits,
+	// before the server looks at it, until release is closed; reached is
+	// closed once it is waiting.
+	puts             map[string][]int
+	hold             string
+	reached, release chan struct{}
 }
 
 func (s *importServer) start(t *testing.T) *httptest.Server {
@@ -53,9 +61,19 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 		s.docs = map[string][]map[string]string{}
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		who := r.Header.Get("Authorization")
+		replacing := r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/text")
 		s.mu.Lock()
+		if replacing && s.hold != "" && s.hold == who {
+			s.hold = ""
+			reached, release := s.reached, s.release
+			s.mu.Unlock()
+			close(reached)
+			<-release
+			s.mu.Lock()
+		}
 		defer s.mu.Unlock()
-		s.auth = append(s.auth, r.Header.Get("Authorization"))
+		s.auth = append(s.auth, who)
 		w.Header().Set("Content-Type", "application/json")
 		problem := func(status int, detail string) {
 			w.WriteHeader(status)
@@ -101,7 +119,14 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 				Digest      *string
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
+			answer := func(status int) {
+				if s.puts == nil {
+					s.puts = map[string][]int{}
+				}
+				s.puts[who] = append(s.puts[who], status)
+			}
 			if s.failReplace {
+				answer(500)
 				problem(500, "the store is not answering")
 				return
 			}
@@ -110,13 +135,16 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 					continue
 				}
 				if body.Digest == nil || *body.Digest != d["digest"] {
+					answer(409)
 					problem(409, "the document changed since it was read; read it again")
 					return
 				}
-				d["title"], d["text"], d["digest"] = body.Title, body.Text, knowledge.TextDigest(body.Text)
+				answer(200)
+				d["title"], d["text"], d["digest"] = body.Title, body.Text, knowledge.Digest(body.Title, body.Text)
 				fmt.Fprintf(w, `{"id":%q}`, d["id"])
 				return
 			}
+			answer(404)
 			problem(404, "no such document")
 		case len(parts) == 3 && parts[0] == "knowledge" && parts[2] == "documents" && r.Method == "POST":
 			var doc map[string]string
@@ -131,7 +159,7 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 			}
 			s.seq++
 			s.docWrites++
-			doc["id"], doc["digest"] = fmt.Sprintf("d%d", s.seq), knowledge.TextDigest(doc["text"])
+			doc["id"], doc["digest"] = fmt.Sprintf("d%d", s.seq), knowledge.Digest(doc["title"], doc["text"])
 			s.docs[parts[1]] = append(s.docs[parts[1]], doc)
 			w.WriteHeader(201)
 			fmt.Fprintf(w, `{"id":%q}`, doc["id"])
@@ -812,7 +840,11 @@ func counts(t *testing.T, out string) string {
 	if err := json.Unmarshal([]byte(out), &res); err != nil {
 		t.Fatalf("%v: %s", err, out)
 	}
-	return fmt.Sprintf("added %v updated %v present %v failed %v", res["added"], res["updated"], res["present"], res["failed"])
+	out = fmt.Sprintf("added %v updated %v present %v failed %v", res["added"], res["updated"], res["present"], res["failed"])
+	if c, _ := res["conflicts"].([]any); len(c) > 0 {
+		out += fmt.Sprintf(" conflicts %v", c)
+	}
+	return out
 }
 
 // held is every document the server has, as source, id, uri and text.
@@ -911,12 +943,19 @@ const (
 // after the session's other turns: long before any import of it.
 func grow(t *testing.T, home string) {
 	t.Helper()
+	say(t, home, "cc-msg-u4", "cc-msg-a3b", "CC-GREW one more thing")
+}
+
+// say appends to the synthetic Claude Code session a turn that follows the
+// record parent.
+func say(t *testing.T, home, id, parent, text string) {
+	t.Helper()
 	f, err := os.OpenFile(filepath.Join(home, syntheticFile), os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	fmt.Fprintln(f, `{"type":"user","uuid":"cc-msg-u4","parentUuid":"cc-msg-a3b","sessionId":"cc0rig1d-aaaa-4bbb-8ccc-000000000001","cwd":"/synthetic/work/alpha-site","timestamp":"2026-10-06T12:00:00.000Z","message":{"role":"user","content":"CC-GREW one more thing"}}`)
+	fmt.Fprintf(f, `{"type":"user","uuid":%q,"parentUuid":%q,"sessionId":"cc0rig1d-aaaa-4bbb-8ccc-000000000001","cwd":"/synthetic/work/alpha-site","timestamp":"2026-10-06T12:00:00.000Z","message":{"role":"user","content":%q}}`+"\n", id, parent, text)
 }
 
 const grown = "## Asked [2026-10-06T12:00:00Z id=cc-msg-u4]\n\nCC-GREW one more thing"
@@ -1063,5 +1102,177 @@ func TestTwoImportsAtOnceOfASessionThatGrewLeaveOneDocument(t *testing.T) {
 	docs := api.docs[source]
 	if updated < 1 || len(api.docs) != 1 || len(docs) != 1 || docs[0]["id"] != id || !strings.Contains(docs[0]["text"], grown) {
 		t.Fatalf("%d updated, documents = %v", updated, api.docs)
+	}
+}
+
+// twoStates is one session imported from a first home, and two more homes
+// that hold later states of it: the older with one more turn, the newer with
+// that turn and another. want is each state's whole document.
+func twoStates(t *testing.T, api *importServer, url string) (homes, want map[string]string, id string) {
+	t.Helper()
+	base, _, _ := syntheticHome(t)
+	if out, err := runImport(t, "sessions", "--home", base, "--from", "claude", "--server", url, "--json"); err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	homes, want = map[string]string{}, map[string]string{}
+	for _, state := range []string{"older", "newer"} {
+		home, _, _ := syntheticHome(t)
+		say(t, home, "cc-msg-u4", "cc-msg-a3b", "CINNABAR one more thing")
+		if state == "newer" {
+			say(t, home, "cc-msg-u5", "cc-msg-u4", "SAPPHIRE and another")
+		}
+		s, err := sessionimport.Open(sessionimport.Claude, filepath.Join(home, syntheticFile))
+		if err != nil {
+			t.Fatal(err)
+		}
+		homes[state], want[state] = home, strings.TrimSpace(s.Markdown(48<<10))
+	}
+	if strings.Contains(want["older"], "SAPPHIRE") || !strings.Contains(want["newer"], "SAPPHIRE") || !strings.Contains(want["older"], "CINNABAR") {
+		t.Fatalf("the two states do not differ as meant")
+	}
+	return homes, want, api.docs["sessions-claude-2026-10"][0]["id"]
+}
+
+// An import whose replacement the server refuses lost to another writer. It
+// never writes over what that writer left, whichever of the two holds the
+// later state of the session: it leaves the document, and names the session
+// as a conflict.
+func TestAnImportThatLosesNeverWritesOverADifferentWinner(t *testing.T) {
+	for _, tt := range []struct{ name, loser, winner string }{
+		{"the older import is held until the newer finishes", "older", "newer"},
+		{"the newer import is held until the older finishes", "newer", "older"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			api := &importServer{}
+			server := api.start(t)
+			homes, want, id := twoStates(t, api, server.URL)
+			args := func(state string) []string {
+				return []string{"sessions", "--home", homes[state], "--from", "claude", "--server", server.URL, "--token", "env:TOKEN_" + strings.ToUpper(state)}
+			}
+			t.Setenv("TOKEN_OLDER", "older")
+			t.Setenv("TOKEN_NEWER", "newer")
+			api.mu.Lock()
+			api.hold, api.reached, api.release = "Bearer "+tt.loser, make(chan struct{}), make(chan struct{})
+			reached, release := api.reached, api.release
+			api.mu.Unlock()
+			var lost bytes.Buffer
+			done := make(chan error, 1)
+			go func() { done <- importCmd(append(args(tt.loser), "--json"), &lost) }()
+			<-reached
+
+			var won bytes.Buffer
+			if err := importCmd(append(args(tt.winner), "--json"), &won); err != nil {
+				t.Fatalf("the winner: %v\n%s", err, won.String())
+			}
+			if got := counts(t, won.String()); got != "added 0 updated 1 present 0 failed []" {
+				t.Fatalf("the winner: %s", got)
+			}
+			close(release)
+			// Losing is not a failure of the run: it exits clean, and says so.
+			if err := <-done; err != nil {
+				t.Fatalf("the loser: %v\n%s", err, lost.String())
+			}
+			if got := counts(t, lost.String()); got != "added 0 updated 0 present 0 failed [] conflicts ["+syntheticURI+"]" {
+				t.Fatalf("the loser: %s", got)
+			}
+			docs := api.docs["sessions-claude-2026-10"]
+			if len(api.docs) != 1 || len(docs) != 1 || docs[0]["id"] != id || strings.TrimSpace(docs[0]["text"]) != want[tt.winner] {
+				t.Fatalf("the document is not the winner's:\n%s", docs[0]["text"])
+			}
+			if got := fmt.Sprint(api.puts["Bearer "+tt.loser], api.puts["Bearer "+tt.winner]); got != "[409] [200]" {
+				t.Fatalf("replacements answered %s", got)
+			}
+
+			// In words, the run names the session it left.
+			var said bytes.Buffer
+			api.mu.Lock()
+			api.hold, api.reached, api.release = "Bearer "+tt.loser, make(chan struct{}), make(chan struct{})
+			reached, release = api.reached, api.release
+			api.mu.Unlock()
+			go func() { done <- importCmd(args(tt.loser), &said) }()
+			<-reached
+			// The document changes again under it: back to the first state.
+			base, _, _ := syntheticHome(t)
+			if err := importCmd([]string{"sessions", "--home", base, "--from", "claude", "--server", server.URL, "--token", "env:TOKEN_" + strings.ToUpper(tt.winner), "--json"}, &won); err != nil {
+				t.Fatal(err)
+			}
+			close(release)
+			if err := <-done; err != nil || !strings.Contains(said.String(), "Left 1 sessions as another import wrote them while this one ran; nothing of this run's was written over them: "+syntheticURI+".\n") {
+				t.Fatalf("err = %v\n%s", err, said.String())
+			}
+		})
+	}
+}
+
+// A loser that finds the winner wrote what it would have written is present.
+func TestAnImportThatLosesToTheSameDocumentCountsItPresent(t *testing.T) {
+	api := &importServer{}
+	server := api.start(t)
+	homes, want, id := twoStates(t, api, server.URL)
+	t.Setenv("TOKEN_A", "a")
+	t.Setenv("TOKEN_B", "b")
+	args := func(token string) []string {
+		return []string{"sessions", "--home", homes["newer"], "--from", "claude", "--server", server.URL, "--token", "env:TOKEN_" + token, "--json"}
+	}
+	api.mu.Lock()
+	api.hold, api.reached, api.release = "Bearer a", make(chan struct{}), make(chan struct{})
+	reached, release := api.reached, api.release
+	api.mu.Unlock()
+	var lost, won bytes.Buffer
+	done := make(chan error, 1)
+	go func() { done <- importCmd(args("A"), &lost) }()
+	<-reached
+	if err := importCmd(args("B"), &won); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	doc := api.docs["sessions-claude-2026-10"][0]
+	if got := counts(t, lost.String()); got != "added 0 updated 0 present 1 failed []" || doc["id"] != id || strings.TrimSpace(doc["text"]) != want["newer"] || fmt.Sprint(api.puts) != "map[Bearer a:[409] Bearer b:[200]]" {
+		t.Fatalf("the loser: %s, replacements %v", got, api.puts)
+	}
+}
+
+// Imports of two states of one session, all at once: the document is always
+// all of one state, and no import writes after the server refused it.
+func TestImportsOfTwoStatesAtOnceLeaveAllOfOne(t *testing.T) {
+	api := &importServer{}
+	server := api.start(t)
+	homes, want, id := twoStates(t, api, server.URL)
+	const runs = 8
+	outs, errs := make([]bytes.Buffer, runs), make([]error, runs)
+	state := func(i int) string { return []string{"older", "newer"}[i%2] }
+	for i := range runs {
+		t.Setenv(fmt.Sprintf("TOKEN_%d", i), fmt.Sprintf("run-%d", i))
+	}
+	var wg sync.WaitGroup
+	for i := range runs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs[i] = importCmd([]string{"sessions", "--home", homes[state(i)], "--from", "claude", "--server", server.URL, "--token", fmt.Sprintf("env:TOKEN_%d", i), "--json"}, &outs[i])
+		}()
+	}
+	wg.Wait()
+	docs := api.docs["sessions-claude-2026-10"]
+	if len(api.docs) != 1 || len(docs) != 1 || docs[0]["id"] != id {
+		t.Fatalf("documents = %v", api.docs)
+	}
+	kept := strings.TrimSpace(docs[0]["text"])
+	if kept != want["older"] && kept != want["newer"] {
+		t.Fatalf("the document is neither state whole:\n%s", kept)
+	}
+	for i := range runs {
+		var res sessionsResult
+		if err := json.Unmarshal(outs[i].Bytes(), &res); errs[i] != nil || err != nil || len(res.Failed) != 0 || res.Added != 0 || res.Updated+res.Present+len(res.Conflicts) != 1 {
+			t.Fatalf("run %d: %v %v %s", i, errs[i], err, outs[i].String())
+		}
+		// One replacement at most, and an update only where it was taken.
+		answers := api.puts[fmt.Sprintf("Bearer run-%d", i)]
+		if len(answers) > 1 || (res.Updated == 1) != (len(answers) == 1 && answers[0] == 200) {
+			t.Fatalf("run %d: %+v after replacements answered %v", i, res, answers)
+		}
 	}
 }

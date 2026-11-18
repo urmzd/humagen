@@ -6612,7 +6612,7 @@ grounds nothing until a source of that name is made again.
     });
   }
 
-  /** The document keeps its id, its URI, who added it and whether it is left out of search. The replacement is made only if the document's text is still the text `digest` names, and is one write with that check. A document changed since answers 409 and nothing is written. Only documents of a manual source are replaced this way. */
+  /** The document keeps its id, its URI, who added it and whether it is left out of search. The replacement is made only if the document's title and text are still the ones `digest` names, and is one write with that check. A document changed since answers 409 and nothing is written. Only documents of a manual source are replaced this way. */
   async replaceKnowledgeDocumentText(name: string, id: string, body: ReplaceKnowledgeDocumentTextBody, options?: RequestOptions): Promise<KnowledgeDocument> {
     let path = "/api/knowledge/{name}/documents/{id}/text";
     path = path.replace("{name}", encodeURIComponent(String(name)));

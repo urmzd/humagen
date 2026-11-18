@@ -317,11 +317,15 @@ type sessionsResult struct {
 	Added int `json:"added"`
 	// Updated are the sessions whose documents were replaced in place: ones
 	// that changed since they were added, or that an earlier version wrote.
-	Updated int            `json:"updated"`
-	Present int            `json:"present"`
-	Skipped int            `json:"skipped"`
-	Failed  []importFailed `json:"failed"`
-	Sources []string       `json:"sources"`
+	Updated int `json:"updated"`
+	Present int `json:"present"`
+	// Conflicts are the sessions whose documents another writer changed
+	// while this run was replacing them, to something this run would not
+	// have written. They are left as that writer wrote them.
+	Conflicts []string       `json:"conflicts"`
+	Skipped   int            `json:"skipped"`
+	Failed    []importFailed `json:"failed"`
+	Sources   []string       `json:"sources"`
 	// Corpora are the corpora the sources are in after the import.
 	Corpora []string `json:"corpora"`
 	// Attached are the sources now attached to a project, as SOURCE=PROJECT,
@@ -368,11 +372,12 @@ type sessionSink struct {
 
 // held is a session's document as the server has it. A session is known by
 // its URI alone, so a document an earlier version wrote is the same
-// session's. Its digest says whether it reads as the session now would: a
-// document kept before digests were has none, and so reads differently.
+// session's. Its digest, of its title and text, says whether it reads as
+// the session now would: a document kept before digests were has none, and
+// so reads differently.
 type held struct {
-	source, id    string
-	title, digest string
+	source, id string
+	digest     string
 }
 
 // load reads what the server already has under the prefix.
@@ -394,7 +399,6 @@ func (k *sessionSink) load() error {
 			Documents []struct {
 				ID     string `json:"id"`
 				URI    string `json:"uri"`
-				Title  string `json:"title"`
 				Digest string `json:"digest"`
 			} `json:"documents"`
 		}
@@ -406,7 +410,7 @@ func (k *sessionSink) load() error {
 		k.count[src.Name] = len(docs.Documents)
 		for _, d := range docs.Documents {
 			if _, ok := k.have[d.URI]; d.URI != "" && !ok {
-				k.have[d.URI] = held{source: src.Name, id: d.ID, title: d.Title, digest: d.Digest}
+				k.have[d.URI] = held{source: src.Name, id: d.ID, digest: d.Digest}
 			}
 		}
 	}
@@ -501,59 +505,62 @@ func (k *sessionSink) add(s sessionimport.Session) {
 // session now reads as, and reports whether the session is still to be
 // added because its document is gone. A document that already reads the
 // same is left alone: nothing is written. Any other is replaced in place,
-// in one call the server makes only if the document is still the one this
-// run read, so it keeps its id, its source and whether it is left out of
-// search, and a refused or failed call leaves it as it was.
+// in one call the server makes only if the document's title and text are
+// still the ones this run read, so it keeps its id, its source and whether
+// it is left out of search, and a refused or failed call leaves it as it
+// was.
+//
+// The call is made once. A run the server refuses lost to another writer,
+// and never writes over what that writer left: it reads the document again,
+// counts it present if it reads as this run would have written it, and
+// otherwise leaves it and names the session as a conflict. Which of the two
+// is the later state of the session this run cannot know.
 func (k *sessionSink) replace(was held, title string, s sessionimport.Session) (add bool) {
 	text := s.Markdown(k.c.maxBytes)
-	digest := knowledge.TextDigest(text)
-	// Twice: another run may replace the document between this run's read
-	// and its write, and the second try starts from what that run left.
-	for try := 0; try < 2; try++ {
-		// A document this run sent has no id here, and is as it was sent.
-		if was.id == "" || (was.digest == digest && was.title == strings.TrimSpace(title)) {
+	digest := knowledge.Digest(title, text)
+	// A document this run sent has no id here, and is as it was sent.
+	if was.id == "" || was.digest == digest {
+		k.res.Present++
+		return false
+	}
+	docs := "/api/knowledge/" + url.PathEscape(was.source) + "/documents"
+	err := k.api.do(k.ctx, http.MethodPut, docs+"/"+url.PathEscape(was.id)+"/text", map[string]string{
+		"title": title, "text": text, "digest": was.digest,
+	}, nil)
+	switch {
+	case err == nil:
+		k.have[s.URI()] = held{source: was.source}
+		k.res.Updated++
+		return false
+	case status(err) != http.StatusConflict:
+		k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: "not updated, and left as it was: " + err.Error()})
+		return false
+	}
+	var listed struct {
+		Documents []struct {
+			ID     string `json:"id"`
+			Digest string `json:"digest"`
+		} `json:"documents"`
+	}
+	if err := k.api.do(k.ctx, http.MethodGet, docs, nil, &listed); err != nil {
+		k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: "not updated, and left as it was: " + err.Error()})
+		return false
+	}
+	for _, d := range listed.Documents {
+		switch {
+		case d.ID != was.id:
+		case d.Digest == digest:
 			k.res.Present++
 			return false
-		}
-		docs := "/api/knowledge/" + url.PathEscape(was.source) + "/documents"
-		err := k.api.do(k.ctx, http.MethodPut, docs+"/"+url.PathEscape(was.id)+"/text", map[string]string{
-			"title": title, "text": text, "digest": was.digest,
-		}, nil)
-		switch {
-		case err == nil:
-			k.have[s.URI()] = held{source: was.source}
-			k.res.Updated++
+		default:
+			k.res.Conflicts = append(k.res.Conflicts, s.URI())
 			return false
-		case status(err) != http.StatusConflict:
-			k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: "not updated, and left as it was: " + err.Error()})
-			return false
-		}
-		var listed struct {
-			Documents []struct {
-				ID     string `json:"id"`
-				Title  string `json:"title"`
-				Digest string `json:"digest"`
-			} `json:"documents"`
-		}
-		if err := k.api.do(k.ctx, http.MethodGet, docs, nil, &listed); err != nil {
-			k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: "not updated, and left as it was: " + err.Error()})
-			return false
-		}
-		found := false
-		for _, d := range listed.Documents {
-			if d.ID == was.id {
-				was.title, was.digest, found = d.Title, d.Digest, true
-			}
-		}
-		if !found {
-			// Removed since this run read it: the session is added again.
-			delete(k.have, s.URI())
-			k.count[was.source]--
-			return true
 		}
 	}
-	k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: "not updated: its document keeps changing; run this again"})
-	return false
+	// Removed since this run read it: the session is added again.
+	delete(k.have, s.URI())
+	k.count[was.source]--
+	return true
 }
 
 // dirSlug is a directory's last name as a source's name may hold it: lower
@@ -779,7 +786,7 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 	if len(tools) == 0 && len(c.exports) == 0 {
 		return errors.New("nothing to read; name a tool with --from or an export with --export FILE")
 	}
-	res := sessionsResult{Failed: []importFailed{}, Sources: []string{}, Corpora: []string{}, ByTool: map[string]int{}, DryRun: c.dryRun}
+	res := sessionsResult{Conflicts: []string{}, Failed: []importFailed{}, Sources: []string{}, Corpora: []string{}, ByTool: map[string]int{}, DryRun: c.dryRun}
 	sink := &sessionSink{ctx: ctx, c: c, api: api, res: &res, have: map[string]held{}, exists: map[string]bool{}, count: map[string]int{}, full: map[string]bool{}, dirs: map[string]string{}, owner: map[string]string{}}
 	if !c.dryRun {
 		if err := sink.load(); err != nil {
@@ -856,6 +863,9 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 	}
 	if res.Updated > 0 {
 		fmt.Fprintf(out, "Updated %d sessions whose documents read differently now, in place.\n", res.Updated)
+	}
+	if len(res.Conflicts) > 0 {
+		fmt.Fprintf(out, "Left %d sessions as another import wrote them while this one ran; nothing of this run's was written over them: %s.\n", len(res.Conflicts), strings.Join(res.Conflicts, ", "))
 	}
 	for _, f := range res.Failed {
 		fmt.Fprintf(out, "  failed %s: %s\n", f.Name, f.Reason)
