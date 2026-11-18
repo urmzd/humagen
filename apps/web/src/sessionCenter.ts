@@ -2,6 +2,7 @@ import { defaultCopy } from "@humagen/components/copy";
 import type {
   AgentSessionSummary,
   Alert,
+  AlertCount,
   ChangeAlertStateBody,
   ListAlertsResponse,
   ListSessionsResponse,
@@ -19,6 +20,8 @@ export const sessionCenter = {
     call<ListAlertsResponse>("GET", `/api/alerts?${new URLSearchParams(filters)}`).then(
       (r) => r.alerts,
     ),
+  /** How many alerts wait on the reader: the count alone, which answers before the alerts do. */
+  waiting: () => call<AlertCount>("GET", "/api/alerts/count").then((r) => r.waiting),
   change: (id: string, body: ChangeAlertStateBody) =>
     call<Alert>("PATCH", `/api/alerts/${encodeURIComponent(id)}`, body),
 };

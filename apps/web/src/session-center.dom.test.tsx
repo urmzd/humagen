@@ -5,7 +5,12 @@ import { ItemCard } from "./cards.tsx";
 import { stubFetch } from "./dom.ts";
 import { unreadPrefs } from "./preferences.ts";
 import { href } from "./route.ts";
-import { AlertsPage, HomeSessionGlance, SessionsPage } from "./SessionCenter.tsx";
+import {
+  AlertsPage,
+  HomeSessionGlance,
+  SessionsPage,
+  useSessionAttention,
+} from "./SessionCenter.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { type AgentSessionSummary, type Alert, attentionAlerts } from "./sessionCenter.ts";
 import { sampleFiles } from "./storage.fixtures.ts";
@@ -100,6 +105,61 @@ test("Home says how many alerts wait in one link and lists none of them", async 
   assert.equal(screen.queryByText("Alert b"), null);
   assert.equal(screen.queryByRole("button", { name: /Resolve|Mark Done/ }), null);
   assert.equal(screen.queryByText("Recently made"), null);
+});
+
+test("Home's count comes from the count alone, before the alerts are read", async () => {
+  // The alerts never answer here: the line and the badge's number still show.
+  net = stubFetch({
+    "GET /api/alerts/count": () => ({ waiting: 4 }),
+    "GET /api/alerts": () => new Promise(() => {}),
+    "GET /api/sessions": () => ({ sessions: [], next: "" }),
+  });
+  function Home() {
+    const attention = useSessionAttention(true, null);
+    return (
+      <>
+        <output aria-label="badge">{attention.count}</output>
+        <HomeSessionGlance
+          alerts={attention.alerts}
+          waiting={attention.count}
+          go={() => {}}
+          tick={0}
+          via={{ list: async () => ({ artifacts: [], next: null }) }}
+        />
+      </>
+    );
+  }
+  render(<Home />);
+  const waiting = await screen.findByRole("link", { name: "4 waiting on you" });
+  assert.equal(waiting.getAttribute("href"), "/alerts");
+  assert.equal(screen.getByLabelText("badge").textContent, "4");
+  const asked = net.seen.map((r) => r.path);
+  assert.ok(asked.includes("/api/alerts/count"), `asked ${asked.join(", ")}`);
+  // The count is asked for before the alerts, so it is first in line for a connection.
+  assert.ok(asked.indexOf("/api/alerts/count") < asked.indexOf("/api/alerts?mine=true&state=open"));
+});
+
+test("once the alerts are read the count is theirs, and the count alone is not asked for again", async () => {
+  let listed = 0;
+  net = stubFetch({
+    "GET /api/alerts/count": () => ({ waiting: 9 }),
+    "GET /api/alerts": () => {
+      listed++;
+      return { alerts: [alert("a"), alert("b", "urgent"), alert("low", "low")] };
+    },
+  });
+  let again = () => {};
+  function Badge() {
+    const attention = useSessionAttention(true, null);
+    again = attention.refresh;
+    return <output aria-label="badge">{attention.count}</output>;
+  }
+  render(<Badge />);
+  await waitFor(() => assert.equal(screen.getByLabelText("badge").textContent, "2"));
+  again();
+  await waitFor(() => assert.equal(listed, 2));
+  assert.equal(screen.getByLabelText("badge").textContent, "2");
+  assert.equal(net.seen.filter((r) => r.path === "/api/alerts/count").length, 1);
 });
 
 test("Home shows the three newest artifacts in one strip, each opening where it lives", async () => {

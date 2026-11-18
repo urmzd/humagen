@@ -128,17 +128,7 @@ type SessionView struct {
 // SeesSession checks the session and every parent: sharing a child never leaks
 // context from a parent whose access has since been revoked.
 func (p *Platform) SeesSession(who auth.Principal, id string) bool {
-	for depth := 0; depth <= 64; depth++ {
-		th, err := p.Threads.Get(who.Tenant, id)
-		if err != nil || th.Session == nil || !p.SeesThread(who, id) || !p.Seer(who).Agent(th.Session.Agent) {
-			return false
-		}
-		if !strings.HasPrefix(th.Session.Parent, "s_") {
-			return true
-		}
-		id = th.Session.Parent
-	}
-	return false
+	return p.Seer(who).Session(id)
 }
 func (p *Platform) SessionRecord(ctx context.Context, who auth.Principal, id string) (threads.Thread, error) {
 	if !p.SeesSession(who, id) {
@@ -398,16 +388,94 @@ func sessionStatus(rr []runs.Run) string {
 	}
 	return status
 }
+
+// sessionRow is a session placed in a listing before it is summarized: its
+// record, what the run index keeps of it, when it last changed and how far
+// the reader's open alerts raise it.
+type sessionRow struct {
+	head threads.Summary
+	kept runs.ThreadSummary
+	at   time.Time
+	rank int
+}
+
+// SessionQuery selects the sessions a listing holds. Project "" is any
+// project and "~" the workspace itself. Roots leaves out a session another
+// session opened, and Mine keeps what the reader started or takes part in.
+type SessionQuery struct {
+	Parent, Agent, Project, Status string
+	Roots, Mine                    bool
+}
+
+// sessionSummary is one session at a glance, read on its own.
 func (p *Platform) sessionSummary(who auth.Principal, th threads.Thread) SessionSummary {
-	rr, _ := p.Runs.Conversation(who.Tenant, th.ID)
-	at := th.UpdatedAt
+	row := sessionRow{head: threads.Summary{Thread: th}, at: th.UpdatedAt}
+	if head, err := p.Threads.Summary(who.Tenant, th.ID); err == nil {
+		row.head.Messages, row.head.First = head.Messages, head.First
+	}
+	if kept, err := p.Runs.ConversationSummary(who.Tenant, th.ID); err == nil && kept.ID != "" {
+		row.kept = kept
+		if kept.UpdatedAt.After(row.at) {
+			row.at = kept.UpdatedAt
+		}
+	}
+	out, err := p.summarizeSessions(who, []sessionRow{row}, false)
+	if err != nil {
+		p.log.Warn("platform: a session's runs could not be read; it is shown without them", "session", th.ID, "error", err)
+		return p.summarizeSession(who.Tenant, row, nil, threads.Message{}, false)
+	}
+	return out[0]
+}
+
+// summarizeSessions is each row at a glance, in the rows' order. The turns
+// and the latest message of every row are read together, so a page costs a
+// few statements and not several a session. placed is for a listing: each
+// summary then shows the time its row was ordered by, which a cursor names,
+// whatever a turn that changed since says.
+func (p *Platform) summarizeSessions(who auth.Principal, rows []sessionRow, placed bool) ([]SessionSummary, error) {
+	ids := make([]string, len(rows))
+	heads := make([]threads.Summary, len(rows))
+	for i, row := range rows {
+		ids[i], heads[i] = row.head.ID, row.head
+	}
+	turns, err := p.Runs.Conversations(who.Tenant, ids)
+	if err != nil {
+		return nil, err
+	}
+	last, err := p.Threads.LastMessages(who.Tenant, heads)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SessionSummary, len(rows))
+	conversations := make([]ThreadSummary, len(rows))
+	for i, row := range rows {
+		message, said := last[row.head.ID]
+		out[i] = p.summarizeSession(who.Tenant, row, turns[row.head.ID], message, said)
+		if placed {
+			out[i].UpdatedAt, out[i].Conversation.UpdatedAt = row.at, row.at
+		}
+		conversations[i] = out[i].Conversation
+	}
+	// One reading of the directory names the people of the whole page.
+	for i, shown := range p.ShowSummaries(who.Tenant, conversations) {
+		out[i].Conversation = shown
+	}
+	return out, nil
+}
+
+// summarizeSession is one row at a glance, from its turns and its latest
+// message, said when it has one. The people in it are not yet named as the
+// directory names them (ShowSummaries).
+func (p *Platform) summarizeSession(tenant string, row sessionRow, rr []runs.Run, message threads.Message, said bool) SessionSummary {
+	th := row.head.Thread
+	at := row.at
 	for _, r := range rr {
 		if r.UpdatedAt.After(at) {
 			at = r.UpdatedAt
 		}
 	}
-	summary, err := p.Runs.ConversationSummary(who.Tenant, th.ID)
-	if err != nil || summary.ID == "" {
+	summary := row.kept
+	if summary.ID == "" {
 		summary = runs.ThreadSummary{ID: th.ID, Origin: runs.OriginAPI, Agents: []string{}, People: []string{}, CreatedAt: th.CreatedAt, UpdatedAt: th.UpdatedAt}
 	}
 	summary.Project, summary.Channel, summary.Title, summary.Named = th.Project, th.Channel, th.Title, th.Title != ""
@@ -419,60 +487,207 @@ func (p *Platform) sessionSummary(who auth.Principal, th threads.Thread) Session
 		}
 	}
 	conversation := ThreadSummary{ThreadSummary: summary, Visibility: th.Visibility}
-	if head, err := p.Threads.Summary(who.Tenant, th.ID); err == nil {
-		conversation.Messages = head.Messages
-		if head.Messages > 0 {
-			if message, err := p.Threads.Message(who.Tenant, th.ID, fmt.Sprintf("m-%d", head.Messages)); err == nil {
-				lastAgent := time.Time{}
-				for _, run := range rr {
-					if run.Status == runs.Completed && run.Answer != "" && run.UpdatedAt.After(lastAgent) {
-						lastAgent = run.UpdatedAt
-					}
-				}
-				if !message.At.Before(lastAgent) {
-					conversation.Last = firstWords(message.Text, runs.MaxLast)
-					conversation.LastBy = message.By
-					conversation.LastAgent = false
-				}
+	conversation.Messages = row.head.Messages
+	if said {
+		lastAgent := time.Time{}
+		for _, run := range rr {
+			if run.Status == runs.Completed && run.Answer != "" && run.UpdatedAt.After(lastAgent) {
+				lastAgent = run.UpdatedAt
 			}
 		}
+		if !message.At.Before(lastAgent) {
+			conversation.Last = firstWords(message.Text, runs.MaxLast)
+			conversation.LastBy = message.By
+			conversation.LastAgent = false
+		}
 	}
-	conversation = p.ShowSummaries(who.Tenant, []ThreadSummary{conversation})[0]
-	return SessionSummary{Conversation: conversation, ID: th.ID, Agent: th.Session.Agent, Parent: th.Session.Parent, Label: th.Session.Label, Project: th.Project, Title: th.Title, Status: sessionStatus(rr), UpdatedAt: at}
+	return SessionSummary{Conversation: conversation, ID: th.ID, Agent: th.Session.Agent, Parent: th.Session.Parent, Label: th.Session.Label, Project: th.Project, Title: th.Title, Status: sessionStatus(rr), UpdatedAt: at, rank: row.rank}
 }
-func (p *Platform) ListSessions(ctx context.Context, who auth.Principal, parent, agent, project, status string) ([]SessionSummary, error) {
-	if parent != "" && !p.seesParent(who, parent) {
-		return nil, threads.ErrNotFound
+
+// sessionRows is the sessions a query selects, ordered as a listing shows
+// them: the reader's open alerts first, by how urgent, then the latest
+// changed. Whether the reader may read each is not yet decided: the snapshot
+// returned decides it (Seer.Session), for the rows a caller goes on to show
+// and no others, so a reader who reads by exception is audited for what a
+// page holds and not for every session it was cut from. Nothing is read a
+// session: the records come in one bounded read (threads.MaxThreads), what
+// the run index keeps of them in one statement for every state.MaxList. A
+// row's turns are not read here, so its place is by when its record or any
+// run in it last changed.
+func (p *Platform) sessionRows(who auth.Principal, q SessionQuery) ([]sessionRow, *Seer, error) {
+	if q.Parent != "" && !p.seesParent(who, q.Parent) {
+		return nil, nil, threads.ErrNotFound
 	}
-	// project "" is any project; "~" names the workspace itself.
-	inProject := project != ""
-	project = projects.NameOf(project)
-	records, err := p.Threads.Records(who.Tenant, func(th threads.Thread) bool {
-		return th.Session != nil && th.Archive == nil && (parent == "" || th.Session.Parent == parent) && (agent == "" || th.Session.Agent == agent) && (!inProject || th.Project == project)
+	inProject := q.Project != ""
+	project := projects.NameOf(q.Project)
+	heads, _, err := p.Threads.Summaries(who.Tenant, func(th threads.Thread) bool {
+		if th.Session == nil || th.Archive != nil || (q.Parent != "" && th.Session.Parent != q.Parent) || (q.Agent != "" && th.Session.Agent != q.Agent) || (inProject && th.Project != project) {
+			return false
+		}
+		if q.Roots && strings.HasPrefix(th.Session.Parent, "s_") {
+			return false
+		}
+		return !q.Mine || sessionOf(th, who.Subject)
 	})
+	if err != nil {
+		return nil, nil, err
+	}
+	seer := p.Seer(who).Snapshot()
+	rows := make([]sessionRow, len(heads))
+	ids := make([]string, len(heads))
+	for i, h := range heads {
+		seer.Hold(h.Thread)
+		rows[i], ids[i] = sessionRow{head: h, at: h.UpdatedAt}, h.ID
+	}
+	kept, err := p.Runs.ConversationSummaries(who.Tenant, ids)
+	if err != nil {
+		return nil, nil, err
+	}
+	ranks, err := p.sessionRanks(seer)
+	if err != nil {
+		return nil, nil, err
+	}
+	for i := range rows {
+		id := rows[i].head.ID
+		if k, ok := kept[id]; ok {
+			rows[i].kept = k
+			if k.UpdatedAt.After(rows[i].at) {
+				rows[i].at = k.UpdatedAt
+			}
+		}
+		rows[i].rank = ranks[id]
+	}
+	slices.SortFunc(rows, func(a, b sessionRow) int {
+		if a.rank != b.rank {
+			return b.rank - a.rank
+		}
+		if n := b.at.Compare(a.at); n != 0 {
+			return n
+		}
+		return strings.Compare(a.head.ID, b.head.ID)
+	})
+	return rows, seer, nil
+}
+
+// seenSessions is the rows the seer's reader may read, in order.
+func seenSessions(seer *Seer, rows []sessionRow) []sessionRow {
+	return slices.DeleteFunc(rows, func(r sessionRow) bool { return !seer.Session(r.head.ID) })
+}
+
+// sessionOf reports whether a person started a session or takes part in it.
+func sessionOf(th threads.Thread, subject string) bool {
+	if th.CreatedBy == subject {
+		return true
+	}
+	for _, person := range th.Participants {
+		if person.Kind == threads.Person && person.Name == subject {
+			return true
+		}
+	}
+	return false
+}
+
+// ListSessions is every session a query selects that the reader may read, at
+// a glance, in a listing's order.
+func (p *Platform) ListSessions(ctx context.Context, who auth.Principal, parent, agent, project, status string) ([]SessionSummary, error) {
+	rows, seer, err := p.sessionRows(who, SessionQuery{Parent: parent, Agent: agent, Project: project})
+	if err != nil {
+		return nil, err
+	}
+	all, err := p.summarizeSessions(who, seenSessions(seer, rows), true)
 	if err != nil {
 		return nil, err
 	}
 	out := []SessionSummary{}
-	for _, th := range records {
-		if !p.SeesSession(who, th.ID) {
-			continue
-		}
-		v := p.sessionSummary(who, th)
+	for _, v := range all {
 		if status == "" || status == v.Status {
 			out = append(out, v)
 		}
 	}
-	slices.SortFunc(out, func(a, b SessionSummary) int {
-		if n := b.UpdatedAt.Compare(a.UpdatedAt); n != 0 {
-			return n
-		}
-		return strings.Compare(a.ID, b.ID)
-	})
-	if err := p.prioritizeSessions(who, out); err != nil {
-		return nil, err
-	}
 	return out, nil
+}
+
+// SessionsPage is one page of the sessions a query selects that the reader
+// may read: at most limit of them, after the place the previous page's
+// cursor names, and the cursor of the page that follows ("" on the last).
+// Only the page is decided and summarized: the sessions before it are passed
+// over by their place, and those after it are neither read nor, but for the
+// one that says a page follows, asked about. A status is known from a
+// session's turns, so a query that names one reads the turns of every
+// session it could hold.
+func (p *Platform) SessionsPage(ctx context.Context, who auth.Principal, q SessionQuery, limit int, after string) ([]SessionSummary, string, error) {
+	rows, seer, err := p.sessionRows(who, q)
+	if err != nil {
+		return nil, "", err
+	}
+	if q.Status != "" {
+		// A session in flight has a run that has not ended, and a failed one
+		// a run that failed: what the index counts leaves the rest out
+		// before their turns are read.
+		rows = slices.DeleteFunc(rows, func(r sessionRow) bool {
+			switch q.Status {
+			case "working", "waiting":
+				return r.kept.Active == 0
+			case "failed":
+				return r.kept.Failed == 0
+			}
+			return false
+		})
+		all, err := p.summarizeSessions(who, seenSessions(seer, rows), true)
+		if err != nil {
+			return nil, "", err
+		}
+		return PageSessions(slices.DeleteFunc(all, func(v SessionSummary) bool { return v.Status != q.Status }), limit, after)
+	}
+	start := 0
+	if after != "" {
+		rank, at, id, err := decodeSessionListCursor(after)
+		if err != nil {
+			return nil, "", err
+		}
+		start = len(rows)
+		if i := slices.IndexFunc(rows, func(r sessionRow) bool { return afterSessionPlace(r.rank, r.at, r.head.ID, rank, at, id) }); i >= 0 {
+			start = i
+		}
+	}
+	picked := make([]sessionRow, 0, min(max(limit, 0), len(rows)-start))
+	more := false
+	for _, row := range rows[start:] {
+		if !seer.Session(row.head.ID) {
+			continue
+		}
+		if len(picked) >= limit {
+			more = true
+			break
+		}
+		picked = append(picked, row)
+	}
+	out, err := p.summarizeSessions(who, picked, true)
+	if err != nil {
+		return nil, "", err
+	}
+	next := ""
+	if more && len(picked) > 0 {
+		last := picked[len(picked)-1]
+		next = sessionListCursor(last.rank, last.at, last.head.ID)
+	}
+	return out, next, nil
+}
+
+// afterSessionPlace reports whether a session's place in a listing is
+// strictly after the place a cursor names: lower in rank, or at its rank
+// changed earlier, or at the same moment with a later id.
+func afterSessionPlace(rank int, changed time.Time, id string, cursorRank int, cursorAt int64, cursorID string) bool {
+	if rank != cursorRank {
+		return rank < cursorRank
+	}
+	at := changed.UnixNano()
+	return at < cursorAt || (at == cursorAt && id > cursorID)
+}
+
+// sessionListCursor names a session's place in a listing.
+func sessionListCursor(rank int, changed time.Time, id string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(rank) + ":" + strconv.FormatInt(changed.UnixNano(), 10) + ":" + id))
 }
 
 // PageSessions cuts one page from a listing ListSessions ordered: at most
@@ -494,13 +709,7 @@ func PageSessions(rows []SessionSummary, limit int, after string) ([]SessionSumm
 			return nil, "", err
 		}
 		start = len(rows)
-		if i := slices.IndexFunc(rows, func(v SessionSummary) bool {
-			if v.rank != rank {
-				return v.rank < rank
-			}
-			changed := v.UpdatedAt.UnixNano()
-			return changed < at || (changed == at && v.ID > id)
-		}); i >= 0 {
+		if i := slices.IndexFunc(rows, func(v SessionSummary) bool { return afterSessionPlace(v.rank, v.UpdatedAt, v.ID, rank, at, id) }); i >= 0 {
 			start = i
 		}
 	}
@@ -508,7 +717,7 @@ func PageSessions(rows []SessionSummary, limit int, after string) ([]SessionSumm
 	next := ""
 	if end < len(rows) && end > start {
 		last := rows[end-1]
-		next = base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(last.rank) + ":" + strconv.FormatInt(last.UpdatedAt.UnixNano(), 10) + ":" + last.ID))
+		next = sessionListCursor(last.rank, last.UpdatedAt, last.ID)
 	}
 	return rows[start:end], next, nil
 }

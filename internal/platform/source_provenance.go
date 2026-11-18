@@ -90,11 +90,18 @@ func (p *Platform) CitationEventVisible(who auth.Principal, e event.Envelope) bo
 // ShownRunAs clears denied evidence explicitly, including citations already
 // streamed before a reader's access changed. Unknown authority is withheld.
 func (p *Platform) ShownRunAs(who auth.Principal, run runs.Run) runs.Run {
+	return p.Seer(who).shownRun(run)
+}
+
+// shownRun is ShownRunAs for the seer's reader.
+func (s *Seer) shownRun(run runs.Run) runs.Run {
+	p, who := s.p, s.who
 	original := run
-	run = p.ShownRun(who.Tenant, run)
+	th, err := s.record(run.Thread)
+	run = shownRun(run, th, err)
 	run.Answer = p.reviewText(context.Background(), original, run.Answer, &who, time.Time{})
 	run.Citations = []runs.Citation{}
-	if original.Tenant != who.Tenant || !who.Can(auth.KnowledgeRead) || !p.Seer(who).Run(original) {
+	if original.Tenant != who.Tenant || !who.Can(auth.KnowledgeRead) || !s.Run(original) {
 		return run
 	}
 	for _, citation := range original.Citations {
@@ -106,10 +113,18 @@ func (p *Platform) ShownRunAs(who auth.Principal, run runs.Run) runs.Run {
 	}
 	return run
 }
+
+// ShownRunsAs is ShownRunAs for a list: the tree and each run's thread are
+// read once for all of it.
 func (p *Platform) ShownRunsAs(who auth.Principal, list []runs.Run) []runs.Run {
+	return p.Seer(who).Snapshot().ShownRuns(list)
+}
+
+// ShownRuns is each run as the seer's reader is shown it (ShownRunAs).
+func (s *Seer) ShownRuns(list []runs.Run) []runs.Run {
 	out := make([]runs.Run, len(list))
 	for i, r := range list {
-		out[i] = p.ShownRunAs(who, r)
+		out[i] = s.shownRun(r)
 	}
 	return out
 }

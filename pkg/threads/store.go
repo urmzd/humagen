@@ -1406,6 +1406,61 @@ func (s *Store) Summaries(tenantName string, keep func(Thread) bool) (out []Summ
 	return out, elsewhere, nil
 }
 
+// Many reads the records of several threads at once, by id: one statement
+// for every state.MaxList of them. An id with no record is left out.
+func (s *Store) Many(tenantName string, ids []string) ([]Thread, error) {
+	keys := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if ValidID(id) {
+			keys = append(keys, threadKey(id))
+		}
+	}
+	items, err := s.kept.LookupMany(tenantName, keys)
+	if err != nil {
+		return nil, readErr(err)
+	}
+	out := make([]Thread, 0, len(items))
+	for _, it := range items {
+		h, err := decodeHead(it.Value)
+		if err != nil {
+			return nil, readErr(fmt.Errorf("%q: %w", it.Key, err))
+		}
+		out = append(out, h.Thread)
+	}
+	return out, nil
+}
+
+// LastMessages reads the latest message of each of several threads at once,
+// by thread id, from summaries just read: one statement for every
+// state.MaxList of them. A thread with no message is left out.
+func (s *Store) LastMessages(tenantName string, of []Summary) (map[string]Message, error) {
+	keys := make([]string, 0, len(of))
+	for _, sum := range of {
+		if sum.Messages > 0 {
+			keys = append(keys, messageKey(sum.ID, sum.Messages))
+		}
+	}
+	items, err := s.kept.LookupMany(tenantName, keys)
+	if err != nil {
+		return nil, readErr(err)
+	}
+	at := make(map[string]Message, len(items))
+	for _, it := range items {
+		var m Message
+		if err := json.Unmarshal(it.Value, &m); err != nil {
+			return nil, readErr(fmt.Errorf("%q: %w", it.Key, err))
+		}
+		at[it.Key] = m
+	}
+	out := make(map[string]Message, len(items))
+	for _, sum := range of {
+		if m, ok := at[messageKey(sum.ID, sum.Messages)]; ok && sum.Messages > 0 {
+			out[sum.ID] = m
+		}
+	}
+	return out, nil
+}
+
 // Records returns the records of a tenant's threads that keep holds, in no
 // order.
 func (s *Store) Records(tenantName string, keep func(Thread) bool) ([]Thread, error) {

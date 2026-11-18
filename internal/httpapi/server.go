@@ -665,8 +665,16 @@ func (s *Server) removeMemory(w http.ResponseWriter, r *http.Request, who auth.P
 }
 
 func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	seer := s.P.Seer(who)
-	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(s.P.ShownRunsAs(who, slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) || platform.IsEvaluation(r) })))})
+	// One snapshot answers for every run: the tree and each run's thread
+	// are read once, not once a run.
+	seer := s.P.Seer(who).Snapshot()
+	list := s.P.Runs.List(who.Tenant, 200)
+	threads := make([]string, len(list))
+	for i, r := range list {
+		threads[i] = r.Thread
+	}
+	seer.Read(threads...)
+	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(seer.ShownRuns(slices.DeleteFunc(list, func(r runs.Run) bool { return !seer.Run(r) || platform.IsEvaluation(r) })))})
 }
 
 func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {

@@ -4,10 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/urmzd/humagen/internal/platform"
@@ -75,11 +75,6 @@ func (s *Server) listSessions(w http.ResponseWriter, r *http.Request, who auth.P
 		}
 		limit = n
 	}
-	all, err := s.P.ListSessions(r.Context(), who, q.Get("parent"), q.Get("agent"), q.Get("project"), q.Get("status"))
-	if err != nil {
-		s.problem(w, err)
-		return
-	}
 	if q.Has("roots") && q.Get("roots") != "true" && q.Get("roots") != "false" {
 		fail(w, 400, "roots is true or false")
 		return
@@ -88,32 +83,16 @@ func (s *Server) listSessions(w http.ResponseWriter, r *http.Request, who auth.P
 		fail(w, 400, "mine is true or false")
 		return
 	}
-	filtered := all[:0]
-	for _, v := range all {
-		if q.Get("roots") == "true" && strings.HasPrefix(v.Parent, "s_") {
-			continue
-		}
-		if q.Get("mine") == "true" {
-			th, err := s.P.SessionRecord(r.Context(), who, v.ID)
-			if err != nil {
-				continue
-			}
-			mine := th.CreatedBy == who.Subject
-			for _, person := range th.Participants {
-				if person.Kind == threads.Person && person.Name == who.Subject {
-					mine = true
-				}
-			}
-			if !mine {
-				continue
-			}
-		}
-		filtered = append(filtered, v)
-	}
-	all = filtered
-	page, next, err := platform.PageSessions(all, limit, q.Get("after"))
-	if err != nil {
+	page, next, err := s.P.SessionsPage(r.Context(), who, platform.SessionQuery{
+		Parent: q.Get("parent"), Agent: q.Get("agent"), Project: q.Get("project"), Status: q.Get("status"),
+		Roots: q.Get("roots") == "true", Mine: q.Get("mine") == "true",
+	}, limit, q.Get("after"))
+	if errors.Is(err, threads.ErrCursor) {
 		fail(w, 400, "after is not the next of a page of sessions")
+		return
+	}
+	if err != nil {
+		s.problem(w, err)
 		return
 	}
 	ok(w, 200, map[string]any{"sessions": page, "next": next})
