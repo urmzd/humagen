@@ -73,6 +73,7 @@ await loadTests([
   "/src/governance.dom.test.tsx",
   "/src/read-audit.dom.test.tsx",
   "/src/layout.dom.test.tsx",
+  "/src/analytics-chart.dom.test.tsx",
   "/src/settings.dom.test.tsx",
   "/src/connections.dom.test.tsx",
   "/src/preferences.dom.test.tsx",
