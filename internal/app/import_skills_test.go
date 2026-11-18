@@ -350,3 +350,42 @@ func TestImportSkillsSaysWhenASkillHoldsEveryRevisionItMay(t *testing.T) {
 		t.Fatalf("err = %v\n%s", err, out)
 	}
 }
+
+// The JSON keeps drafted, the key it had before updates were reported, with
+// what it held then: the skills first drafted by this import, never an
+// updated one. It stands beside added, updated and conflicts.
+func TestImportSkillsJSONKeepsDraftedForTheSkillsFirstDrafted(t *testing.T) {
+	api := &importServer{}
+	server := api.start(t)
+	dir := depot(t, "The code word is HERON.")
+	shape := func(wantDrafted string, wantUpdated, wantConflicts int, args ...string) {
+		t.Helper()
+		out, _ := runImport(t, append([]string{"skills", "--json", dir, "--server", server.URL}, args...)...)
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(out), &raw); err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+		var drafted, added []string
+		var updated, conflicts []map[string]any
+		for key, into := range map[string]any{"drafted": &drafted, "added": &added, "updated": &updated, "conflicts": &conflicts} {
+			if _, has := raw[key]; !has || string(raw[key]) == "null" {
+				t.Fatalf("the JSON lacks %q as an array:\n%s", key, out)
+			}
+			if err := json.Unmarshal(raw[key], into); err != nil {
+				t.Fatalf("%s: %v\n%s", key, err, out)
+			}
+		}
+		if strings.Join(drafted, ",") != wantDrafted || strings.Join(added, ",") != wantDrafted || len(updated) != wantUpdated || len(conflicts) != wantConflicts {
+			t.Fatalf("drafted %v, added %v, updated %v, conflicts %v; want drafted %q", drafted, added, updated, conflicts, wantDrafted)
+		}
+	}
+	// As before this change: a new skill is drafted, and one there is not.
+	shape("depot", 0, 0)
+	shape("", 0, 0)
+	// An updated skill is not in drafted, and neither is one in conflict.
+	putFile(t, dir, "depot/references/facts.md", "The code word is OSPREY.")
+	putFile(t, dir, "tidy/SKILL.md", fmt.Sprintf(skillMD, "tidy", "tidy", "tidy"))
+	shape("tidy", 1, 0)
+	api.edit(t, "depot", "references/facts.md", "The code word is KESTREL.")
+	shape("", 0, 1)
+}

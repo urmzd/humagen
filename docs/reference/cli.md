@@ -384,8 +384,12 @@ not sent.
 `agents:write`. When some sessions, skills or agents are not
 sent, the rest still are, each one left out is named with the reason, and the
 exit code is 1. A skill in conflict counts as not sent. With `--json`,
-`skills` prints `added`, `updated` (each with its new `version`, the
+`skills` prints `drafted`, `added`, `updated` (each with its new `version`, the
 `published` version that stays, and the `changed`, `added` and `removed`
 files), `present`, `conflicts`, `no_room`, `reduced` and `failed`.
+`drafted` is kept for compatibility: it holds what it held before updates
+were reported, the names of the skills the library lacked that this import
+drafted as their first revision, and always equals `added`. An updated skill
+is never in it. New programs read `added`.
 
 # CLI

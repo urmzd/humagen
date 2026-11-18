@@ -924,6 +924,10 @@ type skillsResult struct {
 	// Added are the skills the library did not have, drafted as their first
 	// revision.
 	Added []string `json:"added"`
+	// Drafted is Added under the name it had before updates were reported:
+	// the skills the library lacked, each drafted as its first revision. It
+	// never holds an updated skill. Kept for programs that read it.
+	Drafted []string `json:"drafted"`
 	// Updated are the skills whose folder changed since it was imported,
 	// each drafted as a new revision. Nothing is published.
 	Updated []skillUpdate `json:"updated"`
@@ -1319,6 +1323,7 @@ func importSkills(ctx context.Context, c importOptions, api importAPI, out io.Wr
 		}
 	}
 	sort.Slice(res.Failed, func(i, j int) bool { return res.Failed[i].Name < res.Failed[j].Name })
+	res.Drafted = res.Added
 	left := len(res.Failed) + len(res.NoRoom) + len(res.Conflicts)
 	leftErr := func() error {
 		if left > 0 {
