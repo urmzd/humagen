@@ -121,7 +121,7 @@ function RunsChart({ buckets, wide }: { buckets: Bucket[]; wide: boolean }) {
               x={pad.left - 6}
               y={pad.top + plotH - y(t) + 3}
               textAnchor="end"
-              fontSize={10}
+              fontSize={12}
               fill="var(--aui-muted)"
               style={{ fontVariantNumeric: "tabular-nums" }}
             >
@@ -163,7 +163,7 @@ function RunsChart({ buckets, wide }: { buckets: Bucket[]; wide: boolean }) {
                   x={pad.left + i * slot + slot / 2}
                   y={H - 6}
                   textAnchor="middle"
-                  fontSize={10}
+                  fontSize={12}
                   fill="var(--aui-muted)"
                 >
                   {clock(b.start, wide)}

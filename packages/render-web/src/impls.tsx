@@ -311,7 +311,7 @@ function Callout({ tone, title, text }: PrimitiveProps["Callout"]) {
       className="flex min-w-0 items-start gap-3 rounded-aui border border-[var(--aui-callout-border)] bg-[var(--aui-callout-bg)] p-3 text-aui-sm"
     >
       <span className={`mt-0.5 ${toneText[tone]}`}>{toneIcon[tone]}</span>
-      <div className="flex min-w-0 flex-1 flex-col gap-1 text-aui-muted [&_a]:underline [&_code]:font-aui-mono [&_code]:text-[0.85em]">
+      <div className="flex min-w-0 flex-1 flex-col gap-1 text-aui-muted [&_a]:underline [&_code]:font-aui-mono [&_code]:text-[max(0.85em,var(--text-aui-2xs))]">
         <p className="font-medium text-aui-fg">{title ?? toneLabel[tone]}</p>
         {text && (
           <p className="max-w-[68ch] break-words leading-relaxed">

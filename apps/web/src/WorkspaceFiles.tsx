@@ -579,7 +579,7 @@ export function WorkspaceFiles({
                 >
                   <SaveIcon size={14} />
                   {busy === "save" ? words.saving : words.save}
-                  <kbd className="hidden text-[10px] opacity-60 sm:inline">⌘/Ctrl S</kbd>
+                  <kbd className="hidden text-aui-2xs opacity-60 sm:inline">⌘/Ctrl S</kbd>
                 </Button>
               </div>
               {draft.conflict && (

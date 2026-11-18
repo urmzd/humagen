@@ -222,7 +222,7 @@ function referenceMark(
       return provider ? (
         <span
           aria-hidden="true"
-          className="inline-flex shrink-0 [&>*]:size-3 [&>span]:rounded-sm [&>span]:text-[0.5rem]"
+          className="inline-flex shrink-0 [&>*]:size-3 [&>span]:rounded-sm [&>span]:text-aui-2xs [&>span]:leading-none"
         >
           <ConnectionLogo id={provider} name={provider} />
         </span>

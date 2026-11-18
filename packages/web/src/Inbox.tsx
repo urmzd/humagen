@@ -86,7 +86,7 @@ export function InboxButton({
       </svg>
       Inbox
       {count > 0 && (
-        <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-aui-accent px-1 font-semibold text-[0.625rem] text-aui-accent-fg tabular-nums">
+        <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-aui-accent px-1 font-semibold text-aui-2xs text-aui-accent-fg leading-none tabular-nums">
           {count > 99 ? "99+" : count}
         </span>
       )}
