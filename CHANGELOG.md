@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.135.6 (2026-11-18)
+
+### Bug Fixes
+
+- **platform**: hand back a run delivered again while this process executes it (#368) ([92f678c](https://github.com/urmzd/humagen/commit/92f678ce7c1c8d4b35eaf915977fc22a84be267d))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.135.5...v0.135.6)
+
+
 ## 0.135.4 (2026-11-17)
 
 ### Bug Fixes
