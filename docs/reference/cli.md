@@ -329,12 +329,10 @@ A second import compares each folder with the newest revision the library
 holds of that skill, by the hash of the package: every file's path and
 content, supporting files included. It reports four counts:
 
-| Result | When | What is written |
-| --- | --- | --- |
-| added | The library has no skill of that name | The skill's first revision, a draft |
-| updated as a draft | A file changed, was added, renamed or deleted since the folder was imported | One new draft revision after the newest. The line names the files that differ |
-| present | The newest revision holds exactly what the folder holds | Nothing |
-| conflict | The folder differs and the newest revision was not written by an import: someone saved it in the editor or promoted it, or an earlier release imported it | Nothing |
+- **added**: the library has no skill of that name. The skill's first revision, a draft.
+- **updated as a draft**: a file changed, was added, renamed or deleted since the folder was imported. One new draft revision after the newest. The line names the files that differ.
+- **present**: the newest revision holds exactly what the folder holds. Nothing is written.
+- **conflict**: the folder differs and the newest revision was not written by an import: someone saved it in the editor or promoted it, or an earlier release imported it. Nothing is written.
 
 An updated skill is never published by the import. The published revision
 stays the one agents are bound to and new conversations use until the draft
