@@ -96,6 +96,20 @@ A later draft cannot change that read. Binary content, unselected packages,
 missing files and cross-tenant references are refused. Reading a script does not
 execute it. Private packages retain the existing publication classification.
 
+A model on a [coding agent](../guides/coding-agents.md) (`claude-code`,
+`codex`) is offered no platform tool, so `file_read` cannot serve it. For a
+turn on one, the same pinned package, read in the run's tenant and checked
+against the pinned hash, is written to a directory of that turn's own on the
+host (`pkg/skillfiles`), and the turn's text names each supporting file by its
+absolute path there instead of a `skill:` path. Paths pass the package's own
+path validation and are written through a directory handle that follows
+nothing out of it. The directory holds every supporting file of the pinned
+revision, binary ones included, read only, and is removed when the turn
+returns. A pin that names another tenant's package, another version, or a
+file outside its package refuses the turn, as does a directory that cannot
+be written. A provider declares that its program reads host files
+(`skillfiles.HostReader`); every other model keeps `file_read`.
+
 ## Memory is a managed projection
 
 A chain folder identifies a real Personal, Company, Project or Agent owner.

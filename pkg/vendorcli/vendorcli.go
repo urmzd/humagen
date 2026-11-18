@@ -43,6 +43,7 @@ import (
 
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/sessionimport"
+	"github.com/urmzd/humagen/pkg/skillfiles"
 )
 
 // The kinds of program.
@@ -205,6 +206,11 @@ type provider struct {
 
 // Name implements saigetypes.NamedProvider.
 func (p *provider) Name() string { return p.kind }
+
+// ReadsHostFiles implements skillfiles.HostReader: the program reads files
+// on this host with its own tools and is offered none of the platform's, so
+// a turn's pinned skill files are placed on the host for it.
+func (p *provider) ReadsHostFiles() bool { return true }
 
 // Capabilities implements saigetypes.CapabilityReporter. It says only what
 // the program can be shown: a turn's attachments are sent as they are when
@@ -948,6 +954,13 @@ func (p *provider) command(t turnOf, session string) (args []string, stdin []byt
 			args = append(args, "--input-format", "stream-json")
 		}
 		args = append(args, "--output-format", "stream-json", "--verbose", "--permission-mode", p.cfg.Permissions)
+		// The supporting files of the skills this turn is pinned to are in
+		// a directory of the turn's own, outside Dir, which Claude Code reads
+		// only when it is named. Codex reads outside its workspace in every
+		// sandbox, so it is given nothing.
+		for _, dir := range skillfiles.Dirs(t.ask) {
+			args = append(args, "--add-dir", dir)
+		}
 		if model != "" {
 			args = append(args, "--model", model)
 		}

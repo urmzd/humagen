@@ -566,6 +566,13 @@ never sees a sibling branch's turns. A conversation too long to be replayed
 whole continues no session: each turn starts one, told what was replayed
 ([coding agents](../guides/coding-agents.md)).
 
+A run on a coding agent that uses a published library skill reads the skill's
+supporting files: the pinned revision's files are written to a directory of
+the turn's own on the host, named in what the program is asked, and removed
+when the turn returns ([coding agents](../guides/coding-agents.md#what-carries-over-and-what-does-not)).
+Checked live on Claude Code; for Codex the argument-free read is checked
+with the program alone and by unit test, not in a live run.
+
 Coding agents on Claude Code or Codex have a [model kind](../guides/coding-agents.md)
 each. A turn on Codex fails only when the program says the turn failed, with
 or without a reason, or ends without finishing it; what it reports along the
