@@ -559,6 +559,20 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 
 ## Status
 
+`humagen import sessions` keeps in each session's document what its export
+holds: every turn's time and original id, tool calls linked to their results
+(ChatGPT's too), attachments by name, type and size, and each branch in a
+section naming the turn it forks after, in the order the export's parent links
+give. A document that would now read differently, one an earlier version
+wrote included, is replaced in place under the same id by one conditional
+call (`PUT /api/knowledge/{name}/documents/{id}/text`, taken only from the
+digest of title and text last read), and keeps whether it is left out of
+search. An import the server refuses never writes over the winner: it reports
+the session as a conflict. It is tested
+with synthetic exports and read back from a local server; it is not checked
+against real exports of each tool, and file bytes are not imported
+([import](../reference/cli.md#import-sessions-skills-and-agents)).
+
 A branch of a conversation on a coding agent (Claude Code or Codex) is
 answered by a session of its own: a session is continued only by a turn whose
 conversation so far begins with everything that session holds, so a branch

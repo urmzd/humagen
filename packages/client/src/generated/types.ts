@@ -4086,6 +4086,10 @@ export interface KnowledgeDocument {
   excluded: boolean;
   added_by?: string;
   added_at: string;
+  /** The SHA-256, in hex, of the document's title, a zero byte and its text, each without the space around it, so it changes when either does. A document kept before digests were has none. */
+  digest?: string;
+  /** When its text was last replaced. Absent if never. */
+  updated_at?: string;
 }
 
 export interface CatalogColumn {
@@ -6453,6 +6457,12 @@ export interface AddKnowledgeDocumentBody {
 
 export interface SetKnowledgeDocumentExcludedBody {
   excluded: boolean;
+}
+
+export interface ReplaceKnowledgeDocumentTextBody {
+  title: string;
+  text: string;
+  digest: string;
 }
 
 export interface SaveKnowledgeVariantBody {

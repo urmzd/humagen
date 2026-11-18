@@ -1249,6 +1249,8 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 	case errors.Is(err, wire.ErrExists), errors.Is(err, platform.ErrScheduleExists), errors.Is(err, platform.ErrProjectExists),
 		errors.Is(err, alerts.ErrExists), errors.Is(err, knowledge.ErrExists), errors.Is(err, evals.ErrExists):
 		fail(w, http.StatusConflict, "already exists")
+	case errors.Is(err, knowledge.ErrChanged):
+		fail(w, http.StatusConflict, "the document changed since it was read; read it again")
 	case errors.Is(err, clients.ErrExists):
 		// The message names only a client of the caller's own workspace.
 		fail(w, http.StatusConflict, err.Error())
