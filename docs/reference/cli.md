@@ -162,15 +162,15 @@ result, at most 1,500 bytes of it. Each turn's heading carries what the export
 states about it, in one form for every format:
 
 ```text
-## Asked [TIME id=u1]
+## Asked [T id=u1]
 Tools used:
-- Bash: ls [TIME id=a1 call=t1]
-Tool result [TIME id=r1 call=t1]:
+- Bash: ls [T id=a1 call=t1]
+Tool result [T id=r1 call=t1]:
 ## Branch 1: forks after id=a1
-### Asked [TIME id=u2]
+### Asked [T id=u2]
 ```
 
-`TIME` stands for the time the export states, in UTC, written as
+`T` stands for the time the export states, in UTC, written as
 `2026-10-05T10:00:00Z`. `id` is the original id of the
 message, and `call` the original id of the tool call, so a result names the
 call it answers. A part the export does not state is left out of the brackets.
