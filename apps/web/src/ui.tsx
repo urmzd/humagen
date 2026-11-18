@@ -1381,7 +1381,8 @@ export function Popover({
   onOpen,
 }: {
   onOpen?: () => void;
-  label: string;
+  /** The trigger's name. Leave it out when the button's own text names it. */
+  label?: string;
   button: ReactNode;
   className?: string;
   align?: "left" | "right";

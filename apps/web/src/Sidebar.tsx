@@ -89,7 +89,11 @@ export function SidebarItem({
       href={href}
       onClick={go}
       aria-current={active ? "page" : undefined}
-      aria-label={count ? (badgeLabel ?? `${label}, ${count} need you`) : open ? undefined : label}
+      // Open, the link is named by what it shows: its label, then its count.
+      // An aria-label here would have to repeat those words exactly.
+      aria-label={
+        open ? undefined : count ? (badgeLabel ?? defaultCopy.sidebar.needYou(label, count)) : label
+      }
       className={`relative flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:size-[18px] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${
         open ? "px-2.5" : "w-9 justify-center"
       }`}
@@ -98,12 +102,13 @@ export function SidebarItem({
       {open && <span className="humagen-sidebar-reveal flex-1 truncate text-left">{label}</span>}
       {count > 0 &&
         (open ? (
-          <span
-            aria-hidden
-            className="humagen-sidebar-reveal rounded-full bg-aui-hover px-1.5 text-aui-2xs font-medium text-aui-fg"
-          >
-            {count}
-          </span>
+          <>
+            {" "}
+            <span className="humagen-sidebar-reveal rounded-full bg-aui-hover px-1.5 text-aui-2xs font-medium text-aui-fg">
+              {count}
+            </span>
+            <span className="sr-only"> {badgeLabel ?? defaultCopy.sidebar.needYouSuffix}</span>
+          </>
         ) : (
           <span aria-hidden className="absolute top-1 right-1 size-1.5 rounded-full bg-aui-muted" />
         ))}
@@ -1504,7 +1509,8 @@ export function Sidebar({
               narrow
               up
               side={open ? undefined : "right"}
-              label={defaultCopy.preferences.openFor(name)}
+              // Open, the button is named by the name it shows, then what it opens.
+              label={open ? undefined : defaultCopy.preferences.openFor(name)}
               tooltip={open ? undefined : name}
               className={`flex w-full min-w-0 items-center gap-2 rounded-aui p-1 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover ${
                 open ? "" : "size-9 justify-center"
@@ -1518,6 +1524,7 @@ export function Sidebar({
                       {subtitle && (
                         <span className="truncate text-aui-xs text-aui-muted">| {subtitle}</span>
                       )}
+                      <span className="sr-only">, {defaultCopy.preferences.open}</span>
                     </span>
                   )}
                 </>
