@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.137.3 (2026-11-18)
+
+### Bug Fixes
+
+- **console**: draw the runs chart at its width so labels stay 12px ([155a40d](https://github.com/urmzd/humagen/commit/155a40d463e5bbc7c3bac9c7c0d4fe6c00845619))
+- **console**: keep every text size at or above 12px ([8dc502d](https://github.com/urmzd/humagen/commit/8dc502d88be76d5cc5bcb5cb767104a1ccbdf9eb))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.137.2...v0.137.3)
+
+
 ## 0.137.2 (2026-11-18)
 
 ### Bug Fixes
