@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.137.2 (2026-11-18)
+
+### Bug Fixes
+
+- **web**: tell apart two run changes inside one millisecond ([72ed1c3](https://github.com/urmzd/humagen/commit/72ed1c3cf18ddcc695cd54c7c87f5c83470a4c02))
+
+### Performance
+
+- **console**: read the list of runs once on load ([5b86db1](https://github.com/urmzd/humagen/commit/5b86db11372fabc21eefa9dd1d5f9dda9a285ffe))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.137.1...v0.137.2)
+
+
+## 0.137.0 (2026-11-18)
+
+### Features
+
+- **import**: keep times, ids, tool links, attachments and branches of imported sessions ([179eae1](https://github.com/urmzd/humagen/commit/179eae1ca5738e339fe72f01b448d9ff960c0a23))
+
+### Bug Fixes
+
+- **import**: never write over a winner, and condition on title and text ([62d6de4](https://github.com/urmzd/humagen/commit/62d6de476d9d783fb72ba380f7591e85b83a0bc2))
+- **import**: replace a changed session document in place, by digest ([10300dc](https://github.com/urmzd/humagen/commit/10300dce90a87399d039040980d54bddf8945e7d))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.136.0...v0.137.0)
+
+
 ## 0.136.0 (2026-11-18)
 
 ### Features

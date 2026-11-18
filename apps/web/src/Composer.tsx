@@ -704,7 +704,7 @@ export function Composer({
                 ) : (
                   <span
                     aria-hidden
-                    className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-aui-hover text-[0.6rem] font-medium"
+                    className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-aui-hover text-aui-2xs leading-none font-medium"
                   >
                     {o.kind === "person" ? (o.hint ?? o.label).trim().charAt(0).toUpperCase() : "@"}
                   </span>
@@ -864,8 +864,10 @@ export function Composer({
           onScroll={(e) => {
             if (backdrop.current) backdrop.current.scrollTop = e.currentTarget.scrollTop;
           }}
-          role={tags ? "combobox" : undefined}
-          aria-expanded={tags ? open : undefined}
+          // A multiline text box that completes from a list, not a combobox:
+          // a textarea may not take that role, and a combobox is one line.
+          // The open list is said by aria-controls and the active option.
+          aria-haspopup={tags ? "listbox" : undefined}
           aria-controls={tags && open ? "composer-tags" : undefined}
           aria-autocomplete={tags ? "list" : undefined}
           aria-activedescendant={

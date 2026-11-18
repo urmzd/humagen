@@ -313,8 +313,11 @@
   --shadow-aui-md: var(--aui-shadow-md);
   --shadow-aui-pop: var(--aui-shadow-pop);
 
-  /* Type scale. Chat UI is dense: 14px body, 13px secondary, 12px meta. */
-  --text-aui-2xs: 0.6875rem;
+  /* Type scale. Chat UI is dense: 14px body, 13px secondary, 12px meta.
+     12px is the floor, at every width: nothing in the scale is smaller. The
+     smallest step keeps its name and a tighter line than xs, for pills, counts
+     and timestamps that sit in a 20px row. */
+  --text-aui-2xs: 0.75rem;
   --text-aui-2xs--line-height: 1rem;
   --text-aui-xs: 0.75rem;
   --text-aui-xs--line-height: 1.125rem;
@@ -555,7 +558,8 @@
   background: var(--aui-code-bg);
   padding: 0.1rem var(--aui-inline-code-padding);
   font-family: var(--font-aui-mono);
-  font-size: 0.85em;
+  /* Smaller than the prose around it, never under the scale's 12px floor. */
+  font-size: max(0.85em, var(--text-aui-2xs));
 }
 .aui-prose :where(blockquote) {
   margin: 0.75rem 0;

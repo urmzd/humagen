@@ -1,4 +1,13 @@
-import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
+import {
+  type FormEvent,
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   api,
   type Bucket,
@@ -81,98 +90,209 @@ function ceiling(n: number): number {
   return 10 * pow;
 }
 
-/** Runs started per interval, stacked by how they ended. */
-function RunsChart({ buckets, wide }: { buckets: Bucket[]; wide: boolean }) {
-  const [hover, setHover] = useState<number | null>(null);
-  const W = 920;
-  const H = 220;
-  const pad = { top: 8, right: 8, bottom: 22, left: 30 };
-  const plotW = W - pad.left - pad.right;
-  const plotH = H - pad.top - pad.bottom;
+/** The size of every label in the chart, in CSS pixels: the type scale's floor. */
+export const CHART_TEXT_PX = 12;
+/** The room one character of a label takes at that size, rounded up, digits and capitals included. */
+const CHART_CHAR_PX = 7.5;
+/** The clear space kept between two labels on the time axis. */
+const CHART_LABEL_GAP_PX = 12;
+/** Narrower than this the chart scrolls sideways instead of squeezing its columns. */
+const CHART_MIN_WIDTH_PX = 240;
+
+const labelWidth = (text: string) => Math.ceil(text.length * CHART_CHAR_PX);
+
+/** Where everything in the runs chart goes, for a chart drawn `width` CSS pixels wide. */
+export interface ChartLayout {
+  width: number;
+  height: number;
+  pad: { top: number; right: number; bottom: number; left: number };
+  plotW: number;
+  plotH: number;
+  slot: number;
+  bar: number;
+  max: number;
+  ticks: number[];
+  /** The time labels that fit: the bucket each names, its center and its estimated width. */
+  labels: { index: number; x: number; text: string; width: number }[];
+}
+
+/**
+ * Lays the chart out at the width it is drawn, one unit to one CSS pixel, so
+ * its labels are the size they say they are on a phone as on a desktop. The
+ * count axis is as wide as its longest number. The time axis shows at most six
+ * labels and fewer when they would touch: every label keeps a gap from the
+ * next and stays inside the chart.
+ */
+export function chartLayout(buckets: Bucket[], width: number, wide: boolean): ChartLayout {
+  const W = Math.max(Math.round(width), CHART_MIN_WIDTH_PX);
+  const H = W < 480 ? 180 : 220;
   const max = ceiling(
     Math.max(...buckets.map((b) => b.completed + b.failed + b.stopped + b.active), 1),
   );
+  const ticks = max <= 4 ? Array.from({ length: max + 1 }, (_, i) => i) : [0, max / 2, max];
+  const pad = {
+    top: 8,
+    right: 8,
+    // Room for the time labels with clear space under the zero of the count axis.
+    bottom: 28,
+    left: Math.max(30, Math.max(...ticks.map((t) => labelWidth(String(t)))) + 10),
+  };
+  const plotW = W - pad.left - pad.right;
+  const plotH = H - pad.top - pad.bottom;
   const slot = plotW / Math.max(buckets.length, 1);
   const bar = Math.max(Math.min(slot - 2, 24), 1);
+  const texts = buckets.map((b) => clock(b.start, wide));
+  const place = (every: number) =>
+    texts.flatMap((text, index) => {
+      if (index % every !== 0) return [];
+      const w = labelWidth(text);
+      // A label near an edge moves in so that none of it is cut off.
+      const x = Math.min(Math.max(pad.left + index * slot + slot / 2, w / 2), W - w / 2);
+      return [{ index, x, text, width: w }];
+    });
+  const fits = (labels: ChartLayout["labels"]) =>
+    labels.every((l, i) => {
+      const next = labels[i + 1];
+      return !next || next.x - l.x >= (l.width + next.width) / 2 + CHART_LABEL_GAP_PX;
+    });
+  let every = Math.max(1, Math.ceil(buckets.length / 6));
+  let labels = place(every);
+  while (!fits(labels) && every < buckets.length) {
+    every += 1;
+    labels = place(every);
+  }
+  return { width: W, height: H, pad, plotW, plotH, slot, bar, max, ticks, labels };
+}
+
+/** An element's width in CSS pixels, kept current as it resizes. 0 until it is measured. */
+function useWidth<T extends Element>(): [RefObject<T | null>, number] {
+  const ref = useRef<T>(null);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const read = () => setWidth(Math.round(el.getBoundingClientRect().width));
+    read();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", read);
+      return () => window.removeEventListener("resize", read);
+    }
+    const watch = new ResizeObserver(read);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, []);
+  return [ref, width];
+}
+
+/**
+ * Runs started per interval, stacked by how they ended. Drawn at the width of
+ * its container, never scaled to it: a scaled drawing shrinks its labels with
+ * it, to a third of their size on a phone.
+ */
+export function RunsChart({ buckets, wide }: { buckets: Bucket[]; wide: boolean }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const [frame, measured] = useWidth<HTMLDivElement>();
+  const {
+    width: W,
+    height: H,
+    pad,
+    plotH,
+    slot,
+    bar,
+    max,
+    ticks,
+    labels,
+  } = chartLayout(buckets, measured, wide);
   const y = (v: number) => (v / max) * plotH;
-  const ticks = max <= 4 ? Array.from({ length: max + 1 }, (_, i) => i) : [0, max / 2, max];
-  const labelEvery = Math.max(1, Math.ceil(buckets.length / 6));
   const hovered = hover === null ? undefined : buckets[hover];
 
   return (
     <div className="relative">
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="block w-full"
-        role="img"
-        aria-label="Runs started over time, by outcome"
-      >
-        {ticks.map((t) => (
-          <g key={t}>
-            <line
-              x1={pad.left}
-              x2={W - pad.right}
-              y1={pad.top + plotH - y(t)}
-              y2={pad.top + plotH - y(t)}
-              stroke="var(--aui-border)"
-              strokeWidth={1}
-            />
-            <text
-              x={pad.left - 6}
-              y={pad.top + plotH - y(t) + 3}
-              textAnchor="end"
-              fontSize={10}
-              fill="var(--aui-muted)"
-              style={{ fontVariantNumeric: "tabular-nums" }}
-            >
-              {t}
-            </text>
-          </g>
-        ))}
-        {buckets.map((b, i) => {
-          const x = pad.left + i * slot + (slot - bar) / 2;
-          let base = pad.top + plotH;
-          const parts = series.filter((s) => b[s.key] > 0);
-          return (
-            // biome-ignore lint/a11y/noStaticElementInteractions: hover reveals a tooltip; the same values are in the table below
-            <g key={b.start} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
-              {/* The hit target is the whole slot, not the thin bar. */}
-              <rect
-                x={pad.left + i * slot}
-                y={pad.top}
-                width={slot}
-                height={plotH}
-                fill="transparent"
-              />
-              {parts.map((s, n) => {
-                // A 2px gap in the surface color separates touching segments.
-                const h = Math.max(y(b[s.key]) - (n > 0 ? 2 : 0), 1);
-                base -= h + (n > 0 ? 2 : 0);
-                const top = n === parts.length - 1;
-                return (
-                  <path
-                    key={s.key}
-                    d={segment(x, base, bar, h, top ? Math.min(4, h, bar / 2) : 0)}
-                    fill={s.fill}
-                    opacity={hover === null || hover === i ? 1 : 0.45}
-                  />
-                );
-              })}
-              {i % labelEvery === 0 && (
+      <div ref={frame} className="aui-scroll overflow-x-auto" style={{ minHeight: H }}>
+        {/* Nothing is drawn until the width is known: there is no right size to guess. */}
+        {measured > 0 && (
+          <svg
+            width={W}
+            height={H}
+            viewBox={`0 0 ${W} ${H}`}
+            className="block max-w-none"
+            role="img"
+            aria-label="Runs started over time, by outcome"
+          >
+            {ticks.map((t) => (
+              <g key={t}>
+                <line
+                  x1={pad.left}
+                  x2={W - pad.right}
+                  y1={pad.top + plotH - y(t)}
+                  y2={pad.top + plotH - y(t)}
+                  stroke="var(--aui-border)"
+                  strokeWidth={1}
+                />
                 <text
-                  x={pad.left + i * slot + slot / 2}
-                  y={H - 6}
-                  textAnchor="middle"
-                  fontSize={10}
+                  x={pad.left - 6}
+                  y={pad.top + plotH - y(t) + 4}
+                  textAnchor="end"
+                  fontSize={CHART_TEXT_PX}
                   fill="var(--aui-muted)"
+                  style={{ fontVariantNumeric: "tabular-nums" }}
                 >
-                  {clock(b.start, wide)}
+                  {t}
                 </text>
-              )}
-            </g>
-          );
-        })}
-      </svg>
+              </g>
+            ))}
+            {buckets.map((b, i) => {
+              const x = pad.left + i * slot + (slot - bar) / 2;
+              let base = pad.top + plotH;
+              const parts = series.filter((s) => b[s.key] > 0);
+              return (
+                // biome-ignore lint/a11y/noStaticElementInteractions: hover reveals a tooltip; the same values are in the table below
+                <g
+                  key={b.start}
+                  onMouseEnter={() => setHover(i)}
+                  onMouseLeave={() => setHover(null)}
+                >
+                  {/* The hit target is the whole slot, not the thin bar. */}
+                  <rect
+                    x={pad.left + i * slot}
+                    y={pad.top}
+                    width={slot}
+                    height={plotH}
+                    fill="transparent"
+                  />
+                  {parts.map((s, n) => {
+                    // A 2px gap in the surface color separates touching segments.
+                    const h = Math.max(y(b[s.key]) - (n > 0 ? 2 : 0), 1);
+                    base -= h + (n > 0 ? 2 : 0);
+                    const top = n === parts.length - 1;
+                    return (
+                      <path
+                        key={s.key}
+                        d={segment(x, base, bar, h, top ? Math.min(4, h, bar / 2) : 0)}
+                        fill={s.fill}
+                        opacity={hover === null || hover === i ? 1 : 0.45}
+                      />
+                    );
+                  })}
+                </g>
+              );
+            })}
+            {labels.map((l) => (
+              <text
+                key={l.index}
+                x={l.x}
+                y={H - 6}
+                textAnchor="middle"
+                fontSize={CHART_TEXT_PX}
+                fill="var(--aui-muted)"
+                style={{ fontVariantNumeric: "tabular-nums" }}
+              >
+                {l.text}
+              </text>
+            ))}
+          </svg>
+        )}
+      </div>
       {hovered && hover !== null && (
         <div
           className="aui-glass pointer-events-none absolute top-1 rounded-aui px-2.5 py-1.5 text-aui-xs text-aui-fg shadow-aui-pop"

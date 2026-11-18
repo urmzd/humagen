@@ -354,7 +354,13 @@ test("the main navigation has seven destinations, Projects and Scheduled among t
     links.map((a) => a.getAttribute("href")),
     ["/", "/sessions", "/alerts", "/projects", "/agents", "/scheduled", "/artifacts"],
   );
-  assert.equal(links[2]?.getAttribute("aria-label"), "Alerts, 2 need you");
+  // The open sidebar names the link by the label and count it shows.
+  assert.equal(
+    within(screen.getByRole("navigation", { name: "Sections" })).getByRole("link", {
+      name: "Alerts 2 need you",
+    }),
+    links[2],
+  );
 });
 
 test("session card links preserve native modified clicks and intercept only ordinary navigation", () => {

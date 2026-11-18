@@ -149,7 +149,7 @@ test("session UX choosing Start fresh preserves the draft and its queued routing
     );
   }
   render(<Box />);
-  const box = screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement;
+  const box = screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement;
   fireEvent.change(box, { target: { value: "First request" } });
   fireEvent.keyDown(box, { key: "Enter" });
   fireEvent.change(box, { target: { value: "Compare @rev", selectionStart: 12 } });
@@ -663,7 +663,7 @@ test("an empty composer says its own words, never the default agent's token, and
     );
   }
   render(<Box />);
-  const box = screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement;
+  const box = screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement;
   assert.equal(box.getAttribute("placeholder"), "Reply");
   fireEvent.change(box, { target: { value: "@lead " } });
   assert.equal(box.getAttribute("placeholder"), "Message @lead");

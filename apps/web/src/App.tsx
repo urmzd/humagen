@@ -12,7 +12,7 @@ import { Agents } from "./Agents.tsx";
 import { Assignments } from "./Assignments.tsx";
 import { Audit } from "./Audit.tsx";
 import { Automations } from "./Automations.tsx";
-import type { Run } from "./adapter.ts";
+import type { Run, RunEvent } from "./adapter.ts";
 import { agentHuePath, configureAgentHues } from "./agentHues.ts";
 import {
   type Alert,
@@ -64,6 +64,7 @@ import {
   type SettingsSection,
   useRoute,
 } from "./route.ts";
+import { reflects } from "./runsRead.ts";
 import { Schedules } from "./Schedules.tsx";
 import {
   AlertsPage,
@@ -483,13 +484,37 @@ function Console({
         .then(setSchedules)
         .catch(() => {});
   }, [can]);
+  // The list of runs last read, how many reads are in flight, and the run
+  // events that arrived during one. The stream replays the bus each time it
+  // connects, and what the list already shows is not read again (runsRead.ts).
+  const runsRead = useRef<{
+    held: Run[] | null;
+    flying: number;
+    waiting: RunEvent[];
+    again: () => void;
+  }>({ held: null, flying: 0, waiting: [], again: () => {} });
   // Everything a run starting or ending can change.
   const loadRuns = useCallback(() => {
     if (!can("runs:read")) return;
+    const read = runsRead.current;
+    read.flying++;
     api
       .runs()
-      .then(setRuns)
-      .catch(() => {});
+      .then((list) => {
+        read.held = list;
+        setRuns(list);
+      })
+      .catch(() => {
+        // A read that failed holds nothing, so whatever arrives next is news.
+        read.held = null;
+      })
+      .finally(() => {
+        read.flying--;
+        if (read.flying > 0) return;
+        // Events that arrived during the read are judged against what it returned.
+        const news = read.waiting.splice(0).some((e) => !reflects(read.held, e));
+        if (news) read.again();
+      });
     api
       .threads()
       .then(setThreads)
@@ -519,11 +544,20 @@ function Console({
   const pending = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!can("runs:read")) return;
+    const read = runsRead.current;
+    const soon = () => {
+      window.clearTimeout(pending.current);
+      pending.current = window.setTimeout(loadRuns, 150);
+    };
+    read.again = soon;
     const close = subscribe(
       { type: runStateTypes },
       {
-        onOpen: () => {
-          loadRuns();
+        onOpen: (resumed) => {
+          // The first connection follows the read made on arrival, and its
+          // replay says what changed since. A later one missed what was sent
+          // while it was away, so everything is read again.
+          if (resumed || (read.held === null && read.flying === 0)) loadRuns();
           loadAgents();
         },
         onState: setLive,
@@ -532,18 +566,16 @@ function Console({
           loadProjects();
         },
         // A person's message starts no run, so the stream says so by name.
-        onThread: () => {
-          window.clearTimeout(pending.current);
-          pending.current = window.setTimeout(loadRuns, 150);
-        },
-        onEvent: () => {
-          window.clearTimeout(pending.current);
-          pending.current = window.setTimeout(loadRuns, 150);
+        onThread: soon,
+        onEvent: (e) => {
+          if (read.flying > 0) read.waiting.push(e);
+          else if (!reflects(read.held, e)) soon();
         },
       },
     );
     return () => {
       window.clearTimeout(pending.current);
+      read.again = () => {};
       close();
     };
   }, [can, loadRuns, loadAgents, loadInbox, loadProjects]);

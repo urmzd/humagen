@@ -38,7 +38,7 @@ function setup() {
     );
   }
   render(<Compose />);
-  const box = screen.getByRole("combobox") as HTMLTextAreaElement;
+  const box = screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement;
   const type = (value: string) => fireEvent.change(box, { target: { value } });
   const menu = () => screen.queryByRole("listbox", { name: words.commands });
   return { box, type, menu, sent };
@@ -68,6 +68,38 @@ test("/ opens the command menu of skills, each with its description and kind, th
   // A slash inside a word or a path opens nothing.
   type("and/rev");
   assert.equal(menu(), null);
+});
+
+test("the composer is a multiline text box named Message that completes from a list", () => {
+  const { box, type, menu } = setup();
+  assert.equal(box.tagName, "TEXTAREA", "a textarea is multiline");
+  // A textarea may not be a combobox, and aria-expanded is not a text box's.
+  assert.equal(box.hasAttribute("role"), false);
+  assert.equal(box.hasAttribute("aria-expanded"), false);
+  assert.equal(screen.queryByRole("combobox"), null);
+  assert.equal(box.getAttribute("aria-autocomplete"), "list");
+  assert.equal(box.getAttribute("aria-haspopup"), "listbox");
+  assert.equal(box.hasAttribute("aria-controls"), false, "nothing is controlled while closed");
+  assert.equal(box.hasAttribute("aria-activedescendant"), false);
+  type("/rev");
+  const list = menu();
+  assert.ok(list, "the command menu opens");
+  assert.equal(box.getAttribute("aria-controls"), list.id);
+  const active = box.getAttribute("aria-activedescendant");
+  assert.equal(active, within(list).getAllByRole("option")[0]?.id);
+  fireEvent.keyDown(box, { key: "ArrowDown" });
+  assert.equal(
+    box.getAttribute("aria-activedescendant"),
+    within(list).getAllByRole("option")[1]?.id,
+    "the arrow keys move the active option",
+  );
+  fireEvent.keyDown(box, { key: "Escape" });
+  assert.equal(menu(), null);
+  assert.equal(box.hasAttribute("aria-controls"), false);
+  // Shift+Enter is a new line, never a send: the text box keeps its text.
+  type("one");
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  assert.equal(box.value, "one");
 });
 
 test("arrow keys and Enter pick a command, written /name as a token, and sending posts the text", async () => {
