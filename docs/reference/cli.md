@@ -145,7 +145,8 @@ place, is a session's document that would now read differently.
 humagen import sessions
 humagen import sessions --since 720h --match humagen
 humagen import sessions --from none --export ~/Downloads/conversations.json
-humagen import sessions --from none --export ~/Downloads/conversations.json --project field-notes
+humagen import sessions --from none --project field-notes \
+  --export ~/Downloads/conversations.json
 humagen import skills
 humagen import skills ~/.agents/skills --only ship,pr --scope workspace
 humagen import agents --provider anthropic --model claude-sonnet-5-5
