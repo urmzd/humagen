@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.137.0 (2026-11-18)
+
+### Features
+
+- **import**: keep times, ids, tool links, attachments and branches of imported sessions ([179eae1](https://github.com/urmzd/humagen/commit/179eae1ca5738e339fe72f01b448d9ff960c0a23))
+
+### Bug Fixes
+
+- **import**: never write over a winner, and condition on title and text ([62d6de4](https://github.com/urmzd/humagen/commit/62d6de476d9d783fb72ba380f7591e85b83a0bc2))
+- **import**: replace a changed session document in place, by digest ([10300dc](https://github.com/urmzd/humagen/commit/10300dce90a87399d039040980d54bddf8945e7d))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.136.0...v0.137.0)
+
+
 ## 0.136.0 (2026-11-18)
 
 ### Features
