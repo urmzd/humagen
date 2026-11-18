@@ -1867,7 +1867,12 @@ export function subscribe(
   /** `thread` follows one conversation as its room, and takes `type` alone. */
   filter: { run?: string; thread?: string; type?: readonly string[] },
   handlers: {
-    onOpen?: () => void;
+    /**
+     * The stream connected. `resumed` is false for the first connection made
+     * without waiting, which has missed nothing, and true for every other: a
+     * reconnect, a return from a hidden tab, or a read made in a stream's place.
+     */
+    onOpen?: (resumed: boolean) => void;
     onEvent: (e: RunEvent) => void;
     onState?: (live: boolean) => void;
     /** The inbox changed. It arrives as a named event, apart from run events. */
@@ -1885,9 +1890,12 @@ export function subscribe(
   const qs = query.toString();
   return openStream(
     `/api/events${qs ? `?${qs}` : ""}`,
-    (source) => {
+    (source, resumed) => {
+      // A source reconnects by itself after an error, and opens again when it does.
+      let again = resumed;
       source.onopen = () => {
-        handlers.onOpen?.();
+        handlers.onOpen?.(again);
+        again = true;
         handlers.onState?.(true);
       };
       source.onerror = () => handlers.onState?.(false);
@@ -1909,7 +1917,7 @@ export function subscribe(
       });
       // With no connection to spare, the caller reads again as it would on a reconnect.
     },
-    { poll: () => handlers.onOpen?.() },
+    { poll: () => handlers.onOpen?.(true) },
   );
 }
 
