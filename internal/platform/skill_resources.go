@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"path"
 	"strings"
-	"sync"
 	"unicode/utf8"
 
 	"github.com/urmzd/humagen/internal/wire"
@@ -79,7 +78,10 @@ func (p *Platform) pinnedPackage(tenant string, skill pinnedSkill) (saigeskills.
 // give it a pinned skill's supporting files. For a turn on one, the files
 // of the revisions the run is pinned to are written to a directory of the
 // turn's own (pkg/skillfiles), the turn's text names each by its path there,
-// and the directory is removed when the turn returns, however it ends.
+// and the directory is removed when the turn returns, however it ends. The
+// directory is placed for the run and tenant the runtime gave this turn,
+// and the provider is granted it by those alone (skillfiles.Granted): the
+// text names the paths, and names grant nothing.
 //
 // Only what the run was admitted with is written: the pinned packages, read
 // in the run's tenant and checked against the pinned hash (pinnedPackage),
@@ -96,17 +98,11 @@ type hostFiles struct {
 	tool bool
 }
 
-// placedSkillFiles is the directory of each turn that has one.
-type placedSkillFiles struct {
-	mu   sync.Mutex
-	dirs map[string]string
-}
-
-func skillFilesKey(req runtime.Request) string { return req.Tenant + "\x00" + req.RunID }
-
 // skillReaders reports how the models a turn may run on read supporting
-// files: host when the one it starts on reads this host's files itself, and
-// tool when any of them is offered the platform's tools instead.
+// files: host when any of them, the one it starts on or one it may fall back
+// to, reads this host's files itself, and tool when any of them is offered
+// the platform's tools instead. A turn is composed once for every model of
+// its chain, so each kind is told its own way when the chain holds both.
 func (p *Platform) skillReaders(req runtime.Request) (host, tool bool) {
 	spec := req.Definition.Spec
 	reads := func(ref native.ModelRef) bool {
@@ -126,10 +122,10 @@ func (p *Platform) skillReaders(req runtime.Request) (host, tool bool) {
 		reader, ok := model.(skillfiles.HostReader)
 		return ok && reader.ReadsHostFiles()
 	}
-	host = reads(native.ModelRef{Provider: spec.Provider, Model: spec.Model})
-	tool = !host
-	for _, ref := range spec.Fallbacks {
-		if !reads(ref) {
+	for _, ref := range append([]native.ModelRef{{Provider: spec.Provider, Model: spec.Model}}, spec.Fallbacks...) {
+		if reads(ref) {
+			host = true
+		} else {
 			tool = true
 		}
 	}
@@ -173,19 +169,9 @@ func (p *Platform) hostSkillFiles(req runtime.Request, skills []pinnedSkill) (ho
 			files = append(files, skillfiles.File{Path: path.Join(skill.Name, clean), Data: data})
 		}
 	}
-	dir, err := skillfiles.Write(files, skillfiles.Limits{Files: packages * library.MaxPackageFiles, Bytes: packages * library.MaxPackageBytes})
+	dir, err := skillfiles.Place(req.Tenant, req.RunID, files, skillfiles.Limits{Files: packages * library.MaxPackageFiles, Bytes: packages * library.MaxPackageBytes})
 	if err != nil {
 		return hostFiles{}, fmt.Errorf("%w: %v", ErrSandbox, err)
-	}
-	p.skillFiles.mu.Lock()
-	if p.skillFiles.dirs == nil {
-		p.skillFiles.dirs = map[string]string{}
-	}
-	old := p.skillFiles.dirs[skillFilesKey(req)]
-	p.skillFiles.dirs[skillFilesKey(req)] = dir
-	p.skillFiles.mu.Unlock()
-	if old != "" {
-		_ = skillfiles.Remove(old)
 	}
 	return hostFiles{dir: dir, tool: tool}, nil
 }
@@ -193,14 +179,7 @@ func (p *Platform) hostSkillFiles(req runtime.Request, skills []pinnedSkill) (ho
 // releaseSkillFiles removes the directory a turn's skill files were placed
 // in. It runs when the turn returns: answered, failed, stopped or parked.
 func (p *Platform) releaseSkillFiles(req runtime.Request) {
-	p.skillFiles.mu.Lock()
-	dir := p.skillFiles.dirs[skillFilesKey(req)]
-	delete(p.skillFiles.dirs, skillFilesKey(req))
-	p.skillFiles.mu.Unlock()
-	if dir == "" {
-		return
-	}
-	if err := skillfiles.Remove(dir); err != nil {
+	if err := skillfiles.Release(req.Tenant, req.RunID); err != nil {
 		p.log.Warn("platform: a turn's skill files were not removed", "run", req.RunID, "error", err)
 	}
 }

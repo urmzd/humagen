@@ -2,11 +2,14 @@ package skillfiles
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/urmzd/saige/flow/isolation"
 )
 
 var limits = Limits{Files: 8, Bytes: 1 << 10}
@@ -121,46 +124,88 @@ func TestADirectoryNobodyRemovedIsSweptWhenItIsOld(t *testing.T) {
 	}
 }
 
-func TestDirsTakesOnlyADirectoryThatIsPlacedNow(t *testing.T) {
-	root := isolate(t)
-	dir := place(t)
-	text := "Read these:\n" + filepath.Join(dir, "brief", "a.md") + " (1 bytes)\n" + filepath.Join(dir, "brief", "b.md") + " (2 bytes)"
-	if got := Dirs(text); len(got) != 1 || got[0] != dir {
-		t.Fatalf("Dirs = %v, want %s", got, dir)
-	}
-	// What a person could type names nothing: a directory that was never
-	// placed, the root itself, a path elsewhere, and one that climbs out.
-	never := filepath.Join(root, "0123456789abcdef0123456789abcdef")
-	plain := filepath.Join(root, "notes")
-	if err := os.Mkdir(plain, 0o700); err != nil {
+// turnOf is the context a turn of one run of one tenant runs under, as the
+// runtime makes it.
+func turnOf(tenant, run string) context.Context {
+	return isolation.WithRun(context.Background(), isolation.Unisolated(isolation.Request{Tenant: tenant, Run: run}))
+}
+
+var one = []File{{Path: "brief/a.md", Data: []byte("a")}}
+
+func TestATurnIsGrantedTheDirectoryOfItsOwnRunAndNoOther(t *testing.T) {
+	isolate(t)
+	own, err := Place("acme", "r1", one, limits)
+	if err != nil {
 		t.Fatal(err)
 	}
-	for _, typed := range []string{never + "/x.md", root + "/x.md", plain + "/x.md", "/etc/passwd", root + "/../../etc/passwd", dir + "x/a.md", filepath.Base(dir) + "/a.md"} {
-		if got := Dirs("please read " + typed); len(got) != 0 {
-			t.Errorf("%q named %v", typed, got)
+	other, err := Place("acme", "r2", one, limits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = Release("acme", "r1"), Release("acme", "r2") })
+	if got := Granted(turnOf("acme", "r1")); len(got) != 1 || got[0] != own {
+		t.Fatalf("Granted = %v, want %s", got, own)
+	}
+	if got := Granted(turnOf("acme", "r2")); len(got) != 1 || got[0] != other {
+		t.Fatalf("Granted = %v, want %s", got, other)
+	}
+	// Another tenant's run of the same name, a run with no files, a turn
+	// that names no run, and a caller that is no platform turn: nothing.
+	for name, ctx := range map[string]context.Context{
+		"another tenant": turnOf("globex", "r1"), "a run with none": turnOf("acme", "r3"),
+		"no run": turnOf("acme", ""), "no tenant": turnOf("", "r1"), "no claim": context.Background(),
+		"a nil claim": isolation.WithRun(context.Background(), nil),
+	} {
+		if got := Granted(ctx); len(got) != 0 {
+			t.Errorf("%s was granted %v", name, got)
 		}
+	}
+	if _, err := Place("", "r1", one, limits); !errors.Is(err, ErrFiles) {
+		t.Errorf("files were placed for no tenant: %v", err)
+	}
+	if _, err := Place("acme", "", one, limits); !errors.Is(err, ErrFiles) {
+		t.Errorf("files were placed for no run: %v", err)
+	}
+	// Placing again for a run replaces its directory and removes the old.
+	again, err := Place("acme", "r1", one, limits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(own); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the run's earlier directory was kept: %v", err)
+	}
+	if got := Granted(turnOf("acme", "r1")); len(got) != 1 || got[0] != again {
+		t.Fatalf("Granted = %v, want %s", got, again)
+	}
+	// Releasing one run leaves the other's, and grants the first nothing.
+	if err := Release("acme", "r1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(again); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a released directory is still there: %v", err)
+	}
+	if got := Granted(turnOf("acme", "r1")); len(got) != 0 {
+		t.Fatalf("a released run is still granted %v", got)
+	}
+	if got := Granted(turnOf("acme", "r2")); len(got) != 1 || got[0] != other {
+		t.Fatalf("releasing one run took another's: %v", got)
+	}
+	if err := Release("acme", "r1"); err != nil {
+		t.Fatalf("releasing a run with nothing placed: %v", err)
+	}
+}
+
+func TestRemoveTakesOnlyADirectoryWriteMade(t *testing.T) {
+	root := isolate(t)
+	plain := filepath.Join(root, "notes")
+	place(t)
+	if err := os.Mkdir(plain, 0o700); err != nil {
+		t.Fatal(err)
 	}
 	if err := Remove(plain); err == nil {
 		t.Error("Remove took a directory Write did not make")
 	}
 	if err := Remove(filepath.Dir(root)); err == nil {
 		t.Error("Remove took a directory outside the root")
-	}
-	if err := Remove(dir); err != nil {
-		t.Fatal(err)
-	}
-	if got := Dirs(text); len(got) != 0 {
-		t.Fatalf("a removed directory is still named: %v", got)
-	}
-}
-
-func TestTextThatNamesManyDirectoriesNamesNone(t *testing.T) {
-	isolate(t)
-	text := ""
-	for range maxDirs + 1 {
-		text += filepath.Join(place(t), "brief", "a.md") + "\n"
-	}
-	if got := Dirs(text); len(got) != 0 {
-		t.Fatalf("Dirs = %v", got)
 	}
 }

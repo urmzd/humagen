@@ -230,7 +230,8 @@ const skillsPrecedence = "The person asked you to use these skills for this turn
 // program reads this host's files itself is offered no such tool, so host
 // places the pinned files where it can read them and they are named by
 // their paths there (hostSkillFiles); a turn they cannot be placed for is
-// refused rather than run without them. A nil host places nothing.
+// refused rather than run without them. A turn whose chain holds both kinds
+// of model is told both ways. A nil host places nothing.
 func withSkills(req runtime.Request, host func(runtime.Request, []pinnedSkill) (hostFiles, error)) (runtime.Request, error) {
 	raw, ok := req.Meta[runs.MetaSkills]
 	if !ok {
@@ -264,17 +265,23 @@ func withSkills(req runtime.Request, host func(runtime.Request, []pinnedSkill) (
 		if len(s.Resources) == 0 {
 			continue
 		}
-		if files.dir != "" {
-			manifest := []string{"Supporting files are on this host for this turn only, read only. Read them on demand with your own file tools at these exact paths. Reading a script does not execute it:"}
-			for _, resource := range s.Resources {
-				manifest = append(manifest, fmt.Sprintf("%s (%d bytes)", filepath.Join(files.dir, s.Name, filepath.FromSlash(resource.Path)), resource.Size))
-			}
-			parts = append(parts, strings.Join(manifest, "\n"))
-		}
 		if files.tool {
 			manifest := []string{"Supporting files are read on demand with file_read using these exact paths. Reading a script does not execute it:"}
 			for _, resource := range s.Resources {
 				manifest = append(manifest, fmt.Sprintf("skill:%s/%s (%d bytes)", s.Name, resource.Path, resource.Size))
+			}
+			parts = append(parts, strings.Join(manifest, "\n"))
+		}
+		if files.dir != "" {
+			opening := "Supporting files are on this host for this turn only, read only. Read them on demand with your own file tools at these exact paths. Reading a script does not execute it:"
+			if files.tool {
+				// The turn may run on either kind of model, and each is
+				// told which of the two ways is its own.
+				opening = "If you are not offered file_read, the same files are on this host for this turn only, read only. Read them on demand with your own file tools at these exact paths. Reading a script does not execute it:"
+			}
+			manifest := []string{opening}
+			for _, resource := range s.Resources {
+				manifest = append(manifest, fmt.Sprintf("%s (%d bytes)", filepath.Join(files.dir, s.Name, filepath.FromSlash(resource.Path)), resource.Size))
 			}
 			parts = append(parts, strings.Join(manifest, "\n"))
 		}

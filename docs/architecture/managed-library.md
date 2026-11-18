@@ -108,7 +108,16 @@ revision, binary ones included, read only, and is removed when the turn
 returns. A pin that names another tenant's package, another version, or a
 file outside its package refuses the turn, as does a directory that cannot
 be written. A provider declares that its program reads host files
-(`skillfiles.HostReader`); every other model keeps `file_read`.
+(`skillfiles.HostReader`); every other model keeps `file_read`. The files
+are placed when any model of the turn's chain, the one it starts on or a
+fallback, is such a provider, and a chain that also holds a native model is
+told both the `skill:` paths and the host paths.
+
+The provider lets its program read only the directory placed for the run its
+turn belongs to (`skillfiles.Granted`). The run and tenant are the ones the
+runtime names on the turn's context, set from the run's record when the turn
+starts. Nothing in the turn's text is read for it, so a path a person types,
+another run's included, grants nothing.
 
 ## Memory is a managed projection
 

@@ -156,7 +156,13 @@ too, as `--effort` to Claude Code and as `model_reasoning_effort` to Codex.
   temporary directory, outside `dir`, and what the program is asked names
   each file by its absolute path there. Claude Code is given that directory
   with `--add-dir`; Codex reads outside its workspace in every sandbox and
-  needs nothing. The files are the pinned revision's exact bytes, binary
+  needs nothing. Which directory Claude Code is given is never read from the
+  message: it is the one placed for the turn's own run, in its own workspace,
+  so a path typed into a message, another run's included, adds no directory.
+  An agent whose models are a native one and a coding agent, either as the
+  fallback of the other, has the files placed too, and is told both ways:
+  the native model reads them with `file_read`, the program at the paths.
+  The files are the pinned revision's exact bytes, binary
   files included, read only and without an execute bit: a later draft does
   not change them. Only the skills the run was admitted with are written,
   within the library's limits for each (64 files, 512 KiB). The directory is

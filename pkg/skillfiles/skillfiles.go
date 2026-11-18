@@ -7,17 +7,19 @@
 // the files where the program can read them: one directory a run, under a
 // root only this user can open, named by 128 random bits, read only, and
 // removed when the turn ends. The platform tells the program each file's
-// absolute path in what it asks, and the provider finds the directory there
-// (Dirs) to let the program read it.
+// absolute path in what it asks. Which directory the program may read is
+// not taken from that text: the provider asks for the directory placed for
+// the run its turn belongs to (Granted), and the run is the one the runtime
+// names on the turn's context, set from the run's durable record.
 //
-// The path in a turn's text is the only thing that passes between the two.
-// A person can type a path of that shape, so Dirs takes only a directory
-// that is there now, directly under the root, with a name of that form: one
-// the platform made for a turn that is running. The name is not guessable,
-// and a run's own name is told to that run alone.
+// So a path a person types grants nothing, another run's included, and a
+// turn is granted the directory of its own run in its own tenant and no
+// other. The record of which run has which directory is this process's:
+// the process that places a turn's files is the one that runs its program.
 package skillfiles
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -27,9 +29,11 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strconv"
+	"sync"
 	"time"
+
+	"github.com/urmzd/saige/flow/isolation"
 )
 
 // ErrFiles is a set of files that was not written.
@@ -58,9 +62,6 @@ type Limits struct {
 // stale is how long a directory nobody removed is kept: one left by a
 // process that was killed. It is far longer than a turn runs.
 const stale = 7 * 24 * time.Hour
-
-// maxDirs is how many directories one turn's text may name.
-const maxDirs = 4
 
 // Root is the directory every run's directory is under: one in the host's
 // temporary directory that only this user opens, with symbolic links
@@ -202,26 +203,75 @@ func sweep(base string) {
 
 var name = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
-// Dirs is the run directories a turn's text names that are there now: what
-// a provider lets its program read. Text that names more than a turn is
-// given names none, rather than choose among them.
-func Dirs(text string) []string {
-	base, err := Root()
+// placed is the directory of each run that has one in this process, by
+// tenant and run: what a turn of that run is granted.
+var placed = struct {
+	mu   sync.Mutex
+	dirs map[string]string
+}{dirs: map[string]string{}}
+
+func key(tenant, run string) string { return tenant + "\x00" + run }
+
+// Place writes files to a new directory for one run of one tenant, as Write
+// does, and records the directory as that run's: the one a turn of the run
+// is granted (Granted). A directory the run already had is removed. Only
+// the platform calls it, for a run it admitted.
+func Place(tenant, run string, files []File, lim Limits) (string, error) {
+	if tenant == "" || run == "" {
+		return "", fmt.Errorf("%w: files are placed for a run of a tenant", ErrFiles)
+	}
+	dir, err := Write(files, lim)
 	if err != nil {
+		return "", err
+	}
+	placed.mu.Lock()
+	old := placed.dirs[key(tenant, run)]
+	placed.dirs[key(tenant, run)] = dir
+	placed.mu.Unlock()
+	if old != "" {
+		_ = Remove(old)
+	}
+	return dir, nil
+}
+
+// Release removes the directory placed for a run, if it has one.
+func Release(tenant, run string) error {
+	placed.mu.Lock()
+	dir := placed.dirs[key(tenant, run)]
+	delete(placed.dirs, key(tenant, run))
+	placed.mu.Unlock()
+	if dir == "" {
 		return nil
 	}
-	var out []string
-	for _, m := range regexp.MustCompile(regexp.QuoteMeta(base+string(filepath.Separator))+`([0-9a-f]{32})`+regexp.QuoteMeta(string(filepath.Separator))).FindAllStringSubmatch(text, -1) {
-		dir := filepath.Join(base, m[1])
-		if slices.Contains(out, dir) {
-			continue
-		}
-		if info, err := os.Lstat(dir); err != nil || !info.IsDir() {
-			continue
-		}
-		if out = append(out, dir); len(out) > maxDirs {
-			return nil
-		}
+	return Remove(dir)
+}
+
+// Granted is the directories a provider lets its program read for the turn
+// ctx runs: the one placed for that turn's own run, or none.
+//
+// The run is read from the claim the runtime puts on every turn's context
+// (isolation.RunFrom), whose tenant and run the platform sets from the run's
+// durable record when the turn starts. Nothing in a turn's text is read, so
+// a path a person types, another run's included, grants nothing, and a turn
+// of one run is never granted another's directory. A caller that is not a
+// platform turn carries no claim and is granted nothing.
+func Granted(ctx context.Context) []string {
+	claim, ok := isolation.RunFrom(ctx)
+	if !ok || claim == nil {
+		return nil
 	}
-	return out
+	req := claim.Request()
+	if req.Tenant == "" || req.Run == "" {
+		return nil
+	}
+	placed.mu.Lock()
+	dir := placed.dirs[key(req.Tenant, req.Run)]
+	placed.mu.Unlock()
+	if dir == "" {
+		return nil
+	}
+	if info, err := os.Lstat(dir); err != nil || !info.IsDir() {
+		return nil
+	}
+	return []string{dir}
 }

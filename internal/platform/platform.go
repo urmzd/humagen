@@ -356,7 +356,6 @@ type Platform struct {
 	lead                   leadership
 	now                    func() time.Time
 	grounding              sourceGrounding
-	skillFiles             placedSkillFiles
 	sourceDependencyMu     sync.RWMutex
 	sourceDependencyReader SourceDependencyReader
 

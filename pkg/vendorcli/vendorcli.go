@@ -917,11 +917,13 @@ func prompt(t turnOf, resumed bool) string {
 	return b.String()
 }
 
+// granted are the directories the platform placed this turn's skill files
+// in (skillfiles.Granted), which Claude Code is let read.
 // command is one run of the program: its arguments, what it reads on its
 // standard input, and what to remove when it is done. Claude Code is sent
 // images and documents as a message on its input. Codex is given images as
 // files, kept only for the run.
-func (p *provider) command(t turnOf, session string) (args []string, stdin []byte, done func(), err error) {
+func (p *provider) command(t turnOf, session string, granted []string) (args []string, stdin []byte, done func(), err error) {
 	done = func() {}
 	model := p.model
 	if model == "default" {
@@ -957,8 +959,9 @@ func (p *provider) command(t turnOf, session string) (args []string, stdin []byt
 		// The supporting files of the skills this turn is pinned to are in
 		// a directory of the turn's own, outside Dir, which Claude Code reads
 		// only when it is named. Codex reads outside its workspace in every
-		// sandbox, so it is given nothing.
-		for _, dir := range skillfiles.Dirs(t.ask) {
+		// sandbox, so it is given nothing. The directories are the ones the
+		// platform granted this attempt, never ones the text names.
+		for _, dir := range granted {
 			args = append(args, "--add-dir", dir)
 		}
 		if model != "" {
@@ -1072,7 +1075,7 @@ func (p *provider) Stream(ctx context.Context, req saigetypes.Request) (<-chan s
 			return nil, err
 		}
 	}
-	args, stdin, cleanup, err := p.command(t, session)
+	args, stdin, cleanup, err := p.command(t, session, skillfiles.Granted(ctx))
 	if err != nil {
 		cleanup()
 		return nil, err

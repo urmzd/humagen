@@ -6,10 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	saigetypes "github.com/urmzd/saige/agent/types"
 	"github.com/urmzd/saige/flow/runtime"
@@ -33,18 +35,24 @@ type program struct {
 	host bool
 	// fail ends each turn with an error, after the file was read.
 	fail bool
+	// hold keeps each turn running until it is stopped, after the file was
+	// read, and started is closed when the first one is there.
+	hold    bool
+	started chan struct{}
+	once    sync.Once
 
-	mu    sync.Mutex
-	asked []string
-	paths []string
-	read  []string
+	mu      sync.Mutex
+	asked   []string
+	paths   []string
+	read    []string
+	granted [][]string
 }
 
 func (m *program) ReadsHostFiles() bool { return m.host }
 
 var toldPath = regexp.MustCompile(`(?m)^(/\S+/references/style\.md) \(\d+ bytes\)$`)
 
-func (m *program) Stream(_ context.Context, req saigetypes.Request) (<-chan saigetypes.Delta, error) {
+func (m *program) Stream(ctx context.Context, req saigetypes.Request) (<-chan saigetypes.Delta, error) {
 	ask := ""
 	for _, msg := range req.Messages {
 		if u, ok := msg.(saigetypes.UserMessage); ok {
@@ -58,7 +66,15 @@ func (m *program) Stream(_ context.Context, req saigetypes.Request) (<-chan saig
 	answer := "no file was named"
 	m.mu.Lock()
 	m.asked = append(m.asked, ask)
-	if found := toldPath.FindStringSubmatch(ask); found != nil {
+	// What the provider of a real program lets it read: the directory placed
+	// for the run this turn's context names, and nothing the text names. So of the
+	// paths in what is asked, the program reads those in a granted directory.
+	granted := skillfiles.Granted(ctx)
+	m.granted = append(m.granted, granted)
+	for _, found := range toldPath.FindAllStringSubmatch(ask, -1) {
+		if !m.host || !slices.ContainsFunc(granted, func(dir string) bool { return strings.HasPrefix(found[1], dir+string(filepath.Separator)) }) {
+			continue
+		}
 		data, err := os.ReadFile(found[1])
 		if err != nil {
 			answer = "unreadable: " + err.Error()
@@ -67,8 +83,13 @@ func (m *program) Stream(_ context.Context, req saigetypes.Request) (<-chan saig
 		}
 		m.paths, m.read = append(m.paths, found[1]), append(m.read, answer)
 	}
-	fail := m.fail
+	fail, hold := m.fail, m.hold
 	m.mu.Unlock()
+	if hold {
+		m.once.Do(func() { close(m.started) })
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
 	if fail {
 		return nil, errors.New("the program failed")
 	}
@@ -86,6 +107,12 @@ func (m *program) seen() (asked, paths, read []string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return append([]string(nil), m.asked...), append([]string(nil), m.paths...), append([]string(nil), m.read...)
+}
+
+func (m *program) grants() [][]string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([][]string(nil), m.granted...)
 }
 
 // placed is the directories that hold some turn's skill files now.
@@ -160,7 +187,14 @@ func published(t *testing.T, models map[string]*program) (*platform.Platform, au
 func TestACodingAgentReadsThePinnedSkillFilesOnTheHost(t *testing.T) {
 	coder := &program{host: true}
 	p, who := published(t, map[string]*program{"coder": coder})
-	posted, err := p.StartThread(t.Context(), who, platform.ThreadInput{Project: "Shared", Agents: []string{"coder"}, Text: "$brief Summarize the decision"})
+	// Another run's files are on the host too, and the person names them.
+	other, err := skillfiles.Place(tenant, "another-run", []skillfiles.File{{Path: "brief/references/style.md", Data: []byte("another run's file")}}, skillfiles.Limits{Files: 1, Bytes: 64})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = skillfiles.Release(tenant, "another-run") })
+	typed := filepath.Join(other, "brief", "references", "style.md") + " (18 bytes)"
+	posted, err := p.StartThread(t.Context(), who, platform.ThreadInput{Project: "Shared", Agents: []string{"coder"}, Text: "$brief Summarize the decision, and read\n" + typed})
 	if err != nil || len(posted.Runs) != 1 {
 		t.Fatalf("start: %v", err)
 	}
@@ -168,6 +202,16 @@ func TestACodingAgentReadsThePinnedSkillFilesOnTheHost(t *testing.T) {
 	asked, paths, read := coder.seen()
 	if len(paths) != 1 || read[0] != pinnedBytes {
 		t.Fatalf("the program read %q at %v\nasked: %q", read, paths, asked)
+	}
+	if !strings.Contains(asked[0], typed) {
+		t.Fatalf("the other run's path was not in what was asked: %q", asked[0])
+	}
+	// The turn is granted its own directory and not the one its text names.
+	if granted := coder.grants(); len(granted) != 1 || len(granted[0]) != 1 || !strings.HasPrefix(paths[0], granted[0][0]+string(filepath.Separator)) || granted[0][0] == other {
+		t.Fatalf("granted %v, want only the directory of %s", granted, paths[0])
+	}
+	if err := skillfiles.Release(tenant, "another-run"); err != nil {
+		t.Fatal(err)
 	}
 	if run.Answer != pinnedBytes {
 		t.Fatalf("answer = %q", run.Answer)
@@ -223,6 +267,9 @@ func TestANativeModelKeepsFileReadForSkillFiles(t *testing.T) {
 	await(t, p, posted.Runs[0].ID, runs.Completed)
 	asked, paths, _ := plain.seen()
 	root, _ := skillfiles.Root()
+	if granted := plain.grants(); len(granted) != 1 || len(granted[0]) != 0 {
+		t.Fatalf("a native turn was granted %v", granted)
+	}
 	if len(paths) != 0 || strings.Contains(asked[0], root) {
 		t.Fatalf("a native model was given host paths: %q", asked[0])
 	}
@@ -231,6 +278,143 @@ func TestANativeModelKeepsFileReadForSkillFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(root); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("a native turn wrote to the host: %v", err)
+	}
+}
+
+// chained is published with an agent "chained" that starts on first and
+// falls back to second, and the run of a message that names $brief to it.
+func chained(t *testing.T, first, second *program) (*platform.Platform, auth.Principal, string) {
+	t.Helper()
+	p, who := published(t, map[string]*program{"first": first, "second": second})
+	if _, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{Name: "chained", Provider: "first", Model: "m", SystemPrompt: "Answer.",
+		Fallbacks: []wire.ModelRef{{Provider: "second", Model: "m"}}}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	posted, err := p.StartThread(t.Context(), who, platform.ThreadInput{Project: "Shared", Agents: []string{"chained"}, Text: "$brief Summarize the decision"})
+	if err != nil || len(posted.Runs) != 1 {
+		t.Fatalf("start: %v", err)
+	}
+	return p, who, posted.Runs[0].ID
+}
+
+const (
+	toolManifest = "Supporting files are read on demand with file_read using these exact paths. Reading a script does not execute it:\nskill:brief/assets/icon.bin (3 bytes)\nskill:brief/references/style.md ("
+	hostManifest = "If you are not offered file_read, the same files are on this host for this turn only, read only."
+)
+
+// gone fails the test when a turn's skill files are still on the host.
+func gone(t *testing.T, when string, paths []string) {
+	t.Helper()
+	if left := placed(t); len(left) != 0 {
+		t.Fatalf("skill files were left behind %s: %v", when, left)
+	}
+	for _, path := range paths {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("%s is still there %s: %v", path, when, err)
+		}
+	}
+}
+
+// An agent on a native model that falls back to a coding agent has the
+// files there when the fallback answers: they are placed for a turn any of
+// whose models reads the host, and the fallback is granted them.
+func TestACodingAgentFallbackReadsThePinnedSkillFiles(t *testing.T) {
+	native, coder := &program{fail: true}, &program{host: true}
+	p, _, id := chained(t, native, coder)
+	run := await(t, p, id, runs.Completed)
+	if run.Answer != pinnedBytes {
+		t.Fatalf("answer = %q", run.Answer)
+	}
+	asked, paths, read := coder.seen()
+	if len(paths) != 1 || read[0] != pinnedBytes {
+		t.Fatalf("the fallback read %q at %v\nasked: %q", read, paths, asked)
+	}
+	if granted := coder.grants(); len(granted[0]) != 1 || !strings.HasPrefix(paths[0], granted[0][0]+string(filepath.Separator)) {
+		t.Fatalf("the fallback was granted %v, not the directory of %s", granted, paths[0])
+	}
+	// Each kind is told its own way, the native one first and as before.
+	first, _, _ := native.seen()
+	for who, text := range map[string]string{"the native model": first[0], "the fallback": asked[0]} {
+		tool, host := strings.Index(text, toolManifest), strings.Index(text, hostManifest)
+		if tool < 0 || host < tool {
+			t.Fatalf("%s was not told both ways, file_read first: %q", who, text)
+		}
+	}
+	gone(t, "after the run", paths)
+}
+
+// An agent on a coding agent that falls back to a native model: the coding
+// agent has the files, and the native model that answers keeps file_read.
+func TestANativeFallbackOfACodingAgentKeepsFileRead(t *testing.T) {
+	coder, native := &program{host: true, fail: true}, &program{}
+	p, _, id := chained(t, coder, native)
+	run := await(t, p, id, runs.Completed)
+	if run.Answer != "no file was named" {
+		t.Fatalf("the native fallback did not answer: %q", run.Answer)
+	}
+	_, paths, read := coder.seen()
+	if len(read) == 0 || read[0] != pinnedBytes {
+		t.Fatalf("the coding agent read %q before it failed", read)
+	}
+	asked, _, _ := native.seen()
+	if !strings.Contains(asked[0], toolManifest) {
+		t.Fatalf("the native fallback lost the file_read manifest: %q", asked[0])
+	}
+	gone(t, "after the run", paths)
+}
+
+// Whichever way round the chain is, a run that fails and a run that is
+// stopped give the files back.
+func TestAChainsSkillFilesAreGoneWhenTheRunFailsOrIsStopped(t *testing.T) {
+	for name, c := range map[string]struct {
+		first, second *program
+		stop          bool
+	}{
+		"native then coding agent, both fail":      {&program{fail: true}, &program{host: true, fail: true}, false},
+		"coding agent then native, both fail":      {&program{host: true, fail: true}, &program{fail: true}, false},
+		"native then coding agent, stopped":        {&program{fail: true}, &program{host: true, hold: true, started: make(chan struct{})}, true},
+		"coding agent then native, stopped":        {&program{host: true, hold: true, started: make(chan struct{})}, &program{}, true},
+		"coding agent then native, native stopped": {&program{host: true, fail: true}, &program{hold: true, started: make(chan struct{})}, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p, who, id := chained(t, c.first, c.second)
+			coder := c.first
+			if !coder.host {
+				coder = c.second
+			}
+			if c.stop {
+				held := c.first
+				if !held.hold {
+					held = c.second
+				}
+				select {
+				case <-held.started:
+				case <-time.After(30 * time.Second):
+					t.Fatal("the turn did not start")
+				}
+				// While the turn runs the files are there.
+				if left := placed(t); len(left) != 1 {
+					t.Fatalf("placed during the turn: %v", left)
+				}
+				if _, err := p.StopRun(t.Context(), who, id); err != nil {
+					t.Fatal(err)
+				}
+				await(t, p, id, runs.Stopped)
+			} else {
+				await(t, p, id, runs.Failed)
+			}
+			_, paths, read := coder.seen()
+			if len(read) == 0 || read[0] != pinnedBytes {
+				t.Fatalf("the coding agent read %q", read)
+			}
+			// The executor gives the files back as the turn returns, which
+			// for a stopped run is just after the run is marked stopped.
+			deadline := time.Now().Add(10 * time.Second)
+			for len(placed(t)) != 0 && time.Now().Before(deadline) {
+				time.Sleep(10 * time.Millisecond)
+			}
+			gone(t, "after the run", paths)
+		})
 	}
 }
 
