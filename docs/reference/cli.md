@@ -145,6 +145,7 @@ place, is a session's document that would now read differently.
 humagen import sessions
 humagen import sessions --since 720h --match humagen
 humagen import sessions --from none --export ~/Downloads/conversations.json
+humagen import sessions --from none --export ~/Downloads/conversations.json --project field-notes
 humagen import skills
 humagen import skills ~/.agents/skills --only ship,pr --scope workspace
 humagen import agents --provider anthropic --model claude-sonnet-5-5
@@ -210,7 +211,7 @@ What each format's document keeps:
   - Branches: Yes
   - Conversation id: Yes
   - Provenance: Tool, id, start
-  - Project (`--by-project`): Not supported: the format has no directory
+  - Project: With `--project NAME`: the format has no directory for `--by-project` to go by
 - **claude.ai**
   - Roles: Yes
   - Time of each turn: Yes
@@ -221,7 +222,7 @@ What each format's document keeps:
   - Branches: Yes
   - Conversation id: Yes
   - Provenance: Tool, id, start
-  - Project (`--by-project`): Not supported: the format has no directory
+  - Project: With `--project NAME`: the format has no directory for `--by-project` to go by
 
 Where the export says which turn each turn replies to, that orders the
 document: a turn is never put before the turn it replies to, whatever their
@@ -309,8 +310,36 @@ same source, the second directory's sessions are not sent and the command
 says which two they are. A directory no project is named for is
 listed, and its sessions stay in the corpus; make the project and run the
 command again to attach them. A session from an export has no directory and is
-kept by month as before. A session already imported by month is not moved. Imported sessions are
+kept by month as before, unless `--project` names a project for it. A session already imported by month is not moved. Imported sessions are
 references an agent searches and cites; they are not conversations to continue.
+
+With `--project NAME`, which needs `--export`, the sessions of every export
+named go in the source `--by-project` names for a directory called `NAME`
+(`sessions-in-field-notes`, with the same hash added for a name a source's
+name cannot spell), and that source is attached to the project `NAME`. The
+project is matched as `--by-project` matches one: by its name, ignoring case
+and nothing else. `--project` without `--export` is refused, and so is a name
+with no letter or digit in it, such as `~` or `/`. It files the exports only:
+sessions read with `--from` are filed as they are without it, by month, or by
+directory with `--by-project`, and a directory called `NAME` shares the
+project's source. A name no project has is listed as a directory with no
+project is (`No project is named for`, `unfiled` in the JSON): the sessions
+are imported, nothing is attached and no project is made, and a later run
+attaches the source once the project exists. The attachment is made with the
+caller's token, so a caller who may not attach to the project gets the
+failure `--by-project` gives.
+
+A session of the export that an earlier run put in another source, such as
+one imported by month without `--project`, is not added again and is not
+moved: no route moves a document between sources, and the command removes
+nothing. The run says so (`N sessions are already imported in another source
+and were left there`) and names each in `elsewhere` in the JSON, as
+`URI=SOURCE`. To refile one, remove its document from that source
+(`DELETE /api/knowledge/{name}/documents/{id}`, or the console's Knowledge
+page) and run the command again. `--json` also gives `project` and
+`project_source`. A dry run names the source and the project it would attach
+it to; it does not ask the server, so it does not say whether the project
+exists or which sessions are already imported.
 
 A skill is checked here the way the server checks it: `SKILL.md` frontmatter
 the parser accepts, at most 64 files, 128 KiB a file and 512 KiB in all. The
