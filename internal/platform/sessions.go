@@ -422,9 +422,23 @@ func (p *Platform) sessionSummary(who auth.Principal, th threads.Thread) Session
 	out, err := p.summarizeSessions(who, []sessionRow{row}, false)
 	if err != nil {
 		p.log.Warn("platform: a session's runs could not be read; it is shown without them", "session", th.ID, "error", err)
-		return p.summarizeSession(who.Tenant, row, nil, threads.Message{}, false)
+		return p.shownSessions(who.Tenant, []SessionSummary{p.summarizeSession(who.Tenant, row, nil, threads.Message{}, false)})[0]
 	}
 	return out[0]
+}
+
+// shownSessions is the last step of every path that returns session
+// summaries: the people in each are named as the directory names them
+// (ShowSummaries), in one reading of the directory for all of them.
+func (p *Platform) shownSessions(tenant string, out []SessionSummary) []SessionSummary {
+	conversations := make([]ThreadSummary, len(out))
+	for i := range out {
+		conversations[i] = out[i].Conversation
+	}
+	for i, shown := range p.ShowSummaries(tenant, conversations) {
+		out[i].Conversation = shown
+	}
+	return out
 }
 
 // summarizeSessions is each row at a glance, in the rows' order. The turns
@@ -447,25 +461,20 @@ func (p *Platform) summarizeSessions(who auth.Principal, rows []sessionRow, plac
 		return nil, err
 	}
 	out := make([]SessionSummary, len(rows))
-	conversations := make([]ThreadSummary, len(rows))
 	for i, row := range rows {
 		message, said := last[row.head.ID]
 		out[i] = p.summarizeSession(who.Tenant, row, turns[row.head.ID], message, said)
 		if placed {
 			out[i].UpdatedAt, out[i].Conversation.UpdatedAt = row.at, row.at
 		}
-		conversations[i] = out[i].Conversation
 	}
-	// One reading of the directory names the people of the whole page.
-	for i, shown := range p.ShowSummaries(who.Tenant, conversations) {
-		out[i].Conversation = shown
-	}
-	return out, nil
+	return p.shownSessions(who.Tenant, out), nil
 }
 
 // summarizeSession is one row at a glance, from its turns and its latest
 // message, said when it has one. The people in it are not yet named as the
-// directory names them (ShowSummaries).
+// directory names them: shownSessions does that, and nothing is returned
+// without it.
 func (p *Platform) summarizeSession(tenant string, row sessionRow, rr []runs.Run, message threads.Message, said bool) SessionSummary {
 	th := row.head.Thread
 	at := row.at
@@ -507,9 +516,11 @@ func (p *Platform) summarizeSession(tenant string, row sessionRow, rr []runs.Run
 // sessionRows is the sessions a query selects, ordered as a listing shows
 // them: the reader's open alerts first, by how urgent, then the latest
 // changed. Whether the reader may read each is not yet decided: the snapshot
-// returned decides it (Seer.Session), for the rows a caller goes on to show
-// and no others, so a reader who reads by exception is audited for what a
-// page holds and not for every session it was cut from. Nothing is read a
+// returned decides it (seenSession), and holds back the record of a read it
+// grants by exception until the caller discloses the rows it returns
+// (disclosedSessions), so a reader who reads by exception is recorded for
+// the sessions a response shows them and for no session that was only
+// examined (Seer.Holding states the rule). Nothing is read a
 // session: the records come in one bounded read (threads.MaxThreads), what
 // the run index keeps of them in one statement for every state.MaxList. A
 // row's turns are not read here, so its place is by when its record or any
@@ -532,7 +543,7 @@ func (p *Platform) sessionRows(who auth.Principal, q SessionQuery) ([]sessionRow
 	if err != nil {
 		return nil, nil, err
 	}
-	seer := p.Seer(who).Snapshot()
+	seer := p.Seer(who).Snapshot().Holding()
 	rows := make([]sessionRow, len(heads))
 	ids := make([]string, len(heads))
 	for i, h := range heads {
@@ -569,9 +580,28 @@ func (p *Platform) sessionRows(who auth.Principal, q SessionQuery) ([]sessionRow
 	return rows, seer, nil
 }
 
+// seenSession reports whether the seer's reader may read a row's session,
+// as that row's decision: what it is granted by exception is recorded when
+// the row is disclosed.
+func seenSession(seer *Seer, id string) bool {
+	return seer.deciding(id, func() bool { return seer.Session(id) })
+}
+
 // seenSessions is the rows the seer's reader may read, in order.
 func seenSessions(seer *Seer, rows []sessionRow) []sessionRow {
-	return slices.DeleteFunc(rows, func(r sessionRow) bool { return !seer.Session(r.head.ID) })
+	return slices.DeleteFunc(rows, func(r sessionRow) bool { return !seenSession(seer, r.head.ID) })
+}
+
+// disclosedSessions is the summaries a response may return: the reads by
+// exception they rest on are recorded now, and one whose record cannot be
+// written is left out.
+func disclosedSessions(seer *Seer, out []SessionSummary) []SessionSummary {
+	ids := make([]string, len(out))
+	for i, v := range out {
+		ids[i] = v.ID
+	}
+	shown := seer.Disclose(ids...)
+	return slices.DeleteFunc(out, func(v SessionSummary) bool { return !shown[v.ID] })
 }
 
 // sessionOf reports whether a person started a session or takes part in it.
@@ -604,17 +634,18 @@ func (p *Platform) ListSessions(ctx context.Context, who auth.Principal, parent,
 			out = append(out, v)
 		}
 	}
-	return out, nil
+	return disclosedSessions(seer, out), nil
 }
 
 // SessionsPage is one page of the sessions a query selects that the reader
 // may read: at most limit of them, after the place the previous page's
 // cursor names, and the cursor of the page that follows ("" on the last).
-// Only the page is decided and summarized: the sessions before it are passed
-// over by their place, and those after it are neither read nor, but for the
-// one that says a page follows, asked about. A status is known from a
-// session's turns, so a query that names one reads the turns of every
-// session it could hold.
+// Only the page is summarized: the sessions before it are passed over by
+// their place, and those after it are neither read nor, but for the one
+// that says a page follows, decided. A status is known from a session's
+// turns, so a query that names one reads the turns of every session it
+// could hold. Either way only the page is disclosed: a reader who reads by
+// exception is recorded for the sessions it returns (Seer.Holding).
 func (p *Platform) SessionsPage(ctx context.Context, who auth.Principal, q SessionQuery, limit int, after string) ([]SessionSummary, string, error) {
 	rows, seer, err := p.sessionRows(who, q)
 	if err != nil {
@@ -637,7 +668,14 @@ func (p *Platform) SessionsPage(ctx context.Context, who auth.Principal, q Sessi
 		if err != nil {
 			return nil, "", err
 		}
-		return PageSessions(slices.DeleteFunc(all, func(v SessionSummary) bool { return v.Status != q.Status }), limit, after)
+		// The turns of every session the filter could hold were read to
+		// know its status. That is the platform examining them: only the
+		// page that is returned is disclosed, and recorded.
+		page, next, err := PageSessions(slices.DeleteFunc(all, func(v SessionSummary) bool { return v.Status != q.Status }), limit, after)
+		if err != nil {
+			return nil, "", err
+		}
+		return disclosedSessions(seer, page), next, nil
 	}
 	start := 0
 	if after != "" {
@@ -653,7 +691,7 @@ func (p *Platform) SessionsPage(ctx context.Context, who auth.Principal, q Sessi
 	picked := make([]sessionRow, 0, min(max(limit, 0), len(rows)-start))
 	more := false
 	for _, row := range rows[start:] {
-		if !seer.Session(row.head.ID) {
+		if !seenSession(seer, row.head.ID) {
 			continue
 		}
 		if len(picked) >= limit {
@@ -671,7 +709,7 @@ func (p *Platform) SessionsPage(ctx context.Context, who auth.Principal, q Sessi
 		last := picked[len(picked)-1]
 		next = sessionListCursor(last.rank, last.at, last.head.ID)
 	}
-	return out, next, nil
+	return disclosedSessions(seer, out), next, nil
 }
 
 // afterSessionPlace reports whether a session's place in a listing is

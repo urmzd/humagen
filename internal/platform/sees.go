@@ -127,7 +127,33 @@ type Seer struct {
 	// a listing reads a thread once however many of its rows live in it. Nil
 	// reads the record each time it is asked for (Snapshot).
 	records map[string]threadRead
+	// runs holds where each run a snapshot has read lives, found or not
+	// (ReadRuns).
+	runs map[string]runPlace
+	// held, when set, keeps back the records of reads made by exception
+	// until what they granted is disclosed (Holding).
+	held *heldReads
 }
+
+// runPlace is one read of where a run lives.
+type runPlace struct {
+	at Place
+	ok bool
+}
+
+// heldReads is the reads a listing's reader was granted by exception
+// (projects:govern), by the row each was granted for, and what recording
+// each came to.
+type heldReads struct {
+	// row is the row being decided, "" between decisions.
+	row string
+	by  map[string][]readPlace
+	// recorded is whether each place's record was written.
+	recorded map[readPlace]bool
+}
+
+// readPlace is what a read record names: a project and a thread in it.
+type readPlace struct{ project, thread string }
 
 // threadRead is one read of a thread's record: the record, or why not.
 type threadRead struct {
@@ -145,6 +171,119 @@ func (s *Seer) Snapshot() *Seer {
 		s.records = map[string]threadRead{}
 	}
 	return s
+}
+
+// Holding makes the seer keep back the record of a read it grants by
+// exception while it decides a row (deciding), until the row is disclosed
+// (Disclose).
+//
+// The rule: a read by exception is recorded when the reader is shown what it
+// granted. That is a row a response returns, or a fact of one a response
+// states, such as a count that includes it. The platform examining a
+// conversation to order, filter or page a listing is not the reader reading
+// it: a session that is passed over, cut from the page, or left out by a
+// filter after its turns were read is told to nobody, and no record of it is
+// written. A row that is returned is recorded with every exceptional grant
+// its decision rested on: its own conversation, and each session above it
+// that the reader also sees only by exception, which the row names as its
+// parent. Recording still comes first: a row whose record cannot be written
+// is not shown.
+//
+// A seer that is not holding records each exceptional read as it grants it,
+// which is right wherever everything decided is shown.
+func (s *Seer) Holding() *Seer {
+	if s.held == nil {
+		s.held = &heldReads{by: map[string][]readPlace{}, recorded: map[readPlace]bool{}}
+	}
+	return s
+}
+
+// deciding runs one row's decision. On a holding seer the exceptional reads
+// it grants are kept back under the row's name, and granted for now.
+func (s *Seer) deciding(row string, decide func() bool) bool {
+	if s.held == nil {
+		return decide()
+	}
+	was := s.held.row
+	s.held.row = row
+	defer func() { s.held.row = was }()
+	return decide()
+}
+
+// Disclose records the exceptional reads the decisions of rows rested on,
+// now that the rows are to be shown, and returns the rows that may be: one
+// whose record cannot be written is left out (fail closed). A seer that is
+// not holding recorded them as it decided, and every row may be shown.
+func (s *Seer) Disclose(rows ...string) map[string]bool {
+	shown := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		shown[row] = true
+		if s.held == nil {
+			continue
+		}
+		for _, at := range s.held.by[row] {
+			ok, done := s.held.recorded[at]
+			if !done {
+				ok = s.recordExceptional(Place{Project: at.project, Thread: at.thread})
+				s.held.recorded[at] = ok
+			}
+			if !ok {
+				shown[row] = false
+			}
+		}
+	}
+	return shown
+}
+
+// recordExceptional writes the record of a read granted by exception, and
+// reports whether the read may go ahead.
+func (s *Seer) recordExceptional(at Place) bool {
+	if s.who.AuditRead != nil {
+		return s.who.AuditRead(s.who.Subject, at.Project, at.Thread)
+	}
+	return s.p.recordRead(s.who, at, "platform")
+}
+
+// ReadRuns gives a snapshot where the runs a listing is about to ask of
+// live, read together (runs.Index.Many) in place of a read a run. A run the
+// index does not hold is asked of again when it is needed, since one being
+// admitted is placed before it is indexed. A read that fails holds nothing.
+// It does nothing on a seer that is not a snapshot.
+func (s *Seer) ReadRuns(ids ...string) {
+	if s.records == nil {
+		return
+	}
+	if s.runs == nil {
+		s.runs = map[string]runPlace{}
+	}
+	want := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, held := s.runs[id]; !held && id != "" && !slices.Contains(want, id) {
+			want = append(want, id)
+		}
+	}
+	if len(want) < 2 {
+		return
+	}
+	found, err := s.p.Runs.Many(s.who.Tenant, want)
+	if err != nil {
+		return
+	}
+	threads := make([]string, 0, len(found))
+	for id, r := range found {
+		at := placeOfRun(r)
+		s.runs[id] = runPlace{at: at, ok: true}
+		threads = append(threads, at.Thread)
+	}
+	s.Read(threads...)
+}
+
+// placeOfRunID is Platform.placeOfRunID, from what a snapshot has read.
+func (s *Seer) placeOfRunID(id string) (Place, bool) {
+	if r, held := s.runs[id]; held {
+		return r.at, r.ok
+	}
+	return s.p.placeOfRunID(s.who.Tenant, id)
 }
 
 // Hold gives a snapshot the records a listing has just read in one page, so
@@ -303,10 +442,14 @@ func (s *Seer) placeDirect(at Place) bool {
 		if ordinary.placeDirect(at) {
 			return true
 		}
-		if s.who.AuditRead != nil {
-			return s.who.AuditRead(s.who.Subject, at.Project, at.Thread)
+		if s.held != nil && s.held.row != "" {
+			// Granted for now; recorded when the row is disclosed.
+			if read := (readPlace{at.Project, at.Thread}); !slices.Contains(s.held.by[s.held.row], read) {
+				s.held.by[s.held.row] = append(s.held.by[s.held.row], read)
+			}
+			return true
 		}
-		return s.p.recordRead(s.who, at, "platform")
+		return s.recordExceptional(at)
 	}
 	if th := s.thread(at.Thread); th != nil && th.Client != "" && s.hosting(th.Client) {
 		return true
@@ -404,7 +547,7 @@ func (s *Seer) Run(r runs.Run) bool { return s.Place(placeOfRun(r)) }
 // RunID reports whether the reader sees the run an id names, one being
 // admitted included. One that does not exist is not seen.
 func (s *Seer) RunID(id string) bool {
-	at, ok := s.p.placeOfRunID(s.who.Tenant, id)
+	at, ok := s.placeOfRunID(id)
 	return ok && s.Place(at)
 }
 
@@ -522,7 +665,7 @@ func (s *Seer) Alert(a alerts.Alert) bool {
 		return false
 	}
 	if a.RunID != "" {
-		if at, ok := s.p.placeOfRunID(s.who.Tenant, a.RunID); ok {
+		if at, ok := s.placeOfRunID(a.RunID); ok {
 			return s.Place(at)
 		}
 	}

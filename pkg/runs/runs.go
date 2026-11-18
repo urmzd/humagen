@@ -1129,6 +1129,56 @@ func (x *Index) Get(tenant, runID string) (Run, error) {
 	return citationSnapshot(r), nil
 }
 
+// Many reads several runs at once, by id: their numbers in one statement
+// for every state.MaxList not already known, then the runs in one more. A
+// run the tenant has none of is left out.
+func (x *Index) Many(tenant string, ids []string) (map[string]Run, error) {
+	seqs := make([]int64, 0, len(ids))
+	var ask []string
+	asked := map[string]string{}
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		if n, ok := x.seqs.Load(tenant + "\x00" + id); ok {
+			seqs = append(seqs, n.(int64))
+			continue
+		}
+		if _, dup := asked[ptrKey(id)]; !dup {
+			asked[ptrKey(id)] = id
+			ask = append(ask, ptrKey(id))
+		}
+	}
+	for chunk := range slices.Chunk(ask, state.MaxList) {
+		c, cancel := ctx()
+		recs, err := state.LookupMany(c, x.st, namespace, tenant, chunk)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		for _, rec := range recs {
+			var n int64
+			if err := json.Unmarshal(rec.Value, &n); err != nil {
+				return nil, fmt.Errorf("runs: %q: %w", rec.Key, err)
+			}
+			if n != 0 {
+				x.seqs.Store(tenant+"\x00"+asked[rec.Key], n)
+				seqs = append(seqs, n)
+			}
+		}
+	}
+	slices.Sort(seqs)
+	found, err := x.all(tenant, slices.Compact(seqs))
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]Run, len(found))
+	for _, r := range found {
+		out[r.ID] = citationSnapshot(r)
+	}
+	return out, nil
+}
+
 // List returns a tenant's runs, newest first, at most limit of them, and at
 // most state.MaxList.
 func (x *Index) List(tenant string, limit int) []Run {

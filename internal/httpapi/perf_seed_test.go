@@ -53,7 +53,8 @@ func seedClock() func() time.Time {
 // seedVolume fills a workspace through the platform's own write paths: three
 // shared projects, root and child sessions started by the reader and by four
 // other people, a run per message answered by the offline model, and session
-// alerts addressed to the reader. Every text is generated. It returns when
+// alerts addressed to the reader, each raised by a run of its session as the
+// session alert tool raises one. Every text is generated. It returns when
 // every run has ended.
 func seedVolume(t testing.TB, p *platform.Platform, reader auth.Principal, v volume) seeded {
 	t.Helper()
@@ -184,8 +185,15 @@ func seedVolume(t testing.TB, p *platform.Platform, reader auth.Principal, v vol
 		if err != nil {
 			t.Fatal(err)
 		}
+		// As the session alert tool raises one: by a run of the session, for
+		// its agent.
+		turns, err := p.Runs.Conversation(reader.Tenant, th.ID)
+		if err != nil || len(turns) == 0 {
+			t.Fatalf("session %s has no run to raise an alert: %v", th.ID, err)
+		}
 		if _, err := p.CreateSessionAlert(reader.Tenant, alerts.Alert{
-			Session: th.ID, Project: th.Project, Title: fmt.Sprintf("Generated alert %d", a), Body: text(a, 99),
+			Session: th.ID, Project: th.Project, RunID: turns[a%len(turns)].ID, Agent: "helper",
+			Title: fmt.Sprintf("Generated alert %d", a), Body: text(a, 99),
 			Priority: priority, Who: who, Action: "answer", At: time.Now().UTC(),
 		}); err != nil {
 			t.Fatal(err)
@@ -254,4 +262,52 @@ func TestSeedPerfDatabase(t *testing.T) {
 		t.Errorf("platform stopped with %v", err)
 	}
 	t.Logf("seeded %+v in %s; the clock ended at %s", got, time.Since(started).Round(time.Second), clock().Format(time.RFC3339))
+}
+
+// TestSeedPerfRunLinkedAlerts adds $HUMAGEN_PERF_SEED_ALERTS alerts raised by
+// runs, as the session alert tool raises them, to the database
+// TestSeedPerfDatabase filled, for the reader it was filled for, so the cost
+// of reading alerts can be timed as their number grows. It is skipped
+// without both variables.
+func TestSeedPerfRunLinkedAlerts(t *testing.T) {
+	url, n := os.Getenv("HUMAGEN_PERF_SEED_URL"), 0
+	if _, err := fmt.Sscan(os.Getenv("HUMAGEN_PERF_SEED_ALERTS"), &n); url == "" || err != nil || n < 1 {
+		t.Skip("set HUMAGEN_PERF_SEED_URL and HUMAGEN_PERF_SEED_ALERTS to add alerts to a seeded database")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	backends, release, err := platform.OpenPostgres(ctx, pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = release() }()
+	// The platform is never run: raising an alert is a write of its own.
+	p, err := platform.New(platform.Config{Workspace: t.TempDir(), Backends: backends, Bus: backends.Bus})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := auth.Principal{Subject: "dev", Tenant: "default", Kind: auth.User, Name: "Developer", Roles: []auth.Role{auth.Admin}}
+	mine, _, err := p.SessionsPage(ctx, reader, platform.SessionQuery{Mine: true, Roots: true}, 200, "")
+	if err != nil || len(mine) == 0 {
+		t.Fatalf("the reader's sessions = %d, %v", len(mine), err)
+	}
+	for a := range n {
+		session := mine[(a*11)%len(mine)]
+		turns, err := p.Runs.Conversation(reader.Tenant, session.ID)
+		if err != nil || len(turns) == 0 {
+			t.Fatalf("session %s has no run: %v", session.ID, err)
+		}
+		if _, err := p.CreateSessionAlert(reader.Tenant, alerts.Alert{
+			Session: session.ID, Project: session.Project, RunID: turns[a%len(turns)].ID, Agent: "helper",
+			Title: fmt.Sprintf("Generated alert raised by a run %d", a), Priority: alerts.Normal,
+			Who: []string{reader.Subject}, Action: "answer", At: time.Now().UTC(),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Logf("raised %d alerts by runs", n)
 }

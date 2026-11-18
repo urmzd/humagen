@@ -2,15 +2,25 @@ package httpapi
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"maps"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/join"
+	"github.com/urmzd/humagen/pkg/readaudit"
 	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // countingStore counts the reads and writes a store is asked for, each of
@@ -84,79 +94,289 @@ func (c *countingStore) during(fn func()) reads {
 	return reads{c.lookups.Load() - before.lookups, c.many.Load() - before.many, c.lists.Load() - before.lists, c.writes.Load() - before.writes, c.by}
 }
 
+// quietFixture is a workspace whose store counts only what requests ask of
+// it. A platform that runs writes the workspace through seed and is stopped;
+// the platform that is then served is opened on the same store and never
+// run, so it has no workers, no leader loops and no housekeeping, and the
+// only statements the store sees are those of the requests a test makes.
+// Each test checks that: the store must see nothing while no request is made.
+func quietFixture(t *testing.T, st state.Store, seed func(p *platform.Platform)) (*fixture, *countingStore) {
+	t.Helper()
+	store := &countingStore{Store: st}
+	cfg := platform.Config{
+		Backends: platform.Backends{State: store}, Now: seedClock(),
+		Workspace: t.TempDir(), Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4},
+		Router: func(string) join.Asker { return join.Words },
+	}
+	writer, err := platform.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- writer.Run(ctx) }()
+	seed(writer)
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("the seeding platform stopped with %v", err)
+	}
+	served, err := platform.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := serveFixture(t, served, nil)
+	t.Cleanup(f.srv.Close)
+	return f, store
+}
+
+// idle fails the test unless the store sees no statement while no request is
+// made: what a test then counts is its own requests' and nothing else's.
+func (c *countingStore) idle(t *testing.T) {
+	t.Helper()
+	// What the seeding platform or an earlier request left in flight ends first.
+	for last, same := int64(-1), 0; same < 3; {
+		now := c.lookups.Load() + c.many.Load() + c.lists.Load() + c.writes.Load()
+		if now == last {
+			same++
+		} else {
+			last, same = now, 0
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got := c.during(func() { time.Sleep(250 * time.Millisecond) }); got.total() != 0 {
+		t.Fatalf("the store saw %d statements with no request made: %v", got.total(), got.by)
+	}
+}
+
 // The lists a console reads on every load cost a bounded number of
 // statements however much the workspace holds: none reads a record per run,
 // per session or per alert it passes over. The workspace here holds 66
 // sessions, 400 runs and 18 alerts, and the reader is an operator, who reads
 // nothing by exception, so no read is audited.
 func TestListReadsAreBoundedByThePageNotTheWorkspace(t *testing.T) {
-	store := &countingStore{Store: state.NewMemory()}
-	f := newFixtureWith(t, platform.Config{Backends: platform.Backends{State: store}, Now: seedClock()})
-	tok := f.person(t, "acme", "ana", "Ana", "humagen-operators")
-	reader := auth.Principal{Subject: "ana", Tenant: "acme", Kind: auth.User, Name: "Ana", Roles: []auth.Role{auth.Operator}}
-	seedVolume(t, f.p, reader, volume{Sessions: 60, Children: 6, Runs: 400, Alerts: 18, Parallel: 4})
-	for _, c := range []struct {
-		path string
-		// most is the most statements the read may make, and rows the most
-		// of them that may be a read of one record.
-		most, rows int64
-	}{
-		// The newest 200 runs in one page, and their threads in one read.
-		{"/api/runs", 12, 8},
-		// A page of 50: the turn keys of each session on it, and no more.
-		{"/api/sessions", 64, 8},
-		{"/api/sessions?roots=true&mine=true&limit=1", 14, 8},
-		{"/api/sessions?limit=5&status=done", 80, 8},
-		{"/api/alerts?mine=true&state=open", 10, 6},
-		{"/api/alerts/count", 8, 5},
-	} {
-		// The first read of a path may warm what later ones reuse.
-		f.do(t, nil, "GET", c.path, tok, "")
-		var status int
-		got := store.during(func() {
-			res, _ := f.do(t, nil, "GET", c.path, tok, "")
-			status = res.StatusCode
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		reader := auth.Principal{Subject: "ana", Tenant: "acme", Kind: auth.User, Name: "Ana", Roles: []auth.Role{auth.Operator}}
+		f, store := quietFixture(t, open(t), func(p *platform.Platform) {
+			seedVolume(t, p, reader, volume{Sessions: 60, Children: 6, Runs: 400, Alerts: 18, Parallel: 4})
 		})
-		t.Logf("GET %s = %d: %d statements: %d lookups, %d batched reads, %d lists, %d writes %v", c.path, status, got.total(), got.lookups, got.many, got.lists, got.writes, got.by)
-		if status != http.StatusOK {
-			t.Errorf("GET %s = %d", c.path, status)
+		tok := f.person(t, "acme", "ana", "Ana", "humagen-operators")
+		for _, c := range []struct {
+			path string
+			// most is the most statements the read may make, and rows the
+			// most of them that may be a read of one record.
+			most, rows int64
+		}{
+			// The newest 200 runs in one page, and their threads in one read.
+			{"/api/runs", 12, 8},
+			// A page of 50: the turn keys of each session on it, and no more.
+			{"/api/sessions", 64, 8},
+			{"/api/sessions?roots=true&mine=true&limit=1", 14, 8},
+			{"/api/sessions?limit=5&status=done", 80, 8},
+			{"/api/alerts?mine=true&state=open", 10, 6},
+			{"/api/alerts/count", 8, 5},
+		} {
+			// The first read of a path may warm what later ones reuse.
+			f.do(t, nil, "GET", c.path, tok, "")
+			store.idle(t)
+			var status int
+			got := store.during(func() {
+				res, _ := f.do(t, nil, "GET", c.path, tok, "")
+				status = res.StatusCode
+			})
+			t.Logf("GET %s = %d: %d statements: %d lookups, %d batched reads, %d lists, %d writes %v", c.path, status, got.total(), got.lookups, got.many, got.lists, got.writes, got.by)
+			if status != http.StatusOK {
+				t.Errorf("GET %s = %d", c.path, status)
+			}
+			if got.total() > c.most || got.lookups > c.rows {
+				t.Errorf("GET %s made %d statements, %d of them single reads; want at most %d and %d: %v", c.path, got.total(), got.lookups, c.most, c.rows, got.by)
+			}
+			if got.writes != 0 {
+				t.Errorf("GET %s wrote %d times: %v", c.path, got.writes, got.by)
+			}
 		}
-		if got.total() > c.most || got.lookups > c.rows {
-			t.Errorf("GET %s made %d statements, %d of them single reads; want at most %d and %d: %v", c.path, got.total(), got.lookups, c.most, c.rows, got.by)
+	})
+}
+
+// An alert a run raised is placed by its run, and the runs of every alert a
+// read asks about are read together: ten alerts raised by runs cost what
+// thirty do, for the alert list, the count, and the session listing that
+// their alerts raise rows in.
+func TestRunLinkedAlertsAreReadTogetherHoweverMany(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		paths := []string{"/api/alerts?mine=true&state=open", "/api/alerts/count", "/api/sessions?limit=5", "/api/sessions?limit=5&status=done"}
+		cost := map[int]map[string]reads{}
+		for _, n := range []int{1, 10, 30} {
+			reader := auth.Principal{Subject: "ana", Tenant: "acme", Kind: auth.User, Name: "Ana", Roles: []auth.Role{auth.Operator}}
+			f, store := quietFixture(t, open(t), func(p *platform.Platform) {
+				seedVolume(t, p, reader, volume{Sessions: 20, Children: 2, Runs: 50, Alerts: n, Parallel: 4})
+			})
+			tok := f.person(t, "acme", "ana", "Ana", "humagen-operators")
+			cost[n] = map[string]reads{}
+			for _, path := range paths {
+				f.do(t, nil, "GET", path, tok, "")
+				store.idle(t)
+				cost[n][path] = store.during(func() {
+					if res, body := f.do(t, nil, "GET", path, tok, ""); res.StatusCode != http.StatusOK {
+						t.Fatalf("GET %s = %d %v", path, res.StatusCode, body)
+					}
+				})
+				t.Logf("%d alerts: GET %s made %d statements %v", n, path, cost[n][path].total(), cost[n][path].by)
+			}
+			if res, body := f.do(t, nil, "GET", "/api/alerts/count", tok, ""); int(body["waiting"].(float64)) != n-n/3 {
+				t.Fatalf("%d alerts: count = %d %v, want %d", n, res.StatusCode, body, n-n/3)
+			}
 		}
-		if got.writes != 0 {
-			t.Errorf("GET %s wrote %d times: %v", c.path, got.writes, got.by)
+		for _, path := range paths {
+			one, ten, thirty := cost[1][path], cost[10][path], cost[30][path]
+			if thirty.total() != ten.total() || one.total() > ten.total() {
+				t.Errorf("GET %s made %d, %d and %d statements with 1, 10 and 30 alerts raised by runs; want no more for more alerts: %v", path, one.total(), ten.total(), thirty.total(), thirty.by)
+			}
+			if n := thirty.by["lookup runs.v2"]; n != 0 {
+				t.Errorf("GET %s read %d runs one at a time with 30 alerts: %v", path, n, thirty.by)
+			}
 		}
+	})
+}
+
+// A reader who reads by exception (projects:govern) is recorded for exactly
+// what a page of sessions shows them: every returned session they see only
+// by exception, with the session above it when the row names one they also
+// see only by exception, and nothing that was examined to order, filter or
+// cut the page. It holds for each paging filter, across pages.
+func TestASessionPageRecordsExactlyTheExceptionalReadsItShows(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		// Ana, an administrator, starts three sessions in five; the rest are
+		// other people's private sessions, which she reads by exception.
+		ana := auth.Principal{Subject: "ana", Tenant: "acme", Kind: auth.User, Name: "Ana", Roles: []auth.Role{auth.Admin}}
+		f := newFixtureWith(t, platform.Config{Backends: platform.Backends{State: open(t)}, Now: seedClock()})
+		tok := f.person(t, "acme", "ana", "Ana", "humagen-admins")
+		seedVolume(t, f.p, ana, volume{Sessions: 25, Children: 8, Runs: 60, Alerts: 6, Parallel: 4})
+		// Whose each session is, and the session above it.
+		owner, parent := map[string]string{}, map[string]string{}
+		recs, err := f.p.Threads.Records("acme", func(threads.Thread) bool { return true })
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, th := range recs {
+			if th.Session != nil {
+				owner[th.ID], parent[th.ID] = th.CreatedBy, th.Session.Parent
+			}
+		}
+		audited := func() []readaudit.Record {
+			t.Helper()
+			all, err := f.p.ReadAudit.List("acme", time.Now().Add(-25*24*time.Hour), time.Now().Add(24*time.Hour), readaudit.MaxRows)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(all) >= readaudit.MaxRows {
+				t.Fatal("the test wrote more audit records than one read returns")
+			}
+			return all
+		}
+		exceptional := 0
+		for _, filter := range []string{"", "&roots=true", "&mine=true", "&status=done", "&project=launch"} {
+			after := ""
+			for page := 0; page < 3; page++ {
+				before := len(audited())
+				res, body := f.do(t, nil, "GET", "/api/sessions?limit=3"+filter+"&after="+after, tok, "")
+				if res.StatusCode != http.StatusOK {
+					t.Fatalf("%q page %d = %d %v", filter, page, res.StatusCode, body)
+				}
+				want := map[string]bool{}
+				for _, raw := range body["sessions"].([]any) {
+					id := raw.(map[string]any)["id"].(string)
+					if owner[id] == "" {
+						t.Fatalf("%q page %d returned %s, which has no record", filter, page, id)
+					}
+					if owner[id] == "ana" {
+						continue
+					}
+					want[id] = true
+					exceptional++
+					// The row names the session above it, which is the same
+					// person's and as private.
+					for up := parent[id]; strings.HasPrefix(up, "s_"); up = parent[up] {
+						want[up] = true
+					}
+				}
+				now := audited()
+				got := map[string]bool{}
+				// The records are newest first: the request's are the new ones.
+				for _, r := range now[:len(now)-before] {
+					if r.Subject != "ana" || r.Route != "GET /api/sessions" || r.Thread == "" {
+						t.Errorf("%q page %d recorded %+v, which is no session ana was shown", filter, page, r)
+					}
+					got[r.Thread] = true
+				}
+				if !maps.Equal(got, want) {
+					t.Errorf("%q page %d: recorded reads of %v, showed by exception %v", filter, page, slices.Sorted(maps.Keys(got)), slices.Sorted(maps.Keys(want)))
+				}
+				next, _ := body["next"].(string)
+				if next == "" {
+					break
+				}
+				after = next
+			}
+		}
+		if exceptional < 6 {
+			t.Fatalf("only %d rows were shown by exception, too few to say anything", exceptional)
+		}
+	})
+}
+
+// A session read whose runs cannot be read is shown without them, and still
+// names its people as the directory names them, as the same read does when
+// its runs can be read.
+func TestASessionShownWithoutItsRunsNamesPeopleAsTheDirectoryDoes(t *testing.T) {
+	store := &failingRuns{Store: state.NewMemory()}
+	f := newFixtureWith(t, platform.Config{Backends: platform.Backends{State: store}, Now: seedClock()})
+	// A subject that is not the handle the directory gives the person.
+	tok := f.person(t, "acme", "auth0|7f3a", "Ana Lima", "humagen-admins")
+	reader := auth.Principal{Subject: "auth0|7f3a", Tenant: "acme", Kind: auth.User, Name: "Ana Lima", Roles: []auth.Role{auth.Admin}}
+	seedVolume(t, f.p, reader, volume{Sessions: 1, Children: 0, Runs: 2, Alerts: 0, Parallel: 1})
+	_, list := f.do(t, nil, "GET", "/api/sessions?limit=1", tok, "")
+	id := list["sessions"].([]any)[0].(map[string]any)["id"].(string)
+	read := func() map[string]any {
+		t.Helper()
+		res, body := f.do(t, nil, "GET", "/api/sessions/"+id, tok, "")
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("session = %d %v", res.StatusCode, body)
+		}
+		return body["conversation"].(map[string]any)
+	}
+	whole := read()
+	store.fail.Store(true)
+	without := read()
+	store.fail.Store(false)
+	if store.failed.Load() == 0 {
+		t.Fatal("no read of the session's runs failed, so the fallback was not taken")
+	}
+	people := fmt.Sprint(whole["people"])
+	if strings.Contains(people, "auth0|7f3a") || people == "[]" {
+		t.Fatalf("with its runs, the session names its people %s", people)
+	}
+	if got := fmt.Sprint(without["people"]); got != people {
+		t.Errorf("without its runs the session names its people %s, with them %s", got, people)
+	}
+	if by, _ := without["last_by"].(string); strings.Contains(by, "auth0|7f3a") {
+		t.Errorf("without its runs the session says %q spoke last, a subject", by)
 	}
 }
 
-// A reader who reads by exception (projects:govern) is audited for the
-// private sessions a page shows them, not for every session the page was
-// cut from: a page of five audits at most six reads, the five and the one
-// that says a page follows.
-func TestASessionPageAuditsOnlyWhatItShows(t *testing.T) {
-	store := &countingStore{Store: state.NewMemory()}
-	f := newFixtureWith(t, platform.Config{Backends: platform.Backends{State: store}, Now: seedClock()})
-	// Olu starts everything; Ana, an administrator, takes part in none of it.
-	olu := auth.Principal{Subject: "olu", Tenant: "acme", Kind: auth.User, Name: "Olu", Roles: []auth.Role{auth.Admin}}
-	seedVolume(t, f.p, olu, volume{Sessions: 30, Children: 0, Runs: 40, Alerts: 0, Parallel: 4})
-	ana := f.person(t, "acme", "ana", "Ana", "humagen-admins")
-	var shown int
-	got := store.during(func() {
-		res, body := f.do(t, nil, "GET", "/api/sessions?limit=5", ana, "")
-		if res.StatusCode != http.StatusOK {
-			t.Fatalf("sessions = %d %v", res.StatusCode, body)
-		}
-		shown = len(body["sessions"].([]any))
-	})
-	if shown != 5 {
-		t.Fatalf("the page holds %d sessions, want 5", shown)
+// failingRuns fails the reads of several runs at once while fail is set, as
+// a database that drops a statement does.
+type failingRuns struct {
+	state.Store
+	fail   atomic.Bool
+	failed atomic.Int64
+}
+
+func (s *failingRuns) LookupMany(ctx context.Context, namespace, tenant string, keys []string) ([]state.Record, error) {
+	if s.fail.Load() && namespace == "runs.v2" && len(keys) > 0 && strings.HasPrefix(keys[0], "o:") {
+		s.failed.Add(1)
+		return nil, errors.New("the statement was dropped")
 	}
-	// Each record is a read of the count and a write; the first also marks
-	// the tenant as holding records.
-	if n, writes := got.by["lookup read-audit"], got.by["write read-audit"]; n < 1 || n > 6 || writes > n+1 {
-		t.Fatalf("a page of 5 audited %d reads in %d writes, want 1 to 6: %v", n, writes, got.by)
-	}
+	return state.LookupMany(ctx, s.Store, namespace, tenant, keys)
 }
 
 // The count of what waits on a person is the count of what their alert list

@@ -371,11 +371,12 @@ func (s *Server) listAlerts(w http.ResponseWriter, r *http.Request, who auth.Pri
 		s.problem(w, err)
 		return
 	}
-	sessions := make([]string, 0, len(all))
+	sessions, raised := make([]string, 0, len(all)), make([]string, 0, len(all))
 	for _, a := range all {
-		sessions = append(sessions, a.Session)
+		sessions, raised = append(sessions, a.Session), append(raised, a.RunID)
 	}
 	seer.Read(sessions...)
+	seer.ReadRuns(raised...)
 	for _, a := range all {
 		a = a.View(time.Now().UTC())
 		if v := q.Get("state"); v != "" && string(a.State) != v {
@@ -424,17 +425,20 @@ func (s *Server) countAlerts(w http.ResponseWriter, _ *http.Request, who auth.Pr
 	}
 	now := time.Now().UTC()
 	open := all[:0]
-	sessions := []string{}
+	var sessions, raised []string
 	for _, a := range all {
 		a = a.View(now)
 		if a.Session == "" || a.State != alerts.OpenState || a.Priority == alerts.Low || !alertFor(a, who) {
 			continue
 		}
 		open = append(open, a)
-		sessions = append(sessions, a.Session)
+		sessions, raised = append(sessions, a.Session), append(raised, a.RunID)
 	}
+	// A count states a fact of every alert in it, so a reader who reads one
+	// by exception is recorded for it as it is counted.
 	seer := s.P.Seer(who).Snapshot()
 	seer.Read(sessions...)
+	seer.ReadRuns(raised...)
 	waiting := 0
 	for _, a := range open {
 		if seer.Alert(a) {
