@@ -7,6 +7,7 @@ import (
 	"time"
 
 	dqueue "github.com/urmzd/saige/durable/queue"
+	drun "github.com/urmzd/saige/durable/run"
 )
 
 func claimWithin(t *testing.T, q dqueue.Queue, d time.Duration) (dqueue.Item, error) {
@@ -125,5 +126,54 @@ func TestADrainStillClaimsWhatHeldWorkCalled(t *testing.T) {
 	}
 	if foreign.Failures != 0 {
 		t.Errorf("handing a run back charged it %d failures", foreign.Failures)
+	}
+}
+
+// A run whose lease lapses under the attempt at work is delivered again, to
+// the process still executing it. The gate does not take it twice: the second
+// delivery goes back to the queue charged nothing, the first attempt's hold
+// stands, and once the first attempt lets go the run is claimed again. The
+// lapse itself costs the run the one failure the queue charges for it.
+func TestTheGateHandsBackARunItStillHolds(t *testing.T) {
+	d := newDrain()
+	inner := dqueue.NewMemory()
+	q := d.wrap(inner)
+	ctx := t.Context()
+	if err := q.Enqueue(ctx, "run", 0); err != nil {
+		t.Fatal(err)
+	}
+	// A lease short enough to lapse while the first attempt still works.
+	first, _, err := q.Claim(ctx, 20*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Long enough for the lease to lapse and the run to come back more than
+	// once: no claim takes it while the first attempt holds it.
+	if again, err := claimWithin(t, q, 2*heldRetry+heldRetry/2); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("claim of a run still held = %+v, %v; want none", again, err)
+	}
+	if n := d.inFlight(); n != 1 {
+		t.Fatalf("in flight = %d while the first attempt works, want 1", n)
+	}
+	// The first attempt ends. The queue refuses its settle, since the lease is
+	// no longer its own, and the gate lets go of the run all the same.
+	if err := q.Settle(ctx, first); !errors.Is(err, drun.ErrSuperseded) {
+		t.Fatalf("settle of the superseded attempt = %v, want %v", err, drun.ErrSuperseded)
+	}
+	if n := d.inFlight(); n != 0 {
+		t.Fatalf("in flight = %d after the first attempt let go, want 0", n)
+	}
+	next, err := claimWithin(t, q, 2*heldRetry)
+	if err != nil || next.RunID != "run" {
+		t.Fatalf("claim after the first attempt let go = %+v, %v; want the run", next, err)
+	}
+	if next.Failures != 1 {
+		t.Errorf("the run was charged %d failures, want 1: the lapsed lease and nothing for being handed back", next.Failures)
+	}
+	if n := d.inFlight(); n != 1 {
+		t.Fatalf("in flight = %d, want 1", n)
+	}
+	if err := q.Settle(ctx, next); err != nil {
+		t.Fatal(err)
 	}
 }

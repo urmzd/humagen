@@ -533,6 +533,12 @@ claim returns after it stopped. Before, the database could carry out a claim
 the worker had given up on, and the next process could not resume that run
 until its lease ran out, 30 seconds later.
 
+A run delivered again to the process still executing it, because its lease
+lapsed under the attempt at work, is handed back to the queue uncharged and
+offered again every second until that attempt lets go
+(`TestARunDeliveredAgainWhileItsFirstAttemptWorksCompletes`); a lease that
+lapses still costs the run one failure.
+
 ## Limits at scale
 
 Admission and spend are counted in the shared store on Postgres (see [Storage](#storage)): two processes on one database cannot both admit the last run a limit allows, and each sees the other's spend at its next read. Admission is striped, so it no longer waits on one lock per tenant: 32 racers admitting into one tenant from two processes went from about 350 to about 3,500 admissions a second with no limit, and from about 310 to about 2,000 under a run limit (Postgres 17 in Docker on a laptop; `BenchmarkSharedAdmission`). Spend is still counted under one lock per tenant. The stores read and write per request and `pkg/state` takes no lock, so the chart allows more than one replica; delivery, the observer and the loops that must run once are shared between replicas by consumer groups and process roles, which land separately.

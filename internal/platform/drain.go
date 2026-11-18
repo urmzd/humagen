@@ -20,6 +20,10 @@ var ErrDraining = errors.New("platform: this server is stopping and starts no ne
 // waits, once handed back while draining, before it may be claimed again.
 const drainRetry = 250 * time.Millisecond
 
+// heldRetry is how long a run delivered again to this process, while this
+// process still executes it, waits before the queue offers it once more.
+const heldRetry = time.Second
+
 // drainIdlePoll is how often WaitIdle looks at what this process holds.
 const drainIdlePoll = 50 * time.Millisecond
 
@@ -63,6 +67,15 @@ func (d *drain) let(it dqueue.Item) {
 		delete(d.children, it.RunID)
 	}
 	d.mu.Unlock()
+}
+
+// holding reports whether this process holds a claim on a run from an attempt
+// other than this one, which is to say it is still executing the run.
+func (d *drain) holding(it dqueue.Item) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	attempt, ok := d.held[it.RunID]
+	return ok && attempt != it.Attempt
 }
 
 // called notes a run a run this process holds called.
@@ -137,6 +150,18 @@ type gatedDeltaQueue struct {
 // Claim takes a run, or, once draining, only a run this process's work
 // called. A claim slot with nothing of ours to wait for parks until the
 // platform stops.
+//
+// A run this process is still executing is never taken a second time. The
+// queue delivers it again when its lease lapses under the attempt at work (a
+// heartbeat that came too late, or the database's clock stepping forward past
+// the lease). Two attempts of one run cannot execute in one process, so the
+// worker would fail the second, and each one after it, until the run had
+// spent every attempt it is allowed while the first was still answering. The
+// second delivery is handed back instead, charged nothing, and comes back
+// every heldRetry until the first attempt lets go: when it ends, or when its
+// next heartbeat learns the lease is no longer its own and cancels it. Each
+// hand-back is one claim and one release. The lapse itself has already cost
+// the run one failure, which the queue charges as it delivers the run again.
 func (q *gatedQueue) Claim(ctx context.Context, ttl time.Duration) (dqueue.Item, time.Time, error) {
 	for {
 		if q.d.draining() && !q.d.waiting() {
@@ -159,6 +184,12 @@ func (q *gatedQueue) Claim(ctx context.Context, ttl time.Duration) (dqueue.Item,
 				continue
 			}
 			return it, deadline, err
+		}
+		if q.d.holding(it) {
+			// Handed back on the queue itself: the gate's own Release would
+			// let go of nothing here, but this claim was never the gate's.
+			_ = q.Queue.Release(context.WithoutCancel(ctx), it, heldRetry, false)
+			continue
 		}
 		if !q.d.draining() || q.d.ours(it.RunID) {
 			q.d.hold(it)
