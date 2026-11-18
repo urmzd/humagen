@@ -138,8 +138,8 @@ reached names `--server` and `HUMAGEN_URL`.
 
 `humagen import` brings what you already have in other assistants into a
 running platform, through its API. What the server already has is left as it
-is, so a second run sends only what is new. The one thing it replaces is the
-document of a session that has grown since it was imported.
+is, so a second run sends only what is new. The one thing it replaces, in
+place, is a session's document that would now read differently.
 
 ```sh
 humagen import sessions
@@ -162,15 +162,16 @@ result, at most 1,500 bytes of it. Each turn's heading carries what the export
 states about it, in one form for every format:
 
 ```text
-## Asked [2026-10-05T10:00:00Z id=cc-msg-u1]
+## Asked [TIME id=u1]
 Tools used:
-- Bash: ls alpha-site [2026-10-05T10:30:00Z id=cc-msg-a1 call=toolu_cc_orig_42]
-Tool result [2026-10-05T10:05:00Z id=cc-msg-r1 call=toolu_cc_orig_42]:
-## Branch 1: forks after id=cc-msg-a2
-### Asked [2026-10-05T10:40:00Z id=cc-msg-u3a]
+- Bash: ls [TIME id=a1 call=t1]
+Tool result [TIME id=r1 call=t1]:
+## Branch 1: forks after id=a1
+### Asked [TIME id=u2]
 ```
 
-The time is the one the export states, in UTC. `id` is the original id of the
+`TIME` stands for the time the export states, in UTC, written as
+`2026-10-05T10:00:00Z`. `id` is the original id of the
 message, and `call` the original id of the tool call, so a result names the
 call it answers. A part the export does not state is left out of the brackets.
 An id is cut to 64 bytes.
@@ -261,13 +262,22 @@ is left out.
 The document's `uri` is the session's id (`claude:ID`, `codex:ID`,
 `chatgpt:ID`, `claude-ai:ID`), which is how a later run knows it is there,
 whatever the document says: a document an earlier version wrote is the same
-session's and is not added again. A session with a turn stamped after its
-document was added has grown, and its document is replaced under the same
-`uri` (`updated` in the output). The API has no call that changes a document's
-text, so the old one is removed and the session added again: the server gives
-the new one a new id, and a document left out of search stays left out. A
-session whose export gives no times is never replaced, and a document an
-earlier version wrote keeps its old form until its session grows.
+session's and is not added again.
+
+The server keeps a digest of each document's text. A run writes the document
+the session would have now and compares its digest and title with what the
+server has. The same: nothing is written. Different: the document is replaced
+in place (`updated` in the output), whatever the times in the export say, so a
+turn added to an old export is picked up, and so is a session with no times.
+A document an earlier version wrote has no digest and reads differently, so
+the next run replaces it once with the fuller document.
+
+The replacement is one call, `PUT /api/knowledge/{name}/documents/{id}/text`,
+which the server makes only if the document's digest is still the one the run
+read. The document keeps its id, its source and whether it is left out of
+search. A call that fails or is refused leaves the document as it was. Of two
+runs replacing one document at once, the second is refused (409), reads the
+document again and finds it already as it would write it.
 
 A source holds at most 200 documents and 8 MiB, so a busy month continues in
 `sessions-TOOL-YYYY-MM-2` and so on. The sources are put in a corpus, titled

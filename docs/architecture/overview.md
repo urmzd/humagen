@@ -563,8 +563,11 @@ Admission and spend are counted in the shared store on Postgres (see [Storage](#
 holds: every turn's time and original id, tool calls linked to their results
 (ChatGPT's too), attachments by name, type and size, and each branch in a
 section naming the turn it forks after, in the order the export's parent links
-give. A session that grew is replaced under the same `uri`. It is tested with
-synthetic exports and read back from a local server; it is not checked
+give. A document that would now read differently, one an earlier version
+wrote included, is replaced in place under the same id by one conditional
+call (`PUT /api/knowledge/{name}/documents/{id}/text`, taken only from the
+digest last read), and keeps whether it is left out of search. It is tested
+with synthetic exports and read back from a local server; it is not checked
 against real exports of each tool, and file bytes are not imported
 ([import](../reference/cli.md#import-sessions-skills-and-agents)).
 

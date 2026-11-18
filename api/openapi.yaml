@@ -7456,6 +7456,42 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/knowledge/{name}/documents/{id}/text:
+    put:
+      operationId: replaceKnowledgeDocumentText
+      tags: [knowledge]
+      summary: Replace a document's title and text in place
+      description: The document keeps its id, its URI, who added it and whether it is left out of search. The replacement is made only if the document's text is still the text `digest` names, and is one write with that check. A document changed since answers 409 and nothing is written. Only documents of a manual source are replaced this way.
+      x-permission: knowledge:write
+      parameters:
+        - {$ref: "#/components/parameters/SourceName"}
+        - {$ref: "#/components/parameters/DocumentID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, text, digest]
+              properties:
+                title: {type: string}
+                text: {type: string}
+                digest:
+                  type: string
+                  description: The document's `digest` as last read, or the empty string for a document that has none.
+      responses:
+        "200":
+          description: The document, with its new digest.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/KnowledgeDocument"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/knowledge/{name}/variants:
     post:
       operationId: saveKnowledgeVariant
@@ -17076,6 +17112,13 @@ components:
         excluded: {type: boolean}
         added_by: {type: string}
         added_at: {type: string, format: date-time}
+        digest:
+          type: string
+          description: The SHA-256 of the document's text without the space around it, in hex. A document kept before digests were has none.
+        updated_at:
+          type: string
+          format: date-time
+          description: When its text was last replaced. Absent if never.
     CatalogColumn:
       type: object
       required: [name]

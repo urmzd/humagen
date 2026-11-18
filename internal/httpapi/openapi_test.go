@@ -2000,6 +2000,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/knowledge/{name}/variants", "/api/knowledge/handbook/variants", `{"name":"lean"}`, http.StatusCreated)
 	docPath := "/api/knowledge/handbook/documents/" + doc.str("id")
 	c.call(acme, "PUT", "/api/knowledge/{name}/documents/{id}", docPath, `{"excluded":true}`, http.StatusOK)
+	// A document's text is replaced in place, only from the digest it was
+	// read with: a stale one is refused, and another tenant's is not found.
+	replaced := c.call(acme, "PUT", "/api/knowledge/{name}/documents/{id}/text", docPath+"/text", `{"title":"Refunds","text":"Refunds are issued within seven days of a request.","digest":"`+doc.str("digest")+`"}`, http.StatusOK)
+	if replaced.str("id") != doc.str("id") || replaced.str("digest") == doc.str("digest") || replaced.str("digest") == "" {
+		t.Fatalf("replaced = %v, was %v", replaced, doc)
+	}
+	c.call(acme, "PUT", "/api/knowledge/{name}/documents/{id}/text", docPath+"/text", `{"title":"Refunds","text":"Stale.","digest":"`+doc.str("digest")+`"}`, http.StatusConflict)
+	c.call(acme, "PUT", "/api/knowledge/{name}/documents/{id}/text", docPath+"/text", `{"title":"Refunds","text":"No digest."}`, http.StatusBadRequest)
+	c.call(globex, "PUT", "/api/knowledge/{name}/documents/{id}/text", docPath+"/text", `{"title":"Refunds","text":"Theirs.","digest":"`+replaced.str("digest")+`"}`, http.StatusNotFound)
 
 	// Corpora hold sources; another tenant never sees one.
 	c.call(acme, "POST", "/api/corpora", "/api/corpora", `{"name":"policies","description":"How we work.","members":[{"kind":"source","name":"handbook"}],"readers":[{"kind":"workspace"}]}`, http.StatusCreated)
@@ -2759,7 +2768,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/corpora/{name}/members/{kind}/{member}": {"name": "policies", "kind": "source", "member": "handbook"},
 		"/api/knowledge/{name}/configuration":         {"name": "handbook"}, "/api/knowledge/{name}/credential": {"name": "handbook"}, "/api/knowledge/{name}/sync": {"name": "handbook"},
 		"/api/knowledge/{name}/documents": {"name": "handbook"}, "/api/knowledge/{name}/documents/{id}": {"name": "handbook", "id": doc.str("id")},
-		"/api/knowledge/{name}/variants": {"name": "handbook"}, "/api/knowledge/{name}/variants/{variant}": {"name": "handbook"},
+		"/api/knowledge/{name}/documents/{id}/text": {"name": "handbook", "id": doc.str("id")},
+		"/api/knowledge/{name}/variants":            {"name": "handbook"}, "/api/knowledge/{name}/variants/{variant}": {"name": "handbook"},
 		"/api/project-forks/{name}": {"name": "Forked"}, "/api/projects/{name}/fork": {"name": "Field"},
 		"/api/projects/{name}": {"name": "Launch"}, "/api/projects/{name}/memory": {"name": "Launch"}, "/api/projects/{name}/history": {"name": "Launch"},
 		"/api/projects/{name}/agents":         {"name": "Launch"},
@@ -2796,7 +2806,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/inbox/{id}/read": `{}`, "/api/inbox/{id}/snooze": `{"until":"2999-01-01T00:00:00Z"}`,
 		"/api/inbox/{id}/parts/{part}/resolve": `{"action":"acknowledge"}`, "/api/knowledge/{name}/documents": `{"title":"t","text":"words here"}`,
 		"/api/knowledge/{name}/documents/{id}": `{"excluded":false}`, "/api/knowledge/{name}/variants": `{"name":"other"}`,
-		"/api/projects/{name}": `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
+		"/api/knowledge/{name}/documents/{id}/text": `{"title":"t","text":"words here","digest":""}`,
+		"/api/projects/{name}":                      `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
 		"/api/inbox/{id}/deliveries/{client}": `{"channel":"C0123ABC","ts":"1700000000.000100"}`, "/api/inbox/{id}/dismiss": ``, "/api/inbox/{id}/unhide": ``,
 		"/api/inbox/marks": `{"ids":["m-1"],"mark":"read"}`, "/api/inbox/read-all": `{"view":"inbox"}`,
 		"/api/projects/{name}/agents": `{"version":1}`, "/api/agents/{name}/home": `{"project":""}`,

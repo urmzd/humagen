@@ -86,24 +86,6 @@ type Session struct {
 	Causal bool
 }
 
-// Latest is the time of the last thing said in the session, on any branch.
-// Zero is a session whose export gives no times.
-func (s Session) Latest() time.Time {
-	var out time.Time
-	see := func(ts []Turn) {
-		for _, t := range ts {
-			if t.At.After(out) {
-				out = t.At
-			}
-		}
-	}
-	see(s.Turns)
-	for _, b := range s.Side {
-		see(b.Turns)
-	}
-	return out
-}
-
 // URI names the session where it came from, the same on every read.
 func (s Session) URI() string { return s.Tool + ":" + s.ID }
 

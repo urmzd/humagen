@@ -561,13 +561,3 @@ func TestIDsAndBranchesAreBoundedAndADocumentSaysWhatItCuts(t *testing.T) {
 		t.Fatalf("%d bytes:\n%s", len(short), short)
 	}
 }
-
-func TestLatestIsTheLastThingSaidOnAnyBranch(t *testing.T) {
-	s := fromFile(ChatGPT, "testdata/chatgpt-conversations.json")(t)
-	if want := time.Date(2026, 10, 7, 8, 51, 0, 0, time.UTC); !s.Latest().Equal(want) {
-		t.Fatalf("latest = %v", s.Latest())
-	}
-	if got := (Session{Turns: []Turn{{Role: "user", Text: "untimed"}}}).Latest(); !got.IsZero() {
-		t.Fatalf("latest = %v", got)
-	}
-}

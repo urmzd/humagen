@@ -214,6 +214,7 @@ import type {
   QuestionAnswer,
   Readiness,
   RememberOutcomeDecisionBody,
+  ReplaceKnowledgeDocumentTextBody,
   ResetAgentBody,
   Resolution,
   ReviewedPullsResponse,
@@ -6607,6 +6608,29 @@ grounds nothing until a source of that name is made again.
     path = path.replace("{name}", encodeURIComponent(String(name)));
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** The document keeps its id, its URI, who added it and whether it is left out of search. The replacement is made only if the document's text is still the text `digest` names, and is one write with that check. A document changed since answers 409 and nothing is written. Only documents of a manual source are replaced this way. */
+  async replaceKnowledgeDocumentText(name: string, id: string, body: ReplaceKnowledgeDocumentTextBody, options?: RequestOptions): Promise<KnowledgeDocument> {
+    let path = "/api/knowledge/{name}/documents/{id}/text";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<KnowledgeDocument>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async replaceKnowledgeDocumentTextRaw(name: string, id: string, body: ReplaceKnowledgeDocumentTextBody, options?: RequestOptions): Promise<ApiResponse<KnowledgeDocument>> {
+    let path = "/api/knowledge/{name}/documents/{id}/text";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<KnowledgeDocument>("PUT", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }
