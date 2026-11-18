@@ -308,10 +308,17 @@ case: the directory `my-repo` is the project `My-Repo`, and not `my_repo` or
 eight digits of a hash of the directory's name added to its source's name. Two
 directories are never kept in one source: if two names would still give the
 same source, the second directory's sessions are not sent and the command
-says which two they are. A directory no project is named for is
+says which two they are. A source says what it holds, and a run adds to one
+and attaches it only when it says it is that directory's. A source of that
+name that says anything else, or says nothing, is not the run's: its sessions
+are named as failed, nothing is added to it, it is not attached and it is put
+in no corpus. A source another writer makes while the run is making it is
+read first and held to the same rule, and what it says is never written over.
+A directory no project is named for is
 listed, and its sessions stay in the corpus; make the project and run the
 command again to attach them. A session from an export has no directory and is
-kept by month as before, unless `--project` names a project for it. A session already imported by month is not moved. Imported sessions are
+kept by month as before, unless `--project` names a project for it. A session already imported by month is not moved. One that changed
+since is replaced where it is, in its monthly source. Imported sessions are
 references an agent searches and cites; they are not conversations to continue.
 
 With `--project NAME`, which needs `--export`, the sessions of every export
@@ -324,7 +331,8 @@ directory's source says, and the two are never one source: an export is not
 added to the source of a directory called `NAME`, a directory's sessions are
 not added to the exports' source, and neither is attached as the other.
 Whichever comes second is refused and named as failed, and the source is
-left as it was. To have both in one project, give the export sources of
+left as it was. So is a source of that name that does not say what it holds,
+or that another writer made meanwhile for something else. To have both in one project, give the export sources of
 another name with `--source PREFIX` (`exports-in-field-notes`). The
 project is matched as `--by-project` matches one: by its name, ignoring case
 and nothing else. `--project` without `--export` is refused, and so is a name
@@ -342,7 +350,12 @@ one imported by month without `--project`, is not added again and is not
 moved: no route moves a document between sources, and the command removes
 nothing. The run says so (`N sessions are already imported in another source
 and were left there`) and names each in `elsewhere` in the JSON, as
-`URI=SOURCE`. To refile one, remove its document from that source
+`URI=SOURCE`. Such a document is not written at all, even when the export
+reads differently now than it did: the run counts those (`N of them read
+differently in the export now and were not updated`) and names them in
+`elsewhere_changed`. A run replaces a document only in the project's own
+source of exports. To bring one up to date where it is, import the export
+again as it was first filed: without `--project`, or with that project. To refile one, remove its document from that source
 (`DELETE /api/knowledge/{name}/documents/{id}`, or the console's Knowledge
 page) and run the command again. `--json` also gives `project` and
 `project_source`.
