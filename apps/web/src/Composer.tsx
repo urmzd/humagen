@@ -17,7 +17,7 @@ import {
   nextEnabled,
   segments,
 } from "./commands.ts";
-import { LazyFrame, whenIdle } from "./lazy.tsx";
+import { LazyFrame, sparing, whenIdle } from "./lazy.tsx";
 import { SendRing, VoiceLevel, WorkingBeam } from "./pages.ts";
 import {
   insertTag,
@@ -417,11 +417,20 @@ export function Composer({
   // read once the bar sits idle on screen, or the moment it is due.
   const [light, setLight] = useState(false);
   const due = ready || queue.running || !!mic;
+  // Each time the light comes due it is asked for afresh: a read that failed
+  // is not held against the bar, which works as plainly without it.
+  const [asked, setAsked] = useState(0);
   useEffect(() => {
-    if (light) return;
-    if (due) return setLight(true);
+    if (due) {
+      setLight(true);
+      setAsked((n) => n + 1);
+      return;
+    }
+    // Nothing is read ahead for a person saving data: the light waits until it is due.
+    if (light || sparing()) return;
     return whenIdle(() => setLight(true));
   }, [light, due]);
+  const lit = String(asked);
 
   const send = (now: boolean) => {
     if (!ready) return;
@@ -644,8 +653,16 @@ export function Composer({
         data-working={queue.running ? "" : undefined}
         className="humagen-composer relative flex flex-col gap-1 rounded-[1.25rem] border bg-aui-surface p-2"
       >
-        {light && <WorkingBeam working={queue.running} host={form.current} />}
-        {mic && <VoiceLevel stream={mic} host={form.current} />}
+        {light && (
+          <LazyFrame fallback={null} instead={null} resetKey={lit}>
+            <WorkingBeam working={queue.running} host={form.current} />
+          </LazyFrame>
+        )}
+        {mic && (
+          <LazyFrame fallback={null} instead={null} resetKey={lit}>
+            <VoiceLevel stream={mic} host={form.current} />
+          </LazyFrame>
+        )}
         {tags && commands.length > 0 && (
           // Still: a list waiting on a person does not animate.
           <ul
@@ -1006,7 +1023,7 @@ export function Composer({
                 </div>
               );
               return light ? (
-                <LazyFrame fallback={plain} instead={plain}>
+                <LazyFrame fallback={plain} instead={plain} resetKey={lit}>
                   <SendRing ready={ready}>{send}</SendRing>
                 </LazyFrame>
               ) : (

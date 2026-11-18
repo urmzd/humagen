@@ -57,6 +57,7 @@ import {
   PersonalPreferences,
   ProjectPage,
   ProjectsPage,
+  preloadLink,
   preloadRoute,
   preloadWhenIdle,
   QuickSwitcher,
@@ -375,7 +376,7 @@ function Console({
     const ahead = (event: Event) => {
       const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
       if (link instanceof HTMLAnchorElement && link.origin === window.location.origin)
-        preloadRoute(parse(link.pathname, link.search));
+        preloadLink(parse(link.pathname, link.search));
     };
     document.addEventListener("pointerover", ahead, { passive: true });
     document.addEventListener("focusin", ahead);
@@ -749,6 +750,7 @@ function Console({
               workspaceName={workspaceName}
               open={!leaving}
               onClose={() => setSearchOpen(false)}
+              onUnavailable={() => setSearchOpen(false)}
               onGo={(next) => {
                 setSearchOpen(false);
                 navigate(next);
@@ -1281,6 +1283,7 @@ function Console({
                           source={route.name}
                           projects={projects ?? []}
                           onClose={() => go({ ...route, fork: undefined })}
+                          onUnavailable={() => go({ ...route, fork: undefined }, { replace: true })}
                           onReady={(name) => {
                             loadProjects();
                             openProject(name);

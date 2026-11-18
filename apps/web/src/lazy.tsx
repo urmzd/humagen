@@ -1,4 +1,5 @@
 import { defaultCopy } from "@humagen/components";
+import { toast } from "@humagen/render-web/ui/sonner";
 import {
   Component,
   type ComponentType,
@@ -49,6 +50,42 @@ export class ViewLoadError extends Error {
   }
 }
 
+/**
+ * The address a failed `import()` names, when the browser's error says it
+ * (Chromium and Firefox do) and it is one of this build's own files.
+ */
+export function moduleAddress(error: unknown): string | undefined {
+  const said = error instanceof Error ? error.message : "";
+  const found = said.match(/https?:\/\/[^\s'"]+?\.js(?=[\s'")]|$)/)?.[0];
+  if (!found) return undefined;
+  try {
+    const url = new URL(found);
+    const here = typeof window === "undefined" ? url.origin : window.location.origin;
+    return url.origin === here && url.pathname.startsWith("/assets/") ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A failed read's address, to be asked for again: the same file under a query not asked before. */
+export function again(address: string, attempt: number): string {
+  const url = new URL(address);
+  url.searchParams.set("again", String(attempt));
+  return url.href;
+}
+
+/**
+ * Whether the person or their connection asks for less to be sent: data
+ * saving is on, or the connection is a slow one. Nothing is read ahead then;
+ * a page is read when it is opened.
+ */
+export function sparing(): boolean {
+  const connection = (
+    navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }
+  ).connection;
+  return !!connection?.saveData || /(^|-)2g$/.test(connection?.effectiveType ?? "");
+}
+
 /** A view whose code is read on first use. */
 export type LazyView<P> = ((props: P) => ReactNode) & {
   /** Read the code ahead of use. Never rejects: a failure is met when the view is drawn. */
@@ -78,11 +115,17 @@ const Fallback = createContext<ReactNode>(null);
  * change of screen keeps the old one on view until the next has its code
  * and its data, and its loading state shows only when that takes long.
  */
-export function lazyView<P extends object>(load: () => Promise<ComponentType<P>>): LazyView<P> {
+export function lazyView<M, P extends object>(
+  load: () => Promise<M>,
+  pick: (module: M) => ComponentType<P>,
+): LazyView<P> {
   let view: ComponentType<P> | undefined;
   let failure: ViewLoadError | undefined;
   let reading: Promise<void> | undefined;
   let counted = false;
+  // Where the code was asked for when a read failed, and how many times it has been asked for again.
+  let address: string | undefined;
+  let tries = 0;
   const drawn = new Set<() => void>();
   const tell = () => {
     for (const redraw of drawn) redraw();
@@ -91,13 +134,18 @@ export function lazyView<P extends object>(load: () => Promise<ComponentType<P>>
   const read = (shown: boolean): Promise<void> => {
     if (!reading) {
       counted = false;
-      reading = load().then(
+      // A browser holds a failed read against its address for as long as the
+      // page lives, so a read made again asks at the same address with a
+      // query no earlier read used. The file answers either way.
+      const asked = address ? (lazyHost.again(again(address, ++tries)) as Promise<M>) : load();
+      reading = asked.then(pick).then(
         (loaded) => {
           view = loaded;
           tell();
         },
         (cause) => {
           reading = undefined;
+          address = moduleAddress(cause) ?? address;
           failure = new ViewLoadError(cause);
           tell();
         },
@@ -142,12 +190,19 @@ export function lazyView<P extends object>(load: () => Promise<ComponentType<P>>
 }
 
 /**
- * How a failed page is read afresh when trying again in place fails too: the
- * console is loaded again at the same address. Held here so a test can stand
- * in for it.
+ * What a failed read needs of the browser: loading the console again at the
+ * same address when trying again in place fails too, reading a module at a
+ * worked-out address, and telling the person. Held here so a test can stand
+ * in for each.
  */
 export const lazyHost = {
   reload: () => window.location.reload(),
+  /** Read a module at an address worked out here, where the bundler's own `import()` cannot be used. */
+  again: (address: string): Promise<unknown> => import(/* @vite-ignore */ address),
+  /** Tell the person something that opens over the page could not be read. */
+  tell: (message: string) => {
+    toast.error(message);
+  },
 };
 
 type FrameState = { error: unknown; key?: string; retried: boolean };
@@ -176,6 +231,8 @@ export class LazyFrame extends Component<
      * The failure is forgotten at once, so the next draw reads again.
      */
     instead?: ReactNode;
+    /** Called when the read fails, with `instead`: to tell the person, or to put the control away. */
+    onFailure?: () => void;
     resetKey?: string;
     children: ReactNode;
   },
@@ -196,7 +253,11 @@ export class LazyFrame extends Component<
   override componentDidCatch(error: unknown) {
     if (!(error instanceof ViewLoadError)) return;
     // Nothing offers Retry there, so the failure is forgotten at once.
-    if (this.props.instead !== undefined) return retryViews();
+    if (this.props.instead !== undefined) {
+      retryViews();
+      this.props.onFailure?.();
+      return;
+    }
     if (this.state.retried && navigator.onLine !== false) lazyHost.reload();
   }
 
@@ -251,22 +312,38 @@ export function PageLoading({ title }: { title?: string }) {
   );
 }
 
+/** What a control that opens over the page takes besides its own props. */
+export type Opened = {
+  /**
+   * Called when the control's code cannot be read, after the person is told:
+   * put the control away, so the next press opens it, and reads it, again.
+   */
+  onUnavailable?: () => void;
+};
+
 /**
  * A page read on first use, in its own frame: the page's loading state while
  * it is read and its failure with Retry. `title` is what the page is headed
  * by, read when drawn so it carries the workspace's own words. `frame`:
  * "page" (the default) for a whole page, "rows" for a part of a page that is
- * already headed, "none" for something that opens over the page.
+ * already headed, "none" for something that opens over the page, which draws
+ * nothing when it cannot be read, says so in a notice, and reads again the
+ * next time it is opened (`onUnavailable`).
  */
-export function lazyPage<P extends object>(
-  load: () => Promise<ComponentType<P>>,
+export function lazyPage<M, P extends object>(
+  load: () => Promise<M>,
+  pick: (module: M) => ComponentType<P>,
   { title, frame = "page" }: { title?: () => string; frame?: "page" | "rows" | "none" } = {},
-): LazyView<P> {
-  const View = lazyView(load);
-  const Framed = ((props: P) => (
+): LazyView<P & Opened> {
+  const View = lazyView(load, pick);
+  const Framed = (({ onUnavailable, ...props }: P & Opened) => (
     <LazyFrame
       bare={frame === "rows"}
       instead={frame === "none" ? null : undefined}
+      onFailure={() => {
+        lazyHost.tell(defaultCopy.pageLoad.partFailed);
+        onUnavailable?.();
+      }}
       fallback={
         frame === "page" ? (
           <PageLoading title={title?.()} />
@@ -275,9 +352,9 @@ export function lazyPage<P extends object>(
         ) : null
       }
     >
-      <View {...props} />
+      <View {...(props as unknown as P)} />
     </LazyFrame>
-  )) as LazyView<P>;
+  )) as LazyView<P & Opened>;
   Framed.preload = View.preload;
   return Framed;
 }

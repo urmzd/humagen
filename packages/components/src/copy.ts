@@ -2838,6 +2838,8 @@ export const defaultCopy = {
   pageLoad: {
     title: "This page did not load",
     failed: "This page could not be loaded. Check your connection, then try again.",
+    /** Something that opens over the page, such as search, whose code could not be read. */
+    partFailed: "That could not be opened. Check your connection, then try again.",
   },
   mailbox: {
     /** How many are open, beside the Inbox's title. */
