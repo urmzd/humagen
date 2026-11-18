@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.137.1 (2026-11-18)
+
+### Bug Fixes
+
+- **console**: name the composer, Alerts link and account button validly ([8b96ff7](https://github.com/urmzd/humagen/commit/8b96ff7cc7c3a6f59283cb8c6bbf30b4a08f2205))
+
+### Misc
+
+- **screens**: find a sidebar link by its visible label, with or without a count ([75a6023](https://github.com/urmzd/humagen/commit/75a602343aa7f301750f7878e513fd2afcf11ec6))
+- **copy**: regenerate the product copy keys ([33700f8](https://github.com/urmzd/humagen/commit/33700f813c3236efe3c7d2ff7d6641fe71b1b03a))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.137.0...v0.137.1)
+
+
 ## 0.137.0 (2026-11-18)
 
 ### Features
