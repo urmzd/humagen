@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -37,6 +38,9 @@ import (
 //     of the request's copy of the tag's meta and puts their instructions
 //     ahead of the turn's text, under a line that says they rank below the
 //     agent's own instructions.
+//   - a skill's supporting files are named after its instructions: as
+//     file_read paths, or for a model whose program reads this host's files
+//     itself, as paths to a copy placed for the turn (hostSkillFiles).
 //
 // A Slack client's command whose name is a skill's on the chain uses that
 // skill too: the client posts "/<name> ..." as the message, and the runs it
@@ -220,7 +224,15 @@ const skillsPrecedence = "The person asked you to use these skills for this turn
 // the meta, so nothing past this seam carries them twice. The run's tag keeps
 // them, so a later attempt reads them again. A pinned value that does not
 // read is refused: only the platform writes it.
-func withSkills(req runtime.Request) (runtime.Request, error) {
+//
+// Supporting files are named after each skill's instructions. A model that
+// is offered the platform's tools reads them with file_read. One whose
+// program reads this host's files itself is offered no such tool, so host
+// places the pinned files where it can read them and they are named by
+// their paths there (hostSkillFiles); a turn they cannot be placed for is
+// refused rather than run without them. A turn whose chain holds both kinds
+// of model is told both ways. A nil host places nothing.
+func withSkills(req runtime.Request, host func(runtime.Request, []pinnedSkill) (hostFiles, error)) (runtime.Request, error) {
 	raw, ok := req.Meta[runs.MetaSkills]
 	if !ok {
 		return req, nil
@@ -235,16 +247,41 @@ func withSkills(req runtime.Request) (runtime.Request, error) {
 	if len(skills) == 0 {
 		return req, nil
 	}
-	parts := []string{skillsPrecedence}
 	for _, s := range skills {
 		if s.PackageID != "" && s.PackageHash == "" {
 			return req, fmt.Errorf("platform: skill package %q has no snapshot hash", s.Name)
 		}
+	}
+	files := hostFiles{tool: true}
+	if host != nil && slices.ContainsFunc(skills, func(s pinnedSkill) bool { return len(s.Resources) > 0 }) {
+		var err error
+		if files, err = host(req, skills); err != nil {
+			return req, err
+		}
+	}
+	parts := []string{skillsPrecedence}
+	for _, s := range skills {
 		parts = append(parts, fmt.Sprintf("Skill $%s:\n%s", s.Name, strings.TrimSpace(s.Instructions)))
-		if len(s.Resources) > 0 {
+		if len(s.Resources) == 0 {
+			continue
+		}
+		if files.tool {
 			manifest := []string{"Supporting files are read on demand with file_read using these exact paths. Reading a script does not execute it:"}
 			for _, resource := range s.Resources {
 				manifest = append(manifest, fmt.Sprintf("skill:%s/%s (%d bytes)", s.Name, resource.Path, resource.Size))
+			}
+			parts = append(parts, strings.Join(manifest, "\n"))
+		}
+		if files.dir != "" {
+			opening := "Supporting files are on this host for this turn only, read only. Read them on demand with your own file tools at these exact paths. Reading a script does not execute it:"
+			if files.tool {
+				// The turn may run on either kind of model, and each is
+				// told which of the two ways is its own.
+				opening = "If you are not offered file_read, the same files are on this host for this turn only, read only. Read them on demand with your own file tools at these exact paths. Reading a script does not execute it:"
+			}
+			manifest := []string{opening}
+			for _, resource := range s.Resources {
+				manifest = append(manifest, fmt.Sprintf("%s (%d bytes)", filepath.Join(files.dir, s.Name, filepath.FromSlash(resource.Path)), resource.Size))
 			}
 			parts = append(parts, strings.Join(manifest, "\n"))
 		}

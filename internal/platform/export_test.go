@@ -169,3 +169,12 @@ func (p *Platform) BeforeMentionCalls(fn func()) {
 // Ingest hands the platform an event a trigger published, as the tags loop
 // does.
 func (p *Platform) Ingest(ctx context.Context, e event.Envelope) { p.ingest(ctx, e) }
+
+// ResolveSkills composes a request's pinned skills as a turn does, placing
+// their supporting files for a model that reads this host's files, and
+// ReleaseTurn gives back what the turn took.
+func (p *Platform) ResolveSkills(req runtime.Request) (runtime.Request, error) {
+	return withSkills(req, p.hostSkillFiles)
+}
+
+func (p *Platform) ReleaseTurn(req runtime.Request) { p.releaseTurn(req) }
