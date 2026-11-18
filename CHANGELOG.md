@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.137.2 (2026-11-18)
+
+### Bug Fixes
+
+- **web**: tell apart two run changes inside one millisecond ([72ed1c3](https://github.com/urmzd/humagen/commit/72ed1c3cf18ddcc695cd54c7c87f5c83470a4c02))
+
+### Performance
+
+- **console**: read the list of runs once on load ([5b86db1](https://github.com/urmzd/humagen/commit/5b86db11372fabc21eefa9dd1d5f9dda9a285ffe))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.137.1...v0.137.2)
+
+
 ## 0.137.0 (2026-11-18)
 
 ### Features
