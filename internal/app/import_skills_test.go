@@ -3,6 +3,8 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -388,4 +390,133 @@ func TestImportSkillsJSONKeepsDraftedForTheSkillsFirstDrafted(t *testing.T) {
 	shape("tidy", 1, 0)
 	api.edit(t, "depot", "references/facts.md", "The code word is KESTREL.")
 	shape("", 0, 1)
+}
+
+// An import writes only after the head it read when it listed the library.
+// One held after its list, while another import drafts, has lost a race
+// when it resumes: it finds the skill present when the winner drafted what
+// its own folder holds, a conflict otherwise, and in neither case drafts
+// again. Reading the skill's revisions later never renews what it expects.
+func TestAnImportHeldAfterItsListNeverDraftsOverAnotherImportsDraft(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		held, winner string
+		seed         bool
+	}{
+		{"a different winner", "OSPREY", "WREN", true},
+		{"a different winner, the other way round", "WREN", "OSPREY", true},
+		{"the same winner", "OSPREY", "OSPREY", true},
+		{"a new skill, a different winner", "OSPREY", "WREN", false},
+		{"a new skill, the same winner", "OSPREY", "OSPREY", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := &importServer{}
+			server := api.start(t)
+			before := 0
+			if tc.seed {
+				if _, err := runImport(t, "skills", depot(t, "The code word is HERON."), "--server", server.URL); err != nil {
+					t.Fatal(err)
+				}
+				api.publish(t, "depot", 1)
+				before = 1
+			}
+			api.mu.Lock()
+			api.holdList, api.listReached, api.listRelease = true, make(chan struct{}), make(chan struct{})
+			api.mu.Unlock()
+			var held skillsResult
+			var heldErr error
+			done := make(chan struct{})
+			heldDir, winnerDir := depot(t, "The code word is "+tc.held+"."), depot(t, "The code word is "+tc.winner+".")
+			go func() {
+				defer close(done)
+				held, heldErr = skillsJSON(t, heldDir, "--server", server.URL)
+			}()
+			<-api.listReached
+			// The held import has read the library. Another drafts.
+			won, err := skillsJSON(t, winnerDir, "--server", server.URL)
+			if err != nil || len(won.Added)+len(won.Updated) != 1 {
+				t.Fatalf("the winner = %+v, %v", won, err)
+			}
+			close(api.listRelease)
+			<-done
+
+			rows := api.revisions(t, "depot")
+			if len(rows) != before+1 || api.drafts != before+1 {
+				t.Fatalf("%d revisions, %d drafts taken; the held import = %+v", len(rows), api.drafts, held)
+			}
+			if got := fileOf(rows[len(rows)-1], "references/facts.md"); got != "The code word is "+tc.winner+"." {
+				t.Errorf("the newest revision holds %q", got)
+			}
+			if len(held.Added)+len(held.Updated)+len(held.Failed) != 0 {
+				t.Fatalf("the held import wrote or failed: %+v", held)
+			}
+			if tc.held == tc.winner {
+				if heldErr != nil || strings.Join(held.Present, ",") != "depot" || len(held.Conflicts) != 0 {
+					t.Fatalf("the held import of the same folder = %+v, %v", held, heldErr)
+				}
+			} else if heldErr == nil || len(held.Conflicts) != 1 || held.Conflicts[0].Name != "depot" || !strings.Contains(held.Conflicts[0].Reason, "changed while this import ran") || len(held.Present) != 0 {
+				t.Fatalf("the held import of a different folder = %+v, %v", held, heldErr)
+			}
+			if tc.seed {
+				got, ok, _ := api.lib.Published(importTenant, importScope("personal"), "depot")
+				if !ok || got.Version != 1 || fileOf(got, "references/facts.md") != "The code word is HERON." || len(rows[0].Tests) != 1 {
+					t.Fatalf("published = v%d, %v", got.Version, ok)
+				}
+			}
+		})
+	}
+}
+
+// A dry run with no server to ask still says which folders are skills the
+// library would take, and that what the library holds is unknown. An import
+// that is not a dry run fails.
+func TestImportSkillsDryRunWithoutAServerListsTheFoldersAsUnknown(t *testing.T) {
+	gone := httptest.NewServer(http.NotFoundHandler())
+	url := gone.URL
+	gone.Close()
+	dir := skillStore(t)
+	out, err := runImport(t, "skills", dir, "--only", "review,ship,tidy", "--server", url, "--dry-run", "--json")
+	if err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	var raw map[string]json.RawMessage
+	if jerr := json.Unmarshal([]byte(out), &raw); jerr != nil {
+		t.Fatalf("%v\n%s", jerr, out)
+	}
+	var res skillsResult
+	_ = json.Unmarshal([]byte(out), &res)
+	// drafted is what a dry run printed before it read the library: every
+	// folder that is a skill.
+	if strings.Join(res.Drafted, ",") != "review,ship,tidy" || strings.Join(res.Unknown, ",") != "review,ship,tidy" || !res.DryRun || res.Unread == "" ||
+		string(raw["added"]) != "[]" || string(raw["updated"]) != "[]" || string(raw["present"]) != "[]" || string(raw["conflicts"]) != "[]" || string(raw["failed"]) != "[]" {
+		t.Fatalf("offline dry run = %s", out)
+	}
+	out, err = runImport(t, "skills", dir, "--server", url, "--dry-run")
+	for _, want := range []string{
+		"Would import 3 skills into the personal library; 2 failed.",
+		"The library could not be read, so which of them would be added, updated, already there or in conflict is unknown:",
+		"unknown: review, ship, tidy",
+		"failed big: data.bin is over 131072 bytes",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("out lacks %q:\n%s", want, out)
+		}
+	}
+	if err == nil || err.Error() != "2 skills were not drafted" {
+		t.Errorf("err = %v", err)
+	}
+	// With a server, a dry run says what it would do, and unknown is empty.
+	api := &importServer{}
+	server := api.start(t)
+	res, err = skillsJSON(t, dir, "--only", "ship", "--server", server.URL, "--dry-run")
+	if err != nil || strings.Join(res.Added, ",") != "ship" || strings.Join(res.Drafted, ",") != "ship" || len(res.Unknown) != 0 || res.Unread != "" {
+		t.Fatalf("online dry run = %+v, %v", res, err)
+	}
+	// Not a dry run: no server is an error, and nothing is reported done.
+	if out, err := runImport(t, "skills", dir, "--only", "ship", "--server", url); err == nil || !strings.Contains(err.Error(), "is the server running?") || strings.Contains(out, "Added") {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	if out, err := runImport(t, "skills", dir, "--only", "ship", "--server", url, "--json"); err == nil || out != "" {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
 }

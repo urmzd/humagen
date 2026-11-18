@@ -44,9 +44,14 @@ type importServer struct {
 	gateWaiting int
 	gateOpen    chan struct{}
 	// drafts counts the revisions the library took.
-	drafts  int
-	agents  []map[string]any
-	corpora map[string][]string
+	drafts int
+	// holdList holds the next answer to a list of skills after it was read
+	// from the library, until listRelease is closed; listReached is closed
+	// once it is held. The importer it holds has seen the library as it was.
+	holdList                 bool
+	listReached, listRelease chan struct{}
+	agents                   []map[string]any
+	corpora                  map[string][]string
 	// projects are the workspace's project names, and attached what each
 	// source was attached to.
 	projects []string
@@ -307,6 +312,18 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 				view := skillRow(row)
 				delete(view, "files")
 				out = append(out, view)
+			}
+			if s.holdList {
+				s.holdList = false
+				reached, release := s.listReached, s.listRelease
+				s.mu.Unlock()
+				close(reached)
+				select {
+				case <-release:
+				case <-time.After(10 * time.Second):
+					t.Error("the held list was never released")
+				}
+				s.mu.Lock()
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"skills": out})
 		case r.Method == "GET" && len(parts) == 3 && parts[0] == "library" && parts[1] == "skills":
