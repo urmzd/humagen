@@ -314,15 +314,22 @@ kept by month as before, unless `--project` names a project for it. A session al
 references an agent searches and cites; they are not conversations to continue.
 
 With `--project NAME`, which needs `--export`, the sessions of every export
-named go in the source `--by-project` names for a directory called `NAME`
-(`sessions-in-field-notes`, with the same hash added for a name a source's
-name cannot spell), and that source is attached to the project `NAME`. The
+named go in a source named as `--by-project` names one for a directory called
+`NAME` (`sessions-in-field-notes`, with the same hash added for a name a
+source's name cannot spell), and that source is attached to the project
+`NAME`. The source says what it holds (`Conversations imported from an export
+of another assistant, filed in the project NAME.`), which is not what a
+directory's source says, and the two are never one source: an export is not
+added to the source of a directory called `NAME`, a directory's sessions are
+not added to the exports' source, and neither is attached as the other.
+Whichever comes second is refused and named as failed, and the source is
+left as it was. To have both in one project, give the export sources of
+another name with `--source PREFIX` (`exports-in-field-notes`). The
 project is matched as `--by-project` matches one: by its name, ignoring case
 and nothing else. `--project` without `--export` is refused, and so is a name
 with no letter or digit in it, such as `~` or `/`. It files the exports only:
 sessions read with `--from` are filed as they are without it, by month, or by
-directory with `--by-project`, and a directory called `NAME` shares the
-project's source. A name no project has is listed as a directory with no
+directory with `--by-project`. A name no project has is listed as a directory with no
 project is (`No project is named for`, `unfiled` in the JSON): the sessions
 are imported, nothing is attached and no project is made, and a later run
 attaches the source once the project exists. The attachment is made with the
@@ -337,7 +344,14 @@ and were left there`) and names each in `elsewhere` in the JSON, as
 `URI=SOURCE`. To refile one, remove its document from that source
 (`DELETE /api/knowledge/{name}/documents/{id}`, or the console's Knowledge
 page) and run the command again. `--json` also gives `project` and
-`project_source`. A dry run names the source and the project it would attach
+`project_source`.
+
+An attachment made by `--by-project` or `--project` is in effect at once,
+with nobody to approve it: a run filed in the project is given the source.
+It is not one of the sources the project names, so
+`GET /api/projects/{name}/knowledge` does not list it. Read it with
+`GET /api/knowledge/{name}/attachments`, or see it counted in the `knowledge`
+layer of `GET /api/projects/{name}/context?agent=AGENT`. A dry run names the source and the project it would attach
 it to; it does not ask the server, so it does not say whether the project
 exists or which sessions are already imported.
 

@@ -570,7 +570,8 @@ digest of title and text last read), and keeps whether it is left out of
 search. An import the server refuses never writes over the winner: it reports
 the session as a conflict. With `--project NAME` the sessions of a ChatGPT or
 claude.ai export, which carry no directory, go in the source `--by-project`
-names for `NAME` and that source is attached to the project of that name; a
+names for `NAME`, never the one that holds a directory's sessions, and that
+source is attached to the project of that name; a
 session an earlier run put in another source is left there and reported, not
 moved. It is tested
 with synthetic exports and read back from a local server; it is not checked

@@ -1441,13 +1441,66 @@ func TestImportSessionsProjectFilesOnlyTheExportsAmongHostSessions(t *testing.T)
 	if len(api.attached) != 2 || api.attached["sessions-in-notes"] != "notes" || api.attached["sessions-in-app"] != "app" || strings.Join(res.Unfiled, ",") != "api" {
 		t.Fatalf("attached = %v, unfiled = %v", api.attached, res.Unfiled)
 	}
+}
 
-	// A project named as a directory shares that directory's source.
-	api = &importServer{projects: []string{"app"}}
-	server = api.start(t)
-	res, err = sessionsJSON(t, "sessions", "--home", sessionHome(t), "--export", chatgpt, "--project", "App", "--by-project", "--server", server.URL)
-	if err != nil || api.sources() != "sessions-in-api=1 sessions-in-app=4" || api.attached["sessions-in-app"] != "app" {
-		t.Fatalf("err = %v, sources = %s, attached = %v, res = %+v", err, api.sources(), api.attached, res)
+func TestImportSessionsProjectSourceIsNeverADirectorysSource(t *testing.T) {
+	_, chatgpt, _ := syntheticHome(t)
+	const (
+		ran   = "Sessions imported from other assistants that ran in app."
+		filed = "Conversations imported from an export of another assistant, filed in the project App."
+	)
+	export := []string{"--from", "none", "--export", chatgpt, "--project", "App"}
+	host := []string{"--from", "claude", "--by-project"}
+	both := []string{"--from", "claude", "--by-project", "--export", chatgpt, "--project", "App"}
+	for _, tt := range []struct {
+		name          string
+		first, second []string
+		said, held    string // what the source says, and holds, after both
+		refused       string
+	}{
+		{"the directory first", host, export, ran, "sessions-in-app=3", "is not the exports' of the project App: it says it holds \"" + ran + "\""},
+		{"the export first", export, host, filed, "sessions-in-app=1", "holds another directory's sessions (\"" + filed + "\")"},
+		{"both in one run", both, nil, ran, "sessions-in-app=3", "is not the exports' of the project App"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			api := &importServer{projects: []string{"app"}}
+			server := api.start(t)
+			run := func(args []string) (sessionsResult, error) {
+				return sessionsJSON(t, append([]string{"sessions", "--home", sessionHome(t), "--server", server.URL}, args...)...)
+			}
+			res, err := run(tt.first)
+			if tt.second != nil {
+				if err != nil || api.attached["sessions-in-app"] != "app" {
+					t.Fatalf("first: err = %v, res = %+v, attached = %v", err, res, api.attached)
+				}
+				held := api.held()
+				api.attached = nil
+				res, err = run(tt.second)
+				// The second kind adds nothing to the first's source, and
+				// does not attach it as its own.
+				if api.held() != held || len(api.attached) != 0 {
+					t.Fatalf("second changed the source: attached = %v", api.attached)
+				}
+			}
+			if err == nil || len(res.Failed) == 0 || !strings.Contains(res.Failed[0].Reason, tt.refused) {
+				t.Fatalf("err = %v, failed = %+v", err, res.Failed)
+			}
+			if api.said["sessions-in-app"] != tt.said || api.sources() != tt.held {
+				t.Fatalf("says %q, sources = %s", api.said["sessions-in-app"], api.sources())
+			}
+		})
+	}
+	// Under another prefix the export has a source of its own, attached to
+	// the same project.
+	api := &importServer{projects: []string{"app"}}
+	server := api.start(t)
+	res, err := sessionsJSON(t, append([]string{"sessions", "--home", sessionHome(t), "--server", server.URL}, host...)...)
+	if err != nil {
+		t.Fatalf("err = %v, res = %+v", err, res)
+	}
+	res, err = sessionsJSON(t, append([]string{"sessions", "--home", sessionHome(t), "--server", server.URL, "--source", "exports"}, export...)...)
+	if err != nil || api.sources() != "exports-in-app=1 sessions-in-app=3" || api.attached["exports-in-app"] != "app" || api.attached["sessions-in-app"] != "app" || api.said["exports-in-app"] != filed {
+		t.Fatalf("err = %v, res = %+v, sources = %s, attached = %v", err, res, api.sources(), api.attached)
 	}
 }
 
