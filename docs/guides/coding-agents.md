@@ -146,6 +146,34 @@ too, as `--effort` to Claude Code and as `model_reasoning_effort` to Codex.
   not started twice. Humagen keeps no record of such a job: it is not listed
   anywhere, its log is not shown in the console as it grows, and it ends with
   the host. It needs `Bash` in `allow`.
+- **Library skills and their supporting files.** A message that names a
+  published [library skill](../architecture/managed-library.md) (`$name`)
+  gives the program the skill's instructions, as it gives any agent. The
+  program is offered no Humagen tool, so it cannot read the skill's
+  supporting files with `file_read`. For a turn on these kinds Humagen writes
+  the supporting files of the revision the run is pinned to into a directory
+  of that turn's own, under `humagen-skill-files-<uid>` in the host's
+  temporary directory, outside `dir`, and what the program is asked names
+  each file by its absolute path there. Claude Code is given that directory
+  with `--add-dir`; Codex reads outside its workspace in every sandbox and
+  needs nothing. Which directory Claude Code is given is never read from the
+  message: it is the one placed for the turn's own run, in its own workspace,
+  so a path typed into a message, another run's included, adds no directory.
+  An agent whose models are a native one and a coding agent, either as the
+  fallback of the other, has the files placed too, and is told both ways:
+  the native model reads them with `file_read`, the program at the paths.
+  The files are the pinned revision's exact bytes, binary
+  files included, read only and without an execute bit: a later draft does
+  not change them. Only the skills the run was admitted with are written,
+  within the library's limits for each (64 files, 512 KiB). The directory is
+  removed when the turn returns, whether it answered, failed or was stopped,
+  so each turn is told a new path; one left by a process that was killed is
+  removed after seven days. A turn whose files cannot be written fails and
+  says so, and is not run without them. Claude Code's `--add-dir` also lets
+  it write there under `acceptEdits`: the files are a copy for one turn, so
+  nothing it does there reaches the library. As everywhere on these kinds,
+  a program that runs commands (`allow` with `Bash`, `bypassPermissions`, or
+  Codex) can read whatever the server's user can.
 - **The agent's own tools do not reach the program.** Tools granted to the
   agent in Humagen (file tools, `mcp:` servers, calling another agent) are not
   offered to it. It uses the tools and MCP servers of its own configuration.
