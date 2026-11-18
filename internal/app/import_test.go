@@ -17,7 +17,9 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/library"
+	"github.com/urmzd/humagen/pkg/sessionimport"
 )
 
 // importServer plays the knowledge and skill library routes the import
@@ -38,6 +40,19 @@ type importServer struct {
 	auth     []string
 	writes   int
 	refused  map[string]bool
+	// seq numbers the documents. docWrites counts the calls that add or
+	// replace one, and failReplace makes a replacement fail as a server
+	// that could not write does.
+	seq         int
+	docWrites   int
+	failReplace bool
+	// puts are the answers each caller's replacements got, by its
+	// Authorization header. hold is a caller whose next replacement waits,
+	// before the server looks at it, until release is closed; reached is
+	// closed once it is waiting.
+	puts             map[string][]int
+	hold             string
+	reached, release chan struct{}
 }
 
 func (s *importServer) start(t *testing.T) *httptest.Server {
@@ -46,9 +61,19 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 		s.docs = map[string][]map[string]string{}
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		who := r.Header.Get("Authorization")
+		replacing := r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/text")
 		s.mu.Lock()
+		if replacing && s.hold != "" && s.hold == who {
+			s.hold = ""
+			reached, release := s.reached, s.release
+			s.mu.Unlock()
+			close(reached)
+			<-release
+			s.mu.Lock()
+		}
 		defer s.mu.Unlock()
-		s.auth = append(s.auth, r.Header.Get("Authorization"))
+		s.auth = append(s.auth, who)
 		w.Header().Set("Content-Type", "application/json")
 		problem := func(status int, detail string) {
 			w.WriteHeader(status)
@@ -80,7 +105,47 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 			w.WriteHeader(201)
 			fmt.Fprint(w, `{}`)
 		case len(parts) == 3 && parts[0] == "knowledge" && parts[2] == "documents" && r.Method == "GET":
-			_ = json.NewEncoder(w).Encode(map[string]any{"documents": s.docs[parts[1]]})
+			out := []map[string]any{}
+			for _, d := range s.docs[parts[1]] {
+				out = append(out, map[string]any{"id": d["id"], "title": d["title"], "uri": d["uri"], "digest": d["digest"], "excluded": d["excluded"] == "true"})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"documents": out})
+		case len(parts) == 5 && parts[0] == "knowledge" && parts[2] == "documents" && parts[4] == "text" && r.Method == "PUT":
+			// The replacement the server makes: only from the digest the
+			// document has, in place, keeping its id and its exclusion.
+			s.docWrites++
+			var body struct {
+				Title, Text string
+				Digest      *string
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			answer := func(status int) {
+				if s.puts == nil {
+					s.puts = map[string][]int{}
+				}
+				s.puts[who] = append(s.puts[who], status)
+			}
+			if s.failReplace {
+				answer(500)
+				problem(500, "the store is not answering")
+				return
+			}
+			for _, d := range s.docs[parts[1]] {
+				if d["id"] != parts[3] {
+					continue
+				}
+				if body.Digest == nil || *body.Digest != d["digest"] {
+					answer(409)
+					problem(409, "the document changed since it was read; read it again")
+					return
+				}
+				answer(200)
+				d["title"], d["text"], d["digest"] = body.Title, body.Text, knowledge.Digest(body.Title, body.Text)
+				fmt.Fprintf(w, `{"id":%q}`, d["id"])
+				return
+			}
+			answer(404)
+			problem(404, "no such document")
 		case len(parts) == 3 && parts[0] == "knowledge" && parts[2] == "documents" && r.Method == "POST":
 			var doc map[string]string
 			_ = json.NewDecoder(r.Body).Decode(&doc)
@@ -92,9 +157,12 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 				problem(400, "knowledge: invalid: source document or byte limit reached")
 				return
 			}
+			s.seq++
+			s.docWrites++
+			doc["id"], doc["digest"] = fmt.Sprintf("d%d", s.seq), knowledge.Digest(doc["title"], doc["text"])
 			s.docs[parts[1]] = append(s.docs[parts[1]], doc)
 			w.WriteHeader(201)
-			fmt.Fprint(w, `{}`)
+			fmt.Fprintf(w, `{"id":%q}`, doc["id"])
 		case r.Method == "GET" && r.URL.Path == "/api/projects":
 			// Two to a page, as the real list pages at its limit.
 			from, _ := strconv.Atoi(r.URL.Query().Get("before"))
@@ -743,5 +811,468 @@ func TestImportSessionsByProjectRefusesToMixTwoDirectoriesInOneSource(t *testing
 	}
 	if len(api.docs["sessions-in-a-1-x00000000"]) != 1 || api.attached["sessions-in-a-1-x00000000"] != "a_1" {
 		t.Fatalf("docs = %v, attached = %v", api.docs, api.attached)
+	}
+}
+
+// syntheticHome is a home directory and two exports made from the synthetic
+// exports under pkg/sessionimport/testdata, one of each format.
+func syntheticHome(t *testing.T) (home, chatgpt, claudeAI string) {
+	t.Helper()
+	home = t.TempDir()
+	data := func(name string) string {
+		b, err := os.ReadFile(filepath.Join("..", "..", "pkg", "sessionimport", "testdata", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	putFile(t, home, ".claude/projects/-synthetic-work-alpha-site/cc0rig1d-aaaa-4bbb-8ccc-000000000001.jsonl", data("claude-session.jsonl"))
+	putFile(t, home, ".codex/sessions/2026/10/06/rollout-2026-10-06T09-00-00-c0dex0r1-bbbb-4ccc-8ddd-000000000002.jsonl", data("codex-rollout.jsonl"))
+	putFile(t, home, "chatgpt/conversations.json", data("chatgpt-conversations.json"))
+	putFile(t, home, "claude-ai/conversations.json", data("claudeai-conversations.json"))
+	return home, filepath.Join(home, "chatgpt", "conversations.json"), filepath.Join(home, "claude-ai", "conversations.json")
+}
+
+// counts reads the added, updated and present counts of an import's JSON.
+func counts(t *testing.T, out string) string {
+	t.Helper()
+	var res map[string]any
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	out = fmt.Sprintf("added %v updated %v present %v failed %v", res["added"], res["updated"], res["present"], res["failed"])
+	if c, _ := res["conflicts"].([]any); len(c) > 0 {
+		out += fmt.Sprintf(" conflicts %v", c)
+	}
+	return out
+}
+
+// held is every document the server has, as source, id, uri and text.
+func (s *importServer) held() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []string
+	for name, docs := range s.docs {
+		for _, d := range docs {
+			out = append(out, strings.Join([]string{name, d["id"], d["uri"], d["title"], d["text"], d["excluded"]}, "\x00"))
+		}
+	}
+	sort.Strings(out)
+	return strings.Join(out, "\x01")
+}
+
+func TestImportSessionsKeepsWhatEachExportHoldsAndASecondRunChangesNothing(t *testing.T) {
+	api := &importServer{projects: []string{"alpha-site", "beta-tools"}}
+	server := api.start(t)
+	home, chatgpt, claudeAI := syntheticHome(t)
+	args := []string{"sessions", "--home", home, "--export", chatgpt, "--export", claudeAI, "--by-project", "--server", server.URL, "--json"}
+	out, err := runImport(t, args...)
+	if err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	if got := counts(t, out); got != "added 4 updated 0 present 0 failed []" {
+		t.Fatalf("first run: %s", got)
+	}
+	for _, tt := range []struct {
+		source, uri string
+		has         []string
+	}{
+		{"sessions-in-alpha-site", "claude:cc0rig1d-aaaa-4bbb-8ccc-000000000001", []string{
+			"## Asked [2026-10-05T10:00:00Z id=cc-msg-u1]",
+			"- Bash: ls alpha-site --CC-TOOL-CALL [2026-10-05T10:30:00Z id=cc-msg-a1 call=toolu_cc_orig_42]",
+			"Tool result [2026-10-05T10:05:00Z id=cc-msg-r1 call=toolu_cc_orig_42]:",
+			"[attachment: image/png, 8 bytes; the image itself is not imported]",
+			"## Branch 1: forks after id=cc-msg-a2\n\n### Asked [2026-10-05T10:40:00Z id=cc-msg-u3a]",
+		}},
+		{"sessions-in-beta-tools", "codex:c0dex0r1-bbbb-4ccc-8ddd-000000000002", []string{
+			"## Asked [2026-10-06T09:01:00Z id=cx-msg-u1]",
+			"- shell: ls beta-tools --CX-TOOL-CALL [2026-10-06T09:05:00Z id=cx-fc-1 call=call_cx_orig_77]",
+			"Tool result [2026-10-06T09:06:00Z call=call_cx_orig_77]:",
+			"[attachment: image/png, 8 bytes; the image itself is not imported]",
+		}},
+		{"sessions-chatgpt-2026-10", "chatgpt:gpt0r1g1-cccc-4ddd-8eee-000000000003", []string{
+			"## Asked [2026-10-07T08:00:00Z id=gpt-node-u1]",
+			"- python: print(\"GPT-TOOL-CALL\") [2026-10-07T08:40:00Z id=gpt-node-a1]",
+			"Tool result [2026-10-07T08:41:00Z id=gpt-node-t1 call=gpt-node-a1]:\n\n    GPT-TOOL-RESULT 42 rows",
+			"[attachment: gpt-sheet.png, image/png, 11 bytes; the image itself is not imported]",
+			"## Branch 1: forks after id=gpt-node-a2\n\n### Asked [2026-10-07T08:50:00Z id=gpt-node-u2a]",
+		}},
+		{"sessions-claude-ai-2026-10", "claude-ai:cai0r1g1-dddd-4eee-8fff-000000000004", []string{
+			"## Asked [2026-10-08T07:00:00Z id=cai-msg-u1]",
+			"- web_search: CAI-TOOL-CALL lime note [2026-10-08T07:30:00Z id=cai-msg-a1 call=toolu_cai_orig_9]",
+			"Tool result [2026-10-08T07:30:00Z id=cai-msg-a1 call=toolu_cai_orig_9]:",
+			"[attachment: cai-note.txt, txt, 28 bytes]\nCAI-ATTACHMENT-TEXT lime 9",
+			"## Branch 1: forks after id=cai-msg-a1\n\n### Asked [2026-10-08T07:05:00Z id=cai-msg-u2a]",
+		}},
+	} {
+		docs := api.docs[tt.source]
+		if len(docs) != 1 || docs[0]["uri"] != tt.uri {
+			t.Fatalf("%s holds %v", tt.source, docs)
+		}
+		for _, h := range tt.has {
+			if !strings.Contains(docs[0]["text"], h) {
+				t.Errorf("%s: no %q in:\n%s", tt.uri, h, docs[0]["text"])
+			}
+		}
+	}
+	if api.attached["sessions-in-alpha-site"] != "alpha-site" || api.attached["sessions-in-beta-tools"] != "beta-tools" || len(api.attached) != 2 {
+		t.Fatalf("attached = %v", api.attached)
+	}
+	// A second run adds, replaces and removes nothing: the same documents,
+	// under the same ids.
+	before := api.held()
+	api.docWrites = 0
+	out, err = runImport(t, args...)
+	if err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	if got := counts(t, out); got != "added 0 updated 0 present 4 failed []" || api.held() != before || api.docWrites != 0 {
+		t.Fatalf("second run: %s, changed: %v, %d document writes", got, api.held() != before, api.docWrites)
+	}
+}
+
+const (
+	syntheticURI  = "claude:cc0rig1d-aaaa-4bbb-8ccc-000000000001"
+	syntheticFile = ".claude/projects/-synthetic-work-alpha-site/cc0rig1d-aaaa-4bbb-8ccc-000000000001.jsonl"
+	// earlierForm is the session's document as the version before this one
+	// wrote it: no times, no ids, no branches, and no digest kept with it.
+	earlierForm = "# CC-USER-ONE list the files in the alpha site\n\n- Source: claude session cc0rig1d-aaaa-4bbb-8ccc-000000000001\n- Directory: /synthetic/work/alpha-site\n- Started: 2026-10-05 10:00 UTC\n\n## Asked\n\nCC-USER-ONE list the files in the alpha site\n\n## Asked\n\n[image]\n\n## Answered\n\nCC-ASSISTANT-LATE-STAMP (stamped 10:30, second in file)\n\nTools used:\n- Bash: ls alpha-site --CC-TOOL-CALL\n"
+)
+
+// grow appends a turn to the synthetic Claude Code session, stamped the day
+// after the session's other turns: long before any import of it.
+func grow(t *testing.T, home string) {
+	t.Helper()
+	say(t, home, "cc-msg-u4", "cc-msg-a3b", "CC-GREW one more thing")
+}
+
+// say appends to the synthetic Claude Code session a turn that follows the
+// record parent.
+func say(t *testing.T, home, id, parent, text string) {
+	t.Helper()
+	f, err := os.OpenFile(filepath.Join(home, syntheticFile), os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	fmt.Fprintf(f, `{"type":"user","uuid":%q,"parentUuid":%q,"sessionId":"cc0rig1d-aaaa-4bbb-8ccc-000000000001","cwd":"/synthetic/work/alpha-site","timestamp":"2026-10-06T12:00:00.000Z","message":{"role":"user","content":%q}}`+"\n", id, parent, text)
+}
+
+const grown = "## Asked [2026-10-06T12:00:00Z id=cc-msg-u4]\n\nCC-GREW one more thing"
+
+// A session is known by its URI, not by what its document says: one an
+// earlier version wrote is not added a second time. It reads differently
+// from what this version writes, so it is replaced in place, once.
+func TestImportSessionsUpgradesInPlaceADocumentAnEarlierVersionWrote(t *testing.T) {
+	const source = "sessions-claude-2026-10"
+	api := &importServer{docs: map[string][]map[string]string{source: {{
+		"id": "old1", "uri": syntheticURI, "title": "CC-USER-ONE list the files in the alpha site (alpha-site)", "text": earlierForm,
+	}}}}
+	server := api.start(t)
+	home, _, _ := syntheticHome(t)
+	args := []string{"sessions", "--home", home, "--from", "claude", "--server", server.URL, "--json"}
+	out, err := runImport(t, args...)
+	if err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	doc := api.docs[source][0]
+	if got := counts(t, out); got != "added 0 updated 1 present 0 failed []" || len(api.docs) != 1 || len(api.docs[source]) != 1 || doc["id"] != "old1" || doc["uri"] != syntheticURI ||
+		!strings.Contains(doc["text"], "## Asked [2026-10-05T10:00:00Z id=cc-msg-u1]") || !strings.Contains(doc["text"], "## Branch 1: forks after id=cc-msg-a2") {
+		t.Fatalf("%s\n%v", got, api.docs)
+	}
+	// Upgraded, it reads as this version writes it: later runs write
+	// nothing, by month or by project.
+	before := api.held()
+	api.docWrites = 0
+	for _, more := range [][]string{nil, {"--by-project"}} {
+		out, err := runImport(t, append(args, more...)...)
+		if err != nil {
+			t.Fatalf("err = %v\n%s", err, out)
+		}
+		if got := counts(t, out); got != "added 0 updated 0 present 1 failed []" || api.held() != before || api.docWrites != 0 {
+			t.Fatalf("%v: %s, changed: %v, %d document writes", more, got, api.held() != before, api.docWrites)
+		}
+	}
+}
+
+// A session whose document would read differently has it replaced in place:
+// the same document, under the same id, in the same source, left out of
+// search if it was. What the export's times say does not come into it.
+func TestImportSessionsReplacesInPlaceTheDocumentOfASessionThatChanged(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		// change is what happens to the session after it is imported, and
+		// want a text its document then holds.
+		change   func(t *testing.T, home string)
+		want     string
+		excluded bool
+	}{
+		{name: "a turn dated long before the import is added", change: grow, want: grown},
+		{name: "left out of search", change: grow, want: grown, excluded: true},
+		// A session whose export gives no times follows the same rule.
+		{name: "a session with no times", change: func(t *testing.T, home string) {
+			putFile(t, home, syntheticFile, `{"type":"user","uuid":"u1","sessionId":"cc0rig1d-aaaa-4bbb-8ccc-000000000001","cwd":"/synthetic/work/alpha-site","message":{"content":"CC-USER-ONE list the files in the alpha site"}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","sessionId":"cc0rig1d-aaaa-4bbb-8ccc-000000000001","message":{"content":[{"type":"text","text":"CC-UNTIMED answer"}]}}
+`)
+		}, want: "## Answered [id=a1]\n\nCC-UNTIMED answer"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			const source = "sessions-claude-2026-10"
+			api := &importServer{}
+			server := api.start(t)
+			home, _, _ := syntheticHome(t)
+			args := []string{"sessions", "--home", home, "--from", "claude", "--server", server.URL, "--json"}
+			run := func(want string) {
+				t.Helper()
+				out, _ := runImport(t, args...)
+				if got := counts(t, out); got != want {
+					t.Fatalf("got %s, want %s", got, want)
+				}
+			}
+			run("added 1 updated 0 present 0 failed []")
+			doc := api.docs[source][0]
+			id := doc["id"]
+			if tt.excluded {
+				doc["excluded"] = "true"
+			}
+			run("added 0 updated 0 present 1 failed []")
+			tt.change(t, home)
+
+			// A replacement that fails leaves the document as it was.
+			before := api.held()
+			api.failReplace = true
+			out, err := runImport(t, args...)
+			if err == nil || !strings.Contains(out, "not updated, and left as it was") || api.held() != before {
+				t.Fatalf("a failed replacement: err = %v, changed: %v\n%s", err, api.held() != before, out)
+			}
+			api.failReplace = false
+
+			run("added 0 updated 1 present 0 failed []")
+			docs := api.docs[source]
+			if len(api.docs) != 1 || len(docs) != 1 || docs[0]["id"] != id || docs[0]["uri"] != syntheticURI || !strings.Contains(docs[0]["text"], tt.want) {
+				t.Fatalf("documents = %v", api.docs)
+			}
+			if got := docs[0]["excluded"] == "true"; got != tt.excluded {
+				t.Fatalf("excluded = %v", got)
+			}
+			// Nothing more changed: the next run writes nothing.
+			before = api.held()
+			api.docWrites = 0
+			run("added 0 updated 0 present 1 failed []")
+			if api.held() != before || api.docWrites != 0 {
+				t.Fatalf("a run with nothing new changed the document, in %d writes", api.docWrites)
+			}
+		})
+	}
+}
+
+// Two imports of a session that grew, run at once, leave one document with
+// the newer text: whichever writes second finds it already as it would
+// write it.
+func TestTwoImportsAtOnceOfASessionThatGrewLeaveOneDocument(t *testing.T) {
+	const source = "sessions-claude-2026-10"
+	api := &importServer{}
+	server := api.start(t)
+	home, _, _ := syntheticHome(t)
+	args := []string{"sessions", "--home", home, "--from", "claude", "--server", server.URL, "--token", "", "--json"}
+	if out, err := runImport(t, args...); err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	id := api.docs[source][0]["id"]
+	grow(t, home)
+	const runs = 6
+	outs, errs := make([]bytes.Buffer, runs), make([]error, runs)
+	var wg sync.WaitGroup
+	for i := range runs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs[i] = importCmd(args, &outs[i])
+		}()
+	}
+	wg.Wait()
+	updated := 0
+	for i := range runs {
+		var res sessionsResult
+		if err := json.Unmarshal(outs[i].Bytes(), &res); errs[i] != nil || err != nil || len(res.Failed) != 0 || res.Added != 0 || res.Updated+res.Present != 1 {
+			t.Fatalf("run %d: %v %v %s", i, errs[i], err, outs[i].String())
+		}
+		updated += res.Updated
+	}
+	docs := api.docs[source]
+	if updated < 1 || len(api.docs) != 1 || len(docs) != 1 || docs[0]["id"] != id || !strings.Contains(docs[0]["text"], grown) {
+		t.Fatalf("%d updated, documents = %v", updated, api.docs)
+	}
+}
+
+// twoStates is one session imported from a first home, and two more homes
+// that hold later states of it: the older with one more turn, the newer with
+// that turn and another. want is each state's whole document.
+func twoStates(t *testing.T, api *importServer, url string) (homes, want map[string]string, id string) {
+	t.Helper()
+	base, _, _ := syntheticHome(t)
+	if out, err := runImport(t, "sessions", "--home", base, "--from", "claude", "--server", url, "--json"); err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	homes, want = map[string]string{}, map[string]string{}
+	for _, state := range []string{"older", "newer"} {
+		home, _, _ := syntheticHome(t)
+		say(t, home, "cc-msg-u4", "cc-msg-a3b", "CINNABAR one more thing")
+		if state == "newer" {
+			say(t, home, "cc-msg-u5", "cc-msg-u4", "SAPPHIRE and another")
+		}
+		s, err := sessionimport.Open(sessionimport.Claude, filepath.Join(home, syntheticFile))
+		if err != nil {
+			t.Fatal(err)
+		}
+		homes[state], want[state] = home, strings.TrimSpace(s.Markdown(48<<10))
+	}
+	if strings.Contains(want["older"], "SAPPHIRE") || !strings.Contains(want["newer"], "SAPPHIRE") || !strings.Contains(want["older"], "CINNABAR") {
+		t.Fatalf("the two states do not differ as meant")
+	}
+	return homes, want, api.docs["sessions-claude-2026-10"][0]["id"]
+}
+
+// An import whose replacement the server refuses lost to another writer. It
+// never writes over what that writer left, whichever of the two holds the
+// later state of the session: it leaves the document, and names the session
+// as a conflict.
+func TestAnImportThatLosesNeverWritesOverADifferentWinner(t *testing.T) {
+	for _, tt := range []struct{ name, loser, winner string }{
+		{"the older import is held until the newer finishes", "older", "newer"},
+		{"the newer import is held until the older finishes", "newer", "older"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			api := &importServer{}
+			server := api.start(t)
+			homes, want, id := twoStates(t, api, server.URL)
+			args := func(state string) []string {
+				return []string{"sessions", "--home", homes[state], "--from", "claude", "--server", server.URL, "--token", "env:TOKEN_" + strings.ToUpper(state)}
+			}
+			t.Setenv("TOKEN_OLDER", "older")
+			t.Setenv("TOKEN_NEWER", "newer")
+			api.mu.Lock()
+			api.hold, api.reached, api.release = "Bearer "+tt.loser, make(chan struct{}), make(chan struct{})
+			reached, release := api.reached, api.release
+			api.mu.Unlock()
+			var lost bytes.Buffer
+			done := make(chan error, 1)
+			go func() { done <- importCmd(append(args(tt.loser), "--json"), &lost) }()
+			<-reached
+
+			var won bytes.Buffer
+			if err := importCmd(append(args(tt.winner), "--json"), &won); err != nil {
+				t.Fatalf("the winner: %v\n%s", err, won.String())
+			}
+			if got := counts(t, won.String()); got != "added 0 updated 1 present 0 failed []" {
+				t.Fatalf("the winner: %s", got)
+			}
+			close(release)
+			// Losing is not a failure of the run: it exits clean, and says so.
+			if err := <-done; err != nil {
+				t.Fatalf("the loser: %v\n%s", err, lost.String())
+			}
+			if got := counts(t, lost.String()); got != "added 0 updated 0 present 0 failed [] conflicts ["+syntheticURI+"]" {
+				t.Fatalf("the loser: %s", got)
+			}
+			docs := api.docs["sessions-claude-2026-10"]
+			if len(api.docs) != 1 || len(docs) != 1 || docs[0]["id"] != id || strings.TrimSpace(docs[0]["text"]) != want[tt.winner] {
+				t.Fatalf("the document is not the winner's:\n%s", docs[0]["text"])
+			}
+			if got := fmt.Sprint(api.puts["Bearer "+tt.loser], api.puts["Bearer "+tt.winner]); got != "[409] [200]" {
+				t.Fatalf("replacements answered %s", got)
+			}
+
+			// In words, the run names the session it left.
+			var said bytes.Buffer
+			api.mu.Lock()
+			api.hold, api.reached, api.release = "Bearer "+tt.loser, make(chan struct{}), make(chan struct{})
+			reached, release = api.reached, api.release
+			api.mu.Unlock()
+			go func() { done <- importCmd(args(tt.loser), &said) }()
+			<-reached
+			// The document changes again under it: back to the first state.
+			base, _, _ := syntheticHome(t)
+			if err := importCmd([]string{"sessions", "--home", base, "--from", "claude", "--server", server.URL, "--token", "env:TOKEN_" + strings.ToUpper(tt.winner), "--json"}, &won); err != nil {
+				t.Fatal(err)
+			}
+			close(release)
+			if err := <-done; err != nil || !strings.Contains(said.String(), "Left 1 sessions as another import wrote them while this one ran; nothing of this run's was written over them: "+syntheticURI+".\n") {
+				t.Fatalf("err = %v\n%s", err, said.String())
+			}
+		})
+	}
+}
+
+// A loser that finds the winner wrote what it would have written is present.
+func TestAnImportThatLosesToTheSameDocumentCountsItPresent(t *testing.T) {
+	api := &importServer{}
+	server := api.start(t)
+	homes, want, id := twoStates(t, api, server.URL)
+	t.Setenv("TOKEN_A", "a")
+	t.Setenv("TOKEN_B", "b")
+	args := func(token string) []string {
+		return []string{"sessions", "--home", homes["newer"], "--from", "claude", "--server", server.URL, "--token", "env:TOKEN_" + token, "--json"}
+	}
+	api.mu.Lock()
+	api.hold, api.reached, api.release = "Bearer a", make(chan struct{}), make(chan struct{})
+	reached, release := api.reached, api.release
+	api.mu.Unlock()
+	var lost, won bytes.Buffer
+	done := make(chan error, 1)
+	go func() { done <- importCmd(args("A"), &lost) }()
+	<-reached
+	if err := importCmd(args("B"), &won); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	doc := api.docs["sessions-claude-2026-10"][0]
+	if got := counts(t, lost.String()); got != "added 0 updated 0 present 1 failed []" || doc["id"] != id || strings.TrimSpace(doc["text"]) != want["newer"] || fmt.Sprint(api.puts) != "map[Bearer a:[409] Bearer b:[200]]" {
+		t.Fatalf("the loser: %s, replacements %v", got, api.puts)
+	}
+}
+
+// Imports of two states of one session, all at once: the document is always
+// all of one state, and no import writes after the server refused it.
+func TestImportsOfTwoStatesAtOnceLeaveAllOfOne(t *testing.T) {
+	api := &importServer{}
+	server := api.start(t)
+	homes, want, id := twoStates(t, api, server.URL)
+	const runs = 8
+	outs, errs := make([]bytes.Buffer, runs), make([]error, runs)
+	state := func(i int) string { return []string{"older", "newer"}[i%2] }
+	for i := range runs {
+		t.Setenv(fmt.Sprintf("TOKEN_%d", i), fmt.Sprintf("run-%d", i))
+	}
+	var wg sync.WaitGroup
+	for i := range runs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs[i] = importCmd([]string{"sessions", "--home", homes[state(i)], "--from", "claude", "--server", server.URL, "--token", fmt.Sprintf("env:TOKEN_%d", i), "--json"}, &outs[i])
+		}()
+	}
+	wg.Wait()
+	docs := api.docs["sessions-claude-2026-10"]
+	if len(api.docs) != 1 || len(docs) != 1 || docs[0]["id"] != id {
+		t.Fatalf("documents = %v", api.docs)
+	}
+	kept := strings.TrimSpace(docs[0]["text"])
+	if kept != want["older"] && kept != want["newer"] {
+		t.Fatalf("the document is neither state whole:\n%s", kept)
+	}
+	for i := range runs {
+		var res sessionsResult
+		if err := json.Unmarshal(outs[i].Bytes(), &res); errs[i] != nil || err != nil || len(res.Failed) != 0 || res.Added != 0 || res.Updated+res.Present+len(res.Conflicts) != 1 {
+			t.Fatalf("run %d: %v %v %s", i, errs[i], err, outs[i].String())
+		}
+		// One replacement at most, and an update only where it was taken.
+		answers := api.puts[fmt.Sprintf("Bearer run-%d", i)]
+		if len(answers) > 1 || (res.Updated == 1) != (len(answers) == 1 && answers[0] == 200) {
+			t.Fatalf("run %d: %+v after replacements answered %v", i, res, answers)
+		}
 	}
 }

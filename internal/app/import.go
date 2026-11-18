@@ -36,7 +36,9 @@ through its API.
 
 sessions  adds your Claude Code and Codex sessions, and ChatGPT or claude.ai
           exports, to knowledge sources as one document each, so agents can
-          search and cite them. A session already added is skipped.
+          search and cite them. A session already added is skipped, unless
+          its document would now read differently: then it is replaced in
+          place.
 skills    drafts each skill folder under DIR (default ~/.agents/skills) in
           the skill library. A skill the library already has is skipped.
 agents    creates an agent from each Markdown agent file in DIR (default
@@ -312,11 +314,18 @@ func importCmd(args []string, out io.Writer) error {
 
 // sessionsResult is what an import of sessions did.
 type sessionsResult struct {
-	Added   int            `json:"added"`
-	Present int            `json:"present"`
-	Skipped int            `json:"skipped"`
-	Failed  []importFailed `json:"failed"`
-	Sources []string       `json:"sources"`
+	Added int `json:"added"`
+	// Updated are the sessions whose documents were replaced in place: ones
+	// that changed since they were added, or that an earlier version wrote.
+	Updated int `json:"updated"`
+	Present int `json:"present"`
+	// Conflicts are the sessions whose documents another writer changed
+	// while this run was replacing them, to something this run would not
+	// have written. They are left as that writer wrote them.
+	Conflicts []string       `json:"conflicts"`
+	Skipped   int            `json:"skipped"`
+	Failed    []importFailed `json:"failed"`
+	Sources   []string       `json:"sources"`
 	// Corpora are the corpora the sources are in after the import.
 	Corpora []string `json:"corpora"`
 	// Attached are the sources now attached to a project, as SOURCE=PROJECT,
@@ -352,13 +361,23 @@ type sessionSink struct {
 	ctx    context.Context
 	c      importOptions
 	api    importAPI
-	have   map[string]bool // session URIs the server has
+	have   map[string]held // the sessions the server has, by URI
 	exists map[string]bool // sources the server has
 	count  map[string]int  // documents in each
 	full   map[string]bool
 	dirs   map[string]string // by project: a directory's slug to its name
 	owner  map[string]string // by project: what each source says it holds
 	res    *sessionsResult
+}
+
+// held is a session's document as the server has it. A session is known by
+// its URI alone, so a document an earlier version wrote is the same
+// session's. Its digest, of its title and text, says whether it reads as
+// the session now would: a document kept before digests were has none, and
+// so reads differently.
+type held struct {
+	source, id string
+	digest     string
 }
 
 // load reads what the server already has under the prefix.
@@ -378,7 +397,9 @@ func (k *sessionSink) load() error {
 		}
 		var docs struct {
 			Documents []struct {
-				URI string `json:"uri"`
+				ID     string `json:"id"`
+				URI    string `json:"uri"`
+				Digest string `json:"digest"`
 			} `json:"documents"`
 		}
 		if err := k.api.do(k.ctx, http.MethodGet, "/api/knowledge/"+url.PathEscape(src.Name)+"/documents", nil, &docs); err != nil {
@@ -388,8 +409,8 @@ func (k *sessionSink) load() error {
 		k.owner[src.Name] = src.Description
 		k.count[src.Name] = len(docs.Documents)
 		for _, d := range docs.Documents {
-			if d.URI != "" {
-				k.have[d.URI] = true
+			if _, ok := k.have[d.URI]; d.URI != "" && !ok {
+				k.have[d.URI] = held{source: src.Name, id: d.ID, digest: d.Digest}
 			}
 		}
 	}
@@ -414,8 +435,11 @@ func (k *sessionSink) add(s sessionimport.Session) {
 			k.dirs[slug] = dir
 		}
 	}
-	if k.have[s.URI()] {
-		k.res.Present++
+	title := s.Title
+	if s.Dir != "" {
+		title += " (" + filepath.Base(s.Dir) + ")"
+	}
+	if was, ok := k.have[s.URI()]; ok && !k.replace(was, title, s) {
 		return
 	}
 	month := "undated"
@@ -428,10 +452,6 @@ func (k *sessionSink) add(s sessionimport.Session) {
 	if slug != "" {
 		base = k.c.prefix + "-in-" + slug
 		what = ranIn(filepath.Base(s.Dir))
-	}
-	title := s.Title
-	if s.Dir != "" {
-		title += " (" + filepath.Base(s.Dir) + ")"
 	}
 	for n := 1; n <= 50; n++ {
 		name := base
@@ -479,6 +499,68 @@ func (k *sessionSink) add(s sessionimport.Session) {
 		return
 	}
 	k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: "every source for " + base + " is full"})
+}
+
+// replace brings the document the server has of a session up to what the
+// session now reads as, and reports whether the session is still to be
+// added because its document is gone. A document that already reads the
+// same is left alone: nothing is written. Any other is replaced in place,
+// in one call the server makes only if the document's title and text are
+// still the ones this run read, so it keeps its id, its source and whether
+// it is left out of search, and a refused or failed call leaves it as it
+// was.
+//
+// The call is made once. A run the server refuses lost to another writer,
+// and never writes over what that writer left: it reads the document again,
+// counts it present if it reads as this run would have written it, and
+// otherwise leaves it and names the session as a conflict. Which of the two
+// is the later state of the session this run cannot know.
+func (k *sessionSink) replace(was held, title string, s sessionimport.Session) (add bool) {
+	text := s.Markdown(k.c.maxBytes)
+	digest := knowledge.Digest(title, text)
+	// A document this run sent has no id here, and is as it was sent.
+	if was.id == "" || was.digest == digest {
+		k.res.Present++
+		return false
+	}
+	docs := "/api/knowledge/" + url.PathEscape(was.source) + "/documents"
+	err := k.api.do(k.ctx, http.MethodPut, docs+"/"+url.PathEscape(was.id)+"/text", map[string]string{
+		"title": title, "text": text, "digest": was.digest,
+	}, nil)
+	switch {
+	case err == nil:
+		k.have[s.URI()] = held{source: was.source}
+		k.res.Updated++
+		return false
+	case status(err) != http.StatusConflict:
+		k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: "not updated, and left as it was: " + err.Error()})
+		return false
+	}
+	var listed struct {
+		Documents []struct {
+			ID     string `json:"id"`
+			Digest string `json:"digest"`
+		} `json:"documents"`
+	}
+	if err := k.api.do(k.ctx, http.MethodGet, docs, nil, &listed); err != nil {
+		k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: "not updated, and left as it was: " + err.Error()})
+		return false
+	}
+	for _, d := range listed.Documents {
+		switch {
+		case d.ID != was.id:
+		case d.Digest == digest:
+			k.res.Present++
+			return false
+		default:
+			k.res.Conflicts = append(k.res.Conflicts, s.URI())
+			return false
+		}
+	}
+	// Removed since this run read it: the session is added again.
+	delete(k.have, s.URI())
+	k.count[was.source]--
+	return true
 }
 
 // dirSlug is a directory's last name as a source's name may hold it: lower
@@ -677,7 +759,7 @@ func (k *sessionSink) file() {
 
 func (k *sessionSink) sent(name string, s sessionimport.Session) {
 	k.count[name]++
-	k.have[s.URI()] = true
+	k.have[s.URI()] = held{source: name}
 	k.res.Added++
 	k.res.ByTool[s.Tool]++
 	if i := sort.SearchStrings(k.res.Sources, name); i == len(k.res.Sources) || k.res.Sources[i] != name {
@@ -704,8 +786,8 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 	if len(tools) == 0 && len(c.exports) == 0 {
 		return errors.New("nothing to read; name a tool with --from or an export with --export FILE")
 	}
-	res := sessionsResult{Failed: []importFailed{}, Sources: []string{}, Corpora: []string{}, ByTool: map[string]int{}, DryRun: c.dryRun}
-	sink := &sessionSink{ctx: ctx, c: c, api: api, res: &res, have: map[string]bool{}, exists: map[string]bool{}, count: map[string]int{}, full: map[string]bool{}, dirs: map[string]string{}, owner: map[string]string{}}
+	res := sessionsResult{Conflicts: []string{}, Failed: []importFailed{}, Sources: []string{}, Corpora: []string{}, ByTool: map[string]int{}, DryRun: c.dryRun}
+	sink := &sessionSink{ctx: ctx, c: c, api: api, res: &res, have: map[string]held{}, exists: map[string]bool{}, count: map[string]int{}, full: map[string]bool{}, dirs: map[string]string{}, owner: map[string]string{}}
 	if !c.dryRun {
 		if err := sink.load(); err != nil {
 			return err
@@ -778,6 +860,12 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 	if _, err := fmt.Fprintf(out, "%s %d sessions (%s) to %d knowledge sources; %d already there, %d skipped, %d failed.\n",
 		verb, res.Added, toolCounts(res.ByTool), len(res.Sources), res.Present, res.Skipped, len(res.Failed)); err != nil {
 		return err
+	}
+	if res.Updated > 0 {
+		fmt.Fprintf(out, "Updated %d sessions whose documents read differently now, in place.\n", res.Updated)
+	}
+	if len(res.Conflicts) > 0 {
+		fmt.Fprintf(out, "Left %d sessions as another import wrote them while this one ran; nothing of this run's was written over them: %s.\n", len(res.Conflicts), strings.Join(res.Conflicts, ", "))
 	}
 	for _, f := range res.Failed {
 		fmt.Fprintf(out, "  failed %s: %s\n", f.Name, f.Reason)

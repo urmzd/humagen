@@ -343,7 +343,7 @@ func (s *Store) CompleteSync(tenant, name, id string, docs []ImportDocument, by 
 		for _, d := range docs {
 			seq++
 			texts := split(d.Text)
-			doc := &Document{ID: d.ID, Title: strings.TrimSpace(d.Title), URI: d.URI, Bytes: len(d.Text), Passages: len(texts), AddedBy: by, AddedAt: at}
+			doc := &Document{ID: d.ID, Title: strings.TrimSpace(d.Title), URI: d.URI, Bytes: len(d.Text), Passages: len(texts), AddedBy: by, AddedAt: at, Digest: Digest(d.Title, d.Text)}
 			next.docs = append(next.docs, doc)
 			next.passages = append(next.passages, passagesOf(doc, texts)...)
 			next.seqs[doc.ID] = seq
