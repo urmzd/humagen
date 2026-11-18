@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.137.4 (2026-11-18)
+
+### Bug Fixes
+
+- **console**: precache the shell only, and read a failed control again ([f5d2911](https://github.com/urmzd/humagen/commit/f5d2911593157e5dc84099d825714179dcd66676))
+
+### Performance
+
+- **console**: load pages when they are opened, not with Home ([256841b](https://github.com/urmzd/humagen/commit/256841b6c6ec158efa956b1b8a86460f7198a7b2))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.137.3...v0.137.4)
+
+
 ## 0.137.3 (2026-11-18)
 
 ### Bug Fixes
