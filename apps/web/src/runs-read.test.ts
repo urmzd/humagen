@@ -24,3 +24,25 @@ test("an event later than the run held, for a run not held, or with nothing held
   assert.equal(reflects(held, { time: "2026-10-01T09:00:01Z" }), false);
   assert.equal(reflects(held, { run: "r1", time: "not a time" }), false);
 });
+
+test("two changes inside one millisecond are told apart", () => {
+  const running = [{ id: "r1", updated_at: "2026-10-01T09:00:05.123100Z" }];
+  // The run ended 800 microseconds after the state the list holds.
+  assert.equal(reflects(running, { run: "r1", time: "2026-10-01T09:00:05.123900Z" }), false);
+  assert.equal(reflects(running, { run: "r1", time: "2026-10-01T09:00:05.123100Z" }), true);
+  assert.equal(reflects(running, { run: "r1", time: "2026-10-01T09:00:05.123099999Z" }), true);
+  // Fewer digits are the same instant as trailing zeros, in any zone.
+  assert.equal(reflects(running, { run: "r1", time: "2026-10-01T05:00:05.1231-04:00" }), true);
+  assert.equal(
+    reflects(running, { run: "r1", time: "2026-10-01T05:00:05.123100001-04:00" }),
+    false,
+  );
+  // No fraction at all.
+  assert.equal(
+    reflects([{ id: "r1", updated_at: "2026-10-01T09:00:05Z" }], {
+      run: "r1",
+      time: "2026-10-01T09:00:05.000000001Z",
+    }),
+    false,
+  );
+});

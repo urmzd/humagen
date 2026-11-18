@@ -18,7 +18,24 @@ export function reflects(
   if (!runs || !event.run) return false;
   const held = runs.find((r) => r.id === event.run);
   if (!held) return false;
-  const seen = Date.parse(held.updated_at);
-  const at = Date.parse(event.time);
-  return Number.isFinite(seen) && Number.isFinite(at) && at <= seen;
+  const seen = instant(held.updated_at);
+  const at = instant(event.time);
+  if (!seen || !at) return false;
+  return at.second < seen.second || (at.second === seen.second && at.fraction <= seen.fraction);
+}
+
+/**
+ * A time as its whole second and the digits after it, to the nanosecond.
+ *
+ * The server writes times to the nanosecond and `Date.parse` keeps three
+ * digits, so two state changes inside one millisecond would read as the same
+ * moment and the later one as old news. The second is compared as a number
+ * and the fraction as nine digits, so nothing the server wrote is dropped.
+ */
+function instant(text: string): { second: number; fraction: string } | null {
+  const m = /^(.*?)(?:\.(\d+))?(Z|[+-]\d\d:?\d\d)$/.exec(text.trim());
+  if (!m) return null;
+  const second = Date.parse(`${m[1]}${m[3]}`);
+  if (!Number.isFinite(second)) return null;
+  return { second, fraction: (m[2] ?? "").padEnd(9, "0").slice(0, 9) };
 }
