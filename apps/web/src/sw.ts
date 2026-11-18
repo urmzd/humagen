@@ -8,7 +8,7 @@
  * their work. Nothing here imports the console, and nothing exports, so the
  * built file is a classic worker script.
  */
-import { cacheName, OFFLINE_PATH, staleCaches, strategyFor } from "./swPolicy.ts";
+import { cacheName, keeps, OFFLINE_PATH, staleCaches, strategyFor } from "./swPolicy.ts";
 
 /** The parts of the worker's global scope this file uses. */
 interface WorkerScope {
@@ -79,7 +79,9 @@ scope.addEventListener("fetch", (event) => {
           hit ??
           fetch(req).then((res) => {
             // A hashed name never changes, so a good answer is kept for next time.
-            if (res.ok && res.type === "basic") {
+            if (
+              keeps({ ok: res.ok, type: res.type, contentType: res.headers.get("content-type") })
+            ) {
               const copy = res.clone();
               event.waitUntil(caches.open(CACHE).then((cache) => cache.put(req, copy)));
             }

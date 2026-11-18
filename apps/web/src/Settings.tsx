@@ -3,24 +3,18 @@ import {
   BellIcon,
   BotIcon,
   BrainIcon,
-  CheckCircleIcon,
-  ClipboardListIcon,
   GaugeIcon,
-  ListChecksIcon,
   MicIcon,
   MonitorIcon,
   MoonIcon,
   PaletteIcon,
-  PauseIcon,
   PlugIcon,
   ScrollTextIcon,
   ServerIcon,
   ShieldIcon,
-  SlidersIcon,
   SunIcon,
   TrashIcon,
   UserIcon,
-  UsersIcon,
 } from "@humagen/render-web";
 import { Input } from "@humagen/render-web/ui/input";
 import { NativeSelect } from "@humagen/render-web/ui/native-select";
@@ -45,6 +39,7 @@ import type { PrefsRead } from "./preferences.ts";
 import { ReadAudit } from "./ReadAudit.tsx";
 import { href, type Route, type SettingsSection } from "./route.ts";
 import { SettingsFormRow } from "./SettingsFormRow.tsx";
+import { Avatar, linked, workspaceSettingsRoute } from "./settingsLinks.tsx";
 import {
   agentOptions,
   button,
@@ -63,43 +58,8 @@ import { VoiceSettings } from "./VoiceSettings.tsx";
 
 export type Section = SettingsSection;
 
-/** A person's picture, or their initial when they have none. */
-export function Avatar({
-  name,
-  prefs,
-  size = 28,
-}: {
-  name: string;
-  prefs: Preferences | null;
-  size?: number;
-}) {
-  if (prefs?.has_photo) {
-    return (
-      <img
-        src={`/api/preferences/photo?v=${prefs.photo_version}`}
-        alt=""
-        width={size}
-        height={size}
-        className="shrink-0 rounded-full object-cover"
-        style={{ width: size, height: size }}
-      />
-    );
-  }
-  return (
-    <span
-      aria-hidden
-      className="inline-flex shrink-0 items-center justify-center rounded-full bg-aui-hover font-medium text-aui-fg"
-      style={{
-        width: size,
-        height: size,
-        fontSize: Math.max(12, Math.round(size * 0.42)),
-        lineHeight: 1,
-      }}
-    >
-      {(name.trim()[0] ?? "?").toUpperCase()}
-    </span>
-  );
-}
+// Kept here for their callers; the sidebar reads them from settingsLinks.tsx.
+export { Avatar, workspaceSettingsRoute };
 
 /** A plain link's click: in place on a plain click, left to the browser on a modified one. */
 const follow = (go: () => void) => (e: MouseEvent<HTMLAnchorElement>) => {
@@ -591,65 +551,12 @@ export function Settings({
   );
 }
 
-// Workspace pages shown inside workspace settings. Schedules and Projects live in the sidebar.
-const linked = [
-  {
-    label: "People",
-    icon: <UsersIcon size={16} />,
-    route: { page: "directory", tab: "people" } as Route,
-    permission: "people:read",
-  },
-  {
-    label: "Usage",
-    icon: <ClipboardListIcon size={16} />,
-    route: { page: "usage" } as Route,
-    permission: "runs:read",
-  },
-  {
-    label: "Health",
-    icon: <CheckCircleIcon size={16} />,
-    route: { page: "monitor", tab: "health" } as Route,
-    permission: "alerts:read",
-  },
-  {
-    label: "Policies",
-    icon: <SlidersIcon size={16} />,
-    route: { page: "action-policy" } as Route,
-    permission: "agents:read",
-  },
-  {
-    label: "Audit",
-    icon: <ListChecksIcon size={16} />,
-    route: { page: "audit" } as Route,
-    permission: "projects:govern",
-  },
-  {
-    label: "Agent controls",
-    icon: <PauseIcon size={16} />,
-    route: { page: "agent-control" } as Route,
-    permission: "agents:write",
-  },
-];
-
 /** Your own settings; every other section is the workspace's. */
 const yours: Section[] = ["profile", "notifications", "appearance"];
 /** Pages shown inside Your settings. */
 const yourPages = [
   { label: "Connections", icon: <PlugIcon size={16} />, route: { page: "connections" } as Route },
 ];
-
-/**
- * Where Workspace settings opens for someone: its first section for an admin,
- * else the first workspace page they may read, else nowhere.
- */
-export function workspaceSettingsRoute(
-  can: (permission: string) => boolean,
-  roles: string[] = [],
-): Route | null {
-  if (roles.includes("admin") || can("agents:write") || can("projects:govern"))
-    return { page: "settings", section: "workspace" } as Route;
-  return linked.find((item) => can(item.permission))?.route ?? null;
-}
 
 /** The settings sections, and the workspace pages that live inside settings. */
 export function SettingsNav({

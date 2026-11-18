@@ -2,16 +2,6 @@ import { defaultCopy } from "@humagen/components";
 import { BellIcon, BotIcon, PlugIcon, ShieldIcon, UserIcon } from "@humagen/render-web";
 import { Toaster } from "@humagen/render-web/ui/sonner";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActionPolicies } from "./ActionPolicies.tsx";
-import { AgentBuilderStart } from "./AgentBuilder.tsx";
-import { AgentControls } from "./AgentControls.tsx";
-import { AgentDetail } from "./AgentDetail.tsx";
-import { AgentNetwork } from "./AgentNetwork.tsx";
-import { AgentOperations } from "./AgentOperations.tsx";
-import { Agents } from "./Agents.tsx";
-import { Assignments } from "./Assignments.tsx";
-import { Audit } from "./Audit.tsx";
-import { Automations } from "./Automations.tsx";
 import type { Run, RunEvent } from "./adapter.ts";
 import { agentHuePath, configureAgentHues } from "./agentHues.ts";
 import {
@@ -34,52 +24,74 @@ import {
   type Settings as Workspace,
 } from "./api.ts";
 import { accentAttribute, brandCopy, servedBranding } from "./branding.ts";
-import { Catalog } from "./Catalog.tsx";
 import { Chat } from "./Chat.tsx";
-import { Connections, YourConnections } from "./Connections.tsx";
-import { ContextHealth } from "./ContextHealth.tsx";
-import { CorpusPage, KnowledgePage } from "./Corpora.tsx";
 import { CONNECT_PERMISSION } from "./connections.ts";
-import { DirectoryPage } from "./Directory.tsx";
-import { ForkProject } from "./ForkProject.tsx";
-import { Health } from "./Health.tsx";
-import { Integrations } from "./Integrations.tsx";
-import { ItemPage } from "./ItemPage.tsx";
-import { Knowledge } from "./Knowledge.tsx";
-import { MemoryLibrary } from "./MemoryLibrary.tsx";
-import { MessageFocus } from "./MessageFocus.tsx";
-import { Monitor } from "./Monitor.tsx";
 import type { Source as About } from "./mail.ts";
-import { NotificationsPage, useNotifications } from "./Notifications.tsx";
-import { PersonalPreferences } from "./PersonalPreferences.tsx";
-import { ProjectPage, ProjectsPage } from "./Projects.tsx";
+import { useNotifications } from "./notificationDelivery.ts";
+import {
+  ActionPolicies,
+  AgentBuilderStart,
+  AgentControls,
+  AgentDetail,
+  AgentNetwork,
+  AgentOperations,
+  Agents,
+  Assignments,
+  Audit,
+  Automations,
+  Catalog,
+  Connections,
+  ContextHealth,
+  CorpusPage,
+  DirectoryPage,
+  ForkProject,
+  Health,
+  Integrations,
+  ItemPage,
+  Knowledge,
+  KnowledgePage,
+  MemoryLibrary,
+  MessageFocus,
+  Monitor,
+  NotificationsPage,
+  PersonalPreferences,
+  ProjectPage,
+  ProjectsPage,
+  preloadLink,
+  preloadRoute,
+  preloadWhenIdle,
+  QuickSwitcher,
+  Schedules,
+  Settings,
+  SettingsFrame,
+  SkillsLibrary,
+  Storage,
+  Usage,
+  WorkspaceGraph,
+  YourConnections,
+} from "./pages.ts";
 import { usePreferences } from "./preferences.ts";
-import { QuickSwitcher } from "./QuickSwitcher.tsx";
 import {
   type AgentTab,
   documentTitle,
   href,
   kindParam,
+  parse,
   type Route,
   type SettingsSection,
   useRoute,
 } from "./route.ts";
 import { reflects } from "./runsRead.ts";
-import { Schedules } from "./Schedules.tsx";
 import {
   AlertsPage,
   HomeSessionGlance,
   SessionsPage,
   useSessionAttention,
 } from "./SessionCenter.tsx";
-import { Settings, SettingsFrame } from "./Settings.tsx";
 import { DrawerButton, Sidebar, useEdgeSwipe } from "./Sidebar.tsx";
-import { SkillsLibrary } from "./SkillsLibrary.tsx";
-import { Storage } from "./Storage.tsx";
 import { DRAWER_BELOW, SIDEBAR_KEY, sidebarStartsOpen } from "./sidebarState.ts";
 import { syncThemeColor } from "./standalone.ts";
 import { arrive, FIRST_HOLD_MS, settled } from "./transition.ts";
-import { defaultUsageView, Usage } from "./Usage.tsx";
 import {
   type AgentProfile,
   AgentProfiles,
@@ -92,7 +104,7 @@ import {
   SkeletonRows,
   setAgentHues,
 } from "./ui.tsx";
-import { WorkspaceGraph } from "./WorkspaceGraph.tsx";
+import { defaultUsageView } from "./usage.ts";
 import { WorkspaceTabs } from "./WorkspaceTabs.tsx";
 import { hubTabs, settingsPageLabel, workspaceHub } from "./workspace-navigation.ts";
 import { useBrandingStyle } from "./workspaceBranding.ts";
@@ -352,6 +364,25 @@ function Console({
     });
     return () => {
       live = false;
+    };
+  }, []);
+
+  // Pages are read when opened (pages.ts). The one at this address is read at
+  // once, beside its data; the sidebar's are read once Home is on screen and
+  // the browser idle; and any other when a link to it is pointed at or focused.
+  useEffect(() => preloadRoute(route), [route]);
+  useEffect(() => (arrived ? preloadWhenIdle() : undefined), [arrived]);
+  useEffect(() => {
+    const ahead = (event: Event) => {
+      const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (link instanceof HTMLAnchorElement && link.origin === window.location.origin)
+        preloadLink(parse(link.pathname, link.search));
+    };
+    document.addEventListener("pointerover", ahead, { passive: true });
+    document.addEventListener("focusin", ahead);
+    return () => {
+      document.removeEventListener("pointerover", ahead);
+      document.removeEventListener("focusin", ahead);
     };
   }, []);
 
@@ -719,6 +750,7 @@ function Console({
               workspaceName={workspaceName}
               open={!leaving}
               onClose={() => setSearchOpen(false)}
+              onUnavailable={() => setSearchOpen(false)}
               onGo={(next) => {
                 setSearchOpen(false);
                 navigate(next);
@@ -1252,6 +1284,7 @@ function Console({
                           source={route.name}
                           projects={projects ?? []}
                           onClose={() => go({ ...route, fork: undefined })}
+                          onUnavailable={() => go({ ...route, fork: undefined }, { replace: true })}
                           onReady={(name) => {
                             loadProjects();
                             openProject(name);

@@ -2834,6 +2834,13 @@ export const defaultCopy = {
   budgetBody: (used: string, limit: string, period?: string, needs?: string) =>
     `${used} of ${limit} used${period ? ` this ${period}` : ""}.${needs ? ` This run needs ${needs} more.` : ""}`,
   noPermission: "You can read this, but you don't have permission to act on it.",
+  /** A page of the console whose code could not be read, as after an update or without a network. */
+  pageLoad: {
+    title: "This page did not load",
+    failed: "This page could not be loaded. Check your connection, then try again.",
+    /** Something that opens over the page, such as search, whose code could not be read. */
+    partFailed: "That could not be opened. Check your connection, then try again.",
+  },
   mailbox: {
     /** How many are open, beside the Inbox's title. */
     openCount: (n: number) => `${n} open`,
