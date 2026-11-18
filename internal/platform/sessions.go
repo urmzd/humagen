@@ -592,16 +592,28 @@ func seenSessions(seer *Seer, rows []sessionRow) []sessionRow {
 	return slices.DeleteFunc(rows, func(r sessionRow) bool { return !seenSession(seer, r.head.ID) })
 }
 
-// disclosedSessions is the summaries a response may return: the reads by
-// exception they rest on are recorded now, and one whose record cannot be
-// written is left out.
-func disclosedSessions(seer *Seer, out []SessionSummary) []SessionSummary {
+// errReadUnrecorded refuses a listing whose reader was to be shown a session
+// by exception that could not be recorded. It answers as a session that is
+// not there does, and says nothing of which.
+var errReadUnrecorded = fmt.Errorf("%w: sessions", threads.ErrNotFound)
+
+// disclosedSessions records the reads by exception the summaries a response
+// is about to return rest on, and returns the summaries. When any record
+// cannot be written the whole answer is refused: no summary is returned, and
+// the caller returns no cursor either, since a cursor names a row's
+// identity, time and rank and a shorter page would say one was left out.
+func disclosedSessions(seer *Seer, out []SessionSummary) ([]SessionSummary, error) {
 	ids := make([]string, len(out))
 	for i, v := range out {
 		ids[i] = v.ID
 	}
 	shown := seer.Disclose(ids...)
-	return slices.DeleteFunc(out, func(v SessionSummary) bool { return !shown[v.ID] })
+	for _, id := range ids {
+		if !shown[id] {
+			return nil, errReadUnrecorded
+		}
+	}
+	return out, nil
 }
 
 // sessionOf reports whether a person started a session or takes part in it.
@@ -634,7 +646,7 @@ func (p *Platform) ListSessions(ctx context.Context, who auth.Principal, parent,
 			out = append(out, v)
 		}
 	}
-	return disclosedSessions(seer, out), nil
+	return disclosedSessions(seer, out)
 }
 
 // SessionsPage is one page of the sessions a query selects that the reader
@@ -645,7 +657,9 @@ func (p *Platform) ListSessions(ctx context.Context, who auth.Principal, parent,
 // that says a page follows, decided. A status is known from a session's
 // turns, so a query that names one reads the turns of every session it
 // could hold. Either way only the page is disclosed: a reader who reads by
-// exception is recorded for the sessions it returns (Seer.Holding).
+// exception is recorded for the sessions it returns (Seer.Holding), and
+// when one of those records cannot be written the page is refused whole,
+// with no rows and no cursor.
 func (p *Platform) SessionsPage(ctx context.Context, who auth.Principal, q SessionQuery, limit int, after string) ([]SessionSummary, string, error) {
 	rows, seer, err := p.sessionRows(who, q)
 	if err != nil {
@@ -675,7 +689,10 @@ func (p *Platform) SessionsPage(ctx context.Context, who auth.Principal, q Sessi
 		if err != nil {
 			return nil, "", err
 		}
-		return disclosedSessions(seer, page), next, nil
+		if page, err = disclosedSessions(seer, page); err != nil {
+			return nil, "", err
+		}
+		return page, next, nil
 	}
 	start := 0
 	if after != "" {
@@ -709,7 +726,10 @@ func (p *Platform) SessionsPage(ctx context.Context, who auth.Principal, q Sessi
 		last := picked[len(picked)-1]
 		next = sessionListCursor(last.rank, last.at, last.head.ID)
 	}
-	return disclosedSessions(seer, out), next, nil
+	if out, err = disclosedSessions(seer, out); err != nil {
+		return nil, "", err
+	}
+	return out, next, nil
 }
 
 // afterSessionPlace reports whether a session's place in a listing is

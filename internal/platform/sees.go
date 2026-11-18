@@ -186,8 +186,8 @@ func (s *Seer) Snapshot() *Seer {
 // written. A row that is returned is recorded with every exceptional grant
 // its decision rested on: its own conversation, and each session above it
 // that the reader also sees only by exception, which the row names as its
-// parent. Recording still comes first: a row whose record cannot be written
-// is not shown.
+// parent. Recording still comes first: when the record of any row an answer
+// would show cannot be written, the answer is refused whole.
 //
 // A seer that is not holding records each exceptional read as it grants it,
 // which is right wherever everything decided is shown.
@@ -211,9 +211,11 @@ func (s *Seer) deciding(row string, decide func() bool) bool {
 }
 
 // Disclose records the exceptional reads the decisions of rows rested on,
-// now that the rows are to be shown, and returns the rows that may be: one
-// whose record cannot be written is left out (fail closed). A seer that is
-// not holding recorded them as it decided, and every row may be shown.
+// now that the rows are to be shown, and reports for each whether its
+// records were written. One whose record could not be written must not be
+// shown, nor anything that tells of it: the caller refuses its whole answer
+// (disclosedSessions). A seer that is not holding recorded them as it
+// decided, and every row may be shown.
 func (s *Seer) Disclose(rows ...string) map[string]bool {
 	shown := make(map[string]bool, len(rows))
 	for _, row := range rows {

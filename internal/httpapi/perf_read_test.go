@@ -324,6 +324,111 @@ func TestASessionPageRecordsExactlyTheExceptionalReadsItShows(t *testing.T) {
 	})
 }
 
+// When the record of a read by exception cannot be written, the page that
+// would show it is refused whole: an error, no rows and no cursor, whichever
+// row's record failed, since the cursor names the last row's identity, time
+// and rank. The same request answers once the record can be written again.
+func TestASessionPageIsRefusedWholeWhenARecordCannotBeWritten(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		store := &failingAudit{Store: open(t)}
+		f := newFixtureWith(t, platform.Config{Backends: platform.Backends{State: store}, Now: seedClock()})
+		// Olu starts everything; Ana, an administrator, reads it by exception.
+		olu := auth.Principal{Subject: "olu", Tenant: "acme", Kind: auth.User, Name: "Olu", Roles: []auth.Role{auth.Admin}}
+		seedVolume(t, f.p, olu, volume{Sessions: 12, Children: 2, Runs: 20, Alerts: 0, Parallel: 4})
+		ana := f.person(t, "acme", "ana", "Ana", "humagen-admins")
+		page := func(path string) ([]string, string) {
+			t.Helper()
+			res, body := f.do(t, nil, "GET", path, ana, "")
+			if res.StatusCode != http.StatusOK {
+				t.Fatalf("GET %s = %d %v", path, res.StatusCode, body)
+			}
+			var ids []string
+			for _, raw := range body["sessions"].([]any) {
+				ids = append(ids, raw.(map[string]any)["id"].(string))
+			}
+			next, _ := body["next"].(string)
+			return ids, next
+		}
+		refused := func(path, why string, ids []string) {
+			t.Helper()
+			res, body := f.do(t, nil, "GET", path, ana, "")
+			if res.StatusCode != http.StatusNotFound || len(body) != 1 || body["error"] != "not found" {
+				t.Fatalf("%s, %s: GET = %d %v, want 404 and nothing but that it was not found", path, why, res.StatusCode, body)
+			}
+			for name, values := range res.Header {
+				for _, v := range values {
+					for _, id := range ids {
+						if strings.Contains(v, id) || strings.Contains(strings.ToLower(name), "next") {
+							t.Fatalf("%s, %s: the refusal's header %s: %s tells of a row", path, why, name, v)
+						}
+					}
+				}
+			}
+		}
+		for _, path := range []string{"/api/sessions?limit=3", "/api/sessions?limit=3&status=done"} {
+			ids, next := page(path)
+			if len(ids) != 3 || next == "" {
+				t.Fatalf("GET %s = %v, next %q; want a page of 3 and a page after it", path, ids, next)
+			}
+			store.all.Store(true)
+			refused(path, "no record can be written", ids)
+			store.all.Store(false)
+			for i, where := range []string{"the first row", "the middle row", "the last row, which the cursor names"} {
+				store.thread.Store(ids[i])
+				refused(path, "the record of "+where+" cannot be written", ids)
+				store.thread.Store("")
+				if again, after := page(path); !slices.Equal(again, ids) || after != next {
+					t.Fatalf("GET %s once records can be written = %v, next %q; want %v, %q", path, again, after, ids, next)
+				}
+			}
+		}
+		// A session's own read lists the sessions under it, all of them: one
+		// whose record cannot be written refuses the read as well.
+		all, _ := page("/api/sessions?limit=200")
+		for _, id := range all {
+			_, body := f.do(t, nil, "GET", "/api/sessions/"+id, ana, "")
+			up, _ := body["parent"].(string)
+			if !strings.HasPrefix(up, "s_") {
+				continue
+			}
+			store.thread.Store(id)
+			if res, body := f.do(t, nil, "GET", "/api/sessions/"+up, ana, ""); res.StatusCode != http.StatusNotFound || len(body) != 1 {
+				t.Fatalf("a session whose child cannot be recorded = %d %v, want 404", res.StatusCode, body)
+			}
+			store.thread.Store("")
+			if res, _ := f.do(t, nil, "GET", "/api/sessions/"+up, ana, ""); res.StatusCode != http.StatusOK {
+				t.Fatalf("the same session once its child can be recorded = %d", res.StatusCode)
+			}
+			return
+		}
+		t.Fatal("no session under another was seeded")
+	})
+}
+
+// failingAudit fails the writes of read records: all of them while all is
+// set, or those of one thread while thread names it.
+type failingAudit struct {
+	state.Store
+	all    atomic.Bool
+	thread atomic.Value
+}
+
+func (s *failingAudit) Write(ctx context.Context, namespace string, ops ...state.Op) error {
+	if namespace == "read-audit" {
+		thread, _ := s.thread.Load().(string)
+		for _, op := range ops {
+			if s.all.Load() || (thread != "" && strings.Contains(string(op.Value), `"thread":"`+thread+`"`)) {
+				return statetest.ErrInjected
+			}
+		}
+	}
+	return s.Store.Write(ctx, namespace, ops...)
+}
+
+func (s *failingAudit) LookupMany(ctx context.Context, namespace, tenant string, keys []string) ([]state.Record, error) {
+	return state.LookupMany(ctx, s.Store, namespace, tenant, keys)
+}
+
 // A session read whose runs cannot be read is shown without them, and still
 // names its people as the directory names them, as the same read does when
 // its runs can be read.
