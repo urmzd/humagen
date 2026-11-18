@@ -175,18 +175,52 @@ message, and `call` the original id of the tool call, so a result names the
 call it answers. A part the export does not state is left out of the brackets.
 An id is cut to 64 bytes.
 
-| Kept in the document | Claude Code | Codex | ChatGPT | claude.ai |
-| --- | --- | --- | --- | --- |
-| Roles | Yes | Yes | Yes, with the messages tools sent | Yes |
-| Time of each turn | Yes | Yes | Yes | Yes |
-| Order | Each turn after the one it replies to (`parentUuid`) | By time: a rollout names no parents | Each turn after the one it replies to (`mapping`) | Each turn after the one it replies to (`parent_message_uuid`); by time in an older export that names no parents |
-| Tool calls and results | Yes, linked by the call's id | Yes, linked by `call_id` | Yes: a message sent to a tool is a call, and a tool's message its result. The format gives a call no id, so the result's `call` is the id of the message that called it | Yes, linked by the call's id |
-| Message ids | Yes | Where the rollout gives one | Yes | Yes |
-| Attachments | Type and size of an image or document, not the file | Type and size of an image, not the file | Name, type and size, not the file | Name, type, size and the text the export extracted; a file with no text is named |
-| Branches | Yes | Not supported: the format is one line of turns | Yes | Yes |
-| Conversation id | Yes, in the `uri` and the `Source` line | Yes | Yes | Yes |
-| Provenance | Tool, id, directory, start | Tool, id, directory, start, and the session that started it | Tool, id, start | Tool, id, start |
-| Project (`--by-project`) | Yes, by directory | Yes, by directory | Not supported: the format has no directory | Not supported: the format has no directory |
+What each format's document keeps:
+
+- **Claude Code**
+  - Roles: Yes
+  - Time of each turn: Yes
+  - Order: Each turn after the one it replies to (`parentUuid`)
+  - Tool calls and results: Yes, linked by the call's id
+  - Message ids: Yes
+  - Attachments: Type and size of an image or document, not the file
+  - Branches: Yes
+  - Conversation id: Yes, in the `uri` and the `Source` line
+  - Provenance: Tool, id, directory, start
+  - Project (`--by-project`): Yes, by directory
+- **Codex**
+  - Roles: Yes
+  - Time of each turn: Yes
+  - Order: By time: a rollout names no parents
+  - Tool calls and results: Yes, linked by `call_id`
+  - Message ids: Where the rollout gives one
+  - Attachments: Type and size of an image, not the file
+  - Branches: Not supported: the format is one line of turns
+  - Conversation id: Yes
+  - Provenance: Tool, id, directory, start, and the session that started it
+  - Project (`--by-project`): Yes, by directory
+- **ChatGPT**
+  - Roles: Yes, with the messages tools sent
+  - Time of each turn: Yes
+  - Order: Each turn after the one it replies to (`mapping`)
+  - Tool calls and results: Yes: a message sent to a tool is a call, and a tool's message its result. The format gives a call no id, so the result's `call` is the id of the message that called it
+  - Message ids: Yes
+  - Attachments: Name, type and size, not the file
+  - Branches: Yes
+  - Conversation id: Yes
+  - Provenance: Tool, id, start
+  - Project (`--by-project`): Not supported: the format has no directory
+- **claude.ai**
+  - Roles: Yes
+  - Time of each turn: Yes
+  - Order: Each turn after the one it replies to (`parent_message_uuid`); by time in an older export that names no parents
+  - Tool calls and results: Yes, linked by the call's id
+  - Message ids: Yes
+  - Attachments: Name, type, size and the text the export extracted; a file with no text is named
+  - Branches: Yes
+  - Conversation id: Yes
+  - Provenance: Tool, id, start
+  - Project (`--by-project`): Not supported: the format has no directory
 
 Where the export says which turn each turn replies to, that orders the
 document: a turn is never put before the turn it replies to, whatever their
