@@ -145,6 +145,34 @@ func (p *Platform) skillsOfMessage(tenant string, th threads.Thread, m threads.M
 	return out
 }
 
+// skillsNamed is the skills a turn sent straight to an agent is told to
+// use: the ones its text names, read by the grammar a message's are
+// (threads.ParseSkills) and found where a message posted in the project
+// would find them, for the person the turn is for (librarySkill): their own
+// published skills, then the published ones on the project's chain. One
+// nobody declares there refuses the turn before anything starts, as it
+// refuses a message typed in the console (threads.UnknownSkill): the turn
+// never runs without a skill it asked for.
+func (p *Platform) skillsNamed(tenant, project, person, text string) ([]pinnedSkill, error) {
+	mentions, err := threads.ParseSkills(text, tagLookup{p: p, tenant: tenant, tree: p.Projects.Tree(tenant), project: project, person: person, console: true})
+	if err != nil {
+		return nil, err
+	}
+	if err := threads.UnknownSkill(mentions); err != nil {
+		return nil, err
+	}
+	var out []pinnedSkill
+	for _, mn := range mentions {
+		skill, ok := p.librarySkill(tenant, project, person, mn.Name)
+		if !ok {
+			// Unpublished or deleted between the two reads.
+			return nil, fmt.Errorf("%w: there is no skill called %s", threads.ErrInvalid, mn.Name)
+		}
+		out = append(out, skill)
+	}
+	return out, nil
+}
+
 // commandSkill is the skill a message posted through a Slack client names
 // with one of the client's commands: text that starts with "/<name>", where
 // the client offers the command <name>. The client is the one whose

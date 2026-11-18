@@ -1102,7 +1102,14 @@ paths:
               properties:
                 scope: {$ref: '#/components/schemas/LibraryScope'}
                 definition: {$ref: '#/components/schemas/LibrarySkillDefinition'}
-                version: {type: integer, minimum: 0}
+                version:
+                  description: How many revisions the skill has, as read. 0 creates the skill. A revision added since answers 409, so two writers never both add one.
+                  type: integer
+                  minimum: 0
+                via:
+                  description: "`import` for a draft read from a skill folder (`humagen import skills`), which the revision records. Left out for one saved in the editor. Any other value answers 400."
+                  type: string
+                  maxLength: 6
       responses:
         '201':
           description: New immutable draft
@@ -3144,6 +3151,19 @@ paths:
         which projects above it the run would count toward.
 
         The body takes no metadata: an unknown field answers 400.
+
+        A skill the message names is used, as for a message posted in a
+        thread: `$<name>`, `@skill:<name>` or the slash command `/<name>`
+        gives the run the skill's instructions and supporting files. The
+        skill is the caller's own, or the person's `act_as` names, then the
+        nearest one on the chain of the project the conversation is filed
+        in; only a published revision counts, and the run is pinned to it
+        when accepted, so a later draft or publication does not change it.
+        The agent's default skills are added to it. A `$<name>` or
+        `@skill:<name>` that is no such skill answers 400, "there is no
+        skill called <name>", and no run starts; a `/<name>` that is none
+        is text. A message names at most 4 skills. Tags of agents and
+        people are text here: `agent` says who answers.
 
         With `agent` left out, the default the conversation's place
         inherits answers, the first set of: the thread's (`updateThread`),
@@ -8513,7 +8533,8 @@ paths:
         writes `$<name>`, `@skill:<name>` or, in a message posted through the
         API or the console, the slash command `/<name>` at the start of the
         message or after a space, and the runs the message starts are given
-        the skill's instructions as part of the turn. A message posted in a project can name the skills its project
+        the skill's instructions as part of the turn. The message of a run
+        started with `createRun` names skills the same way. A message posted in a project can name the skills its project
         declares, then each project's above it, nearest first: `offered`,
         each name once, from the nearest project that declares it, at most
         128. A sibling's or a sub-project's are never offered. They are fixed
@@ -12388,6 +12409,13 @@ components:
               maxItems: 10
               items: {type: string}
             from: {$ref: '#/components/schemas/LibraryProvenance'}
+            via:
+              description: "`import` when the revision was drafted from a skill folder by `humagen import skills`. Absent for one saved in the editor, promoted, or imported by an earlier release. An import follows only a newest revision it wrote: any other is reported as a conflict, not written over."
+              type: string
+              enum: [import]
+            package_hash:
+              description: "The snapshot hash (`sha256:<hex>`) over every package file's path and content, the one a run that uses the revision is pinned with. Two revisions, or a revision and a folder, with the same hash hold the same package. Present on list responses too, where `files` is omitted. Absent for a legacy revision without files."
+              type: string
             origin_run:
               description: Server-recorded authored outcome origin, present only while this reader may read that run. Promotion drops this private lineage.
               type: string

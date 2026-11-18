@@ -40,7 +40,12 @@ sessions  adds your Claude Code and Codex sessions, and ChatGPT or claude.ai
           its document would now read differently: then it is replaced in
           place.
 skills    drafts each skill folder under DIR (default ~/.agents/skills) in
-          the skill library. A skill the library already has is skipped.
+          the skill library. A skill the library holds as the folder holds
+          it is skipped. A folder that changed since it was imported is
+          drafted again as a new revision, which is not published: agents
+          keep the revision they use until the draft is tested and
+          published. A skill edited in the library since is a conflict, and
+          is left alone unless --force.
 agents    creates an agent from each Markdown agent file in DIR (default
           ~/.agents/agents), on the model you name and with no tools. An
           agent the workspace already has is skipped.
@@ -70,6 +75,9 @@ type importOptions struct {
 	dir   string
 	scope string
 	only  string
+	// force drafts a changed skill folder after a newest revision no import
+	// wrote.
+	force bool
 
 	// agents
 	provider, model string
@@ -122,6 +130,7 @@ func parseImport(args []string, out io.Writer) (importOptions, error) {
 	case "skills":
 		fs.StringVar(&c.scope, "scope", "personal", "the library scope the skills are drafted in: personal or workspace")
 		fs.StringVar(&c.only, "only", "", "only these skills, by folder name, separated by commas")
+		fs.BoolVar(&c.force, "force", false, "draft a changed folder even after a newest revision that was edited in the library, not imported")
 	default:
 		fs.StringVar(&c.provider, "provider", "", "the model provider every imported agent runs on, such as anthropic, or policy")
 		fs.StringVar(&c.model, "model", "", "the model, or with --provider policy the model policy, every imported agent runs on")
@@ -253,7 +262,9 @@ func (a importAPI) do(ctx context.Context, method, path string, body, into any) 
 		return fmt.Errorf("%w; is the server running? Set its address with --server URL or HUMAGEN_URL", err)
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	// The largest answer is every revision of one skill with its files:
+	// library.MaxVersions packages of library.MaxPackageBytes, in base64.
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if err != nil {
 		return err
 	}
@@ -279,7 +290,9 @@ func status(err error) int {
 
 // importCmd reads what is on this machine and sends it to the running
 // server. It adds and never changes or removes: what the server already has
-// is left as it is.
+// is left as it is. A session's document that would read differently is
+// replaced in place, and a skill folder that changed is drafted as a new
+// revision beside the ones there.
 func importCmd(args []string, out io.Writer) error {
 	c, err := parseImport(args, out)
 	if err != nil {
@@ -290,7 +303,9 @@ func importCmd(args []string, out io.Writer) error {
 		Timeout:       60 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}}
-	if c.token != "" && !c.dryRun {
+	// A dry run of skills reads the library to say what it would do, so it
+	// needs the token; a dry run of anything else sends nothing.
+	if c.token != "" && (!c.dryRun || c.verb == "skills") {
 		// An unset default token is the dev-mode path. An explicit reference
 		// must resolve, so a typo cannot silently become an anonymous request.
 		_, present := os.LookupEnv("HUMAGEN_TOKEN")
@@ -906,8 +921,19 @@ func toolCounts(by map[string]int) string {
 
 // skillsResult is what an import of skills did.
 type skillsResult struct {
-	Drafted []string `json:"drafted"`
+	// Added are the skills the library did not have, drafted as their first
+	// revision.
+	Added []string `json:"added"`
+	// Updated are the skills whose folder changed since it was imported,
+	// each drafted as a new revision. Nothing is published.
+	Updated []skillUpdate `json:"updated"`
+	// Present are the skills whose newest revision holds what the folder
+	// holds. Nothing is written for them.
 	Present []string `json:"present"`
+	// Conflicts are the skills whose folder differs from a newest revision
+	// that no import wrote, or that changed while this import ran. Nothing
+	// is written for them.
+	Conflicts []importFailed `json:"conflicts"`
 	// NoRoom are the skills left out because the scope holds as many as it
 	// may.
 	NoRoom []string `json:"no_room"`
@@ -916,6 +942,56 @@ type skillsResult struct {
 	Reduced map[string][]string `json:"reduced"`
 	Failed  []importFailed      `json:"failed"`
 	DryRun  bool                `json:"dry_run,omitempty"`
+}
+
+// skillUpdate is one skill drafted again from a changed folder.
+type skillUpdate struct {
+	Name string `json:"name"`
+	// Version is the new draft, and Published the revision that stays
+	// published until the draft is tested and published, 0 when none is.
+	Version   int `json:"version"`
+	Published int `json:"published"`
+	// Changed, Added and Removed are the files that differ from the
+	// revision before, by path. A renamed file is one removed and one added.
+	Changed []string `json:"changed"`
+	Added   []string `json:"added"`
+	Removed []string `json:"removed"`
+}
+
+// libraryRevision is what an import reads of a skill's revision.
+type libraryRevision struct {
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	Version     int            `json:"version"`
+	Via         string         `json:"via"`
+	PackageHash string         `json:"package_hash"`
+	PublishedAt *time.Time     `json:"published_at"`
+	Files       []library.File `json:"files"`
+}
+
+// fileChanges is how a folder's files differ from a revision's, by path.
+func fileChanges(was, now []library.File) (changed, added, removed []string) {
+	old := map[string][]byte{}
+	for _, f := range was {
+		old[f.Path] = f.Data
+	}
+	for _, f := range now {
+		data, had := old[f.Path]
+		switch {
+		case !had:
+			added = append(added, f.Path)
+		case !bytes.Equal(data, f.Data):
+			changed = append(changed, f.Path)
+		}
+		delete(old, f.Path)
+	}
+	for path := range old {
+		removed = append(removed, path)
+	}
+	sort.Strings(changed)
+	sort.Strings(added)
+	sort.Strings(removed)
+	return changed, added, removed
 }
 
 // skillFolder reads one skill folder as a library definition, checked the
@@ -1034,6 +1110,163 @@ func readSkillFolder(dir, name string) (library.Definition, error) {
 	return def, err
 }
 
+// skillImport is one run of import skills against one scope of the library.
+type skillImport struct {
+	ctx   context.Context
+	c     importOptions
+	api   importAPI
+	have  map[string]libraryRevision
+	res   *skillsResult
+	force bool
+}
+
+// list reads the newest revision of every skill the scope holds: its id,
+// its version, how it was written and the hash of its package.
+func (m *skillImport) list() error {
+	var listed struct {
+		Skills []libraryRevision `json:"skills"`
+	}
+	if err := m.api.do(m.ctx, http.MethodGet, "/api/library/skills?scope="+m.c.scope, nil, &listed); err != nil {
+		return err
+	}
+	m.have = map[string]libraryRevision{}
+	for _, s := range listed.Skills {
+		m.have[s.Name] = s
+	}
+	return nil
+}
+
+// history reads every revision of a skill, oldest first, with its files.
+func (m *skillImport) history(id string) ([]libraryRevision, error) {
+	var got struct {
+		Revisions []libraryRevision `json:"revisions"`
+	}
+	if err := m.api.do(m.ctx, http.MethodGet, "/api/library/skills/"+id, nil, &got); err != nil {
+		return nil, err
+	}
+	if len(got.Revisions) == 0 {
+		return nil, errors.New("the library returned no revision of it")
+	}
+	return got.Revisions, nil
+}
+
+// draft sends the folder as the skill's next revision, only if the skill
+// still has expected revisions: one added since answers 409.
+func (m *skillImport) draft(def library.Definition, expected int) error {
+	return m.api.do(m.ctx, http.MethodPost, "/api/library/skills", map[string]any{
+		"scope": map[string]string{"kind": m.c.scope}, "definition": def, "version": expected, "via": library.ViaImport,
+	}, nil)
+}
+
+// lost settles a draft the library refused because the skill gained a
+// revision while this import ran. Another import of the same folder has
+// then written what this one would have, and the skill is present. Anything
+// else is someone's newer work, which is reported and not written over.
+func (m *skillImport) lost(name string, def library.Definition, hash string) {
+	if err := m.list(); err != nil {
+		m.res.Failed = append(m.res.Failed, importFailed{Name: name, Reason: err.Error()})
+		return
+	}
+	if cur, ok := m.have[def.Name]; ok && cur.PackageHash == hash {
+		m.res.Present = append(m.res.Present, name)
+		return
+	}
+	m.res.Conflicts = append(m.res.Conflicts, importFailed{Name: name, Reason: "the library's copy changed while this import ran; run the import again"})
+}
+
+// one imports one skill folder. A skill the library lacks is added. One
+// whose newest revision holds the folder's files is present. One whose
+// folder differs is drafted again, as a new revision after the newest, only
+// when an import wrote the newest: a revision someone saved in the editor
+// or promoted may hold work the folder lacks, so it is a conflict unless
+// --force. A draft never publishes and never changes a revision, so what
+// agents and running work are pinned to stays as it is.
+func (m *skillImport) one(name string, def library.Definition, dropped []string) {
+	fail := func(err error) {
+		m.res.Failed = append(m.res.Failed, importFailed{Name: name, Reason: err.Error()})
+	}
+	pkg, err := def.Package()
+	if err != nil {
+		fail(err)
+		return
+	}
+	reduced := func() {
+		if len(dropped) > 0 {
+			m.res.Reduced[def.Name] = dropped
+		}
+	}
+	cur, held := m.have[def.Name]
+	if !held {
+		// The server refuses a skill over the scope's limit without saying
+		// why, so the count is kept here.
+		if len(m.have) >= library.MaxSkills {
+			m.res.NoRoom = append(m.res.NoRoom, name)
+			return
+		}
+		if !m.c.dryRun {
+			if err := m.draft(def, 0); status(err) == http.StatusConflict {
+				m.lost(name, def, pkg.Hash)
+				return
+			} else if err != nil {
+				fail(err)
+				return
+			}
+		}
+		m.have[def.Name] = libraryRevision{Name: def.Name, Version: 1, Via: library.ViaImport, PackageHash: pkg.Hash}
+		m.res.Added = append(m.res.Added, def.Name)
+		reduced()
+		return
+	}
+	if cur.PackageHash == pkg.Hash {
+		m.res.Present = append(m.res.Present, name)
+		return
+	}
+	revisions, err := m.history(cur.ID)
+	if err != nil {
+		fail(err)
+		return
+	}
+	newest := revisions[len(revisions)-1]
+	update := skillUpdate{Name: def.Name, Version: newest.Version + 1}
+	update.Changed, update.Added, update.Removed = fileChanges(newest.Files, def.Files)
+	if len(update.Changed)+len(update.Added)+len(update.Removed) == 0 {
+		// The same files under a hash this program computes differently.
+		m.res.Present = append(m.res.Present, name)
+		return
+	}
+	for _, r := range revisions {
+		if r.PublishedAt != nil {
+			update.Published = r.Version
+		}
+	}
+	if newest.Via != library.ViaImport && !m.force {
+		reason := fmt.Sprintf("its newest revision in the library, v%d, was not written by an import, so it may hold edits this folder lacks", newest.Version)
+		for _, r := range revisions[:len(revisions)-1] {
+			if c, a, d := fileChanges(r.Files, def.Files); len(c)+len(a)+len(d) == 0 {
+				reason = fmt.Sprintf("this folder holds v%d, and the library has since moved on to v%d, which no import wrote", r.Version, newest.Version)
+			}
+		}
+		m.res.Conflicts = append(m.res.Conflicts, importFailed{Name: name, Reason: reason + "; nothing was written. Bring those edits into the folder, or draft the folder after them with --force"})
+		return
+	}
+	if len(revisions) >= library.MaxVersions {
+		fail(fmt.Errorf("the library holds as many revisions of it as it may (%d)", library.MaxVersions))
+		return
+	}
+	if !m.c.dryRun {
+		if err := m.draft(def, len(revisions)); status(err) == http.StatusConflict {
+			m.lost(name, def, pkg.Hash)
+			return
+		} else if err != nil {
+			fail(err)
+			return
+		}
+	}
+	m.have[def.Name] = libraryRevision{ID: cur.ID, Name: def.Name, Version: update.Version, Via: library.ViaImport, PackageHash: pkg.Hash}
+	m.res.Updated = append(m.res.Updated, update)
+	reduced()
+}
+
 func importSkills(ctx context.Context, c importOptions, api importAPI, out io.Writer) error {
 	entries, err := os.ReadDir(c.dir)
 	if err != nil {
@@ -1046,21 +1279,15 @@ func importSkills(ctx context.Context, c importOptions, api importAPI, out io.Wr
 		}
 	}
 	asked := map[string]bool{}
-	res := skillsResult{Drafted: []string{}, Present: []string{}, NoRoom: []string{}, Reduced: map[string][]string{}, Failed: []importFailed{}, DryRun: c.dryRun}
-	have := map[string]bool{}
-	if !c.dryRun {
-		var listed struct {
-			Skills []struct {
-				Name string `json:"name"`
-			} `json:"skills"`
-		}
-		if err := api.do(ctx, http.MethodGet, "/api/library/skills?scope="+c.scope, nil, &listed); err != nil {
-			return err
-		}
-		for _, s := range listed.Skills {
-			have[s.Name] = true
-		}
+	res := skillsResult{Added: []string{}, Updated: []skillUpdate{}, Present: []string{}, Conflicts: []importFailed{}, NoRoom: []string{}, Reduced: map[string][]string{}, Failed: []importFailed{}, DryRun: c.dryRun}
+	m := &skillImport{ctx: ctx, c: c, api: api, res: &res, force: c.force}
+	// A dry run reads the library too, and writes nothing: what it would do
+	// depends on what the library holds.
+	if err := m.list(); err != nil {
+		return err
 	}
+	// Two folders may hold the same skill; the first is the one imported.
+	seen := map[string]bool{}
 	for _, e := range entries {
 		name := e.Name()
 		// A store keeps skills as folders, or as links to them.
@@ -1074,64 +1301,63 @@ func importSkills(ctx context.Context, c importOptions, api importAPI, out io.Wr
 			continue
 		}
 		asked[name] = true
-		if have[name] {
-			res.Present = append(res.Present, name)
-			continue
-		}
 		def, dropped, err := skillFolder(c.dir, name)
 		if err != nil {
 			res.Failed = append(res.Failed, importFailed{Name: name, Reason: err.Error()})
 			continue
 		}
-		// Two folders may hold the same skill; the first is the one drafted.
-		if def.Name != name && have[def.Name] {
+		if seen[def.Name] {
 			res.Present = append(res.Present, name)
 			continue
 		}
-		// The server refuses a skill over the scope's limit without saying
-		// why, so the count is kept here.
-		if !c.dryRun && len(have) >= library.MaxSkills {
-			res.NoRoom = append(res.NoRoom, name)
-			continue
-		}
-		if !c.dryRun {
-			err := api.do(ctx, http.MethodPost, "/api/library/skills", map[string]any{
-				"scope": map[string]string{"kind": c.scope}, "definition": def, "version": 0,
-			}, nil)
-			if err != nil {
-				res.Failed = append(res.Failed, importFailed{Name: name, Reason: err.Error()})
-				continue
-			}
-		}
-		have[def.Name] = true
-		res.Drafted = append(res.Drafted, def.Name)
-		if len(dropped) > 0 {
-			res.Reduced[def.Name] = dropped
-		}
+		seen[def.Name] = true
+		m.one(name, def, dropped)
 	}
 	for n := range only {
-		found := false
-		found = asked[n]
-		if !found {
+		if !asked[n] {
 			res.Failed = append(res.Failed, importFailed{Name: n, Reason: "no skill folder of that name in " + c.dir})
 		}
 	}
 	sort.Slice(res.Failed, func(i, j int) bool { return res.Failed[i].Name < res.Failed[j].Name })
+	left := len(res.Failed) + len(res.NoRoom) + len(res.Conflicts)
+	leftErr := func() error {
+		if left > 0 {
+			return fmt.Errorf("%d skills were not drafted", left)
+		}
+		return nil
+	}
 	if c.json {
 		if err := json.NewEncoder(out).Encode(res); err != nil {
 			return err
 		}
-		if n := len(res.Failed) + len(res.NoRoom); n > 0 {
-			return fmt.Errorf("%d skills were not drafted", n)
-		}
-		return nil
+		return leftErr()
 	}
-	verb := "Drafted"
+	added, updated := "Added", "updated"
 	if c.dryRun {
-		verb = "Would draft"
+		added, updated = "Would add", "update"
 	}
-	if _, err := fmt.Fprintf(out, "%s %d skills in the %s library; %d already there, %d failed.\n", verb, len(res.Drafted), c.scope, len(res.Present), len(res.Failed)); err != nil {
+	if _, err := fmt.Fprintf(out, "%s %d skills and %s %d as drafts in the %s library; %d already there, %d in conflict, %d failed.\n",
+		added, len(res.Added), updated, len(res.Updated), c.scope, len(res.Present), len(res.Conflicts), len(res.Failed)); err != nil {
 		return err
+	}
+	for _, u := range res.Updated {
+		var parts []string
+		for _, part := range []struct {
+			what  string
+			paths []string
+		}{{"changed", u.Changed}, {"added", u.Added}, {"removed", u.Removed}} {
+			if len(part.paths) > 0 {
+				parts = append(parts, part.what+" "+strings.Join(part.paths, ", "))
+			}
+		}
+		stays := "no revision is published yet"
+		if u.Published > 0 {
+			stays = fmt.Sprintf("v%d stays published", u.Published)
+		}
+		fmt.Fprintf(out, "  updated %s: draft v%d (%s); %s\n", u.Name, u.Version, strings.Join(parts, "; "), stays)
+	}
+	for _, f := range res.Conflicts {
+		fmt.Fprintf(out, "  conflict %s: %s\n", f.Name, f.Reason)
 	}
 	for _, f := range res.Failed {
 		fmt.Fprintf(out, "  failed %s: %s\n", f.Name, f.Reason)
@@ -1147,13 +1373,10 @@ func importSkills(ctx context.Context, c importOptions, api importAPI, out io.Wr
 	if len(res.NoRoom) > 0 {
 		fmt.Fprintf(out, "  no room for %d more: the %s library holds at most %d skills. Choose which with --only, or draft the rest in another scope: %s\n", len(res.NoRoom), c.scope, library.MaxSkills, strings.Join(res.NoRoom, ", "))
 	}
-	if len(res.Drafted) > 0 && !c.dryRun {
-		fmt.Fprintln(out, "Next: test and publish each draft under Library, Skills.")
+	if len(res.Added)+len(res.Updated) > 0 && !c.dryRun {
+		fmt.Fprintln(out, "Next: test and publish each draft under Library, Skills. Until then agents keep the revision they use now.")
 	}
-	if n := len(res.Failed) + len(res.NoRoom); n > 0 {
-		return fmt.Errorf("%d skills were not drafted", n)
-	}
-	return nil
+	return leftErr()
 }
 
 // frontmatter splits a Markdown file into the YAML between its opening ---

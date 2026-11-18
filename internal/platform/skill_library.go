@@ -54,6 +54,17 @@ func skillChange(action string, scope library.Scope, id string, version int) aud
 	return change
 }
 func (p *Platform) DraftSkill(who auth.Principal, scope library.Scope, definition library.Definition, expected int, from *library.Provenance) (library.Revision, error) {
+	return p.draftSkill(who, scope, definition, expected, from, "")
+}
+
+// ImportSkill is DraftSkill for a revision read from a skill folder on
+// someone's machine: the same checks and the same unpublished draft, which
+// records that it was imported (library.ViaImport).
+func (p *Platform) ImportSkill(who auth.Principal, scope library.Scope, definition library.Definition, expected int) (library.Revision, error) {
+	return p.draftSkill(who, scope, definition, expected, nil, library.ViaImport)
+}
+
+func (p *Platform) draftSkill(who auth.Principal, scope library.Scope, definition library.Definition, expected int, from *library.Provenance, via string) (library.Revision, error) {
 	if err := p.LibraryScope(who, scope, true); err != nil {
 		return library.Revision{}, err
 	}
@@ -81,11 +92,19 @@ func (p *Platform) DraftSkill(who auth.Principal, scope library.Scope, definitio
 	}
 	change := skillChange(action, scope, library.ID(scope, definition.Name), expected+1)
 	change.Rule = string(auth.ProjectsWrite)
+	if via != "" {
+		change.After["via"] = via
+	}
 	attempt, err := p.BeginAudit(who, change)
 	if err != nil {
 		return library.Revision{}, err
 	}
-	r, err := p.SkillLibrary.Draft(who.Tenant, who.Subject, scope, definition, expected, from, p.now())
+	var r library.Revision
+	if via == library.ViaImport {
+		r, err = p.SkillLibrary.Import(who.Tenant, who.Subject, scope, definition, expected, p.now())
+	} else {
+		r, err = p.SkillLibrary.Draft(who.Tenant, who.Subject, scope, definition, expected, from, p.now())
+	}
 	if completion := attempt.Finish(err); completion != nil {
 		p.LogAuditCompletionFailure(completion)
 	}

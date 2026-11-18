@@ -757,6 +757,8 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 		ID: id, Agent: body.Agent, Text: body.Text, After: body.After, Project: body.Project, Actor: actor, Client: client, KeepsNotes: keeps,
 		// An agent the person may not read is one that is not there.
 		Sees: s.P.Seer(asks).Agent,
+		// The text is the person's own, so a skill it names is used.
+		NamesSkills: true,
 	})
 	if err != nil {
 		s.problem(w, err)

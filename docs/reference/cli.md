@@ -139,7 +139,9 @@ reached names `--server` and `HUMAGEN_URL`.
 `humagen import` brings what you already have in other assistants into a
 running platform, through its API. What the server already has is left as it
 is, so a second run sends only what is new. The one thing it replaces, in
-place, is a session's document that would now read differently.
+place, is a session's document that would now read differently. A skill
+folder that changed is not a replacement: it is drafted as a new revision
+beside the ones the library holds.
 
 ```sh
 humagen import sessions
@@ -153,7 +155,7 @@ humagen import agents --provider anthropic --model claude-sonnet-5-5
 | Verb | Reads | Sends |
 | --- | --- | --- |
 | `sessions` | Claude Code sessions (`~/.claude/projects/*/*.jsonl`), Codex sessions (`~/.codex/sessions` and `~/.codex/archived_sessions`, plain or `.zst`), and with `--export` a `conversations.json` from a ChatGPT or claude.ai data export | One knowledge document per session, in sources named `sessions-TOOL-YYYY-MM` by the month the session started. `POST /api/knowledge`, then `POST /api/knowledge/{name}/documents` |
-| `skills [DIR]` | Each folder under `DIR` that holds a `SKILL.md`. `DIR` defaults to `~/.agents/skills`, the store [agentspec](https://github.com/urmzd/agentspec) keeps | One draft per skill in the skill library, with the folder's files. `POST /api/library/skills` |
+| `skills [DIR]` | Each folder under `DIR` that holds a `SKILL.md`. `DIR` defaults to `~/.agents/skills`, the store [agentspec](https://github.com/urmzd/agentspec) keeps | One draft per skill the library lacks, with the folder's files, and one new draft revision per skill whose folder changed since it was imported. `GET /api/library/skills`, then `POST /api/library/skills` |
 | `agents [DIR]` | Each Markdown agent file in `DIR` with YAML frontmatter, as Claude Code, Copilot and agentspec write them. `DIR` defaults to `~/.agents/agents` | One agent per file: its `name` and `description` from the frontmatter, its text as the system prompt. `POST /api/agents` |
 
 A session's document holds what was asked, what was answered, one line per
@@ -323,10 +325,39 @@ drafted with no tools permitted; choose its tools, test it and publish it under
 Library, Skills. A scope holds at most 256 skills: past that the command names
 the ones it left out.
 
+A second import compares each folder with the newest revision the library
+holds of that skill, by the hash of the package: every file's path and
+content, supporting files included. It reports four counts:
+
+| Result | When | What is written |
+| --- | --- | --- |
+| added | The library has no skill of that name | The skill's first revision, a draft |
+| updated as a draft | A file changed, was added, renamed or deleted since the folder was imported | One new draft revision after the newest. The line names the files that differ |
+| present | The newest revision holds exactly what the folder holds | Nothing |
+| conflict | The folder differs and the newest revision was not written by an import: someone saved it in the editor or promoted it, or an earlier release imported it | Nothing |
+
+An updated skill is never published by the import. The published revision
+stays the one agents are bound to and new conversations use until the draft
+is tested and published under Library, Skills, and a run already accepted
+keeps the revision it was pinned with. When the newest revision is itself an
+unpublished draft an import wrote, the changed folder becomes another draft
+after it: a revision is never rewritten. A skill holds at most 32 revisions.
+
+Each revision records whether an import wrote it (`via` in the API). A
+conflict means the library may hold edits the folder lacks: bring them into
+the folder, or pass `--force` to draft the folder after them. The edit stays
+in the skill's history either way. A skill imported before this record was
+kept counts as edited, so its first changed import needs `--force` once.
+
+Two imports at once never both draft: each draft is sent with the number of
+revisions the import read, and the library refuses the second. The import
+that loses reports the skill present when the library now holds what its
+folder holds, and a conflict otherwise.
+
 | Flag | Behavior |
 | --- | --- |
 | `--server URL`, `--token REF`, `--json` | As for `humagen store` |
-| `--dry-run` | Say what would be sent and send nothing. It does not ask the server what is already there |
+| `--dry-run` | Say what would be sent and send nothing. For `sessions` and `agents` it does not ask the server what is already there. For `skills` it reads the library, so it reports what would be added, updated, present and in conflict |
 | `--from LIST` | `sessions`: which tools' files to read: `claude`, `codex`, both (the default) or `none` |
 | `--export FILE` | `sessions`: a `conversations.json` from a ChatGPT or claude.ai export; may repeat |
 | `--since WHEN` | `sessions`: only sessions started since a date (`2026-10-01`) or an age (`720h`) |
@@ -339,6 +370,7 @@ the ones it left out.
 | `--home DIR` | `sessions`: the home directory the tools keep their sessions under |
 | `--scope KIND` | `skills`: `personal` (the default) or `workspace` |
 | `--only NAMES` | `skills`: only these folders; `agents`: only these agents. Separated by commas |
+| `--force` | `skills`: draft a changed folder even after a newest revision that was not imported. Nothing is published or removed |
 | `--provider NAME`, `--model NAME` | `agents`: required. A model provider and its model, or `policy` and a model policy |
 
 An agent file names its model and its tools as another assistant knows them,
@@ -351,6 +383,9 @@ not sent.
 `projects:read` and `projects:write`; `agents` needs `agents:read` and
 `agents:write`. When some sessions, skills or agents are not
 sent, the rest still are, each one left out is named with the reason, and the
-exit code is 1.
+exit code is 1. A skill in conflict counts as not sent. With `--json`,
+`skills` prints `added`, `updated` (each with its new `version`, the
+`published` version that stays, and the `changed`, `added` and `removed`
+files), `present`, `conflicts`, `no_room`, `reduced` and `failed`.
 
 # CLI

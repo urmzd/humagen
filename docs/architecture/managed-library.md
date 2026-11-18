@@ -82,10 +82,30 @@ revisions appear as a generated `SKILL.md`; merely opening one does not rewrite
 it. Supporting files are omitted from list responses and loaded when a skill is
 opened. Binary content is downloaded rather than shown as editable text.
 
+`humagen import skills` writes through the same draft route. A folder the
+library lacks becomes a skill's first revision; a folder that differs from
+the newest revision becomes one more draft after it, never a published
+revision and never a change to a revision already there. Every answer
+carries `package_hash`, the snapshot hash over each file's path and content
+that a run is pinned with, so a changed supporting file, a rename or a
+deletion is told from an identical folder without reading the files. A
+revision an import wrote records `via: import`. The import follows only a
+newest revision that carries it: one saved in the editor or promoted is
+reported as a conflict and left alone unless the person passes `--force`,
+and a draft sent after another writer's revision is refused by the
+optimistic version check. See the
+[CLI reference](../reference/cli.md#import-sessions-skills-and-agents).
+
 Limits are enforced by the server: 64 files, 128 KiB per file and 512 KiB in total
 after base64 decoding. Main instructions allow 32000 characters. Relative paths
 must be canonical and unique. The in-memory archive adapts saved bytes to saige's
 filesystem interface; no uploaded path is opened on the host.
+
+A run started with `POST /api/runs` names skills as a message does: `$name`,
+`@skill:name` or `/name` in its text pins the published revision the person
+may use where the conversation is filed, and a name that is no such skill
+refuses the run with the words that refuse the message. A draft, another
+project's skill or another person's own skill is never used.
 
 Existing test, publish, promotion and agent-binding workflows remain. A package
 never grants tools through frontmatter. `allowed-tools` can only narrow the

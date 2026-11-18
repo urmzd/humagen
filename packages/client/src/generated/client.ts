@@ -3092,6 +3092,19 @@ which projects above it the run would count toward.
 
 The body takes no metadata: an unknown field answers 400.
 
+A skill the message names is used, as for a message posted in a
+thread: `$<name>`, `@skill:<name>` or the slash command `/<name>`
+gives the run the skill's instructions and supporting files. The
+skill is the caller's own, or the person's `act_as` names, then the
+nearest one on the chain of the project the conversation is filed
+in; only a published revision counts, and the run is pinned to it
+when accepted, so a later draft or publication does not change it.
+The agent's default skills are added to it. A `$<name>` or
+`@skill:<name>` that is no such skill answers 400, "there is no
+skill called <name>", and no run starts; a `/<name>` that is none
+is text. A message names at most 4 skills. Tags of agents and
+people are text here: `agent` says who answers.
+
 With `agent` left out, the default the conversation's place
 inherits answers, the first set of: the thread's (`updateThread`),
 the acting client's when `act_as` names one, the channel's (a new
@@ -7514,7 +7527,8 @@ platform file sets.
 writes `$<name>`, `@skill:<name>` or, in a message posted through the
 API or the console, the slash command `/<name>` at the start of the
 message or after a space, and the runs the message starts are given
-the skill's instructions as part of the turn. A message posted in a project can name the skills its project
+the skill's instructions as part of the turn. The message of a run
+started with `createRun` names skills the same way. A message posted in a project can name the skills its project
 declares, then each project's above it, nearest first: `offered`,
 each name once, from the nearest project that declares it, at most
 128. A sibling's or a sub-project's are never offered. They are fixed

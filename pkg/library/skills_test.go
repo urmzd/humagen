@@ -76,3 +76,33 @@ func TestFailedSkillWritesAndReturnedSlicesDoNotChangePublishedRevision(t *testi
 		t.Fatalf("mutated immutable revision: %+v", held)
 	}
 }
+
+// An import drafts as any draft does, unpublished and after the revisions
+// read, and the revision records that an import wrote it.
+func TestImportDraftsARevisionMarkedAsImported(t *testing.T) {
+	statetest.Each(t, importDraftsARevisionMarkedAsImported)
+}
+
+func importDraftsARevisionMarkedAsImported(t *testing.T, open func(*testing.T) state.Store) {
+	s, err := Open(open(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope, now := Scope{Kind: "workspace"}, time.Now()
+	d := Definition{Skill: projects.Skill{Name: "review", Description: "Review changes", Instructions: "Read the proposal"}, Tools: []string{}}
+	first, err := s.Import("acme", "ada", scope, d, 0, now)
+	if err != nil || first.Via != ViaImport || first.Version != 1 || !first.PublishedAt.IsZero() || len(first.Tests) != 0 {
+		t.Fatalf("first = %+v, %v", first, err)
+	}
+	if _, err := s.Import("acme", "ada", scope, d, 0, now); !errors.Is(err, ErrConflict) {
+		t.Fatalf("an import after a revision it did not read = %v", err)
+	}
+	d.Instructions = "Read the proposal twice"
+	if second, err := s.Draft("acme", "ada", scope, d, 1, nil, now); err != nil || second.Via != "" {
+		t.Fatalf("an edit = %+v, %v", second, err)
+	}
+	rows, err := s.History("acme", scope, "review")
+	if err != nil || len(rows) != 2 || rows[0].Via != ViaImport || rows[1].Via != "" {
+		t.Fatalf("history = %+v, %v", rows, err)
+	}
+}

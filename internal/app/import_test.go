@@ -16,9 +16,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/library"
+	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/sessionimport"
 )
 
@@ -26,11 +28,23 @@ import (
 // uses. A source takes at most cap documents, and says so the way the
 // server does.
 type importServer struct {
-	mu      sync.Mutex
-	cap     int
-	docs    map[string][]map[string]string
-	said    map[string]string // each source's description
-	skills  []map[string]any
+	mu   sync.Mutex
+	cap  int
+	docs map[string][]map[string]string
+	said map[string]string // each source's description
+	// skills are the skills the library holds when it starts, by name, as
+	// revisions saved in the editor, then each skill an import added. lib
+	// is the library itself, the real store, which answers as the server
+	// does: lib's tenant is importTenant and its person importPerson.
+	skills []map[string]any
+	lib    *library.Store
+	// skillGate, when set, holds each draft until that many are waiting, so
+	// every import has read the library before any writes to it.
+	skillGate   int
+	gateWaiting int
+	gateOpen    chan struct{}
+	// drafts counts the revisions the library took.
+	drafts  int
 	agents  []map[string]any
 	corpora map[string][]string
 	// projects are the workspace's project names, and attached what each
@@ -55,15 +69,65 @@ type importServer struct {
 	reached, release chan struct{}
 }
 
+const importTenant, importPerson = "acme", "dev"
+
+// importScope is a scope as the server reads it from its kind: a personal
+// one is the caller's.
+func importScope(kind string) library.Scope {
+	if kind == "workspace" {
+		return library.Scope{Kind: "workspace"}
+	}
+	return library.Scope{Kind: "personal", Subject: importPerson}
+}
+
+// skillRow is a revision as the server answers with it: the revision and
+// the hash of its package.
+func skillRow(r library.Revision) map[string]any {
+	raw, _ := json.Marshal(r)
+	var view map[string]any
+	_ = json.Unmarshal(raw, &view)
+	if r.Files != nil {
+		if pkg, err := r.Package(); err == nil {
+			view["package_hash"] = pkg.Hash
+		}
+	}
+	return view
+}
+
 func (s *importServer) start(t *testing.T) *httptest.Server {
 	t.Helper()
 	if s.docs == nil {
 		s.docs = map[string][]map[string]string{}
 	}
+	lib, err := library.Open(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.lib, s.gateOpen = lib, make(chan struct{})
+	for _, held := range s.skills {
+		d := library.Definition{Skill: projects.Skill{Name: held["name"].(string), Description: "Held.", Instructions: "Held."}, Tools: []string{}}
+		if _, err := lib.Draft(importTenant, importPerson, library.Scope{Kind: "personal", Subject: importPerson}, d, 0, nil, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		who := r.Header.Get("Authorization")
 		replacing := r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/text")
 		s.mu.Lock()
+		if r.Method == http.MethodPost && r.URL.Path == "/api/library/skills" && s.skillGate > 0 {
+			s.gateWaiting++
+			if s.gateWaiting == s.skillGate {
+				close(s.gateOpen)
+			}
+			open := s.gateOpen
+			s.mu.Unlock()
+			select {
+			case <-open:
+			case <-time.After(10 * time.Second):
+				t.Error("the imports did not all reach their draft")
+			}
+			s.mu.Lock()
+		}
 		if replacing && s.hold != "" && s.hold == who {
 			s.hold = ""
 			reached, release := s.reached, s.release
@@ -233,18 +297,61 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 			w.WriteHeader(201)
 			fmt.Fprint(w, `{}`)
 		case r.Method == "GET" && r.URL.Path == "/api/library/skills":
-			_ = json.NewEncoder(w).Encode(map[string]any{"skills": s.skills})
+			rows, err := s.lib.List(importTenant, importScope(r.URL.Query().Get("scope")))
+			if err != nil {
+				problem(500, err.Error())
+				return
+			}
+			out := []map[string]any{}
+			for _, row := range rows {
+				view := skillRow(row)
+				delete(view, "files")
+				out = append(out, view)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"skills": out})
+		case r.Method == "GET" && len(parts) == 3 && parts[0] == "library" && parts[1] == "skills":
+			latest, err := s.lib.Find(importTenant, parts[2])
+			if err != nil {
+				problem(404, "library: not found")
+				return
+			}
+			rows, _ := s.lib.History(importTenant, latest.Scope, latest.Name)
+			out := []map[string]any{}
+			for _, row := range rows {
+				out = append(out, skillRow(row))
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"revisions": out})
 		case r.Method == "POST" && r.URL.Path == "/api/library/skills":
 			var body struct {
 				Scope      library.Scope
 				Definition library.Definition
 				Version    int
+				Via        string
 			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !body.Definition.Valid() || body.Version != 0 {
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				problem(400, "library: invalid")
 				return
 			}
-			s.skills = append(s.skills, map[string]any{"name": body.Definition.Name, "scope": body.Scope.Kind, "files": len(body.Definition.Files), "instructions": body.Definition.Instructions})
+			scope := importScope(body.Scope.Kind)
+			var row library.Revision
+			var err error
+			if body.Via == library.ViaImport {
+				row, err = s.lib.Import(importTenant, importPerson, scope, body.Definition, body.Version, time.Now())
+			} else {
+				row, err = s.lib.Draft(importTenant, importPerson, scope, body.Definition, body.Version, nil, time.Now())
+			}
+			switch {
+			case errors.Is(err, library.ErrConflict):
+				problem(409, "library: version conflict")
+				return
+			case err != nil:
+				problem(400, "library: invalid")
+				return
+			}
+			s.drafts++
+			if row.Version == 1 {
+				s.skills = append(s.skills, map[string]any{"name": row.Name, "scope": body.Scope.Kind, "files": len(row.Files), "instructions": row.Instructions})
+			}
 			w.WriteHeader(201)
 			fmt.Fprint(w, `{}`)
 		default:
@@ -434,18 +541,21 @@ func skillStore(t *testing.T) string {
 }
 
 func TestImportSkillsDraftsEachFolderAndSkipsWhatIsThere(t *testing.T) {
-	api := &importServer{skills: []map[string]any{{"name": "review"}}}
+	api := &importServer{}
 	server := api.start(t)
 	dir := skillStore(t)
+	if out, err := runImport(t, "skills", dir, "--only", "review", "--server", server.URL); err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
 	out, err := runImport(t, "skills", dir, "--server", server.URL)
 	if err == nil || err.Error() != "2 skills were not drafted" {
 		t.Fatalf("err = %v\n%s", err, out)
 	}
 	for _, want := range []string{
-		"Drafted 2 skills in the personal library; 1 already there, 2 failed.",
+		"Added 2 skills and updated 0 as drafts in the personal library; 1 already there, 0 in conflict, 2 failed.",
 		"failed big: data.bin is over 131072 bytes",
 		"failed broken: library: invalid",
-		"Next: test and publish each draft under Library, Skills.",
+		"Next: test and publish each draft under Library, Skills. Until then agents keep the revision they use now.",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("out lacks %q:\n%s", want, out)
@@ -468,7 +578,7 @@ func TestImportSkillsOnlyNamedOnesInAScope(t *testing.T) {
 	if jerr := json.Unmarshal([]byte(out), &res); jerr != nil || err == nil {
 		t.Fatalf("err = %v, json = %v\n%s", err, jerr, out)
 	}
-	if strings.Join(res.Drafted, ",") != "tidy" || len(res.Failed) != 1 || res.Failed[0].Name != "missing" || api.skills[0]["scope"] != "workspace" {
+	if strings.Join(res.Added, ",") != "tidy" || len(res.Failed) != 1 || res.Failed[0].Name != "missing" || api.skills[0]["scope"] != "workspace" {
 		t.Fatalf("res = %+v, skills = %v", res, api.skills)
 	}
 }
@@ -527,7 +637,7 @@ func TestImportSkillsStopsAtWhatAScopeHolds(t *testing.T) {
 	}
 	server := api.start(t)
 	out, err := runImport(t, "skills", skillStore(t), "--only", "review,ship,tidy", "--server", server.URL)
-	if err == nil || err.Error() != "2 skills were not drafted" || !strings.Contains(out, "Drafted 1 skills") ||
+	if err == nil || err.Error() != "2 skills were not drafted" || !strings.Contains(out, "Added 1 skills") ||
 		!strings.Contains(out, fmt.Sprintf("no room for 2 more: the personal library holds at most %d skills. Choose which with --only, or draft the rest in another scope: ship, tidy", library.MaxSkills)) {
 		t.Fatalf("err = %v\n%s", err, out)
 	}
@@ -546,7 +656,7 @@ func TestImportSkillsKeepsASkillsOwnName(t *testing.T) {
 	}
 	putFile(t, dir, "second-folder/SKILL.md", fmt.Sprintf(skillMD, "own-name", "it", "it"))
 	out, err := runImport(t, "skills", dir, "--server", server.URL)
-	if err != nil || !strings.Contains(out, "Drafted 0 skills in the personal library; 2 already there") {
+	if err != nil || !strings.Contains(out, "Added 0 skills and updated 0 as drafts in the personal library; 2 already there") {
 		t.Fatalf("err = %v\n%s", err, out)
 	}
 }
@@ -606,7 +716,7 @@ func TestImportSkillsNamesTheFrontmatterItLeavesOut(t *testing.T) {
 	dir := t.TempDir()
 	putFile(t, dir, "ship/SKILL.md", "---\nname: ship\ndescription: >\n  Commit and\n  push.\nallowed-tools: Bash(git *), Read\nuser-invocable: true\narguments:\n  - name: message\n    required: false\n---\n\n# Ship\n\nCommit, then push.\n")
 	out, err := runImport(t, "skills", dir, "--server", server.URL)
-	if err != nil || !strings.Contains(out, "Drafted 1 skills") || !strings.Contains(out, "ship: drafted without frontmatter the library does not read: arguments, user-invocable") {
+	if err != nil || !strings.Contains(out, "Added 1 skills") || !strings.Contains(out, "ship: drafted without frontmatter the library does not read: arguments, user-invocable") {
 		t.Fatalf("err = %v\n%s", err, out)
 	}
 	if got := api.skills[0]["instructions"]; got != "# Ship\n\nCommit, then push.\n" {
