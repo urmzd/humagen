@@ -18,6 +18,7 @@ package knowledge
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -35,9 +36,12 @@ import (
 
 // Errors.
 var (
-	ErrInvalid      = errors.New("knowledge: invalid")
-	ErrExists       = errors.New("knowledge: source already exists")
-	ErrNotFound     = errors.New("knowledge: not found")
+	ErrInvalid  = errors.New("knowledge: invalid")
+	ErrExists   = errors.New("knowledge: source already exists")
+	ErrNotFound = errors.New("knowledge: not found")
+	// ErrChanged is a replacement of a document whose title or text is no
+	// longer what the caller last saw.
+	ErrChanged      = errors.New("knowledge: the document changed")
 	ErrUpstreamRead = fmt.Errorf("%w: current upstream file access is required before reading retained external data", ErrInvalid)
 )
 
@@ -95,6 +99,21 @@ type Document struct {
 	Excluded bool      `json:"excluded"`
 	AddedBy  string    `json:"added_by,omitempty"`
 	AddedAt  time.Time `json:"added_at"`
+	// Digest names the document's title and text together (Digest), which
+	// are what a replacement replaces: a writer can tell whether what it
+	// holds is what is kept, and replace it only if nobody has changed
+	// either since. A document kept before digests were has none.
+	Digest string `json:"digest,omitempty"`
+	// UpdatedAt is when its text was last replaced. Nil is never.
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+}
+
+// Digest is the digest a document of this title and text is kept with: the
+// SHA-256, in hex, of the title, a zero byte and the text, each without the
+// space around it. It changes when either does.
+func Digest(title, text string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(title) + "\x00" + strings.TrimSpace(text)))
+	return hex.EncodeToString(sum[:])
 }
 
 // Hit is one passage that matched a query.
@@ -147,8 +166,8 @@ type Store struct {
 
 // stored is one record: a source, a document, a document's passages or
 // vectors, a name's content clock, or the stamp every new source moves. A
-// document's passages are written once, when it is added, and its record
-// again whenever it changes.
+// document's passages are written when it is added and when its text is
+// replaced, and its record again whenever it changes.
 type stored struct {
 	Clock    *contentClock `json:"clock,omitempty"`
 	Source   *Source       `json:"source,omitempty"`
@@ -559,7 +578,7 @@ func (s *Store) deleteWithScope(tenant, name string, expected *SourceConfig, gua
 // writeErr marks an error from the state store as a failed write, leaving
 // the store's own errors as they are.
 func writeErr(err error) error {
-	if err == nil || errors.Is(err, ErrInvalid) || errors.Is(err, ErrNotFound) || errors.Is(err, ErrExists) {
+	if err == nil || errors.Is(err, ErrInvalid) || errors.Is(err, ErrNotFound) || errors.Is(err, ErrExists) || errors.Is(err, ErrChanged) {
 		return err
 	}
 	return fmt.Errorf("knowledge: write: %w", err)
@@ -688,7 +707,7 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 	if _, err := rand.Read(id); err != nil {
 		return Document{}, err
 	}
-	doc := &Document{ID: hex.EncodeToString(id), Title: title, URI: uri, Bytes: len(text), AddedBy: by, AddedAt: at}
+	doc := &Document{ID: hex.EncodeToString(id), Title: title, URI: uri, Bytes: len(text), AddedBy: by, AddedAt: at, Digest: Digest(title, text)}
 	texts := split(text)
 	doc.Passages = len(texts)
 
@@ -749,6 +768,97 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 	}
 	s.nudge()
 	return *doc, nil
+}
+
+// ReplaceForScope replaces one document's title and text in place, if they
+// are still the title and text digest names ("" for a document kept with
+// no digest, which is so replaced once: the replacement gives it one). The document keeps its id, its place in the source, its URI,
+// who added it and when, and whether it is left out of search. A document
+// whose title or text is another's by now is ErrChanged, and nothing is
+// written.
+//
+// The condition, the new passages and the document's record are one write
+// at the version of the source read, as an insertion is: a failed
+// replacement leaves the document as it was, and of two made at once from
+// the same digest one is refused. The old vectors go with the old text.
+func (s *Store) ReplaceForScope(tenant, name, id, title, text, digest string, at time.Time, expected *SourceConfig) (Document, error) {
+	title, text = strings.TrimSpace(title), strings.TrimSpace(text)
+	switch {
+	case title == "":
+		return Document{}, fmt.Errorf("%w: a document needs a title", ErrInvalid)
+	case text == "":
+		return Document{}, fmt.Errorf("%w: a document needs text", ErrInvalid)
+	}
+	texts := split(text)
+	var out Document
+	err := state.Retry(func() error {
+		src, srcAt, err := s.meta(tenant, name)
+		if err != nil {
+			return err
+		}
+		if expected == nil {
+			if src.Lifecycle != nil {
+				return fmt.Errorf("%w: the source configuration changed; review its audience again", ErrExists)
+			}
+		} else if src.Lifecycle == nil || !src.Lifecycle.Equal(*expected) || src.Lifecycle.Mode != Indexed || src.Lifecycle.Provider != "manual" {
+			return fmt.Errorf("%w: the source configuration changed; review its audience again", ErrExists)
+		}
+		docs, err := s.docs(tenant, name)
+		if err != nil {
+			return err
+		}
+		i := slices.IndexFunc(docs, func(d docRow) bool { return d.doc.ID == id })
+		if i < 0 {
+			return fmt.Errorf("%w: document %q", ErrNotFound, id)
+		}
+		row := docs[i]
+		if row.doc.Digest != digest {
+			return ErrChanged
+		}
+		doc := row.doc
+		stamp := at
+		doc.Title, doc.Bytes, doc.Passages, doc.Digest, doc.UpdatedAt = title, len(text), len(texts), Digest(title, text), &stamp
+		docs[i].doc = doc
+		totalBytes := 0
+		for _, d := range docs {
+			totalBytes += d.doc.Bytes
+		}
+		if totalBytes > MaxImportBytes {
+			return fmt.Errorf("%w: source document or byte limit reached", ErrInvalid)
+		}
+		clk, clkAt, err := s.clock(tenant, name)
+		if err != nil {
+			return err
+		}
+		version, err := nextVersion(src, clk)
+		if err != nil {
+			return err
+		}
+		meta := cloneSource(src)
+		if meta.Lifecycle != nil {
+			meta.Lifecycle.Status = Available
+			meta.Lifecycle.LastGoodAt = &stamp
+			meta.Lifecycle.Cause = ""
+		}
+		recount(&meta, docs)
+		meta.ContentVersion, meta.UpdatedAt = version, at
+		b := s.kept.Batch()
+		b.Put(tenant, textKey(name, row.seq), stored{Passages: texts})
+		b.Delete(tenant, vecKey(name, row.seq))
+		b.PutAt(tenant, docKey(name, row.seq), stored{Document: &doc}, row.version)
+		b.PutAt(tenant, sourceKey(name), stored{Source: &meta}, srcAt)
+		putClock(b, tenant, contentClock{Name: name, Value: version, Seq: max(clk.Seq, nextSeq(clk, docs)-1)}, clkAt)
+		if err := b.Commit(); err != nil {
+			return err
+		}
+		out = doc
+		return nil
+	})
+	if err != nil {
+		return Document{}, writeErr(err)
+	}
+	s.nudge()
+	return out, nil
 }
 
 // Remove deletes one document from a source.

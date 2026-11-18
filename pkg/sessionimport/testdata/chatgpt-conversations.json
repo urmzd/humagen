@@ -1,0 +1,214 @@
+[
+ {
+  "title": "GPT synthetic sheet chat",
+  "create_time": 1791360000.0,
+  "update_time": 1791363600.0,
+  "conversation_id": "gpt0r1g1-cccc-4ddd-8eee-000000000003",
+  "id": "gpt0r1g1-cccc-4ddd-8eee-000000000003",
+  "current_node": "gpt-node-a3b",
+  "mapping": {
+   "gpt-node-root": {
+    "id": "gpt-node-root",
+    "parent": null,
+    "children": [
+     "gpt-node-u1"
+    ],
+    "message": null
+   },
+   "gpt-node-u1": {
+    "id": "gpt-node-u1",
+    "parent": "gpt-node-root",
+    "children": [
+     "gpt-node-a1"
+    ],
+    "message": {
+     "id": "gpt-node-u1",
+     "author": {
+      "role": "user",
+      "name": null
+     },
+     "create_time": 1791360000.0,
+     "content": {
+      "content_type": "text",
+      "parts": [
+       "GPT-USER-ONE what is in the attached sheet?",
+       {
+        "content_type": "image_asset_pointer",
+        "asset_pointer": "file-service://file-GPTATTACH01",
+        "size_bytes": 11
+       }
+      ]
+     },
+     "recipient": "all",
+     "metadata": {
+      "attachments": [
+       {
+        "id": "file-GPTATTACH01",
+        "name": "gpt-sheet.png",
+        "mime_type": "image/png"
+       }
+      ]
+     }
+    }
+   },
+   "gpt-node-a1": {
+    "id": "gpt-node-a1",
+    "parent": "gpt-node-u1",
+    "children": [
+     "gpt-node-t1"
+    ],
+    "message": {
+     "id": "gpt-node-a1",
+     "author": {
+      "role": "assistant",
+      "name": null
+     },
+     "create_time": 1791362400.0,
+     "content": {
+      "content_type": "code",
+      "parts": [
+       "print(\"GPT-TOOL-CALL\")"
+      ]
+     },
+     "recipient": "python",
+     "metadata": {}
+    }
+   },
+   "gpt-node-t1": {
+    "id": "gpt-node-t1",
+    "parent": "gpt-node-a1",
+    "children": [
+     "gpt-node-a2"
+    ],
+    "message": {
+     "id": "gpt-node-t1",
+     "author": {
+      "role": "tool",
+      "name": "python"
+     },
+     "create_time": 1791362460.0,
+     "content": {
+      "content_type": "text",
+      "parts": [
+       "GPT-TOOL-RESULT 42 rows"
+      ]
+     },
+     "recipient": "all",
+     "metadata": {}
+    }
+   },
+   "gpt-node-a2": {
+    "id": "gpt-node-a2",
+    "parent": "gpt-node-t1",
+    "children": [
+     "gpt-node-u2a",
+     "gpt-node-u2b"
+    ],
+    "message": {
+     "id": "gpt-node-a2",
+     "author": {
+      "role": "assistant",
+      "name": null
+     },
+     "create_time": 1791362700.0,
+     "content": {
+      "content_type": "text",
+      "parts": [
+       "GPT-ASSISTANT-LATE-STAMP (stamped 08:45)"
+      ]
+     },
+     "recipient": "all",
+     "metadata": {}
+    }
+   },
+   "gpt-node-u2a": {
+    "id": "gpt-node-u2a",
+    "parent": "gpt-node-a2",
+    "children": [
+     "gpt-node-a3a"
+    ],
+    "message": {
+     "id": "gpt-node-u2a",
+     "author": {
+      "role": "user",
+      "name": null
+     },
+     "create_time": 1791363000.0,
+     "content": {
+      "content_type": "text",
+      "parts": [
+       "GPT-BRANCH-A first child of gpt-node-a2 (left behind)"
+      ]
+     },
+     "recipient": "all",
+     "metadata": {}
+    }
+   },
+   "gpt-node-a3a": {
+    "id": "gpt-node-a3a",
+    "parent": "gpt-node-u2a",
+    "children": [],
+    "message": {
+     "id": "gpt-node-a3a",
+     "author": {
+      "role": "assistant",
+      "name": null
+     },
+     "create_time": 1791363060.0,
+     "content": {
+      "content_type": "text",
+      "parts": [
+       "GPT-BRANCH-A-ANSWER"
+      ]
+     },
+     "recipient": "all",
+     "metadata": {}
+    }
+   },
+   "gpt-node-u2b": {
+    "id": "gpt-node-u2b",
+    "parent": "gpt-node-a2",
+    "children": [
+     "gpt-node-a3b"
+    ],
+    "message": {
+     "id": "gpt-node-u2b",
+     "author": {
+      "role": "user",
+      "name": null
+     },
+     "create_time": 1791360600.0,
+     "content": {
+      "content_type": "text",
+      "parts": [
+       "GPT-BRANCH-B second child of gpt-node-a2 (current), stamped 08:10 EARLY"
+      ]
+     },
+     "recipient": "all",
+     "metadata": {}
+    }
+   },
+   "gpt-node-a3b": {
+    "id": "gpt-node-a3b",
+    "parent": "gpt-node-u2b",
+    "children": [],
+    "message": {
+     "id": "gpt-node-a3b",
+     "author": {
+      "role": "assistant",
+      "name": null
+     },
+     "create_time": 1791360300.0,
+     "content": {
+      "content_type": "text",
+      "parts": [
+       "GPT-BRANCH-B-ANSWER stamped 08:05 EARLIEST"
+      ]
+     },
+     "recipient": "all",
+     "metadata": {}
+    }
+   }
+  }
+ }
+]

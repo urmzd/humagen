@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.136.0 (2026-11-18)
+
+### Features
+
+- **skills**: give coding agents the pinned skill's supporting files ([b26e1f4](https://github.com/urmzd/humagen/commit/b26e1f4d9c07c74c725de8c14122fca5252bdaf0))
+
+### Bug Fixes
+
+- **skills**: grant a coding agent only its own run's skill files ([706e209](https://github.com/urmzd/humagen/commit/706e2090612dbb9cbe4183f6c495fa42ea601d56))
+
+### Misc
+
+- **deps**: bump saige to v0.45.1 (#369) ([b1ba463](https://github.com/urmzd/humagen/commit/b1ba46363595a8bc8a1d3975e5fe6833e58d5a33))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.135.6...v0.136.0)
+
+
 ## 0.135.6 (2026-11-18)
 
 ### Bug Fixes
