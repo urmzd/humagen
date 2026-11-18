@@ -533,6 +533,20 @@ func (k *sessionSink) add(s sessionimport.Session) {
 			}
 			return
 		}
+		// A source named for a directory or a project is replaced in only
+		// when it says it is this session's: the rule for adding to one and
+		// for attaching it, applied before the one write that could not be
+		// taken back. A source by month is not checked, and a session kept
+		// in one is replaced there.
+		if k.project == "" && was.id != "" && strings.HasPrefix(was.source, k.c.prefix+"-in-") && !k.holds(was.source, s) {
+			k.foreign[was.source] = true
+			held := "it does not say what it holds"
+			if said := k.owner[was.source]; said != "" {
+				held = fmt.Sprintf("it says it holds %q", said)
+			}
+			k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: fmt.Sprintf("not updated, and left as it was: its document is in the source %s, which is not this session's: %s", was.source, held)})
+			return
+		}
 		if !k.replace(was, title, s) {
 			return
 		}
@@ -605,6 +619,24 @@ func (k *sessionSink) add(s sessionimport.Session) {
 		return
 	}
 	k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: "every source for " + base + " is full"})
+}
+
+// holds reports whether a source named for a directory or a project says it
+// is the one a session not filed with --project belongs in: the directory
+// the session ran in, or for an export's, with no directory, the exports of
+// the project the source is named for.
+func (k *sessionSink) holds(source string, s sessionimport.Session) bool {
+	said := k.owner[source]
+	if s.Dir != "" {
+		dir := filepath.Base(s.Dir)
+		return strings.EqualFold(said, ranIn(dir)) && continues(source, k.c.prefix+"-in-"+nameSlug(dir))
+	}
+	before, after, _ := strings.Cut(filedIn("\x00"), "\x00")
+	if !strings.HasPrefix(said, before) || !strings.HasSuffix(said, after) || len(said) <= len(before)+len(after) {
+		return false
+	}
+	project := said[len(before) : len(said)-len(after)]
+	return nameSlug(project) != "" && continues(source, k.c.prefix+"-in-"+nameSlug(project))
 }
 
 // said reads what a source the server has says it holds.

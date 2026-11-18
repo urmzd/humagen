@@ -1791,3 +1791,91 @@ func TestTwoImportsAtOnceOfOneProjectsExportsMakeOneSource(t *testing.T) {
 		}
 	}
 }
+
+func TestImportSessionsReplacesInAProjectNamedSourceOnlyItsOwn(t *testing.T) {
+	const (
+		source = "sessions-in-alpha-site"
+		ran    = "Sessions imported from other assistants that ran in alpha-site."
+		filed  = "Conversations imported from an export of another assistant, filed in the project alpha-site."
+	)
+	for _, tt := range []struct {
+		name, said string
+		args       []string
+		refused    string // "" when the source is the session's own
+	}{
+		{"a source that does not say", "", []string{"--by-project"}, "which is not this session's: it does not say what it holds"},
+		{"a project's exports", filed, []string{"--by-project"}, "which is not this session's: it says it holds \"" + filed + "\""},
+		{"another directory's", "Sessions imported from other assistants that ran in beta.", []string{"--by-project"}, "which is not this session's"},
+		{"its own", ran, []string{"--by-project"}, ""},
+		{"a source that does not say, by month", "", nil, "it does not say what it holds"},
+		{"its own, by month", ran, nil, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			api := &importServer{projects: []string{"alpha-site"}}
+			server := api.start(t)
+			home, _, _ := syntheticHome(t)
+			args := append([]string{"sessions", "--home", home, "--from", "claude", "--server", server.URL}, tt.args...)
+			// The session's document is there already, in the source named
+			// for its directory, which says what this case has it say.
+			if res, err := sessionsJSON(t, "sessions", "--home", home, "--from", "claude", "--server", server.URL, "--by-project"); err != nil || res.Added != 1 || len(api.docs[source]) != 1 {
+				t.Fatalf("seed: err = %v, res = %+v", err, res)
+			}
+			api.said[source] = tt.said
+			api.attached, api.attachTries, api.writes, api.docWrites = nil, 0, 0, 0
+			before, digest := api.held(), api.docs[source][0]["digest"]
+			grow(t, home)
+			res, err := sessionsJSON(t, args...)
+			if api.said[source] != tt.said {
+				t.Fatalf("the source now says %q", api.said[source])
+			}
+			if tt.refused == "" {
+				if err != nil || res.Updated != 1 || api.docs[source][0]["digest"] == digest || len(api.docs[source]) != 1 {
+					t.Fatalf("err = %v, res = %+v", err, res)
+				}
+				if tt.args != nil && api.attached[source] != "alpha-site" {
+					t.Fatalf("attached = %v", api.attached)
+				}
+				return
+			}
+			// Not replaced, not added again anywhere, not attached, and
+			// said: the document is as it was and nothing was written.
+			if err == nil || len(res.Failed) == 0 || res.Failed[0].Name != syntheticURI || !strings.Contains(res.Failed[0].Reason, "not updated, and left as it was") || !strings.Contains(res.Failed[0].Reason, tt.refused) {
+				t.Fatalf("err = %v, failed = %+v", err, res.Failed)
+			}
+			if api.held() != before || api.docs[source][0]["digest"] != digest || res.Updated != 0 || res.Added != 0 || api.writes != 0 || api.attachTries != 0 || len(api.attached) != 0 || len(res.Attached) != 0 {
+				t.Fatalf("res = %+v, %d writes, %d attachments asked", res, api.writes, api.attachTries)
+			}
+		})
+	}
+}
+
+func TestImportSessionsReplacesAnExportsDocumentInItsProjectsSourceWithoutProject(t *testing.T) {
+	// An export filed in a project and read again changed, without
+	// --project, is replaced where it is while the source says it is that
+	// project's exports', and not once it says otherwise.
+	_, chatgpt, _ := syntheticHome(t)
+	changed := changedExport(t, chatgpt)
+	for _, said := range []string{"", "Team notes.", "own"} {
+		api := &importServer{projects: []string{"Harbor"}}
+		server := api.start(t)
+		base := []string{"sessions", "--from", "none", "--server", server.URL}
+		if res, err := sessionsJSON(t, append(base, "--export", chatgpt, "--project", "Harbor")...); err != nil || res.Added != 1 {
+			t.Fatalf("seed: err = %v, res = %+v", err, res)
+		}
+		if said != "own" {
+			api.said["sessions-in-harbor"] = said
+		}
+		digest := api.docs["sessions-in-harbor"][0]["digest"]
+		api.docWrites = 0
+		res, err := sessionsJSON(t, append(base, "--export", changed)...)
+		if said == "own" {
+			if err != nil || res.Updated != 1 || api.docs["sessions-in-harbor"][0]["digest"] == digest {
+				t.Fatalf("own: err = %v, res = %+v", err, res)
+			}
+			continue
+		}
+		if err == nil || res.Updated != 0 || res.Added != 0 || api.docWrites != 0 || api.docs["sessions-in-harbor"][0]["digest"] != digest || len(res.Failed) != 1 {
+			t.Fatalf("%q: err = %v, res = %+v, %d document writes", said, err, res, api.docWrites)
+		}
+	}
+}

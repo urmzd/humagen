@@ -311,8 +311,9 @@ same source, the second directory's sessions are not sent and the command
 says which two they are. A source says what it holds, and a run adds to one
 and attaches it only when it says it is that directory's. A source of that
 name that says anything else, or says nothing, is not the run's: its sessions
-are named as failed, nothing is added to it, it is not attached and it is put
-in no corpus. A source another writer makes while the run is making it is
+are named as failed, nothing is added to it, no document in it is replaced
+(with or without `--by-project`), it is not attached and it is put in no
+corpus. A source another writer makes while the run is making it is
 read first and held to the same rule, and what it says is never written over.
 A directory no project is named for is
 listed, and its sessions stay in the corpus; make the project and run the
