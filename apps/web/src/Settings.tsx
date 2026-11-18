@@ -89,7 +89,12 @@ export function Avatar({
     <span
       aria-hidden
       className="inline-flex shrink-0 items-center justify-center rounded-full bg-aui-hover font-medium text-aui-fg"
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }}
+      style={{
+        width: size,
+        height: size,
+        fontSize: Math.max(12, Math.round(size * 0.42)),
+        lineHeight: 1,
+      }}
     >
       {(name.trim()[0] ?? "?").toUpperCase()}
     </span>

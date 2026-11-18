@@ -303,7 +303,7 @@ function FindingItem({
         <p className="pl-[1.375rem] text-aui-muted text-aui-xs">{finding.foundBy}</p>
       )}
       <div className="flex min-w-0 flex-col gap-2 pl-[1.375rem] text-aui-sm">
-        <p className="max-w-[72ch] break-words text-aui-fg/90 leading-relaxed [&_code]:font-aui-mono [&_code]:text-[0.85em]">
+        <p className="max-w-[72ch] break-words text-aui-fg/90 leading-relaxed [&_code]:font-aui-mono [&_code]:text-[max(0.85em,var(--text-aui-2xs))]">
           <span className="sr-only">{labels.suggestion}: </span>
           <Words text={finding.suggestion} />
         </p>
@@ -403,7 +403,7 @@ export function Review(p: PrimitiveProps["Review"]) {
           <p className="text-aui-muted text-aui-xs">{p.pendingLabel}</p>
         )}
         {p.summary && (
-          <p className="max-w-[72ch] break-words text-aui-fg text-aui-sm leading-relaxed [&_code]:font-aui-mono [&_code]:text-[0.85em]">
+          <p className="max-w-[72ch] break-words text-aui-fg text-aui-sm leading-relaxed [&_code]:font-aui-mono [&_code]:text-[max(0.85em,var(--text-aui-2xs))]">
             <Words text={p.summary} />
           </p>
         )}

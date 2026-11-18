@@ -704,7 +704,7 @@ export function Composer({
                 ) : (
                   <span
                     aria-hidden
-                    className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-aui-hover text-[0.6rem] font-medium"
+                    className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-aui-hover text-aui-2xs leading-none font-medium"
                   >
                     {o.kind === "person" ? (o.hint ?? o.label).trim().charAt(0).toUpperCase() : "@"}
                   </span>

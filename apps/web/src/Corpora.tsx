@@ -123,7 +123,7 @@ export function ProviderMark({ provider, small }: { provider?: string; small?: b
   return (
     <span
       aria-hidden="true"
-      className={`inline-flex shrink-0 ${small ? "[&>*]:size-3.5 [&>span]:text-[0.5rem]" : "[&>*]:size-5"}`}
+      className={`inline-flex shrink-0 ${small ? "[&>*]:size-3.5 [&>span]:text-aui-2xs [&>span]:leading-none" : "[&>*]:size-5"}`}
     >
       <ConnectionLogo id={provider} name={providerLabel(provider)} />
     </span>
