@@ -61,6 +61,7 @@ func (s *Server) observeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/knowledge/{name}/documents", s.authed(auth.KnowledgeRead, s.seenSource(s.listDocuments)))
 	mux.HandleFunc("POST /api/knowledge/{name}/documents", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.add", s.addDocument))))
 	mux.HandleFunc("DELETE /api/knowledge/{name}/documents/{id}", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.remove", s.removeDocument))))
+	mux.HandleFunc("PUT /api/knowledge/{name}/documents/{id}/text", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.replace", s.replaceDocument))))
 	mux.HandleFunc("PUT /api/knowledge/{name}/documents/{id}", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.exclude", s.excludeDocument))))
 	mux.HandleFunc("POST /api/knowledge/{name}/variants", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.variant.save", s.saveVariant))))
 	mux.HandleFunc("DELETE /api/knowledge/{name}/variants/{variant}", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.variant.delete", s.deleteVariant))))
@@ -616,6 +617,40 @@ func (s *Server) removeDocument(w http.ResponseWriter, r *http.Request, who auth
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// replaceDocument replaces a document's title and text in place, if they are
+// still the title and text the caller names by digest. The store checks the digest
+// and writes in one step, so the document keeps its id and whether it is
+// left out of search, and a refused replacement changes nothing.
+func (s *Server) replaceDocument(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body struct {
+		Title  string  `json:"title"`
+		Text   string  `json:"text"`
+		Digest *string `json:"digest"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if body.Digest == nil {
+		s.problem(w, fmt.Errorf("%w: digest is required: the digest the document was last read with, or \"\" for a document that has none", knowledge.ErrInvalid))
+		return
+	}
+	src, err := s.sourceSnapshot(who, r)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	if src.Lifecycle != nil && (src.Lifecycle.Provider != "manual" || src.Lifecycle.Mode != knowledge.Indexed) {
+		s.problem(w, fmt.Errorf("%w: managed copies are changed by Refresh Copy", knowledge.ErrInvalid))
+		return
+	}
+	doc, err := s.P.Knowledge.ReplaceForScope(who.Tenant, r.PathValue("name"), r.PathValue("id"), body.Title, body.Text, *body.Digest, time.Now(), sourceConfigOf(src))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, doc)
 }
 
 func (s *Server) excludeDocument(w http.ResponseWriter, r *http.Request, who auth.Principal) {

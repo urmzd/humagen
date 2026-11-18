@@ -1,0 +1,132 @@
+[
+ {
+  "uuid": "cai0r1g1-dddd-4eee-8fff-000000000004",
+  "name": "CAI synthetic note chat",
+  "created_at": "2026-10-08T07:00:00.000000Z",
+  "updated_at": "2026-10-08T08:00:00.000000Z",
+  "account": {
+   "uuid": "synthetic-account"
+  },
+  "chat_messages": [
+   {
+    "uuid": "cai-msg-u1",
+    "parent_message_uuid": "00000000-0000-4000-8000-000000000000",
+    "sender": "human",
+    "created_at": "2026-10-08T07:00:00.000000Z",
+    "text": "CAI-USER-ONE summarise the attached note",
+    "content": [
+     {
+      "type": "text",
+      "text": "CAI-USER-ONE summarise the attached note"
+     }
+    ],
+    "attachments": [
+     {
+      "file_name": "cai-note.txt",
+      "file_type": "txt",
+      "file_size": 28,
+      "extracted_content": "CAI-ATTACHMENT-TEXT lime 9"
+     }
+    ],
+    "files": [
+     {
+      "file_name": "cai-photo.png"
+     }
+    ]
+   },
+   {
+    "uuid": "cai-msg-a1",
+    "parent_message_uuid": "cai-msg-u1",
+    "sender": "assistant",
+    "created_at": "2026-10-08T07:30:00.000000Z",
+    "text": "",
+    "content": [
+     {
+      "type": "text",
+      "text": "CAI-ASSISTANT-LATE-STAMP (stamped 07:30, second in file)"
+     },
+     {
+      "type": "tool_use",
+      "id": "toolu_cai_orig_9",
+      "name": "web_search",
+      "input": {
+       "query": "CAI-TOOL-CALL lime note"
+      }
+     },
+     {
+      "type": "tool_result",
+      "tool_use_id": "toolu_cai_orig_9",
+      "content": [
+       {
+        "type": "text",
+        "text": "CAI-TOOL-RESULT one hit"
+       }
+      ]
+     }
+    ],
+    "attachments": [],
+    "files": []
+   },
+   {
+    "uuid": "cai-msg-u2a",
+    "parent_message_uuid": "cai-msg-a1",
+    "sender": "human",
+    "created_at": "2026-10-08T07:05:00.000000Z",
+    "text": "CAI-BRANCH-A first child of cai-msg-a1, stamped 07:05 EARLY",
+    "content": [
+     {
+      "type": "text",
+      "text": "CAI-BRANCH-A first child of cai-msg-a1, stamped 07:05 EARLY"
+     }
+    ],
+    "attachments": [],
+    "files": []
+   },
+   {
+    "uuid": "cai-msg-a2a",
+    "parent_message_uuid": "cai-msg-u2a",
+    "sender": "assistant",
+    "created_at": "2026-10-08T07:06:00.000000Z",
+    "text": "CAI-BRANCH-A-ANSWER",
+    "content": [
+     {
+      "type": "text",
+      "text": "CAI-BRANCH-A-ANSWER"
+     }
+    ],
+    "attachments": [],
+    "files": []
+   },
+   {
+    "uuid": "cai-msg-u2b",
+    "parent_message_uuid": "cai-msg-a1",
+    "sender": "human",
+    "created_at": "2026-10-08T07:50:00.000000Z",
+    "text": "CAI-BRANCH-B second child of cai-msg-a1",
+    "content": [
+     {
+      "type": "text",
+      "text": "CAI-BRANCH-B second child of cai-msg-a1"
+     }
+    ],
+    "attachments": [],
+    "files": []
+   },
+   {
+    "uuid": "cai-msg-a2b",
+    "parent_message_uuid": "cai-msg-u2b",
+    "sender": "assistant",
+    "created_at": "2026-10-08T07:51:00.000000Z",
+    "text": "CAI-BRANCH-B-ANSWER",
+    "content": [
+     {
+      "type": "text",
+      "text": "CAI-BRANCH-B-ANSWER"
+     }
+    ],
+    "attachments": [],
+    "files": []
+   }
+  ]
+ }
+]
