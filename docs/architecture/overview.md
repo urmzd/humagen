@@ -568,7 +568,14 @@ wrote included, is replaced in place under the same id by one conditional
 call (`PUT /api/knowledge/{name}/documents/{id}/text`, taken only from the
 digest of title and text last read), and keeps whether it is left out of
 search. An import the server refuses never writes over the winner: it reports
-the session as a conflict. It is tested
+the session as a conflict. With `--project NAME` the sessions of a ChatGPT or
+claude.ai export, which carry no directory, go in the source `--by-project`
+names for `NAME`, never the one that holds a directory's sessions, and that
+source is attached to the project of that name; a
+session an earlier run put in another source is left there and reported, not
+moved and not updated. A source named for a directory or a project is added
+to and attached only when its description says it is that one's; the monthly
+sources are not checked this way. It is tested
 with synthetic exports and read back from a local server; it is not checked
 against real exports of each tool, and file bytes are not imported
 ([import](../reference/cli.md#import-sessions-skills-and-agents)).
