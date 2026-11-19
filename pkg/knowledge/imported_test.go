@@ -657,3 +657,58 @@ func TestRacingImportsNeverPassTheSourceBound(t *testing.T) {
 		}
 	})
 }
+
+// A reimport with the title and text the document already has restores
+// only its structure: the digest, the updated time, the source's content
+// version and the document's vectors are as they were, and the structure is
+// trusted and names who restored it. It is still taken only from the digest
+// the caller read. A reimport that changes the text replaces everything, as
+// before.
+func TestARestoreWritesOnlyTheStructure(t *testing.T) {
+	eachSeeded(t, func(t *testing.T, s *Store) {
+		const title, text = "A generated chat", "the same text"
+		doc, err := s.AddForScope("acme", "handbook", title, sessionURI, text, "ada", now, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows, _ := s.docs("acme", "handbook")
+		var seq int64
+		for _, r := range rows {
+			if r.doc.ID == doc.ID {
+				seq = r.seq
+			}
+		}
+		b := s.kept.Batch()
+		b.Put("acme", vecKey("handbook", seq), stored{Vectors: &vectorRecord{Model: "m", Data: []string{"AAAA"}}})
+		if err := b.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		before, _ := s.Get("acme", "handbook")
+		if _, err := s.ReplaceImportedForScope("acme", "handbook", doc.ID, title, text, "stale", "bo", now.Add(time.Hour), nil, generated(2)); !errors.Is(err, ErrChanged) {
+			t.Fatalf("a restore from a stale digest: %v", err)
+		}
+		restored, err := s.ReplaceImportedForScope("acme", "handbook", doc.ID, title, text, doc.Digest, "bo", now.Add(time.Hour), nil, generated(2))
+		if err != nil {
+			t.Fatal(err)
+		}
+		after, _ := s.Get("acme", "handbook")
+		_, vecErr := s.kept.Lookup("acme", vecKey("handbook", seq))
+		if restored.Digest != doc.Digest || restored.UpdatedAt != nil || after.ContentVersion != before.ContentVersion || vecErr != nil || restored.StructureBytes == 0 {
+			t.Fatalf("a restore rewrote the revision: digest same %v, updated %v, content version %d to %d, vectors: %v, structure bytes %d",
+				restored.Digest == doc.Digest, restored.UpdatedAt, before.ContentVersion, after.ContentVersion, vecErr, restored.StructureBytes)
+		}
+		if got := origin(t, s, doc.ID); got.Session == nil || got.ImportedBy != "bo" || got.Document.StructureBytes != restored.StructureBytes {
+			t.Fatalf("restored: %+v", got)
+		}
+		// A real change of the text replaces everything.
+		changed, err := s.ReplaceImportedForScope("acme", "handbook", doc.ID, title, "another text", doc.Digest, "bo", now.Add(2*time.Hour), nil, generated(4))
+		if err != nil {
+			t.Fatal(err)
+		}
+		later, _ := s.Get("acme", "handbook")
+		_, vecErr = s.kept.Lookup("acme", vecKey("handbook", seq))
+		if changed.UpdatedAt == nil || later.ContentVersion == after.ContentVersion || !errors.Is(vecErr, state.ErrNotFound) {
+			t.Fatalf("a reimport that changed the text: updated %v, content version %d to %d, vectors: %v", changed.UpdatedAt, after.ContentVersion, later.ContentVersion, vecErr)
+		}
+	})
+}

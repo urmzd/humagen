@@ -93,6 +93,13 @@ type importServer struct {
 	// is one this token may not read (404, then 409 when made), and
 	// "locked" one it reads and may not change (403 on a member).
 	foreignCorpora map[string]string
+	// noWrite is a token that may import and may not write knowledge.
+	// structuresFull are sources whose structures are at their bound, and
+	// conflictOnce documents whose next import is refused once as changed,
+	// though nothing changed.
+	noWrite        bool
+	structuresFull map[string]bool
+	conflictOnce   map[string]bool
 }
 
 const importTenant, importPerson = "acme", "dev"
@@ -184,7 +191,20 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 				fmt.Fprint(w, `{"error":"no such route"}`)
 				return
 			case s.noImport:
-				problem(http.StatusForbidden, "you need knowledge:import")
+				w.WriteHeader(http.StatusForbidden)
+				fmt.Fprint(w, `{"error":"you need knowledge:import"}`)
+				return
+			case s.noWrite:
+				w.WriteHeader(http.StatusForbidden)
+				fmt.Fprint(w, `{"error":"you need knowledge:write"}`)
+				return
+			case s.structuresFull[parts[1]]:
+				w.WriteHeader(http.StatusBadRequest)
+				fmt.Fprint(w, `{"error":"source limit reached for imported session structures: at most 8388608 bytes in one source"}`)
+				return
+			case len(parts) == 4 && s.conflictOnce[parts[3]]:
+				delete(s.conflictOnce, parts[3])
+				problem(409, "the document changed since it was read; read it again")
 				return
 			}
 			parts[2] = "documents"
@@ -2348,5 +2368,122 @@ func TestImportSessionsFilesInTheNextCorpusWhenOneIsAnotherPersons(t *testing.T)
 				t.Fatalf("err = %v, corpora %v\n%s", err, api.corpora, out)
 			}
 		})
+	}
+}
+
+// A token that may import and may not write knowledge: the server's refusal
+// names knowledge:write, so the run does not fall back to the ordinary
+// route, which would be refused too. Every session fails with that reason,
+// and the run says so and fails.
+func TestImportSessionsWithoutKnowledgeWriteFailsWithThatReason(t *testing.T) {
+	api := &importServer{noWrite: true}
+	server := api.start(t)
+	home, chatgpt, _ := syntheticHome(t)
+	out, err := runImport(t, "sessions", "--home", home, "--from", "claude", "--export", chatgpt, "--server", server.URL, "--json")
+	var res struct {
+		Added             int            `json:"added"`
+		Failed            []importFailed `json:"failed"`
+		StructuresNotKept string         `json:"structures_not_kept"`
+	}
+	_ = json.Unmarshal([]byte(out), &res)
+	if err == nil || res.Added != 0 || len(res.Failed) != 2 || res.StructuresNotKept != "" || api.importTries != 1 || api.docWrites != 0 {
+		t.Fatalf("err = %v, %d import tries, %d document writes\n%s", err, api.importTries, api.docWrites, out)
+	}
+	for _, f := range res.Failed {
+		if !strings.Contains(f.Reason, "knowledge:write") {
+			t.Fatalf("reason: %s", f.Reason)
+		}
+	}
+}
+
+// A restore the server refuses because the source's structures are at
+// their bound is not a failure: the document is present and unchanged,
+// counted as without a structure, and the source is named once. The next
+// run does the same and grows nothing.
+func TestImportSessionsLeavesADocumentWhoseSourceHasNoRoomForItsStructure(t *testing.T) {
+	const source = "sessions-claude-2026-10"
+	api := &importServer{}
+	server := api.start(t)
+	home, _, _ := syntheticHome(t)
+	args := []string{"sessions", "--home", home, "--from", "claude", "--server", server.URL}
+	if out, err := runImport(t, append(args, "--json")...); err != nil || counts(t, out) != "added 1 updated 0 present 0 failed []" {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	api.mu.Lock()
+	api.docs[source][0]["session"] = ""
+	api.structuresFull = map[string]bool{source: true}
+	api.mu.Unlock()
+	for range 2 {
+		before := api.held()
+		out, err := runImport(t, append(args, "--json")...)
+		var res struct {
+			WithoutStructure int      `json:"without_structure"`
+			StructuresFull   []string `json:"structures_full"`
+		}
+		_ = json.Unmarshal([]byte(out), &res)
+		if err != nil || counts(t, out) != "added 0 updated 0 present 1 failed []" || res.WithoutStructure != 1 || strings.Join(res.StructuresFull, ",") != source || api.held() != before {
+			t.Fatalf("err = %v, changed %v\n%s", err, api.held() != before, out)
+		}
+	}
+	out, err := runImport(t, args...)
+	if err != nil || strings.Count(out, "Structures were not restored in "+source+": each holds as many session structures as a source may (8 MiB)") != 1 {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+}
+
+// A restore refused as a conflict, where reading the document again finds
+// the text this run would write and still no structure: present, and
+// counted as without a structure, never silently.
+func TestImportSessionsCountsARestoreLostToAnotherWriterAsWithoutAStructure(t *testing.T) {
+	const source = "sessions-claude-2026-10"
+	api := &importServer{}
+	server := api.start(t)
+	home, _, _ := syntheticHome(t)
+	args := []string{"sessions", "--home", home, "--from", "claude", "--server", server.URL, "--json"}
+	if out, err := runImport(t, args...); err != nil || counts(t, out) != "added 1 updated 0 present 0 failed []" {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	api.mu.Lock()
+	doc := api.docs[source][0]
+	doc["session"] = ""
+	api.conflictOnce = map[string]bool{doc["id"]: true}
+	api.mu.Unlock()
+	out, err := runImport(t, args...)
+	var res struct {
+		WithoutStructure int `json:"without_structure"`
+	}
+	_ = json.Unmarshal([]byte(out), &res)
+	if err != nil || counts(t, out) != "added 0 updated 0 present 1 failed []" || res.WithoutStructure != 1 {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	if out, err := runImport(t, args...); err != nil || counts(t, out) != "added 0 updated 0 present 0 failed [] restored 1" {
+		t.Fatalf("the next run: err = %v\n%s", err, out)
+	}
+}
+
+// When every corpus name the run may use is another person's, the sources
+// are left out of any corpus, and the run says so once, with why; no
+// session fails.
+func TestImportSessionsSaysWhenNoCorpusNameIsLeft(t *testing.T) {
+	foreign := map[string]string{"sessions": "hidden"}
+	for n := 2; n <= 20; n++ {
+		foreign[fmt.Sprintf("sessions-%d", n)] = "hidden"
+	}
+	api := &importServer{foreignCorpora: foreign}
+	server := api.start(t)
+	home, chatgpt, _ := syntheticHome(t)
+	args := []string{"sessions", "--home", home, "--from", "none", "--export", chatgpt, "--server", server.URL}
+	out, err := runImport(t, append(args, "--json")...)
+	var res struct {
+		NotInCorpus       []string `json:"not_in_corpus"`
+		NotInCorpusReason string   `json:"not_in_corpus_reason"`
+	}
+	_ = json.Unmarshal([]byte(out), &res)
+	if err != nil || counts(t, out) != "added 1 updated 0 present 0 failed []" || strings.Join(res.NotInCorpus, ",") != "sessions-chatgpt-2026-10" || res.NotInCorpusReason != "every corpus name from sessions to sessions-20 is another person's or full" {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	out, err = runImport(t, args...)
+	if err != nil || strings.Count(out, "Not put in a corpus: sessions-chatgpt-2026-10: every corpus name from sessions to sessions-20 is another person's or full.") != 1 {
+		t.Fatalf("err = %v\n%s", err, out)
 	}
 }

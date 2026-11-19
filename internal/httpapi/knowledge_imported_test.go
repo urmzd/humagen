@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/projects"
@@ -185,13 +187,19 @@ func TestAnImportNeedsKnowledgeWriteAsWellAndNamesItsImporter(t *testing.T) {
 	held := want(t, f, mo, "POST", imports, body("generated-held", ""), http.StatusCreated)
 	id, digest := fmt.Sprint(held["id"]), fmt.Sprint(held["digest"])
 	// Import alone: refused on both routes, and nothing changes.
-	want(t, f, imp, "POST", imports, body("generated-imp", ""), http.StatusForbidden)
+	// Each refusal names the permission missing, in the words a route's
+	// own refusal uses, which a client tells apart.
+	if out := want(t, f, imp, "POST", imports, body("generated-imp", ""), http.StatusForbidden); out["error"] != "you need knowledge:write" {
+		t.Fatalf("import without write: %v", out)
+	}
 	want(t, f, imp, "PUT", imports+"/"+id, `{"title":"A chat","text":"agents now read this","digest":"`+digest+`","session":`+importedBody("generated-held", 2)+`}`, http.StatusForbidden)
 	want(t, f, imp, "POST", docs, `{"title":"x","text":"y"}`, http.StatusForbidden)
 	if got, err := f.p.ImportedOrigin(reader, "chats", id); err != nil || count() != 1 || got.Document.Digest != digest || got.ImportedBy != "00u-mo" {
 		t.Fatalf("after an import-only role's tries: %d documents, %+v, %v", count(), got, err)
 	}
-	want(t, f, op, "POST", imports, body("generated-op", ""), http.StatusForbidden)
+	if out := want(t, f, op, "POST", imports, body("generated-op", ""), http.StatusForbidden); out["error"] != "you need knowledge:import" {
+		t.Fatalf("an operator's import: %v", out)
+	}
 	want(t, f, bo, "POST", imports, body("generated-bo", ""), http.StatusNotFound)
 
 	// The importer, the time and the size are the server's.
@@ -231,5 +239,44 @@ func TestAnImportNeedsKnowledgeWriteAsWellAndNamesItsImporter(t *testing.T) {
 		if r, out := f.do(t, nil, "POST", "/api/knowledge/live/imports", ana, body("generated-live", "")); r.StatusCode == http.StatusCreated {
 			t.Fatalf("imported into a managed copy: %v", out)
 		}
+	}
+}
+
+// A reimport with the text the document has restores only its structure:
+// the answer has no new updated time, the structure is trusted again and
+// names who restored it, and the audit record says a structure was
+// restored, not that the document was reimported.
+func TestARestoreThroughTheRouteIsAuditedAsOne(t *testing.T) {
+	f := newFixture(t)
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-admins")
+	reader := auth.Principal{Tenant: "acme", Subject: "00u-ana", Kind: auth.User, Scopes: []auth.Permission{auth.KnowledgeRead}}
+	want(t, f, ana, "POST", "/api/knowledge", `{"name":"chats"}`, http.StatusCreated)
+	doc := want(t, f, ana, "POST", "/api/knowledge/chats/documents", `{"title":"A generated chat","uri":"chatgpt:generated-0001","text":"generated text"}`, http.StatusCreated)
+	id, digest := fmt.Sprint(doc["id"]), fmt.Sprint(doc["digest"])
+	restored := want(t, f, ana, "PUT", "/api/knowledge/chats/imports/"+id, `{"title":"A generated chat","text":"generated text","digest":"`+digest+`","session":`+importedBody("generated-0001", 2)+`}`, http.StatusOK)
+	if restored["digest"] != digest || restored["updated_at"] != nil || restored["structure_bytes"] == nil {
+		t.Fatalf("restored: %v", restored)
+	}
+	if got, err := f.p.ImportedOrigin(reader, "chats", id); err != nil || got.Session == nil || got.ImportedBy != "00u-ana" {
+		t.Fatalf("after the restore: %+v, %v", got, err)
+	}
+	recs, err := f.p.Audit.List("acme", audit.Query{Resource: "source", From: time.Now().Add(-time.Hour), To: time.Now().Add(time.Hour), Limit: 500}, func(audit.Record) bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	var actions []string
+	for _, r := range recs {
+		if strings.HasPrefix(r.Action, "source.document.") {
+			actions = append(actions, r.Action)
+		}
+	}
+	if !slices.Contains(actions, "source.document.structure.restore") || slices.Contains(actions, "source.document.reimport") {
+		t.Fatalf("audit actions: %v", actions)
+	}
+	// A reimport that changes the text is recorded as one.
+	want(t, f, ana, "PUT", "/api/knowledge/chats/imports/"+id, `{"title":"A generated chat","text":"grown","digest":"`+digest+`","session":`+importedBody("generated-0001", 4)+`}`, http.StatusOK)
+	recs, _ = f.p.Audit.List("acme", audit.Query{Resource: "source", From: time.Now().Add(-time.Hour), To: time.Now().Add(time.Hour), Limit: 500}, func(audit.Record) bool { return true })
+	if !slices.ContainsFunc(recs, func(r audit.Record) bool { return r.Action == "source.document.reimport" }) {
+		t.Fatal("a reimport of new text was not recorded as one")
 	}
 }

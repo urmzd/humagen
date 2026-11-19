@@ -71,7 +71,11 @@ func (s *Server) importDocument(w http.ResponseWriter, r *http.Request, who auth
 
 // reimportDocument replaces a session's document and its structure in one
 // write, only if the document's title and text are still the ones digest
-// names, as an ordinary replacement is.
+// names, as an ordinary replacement is. When the title and text sent are
+// the ones digest names, nothing of the text changes: the store writes only
+// the structure (a restore), and the audit record says so
+// (source.document.structure.restore) rather than
+// source.document.reimport.
 func (s *Server) reimportDocument(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
 		Title   string          `json:"title"`
@@ -82,6 +86,21 @@ func (s *Server) reimportDocument(w http.ResponseWriter, r *http.Request, who au
 	if !decode(w, r, &body) {
 		return
 	}
+	action := "source.document.reimport"
+	if body.Digest != nil && knowledge.Digest(body.Title, body.Text) == *body.Digest {
+		action = "source.document.structure.restore"
+	}
+	s.auditedSourceUnder(action, auth.KnowledgeImport, func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+		s.reimport(w, r, who, body.Title, body.Text, body.Digest, body.Session)
+	})(w, r, who)
+}
+
+func (s *Server) reimport(w http.ResponseWriter, r *http.Request, who auth.Principal, title, text string, digest *string, raw json.RawMessage) {
+	body := struct {
+		Title, Text string
+		Digest      *string
+		Session     json.RawMessage
+	}{title, text, digest, raw}
 	if body.Digest == nil {
 		s.problem(w, fmt.Errorf("%w: digest is required: the digest the document was last read with", knowledge.ErrInvalid))
 		return

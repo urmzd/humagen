@@ -44,6 +44,12 @@ func (p *Platform) ImportedOrigin(who auth.Principal, source, id string) (knowle
 	return p.Knowledge.OriginForScope(who.Tenant, source, id, expected)
 }
 
+// ErrImportNeedsWrite refuses an import by a caller without knowledge:write.
+// Its words are the ones a route's own refusal uses ("you need PERMISSION"),
+// so a client tells it from a refusal of knowledge:import by the permission
+// it names.
+var ErrImportNeedsWrite = fmt.Errorf("%w: you need knowledge:write", auth.ErrForbidden)
+
 // ImportDocument adds, as who, a session's document with the session's
 // structure, through the import route. The route checks knowledge:import;
 // writing a document's text is also writing knowledge, so who must hold
@@ -51,7 +57,7 @@ func (p *Platform) ImportedOrigin(who auth.Principal, source, id string) (knowle
 // structure is who's assertion and names them.
 func (p *Platform) ImportDocument(who auth.Principal, source, title, uri, text string, at time.Time, expected *knowledge.SourceConfig, session knowledge.Imported) (knowledge.Document, error) {
 	if !who.Can(auth.KnowledgeWrite) {
-		return knowledge.Document{}, fmt.Errorf("%w: importing a session writes a document, which needs knowledge:write as well as knowledge:import", auth.ErrForbidden)
+		return knowledge.Document{}, ErrImportNeedsWrite
 	}
 	return p.Knowledge.AddImportedForScope(who.Tenant, source, title, uri, text, who.Subject, at, expected, session)
 }
@@ -65,7 +71,7 @@ func (p *Platform) ImportDocument(who auth.Principal, source, title, uri, text s
 // names who as its importer.
 func (p *Platform) ReimportDocument(who auth.Principal, source, id, title, text, digest string, at time.Time, expected *knowledge.SourceConfig, session knowledge.Imported) (knowledge.Document, error) {
 	if !who.Can(auth.KnowledgeWrite) {
-		return knowledge.Document{}, fmt.Errorf("%w: importing a session writes a document, which needs knowledge:write as well as knowledge:import", auth.ErrForbidden)
+		return knowledge.Document{}, ErrImportNeedsWrite
 	}
 	return p.Knowledge.ReplaceImportedForScope(who.Tenant, source, id, title, text, digest, who.Subject, at, expected, session)
 }

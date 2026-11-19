@@ -823,7 +823,9 @@ func (s *Store) replace(tenant, name, id, title, text, digest string, at time.Ti
 	}
 	texts := split(text)
 	var out Document
+	restored := false
 	err := state.Retry(func() error {
+		restored = false
 		src, srcAt, err := s.meta(tenant, name)
 		if err != nil {
 			return err
@@ -851,6 +853,30 @@ func (s *Store) replace(tenant, name, id, title, text, digest string, at time.Ti
 			if err := CheckImported(*session, row.doc.URI); err != nil {
 				return err
 			}
+		}
+		if session != nil && Digest(title, text) == row.doc.Digest {
+			// A restore: the title and text are the ones kept, and only
+			// the structure is written, with its size on the document.
+			// The passages, vectors, updated time and content version are
+			// left as they are, so nothing is embedded again and the
+			// source does not read as changed. The source's record is put
+			// back as it was, at the version read, so writes to the
+			// source stay one at a time and the bound holds.
+			doc := row.doc
+			doc.StructureBytes = importedSize(*session)
+			if structureBytes(docs, row.seq, doc.StructureBytes) > MaxImportedSourceBytes {
+				return sourceStructuresFull()
+			}
+			meta := cloneSource(src)
+			b := s.kept.Batch()
+			b.PutAt(tenant, docKey(name, row.seq), stored{Document: &doc}, row.version)
+			b.Put(tenant, importedKey(name, row.seq), stored{Imported: &importedRecord{Session: new(cloneImported(*session)), Document: doc.Digest, By: by, At: at}})
+			b.PutAt(tenant, sourceKey(name), stored{Source: &meta}, srcAt)
+			if err := b.Commit(); err != nil {
+				return err
+			}
+			out, restored = doc, true
+			return nil
 		}
 		doc := row.doc
 		stamp := at
@@ -916,7 +942,9 @@ func (s *Store) replace(tenant, name, id, title, text, digest string, at time.Ti
 	if err != nil {
 		return Document{}, writeErr(err)
 	}
-	s.nudge()
+	if !restored {
+		s.nudge()
+	}
 	return out, nil
 }
 
