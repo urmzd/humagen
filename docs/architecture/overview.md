@@ -1053,6 +1053,8 @@ routes too long for a table column. Each is followed by its state.
   - Built. The index is kept with `-state=postgres`, the bytes are in the blob store. An id that was published is never issued again, so no blob key is reused. Unit tested on its own: titles, versions, tenants, paging, usage, and concurrent use under the race detector
 - Publishing: the `publish_artifact` tool copies a sandbox file to storage and reports it on the run's stream, where the console shows it as a card
   - Built
+- Web search and fetch: the `web_search` and `web_fetch` tools read the public web from the server (`pkg/webtools`), with no key
+  - Built. Internal addresses are refused when the connection is dialled; unit tested with local servers, and checked once against the real search and a real page (`HUMAGEN_WEB_LIVE=1`). Not yet checked in a live agent run. The search has one backend, which may refuse automated clients; PDFs are not read
 - Native deliverable production and exact revisions
   - Built. `file_write` native JSON produces editable DOCX/PPTX/XLSX and actual PDF in the existing bounded sandbox; publication retains immutable versions. `file_read` reads an exact artifact version only in the authoritative run's conversation. The workbench exports that immutable native model to PDF through a read-confined route; PDF refuses unsupported Windows-1252 characters and overfull slides. Office outputs independently opened, edited and re-saved; PDF independently parsed in tests
 - Authored outcomes and retained evidence
