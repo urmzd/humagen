@@ -686,8 +686,6 @@ export function ThreadRoom({
   const [problem, setProblem] = useState<string | null>(null);
   const [localView, setLocalView] = useState<ConversationView>({});
   const [seed, setSeed] = useState<ComposerSeed>();
-  // The draft, whose mentions are the + menu's agents.
-  const [draft, setDraft] = useState("");
   const shownView = onView ? (view ?? {}) : localView;
   const openPanel = (
     panel?: ConversationPanel,
@@ -1228,9 +1226,9 @@ export function ThreadRoom({
                 seed={seed}
                 placeholder={words.message}
                 tags={tags}
-                onDraft={setDraft}
                 plus={{
-                  menu: (close, attach, leave) => (
+                  // The draft's mentions are the + menu's agents.
+                  menu: (close, attach, leave, draft) => (
                     <PlusMenu
                       onLeave={leave}
                       agents={tags.agents}
@@ -1471,8 +1469,6 @@ export function ChannelPage({
   // see answers as one that does not exist), or the channel in it.
   const [missing, setMissing] = useState<"project" | "channel" | null>(null);
   const tags = useCompletion(project, agents, homes, topicsOf(projects, root, project), me, handle);
-  // The draft of the thread this channel's chat bar starts, whose mentions are the + menu's agents.
-  const [draft, setDraft] = useState("");
   const [seed, setSeed] = useState<ComposerSeed>();
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the refresh signal
@@ -1582,9 +1578,9 @@ export function ChannelPage({
           seed={seed}
           placeholder={words.startThread}
           tags={tags}
-          onDraft={setDraft}
           plus={{
-            menu: (close, attach, leave) => (
+            // The draft's mentions are the + menu's agents.
+            menu: (close, attach, leave, draft) => (
               <PlusMenu
                 agents={tags.agents}
                 {...mentionPicks(draft, tags.agents, setSeed)}
