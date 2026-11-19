@@ -60,6 +60,8 @@ file_write | runs | write_files | idempotent | policy
 publish_artifact | runs | publish_artifacts |  | policy
 record_outcome | runs | other |  | policy
 shell | runs | write_files | destructive | policy
+web_search | runs | read_context | idempotent,parallel,read-only | policy
+web_fetch | runs | read_context | idempotent,parallel,read-only | policy
 runs_summary | runs | read_context | idempotent,parallel,read-only | policy
 run/list_alerts (list_alerts) | runs | read_context | idempotent,parallel,read-only | policy
 project_changes | runs | other | idempotent,parallel,read-only | policy

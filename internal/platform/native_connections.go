@@ -23,3 +23,37 @@ func NativeConnectionProvider(name string) connectionauth.Provider {
 	}
 	return connectionauth.Provider{}
 }
+
+// googleToolScopes are what each Google Workspace tool server is asked for:
+// reading and changing that product's own content, and for the editors,
+// finding their files in Drive. Each is one its server lists as supported.
+// A tool that changes something still waits for its person's approval.
+var googleToolScopes = map[string][]string{
+	"gmail":           {"https://www.googleapis.com/auth/gmail.modify"},
+	"google-calendar": {"https://www.googleapis.com/auth/calendar.events", "https://www.googleapis.com/auth/calendar.readonly"},
+	"google-drive":    {"https://www.googleapis.com/auth/drive"},
+	"google-docs":     {"https://www.googleapis.com/auth/documents", "https://www.googleapis.com/auth/drive.readonly"},
+	"google-sheets":   {"https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive.readonly"},
+	"google-slides":   {"https://www.googleapis.com/auth/presentations", "https://www.googleapis.com/auth/drive.readonly"},
+}
+
+// GoogleToolProviders are the Google Workspace tool servers as connection
+// providers, for a deployment that registered a Google application
+// (connections.clients.google). Google's authorization server takes no client
+// registration and its resource metadata names its issuer with a trailing
+// slash its own metadata does not have, so the endpoints are fixed here, as
+// they are for Drive and BigQuery, and each person consents per product.
+func GoogleToolProviders() []connectionauth.Provider {
+	out := []connectionauth.Provider{}
+	for _, p := range connectionPresets {
+		if p.client != GoogleClient {
+			continue
+		}
+		out = append(out, connectionauth.Provider{
+			Name: p.ID, Resource: p.Endpoint, Issuer: "https://accounts.google.com",
+			AuthorizationURL: "https://accounts.google.com/o/oauth2/v2/auth", TokenURL: "https://oauth2.googleapis.com/token",
+			Offline: true, Scopes: googleToolScopes[p.ID],
+		})
+	}
+	return out
+}

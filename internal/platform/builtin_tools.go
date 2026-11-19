@@ -53,7 +53,9 @@ const toolAskPerson = "ask_person"
 // grantable is what the builder may propose for human approval. Personal
 // tools still require the initiating person's reviewed connection and policy.
 // Never grant the builder's own tools, the analyst's, or calls to agents.
-func grantable() []string { return append(FileTools(), toolAskPerson, "person_tools") }
+func grantable() []string {
+	return append(append(FileTools(), WebTools()...), toolAskPerson, "person_tools")
+}
 
 func builderGrantable(name string) bool {
 	return name == personToolsGrant || slices.Contains(grantable(), name)

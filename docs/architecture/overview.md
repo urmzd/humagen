@@ -612,37 +612,20 @@ server and a stub older server on memory only (`internal/httpapi`,
 `internal/platform`, `internal/app`). Nothing reads it yet: continuing an
 imported conversation is designed, not built.
 
-A branch of a conversation on a coding agent (Claude Code or Codex) is
-answered by a session of its own: a session is continued only by a turn whose
-conversation so far begins with everything that session holds, so a branch
-never sees a sibling branch's turns. A conversation too long to be replayed
-whole continues no session: each turn starts one, told what was replayed
-([coding agents](../guides/coding-agents.md)).
-
-A run on a coding agent that uses a published library skill reads the skill's
-supporting files: the pinned revision's files are written to a directory of
-the turn's own on the host, named in what the program is asked, and removed
-when the turn returns ([coding agents](../guides/coding-agents.md#what-carries-over-and-what-does-not)).
-The program is let read only the directory placed for its turn's own run,
-never one named in a message, and the files are placed whether the coding
-agent is the agent's first model or a fallback. Checked live on Claude Code
-and Codex; the fallback directions are checked by test, not in a live run.
-
 A library skill's supporting file may be up to 1 MiB and its package 256
 files and 2 MiB, while `SKILL.md`, whose body is what a model is asked, stays
 at 128 KiB. So `humagen import skills` drafts a skill that ships a large
 schema or source file, or a tree of many schema files, instead of naming it
 under `failed`. A turn's text lists at most 63 of a skill's supporting files,
 those its instructions name first, and says how many more there are;
-`file_read` reads any of them, and a coding agent's directory holds them all.
+`file_read` reads any of them.
 A skill's revisions hold at most 16 MiB of file bytes together, as 32
 revisions of the earlier 512 KiB package did; with paths and text, a stored
 record or history answer is at most about 41.8 MiB (about 32.9 MiB before), and
 a skill with large files holds fewer than 32 revisions. A full skill takes no
 more and cannot be emptied: the import names it under `failed` and says to go
-on under another name or scope. A coding agent is given a large file whole on
-the host; a native model is told it is over the 128 KiB `file_read` returns,
-and `file_read` refuses it. A record this release cannot read fails only
+on under another name or scope. A model is told a file is over the 128 KiB
+`file_read` returns, and `file_read` refuses it. A record this release cannot read fails only
 itself: its scope is listed without it and names it under `unreadable`.
 Checked by test on memory and Postgres with generated files, and by an
 import of a real skill library; not checked in a live run
@@ -663,12 +646,6 @@ skill can contain up to 64 files.", its folder upload stops at 64 files,
 over 131072 characters. It does not read `unreadable`, so a skill this server
 cannot read is missing from its Library page without a word. Read from code,
 not opened in a browser.
-
-Coding agents on Claude Code or Codex have a [model kind](../guides/coding-agents.md)
-each. A turn on Codex fails only when the program says the turn failed, with
-or without a reason, or ends without finishing it; what it reports along the
-way, such as skill descriptions left out or a reconnection, does not fail the
-turn or make the platform run it again.
 
 Mail has an [existing-account CLI path](../guides/mail-calendar.md): Codex apps
 searched and read one exact unsent non-personal Gmail fixture and its actual
@@ -1108,6 +1085,8 @@ routes too long for a table column. Each is followed by its state.
   - Built. The index is kept with `-state=postgres`, the bytes are in the blob store. An id that was published is never issued again, so no blob key is reused. Unit tested on its own: titles, versions, tenants, paging, usage, and concurrent use under the race detector
 - Publishing: the `publish_artifact` tool copies a sandbox file to storage and reports it on the run's stream, where the console shows it as a card
   - Built
+- Web search and fetch: the `web_search` and `web_fetch` tools read the public web from the server (`pkg/webtools`), with no key
+  - Built. Internal addresses are refused when the connection is dialled; unit tested with local servers, and checked once against the real search and a real page (`HUMAGEN_WEB_LIVE=1`). Not yet checked in a live agent run. The search has one backend, which may refuse automated clients; PDFs are not read
 - Native deliverable production and exact revisions
   - Built. `file_write` native JSON produces editable DOCX/PPTX/XLSX and actual PDF in the existing bounded sandbox; publication retains immutable versions. `file_read` reads an exact artifact version only in the authoritative run's conversation. The workbench exports that immutable native model to PDF through a read-confined route; PDF refuses unsupported Windows-1252 characters and overfull slides. Office outputs independently opened, edited and re-saved; PDF independently parsed in tests
 - Authored outcomes and retained evidence
