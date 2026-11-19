@@ -405,6 +405,10 @@ type sessionsResult struct {
 	// person's or full.
 	NotInCorpus       []string `json:"not_in_corpus,omitempty"`
 	NotInCorpusReason string   `json:"not_in_corpus_reason,omitempty"`
+	// CorpusFailed are the corpus steps that failed (reading, making or
+	// adding to a corpus), with why. The sessions were sent: this does not
+	// count as a session not added, and does not change the exit status.
+	CorpusFailed []importFailed `json:"corpus_failed,omitempty"`
 }
 
 type importFailed struct {
@@ -1097,8 +1101,12 @@ func (k *sessionSink) file() {
 			Name string `json:"name"`
 		} `json:"members"`
 	}
+	// A corpus that cannot be read, made or added to is the corpus's
+	// failure, not a session's: every session was sent. It is reported on
+	// its own (CorpusFailed) and does not change the exit status, which
+	// counts sessions not sent.
 	fail := func(what string, err error) {
-		k.res.Failed = append(k.res.Failed, importFailed{Name: "corpus " + what, Reason: err.Error()})
+		k.res.CorpusFailed = append(k.res.CorpusFailed, importFailed{Name: "corpus " + what, Reason: err.Error()})
 	}
 	for n := 1; len(sources) > 0 && n <= 20; n++ {
 		name := k.c.corpus
@@ -1153,6 +1161,14 @@ func (k *sessionSink) file() {
 			}
 		}
 		if foreign {
+			// The sources already in it are in a corpus; the rest go on.
+			var rest []string
+			for _, src := range sources {
+				if !in[src] {
+					rest = append(rest, src)
+				}
+			}
+			sources = rest
 			continue
 		}
 		k.res.Corpora = append(k.res.Corpora, name)
@@ -1288,6 +1304,9 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 	}
 	if len(res.NotInCorpus) > 0 {
 		fmt.Fprintf(out, "Not put in a corpus: %s: %s.\n", strings.Join(res.NotInCorpus, ", "), res.NotInCorpusReason)
+	}
+	for _, f := range res.CorpusFailed {
+		fmt.Fprintf(out, "Could not file the sources in a %s: %s. The sessions were sent.\n", f.Name, f.Reason)
 	}
 	if len(res.Conflicts) > 0 {
 		fmt.Fprintf(out, "Left %d sessions as another import wrote them while this one ran; nothing of this run's was written over them: %s.\n", len(res.Conflicts), strings.Join(res.Conflicts, ", "))

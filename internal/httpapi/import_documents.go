@@ -83,16 +83,51 @@ func (s *Server) reimportDocument(w http.ResponseWriter, r *http.Request, who au
 		Digest  *string         `json:"digest"`
 		Session json.RawMessage `json:"session"`
 	}
-	if !decode(w, r, &body) {
-		return
-	}
+	// The body is read before the audit record is begun, so the record can
+	// name what was asked; a body that cannot be read is still recorded,
+	// as a reimport, with the refusal decode gives it.
+	refused := &heldAnswer{header: http.Header{}}
+	ok := decode(refused, r, &body)
 	action := "source.document.reimport"
-	if body.Digest != nil && knowledge.Digest(body.Title, body.Text) == *body.Digest {
+	if ok && body.Digest != nil && knowledge.Digest(body.Title, body.Text) == *body.Digest {
 		action = "source.document.structure.restore"
 	}
 	s.auditedSourceUnder(action, auth.KnowledgeImport, func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+		if !ok {
+			refused.replay(w)
+			return
+		}
 		s.reimport(w, r, who, body.Title, body.Text, body.Digest, body.Session)
 	})(w, r, who)
+}
+
+// heldAnswer keeps an answer to give later.
+type heldAnswer struct {
+	header http.Header
+	status int
+	body   []byte
+}
+
+func (h *heldAnswer) Header() http.Header { return h.header }
+func (h *heldAnswer) WriteHeader(code int) {
+	if h.status == 0 {
+		h.status = code
+	}
+}
+func (h *heldAnswer) Write(b []byte) (int, error) {
+	if h.status == 0 {
+		h.status = http.StatusOK
+	}
+	h.body = append(h.body, b...)
+	return len(b), nil
+}
+
+func (h *heldAnswer) replay(w http.ResponseWriter) {
+	for k, vs := range h.header {
+		w.Header()[k] = vs
+	}
+	w.WriteHeader(h.status)
+	_, _ = w.Write(h.body)
 }
 
 func (s *Server) reimport(w http.ResponseWriter, r *http.Request, who auth.Principal, title, text string, digest *string, raw json.RawMessage) {

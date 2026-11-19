@@ -44,7 +44,7 @@ func TestAnImportedDocumentsStructureIsReadAsTheReaderSeesIt(t *testing.T) {
 	owner := auth.Principal{Tenant: "tenant", Subject: "owner", Kind: auth.User, Scopes: []auth.Permission{auth.KnowledgeRead}}
 
 	got, err := p.ImportedOrigin(owner, "private", doc.ID)
-	if err != nil || got.Session == nil || got.Unknown != "" || !reflect.DeepEqual(*got.Session, want) || got.Document.Digest != doc.Digest || got.ImportedBy != "owner" {
+	if err != nil || got.Session == nil || got.Unknown != "" || !reflect.DeepEqual(*got.Session, want) || got.Document.Digest != doc.Digest || got.ImportedBy != "owner" || got.StructureDigest != knowledge.StructureDigest(want) {
 		t.Fatalf("origin = %+v, %v", got, err)
 	}
 	if got, err := p.ImportedOrigin(owner, "private", legacy.ID); err != nil || got.Session != nil || got.Unknown != knowledge.NotKept {

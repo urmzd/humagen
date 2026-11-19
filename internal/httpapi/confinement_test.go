@@ -672,7 +672,8 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.projectNote, true
 		case prefix("/api/memory/files/proposals/"):
 			return h.memoryProposal, true
-		case prefix("/api/knowledge/{name}/documents/"):
+		case prefix("/api/knowledge/{name}/documents/"), prefix("/api/knowledge/{name}/imports/"):
+			// An import names the document it replaces as an edit does.
 			return h.doc, true
 		case prefix("/api/source-link-suggestions/"):
 			return h.sourceSuggestion, true

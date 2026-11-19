@@ -2,6 +2,8 @@ package knowledge
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -124,9 +126,30 @@ type ImportedOmitted struct {
 type importedRecord struct {
 	Session  *Imported `json:"session,omitempty"`
 	Document string    `json:"document"`
-	By       string    `json:"by"`
-	At       time.Time `json:"at"`
-	Edited   bool      `json:"edited,omitempty"`
+	// Structure is the structure's own digest (StructureDigest), kept when
+	// it was written.
+	Structure string    `json:"structure,omitempty"`
+	By        string    `json:"by"`
+	At        time.Time `json:"at"`
+	Edited    bool      `json:"edited,omitempty"`
+}
+
+// StructureDigest is a structure's own digest: the SHA-256, in hex, of its
+// canonical bytes, the JSON it is kept as. It changes exactly when the
+// structure does, so a later stage can pin a source, a document, the
+// document's digest and the structure's digest together.
+func StructureDigest(im Imported) string {
+	raw, _ := json.Marshal(cloneImported(im))
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+// newImportedRecord is the record an import writes: the structure, the
+// digests of the document revision and of the structure, and who sent it
+// and when.
+func newImportedRecord(session Imported, document, by string, at time.Time) *importedRecord {
+	im := cloneImported(session)
+	return &importedRecord{Session: &im, Document: document, Structure: StructureDigest(im), By: by, At: at}
 }
 
 func importedKey(name string, seq int64) string { return "imported/" + name + "/" + state.Seq(seq) }
@@ -156,7 +179,11 @@ type Origin struct {
 	Document Document
 	// Session is the structure, asserted by ImportedBy at ImportedAt.
 	Session *Imported
-	Unknown StructureUnknown
+	// StructureDigest is the digest of Session (StructureDigest), set with
+	// it. A caller that pins what it read pins this with the document's
+	// digest.
+	StructureDigest string
+	Unknown         StructureUnknown
 	// ImportedBy is the subject that sent the structure through an import
 	// route, and ImportedAt when. They are set whenever a structure was
 	// kept, so a caller can name its importer even once it is Changed.
@@ -404,11 +431,11 @@ func originOf(doc Document, rec *importedRecord, missing bool) Origin {
 	switch {
 	case rec.Edited || rec.Document != doc.Digest:
 		out.Unknown = Changed
-	case rec.Session == nil || rec.By == "" || rec.At.IsZero() || CheckImported(*rec.Session, doc.URI) != nil:
+	case rec.Session == nil || rec.By == "" || rec.At.IsZero() || CheckImported(*rec.Session, doc.URI) != nil || rec.Structure != StructureDigest(*rec.Session):
 		out.Unknown = Malformed
 	default:
 		session := cloneImported(*rec.Session)
-		out.Session = &session
+		out.Session, out.StructureDigest = &session, rec.Structure
 	}
 	return out
 }

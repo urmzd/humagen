@@ -582,7 +582,10 @@ against real exports of each tool, and file bytes are not imported
 
 Each imported session's document is kept with the session's structure,
 written through its own routes in the same write as the document
-(`pkg/knowledge/imported.go`, `internal/httpapi/import_documents.go`). Each
+(`pkg/knowledge/imported.go`, `internal/httpapi/import_documents.go`), with a digest of the structure
+itself, so a later stage can pin source, document, document digest and
+structure digest together; a structure kept for a revision is never
+replaced in place (409). Each
 route checks `knowledge:import`, and the platform also requires
 `knowledge:write`, since the text is written too; the built-in `manager` and
 `admin` roles hold both. The structure is the tool, the conversation's id,

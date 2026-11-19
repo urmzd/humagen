@@ -280,3 +280,74 @@ func TestARestoreThroughTheRouteIsAuditedAsOne(t *testing.T) {
 		t.Fatal("a reimport of new text was not recorded as one")
 	}
 }
+
+// Every outcome of a write to a source's documents is recorded once, on
+// the import routes as on the ordinary ones: a body that cannot be read, a
+// stale digest, a structure refused, a structure already kept, a
+// success. A reimport whose body cannot be read is recorded as a reimport;
+// one that decodes is recorded as a restore when its text is the one its
+// digest names. A caller refused the route's permission is refused before
+// anything is recorded, on every route alike.
+func TestEveryOutcomeOfAnImportIsAuditedOnce(t *testing.T) {
+	f := newFixture(t)
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-admins")
+	op := f.person(t, "acme", "00u-op", "Op", "humagen-operators")
+	want(t, f, ana, "POST", "/api/knowledge", `{"name":"chats"}`, http.StatusCreated)
+	docs, imports := "/api/knowledge/chats/documents", "/api/knowledge/chats/imports"
+	doc := want(t, f, ana, "POST", imports, `{"title":"A chat","uri":"chatgpt:generated-0001","text":"generated text","session":`+importedBody("generated-0001", 2)+`}`, http.StatusCreated)
+	id, dg := fmt.Sprint(doc["id"]), fmt.Sprint(doc["digest"])
+	count := func() map[string]int {
+		recs, err := f.p.Audit.List("acme", audit.Query{Resource: "source", From: time.Now().Add(-time.Hour), To: time.Now().Add(time.Hour), Limit: 500}, func(audit.Record) bool { return true })
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]int{}
+		for _, r := range recs {
+			if strings.HasPrefix(r.Action, "source.document.") {
+				out[r.Action]++
+			}
+		}
+		return out
+	}
+	session := importedBody("generated-0001", 2)
+	for _, c := range []struct {
+		name, tok, method, path, body string
+		code                          int
+		action                        string
+	}{
+		{"malformed add", ana, "POST", docs, `{"title":`, 400, "source.document.add"},
+		{"malformed import", ana, "POST", imports, `{"title":`, 400, "source.document.import"},
+		{"malformed replace", ana, "PUT", docs + "/" + id + "/text", `{"title":`, 400, "source.document.replace"},
+		{"malformed reimport", ana, "PUT", imports + "/" + id, `{"title":`, 400, "source.document.reimport"},
+		{"unknown field on a reimport", ana, "PUT", imports + "/" + id, `{"title":"A chat","text":"generated text","digest":"` + dg + `","session":` + session + `,"x":1}`, 400, "source.document.reimport"},
+		{"stale digest, restore-shaped", ana, "PUT", imports + "/" + id, `{"title":"A chat","text":"generated text","digest":"stale","session":` + session + `}`, 409, "source.document.reimport"},
+		{"stale digest, reimport-shaped", ana, "PUT", imports + "/" + id, `{"title":"A chat","text":"other text","digest":"stale","session":` + session + `}`, 409, "source.document.reimport"},
+		{"a thin structure", ana, "PUT", imports + "/" + id, `{"title":"A chat","text":"generated text","digest":"` + dg + `","session":{}}`, 400, "source.document.structure.restore"},
+		{"a structure already kept", ana, "PUT", imports + "/" + id, `{"title":"  A chat ","text":"generated text\n\n","digest":"` + dg + `","session":` + importedBody("generated-0001", 4) + `}`, 409, "source.document.structure.restore"},
+		{"no permission to import", op, "PUT", imports + "/" + id, `{"title":"A chat","text":"generated text","digest":"` + dg + `","session":` + session + `}`, 403, ""},
+		{"no permission to replace", op, "PUT", docs + "/" + id + "/text", `{"title":"A chat","text":"generated text","digest":"` + dg + `"}`, 403, ""},
+		{"a reimport", ana, "PUT", imports + "/" + id, `{"title":"A chat","text":"grown","digest":"` + dg + `","session":` + importedBody("generated-0001", 4) + `}`, 200, "source.document.reimport"},
+	} {
+		before := count()
+		res, out := f.do(t, nil, c.method, c.path, c.tok, c.body)
+		after := count()
+		delta, total := map[string]int{}, 0
+		for k, v := range after {
+			if v != before[k] {
+				delta[k] = v - before[k]
+				total += v - before[k]
+			}
+		}
+		want := 1
+		if c.action == "" {
+			want = 0
+		}
+		if res.StatusCode != c.code || total != want || c.action != "" && delta[c.action] != 1 {
+			t.Errorf("%s: %d %v, audited %v", c.name, res.StatusCode, out, delta)
+		}
+	}
+	// A structure already kept answers what happened.
+	if _, out := f.do(t, nil, "PUT", imports+"/"+id, ana, `{"title":"A chat","text":"grown","digest":"`+knowledge.Digest("A chat", "grown")+`","session":`+importedBody("generated-0001", 2)+`}`); out["error"] != "a structure is already kept for this revision of the document; it changes only with the session's text" {
+		t.Fatalf("a second import of the same revision: %v", out)
+	}
+}

@@ -29,8 +29,10 @@ import (
 //
 // who must be able to read knowledge and see the source: a source of a
 // project the reader does not see, another tenant's, an excluded document
-// and a missing one are all knowledge.ErrNotFound. Origin.Document.Digest
-// names the revision read, for a caller that pins what it read.
+// and a missing one are all knowledge.ErrNotFound. A caller that pins what
+// it read pins the source, the document, Origin.Document.Digest (the
+// revision) and Origin.StructureDigest (the structure itself), which
+// changes exactly when the structure does.
 func (p *Platform) ImportedOrigin(who auth.Principal, source, id string) (knowledge.Origin, error) {
 	src, err := p.SourceAs(who, source)
 	if err != nil {

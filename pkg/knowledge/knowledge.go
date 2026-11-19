@@ -41,8 +41,12 @@ var (
 	ErrNotFound = errors.New("knowledge: not found")
 	// ErrChanged is a replacement of a document whose title or text is no
 	// longer what the caller last saw.
-	ErrChanged      = errors.New("knowledge: the document changed")
-	ErrUpstreamRead = fmt.Errorf("%w: current upstream file access is required before reading retained external data", ErrInvalid)
+	ErrChanged = errors.New("knowledge: the document changed")
+	// ErrStructureKept is an import with the title and text a document
+	// already has, over a trusted structure: a structure kept for a
+	// revision changes only with the session's text, never in place.
+	ErrStructureKept = errors.New("knowledge: a structure is already kept for this revision of the document; it changes only with the session's text")
+	ErrUpstreamRead  = fmt.Errorf("%w: current upstream file access is required before reading retained external data", ErrInvalid)
 )
 
 // passageSize is the target length of a passage in bytes.
@@ -778,7 +782,7 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 		b.Put(tenant, textKey(name, seq), stored{Passages: texts})
 		b.Create(tenant, docKey(name, seq), stored{Document: doc})
 		if session != nil {
-			b.Put(tenant, importedKey(name, seq), stored{Imported: &importedRecord{Session: new(cloneImported(*session)), Document: doc.Digest, By: by, At: at}})
+			b.Put(tenant, importedKey(name, seq), stored{Imported: newImportedRecord(*session, doc.Digest, by, at)})
 		}
 		b.PutAt(tenant, sourceKey(name), stored{Source: &meta}, srcAt)
 		putClock(b, tenant, contentClock{Name: name, Value: version, Seq: seq}, clkAt)
@@ -856,7 +860,18 @@ func (s *Store) replace(tenant, name, id, title, text, digest string, at time.Ti
 		}
 		if session != nil && Digest(title, text) == row.doc.Digest {
 			// A restore: the title and text are the ones kept, and only
-			// the structure is written, with its size on the document.
+			// the structure is written, with its size on the document. It
+			// is taken only when no trusted structure is kept: one that is
+			// changes only with the session's text, so another import of
+			// the same revision cannot swap it under an unchanged digest.
+			kept, err := s.kept.Lookup(tenant, importedKey(name, row.seq))
+			switch {
+			case errors.Is(err, state.ErrNotFound):
+			case err != nil:
+				return err
+			case originOf(row.doc, kept.Value.Imported, false).Session != nil:
+				return ErrStructureKept
+			}
 			// The passages, vectors, updated time and content version are
 			// left as they are, so nothing is embedded again and the
 			// source does not read as changed. The source's record is put
@@ -870,7 +885,7 @@ func (s *Store) replace(tenant, name, id, title, text, digest string, at time.Ti
 			meta := cloneSource(src)
 			b := s.kept.Batch()
 			b.PutAt(tenant, docKey(name, row.seq), stored{Document: &doc}, row.version)
-			b.Put(tenant, importedKey(name, row.seq), stored{Imported: &importedRecord{Session: new(cloneImported(*session)), Document: doc.Digest, By: by, At: at}})
+			b.Put(tenant, importedKey(name, row.seq), stored{Imported: newImportedRecord(*session, doc.Digest, by, at)})
 			b.PutAt(tenant, sourceKey(name), stored{Source: &meta}, srcAt)
 			if err := b.Commit(); err != nil {
 				return err
@@ -887,7 +902,7 @@ func (s *Store) replace(tenant, name, id, title, text, digest string, at time.Ti
 			if structureBytes(docs, row.seq, doc.StructureBytes) > MaxImportedSourceBytes {
 				return sourceStructuresFull()
 			}
-			structure = &importedRecord{Session: new(cloneImported(*session)), Document: doc.Digest, By: by, At: at}
+			structure = newImportedRecord(*session, doc.Digest, by, at)
 		} else {
 			doc.StructureBytes = 0
 			kept, err := s.kept.Lookup(tenant, importedKey(name, row.seq))
@@ -897,7 +912,7 @@ func (s *Store) replace(tenant, name, id, title, text, digest string, at time.Ti
 				return err
 			case kept.Value.Imported != nil && !kept.Value.Imported.Edited:
 				was := kept.Value.Imported
-				structure = &importedRecord{Document: was.Document, By: was.By, At: was.At, Edited: true}
+				structure = &importedRecord{Document: was.Document, By: was.By, At: was.At, Structure: was.Structure, Edited: true}
 			}
 		}
 		docs[i].doc = doc

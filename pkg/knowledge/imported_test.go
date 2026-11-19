@@ -1,6 +1,7 @@
 package knowledge
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -709,6 +710,221 @@ func TestARestoreWritesOnlyTheStructure(t *testing.T) {
 		_, vecErr = s.kept.Lookup("acme", vecKey("handbook", seq))
 		if changed.UpdatedAt == nil || later.ContentVersion == after.ContentVersion || !errors.Is(vecErr, state.ErrNotFound) {
 			t.Fatalf("a reimport that changed the text: updated %v, content version %d to %d, vectors: %v", changed.UpdatedAt, after.ContentVersion, later.ContentVersion, vecErr)
+		}
+	})
+}
+
+// A second import of the revision a trusted structure is kept for, with the
+// same title and text, is refused: the structure changes only with the
+// session's text, so nothing a reader pins can be swapped under it. The
+// record is as it was, byte for byte. Once an ordinary edit leaves the
+// structure untrusted, a restore of the same text writes it again.
+func TestAStructureKeptForARevisionIsNotSwappedInPlace(t *testing.T) {
+	eachSeeded(t, func(t *testing.T, s *Store) {
+		const title, text = "A generated chat", "the text"
+		doc, err := s.AddImportedForScope("acme", "handbook", title, sessionURI, text, "ada", now, nil, generated(2))
+		if err != nil {
+			t.Fatal(err)
+		}
+		recorded := func() string {
+			t.Helper()
+			rec, ok := keptStructure(t, s, "acme", "handbook", doc.ID)
+			if !ok {
+				t.Fatal("no record")
+			}
+			raw, _ := json.Marshal(rec)
+			return string(raw)
+		}
+		before, src := recorded(), func() Source { got, _ := s.Get("acme", "handbook"); return got }
+		srcBefore := src()
+		other := generated(4)
+		other.Turns[1].Text = "something the first import never said"
+		if _, err := s.ReplaceImportedForScope("acme", "handbook", doc.ID, title, text, doc.Digest, "bo", now.Add(time.Hour), nil, other); !errors.Is(err, ErrStructureKept) {
+			t.Fatalf("a second import of the same revision: %v", err)
+		}
+		if got := origin(t, s, doc.ID); recorded() != before || got.ImportedBy != "ada" || src().ContentVersion != srcBefore.ContentVersion {
+			t.Fatalf("a refused import changed the record: %+v", got)
+		}
+		// Untrusted after an edit that changed nothing: restored.
+		edited, err := s.ReplaceForScope("acme", "handbook", doc.ID, title, text, doc.Digest, now.Add(time.Minute), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.ReplaceImportedForScope("acme", "handbook", doc.ID, title, text, edited.Digest, "bo", now.Add(time.Hour), nil, other); err != nil {
+			t.Fatal(err)
+		}
+		if got := origin(t, s, doc.ID); got.Session == nil || got.ImportedBy != "bo" || got.Session.Turns[1].Text != other.Turns[1].Text {
+			t.Fatalf("restored over an untrusted structure: %+v", got)
+		}
+	})
+}
+
+// A structure's digest is read with it, and changes exactly when the
+// structure does: the same structure written with another text keeps it,
+// another structure does not.
+func TestAStructuresDigestChangesExactlyWithIt(t *testing.T) {
+	eachSeeded(t, func(t *testing.T, s *Store) {
+		doc, err := s.AddImportedForScope("acme", "handbook", "A generated chat", sessionURI, "first text", "ada", now, nil, generated(2))
+		if err != nil {
+			t.Fatal(err)
+		}
+		first := origin(t, s, doc.ID)
+		if first.StructureDigest == "" || first.StructureDigest != StructureDigest(generated(2)) || first.StructureDigest != StructureDigest(*first.Session) {
+			t.Fatalf("digest %q", first.StructureDigest)
+		}
+		same, err := s.ReplaceImportedForScope("acme", "handbook", doc.ID, "A generated chat", "second text", doc.Digest, "bo", now.Add(time.Hour), nil, generated(2))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := origin(t, s, doc.ID); got.StructureDigest != first.StructureDigest || got.Document.Digest == first.Document.Digest {
+			t.Fatalf("the same structure with another text: %q, was %q", got.StructureDigest, first.StructureDigest)
+		}
+		if _, err := s.ReplaceImportedForScope("acme", "handbook", doc.ID, "A generated chat", "third text", same.Digest, "bo", now.Add(2*time.Hour), nil, generated(4)); err != nil {
+			t.Fatal(err)
+		}
+		if got := origin(t, s, doc.ID); got.StructureDigest == first.StructureDigest || got.StructureDigest != StructureDigest(generated(4)) {
+			t.Fatalf("another structure: %q", got.StructureDigest)
+		}
+		// A kept structure whose digest is not its own is not trusted.
+		rows, _ := s.docs("acme", "handbook")
+		seq := rows[len(rows)-1].seq
+		rec, _ := structureAt(t, s, "acme", "handbook", seq)
+		rec.Structure = first.StructureDigest
+		b := s.kept.Batch()
+		b.Put("acme", importedKey("handbook", seq), stored{Imported: rec})
+		if err := b.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		if got := origin(t, s, doc.ID); got.Session != nil || got.Unknown != Malformed {
+			t.Fatalf("a digest not its own: %+v", got)
+		}
+	})
+}
+
+// A restore racing a real replacement, an ordinary edit, an exclusion, a
+// removal and the source's deletion: afterwards no structure is left for a
+// document or source that is gone, and a trusted structure always names
+// the text it was written for.
+func TestARestoreRacingOtherWritesLeavesNothingWrong(t *testing.T) {
+	eachSeeded(t, func(t *testing.T, s *Store) {
+		const title = "A generated chat"
+		for _, other := range []string{"replace", "edit", "exclude", "remove", "delete"} {
+			for round := range 10 {
+				name := fmt.Sprintf("r-%s-%d", other, round)
+				if _, err := s.Create("acme", name, "", "ada", now); err != nil {
+					t.Fatal(err)
+				}
+				doc, err := s.AddForScope("acme", name, title, sessionURI, "state 0", "ada", now, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var wg sync.WaitGroup
+				wg.Add(2)
+				go func() {
+					defer wg.Done()
+					_, _ = s.ReplaceImportedForScope("acme", name, doc.ID, title, "state 0", doc.Digest, "bo", now, nil, marked("state 0"))
+				}()
+				go func() {
+					defer wg.Done()
+					switch other {
+					case "replace":
+						_, _ = s.ReplaceImportedForScope("acme", name, doc.ID, title, "state 1", doc.Digest, "cy", now, nil, marked("state 1"))
+					case "edit":
+						_, _ = s.ReplaceForScope("acme", name, doc.ID, title, "state 1", doc.Digest, now, nil)
+					case "exclude":
+						_, _ = s.SetExcluded("acme", name, doc.ID, true, now)
+					case "remove":
+						_ = s.Remove("acme", name, doc.ID, now)
+					case "delete":
+						_ = s.Delete("acme", name)
+					}
+				}()
+				wg.Wait()
+				rows, _ := s.docs("acme", name)
+				seq := int64(-1)
+				for _, r := range rows {
+					if r.doc.ID == doc.ID {
+						seq = r.seq
+					}
+				}
+				if seq < 0 {
+					for q := int64(0); q < 5; q++ {
+						if rec, ok := structureAt(t, s, "acme", name, q); ok {
+							t.Errorf("%s: a structure left for a document that is gone, at %d: %+v", name, q, rec)
+						}
+					}
+					continue
+				}
+				if other == "exclude" {
+					_, _ = s.SetExcluded("acme", name, doc.ID, false, now)
+				}
+				got, err := s.OriginForScope("acme", name, doc.ID, nil)
+				if err != nil {
+					t.Errorf("%s: %v", name, err)
+					continue
+				}
+				if got.Session != nil {
+					if text := strings.TrimPrefix(got.Session.Turns[0].Text, "for "); Digest(title, text) != got.Document.Digest {
+						t.Errorf("%s: a trusted structure for %q on digest %s", name, text, got.Document.Digest)
+					}
+				}
+			}
+		}
+	})
+}
+
+// The bound stays exact when a restore writes a structure of another size
+// than the one an edit left untrusted: the edit frees the old one's bytes,
+// a restore a byte past the room is refused, one that fills it exactly is
+// kept, and bytes a smaller restore frees can be used again.
+func TestARestoreKeepsTheSourceBoundExact(t *testing.T) {
+	eachSeeded(t, func(t *testing.T, s *Store) {
+		const n = 65
+		per := MaxImportedSourceBytes / n
+		var last Document
+		for i := range n {
+			id := fmt.Sprintf("generated-%04d", i)
+			doc, err := s.AddImportedForScope("acme", "handbook", "A generated chat", "chatgpt:"+id, "chat "+id, "ada", now, nil, sized(t, id, per))
+			if err != nil {
+				t.Fatal(err)
+			}
+			last = doc
+		}
+		id := strings.TrimPrefix(last.URI, "chatgpt:")
+		untrust := func() Document {
+			t.Helper()
+			was := origin(t, s, last.ID).Document
+			edited, err := s.ReplaceForScope("acme", "handbook", last.ID, "A generated chat", "chat "+id, was.Digest, now, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return edited
+		}
+		sum := func() int {
+			docs, _ := s.Documents("acme", "handbook")
+			total := 0
+			for _, d := range docs {
+				total += d.StructureBytes
+			}
+			return total
+		}
+		edited := untrust()
+		room := MaxImportedSourceBytes - sum()
+		if _, err := s.ReplaceImportedForScope("acme", "handbook", last.ID, "A generated chat", "chat "+id, edited.Digest, "bo", now, nil, sized(t, id, room+1)); err == nil || !strings.Contains(err.Error(), "limit reached") {
+			t.Fatalf("a restore a byte past the room: %v", err)
+		}
+		if _, err := s.ReplaceImportedForScope("acme", "handbook", last.ID, "A generated chat", "chat "+id, edited.Digest, "bo", now, nil, sized(t, id, room)); err != nil {
+			t.Fatalf("a restore that fills the room: %v", err)
+		}
+		if got := sum(); got != MaxImportedSourceBytes {
+			t.Fatalf("sum %d", got)
+		}
+		edited = untrust()
+		if _, err := s.ReplaceImportedForScope("acme", "handbook", last.ID, "A generated chat", "chat "+id, edited.Digest, "bo", now, nil, sized(t, id, room-500)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.AddImportedForScope("acme", "handbook", "A generated chat", "chatgpt:generated-small", "small", "ada", now, nil, sized(t, "generated-small", 500)); err != nil {
+			t.Fatalf("freed bytes not used again: %v", err)
 		}
 	})
 }

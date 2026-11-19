@@ -320,7 +320,12 @@ version or a run without `knowledge:import` wrote, or one an edit left
 untrusted), sends it again through the import route with the text as it is,
 and counts it `restored`, apart from `updated`: the server then writes the
 structure alone, so the document is not embedded again and its source does
-not read as changed. A restore refused because the source's structures are
+not read as changed. The server restores only a document with no trusted
+structure: a second import of a revision a trusted structure is kept for is
+refused (409, "a structure is already kept for this revision"), and a run
+that meets that refusal counts the session `present`. The server keeps a
+digest of each structure, so what is read can be pinned to the structure as
+well as to the document. A restore refused because the source's structures are
 at their bound is not a failure: the document stays present and unchanged,
 is counted in `without_structure`, and the run names the source once
 (`structures_full`). A restore that loses to another writer, where the
@@ -346,7 +351,12 @@ may not read, or may not change), the sources go in the next one,
 `sessions-2` and so on, and no session is counted as failed. When every name
 up to `sessions-20` is another person's or full, the sources are left out of
 any corpus and the run says so once (`not_in_corpus`, with
-`not_in_corpus_reason`).
+`not_in_corpus_reason`); a source already in a corpus it can read is not
+named. A corpus that fails (it cannot be read, made or added to) is
+reported on its own (`corpus_failed`, and `Could not file the sources in a
+corpus ...`): every session was sent, so it is not counted as a session not
+added and does not change the exit code, which is 1 only when a session is
+not sent.
 
 A source holds at most 200 documents and 8 MiB, so a busy month continues in
 `sessions-TOOL-YYYY-MM-2` and so on. The sources are put in a corpus, titled
