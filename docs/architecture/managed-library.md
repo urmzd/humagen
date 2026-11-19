@@ -153,9 +153,9 @@ A later draft cannot change that read. Binary content, unselected packages,
 missing files and cross-tenant references are refused. Reading a script does not
 execute it. Private packages retain the existing publication classification.
 
-A model on a [coding agent](../guides/coding-agents.md) (`claude-code`,
-`codex`) is offered no platform tool, so `file_read` cannot serve it. For a
-turn on one, the same pinned package, read in the run's tenant and checked
+A provider a program adds may run its turn in a program of its own on the
+host, which is offered no platform tool, so `file_read` cannot serve it. No
+provider Humagen ships does. For a turn on one, the same pinned package, read in the run's tenant and checked
 against the pinned hash, is written to a directory of that turn's own on the
 host (`pkg/skillfiles`), and the turn's text names each supporting file by its
 absolute path there instead of a `skill:` path. Paths pass the package's own
