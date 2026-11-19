@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.141.0 (2026-11-19)
+
+### Features
+
+- **import**: keep each imported session's structure with its document (#379) ([7a1ae7d](https://github.com/urmzd/humagen/commit/7a1ae7d777efba84a4ad7ece46e43efcaed8af4f))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.140.0...v0.141.0)
+
+
 ## 0.140.0 (2026-11-19)
 
 ### Features
