@@ -293,8 +293,10 @@ a failure: the exit code stays 0, and `conflicts` is empty in every other
 case. Run the import again from the copy you want kept.
 
 A session's document is written through the import routes
-(`POST /api/knowledge/{name}/imports`, `PUT /api/knowledge/{name}/imports/{id}`,
-under `knowledge:import`), which also take the session's structure and keep
+(`POST /api/knowledge/{name}/imports`, `PUT /api/knowledge/{name}/imports/{id}`:
+the route checks `knowledge:import`, and the server also requires
+`knowledge:write`, since the text is written too), which also take the
+session's structure and keep
 it with that revision of the document in the same write. The structure is
 the tool, the conversation's id, its start and end, the main path's turns in
 order with who said each and when, how many branches are not on it, every
@@ -312,14 +314,26 @@ verify: the server keeps who sent it and when, and trusts it only for the
 revision of the document it was written with. The ordinary document routes
 take no structure, and an edit of the document, by anyone, leaves it
 untrusted, even if the old title and text are put back, until a run imports
-the session again. A document an earlier version wrote has none, and a run
-that finds it unchanged leaves it so.
+the session again. A run that may import and finds a session's document
+reading as it would write it, with no trusted structure kept (one an earlier
+version or a run without `knowledge:import` wrote, or one an edit left
+untrusted), sends it again through the import route with the text as it is,
+and counts it `restored`, apart from `updated`. A reimport may also replace a
+document a person added through the ordinary route with a `TOOL:ID` uri: it
+takes `knowledge:write`, which could edit that document anyway, and the
+structure then names the importer.
 
 Against a server older than this command, which has no import routes, or
 with a token that may not import, the first write finds out: every document
 is then written through the ordinary route without its structure, the run
 says so (`Structures were not kept: ...`, and `structures_not_kept` in its
-JSON), and that alone is not a failure.
+JSON), with how many of its documents remain without a structure
+(`without_structure`), and that alone is not a failure. A later run that may
+import restores them.
+
+When the corpus a run would file its sources in is another person's (one it
+may not read, or may not change), the sources go in the next one,
+`sessions-2` and so on, and no session is counted as failed.
 
 A source holds at most 200 documents and 8 MiB, so a busy month continues in
 `sessions-TOOL-YYYY-MM-2` and so on. The sources are put in a corpus, titled
@@ -477,7 +491,8 @@ no tools: grant what it needs under Agents. The file's `model` and `tools` are
 not sent.
 
 `sessions` needs `knowledge:read` and `knowledge:write`, and
-`knowledge:import` to keep each session's structure (the built-in `manager`
+`knowledge:import` as well to keep each session's structure: an import
+needs both `knowledge:import` and `knowledge:write` (the built-in `manager`
 and `admin` roles hold all three); `skills` needs
 `projects:read` and `projects:write`; `agents` needs `agents:read` and
 `agents:write`. When some sessions, skills or agents are not

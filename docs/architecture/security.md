@@ -24,7 +24,7 @@ The built-in one declares these four, and the group flags grant them:
 |------|-------------|
 | `viewer` | `agents:read`, `runs:read`, `schedules:read`, `alerts:read`, `knowledge:read`, `evals:read`, `billing:read`, `artifacts:read`, `clients:read`, `projects:read`, `people:read` |
 | `operator` | viewer, plus `runs:write`, `schedules:write`, `alerts:write`, `evals:write`, `artifacts:write`, `projects:write`, `speech:write` |
-| `manager` | operator, plus `agents:write`, `knowledge:write`, `knowledge:import`. Writing agents covers their call policies, so a manager is the natural approver of calls between agents. `knowledge:import` is writing an imported session's document with its structure (`humagen import sessions`); it went with `knowledge:write` before it had a permission of its own |
+| `manager` | operator, plus `agents:write`, `knowledge:write`, `knowledge:import`. Writing agents covers their call policies, so a manager is the natural approver of calls between agents. `knowledge:import` is writing an imported session's document with its structure (`humagen import sessions`); it went with `knowledge:write` before it had a permission of its own, and an import needs both: the import routes check `knowledge:import`, and the platform also requires `knowledge:write` |
 | `admin` | manager, plus `billing:write`, `clients:write`, `projects:govern` |
 
 Recording a voice note in the console (`speech:write`) is an operator's,

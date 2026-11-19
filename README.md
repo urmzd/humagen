@@ -159,7 +159,7 @@ Name where each secret lives (`env:NAME`, `keychain:SERVICE`, `op://VAULT/ITEM/F
 | `GET`, `POST /api/schedules`, `DELETE /api/schedules/{name}`, `POST .../pause`, `.../resume`, `.../run` | `schedules:read`, `schedules:write` |
 | `GET /api/alerts`, `POST /api/alerts/{id}/ack`, `GET`, `POST`, `DELETE /api/alert-rules` | `alerts:read`, `alerts:write` |
 | `GET`, `POST /api/knowledge`, `.../{name}/documents`, `GET /api/knowledge/search?q=` | `knowledge:read`, `knowledge:write` |
-| `POST /api/knowledge/{name}/imports`, `PUT .../imports/{id}` | `knowledge:import` |
+| `POST /api/knowledge/{name}/imports`, `PUT .../imports/{id}` | `knowledge:import` (the platform also requires `knowledge:write`) |
 
 ## Development
 

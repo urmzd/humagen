@@ -581,10 +581,12 @@ against real exports of each tool, and file bytes are not imported
 ([import](../reference/cli.md#import-sessions-skills-and-agents)).
 
 Each imported session's document is kept with the session's structure,
-written through its own routes under `knowledge:import` (held by `manager`
-and `admin`) in the same write as the document (`pkg/knowledge/imported.go`,
-`internal/httpapi/import_documents.go`): the tool, the conversation's id, its
-start and end, the main path's turns with speaker, time and text, every
+written through its own routes in the same write as the document
+(`pkg/knowledge/imported.go`, `internal/httpapi/import_documents.go`). Each
+route checks `knowledge:import`, and the platform also requires
+`knowledge:write`, since the text is written too; the built-in `manager` and
+`admin` roles hold both. The structure is the tool, the conversation's id,
+its start and end, the main path's turns with speaker, time and text, every
 branch not on it counted, and exact counts of what was left out or cut, at
 most 200 turns and 128 KiB a structure and 8 MiB a source, tool results
 dropped before turns and the oldest first. It is the importer's assertion,
@@ -595,12 +597,13 @@ document or its source. `ImportedOrigin` in `internal/platform` reads it as
 the reader, with its importer, or says why it is unknown (`not_kept`,
 `changed`, `malformed`). The CLI falls back to the ordinary routes, without
 structures, against a server that has no import routes or a token that may
-not import, and says so. Tested: the store on memory and Postgres, the four
-formats' generated records included (`pkg/knowledge`); the routes, the
-read function and the CLI against a real server and a stub older server on
-memory only (`internal/httpapi`, `internal/platform`, `internal/app`).
-Nothing reads it yet: continuing an imported conversation is designed, not
-built.
+not import, says so with how many documents remain without one, and a later
+run that may import restores them (`restored`). Tested: the store on memory
+and Postgres, the four formats' generated records included
+(`pkg/knowledge`); the routes, the read function and the CLI against a real
+server and a stub older server on memory only (`internal/httpapi`,
+`internal/platform`, `internal/app`). Nothing reads it yet: continuing an
+imported conversation is designed, not built.
 
 A branch of a conversation on a coding agent (Claude Code or Codex) is
 answered by a session of its own: a session is continued only by a turn whose
