@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.138.0 (2026-11-19)
+
+### Features
+
+- **import**: file an export's sessions in a project with --project ([03c973d](https://github.com/urmzd/humagen/commit/03c973d4fecfc56b3bd00ef08c71dbbccda377ff))
+
+### Bug Fixes
+
+- **import**: check a project-named source is the session's before replacing in it ([65a3429](https://github.com/urmzd/humagen/commit/65a3429fa412813078bcd768c0cb8d18c3375d17))
+- **import**: never write a document or a source that is not the run's own ([4c92898](https://github.com/urmzd/humagen/commit/4c928984c7a9df62e32e9623540fce41aeeeeb18))
+- **import**: an export's project source says what it holds and is its own ([41588da](https://github.com/urmzd/humagen/commit/41588da7f9dde2ed60d5e1c8f2b5fe3b285d53e5))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.137.4...v0.138.0)
+
+
 ## 0.137.4 (2026-11-18)
 
 ### Bug Fixes
