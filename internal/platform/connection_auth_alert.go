@@ -125,6 +125,20 @@ func connectionAlertName(provider string) (string, bool) {
 		return "BigQuery", true
 	case "granola":
 		return "Granola", true
+	case "atlassian":
+		return "Atlassian", true
+	case "gmail":
+		return "Gmail", true
+	case "google-calendar":
+		return "Google Calendar", true
+	case "google-drive":
+		return "Google Drive", true
+	case "google-docs":
+		return "Google Docs", true
+	case "google-sheets":
+		return "Google Sheets", true
+	case "google-slides":
+		return "Google Slides", true
 	}
 	if strings.HasPrefix(base, "other-") || strings.HasPrefix(base, "slack-") {
 		return "your connection", true

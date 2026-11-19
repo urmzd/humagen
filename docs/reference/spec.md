@@ -307,6 +307,32 @@ Credential injection, where the sandbox holds a placeholder and the gate
 swaps in the real value for an allowed host, is playscape's and not wired
 here yet.
 
+### Web search and fetch
+
+An agent whose `tools` name `web_search` or `web_fetch` reads the public web.
+Neither needs an account, a key or a setting. The built-in writer and analyst
+have both.
+
+| Tool | What it does | Bounds |
+|------|--------------|--------|
+| `web_search` | Searches the web and returns titles, addresses and snippets | 10 results, a query of at most 400 characters |
+| `web_fetch` | Reads one `http` or `https` address as text: HTML as a reader sees it, plain text and JSON as they are | 2 MiB read, 40,000 characters returned, 5 redirects, 20 seconds. Content that is not text, such as a PDF or an image, is refused |
+
+Both go out from the server, not from the run's sandbox, which has no
+network, so the [egress](#egress) allowlist does not apply to them. They
+reach only addresses on the public internet: a loopback, private or
+link-local address is refused when the connection is made, after the name is
+resolved, so a name or a redirect that points inward is refused too. No proxy
+is used. Both are `read_context` actions, held by the same action policy as
+other reads.
+
+The search is DuckDuckGo's page for clients without scripts. It may refuse a
+server it takes for a program; the tool then says so and returns nothing. A
+page is evidence, not an instruction: every result says so, and an agent
+that reads a page can still be misled by it, including into fetching an
+address that carries what it knows. Give these tools to agents whose other
+reads you would accept on the public web.
+
 ### Knowledge search
 
 `knowledge.embedder` turns on hybrid search for knowledge sources
@@ -677,12 +703,6 @@ spec:
     copy:                   # the console's own text, by key: humagen config copy-keys lists them
       navigation.projects: Accounts
 ```
-
-The `humagen` binary also has two model kinds that run a turn on a coding agent
-installed on the host, signed in as that program is, a subscription included:
-`claude-code` and `codex`. Each needs `dir`, the directory the program works
-in. The program runs on the host, outside the sandbox. See
-[Run an agent on Claude Code or Codex](../guides/coding-agents.md).
 
 ### Branding
 
