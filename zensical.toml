@@ -25,6 +25,7 @@ nav = [
     { "Permissions" = "reference/authorization.md" },
     { "Documentation index" = "catalog.md" },
   ] },
+  { "All project guides" = "https://docs.urmzd.com/" },
 ]
 
 [project.theme]
