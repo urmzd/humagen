@@ -154,8 +154,9 @@ too, as `--effort` to Claude Code and as `model_reasoning_effort` to Codex.
   the supporting files of the revision the run is pinned to into a directory
   of that turn's own, under `humagen-skill-files-<uid>` in the host's
   temporary directory, outside `dir`, and what the program is asked names
-  each file by its absolute path there: at most 63 of a skill's files, then
-  how many more there are and the skill's directory, which holds them all. Claude Code is given that directory
+  each file by its absolute path there: at most 63 of a skill's files, those
+  its instructions name first, then how many more there are and the skill's
+  directory, which holds them all. Claude Code is given that directory
   with `--add-dir`; Codex reads outside its workspace in every sandbox and
   needs nothing. Which directory Claude Code is given is never read from the
   message: it is the one placed for the turn's own run, in its own workspace,

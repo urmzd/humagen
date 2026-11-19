@@ -600,17 +600,35 @@ A library skill's supporting file may be up to 1 MiB and its package 256
 files and 2 MiB, while `SKILL.md`, whose body is what a model is asked, stays
 at 128 KiB. So `humagen import skills` drafts a skill that ships a large
 schema or source file, or a tree of many schema files, instead of naming it
-under `failed`. A turn's text lists at most 63 of a skill's supporting files
-and says how many more there are; `file_read` reads any of them, and a coding
-agent's directory holds them all. A skill's revisions hold at most
-16 MiB of files together, as 32 revisions of the earlier 512 KiB package did,
-so a stored record and a history answer do not grow. A coding agent is given
-such a file whole on the host; a native model is told it is over the 128 KiB
-`file_read` returns, and `file_read` refuses it. Checked by test on memory
-and Postgres with generated files; not checked against a real skill library
-or in a live run ([managed library](managed-library.md#skills-are-immutable-packages)).
-The console's folder upload still stops at 64 files, 128 KiB a file and
-512 KiB in all.
+under `failed`. A turn's text lists at most 63 of a skill's supporting files,
+those its instructions name first, and says how many more there are;
+`file_read` reads any of them, and a coding agent's directory holds them all.
+A skill's revisions hold at most 16 MiB of file bytes together, as 32
+revisions of the earlier 512 KiB package did; with paths and text, a stored
+record or history answer is at most about 41.8 MiB (about 32.9 MiB before), and
+a skill with large files holds fewer than 32 revisions. A full skill takes no
+more and cannot be emptied: the import names it under `failed` and says to go
+on under another name or scope. A coding agent is given a large file whole on
+the host; a native model is told it is over the 128 KiB `file_read` returns,
+and `file_read` refuses it. A record this release cannot read fails only
+itself: its scope is listed without it and names it under `unreadable`.
+Checked by test on memory and Postgres with generated files, and by an
+import of a real skill library; not checked in a live run
+([managed library](managed-library.md#skills-are-immutable-packages)).
+
+This is forward-only once a package past the earlier bounds (64 files,
+128 KiB a file, 512 KiB in all) is drafted: a release before it cannot read
+that skill's record, and its listing of that skill's whole scope fails with
+400 `library: invalid`, so the console's Library page for that scope and
+`humagen import skills` into it fail. Other skills of the scope still resolve
+by name in runs; the large one cannot be read or used. See
+[upgrading](../guides/deploy.md#upgrading-library-skills-past-the-earlier-bounds).
+
+The console shows a skill of up to 256 files as the API gives it, but its own
+checks are the earlier ones: Add File refuses at 64 files with "A
+skill can contain up to 64 files.", its folder upload stops at 64 files,
+128 KiB a file and 512 KiB in all, and its editor takes no typing in a file
+over 131072 characters. Read from code, not opened in a browser.
 
 Coding agents on Claude Code or Codex have a [model kind](../guides/coding-agents.md)
 each. A turn on Codex fails only when the program says the turn failed, with

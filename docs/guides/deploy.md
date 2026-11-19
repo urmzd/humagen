@@ -127,6 +127,26 @@ machine without gVisor. Every container also starts with a seccomp profile
 stricter than Docker's default, which denies `ptrace`, `mount`, `unshare`,
 `bpf`, `keyctl` and similar syscalls a tool has no use for.
 
+### Upgrading: library skills past the earlier bounds
+
+From this release a library skill may hold 256 files, 1 MiB a supporting
+file and 2 MiB in all, where it held 64 files, 128 KiB a file and 512 KiB
+([managed library](../architecture/managed-library.md#skills-are-immutable-packages)).
+The change is forward-only once one skill past the earlier bounds is drafted,
+by `humagen import skills` or through the API. A release before this one
+cannot read that skill's record, and fails the listing of its whole scope:
+
+- `GET /api/library/skills` for that scope answers 400 `library: invalid`, so
+  the console's Library page for that scope and `humagen import skills` into
+  it fail.
+- Its skills drop out of what a message can complete in that scope. A
+  published skill of the scope other than the large one is still used when a
+  message names it; the large one cannot be read, used or found by id.
+
+Rolling forward again reads every record as before. This release, and every
+one after it, lists the rest of a scope when one record cannot be read, and
+names that record under `unreadable`.
+
 ## The image
 
 The [`Dockerfile`](../../Dockerfile) at the root builds the console (`pnpm
