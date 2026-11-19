@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.138.1 (2026-11-19)
+
+### Bug Fixes
+
+- **api**: record a HEAD as its GET, and end a refused stream at once ([6e1f54d](https://github.com/urmzd/humagen/commit/6e1f54db5fd6b64ed249026c4f967e27b9b4d4e4))
+- **import**: hold a skill import to the head it listed, and keep the offline dry run ([c3ad0f0](https://github.com/urmzd/humagen/commit/c3ad0f0acc67165f2b05849d44b2126cab96364f))
+- **api**: write a response's read records together, before it is sent ([39e8cf5](https://github.com/urmzd/humagen/commit/39e8cf577df4ea8ab88871cc887bbbeaaa853561))
+- **import**: keep drafted in the skills JSON for the skills first drafted ([eca16e7](https://github.com/urmzd/humagen/commit/eca16e75b7c8b524478f4af87f04b57211c8d5d6))
+- **api**: refuse a session list whole when a read record cannot be written ([f0deeb9](https://github.com/urmzd/humagen/commit/f0deeb9e7c1bd2374e2d45b6871af08f364a1ada))
+- **skills**: draft a changed skill folder on import, and use skills a direct run names ([d930660](https://github.com/urmzd/humagen/commit/d93066060e3b3ff233a16c939ebe81d9ea2c756e))
+- **api**: record only the exceptional reads a session page shows, batch alert runs ([6289ed0](https://github.com/urmzd/humagen/commit/6289ed08ed1cc6114e2e68b98dec996050083c01))
+
+### Performance
+
+- **api**: read a page, not a workspace, for runs, sessions and alert counts ([9971d7e](https://github.com/urmzd/humagen/commit/9971d7eba13e4bd18b9d0a1f4925f50e68c33cb2))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.138.0...v0.138.1)
+
+
 ## 0.138.0 (2026-11-19)
 
 ### Features
