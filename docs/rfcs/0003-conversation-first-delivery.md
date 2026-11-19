@@ -4,6 +4,19 @@ This is a proposed architecture for follow-on work. The current UI delivery is
 tracked in [the task queue](../plans/2026-10-ui-task-queue.md). A catalog entry, a dependency's
 capability or a design example is not a working Humagen integration.
 
+Status: partly built. Checked against `main` on 2026-11-19. The "Current
+boundary" column below was corrected on that date. The
+[corpus model](#proposed-corpus-model) is superseded by RFC 0010 (Corpora and
+the workspace graph), which is kept in the humagen-cloud repository.
+
+| Decision | State | Evidence |
+|---|---|---|
+| Corpus, CorpusRun, CorpusFile, FileVersion, RunFile and Chunk records | Not built, superseded by RFC 0010 | A corpus holds no content (`pkg/corpora/corpora.go`); no run, file or version records on main |
+| Lexical and vector retrieval | Built, in Humagen's own store | `pkg/knowledge/vectors.go`, `pkg/dense` (#132). Not through a Saige retrieval adapter |
+| Additional collection providers | Built | OneDrive (#284); GCS and S3 in `pkg/catalog/objectstorage` (#197) |
+| Reviewed improvement from production cases | Partly built | The eval candidate review queue (`internal/platform/eval_candidates.go`). Candidate comparison and rollback: not confirmed |
+| Browser workspace; A2UI, A2A and AG-UI adapters; capability-gap response | Not confirmed | No code found on main |
+
 ## Stay with the work
 
 The project is the home object for work, scope and permissions. Within that
@@ -22,12 +35,18 @@ and open an editable native draft before any work runs.
 | --- | --- | --- |
 | Conversation delivery | Native runs, SSE, shared presentation and immutable deliverables | More registered generators and inline views over existing result versions |
 | Skills and Memory | Scoped file browsers over native stores and actions | Additional managed resource types through those same stores and policies |
-| Sources | Manual BM25 collections, native Drive/Notion boundaries and recorded refresh attempts | A permission-aware Saige retrieval adapter and additional collection providers |
+| Sources | Collections searched by BM25, fused with vectors when an embedder is set (`pkg/knowledge`, `pkg/dense`); Drive, Notion, OneDrive, GCS and S3 providers; recorded refresh attempts | A permission-aware Saige retrieval adapter and additional collection providers |
 | Browser access | No embedded Chrome service | An authenticated, isolated browser workspace and phone interaction |
-| Agent protocols | Fiber AgentSpec runtime and `pkg/call` | Explicit A2UI, A2A and AG-UI adapters with conformance evidence |
-| Improvement loop | Native eval suites and reviewed publication primitives | Reviewed production fixtures, candidate comparison and human-approved release/rollback |
+| Agent protocols | The `saige/flow` runtime with saige definitions, and `pkg/call` | Explicit A2UI, A2A and AG-UI adapters with conformance evidence |
+| Improvement loop | Native eval suites, an eval candidate review queue and reviewed publication primitives | Reviewed production fixtures, candidate comparison and human-approved release/rollback |
 
 ## Proposed corpus model
+
+> **Superseded (2026-11-19):** RFC 0010 (Corpora and the workspace graph, in
+> the humagen-cloud repository) replaces this model. On main a corpus is a
+> named set of sources and catalog connectors and holds no content
+> (`pkg/corpora/corpora.go`). None of the records below exist. The section is
+> kept as the record of the earlier design.
 
 Organize managed knowledge as corpora, corpus runs, files and file-version
 chunks. A file belongs to the corpus and is attached to each relevant run;
@@ -95,6 +114,11 @@ full run/file/version/manifest graph above. A live query remains a current-reade
 operation and does not silently create a shared corpus publication.
 
 ## Compose retrieval rather than fork it
+
+> **Corrected (2026-11-19):** main pins saige v0.45.1 (`go.mod`), and
+> `pkg/knowledge` now fuses BM25 with vectors itself (RFC 0005, change 1).
+> The links below stay at v0.41.0, the version this section was written
+> against.
 
 Humagen currently retrieves local passages through its own BM25 store. The
 pinned Saige v0.41.0 already exposes lexical/vector composition, reciprocal

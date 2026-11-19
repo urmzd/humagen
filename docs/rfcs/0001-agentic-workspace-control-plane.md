@@ -1,9 +1,39 @@
 # Humagen agentic workspace: product and design spec
 
-Prepared design, October 2026. Not implemented beyond what
-[gap-analysis.md](../reference/control-plane-gap-analysis.md) marks as built. Where this spec and
-[AGENTS.md](../../AGENTS.md) disagree on presentation, AGENTS.md wins (see
+Prepared design, October 2026.
+
+Status: mostly built. Checked against `main` on 2026-11-19. The
+[gap analysis](../reference/control-plane-gap-analysis.md) was reviewed on
+October 24, 2026 and still lists as not built several items that are on main
+now. Where the two disagree, the list below is the newer one. Where this spec
+and [AGENTS.md](../../AGENTS.md) disagree on presentation, AGENTS.md wins (see
 [Identity](#objects-scopes-and-identity)).
+
+## What is built
+
+Each item was read in code on `main`. No screen was opened and no test was run
+for this list.
+
+| Decision | State | Evidence |
+|---|---|---|
+| Action policy: Allow, Ask, Never by category | Built | `pkg/operations/operations.go`; enforced on agent calls in `internal/platform/handoffs.go` |
+| Pause, manager, stop rules and reminders | Built | `pkg/operations/operations.go` |
+| Handoff contracts: goal, done-when, due; a cycle or more than three hops goes to a person | Built | `pkg/operations/operations.go`, `internal/platform/handoffs.go` |
+| Standing assignments | Built | `pkg/operations/operations.go` (`Assignment`) |
+| Source lifecycle with attempts and last good copy | Built | `pkg/knowledge/lifecycle.go` (#80) |
+| Agent network and Context health | Built | `apps/web/src/AgentNetwork.tsx`, `apps/web/src/ContextHealth.tsx`, both mounted in `apps/web/src/App.tsx` |
+| Conversation fork and "Bring back result" | Built | `internal/platform/forks.go` (#82) |
+| Project fork | Built | `internal/platform/project_forks.go` |
+| Integration link modes: Suggest, Auto-link, Off | Built | `pkg/sourcelinks/links.go` |
+| Slack bridge: two-way, inbound only, outcomes only | Built | `pkg/projects/channels.go` |
+| Dry run for a new agent | Built | `internal/platform/agent_setup.go`, `internal/platform/converse.go` |
+| Memory expiry | Built | `pkg/memory/memory.go` |
+| Notification modes and digest | Built | `pkg/notifications/notifications.go` |
+| Quick switcher | Built | `apps/web/src/QuickSwitcher.tsx` |
+| Skill promotion | Built | `internal/platform/skill_library.go`, `apps/web/src/SkillsLibrary.tsx` |
+| Initiatives | Partly built | A flag on a Team project (`pkg/projects/projects.go`) and a rollup (`internal/platform/project_rollup.go`). Initiative agents across child projects: not confirmed |
+| Personal agents | Partly built | `apps/web/src/PersonalAgents.tsx`, `pkg/projects/personal.go`. Promotion of a personal agent to a project: not confirmed |
+| Conversation re-homing after agents ran | Not built | Refused on purpose: `ErrStaysInProject` and `ErrStaysInChannel` in `internal/platform/threads.go` |
 
 ## Summary and principles
 
