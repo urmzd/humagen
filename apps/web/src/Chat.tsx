@@ -336,7 +336,9 @@ export function Chat({
         : next,
     );
   };
-  const [draft, setDraft] = useState("");
+  // Read when the project's agents arrive, not drawn: kept out of state so a
+  // key typed does not render the conversation again.
+  const draft = useRef("");
   // The agents that can answer in the picked project, once read.
   const [offered, setOffered] = useState<Set<string> | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -703,7 +705,9 @@ export function Chat({
         queue={sending}
         autoFocus={!threadId}
         seed={seed}
-        onDraft={setDraft}
+        onDraft={(text) => {
+          draft.current = text;
+        }}
         trailing={
           threadId ? (
             room?.thread && <ApprovalToggle thread={room.thread} me={handle || me} />
@@ -724,7 +728,7 @@ export function Chat({
                 setOffered(names);
                 // A mention of an agent that cannot answer here says so; its words stay the person's.
                 const dropped = mentionsIn(
-                  draft,
+                  draft.current,
                   agents.map((a) => a.spec.name),
                 ).filter((a) => !names.has(a));
                 if (dropped.length > 0) setProblem(defaultCopy.chat.notHere(dropped));
@@ -735,7 +739,7 @@ export function Chat({
             ? // A conversation of runs selects its agents as a room does, so a
               // follow-up goes to them; its project is fixed by its runs.
               ({ agents: available, skills, skillsFailed }) => ({
-                menu: (close, attach, leave) => (
+                menu: (close, attach, leave, draft) => (
                   <PlusMenu
                     onLeave={leave}
                     agents={available}
@@ -753,7 +757,7 @@ export function Chat({
                 ),
               })
             : ({ agents: available, skills, skillsFailed }) => ({
-                menu: (close, attach, leave) => (
+                menu: (close, attach, leave, draft) => (
                   <PlusMenu
                     onLeave={leave}
                     agents={available}
