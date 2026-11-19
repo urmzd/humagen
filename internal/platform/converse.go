@@ -415,6 +415,12 @@ type Turn struct {
 	// agent the turn names that they may not read is refused as one that
 	// does not exist, before anything is asked of it.
 	Sees func(agent string) bool
+	// NamesSkills says the text is a person's own words, so the skills it
+	// names ($<name>, /<name>, @skill:<name>) are pinned for the run as a
+	// message posted in the conversation's project pins them
+	// (skillsNamed). Unset, the text names none: a goal or a prompt the
+	// platform wrote is never read for skills.
+	NamesSkills bool
 }
 
 // NoProjectCalled is what a turn filed in a project that is not there is
@@ -476,6 +482,13 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		meta[runs.MetaProject] = project
 	}
 	th.Project = meta[runs.MetaProject]
+	if t.NamesSkills && t.TestSkill == nil {
+		skills, err := p.skillsNamed(tenant, th.Project, t.Actor.User, t.Text)
+		if err != nil {
+			return runs.Run{}, err
+		}
+		pinSkills(meta, skills)
+	}
 
 	if t.KeepsNotes && meta[runs.MetaProject] != "" {
 		meta[metaKeepsNotes] = meta[runs.MetaProject]

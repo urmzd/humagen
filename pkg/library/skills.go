@@ -91,9 +91,19 @@ type Provenance struct {
 	Name    string `json:"name"`
 	Version int    `json:"version"`
 }
+
+// ViaImport marks a revision drafted from a skill folder on someone's
+// machine (humagen import skills), as distinct from one saved in the editor.
+const ViaImport = "import"
+
 type Revision struct {
 	OriginRun string `json:"origin_run,omitempty"`
 	ID        string `json:"id"`
+	// Via is how the revision was written when not in the editor: ViaImport,
+	// or empty. An import reads it to tell a revision it wrote, which a
+	// changed folder may follow, from one a person edited, which it may not
+	// write over unasked.
+	Via string `json:"via,omitempty"`
 	Definition
 	Scope       Scope       `json:"scope"`
 	Version     int         `json:"version"`
@@ -171,6 +181,9 @@ func checkRows(key string, revisions []Revision) ([]Revision, error) {
 		} else if r.ID != ID(r.Scope, r.Name) {
 			return nil, ErrInvalid
 		}
+		if r.Via != "" && r.Via != ViaImport {
+			return nil, ErrInvalid
+		}
 		if !r.Valid() || r.Scope != first.Scope || r.Name != first.Name || r.Version != i+1 || r.By == "" || r.At.IsZero() || len(r.Tests) > 10 {
 			return nil, ErrInvalid
 		}
@@ -239,6 +252,17 @@ func (s *Store) read(tenant string, scope Scope, name string) ([]Revision, int64
 // Draft appends an immutable revision; expected is the latest version read.
 // Provenance is validated by the platform before entering this store.
 func (s *Store) Draft(tenant, by string, scope Scope, d Definition, expected int, from *Provenance, at time.Time, trustedOrigin ...string) (Revision, error) {
+	return s.draft(tenant, by, scope, d, expected, from, at, "", trustedOrigin)
+}
+
+// Import is Draft for a revision read from a skill folder: the same
+// immutable, unpublished revision, marked ViaImport. It publishes nothing
+// and changes no revision already there.
+func (s *Store) Import(tenant, by string, scope Scope, d Definition, expected int, at time.Time) (Revision, error) {
+	return s.draft(tenant, by, scope, d, expected, nil, at, ViaImport, nil)
+}
+
+func (s *Store) draft(tenant, by string, scope Scope, d Definition, expected int, from *Provenance, at time.Time, via string, trustedOrigin []string) (Revision, error) {
 	var err error
 	if d, err = d.Normalize(); err != nil {
 		return Revision{}, err
@@ -261,7 +285,7 @@ func (s *Store) Draft(tenant, by string, scope Scope, d Definition, expected int
 		if len(previous) >= MaxVersions {
 			return ErrInvalid
 		}
-		r := clone(Revision{OriginRun: outcomeOrigin(previous, from, trustedOrigin), ID: ID(scope, d.Name), Definition: d, Scope: scope, Version: len(previous) + 1, By: by, At: at, Tests: []string{}, From: from})
+		r := clone(Revision{OriginRun: outcomeOrigin(previous, from, trustedOrigin), ID: ID(scope, d.Name), Via: via, Definition: d, Scope: scope, Version: len(previous) + 1, By: by, At: at, Tests: []string{}, From: from})
 		next := append(slices.Clone(previous), r)
 		o := &ops{}
 		o.put(tenant, skillKey(scope, d.Name), next, ver)

@@ -921,7 +921,7 @@ export interface LibraryProvenance {
   version: number;
 }
 
-export type LibrarySkill = LibrarySkillDefinition & { id: string; scope: LibraryScope; version: number; by: string; at: string; published_at?: string; published_by?: string; tests: string[]; from?: LibraryProvenance; origin_run?: string };
+export type LibrarySkill = LibrarySkillDefinition & { id: string; scope: LibraryScope; version: number; by: string; at: string; published_at?: string; published_by?: string; tests: string[]; from?: LibraryProvenance; via?: "import"; package_hash?: string; origin_run?: string };
 
 export interface AuditRecord {
   id: string;
@@ -6081,6 +6081,7 @@ export interface DraftLibrarySkillBody {
   scope: LibraryScope;
   definition: LibrarySkillDefinition;
   version: number;
+  via?: string;
 }
 
 export interface GetLibrarySkillResponse {
