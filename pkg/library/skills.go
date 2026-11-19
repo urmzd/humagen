@@ -251,6 +251,9 @@ func (s *Store) read(tenant string, scope Scope, name string) ([]Revision, int64
 	return rows, ver, nil
 }
 
+// fullSkill is the way on from a skill that holds as much as it may.
+const fullSkill = "a skill's revisions are never removed, so save this one as another skill, under another name or in another scope"
+
 // Draft appends an immutable revision; expected is the latest version read.
 // Provenance is validated by the platform before entering this store.
 func (s *Store) Draft(tenant, by string, scope Scope, d Definition, expected int, from *Provenance, at time.Time, trustedOrigin ...string) (Revision, error) {
@@ -285,14 +288,14 @@ func (s *Store) draft(tenant, by string, scope Scope, d Definition, expected int
 			return ErrConflict
 		}
 		if len(previous) >= MaxVersions {
-			return ErrInvalid
+			return fmt.Errorf("%w: %s holds as many revisions as a skill may (%d); %s", ErrInvalid, d.Name, MaxVersions, fullSkill)
 		}
 		held := PackageBytes(d.Files)
 		for _, r := range previous {
 			held += PackageBytes(r.Files)
 		}
 		if held > MaxSkillBytes {
-			return fmt.Errorf("%w: the revisions of %s would hold more than %d bytes of files together; a skill's revisions are never removed, so save this one as another skill, under another name or in another scope", ErrInvalid, d.Name, MaxSkillBytes)
+			return fmt.Errorf("%w: the revisions of %s would hold more than %d bytes of files together; %s", ErrInvalid, d.Name, MaxSkillBytes, fullSkill)
 		}
 		r := clone(Revision{OriginRun: outcomeOrigin(previous, from, trustedOrigin), ID: ID(scope, d.Name), Via: via, Definition: d, Scope: scope, Version: len(previous) + 1, By: by, At: at, Tests: []string{}, From: from})
 		next := append(slices.Clone(previous), r)

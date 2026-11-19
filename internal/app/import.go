@@ -1294,39 +1294,38 @@ func standardFrontmatter(md []byte) (out []byte, dropped []string, ok bool) {
 	return []byte("---\n" + head.String() + "---\n\n" + body + "\n"), dropped, true
 }
 
-// readSkillFile reads at most max bytes of a file, and fails on a file
-// longer than that. A test counts what it reads.
+// readSkillFile reads a file, at most max+1 bytes of it: one more than its
+// caller takes, so a longer file is told from one of exactly max. A test
+// stands in for it to count what is read.
 var readSkillFile = func(path string, max int64) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, max+1))
-	if err == nil && int64(len(data)) > max {
-		err = fmt.Errorf("%s is over %d bytes", filepath.Base(path), max)
-	}
-	return data, err
+	return io.ReadAll(io.LimitReader(f, max+1))
 }
 
 // readSkillFolder reads one skill folder within the library's bounds, and
 // stops at the first file past one: no file is read past the largest the
-// library takes, and none once the folder's files add up to more than a
-// package holds, so an oversize folder is refused without reading it all.
+// library takes, or past what is left of what a package holds, so an
+// oversize folder is refused without reading it all. What is left is counted
+// from the bytes read, so a file that grew since it was listed is still read
+// no further than the bound.
 func readSkillFolder(dir, name string) (library.Definition, error) {
 	def := library.Definition{Tools: []string{}}
 	def.Name = name
 	root := filepath.Join(dir, name)
 	// A store may keep a skill in a folder named otherwise than the skill.
 	// The skill's own name, in SKILL.md, is the one the library keeps.
-	if md, err := readSkillFile(filepath.Join(root, "SKILL.md"), library.MaxPackageSkillFileBytes); err == nil {
+	if md, err := readSkillFile(filepath.Join(root, "SKILL.md"), library.MaxPackageSkillFileBytes); err == nil && len(md) <= library.MaxPackageSkillFileBytes {
 		if meta, _, ok := frontmatter(md); ok {
 			if own, _ := meta["name"].(string); strings.TrimSpace(own) != "" {
 				def.Name = strings.TrimSpace(own)
 			}
 		}
 	}
-	total := int64(0)
+	used := int64(0)
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -1352,13 +1351,22 @@ func readSkillFolder(dir, name string) (library.Definition, error) {
 		if info.Size() > library.MaxPackageFileBytes {
 			return fmt.Errorf("%s is over %d bytes", d.Name(), library.MaxPackageFileBytes)
 		}
-		if total += info.Size(); total > library.MaxPackageBytes {
-			return fmt.Errorf("more than %d bytes in all", library.MaxPackageBytes)
+		overall := fmt.Errorf("more than %d bytes in all", library.MaxPackageBytes)
+		if used+info.Size() > library.MaxPackageBytes {
+			return overall
 		}
-		data, err := readSkillFile(path, library.MaxPackageFileBytes)
+		limit := min(int64(library.MaxPackageFileBytes), library.MaxPackageBytes-used)
+		data, err := readSkillFile(path, limit)
 		if err != nil {
 			return err
 		}
+		if int64(len(data)) > limit {
+			if limit < library.MaxPackageFileBytes {
+				return overall
+			}
+			return fmt.Errorf("%s is over %d bytes", d.Name(), library.MaxPackageFileBytes)
+		}
+		used += int64(len(data))
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return err

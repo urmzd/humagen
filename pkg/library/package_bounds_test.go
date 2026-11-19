@@ -203,3 +203,25 @@ func TestTheLargestSkillRecordStaysUnderItsStatedBound(t *testing.T) {
 		t.Fatalf("the largest record is %d bytes, over the 44 MiB stated at MaxSkillBytes", after)
 	}
 }
+
+// A skill that holds MaxVersions revisions takes no more, and the refusal
+// names the bound and the way on, as the 16 MiB one does.
+func TestAFullSkillsRefusalNamesItsBoundAndTheWayOn(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		s, err := Open(open(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		scope := Scope{Kind: "personal", Subject: "ada"}
+		for v := 1; v <= MaxVersions; v++ {
+			if _, err := s.Draft("acme", "ada", scope, schemaSkill("capped", 200+v), v-1, nil, time.Now()); err != nil {
+				t.Fatal(v, err)
+			}
+		}
+		_, err = s.Draft("acme", "ada", scope, schemaSkill("capped", 999), MaxVersions, nil, time.Now())
+		want := fmt.Sprintf("capped holds as many revisions as a skill may (%d); %s", MaxVersions, fullSkill)
+		if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), want) {
+			t.Fatalf("revision %d = %v, want %q", MaxVersions+1, err, want)
+		}
+	})
+}

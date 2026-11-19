@@ -628,7 +628,9 @@ The console shows a skill of up to 256 files as the API gives it, but its own
 checks are the earlier ones: Add File refuses at 64 files with "A
 skill can contain up to 64 files.", its folder upload stops at 64 files,
 128 KiB a file and 512 KiB in all, and its editor takes no typing in a file
-over 131072 characters. Read from code, not opened in a browser.
+over 131072 characters. It does not read `unreadable`, so a skill this server
+cannot read is missing from its Library page without a word. Read from code,
+not opened in a browser.
 
 Coding agents on Claude Code or Codex have a [model kind](../guides/coding-agents.md)
 each. A turn on Codex fails only when the program says the turn failed, with

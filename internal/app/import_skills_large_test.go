@@ -204,3 +204,37 @@ func TestImportSkillsNamesASkillTheServerCannotRead(t *testing.T) {
 		t.Fatalf("err = %v, drafts = %v\n%s", err, drafts, out)
 	}
 }
+
+// A file that grew after the folder was listed is read no further than what
+// is left of the package bound: the report names the bound, and what was
+// read stays within it.
+func TestImportSkillsReadsAGrowingFileNoFurtherThanTheBound(t *testing.T) {
+	dir := t.TempDir()
+	putFile(t, dir, "grow/SKILL.md", fmt.Sprintf(skillMD, "grow", "grow", "grow"))
+	for i := range 8 {
+		putFile(t, dir, fmt.Sprintf("grow/schemas/p%d.xsd", i), "small")
+	}
+	read := 0
+	plain := readSkillFile
+	readSkillFile = func(path string, max int64) ([]byte, error) {
+		if !strings.HasSuffix(path, ".xsd") {
+			return plain(path, max)
+		}
+		// The file is 900 KiB now, though it was 5 bytes when listed; a
+		// reader takes at most what it was asked for.
+		data := []byte(generatedFile(900<<10, path))
+		data = data[:min(int64(len(data)), max+1)]
+		read += len(data)
+		return data, nil
+	}
+	t.Cleanup(func() { readSkillFile = plain })
+	api := &importServer{}
+	server := api.start(t)
+	out, err := runImport(t, "skills", dir, "--server", server.URL)
+	if err == nil || !strings.Contains(out, fmt.Sprintf("failed grow: more than %d bytes in all", library.MaxPackageBytes)) || len(api.skills) != 0 {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	if read > library.MaxPackageBytes+1 {
+		t.Fatalf("read %d bytes of supporting files, past the %d a package holds", read, library.MaxPackageBytes)
+	}
+}
