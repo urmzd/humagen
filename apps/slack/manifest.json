@@ -2,6 +2,7 @@
   "display_information": {
     "name": "Humagen",
     "description": "Mention @Humagen in any channel, thread or DM. It brings in the right agents and answers where you asked.",
+    "long_description": "Humagen puts your workspace's agents in Slack. Mention @Humagen in a channel, a thread or a direct message. It brings in the agents that fit the question and answers in the thread where you asked.\n\nAnswers stream in as the agents work, and a Stop button ends a run early. Attach files, images or a voice clip and the agents read them. Use the \"Ask about this\" shortcut on any message to get an answer in that message's thread.\n\nThe Home tab shows what is waiting on you and what is new in your projects. Like or dislike an answer to say how it did.",
     "background_color": "#2b50c8"
   },
   "features": {

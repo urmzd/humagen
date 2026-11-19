@@ -31,6 +31,7 @@ type SlackManifest struct {
 	DisplayInformation struct {
 		Name            string `json:"name"`
 		Description     string `json:"description"`
+		LongDescription string `json:"long_description"`
 		BackgroundColor string `json:"background_color"`
 	} `json:"display_information"`
 	Features struct {
@@ -104,6 +105,14 @@ func slackManifest(name string, c slackCopy) SlackManifest {
 	if c.Description != "" {
 		m.DisplayInformation.Description = c.Description
 	}
+	// Slack shows the long description on the app's About page, and its App
+	// Directory asks for 175 to 4,000 characters. It names only what the manifest
+	// offers.
+	m.DisplayInformation.LongDescription = name + " puts your workspace's agents in Slack. " +
+		"Mention @" + name + " in a channel, a thread or a direct message. It brings in the agents that fit the question and answers in the thread where you asked.\n\n" +
+		"Answers stream in as the agents work, and a Stop button ends a run early. Attach files, images or a voice clip and the agents read them. " +
+		"Use the \"Ask about this\" shortcut on any message to get an answer in that message's thread.\n\n" +
+		"The Home tab shows what is waiting on you and what is new in your projects. Like or dislike an answer to say how it did."
 	m.DisplayInformation.BackgroundColor = "#2b50c8"
 	if c.BackgroundColor != "" {
 		m.DisplayInformation.BackgroundColor = c.BackgroundColor.Hex()

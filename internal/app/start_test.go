@@ -15,6 +15,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	saigetypes "github.com/urmzd/saige/agent/types"
 
@@ -509,6 +510,21 @@ spec:
 	}
 	if !strings.Contains(got.String(), `"background_color": "#2b50c8"`) || !strings.Contains(got.String(), `"name": "Ask about this"`) || strings.Contains(got.String(), `slash_commands`) {
 		t.Errorf("with nothing set, the manifest is Humagen's:\n%s", got.String())
+	}
+}
+
+// Slack's App Directory asks for a long description of 175 to 4,000
+// characters, and a push that Slack refuses leaves the live app on its old
+// manifest.
+func TestTheSlackManifestHasALongDescriptionSlackAccepts(t *testing.T) {
+	for _, name := range []string{"Humagen", "A"} {
+		long := slackManifest(name, slackCopy{}).DisplayInformation.LongDescription
+		if n := utf8.RuneCountInString(long); n < 175 || n > 4000 {
+			t.Errorf("the long description for %q is %d characters, outside 175 to 4000", name, n)
+		}
+		if !strings.Contains(long, "@"+name) || strings.Contains(long, "/agent") || strings.Contains(long, "/skill") {
+			t.Errorf("the long description names the mention and no slash command:\n%s", long)
+		}
 	}
 }
 
