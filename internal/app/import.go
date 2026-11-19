@@ -70,6 +70,7 @@ type importOptions struct {
 	home     string
 	corpus   string
 	byProj   bool
+	project  string
 
 	// skills and agents
 	dir   string
@@ -126,6 +127,7 @@ func parseImport(args []string, out io.Writer) (importOptions, error) {
 		fs.BoolVar(&c.children, "children", false, "also add the sessions other sessions started, such as sub-agents'")
 		fs.StringVar(&c.home, "home", home, "the home directory the tools keep their sessions under")
 		fs.BoolVar(&c.byProj, "by-project", false, "put each session in a source named for the directory it ran in (PREFIX-in-NAME), and attach that source to the project of the same name when the workspace has one")
+		fs.StringVar(&c.project, "project", "", "with --export: put the exports' sessions in the source --by-project names for a directory called NAME (PREFIX-in-NAME), and attach it to the project NAME when the workspace has one; sessions read with --from are filed as without it")
 		fs.StringVar(&c.corpus, "corpus", "", "the corpus the sources are put in, so the console's Knowledge page shows them; left out it is named as --source is, and none puts them in no corpus")
 	case "skills":
 		fs.StringVar(&c.scope, "scope", "personal", "the library scope the skills are drafted in: personal or workspace")
@@ -160,9 +162,13 @@ func parseImport(args []string, out io.Writer) (importOptions, error) {
 		rest = append(rest, fs.Arg(0))
 		left = fs.Args()[1:]
 	}
+	named := false
 	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "token" {
+		switch f.Name {
+		case "token":
 			c.explicitToken = true
+		case "project":
+			named = true
 		}
 	})
 	switch {
@@ -187,6 +193,17 @@ func parseImport(args []string, out io.Writer) (importOptions, error) {
 		}
 		if c.maxBytes < sessionimport.MinMarkdown || c.maxBytes > 512<<10 {
 			return c, fmt.Errorf("--max-bytes must be between %d and %d", sessionimport.MinMarkdown, 512<<10)
+		}
+		// An export carries no directory, so it is the only thing --project
+		// files: a session read from this machine has one, and --by-project.
+		c.project = strings.TrimSpace(c.project)
+		switch {
+		case named && len(c.exports) == 0:
+			return c, errors.New("--project files the sessions of an export, so it needs --export FILE; file the sessions on this machine by their directories with --by-project")
+		case named && nameSlug(c.project) == "":
+			// As --by-project gives a directory with no letter or digit in
+			// its name (the root) no source.
+			return c, errors.New("--project needs a project's name with a letter or a digit in it")
 		}
 	} else if c.verb == "skills" && c.scope != "personal" && c.scope != "workspace" {
 		return c, errors.New("--scope must be personal or workspace")
@@ -349,11 +366,21 @@ type sessionsResult struct {
 	// Corpora are the corpora the sources are in after the import.
 	Corpora []string `json:"corpora"`
 	// Attached are the sources now attached to a project, as SOURCE=PROJECT,
-	// and Unfiled the directories no project is named for.
-	Attached []string       `json:"attached,omitempty"`
-	Unfiled  []string       `json:"unfiled,omitempty"`
-	DryRun   bool           `json:"dry_run,omitempty"`
-	ByTool   map[string]int `json:"by_tool"`
+	// and Unfiled the directories, and the --project, no project is named for.
+	Attached []string `json:"attached,omitempty"`
+	Unfiled  []string `json:"unfiled,omitempty"`
+	// Project is the --project the exports' sessions are filed in, and
+	// ProjectSource the source they go to. Elsewhere are the exports'
+	// sessions an earlier run put in another source, as URI=SOURCE: they are
+	// left there, since no route moves a document between sources.
+	Project       string   `json:"project,omitempty"`
+	ProjectSource string   `json:"project_source,omitempty"`
+	Elsewhere     []string `json:"elsewhere,omitempty"`
+	// ElsewhereChanged are those of Elsewhere whose export reads differently
+	// now than the document kept: it was not updated.
+	ElsewhereChanged []string       `json:"elsewhere_changed,omitempty"`
+	DryRun           bool           `json:"dry_run,omitempty"`
+	ByTool           map[string]int `json:"by_tool"`
 }
 
 type importFailed struct {
@@ -387,7 +414,16 @@ type sessionSink struct {
 	full   map[string]bool
 	dirs   map[string]string // by project: a directory's slug to its name
 	owner  map[string]string // by project: what each source says it holds
-	res    *sessionsResult
+	// ran and filed are the slugs this run read a directory's sessions for,
+	// and the ones it filed an export under: a source is one kind's only.
+	ran, filed map[string]bool
+	// foreign are the sources this run was refused: not its own to add to,
+	// to attach or to put in a corpus.
+	foreign map[string]bool
+	// project is the --project the sessions now being read are filed in: set
+	// while an export is read, and empty for the sessions of this machine.
+	project string
+	res     *sessionsResult
 }
 
 // held is a session's document as the server has it. A session is known by
@@ -441,26 +477,33 @@ func (k *sessionSink) load() error {
 func (k *sessionSink) add(s sessionimport.Session) {
 	// A directory is noted even when its sessions are all there, so a later
 	// run attaches a source whose project was made since.
-	slug := ""
-	if k.c.byProj {
-		if slug = dirSlug(s.Dir); slug != "" {
-			// Two directories are never kept in one source. A slug is made
-			// not to be shared, and one that is all the same is refused
-			// here, before a session of the second is sent.
-			dir := filepath.Base(s.Dir)
-			if held, ok := k.dirs[slug]; ok && !strings.EqualFold(held, dir) {
-				k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: fmt.Sprintf("the directories %s and %s would share the source %s-in-%s; import one of them by month, without --by-project", held, dir, k.c.prefix, slug)})
-				return
-			}
-			k.dirs[slug] = dir
+	// dir is the name the session is filed by: the project an export was
+	// given, or else by project the last name of the directory it ran in.
+	slug, dir := "", ""
+	switch {
+	case k.project != "":
+		dir = k.project
+	case k.c.byProj && s.Dir != "":
+		dir = filepath.Base(s.Dir)
+	}
+	if slug = nameSlug(dir); slug != "" {
+		// Two directories are never kept in one source. A slug is made
+		// not to be shared, and one that is all the same is refused
+		// here, before a session of the second is sent.
+		if held, ok := k.dirs[slug]; ok && !strings.EqualFold(held, dir) {
+			k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: fmt.Sprintf("the directories %s and %s would share the source %s-in-%s; import one of them by month, without --by-project", held, dir, k.c.prefix, slug)})
+			return
+		}
+		k.dirs[slug] = dir
+		if k.project != "" {
+			k.filed[slug] = true
+		} else {
+			k.ran[slug] = true
 		}
 	}
 	title := s.Title
 	if s.Dir != "" {
 		title += " (" + filepath.Base(s.Dir) + ")"
-	}
-	if was, ok := k.have[s.URI()]; ok && !k.replace(was, title, s) {
-		return
 	}
 	month := "undated"
 	if !s.Started.IsZero() {
@@ -471,17 +514,76 @@ func (k *sessionSink) add(s sessionimport.Session) {
 	// By project, a session is kept with the others of its directory.
 	if slug != "" {
 		base = k.c.prefix + "-in-" + slug
-		what = ranIn(filepath.Base(s.Dir))
+		what = ranIn(dir)
+		if k.project != "" {
+			what = filedIn(dir)
+		}
+	}
+	// refuse reports a session not added to a source that is not this
+	// run's to write to. Such a source is not attached or put in a corpus
+	// by this run either.
+	refuse := func(name, held string) {
+		k.foreign[name] = true
+		var reason string
+		switch {
+		case k.project != "" && held == "":
+			reason = fmt.Sprintf("the source %s is not the exports' of the project %s: it does not say what it holds; file the export in sources of another name with --source PREFIX, or by month without --project", name, dir)
+		case k.project != "":
+			reason = fmt.Sprintf("the source %s is not the exports' of the project %s: it says it holds %q; file the export in sources of another name with --source PREFIX, or by month without --project", name, dir, held)
+		case held == "":
+			reason = fmt.Sprintf("the source %s does not say whose sessions it holds, so it is not %s's to add to; import %s by month, without --by-project", name, dir, dir)
+		default:
+			reason = fmt.Sprintf("the source %s holds another directory's sessions (%q); import %s by month, without --by-project", name, held, dir)
+		}
+		k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: reason})
+	}
+	if was, ok := k.have[s.URI()]; ok {
+		// An export filed in a project is replaced only in that project's
+		// own source of exports. One an earlier run kept in any other
+		// source is left wholly as it is, even when it reads differently
+		// now: nothing moves a document between sources, this command
+		// removes none, and another source's documents are not this run's
+		// to write. The run says where it is, and whether it differs.
+		if k.project != "" && was.id != "" && (!continues(was.source, base) || !strings.EqualFold(k.owner[was.source], what)) {
+			at := s.URI() + "=" + was.source
+			k.res.Present++
+			k.res.Elsewhere = append(k.res.Elsewhere, at)
+			if was.digest != knowledge.Digest(title, s.Markdown(k.c.maxBytes)) {
+				k.res.ElsewhereChanged = append(k.res.ElsewhereChanged, at)
+			}
+			return
+		}
+		// A source named for a directory or a project is replaced in only
+		// when it says it is this session's: the rule for adding to one and
+		// for attaching it, applied before the one write that could not be
+		// taken back. A source by month is not checked, and a session kept
+		// in one is replaced there.
+		if k.project == "" && was.id != "" && strings.HasPrefix(was.source, k.c.prefix+"-in-") && !k.holds(was.source, s) {
+			k.foreign[was.source] = true
+			held := "it does not say what it holds"
+			if said := k.owner[was.source]; said != "" {
+				held = fmt.Sprintf("it says it holds %q", said)
+			}
+			k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: fmt.Sprintf("not updated, and left as it was: its document is in the source %s, which is not this session's: %s", was.source, held)})
+			return
+		}
+		if !k.replace(was, title, s) {
+			return
+		}
 	}
 	for n := 1; n <= 50; n++ {
 		name := base
 		if n > 1 {
 			name = fmt.Sprintf("%s-%d", base, n)
 		}
-		// A source an earlier run made for another directory is not added
-		// to: it says which directory it holds.
-		if held := k.owner[name]; slug != "" && k.exists[name] && held != "" && !strings.EqualFold(held, what) {
-			k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: fmt.Sprintf("the source %s holds another directory's sessions (%q); import %s by month, without --by-project", name, held, filepath.Base(s.Dir))})
+		// A source is added to only when it says it is this directory's,
+		// or this project's exports': not one an earlier run made for
+		// another directory, not a directory's for an export or an
+		// export's for a directory, though both are named for one project,
+		// and not one that does not say. Nothing is written before that is
+		// known.
+		if slug != "" && k.exists[name] && !strings.EqualFold(k.owner[name], what) {
+			refuse(name, k.owner[name])
 			return
 		}
 		if k.full[name] || k.count[name] >= knowledge.MaxImportDocuments {
@@ -496,12 +598,30 @@ func (k *sessionSink) add(s sessionimport.Session) {
 				"name":        name,
 				"description": what,
 			}, nil)
-			if err != nil && status(err) != http.StatusConflict {
+			switch {
+			case err == nil:
+				k.exists[name] = true
+				k.owner[name] = what
+			case status(err) == http.StatusConflict:
+				// Another writer made it first. It is read, and is this
+				// run's only if it says so: this run's description was not
+				// written and is not taken for the source's.
+				held, rerr := k.said(name)
+				if rerr != nil {
+					k.foreign[name] = true
+					k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: fmt.Sprintf("the source %s is already there and what it holds could not be read, so nothing was added to it: %s", name, rerr)})
+					return
+				}
+				k.exists[name] = true
+				k.owner[name] = held
+				if slug != "" && !strings.EqualFold(held, what) {
+					refuse(name, held)
+					return
+				}
+			default:
 				k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: err.Error()})
 				return
 			}
-			k.exists[name] = true
-			k.owner[name] = what
 		}
 		err := k.api.do(k.ctx, http.MethodPost, "/api/knowledge/"+url.PathEscape(name)+"/documents", map[string]string{
 			"title": title, "uri": s.URI(), "text": s.Markdown(k.c.maxBytes),
@@ -519,6 +639,43 @@ func (k *sessionSink) add(s sessionimport.Session) {
 		return
 	}
 	k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: "every source for " + base + " is full"})
+}
+
+// holds reports whether a source named for a directory or a project says it
+// is the one a session not filed with --project belongs in: the directory
+// the session ran in, or for an export's, with no directory, the exports of
+// the project the source is named for.
+func (k *sessionSink) holds(source string, s sessionimport.Session) bool {
+	said := k.owner[source]
+	if s.Dir != "" {
+		dir := filepath.Base(s.Dir)
+		return strings.EqualFold(said, ranIn(dir)) && continues(source, k.c.prefix+"-in-"+nameSlug(dir))
+	}
+	before, after, _ := strings.Cut(filedIn("\x00"), "\x00")
+	if !strings.HasPrefix(said, before) || !strings.HasSuffix(said, after) || len(said) <= len(before)+len(after) {
+		return false
+	}
+	project := said[len(before) : len(said)-len(after)]
+	return nameSlug(project) != "" && continues(source, k.c.prefix+"-in-"+nameSlug(project))
+}
+
+// said reads what a source the server has says it holds.
+func (k *sessionSink) said(name string) (string, error) {
+	var listed struct {
+		Sources []struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+		} `json:"sources"`
+	}
+	if err := k.api.do(k.ctx, http.MethodGet, "/api/knowledge", nil, &listed); err != nil {
+		return "", err
+	}
+	for _, src := range listed.Sources {
+		if src.Name == name {
+			return src.Description, nil
+		}
+	}
+	return "", errors.New("it is not among the sources this token reads")
 }
 
 // replace brings the document the server has of a session up to what the
@@ -594,7 +751,13 @@ func dirSlug(dir string) string {
 	if dir == "" {
 		return ""
 	}
-	base := strings.ToLower(filepath.Base(dir))
+	return nameSlug(filepath.Base(dir))
+}
+
+// nameSlug is dirSlug of a directory's last name, which is also how a
+// project named with --project is spelled in its source's name.
+func nameSlug(name string) string {
+	base := strings.ToLower(name)
 	var b strings.Builder
 	for _, r := range base {
 		switch {
@@ -631,13 +794,29 @@ func ranIn(dir string) string {
 	return "Sessions imported from other assistants that ran in " + dir + "."
 }
 
+// filedIn is what the source of an export filed with --project says it
+// holds. It is not what ranIn says, so a directory's source and an export's
+// are told apart by what they say, as two directories' are.
+func filedIn(project string) string {
+	return "Conversations imported from an export of another assistant, filed in the project " + project + "."
+}
+
 // continued matches the name of a source that continues a full one.
 var continued = regexp.MustCompile(`^(.+)-\d+$`)
+
+// continues reports whether source is base or one that continues it.
+func continues(source, base string) bool {
+	if m := continued.FindStringSubmatch(source); m != nil && m[1] == base {
+		return true
+	}
+	return source == base
+}
 
 // attach attaches each by-project source to the workspace's project of the
 // same name, so runs filed there are grounded in the sessions that ran in
 // that directory. A directory no project is named for is reported, and its
-// sessions stay in the corpus.
+// sessions stay in the corpus. The project named with --project is one more
+// such name: the exports' source is attached to it the same way.
 func (k *sessionSink) attach() {
 	// Every page: a workspace holds more projects than one page does.
 	projects := map[string]string{} // lower case name to name
@@ -687,9 +866,20 @@ func (k *sessionSink) attach() {
 			continue
 		}
 		// A source that says it holds another directory is not this one's
-		// to attach, whatever the slug: its sessions were refused above.
-		if held := k.owner[source]; held != "" && !strings.EqualFold(held, ranIn(dir)) {
-			k.res.Failed = append(k.res.Failed, importFailed{Name: source, Reason: fmt.Sprintf("not attached for %s: the source holds another directory's sessions (%q)", dir, held)})
+		// to attach, whatever the slug: its sessions were refused above. So
+		// with a directory's source when this run only filed an export
+		// under its name, and the other way about.
+		mine := k.ran[slug] && strings.EqualFold(k.owner[source], ranIn(dir)) || k.filed[slug] && strings.EqualFold(k.owner[source], filedIn(dir))
+		// Nor is one that does not say what it holds.
+		if held := k.owner[source]; !mine {
+			reason := fmt.Sprintf("not attached for %s: the source holds another directory's sessions (%q)", dir, held)
+			switch {
+			case held == "":
+				reason = fmt.Sprintf("not attached for %s: the source does not say what it holds", dir)
+			case !k.ran[slug]:
+				reason = fmt.Sprintf("not attached for %s: the source is not the exports' of that project, it says it holds %q", dir, held)
+			}
+			k.res.Failed = append(k.res.Failed, importFailed{Name: source, Reason: reason})
 			continue
 		}
 		// The project is the one named as the directory is, ignoring case
@@ -720,7 +910,9 @@ const maxCorpusMembers = 50
 func (k *sessionSink) file() {
 	var sources []string
 	for name := range k.exists {
-		sources = append(sources, name)
+		if !k.foreign[name] {
+			sources = append(sources, name)
+		}
 	}
 	sort.Strings(sources)
 	if len(sources) == 0 {
@@ -807,7 +999,10 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 		return errors.New("nothing to read; name a tool with --from or an export with --export FILE")
 	}
 	res := sessionsResult{Conflicts: []string{}, Failed: []importFailed{}, Sources: []string{}, Corpora: []string{}, ByTool: map[string]int{}, DryRun: c.dryRun}
-	sink := &sessionSink{ctx: ctx, c: c, api: api, res: &res, have: map[string]held{}, exists: map[string]bool{}, count: map[string]int{}, full: map[string]bool{}, dirs: map[string]string{}, owner: map[string]string{}}
+	if c.project != "" {
+		res.Project, res.ProjectSource = c.project, c.prefix+"-in-"+nameSlug(c.project)
+	}
+	sink := &sessionSink{ctx: ctx, c: c, api: api, res: &res, have: map[string]held{}, exists: map[string]bool{}, count: map[string]int{}, full: map[string]bool{}, dirs: map[string]string{}, owner: map[string]string{}, ran: map[string]bool{}, filed: map[string]bool{}, foreign: map[string]bool{}}
 	if !c.dryRun {
 		if err := sink.load(); err != nil {
 			return err
@@ -845,6 +1040,9 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 			}
 		}
 	}
+	// Only what an export holds is filed in --project: the sessions read
+	// above were filed as they are without it.
+	sink.project = c.project
 	for _, path := range c.exports {
 		f, err := os.Open(path)
 		if err != nil {
@@ -861,7 +1059,7 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 	if !c.dryRun && c.corpus != "none" {
 		sink.file()
 	}
-	if !c.dryRun && c.byProj {
+	if !c.dryRun && (c.byProj || c.project != "") {
 		sink.attach()
 	}
 	if c.json {
@@ -895,6 +1093,24 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 	}
 	if len(res.Unfiled) > 0 {
 		fmt.Fprintf(out, "No project is named for: %s. Their sessions are in the corpus; make the project and run this again to attach them.\n", strings.Join(res.Unfiled, ", "))
+	}
+	if c.dryRun && res.Project != "" {
+		fmt.Fprintf(out, "Would file the exports' sessions in %s and attach it to the project %s, if the workspace has one of that name; a dry run does not ask the server, so it does not know which are already imported.\n", res.ProjectSource, res.Project)
+	}
+	if len(res.Elsewhere) > 0 {
+		in := map[string]bool{}
+		for _, e := range res.Elsewhere {
+			in[e[strings.LastIndexByte(e, '=')+1:]] = true
+		}
+		sources := make([]string, 0, len(in))
+		for name := range in {
+			sources = append(sources, name)
+		}
+		sort.Strings(sources)
+		fmt.Fprintf(out, "%d sessions are already imported in another source and were left there, not filed in %s: %s. To refile them, remove their documents from that source and run this again.\n", len(res.Elsewhere), res.Project, strings.Join(sources, ", "))
+		if n := len(res.ElsewhereChanged); n > 0 {
+			fmt.Fprintf(out, "%d of them read differently in the export now and were not updated: a document in another source is left as it is. To bring them up to date, import the export again as it was first filed, or refile them.\n", n)
+		}
 	}
 	switch {
 	case c.dryRun:

@@ -56,9 +56,20 @@ type importServer struct {
 	// source was attached to.
 	projects []string
 	attached map[string]string
-	auth     []string
-	writes   int
-	refused  map[string]bool
+	// denyAttach refuses an attachment as the server refuses a caller who
+	// may not make it.
+	denyAttach bool
+	// late are sources another writer makes after this run listed the
+	// sources and before it makes its own: each is made, saying what late
+	// says, when its creation is asked for, which is answered 409.
+	late map[string]string
+	// attachTries counts the attachments asked for, and corpusAdds the
+	// sources asked to be put in a corpus.
+	attachTries int
+	corpusAdds  []string
+	auth        []string
+	writes      int
+	refused     map[string]bool
 	// seq numbers the documents. docWrites counts the calls that add or
 	// replace one, and failReplace makes a replacement fail as a server
 	// that could not write does.
@@ -162,6 +173,13 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 		case r.Method == "POST" && r.URL.Path == "/api/knowledge":
 			var body struct{ Name, Description string }
 			_ = json.NewDecoder(r.Body).Decode(&body)
+			if said, ok := s.late[body.Name]; ok {
+				delete(s.late, body.Name)
+				if s.said == nil {
+					s.said = map[string]string{}
+				}
+				s.docs[body.Name], s.said[body.Name] = []map[string]string{}, said
+			}
 			if _, ok := s.docs[body.Name]; ok {
 				problem(409, "exists")
 				return
@@ -248,6 +266,11 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 		case len(parts) == 3 && parts[0] == "knowledge" && parts[2] == "attachment" && r.Method == "PUT":
 			var body struct{ Project string }
 			_ = json.NewDecoder(r.Body).Decode(&body)
+			s.attachTries++
+			if s.denyAttach {
+				problem(403, "forbidden")
+				return
+			}
 			if s.attached == nil {
 				s.attached = map[string]string{}
 			}
@@ -284,6 +307,7 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 					problem(400, "a corpus holds at most 50 members")
 					return
 				}
+				s.corpusAdds = append(s.corpusAdds, body.Name)
 				s.corpora[parts[1]] = append(s.corpora[parts[1]], body.Name)
 				members(parts[1])
 			default:
@@ -1400,6 +1424,585 @@ func TestImportsOfTwoStatesAtOnceLeaveAllOfOne(t *testing.T) {
 		answers := api.puts[fmt.Sprintf("Bearer run-%d", i)]
 		if len(answers) > 1 || (res.Updated == 1) != (len(answers) == 1 && answers[0] == 200) {
 			t.Fatalf("run %d: %+v after replacements answered %v", i, res, answers)
+		}
+	}
+}
+
+// sources is each source the server has and how many documents it holds.
+func (s *importServer) sources() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var names []string
+	for name, docs := range s.docs {
+		names = append(names, fmt.Sprintf("%s=%d", name, len(docs)))
+	}
+	sort.Strings(names)
+	return strings.Join(names, " ")
+}
+
+// sessionsJSON runs an import with --json and reads its result.
+func sessionsJSON(t *testing.T, args ...string) (sessionsResult, error) {
+	t.Helper()
+	out, err := runImport(t, append(args, "--json")...)
+	var res sessionsResult
+	if jerr := json.Unmarshal([]byte(out), &res); jerr != nil {
+		t.Fatalf("%v: %s", jerr, out)
+	}
+	return res, err
+}
+
+const (
+	chatgptURI  = "chatgpt:gpt0r1g1-cccc-4ddd-8eee-000000000003"
+	claudeAIURI = "claude-ai:cai0r1g1-dddd-4eee-8fff-000000000004"
+)
+
+func TestImportSessionsProjectFilesAndAttachesBothExportFormats(t *testing.T) {
+	// The project is matched as --by-project matches a directory: by name,
+	// ignoring case.
+	api := &importServer{projects: []string{"other", "Field-Notes"}}
+	server := api.start(t)
+	_, chatgpt, claudeAI := syntheticHome(t)
+	args := []string{"sessions", "--from", "none", "--export", chatgpt, "--export", claudeAI, "--project", "field-notes", "--server", server.URL}
+	out, err := runImport(t, args...)
+	if err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	if got := api.sources(); got != "sessions-in-field-notes=2" {
+		t.Fatalf("sources = %s", got)
+	}
+	var uris []string
+	for _, d := range api.docs["sessions-in-field-notes"] {
+		uris = append(uris, d["uri"])
+	}
+	if got := strings.Join(uris, " "); got != chatgptURI+" "+claudeAIURI {
+		t.Fatalf("documents = %s", got)
+	}
+	if len(api.attached) != 1 || api.attached["sessions-in-field-notes"] != "Field-Notes" {
+		t.Fatalf("attached = %v", api.attached)
+	}
+	if !strings.Contains(out, "Attached to projects: sessions-in-field-notes=Field-Notes.") || strings.Contains(out, "No project is named for") {
+		t.Fatalf("out = %s", out)
+	}
+	if got := strings.Join(api.corpora["sessions"], " "); got != "sessions-in-field-notes" {
+		t.Fatalf("corpus = %s", got)
+	}
+
+	// A second run finds them there: nothing is added, replaced or moved.
+	before := api.held()
+	api.docWrites = 0
+	res, err := sessionsJSON(t, args...)
+	if err != nil || res.Added != 0 || res.Present != 2 || len(res.Elsewhere) != 0 || api.docWrites != 0 || api.held() != before {
+		t.Fatalf("second run: err = %v, res = %+v, %d document writes", err, res, api.docWrites)
+	}
+	if res.Project != "field-notes" || res.ProjectSource != "sessions-in-field-notes" || strings.Join(res.Attached, ",") != "sessions-in-field-notes=Field-Notes" {
+		t.Fatalf("second run = %+v", res)
+	}
+}
+
+func TestImportSessionsProjectNoWorkspaceHasIsUnfiled(t *testing.T) {
+	api := &importServer{projects: []string{"other"}}
+	server := api.start(t)
+	_, chatgpt, claudeAI := syntheticHome(t)
+	args := []string{"sessions", "--from", "none", "--export", chatgpt, "--export", claudeAI, "--project", "field-notes", "--server", server.URL}
+	out, err := runImport(t, args...)
+	if err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	// Imported, attached to nothing, and no project made: the words
+	// --by-project has for a directory with no project.
+	if got := api.sources(); got != "sessions-in-field-notes=2" || len(api.attached) != 0 || len(api.projects) != 1 {
+		t.Fatalf("sources = %s, attached = %v, projects = %v", got, api.attached, api.projects)
+	}
+	if !strings.Contains(out, "No project is named for: field-notes. Their sessions are in the corpus; make the project and run this again to attach them.") {
+		t.Fatalf("out = %s", out)
+	}
+	res, err := sessionsJSON(t, args...)
+	if err != nil || strings.Join(res.Unfiled, ",") != "field-notes" || len(res.Attached) != 0 || res.Present != 2 {
+		t.Fatalf("err = %v, res = %+v", err, res)
+	}
+	// Once the project is made, a later run attaches what is there.
+	api.projects = append(api.projects, "field-notes")
+	res, err = sessionsJSON(t, args...)
+	if err != nil || len(res.Unfiled) != 0 || api.attached["sessions-in-field-notes"] != "field-notes" || res.Added != 0 {
+		t.Fatalf("err = %v, res = %+v, attached = %v", err, res, api.attached)
+	}
+}
+
+func TestImportSessionsProjectIsRefusedWithoutAnExport(t *testing.T) {
+	api := &importServer{projects: []string{"app"}}
+	server := api.start(t)
+	_, chatgpt, _ := syntheticHome(t)
+	for _, tt := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"no export", []string{"--project", "app"}, "--project files the sessions of an export, so it needs --export FILE"},
+		{"no export, by project", []string{"--by-project", "--project", "app"}, "--project files the sessions of an export, so it needs --export FILE"},
+		{"no name", []string{"--export", chatgpt, "--project", ""}, "--project needs a project's name"},
+		{"the home directory", []string{"--export", chatgpt, "--project", "~"}, "--project needs a project's name"},
+		{"the root", []string{"--export", chatgpt, "--project", "/"}, "--project needs a project's name"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := runImport(t, append([]string{"sessions", "--home", sessionHome(t), "--server", server.URL}, tt.args...)...)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("err = %v\n%s", err, out)
+			}
+			if len(api.auth) != 0 {
+				t.Fatalf("%d requests were sent", len(api.auth))
+			}
+		})
+	}
+}
+
+func TestImportSessionsProjectFilesOnlyTheExportsAmongHostSessions(t *testing.T) {
+	_, chatgpt, _ := syntheticHome(t)
+	// Sessions of this machine are kept by month, as without --project.
+	api := &importServer{projects: []string{"notes", "app"}}
+	server := api.start(t)
+	res, err := sessionsJSON(t, "sessions", "--home", sessionHome(t), "--export", chatgpt, "--project", "notes", "--server", server.URL)
+	if err != nil {
+		t.Fatalf("err = %v, res = %+v", err, res)
+	}
+	if got := api.sources(); got != "sessions-claude-2026-10=2 sessions-claude-2026-11=1 sessions-codex-2026-11=1 sessions-in-notes=1" {
+		t.Fatalf("sources = %s", got)
+	}
+	if len(api.attached) != 1 || api.attached["sessions-in-notes"] != "notes" || api.docs["sessions-in-notes"][0]["uri"] != chatgptURI {
+		t.Fatalf("attached = %v, docs = %v", api.attached, api.docs["sessions-in-notes"])
+	}
+
+	// With --by-project they are kept by directory, and the export still
+	// goes to the project named.
+	api = &importServer{projects: []string{"notes", "app"}}
+	server = api.start(t)
+	res, err = sessionsJSON(t, "sessions", "--home", sessionHome(t), "--export", chatgpt, "--project", "notes", "--by-project", "--server", server.URL)
+	if err != nil {
+		t.Fatalf("err = %v, res = %+v", err, res)
+	}
+	if got := api.sources(); got != "sessions-in-api=1 sessions-in-app=3 sessions-in-notes=1" {
+		t.Fatalf("sources = %s", got)
+	}
+	if len(api.attached) != 2 || api.attached["sessions-in-notes"] != "notes" || api.attached["sessions-in-app"] != "app" || strings.Join(res.Unfiled, ",") != "api" {
+		t.Fatalf("attached = %v, unfiled = %v", api.attached, res.Unfiled)
+	}
+}
+
+func TestImportSessionsProjectSourceIsNeverADirectorysSource(t *testing.T) {
+	_, chatgpt, _ := syntheticHome(t)
+	const (
+		ran   = "Sessions imported from other assistants that ran in app."
+		filed = "Conversations imported from an export of another assistant, filed in the project App."
+	)
+	export := []string{"--from", "none", "--export", chatgpt, "--project", "App"}
+	host := []string{"--from", "claude", "--by-project"}
+	both := []string{"--from", "claude", "--by-project", "--export", chatgpt, "--project", "App"}
+	for _, tt := range []struct {
+		name          string
+		first, second []string
+		said, held    string // what the source says, and holds, after both
+		refused       string
+	}{
+		{"the directory first", host, export, ran, "sessions-in-app=3", "is not the exports' of the project App: it says it holds \"" + ran + "\""},
+		{"the export first", export, host, filed, "sessions-in-app=1", "holds another directory's sessions (\"" + filed + "\")"},
+		{"both in one run", both, nil, ran, "sessions-in-app=3", "is not the exports' of the project App"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			api := &importServer{projects: []string{"app"}}
+			server := api.start(t)
+			run := func(args []string) (sessionsResult, error) {
+				return sessionsJSON(t, append([]string{"sessions", "--home", sessionHome(t), "--server", server.URL}, args...)...)
+			}
+			res, err := run(tt.first)
+			if tt.second != nil {
+				if err != nil || api.attached["sessions-in-app"] != "app" {
+					t.Fatalf("first: err = %v, res = %+v, attached = %v", err, res, api.attached)
+				}
+				held := api.held()
+				api.attached = nil
+				res, err = run(tt.second)
+				// The second kind adds nothing to the first's source, and
+				// does not attach it as its own.
+				if api.held() != held || len(api.attached) != 0 {
+					t.Fatalf("second changed the source: attached = %v", api.attached)
+				}
+			}
+			if err == nil || len(res.Failed) == 0 || !strings.Contains(res.Failed[0].Reason, tt.refused) {
+				t.Fatalf("err = %v, failed = %+v", err, res.Failed)
+			}
+			if api.said["sessions-in-app"] != tt.said || api.sources() != tt.held {
+				t.Fatalf("says %q, sources = %s", api.said["sessions-in-app"], api.sources())
+			}
+		})
+	}
+	// Under another prefix the export has a source of its own, attached to
+	// the same project.
+	api := &importServer{projects: []string{"app"}}
+	server := api.start(t)
+	res, err := sessionsJSON(t, append([]string{"sessions", "--home", sessionHome(t), "--server", server.URL}, host...)...)
+	if err != nil {
+		t.Fatalf("err = %v, res = %+v", err, res)
+	}
+	res, err = sessionsJSON(t, append([]string{"sessions", "--home", sessionHome(t), "--server", server.URL, "--source", "exports"}, export...)...)
+	if err != nil || api.sources() != "exports-in-app=1 sessions-in-app=3" || api.attached["exports-in-app"] != "app" || api.attached["sessions-in-app"] != "app" || api.said["exports-in-app"] != filed {
+		t.Fatalf("err = %v, res = %+v, sources = %s, attached = %v", err, res, api.sources(), api.attached)
+	}
+}
+
+func TestImportSessionsProjectLeavesAnExportImportedBeforeWhereItIs(t *testing.T) {
+	api := &importServer{projects: []string{"notes"}}
+	server := api.start(t)
+	_, chatgpt, claudeAI := syntheticHome(t)
+	args := []string{"sessions", "--from", "none", "--export", chatgpt, "--export", claudeAI, "--server", server.URL}
+	if out, err := runImport(t, args...); err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	const byMonth = "sessions-chatgpt-2026-10=1 sessions-claude-ai-2026-10=1"
+	if got := api.sources(); got != byMonth {
+		t.Fatalf("sources = %s", got)
+	}
+	// The same exports, now with a project: no document is added, moved or
+	// removed, nothing is attached, and the run says where they are.
+	before := api.held()
+	api.docWrites, api.writes = 0, 0
+	out, err := runImport(t, append(args, "--project", "notes")...)
+	if err != nil {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	if api.sources() != byMonth || api.held() != before || api.docWrites != 0 || api.writes != 0 || len(api.attached) != 0 {
+		t.Fatalf("sources = %s, %d writes, attached = %v", api.sources(), api.writes, api.attached)
+	}
+	for _, want := range []string{
+		"Added 0 sessions (none) to 0 knowledge sources; 2 already there",
+		"2 sessions are already imported in another source and were left there, not filed in notes: sessions-chatgpt-2026-10, sessions-claude-ai-2026-10. To refile them, remove their documents from that source and run this again.",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("out lacks %q:\n%s", want, out)
+		}
+	}
+	res, err := sessionsJSON(t, append(args, "--project", "notes")...)
+	if err != nil || res.Present != 2 || strings.Join(res.Elsewhere, " ") != chatgptURI+"=sessions-chatgpt-2026-10 "+claudeAIURI+"=sessions-claude-ai-2026-10" {
+		t.Fatalf("err = %v, res = %+v", err, res)
+	}
+}
+
+func TestImportSessionsProjectDryRunSaysWhereWithoutAskingTheServer(t *testing.T) {
+	api := &importServer{projects: []string{"notes"}}
+	server := api.start(t)
+	_, chatgpt, claudeAI := syntheticHome(t)
+	args := []string{"sessions", "--from", "none", "--export", chatgpt, "--export", claudeAI, "--project", "Notes", "--server", server.URL, "--dry-run"}
+	out, err := runImport(t, args...)
+	if err != nil || len(api.auth) != 0 {
+		t.Fatalf("err = %v, %d requests\n%s", err, len(api.auth), out)
+	}
+	for _, want := range []string{
+		"Would add 2 sessions (chatgpt 1, claude-ai 1) to 1 knowledge sources",
+		"Would file the exports' sessions in sessions-in-notes and attach it to the project Notes, if the workspace has one of that name",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("out lacks %q:\n%s", want, out)
+		}
+	}
+	res, err := sessionsJSON(t, args...)
+	if err != nil || len(api.auth) != 0 || !res.DryRun || res.Project != "Notes" || res.ProjectSource != "sessions-in-notes" || strings.Join(res.Sources, ",") != "sessions-in-notes" || res.Added != 2 {
+		t.Fatalf("err = %v, %d requests, res = %+v", err, len(api.auth), res)
+	}
+}
+
+func TestImportSessionsProjectAttachesWithTheCallersRights(t *testing.T) {
+	// A caller who may not attach is refused as --by-project's is.
+	_, chatgpt, _ := syntheticHome(t)
+	var reasons []string
+	for _, args := range [][]string{
+		{"--from", "none", "--export", chatgpt, "--project", "app"},
+		{"--from", "claude", "--by-project"},
+	} {
+		api := &importServer{projects: []string{"app"}, denyAttach: true}
+		server := api.start(t)
+		res, err := sessionsJSON(t, append([]string{"sessions", "--home", sessionHome(t), "--server", server.URL}, args...)...)
+		if err == nil || len(res.Failed) != 1 || res.Failed[0].Name != "sessions-in-app" || len(res.Attached) != 0 || len(api.attached) != 0 {
+			t.Fatalf("err = %v, res = %+v", err, res)
+		}
+		reasons = append(reasons, res.Failed[0].Reason)
+	}
+	if reasons[0] != reasons[1] || !strings.Contains(reasons[0], "PUT /api/knowledge/sessions-in-app/attachment: HTTP 403") {
+		t.Fatalf("reasons = %q", reasons)
+	}
+}
+
+// changedExport is the synthetic ChatGPT export with one turn reading
+// otherwise, as an export taken later does.
+func changedExport(t *testing.T, export string) string {
+	t.Helper()
+	data, err := os.ReadFile(export)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(data, []byte("GPT-USER-ONE")) {
+		t.Fatal("the export has no GPT-USER-ONE to change")
+	}
+	changed := filepath.Join(t.TempDir(), "conversations.json")
+	if err := os.WriteFile(changed, bytes.ReplaceAll(data, []byte("GPT-USER-ONE"), []byte("GPT-USER-ONE-CHANGED")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return changed
+}
+
+func TestImportSessionsProjectNeverWritesADocumentKeptInAnotherSource(t *testing.T) {
+	_, chatgpt, _ := syntheticHome(t)
+	changed := changedExport(t, chatgpt)
+	for _, tt := range []struct {
+		name          string
+		first, second []string // how the export is filed first, and then, changed
+		source        string
+	}{
+		{"one project, then another", []string{"--project", "Harbor"}, []string{"--project", "Orchard"}, "sessions-in-harbor"},
+		{"the other order", []string{"--project", "Orchard"}, []string{"--project", "Harbor"}, "sessions-in-orchard"},
+		{"by month, then a project", nil, []string{"--project", "Harbor"}, "sessions-chatgpt-2026-10"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			api := &importServer{projects: []string{"Harbor", "Orchard"}}
+			server := api.start(t)
+			base := []string{"sessions", "--from", "none", "--server", server.URL}
+			if res, err := sessionsJSON(t, append(append(base, "--export", chatgpt), tt.first...)...); err != nil || res.Added != 1 {
+				t.Fatalf("first: err = %v, res = %+v", err, res)
+			}
+			before, sources, attached := api.held(), api.sources(), fmt.Sprint(api.attached)
+			digest := api.docs[tt.source][0]["digest"]
+			api.writes, api.docWrites = 0, 0
+			args := append(append(base, "--export", changed), tt.second...)
+			out, err := runImport(t, args...)
+			if err != nil {
+				t.Fatalf("err = %v\n%s", err, out)
+			}
+			// Nothing is written at all: no replacement, no source, no
+			// corpus member, no attachment.
+			if api.held() != before || api.sources() != sources || api.docs[tt.source][0]["digest"] != digest || api.writes != 0 || api.docWrites != 0 || fmt.Sprint(api.attached) != attached {
+				t.Fatalf("the document was written: %d writes, sources = %s, attached = %v", api.writes, api.sources(), api.attached)
+			}
+			for _, want := range []string{
+				"Added 0 sessions (none) to 0 knowledge sources; 1 already there",
+				"1 sessions are already imported in another source and were left there",
+				": " + tt.source + ". To refile them",
+				"1 of them read differently in the export now and were not updated",
+			} {
+				if !strings.Contains(out, want) {
+					t.Errorf("out lacks %q:\n%s", want, out)
+				}
+			}
+			if strings.Contains(out, "Updated") {
+				t.Errorf("out says a session was updated:\n%s", out)
+			}
+			res, err := sessionsJSON(t, args...)
+			at := chatgptURI + "=" + tt.source
+			if err != nil || res.Updated != 0 || res.Added != 0 || res.Present != 1 || strings.Join(res.Elsewhere, " ") != at || strings.Join(res.ElsewhereChanged, " ") != at || api.writes != 0 {
+				t.Fatalf("err = %v, res = %+v, %d writes", err, res, api.writes)
+			}
+			// Filed as it first was, the changed export is replaced in
+			// place, in its own source.
+			res, err = sessionsJSON(t, append(append(base, "--export", changed), tt.first...)...)
+			if err != nil || res.Updated != 1 || len(res.Elsewhere) != 0 || api.sources() != sources || api.docs[tt.source][0]["digest"] == digest {
+				t.Fatalf("as first filed: err = %v, res = %+v, sources = %s", err, res, api.sources())
+			}
+		})
+	}
+}
+
+// What main does for the sessions of this machine, kept as it is: a session
+// already in a source by month is replaced there, in place, when it changed
+// and is read again with --by-project. It is not moved and nothing is added.
+func TestImportSessionsByProjectReplacesInPlaceASessionKeptByMonth(t *testing.T) {
+	api := &importServer{projects: []string{"alpha-site"}}
+	server := api.start(t)
+	home, _, _ := syntheticHome(t)
+	args := []string{"sessions", "--home", home, "--from", "claude", "--server", server.URL}
+	if res, err := sessionsJSON(t, args...); err != nil || res.Added != 1 {
+		t.Fatalf("err = %v, res = %+v", err, res)
+	}
+	sources := api.sources()
+	grow(t, home)
+	res, err := sessionsJSON(t, append(args, "--by-project")...)
+	if err != nil || res.Updated != 1 || res.Added != 0 || api.sources() != sources || len(api.attached) != 0 {
+		t.Fatalf("err = %v, res = %+v, sources = %s, attached = %v", err, res, api.sources(), api.attached)
+	}
+}
+
+func TestImportSessionsWritesOnlyToASourceThatSaysItIsItsOwn(t *testing.T) {
+	_, chatgpt, _ := syntheticHome(t)
+	const (
+		ran   = "Sessions imported from other assistants that ran in app."
+		filed = "Conversations imported from an export of another assistant, filed in the project app."
+	)
+	export := []string{"--from", "none", "--export", chatgpt, "--project", "app"}
+	host := []string{"--from", "claude", "--by-project"}
+	for _, tt := range []struct {
+		name string
+		args []string
+		// said is what the source says; late, that it is made after the
+		// run listed the sources, so the run's own creation answers 409.
+		said    string
+		late    bool
+		refused string // "" when the source is the run's own
+		added   int
+	}{
+		{"an export, a source that does not say", export, "", false, "is not the exports' of the project app: it does not say what it holds", 0},
+		{"a directory, a source that does not say", host, "", false, "does not say whose sessions it holds", 0},
+		{"an export, made meanwhile by another", export, "Team notes.", true, "is not the exports' of the project app: it says it holds \"Team notes.\"", 0},
+		{"a directory, made meanwhile by another", host, "Team notes.", true, "holds another directory's sessions (\"Team notes.\")", 0},
+		{"an export, made meanwhile without saying", export, "", true, "it does not say what it holds", 0},
+		{"an export, made meanwhile for a directory", export, ran, true, "is not the exports' of the project app", 0},
+		{"a directory, made meanwhile for an export", host, filed, true, "holds another directory's sessions", 0},
+		{"an export, made meanwhile for its exports", export, filed, true, "", 1},
+		{"a directory, made meanwhile for it", host, ran, true, "", 3},
+		{"an export, its own in other case", export, strings.ToUpper(filed), false, "", 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			api := &importServer{projects: []string{"app"}}
+			if tt.late {
+				api.late = map[string]string{"sessions-in-app": tt.said}
+			} else {
+				api.docs = map[string][]map[string]string{"sessions-in-app": {}}
+				api.said = map[string]string{"sessions-in-app": tt.said}
+			}
+			server := api.start(t)
+			res, err := sessionsJSON(t, append([]string{"sessions", "--home", sessionHome(t), "--server", server.URL}, tt.args...)...)
+			// What the source says is never written over.
+			if api.said["sessions-in-app"] != tt.said {
+				t.Fatalf("the source now says %q", api.said["sessions-in-app"])
+			}
+			if tt.refused == "" {
+				if err != nil || res.Added != tt.added || len(api.docs["sessions-in-app"]) != tt.added || api.attached["sessions-in-app"] != "app" {
+					t.Fatalf("err = %v, res = %+v, attached = %v", err, res, api.attached)
+				}
+				return
+			}
+			if err == nil || len(res.Failed) == 0 || !strings.Contains(res.Failed[0].Reason, tt.refused) || res.Failed[0].Name == "sessions-in-app" {
+				t.Fatalf("err = %v, failed = %+v", err, res.Failed)
+			}
+			// Nothing is added to it, it is not attached, no attachment is
+			// asked for, and it is put in no corpus.
+			if res.Added != 0 || len(api.docs["sessions-in-app"]) != 0 || api.docWrites != 0 || api.attachTries != 0 || len(api.attached) != 0 || len(res.Attached) != 0 || len(api.corpusAdds) != 0 {
+				t.Fatalf("res = %+v, %d document writes, %d attachments asked, corpus = %v", res, api.docWrites, api.attachTries, api.corpusAdds)
+			}
+			last := res.Failed[len(res.Failed)-1]
+			if last.Name != "sessions-in-app" || !strings.Contains(last.Reason, "not attached for app") {
+				t.Fatalf("failed = %+v", res.Failed)
+			}
+		})
+	}
+}
+
+func TestTwoImportsAtOnceOfOneProjectsExportsMakeOneSource(t *testing.T) {
+	_, chatgpt, claudeAI := syntheticHome(t)
+	for range 20 {
+		api := &importServer{projects: []string{"notes"}}
+		server := api.start(t)
+		t.Setenv("HUMAGEN_TOKEN", "")
+		errs := make(chan error, 2)
+		for _, export := range []string{chatgpt, claudeAI} {
+			go func() {
+				var out bytes.Buffer
+				err := importCmd([]string{"sessions", "--from", "none", "--export", export, "--project", "notes", "--server", server.URL, "--json"}, &out)
+				if err != nil {
+					err = fmt.Errorf("%w: %s", err, out.String())
+				}
+				errs <- err
+			}()
+		}
+		for range 2 {
+			if err := <-errs; err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got := api.sources(); got != "sessions-in-notes=2" || api.attached["sessions-in-notes"] != "notes" || api.said["sessions-in-notes"] != "Conversations imported from an export of another assistant, filed in the project notes." {
+			t.Fatalf("sources = %s, attached = %v, says %q", got, api.attached, api.said["sessions-in-notes"])
+		}
+	}
+}
+
+func TestImportSessionsReplacesInAProjectNamedSourceOnlyItsOwn(t *testing.T) {
+	const (
+		source = "sessions-in-alpha-site"
+		ran    = "Sessions imported from other assistants that ran in alpha-site."
+		filed  = "Conversations imported from an export of another assistant, filed in the project alpha-site."
+	)
+	for _, tt := range []struct {
+		name, said string
+		args       []string
+		refused    string // "" when the source is the session's own
+	}{
+		{"a source that does not say", "", []string{"--by-project"}, "which is not this session's: it does not say what it holds"},
+		{"a project's exports", filed, []string{"--by-project"}, "which is not this session's: it says it holds \"" + filed + "\""},
+		{"another directory's", "Sessions imported from other assistants that ran in beta.", []string{"--by-project"}, "which is not this session's"},
+		{"its own", ran, []string{"--by-project"}, ""},
+		{"a source that does not say, by month", "", nil, "it does not say what it holds"},
+		{"its own, by month", ran, nil, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			api := &importServer{projects: []string{"alpha-site"}}
+			server := api.start(t)
+			home, _, _ := syntheticHome(t)
+			args := append([]string{"sessions", "--home", home, "--from", "claude", "--server", server.URL}, tt.args...)
+			// The session's document is there already, in the source named
+			// for its directory, which says what this case has it say.
+			if res, err := sessionsJSON(t, "sessions", "--home", home, "--from", "claude", "--server", server.URL, "--by-project"); err != nil || res.Added != 1 || len(api.docs[source]) != 1 {
+				t.Fatalf("seed: err = %v, res = %+v", err, res)
+			}
+			api.said[source] = tt.said
+			api.attached, api.attachTries, api.writes, api.docWrites = nil, 0, 0, 0
+			before, digest := api.held(), api.docs[source][0]["digest"]
+			grow(t, home)
+			res, err := sessionsJSON(t, args...)
+			if api.said[source] != tt.said {
+				t.Fatalf("the source now says %q", api.said[source])
+			}
+			if tt.refused == "" {
+				if err != nil || res.Updated != 1 || api.docs[source][0]["digest"] == digest || len(api.docs[source]) != 1 {
+					t.Fatalf("err = %v, res = %+v", err, res)
+				}
+				if tt.args != nil && api.attached[source] != "alpha-site" {
+					t.Fatalf("attached = %v", api.attached)
+				}
+				return
+			}
+			// Not replaced, not added again anywhere, not attached, and
+			// said: the document is as it was and nothing was written.
+			if err == nil || len(res.Failed) == 0 || res.Failed[0].Name != syntheticURI || !strings.Contains(res.Failed[0].Reason, "not updated, and left as it was") || !strings.Contains(res.Failed[0].Reason, tt.refused) {
+				t.Fatalf("err = %v, failed = %+v", err, res.Failed)
+			}
+			if api.held() != before || api.docs[source][0]["digest"] != digest || res.Updated != 0 || res.Added != 0 || api.writes != 0 || api.attachTries != 0 || len(api.attached) != 0 || len(res.Attached) != 0 {
+				t.Fatalf("res = %+v, %d writes, %d attachments asked", res, api.writes, api.attachTries)
+			}
+		})
+	}
+}
+
+func TestImportSessionsReplacesAnExportsDocumentInItsProjectsSourceWithoutProject(t *testing.T) {
+	// An export filed in a project and read again changed, without
+	// --project, is replaced where it is while the source says it is that
+	// project's exports', and not once it says otherwise.
+	_, chatgpt, _ := syntheticHome(t)
+	changed := changedExport(t, chatgpt)
+	for _, said := range []string{"", "Team notes.", "own"} {
+		api := &importServer{projects: []string{"Harbor"}}
+		server := api.start(t)
+		base := []string{"sessions", "--from", "none", "--server", server.URL}
+		if res, err := sessionsJSON(t, append(base, "--export", chatgpt, "--project", "Harbor")...); err != nil || res.Added != 1 {
+			t.Fatalf("seed: err = %v, res = %+v", err, res)
+		}
+		if said != "own" {
+			api.said["sessions-in-harbor"] = said
+		}
+		digest := api.docs["sessions-in-harbor"][0]["digest"]
+		api.docWrites = 0
+		res, err := sessionsJSON(t, append(base, "--export", changed)...)
+		if said == "own" {
+			if err != nil || res.Updated != 1 || api.docs["sessions-in-harbor"][0]["digest"] == digest {
+				t.Fatalf("own: err = %v, res = %+v", err, res)
+			}
+			continue
+		}
+		if err == nil || res.Updated != 0 || res.Added != 0 || api.docWrites != 0 || api.docs["sessions-in-harbor"][0]["digest"] != digest || len(res.Failed) != 1 {
+			t.Fatalf("%q: err = %v, res = %+v, %d document writes", said, err, res, api.docWrites)
 		}
 	}
 }
