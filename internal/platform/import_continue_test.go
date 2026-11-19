@@ -24,6 +24,8 @@ import (
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 	"github.com/urmzd/humagen/pkg/threads"
 )
 
@@ -70,20 +72,27 @@ func (a *sentModel) last() string {
 // to Field, which opal works in.
 func continuing(t *testing.T) (*platform.Platform, *sentModel) {
 	t.Helper()
-	return continuingAt(t, nil)
+	return continuingWith(t, platform.Config{})
 }
 
 // continuingAt is continuing on the clock now, nil for time.Now.
 func continuingAt(t *testing.T, now func() time.Time) (*platform.Platform, *sentModel) {
+	t.Helper()
+	return continuingWith(t, platform.Config{Now: now})
+}
+
+// continuingWith is continuing with cfg's clock and backends.
+func continuingWith(t *testing.T, cfg platform.Config) (*platform.Platform, *sentModel) {
 	t.Helper()
 	answers := make([][]saigetypes.Delta, 32)
 	for i := range answers {
 		answers[i] = agenttest.TextResponse("generated reply")
 	}
 	rec := &sentModel{model: &agenttest.ScriptedProvider{Responses: answers}}
-	p := startWith(t, platform.Config{Now: now, Ext: platform.Extensions{Providers: map[string]native.ProviderFunc{
+	cfg.Ext = platform.Extensions{Providers: map[string]native.ProviderFunc{
 		"recorder": func(native.Spec) (saigetypes.Provider, error) { return rec, nil },
-	}}})
+	}}
+	p := startWith(t, cfg)
 	if _, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{Name: "coder", Provider: "recorder", Model: "r1", SystemPrompt: "Answer."}, "test"); err != nil {
 		t.Fatal(err)
 	}
@@ -729,4 +738,72 @@ func calledFrom(name string) bool {
 			return false
 		}
 	}
+}
+
+// olderServerRewrites writes a knowledge source's record back as a server
+// on an earlier release does: decoded without the id it does not know
+// (knowledge Source.ID), and written again. "knowledge" and "source/" are
+// where the knowledge store keeps a source.
+func olderServerRewrites(t *testing.T, st state.Store, name string) {
+	t.Helper()
+	if _, err := state.NewTable[map[string]any](st, "knowledge").Update(tenant, "source/"+name, func(r map[string]any, ok bool) (map[string]any, error) {
+		if src, _ := r["source"].(map[string]any); ok && src != nil {
+			delete(src, "id")
+		}
+		return r, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A source with no id (kept before ids, or rewritten by a server on an
+// earlier release) is given one when a conversation imported into it is
+// continued, and the continuation pins it. An empty id matches nothing: a
+// source whose id an older server strips hides its continuations, and so
+// does one deleted and made again with none, on either store.
+func TestAContinuationAlwaysPinsASourceID(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		p, _ := continuingWith(t, platform.Config{Backends: platform.Backends{State: st}})
+		_, in := imported(t, p, generatedSession(knowledge.ToolCodex, "generated-legacy-id"))
+		olderServerRewrites(t, st, "sessions-in-field")
+		if src, err := p.Knowledge.Get(tenant, "sessions-in-field"); err != nil || src.ID != "" {
+			t.Fatalf("the source kept an id through an older server's write: %q, %v", src.ID, err)
+		}
+		th, err := p.ContinueImport(t.Context(), operator, in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		src, err := p.Knowledge.Get(tenant, "sessions-in-field")
+		if err != nil || src.ID == "" || th.Import.SourceID != src.ID {
+			t.Fatalf("the continuation pins %q, the source has %q (%v)", th.Import.SourceID, src.ID, err)
+		}
+		if !p.SeesThread(operator, th.ID) {
+			t.Fatal("the continuation is not seen")
+		}
+		// An older server strips the id again: no one sees it, an admin
+		// included, and nothing is posted in it.
+		olderServerRewrites(t, st, "sessions-in-field")
+		if p.SeesThread(operator, th.ID) || p.SeesThread(admin, th.ID) {
+			t.Fatal("seen through a source with no id")
+		}
+		if _, err := p.PostMessage(t.Context(), operator, th.ID, platform.MessageInput{Text: "@coder still there?"}); !errors.Is(err, threads.ErrNotFound) {
+			t.Fatalf("posted through a source with no id: %v", err)
+		}
+		// Deleted and made again with no id, as an older server makes one,
+		// it revives nothing either.
+		if err := p.Knowledge.Delete(tenant, "sessions-in-field"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.Knowledge.Create(tenant, "sessions-in-field", "Made again by an older server.", "ada", time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.AttachSource(admin, "sessions-in-field", "Field", ""); err != nil {
+			t.Fatal(err)
+		}
+		olderServerRewrites(t, st, "sessions-in-field")
+		if p.SeesThread(operator, th.ID) || p.SeesThread(admin, th.ID) {
+			t.Fatal("revived by a source of the same name with no id")
+		}
+	})
 }

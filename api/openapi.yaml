@@ -13663,7 +13663,7 @@ components:
         verified record. No route starts a continuation yet.
       type: object
       additionalProperties: false
-      required: [source, document, uri, title, structure, document_digest, by, at, context, omitted]
+      required: [source, source_id, document, uri, title, structure, document_digest, by, at, context, omitted]
       properties:
         source:
           description: The knowledge source the document is in.
@@ -13672,8 +13672,8 @@ components:
           description: |
             The source's id when the conversation was continued
             (KnowledgeSource `id`). A source of the same name made since is
-            another source, and no one reads the conversation through it.
-            Absent for a source created before sources kept ids.
+            another source, and so is one whose id was lost: no one reads
+            the conversation through either.
           type: string
           pattern: "^[0-9a-f]{32}$"
         document:
@@ -17251,7 +17251,8 @@ components:
             Tells this source apart from any earlier or later source of the
             same name: set when it is created, never changed, and never
             given to another source. Absent for a source created before
-            sources kept ids.
+            sources kept ids until a conversation imported into it is
+            continued, which gives it one.
           type: string
           pattern: "^[0-9a-f]{32}$"
         lifecycle: {$ref: "#/components/schemas/KnowledgeLifecycle"}

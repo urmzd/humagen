@@ -369,7 +369,7 @@ func TestAnImportedOriginIsImmutableBoundedAndSurvivesRestart(t *testing.T) {
 		}
 		// A document whose structure is not kept is one block, stating
 		// nothing of a structure.
-		legacy := &threads.Import{Source: "sessions-2026-10", Document: "d-2", URI: "codex:generated-2", Structure: threads.StructureNotKept, DocumentDigest: strings.Repeat("c", 64), By: "okta|dana", At: t0,
+		legacy := &threads.Import{Source: "sessions-2026-10", SourceID: strings.Repeat("7", 32), Document: "d-2", URI: "codex:generated-2", Structure: threads.StructureNotKept, DocumentDigest: strings.Repeat("c", 64), By: "okta|dana", At: t0,
 			Context: []threads.ImportTurn{{Speaker: threads.ImportDocument, Text: "# A generated chat\n\nuser: q", Cut: true}}, Omitted: threads.ImportOmitted{Cut: 1}}
 		if _, err := s.Create("acme", threads.Thread{Project: "Globex", Channel: "general", Visibility: threads.Private, CreatedBy: "okta|dana", Import: legacy}, t0); err != nil {
 			t.Fatalf("legacy: %v", err)
@@ -405,6 +405,7 @@ func TestAnImportedOriginOutsideItsBoundsIsRefused(t *testing.T) {
 		"a negative count":            func(th *threads.Thread) { th.Import.Omitted.Turns = -1 },
 		"a source no source is named": func(th *threads.Thread) { th.Import.Source = "Not A Source" },
 		"a source id that is no id":   func(th *threads.Thread) { th.Import.SourceID = "handbook" },
+		"no source id":                func(th *threads.Thread) { th.Import.SourceID = "" },
 		"a structure neither way":     func(th *threads.Thread) { th.Import.Structure = "maybe" },
 		"not kept, with a tool": func(th *threads.Thread) {
 			th.Import.Structure, th.Import.StructureDigest, th.Import.ImportedBy, th.Import.ImportedAt, th.Import.Branches, th.Import.ImportCut = threads.StructureNotKept, "", "", nil, nil, nil

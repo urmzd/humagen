@@ -53,6 +53,10 @@ var (
 	// ErrImportDetached: the source is no longer filed in the project the
 	// person saw it in.
 	ErrImportDetached = fmt.Errorf("%w: the source is no longer filed in that project", threads.ErrVersion)
+	// ErrImportNoSourceID: the source has no id to pin, even after it was
+	// given one: a server on an earlier release, which keeps no ids,
+	// rewrote it meanwhile.
+	ErrImportNoSourceID = fmt.Errorf("%w: the source lost the id it was just given, as a server on an earlier release rewrites it; try again once every server runs this release", threads.ErrVersion)
 	// ErrImportUntrusted: the document's structure was kept, and is not one
 	// that can be trusted now: edited since its import, or malformed.
 	ErrImportUntrusted = fmt.Errorf("%w: the imported conversation's structure cannot be trusted", threads.ErrInvalid)
@@ -105,6 +109,9 @@ var sessionURIs = []string{threads.ImportClaude + ":", threads.ImportCodex + ":"
 // another workspace's (threads.ErrNotFound), and when who may not start a
 // run (runs:write) or post in the project (MayPost).
 //
+// A source kept before sources had ids is first given one (knowledge
+// GiveID), so the continuation always pins an id.
+//
 // The document and the source are read twice: first to check who may do
 // this, then just before the write, and the record is built from the
 // second read. Any difference between the two (the source made again, the
@@ -139,6 +146,26 @@ func (p *Platform) ContinueImport(ctx context.Context, who auth.Principal, in Co
 	agents, mode, err := p.checkRouting(ctx, who.Tenant, first.project, in.Agents, in.Mode, p.Seer(who).Agent)
 	if err != nil {
 		return threads.Thread{}, err
+	}
+	// A source kept before sources had ids is given one, in a write
+	// guarded by its record's version, and read again as the person read
+	// it, so the continuation pins an id: an empty one matches nothing.
+	if first.source.ID == "" {
+		if _, err := p.Knowledge.GiveID(who.Tenant, in.Source); errors.Is(err, knowledge.ErrNotFound) {
+			return threads.Thread{}, fmt.Errorf("%w: source %q", threads.ErrNotFound, in.Source)
+		} else if err != nil {
+			return threads.Thread{}, err
+		}
+		again, err := p.pinnedOrigin(who, in)
+		switch {
+		case err != nil:
+			return threads.Thread{}, err
+		case again.project != first.project:
+			return threads.Thread{}, ErrImportDetached
+		case again.source.ID == "":
+			return threads.Thread{}, ErrImportNoSourceID
+		}
+		first = again
 	}
 	id, err := newThreadID()
 	if err != nil {
@@ -370,13 +397,14 @@ func newThreadID() (string, error) {
 // seer, so a read it grants by exception is recorded as the seer records
 // others. It must be the same source, by its id: one deleted since is seen
 // by nobody, and so is one deleted and made again under its name, for good,
-// since no source is ever given an id another had.
+// since no source is ever given an id another had. A source with no id (one
+// an older binary wrote) matches nothing.
 func (s *Seer) importSourceVisible(im *threads.Import) bool {
 	if !s.who.Can(auth.KnowledgeRead) {
 		return false
 	}
 	src, err := s.p.Knowledge.Get(s.who.Tenant, im.Source)
-	if err != nil || src.ID != im.SourceID {
+	if err != nil || src.ID == "" || src.ID != im.SourceID {
 		return false
 	}
 	return src.Lifecycle == nil || src.Lifecycle.Project == "" || s.placeDirect(Place{Project: src.Lifecycle.Project})

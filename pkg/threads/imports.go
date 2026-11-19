@@ -68,10 +68,10 @@ type Import struct {
 	Source   string `json:"source"`
 	Document string `json:"document"`
 	// SourceID is the source's id when it was continued (knowledge
-	// Source.ID): a source of the same name made since is another source,
-	// and the continuation is not there for anyone. "" for a source created
-	// before sources kept ids, which only that source still matches.
-	SourceID string `json:"source_id,omitempty"`
+	// Source.ID), always set: a source of the same name made since is
+	// another source, and so is one whose id was lost, and the continuation
+	// is not there for anyone.
+	SourceID string `json:"source_id"`
 	// URI and Title are the document's when it was continued. They are a
 	// person's to edit, so they are shown, and never decide anything.
 	URI   string `json:"uri"`
@@ -441,8 +441,8 @@ func (im *Import) validate(t Thread) error {
 	switch {
 	case t.Session != nil || t.Surface != nil || t.Announcement != "" || t.ReadOnly:
 		return bad("starts a conversation of its own, not a session, a surface's or an archive")
-	case !validSourceName.MatchString(im.Source) || (im.SourceID != "" && !validSourceID.MatchString(im.SourceID)):
-		return bad("names a knowledge source, and its id when it has one")
+	case !validSourceName.MatchString(im.Source) || !validSourceID.MatchString(im.SourceID):
+		return bad("names a knowledge source and its id")
 	case im.Document == "" || len(im.Document) > maxImportDocument || !oneLine(im.Document):
 		return bad(fmt.Sprintf("names a document in at most %d bytes", maxImportDocument))
 	case im.URI == "" || len(im.URI) > maxImportURI || !oneLine(im.URI):

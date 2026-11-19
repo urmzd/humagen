@@ -621,14 +621,17 @@ structure digest the caller read, pinned together; who imported the
 structure and when; who continued it and when; the conversation's start and
 end; the branches not continued; what the import itself left out; and the
 passive turns its agent is sent. Those are the newest turns of the main path
-that fit half the workspace's history limit, counted as that limit is (each
-line with its label, its mark and its line break), and a fork's bounds (200
-turns, 128 KiB), tool results left out first and every turn left out
-counted; nothing is summarized. So the first turn sends them whole, even at
-the smallest limit (1,000 characters), and the other half is left for the
-thread's own turns. Each line is labelled from fixed lists, such as `imported from chatgpt,
-the assistant there`, and what it says starts `(imported, not said here)`, on
-one line, so it cannot open or close the transcript or pose as a speaker.
+that fit, when the conversation is started, half the workspace's history
+limit, counted as that limit is (each line with its label, its mark and its
+line break), and a fork's bounds (200 turns, 128 KiB), tool results left out
+first and every turn left out counted; nothing is summarized. So the first
+turn sends them whole, even at the smallest limit (1,000 characters). That
+half is not reserved: each turn is sent the newest lines that fit the whole
+limit, so as the thread's own turns grow, the oldest lines, imported ones
+included, are left out and counted as omitted. Each line is labelled from
+fixed lists, such as `imported from chatgpt, the assistant there`, and what
+it says starts `(imported, not said here)`, on one line, so it cannot open
+or close the transcript or pose as a speaker.
 
 A document no import kept a structure with is continued as one block whose
 speakers are not known; one whose structure was edited or is malformed, or
@@ -655,8 +658,14 @@ reader must see its source, on every read path; a fork of it keeps its origin
 and that rule, and neither is published raw. Each source has an id, set when
 it is created and never given to another, so a source deleted and made again
 under the same name is another source: a continuation of the first stays
-hidden from everyone. A source kept before sources had ids has none, and only
-that source matches a continuation that pinned none. Removing or excluding
+hidden from everyone. A continuation always pins an id: a source kept before
+sources had ids is given one, in a write guarded by its record's version,
+when a conversation imported into it is continued, and an empty id matches
+nothing. A server on an earlier release rewrites a source without its id, so
+during a rolling upgrade that source's continuations become hidden from
+everyone for good (fails closed), and a source it deletes and makes again
+revives none ([upgrade note](../guides/deploy.md#upgrading-knowledge-source-ids)).
+Removing or excluding
 the origin document after it was continued does not hide the continuation or
 change what its agent is sent: it holds the turns read when it was started.
 
@@ -664,8 +673,10 @@ A continuation is a plain thread: its first turn carries the imported lines
 in the transcript, and there is no earlier session for it to select, since a
 turn's conversation is found by its thread, never by what its history says.
 Tested: the thread record and the source's id on memory and Postgres
-(`pkg/threads`, `pkg/knowledge`); the platform's continuation, its seed, its
-refusals and who sees it on memory only (`internal/platform`); the contract's
+(`pkg/threads`, `pkg/knowledge`), and so is a continuation of a source with
+no id and an earlier release's rewrite of one (`internal/platform`); the
+platform's other continuation tests, its seed, its refusals and who sees it,
+on memory only (`internal/platform`); the contract's
 fields against the Go types (`internal/httpapi`). The route that starts one
 and the console's Continue Conversation are not built.
 

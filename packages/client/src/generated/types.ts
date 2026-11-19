@@ -1677,10 +1677,10 @@ export interface ThreadImport {
   source: string;
   /** The source's id when the conversation was continued
 (KnowledgeSource `id`). A source of the same name made since is
-another source, and no one reads the conversation through it.
-Absent for a source created before sources kept ids.
+another source, and so is one whose id was lost: no one reads
+the conversation through either.
  */
-  source_id?: string;
+  source_id: string;
   /** The document's id in the source. */
   document: string;
   /** The document's uri when it was continued. Shown only; it decides nothing. */
@@ -4078,7 +4078,8 @@ export interface KnowledgeSource {
   /** Tells this source apart from any earlier or later source of the
 same name: set when it is created, never changed, and never
 given to another source. Absent for a source created before
-sources kept ids.
+sources kept ids until a conversation imported into it is
+continued, which gives it one.
  */
   id?: string;
   lifecycle?: KnowledgeLifecycle;
