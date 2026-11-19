@@ -279,11 +279,8 @@ func (a importAPI) do(ctx context.Context, method, path string, body, into any) 
 		return fmt.Errorf("%w; is the server running? Set its address with --server URL or HUMAGEN_URL", err)
 	}
 	defer resp.Body.Close()
-	// The largest answer is every revision of one skill with its files:
-	// library.MaxSkillBytes of files in base64 (under 23 MiB), each file's
-	// path (up to 256 bytes, six JSON bytes each at worst, for each of
-	// library.MaxPackageFiles files of library.MaxVersions revisions: under
-	// 13 MiB) and each revision's text fields (under 8 MiB).
+	// The largest answer is every revision of one skill with its files,
+	// under 44 MiB at worst (the arithmetic is at library.MaxSkillBytes).
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 	if err != nil {
 		return err
@@ -1297,19 +1294,39 @@ func standardFrontmatter(md []byte) (out []byte, dropped []string, ok bool) {
 	return []byte("---\n" + head.String() + "---\n\n" + body + "\n"), dropped, true
 }
 
+// readSkillFile reads at most max bytes of a file, and fails on a file
+// longer than that. A test counts what it reads.
+var readSkillFile = func(path string, max int64) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, max+1))
+	if err == nil && int64(len(data)) > max {
+		err = fmt.Errorf("%s is over %d bytes", filepath.Base(path), max)
+	}
+	return data, err
+}
+
+// readSkillFolder reads one skill folder within the library's bounds, and
+// stops at the first file past one: no file is read past the largest the
+// library takes, and none once the folder's files add up to more than a
+// package holds, so an oversize folder is refused without reading it all.
 func readSkillFolder(dir, name string) (library.Definition, error) {
 	def := library.Definition{Tools: []string{}}
 	def.Name = name
 	root := filepath.Join(dir, name)
 	// A store may keep a skill in a folder named otherwise than the skill.
 	// The skill's own name, in SKILL.md, is the one the library keeps.
-	if md, err := os.ReadFile(filepath.Join(root, "SKILL.md")); err == nil {
+	if md, err := readSkillFile(filepath.Join(root, "SKILL.md"), library.MaxPackageSkillFileBytes); err == nil {
 		if meta, _, ok := frontmatter(md); ok {
 			if own, _ := meta["name"].(string); strings.TrimSpace(own) != "" {
 				def.Name = strings.TrimSpace(own)
 			}
 		}
 	}
+	total := int64(0)
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -1330,12 +1347,15 @@ func readSkillFolder(dir, name string) (library.Definition, error) {
 		if err != nil {
 			return err
 		}
-		// No file is read past the largest the library takes. SKILL.md's
-		// own, smaller bound is checked with the package (Normalize).
+		// SKILL.md's own, smaller bound is checked with the package
+		// (Normalize).
 		if info.Size() > library.MaxPackageFileBytes {
 			return fmt.Errorf("%s is over %d bytes", d.Name(), library.MaxPackageFileBytes)
 		}
-		data, err := os.ReadFile(path)
+		if total += info.Size(); total > library.MaxPackageBytes {
+			return fmt.Errorf("more than %d bytes in all", library.MaxPackageBytes)
+		}
+		data, err := readSkillFile(path, library.MaxPackageFileBytes)
 		if err != nil {
 			return err
 		}
@@ -1349,14 +1369,22 @@ func readSkillFolder(dir, name string) (library.Definition, error) {
 	return def, err
 }
 
+// fullSkill is what a skill the library holds as much of as it may leaves a
+// person: a revision is never removed, so the folder goes on as another
+// skill.
+const fullSkill = "nothing was written. A skill's revisions are never removed: to keep importing this folder, give it another name in its SKILL.md, or import it into another scope with --scope, then bind agents to that skill"
+
 // skillImport is one run of import skills against one scope of the library.
 type skillImport struct {
-	ctx   context.Context
-	c     importOptions
-	api   importAPI
-	have  map[string]libraryRevision
-	res   *skillsResult
-	force bool
+	ctx  context.Context
+	c    importOptions
+	api  importAPI
+	have map[string]libraryRevision
+	// unreadable are the skills of the scope the server cannot read, such
+	// as one a later release wrote past its bounds.
+	unreadable map[string]bool
+	res        *skillsResult
+	force      bool
 	// unread is why a dry run could not read the library, when it could
 	// not: its folders are then checked here and reported as unknown.
 	unread string
@@ -1366,14 +1394,18 @@ type skillImport struct {
 // its version, how it was written and the hash of its package.
 func (m *skillImport) list() error {
 	var listed struct {
-		Skills []libraryRevision `json:"skills"`
+		Skills     []libraryRevision `json:"skills"`
+		Unreadable []string          `json:"unreadable"`
 	}
 	if err := m.api.do(m.ctx, http.MethodGet, "/api/library/skills?scope="+m.c.scope, nil, &listed); err != nil {
 		return err
 	}
-	m.have = map[string]libraryRevision{}
+	m.have, m.unreadable = map[string]libraryRevision{}, map[string]bool{}
 	for _, s := range listed.Skills {
 		m.have[s.Name] = s
+	}
+	for _, name := range listed.Unreadable {
+		m.unreadable[name] = true
 	}
 	return nil
 }
@@ -1454,11 +1486,15 @@ func (m *skillImport) one(name string, def library.Definition, dropped []string)
 		reduced()
 		return
 	}
+	if m.unreadable[def.Name] {
+		fail(errors.New("the library holds a record of it this server cannot read, such as one a later release wrote; nothing was written"))
+		return
+	}
 	cur, held := m.have[def.Name]
 	if !held {
 		// The server refuses a skill over the scope's limit without saying
 		// why, so the count is kept here.
-		if len(m.have) >= library.MaxSkills {
+		if len(m.have)+len(m.unreadable) >= library.MaxSkills {
 			m.res.NoRoom = append(m.res.NoRoom, name)
 			return
 		}
@@ -1522,7 +1558,7 @@ func (m *skillImport) one(name string, def library.Definition, dropped []string)
 		return
 	}
 	if cur.Version >= library.MaxVersions {
-		fail(fmt.Errorf("the library holds as many revisions of it as it may (%d)", library.MaxVersions))
+		fail(fmt.Errorf("the library holds as many revisions of it as it may (%d); %s", library.MaxVersions, fullSkill))
 		return
 	}
 	stored := library.PackageBytes(def.Files)
@@ -1530,7 +1566,7 @@ func (m *skillImport) one(name string, def library.Definition, dropped []string)
 		stored += library.PackageBytes(r.Files)
 	}
 	if stored > library.MaxSkillBytes {
-		fail(fmt.Errorf("its revisions in the library and this folder would hold more than %d bytes of files together", library.MaxSkillBytes))
+		fail(fmt.Errorf("the library holds as many bytes of files of it as it may (%d in all its revisions, and this folder's would make %d); %s", library.MaxSkillBytes, stored, fullSkill))
 		return
 	}
 	if !m.c.dryRun {

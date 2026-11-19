@@ -68,7 +68,7 @@ func TestOutcomeLearningWriteFailureLeavesNoApprovedMemoryOrDraft(t *testing.T) 
 		if err != nil {
 			t.Fatal(err)
 		}
-		skills, err := again.SkillLibrary.List(tenant, library.Scope{Kind: "personal", Subject: "ada"})
+		skills, _, err := again.SkillLibrary.List(tenant, library.Scope{Kind: "personal", Subject: "ada"})
 		if err != nil {
 			t.Fatal(err)
 		}

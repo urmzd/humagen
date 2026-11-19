@@ -6075,6 +6075,7 @@ export interface ListMemoryFoldersResponse {
 
 export interface ListLibrarySkillsResponse {
   skills: LibrarySkill[];
+  unreadable: string[];
 }
 
 export interface DraftLibrarySkillBody {

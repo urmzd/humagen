@@ -1077,12 +1077,17 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [skills]
+                required: [skills, unreadable]
                 properties:
                   skills:
                     type: array
                     maxItems: 256
                     items: {$ref: '#/components/schemas/LibrarySkill'}
+                  unreadable:
+                    description: Names of skills in the scope this server cannot read, such as one a later release wrote past this one's bounds. Each is left out of skills and refused wherever it is read; the rest of the scope is listed.
+                    type: array
+                    maxItems: 256
+                    items: {type: string, maxLength: 64}
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}

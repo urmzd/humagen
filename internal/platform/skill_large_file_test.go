@@ -210,8 +210,9 @@ func TestALargeSupportingFileReachesACodingAgentWholeAndNeverThePrompt(t *testin
 
 // A skill of as many files as a package may hold is listed in a turn's text
 // only as far as 63 supporting files, the most a package held before, with
-// how many more there are. file_read reads one that is not listed, and a
-// coding agent is given every file on the host.
+// how many more there are. The files its instructions name come first, so
+// one that sorts after 63 others is listed; file_read reads one that is not
+// listed, and a coding agent is given every file on the host.
 func TestATurnListsAtMost63SkillFilesAndGivesEveryOne(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		t.Setenv("TMPDIR", t.TempDir())
@@ -231,7 +232,7 @@ func TestATurnListsAtMost63SkillFilesAndGivesEveryOne(t *testing.T) {
 			t.Fatal(err)
 		}
 		d := library.Definition{Skill: projects.Skill{Name: "many"}, Tools: []string{"file_read"}, Files: []library.File{
-			{Path: "SKILL.md", Data: []byte("---\nname: many\ndescription: Validates documents against generated schemas\n---\nRead schemas/ on demand.\n")},
+			{Path: "SKILL.md", Data: []byte("---\nname: many\ndescription: Validates documents against generated schemas\n---\nStart with schemas/part200.xsd. Its types are in `./schemas/part254.xsd`, and [the rest](schemas/part200.xsd) on demand.\n")},
 		}}
 		want := map[string][32]byte{}
 		for i := range library.MaxPackageFiles - 1 {
@@ -252,7 +253,7 @@ func TestATurnListsAtMost63SkillFilesAndGivesEveryOne(t *testing.T) {
 			t.Fatal(err)
 		}
 		files := library.MaxPackageFiles - 1
-		remainder := fmt.Sprintf("63 of %d supporting files are listed; %d more are not.", files, files-63)
+		remainder := fmt.Sprintf("63 of %d supporting files are listed: those the instructions name first, then by path. %d more are not listed;", files, files-63)
 
 		posted, err := p.StartThread(t.Context(), who, platform.ThreadInput{Project: "Shared", Agents: []string{"plain"}, Text: "$many Validate the document"})
 		if err != nil || len(posted.Runs) != 1 {
@@ -262,12 +263,13 @@ func TestATurnListsAtMost63SkillFilesAndGivesEveryOne(t *testing.T) {
 		plain.mu.Lock()
 		asked := strings.Join(plain.asked, "\n")
 		plain.mu.Unlock()
-		if n := strings.Count(asked, "\nskill:many/"); n != 63 || !strings.Contains(asked, "skill:many/schemas/part062.xsd (512 bytes)\n"+remainder) || strings.Contains(asked, "part063.xsd") {
+		named := "\nskill:many/schemas/part200.xsd (512 bytes)\nskill:many/schemas/part254.xsd (512 bytes)\nskill:many/schemas/part000.xsd (512 bytes)\n"
+		if n := strings.Count(asked, "\nskill:many/"); n != 63 || !strings.Contains(asked, named) || !strings.Contains(asked, "skill:many/schemas/part060.xsd (512 bytes)\n"+remainder+" file_read reads any path the instructions name, as skill:many/<path>.") || strings.Contains(asked, "part061.xsd") {
 			t.Fatalf("the native list named %d files: %.4000s", n, asked)
 		}
 		req := runtime.Request{RunID: run.ID, Tenant: tenant, Definition: native.Revision{Spec: native.Spec{Name: "plain"}, Version: wire.VersionOf(1)}}
-		out, err := use(t, p, req, platform.ToolFileRead, map[string]any{"path": "skill:many/schemas/part254.xsd"})
-		if err != nil || sha256.Sum256([]byte(out)) != want["many/schemas/part254.xsd"] {
+		out, err := use(t, p, req, platform.ToolFileRead, map[string]any{"path": "skill:many/schemas/part100.xsd"})
+		if err != nil || sha256.Sum256([]byte(out)) != want["many/schemas/part100.xsd"] {
 			t.Fatalf("file_read of a file not listed: %d bytes, %v", len(out), err)
 		}
 
@@ -279,7 +281,7 @@ func TestATurnListsAtMost63SkillFilesAndGivesEveryOne(t *testing.T) {
 		coder.mu.Lock()
 		asked, tree := strings.Join(coder.asked, "\n"), maps.Clone(coder.tree)
 		coder.mu.Unlock()
-		if n := len(toldFile.FindAllString(asked, -1)); n != 63 || !strings.Contains(asked, "63 of 255 supporting files are listed; 192 more are not, all of them under ") {
+		if n := len(toldFile.FindAllString(asked, -1)); n != 63 || !strings.Contains(asked, filepath.Join("many", "schemas", "part200.xsd")+" (512 bytes)") || !strings.Contains(asked, remainder+" every file is under ") {
 			t.Fatalf("the host list named %d files: %.4000s", n, asked)
 		}
 		if len(tree) != files || !maps.Equal(tree, want) {

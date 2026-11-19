@@ -267,6 +267,17 @@ func (p *Platform) LibraryView(who auth.Principal, r library.Revision) library.R
 	return r
 }
 
+// warnUnreadSkills logs a scope of the library that could not be read, or
+// the skills in it this release cannot read and so leaves out.
+func (p *Platform) warnUnreadSkills(tenant string, unreadable []string, err error) {
+	if err != nil {
+		p.log.Warn("platform: skill library could not be read", "tenant", tenant, "error", err)
+	}
+	if len(unreadable) > 0 {
+		p.log.Warn("platform: skills this release cannot read were left out", "tenant", tenant, "skills", unreadable)
+	}
+}
+
 // AvailableSkills is the bounded completion list for the same resolver that
 // pins a skill. Only published library versions participate in real turns.
 func (p *Platform) AvailableSkills(tenant, project, person string) []projects.SkillRef {
@@ -277,10 +288,8 @@ func (p *Platform) AvailableSkills(tenant, project, person string) []projects.Sk
 		}
 	}
 	if person != "" {
-		published, err := p.SkillLibrary.ListPublished(tenant, library.Scope{Kind: "personal", Subject: person})
-		if err != nil {
-			p.log.Warn("platform: skill library could not be read", "tenant", tenant, "error", err)
-		}
+		published, unreadable, err := p.SkillLibrary.ListPublished(tenant, library.Scope{Kind: "personal", Subject: person})
+		p.warnUnreadSkills(tenant, unreadable, err)
 		for _, r := range published {
 			add(r.Name)
 		}
@@ -293,10 +302,8 @@ func (p *Platform) AvailableSkills(tenant, project, person string) []projects.Sk
 		if pr.IsRoot() {
 			scope = library.Scope{Kind: "workspace"}
 		}
-		published, err := p.SkillLibrary.ListPublished(tenant, scope)
-		if err != nil {
-			p.log.Warn("platform: skill library could not be read", "tenant", tenant, "error", err)
-		}
+		published, unreadable, err := p.SkillLibrary.ListPublished(tenant, scope)
+		p.warnUnreadSkills(tenant, unreadable, err)
 		for _, r := range published {
 			add(r.Name)
 		}

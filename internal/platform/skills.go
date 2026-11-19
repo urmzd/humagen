@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
 
 	saigeskills "github.com/urmzd/saige/agent/skills"
 	"github.com/urmzd/saige/flow/runtime"
@@ -295,7 +296,7 @@ func withSkills(req runtime.Request, host func(runtime.Request, []pinnedSkill) (
 		}
 		if files.tool {
 			manifest := []string{"Supporting files are read on demand with file_read using these exact paths. Reading a script does not execute it:"}
-			for _, resource := range listedSkillFiles(s.Resources) {
+			for _, resource := range listedSkillFiles(s.Instructions, s.Resources) {
 				line := fmt.Sprintf("skill:%s/%s (%d bytes)", s.Name, resource.Path, resource.Size)
 				if resource.Size > maxSkillFileRead {
 					line += fmt.Sprintf(", over the %d bytes file_read returns", maxSkillFileRead)
@@ -303,7 +304,7 @@ func withSkills(req runtime.Request, host func(runtime.Request, []pinnedSkill) (
 				manifest = append(manifest, line)
 			}
 			if more := len(s.Resources) - maxListedSkillFiles; more > 0 {
-				manifest = append(manifest, fmt.Sprintf("%d of %d supporting files are listed; %d more are not. Read one of them with file_read at skill:%s/ and the path the instructions give it.", maxListedSkillFiles, len(s.Resources), more, s.Name))
+				manifest = append(manifest, fmt.Sprintf("%d of %d supporting files are listed: those the instructions name first, then by path. %d more are not listed; file_read reads any path the instructions name, as skill:%s/<path>.", maxListedSkillFiles, len(s.Resources), more, s.Name))
 			}
 			parts = append(parts, strings.Join(manifest, "\n"))
 		}
@@ -315,11 +316,11 @@ func withSkills(req runtime.Request, host func(runtime.Request, []pinnedSkill) (
 				opening = "If you are not offered file_read, the same files are on this host for this turn only, read only. Read them on demand with your own file tools at these exact paths. Reading a script does not execute it:"
 			}
 			manifest := []string{opening}
-			for _, resource := range listedSkillFiles(s.Resources) {
+			for _, resource := range listedSkillFiles(s.Instructions, s.Resources) {
 				manifest = append(manifest, fmt.Sprintf("%s (%d bytes)", filepath.Join(files.dir, s.Name, filepath.FromSlash(resource.Path)), resource.Size))
 			}
 			if more := len(s.Resources) - maxListedSkillFiles; more > 0 {
-				manifest = append(manifest, fmt.Sprintf("%d of %d supporting files are listed; %d more are not, all of them under %s.", maxListedSkillFiles, len(s.Resources), more, filepath.Join(files.dir, s.Name)+string(filepath.Separator)))
+				manifest = append(manifest, fmt.Sprintf("%d of %d supporting files are listed: those the instructions name first, then by path. %d more are not listed; every file is under %s.", maxListedSkillFiles, len(s.Resources), more, filepath.Join(files.dir, s.Name)+string(filepath.Separator)))
 			}
 			parts = append(parts, strings.Join(manifest, "\n"))
 		}
@@ -335,9 +336,46 @@ func withSkills(req runtime.Request, host func(runtime.Request, []pinnedSkill) (
 // or not, and a coding agent is given every file on the host.
 const maxListedSkillFiles = 63
 
-// listedSkillFiles is the supporting files a turn's text names, in package order.
-func listedSkillFiles(resources []saigeskills.SkillResource) []saigeskills.SkillResource {
-	return resources[:min(len(resources), maxListedSkillFiles)]
+// listedSkillFiles is the supporting files a turn's text names: first those
+// the instructions name by their exact path, in the order they are first
+// named, then the rest in package (path) order, at most maxListedSkillFiles.
+// The instructions are read once, word by word: a word is what lies between
+// spaces, quotes, brackets and the like, less a leading "./" and trailing
+// sentence punctuation, and it names a file only when it is that file's
+// path. So the work is one pass over the instructions and one map lookup a
+// word, however many files there are.
+func listedSkillFiles(instructions string, resources []saigeskills.SkillResource) []saigeskills.SkillResource {
+	if len(resources) <= maxListedSkillFiles {
+		return resources
+	}
+	index := make(map[string]int, len(resources))
+	for i, r := range resources {
+		index[r.Path] = i
+	}
+	out := make([]saigeskills.SkillResource, 0, maxListedSkillFiles)
+	taken := make([]bool, len(resources))
+	words := strings.FieldsFunc(instructions, func(r rune) bool {
+		return unicode.IsSpace(r) || strings.ContainsRune("\"'`()[]{}<>,;|*", r)
+	})
+	for _, word := range words {
+		if len(out) == maxListedSkillFiles {
+			return out
+		}
+		word = strings.TrimRight(strings.TrimPrefix(word, "./"), ".:!?")
+		if i, ok := index[word]; ok && !taken[i] {
+			taken[i] = true
+			out = append(out, resources[i])
+		}
+	}
+	for i, r := range resources {
+		if len(out) == maxListedSkillFiles {
+			break
+		}
+		if !taken[i] {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // ProjectSkills is the skills a project declares, at the project's version,

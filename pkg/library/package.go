@@ -34,10 +34,24 @@ const (
 	// MaxPackageInstructions is how many characters SKILL.md's body holds.
 	MaxPackageInstructions = 32000
 	// MaxSkillBytes is the most the files of every revision of one skill
-	// hold together. A skill's revisions are one stored record and one
-	// history answer, so this, not MaxVersions packages of MaxPackageBytes,
-	// bounds both. It is what MaxVersions packages of the earlier 512 KiB
-	// bound came to, so no record grows past what it could hold before.
+	// hold together: file bytes, what MaxVersions packages of the earlier
+	// 512 KiB bound came to. A skill's revisions are one stored record and
+	// one history answer, which also hold each file's path and each
+	// revision's text, so they are larger. At worst, with every path 256
+	// bytes the JSON encoder escapes to six and every text field at its
+	// bound in such characters, over MaxVersions (32) revisions:
+	//
+	//	files     16 MiB in base64                 22,369,622 B
+	//	paths     32 x 256 files x 256 B x 6       12,582,912 B
+	//	          (with 64 files a revision         3,145,728 B)
+	//	SKILL.md  32 x 32000 characters x 6         6,144,000 B
+	//	body      inputs, outputs, tools, the rest  about 2.7 MB
+	//
+	// The largest record measures 43,783,718 B (41.8 MiB), and was
+	// 34,479,661 B (32.9 MiB) with 64 files
+	// (TestTheLargestSkillRecordStaysUnderItsStatedBound). A history answer
+	// adds a package hash a revision. A record of real files is near its
+	// file bytes in base64.
 	MaxSkillBytes = 16 << 20
 )
 

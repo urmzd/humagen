@@ -3,9 +3,12 @@ package app
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -85,7 +88,7 @@ func TestImportSkillsDraftsALargeSupportingFileAndNamesWhatIsOver(t *testing.T) 
 			"Added 2 skills and updated 0 as drafts in the personal library; 0 already there, 0 in conflict, 3 failed.",
 			fmt.Sprintf("failed too-many-files: more than %d files", library.MaxPackageFiles),
 			fmt.Sprintf("failed oversize-file: main.xsd is over %d bytes", library.MaxPackageFileBytes),
-			fmt.Sprintf("failed oversize-package: library: invalid: package exceeds %d bytes", library.MaxPackageBytes),
+			fmt.Sprintf("failed oversize-package: more than %d bytes in all", library.MaxPackageBytes),
 		} {
 			if !strings.Contains(out, want) {
 				t.Errorf("out lacks %q:\n%s", want, out)
@@ -129,11 +132,75 @@ func TestImportSkillsDraftsALargeSupportingFileAndNamesWhatIsOver(t *testing.T) 
 				t.Fatalf("revision %d = %v\n%s", v, err, out)
 			}
 		}
-		if want := fmt.Sprintf("failed schema-kit: its revisions in the library and this folder would hold more than %d bytes of files together", library.MaxSkillBytes); err == nil || !strings.Contains(out, want) {
+		if want := fmt.Sprintf("failed schema-kit: the library holds as many bytes of files of it as it may (%d in all its revisions, and this folder's would make %d); nothing was written. A skill's revisions are never removed: to keep importing this folder, give it another name in its SKILL.md, or import it into another scope with --scope", library.MaxSkillBytes, library.MaxSkillBytes+library.MaxPackageBytes); err == nil || !strings.Contains(out, want) {
 			t.Fatalf("revision %d = %v, want %q\n%s", fits+1, err, want, out)
 		}
 		if rows, err := p.SkillLibrary.History("acme", library.Scope{Kind: "personal", Subject: "dev"}, "schema-kit"); err != nil || len(rows) != fits {
 			t.Fatalf("schema-kit = %d revisions, %v", len(rows), err)
 		}
 	})
+}
+
+// A folder whose files add up to more than a package holds is refused at the
+// first file past the bound, named under failed with it: the files after it
+// are not read, and none is read past the largest the library takes.
+func TestImportSkillsStopsReadingAFolderPastThePackageBound(t *testing.T) {
+	dir := t.TempDir()
+	read := map[string]int{}
+	counted := readSkillFile
+	readSkillFile = func(path string, max int64) ([]byte, error) {
+		data, err := counted(path, max)
+		rel, _ := filepath.Rel(dir, path)
+		read[filepath.ToSlash(rel)] += len(data)
+		return data, err
+	}
+	t.Cleanup(func() { readSkillFile = counted })
+	putFile(t, dir, "heavy/SKILL.md", fmt.Sprintf(skillMD, "heavy", "heavy", "heavy"))
+	for i := range 8 {
+		putFile(t, dir, fmt.Sprintf("heavy/schemas/part%d.xsd", i), generatedFile(900<<10, fmt.Sprint("heavy", i)))
+	}
+	api := &importServer{}
+	server := api.start(t)
+	out, err := runImport(t, "skills", dir, "--server", server.URL)
+	if err == nil || !strings.Contains(out, fmt.Sprintf("failed heavy: more than %d bytes in all", library.MaxPackageBytes)) || len(api.skills) != 0 {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	total := 0
+	for path, n := range read {
+		total += n
+		if strings.HasPrefix(path, "heavy/schemas/part") && path >= "heavy/schemas/part2.xsd" {
+			t.Errorf("%s was read past the bound (%d bytes)", path, n)
+		}
+	}
+	if read["heavy/schemas/part1.xsd"] != 900<<10 || total > library.MaxPackageBytes {
+		t.Fatalf("read %d bytes of the folder, more than the %d a package holds: %v", total, library.MaxPackageBytes, read)
+	}
+}
+
+// A skill the server lists as unreadable, such as one a later release wrote,
+// is named under failed and nothing is sent for it; the rest of the scope is
+// imported as usual.
+func TestImportSkillsNamesASkillTheServerCannotRead(t *testing.T) {
+	var drafts []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/library/skills":
+			fmt.Fprint(w, `{"skills":[],"unreadable":["depot"]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/api/library/skills":
+			var body struct{ Definition library.Definition }
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			drafts = append(drafts, body.Definition.Name)
+			w.WriteHeader(http.StatusCreated)
+			fmt.Fprint(w, `{}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	dir := depot(t, "The code word is HERON.")
+	putFile(t, dir, "ship/SKILL.md", fmt.Sprintf(skillMD, "ship", "ship", "ship"))
+	out, err := runImport(t, "skills", dir, "--server", server.URL)
+	if err == nil || !strings.Contains(out, "failed depot: the library holds a record of it this server cannot read, such as one a later release wrote; nothing was written") || strings.Join(drafts, ",") != "ship" {
+		t.Fatalf("err = %v, drafts = %v\n%s", err, drafts, out)
+	}
 }

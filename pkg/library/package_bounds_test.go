@@ -3,6 +3,7 @@ package library
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -150,5 +151,55 @@ func TestPackageFileCountBound(t *testing.T) {
 	}
 	if _, err := many(MaxPackageFiles + 1).Normalize(); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), fmt.Sprintf("a package needs 1 to %d files", MaxPackageFiles)) {
 		t.Fatalf("a package of %d files: %v", MaxPackageFiles+1, err)
+	}
+}
+
+// worstRecord is the largest stored record of one skill the bounds allow:
+// maxVersions revisions of files files each, whose paths are 256 bytes the
+// JSON encoder escapes to six bytes (&), holding MaxSkillBytes of file bytes
+// in all, with every text field at its bound in characters that escape.
+// Generated data; it is measured, never validated.
+func worstRecord(maxVersions, files int) []Revision {
+	escaped := func(n int) string { return strings.Repeat("<", n) }
+	path := func(i int) string {
+		head := fmt.Sprintf("d%03d/", i)
+		return head + strings.Repeat("&", 256-len(head)-4) + ".xsd"
+	}
+	scope := Scope{Kind: "project", Project: escaped(512)}
+	var rows []Revision
+	for v := 1; v <= maxVersions; v++ {
+		d := Definition{
+			Skill:   projects.Skill{Name: strings.Repeat("a", 64), Description: escaped(projects.MaxSkillDescription), Instructions: escaped(MaxPackageInstructions), ArgumentHint: escaped(projects.MaxArgumentHint)},
+			Inputs:  escaped(4000),
+			Outputs: escaped(4000),
+		}
+		for i := range 32 {
+			d.Tools = append(d.Tools, fmt.Sprintf("%03d", i)+escaped(125))
+		}
+		for i := range files {
+			d.Files = append(d.Files, File{Path: path(i), Data: make([]byte, MaxSkillBytes/maxVersions/files)})
+		}
+		rows = append(rows, Revision{OriginRun: escaped(128), ID: ID(scope, d.Name), Via: ViaImport, Definition: d, Scope: scope, Version: v, By: escaped(256),
+			At: time.Now(), PublishedAt: time.Now(), PublishedBy: escaped(256), Tests: make([]string, 10), From: &Provenance{Scope: scope, Name: d.Name, Version: v}})
+	}
+	return rows
+}
+
+// The stored record of one skill, and the history answer that carries it,
+// stay under the bound MaxSkillBytes states for them: file bytes are capped
+// at 16 MiB, but 256 escaped paths a revision add to the record what 64 did
+// not (the arithmetic is at MaxSkillBytes).
+func TestTheLargestSkillRecordStaysUnderItsStatedBound(t *testing.T) {
+	size := func(rows []Revision) int {
+		raw, err := json.Marshal(rows)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(raw)
+	}
+	before, after := size(worstRecord(MaxVersions, 64)), size(worstRecord(MaxVersions, MaxPackageFiles))
+	t.Logf("largest record: %d bytes with 64 files a revision, %d with %d", before, after, MaxPackageFiles)
+	if after > 44<<20 {
+		t.Fatalf("the largest record is %d bytes, over the 44 MiB stated at MaxSkillBytes", after)
 	}
 }

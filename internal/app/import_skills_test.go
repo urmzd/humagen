@@ -348,7 +348,7 @@ func TestImportSkillsSaysWhenASkillHoldsEveryRevisionItMay(t *testing.T) {
 	}
 	putFile(t, dir, "depot/references/facts.md", "one more")
 	out, err := runImport(t, "skills", dir, "--server", server.URL)
-	if err == nil || !strings.Contains(out, fmt.Sprintf("failed depot: the library holds as many revisions of it as it may (%d)", library.MaxVersions)) || len(api.revisions(t, "depot")) != library.MaxVersions {
+	if err == nil || !strings.Contains(out, fmt.Sprintf("failed depot: the library holds as many revisions of it as it may (%d); nothing was written. A skill's revisions are never removed: to keep importing this folder, give it another name in its SKILL.md, or import it into another scope with --scope", library.MaxVersions)) || len(api.revisions(t, "depot")) != library.MaxVersions {
 		t.Fatalf("err = %v\n%s", err, out)
 	}
 }

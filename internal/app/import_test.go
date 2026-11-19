@@ -326,7 +326,7 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 			w.WriteHeader(201)
 			fmt.Fprint(w, `{}`)
 		case r.Method == "GET" && r.URL.Path == "/api/library/skills":
-			rows, err := s.lib.List(importTenant, importScope(r.URL.Query().Get("scope")))
+			rows, unreadable, err := s.lib.List(importTenant, importScope(r.URL.Query().Get("scope")))
 			if err != nil {
 				problem(500, err.Error())
 				return
@@ -349,7 +349,7 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 				}
 				s.mu.Lock()
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"skills": out})
+			_ = json.NewEncoder(w).Encode(map[string]any{"skills": out, "unreadable": unreadable})
 		case r.Method == "GET" && len(parts) == 3 && parts[0] == "library" && parts[1] == "skills":
 			latest, err := s.lib.Find(importTenant, parts[2])
 			if err != nil {
