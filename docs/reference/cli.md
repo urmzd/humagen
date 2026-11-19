@@ -145,6 +145,8 @@ place, is a session's document that would now read differently.
 humagen import sessions
 humagen import sessions --since 720h --match humagen
 humagen import sessions --from none --export ~/Downloads/conversations.json
+humagen import sessions --from none --project field-notes \
+  --export ~/Downloads/conversations.json
 humagen import skills
 humagen import skills ~/.agents/skills --only ship,pr --scope workspace
 humagen import agents --provider anthropic --model claude-sonnet-5-5
@@ -210,7 +212,7 @@ What each format's document keeps:
   - Branches: Yes
   - Conversation id: Yes
   - Provenance: Tool, id, start
-  - Project (`--by-project`): Not supported: the format has no directory
+  - Project: With `--project NAME`: the format has no directory for `--by-project` to go by
 - **claude.ai**
   - Roles: Yes
   - Time of each turn: Yes
@@ -221,7 +223,7 @@ What each format's document keeps:
   - Branches: Yes
   - Conversation id: Yes
   - Provenance: Tool, id, start
-  - Project (`--by-project`): Not supported: the format has no directory
+  - Project: With `--project NAME`: the format has no directory for `--by-project` to go by
 
 Where the export says which turn each turn replies to, that orders the
 document: a turn is never put before the turn it replies to, whatever their
@@ -306,11 +308,67 @@ case: the directory `my-repo` is the project `My-Repo`, and not `my_repo` or
 eight digits of a hash of the directory's name added to its source's name. Two
 directories are never kept in one source: if two names would still give the
 same source, the second directory's sessions are not sent and the command
-says which two they are. A directory no project is named for is
+says which two they are. A source says what it holds, and a run adds to one
+and attaches it only when it says it is that directory's. A source of that
+name that says anything else, or says nothing, is not the run's: its sessions
+are named as failed, nothing is added to it, no document in it is replaced
+(with or without `--by-project`), it is not attached and it is put in no
+corpus. A source another writer makes while the run is making it is
+read first and held to the same rule, and what it says is never written over.
+A directory no project is named for is
 listed, and its sessions stay in the corpus; make the project and run the
 command again to attach them. A session from an export has no directory and is
-kept by month as before. A session already imported by month is not moved. Imported sessions are
+kept by month as before, unless `--project` names a project for it. A session already imported by month is not moved. One that changed
+since is replaced where it is, in its monthly source. Imported sessions are
 references an agent searches and cites; they are not conversations to continue.
+
+With `--project NAME`, which needs `--export`, the sessions of every export
+named go in a source named as `--by-project` names one for a directory called
+`NAME` (`sessions-in-field-notes`, with the same hash added for a name a
+source's name cannot spell), and that source is attached to the project
+`NAME`. The source says what it holds (`Conversations imported from an export
+of another assistant, filed in the project NAME.`), which is not what a
+directory's source says, and the two are never one source: an export is not
+added to the source of a directory called `NAME`, a directory's sessions are
+not added to the exports' source, and neither is attached as the other.
+Whichever comes second is refused and named as failed, and the source is
+left as it was. So is a source of that name that does not say what it holds,
+or that another writer made meanwhile for something else. To have both in one project, give the export sources of
+another name with `--source PREFIX` (`exports-in-field-notes`). The
+project is matched as `--by-project` matches one: by its name, ignoring case
+and nothing else. `--project` without `--export` is refused, and so is a name
+with no letter or digit in it, such as `~` or `/`. It files the exports only:
+sessions read with `--from` are filed as they are without it, by month, or by
+directory with `--by-project`. A name no project has is listed as a directory with no
+project is (`No project is named for`, `unfiled` in the JSON): the sessions
+are imported, nothing is attached and no project is made, and a later run
+attaches the source once the project exists. The attachment is made with the
+caller's token, so a caller who may not attach to the project gets the
+failure `--by-project` gives.
+
+A session of the export that an earlier run put in another source, such as
+one imported by month without `--project`, is not added again and is not
+moved: no route moves a document between sources, and the command removes
+nothing. The run says so (`N sessions are already imported in another source
+and were left there`) and names each in `elsewhere` in the JSON, as
+`URI=SOURCE`. Such a document is not written at all, even when the export
+reads differently now than it did: the run counts those (`N of them read
+differently in the export now and were not updated`) and names them in
+`elsewhere_changed`. A run replaces a document only in the project's own
+source of exports. To bring one up to date where it is, import the export
+again as it was first filed: without `--project`, or with that project. To refile one, remove its document from that source
+(`DELETE /api/knowledge/{name}/documents/{id}`, or the console's Knowledge
+page) and run the command again. `--json` also gives `project` and
+`project_source`.
+
+An attachment made by `--by-project` or `--project` is in effect at once,
+with nobody to approve it: a run filed in the project is given the source.
+It is not one of the sources the project names, so
+`GET /api/projects/{name}/knowledge` does not list it. Read it with
+`GET /api/knowledge/{name}/attachments`, or see it counted in the `knowledge`
+layer of `GET /api/projects/{name}/context?agent=AGENT`. A dry run names the source and the project it would attach
+it to; it does not ask the server, so it does not say whether the project
+exists or which sessions are already imported.
 
 A skill is checked here the way the server checks it: `SKILL.md` frontmatter
 the parser accepts, at most 64 files, 128 KiB a file and 512 KiB in all. The
