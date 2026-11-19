@@ -2812,6 +2812,12 @@ export const defaultCopy = {
   failures: "Failed runs",
   resolved: "Done",
   openConversation: "Open Conversation",
+  /**
+   * The link a Slack answer ends with, to its conversation: an arrow pointing
+   * up and right, held to text (U+FE0E) so it is not drawn as an emoji. Slack
+   * gives a link no label of its own, so this is also what a screen reader says.
+   */
+  conversationLink: "↗︎",
   dismiss: "Dismiss",
   snooze: "Snooze 1 Hour",
   from: (label: string) => `From ${label}`,

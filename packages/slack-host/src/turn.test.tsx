@@ -232,3 +232,17 @@ describe("slackClient", () => {
     ).rejects.toMatchObject({ code: "http_404" });
   });
 });
+
+describe("the conversation link", () => {
+  it("ends the streamed answer's last line with the arrow, and the final blocks do not repeat it", async () => {
+    const slack = fakeSlack();
+    await streamTurn(slack, target, answer, { tickMs: 0 });
+    const stop = slack.calls.findIndex((c) => c.method === "chat.stopStream");
+    expect(slack.calls[stop - 1]?.args.chunks).toEqual([
+      { type: "markdown_text", text: " [\u2197\uFE0E](https://example.com/t/1)" },
+    ]);
+    const blocks = JSON.stringify(slack.calls[stop]?.args.blocks);
+    expect(blocks).not.toContain("example.com/t/1");
+    expect(blocks).not.toContain("Open Conversation");
+  });
+});

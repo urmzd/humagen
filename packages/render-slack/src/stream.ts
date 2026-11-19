@@ -1,3 +1,4 @@
+import { answerTakesLink, type Copy, defaultCopy } from "@humagen/components";
 import { type PromptConfig, readReview, type Task, type Turn } from "@humagen/core";
 import type { Block } from "./blocks";
 import { toMrkdwn, toPlain } from "./mrkdwn";
@@ -181,6 +182,8 @@ export interface StreamBudget {
   cards: Record<string, number>;
   /** Tasks still running on this message; they are settled when it closes. */
   open: Record<string, Extract<StreamChunk, { type: "task_update" }>>;
+  /** Words came last on this message: no task card was added after them. */
+  textLast?: boolean;
 }
 
 export const emptyBudget = (): StreamBudget => ({ text: "", cards: {}, open: {} });
@@ -212,6 +215,7 @@ export function streamPages(
     text: budget.text,
     cards: { ...budget.cards },
     open: { ...budget.open },
+    ...(budget.textLast ? { textLast: true } : {}),
   };
   const pages: StreamChunk[][] = [[]];
   const page = () => pages[pages.length - 1] as StreamChunk[];
@@ -231,6 +235,8 @@ export function streamPages(
       const key = chunk.type === "task_update" ? chunk.id : chunk.type;
       const weight = cardWeight(chunk);
       if (used() > 0 && used() + weight - (now.cards[key] ?? 0) > max) turnPage();
+      // A new task card lands below the words; an update stays where its card is.
+      if (chunk.type === "task_update" && !(key in now.cards)) now.textLast = false;
       page().push(chunk);
       now.cards[key] = chunk.type === "task_update" ? weight : (now.cards[key] ?? 0) + weight;
       if (chunk.type === "task_update") {
@@ -255,8 +261,32 @@ export function streamPages(
     }
     if (text) page().push({ type: "markdown_text", text });
     now.text += text;
+    if (text.trim()) now.textLast = true;
   }
   return { pages, budget: now };
+}
+
+/**
+ * The arrow to the turn's conversation, appended at the end of a streamed
+ * answer's last line just before chat.stopStream, so it needs no line of its
+ * own. Null when the message being closed does not end in words that can take
+ * it (code, a table, a task card after the words, a turn that failed or
+ * stopped); the final blocks then carry it (`TurnView streamed linked={false}`).
+ * Pass the budget of the message being closed.
+ */
+export function streamLink(
+  turn: Turn,
+  budget: StreamBudget,
+  copy: Copy = defaultCopy,
+): Extract<StreamChunk, { type: "markdown_text" }> | null {
+  if (!turn.sessionUrl || !budget.textLast) return null;
+  if (turn.status !== "done" && turn.status !== "waiting") return null;
+  if (!answerTakesLink(budget.text)) return null;
+  const text = ` [${copy.conversationLink}](${turn.sessionUrl})`;
+  // A full message would carry the arrow over to a new one, alone.
+  const cards = Object.values(budget.cards).reduce((n, w) => n + w, 0);
+  if (budget.text.length + cards + text.length > STREAM_MESSAGE_CHARS) return null;
+  return { type: "markdown_text", text };
 }
 
 /** Plan title for chat.stopStream: the outcome, so a collapsed plan still says how it ended. */

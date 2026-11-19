@@ -724,6 +724,26 @@ export function linkCitations(text: string, citations: Citation[]): string {
   });
 }
 
+const FENCE_LINE = /^\s*(`{3,}|~{3,})/;
+
+/**
+ * Whether markdown can end with a link on its last line, as Slack ends an
+ * answer with the arrow to its conversation: not when it ends in code (a
+ * fence, or a line indented as code), a table row or a rule, where a link
+ * would be swallowed or would break what is drawn.
+ */
+export function answerTakesLink(markdown: string): boolean {
+  const lines = markdown.trimEnd().split("\n");
+  const last = lines.at(-1) ?? "";
+  if (!last.trim()) return false;
+  let fenced = false;
+  for (const line of lines) if (FENCE_LINE.test(line)) fenced = !fenced;
+  if (fenced || FENCE_LINE.test(last)) return false;
+  if (/^( {4}|\t)/.test(last)) return false;
+  if (/^\s*\|.*\|\s*$/.test(last)) return false;
+  return !/^\s*([-*_])(\s*\1){2,}\s*$/.test(last);
+}
+
 /** The point of the turn in one line, for notifications and screen readers. */
 export function summarizeTurn(turn: Turn, copy: Copy = defaultCopy): string {
   const pending = turn.interrupts.find((i) =>
@@ -759,8 +779,14 @@ export function TurnView({
   viewer,
   capabilities,
   hideTasks = false,
+  linked = false,
 }: {
   turn: Turn;
+  /**
+   * Slack: the streamed answer already ends with the arrow to the
+   * conversation (`streamLink`), so the final blocks do not repeat it.
+   */
+  linked?: boolean;
   /** What the host can act on. Controls it can't act on are left out. */
   capabilities?: TurnCapabilities;
   /** A web message frame may group these same tasks above the answer. */
@@ -785,12 +811,34 @@ export function TurnView({
   // One link: the session, where a person goes to see the run. The source's own page
   // stands in only when there is no session.
   const runUrl = turn.sessionUrl ?? turn.source?.url;
-  const session = runUrl ? (
+  const disclaimer = turn.disclaimer ?? copy.disclaimer(turn.agent.name);
+  const footer = disclaimer && turn.status !== "queued";
+  // On Slack the session is one small arrow, on no line of its own: at the end of
+  // a finished answer's last line, or else at the end of the disclaimer.
+  const slack = useSurface().surface === "slack";
+  const arrow = slack && turn.sessionUrl ? `[${copy.conversationLink}](${turn.sessionUrl})` : "";
+  const answerDrawn =
+    !streamed &&
+    !!turn.text.trim() &&
+    turn.text.trim() !== turn.outcome?.summary.trim() &&
+    readReview(turn.text, turn.status === "working" && !turn.detached).kind === "text";
+  const inAnswer =
+    !!arrow &&
+    (streamed
+      ? linked
+      : answerDrawn &&
+        (turn.status === "done" || turn.status === "waiting") &&
+        answerTakesLink(linkCitations(turn.text, turn.citations)));
+  const inFooter = !!arrow && !inAnswer && !!footer;
+  const session = arrow ? (
+    !inAnswer && !inFooter ? (
+      <Context items={[arrow]} />
+    ) : null
+  ) : runUrl ? (
     <Context
       items={[turn.sessionUrl ? `[${copy.openConversation}](${runUrl})` : copy.runLink(runUrl)]}
     />
   ) : null;
-  const disclaimer = turn.disclaimer ?? copy.disclaimer(turn.agent.name);
 
   return (
     <>
@@ -854,7 +902,7 @@ export function TurnView({
             turnId={turn.id}
             agent={turn.agent.name}
             text={turn.text}
-            markdown={linkCitations(turn.text, turn.citations)}
+            markdown={`${linkCitations(turn.text, turn.citations)}${inAnswer && !streamed ? ` ${arrow}` : ""}`}
             streaming={turn.status === "working" && !turn.detached}
             pullRequestHint={turn.source?.url}
             followUp={capabilities?.followUp !== false}
@@ -933,15 +981,16 @@ export function TurnView({
         />
       )}
       {/*
-        Every message ends the same way, whatever happened in it: the references, then one
-        line with the one link to the run, then the disclaimer. Nothing sits between them
-        and nothing comes after, so cards, notices and feedback all go above.
+        Every message ends the same way, whatever happened in it: the references, then the
+        one link to the run, then the disclaimer. Nothing sits between them and nothing
+        comes after, so cards, notices and feedback all go above. On Slack the link is the
+        arrow at the end of the answer or of the disclaimer, and a line only with neither.
       */}
       {turn.citations.length > 0 && (
         <Sources items={turn.citations} labels={copy.citation} scope={turn.id} />
       )}
       {session}
-      {disclaimer && turn.status !== "queued" && <Context items={[disclaimer]} />}
+      {footer && <Context items={[inFooter ? `${disclaimer} ${arrow}` : disclaimer]} />}
     </>
   );
 }

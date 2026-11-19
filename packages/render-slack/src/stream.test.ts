@@ -7,6 +7,7 @@ import {
   STREAM_MESSAGE_CHARS,
   type StreamChunk,
   streamHeader,
+  streamLink,
   streamPages,
   streamStart,
   streamStopTitle,
@@ -256,5 +257,53 @@ describe("lifecycle", () => {
   it("caps suggested prompts at four", () => {
     const suggestions = Array.from({ length: 6 }, (_, i) => ({ title: `T${i}`, message: `M${i}` }));
     expect(suggestedPrompts({ suggestions }).prompts).toHaveLength(4);
+  });
+});
+
+describe("streamLink", () => {
+  const session = "https://example.com/sessions/turn-1";
+  const sent = (turn: Turn) => streamPages(emptyBudget(), streamUpdate(null, turn).chunks).budget;
+
+  it("ends a finished answer's last line with the arrow, as text and not on a line of its own", () => {
+    const turn: Turn = { ...fx.doneTurn, citations: [], text: "Rolled back. The rate is normal." };
+    expect(streamLink(turn, sent(turn))).toEqual({
+      type: "markdown_text",
+      text: ` [\u2197\uFE0E](${session})`,
+    });
+  });
+
+  it("leaves it to the final blocks when the words cannot take it", () => {
+    const at = (patch: Partial<Turn>) => {
+      const turn: Turn = { ...fx.doneTurn, citations: [], ...patch };
+      return streamLink(turn, sent(turn));
+    };
+    expect(at({ text: "Run:\n\n```sh\nmake\n```" })).toBeNull();
+    expect(at({ text: "| a |\n| --- |\n| 1 |" })).toBeNull();
+    expect(at({ text: "Cut short", status: "failed" })).toBeNull();
+    expect(at({ text: "Cut short", status: "stopped" })).toBeNull();
+    expect(at({ text: "" })).toBeNull();
+    expect(at({ text: "No session", sessionUrl: undefined })).toBeNull();
+  });
+
+  it("does not put the arrow under a task card that came after the words", () => {
+    const turn: Turn = { ...fx.doneTurn, citations: [], tasks: [], text: "Words first." };
+    const words = sent(turn);
+    const card = streamPages(words, [
+      { type: "task_update", id: "late", title: "Checked", status: "complete" },
+    ]).budget;
+    expect(streamLink(turn, words)).not.toBeNull();
+    expect(streamLink(turn, card)).toBeNull();
+    // An update to a card already above the words leaves them last.
+    const early = sent({ ...turn, tasks: [{ id: "k", title: "Read", status: "in_progress" }] });
+    const updated = streamPages(early, [
+      { type: "task_update", id: "k", title: "Read", status: "complete" },
+    ]).budget;
+    expect(streamLink(turn, updated)).not.toBeNull();
+  });
+
+  it("is left out when it would push a full message over into a new one", () => {
+    const turn: Turn = { ...fx.doneTurn, citations: [], tasks: [] };
+    const full = { ...emptyBudget(), text: "x".repeat(STREAM_MESSAGE_CHARS - 5), textLast: true };
+    expect(streamLink(turn, full)).toBeNull();
   });
 });

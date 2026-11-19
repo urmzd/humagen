@@ -383,10 +383,17 @@ A starter is offered only for an agent the workspace has. Compatibility registry
 revisions, old schedules and existing grants. The `humagen-builtins` screen
 checks all three names at phone and desktop widths.
 
-A Slack task card exposes Open Conversation when the host has configured
-`HUMAGEN_PUBLIC_URL`. It points to the run's conversation, including a later
-run in an existing conversation, and remains attached throughout streaming
-and settlement. Adapter and Slack rendering regressions cover the link.
+A Slack answer links to its conversation when the host has configured
+`HUMAGEN_PUBLIC_URL`. The link is one arrow (↗, `copy.conversationLink`, held
+to text so Slack does not draw an emoji) on no line of its own: it ends the
+last line of a finished answer, streamed or posted. When the answer ends in
+code, a table or a rule, when a task card came after its words, or when the
+turn failed, stopped or is still working, it ends the disclaimer instead, and
+only a queued turn, which has no disclaimer yet, shows it as a line. It points
+to the run's conversation, including a later run in an existing conversation.
+The fallback text never carries it. Slack gives a link no label, so a screen
+reader reads the arrow itself. Adapter and Slack rendering regressions cover
+the link.
 
 ### DES-007: Agent badge containment
 
