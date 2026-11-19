@@ -543,7 +543,7 @@ export interface Refusal {
   resets_at?: string;
 }
 
-export type Permission = "agents:read" | "agents:write" | "runs:read" | "runs:write" | "schedules:read" | "schedules:write" | "alerts:read" | "alerts:write" | "knowledge:read" | "knowledge:write" | "evals:read" | "evals:write" | "billing:read" | "billing:write" | "artifacts:read" | "artifacts:write" | "clients:read" | "clients:write" | "projects:read" | "projects:write" | "projects:govern" | "people:read" | "speech:write";
+export type Permission = "agents:read" | "agents:write" | "runs:read" | "runs:write" | "schedules:read" | "schedules:write" | "alerts:read" | "alerts:write" | "knowledge:read" | "knowledge:write" | "knowledge:import" | "evals:read" | "evals:write" | "billing:read" | "billing:write" | "artifacts:read" | "artifacts:write" | "clients:read" | "clients:write" | "projects:read" | "projects:write" | "projects:govern" | "people:read" | "speech:write";
 
 /** An authenticated caller. The tenant is the workspace everything they touch is confined to. */
 export interface Principal {
@@ -4096,6 +4096,47 @@ export interface KnowledgeDocument {
   digest?: string;
   /** When its text was last replaced. Absent if never. */
   updated_at?: string;
+  /** The size, as JSON, of the imported session's structure kept with this revision. Absent for a document no import wrote, or one edited since. */
+  structure_bytes?: number;
+}
+
+/** The structure of a session `humagen import sessions` wrote a document from: its main path as data. It is the importer's assertion, kept with who sent it and when; the server cannot verify that the session came from the tool it names. It is trusted only for the revision of the document it was written with, and an ordinary edit leaves it untrusted. A structure past a bound is refused with the document (400): the importer cuts and counts what it cut. */
+export interface ImportedSession {
+  tool: "claude" | "codex" | "chatgpt" | "claude-ai";
+  /** The conversation's id in that tool, at most 256 bytes with no control characters. The document's `uri` is the tool, a colon and this id. */
+  id: string;
+  /** Set on a session another session started. A person did not write its user turns. */
+  child?: boolean;
+  started_at?: string;
+  /** When the main path was last added to. */
+  ended_at?: string;
+  /** The turns of the main path that were kept, in order, at most 131072 bytes as JSON in all. */
+  turns: ImportedTurn[];
+  /** How many branches of the conversation are not on the main path, every one counted. None of their turns are kept. */
+  branches: number;
+  omitted: ImportedOmitted;
+}
+
+/** One turn of an imported session's main path. */
+export interface ImportedTurn {
+  speaker: "user" | "assistant" | "tool" | "result";
+  at?: string;
+  /** What was said, at most 16384 bytes. */
+  text: string;
+  /** The text is the opening of a longer turn. */
+  cut?: boolean;
+}
+
+/** What an import left out of a session's main path or cut. Every count is exact and required. */
+export interface ImportedOmitted {
+  /** Turns other than tool results left out to fit, the oldest first. */
+  turns: number;
+  /** Tool results left out to fit, before any other turn. */
+  results: number;
+  /** Kept turns that hold only their opening, cut when the export was read (a long tool result or tool line) or to fit. */
+  cut_turns: number;
+  /** Turns of the main path that carried files. No file is kept. */
+  attachments: number;
 }
 
 export interface CatalogColumn {
@@ -6471,6 +6512,20 @@ export interface ReplaceKnowledgeDocumentTextBody {
   title: string;
   text: string;
   digest: string;
+}
+
+export interface ImportKnowledgeDocumentBody {
+  title: string;
+  uri: string;
+  text: string;
+  session: ImportedSession;
+}
+
+export interface ReimportKnowledgeDocumentBody {
+  title: string;
+  text: string;
+  digest: string;
+  session: ImportedSession;
 }
 
 export interface SaveKnowledgeVariantBody {

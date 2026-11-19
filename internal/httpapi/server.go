@@ -1360,6 +1360,8 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, "already exists")
 	case errors.Is(err, knowledge.ErrChanged):
 		fail(w, http.StatusConflict, "the document changed since it was read; read it again")
+	case errors.Is(err, knowledge.ErrStructureKept):
+		fail(w, http.StatusConflict, "a structure is already kept for this revision of the document; it changes only with the session's text")
 	case errors.Is(err, clients.ErrExists):
 		// The message names only a client of the caller's own workspace.
 		fail(w, http.StatusConflict, err.Error())

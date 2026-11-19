@@ -57,6 +57,10 @@ type Turn struct {
 	// and size where the export states them, and its text where the export
 	// holds text. The files themselves are not read.
 	Attached string
+	// Cut is set when Text is the opening of what the file holds: a tool
+	// result cut to MaxResult, or a tool line whose call was cut to fit
+	// one line, when the session was read.
+	Cut bool
 }
 
 // Session is one conversation.
@@ -171,28 +175,38 @@ func claudeText(s string) string {
 
 // called is one line for a tool call: the tool and the argument that says
 // what it worked on.
-func called(name string, input json.RawMessage) string {
+func called(name string, input json.RawMessage) (line string, cut bool) {
 	var args map[string]any
 	_ = json.Unmarshal(input, &args)
 	for _, k := range []string{"command", "cmd", "file_path", "path", "url", "query", "pattern", "description", "prompt", "skill"} {
 		if v, ok := args[k].(string); ok && strings.TrimSpace(v) != "" {
-			return name + ": " + clip(oneLine(v), 200)
+			return toolLine(name, v)
 		}
 		if v, ok := args[k].([]any); ok && len(v) > 0 {
 			parts := make([]string, 0, len(v))
 			for _, p := range v {
 				parts = append(parts, fmt.Sprint(p))
 			}
-			return name + ": " + clip(oneLine(strings.Join(parts, " ")), 200)
+			return toolLine(name, strings.Join(parts, " "))
 		}
 	}
 	if args == nil {
 		var raw string
 		if json.Unmarshal(input, &raw) == nil && strings.TrimSpace(raw) != "" {
-			return name + ": " + clip(oneLine(raw), 200)
+			return toolLine(name, raw)
 		}
 	}
-	return name
+	return name, false
+}
+
+// maxToolLine bounds what a tool line keeps of what the tool was called on.
+const maxToolLine = 200
+
+// toolLine is a tool's name and what it was called on, on one line cut to
+// maxToolLine, and whether it was cut.
+func toolLine(name, on string) (string, bool) {
+	on = oneLine(on)
+	return name + ": " + clip(on, maxToolLine), len(on) > maxToolLine
 }
 
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
@@ -360,9 +374,9 @@ func ReadClaude(r io.Reader) (Session, error) {
 				case (b.Type == "image" || b.Type == "document") && rec.Type == "user":
 					files = append(files, attachment{name: b.Name, kind: b.Source.MediaType, size: encoded(b.Source.Data), image: b.Type == "image"})
 				case b.Type == "tool_use":
-					ts.add("tool", called(b.Name, b.Input), at, rec.UUID, b.ID)
+					ts.call(b.Name, b.Input, at, rec.UUID, b.ID)
 				case b.Type == "tool_result":
-					ts.add("result", result(blockText(b.Content)), at, rec.UUID, b.ToolUseID)
+					ts.result(blockText(b.Content), at, rec.UUID, b.ToolUseID)
 				}
 			}
 			ts.attach("user", files, at, rec.UUID)
@@ -472,7 +486,7 @@ func ReadCodex(r io.Reader) (Session, error) {
 			if name == "" {
 				name = "shell"
 			}
-			ts.add("tool", called(name, args), at, p.ID, p.CallID)
+			ts.call(name, args, at, p.ID, p.CallID)
 		case p.Type == "function_call_output", p.Type == "custom_tool_call_output", p.Type == "local_shell_call_output":
 			// The output is a string, or an object that holds one.
 			var out string
@@ -484,7 +498,7 @@ func ReadCodex(r io.Reader) (Session, error) {
 				_ = json.Unmarshal(p.Output, &obj)
 				out = obj.Output + obj.Content
 			}
-			ts.add("result", result(out), at, p.ID, p.CallID)
+			ts.result(out, at, p.ID, p.CallID)
 		}
 	})
 	if err != nil {
@@ -610,10 +624,11 @@ func (m *gptMessage) turns(key, caller string) []Turn {
 	var ts turns
 	switch {
 	case role == "tool":
-		ts.add("result", result(text), at, id, caller)
+		ts.result(text, at, id, caller)
 	case role == "assistant" && m.Recipient != "" && m.Recipient != "all":
-		if line := clip(oneLine(text), 200); line != "" {
-			ts.add("tool", m.Recipient+": "+line, at, id, "")
+		if strings.TrimSpace(text) != "" {
+			line, cut := toolLine(m.Recipient, text)
+			ts.cut("tool", line, cut, at, id, "")
 		}
 	default:
 		ts.add(role, text, at, id, "")
@@ -686,9 +701,9 @@ func exported(raw json.RawMessage) (Session, error) {
 						blocks++
 					}
 				case "tool_use":
-					ts.add("tool", called(b.Name, b.Input), at, m.UUID, b.ID)
+					ts.call(b.Name, b.Input, at, m.UUID, b.ID)
 				case "tool_result":
-					ts.add("result", result(blockText(b.Content)), at, m.UUID, b.ToolUseID)
+					ts.result(blockText(b.Content), at, m.UUID, b.ToolUseID)
 				}
 			}
 			if blocks == 0 {

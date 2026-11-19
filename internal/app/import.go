@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -381,6 +382,33 @@ type sessionsResult struct {
 	ElsewhereChanged []string       `json:"elsewhere_changed,omitempty"`
 	DryRun           bool           `json:"dry_run,omitempty"`
 	ByTool           map[string]int `json:"by_tool"`
+	// StructuresNotKept says why this run wrote its sessions' documents
+	// without their structures: a server older than this command, with no
+	// import route, or a token that may not import. Empty when every
+	// document this run wrote went with its structure.
+	StructuresNotKept string `json:"structures_not_kept,omitempty"`
+	// Restored are the sessions whose documents read as this run would
+	// write them and had no trusted structure (one an earlier run could not
+	// keep, or one an edit ended): this run sent them again through the
+	// import route, with their structure, leaving their text as it was.
+	Restored int `json:"restored"`
+	// WithoutStructure counts the documents of this run's sessions left
+	// without a trusted structure: written without one, or found without one
+	// and not restored. A later run that may import restores them.
+	WithoutStructure int `json:"without_structure"`
+	// StructuresFull are the sources a structure was not restored in
+	// because their structures are at their bound (8 MiB a source): their
+	// documents are present, unchanged, and counted in WithoutStructure.
+	StructuresFull []string `json:"structures_full,omitempty"`
+	// NotInCorpus are the sources left out of any corpus, and
+	// NotInCorpusReason why: every corpus name this run may use is another
+	// person's or full.
+	NotInCorpus       []string `json:"not_in_corpus,omitempty"`
+	NotInCorpusReason string   `json:"not_in_corpus_reason,omitempty"`
+	// CorpusFailed are the corpus steps that failed (reading, making or
+	// adding to a corpus), with why. The sessions were sent: this does not
+	// count as a session not added, and does not change the exit status.
+	CorpusFailed []importFailed `json:"corpus_failed,omitempty"`
 }
 
 type importFailed struct {
@@ -424,6 +452,123 @@ type sessionSink struct {
 	// while an export is read, and empty for the sessions of this machine.
 	project string
 	res     *sessionsResult
+	// denied is why this run writes no more documents: the token may not
+	// write knowledge.
+	denied string
+}
+
+// structureLimits are the bounds the server keeps a structure within.
+var structureLimits = sessionimport.Limits{Bytes: knowledge.MaxImportedBytes, Turns: knowledge.MaxImportedTurns, TurnBytes: knowledge.MaxImportedTurnBytes, ID: knowledge.MaxImportedID}
+
+// noImport reads a refusal of an import route. A reason is returned when
+// this run should go on writing documents without structures: a server that
+// has no such route (older than this command), or a token that may not
+// import. fatal is set instead when the token may not write knowledge at
+// all, which an ordinary write would be refused for too: the run does not
+// fall back, and every session it has left fails with the reason. The
+// server names the missing permission as its routes do ("you need
+// PERMISSION"), which is what is matched. Any other error is the write's
+// own, and "" is returned.
+func noImport(err error) (reason string, fatal bool) {
+	var e *apiError
+	if !errors.As(err, &e) {
+		return "", false
+	}
+	var said struct {
+		Error string `json:"error"`
+	}
+	_ = json.Unmarshal([]byte(e.body), &said)
+	switch {
+	case e.status == http.StatusMethodNotAllowed, e.status == http.StatusNotFound && strings.Contains(e.body, "no such route"):
+		return "the server has no import route: it is older than this command", false
+	case e.status == http.StatusForbidden && said.Error == "you need knowledge:write":
+		return "this token may not write knowledge (knowledge:write), which importing a session needs", true
+	case e.status == http.StatusForbidden && said.Error == "you need knowledge:import":
+		return "this token may not import sessions (knowledge:import)", false
+	case e.status == http.StatusForbidden:
+		return "the server refused the import route (HTTP 403)", false
+	}
+	return "", false
+}
+
+// structuresFull reports whether an import was refused because the
+// source's structures are at their bound (knowledge.MaxImportedSourceBytes).
+func structuresFull(err error) bool {
+	var e *apiError
+	return errors.As(err, &e) && e.status == http.StatusBadRequest && strings.Contains(e.body, "limit reached for imported session structures")
+}
+
+// write sends a session's document: through the import route with the
+// session's structure, which the server keeps with that revision and never
+// reads out of its text, or else through the ordinary route without one.
+// importPath and plainPath are the two routes, and body the document's
+// fields. A server that has no import route, or a token that may not
+// import, is found on the first write; this run then writes every document
+// without its structure and says so (StructuresNotKept). A token that may
+// not write knowledge stops the run's writes (denied). A session no
+// structure can name (an id too long, or with control characters) is
+// written without one.
+func (k *sessionSink) write(method, importPath, plainPath string, body map[string]any, s sessionimport.Session) error {
+	if k.denied != "" {
+		return errors.New(k.denied)
+	}
+	st, ok := s.Structure(structureLimits)
+	if ok && k.res.StructuresNotKept == "" {
+		body["session"] = st
+		err := k.api.do(k.ctx, method, importPath, body, nil)
+		reason, fatal := noImport(err)
+		switch {
+		case fatal:
+			k.denied = reason
+			return errors.New(reason)
+		case reason == "":
+			return err
+		}
+		k.res.StructuresNotKept = reason
+		delete(body, "session")
+	}
+	err := k.api.do(k.ctx, method, plainPath, body, nil)
+	if err == nil {
+		k.res.WithoutStructure++
+	}
+	return err
+}
+
+// restore sends a session's document again through the import route, with
+// its structure and the title and text it already has, when the server
+// keeps no trusted structure with it: the server writes the structure alone.
+// It reports whether it did. A run that cannot import, or a source whose
+// structures are at their bound, leaves the document as it is, present and
+// counted as without a structure, and is not a failure.
+func (k *sessionSink) restore(was held, title, text string, s sessionimport.Session) (restored bool, err error) {
+	if k.denied != "" {
+		return false, errors.New(k.denied)
+	}
+	st, ok := s.Structure(structureLimits)
+	if !ok || k.res.StructuresNotKept != "" {
+		k.res.WithoutStructure++
+		return false, nil
+	}
+	err = k.api.do(k.ctx, http.MethodPut, "/api/knowledge/"+url.PathEscape(was.source)+"/imports/"+url.PathEscape(was.id), map[string]any{
+		"title": title, "text": text, "digest": was.digest, "session": st,
+	}, nil)
+	reason, fatal := noImport(err)
+	switch {
+	case fatal:
+		k.denied = reason
+		return false, errors.New(reason)
+	case reason != "":
+		k.res.StructuresNotKept = reason
+		k.res.WithoutStructure++
+		return false, nil
+	case structuresFull(err):
+		if !slices.Contains(k.res.StructuresFull, was.source) {
+			k.res.StructuresFull = append(k.res.StructuresFull, was.source)
+		}
+		k.res.WithoutStructure++
+		return false, nil
+	}
+	return err == nil, err
 }
 
 // held is a session's document as the server has it. A session is known by
@@ -434,6 +579,10 @@ type sessionSink struct {
 type held struct {
 	source, id string
 	digest     string
+	// structured is whether the server keeps a trusted structure with the
+	// document: its listing gives the structure's size, which is zero for
+	// one no import wrote and for one edited since.
+	structured bool
 }
 
 // load reads what the server already has under the prefix.
@@ -453,9 +602,10 @@ func (k *sessionSink) load() error {
 		}
 		var docs struct {
 			Documents []struct {
-				ID     string `json:"id"`
-				URI    string `json:"uri"`
-				Digest string `json:"digest"`
+				ID             string `json:"id"`
+				URI            string `json:"uri"`
+				Digest         string `json:"digest"`
+				StructureBytes int    `json:"structure_bytes"`
 			} `json:"documents"`
 		}
 		if err := k.api.do(k.ctx, http.MethodGet, "/api/knowledge/"+url.PathEscape(src.Name)+"/documents", nil, &docs); err != nil {
@@ -466,7 +616,7 @@ func (k *sessionSink) load() error {
 		k.count[src.Name] = len(docs.Documents)
 		for _, d := range docs.Documents {
 			if _, ok := k.have[d.URI]; d.URI != "" && !ok {
-				k.have[d.URI] = held{source: src.Name, id: d.ID, digest: d.Digest}
+				k.have[d.URI] = held{source: src.Name, id: d.ID, digest: d.Digest, structured: d.StructureBytes > 0}
 			}
 		}
 	}
@@ -623,9 +773,10 @@ func (k *sessionSink) add(s sessionimport.Session) {
 				return
 			}
 		}
-		err := k.api.do(k.ctx, http.MethodPost, "/api/knowledge/"+url.PathEscape(name)+"/documents", map[string]string{
+		src := "/api/knowledge/" + url.PathEscape(name)
+		err := k.write(http.MethodPost, src+"/imports", src+"/documents", map[string]any{
 			"title": title, "uri": s.URI(), "text": s.Markdown(k.c.maxBytes),
-		}, nil)
+		}, s)
 		var refused *apiError
 		if errors.As(err, &refused) && refused.status == http.StatusBadRequest && strings.Contains(refused.body, "limit reached") {
 			k.full[name] = true
@@ -687,6 +838,9 @@ func (k *sessionSink) said(name string) (string, error) {
 // it is left out of search, and a refused or failed call leaves it as it
 // was.
 //
+// The session's structure goes in the same call (write), so the document
+// and its structure are replaced together or neither is.
+//
 // The call is made once. A run the server refuses lost to another writer,
 // and never writes over what that writer left: it reads the document again,
 // counts it present if it reads as this run would have written it, and
@@ -696,14 +850,31 @@ func (k *sessionSink) replace(was held, title string, s sessionimport.Session) (
 	text := s.Markdown(k.c.maxBytes)
 	digest := knowledge.Digest(title, text)
 	// A document this run sent has no id here, and is as it was sent.
-	if was.id == "" || was.digest == digest {
+	if was.id == "" || was.digest == digest && was.structured {
 		k.res.Present++
 		return false
 	}
-	docs := "/api/knowledge/" + url.PathEscape(was.source) + "/documents"
-	err := k.api.do(k.ctx, http.MethodPut, docs+"/"+url.PathEscape(was.id)+"/text", map[string]string{
-		"title": title, "text": text, "digest": was.digest,
-	}, nil)
+	src := "/api/knowledge/" + url.PathEscape(was.source)
+	docs := src + "/documents"
+	var err error
+	restoring := was.digest == digest
+	if restoring {
+		// It reads as this run would write it, and the server keeps no
+		// trusted structure with it: the structure is sent again.
+		var restored bool
+		if restored, err = k.restore(was, title, text, s); err == nil {
+			if restored {
+				k.res.Restored++
+			} else {
+				k.res.Present++
+			}
+			return false
+		}
+	} else {
+		err = k.write(http.MethodPut, src+"/imports/"+url.PathEscape(was.id), docs+"/"+url.PathEscape(was.id)+"/text", map[string]any{
+			"title": title, "text": text, "digest": was.digest,
+		}, s)
+	}
 	switch {
 	case err == nil:
 		k.have[s.URI()] = held{source: was.source}
@@ -715,8 +886,9 @@ func (k *sessionSink) replace(was held, title string, s sessionimport.Session) (
 	}
 	var listed struct {
 		Documents []struct {
-			ID     string `json:"id"`
-			Digest string `json:"digest"`
+			ID             string `json:"id"`
+			Digest         string `json:"digest"`
+			StructureBytes int    `json:"structure_bytes"`
 		} `json:"documents"`
 	}
 	if err := k.api.do(k.ctx, http.MethodGet, docs, nil, &listed); err != nil {
@@ -727,7 +899,12 @@ func (k *sessionSink) replace(was held, title string, s sessionimport.Session) (
 		switch {
 		case d.ID != was.id:
 		case d.Digest == digest:
+			// Another writer left it reading as this run would: present,
+			// and counted as without a structure when none is kept.
 			k.res.Present++
+			if d.StructureBytes == 0 {
+				k.res.WithoutStructure++
+			}
 			return false
 		default:
 			k.res.Conflicts = append(k.res.Conflicts, s.URI())
@@ -924,8 +1101,12 @@ func (k *sessionSink) file() {
 			Name string `json:"name"`
 		} `json:"members"`
 	}
+	// A corpus that cannot be read, made or added to is the corpus's
+	// failure, not a session's: every session was sent. It is reported on
+	// its own (CorpusFailed) and does not change the exit status, which
+	// counts sessions not sent.
 	fail := func(what string, err error) {
-		k.res.Failed = append(k.res.Failed, importFailed{Name: "corpus " + what, Reason: err.Error()})
+		k.res.CorpusFailed = append(k.res.CorpusFailed, importFailed{Name: "corpus " + what, Reason: err.Error()})
 	}
 	for n := 1; len(sources) > 0 && n <= 20; n++ {
 		name := k.c.corpus
@@ -938,6 +1119,11 @@ func (k *sessionSink) file() {
 			err = k.api.do(k.ctx, http.MethodPost, "/api/corpora", map[string]any{
 				"name": name, "title": "Imported sessions", "description": "Sessions imported from other assistants with humagen import sessions.",
 			}, &have)
+			if status(err) == http.StatusConflict {
+				// It is there and not this token's to read: another
+				// person's. The sources go in the next one.
+				continue
+			}
 		}
 		if err != nil {
 			fail(name, err)
@@ -951,21 +1137,46 @@ func (k *sessionSink) file() {
 		}
 		room := maxCorpusMembers - len(have.Members)
 		var left []string
+		foreign := false
+	members:
 		for _, src := range sources {
 			switch {
 			case in[src]:
 			case room <= 0:
 				left = append(left, src)
 			default:
-				if err := k.api.do(k.ctx, http.MethodPost, "/api/corpora/"+url.PathEscape(name)+"/members", map[string]string{"kind": "source", "name": src}, nil); err != nil {
+				err := k.api.do(k.ctx, http.MethodPost, "/api/corpora/"+url.PathEscape(name)+"/members", map[string]string{"kind": "source", "name": src}, nil)
+				if status(err) == http.StatusForbidden && room == maxCorpusMembers-len(have.Members) {
+					// Readable and not this token's to change, and
+					// nothing added to it yet: the sources go in the
+					// next one.
+					foreign = true
+					break members
+				}
+				if err != nil {
 					fail(name, err)
 					return
 				}
 				room--
 			}
 		}
+		if foreign {
+			// The sources already in it are in a corpus; the rest go on.
+			var rest []string
+			for _, src := range sources {
+				if !in[src] {
+					rest = append(rest, src)
+				}
+			}
+			sources = rest
+			continue
+		}
 		k.res.Corpora = append(k.res.Corpora, name)
 		sources = left
+	}
+	if len(sources) > 0 {
+		k.res.NotInCorpus = sources
+		k.res.NotInCorpusReason = fmt.Sprintf("every corpus name from %s to %s-20 is another person's or full", k.c.corpus, k.c.corpus)
 	}
 }
 
@@ -1081,6 +1292,21 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 	}
 	if res.Updated > 0 {
 		fmt.Fprintf(out, "Updated %d sessions whose documents read differently now, in place.\n", res.Updated)
+	}
+	if res.Restored > 0 {
+		fmt.Fprintf(out, "Restored the structure of %d sessions whose documents read the same but had none kept with them.\n", res.Restored)
+	}
+	if res.StructuresNotKept != "" {
+		fmt.Fprintf(out, "Structures were not kept: %s. %d documents remain without a structure; a run that may import restores them.\n", res.StructuresNotKept, res.WithoutStructure)
+	}
+	if len(res.StructuresFull) > 0 {
+		fmt.Fprintf(out, "Structures were not restored in %s: each holds as many session structures as a source may (8 MiB). Their documents are present and unchanged, without a structure.\n", strings.Join(res.StructuresFull, ", "))
+	}
+	if len(res.NotInCorpus) > 0 {
+		fmt.Fprintf(out, "Not put in a corpus: %s: %s.\n", strings.Join(res.NotInCorpus, ", "), res.NotInCorpusReason)
+	}
+	for _, f := range res.CorpusFailed {
+		fmt.Fprintf(out, "Could not file the sources in a %s: %s. The sessions were sent.\n", f.Name, f.Reason)
 	}
 	if len(res.Conflicts) > 0 {
 		fmt.Fprintf(out, "Left %d sessions as another import wrote them while this one ran; nothing of this run's was written over them: %s.\n", len(res.Conflicts), strings.Join(res.Conflicts, ", "))

@@ -2,6 +2,7 @@ package sessionimport
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -57,6 +58,28 @@ func (ts *turns) add(role, text string, at time.Time, id, call string) {
 		}
 	}
 	*ts = append(*ts, Turn{Role: role, Text: text, At: at, ID: id, Call: call})
+}
+
+// cut appends a turn as add does, and marks it cut when cut is set.
+func (ts *turns) cut(role, text string, cut bool, at time.Time, id, call string) {
+	n := len(*ts)
+	ts.add(role, text, at, id, call)
+	if len(*ts) > n && cut {
+		(*ts)[n].Cut = true
+	}
+}
+
+// result appends what a tool gave back, cut to MaxResult, and marks it cut
+// when it was.
+func (ts *turns) result(text string, at time.Time, id, call string) {
+	ts.cut("result", result(text), len(strings.TrimSpace(text)) > MaxResult, at, id, call)
+}
+
+// call appends the line naming a tool the assistant called and what on,
+// marked cut when what it was called on did not fit the line.
+func (ts *turns) call(name string, input json.RawMessage, at time.Time, id, call string) {
+	line, cut := called(name, input)
+	ts.cut("tool", line, cut, at, id, call)
 }
 
 // attach names the files a message carried, on the turn that holds what the
@@ -199,12 +222,16 @@ func (s *Session) grow(nodes []node, leaf int, chain bool) {
 	lines := 0
 	var walk func(leaf, stop int, from string, in int)
 	walk = func(leaf, stop int, from string, in int) {
-		if lines > MaxBranches {
-			s.Branches++
-			return
-		}
+		// A branch past MaxBranches is counted and not kept, and the
+		// branches that fork off it are walked to be counted too, so
+		// Branches is every branch left out.
+		keep := lines <= MaxBranches
 		line := lines
-		lines++
+		if keep {
+			lines++
+		} else {
+			s.Branches++
+		}
 		var path []int
 		for j := leaf; j >= 0 && j != stop; j = parent[j] {
 			path = append(path, j)
@@ -212,8 +239,10 @@ func (s *Session) grow(nodes []node, leaf int, chain bool) {
 		for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
 			path[i], path[j] = path[j], path[i]
 		}
-		for _, j := range path {
-			owner[j] = line
+		if keep {
+			for _, j := range path {
+				owner[j] = line
+			}
 		}
 		var ts []Turn
 		var forks []int
@@ -224,7 +253,7 @@ func (s *Session) grow(nodes []node, leaf int, chain bool) {
 				case c == next:
 				case spoke[c]:
 					apart = append(apart, c)
-				default:
+				case keep:
 					ts = append(ts, below(c, owner, line)...)
 				}
 			}
@@ -241,18 +270,21 @@ func (s *Session) grow(nodes []node, leaf int, chain bool) {
 			side(order[:roots], path[0])
 		}
 		for k, j := range path {
-			ts = append(ts, nodes[j].turns...)
+			if keep {
+				ts = append(ts, nodes[j].turns...)
+			}
 			next := -1
 			if k+1 < len(path) {
 				next = path[k+1]
 			}
 			side(children[j], next)
 		}
-		ts = afterCalls(ts)
-		if line == 0 {
-			s.Turns = ts
-		} else {
-			s.Side = append(s.Side, Branch{From: from, In: in, Turns: ts})
+		switch {
+		case !keep:
+		case line == 0:
+			s.Turns = afterCalls(ts)
+		default:
+			s.Side = append(s.Side, Branch{From: from, In: in, Turns: afterCalls(ts)})
 		}
 		for _, c := range forks {
 			// The turn a branch forks after is the last one said above it.

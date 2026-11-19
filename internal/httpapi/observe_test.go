@@ -16,7 +16,7 @@ import (
 var everything = []string{
 	"humagen:agents:read", "humagen:agents:write", "humagen:runs:read", "humagen:runs:write",
 	"humagen:schedules:read", "humagen:schedules:write", "humagen:alerts:read", "humagen:alerts:write",
-	"humagen:knowledge:read", "humagen:knowledge:write", "humagen:evals:read", "humagen:evals:write",
+	"humagen:knowledge:read", "humagen:knowledge:write", "humagen:knowledge:import", "humagen:evals:read", "humagen:evals:write",
 	"humagen:billing:read", "humagen:billing:write", "humagen:artifacts:read", "humagen:artifacts:write",
 	"humagen:clients:read", "humagen:clients:write", "humagen:projects:read", "humagen:projects:write", "humagen:projects:govern",
 	"humagen:people:read", "humagen:speech:write",

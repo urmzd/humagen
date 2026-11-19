@@ -292,6 +292,75 @@ holds the later state of the session, so it does not choose. A conflict is not
 a failure: the exit code stays 0, and `conflicts` is empty in every other
 case. Run the import again from the copy you want kept.
 
+A session's document is written through the import routes
+(`POST /api/knowledge/{name}/imports`, `PUT /api/knowledge/{name}/imports/{id}`:
+the route checks `knowledge:import`, and the server also requires
+`knowledge:write`, since the text is written too), which also take the
+session's structure and keep
+it with that revision of the document in the same write. The structure is
+the tool, the conversation's id, its start and end, the main path's turns in
+order with who said each and when, how many branches are not on it, every
+one counted, and exact counts of what was left out or cut (tool results and
+tool lines cut when the export was read included). It is made from the
+session's records, never from the document's text, so a line in an answer
+that reads as a heading or a speaker is text in that turn. It holds at most
+200 turns, 16 KiB a turn and 128 KiB in all: tool results go first, then
+the oldest turns, and each count says how many went. A source's structures
+are at most 8 MiB together; past that the server refuses the write and the
+run goes on in the next source, as it does when a source's text is full.
+
+The structure is what this run asserts, not something the server can
+verify: the server keeps who sent it and when, and trusts it only for the
+revision of the document it was written with. The ordinary document routes
+take no structure, and an edit of the document, by anyone, leaves it
+untrusted, even if the old title and text are put back, until a run imports
+the session again. A run that may import and finds a session's document
+reading as it would write it, with no trusted structure kept (one an earlier
+version or a run without `knowledge:import` wrote, or one an edit left
+untrusted), sends it again through the import route with the text as it is,
+and counts it `restored`, apart from `updated`: the server then writes the
+structure alone, so the document is not embedded again and its source does
+not read as changed. The server restores only a document with no trusted
+structure: a second import of a revision a trusted structure is kept for is
+refused (409, "a structure is already kept for this revision"), and a run
+that meets that refusal counts the session `present`. It does not compare
+the kept structure with the one it would send: a structure another importer
+wrote, or one a later version of this command would write for the same text,
+stays as it is until the session's text changes. The server keeps a
+digest of each structure, so what is read can be pinned to the structure as
+well as to the document. A restore refused because the source's structures are
+at their bound is not a failure: the document stays present and unchanged,
+is counted in `without_structure`, and the run names the source once
+(`structures_full`). A restore that loses to another writer, where the
+document then reads the same and still has no structure, is counted the
+same way. A reimport may also replace a
+document a person added through the ordinary route with a `TOOL:ID` uri: it
+takes `knowledge:write`, which could edit that document anyway, and the
+structure then names the importer.
+
+Against a server older than this command, which has no import routes, or
+with a token that may not import, the first write finds out: every document
+is then written through the ordinary route without its structure, the run
+says so (`Structures were not kept: ...`, and `structures_not_kept` in its
+JSON), with how many of its documents remain without a structure
+(`without_structure`), and that alone is not a failure. A later run that may
+import restores them. A token that may import and may not write knowledge
+does not fall back, since an ordinary write would be refused too: the
+server's refusal says `you need knowledge:write`, and every session fails
+with that reason.
+
+When the corpus a run would file its sources in is another person's (one it
+may not read, or may not change), the sources go in the next one,
+`sessions-2` and so on, and no session is counted as failed. When every name
+up to `sessions-20` is another person's or full, the sources are left out of
+any corpus and the run says so once (`not_in_corpus`, with
+`not_in_corpus_reason`); a source already in a corpus it can read is not
+named. A corpus that fails (it cannot be read, made or added to) is
+reported on its own (`corpus_failed`, and `Could not file the sources in a
+corpus ...`): every session was sent, so it is not counted as a session not
+added and does not change the exit code, which is 1 only when a session is
+not sent.
+
 A source holds at most 200 documents and 8 MiB, so a busy month continues in
 `sessions-TOOL-YYYY-MM-2` and so on. The sources are put in a corpus, titled
 Imported sessions and named as `--source` is, because the console's Knowledge
@@ -462,7 +531,10 @@ and neither names anything on this server. So `agents` needs `--provider` and
 no tools: grant what it needs under Agents. The file's `model` and `tools` are
 not sent.
 
-`sessions` needs `knowledge:read` and `knowledge:write`; `skills` needs
+`sessions` needs `knowledge:read` and `knowledge:write`, and
+`knowledge:import` as well to keep each session's structure: an import
+needs both `knowledge:import` and `knowledge:write` (the built-in `manager`
+and `admin` roles hold all three); `skills` needs
 `projects:read` and `projects:write`; `agents` needs `agents:read` and
 `agents:write`. When some sessions, skills or agents are not
 sent, the rest still are, each one left out is named with the reason, and the

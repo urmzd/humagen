@@ -63,6 +63,12 @@ func (s *Server) observeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/knowledge/{name}/documents", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.add", s.addDocument))))
 	mux.HandleFunc("DELETE /api/knowledge/{name}/documents/{id}", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.remove", s.removeDocument))))
 	mux.HandleFunc("PUT /api/knowledge/{name}/documents/{id}/text", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.replace", s.replaceDocument))))
+	// An import writes a session's document with the session's structure,
+	// under its own permission (import_documents.go).
+	mux.HandleFunc("POST /api/knowledge/{name}/imports", s.authed(auth.KnowledgeImport, s.seenSource(s.auditedSourceUnder("source.document.import", auth.KnowledgeImport, s.importDocument))))
+	// Its audit record is written by the handler, which names a restore
+	// of a structure apart from a reimport of the text.
+	mux.HandleFunc("PUT /api/knowledge/{name}/imports/{id}", s.authed(auth.KnowledgeImport, s.seenSource(s.reimportDocument)))
 	mux.HandleFunc("PUT /api/knowledge/{name}/documents/{id}", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.exclude", s.excludeDocument))))
 	mux.HandleFunc("POST /api/knowledge/{name}/variants", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.variant.save", s.saveVariant))))
 	mux.HandleFunc("DELETE /api/knowledge/{name}/variants/{variant}", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.variant.delete", s.deleteVariant))))
@@ -667,7 +673,10 @@ func (s *Server) removeDocument(w http.ResponseWriter, r *http.Request, who auth
 // replaceDocument replaces a document's title and text in place, if they are
 // still the title and text the caller names by digest. The store checks the digest
 // and writes in one step, so the document keeps its id and whether it is
-// left out of search, and a refused replacement changes nothing.
+// left out of search, and a refused replacement changes nothing. It takes
+// no session structure: one an import kept with the document is marked
+// edited in the same write and is not trusted again until an import writes
+// the document (import_documents.go).
 func (s *Server) replaceDocument(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
 		Title  string  `json:"title"`

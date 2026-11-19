@@ -337,6 +337,7 @@ func (s *Store) CompleteSync(tenant, name, id string, docs []ImportDocument, by 
 			b.Delete(tenant, docKey(name, seq))
 			b.Delete(tenant, textKey(name, seq))
 			b.Delete(tenant, vecKey(name, seq))
+			b.Delete(tenant, importedKey(name, seq))
 			last = max(last, seq)
 		}
 		seq := last

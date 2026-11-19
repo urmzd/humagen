@@ -113,7 +113,10 @@ func serveFixture(t *testing.T, p *platform.Platform, pol *auth.Policy) *fixture
 const fixtureRoles = `
 role viewer { allow read on * }
 role operator extends viewer { allow write on runs, schedules, alerts, evals, artifacts, projects, speech }
-role manager extends operator { allow write on agents, knowledge }
+role manager extends operator {
+  allow write on agents, knowledge
+  allow import on knowledge
+}
 role admin { allow * on * }
 `
 

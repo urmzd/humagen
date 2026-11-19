@@ -580,6 +580,38 @@ with synthetic exports and read back from a local server; it is not checked
 against real exports of each tool, and file bytes are not imported
 ([import](../reference/cli.md#import-sessions-skills-and-agents)).
 
+Each imported session's document is kept with the session's structure,
+written through its own routes in the same write as the document
+(`pkg/knowledge/imported.go`, `internal/httpapi/import_documents.go`), with a digest of the structure
+itself, so a later stage can pin source, document, document digest and
+structure digest together; a structure kept for a revision is never
+replaced in place (409). Each
+route checks `knowledge:import`, and the platform also requires
+`knowledge:write`, since the text is written too; the built-in `manager` and
+`admin` roles hold both. The structure is the tool, the conversation's id,
+its start and end, the main path's turns with speaker, time and text, every
+branch not on it counted, and exact counts of what was left out or cut, at
+most 200 turns and 128 KiB a structure and 8 MiB a source, tool results
+dropped before turns and the oldest first. It is the importer's assertion,
+kept with who sent it and when; the server cannot verify the session. The
+ordinary document routes refuse a structure, and an ordinary edit leaves it
+untrusted for good, until an import writes it again; it goes with the
+document or its source. `ImportedOrigin` in `internal/platform` reads it as
+the reader, with its importer, or says why it is unknown (`not_kept`,
+`changed`, `malformed`). The CLI falls back to the ordinary routes, without
+structures, against a server that has no import routes or a token that may
+not import, says so with how many documents remain without one, and a later
+run that may import restores them (`restored`), writing the structure alone:
+no new embedding, no new content version. A restore refused for lack of
+room among a source's structures leaves the document present and counted
+(`structures_full`), and a token without `knowledge:write` fails the run
+with that reason instead of falling back. Tested: the store on memory
+and Postgres, the four formats' generated records included
+(`pkg/knowledge`); the routes, the read function and the CLI against a real
+server and a stub older server on memory only (`internal/httpapi`,
+`internal/platform`, `internal/app`). Nothing reads it yet: continuing an
+imported conversation is designed, not built.
+
 A library skill's supporting file may be up to 1 MiB and its package 256
 files and 2 MiB, while `SKILL.md`, whose body is what a model is asked, stays
 at 128 KiB. So `humagen import skills` drafts a skill that ships a large
