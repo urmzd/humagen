@@ -9,14 +9,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/saige/flow/runtime"
-
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
-	"github.com/urmzd/humagen/pkg/continuation"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/projects"
-	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 )
 
@@ -329,45 +325,4 @@ func (s *Seer) importSourceVisible(name string) bool {
 		return false
 	}
 	return src.Lifecycle == nil || src.Lifecycle.Project == "" || s.placeDirect(Place{Project: src.Lifecycle.Project})
-}
-
-// markContinuation tells a model whose program keeps sessions of its own,
-// through the run claim, that a turn is one of a conversation continued
-// from an imported one (pkg/continuation): its first turn starts a new
-// session, and a later one continues only the thread's own. The thread is
-// the one the run's durable record names. A record that cannot be read
-// refuses the turn rather than let it run unmarked.
-func (p *Platform) markContinuation(req runtime.Request) error {
-	if req.Tenant == "" || req.RunID == "" {
-		return nil
-	}
-	thread := req.Meta[runs.MetaThread]
-	if thread == "" {
-		if r, err := p.Runs.Get(req.Tenant, req.RunID); err == nil {
-			thread = r.Thread
-		}
-	}
-	if thread == "" {
-		return nil
-	}
-	th, err := p.Threads.Get(req.Tenant, thread)
-	if errors.Is(err, threads.ErrNotFound) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("platform: whether this turn continues an imported conversation cannot be read: %w", err)
-	}
-	if th.Import == nil {
-		return nil
-	}
-	turns, err := p.Runs.Conversation(req.Tenant, thread)
-	if err != nil {
-		return fmt.Errorf("platform: the turns of a continued conversation cannot be read: %w", err)
-	}
-	mine := slices.IndexFunc(turns, func(r runs.Run) bool { return r.ID == req.RunID })
-	first := !slices.ContainsFunc(turns, func(r runs.Run) bool {
-		return r.ID != req.RunID && (mine < 0 || r.CreatedAt.Before(turns[mine].CreatedAt))
-	})
-	continuation.Mark(req.Tenant, req.RunID, continuation.Rule{Thread: thread, First: first})
-	return nil
 }

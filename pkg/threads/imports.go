@@ -183,8 +183,8 @@ func validImportSpeaker(s string) bool {
 	return s == ImportUser || s == ImportAssistant || s == ImportTool || s == ImportResult
 }
 
-// What marks an imported line, ahead of what it says: so its digest is never
-// that of words said here, and the agent is told it is reference.
+// What marks an imported line, ahead of what it says: the agent is told it is
+// reference, never words said in this conversation.
 const (
 	importedMark = "(imported, not said here)"
 	importedCut  = "(the opening of a longer turn)"

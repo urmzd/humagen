@@ -17,7 +17,6 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
-	"github.com/urmzd/humagen/pkg/continuation"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -27,42 +26,51 @@ import (
 // Every conversation imported here is generated for the tests. None is a
 // real session.
 
-// ruleRecorder is a model that answers every turn, and records the rule
-// the platform passed it through the run claim (pkg/continuation).
-type ruleRecorder struct {
+// sentModel is a model that answers every turn, and keeps what each turn sent
+// it.
+type sentModel struct {
 	mu    sync.Mutex
-	rules []*continuation.Rule
+	texts []string
 	model *agenttest.ScriptedProvider
 }
 
-func (r *ruleRecorder) Stream(ctx context.Context, req saigetypes.Request) (<-chan saigetypes.Delta, error) {
-	rule, ok := continuation.Of(ctx)
-	r.mu.Lock()
-	if ok {
-		r.rules = append(r.rules, &rule)
-	} else {
-		r.rules = append(r.rules, nil)
+func (a *sentModel) Stream(ctx context.Context, req saigetypes.Request) (<-chan saigetypes.Delta, error) {
+	var parts []string
+	for _, m := range req.Messages {
+		if u, ok := m.(saigetypes.UserMessage); ok {
+			for _, part := range u.Parts {
+				if t, ok := part.(saigetypes.TextPart); ok {
+					parts = append(parts, t.Text)
+				}
+			}
+		}
 	}
-	r.mu.Unlock()
-	return r.model.Stream(ctx, req)
+	a.mu.Lock()
+	a.texts = append(a.texts, strings.Join(parts, "\n"))
+	a.mu.Unlock()
+	return a.model.Stream(ctx, req)
 }
 
-func (r *ruleRecorder) seen() []*continuation.Rule {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return append([]*continuation.Rule(nil), r.rules...)
+// last is what the latest turn sent the model.
+func (a *sentModel) last() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.texts) == 0 {
+		return ""
+	}
+	return a.texts[len(a.texts)-1]
 }
 
-// continuing is a platform with the agent coder on a model that records its
-// rules, the projects of field, and a source of imported sessions attached
+// continuing is a platform with the agent coder on a model that keeps what
+// it is sent, the projects of field, and a source of imported sessions attached
 // to Field, which opal works in.
-func continuing(t *testing.T) (*platform.Platform, *ruleRecorder) {
+func continuing(t *testing.T) (*platform.Platform, *sentModel) {
 	t.Helper()
 	answers := make([][]saigetypes.Delta, 32)
 	for i := range answers {
 		answers[i] = agenttest.TextResponse("generated reply")
 	}
-	rec := &ruleRecorder{model: &agenttest.ScriptedProvider{Responses: answers}}
+	rec := &sentModel{model: &agenttest.ScriptedProvider{Responses: answers}}
 	p := startWith(t, platform.Config{Ext: platform.Extensions{Providers: map[string]native.ProviderFunc{
 		"recorder": func(native.Spec) (saigetypes.Provider, error) { return rec, nil },
 	}}})
@@ -155,9 +163,7 @@ func imported(t *testing.T, p *platform.Platform, session knowledge.Imported) (k
 // A continuation of each of the four formats is a private plain thread of
 // the person who continued it, in the source's project, holding the newest
 // turns of the main path with the revision it pinned. The agent's first
-// turn is sent them, labelled and fenced, with nothing left out, and is
-// told through the run claim to start a new session; its next turn may
-// continue only the thread's own.
+// turn is sent them, labelled and fenced, with nothing left out.
 func TestAContinuationOfEachFormatSeedsTheAgentsFirstTurn(t *testing.T) {
 	p, rec := continuing(t)
 	for i, tool := range []string{knowledge.ToolClaude, knowledge.ToolCodex, knowledge.ToolChatGPT, knowledge.ToolClaudeAI} {
@@ -199,13 +205,12 @@ func TestAContinuationOfEachFormatSeedsTheAgentsFirstTurn(t *testing.T) {
 		if strings.Contains(sent, "earlier turns omitted") {
 			t.Fatalf("%s: the first turn left part of the seed out:\n%s", tool, sent)
 		}
-		seen := rec.seen()
-		if got := seen[len(seen)-1]; got == nil || got.Thread != th.ID || !got.First {
-			t.Fatalf("%s: turn %d was told %+v, not to start a new session", tool, i, got)
+		if got := rec.last(); !strings.Contains(got, "imported from "+tool+", the assistant there: (imported, not said here) The staging proxy listens on port 8443.") {
+			t.Fatalf("%s: turn %d: the model was not sent the imported lines:\n%s", tool, i, got)
 		}
 	}
-	// A later turn of a continuation may continue only that thread's own
-	// session, and a plain thread's turn is told nothing.
+	// A later turn of a continuation is sent the imported lines and the
+	// thread's own turns since, and a plain thread's turn no imported line.
 	_, in := imported(t, p, generatedSession(knowledge.ToolChatGPT, "generated-later"))
 	th, err := p.ContinueImport(t.Context(), operator, in)
 	if err != nil {
@@ -215,14 +220,13 @@ func TestAContinuationOfEachFormatSeedsTheAgentsFirstTurn(t *testing.T) {
 		posted := post(t, p, operator, th.ID, platform.MessageInput{Text: text})
 		await(t, p, posted.Runs[0].ID, runs.Completed)
 	}
-	seen := rec.seen()
-	if a, b := seen[len(seen)-2], seen[len(seen)-1]; a == nil || !a.First || b == nil || b.First || b.Thread != th.ID {
-		t.Fatalf("rules %+v then %+v", a, b)
+	if got := rec.last(); !strings.Contains(got, "(imported, not said here) The staging proxy listens on port 8443.") || !strings.Contains(got, "@coder first") || !strings.Contains(got, "generated reply") {
+		t.Fatalf("the second turn was sent:\n%s", got)
 	}
 	plain := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Text: "@coder a plain question"})
 	await(t, p, plain.Runs[0].ID, runs.Completed)
-	if seen := rec.seen(); seen[len(seen)-1] != nil {
-		t.Fatalf("a plain thread's turn was told %+v", seen[len(seen)-1])
+	if got := rec.last(); strings.Contains(got, "imported") {
+		t.Fatalf("a plain thread's turn was sent imported lines:\n%s", got)
 	}
 	// The continuation is audited, naming what it pinned.
 	rows, err := p.Audit.List(tenant, audit.Query{Resource: "conversation", From: time.Now().Add(-time.Hour), To: time.Now().Add(time.Hour), Limit: 50}, nil)
@@ -402,8 +406,8 @@ func TestAContinuationFollowsItsOriginSource(t *testing.T) {
 		strings.Index(sent, "imported from claude-ai") > strings.Index(sent, "Read-only fork context") {
 		t.Fatalf("the fork's first turn:\n%s", sent)
 	}
-	if seen := rec.seen(); seen[len(seen)-1] == nil || seen[len(seen)-1].Thread != fork.ID || !seen[len(seen)-1].First {
-		t.Fatalf("the fork's first turn was told %+v", seen[len(seen)-1])
+	if got := rec.last(); !strings.Contains(got, "imported from claude-ai, the assistant there: (imported, not said here)") {
+		t.Fatalf("the fork's model was not sent the imported lines:\n%s", got)
 	}
 
 	// Neither is published raw: a reviewed summary is required.
