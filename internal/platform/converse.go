@@ -469,6 +469,9 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		// after a retry of a turn already let in has joined it.
 		meta[runs.MetaProject] = path[0].Project
 		th = p.threadOf(tenant, path[0])
+		if importHistoryCut(th, cfg) {
+			return runs.Run{}, ErrImportNoHistory
+		}
 		if th.Channel != projects.General {
 			meta[runs.MetaChannel] = th.Channel
 		}

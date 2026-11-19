@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -58,7 +59,22 @@ var (
 	// ErrImportNotSession: the document is not one an import wrote from a
 	// session of a tool it knows.
 	ErrImportNotSession = fmt.Errorf("%w: the document is not an imported conversation", threads.ErrInvalid)
+	// ErrImportNoHistory: the workspace's history setting is none, so no
+	// agent is sent earlier turns, an imported conversation's included. A
+	// continuation is not started there, and the turns of one started
+	// before are refused rather than run without what it carries.
+	ErrImportNoHistory = fmt.Errorf("%w: %s", threads.ErrInvalid, noHistoryWords)
 )
+
+// noHistoryWords is why ErrImportNoHistory refuses, as a person reads it.
+const noHistoryWords = "this workspace sends no earlier conversation to agents, so there is nothing a continuation could carry"
+
+// importHistoryCut reports whether th continues an imported conversation
+// that cfg would send no agent: its turns are refused (ErrImportNoHistory)
+// rather than run without what it carries.
+func importHistoryCut(th threads.Thread, cfg Settings) bool {
+	return th.Import != nil && cfg.History != HistoryRecent
+}
 
 // sessionURIs are the uri schemes an import writes a session's document
 // with. Only a document of one of them is continued without a structure,
@@ -70,10 +86,9 @@ var sessionURIs = []string{threads.ImportClaude + ":", threads.ImportCodex + ":"
 // ContinueImport starts, as who, a private conversation that continues an
 // imported one: who's own, in the source's project, with the newest turns
 // of the conversation's main path the agent is sent ahead of the thread's
-// own (threads.SeedImport): at most half the workspace's history limit as
-// the transcript is written, and at most a fork's bounds. It starts no
-// agent and copies no action, and it is audited
-// (conversation.continue_import).
+// own (threads.SeedImport): at most half the workspace's history limit,
+// counted as that limit is, and at most a fork's bounds. It starts no agent
+// and copies no action, and it is audited (conversation.continue_import).
 //
 // The document's structure must be one an import kept with the revision
 // read (ImportedOrigin), or none: a document no import kept a structure
@@ -82,13 +97,18 @@ var sessionURIs = []string{threads.ImportClaude + ":", threads.ImportCodex + ":"
 // or malformed, is refused (ErrImportUntrusted), as is a document that is
 // not an imported session's (ErrImportNotSession).
 //
-// It is refused when the document or its structure is no longer the one
-// the person read (ErrImportChanged), when the source is no longer filed in
-// the project they saw it in (ErrImportDetached), when the document is
-// excluded or gone, the source deleted or hidden from who, or another
-// workspace's (threads.ErrNotFound), and when who may not start a run
-// (runs:write) or post in the project (MayPost). The document and the source are read again just before
-// the thread is written, and both checks made again.
+// It is refused when the workspace sends agents no earlier conversation
+// (ErrImportNoHistory), when the document or its structure is no longer
+// the one the person read (ErrImportChanged), when the source is no longer
+// filed in the project they saw it in (ErrImportDetached), when the
+// document is excluded or gone, the source deleted or hidden from who, or
+// another workspace's (threads.ErrNotFound), and when who may not start a
+// run (runs:write) or post in the project (MayPost).
+//
+// The document and the source are read twice: first to check who may do
+// this, then just before the write, and the record is built from the
+// second read. Any difference between the two (the source made again, the
+// structure's importer or time, the project) refuses it.
 func (p *Platform) ContinueImport(ctx context.Context, who auth.Principal, in ContinueImportInput) (threads.Thread, error) {
 	// The route that will start one checks runs:write; it is checked here
 	// too, as ImportDocument checks knowledge:write beside its route's
@@ -106,88 +126,120 @@ func (p *Platform) ContinueImport(ctx context.Context, who auth.Principal, in Co
 	if err != nil {
 		return threads.Thread{}, err
 	}
-	origin, project, err := p.pinnedOrigin(who, in)
+	if p.Settings(who.Tenant).History != HistoryRecent {
+		return threads.Thread{}, ErrImportNoHistory
+	}
+	first, err := p.pinnedOrigin(who, in)
 	if err != nil {
 		return threads.Thread{}, err
 	}
-	if err := p.MayPost(person, Place{Project: project}); err != nil {
+	if err := p.MayPost(person, Place{Project: first.project}); err != nil {
 		return threads.Thread{}, err
 	}
-	agents, mode, err := p.checkRouting(ctx, who.Tenant, project, in.Agents, in.Mode, p.Seer(who).Agent)
+	agents, mode, err := p.checkRouting(ctx, who.Tenant, first.project, in.Agents, in.Mode, p.Seer(who).Agent)
 	if err != nil {
 		return threads.Thread{}, err
-	}
-	record, err := p.importRecord(who, in, origin)
-	if err != nil {
-		return threads.Thread{}, err
-	}
-	title := in.Title
-	if title == "" {
-		title = boundedTitle(origin.Document.Title)
 	}
 	id, err := newThreadID()
 	if err != nil {
 		return threads.Thread{}, err
 	}
-	after := map[string]string{"source": in.Source, "document": in.Document, "document_digest": in.DocumentDigest, "structure": record.Structure}
-	if record.StructureDigest != "" {
-		after["structure_digest"] = record.StructureDigest
+	after := map[string]string{"source": in.Source, "source_id": first.source.ID, "document": in.Document, "document_digest": in.DocumentDigest, "structure": threads.StructureNotKept}
+	if first.origin.Session != nil {
+		after["structure"], after["structure_digest"] = threads.StructureKept, first.origin.StructureDigest
 	}
-	attempt, err := p.BeginAudit(who, audit.Change{Action: "conversation.continue_import", Resource: "conversation", Scope: "personal", Subject: who.Subject, ID: id, Project: project, Thread: id, After: after})
+	attempt, err := p.BeginAudit(who, audit.Change{Action: "conversation.continue_import", Resource: "conversation", Scope: "personal", Subject: who.Subject, ID: id, Project: first.project, Thread: id, After: after})
 	if err != nil {
 		return threads.Thread{}, err
 	}
-	// Read again just before the write: what changed meanwhile refuses it.
-	if _, again, err := p.pinnedOrigin(who, in); err == nil && again != project {
-		err = ErrImportDetached
-		_ = attempt.Finish(err)
-		return threads.Thread{}, err
-	} else if err != nil {
+	refuse := func(err error) (threads.Thread, error) {
 		_ = attempt.Finish(err)
 		return threads.Thread{}, err
 	}
+	// Read again just before the write, and build the record from this
+	// read: what changed since the first refuses it.
+	//
+	// Knowledge and threads are separate stores, with no write that spans
+	// both, so a source deleted or made again between this read (and, for
+	// a document whose structure is not kept, the read of its text) and the
+	// thread's write is not seen here. Such a thread pins the source's id
+	// (Import.SourceID): with the source gone, or another of its name in its
+	// place, no one sees it (importSourceVisible) and nothing is posted or
+	// run in it, and it holds only what the source held when it was read.
+	second, err := p.pinnedOrigin(who, in)
+	switch {
+	case err != nil:
+		return refuse(err)
+	case second.project != first.project:
+		return refuse(ErrImportDetached)
+	case second.source.ID != first.source.ID || second.origin.ImportedBy != first.origin.ImportedBy || !sameInstant(second.origin.ImportedAt, first.origin.ImportedAt):
+		return refuse(ErrImportChanged)
+	}
+	record, err := p.importRecord(who, in, second)
+	if err != nil {
+		return refuse(err)
+	}
+	title := in.Title
+	if title == "" {
+		title = boundedTitle(second.origin.Document.Title)
+	}
 	record.At = p.now()
-	result, err := p.Threads.Create(who.Tenant, threads.Thread{ID: id, Project: project, Channel: projects.General, Title: title, Visibility: threads.Private, CreatedBy: person.Subject, Agents: agents, Mode: mode, Import: record}, record.At)
+	result, err := p.Threads.Create(who.Tenant, threads.Thread{ID: id, Project: second.project, Channel: projects.General, Title: title, Visibility: threads.Private, CreatedBy: person.Subject, Agents: agents, Mode: mode, Import: record}, record.At)
 	_ = attempt.Finish(err)
 	return result, err
 }
 
+// pinned is one read of what a continuation names: the source, the
+// document and its structure, and the project the continuation is filed in.
+type pinned struct {
+	source  knowledge.Source
+	origin  knowledge.Origin
+	project string
+}
+
+func sameInstant(a, b *time.Time) bool {
+	return a == nil && b == nil || a != nil && b != nil && a.Equal(*b)
+}
+
 // pinnedOrigin reads, as who, the document a continuation names, and where
 // the continuation is filed, and checks both are what the person read.
-func (p *Platform) pinnedOrigin(who auth.Principal, in ContinueImportInput) (knowledge.Origin, string, error) {
+func (p *Platform) pinnedOrigin(who auth.Principal, in ContinueImportInput) (pinned, error) {
 	src, err := p.SourceAs(who, in.Source)
 	if err != nil {
-		return knowledge.Origin{}, "", fmt.Errorf("%w: source %q", threads.ErrNotFound, in.Source)
+		return pinned{}, fmt.Errorf("%w: source %q", threads.ErrNotFound, in.Source)
 	}
 	origin, err := p.ImportedOrigin(who, in.Source, in.Document)
 	switch {
 	case errors.Is(err, knowledge.ErrNotFound):
-		return knowledge.Origin{}, "", fmt.Errorf("%w: document %q", threads.ErrNotFound, in.Document)
+		return pinned{}, fmt.Errorf("%w: document %q", threads.ErrNotFound, in.Document)
 	case errors.Is(err, knowledge.ErrUpstreamRead):
-		return knowledge.Origin{}, "", fmt.Errorf("%w: a provider's copy holds no imported conversation", ErrImportNotSession)
+		return pinned{}, fmt.Errorf("%w: a provider's copy holds no imported conversation", ErrImportNotSession)
 	case err != nil:
-		return knowledge.Origin{}, "", err
+		return pinned{}, err
 	}
 	if origin.Document.Digest == "" || origin.Document.Digest != in.DocumentDigest {
-		return knowledge.Origin{}, "", ErrImportChanged
+		return pinned{}, ErrImportChanged
 	}
 	switch {
 	case origin.Session != nil:
 		if in.StructureDigest != origin.StructureDigest {
-			return knowledge.Origin{}, "", ErrImportChanged
+			return pinned{}, ErrImportChanged
 		}
 	case origin.Unknown == knowledge.NotKept:
 		if in.StructureDigest != "" {
-			return knowledge.Origin{}, "", ErrImportChanged
+			return pinned{}, ErrImportChanged
 		}
 		if !slices.ContainsFunc(sessionURIs, func(scheme string) bool { return strings.HasPrefix(origin.Document.URI, scheme) }) {
-			return knowledge.Origin{}, "", ErrImportNotSession
+			return pinned{}, ErrImportNotSession
 		}
 	default:
-		return knowledge.Origin{}, "", fmt.Errorf("%w: %s", ErrImportUntrusted, origin.Unknown)
+		return pinned{}, fmt.Errorf("%w: %s", ErrImportUntrusted, origin.Unknown)
 	}
 	project, err := p.importLanding(who, src, in.Project)
-	return origin, project, err
+	if err != nil {
+		return pinned{}, err
+	}
+	return pinned{source: src, origin: origin, project: project}, nil
 }
 
 // importLanding is the project a continuation of a source's document is
@@ -229,10 +281,11 @@ func (p *Platform) importLanding(who auth.Principal, src knowledge.Source, chose
 
 // importRecord is the imported origin a continuation keeps: the pinned
 // revision, and the newest turns that fit the workspace's history budget.
-func (p *Platform) importRecord(who auth.Principal, in ContinueImportInput, origin knowledge.Origin) (*threads.Import, error) {
+func (p *Platform) importRecord(who auth.Principal, in ContinueImportInput, read pinned) (*threads.Import, error) {
 	budget := p.Settings(who.Tenant).HistoryLimit / 2
+	origin := read.origin
 	doc := origin.Document
-	record := &threads.Import{Source: in.Source, Document: doc.ID, URI: doc.URI, Title: strings.Join(strings.Fields(doc.Title), " "), DocumentDigest: doc.Digest, By: who.Subject}
+	record := &threads.Import{Source: in.Source, SourceID: read.source.ID, Document: doc.ID, URI: doc.URI, Title: strings.Join(strings.Fields(doc.Title), " "), DocumentDigest: doc.Digest, By: who.Subject}
 	if len(record.Title) > 1024 {
 		record.Title = boundedTitle(record.Title)
 	}
@@ -315,13 +368,15 @@ func newThreadID() (string, error) {
 // importSourceVisible reports whether the reader still sees the source a
 // continuation was imported from: as SourceVisible decides, read through the
 // seer, so a read it grants by exception is recorded as the seer records
-// others. A source deleted since is seen by nobody.
-func (s *Seer) importSourceVisible(name string) bool {
+// others. It must be the same source, by its id: one deleted since is seen
+// by nobody, and so is one deleted and made again under its name, for good,
+// since no source is ever given an id another had.
+func (s *Seer) importSourceVisible(im *threads.Import) bool {
 	if !s.who.Can(auth.KnowledgeRead) {
 		return false
 	}
-	src, err := s.p.Knowledge.Get(s.who.Tenant, name)
-	if err != nil {
+	src, err := s.p.Knowledge.Get(s.who.Tenant, im.Source)
+	if err != nil || src.ID != im.SourceID {
 		return false
 	}
 	return src.Lifecycle == nil || src.Lifecycle.Project == "" || s.placeDirect(Place{Project: src.Lifecycle.Project})

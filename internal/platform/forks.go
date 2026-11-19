@@ -40,6 +40,11 @@ func (p *Platform) ForkThread(ctx context.Context, who auth.Principal, id string
 	if err = p.MayPost(person, Place{Project: source.Project, Thread: id}); err != nil {
 		return threads.Thread{}, err
 	}
+	// A fork of a continuation keeps what it carries, so it is started only
+	// as a continuation is (ContinueImport).
+	if importHistoryCut(source, p.Settings(who.Tenant)) {
+		return threads.Thread{}, ErrImportNoHistory
+	}
 	agents, mode, err := p.checkRouting(ctx, who.Tenant, source.Project, in.Agents, in.Mode, p.Seer(who).Agent)
 	if err != nil {
 		return threads.Thread{}, err
@@ -166,7 +171,7 @@ func (s *Seer) forkSourcesVisible(at Place, direct func(Place) bool) bool {
 			// for unrecorded conversations and their early events.
 			return true
 		}
-		if th.Import != nil && !s.importSourceVisible(th.Import.Source) {
+		if th.Import != nil && !s.importSourceVisible(th.Import) {
 			return false
 		}
 		if th.Fork == nil {

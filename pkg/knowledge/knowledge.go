@@ -60,6 +60,12 @@ func ValidName(name string) bool { return validName.MatchString(name) }
 
 // Source is a named collection of documents.
 type Source struct {
+	// ID tells this source apart from any earlier or later source of the
+	// same name: set when it is created, never changed, and never given to
+	// another source. A source created before ids were kept has none (""),
+	// and every source created since has one, so a source of that name
+	// made again is never taken for it.
+	ID             string     `json:"id,omitempty"`
 	ContentVersion uint64     `json:"content_version,omitempty"`
 	Lifecycle      *Lifecycle `json:"lifecycle,omitempty"`
 	Name           string     `json:"name"`
@@ -493,8 +499,12 @@ func (s *Store) CreateWithConfig(tenant, name, description, by string, at time.T
 	if err := s.dir.Mark(tenant); err != nil {
 		return Source{}, err
 	}
+	id, err := newSourceID()
+	if err != nil {
+		return Source{}, err
+	}
 	var out Source
-	err := state.Retry(func() error {
+	err = state.Retry(func() error {
 		all, head, err := s.sources(tenant)
 		if err != nil {
 			return err
@@ -522,7 +532,7 @@ func (s *Store) CreateWithConfig(tenant, name, description, by string, at time.T
 			}
 			putClock(b, tenant, clk, 0)
 		}
-		src := Source{Name: name, Description: description, Variants: []Variant{}, CreatedBy: by, UpdatedAt: at}
+		src := Source{ID: id, Name: name, Description: description, Variants: []Variant{}, CreatedBy: by, UpdatedAt: at}
 		src.Lifecycle = configured
 		src.ContentVersion = clk.Value
 		b.Create(tenant, sourceKey(name), stored{Source: &src})
@@ -537,6 +547,15 @@ func (s *Store) CreateWithConfig(tenant, name, description, by string, at time.T
 		return Source{}, writeErr(err)
 	}
 	return cloneSource(out), nil
+}
+
+// newSourceID is a new source's id (Source.ID): 128 random bits, in hex.
+func newSourceID() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b[:]), nil
 }
 
 // bumpHead moves the head stamp read at version, 0 when there is none.

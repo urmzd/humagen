@@ -616,32 +616,58 @@ and no console yet (`ContinueImport` in `internal/platform/import_continue.go`).
 It starts a private plain thread of the caller's, in the source's project
 (the one it is scoped to, else the one it is attached to, else the workspace
 itself), holding the conversation's origin (`Thread.import`, read only in the
-contract): the source, the document, the document digest and the structure
-digest the caller read, pinned together; who imported the structure and when;
-who continued it and when; the conversation's start and end; the branches not
-continued; what the import itself left out; and the passive turns its agent is
-sent. Those are the newest turns of the main path that fit half the
-workspace's history limit as the transcript is written, labels and fence
-counted, and a fork's bounds (200 turns, 128 KiB), tool results left out first
-and every turn left out counted; nothing is summarized. Each line is labelled
-from fixed lists, such as `imported from chatgpt, the assistant there`, and
-what it says starts `(imported, not said here)`, on one line, so it cannot
-open or close the transcript or pose as a speaker. A document no import kept a
-structure with is continued as one block whose speakers are not known; one
-whose structure was edited or is malformed, or that is not an imported
-session's, is refused, and so is one whose document or structure digest
-changed since it was read, whose source was detached from the project it was
-seen in, excluded, deleted or hidden, or where the caller may not start a run
-(`runs:write`) or post. It is audited (`conversation.continue_import`). A
-reader must still see the origin source to read the thread, as a fork's
+contract): the source and its id, the document, the document digest and the
+structure digest the caller read, pinned together; who imported the
+structure and when; who continued it and when; the conversation's start and
+end; the branches not continued; what the import itself left out; and the
+passive turns its agent is sent. Those are the newest turns of the main path
+that fit half the workspace's history limit, counted as that limit is (each
+line with its label, its mark and its line break), and a fork's bounds (200
+turns, 128 KiB), tool results left out first and every turn left out
+counted; nothing is summarized. So the first turn sends them whole, even at
+the smallest limit (1,000 characters), and the other half is left for the
+thread's own turns. Each line is labelled from fixed lists, such as `imported from chatgpt,
+the assistant there`, and what it says starts `(imported, not said here)`, on
+one line, so it cannot open or close the transcript or pose as a speaker.
+
+A document no import kept a structure with is continued as one block whose
+speakers are not known; one whose structure was edited or is malformed, or
+that is not an imported session's, is refused. So is one whose document or
+structure digest changed since it was read, whose source was detached from
+the project it was seen in, excluded, deleted or hidden, or where the caller
+may not start a run (`runs:write`) or post. The source and the document are
+read twice, to check who may continue it and again just before the thread is
+written; the record is built from the second read, and any difference
+between the two (another source of that name, another importer or import
+time, another project) refuses it. Knowledge and threads are separate
+stores, so a source deleted or made again after the second read and before
+the write is not seen then; the thread pins the source's id, so no one sees
+it. It is audited (`conversation.continue_import`, with the source's id).
+
+A workspace whose history setting is `none` sends agents no earlier
+conversation, so it starts no continuation. When the setting becomes `none`
+later, nothing is posted, run, followed up or forked in an existing
+continuation; its runs are refused as they start, with the settings that
+would decide what they are sent, and it works again once history is sent.
+
+A reader must still see the origin source to read the thread, as a fork's
 reader must see its source, on every read path; a fork of it keeps its origin
-and that rule, and neither is published raw. A continuation is a plain
-thread: its first turn carries the imported lines in the transcript, and
-there is no earlier session for it to select, since a turn's conversation is
-found by its thread, never by what its history says. Tested on memory, the
-thread record on Postgres too (`pkg/threads`, `internal/platform`,
-`internal/httpapi`). The route that starts one and the console's Continue
-Conversation are not built.
+and that rule, and neither is published raw. Each source has an id, set when
+it is created and never given to another, so a source deleted and made again
+under the same name is another source: a continuation of the first stays
+hidden from everyone. A source kept before sources had ids has none, and only
+that source matches a continuation that pinned none. Removing or excluding
+the origin document after it was continued does not hide the continuation or
+change what its agent is sent: it holds the turns read when it was started.
+
+A continuation is a plain thread: its first turn carries the imported lines
+in the transcript, and there is no earlier session for it to select, since a
+turn's conversation is found by its thread, never by what its history says.
+Tested: the thread record and the source's id on memory and Postgres
+(`pkg/threads`, `pkg/knowledge`); the platform's continuation, its seed, its
+refusals and who sees it on memory only (`internal/platform`); the contract's
+fields against the Go types (`internal/httpapi`). The route that starts one
+and the console's Continue Conversation are not built.
 
 A library skill's supporting file may be up to 1 MiB and its package 256
 files and 2 MiB, while `SKILL.md`, whose body is what a model is asked, stays

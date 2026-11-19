@@ -3,14 +3,18 @@ package platform_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/event"
 	"github.com/urmzd/saige/flow/turn/native"
 
 	"github.com/urmzd/humagen/internal/platform"
@@ -66,12 +70,18 @@ func (a *sentModel) last() string {
 // to Field, which opal works in.
 func continuing(t *testing.T) (*platform.Platform, *sentModel) {
 	t.Helper()
+	return continuingAt(t, nil)
+}
+
+// continuingAt is continuing on the clock now, nil for time.Now.
+func continuingAt(t *testing.T, now func() time.Time) (*platform.Platform, *sentModel) {
+	t.Helper()
 	answers := make([][]saigetypes.Delta, 32)
 	for i := range answers {
 		answers[i] = agenttest.TextResponse("generated reply")
 	}
 	rec := &sentModel{model: &agenttest.ScriptedProvider{Responses: answers}}
-	p := startWith(t, platform.Config{Ext: platform.Extensions{Providers: map[string]native.ProviderFunc{
+	p := startWith(t, platform.Config{Now: now, Ext: platform.Extensions{Providers: map[string]native.ProviderFunc{
 		"recorder": func(native.Spec) (saigetypes.Provider, error) { return rec, nil },
 	}}})
 	if _, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{Name: "coder", Provider: "recorder", Model: "r1", SystemPrompt: "Answer."}, "test"); err != nil {
@@ -236,7 +246,8 @@ func TestAContinuationOfEachFormatSeedsTheAgentsFirstTurn(t *testing.T) {
 	found := false
 	for _, row := range rows {
 		if row.Action == "conversation.continue_import" && row.Change.ID == th.ID && row.Thread == th.ID && row.Actor == operator.Subject && row.Outcome == audit.Succeeded &&
-			row.After["document"] == in.Document && row.After["document_digest"] == in.DocumentDigest && row.After["structure_digest"] == in.StructureDigest && row.Project == "Field" {
+			row.After["document"] == in.Document && row.After["document_digest"] == in.DocumentDigest && row.After["structure_digest"] == in.StructureDigest && row.Project == "Field" &&
+			th.Import.SourceID != "" && row.After["source_id"] == th.Import.SourceID {
 			found = true
 		}
 	}
@@ -474,5 +485,248 @@ func TestAContinuationFollowsItsOriginSource(t *testing.T) {
 	}
 	if p.SeesThread(admin, th.ID) || p.SeesThread(operator, th.ID) {
 		t.Fatal("a continuation of a deleted source is still seen")
+	}
+}
+
+// A workspace that sends agents no earlier conversation (history none)
+// starts no continuation, since nothing it carries would be sent. One
+// started before the setting changed is not posted in, run, followed up or
+// forked while it holds, with no thread or message written; a plain
+// thread is not held to it, and the continuation works again once history
+// is sent.
+func TestAContinuationIsRefusedWhileNoHistoryIsSent(t *testing.T) {
+	p, rec := continuing(t)
+	setHistory := func(h platform.History) {
+		t.Helper()
+		cfg := p.Settings(tenant)
+		cfg.History = h
+		if err := p.SetSettings(t.Context(), tenant, cfg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, in := imported(t, p, generatedSession(knowledge.ToolChatGPT, "generated-none"))
+	th, err := p.ContinueImport(t.Context(), operator, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := post(t, p, operator, th.ID, platform.MessageInput{Text: "@coder which port?"})
+	await(t, p, first.Runs[0].ID, runs.Completed)
+
+	setHistory(platform.HistoryNone)
+	before, _ := p.Threads.Records(tenant, func(threads.Thread) bool { return true })
+	_, again := imported(t, p, generatedSession(knowledge.ToolCodex, "generated-none-2"))
+	if _, err := p.ContinueImport(t.Context(), operator, again); !errors.Is(err, platform.ErrImportNoHistory) {
+		t.Fatalf("started with history none: %v", err)
+	}
+	if _, err := p.PostMessage(t.Context(), operator, th.ID, platform.MessageInput{Text: "@coder and now?"}); !errors.Is(err, platform.ErrImportNoHistory) {
+		t.Fatalf("posted with history none: %v", err)
+	}
+	if _, err := p.ForkThread(t.Context(), operator, th.ID, platform.ForkInput{Through: first.Message.ID, Agents: []string{"coder"}}); !errors.Is(err, platform.ErrImportNoHistory) {
+		t.Fatalf("forked with history none: %v", err)
+	}
+	if _, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "generated-follow-up", Agent: "coder", Text: "and through the API?", After: first.Runs[0].ID, Actor: event.Actor{ID: operator.Subject, User: operator.Subject}}); !errors.Is(err, platform.ErrImportNoHistory) {
+		t.Fatalf("followed up through the API with history none: %v", err)
+	}
+	after, _ := p.Threads.Records(tenant, func(threads.Thread) bool { return true })
+	if len(after) != len(before) {
+		t.Fatalf("a refused continuation or fork wrote a thread: %d then %d", len(before), len(after))
+	}
+	if msgs, _, err := p.Threads.Messages(tenant, th.ID, "", 50); err != nil || len(msgs) != 1 {
+		t.Fatalf("a refused post wrote a message: %d, %v", len(msgs), err)
+	}
+	plain := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Text: "@coder a plain question"})
+	await(t, p, plain.Runs[0].ID, runs.Completed)
+
+	setHistory(platform.HistoryRecent)
+	later := post(t, p, operator, th.ID, platform.MessageInput{Text: "@coder back again"})
+	await(t, p, later.Runs[0].ID, runs.Completed)
+	if got := rec.last(); !strings.Contains(got, "(imported, not said here) The staging proxy listens on port 8443.") {
+		t.Fatalf("with history sent again, the model was not sent the imported lines:\n%s", got)
+	}
+}
+
+// A source deleted and made again under the same name is another source:
+// a continuation of the first is seen by no one through it, for good, and
+// nothing is posted in it.
+func TestAContinuationIsNotRevivedBySourceOfTheSameName(t *testing.T) {
+	p, _ := continuing(t)
+	_, in := imported(t, p, generatedSession(knowledge.ToolCodex, "generated-revive"))
+	th, err := p.ContinueImport(t.Context(), operator, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := p.Knowledge.Get(tenant, "sessions-in-field")
+	if err != nil || src.ID == "" || th.Import.SourceID != src.ID {
+		t.Fatalf("the continuation pins source id %q, the source has %q (%v)", th.Import.SourceID, src.ID, err)
+	}
+	if err := p.Knowledge.Delete(tenant, "sessions-in-field"); err != nil {
+		t.Fatal(err)
+	}
+	if p.SeesThread(operator, th.ID) {
+		t.Fatal("seen with the source deleted")
+	}
+	if _, err := p.Knowledge.Create(tenant, "sessions-in-field", "An unrelated source reusing the name.", "ada", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.AttachSource(admin, "sessions-in-field", "Field", ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, who := range []auth.Principal{operator, admin} {
+		if p.SeesThread(who, th.ID) {
+			t.Fatalf("%s sees the continuation through an unrelated source that reuses its origin's name", who.Subject)
+		}
+	}
+	if _, err := p.PostMessage(t.Context(), operator, th.ID, platform.MessageInput{Text: "@coder still there?"}); !errors.Is(err, threads.ErrNotFound) {
+		t.Fatalf("posted through a source of the same name: %v", err)
+	}
+}
+
+// A continuation holds what its document said when it was continued: the
+// document excluded or removed since does not hide it, and its agent is
+// still sent the imported lines.
+func TestAContinuationKeepsItsLinesWhenItsDocumentIsExcludedOrRemoved(t *testing.T) {
+	p, rec := continuing(t)
+	doc, in := imported(t, p, generatedSession(knowledge.ToolClaude, "generated-removed"))
+	th, err := p.ContinueImport(t.Context(), operator, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range []func() error{
+		func() error {
+			_, err := p.Knowledge.SetExcluded(tenant, "sessions-in-field", doc.ID, true, time.Now())
+			return err
+		},
+		func() error { return p.Knowledge.Remove(tenant, "sessions-in-field", doc.ID, time.Now()) },
+	} {
+		if err := change(); err != nil {
+			t.Fatal(err)
+		}
+		if !p.SeesThread(operator, th.ID) {
+			t.Fatal("the continuation is hidden with its document gone")
+		}
+		posted := post(t, p, operator, th.ID, platform.MessageInput{Text: "@coder go on"})
+		await(t, p, posted.Runs[0].ID, runs.Completed)
+		if got := rec.last(); !strings.Contains(got, "imported from claude, the assistant there: (imported, not said here) The staging proxy listens on port 8443.") {
+			t.Fatalf("the model was not sent the imported lines:\n%s", got)
+		}
+	}
+}
+
+// At the smallest history limit a workspace may set, a continuation keeps
+// what fits half of it, and its first turn sends the model all of that.
+func TestAContinuationAtTheSmallestHistoryLimit(t *testing.T) {
+	p, rec := continuing(t)
+	cfg := p.Settings(tenant)
+	cfg.HistoryLimit = platform.MinHistory
+	if err := p.SetSettings(t.Context(), tenant, cfg); err != nil {
+		t.Fatal(err)
+	}
+	session := generatedSession(knowledge.ToolCodex, "generated-small")
+	for i := range 8 {
+		session.Turns = append(session.Turns,
+			knowledge.ImportedTurn{Speaker: knowledge.SpeakerUser, Text: fmt.Sprintf("generated question %d about the staging proxy and its port", i)},
+			knowledge.ImportedTurn{Speaker: knowledge.SpeakerResult, Text: fmt.Sprintf("generated result %d", i)},
+			knowledge.ImportedTurn{Speaker: knowledge.SpeakerAssistant, Text: fmt.Sprintf("generated answer %d: the proxy listens on 8443", i)})
+	}
+	_, in := imported(t, p, session)
+	th, err := p.ContinueImport(t.Context(), operator, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if th.Import.Omitted.Turns == 0 || len(th.Import.Context) == 0 {
+		t.Fatalf("the test needs a conversation that does not fit: %+v", th.Import.Omitted)
+	}
+	posted := post(t, p, operator, th.ID, platform.MessageInput{Text: "@coder which port?"})
+	await(t, p, posted.Runs[0].ID, runs.Completed)
+	got := rec.last()
+	if strings.Contains(got, "earlier turns omitted") {
+		t.Fatalf("the first turn left part of the seed out:\n%s", got)
+	}
+	for _, k := range th.Import.Context {
+		if !strings.Contains(got, "(imported, not said here) "+k.Text) {
+			t.Fatalf("not sent %q:\n%s", k.Text, got)
+		}
+	}
+}
+
+// The source and the document are read again just before the write, and
+// the record is built from that read: what changed since the first refuses
+// it, and writes no thread. Between the two the attempt is audited, which is
+// where these tests change things: the document reimported, the source
+// moved to another project, or deleted and made again under its name.
+func TestAContinuationIsRefusedWhenTheSecondReadDiffers(t *testing.T) {
+	var armed atomic.Pointer[func()]
+	now := func() time.Time {
+		if f := armed.Load(); f != nil && calledFrom("(*Platform).BeginAudit") && armed.CompareAndSwap(f, nil) {
+			(*f)()
+		}
+		return time.Now()
+	}
+	p, _ := continuingAt(t, now)
+	before, _ := p.Threads.Records(tenant, func(threads.Thread) bool { return true })
+	session := generatedSession(knowledge.ToolCodex, "generated-between")
+	doc, in := imported(t, p, session)
+	between := func(name string, change func(), want error) {
+		t.Helper()
+		armed.Store(&change)
+		if _, err := p.ContinueImport(t.Context(), operator, in); !errors.Is(err, want) {
+			t.Fatalf("%s between the reads: %v, want %v", name, err, want)
+		}
+		if armed.Load() != nil {
+			t.Fatalf("%s: the change was not made between the reads", name)
+		}
+	}
+	between("the document reimported", func() {
+		grown := session
+		grown.Turns = append(slices.Clone(session.Turns), knowledge.ImportedTurn{Speaker: knowledge.SpeakerUser, Text: "generated follow-up"})
+		if _, err := p.ReimportDocument(admin, "sessions-in-field", doc.ID, doc.Title, "# A generated chat\n\ngenerated text, grown", doc.Digest, time.Now(), nil, grown); err != nil {
+			t.Error(err)
+		}
+	}, platform.ErrImportChanged)
+	_, in = imported(t, p, generatedSession(knowledge.ToolCodex, "generated-between-2"))
+	between("the source moved to another project", func() {
+		if err := p.DetachSource(admin, "sessions-in-field", "Field", ""); err != nil {
+			t.Error(err)
+		}
+		if _, err := p.AttachSource(admin, "sessions-in-field", "Globex", ""); err != nil {
+			t.Error(err)
+		}
+	}, platform.ErrImportDetached)
+	if err := p.DetachSource(admin, "sessions-in-field", "Globex", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.AttachSource(admin, "sessions-in-field", "Field", ""); err != nil {
+		t.Fatal(err)
+	}
+	between("the source made again", func() {
+		if err := p.Knowledge.Delete(tenant, "sessions-in-field"); err != nil {
+			t.Error(err)
+		}
+		if _, err := p.Knowledge.Create(tenant, "sessions-in-field", "Made again.", "ada", time.Now()); err != nil {
+			t.Error(err)
+		}
+		if _, err := p.AttachSource(admin, "sessions-in-field", "Field", ""); err != nil {
+			t.Error(err)
+		}
+	}, threads.ErrNotFound)
+	after, _ := p.Threads.Records(tenant, func(threads.Thread) bool { return true })
+	if len(after) != len(before) {
+		t.Fatalf("a refused continuation wrote a thread: %d then %d", len(before), len(after))
+	}
+}
+
+// calledFrom reports whether a function whose name ends in name is on the
+// caller's stack.
+func calledFrom(name string) bool {
+	pcs := make([]uintptr, 64)
+	frames := runtime.CallersFrames(pcs[:runtime.Callers(2, pcs)])
+	for {
+		f, more := frames.Next()
+		if strings.HasSuffix(f.Function, name) {
+			return true
+		}
+		if !more {
+			return false
+		}
 	}
 }

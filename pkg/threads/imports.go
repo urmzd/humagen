@@ -67,6 +67,11 @@ type Import struct {
 	// document's id there.
 	Source   string `json:"source"`
 	Document string `json:"document"`
+	// SourceID is the source's id when it was continued (knowledge
+	// Source.ID): a source of the same name made since is another source,
+	// and the continuation is not there for anyone. "" for a source created
+	// before sources kept ids, which only that source still matches.
+	SourceID string `json:"source_id,omitempty"`
 	// URI and Title are the document's when it was continued. They are a
 	// person's to edit, so they are shown, and never decide anything.
 	URI   string `json:"uri"`
@@ -236,10 +241,10 @@ func importedLine(im Imported) string {
 // even the newest fits, the newest that is not a tool result is cut to its
 // opening.
 //
-// The size counted is the transcript as Ask writes it ahead of the words it
-// answers: its opening line, each line with its label and its mark, and the
-// fixed words of its closing line. Who asks is named in the closing line and
-// is not known here, so that name is not counted.
+// The size is counted as Ask counts the history limit: each line as it is
+// written, with its label, its mark and its line break. The transcript's
+// opening and closing lines are not counted, as Ask does not count them, so
+// a seed that fits half the limit is sent whole on the first turn.
 //
 // turns are oldest first. Control characters other than line breaks and
 // tabs are made spaces. It refuses an empty conversation, or a budget too
@@ -261,7 +266,6 @@ func SeedImport(tool string, child bool, turns []ImportTurn, budget int) ([]Impo
 		t.At = cloneTime(t.At)
 		clean = append(clean, t)
 	}
-	frame := len(transcriptOpen) + len(importedNote) + 1 + len(fmt.Sprintf(transcriptClose, ""))
 	sizes := make([]int, len(clean))
 	for i, t := range clean {
 		sizes[i] = len(importedLine(Imported{Tool: tool, Child: child, Turn: t})) + 1
@@ -270,7 +274,7 @@ func SeedImport(tool string, child bool, turns []ImportTurn, budget int) ([]Impo
 		}
 	}
 	keep := make([]bool, len(clean))
-	total := frame
+	total := 0
 	for i, n := range sizes {
 		if n >= 0 {
 			keep[i], total = true, total+n
@@ -320,7 +324,7 @@ func SeedImport(tool string, child bool, turns []ImportTurn, budget int) ([]Impo
 	}
 	t := clean[at]
 	t.Cut = true
-	room := budget - frame - (len(importedLine(Imported{Tool: tool, Child: child, Turn: ImportTurn{Speaker: t.Speaker, Cut: true}})) + 1)
+	room := budget - (len(importedLine(Imported{Tool: tool, Child: child, Turn: ImportTurn{Speaker: t.Speaker, Cut: true}})) + 1)
 	t.Text = openingOf(t.Text, room)
 	if strings.TrimSpace(t.Text) == "" {
 		return nil, omitted, fmt.Errorf("%w: the conversation history limit is too small to keep any of the imported conversation", ErrInvalid)
@@ -395,7 +399,7 @@ func sameImport(a, b *Import) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
-	if a.Source != b.Source || a.Document != b.Document || a.URI != b.URI || a.Title != b.Title || a.Structure != b.Structure ||
+	if a.Source != b.Source || a.SourceID != b.SourceID || a.Document != b.Document || a.URI != b.URI || a.Title != b.Title || a.Structure != b.Structure ||
 		a.Tool != b.Tool || a.Child != b.Child || a.DocumentDigest != b.DocumentDigest || a.StructureDigest != b.StructureDigest ||
 		a.ImportedBy != b.ImportedBy || !sameTime(a.ImportedAt, b.ImportedAt) || !sameTime(a.StartedAt, b.StartedAt) || !sameTime(a.EndedAt, b.EndedAt) ||
 		a.By != b.By || !a.At.Equal(b.At) || a.Omitted != b.Omitted ||
@@ -417,6 +421,8 @@ var (
 	// validSourceName is a knowledge source's name (knowledge.ValidName).
 	validSourceName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 	validDigest     = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	// validSourceID is a knowledge source's id (knowledge Source.ID).
+	validSourceID = regexp.MustCompile(`^[0-9a-f]{32}$`)
 )
 
 // Bounds of an import record's own fields.
@@ -435,8 +441,8 @@ func (im *Import) validate(t Thread) error {
 	switch {
 	case t.Session != nil || t.Surface != nil || t.Announcement != "" || t.ReadOnly:
 		return bad("starts a conversation of its own, not a session, a surface's or an archive")
-	case !validSourceName.MatchString(im.Source):
-		return bad("names a knowledge source")
+	case !validSourceName.MatchString(im.Source) || (im.SourceID != "" && !validSourceID.MatchString(im.SourceID)):
+		return bad("names a knowledge source, and its id when it has one")
 	case im.Document == "" || len(im.Document) > maxImportDocument || !oneLine(im.Document):
 		return bad(fmt.Sprintf("names a document in at most %d bytes", maxImportDocument))
 	case im.URI == "" || len(im.URI) > maxImportURI || !oneLine(im.URI):

@@ -1659,19 +1659,28 @@ export interface ThreadFork {
 
 /** Where a conversation continued from an imported one came from: a
 knowledge document an import wrote from a session of another tool,
-pinned by its source, its id, its digest and its structure's digest.
+pinned by its source and that source's id, the document's id, its
+digest and its structure's digest.
 It is fixed when the conversation is started, and a fork of it keeps
 it. Its context is passive text the agent is sent ahead of the
 conversation's own turns, each line labelled with the tool and the
 speaker there and marked "(imported, not said here)"; it is never a
 message or a run. Only a reader who still sees the source reads the
 conversation, and it is published only through a reviewed summary.
+While the workspace's history setting is none, nothing is posted,
+run or forked in it.
 A kept structure is what its importer stated (`imported_by`), not a
 verified record. No route starts a continuation yet.
  */
 export interface ThreadImport {
   /** The knowledge source the document is in. */
   source: string;
+  /** The source's id when the conversation was continued
+(KnowledgeSource `id`). A source of the same name made since is
+another source, and no one reads the conversation through it.
+Absent for a source created before sources kept ids.
+ */
+  source_id?: string;
   /** The document's id in the source. */
   document: string;
   /** The document's uri when it was continued. Shown only; it decides nothing. */
@@ -4066,6 +4075,12 @@ export interface CorpusChange {
 }
 
 export interface KnowledgeSource {
+  /** Tells this source apart from any earlier or later source of the
+same name: set when it is created, never changed, and never
+given to another source. Absent for a source created before
+sources kept ids.
+ */
+  id?: string;
   lifecycle?: KnowledgeLifecycle;
   content_version?: number;
   name: string;
