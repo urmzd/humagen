@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { AgentStore } from "./AgentStore.tsx";
 import type { StoreAgent, StorePackage } from "./api.ts";
 import { stubFetch } from "./dom.ts";
@@ -58,124 +59,142 @@ afterEach(() => {
   net = undefined;
 });
 
-test("the store lists each package with its version and agents, and Install adds them", async () => {
+/** The store as the app mounts it: the open package is the address's, kept here. */
+function Store({
+  canWrite = true,
+  at,
+  onChanged,
+}: {
+  canWrite?: boolean;
+  at?: string;
+  onChanged?: () => void;
+}) {
+  const [selected, setSelected] = useState(at);
+  return (
+    <AgentStore
+      canWrite={canWrite}
+      selected={selected}
+      onOpen={setSelected}
+      onChanged={onChanged}
+    />
+  );
+}
+
+const review = (): StorePackage => ({
+  name: "humagen/review",
+  title: "Review",
+  description: "Pull request reviews.",
+  version: "sha256:abcdef1234",
+  installed: false,
+  agents: [
+    agent("code-reviewer", {
+      fallbacks: [{ provider: "openai", model: "gpt-5.1" }],
+      tools: ["file_read", "mcp:docs"],
+      access: { spawn: ["qa-reviewer"] },
+      connectors: ["github"],
+      tool_servers: ["docs"],
+    }),
+    agent("qa-reviewer", {
+      fallbacks: [{ provider: "openai", model: "gpt-5.1" }],
+      tools: ["file_read", "mcp:docs"],
+      connectors: ["github"],
+      tool_servers: ["docs"],
+    }),
+  ],
+  missing: ["code-reviewer", "qa-reviewer"],
+});
+
+test("the catalog lists each package by what it does, and Install adds its agents", async () => {
   let changed = 0;
   net = stubFetch({
-    "GET /api/store/packages": () => ({ packages: [core()] }),
+    "GET /api/store/packages": () => ({ packages: [core(), review()] }),
     "POST /api/store/packages/humagen%2Fcore/install": () => ({
       package: installedCore(),
       added: ["humagen-writer", "humagen-analyst"],
     }),
   });
-  render(<AgentStore canWrite onChanged={() => changed++} />);
-  assert.ok(await screen.findByText("Core"));
+  const { container } = render(<Store onChanged={() => changed++} />);
+  const card = (await screen.findByRole("link", { name: "Core" })) as HTMLAnchorElement;
+  // The card is the link to the package's page.
+  assert.equal(card.getAttribute("href"), "/agent-store/humagen/core");
   assert.ok(screen.getByText("A writer and an analyst."));
-  assert.ok(screen.getByText(words.version("sha256:3f2a9c1e0000")));
-  assert.equal(words.version("sha256:3f2a9c1e0000"), "Version 3f2a9c1");
-  assert.ok(screen.getByText("@humagen-writer"));
-  assert.ok(screen.getByText("@humagen-analyst"));
+  assert.equal(screen.getAllByText(words.agentCount(2)).length, 2);
+  assert.equal(words.agentCount(1), "1 agent");
+  // What a package needs is on its card; what each agent is granted is not.
+  assert.ok(screen.getByText(words.connector("github")));
+  assert.equal(container.querySelector("[data-agent]"), null);
   assert.equal(screen.queryByText(words.installed), null);
   fireEvent.click(screen.getByRole("button", { name: `${words.install} Core` }));
   assert.ok(await screen.findByText(words.installed));
-  assert.ok(screen.getByText(words.installedNote(["humagen-writer", "humagen-analyst"])));
   assert.equal(changed, 1);
-  assert.ok(screen.getByRole("button", { name: `${words.remove} Core` }));
   assert.equal(screen.queryByRole("button", { name: `${words.install} Core` }), null);
 });
 
-test("a card says what each agent is granted, above Install", async () => {
-  const review: StorePackage = {
-    name: "humagen/review",
-    title: "Review",
-    description: "Pull request reviews.",
-    version: "sha256:abcdef1234",
-    installed: false,
-    agents: [
-      agent("code-reviewer", {
-        fallbacks: [{ provider: "openai", model: "gpt-5.1" }],
-        tools: ["file_read", "github_read_context", "mcp:docs"],
-        access: { spawn: ["qa-reviewer"] },
-        connectors: ["github"],
-        tool_servers: ["docs"],
-      }),
-      agent("qa-reviewer", { tools: ["file_read"] }),
-    ],
-    missing: ["code-reviewer", "qa-reviewer"],
-  };
-  net = stubFetch({ "GET /api/store/packages": () => ({ packages: [review] }) });
-  const { container } = render(<AgentStore canWrite />);
-  const install = await screen.findByRole("button", { name: `${words.install} Review` });
-  const uses = screen.getByRole("list", { name: words.uses });
-  // What is granted comes before the button that grants it.
-  assert.ok(uses.compareDocumentPosition(install) & Node.DOCUMENT_POSITION_FOLLOWING);
-  const lead = container.querySelector('[data-agent="code-reviewer"]') as HTMLElement;
-  const text = lead.textContent ?? "";
-  for (const want of [
-    "@code-reviewer",
-    words.modelName("anthropic", "claude-sonnet-5-5"),
-    words.fallback("openai", "gpt-5.1"),
-    words.connector("github"),
-    words.toolServer("docs"),
-    "@qa-reviewer",
-    "file_read",
-    "github_read_context",
-    "mcp:docs",
-  ])
-    assert.ok(text.includes(want), `${want} in ${text}`);
-  assert.equal(words.connector("github"), "GitHub connection");
-  // Each agent is one line that says the same in short.
-  assert.equal(
-    lead.querySelector("summary")?.textContent,
-    `@code-reviewer ${words.summary("anthropic / claude-sonnet-5-5", 3, ["GitHub connection", "docs tool server"], 1)}`,
-  );
-  assert.equal(
-    words.summary("anthropic / claude-sonnet-5-5", 4, ["GitHub connection"], 3),
-    "anthropic / claude-sonnet-5-5 · 4 tools, GitHub connection, calls 3 agents",
-  );
-  assert.equal(
-    words.summary("offline / offline", 1, [], 1),
-    "offline / offline · 1 tool, calls 1 agent",
-  );
-  assert.equal(words.summary("offline / offline", 0, [], 0), "offline / offline · no tools");
-  // The rows are a definition list: each label is a term and its chips are
-  // inside its definition, so a chip that wraps stays beside the label.
-  const terms = [...lead.querySelectorAll("dl > dt")].map((dt) => dt.textContent);
-  assert.deepEqual(terms, [words.model, words.needs, words.calls, words.tools]);
-  const tools = [...lead.querySelectorAll("dl > dt")].find((dt) => dt.textContent === words.tools)
-    ?.nextElementSibling as HTMLElement;
-  assert.equal(tools.tagName, "DD");
-  assert.deepEqual(
-    [...tools.children].map((chip) => chip.textContent),
-    ["file_read", "github_read_context", "mcp:docs"],
-  );
-  assert.match(lead.querySelector("dl")?.className ?? "", /grid-cols-\[4rem_minmax\(0,1fr\)\]/);
-  // An agent that needs no connection and calls no one has no such rows.
-  const qa = container.querySelector('[data-agent="qa-reviewer"]') as HTMLElement;
-  assert.deepEqual(
-    [...qa.querySelectorAll("dl > dt")].map((dt) => dt.textContent),
-    [words.model, words.tools],
-  );
+test("opening a card shows the package's page, and Store leads back", async () => {
+  net = stubFetch({ "GET /api/store/packages": () => ({ packages: [core(), review()] }) });
+  const { container } = render(<Store />);
+  fireEvent.click(await screen.findByRole("link", { name: "Review" }));
+  assert.ok(container.querySelector('[data-agent="code-reviewer"]'));
+  assert.equal(container.querySelector('[data-agent="humagen-writer"]'), null);
+  const back = screen.getByRole("link", { name: words.title }) as HTMLAnchorElement;
+  assert.equal(back.getAttribute("href"), "/agent-store");
+  fireEvent.click(back);
+  assert.ok(screen.getByRole("link", { name: "Core" }));
+  assert.equal(container.querySelector("[data-agent]"), null);
 });
 
-test("a package not installed opens its agents, and an installed one keeps them closed", async () => {
-  net = stubFetch({
-    "GET /api/store/packages": () => ({ packages: [core()] }),
-    "POST /api/store/packages/humagen%2Fcore/install": () => ({
-      package: installedCore(),
-      added: ["humagen-writer", "humagen-analyst"],
-    }),
+test("a package's page says once what every agent shares, and nests the agents one calls", async () => {
+  net = stubFetch({ "GET /api/store/packages": () => ({ packages: [review()] }) });
+  const { container } = render(<Store at="humagen/review" />);
+  await screen.findByRole("button", { name: `${words.install} Review` });
+  const facts = Object.fromEntries(
+    [...container.querySelectorAll("dl > dt")].map((dt) => [
+      dt.textContent,
+      dt.nextElementSibling?.textContent,
+    ]),
+  );
+  assert.equal(facts[words.needs], `${words.connector("github")}${words.toolServer("docs")}`);
+  assert.equal(words.connector("github"), "GitHub connection");
+  assert.equal(facts[words.runsOn], "anthropic / claude-sonnet-5-5, then openai / gpt-5.1");
+  assert.equal(facts[words.everyAgentTools], "file_read, mcp:docs");
+  assert.equal(facts.Version, "abcdef1");
+  // Said once above, so no agent repeats its model or tools.
+  const lead = container.querySelector('[data-agent="code-reviewer"]') as HTMLElement;
+  assert.ok(!lead.textContent?.includes("claude-sonnet-5-5"));
+  assert.ok(!lead.textContent?.includes("file_read"));
+  assert.ok(lead.textContent?.includes("code-reviewer does its part."));
+  // The agent it calls is listed under it, and once.
+  assert.ok(lead.querySelector('[data-agent="qa-reviewer"]'));
+  assert.equal(container.querySelectorAll('[data-agent="qa-reviewer"]').length, 1);
+  assert.ok(screen.getByRole("list", { name: words.callsNamed(["qa-reviewer"]) }));
+});
+
+test("agents that differ each say their own model and tools", async () => {
+  const mixed = core({
+    agents: [
+      agent("humagen-writer", { tools: ["file_write"] }),
+      agent("humagen-analyst", { provider: "openai", model: "gpt-5.1", tools: ["runs_summary"] }),
+    ],
   });
-  const { container } = render(<AgentStore canWrite />);
-  await screen.findByText("Core");
-  const all = () => [...container.querySelectorAll("details")] as HTMLDetailsElement[];
-  assert.equal(all().length, 2);
-  assert.ok(all().every((d) => d.open));
-  fireEvent.click(screen.getByRole("button", { name: `${words.install} Core` }));
-  await screen.findByText(words.installed);
-  assert.ok(all().every((d) => !d.open));
-  // An installed agent's rows end with the way to its page.
-  const link = container.querySelector('[data-agent="humagen-writer"] dd a') as HTMLAnchorElement;
-  assert.equal(link.textContent, words.openAgent);
+  net = stubFetch({ "GET /api/store/packages": () => ({ packages: [mixed] }) });
+  const { container } = render(<Store at="humagen/core" />);
+  await screen.findByRole("button", { name: `${words.install} Core` });
+  const terms = [...container.querySelectorAll("dl > dt")].map((dt) => dt.textContent);
+  assert.deepEqual(terms, ["Version"]);
+  const writer = container.querySelector('[data-agent="humagen-writer"]')?.textContent ?? "";
+  assert.ok(writer.includes("anthropic / claude-sonnet-5-5"));
+  assert.ok(writer.includes("file_write"));
+  const analyst = container.querySelector('[data-agent="humagen-analyst"]')?.textContent ?? "";
+  assert.ok(analyst.includes("openai / gpt-5.1"));
+  assert.ok(analyst.includes("runs_summary"));
+});
+
+test("an installed agent's name opens its page", async () => {
+  net = stubFetch({ "GET /api/store/packages": () => ({ packages: [installedCore()] }) });
+  const { container } = render(<Store at="humagen/core" />);
+  await screen.findByRole("button", { name: `${words.remove} Core` });
+  const link = container.querySelector('[data-agent="humagen-writer"] a') as HTMLAnchorElement;
+  assert.equal(link.textContent, "@humagen-writer");
   assert.match(link.getAttribute("href") ?? "", /humagen-writer/);
 });
 
@@ -189,7 +208,7 @@ test("Remove asks first, saying the agents are retired and their history stays",
       customized: [],
     }),
   });
-  render(<AgentStore canWrite onChanged={() => changed++} />);
+  render(<Store at="humagen/core" onChanged={() => changed++} />);
   fireEvent.click(await screen.findByRole("button", { name: `${words.remove} Core` }));
   const question = words.removeQuestion("Core", []);
   assert.match(question, /agents are retired; their history stays/);
@@ -223,8 +242,9 @@ test("removing a package with a customized agent names it and retires it with fo
       };
     },
   });
-  render(<AgentStore canWrite />);
+  render(<Store at="humagen/core" />);
   assert.ok(await screen.findByText(words.customized(["humagen-writer"])));
+  assert.ok(screen.getByText(words.changed));
   fireEvent.click(screen.getByRole("button", { name: `${words.remove} Core` }));
   const question = words.removeQuestion("Core", ["humagen-writer"]);
   assert.match(question, /Changes to humagen-writer stay in its history too/);
@@ -234,41 +254,39 @@ test("removing a package with a customized agent names it and retires it with fo
 });
 
 test("a partly removed package offers Restore Missing, and a taken name blocks Install", async () => {
-  const review: StorePackage = {
-    name: "humagen/review",
-    title: "Review",
-    description: "Pull request reviews.",
-    version: "sha256:abcdef1234",
-    installed: false,
+  const partly = core({
+    installed: true,
+    missing: ["humagen-analyst"],
+    agents: [agent("humagen-writer", { installed: true }), agent("humagen-analyst")],
+  });
+  const taken: StorePackage = {
+    ...review(),
     agents: [agent("code-reviewer", { taken: true }), agent("qa-reviewer")],
     missing: ["qa-reviewer"],
   };
-  net = stubFetch({
-    "GET /api/store/packages": () => ({
-      packages: [
-        core({
-          installed: true,
-          missing: ["humagen-analyst"],
-          agents: [agent("humagen-writer", { installed: true }), agent("humagen-analyst")],
-        }),
-        review,
-      ],
-    }),
-  });
-  render(<AgentStore canWrite />);
-  assert.ok(await screen.findByText(words.missing(["humagen-analyst"])));
-  assert.ok(screen.getByRole("button", { name: `${words.restore} Core` }));
-  assert.ok(screen.getByText(words.taken(["code-reviewer"])));
+  net = stubFetch({ "GET /api/store/packages": () => ({ packages: [partly, taken] }) });
+  render(<Store />);
+  assert.ok(await screen.findByRole("button", { name: `${words.restore} Core` }));
+  assert.ok(screen.getByText(words.incomplete));
+  assert.ok(screen.getByText(words.nameTaken));
   const blocked = screen.getByRole("button", {
     name: `${words.install} Review`,
   }) as HTMLButtonElement;
   assert.equal(blocked.disabled, true);
+  // Each package's page says which agents, and what to do.
+  fireEvent.click(screen.getByRole("link", { name: "Review" }));
+  assert.ok(screen.getByText(words.taken(["code-reviewer"])));
+  fireEvent.click(screen.getByRole("link", { name: words.title }));
+  fireEvent.click(screen.getByRole("link", { name: "Core" }));
+  assert.ok(screen.getByText(words.missing(["humagen-analyst"])));
 });
 
 test("someone who only reads agents sees the store and no Install or Remove", async () => {
   net = stubFetch({ "GET /api/store/packages": () => ({ packages: [core(), installedCore()] }) });
-  render(<AgentStore canWrite={false} />);
-  assert.ok((await screen.findAllByText("Core")).length > 0);
+  render(<Store canWrite={false} />);
+  const cards = await screen.findAllByRole("link", { name: "Core" });
+  assert.equal(screen.queryByRole("button", { name: `${words.install} Core` }), null);
+  fireEvent.click(cards[0] as HTMLElement);
   assert.equal(screen.queryByRole("button", { name: `${words.install} Core` }), null);
   assert.equal(screen.queryByRole("button", { name: `${words.remove} Core` }), null);
 });
@@ -284,7 +302,24 @@ test("a refused install says why", async () => {
         },
       ),
   });
-  render(<AgentStore canWrite />);
+  render(<Store />);
   fireEvent.click(await screen.findByRole("button", { name: `${words.install} Core` }));
   assert.ok(await screen.findByText(/one of this workspace's own agents/));
+});
+
+test("an address for a package the store lacks says so above the catalog", async () => {
+  net = stubFetch({ "GET /api/store/packages": () => ({ packages: [core()] }) });
+  render(<Store at="humagen/gone" />);
+  assert.ok(await screen.findByText(words.notFound("humagen/gone")));
+  assert.ok(screen.getByRole("link", { name: "Core" }));
+});
+
+test("the store's first read is a skeleton, and a failed read says so", async () => {
+  net = stubFetch({
+    "GET /api/store/packages": () => new Response("{}", { status: 500 }),
+  });
+  const { container } = render(<Store />);
+  assert.ok(container.querySelector('[data-testid="skeleton"]'));
+  assert.ok(await screen.findByText(words.failed));
+  assert.equal(container.querySelector('[data-testid="skeleton"]'), null);
 });
