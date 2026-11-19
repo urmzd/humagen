@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.138.2 (2026-11-19)
+
+### Bug Fixes
+
+- **library**: take skill packages with larger and more supporting files (#380) ([c12b99f](https://github.com/urmzd/humagen/commit/c12b99f9c67b0edf6b75087ed62ba29b81811fed))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.138.1...v0.138.2)
+
+
 ## 0.138.1 (2026-11-19)
 
 ### Bug Fixes
