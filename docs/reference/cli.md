@@ -323,7 +323,10 @@ structure alone, so the document is not embedded again and its source does
 not read as changed. The server restores only a document with no trusted
 structure: a second import of a revision a trusted structure is kept for is
 refused (409, "a structure is already kept for this revision"), and a run
-that meets that refusal counts the session `present`. The server keeps a
+that meets that refusal counts the session `present`. It does not compare
+the kept structure with the one it would send: a structure another importer
+wrote, or one a later version of this command would write for the same text,
+stays as it is until the session's text changes. The server keeps a
 digest of each structure, so what is read can be pinned to the structure as
 well as to the document. A restore refused because the source's structures are
 at their bound is not a failure: the document stays present and unchanged,
