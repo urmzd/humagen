@@ -442,7 +442,7 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 			w.WriteHeader(201)
 			fmt.Fprint(w, `{}`)
 		case r.Method == "GET" && r.URL.Path == "/api/library/skills":
-			rows, err := s.lib.List(importTenant, importScope(r.URL.Query().Get("scope")))
+			rows, unreadable, err := s.lib.List(importTenant, importScope(r.URL.Query().Get("scope")))
 			if err != nil {
 				problem(500, err.Error())
 				return
@@ -465,7 +465,7 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 				}
 				s.mu.Lock()
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"skills": out})
+			_ = json.NewEncoder(w).Encode(map[string]any{"skills": out, "unreadable": unreadable})
 		case r.Method == "GET" && len(parts) == 3 && parts[0] == "library" && parts[1] == "skills":
 			latest, err := s.lib.Find(importTenant, parts[2])
 			if err != nil {
@@ -710,7 +710,7 @@ func TestImportSkillsDraftsEachFolderAndSkipsWhatIsThere(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Added 2 skills and updated 0 as drafts in the personal library; 1 already there, 0 in conflict, 2 failed.",
-		"failed big: data.bin is over 131072 bytes",
+		"failed big: data.bin is over 1048576 bytes",
 		"failed broken: library: invalid",
 		"Next: test and publish each draft under Library, Skills. Until then agents keep the revision they use now.",
 	} {

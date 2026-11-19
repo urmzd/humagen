@@ -911,7 +911,7 @@ export interface LibrarySkillDefinition {
 
 export interface LibrarySkillFile {
   path: string;
-  /** Base64-encoded bytes. At most 128 KiB per file and 512 KiB per package after decoding. */
+  /** Base64-encoded bytes. After decoding, at most 1 MiB for a supporting file and 128 KiB for SKILL.md, 2 MiB for the package, and 16 MiB for the files of every revision of one skill together. */
   data: string;
 }
 
@@ -6116,6 +6116,7 @@ export interface ListMemoryFoldersResponse {
 
 export interface ListLibrarySkillsResponse {
   skills: LibrarySkill[];
+  unreadable: string[];
 }
 
 export interface DraftLibrarySkillBody {

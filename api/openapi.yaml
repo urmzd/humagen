@@ -1077,12 +1077,17 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [skills]
+                required: [skills, unreadable]
                 properties:
                   skills:
                     type: array
                     maxItems: 256
                     items: {$ref: '#/components/schemas/LibrarySkill'}
+                  unreadable:
+                    description: Names of skills in the scope this server cannot read, such as one a later release wrote past this one's bounds. Each is left out of skills and refused wherever it is read; the rest of the scope is listed.
+                    type: array
+                    maxItems: 256
+                    items: {type: string, maxLength: 64}
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
@@ -12462,7 +12467,7 @@ components:
           description: Immutable package files. SKILL.md supplies metadata and instructions. Omitted on compact list responses and legacy revisions.
           type: array
           minItems: 1
-          maxItems: 64
+          maxItems: 256
           items: {$ref: '#/components/schemas/LibrarySkillFile'}
         tools:
           description: Exact permitted tools, intersected with the agent's grants. Empty permits no tools.
@@ -12475,9 +12480,9 @@ components:
       properties:
         path: {type: string, maxLength: 256}
         data:
-          description: Base64-encoded bytes. At most 128 KiB per file and 512 KiB per package after decoding.
+          description: Base64-encoded bytes. After decoding, at most 1 MiB for a supporting file and 128 KiB for SKILL.md, 2 MiB for the package, and 16 MiB for the files of every revision of one skill together.
           type: string
-          maxLength: 174764
+          maxLength: 1398104
     LibraryProvenance:
       type: object
       required: [scope, name, version]

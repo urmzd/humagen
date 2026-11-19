@@ -145,8 +145,10 @@ const scopesKey = "#scopes"
 
 // Store keeps skill revisions. It reads and writes the database per request.
 type Store struct {
-	kv   kv
-	rows *state.Table[[]Revision]
+	kv kv
+	// raw reads skill records undecoded, so a listing decodes each on its
+	// own (scan).
+	raw *state.Table[json.RawMessage]
 }
 
 // Open returns a store on st, which may be shared with other processes. A nil
@@ -159,7 +161,7 @@ func Open(st state.Store) (*Store, error) {
 	if st == nil {
 		st = state.NewMemory()
 	}
-	s := &Store{kv: kv{st: st, namespace: skillsNamespace}, rows: state.NewTable[[]Revision](st, skillsNamespace)}
+	s := &Store{kv: kv{st: st, namespace: skillsNamespace}, raw: state.NewTable[json.RawMessage](st, skillsNamespace)}
 	if err := s.kv.convertOnce(s.convert); err != nil {
 		return nil, fmt.Errorf("library: convert skills: %w", err)
 	}
@@ -249,6 +251,9 @@ func (s *Store) read(tenant string, scope Scope, name string) ([]Revision, int64
 	return rows, ver, nil
 }
 
+// fullSkill is the way on from a skill that holds as much as it may.
+const fullSkill = "a skill's revisions are never removed, so save this one as another skill, under another name or in another scope"
+
 // Draft appends an immutable revision; expected is the latest version read.
 // Provenance is validated by the platform before entering this store.
 func (s *Store) Draft(tenant, by string, scope Scope, d Definition, expected int, from *Provenance, at time.Time, trustedOrigin ...string) (Revision, error) {
@@ -283,7 +288,14 @@ func (s *Store) draft(tenant, by string, scope Scope, d Definition, expected int
 			return ErrConflict
 		}
 		if len(previous) >= MaxVersions {
-			return ErrInvalid
+			return fmt.Errorf("%w: %s holds as many revisions as a skill may (%d); %s", ErrInvalid, d.Name, MaxVersions, fullSkill)
+		}
+		held := PackageBytes(d.Files)
+		for _, r := range previous {
+			held += PackageBytes(r.Files)
+		}
+		if held > MaxSkillBytes {
+			return fmt.Errorf("%w: the revisions of %s would hold more than %d bytes of files together; %s", ErrInvalid, d.Name, MaxSkillBytes, fullSkill)
 		}
 		r := clone(Revision{OriginRun: outcomeOrigin(previous, from, trustedOrigin), ID: ID(scope, d.Name), Via: via, Definition: d, Scope: scope, Version: len(previous) + 1, By: by, At: at, Tests: []string{}, From: from})
 		next := append(slices.Clone(previous), r)
@@ -372,46 +384,68 @@ func (s *Store) Get(tenant string, scope Scope, name string, version int) (Revis
 	return clone(rows[version-1]), nil
 }
 
-// List returns the latest revision of every skill in a scope, by name.
-func (s *Store) List(tenant string, scope Scope) ([]Revision, error) {
-	items, err := s.rows.All(tenant, scope.Key()+"/", MaxSkills)
+// scan reads every skill record of a scope in one bounded read and gives fn
+// the revisions of each this release can read. A record it cannot decode or
+// validate, such as one a later release wrote past this one's bounds, fails
+// only itself: it is left out, and its name is among the unreadable this
+// returns, sorted. Every read of that one skill (read, Find) still refuses
+// it, so nothing of it is used.
+func (s *Store) scan(tenant string, scope Scope, fn func([]Revision)) ([]string, error) {
+	prefix := scope.Key() + "/"
+	items, err := s.raw.All(tenant, prefix, MaxSkills)
 	if err != nil {
 		return nil, err
 	}
-	out := []Revision{}
+	unreadable := []string{}
 	for _, it := range items {
-		rows, err := checkRows(it.Key, it.Value)
-		if err != nil {
-			return nil, fmt.Errorf("library: %q/%q: %w", tenant, it.Key, err)
+		var rows []Revision
+		if json.Unmarshal(it.Value, &rows) != nil {
+			unreadable = append(unreadable, strings.TrimPrefix(it.Key, prefix))
+			continue
 		}
+		rows, err := checkRows(it.Key, rows)
+		if err != nil {
+			unreadable = append(unreadable, strings.TrimPrefix(it.Key, prefix))
+			continue
+		}
+		fn(rows)
+	}
+	slices.Sort(unreadable)
+	return unreadable, nil
+}
+
+// List returns the latest revision of every skill in a scope, by name, and
+// the names of the skills there this release cannot read (scan).
+func (s *Store) List(tenant string, scope Scope) ([]Revision, []string, error) {
+	out := []Revision{}
+	unreadable, err := s.scan(tenant, scope, func(rows []Revision) {
 		out = append(out, clone(rows[len(rows)-1]))
+	})
+	if err != nil {
+		return nil, nil, err
 	}
 	slices.SortFunc(out, func(a, b Revision) int { return strings.Compare(a.Name, b.Name) })
-	return out, nil
+	return out, unreadable, nil
 }
 
 // ListPublished returns the latest published revision of every skill in a
-// scope that has one, by name, in one bounded read.
-func (s *Store) ListPublished(tenant string, scope Scope) ([]Revision, error) {
-	items, err := s.rows.All(tenant, scope.Key()+"/", MaxSkills)
-	if err != nil {
-		return nil, err
-	}
+// scope that has one, by name, in one bounded read, and the names of the
+// skills there this release cannot read (scan).
+func (s *Store) ListPublished(tenant string, scope Scope) ([]Revision, []string, error) {
 	out := []Revision{}
-	for _, it := range items {
-		rows, err := checkRows(it.Key, it.Value)
-		if err != nil {
-			return nil, fmt.Errorf("library: %q/%q: %w", tenant, it.Key, err)
-		}
+	unreadable, err := s.scan(tenant, scope, func(rows []Revision) {
 		for i := len(rows) - 1; i >= 0; i-- {
 			if !rows[i].PublishedAt.IsZero() {
 				out = append(out, clone(rows[i]))
 				break
 			}
 		}
+	})
+	if err != nil {
+		return nil, nil, err
 	}
 	slices.SortFunc(out, func(a, b Revision) int { return strings.Compare(a.Name, b.Name) })
-	return out, nil
+	return out, unreadable, nil
 }
 
 func (s *Store) History(tenant string, scope Scope, name string) ([]Revision, error) {

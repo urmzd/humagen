@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"sync"
 
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -267,6 +268,51 @@ func (p *Platform) LibraryView(who auth.Principal, r library.Revision) library.R
 	return r
 }
 
+// maxUnreadSkills is how many skill records this process remembers having
+// logged as unreadable: four full scopes of library.MaxSkills.
+const maxUnreadSkills = 4 * library.MaxSkills
+
+// unreadSkills is the skill records this process has logged as unreadable,
+// by tenant, scope and name, so each is logged once rather than at every
+// completion. Past maxUnreadSkills a record is logged each time, never
+// hidden.
+type unreadSkills struct {
+	mu     sync.Mutex
+	logged map[string]bool
+}
+
+// news is those of names in a scope not logged before, and remembers them.
+func (u *unreadSkills) news(tenant string, scope library.Scope, names []string) []string {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	var out []string
+	for _, name := range names {
+		key := tenant + "\x00" + scope.Key() + "\x00" + name
+		if u.logged[key] {
+			continue
+		}
+		out = append(out, name)
+		if len(u.logged) < maxUnreadSkills {
+			if u.logged == nil {
+				u.logged = map[string]bool{}
+			}
+			u.logged[key] = true
+		}
+	}
+	return out
+}
+
+// warnUnreadSkills logs a scope of the library that could not be read, and
+// once each skill in it this release cannot read and so leaves out.
+func (p *Platform) warnUnreadSkills(tenant string, scope library.Scope, unreadable []string, err error) {
+	if err != nil {
+		p.log.Warn("platform: skill library could not be read", "tenant", tenant, "error", err)
+	}
+	if news := p.unreadSkills.news(tenant, scope, unreadable); len(news) > 0 {
+		p.log.Warn("platform: skills this release cannot read are left out", "tenant", tenant, "scope", scope.Key(), "skills", news)
+	}
+}
+
 // AvailableSkills is the bounded completion list for the same resolver that
 // pins a skill. Only published library versions participate in real turns.
 func (p *Platform) AvailableSkills(tenant, project, person string) []projects.SkillRef {
@@ -277,10 +323,9 @@ func (p *Platform) AvailableSkills(tenant, project, person string) []projects.Sk
 		}
 	}
 	if person != "" {
-		published, err := p.SkillLibrary.ListPublished(tenant, library.Scope{Kind: "personal", Subject: person})
-		if err != nil {
-			p.log.Warn("platform: skill library could not be read", "tenant", tenant, "error", err)
-		}
+		own := library.Scope{Kind: "personal", Subject: person}
+		published, unreadable, err := p.SkillLibrary.ListPublished(tenant, own)
+		p.warnUnreadSkills(tenant, own, unreadable, err)
 		for _, r := range published {
 			add(r.Name)
 		}
@@ -293,10 +338,8 @@ func (p *Platform) AvailableSkills(tenant, project, person string) []projects.Sk
 		if pr.IsRoot() {
 			scope = library.Scope{Kind: "workspace"}
 		}
-		published, err := p.SkillLibrary.ListPublished(tenant, scope)
-		if err != nil {
-			p.log.Warn("platform: skill library could not be read", "tenant", tenant, "error", err)
-		}
+		published, unreadable, err := p.SkillLibrary.ListPublished(tenant, scope)
+		p.warnUnreadSkills(tenant, scope, unreadable, err)
 		for _, r := range published {
 			add(r.Name)
 		}

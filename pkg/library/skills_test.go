@@ -1,7 +1,9 @@
 package library
 
 import (
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,10 +46,10 @@ func TestSkillRevisionsPublishExactTestedContentAndSurviveReplay(t *testing.T) {
 		if err != nil || !ok || published.Version != 1 || published.Instructions != "Use three sentences" {
 			t.Fatalf("draft changed live revision: %+v", published)
 		}
-		if other, err := s.List("other", scope); err != nil || len(other) != 0 {
+		if other, _, err := s.List("other", scope); err != nil || len(other) != 0 {
 			t.Fatal("cross-tenant skill", err)
 		}
-		if bob, err := s.List("acme", Scope{Kind: "personal", Subject: "bob"}); err != nil || len(bob) != 0 {
+		if bob, _, err := s.List("acme", Scope{Kind: "personal", Subject: "bob"}); err != nil || len(bob) != 0 {
 			t.Fatal("cross-scope skill")
 		}
 		if _, err := s.Draft("acme", "ada", scope, definition, 1, nil, time.Now()); !errors.Is(err, ErrConflict) {
@@ -105,4 +107,73 @@ func importDraftsARevisionMarkedAsImported(t *testing.T, open func(*testing.T) s
 	if err != nil || len(rows) != 2 || rows[0].Via != ViaImport || rows[1].Via != "" {
 		t.Fatalf("history = %+v, %v", rows, err)
 	}
+}
+
+// A record this release cannot read, such as one a later release wrote past
+// its bounds or in another shape, fails only itself: listing its scope gives
+// every other skill and names it as unreadable, and every read of it, and a
+// draft after it, is still refused.
+func TestARecordThisReleaseCannotReadFailsOnlyItself(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		s, err := Open(open(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		scope := Scope{Kind: "personal", Subject: "ada"}
+		small := Definition{Skill: projects.Skill{Name: "small", Description: "Small", Instructions: "Answer briefly."}, Tools: []string{}}
+		if _, err := s.Draft("acme", "ada", scope, small, 0, nil, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Tested("acme", scope, "small", 1, "test-run"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Publish("acme", "ada", scope, "small", 1, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		// A published revision whose supporting file is past this release's
+		// bound, as a later release could write it, and a record in a shape
+		// this release does not decode.
+		later := schemaSkill("later", MaxPackageFileBytes+1)
+		later.Description, later.Instructions = "Validates documents against a generated schema", "Read schemas/ on demand."
+		row := Revision{ID: ID(scope, "later"), Definition: later, Scope: scope, Version: 1, By: "ada", At: time.Now(), PublishedAt: time.Now(), PublishedBy: "ada", Tests: []string{"test-run"}}
+		raw, err := json.Marshal([]Revision{row})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.raw.Put("acme", skillKey(scope, "later"), raw); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.raw.Put("acme", skillKey(scope, "garbled"), json.RawMessage(`{"revisions":"not a list"}`)); err != nil {
+			t.Fatal(err)
+		}
+		o := &ops{}
+		o.set("acme", idKey(row.ID), skillKey(scope, "later"))
+		if err := o.commit(s.kv); err != nil {
+			t.Fatal(err)
+		}
+
+		listed, unreadable, err := s.List("acme", scope)
+		if err != nil || len(listed) != 1 || listed[0].Name != "small" || strings.Join(unreadable, ",") != "garbled,later" {
+			t.Fatalf("list = %d skills, unreadable %v, %v", len(listed), unreadable, err)
+		}
+		published, unreadable, err := s.ListPublished("acme", scope)
+		if err != nil || len(published) != 1 || published[0].Name != "small" || strings.Join(unreadable, ",") != "garbled,later" {
+			t.Fatalf("published = %d skills, unreadable %v, %v", len(published), unreadable, err)
+		}
+		if _, err := s.Get("acme", scope, "small", 0); err != nil {
+			t.Fatalf("a readable skill beside them: %v", err)
+		}
+		if _, err := s.Get("acme", scope, "later", 0); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("get of the unreadable record = %v", err)
+		}
+		if _, ok, err := s.Published("acme", scope, "later"); ok || !errors.Is(err, ErrInvalid) {
+			t.Fatalf("published of the unreadable record = %v, %v", ok, err)
+		}
+		if _, err := s.Find("acme", row.ID); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("find of the unreadable record = %v", err)
+		}
+		if _, err := s.Draft("acme", "ada", scope, schemaSkill("later"), 1, nil, time.Now()); err == nil {
+			t.Fatal("a draft after the unreadable record was written")
+		}
+	})
 }

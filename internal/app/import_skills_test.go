@@ -348,7 +348,7 @@ func TestImportSkillsSaysWhenASkillHoldsEveryRevisionItMay(t *testing.T) {
 	}
 	putFile(t, dir, "depot/references/facts.md", "one more")
 	out, err := runImport(t, "skills", dir, "--server", server.URL)
-	if err == nil || !strings.Contains(out, fmt.Sprintf("failed depot: the library holds as many revisions of it as it may (%d)", library.MaxVersions)) || len(api.revisions(t, "depot")) != library.MaxVersions {
+	if err == nil || !strings.Contains(out, fmt.Sprintf("failed depot: the library holds as many revisions of it as it may (%d); nothing was written. A skill's revisions are never removed: to keep importing this folder, give it another name in its SKILL.md, or import it into another scope with --scope", library.MaxVersions)) || len(api.revisions(t, "depot")) != library.MaxVersions {
 		t.Fatalf("err = %v\n%s", err, out)
 	}
 }
@@ -496,7 +496,7 @@ func TestImportSkillsDryRunWithoutAServerListsTheFoldersAsUnknown(t *testing.T) 
 		"Would import 3 skills into the personal library; 2 failed.",
 		"The library could not be read, so which of them would be added, updated, already there or in conflict is unknown:",
 		"unknown: review, ship, tidy",
-		"failed big: data.bin is over 131072 bytes",
+		"failed big: data.bin is over 1048576 bytes",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("out lacks %q:\n%s", want, out)

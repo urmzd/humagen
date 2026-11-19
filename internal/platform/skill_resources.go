@@ -2,6 +2,7 @@ package platform
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -19,6 +20,14 @@ import (
 
 // maxPinnedSkills is how many skills one run's pin is read for.
 const maxPinnedSkills = 64
+
+// maxSkillFileRead is the largest supporting file file_read answers with.
+// What file_read returns enters the model's context, so this is the bound
+// supporting files had before the library took larger ones
+// (library.MaxPackageFileBytes). A larger file is listed with its size and
+// placed whole on the host for a coding agent, which reads it itself; a
+// native model is told it is over this bound and file_read refuses it.
+const maxSkillFileRead = 128 << 10
 
 // readPinnedSkillFile reads only a package version pinned by this run's
 // admission. The ordinary file_read grant and action policy still apply.
@@ -44,7 +53,10 @@ func (p *Platform) readPinnedSkillFile(req runtime.Request, requested string) (s
 		if err != nil {
 			return "", err
 		}
-		data, _, err := pkg.ReadResource(path, library.MaxPackageFileBytes)
+		data, _, err := pkg.ReadResource(path, maxSkillFileRead)
+		if errors.Is(err, saigeskills.ErrResourceTooLarge) {
+			return "", fmt.Errorf("%w: that skill file is over the %d bytes file_read returns", ErrSandbox, maxSkillFileRead)
+		}
 		if err != nil || !utf8.Valid(data) || strings.ContainsRune(string(data), 0) {
 			return "", fmt.Errorf("%w: that skill file is not readable text", ErrSandbox)
 		}

@@ -1,12 +1,14 @@
 package platform
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
 
 	saigeskills "github.com/urmzd/saige/agent/skills"
 	"github.com/urmzd/saige/flow/runtime"
@@ -295,8 +297,15 @@ func withSkills(req runtime.Request, host func(runtime.Request, []pinnedSkill) (
 		}
 		if files.tool {
 			manifest := []string{"Supporting files are read on demand with file_read using these exact paths. Reading a script does not execute it:"}
-			for _, resource := range s.Resources {
-				manifest = append(manifest, fmt.Sprintf("skill:%s/%s (%d bytes)", s.Name, resource.Path, resource.Size))
+			for _, resource := range listedSkillFiles(s.Instructions, s.Resources) {
+				line := fmt.Sprintf("skill:%s/%s (%d bytes)", s.Name, resource.Path, resource.Size)
+				if resource.Size > maxSkillFileRead {
+					line += fmt.Sprintf(", over the %d bytes file_read returns", maxSkillFileRead)
+				}
+				manifest = append(manifest, line)
+			}
+			if more := len(s.Resources) - maxListedSkillFiles; more > 0 {
+				manifest = append(manifest, fmt.Sprintf("%d of %d supporting files are listed: those the instructions name first, then by path. %d more are not listed; file_read reads any path the instructions name, as skill:%s/<path>.", maxListedSkillFiles, len(s.Resources), more, s.Name))
 			}
 			parts = append(parts, strings.Join(manifest, "\n"))
 		}
@@ -308,8 +317,11 @@ func withSkills(req runtime.Request, host func(runtime.Request, []pinnedSkill) (
 				opening = "If you are not offered file_read, the same files are on this host for this turn only, read only. Read them on demand with your own file tools at these exact paths. Reading a script does not execute it:"
 			}
 			manifest := []string{opening}
-			for _, resource := range s.Resources {
+			for _, resource := range listedSkillFiles(s.Instructions, s.Resources) {
 				manifest = append(manifest, fmt.Sprintf("%s (%d bytes)", filepath.Join(files.dir, s.Name, filepath.FromSlash(resource.Path)), resource.Size))
+			}
+			if more := len(s.Resources) - maxListedSkillFiles; more > 0 {
+				manifest = append(manifest, fmt.Sprintf("%d of %d supporting files are listed: those the instructions name first, then by path. %d more are not listed; every file is under %s.", maxListedSkillFiles, len(s.Resources), more, filepath.Join(files.dir, s.Name)+string(filepath.Separator)))
 			}
 			parts = append(parts, strings.Join(manifest, "\n"))
 		}
@@ -317,6 +329,95 @@ func withSkills(req runtime.Request, host func(runtime.Request, []pinnedSkill) (
 	req.Text = strings.Join(append(parts, req.Text), "\n\n")
 	return req, nil
 }
+
+// maxListedSkillFiles is how many supporting files of one skill a turn's
+// text lists: as many as a package could hold before it took more than 64
+// files, so the list costs a model no more than it did then. The rest are
+// counted, not named; file_read reads any file of the pinned package, listed
+// or not, and a coding agent is given every file on the host.
+const maxListedSkillFiles = 63
+
+// listedSkillFiles is the supporting files a turn's text names: first those
+// the instructions name by their exact path, in the order they are first
+// named, then the rest in package (path) order, at most maxListedSkillFiles.
+//
+// The instructions are read once, word by word: a word is what lies between
+// spaces, quotes, brackets and the like, less a leading "./" and trailing
+// sentence punctuation, and it names a file when it is that file's path. A
+// path the words cannot hold (one with such a character, or ending in
+// sentence punctuation) is then looked for once as an exact substring. So
+// the work is one pass over the instructions, a map lookup a word, and at
+// most one search a file, for at most MaxPackageFiles files over at most
+// MaxPackageInstructions characters. Files named at the same place are
+// ordered by path.
+func listedSkillFiles(instructions string, resources []saigeskills.SkillResource) []saigeskills.SkillResource {
+	if len(resources) <= maxListedSkillFiles {
+		return resources
+	}
+	index := make(map[string]int, len(resources))
+	for i, r := range resources {
+		index[r.Path] = i
+	}
+	type mention struct{ at, i int }
+	var named []mention
+	taken := make([]bool, len(resources))
+	name := func(at, i int) {
+		if !taken[i] {
+			taken[i] = true
+			named = append(named, mention{at, i})
+		}
+	}
+	word := func(from, to int) {
+		w := strings.TrimRight(strings.TrimPrefix(instructions[from:to], "./"), skillPathEnd)
+		if i, ok := index[w]; ok {
+			name(from, i)
+		}
+	}
+	from := -1
+	for at, r := range instructions {
+		switch {
+		case !skillPathBreak(r) && from < 0:
+			from = at
+		case skillPathBreak(r) && from >= 0:
+			word(from, at)
+			from = -1
+		}
+	}
+	if from >= 0 {
+		word(from, len(instructions))
+	}
+	for i, r := range resources {
+		if taken[i] || !strings.ContainsFunc(r.Path, skillPathBreak) && !strings.ContainsAny(r.Path[len(r.Path)-1:], skillPathEnd) {
+			continue
+		}
+		if at := strings.Index(instructions, r.Path); at >= 0 {
+			name(at, i)
+		}
+	}
+	slices.SortStableFunc(named, func(a, b mention) int { return cmp.Or(cmp.Compare(a.at, b.at), cmp.Compare(a.i, b.i)) })
+	out := make([]saigeskills.SkillResource, 0, maxListedSkillFiles)
+	for _, m := range named[:min(len(named), maxListedSkillFiles)] {
+		out = append(out, resources[m.i])
+	}
+	for i, r := range resources {
+		if len(out) == maxListedSkillFiles {
+			break
+		}
+		if !taken[i] {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// skillPathBreak reports a character that ends a word of a skill's
+// instructions, and skillPathEnd is the punctuation a word may end with that
+// is not part of a path named in a sentence.
+func skillPathBreak(r rune) bool {
+	return unicode.IsSpace(r) || strings.ContainsRune("\"'`()[]{}<>,;|*", r)
+}
+
+const skillPathEnd = ".:!?"
 
 // ProjectSkills is the skills a project declares, at the project's version,
 // and what a message posted in it can name.
