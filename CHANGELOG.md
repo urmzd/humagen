@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.140.0 (2026-11-19)
+
+### Features
+
+- **slack**: the app manifest carries a long description (#388) ([96da0e3](https://github.com/urmzd/humagen/commit/96da0e361bafd5206588dcc218dcfe65ca1168de))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.139.0...v0.140.0)
+
+
 ## 0.139.0 (2026-11-19)
 
 ### Breaking
