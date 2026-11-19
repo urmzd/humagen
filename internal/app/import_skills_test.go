@@ -496,7 +496,7 @@ func TestImportSkillsDryRunWithoutAServerListsTheFoldersAsUnknown(t *testing.T) 
 		"Would import 3 skills into the personal library; 2 failed.",
 		"The library could not be read, so which of them would be added, updated, already there or in conflict is unknown:",
 		"unknown: review, ship, tidy",
-		"failed big: data.bin is over 131072 bytes",
+		"failed big: data.bin is over 1048576 bytes",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("out lacks %q:\n%s", want, out)

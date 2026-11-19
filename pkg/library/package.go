@@ -13,12 +13,39 @@ import (
 	"github.com/urmzd/saige/agent/skills"
 )
 
+// The bounds of one package and of one skill. A supporting file is read on
+// demand: a native model reads one of at most 128 KiB with file_read, and a
+// coding agent reads it on the host. Only SKILL.md's body is put into
+// what a model is asked, so its bounds do not grow with the others.
 const (
-	MaxPackageFiles        = 64
-	MaxPackageFileBytes    = 128 << 10
-	MaxPackageBytes        = 512 << 10
+	// MaxPackageFiles is how many files a package holds, SKILL.md included.
+	MaxPackageFiles = 64
+	// MaxPackageFileBytes is the largest supporting file: room for the
+	// schema and source files skills ship.
+	MaxPackageFileBytes = 1 << 20
+	// MaxPackageSkillFileBytes is the largest SKILL.md, frontmatter
+	// included.
+	MaxPackageSkillFileBytes = 128 << 10
+	// MaxPackageBytes is the most one package's files hold together.
+	MaxPackageBytes = 2 << 20
+	// MaxPackageInstructions is how many characters SKILL.md's body holds.
 	MaxPackageInstructions = 32000
+	// MaxSkillBytes is the most the files of every revision of one skill
+	// hold together. A skill's revisions are one stored record and one
+	// history answer, so this, not MaxVersions packages of MaxPackageBytes,
+	// bounds both. It is what MaxVersions packages of the earlier 512 KiB
+	// bound came to, so no record grows past what it could hold before.
+	MaxSkillBytes = 16 << 20
 )
+
+// PackageBytes is how many bytes the files of a package hold together.
+func PackageBytes(files []File) int {
+	total := 0
+	for _, file := range files {
+		total += len(file.Data)
+	}
+	return total
+}
 
 // File is a package-relative immutable file. JSON encodes Data as base64.
 type File struct {
@@ -48,8 +75,11 @@ func (d Definition) Package() (skills.Skill, error) {
 	seen, total := map[string]bool{}, 0
 	for _, file := range d.Files {
 		path, err := skills.CleanResourcePath(file.Path)
-		if file.Data == nil || err != nil || path != file.Path || len(path) > 256 || seen[path] || len(file.Data) > MaxPackageFileBytes {
+		if file.Data == nil || err != nil || path != file.Path || len(path) > 256 || seen[path] {
 			return skills.Skill{}, fmt.Errorf("%w: invalid or duplicate package path %q", ErrInvalid, file.Path)
+		}
+		if limit := maxFileBytes(path); len(file.Data) > limit {
+			return skills.Skill{}, fmt.Errorf("%w: %s is over %d bytes", ErrInvalid, path, limit)
 		}
 		if path == skills.SkillFile && bytes.ContainsRune(file.Data, 0) {
 			return skills.Skill{}, fmt.Errorf("%w: SKILL.md must be text", ErrInvalid)
@@ -79,6 +109,14 @@ func (d Definition) Package() (skills.Skill, error) {
 		return skills.Skill{}, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 	return pkg, nil
+}
+
+// maxFileBytes is the bound of one package file: SKILL.md has its own.
+func maxFileBytes(path string) int {
+	if path == skills.SkillFile {
+		return MaxPackageSkillFileBytes
+	}
+	return MaxPackageFileBytes
 }
 
 // Normalize makes SKILL.md authoritative for metadata and instructions.

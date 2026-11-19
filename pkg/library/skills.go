@@ -285,6 +285,13 @@ func (s *Store) draft(tenant, by string, scope Scope, d Definition, expected int
 		if len(previous) >= MaxVersions {
 			return ErrInvalid
 		}
+		held := PackageBytes(d.Files)
+		for _, r := range previous {
+			held += PackageBytes(r.Files)
+		}
+		if held > MaxSkillBytes {
+			return fmt.Errorf("%w: the revisions of %s would hold more than %d bytes of files together", ErrInvalid, d.Name, MaxSkillBytes)
+		}
 		r := clone(Revision{OriginRun: outcomeOrigin(previous, from, trustedOrigin), ID: ID(scope, d.Name), Via: via, Definition: d, Scope: scope, Version: len(previous) + 1, By: by, At: at, Tests: []string{}, From: from})
 		next := append(slices.Clone(previous), r)
 		o := &ops{}

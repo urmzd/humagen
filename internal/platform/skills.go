@@ -296,7 +296,11 @@ func withSkills(req runtime.Request, host func(runtime.Request, []pinnedSkill) (
 		if files.tool {
 			manifest := []string{"Supporting files are read on demand with file_read using these exact paths. Reading a script does not execute it:"}
 			for _, resource := range s.Resources {
-				manifest = append(manifest, fmt.Sprintf("skill:%s/%s (%d bytes)", s.Name, resource.Path, resource.Size))
+				line := fmt.Sprintf("skill:%s/%s (%d bytes)", s.Name, resource.Path, resource.Size)
+				if resource.Size > maxSkillFileRead {
+					line += fmt.Sprintf(", over the %d bytes file_read returns", maxSkillFileRead)
+				}
+				manifest = append(manifest, line)
 			}
 			parts = append(parts, strings.Join(manifest, "\n"))
 		}

@@ -12403,9 +12403,9 @@ components:
       properties:
         path: {type: string, maxLength: 256}
         data:
-          description: Base64-encoded bytes. At most 128 KiB per file and 512 KiB per package after decoding.
+          description: Base64-encoded bytes. After decoding, at most 1 MiB for a supporting file and 128 KiB for SKILL.md, 2 MiB for the package, and 16 MiB for the files of every revision of one skill together.
           type: string
-          maxLength: 174764
+          maxLength: 1398104
     LibraryProvenance:
       type: object
       required: [scope, name, version]

@@ -280,7 +280,8 @@ func (a importAPI) do(ctx context.Context, method, path string, body, into any) 
 	}
 	defer resp.Body.Close()
 	// The largest answer is every revision of one skill with its files:
-	// library.MaxVersions packages of library.MaxPackageBytes, in base64.
+	// library.MaxSkillBytes of files in base64 (under 22 MiB), and each
+	// revision's text fields.
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if err != nil {
 		return err
@@ -1327,6 +1328,8 @@ func readSkillFolder(dir, name string) (library.Definition, error) {
 		if err != nil {
 			return err
 		}
+		// No file is read past the largest the library takes. SKILL.md's
+		// own, smaller bound is checked with the package (Normalize).
 		if info.Size() > library.MaxPackageFileBytes {
 			return fmt.Errorf("%s is over %d bytes", d.Name(), library.MaxPackageFileBytes)
 		}
@@ -1518,6 +1521,14 @@ func (m *skillImport) one(name string, def library.Definition, dropped []string)
 	}
 	if cur.Version >= library.MaxVersions {
 		fail(fmt.Errorf("the library holds as many revisions of it as it may (%d)", library.MaxVersions))
+		return
+	}
+	stored := library.PackageBytes(def.Files)
+	for _, r := range revisions {
+		stored += library.PackageBytes(r.Files)
+	}
+	if stored > library.MaxSkillBytes {
+		fail(fmt.Errorf("its revisions in the library and this folder would hold more than %d bytes of files together", library.MaxSkillBytes))
 		return
 	}
 	if !m.c.dryRun {

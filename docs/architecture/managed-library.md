@@ -96,8 +96,15 @@ and a draft sent after another writer's revision is refused by the
 optimistic version check. See the
 [CLI reference](../reference/cli.md#import-sessions-skills-and-agents).
 
-Limits are enforced by the server: 64 files, 128 KiB per file and 512 KiB in total
-after base64 decoding. Main instructions allow 32000 characters. Relative paths
+Limits are enforced by the server, after base64 decoding: 64 files, 1 MiB per
+supporting file, 128 KiB for `SKILL.md` and 2 MiB in total. A supporting file
+has room for the schema and source files skills ship; `SKILL.md` keeps the
+smaller bound because its body is what a model is asked. The revisions of one
+skill hold at most 16 MiB of files together, which is what 32 revisions of the
+earlier 512 KiB package came to: they are one stored record and one history
+answer, so neither grows. A draft past it is refused and names the bound.
+`POST /api/library/skills` takes a body as large as a full package in base64
+and 1 MiB besides. Main instructions allow 32000 characters. Relative paths
 must be canonical and unique. The in-memory archive adapts saved bytes to saige's
 filesystem interface; no uploaded path is opened on the host.
 
@@ -112,6 +119,10 @@ never grants tools through frontmatter. `allowed-tools` can only narrow the
 explicit tool selection, which is intersected with agent grants. The admitted
 run pins the selected revision, hash and resource manifest. Supporting text can
 be read through the existing gated `file_read` tool with `skill:<name>/<path>`.
+What `file_read` returns enters the model's context, so it reads a supporting
+file of at most 128 KiB: a larger one is listed with its size and the words
+"over the 131072 bytes file_read returns", and reading it is refused. A
+supporting file's bytes are never put into the turn's text.
 A later draft cannot change that read. Binary content, unselected packages,
 missing files and cross-tenant references are refused. Reading a script does not
 execute it. Private packages retain the existing publication classification.

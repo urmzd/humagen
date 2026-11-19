@@ -594,7 +594,7 @@ func TestImportSkillsDraftsEachFolderAndSkipsWhatIsThere(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Added 2 skills and updated 0 as drafts in the personal library; 1 already there, 0 in conflict, 2 failed.",
-		"failed big: data.bin is over 131072 bytes",
+		"failed big: data.bin is over 1048576 bytes",
 		"failed broken: library: invalid",
 		"Next: test and publish each draft under Library, Skills. Until then agents keep the revision they use now.",
 	} {
