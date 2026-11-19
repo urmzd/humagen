@@ -612,6 +612,19 @@ server and a stub older server on memory only (`internal/httpapi`,
 `internal/platform`, `internal/app`). Nothing reads it yet: continuing an
 imported conversation is designed, not built.
 
+`humagen import agents` carries an agent file's `name`, `description` and
+text, and nothing else: the agent runs on `--provider` and `--model`, with no
+tools. Every other frontmatter field is named per agent as not carried, in
+text and under `reduced` with `--json`, on every run, a dry run and a second
+import included. Hooks and permission rules (`hooks`, `permissions`,
+`permissionMode`, `disallowedTools`) are named again under `not_enforced`, as
+not enforced by Humagen: it runs no hooks, and has no equivalent for them; the
+nearest to a permission rule are the agent's tool grants and approvals and
+the action policies' Never and Ask, which the import does not set. Tested
+with generated files against a stub server (`internal/app`) and run once
+against a local in-memory server; not checked with real agent files
+([import](../reference/cli.md#import-sessions-skills-and-agents)).
+
 A library skill's supporting file may be up to 1 MiB and its package 256
 files and 2 MiB, while `SKILL.md`, whose body is what a model is asked, stays
 at 128 KiB. So `humagen import skills` drafts a skill that ships a large

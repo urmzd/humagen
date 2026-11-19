@@ -1983,13 +1983,83 @@ type agentsResult struct {
 	Created []string       `json:"created"`
 	Present []string       `json:"present"`
 	Failed  []importFailed `json:"failed"`
-	DryRun  bool           `json:"dry_run,omitempty"`
+	// Reduced are the agents, created or already there, whose file holds
+	// fields the agent does not carry, each with those fields by name.
+	Reduced map[string][]string `json:"reduced"`
+	// NotEnforced are the hooks and permission rules among them, each as
+	// its field and the names under it, such as hooks.PreToolUse or
+	// permissions.deny. Humagen does not run or apply any of them.
+	NotEnforced map[string][]string `json:"not_enforced"`
+	DryRun      bool                `json:"dry_run,omitempty"`
 }
+
+// agentHooks and agentPermissions are the frontmatter fields with which
+// another assistant runs commands around an agent's tool calls, or allows and
+// denies its calls. Humagen enforces none of them.
+var (
+	agentHooks       = map[string]bool{"hooks": true}
+	agentPermissions = map[string]bool{"permissions": true, "permissionMode": true, "disallowedTools": true}
+)
+
+// agentFields reads what an agent file's frontmatter gives the agent: its
+// name and description, when each is text. Every other field, and a name or
+// description that is not text, is dropped, by name. Of those, hooks and
+// permissions are named again with the keys under them, never their values,
+// which may hold commands and paths.
+func agentFields(meta map[string]any) (name, description string, dropped, hooks, permissions []string) {
+	for key, value := range meta {
+		switch key {
+		case "name", "description":
+			text, ok := value.(string)
+			if !ok {
+				dropped = append(dropped, key)
+				continue
+			}
+			if key == "name" {
+				name = strings.TrimSpace(text)
+			} else {
+				description = text
+			}
+			continue
+		}
+		dropped = append(dropped, key)
+		var into *[]string
+		switch {
+		case agentHooks[key]:
+			into = &hooks
+		case agentPermissions[key]:
+			into = &permissions
+		default:
+			continue
+		}
+		under, ok := value.(map[string]any)
+		if !ok || len(under) == 0 {
+			*into = append(*into, key)
+			continue
+		}
+		for sub := range under {
+			*into = append(*into, key+"."+sub)
+		}
+	}
+	sort.Strings(dropped)
+	sort.Strings(hooks)
+	sort.Strings(permissions)
+	return name, description, dropped, hooks, permissions
+}
+
+// Each hook and permission rule an agent's file holds is reported in a line
+// of its own, saying Humagen does not enforce it and what in Humagen does the
+// nearest thing.
+const (
+	hooksNotEnforced       = "Humagen runs no hooks around an agent's tool calls, and has no equivalent."
+	permissionsNotEnforced = "No rule of the file is applied. The equivalent is set under Agents, on the agent (the tools it is granted, and which of them wait for a person's approval), and under Operations, Action Policies (Never or Ask for a kind of action). A rule on one command or path has no equivalent."
+)
 
 // importAgents creates an agent from each Markdown agent file: its name and
 // description from the frontmatter, its text as the system prompt. The tools
 // a file lists are another assistant's and name nothing here, so an agent
-// is created with none.
+// is created with none. Every other field is not carried, and the report
+// names it for each agent created or already there.
 func importAgents(ctx context.Context, c importOptions, api importAPI, out io.Writer) error {
 	entries, err := os.ReadDir(c.dir)
 	if err != nil {
@@ -2001,7 +2071,7 @@ func importAgents(ctx context.Context, c importOptions, api importAPI, out io.Wr
 			only[n] = true
 		}
 	}
-	res := agentsResult{Created: []string{}, Present: []string{}, Failed: []importFailed{}, DryRun: c.dryRun}
+	res := agentsResult{Created: []string{}, Present: []string{}, Failed: []importFailed{}, Reduced: map[string][]string{}, NotEnforced: map[string][]string{}, DryRun: c.dryRun}
 	have := map[string]bool{}
 	if !c.dryRun {
 		// Each agent is listed as its latest revision, which holds its spec.
@@ -2019,6 +2089,9 @@ func importAgents(ctx context.Context, c importOptions, api importAPI, out io.Wr
 			have[a.Spec.Name] = true
 		}
 	}
+	// files are the agent files of the agents reported as not carrying
+	// fields, by agent, for the text report.
+	files := map[string]string{}
 	seen := map[string]bool{}
 	for _, e := range entries {
 		file := e.Name()
@@ -2032,15 +2105,30 @@ func importAgents(ctx context.Context, c importOptions, api importAPI, out io.Wr
 		}
 		name := strings.TrimSuffix(strings.TrimSuffix(file, ".md"), ".agent")
 		meta, body, ok := frontmatter(data)
-		if own, _ := meta["name"].(string); strings.TrimSpace(own) != "" {
-			name = strings.TrimSpace(own)
+		own, description, dropped, hooks, permissions := agentFields(meta)
+		if own != "" {
+			name = own
 		}
 		if len(only) > 0 && !only[name] {
 			continue
 		}
 		seen[name] = true
-		description, _ := meta["description"].(string)
+		// reduced names what the agent does not carry from its file. A
+		// present agent is named too: whether it was made from this file as
+		// it is now is not known here, and the file's fields are not carried
+		// either way.
+		reduced := func() {
+			if len(dropped) > 0 {
+				res.Reduced[name], files[name] = dropped, file
+			}
+			if len(hooks)+len(permissions) > 0 {
+				res.NotEnforced[name] = append(append([]string{}, hooks...), permissions...)
+			}
+		}
 		switch {
+		case !ok && strings.HasPrefix(strings.ReplaceAll(string(data), "\r\n", "\n"), "---\n"):
+			res.Failed = append(res.Failed, importFailed{Name: name, Reason: file + " has frontmatter that is not a YAML mapping, or that no closing --- line ends"})
+			continue
 		case !ok:
 			res.Failed = append(res.Failed, importFailed{Name: name, Reason: file + " does not start with YAML frontmatter"})
 			continue
@@ -2049,6 +2137,7 @@ func importAgents(ctx context.Context, c importOptions, api importAPI, out io.Wr
 			continue
 		case have[name]:
 			res.Present = append(res.Present, name)
+			reduced()
 			continue
 		}
 		if !c.dryRun {
@@ -2063,6 +2152,7 @@ func importAgents(ctx context.Context, c importOptions, api importAPI, out io.Wr
 		}
 		have[name] = true
 		res.Created = append(res.Created, name)
+		reduced()
 	}
 	for n := range only {
 		if !seen[n] {
@@ -2091,6 +2181,28 @@ func importAgents(ctx context.Context, c importOptions, api importAPI, out io.Wr
 	}
 	for _, f := range res.Failed {
 		fmt.Fprintf(out, "  failed %s: %s\n", f.Name, f.Reason)
+	}
+	reduced := make([]string, 0, len(res.Reduced))
+	for n := range res.Reduced {
+		reduced = append(reduced, n)
+	}
+	sort.Strings(reduced)
+	for _, n := range reduced {
+		fmt.Fprintf(out, "  %s: not carried from %s: %s\n", n, files[n], strings.Join(res.Reduced[n], ", "))
+		var hooks, permissions []string
+		for _, f := range res.NotEnforced[n] {
+			if agentHooks[strings.SplitN(f, ".", 2)[0]] {
+				hooks = append(hooks, f)
+			} else {
+				permissions = append(permissions, f)
+			}
+		}
+		if len(hooks) > 0 {
+			fmt.Fprintf(out, "  %s: not enforced by Humagen: %s. %s\n", n, strings.Join(hooks, ", "), hooksNotEnforced)
+		}
+		if len(permissions) > 0 {
+			fmt.Fprintf(out, "  %s: not enforced by Humagen: %s. %s\n", n, strings.Join(permissions, ", "), permissionsNotEnforced)
+		}
 	}
 	if len(res.Created) > 0 && !c.dryRun {
 		fmt.Fprintln(out, "Next: each agent has no tools. Grant what it needs under Agents.")

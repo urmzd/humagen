@@ -158,7 +158,7 @@ humagen import agents --provider anthropic --model claude-sonnet-5-5
 | --- | --- | --- |
 | `sessions` | Claude Code sessions (`~/.claude/projects/*/*.jsonl`), Codex sessions (`~/.codex/sessions` and `~/.codex/archived_sessions`, plain or `.zst`), and with `--export` a `conversations.json` from a ChatGPT or claude.ai data export | One knowledge document per session, in sources named `sessions-TOOL-YYYY-MM` by the month the session started. `POST /api/knowledge`, then `POST /api/knowledge/{name}/documents` |
 | `skills [DIR]` | Each folder under `DIR` that holds a `SKILL.md`. `DIR` defaults to `~/.agents/skills`, the store [agentspec](https://github.com/urmzd/agentspec) keeps | One draft per skill the library lacks, with the folder's files, and one new draft revision per skill whose folder changed since it was imported. `GET /api/library/skills`, then `POST /api/library/skills` |
-| `agents [DIR]` | Each Markdown agent file in `DIR` with YAML frontmatter, as Claude Code, Copilot and agentspec write them. `DIR` defaults to `~/.agents/agents` | One agent per file: its `name` and `description` from the frontmatter, its text as the system prompt. `POST /api/agents` |
+| `agents [DIR]` | Each Markdown agent file in `DIR` with YAML frontmatter, as Claude Code, Copilot and agentspec write them. `DIR` defaults to `~/.agents/agents` | One agent per file: its `name` and `description` from the frontmatter, its text as the system prompt. Every other field is named as not carried. `POST /api/agents` |
 
 A session's document holds what was asked, what was answered, one line per
 tool call (the tool and what it ran or read) and the start of each tool's
@@ -531,6 +531,28 @@ and neither names anything on this server. So `agents` needs `--provider` and
 no tools: grant what it needs under Agents. The file's `model` and `tools` are
 not sent.
 
+An agent carries its `name`, its `description` (on one line) and its text as
+the system prompt. Every other frontmatter field, and a `name` or
+`description` that is not text, is not carried, and the command names each
+one, by name and never by value, for every agent it creates or finds already
+there:
+
+```text
+  guarded: not carried from guarded.md: color, effort, hooks, model, permissionMode, permissions, tools
+  guarded: not enforced by Humagen: hooks.PreToolUse. Humagen runs no hooks around an agent's tool calls, and has no equivalent.
+  guarded: not enforced by Humagen: permissionMode, permissions.allow, permissions.deny. No rule of the file is applied. The equivalent is set under Agents, on the agent (the tools it is granted, and which of them wait for a person's approval), and under Operations, Action Policies (Never or Ask for a kind of action). A rule on one command or path has no equivalent.
+```
+
+`hooks`, `permissions`, `permissionMode` and `disallowedTools` get the last two
+lines, with the names under each field (the hook events, the rule lists):
+Humagen does not run or apply any of them. A dry run prints the same lines. A
+second import prints them again for each agent already there, since whether
+that agent was made from the file as it now is is not known. A file that does
+not start with `---` fails with `does not start with YAML frontmatter`, and one
+whose frontmatter is not a YAML mapping, or has no closing `---` line, fails
+with `has frontmatter that is not a YAML mapping, or that no closing --- line
+ends`. Fields not carried do not change the exit code.
+
 `sessions` needs `knowledge:read` and `knowledge:write`, and
 `knowledge:import` as well to keep each session's structure: an import
 needs both `knowledge:import` and `knowledge:write` (the built-in `manager`
@@ -550,5 +572,9 @@ it. In a dry run that could not read the library it is every valid skill
 folder, as a dry run printed before it read the library: it equals
 `unknown`, `added` is empty, and `library_unread` holds the reason. New
 programs read `added` and `unknown`.
+
+With `--json`, `agents` prints `created`, `present`, `failed`, `reduced` (the
+fields not carried, by agent) and `not_enforced` (the hook and permission
+fields among them, as `hooks.PreToolUse` or `permissions.deny`, by agent).
 
 # CLI
