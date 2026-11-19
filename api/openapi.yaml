@@ -6099,6 +6099,28 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/alerts/count:
+    get:
+      operationId: countAlerts
+      tags: [alerts]
+      summary: Count the alerts that wait on the caller
+      description: |
+        How many open session alerts are addressed to the caller, urgent or
+        normal, in sessions they may read: the number the console shows on
+        Home and on its badge. It is the count of what
+        `GET /api/alerts?mine=true&state=open` lists with a session and a
+        priority other than `low`, without the alerts themselves.
+      x-permission: alerts:read
+      x-readonly: true
+      responses:
+        "200":
+          description: The count.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AlertCount"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/alerts/{id}/ack:
     post:
       operationId: acknowledgeAlert
@@ -15658,6 +15680,14 @@ components:
           description: "`info` when left out."
           type: string
           enum: [info, warning]
+    AlertCount:
+      description: How many alerts wait on a reader.
+      type: object
+      required: [waiting]
+      properties:
+        waiting:
+          description: Open session alerts addressed to the reader, urgent or normal, in sessions they may read.
+          type: integer
     InboxCounts:
       description: What a reader's inbox holds open.
       type: object

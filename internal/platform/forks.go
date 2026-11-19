@@ -153,7 +153,7 @@ func (s *Seer) forkSourcesVisible(at Place, direct func(Place) bool) bool {
 			return false
 		}
 		seen[at.Thread] = true
-		th, err := s.p.Threads.Get(s.who.Tenant, at.Thread)
+		th, err := s.record(at.Thread)
 		if err != nil {
 			// A lifecycle notice can precede the run index. Only recorded
 			// threads can carry fork history; retain the ordinary read rule

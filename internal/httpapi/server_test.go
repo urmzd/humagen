@@ -73,9 +73,24 @@ func newFixtureGranting(t *testing.T, cfg platform.Config, grants string) *fixtu
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- p.Run(ctx) }()
+	f := serveFixture(t, p, pol)
+	t.Cleanup(func() {
+		f.srv.Close()
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("platform shutdown: %v", err)
+		}
+	})
+	return f
+}
 
+// serveFixture serves a platform behind real OIDC verification against an
+// in-process issuer. Running the platform, and closing the server, are the
+// caller's.
+func serveFixture(t *testing.T, p *platform.Platform, pol *auth.Policy) *fixture {
+	t.Helper()
 	iss := authtest.New(t)
-	v, err := auth.NewVerifier(ctx, auth.OIDCConfig{
+	v, err := auth.NewVerifier(context.Background(), auth.OIDCConfig{
 		Issuer: iss.URL, ClientID: clientID, Audience: audience, TenantClaim: "org", Policy: pol,
 		GroupRoles: map[string]auth.Role{"humagen-admins": auth.Admin, "humagen-operators": auth.Operator, "humagen-viewers": auth.Viewer},
 	})
@@ -90,13 +105,6 @@ func newFixtureGranting(t *testing.T, cfg platform.Config, grants string) *fixtu
 		t.Fatal(err)
 	}
 	mux.Handle("/", (&Server{P: p, Authn: authn, Log: slog.New(slog.DiscardHandler), Branding: fixtureBranding(t)}).Handler())
-	t.Cleanup(func() {
-		srv.Close()
-		cancel()
-		if err := <-done; err != nil {
-			t.Errorf("platform shutdown: %v", err)
-		}
-	})
 	return &fixture{srv: srv, iss: iss, p: p}
 }
 

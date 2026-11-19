@@ -37,6 +37,7 @@ func (s *Server) observeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/runs/{id}/manifest", s.authed(auth.RunsRead, s.seenRun(s.manifest)))
 
 	mux.HandleFunc("GET /api/alerts", s.authed(auth.AlertsRead, s.listAlerts))
+	mux.HandleFunc("GET /api/alerts/count", s.authed(auth.AlertsRead, s.countAlerts))
 	mux.HandleFunc("POST /api/alerts/{id}/ack", s.authed(auth.AlertsWrite, s.seenAlert(s.ackAlert)))
 	mux.HandleFunc("GET /api/alert-rules", s.authed(auth.AlertsRead, s.listRules))
 	mux.HandleFunc("POST /api/alert-rules", s.authed(auth.AlertsWrite, s.createRule))
@@ -360,7 +361,9 @@ func (s *Server) listAlerts(w http.ResponseWriter, r *http.Request, who auth.Pri
 		fail(w, http.StatusBadRequest, "mine must be true or false")
 		return
 	}
-	seer := s.P.Seer(who)
+	// One snapshot answers for every alert: a session's record is read
+	// once, not once an alert in it.
+	seer := s.P.Seer(who).Snapshot()
 	names := s.P.Names(who.Tenant)
 	out := []alertView{}
 	all, err := s.P.Alerts.Alerts(who.Tenant)
@@ -368,6 +371,12 @@ func (s *Server) listAlerts(w http.ResponseWriter, r *http.Request, who auth.Pri
 		s.problem(w, err)
 		return
 	}
+	sessions, raised := make([]string, 0, len(all)), make([]string, 0, len(all))
+	for _, a := range all {
+		sessions, raised = append(sessions, a.Session), append(raised, a.RunID)
+	}
+	seer.Read(sessions...)
+	seer.ReadRuns(raised...)
 	for _, a := range all {
 		a = a.View(time.Now().UTC())
 		if v := q.Get("state"); v != "" && string(a.State) != v {
@@ -401,6 +410,42 @@ func (s *Server) listAlerts(w http.ResponseWriter, r *http.Request, who auth.Pri
 	}
 	slices.SortStableFunc(out, func(a, b alertView) int { return rank(a.Priority) - rank(b.Priority) })
 	ok(w, http.StatusOK, map[string]any{"alerts": out})
+}
+
+// countAlerts counts what waits on the caller: the open session alerts
+// addressed to them, urgent or normal, that they may read. It is the number
+// Home's line and the console's badge show, without the alerts themselves:
+// one read of the tenant's alerts, which hold at most a thousand, and one of
+// the sessions the open ones name.
+func (s *Server) countAlerts(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
+	all, err := s.P.Alerts.Alerts(who.Tenant)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	now := time.Now().UTC()
+	open := all[:0]
+	var sessions, raised []string
+	for _, a := range all {
+		a = a.View(now)
+		if a.Session == "" || a.State != alerts.OpenState || a.Priority == alerts.Low || !alertFor(a, who) {
+			continue
+		}
+		open = append(open, a)
+		sessions, raised = append(sessions, a.Session), append(raised, a.RunID)
+	}
+	// A count states a fact of every alert in it, so a reader who reads one
+	// by exception is recorded for it as it is counted.
+	seer := s.P.Seer(who).Snapshot()
+	seer.Read(sessions...)
+	seer.ReadRuns(raised...)
+	waiting := 0
+	for _, a := range open {
+		if seer.Alert(a) {
+			waiting++
+		}
+	}
+	ok(w, http.StatusOK, map[string]any{"waiting": waiting})
 }
 
 func (s *Server) ackAlert(w http.ResponseWriter, r *http.Request, who auth.Principal) {

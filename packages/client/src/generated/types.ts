@@ -3020,6 +3020,12 @@ export interface AnnouncementInput {
   severity?: "info" | "warning";
 }
 
+/** How many alerts wait on a reader. */
+export interface AlertCount {
+  /** Open session alerts addressed to the reader, urgent or normal, in sessions they may read. */
+  waiting: number;
+}
+
 /** What a reader's inbox holds open. */
 export interface InboxCounts {
   /** Open messages that may need the reader, less what they hid or deleted. */

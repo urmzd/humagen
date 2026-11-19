@@ -1,7 +1,6 @@
 package platform
 
 import (
-	"slices"
 	"time"
 
 	"github.com/urmzd/humagen/pkg/alerts"
@@ -90,18 +89,34 @@ func (p *Platform) notificationPolicy(who auth.Principal, m inbox.Message, at ti
 	return string(m.Kind), who.Can(reads(m.Kind)) && p.Seer(who).Message(m) && m.Unread && !m.Hidden && m.State == inbox.Open
 }
 
-// prioritizeSessions preserves recency within each priority. Snoozed,
-// resolved, inaccessible and another person's alerts never raise a row.
-func (p *Platform) prioritizeSessions(who auth.Principal, rows []SessionSummary) error {
+// sessionRanks is how far the seer's reader's open alerts raise each session
+// in a listing, by session: 3 for an urgent one, 2 for a normal one, 1 for a
+// low one, and nothing for a session with none. Snoozed, resolved,
+// inaccessible and another person's alerts never raise a row.
+func (p *Platform) sessionRanks(seer *Seer) (map[string]int, error) {
+	who := seer.who
 	all, err := p.Alerts.Alerts(who.Tenant)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	ranks := map[string]int{}
-	seer := p.Seer(who)
+	open := all[:0]
+	var sessions, raised []string
 	for _, a := range all {
 		a = a.View(p.now())
-		if a.State != alerts.OpenState || !who.Can(auth.AlertsRead) || !sessionAlertFor(a, who) || !seer.Alert(a) {
+		// An alert with no session raises no row, so nothing is asked of it.
+		if a.Session == "" || a.State != alerts.OpenState || !who.Can(auth.AlertsRead) || !sessionAlertFor(a, who) {
+			continue
+		}
+		open = append(open, a)
+		sessions, raised = append(sessions, a.Session), append(raised, a.RunID)
+	}
+	seer.Read(sessions...)
+	seer.ReadRuns(raised...)
+	for _, a := range open {
+		// What the alert's reader is granted by exception is its session's
+		// row's to disclose.
+		if !seer.deciding(a.Session, func() bool { return seer.Alert(a) }) {
 			continue
 		}
 		rank := 1
@@ -115,9 +130,5 @@ func (p *Platform) prioritizeSessions(who auth.Principal, rows []SessionSummary)
 			ranks[a.Session] = rank
 		}
 	}
-	for i := range rows {
-		rows[i].rank = ranks[rows[i].ID]
-	}
-	slices.SortStableFunc(rows, func(a, b SessionSummary) int { return b.rank - a.rank })
-	return nil
+	return ranks, nil
 }

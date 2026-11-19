@@ -76,20 +76,39 @@ const failure = (error: unknown) =>
   error instanceof Error ? error.message : "This could not be loaded. Try again.";
 const priorityLabel = { urgent: "Urgent", normal: "Normal", low: "Low" };
 type SessionState = "working" | "waiting" | "done" | "failed" | "stopped";
+/**
+ * The alerts that wait on the reader, and how many. The count is asked for on
+ * its own first, a small bounded read, so Home's line and the badge show it
+ * without waiting for the alerts; once they are read the count is theirs.
+ */
 export function useSessionAttention(canRead: boolean, tick: unknown) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [count, setCount] = useState(0);
   const request = useRef(0);
+  // Whether the alerts have been read: until then the count comes by itself.
+  const listed = useRef(false);
   const [problem, setProblem] = useState<string>();
   const refresh = useCallback(() => {
     const generation = ++request.current;
     if (!canRead) {
       setAlerts([]);
+      setCount(0);
       return;
     }
+    if (!listed.current)
+      sessionCenter.waiting().then(
+        (n) => {
+          if (generation === request.current && !listed.current) setCount(n);
+        },
+        () => {},
+      );
     sessionCenter.alerts({ mine: "true", state: "open" }).then(
       (rows) => {
         if (generation !== request.current) return;
-        setAlerts(orderAlerts(rows.filter((a) => !!a.session)));
+        const mine = orderAlerts(rows.filter((a) => !!a.session));
+        listed.current = true;
+        setAlerts(mine);
+        setCount(attentionAlerts(mine).length);
         setProblem(undefined);
       },
       (e) => {
@@ -105,7 +124,7 @@ export function useSessionAttention(canRead: boolean, tick: unknown) {
       window.clearInterval(timer);
     };
   }, [refresh, tick]);
-  return { alerts, problem, refresh, count: attentionAlerts(alerts).length };
+  return { alerts, problem, refresh, count };
 }
 export function AlertMark({ alert }: { alert: Alert }) {
   return <PriorityPill priority={alertPriority(alert)} />;
@@ -685,6 +704,7 @@ export function AlertsPage({
  */
 export function HomeSessionGlance({
   alerts,
+  waiting: counted,
   go,
   tick,
   onHasSessions,
@@ -692,6 +712,8 @@ export function HomeSessionGlance({
   via = storage,
 }: {
   alerts: Alert[];
+  /** How many alerts wait on the reader, when it is known apart from the alerts. */
+  waiting?: number;
   go: (route: Route) => void;
   tick: unknown;
   onHasSessions?: (has: boolean) => void;
@@ -740,7 +762,7 @@ export function HomeSessionGlance({
       live = false;
     };
   }, [tick, canArtifacts, via]);
-  const waiting = attentionAlerts(alerts).length;
+  const waiting = counted ?? attentionAlerts(alerts).length;
   const failed = madeFailed && made.length === 0;
   if (waiting === 0 && made.length === 0 && !failed) return null;
   const c = defaultCopy.home;

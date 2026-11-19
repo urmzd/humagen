@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -95,6 +96,32 @@ func (t *Table[T]) Lookup(tenant, key string) (Item[T], error) {
 		return Item[T]{}, err
 	}
 	return t.decode(r)
+}
+
+// LookupMany reads the records of the keys that have one, in no order, in
+// one statement for every MaxList keys (see LookupMany). A nil Table has
+// none.
+func (t *Table[T]) LookupMany(tenant string, keys []string) ([]Item[T], error) {
+	if t == nil {
+		return nil, nil
+	}
+	out := make([]Item[T], 0, len(keys))
+	for chunk := range slices.Chunk(keys, MaxList) {
+		ctx, cancel := context.WithTimeout(context.Background(), Timeout)
+		recs, err := LookupMany(ctx, t.store, t.namespace, tenant, chunk)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range recs {
+			it, err := t.decode(r)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, it)
+		}
+	}
+	return out, nil
 }
 
 // List reads one page of a tenant's records, and the cursor of the next (see

@@ -19,6 +19,7 @@ import type {
   AgentSkillDefaultsUpdate,
   AgentSpec,
   Alert,
+  AlertCount,
   AlertRule,
   AmendAgentSetupBody,
   AnnouncementInput,
@@ -5458,6 +5459,26 @@ Does not publish a new version or run an agent.
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListAlertsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** How many open session alerts are addressed to the caller, urgent or
+normal, in sessions they may read: the number the console shows on
+Home and on its badge. It is the count of what
+`GET /api/alerts?mine=true&state=open` lists with a session and a
+priority other than `low`, without the alerts themselves.
+ */
+  async countAlerts(options?: RequestOptions): Promise<AlertCount> {
+    const path = "/api/alerts/count";
+    return this.request<AlertCount>("GET", path, {
+      ...options,
+    });
+  }
+
+  async countAlertsRaw(options?: RequestOptions): Promise<ApiResponse<AlertCount>> {
+    const path = "/api/alerts/count";
+    return this.rawRequest<AlertCount>("GET", path, {
       ...options,
     });
   }

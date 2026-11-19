@@ -24,6 +24,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -1128,6 +1129,56 @@ func (x *Index) Get(tenant, runID string) (Run, error) {
 	return citationSnapshot(r), nil
 }
 
+// Many reads several runs at once, by id: their numbers in one statement
+// for every state.MaxList not already known, then the runs in one more. A
+// run the tenant has none of is left out.
+func (x *Index) Many(tenant string, ids []string) (map[string]Run, error) {
+	seqs := make([]int64, 0, len(ids))
+	var ask []string
+	asked := map[string]string{}
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		if n, ok := x.seqs.Load(tenant + "\x00" + id); ok {
+			seqs = append(seqs, n.(int64))
+			continue
+		}
+		if _, dup := asked[ptrKey(id)]; !dup {
+			asked[ptrKey(id)] = id
+			ask = append(ask, ptrKey(id))
+		}
+	}
+	for chunk := range slices.Chunk(ask, state.MaxList) {
+		c, cancel := ctx()
+		recs, err := state.LookupMany(c, x.st, namespace, tenant, chunk)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		for _, rec := range recs {
+			var n int64
+			if err := json.Unmarshal(rec.Value, &n); err != nil {
+				return nil, fmt.Errorf("runs: %q: %w", rec.Key, err)
+			}
+			if n != 0 {
+				x.seqs.Store(tenant+"\x00"+asked[rec.Key], n)
+				seqs = append(seqs, n)
+			}
+		}
+	}
+	slices.Sort(seqs)
+	found, err := x.all(tenant, slices.Compact(seqs))
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]Run, len(found))
+	for _, r := range found {
+		out[r.ID] = citationSnapshot(r)
+	}
+	return out, nil
+}
+
 // List returns a tenant's runs, newest first, at most limit of them, and at
 // most state.MaxList.
 func (x *Index) List(tenant string, limit int) []Run {
@@ -1135,7 +1186,7 @@ func (x *Index) List(tenant string, limit int) []Run {
 		limit = state.MaxList
 	}
 	var out []Run
-	err := x.scan(tenant, func(r *Run) bool {
+	err := x.scanBy(tenant, limit, func(r *Run) bool {
 		out = append(out, citationSnapshot(r))
 		return len(out) < limit
 	})
@@ -1207,6 +1258,34 @@ func (x *Index) ConversationSummary(tenant, id string) (ThreadSummary, error) {
 	return s.summary(), err
 }
 
+// ConversationSummaries reads the retained projections of several
+// conversations at once, by id: one statement for every state.MaxList of
+// them, and at most MaxThreadScan. One the index holds no run of is left out.
+func (x *Index) ConversationSummaries(tenant string, ids []string) (map[string]ThreadSummary, error) {
+	ids = ids[:min(len(ids), MaxThreadScan)]
+	keys := make([]string, len(ids))
+	for i, id := range ids {
+		keys[i] = threadKey(id)
+	}
+	out := make(map[string]ThreadSummary, len(ids))
+	for chunk := range slices.Chunk(keys, state.MaxList) {
+		c, cancel := ctx()
+		recs, err := state.LookupMany(c, x.st, namespace, tenant, chunk)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		for _, rec := range recs {
+			var s storedThread
+			if err := json.Unmarshal(rec.Value, &s); err != nil {
+				return nil, fmt.Errorf("runs: %q: %w", rec.Key, err)
+			}
+			out[s.ID] = s.summary()
+		}
+	}
+	return out, nil
+}
+
 // A governed child remains in its execution tree, but a canonical child
 // session has a separate user-facing transcript of its own.
 func conversationTurn(r *Run) bool {
@@ -1250,6 +1329,54 @@ func (x *Index) Conversation(tenant, thread string) ([]Run, error) {
 	out := make([]Run, 0, len(turns))
 	for _, r := range turns {
 		out = append(out, citationSnapshot(r))
+	}
+	return out, nil
+}
+
+// Conversations returns the turns of several threads at once, oldest first
+// in each, as Conversation does for one: the turn keys of each thread, a few
+// threads at a time, then every run in one statement for each state.MaxList
+// of them. A thread the index holds no turn of is left out. Each thread
+// holds at most MaxTree turns.
+func (x *Index) Conversations(tenant string, threads []string) (map[string][]Run, error) {
+	seqs := make([][]int64, len(threads))
+	errs := make([]error, len(threads))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, keyReads)
+	for i, thread := range threads {
+		sem <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-sem }()
+			keys, err := x.keys(tenant, turnPrefix(thread), MaxTree)
+			errs[i] = err
+			for _, k := range keys {
+				seqs[i] = append(seqs[i], seqOf(k))
+			}
+		})
+	}
+	wg.Wait()
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
+	}
+	var every []int64
+	for _, s := range seqs {
+		every = append(every, s...)
+	}
+	turns, err := x.all(tenant, every)
+	if err != nil {
+		return nil, err
+	}
+	bySeq := make(map[int64]*Run, len(turns))
+	for _, r := range turns {
+		bySeq[r.seq] = r
+	}
+	out := make(map[string][]Run, len(threads))
+	for i, thread := range threads {
+		for _, n := range seqs[i] {
+			if r := bySeq[n]; r != nil {
+				out[thread] = append(out[thread], citationSnapshot(r))
+			}
+		}
 	}
 	return out, nil
 }

@@ -52,7 +52,10 @@ type Postgres struct {
 	pool *pgxpool.Pool
 }
 
-var _ Store = (*Postgres)(nil)
+var (
+	_ Store = (*Postgres)(nil)
+	_ Many  = (*Postgres)(nil)
+)
 
 // OpenPostgres creates the table if it is not there. It takes no lock: any
 // number of processes may open one database, since every store reads and
@@ -108,6 +111,24 @@ func (p *Postgres) Lookup(ctx context.Context, namespace, tenant, key string) (R
 		return Record{}, fmt.Errorf("state: get: %w", err)
 	}
 	return r, nil
+}
+
+// LookupMany implements Many: one statement, which probes the primary key
+// once a key.
+func (p *Postgres) LookupMany(ctx context.Context, namespace, tenant string, keys []string) ([]Record, error) {
+	rows, err := p.pool.Query(ctx, `SELECT key, value, version FROM `+table+` WHERE namespace = $1 AND tenant = $2 AND key = ANY($3::text[])`, namespace, tenant, keys)
+	if err != nil {
+		return nil, fmt.Errorf("state: lookup many: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Record, error) {
+		r := Record{Tenant: tenant}
+		err := row.Scan(&r.Key, &r.Value, &r.Version)
+		return r, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("state: lookup many: %w", err)
+	}
+	return out, nil
 }
 
 // List implements Store.
