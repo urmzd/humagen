@@ -4,7 +4,9 @@ import {
   Children,
   createContext,
   createElement,
+  Fragment,
   isValidElement,
+  memo,
   type ReactNode,
   useContext,
   useEffect,
@@ -35,6 +37,7 @@ import {
   CopyIcon,
   InfoIcon,
 } from "./icons";
+import { markdownBlocks } from "./markdown-blocks";
 import { SuppressContext, timeLeft, useNow, useTurnMeta } from "./meta";
 import { RequestBubble } from "./request";
 import { Review } from "./review";
@@ -165,7 +168,10 @@ const markdownComponents: Components = {
   ),
 };
 
-function Inline({ text }: { text: string }) {
+// Parsing is the costly part of a message, and a thread renders again on every
+// streamed token and every edit around it. Each of these parses again only when
+// its own text changes.
+const Inline = memo(function Inline({ text }: { text: string }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
@@ -176,7 +182,7 @@ function Inline({ text }: { text: string }) {
       {localizeTimes(text)}
     </ReactMarkdown>
   );
-}
+});
 
 function Text({ text }: PrimitiveProps["Text"]) {
   if (useContext(SuppressContext).has(text)) return null;
@@ -187,19 +193,36 @@ function Text({ text }: PrimitiveProps["Text"]) {
   );
 }
 
-function Markdown({ text, streaming }: PrimitiveProps["Markdown"]) {
+const remarkPlugins = [remarkGfm];
+
+/** One piece of a document, parsed again only when its own text changes. */
+const MarkdownBlock = memo(function MarkdownBlock({ text }: { text: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents}>
+      {localizeTimes(text)}
+    </ReactMarkdown>
+  );
+});
+
+const Markdown = memo(function Markdown({ text, streaming }: PrimitiveProps["Markdown"]) {
   return (
     <div
       data-aui="markdown"
       className={`aui-prose ${streaming ? "aui-streaming" : ""}`}
       aria-busy={streaming || undefined}
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-        {localizeTimes(text)}
-      </ReactMarkdown>
+      {/* A piece keeps its place as text is added after it, so its index is its key.
+          The line break between pieces is the one the parser puts between blocks. */}
+      {markdownBlocks(text).map((block, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: pieces are only added at the end
+        <Fragment key={i}>
+          {i > 0 && "\n"}
+          <MarkdownBlock text={block} />
+        </Fragment>
+      ))}
     </div>
   );
-}
+});
 
 const EXPIRES = /^Expires \{\{time:([^}]+)\}\}$/;
 const REFERENCE = /^Reference: (\S+)$/;

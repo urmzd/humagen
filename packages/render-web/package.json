@@ -13,6 +13,7 @@
     "./icons": "./src/icons.tsx"
   },
   "scripts": {
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
