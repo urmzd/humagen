@@ -100,6 +100,7 @@ import (
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
+	"github.com/urmzd/humagen/pkg/webtools"
 )
 
 // ErrForbidden reports a call the caller's agent spec does not allow.
@@ -387,10 +388,13 @@ type Platform struct {
 	Marks *marks.Store
 	// PersonContexts is what each person brings to the runs that act for
 	// them: their run settings, tool servers and memory volume.
-	PersonContexts       *personctx.Store
-	runSettings          runSettings
-	Memory               *memory.Store
-	Drive                *drive.Store // the versioned file trees memory is kept in
+	PersonContexts *personctx.Store
+	runSettings    runSettings
+	Memory         *memory.Store
+	Drive          *drive.Store // the versioned file trees memory is kept in
+	// Web reads the public web for the web_search and web_fetch tools. Nil
+	// uses the default client (pkg/webtools).
+	Web                  *webtools.Client
 	SkillLibrary         *library.Store
 	AgentSkillDefaults   *library.DefaultsStore
 	skillDefaultsMu      sync.Mutex

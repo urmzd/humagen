@@ -165,7 +165,7 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 		Fallbacks:    slices.Clone(chain[1:]),
 		Effort:       "medium",
 		SystemPrompt: writerPrompt,
-		Tools:        FileTools(),
+		Tools:        append(FileTools(), WebTools()...),
 	}, {
 		Name:         BuiltinAnalyst,
 		Description:  "Answers questions about runs, failures, speed, spend and alerts, writes reports and project recaps",
@@ -174,7 +174,7 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 		Fallbacks:    slices.Clone(chain[1:]),
 		Effort:       "medium",
 		SystemPrompt: analystPrompt,
-		Tools:        append(AnalystTools(), FileTools()...),
+		Tools:        append(append(AnalystTools(), FileTools()...), WebTools()...),
 	}, {
 		Name:         BuiltinCodeReviewer,
 		Description:  "Reviews code and combines specialist findings into one verdict",

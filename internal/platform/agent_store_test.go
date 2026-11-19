@@ -504,9 +504,10 @@ func TestTheStoreSaysWhatEachAgentIsGrantedBeforeInstall(t *testing.T) {
 			t.Errorf("%s may call %v, want %v", a.Name, a.Access.Spawn, want)
 		}
 	}
-	// The writer's tools act through no connection.
+	// The writer's tools act through no connection: its files, and the
+	// public web.
 	writer := storePackage(t, p, "humagen/core").Agents[0]
-	if writer.Name != platform.BuiltinWriter || !slices.Equal(writer.Tools, platform.FileTools()) || len(writer.Connectors) != 0 || len(writer.Access.Spawn) != 0 {
+	if writer.Name != platform.BuiltinWriter || !slices.Equal(writer.Tools, append(platform.FileTools(), platform.WebTools()...)) || len(writer.Connectors) != 0 || len(writer.Access.Spawn) != 0 {
 		t.Fatalf("writer = %+v", writer)
 	}
 	// It is the package's spec, not the workspace's: a change made to an

@@ -120,6 +120,10 @@ func (p *Platform) registerRunTools() error {
 		{Name: ToolOutcome, Category: other, Run: file(ToolOutcome)},
 		{Name: ToolShell, Category: write, Destructive: true, Run: acting(p.shellTool)},
 
+		// The public web, read from the server (pkg/webtools).
+		reads(SystemTool{Name: ToolWebSearch, Category: read, Run: of(p.webSearchTool)}),
+		reads(SystemTool{Name: ToolWebFetch, Category: read, Run: of(p.webFetchTool)}),
+
 		// The analyst's.
 		reads(SystemTool{Name: ToolRunsSummary, Category: read, Run: builtin(ToolRunsSummary)}),
 		reads(SystemTool{Name: ToolListAlerts, Key: runToolKey(ToolListAlerts), Category: read, Run: builtin(ToolListAlerts)}),
