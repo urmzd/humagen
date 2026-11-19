@@ -44,20 +44,20 @@ type StructureTurn struct {
 }
 
 // StructureOmitted counts what a structure leaves out of the main path or
-// cut. A nil count is one that cannot be known, never zero. A structure this
-// package makes knows every count; a nil one is for a reader that cannot.
+// cut. Every count is exact: the reader counts what it cuts, and Structure
+// counts what it leaves out.
 type StructureOmitted struct {
 	// Turns is how many turns other than tool results were left out to fit.
-	Turns *int `json:"turns"`
+	Turns int `json:"turns"`
 	// Results is how many tool results were left out to fit.
-	Results *int `json:"results"`
+	Results int `json:"results"`
 	// CutTurns is how many kept turns hold only their opening: a tool
-	// result cut to MaxResult when the session was read, or a turn cut to
-	// fit.
-	CutTurns *int `json:"cut_turns"`
+	// result cut to MaxResult or a tool line cut to one line when the
+	// session was read, or a turn cut to fit.
+	CutTurns int `json:"cut_turns"`
 	// Attachments is how many turns of the main path carried files. No file
 	// is kept.
-	Attachments *int `json:"attachments"`
+	Attachments int `json:"attachments"`
 }
 
 // stamped is a time as a structure keeps it: nil for one the export does
@@ -112,7 +112,7 @@ func (s Session) Structure(lim Limits) (out Structure, ok bool) {
 	// The counts are in place before anything is measured, so the size
 	// measured is the size sent.
 	turns, results, cut := 0, 0, 0
-	out.Omitted = StructureOmitted{Turns: &turns, Results: &results, CutTurns: &cut, Attachments: &attachments}
+	out.Omitted = StructureOmitted{Attachments: attachments}
 	// Each turn's size as JSON, with the comma after it. Counts are
 	// measured at their widest, so dropping a turn never grows the whole.
 	const widest = 3 * len("1073741824")
@@ -159,5 +159,6 @@ func (s Session) Structure(lim Limits) (out Structure, ok bool) {
 		}
 		out.Turns = append(out.Turns, t)
 	}
+	out.Omitted.Turns, out.Omitted.Results, out.Omitted.CutTurns = turns, results, cut
 	return out, true
 }
