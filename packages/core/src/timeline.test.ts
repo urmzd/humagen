@@ -6,6 +6,7 @@ import {
   formatArgs,
   formatResult,
   lineDiff,
+  paragraphsAtSteps,
   shortAddress,
   timeline,
   toolFailed,
@@ -274,5 +275,38 @@ describe("turnChanges", () => {
       // Edits add up.
       ["src/a.go", 2, 2, ["3", "5"]],
     ]);
+  });
+});
+
+describe("paragraphsAtSteps", () => {
+  const at = (...positions: number[]) => positions.map((p) => ({ at: p }));
+
+  it("breaks the words into paragraphs where a step came between them", () => {
+    const text = "I'll look it up on the web.Here are three changes.";
+    expect(paragraphsAtSteps(text, at(27))).toBe(
+      "I'll look it up on the web.\n\nHere are three changes.",
+    );
+    // Spaces or a single line break at the step become the break.
+    expect(paragraphsAtSteps("Before. \nAfter.", at(7))).toBe("Before.\n\nAfter.");
+  });
+
+  it("adds nothing where the words already break, before any words, or before more words come", () => {
+    expect(paragraphsAtSteps("Before.\n\nAfter.", at(7))).toBe("Before.\n\nAfter.");
+    expect(paragraphsAtSteps("After.", at(0))).toBe("After.");
+    expect(paragraphsAtSteps("Before.", at(7))).toBe("Before.");
+  });
+
+  it("never breaks inside a code fence", () => {
+    const text = "```sh\nmake\nmake test\n```";
+    expect(paragraphsAtSteps(text, at(10))).toBe(text);
+  });
+
+  it("lays out a prefix as a prefix of the whole, so a stream can append to it", () => {
+    const text = "I'll look it up.Here it is. Then I checked.And it holds.";
+    const steps = at(16, 43);
+    const whole = paragraphsAtSteps(text, steps);
+    for (let n = 0; n <= text.length; n++) {
+      expect(whole.startsWith(paragraphsAtSteps(text.slice(0, n), steps).trimEnd())).toBe(true);
+    }
   });
 });

@@ -345,3 +345,42 @@ export function turnChanges(tasks: readonly Task[]): FileChange[] {
       : change,
   );
 }
+
+const FENCE = /^\s*(`{3,}|~{3,})/;
+
+/**
+ * An answer's words with a paragraph break wherever a step came between them
+ * (`Task.at`), for a surface that shows the words as one text, such as Slack:
+ * what an agent said before a call and what it said after it read as two
+ * paragraphs, not one run-on line ("on the web.Here are"). A break is added
+ * only where the words do not already break, never inside a code fence, and
+ * only once words follow the step, so the result for a prefix of the text is a
+ * prefix of the result for all of it, apart from trailing spaces: a stream can
+ * keep appending to it.
+ */
+export function paragraphsAtSteps(text: string, tasks: readonly Pick<Task, "at">[]): string {
+  const cuts = [
+    ...new Set(
+      tasks
+        .map((t) => t.at)
+        .filter((at): at is number => at !== undefined && at > 0 && at < text.length),
+    ),
+  ].sort((a, b) => a - b);
+  let out = "";
+  let from = 0;
+  for (const at of cuts) {
+    if (at < from) continue;
+    out += text.slice(from, at);
+    from = at;
+    const rest = text.slice(at);
+    if (!out.trim() || /\n[ \t]*\n[ \t]*$/.test(out) || /^[ \t]*\n[ \t]*\n/.test(rest)) continue;
+    let fenced = false;
+    for (const line of out.split("\n")) if (FENCE.test(line)) fenced = !fenced;
+    if (fenced) continue;
+    out = out.replace(/[ \t]+$/, "");
+    const lead = /^[ \t]*\n?[ \t]*/.exec(rest)?.[0] ?? "";
+    out += "\n\n";
+    from = at + lead.length;
+  }
+  return out + text.slice(from);
+}
