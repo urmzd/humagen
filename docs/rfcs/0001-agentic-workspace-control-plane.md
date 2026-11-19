@@ -6,7 +6,7 @@ Status: mostly built. Checked against `main` on 2026-11-19. The
 [gap analysis](../reference/control-plane-gap-analysis.md) was reviewed on
 October 24, 2026 and still lists as not built several items that are on main
 now. Where the two disagree, the list below is the newer one. Where this spec
-and [AGENTS.md](../../AGENTS.md) disagree on presentation, AGENTS.md wins (see
+and [AGENTS.md](https://github.com/urmzd/humagen/blob/main/AGENTS.md) disagree on presentation, AGENTS.md wins (see
 [Identity](#objects-scopes-and-identity)).
 
 ## What is built

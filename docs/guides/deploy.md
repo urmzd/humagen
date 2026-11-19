@@ -7,11 +7,11 @@ process with its stores beside it.
 
 | Where | What | Files |
 |-------|------|-------|
-| Your machine, no containers | `humagen start`, or `make dev` and `make web` | [README](../../README.md#quick-start) |
+| Your machine, no containers | `humagen start`, or `make dev` and `make web` | [README](https://github.com/urmzd/humagen/blob/main/README.md#quick-start) |
 | Your machine, while developing | `make tilt`: API, console with hot reload, Postgres, restarted as you edit | [develop](develop.md) |
-| Your machine or one host | Docker Compose: Humagen, Postgres, optional MinIO | [`deploy/compose`](../../deploy/compose) |
-| Kubernetes | A Helm chart | [`deploy/helm/humagen`](../../deploy/helm/humagen) |
-| Kubernetes, from Git | Flux deploying that chart | [`deploy/flux`](../../deploy/flux) |
+| Your machine or one host | Docker Compose: Humagen, Postgres, optional MinIO | [`deploy/compose`](https://github.com/urmzd/humagen/tree/main/deploy/compose) |
+| Kubernetes | A Helm chart | [`deploy/helm/humagen`](https://github.com/urmzd/humagen/tree/main/deploy/helm/humagen) |
+| Kubernetes, from Git | Flux deploying that chart | [`deploy/flux`](https://github.com/urmzd/humagen/tree/main/deploy/flux) |
 | Wherever the spec says | `humagen deploy`: the spec's `deploy` slot picks `local`, `compose` or `kubernetes`, and `-o DIR` writes what it would apply and stops | [the spec](../reference/spec.md#deploying-it) |
 
 ## What to know first
@@ -149,7 +149,7 @@ names that record under `unreadable`.
 
 ## The image
 
-The [`Dockerfile`](../../Dockerfile) at the root builds the console (`pnpm
+The [`Dockerfile`](https://github.com/urmzd/humagen/blob/main/Dockerfile) at the root builds the console (`pnpm
 install`, then `turbo run build --filter=@humagen/console`) and a static `humagen`
 (`CGO_ENABLED=0`, as `make build`), and ships them on Alpine:
 
@@ -178,7 +178,7 @@ the server over HTTP.
 
 ## Docker Compose
 
-[`deploy/compose/compose.yaml`](../../deploy/compose/compose.yaml) runs Humagen and
+[`deploy/compose/compose.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/compose/compose.yaml) runs Humagen and
 Postgres 17, with one optional profile: `s3` (MinIO, and a one-shot job that
 creates the bucket). Each service has a healthcheck, and Humagen waits
 for what it depends on.
@@ -191,12 +191,12 @@ make down                                            # stop, keep the volumes
 make down V=1                                        # stop and delete the volumes
 ```
 
-[`config/warp.yaml`](../../deploy/compose/config/warp.yaml) holds a System
+[`config/warp.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/compose/config/warp.yaml) holds a System
 document (OIDC, Postgres through `env:HUMAGEN_POSTGRES_URL`, disk files) and a
 `default` Platform document, mounted at `/etc/warp` with any file it names.
 compose runs `serve -f /etc/warp -addr 0.0.0.0:8080 -web /usr/share/warp/web`
 and passes `.env` to the container, so a variable a reference names only has to
-be in `.env`. [`.env.example`](../../deploy/compose/.env.example) lists them,
+be in `.env`. [`.env.example`](https://github.com/urmzd/humagen/blob/main/deploy/compose/.env.example) lists them,
 commented. `COMPOSE_PROFILES=s3` turns on the profile; uncomment the
 matching `blobs` block in `humagen.yaml` as well.
 
@@ -206,8 +206,8 @@ browsers use.
 
 ### Without an identity provider
 
-[`compose.dev.yaml`](../../deploy/compose/compose.dev.yaml) mounts
-[`dev/warp.yaml`](../../deploy/compose/dev/warp.yaml) instead: `auth.kind: dev`,
+[`compose.dev.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/compose/compose.dev.yaml) mounts
+[`dev/warp.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/compose/dev/warp.yaml) instead: `auth.kind: dev`,
 seeded agents on the offline provider, the same Platform document. Humagen runs
 on the host's network, listening on `127.0.0.1:8080`, with Postgres (and MinIO) published on the host's loopback for it. It needs host networking: Linux, or Docker Desktop 4.34+ with
 it turned on.
@@ -221,12 +221,12 @@ Every request is an admin. Do not use it anywhere but your own machine.
 
 ## Kubernetes with Helm
 
-[`deploy/helm/humagen`](../../deploy/helm/humagen) deploys one Humagen server: a Deployment, a
+[`deploy/helm/humagen`](https://github.com/urmzd/humagen/tree/main/deploy/helm/humagen) deploys one Humagen server: a Deployment, a
 Service, an optional Ingress, a ConfigMap, a PersistentVolumeClaim for the
 workspace when blobs are on disk, a PodDisruptionBudget, and a ServiceAccount
 with no API token. The pod runs as non-root with a read-only root filesystem
 and no capabilities. Every value is documented in
-[`values.yaml`](../../deploy/helm/humagen/values.yaml).
+[`values.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/helm/humagen/values.yaml).
 
 The `system` value (`metadata` and `spec`) and each item of `platforms` are
 rendered verbatim, with `api_version` and `kind` added, into one `humagen.yaml`
@@ -263,7 +263,7 @@ helm install humagen deploy/helm/humagen -n humagen \
 ```
 
 Models, tools and agents go in a values file under `platforms`, as in the
-[Flux example](../../deploy/flux/app/values.yaml). Helm merges maps key by key and
+[Flux example](https://github.com/urmzd/humagen/blob/main/deploy/flux/app/values.yaml). Helm merges maps key by key and
 replaces lists, so a `platforms` override replaces the default list.
 
 `make chart-check` (`deploy/helm/check.sh`) lints the chart, renders it with
@@ -347,7 +347,7 @@ built with caddy-tailscale, that joins the tailnet (auth key from a Secret
 through `tailscale.proxy.envFrom`) and reverse-proxies to `127.0.0.1:8080`,
 where Humagen listens. Its config (a Caddyfile) goes in
 `tailscale.proxy.files`, mounted at `/etc/tailscale-proxy`; `values.yaml` and
-[`ci/tailscale-values.yaml`](../../deploy/helm/humagen/ci/tailscale-values.yaml)
+[`ci/tailscale-values.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/helm/humagen/ci/tailscale-values.yaml)
 show one. The proxy is the only way in: the chart refuses an Ingress, and the
 Service exposes no Humagen port (only the webhooks port, when on). The
 Tailscale Kubernetes operator's ingress proxies to the Service or pod IP, not
@@ -393,21 +393,21 @@ compares both replicas' live and stored events; it does not stop either pod.
 
 ## Flux
 
-[`deploy/flux`](../../deploy/flux) deploys the chart straight from this repository.
+[`deploy/flux`](https://github.com/urmzd/humagen/tree/main/deploy/flux) deploys the chart straight from this repository.
 Its objects (the namespace, the `GitRepository`, the `Kustomization`, the
 `HelmRelease` and the Secret it reads) keep the name `warp` they had before
 the product was renamed, because the example `Kustomization` prunes what it no
 longer applies:
 
-- [`clusters/example/humagen.yaml`](../../deploy/flux/clusters/example/humagen.yaml): a
+- [`clusters/example/humagen.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/flux/clusters/example/humagen.yaml): a
   `GitRepository` for this repository (narrowed to `deploy/`) and a Flux
   `Kustomization` that applies `deploy/flux/app`. Commit it where your cluster's
   Flux already reconciles.
-- [`app/`](../../deploy/flux/app): the `warp` namespace and a `HelmRelease` named
+- [`app/`](https://github.com/urmzd/humagen/tree/main/deploy/flux/app): the `warp` namespace and a `HelmRelease` named
   `warp` whose chart is `./deploy/helm/humagen` from that source, rebuilt on
   every revision, and upgraded in place when the chart's name changes
   (`chartNameChangeStrategy: InPlaceUpdate`). Its
-  values come from [`app/values.yaml`](../../deploy/flux/app/values.yaml), an
+  values come from [`app/values.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/flux/app/values.yaml), an
   override example in the spec's shape (`system`, `platforms`), through a generated ConfigMap whose name changes with its
   content, so an edit upgrades the release.
 
@@ -421,7 +421,7 @@ the `GitRepository`; nothing is published yet.
 
 ## Local Kubernetes with Tilt
 
-The [`Tiltfile`](../../Tiltfile) at the root runs humagen on a local cluster
+The [`Tiltfile`](https://github.com/urmzd/humagen/blob/main/Tiltfile) at the root runs humagen on a local cluster
 through this chart, rebuilding as you edit:
 
 ```sh
@@ -431,8 +431,8 @@ tilt up                  # then open http://127.0.0.1:8080
 
 It needs Docker, helm, Go and pnpm beside Tilt. The binary and the console
 are built on the host, where Go's and pnpm's caches keep a change to seconds,
-then copied into a small image ([`deploy/tilt/Dockerfile`](../../deploy/tilt/Dockerfile))
-that the chart runs with [`deploy/tilt/values.yaml`](../../deploy/tilt/values.yaml):
+then copied into a small image ([`deploy/tilt/Dockerfile`](https://github.com/urmzd/humagen/blob/main/deploy/tilt/Dockerfile))
+that the chart runs with [`deploy/tilt/values.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/tilt/values.yaml):
 development sign-in, memory stores, example agents and the offline model, so
 nothing needs a key, a database or an identity provider.
 
@@ -454,10 +454,10 @@ The compose files pass `docker compose config`, and both compose specs pass
 serve` and served the console. `make chart-check` passes: `helm lint --strict`,
 `kubeconform -strict` on the renders (the defaults with the required OIDC
 values, every option on in
-[`ci/full-values.yaml`](../../deploy/helm/humagen/ci/full-values.yaml), the worker, KEDA,
+[`ci/full-values.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/helm/humagen/ci/full-values.yaml), the worker, KEDA,
 autoscaler, disruption budgets and `gcs` blobs in
-[`ci/scale-values.yaml`](../../deploy/helm/humagen/ci/scale-values.yaml), tailscale behind
-its proxy in [`ci/tailscale-values.yaml`](../../deploy/helm/humagen/ci/tailscale-values.yaml),
+[`ci/scale-values.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/helm/humagen/ci/scale-values.yaml), tailscale behind
+its proxy in [`ci/tailscale-values.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/helm/humagen/ci/tailscale-values.yaml),
 and the Flux and Tilt overrides; KEDA's ScaledObject and TriggerAuthentication
 are skipped, having no schema), `humagen config check` on each rendered
 `humagen.yaml`, the refusals (grace period too short, unparsable durations,
