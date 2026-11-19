@@ -3,7 +3,7 @@
 //
 // A native model reads a pinned skill's supporting text through the
 // platform's file_read tool. A program that is the model and the tools at
-// once (pkg/vendorcli) is offered no platform tool, so the platform writes
+// once (none ships in humagen; a program may add one) is offered no platform tool, so the platform writes
 // the files where the program can read them: one directory a run, under a
 // root only this user can open, named by 128 random bits, read only, and
 // removed when the turn ends. The platform tells the program each file's
