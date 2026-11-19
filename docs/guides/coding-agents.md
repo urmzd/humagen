@@ -154,7 +154,9 @@ too, as `--effort` to Claude Code and as `model_reasoning_effort` to Codex.
   the supporting files of the revision the run is pinned to into a directory
   of that turn's own, under `humagen-skill-files-<uid>` in the host's
   temporary directory, outside `dir`, and what the program is asked names
-  each file by its absolute path there. Claude Code is given that directory
+  each file by its absolute path there: at most 63 of a skill's files, those
+  its instructions name first, then how many more there are and the skill's
+  directory, which holds them all. Claude Code is given that directory
   with `--add-dir`; Codex reads outside its workspace in every sandbox and
   needs nothing. Which directory Claude Code is given is never read from the
   message: it is the one placed for the turn's own run, in its own workspace,
@@ -165,7 +167,9 @@ too, as `--effort` to Claude Code and as `model_reasoning_effort` to Codex.
   The files are the pinned revision's exact bytes, binary
   files included, read only and without an execute bit: a later draft does
   not change them. Only the skills the run was admitted with are written,
-  within the library's limits for each (64 files, 512 KiB). The directory is
+  within the library's limits for each (256 files, 1 MiB a supporting file,
+  2 MiB in all), so a large schema or source file is there whole, though a
+  native model's `file_read` refuses one over 128 KiB. The directory is
   removed when the turn returns, whether it answered, failed or was stopped,
   so each turn is told a new path; one left by a process that was killed is
   removed after seven days. A turn whose files cannot be written fails and

@@ -373,7 +373,14 @@ it to; it does not ask the server, so it does not say whether the project
 exists or which sessions are already imported.
 
 A skill is checked here the way the server checks it: `SKILL.md` frontmatter
-the parser accepts, at most 64 files, 128 KiB a file and 512 KiB in all. The
+the parser accepts, at most 256 files, 1 MiB a supporting file, 128 KiB for
+`SKILL.md` and 2 MiB in all. A folder over one of these is not drafted and is
+named under `failed` with the bound, such as `failed NAME: schema.xsd is over
+1048576 bytes`, `failed NAME: more than 256 files` or `failed NAME: more than
+2097152 bytes in all`. The command stops reading a folder at the first file
+past a bound, so an oversize folder is not read whole. A skill the server
+cannot read, such as one a later release wrote, is named under `failed` and
+nothing is written. The
 skill keeps the `name` in its `SKILL.md`, whatever its folder is called. The
 library reads the frontmatter the skill standard names (`name`, `description`,
 `license`, `compatibility`, `metadata`, `allowed-tools`). A `SKILL.md` it cannot
@@ -397,7 +404,15 @@ stays the one agents are bound to and new conversations use until the draft
 is tested and published under Library, Skills, and a run already accepted
 keeps the revision it was pinned with. When the newest revision is itself an
 unpublished draft an import wrote, the changed folder becomes another draft
-after it: a revision is never rewritten. A skill holds at most 32 revisions.
+after it: a revision is never rewritten. A skill holds at most 32 revisions
+and 16 MiB of files in all its revisions, so a skill with large files holds
+fewer. A change past either is named under `failed`, such as `failed NAME: the
+library holds as many revisions of it as it may (32)` or `failed NAME: the
+library holds as many bytes of files of it as it may (16777216 ...)`, and
+nothing is written. A skill's revisions are never removed, and there is no way
+to free room in a full skill: to keep importing the folder, give it another
+`name` in its `SKILL.md`, or import it into another scope with `--scope`, then
+bind agents to that skill.
 
 Each revision records whether an import wrote it (`via` in the API). A
 conflict means the library may hold edits the folder lacks: bring them into

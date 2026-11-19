@@ -55,7 +55,9 @@ func (s *Server) listLibrarySkills(w http.ResponseWriter, r *http.Request, who a
 		s.problem(w, err)
 		return
 	}
-	rows, err := s.P.SkillLibrary.List(who.Tenant, scope)
+	// A skill this server cannot read, such as one a later release wrote
+	// past its bounds, is named under unreadable and fails only itself.
+	rows, unreadable, err := s.P.SkillLibrary.List(who.Tenant, scope)
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -65,7 +67,7 @@ func (s *Server) listLibrarySkills(w http.ResponseWriter, r *http.Request, who a
 		views[i] = s.skillView(who, rows[i])
 		views[i].Files = nil // Package content is loaded only after opening a skill.
 	}
-	ok(w, 200, map[string]any{"skills": views})
+	ok(w, 200, map[string]any{"skills": views, "unreadable": unreadable})
 }
 func (s *Server) draftLibrarySkill(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {

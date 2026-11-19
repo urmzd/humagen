@@ -96,8 +96,27 @@ and a draft sent after another writer's revision is refused by the
 optimistic version check. See the
 [CLI reference](../reference/cli.md#import-sessions-skills-and-agents).
 
-Limits are enforced by the server: 64 files, 128 KiB per file and 512 KiB in total
-after base64 decoding. Main instructions allow 32000 characters. Relative paths
+Limits are enforced by the server, after base64 decoding: 256 files, 1 MiB per
+supporting file, 128 KiB for `SKILL.md` and 2 MiB in total. A supporting file
+has room for the schema and source files skills ship; `SKILL.md` keeps the
+smaller bound because its body is what a model is asked. The revisions of one
+skill hold at most 16 MiB of file bytes together, which is what 32 revisions of
+the earlier 512 KiB package came to. A skill's revisions are one stored record
+and one history answer, which also hold each file's path and each revision's
+text, so they are larger than the file bytes: at worst, with every path and
+text field at its bound in characters JSON escapes, a record is about 41.8 MiB
+(about 32.9 MiB under the earlier 64-file bound), and a history answer a few
+KiB more. A record of real files is near its file bytes in base64. The
+arithmetic is at `library.MaxSkillBytes`.
+
+A skill that holds 32 revisions, or 16 MiB of files, takes no more: a draft
+past either is refused and names the bound. A skill's revisions are never
+removed, and there is no way to free room in a full skill. To go on, save the
+skill under another name in its `SKILL.md`, or in another scope, and bind
+agents to that skill.
+
+`POST /api/library/skills` takes a body as large as a full package in base64
+and 1 MiB besides. Main instructions allow 32000 characters. Relative paths
 must be canonical and unique. The in-memory archive adapts saved bytes to saige's
 filesystem interface; no uploaded path is opened on the host.
 
@@ -112,6 +131,24 @@ never grants tools through frontmatter. `allowed-tools` can only narrow the
 explicit tool selection, which is intersected with agent grants. The admitted
 run pins the selected revision, hash and resource manifest. Supporting text can
 be read through the existing gated `file_read` tool with `skill:<name>/<path>`.
+What `file_read` returns enters the model's context, so it reads a supporting
+file of at most 128 KiB: a larger one is listed with its size and the words
+"over the 131072 bytes file_read returns", and reading it is refused. A
+supporting file's bytes are never put into the turn's text. The turn's text
+lists at most 63 supporting files of a skill, as many as a package of the
+earlier 64 files held, so the list costs a model no more than it did. The
+files `SKILL.md`'s instructions name by their exact path come first, then the
+rest by path; a listed file over 128 KiB is marked as above. Past 63 the text
+says how many are listed and how many are not, and tells a native model that
+`file_read` reads any path the instructions name. `file_read` reads any file
+of the pinned package, listed or not, and a coding agent's directory holds
+every file.
+
+A skill record this release cannot read, such as one a later release wrote
+past these bounds, fails only itself: `GET /api/library/skills` lists the
+rest of its scope and names it under `unreadable`, it is left out of the
+skills a message can name, and every read of it, and a draft after it, is
+refused.
 A later draft cannot change that read. Binary content, unselected packages,
 missing files and cross-tenant references are refused. Reading a script does not
 execute it. Private packages retain the existing publication classification.

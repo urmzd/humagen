@@ -352,6 +352,7 @@ type Platform struct {
 
 	cfg                    Config
 	log                    *slog.Logger
+	unreadSkills           unreadSkills
 	role                   ProcessRole
 	lead                   leadership
 	now                    func() time.Time

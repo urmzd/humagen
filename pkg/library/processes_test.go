@@ -112,7 +112,7 @@ func TestSkillsTwoProcessesAgree(t *testing.T) {
 			}
 		}
 		wg.Wait()
-		list, err := two.List("acme", personal)
+		list, _, err := two.List("acme", personal)
 		if err != nil || len(list) != library.MaxSkills {
 			t.Fatalf("%d skills in a scope, want %d: %v", len(list), library.MaxSkills, err)
 		}
