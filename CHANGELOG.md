@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.139.0 (2026-11-19)
+
+### Breaking
+
+- remove the Claude Code and Codex model kinds (#383) ([af51a6c](https://github.com/urmzd/humagen/commit/af51a6cefda9993c6e6d358421703f37a0ecd9b0))
+
+### Features
+
+- **connections**: add Atlassian and Google Workspace tool server presets (#385) ([658510f](https://github.com/urmzd/humagen/commit/658510fb530418c9ad6eebe63c565a651a0e090f))
+- **platform**: add web_search and web_fetch tools (#384) ([5b064f2](https://github.com/urmzd/humagen/commit/5b064f217b1614013cbba28d50075b288643e8ec))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.138.2...v0.139.0)
+
+
 ## 0.138.2 (2026-11-19)
 
 ### Bug Fixes
