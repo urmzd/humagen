@@ -2,14 +2,14 @@
 
 The backend is Go. The surfaces that call it (the web console, a Slack app,
 later a GitHub app) may be TypeScript. They share one contract:
-[`api/openapi.yaml`](../../api/openapi.yaml), an OpenAPI 3.2 description of every
+[`api/openapi.yaml`](https://github.com/urmzd/humagen/blob/main/api/openapi.yaml), an OpenAPI 3.2 description of every
 route `internal/httpapi` serves. The TypeScript client in
-[`packages/client`](../../packages/client) is generated from it.
+[`packages/client`](https://github.com/urmzd/humagen/tree/main/packages/client) is generated from it.
 
 ## How the contract stays true
 
 The spec is written by hand, from the code. The tests in
-[`internal/httpapi/openapi_test.go`](../../internal/httpapi/openapi_test.go) run
+[`internal/httpapi/openapi_test.go`](https://github.com/urmzd/humagen/blob/main/internal/httpapi/openapi_test.go) run
 with `go test ./...` and fail when the two disagree:
 
 | Test | Fails when |

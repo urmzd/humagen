@@ -85,7 +85,7 @@ list, write the secret as a value. See [clients](../reference/clients.md#secrets
 ## GitHub installation
 
 Use GitHub's [manifest registration flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest)
-with [humagen's manifest](../../examples/github-review/app-manifest.json).
+with [humagen's manifest](https://github.com/urmzd/humagen/blob/main/examples/github-review/app-manifest.json).
 Replace its app name, webhook URL and callback URL.
 
 1. Submit JSON in the `manifest` form field to `https://github.com/settings/apps/new`,
@@ -131,7 +131,7 @@ requests from repository writers receive a run-bound grant. See [GitHub](../refe
 
 ## Slack installation
 
-Create or update the app using [the manifest](../../examples/slack/manifest.json),
+Create or update the app using [the manifest](https://github.com/urmzd/humagen/blob/main/examples/slack/manifest.json),
 replace `YOUR_HOST` with the forwarder URL, install it, and invite its bot to the
 trial channel. Configure the bot token/signing secret through the credential
 item. Set `HUMAGEN_SLACK_TEAM`, `HUMAGEN_SLACK_BOTS` (bot-user-id=agent-name)
